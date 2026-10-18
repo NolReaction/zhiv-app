@@ -9,6 +9,9 @@ import { EarthLoading, formatEarthLoadingBytes, type EarthLoadingStage } from ".
 import { EARTH_CACHE_PROTOCOL, earthResourceCache } from "./resource-cache";
 import { loadEarthRuntime } from "./runtime-loader";
 import { getEarthErrorResourceUrls } from "./resource-recovery";
+import { refreshEarthTileSource } from "./source-recovery";
+import { createEarthTileRecovery, type EarthTileRecoveryStatus } from "./tile-recovery";
+import { appendEarthTileBase, isEarthTileIndexUrl, isEarthVectorTileUrl, prepareEarthTileIndex } from "./tile-base";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
@@ -56,13 +59,14 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
   const handledFocus = useRef(0);
   const repairs = useRef<Promise<unknown>>(Promise.resolve());
   const retrying = useRef(false);
+  const tileRecoveryRef = useRef<ReturnType<typeof createEarthTileRecovery> | null>(null);
   const [phase, setPhase] = useState<MapPhase>("loading");
   const [stage, setStage] = useState<EarthLoadingStage>("engine");
   const [failure, setFailure] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [persisting, setPersisting] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [partialFailure, setPartialFailure] = useState(false);
+  const [tileStatus, setTileStatus] = useState<EarthTileRecoveryStatus>("idle");
   const cache = useSyncExternalStore(earthResourceCache.subscribe, earthResourceCache.getSnapshot, earthResourceCache.getSnapshot);
   const phaseRef = useRef(phase);
   const activeRef = useRef(active);
@@ -80,13 +84,16 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
     setPhase("loading");
     setFailure(null);
     setStage("engine");
-    setPartialFailure(false);
+    setTileStatus("idle");
     try { await repairs.current; }
     finally { retrying.current = false; setRetry(value => value + 1); }
   }, []);
 
   useEffect(() => {
-    const reconnect = () => { if (phaseRef.current === "failed") retryMap(); };
+    const reconnect = () => {
+      if (phaseRef.current === "failed") void retryMap();
+      else tileRecoveryRef.current?.retry();
+    };
     window.addEventListener("online", reconnect);
     return () => window.removeEventListener("online", reconnect);
   }, [retryMap]);
@@ -118,6 +125,7 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
     let resizeObserver: ResizeObserver | null = null;
     let intersectionObserver: IntersectionObserver | null = null;
     let canvas: HTMLCanvasElement | null = null;
+    let tileRecovery: ReturnType<typeof createEarthTileRecovery> | null = null;
 
     function resize() {
       if (!cancelled && map && activeRef.current && !document.hidden && element!.clientWidth && element!.clientHeight) map.resize();
@@ -125,6 +133,7 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
     function visibilityChanged() {
       if (document.hidden) { window.clearTimeout(timeout); map?.stop(); }
       else { armDeadline(); resize(); }
+      tileRecovery?.check();
     }
     function fail(message: string) {
       if (cancelled || attemptFailed) return;
@@ -170,7 +179,7 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
         setPhase("loading");
         setFailure(null);
         setStage("engine");
-        setPartialFailure(false);
+        setTileStatus("idle");
         if (!canRenderGlobe()) {
           window.clearTimeout(timeout);
           attemptFailed = true;
@@ -179,7 +188,15 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
         }
         const sdk = await loadEarthRuntime({ signal: controller.signal });
         if (cancelled || attemptFailed) return;
-        sdk.addProtocol(EARTH_CACHE_PROTOCOL, earthResourceCache.protocol);
+        sdk.addProtocol(EARTH_CACHE_PROTOCOL, async (parameters, requestController) => {
+          const response = await earthResourceCache.protocol(parameters, requestController);
+          if (isEarthTileIndexUrl(parameters.url)) return { ...response, data: prepareEarthTileIndex(response.data) };
+          if (response.data instanceof ArrayBuffer && isEarthVectorTileUrl(parameters.url)) {
+            // A successful detail tile covers its own area; missing neighbors retain the local world silhouette.
+            return { ...response, data: appendEarthTileBase(response.data) };
+          }
+          return response;
+        });
         sdk.setMaxParallelImageRequests(4);
         setStage("resources");
         // Style data and every subsequent source/sprite/tile request use the same durable cache.
@@ -201,6 +218,9 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
           minZoom: -1.5,
           maxZoom: 18,
           maxPitch: 60,
+          // Keep useful parent detail while zooming; the persistent cache handles revisits.
+          cancelPendingTileRequestsWhileZooming: false,
+          maxTileCacheSize: 96,
           attributionControl: false,
           renderWorldCopies: false,
           pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
@@ -213,7 +233,26 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
         });
         const current = map;
         mapRef.current = current;
-        unsubscribe = earthResourceCache.subscribe(checkReady);
+        tileRecovery = createEarthTileRecovery({
+          readState: () => {
+            const progress = earthResourceCache.getSnapshot();
+            return { enabled: initialReady && !attemptFailed && !cancelled, visible: !document.hidden && activeRef.current,
+              online: navigator.onLine, moving: current.isMoving(), ready: current.loaded() && current.areTilesLoaded(),
+              pending: progress.pending, progress: progress.completed };
+          },
+          sources: () => Object.entries(current.getStyle()?.sources ?? {})
+            .filter(([, source]) => source.type === "vector" || source.type === "raster").map(([id]) => id),
+          refresh: async (targets, signal) => {
+            await repairs.current;
+            if (signal.aborted || cancelled) return;
+            for (const target of targets) {
+              if (refreshEarthTileSource(current, target) && !target.tiles) current.setSourceTileLodParams(4, 2, target.sourceId);
+            }
+          },
+          onChange: status => { if (!cancelled) setTileStatus(status); },
+        });
+        tileRecoveryRef.current = tileRecovery;
+        unsubscribe = earthResourceCache.subscribe(() => { checkReady(); tileRecovery?.check(); });
         current.on("remove", () => {
           // Release the GPU while playing; a return starts from cached data and the saved camera.
           if (!activeRef.current) { setPhase("loading"); setStage("engine"); }
@@ -258,6 +297,8 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
           // Style replacement discards projection, atmosphere and our own layers.
           current.setProjection({ type: "globe" });
           current.setSky(EARTH_SKY);
+          // Reduce distant high-pitch detail before asking the device to decode more tiles.
+          current.setSourceTileLodParams(4, 2);
           current.addSource(EARTH_ACCURACY_SOURCE, { type: "geojson", data: positionAccuracyData(latestPosition.current) });
           current.addLayer({
             id: "earth-accuracy-fill", type: "fill", source: EARTH_ACCURACY_SOURCE,
@@ -270,15 +311,19 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
           syncPosition(latestPosition.current);
         });
         current.on("dataloading", () => { idle = false; });
-        current.on("movestart", () => { idle = false; });
+        current.on("movestart", () => { idle = false; tileRecovery?.check(); });
+        current.on("moveend", () => tileRecovery?.check());
         current.on("load", checkReady);
-        current.on("idle", () => { idle = true; checkReady(); });
+        current.on("idle", () => { idle = true; checkReady(); tileRecovery?.check(true); });
         current.on("error", event => {
           if (cancelled) return;
           const resources = getEarthErrorResourceUrls(event, current);
           if (resources.length) repairs.current = repairs.current.then(() =>
             Promise.all(resources.map(url => earthResourceCache.invalidate(url)))).catch(() => undefined);
-          if (initialReady) setPartialFailure(true);
+          if (initialReady) tileRecovery?.reportFailure({
+            sourceId: "sourceId" in event ? event.sourceId : undefined,
+            tile: "tile" in event ? event.tile : undefined,
+          });
           else fail("Не удалось подготовить карту целиком. Продолжите загрузку: доступные сохранённые файлы будут использованы повторно.");
         });
 
@@ -304,6 +349,8 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
       controller.abort();
       window.clearTimeout(timeout);
       unsubscribe?.();
+      tileRecovery?.dispose();
+      if (tileRecoveryRef.current === tileRecovery) tileRecoveryRef.current = null;
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();
       window.removeEventListener("resize", resize);
@@ -348,11 +395,12 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
       error={phase === "unsupported" ? "Для глобуса нужен WebGL 2. Обновите браузер или включите аппаратное ускорение." : failure}
       storageStatus={cache.storage} persistentGranted={cache.persistence === "granted"} persisting={persisting}
       onPersist={persistMap} onRetry={phase === "unsupported" ? undefined : retryMap} />}
-    {ready && partialFailure && <div className={styles.networkNotice} role="status">
-      <span>Не все данные карты загрузились</span><button type="button" onClick={retryMap}>Повторить</button>
+    {ready && tileStatus !== "idle" && <div className={styles.networkNotice} role="status">
+      <span>{!isOnline || tileStatus === "failed" ? "Часть деталей пока недоступна" : "Восстанавливаем детали карты…"}</span>
+      <button type="button" disabled={!isOnline || tileStatus === "retrying"} onClick={() => tileRecoveryRef.current?.retry()}>Повторить</button>
     </div>}
-    {ready && !partialFailure && <p className={styles.gestureHint}>{cache.pending > 0 ? "Загружаем новый участок…" : "Вращайте Землю · приближайте города"}</p>}
-    {ready && !partialFailure && <div className={styles.storageNotice} title={cache.storage === "device" ? "Сохранённые участки используются при повторном открытии. Очистка данных браузера удалит карту." : "Браузер не разрешил сохранить карту. После закрытия страницы загрузка может понадобиться снова."}>
+    {ready && tileStatus === "idle" && <p className={styles.gestureHint}>{cache.pending > 0 ? "Загружаем новый участок…" : "Вращайте Землю · приближайте города"}</p>}
+    {ready && tileStatus === "idle" && <div className={styles.storageNotice} title={cache.storage === "device" ? "Сохранённые участки используются при повторном открытии. Очистка данных браузера удалит карту." : "Браузер не разрешил сохранить карту. После закрытия страницы загрузка может понадобиться снова."}>
       <span>{cache.storage === "device" ? `На устройстве: ${formatEarthLoadingBytes(cache.storedBytes)}` : "Карта доступна в этой сессии"}</span>
       {cache.storage === "device" && cache.persistence !== "granted" && <button type="button" onClick={persistMap} disabled={persisting} aria-label="Закрепить карту на устройстве"><HardDriveDownload size={14} aria-hidden="true" />{persisting ? "Сохраняем…" : "Закрепить"}</button>}
       {cache.persistence === "granted" && cache.storage === "device" && <span>Закреплена</span>}

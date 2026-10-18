@@ -119,7 +119,7 @@ type ActiveView = AppView;
 const WorldPortal = dynamic(() => import("@/features/world/world-portal"), { ssr: false });
 const EarthView = dynamic(() => import("@/features/earth/earth-view").then(module => module.EarthView), {
   ssr: false,
-  loading: () => <p role="status">Открываем карту Земли…</p>,
+  loading: () => <p className={styles.earthOpening} role="status">Открываем карту Земли…</p>,
 });
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;

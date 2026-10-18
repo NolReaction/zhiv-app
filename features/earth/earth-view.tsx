@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Globe2, Leaf, LocateFixed, MapPin, Navigation, RefreshCw, ShieldCheck, Users, X } from "lucide-react";
+import { Globe2, Leaf, LocateFixed, MapPin, RefreshCw, ShieldCheck, Users, X } from "lucide-react";
 import type { PeopleResponse } from "@/lib/check-in-contract";
 import { personDisplayName } from "@/lib/person-nickname";
 import { PlayerName } from "@/components/player-name";
@@ -77,18 +77,20 @@ export function EarthView({ ownerPublicId, active, isOnline, people, peopleLoadi
   const watching = locating || location.status === "active" || location.status === "paused";
   const age = location.position ? Math.max(0, Math.floor((now - location.position.timestamp) / 60_000)) : 0;
 
-  return <section className={styles.view} aria-labelledby="earth-title">
+  return <section className={styles.view} aria-labelledby="earth-title" data-earth-world>
+    <div className={styles.stage}>
+      <EarthMap position={location.position} active={active} focusRequest={focusRequest} isOnline={isOnline} />
+    </div>
     <header className={styles.header}>
       <div><span className={styles.eyebrow}><Globe2 size={13} aria-hidden="true" />ПЛАНЕТА ЖИВОЙ</span>
-        <h1 id="earth-title" ref={heading} tabIndex={-1}>Весь мир рядом<span className={styles.beta}>Бета</span></h1></div>
+        <h1 id="earth-title" ref={heading} tabIndex={-1}>Весь мир рядом</h1></div>
       <button type="button" className={styles.worldButton} onClick={event => onOpenWorld(event.currentTarget)} aria-label="Войти в мир Мохлика" aria-haspopup="dialog">
         <Leaf size={18} aria-hidden="true" /><span>Моя полянка</span>
       </button>
     </header>
 
-    <div className={styles.stage}>
-      <EarthMap position={location.position} active={active} focusRequest={focusRequest} isOnline={isOnline} />
-      {!isOnline && <p className={styles.offline} role="status">Нет сети. Новые участки карты могут не загрузиться.</p>}
+    <div className={styles.bottomOverlay}>
+      {!isOnline && <p className={styles.offline} role="status">Нет сети · новые участки пока недоступны</p>}
       {friendsOpen && <section id="earth-friends-panel" className={styles.friendsPanel} aria-labelledby="earth-friends-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
       }}>
@@ -96,8 +98,6 @@ export function EarthView({ ownerPublicId, active, isOnline, people, peopleLoadi
           <button type="button" onClick={closeFriends} aria-label="Закрыть список друзей"><X size={18} aria-hidden="true" /></button></header>
         <EarthFriends people={people} loading={peopleLoading} error={peopleError} online={isOnline} onRefresh={onRefreshPeople} onOpenPeople={onOpenPeople} />
       </section>}
-    </div>
-
     <div className={styles.dock}>
       <div className={styles.locationRow}>
         <span className={styles.locationIcon} data-active={location.status === "active"}><MapPin size={20} aria-hidden="true" /></span>
@@ -106,20 +106,21 @@ export function EarthView({ ownerPublicId, active, isOnline, people, peopleLoadi
           {location.position ? <span>{age > 0 ? `Обновлено ${age} мин. назад` : "Координаты получены только что"}</span>
             : <span>Вращайте глобус и приближайте города</span>}
         </div>
-        <button type="button" className={styles.locateButton} disabled={locating || !active} onClick={() => {
+        <button type="button" className={styles.locateButton} disabled={locating || !active} aria-describedby="earth-location-privacy" onClick={() => {
           if (location.position && location.status === "active") setFocusRequest(value => value + 1);
           else { setFocusRequest(value => value + 1); location.start(); }
         }}><LocateFixed size={17} aria-hidden="true" /><span>{locating ? "Ищем…" : location.position && location.status === "active" ? "К себе" : "Где я"}</span></button>
       </div>
       {location.error && <p className={styles.locationError} role="status">{location.error}</p>}
       <div className={styles.dockBottom}>
-        <p><ShieldCheck size={14} aria-hidden="true" /><span>Геопозиция видна только вам</span></p>
+        <p><ShieldCheck size={14} aria-hidden="true" /><span>Видна только вам</span></p>
         {watching && <button className={styles.stopButton} type="button" onClick={location.stop}>Выключить</button>}
         <button ref={friendsButton} className={styles.friendsButton} type="button" aria-expanded={friendsOpen} aria-controls="earth-friends-panel" onClick={() => setFriendsOpen(open => !open)}>
           <Users size={16} aria-hidden="true" />Близкие{people ? <span>{people.people.length}</span> : null}
         </button>
       </div>
-      <p className={styles.foregroundHint}><Navigation size={12} aria-hidden="true" />Обновляется, пока карта открыта. При выходе из раздела геопозиция очищается.</p>
+      <p id="earth-location-privacy" className={styles.srOnly}>Геопозиция видна только вам и обновляется, пока карта открыта. При выходе из раздела геопозиция очищается.</p>
+    </div>
     </div>
   </section>;
 }

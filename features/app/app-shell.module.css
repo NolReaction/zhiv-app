@@ -153,13 +153,30 @@
   gap: 18px;
 }
 
-/* Earth has its own compact heading; keep room for a usable globe. */
+/* The map is the viewport. Its controls and the navigation float over it. */
 .shell[data-active-view="earth"] {
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
-  padding-top: max(16px, env(safe-area-inset-top));
+  --earth-navigation-clearance: calc(84px + env(safe-area-inset-bottom));
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  touch-action: pan-y;
 }
 .shell[data-active-view="earth"] > .header { display: none; }
+.shell[data-active-view="earth"] > .footer {
+  position: absolute;
+  z-index: 40;
+  inset: auto 0 max(10px, calc(env(safe-area-inset-bottom) + 6px));
+  width: min(410px, calc(100% - 28px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  margin-inline: auto;
+  pointer-events: none;
+}
+.shell[data-active-view="earth"] > .footer .bottomNav { pointer-events: auto; }
+.shell[data-active-view="earth"] .viewTransition { padding: 0; overflow: hidden; animation: none; }
+.earthOpening { display: grid; height: 100%; margin: 0; place-items: center; color: #c6ddc7; background: #0b252d; font-size: 14px; }
 
 .identityWrap {
   position: relative;
@@ -1114,19 +1131,7 @@
   }
 
   .shell[data-active-view="earth"] {
-    --floating-nav-clearance: 80px;
-    grid-template-rows: minmax(0, 1fr);
-    position: fixed;
-    inset: 0;
-    height: 100svh;
-    overflow: hidden;
-    overscroll-behavior: none;
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-  }
-
-  .shell[data-active-view="earth"] .viewTransition {
-    padding-bottom: var(--floating-nav-clearance);
-    overflow: hidden;
+    height: 100dvh;
   }
 
   .action {
@@ -1423,10 +1428,12 @@
   min-height: 0;
   animation: view-enter 220ms cubic-bezier(.2,.8,.2,1);
 }
-@media (max-height: 500px) {
-  .shell[data-active-view="earth"] .viewTransition {
-    overflow-y: auto;
-    overscroll-behavior: contain;
+@media (max-height: 500px) and (min-width: 501px) {
+  .shell[data-active-view="earth"] > .footer {
+    left: auto;
+    right: max(16px, env(safe-area-inset-right));
+    width: min(360px, calc(50% - 24px));
+    margin: 0;
   }
 }
 .streakPill { cursor: pointer; font-family: inherit; transition: background 160ms ease; }
@@ -1486,9 +1493,10 @@
   border-radius: 16px;
 }
 .shell[data-active-view="earth"]:has(> [data-guide-coach="app"]) .viewTransition {
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  --earth-navigation-clearance: 10px;
+  min-height: 280px;
 }
+.shell[data-active-view="earth"]:has(> [data-guide-coach="app"]) { overflow-y: auto; touch-action: pan-y; }
 .shell:has(> [data-guide-coach="app"]) > .footer {
   position: relative;
   inset: auto;

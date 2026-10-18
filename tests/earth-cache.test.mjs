@@ -398,3 +398,113 @@ test("failed physical invalidation cannot resurrect a poisoned disk response", a
     assert.match(await s.cache.records.get(url).clone().text(), /^!+$/);
   }
 });
+
+test("a timed-out tile yields its network slot to other visible tiles before retrying", async () => {
+  const fetched = [];
+  const s = platform({ concurrency: 1, attempts: 2, timeoutMs: 10, fetcher: async url => {
+    fetched.push(url);
+    if (fetched.length === 1) return new Promise(() => {});
+    return new Response("ready");
+  } });
+  const slow = s.controller.readResource(`${base}/slow`, "string");
+  const visible = s.controller.readResource(`${base}/visible`, "string");
+  assert.deepEqual((await Promise.all([slow, visible])).map(item => item.data), ["ready", "ready"]);
+  assert.deepEqual(fetched, [`${base}/slow`, `${base}/visible`, `${base}/slow`]);
+  assert.equal(s.controller.getSnapshot().failed, 0);
+  assert.equal(s.controller.getSnapshot().pending, 0);
+});
+
+test("a synchronous cancellation during progress notification never fetches the abandoned tile", async () => {
+  const s = platform();
+  await s.controller.initialize();
+  const abort = new AbortController();
+  const unsubscribe = s.controller.subscribe(() => {
+    if (s.controller.getSnapshot().pending) abort.abort();
+  });
+  await assert.rejects(s.controller.readResource(`${base}/abandoned`, "string", abort.signal), { name: "AbortError" });
+  unsubscribe();
+  await tick();
+  assert.equal(s.calls.length, 0);
+  assert.equal(s.controller.getSnapshot().pending, 0);
+  assert.equal(s.controller.getSnapshot().failed, 0);
+  assert.equal((await s.controller.readResource(`${base}/abandoned`, "json")).data.name, `${base}/abandoned`);
+});
+
+test("stalled cache open, inventory, lookup and body reads fall back to usable session data", async () => {
+  for (const operation of ["open", "keys", "match", "body"]) {
+    const s = platform({ storageTimeoutMs: 10 });
+    if (operation === "open") s.environment.cacheStorage.open = async () => new Promise(() => {});
+    if (operation === "keys") s.cache.keys = async () => new Promise(() => {});
+    if (operation === "match" || operation === "body") {
+      await s.controller.initialize();
+      s.cache.match = operation === "match" ? async () => new Promise(() => {}) : async () => {
+        const response = new Response("saved");
+        response.arrayBuffer = async () => new Promise(() => {});
+        return response;
+      };
+    }
+    const url = `${base}/recovered-${operation}`;
+    assert.equal((await s.controller.readResource(url, "json")).data.name, url);
+    assert.equal((await s.controller.readResource(url, "json")).data.name, url);
+    assert.equal(s.controller.getSnapshot().storage, "session", operation);
+    assert.equal(s.controller.getSnapshot().storageIssue, "unavailable", operation);
+    assert.equal(s.controller.getSnapshot().pending, 0, operation);
+    assert.equal(s.controller.getSnapshot().failed, 0, operation);
+    assert.equal(s.calls.length, 1, operation);
+  }
+});
+
+test("a blocked disk write releases downloaded tiles and all queued writes within the storage deadline", async () => {
+  const s = platform({ storageTimeoutMs: 10, fetcher: async url => new Response(url.slice(-1)) });
+  let attemptedWrites = 0;
+  let finishWrite;
+  s.cache.put = async () => {
+    attemptedWrites += 1;
+    await new Promise(resolve => { finishWrite = resolve; });
+  };
+  const values = await Promise.all([0, 1, 2, 3, 4].map(index => s.controller.readResource(`${base}/tile${index}`, "string")));
+  assert.deepEqual(values.map(value => value.data), ["0", "1", "2", "3", "4"]);
+  assert.equal(attemptedWrites, 1);
+  assert.equal(s.controller.getSnapshot().storage, "session");
+  assert.equal(s.controller.getSnapshot().pending, 0);
+  assert.equal(s.controller.getSnapshot().failed, 0);
+  assert.equal(s.controller.getSnapshot().completed, 5);
+  assert.equal((await s.controller.readResource(`${base}/tile0`, "string")).data, "0");
+  finishWrite();
+  await tick();
+  assert.equal(s.controller.getSnapshot().storedEntries, 0, "late disk completion must not claim a successful installation");
+});
+
+test("optional storage policy APIs cannot indefinitely hold installation or persistence controls", async () => {
+  const s = platform({ storageTimeoutMs: 5, storageManager: {
+    async persisted() { return new Promise(() => {}); },
+    async estimate() { return new Promise(() => {}); },
+    async persist() { return new Promise(() => {}); },
+  } });
+  await s.controller.readResource(`${base}/saved`, "json");
+  await s.controller.requestPersistence();
+  assert.equal(s.controller.getSnapshot().storage, "device");
+  assert.equal(s.controller.getSnapshot().persistence, "best-effort");
+  assert.equal(s.controller.getSnapshot().pending, 0);
+  assert.equal(s.controller.getSnapshot().storedEntries, 1);
+});
+
+test("revisited tiles use bounded memory before disk while a reload still reads persistent data", async () => {
+  const s = platform();
+  let lookups = 0;
+  const match = s.cache.match.bind(s.cache);
+  s.cache.match = async key => { lookups += 1; return match(key); };
+  const url = `${base}/frequent`;
+  await s.controller.readResource(url, "json");
+  assert.equal(lookups, 1);
+  await s.controller.readResource(url, "json");
+  assert.equal(lookups, 1, "freshly saved tiles are retained in the bounded memory cache");
+  const reloaded = createEarthResourceCache(s.environment);
+  await reloaded.initialize();
+  const beforeRead = lookups;
+  await reloaded.readResource(url, "json");
+  await reloaded.readResource(url, "json");
+  assert.equal(lookups, beforeRead + 1, "disk-hit tiles are retained for immediate rotations back");
+  assert.equal(s.calls.length, 1);
+  assert.equal(reloaded.getSnapshot().cacheHits, 2);
+});
