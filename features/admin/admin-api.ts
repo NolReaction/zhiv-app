@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { playerTagSchema } from "@/lib/player-tag";
 import { worldStateSchema } from "@/features/world/domain/model";
 import { economyStorageSchema, economyViewSchema } from "@/features/economy/domain/model";
+import type { DeliveryOptions } from "./admin-delivery-contract";
 
 const count = z.number().int().nonnegative().safe();
 const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
@@ -31,7 +32,7 @@ const userSchema = z.object({
 const usersSchema = z.object({ ...page, users: z.array(userSchema).max(100) });
 const auditSchema = z.object({ ...page, events: z.array(z.object({
   requestId: z.string().uuid(), actorPublicId: publicId, targetPublicId: publicId,
-  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "grant_economy", "promo_create", "promo_update", "promo_delete", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
+  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "grant_economy", "adjust_economy", "mail_broadcast", "promo_create", "promo_update", "promo_delete", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
 })).max(100) });
 const metric = z.number().finite().nullable();
 const monitoringSchema = z.object({
@@ -146,7 +147,7 @@ const rewardsSchema = z.object({ publicId, serverTime: instant,
     .refine(items => new Set(items).size === items.length),
 });
 export type AdminRewards = z.infer<typeof rewardsSchema>;
-export type AdminGrantRequest = AdminRevokeRequest & { kind: "item" | "achievement"; rewardId: GameItemId | GameAchievementId };
+export type AdminGrantRequest = AdminRevokeRequest & DeliveryOptions & { kind: "item" | "achievement"; rewardId: GameItemId | GameAchievementId };
 export function getAdminRewards(target: string, signal?: AbortSignal) {
   return adminRequest(`users/${encodeURIComponent(target)}/rewards`, rewardsSchema, signal);
 }
@@ -169,7 +170,7 @@ const playerSchema = z.object({ publicId, displayName: z.string(), tag: playerTa
   tapSignalAt: instant.nullable().optional(), securitySignalAt: instant.nullable().optional(), bannedAt: instant.nullable(), banReason: z.string().nullable(), watchlisted: z.boolean(),
   world: worldStateSchema, revision: count, serverTime: instant });
 export type AdminPlayer = z.infer<typeof playerSchema>;
-export type AdminPlayerCommand = AdminRevokeRequest & {
+export type AdminPlayerCommand = AdminRevokeRequest & DeliveryOptions & {
   action: "grant_resource" | "grant_world_item" | "grant_find" | "set_tag" | "ban" | "unban" | "watch" | "unwatch" | "clear_signal";
   target?: string; amount?: number; tag?: z.infer<typeof playerTagSchema> | null;
 };

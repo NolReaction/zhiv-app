@@ -8,6 +8,7 @@ import { type AdminEconomyTarget } from "./admin-economy-panel";
 import { AdminEconomyWorkspace, type AdminHistoryRequest } from "./admin-analytics-panel";
 import { AdminEconomyDialog } from "./admin-economy-dialog";
 import { AdminGrantsPanel } from "./admin-grants-panel";
+import { AdminMailPanel } from "./admin-mail-panel";
 import { AdminPromoPanel } from "./admin-promo-panel";
 import { adminActionName, adminActionDetails } from "./admin-audit-details";
 import { AdminFeedbackPanel } from "./admin-feedback-panel";
@@ -42,7 +43,7 @@ import {
 } from "@/features/admin/admin-api";
 import styles from "./admin-dashboard.module.css";
 
-type AdminTab = "grants" | "promos" | "overview" | "users" | "economy" | "monitoring" | "audit" | "incidents" | "clicks" | "feedback";
+type AdminTab = "grants" | "mail" | "promos" | "overview" | "users" | "economy" | "monitoring" | "audit" | "incidents" | "clicks" | "feedback";
 type UserSort = "created" | "activity" | "taps" | "review";
 type AccessStatus = "loading" | "allowed" | "signed-out" | "forbidden" | "error";
 type Snapshot<T> = { key: string; value: T };
@@ -478,6 +479,7 @@ export function AdminDashboard() {
             <TabsList className={styles.tabList} aria-label="Разделы управления">
               <span className={styles.navCaption} aria-hidden="true">Работа с игроками</span>
               <TabsTrigger className={styles.tab} value="grants"><Gift size={18} />Выдать игроку</TabsTrigger>
+              <TabsTrigger className={styles.tab} value="mail"><MessageSquare size={18} />Почта и рассылки</TabsTrigger>
               <TabsTrigger className={styles.tab} value="promos"><Ticket size={18} />Промокоды</TabsTrigger>
               <TabsTrigger className={styles.tab} value="users"><Users size={18} />Пользователи</TabsTrigger>
               <span className={styles.navCaption} aria-hidden="true">Аналитика и контроль</span>
@@ -489,15 +491,16 @@ export function AdminDashboard() {
               <TabsTrigger className={styles.tab} value="feedback"><MessageSquare size={18} />Обратная связь</TabsTrigger>
               <TabsTrigger className={styles.tab} value="audit"><Terminal size={18} />Журнал</TabsTrigger>
             </TabsList>
-            {tab !== "economy" && tab !== "grants" && tab !== "promos" && <div className={styles.refreshGroup}>{tab !== "clicks" && tab !== "incidents" && tab !== "feedback" && <span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span>}<button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные" title="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <RefreshCw size={19} />}</button></div>}
+            {tab !== "economy" && tab !== "grants" && tab !== "mail" && tab !== "promos" && <div className={styles.refreshGroup}>{tab !== "clicks" && tab !== "incidents" && tab !== "feedback" && <span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span>}<button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные" title="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <RefreshCw size={19} />}</button></div>}
           </div>
-          <div className={styles.viewHeading}><div><h1>{tab === "grants" ? "Выдать игроку" : tab === "promos" ? "Промокоды" : tab === "feedback" ? "Обратная связь" : tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "economy" ? "Экономика и развитие игроков" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "grants" ? "Валюта, предметы и улучшения — одной понятной выдачей" : tab === "promos" ? "Создание акций, награды и срок действия" : tab === "feedback" ? "Обращения игроков: ошибки, идеи и вопросы" : tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, вещи, теги и модерация" : tab === "economy" ? "Действия игроков, расходы ресурсов, строительство и история хозяйства" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
+          <div className={styles.viewHeading}><div><h1>{tab === "grants" ? "Выдать игроку" : tab === "mail" ? "Почта и рассылки" : tab === "promos" ? "Промокоды" : tab === "feedback" ? "Обратная связь" : tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "economy" ? "Экономика и развитие игроков" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "grants" ? "Валюта, предметы и улучшения одной выдачей, корректировка баланса" : tab === "mail" ? "Письма выбранным игрокам или всем доступным аккаунтам" : tab === "promos" ? "Создание акций, награды и срок действия" : tab === "feedback" ? "Обращения игроков: ошибки, идеи и вопросы" : tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, вещи, теги и модерация" : tab === "economy" ? "Действия игроков, расходы ресурсов, строительство и история хозяйства" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
             {tab === "monitoring" && <label className={styles.selectLabel}><span>История</span><select className={styles.select} value={rangeMinutes} onChange={event => setRangeMinutes(Number(event.target.value))}><option value={60}>1 час</option><option value={360}>6 часов</option><option value={1440}>24 часа</option><option value={10080}>7 дней</option></select></label>}
             {tab === "overview" && <label className={styles.selectLabel}><span>Период</span><select value={days} onChange={event => setDays(Number(event.target.value) as 7 | 30 | 90)} className={styles.select}><option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option></select></label>}
           </div>
           {loadError && <div className={styles.notice} role="status"><CircleAlert size={20} /><div><strong>{currentData ? "Данные не обновились" : "Не удалось загрузить раздел"}</strong><p>{loadError}{currentData ? " Показан последний успешный снимок." : ""}</p></div><button className={styles.button} type="button" onClick={requestRefresh} disabled={loading}>Повторить</button></div>}
           {actionReceipt && <div className={styles.successNotice} role="status"><Check size={20} /><span>{actionReceipt}</span><button type="button" className={styles.textButton} onClick={() => setActionReceipt(null)}>Скрыть</button></div>}
           <TabsContent value="grants" forceMount hidden={tab !== "grants"} className={styles.tabContent}><AdminGrantsPanel key={access.publicId} actorPublicId={access.publicId} target={grantTarget} onTargetChange={setGrantTarget} onAccessLost={closeAccess} onLockChange={setGrantsLocked} onManage={setPlayerTarget} onEconomy={setEconomyTarget} onRewards={target => { rewardTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setRewardTarget(target); }} /></TabsContent>
+          <TabsContent value="mail" forceMount hidden={tab !== "mail"} className={styles.tabContent}><AdminMailPanel key={access.publicId} actorPublicId={access.publicId} onAccessLost={closeAccess} /></TabsContent>
           <TabsContent value="promos" forceMount hidden={tab !== "promos"} className={styles.tabContent}><AdminPromoPanel key={access.publicId} actorPublicId={access.publicId} onAccessLost={closeAccess} /></TabsContent>
           <TabsContent value="overview" className={styles.tabContent}>{overviewData ? <Overview data={overviewData} days={days} /> : <Empty>{loading ? "Загружаем статистику…" : "Статистика пока не загружена."}</Empty>}</TabsContent>
           <TabsContent value="users" className={styles.tabContent}>
@@ -515,7 +518,7 @@ export function AdminDashboard() {
       </div>
       {playerTarget && <AdminPlayerDialog key={`${access.publicId}:${playerTarget.publicId}`} target={playerTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setPlayerTarget(null)} onChanged={requestRefresh} />}
       {economyTarget && <AdminEconomyDialog key={`${access.publicId}:${economyTarget.publicId}`} target={economyTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setEconomyTarget(null)} onHistory={target => { setEconomyTarget(null); setHistoryRequest(current => ({ target, version: (current?.version ?? 0) + 1 })); setTab("economy"); }} />}
-      {rewardTarget && <AdminRewardsDialog key={rewardTarget.publicId} target={rewardTarget} actorPublicId={access.publicId}
+      {rewardTarget && <AdminRewardsDialog key={`${access.publicId}:${rewardTarget.publicId}`} target={rewardTarget} actorPublicId={access.publicId}
         onClose={() => setRewardTarget(null)} onAccessLost={closeAccess}
         returnFocus={() => { if (rewardTrigger.current?.isConnected) rewardTrigger.current.focus(); }}
         onGranted={message => { setActionReceipt(message); requestRefresh(); }} />}

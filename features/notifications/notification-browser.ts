@@ -1,7 +1,7 @@
 import { getNotificationSettings, saveNotificationSubscription, removeNotificationSubscription } from "./notification-api";
 import type { NotificationSnapshot } from "./notification-contract";
 
-export type NotificationTarget = "checkin" | "activities" | "mine" | "production" | "construction";
+export type NotificationTarget = "checkin" | "activities" | "mine" | "production" | "construction" | "mailbox";
 export type NotificationLink = { ownerPublicId: string; target: NotificationTarget };
 export function parseNotificationLink(value: string, origin: string): NotificationLink | null {
   try {
@@ -10,6 +10,7 @@ export function parseNotificationLink(value: string, origin: string): Notificati
     const ownerPublicId = url.searchParams.get("owner");
     if (!ownerPublicId || ownerPublicId.length > 128) return null;
     if (url.searchParams.get("notification") === "checkin") return { ownerPublicId, target: "checkin" };
+    if (url.searchParams.get("notification") === "mailbox") return { ownerPublicId, target: "mailbox" };
     const section = url.searchParams.get("section");
     if (url.searchParams.get("notification") === "world" && (section === "activities" || section === "mine" || section === "production" || section === "construction")) {
       return { ownerPublicId, target: section };

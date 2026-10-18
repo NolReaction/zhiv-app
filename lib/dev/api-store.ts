@@ -37,6 +37,7 @@ import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConf
 import { resetDevWorldStoreForTests, getDevCollectionFinds } from "@/lib/dev/world-store";
 import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-rewards-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
+import { resetDevMailState } from "@/lib/dev/mail-state";
 import {
   calculateRollingStreak,
   formatLocalDate,
@@ -212,6 +213,7 @@ function store(): Store {
 export function resetDevStoreForTests() {
   delete globalStore.__zhivDevStore;
   resetDevForestMemoryStoreForTests();
+  resetDevMailState();
   resetDevWorldStoreForTests();
   resetDevEconomyStoreForTests();
   resetDevProgressionRewardsForTests();

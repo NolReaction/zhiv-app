@@ -9,20 +9,28 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { validAdminReason } from "./admin-input";
 import { ApiError } from "@/lib/check-in-api";
 import { worldCatalog } from "@/features/world/domain/model";
-import { getAdminAccess, manageAdminPlayer, type AdminPlayerCommand, type AdminUser } from "./admin-api";
+import { getAdminAccess, manageAdminPlayer, verifyAdminActor, type AdminPlayerCommand, type AdminUser } from "./admin-api";
+import { definitiveAdminWriteFailure } from "./admin-write-outcome";
 import { AdminSecurityContent, adminReviewReasons, loadAdminPlayerReview } from "./admin-security-panel";
+import { AdminDeliveryFields, AdminDeliveryPreview } from "./admin-delivery";
+import { deliveryIssue, deliveryMessage, type AdminDelivery } from "./admin-delivery-contract";
+import { readLegacyManageAttempt, saveLegacyManageAttempt } from "./admin-legacy-delivery-journal";
 import styles from "./admin-management.module.css";
 
 export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose, onChanged }: {
   target: AdminUser; actorPublicId: string; onAccessLost: (error: ApiError) => void; onClose: () => void; onChanged: () => void;
 }) {
+  const [restored] = useState(() => readLegacyManageAttempt(actorPublicId, target.publicId));
   const [snapshot, setSnapshot] = useState<{ key: string; value: Awaited<ReturnType<typeof loadAdminPlayerReview>> } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<AdminPlayerCommand | null>(null);
-  const [reason, setReason] = useState("");
-  const [confirmation, setConfirmation] = useState("");
+  const [pending, setPending] = useState<AdminPlayerCommand | null>(restored);
+  const [reason, setReason] = useState(restored?.reason ?? "");
+  const [confirmation, setConfirmation] = useState(restored?.confirmationPublicId ?? "");
+  const [delivery, setDelivery] = useState<AdminDelivery>(restored?.delivery ?? "silent");
+  const [playerTitle, setPlayerTitle] = useState(restored?.playerMessage?.title ?? "");
+  const [playerBody, setPlayerBody] = useState(restored?.playerMessage?.body ?? "");
   const [item, setItem] = useState(worldCatalog.items[0].id);
   const [find, setFind] = useState(worldCatalog.finds[0].id);
   const [tagText, setTagText] = useState(target.tag?.text ?? "");
@@ -41,16 +49,22 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
       setSnapshot({ key: snapshotKey, value }); setTagText(value.player.tag?.text ?? ""); setTagColor(value.player.tag?.color ?? "green");
     }).catch(failure => {
       if (!alive.current || controller.signal.aborted) return;
-      if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setSnapshot(null); onAccessLost(failure); }
+      if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setPending(null); setSnapshot(null); onAccessLost(failure); }
       else setError(failure instanceof Error ? failure.message : "Не удалось загрузить игрока");
     });
     return () => { alive.current = false; controller.abort(); writeController.current?.abort(); };
   }, [actorPublicId, target.publicId, snapshotKey, onAccessLost]);
   const authorized = confirmation === target.publicId && validAdminReason(reason);
   const locked = busy || Boolean(pending);
+  const playerMessage = deliveryMessage(delivery, playerTitle, playerBody);
+  const messageIssue = deliveryIssue(delivery, playerTitle, playerBody);
   async function run(action: AdminPlayerCommand["action"], extra: Partial<AdminPlayerCommand> = {}) {
-    if (sending.current || !authorized || !player) return;
-    const request = pending ?? { ...extra, requestId: createUuidV4(), confirmationPublicId: target.publicId, reason: reason.trim(), action };
+    if (sending.current || !authorized || (!player && !pending)) return;
+    const isGrant = ["grant_world_item", "grant_find"].includes(pending?.action ?? action);
+    if (!pending && isGrant && messageIssue) return;
+    const request = pending ?? { ...extra, requestId: createUuidV4(), confirmationPublicId: target.publicId, reason: reason.trim(), action,
+      ...(isGrant ? { delivery, ...(playerMessage ? { playerMessage } : {}) } : {}) };
+    if (isGrant && !saveLegacyManageAttempt(actorPublicId, target.publicId, request)) { setError("Браузер не сохранил запрос. Выдача не отправлена. Разрешите хранилище и повторите."); return; }
     sending.current = true; setBusy(true); setError(""); setNotice(""); setPending(request);
     const controller = new AbortController(); writeController.current = controller;
     try {
@@ -60,21 +74,23 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
         setSnapshot(null); onAccessLost(new ApiError("Аккаунт администратора сменился. Откройте панель заново.", 403)); return;
       }
       const receipt = await manageAdminPlayer(target.publicId, request, controller.signal);
+      await verifyAdminActor(actorPublicId, controller.signal);
       if (!alive.current || controller.signal.aborted) return;
       if (receipt.requestId !== request.requestId || receipt.action !== request.action) throw new ApiError("Ответ не соответствует отправленному действию", 502);
+      if (isGrant) saveLegacyManageAttempt(actorPublicId, target.publicId, null);
       setPending(null); setNotice(receipt.changed ? "Изменение сохранено и записано в журнал." : "У игрока уже установлено это состояние. Повторная выдача не выполнена.");
       onChanged();
       try { const next = await loadAdminPlayerReview(actorPublicId, target.publicId, controller.signal); if (alive.current && !controller.signal.aborted) setSnapshot({ key: snapshotKey, value: next }); }
       catch (failure) {
         if (!alive.current || controller.signal.aborted) return;
-        if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setSnapshot(null); onAccessLost(failure); }
+        if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setPending(null); setSnapshot(null); onAccessLost(failure); }
         else setError("Изменение сохранено, но состояние не обновилось. Откройте карточку снова.");
       }
     } catch (failure) {
       if (!alive.current || controller.signal.aborted) return;
-      if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setSnapshot(null); onAccessLost(failure); return; }
-      const definitive = failure instanceof ApiError && [400, 404, 409].includes(failure.status);
-      if (definitive) setPending(null);
+      if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setPending(null); setSnapshot(null); onAccessLost(failure); return; }
+      const definitive = definitiveAdminWriteFailure(failure);
+      if (definitive) { if (isGrant) saveLegacyManageAttempt(actorPublicId, target.publicId, null); setPending(null); }
       setError(failure instanceof Error ? failure.message : "Нет ответа. Повторите тот же запрос.");
     } finally { sending.current = false; if (alive.current) setBusy(false); }
   }
@@ -93,18 +109,21 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
           <label>Причина изменения<input maxLength={240} value={reason} onChange={event => setReason(event.target.value)} placeholder="Не менее 8 символов · останется в журнале" /></label>
           <label>Подтвердите ID игрока<input value={confirmation} onChange={event => setConfirmation(event.target.value.toUpperCase())} placeholder={target.publicId} autoComplete="off" /></label>
         </fieldset>
-        <Tabs defaultValue={adminReviewReasons(target).length ? "security" : "world"}>
+        <Tabs defaultValue={restored ? "world" : adminReviewReasons(target).length ? "security" : "world"}>
           <TabsList className={styles.tabs}><TabsTrigger value="security">Наблюдение</TabsTrigger><TabsTrigger value="world">Вещи и коллекции</TabsTrigger><TabsTrigger value="tag">Тег</TabsTrigger><TabsTrigger value="account">Аккаунт</TabsTrigger></TabsList>
           <TabsContent value="security" className={styles.stack}>
             {current && <AdminSecurityContent detail={current.security} canManage={authorized} locked={locked}
               onClear={() => void run("clear_signal")} onWatch={() => void run(current.security.watchlisted ? "unwatch" : "watch")} />}
           </TabsContent>
           <TabsContent value="world" className={styles.stack}>
+            <AdminDeliveryFields delivery={delivery} title={playerTitle} body={playerBody} disabled={locked} onDelivery={setDelivery} onTitle={setPlayerTitle} onBody={setPlayerBody} />
+            {messageIssue && <p className={styles.error} role="status">{messageIssue}</p>}
+            {pending && ["grant_world_item", "grant_find"].includes(pending.action) && <AdminDeliveryPreview {...pending} />}
             <fieldset disabled={locked} className={styles.stack}>
               <label>Предмет<select value={item} onChange={event => setItem(event.target.value)}>{worldCatalog.items.map(value => <option key={value.id} value={value.id}>{value.name}{player.world.inventory.includes(value.id) ? " · уже есть" : ""}</option>)}</select></label>
-              <button disabled={!authorized || player.world.inventory.includes(item)} onClick={() => void run("grant_world_item", { target: item })}>Выдать предмет</button>
+              <button disabled={!authorized || !!messageIssue || player.world.inventory.includes(item)} onClick={() => void run("grant_world_item", { target: item })}>Выдать предмет</button>
               <label>Находка<select value={find} onChange={event => setFind(event.target.value)}>{worldCatalog.finds.map(value => <option key={value.id} value={value.id}>{value.name}{player.world.collection.includes(value.id) ? " · уже есть" : ""}</option>)}</select></label>
-              <button disabled={!authorized || player.world.collection.includes(find)} onClick={() => void run("grant_find", { target: find })}>Добавить в коллекцию</button>
+              <button disabled={!authorized || !!messageIssue || player.world.collection.includes(find)} onClick={() => void run("grant_find", { target: find })}>Добавить в коллекцию</button>
             </fieldset>
           </TabsContent>
           <TabsContent value="tag" className={styles.stack}>

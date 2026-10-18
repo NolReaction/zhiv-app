@@ -36,13 +36,13 @@ DECLARE
         'account_login_flows', 'account_login_identities', 'account_merge_previews',
         'account_merge_sources', 'account_operation_receipts', 'account_recovery_attempts',
         'account_recovery_codes', 'account_recovery_contact_removals', 'account_recovery_contacts',
-        'account_registration_tickets', 'admin_actions', 'app_sessions', 'app_users',
+        'account_registration_tickets', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions', 'app_users',
         'check_in_audiences', 'check_ins', 'circle_invites', 'circle_memberships',
         'circle_sharing_preferences', 'circles', 'direct_invite_links', 'direct_invite_redemptions',
         'direct_person_favorites', 'direct_requests', 'game_presence_accounts', 'game_presence_daily',
         'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes', 'notification_batches',
         'notification_preferences', 'notification_subscriptions', 'player_feedback',
-        'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
+        'player_feedback_actions', 'player_mail_messages', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
         'recipient_sharing_preferences', 'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys'
     ];
     -- Only obsolete gameplay events are removed; check-in reminders stay intact.
@@ -53,7 +53,7 @@ DECLARE
     row_count bigint;
     fingerprint text;
     preserved_fingerprints jsonb := '{}'::jsonb;
-    checkin_fingerprint text;
+    service_fingerprint text;
     apply_mode boolean := current_setting('zhiv.reset_game_progress', true) = 'on';
 BEGIN
     SELECT array_agg(name ORDER BY name COLLATE "C") INTO expected_tables
@@ -63,17 +63,17 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Game reset cancelled; review the schema first.';
     END IF;
-    -- V60 observations and their app_users summary survive gameplay-only resets.
+    -- V61 account mail, broadcast receipts, and pending mail delivery survive gameplay-only resets.
     -- Any later migration must be reviewed, including columns on retained tables.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 60
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 61
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,60) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,61) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V60. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V61. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN
@@ -102,18 +102,18 @@ BEGIN
             preserved_fingerprints := preserved_fingerprints || jsonb_build_object(table_name, fingerprint);
         END IF;
     END LOOP;
-    SELECT count(*) INTO row_count FROM public.notification_events WHERE category <> 'checkin';
-    RAISE NOTICE 'CLEAR notification_events except checkin: % rows', row_count;
+    SELECT count(*) INTO row_count FROM public.notification_events WHERE category NOT IN ('checkin','mail');
+    RAISE NOTICE 'CLEAR notification_events except checkin and mail: % rows', row_count;
     IF NOT apply_mode THEN
         RAISE NOTICE 'Preview only. No application data was changed.';
         RETURN;
     END IF;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO checkin_fingerprint
-    FROM (SELECT md5(to_jsonb(e)::text) AS h FROM public.notification_events e WHERE category = 'checkin') rows;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO service_fingerprint
+    FROM (SELECT md5(to_jsonb(e)::text) AS h FROM public.notification_events e WHERE category IN ('checkin','mail')) rows;
     -- Profile INSERT invokes source synchronization. Restore these exact rows
     -- afterwards so reset cannot create/rewrite service reminders as a side effect.
-    CREATE TEMP TABLE game_reset_checkin_events ON COMMIT DROP AS
-    SELECT * FROM public.notification_events WHERE category = 'checkin';
+    CREATE TEMP TABLE game_reset_service_events ON COMMIT DROP AS
+    SELECT * FROM public.notification_events WHERE category IN ('checkin','mail');
 
     -- Receipts can outlive an earlier administrative profile reset or a merge.
     -- Include their maxima as well as live revisions, and compute using numeric
@@ -165,9 +165,9 @@ BEGIN
     SELECT user_id, 'starting-pack:v1', 'starting_pack',
         (state->'wallet'->>'coins')::bigint, (state->'wallet'->>'pearls')::bigint, state->'inventory'
     FROM public.economy_profiles;
-    DELETE FROM public.notification_events WHERE category <> 'checkin';
-    DELETE FROM public.notification_events WHERE category = 'checkin';
-    INSERT INTO public.notification_events SELECT * FROM game_reset_checkin_events;
+    DELETE FROM public.notification_events WHERE category NOT IN ('checkin','mail');
+    DELETE FROM public.notification_events WHERE category IN ('checkin','mail');
+    INSERT INTO public.notification_events SELECT * FROM game_reset_service_events;
 
     IF EXISTS (
         SELECT 1 FROM game_reset_revision_fences f
@@ -199,9 +199,9 @@ BEGIN
         END IF;
     END LOOP;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
-    FROM (SELECT md5(to_jsonb(e)::text) AS h FROM public.notification_events e WHERE category = 'checkin') rows;
-    IF fingerprint IS DISTINCT FROM checkin_fingerprint
-        OR EXISTS (SELECT 1 FROM public.notification_events WHERE category <> 'checkin') THEN
+    FROM (SELECT md5(to_jsonb(e)::text) AS h FROM public.notification_events e WHERE category IN ('checkin','mail')) rows;
+    IF fingerprint IS DISTINCT FROM service_fingerprint
+        OR EXISTS (SELECT 1 FROM public.notification_events WHERE category NOT IN ('checkin','mail')) THEN
         RAISE EXCEPTION 'Notification reset invariant failed. Game reset rolled back.';
     END IF;
     RAISE NOTICE 'Game progress cleared. Accounts, login sessions, social links and service history are unchanged.';

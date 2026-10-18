@@ -2,6 +2,7 @@ package ru.zhiv.admin
 
 import ru.zhiv.identity.PlayerTag
 import kotlinx.serialization.Serializable
+import ru.zhiv.mail.PlayerMailMessage
 import java.util.UUID
 
 /** Public IDs select already-authenticated accounts; they are never bearer credentials. */
@@ -57,13 +58,15 @@ data class AdminAudit(val serverTime: String, val total: Long, val offset: Int, 
 @Serializable
 data class AdminRewards(val publicId: String, val items: List<String>, val achievements: List<String>, val serverTime: String)
 @Serializable
-data class AdminGrantRequest(val requestId: String, val confirmationPublicId: String, val kind: String, val rewardId: String, val reason: String)
+data class AdminGrantRequest(val requestId: String, val confirmationPublicId: String, val kind: String, val rewardId: String, val reason: String,
+    val delivery: String = "silent", val playerMessage: PlayerMailMessage? = null)
 @Serializable
 data class AdminGrantReceipt(val requestId: String, val kind: String, val rewardId: String, val granted: Boolean, val createdAt: String)
 
 interface AdminRepository {
     suspend fun security(sessionHash: ByteArray, targetPublicId: String): AdminSecurityObservations = throw UnsupportedOperationException()
     suspend fun grantEconomy(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminEconomyGrantRequest): AdminEconomyGrantReceipt = throw UnsupportedOperationException()
+    suspend fun adjustEconomy(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminEconomyAdjustmentRequest): AdminEconomyGrantReceipt = throw UnsupportedOperationException()
     suspend fun analytics(sessionHash: ByteArray, query: AdminAnalyticsQuery = AdminAnalyticsQuery()): AdminAnalytics = throw UnsupportedOperationException()
     suspend fun analyticsEvents(sessionHash: ByteArray, query: AdminAnalyticsEventsQuery = AdminAnalyticsEventsQuery()): AdminAnalyticsEvents = throw UnsupportedOperationException()
     suspend fun economy(sessionHash: ByteArray, query: String, sort: String, offset: Int, limit: Int): AdminEconomy = throw UnsupportedOperationException()

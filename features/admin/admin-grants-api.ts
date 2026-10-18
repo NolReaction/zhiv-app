@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { adminRequest, type AdminRevokeRequest } from "./admin-api";
+import { playerMessageSchema, type DeliveryOptions } from "./admin-delivery-contract";
 
 /** Currency quantities here are visible whole units; the server converts pearls. */
-export type AdminEconomyGrant = AdminRevokeRequest & {
+export type AdminEconomyGrant = AdminRevokeRequest & DeliveryOptions & {
   coins: number;
   pearls: number;
   items: Record<string, number>;
@@ -19,12 +20,15 @@ export const adminEconomyGrantSchema = z.object({
   items: z.record(z.string().min(1).max(80), positive), buildings: z.record(z.string().min(1).max(80), positive),
   productionSlots: z.record(z.string().min(1).max(80), z.number().int().min(2).max(3)),
   rods: z.array(z.string().min(1).max(80)).max(100), hooks: z.array(z.string().min(1).max(80)).max(100),
-}).strict();
+  delivery: z.enum(["silent", "notify"]).optional(), playerMessage: playerMessageSchema.optional(),
+}).strict().refine(value => value.delivery === "notify" || value.playerMessage === undefined, "Silent grants cannot contain a player message");
+
+export const adminEconomyReceiptSchema = z.object({
+  requestId: z.string().uuid(), publicId: z.string(), changed: z.boolean(),
+  acceptedRevision: z.number().int().nonnegative().safe(), createdAt: z.string().datetime(),
+});
 
 export function grantAdminEconomy(target: string, body: AdminEconomyGrant, signal?: AbortSignal) {
-  return adminRequest(`users/${encodeURIComponent(target)}/grant-economy`, z.object({
-    requestId: z.string().uuid(), publicId: z.string(), changed: z.boolean(),
-    acceptedRevision: z.number().int().nonnegative().safe(), createdAt: z.string().datetime(),
-  }).refine(value => value.requestId === body.requestId && value.publicId === target,
+  return adminRequest(`users/${encodeURIComponent(target)}/grant-economy`, adminEconomyReceiptSchema.refine(value => value.requestId === body.requestId && value.publicId === target,
     "Grant receipt must match the request and recipient"), signal, body);
 }

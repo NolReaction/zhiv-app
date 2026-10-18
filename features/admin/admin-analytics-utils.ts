@@ -3,7 +3,7 @@ import { formatPearls } from "@/features/economy/domain/money";
 import { worldCatalog } from "@/features/world/domain/model";
 
 export const analyticsActions: Record<string, string> = {
-  grant_economy: "Выдача администратором", promo_code: "Подарок по промокоду",
+  grant_economy: "Выдача администратором", admin_adjustment: "Корректировка администратором", promo_code: "Подарок по промокоду",
   claim_tutorial_order: "Ингредиенты учебного заказа",
   claim_workshop_starter: "Подарок для первой мастерской",
   start_tutorial_workshop: "Учебная стройка мастерской",

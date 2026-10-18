@@ -9,11 +9,16 @@ import { economyCatalog, type EconomyCatalog, type EconomyView } from "@/feature
 import { formatPearls } from "@/features/economy/domain/money";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
-import { getAdminAccess, getAdminEconomyPlayer, getAdminUsers, type AdminEconomyDetail, type AdminUser } from "./admin-api";
+import { getAdminEconomyPlayer, getAdminUsers, verifyAdminActor, type AdminEconomyDetail, type AdminUser } from "./admin-api";
 import { grantAdminEconomy, type AdminEconomyGrant } from "./admin-grants-api";
 import { entriesFromGrant, pendingGrantTargets, readGrantAttempt, saveGrantAttempt } from "./admin-grants-journal";
 import { formatGrantNumber as count, grantAmountLabel, grantBasketIssue, grantBuildingBusy, grantEntryKey, makeEconomyGrant, type GrantEntry, type GrantKind } from "./admin-grants-model";
 import { validAdminReason } from "./admin-input";
+import { AdminDeliveryFields, AdminDeliveryPreview } from "./admin-delivery";
+import { deliveryIssue, deliveryMessage, type AdminDelivery } from "./admin-delivery-contract";
+import { AdminAdjustmentPanel } from "./admin-adjustment-panel";
+import { definitiveAdminWriteFailure } from "./admin-write-outcome";
+import { pendingAdjustmentTargets } from "./admin-adjustment-api";
 import styles from "./admin-grants.module.css";
 
 type Category = "currency" | "items" | "upgrades" | "fishing";
@@ -33,9 +38,7 @@ const isAccessError = (error: unknown): error is ApiError => error instanceof Ap
 const message = (error: unknown) => error instanceof Error ? error.message : "Не удалось получить ответ сервера. Повторите запрос.";
 
 async function verifyActor(actorPublicId: string, signal: AbortSignal) {
-  const actor = await getAdminAccess(signal);
-  if (signal.aborted) throw new DOMException("Запрос отменён", "AbortError");
-  if (actor.publicId !== actorPublicId) throw new ApiError("Аккаунт администратора сменился. Откройте панель заново.", 403);
+  await verifyAdminActor(actorPublicId, signal);
 }
 
 function GrantIcon({ kind, id, size = 32 }: { kind: GrantKind; id: string; size?: number }) {
@@ -45,31 +48,34 @@ function GrantIcon({ kind, id, size = 32 }: { kind: GrantKind; id: string; size?
 export function AdminGrantsPanel(props: Props) {
   const { actorPublicId, target, onTargetChange, onAccessLost } = props;
   const [query, setQuery] = useState("");
-  const [result, setResult] = useState<{ query: string; users: AdminUser[]; total: number } | null>(null);
+  const [result, setResult] = useState<{ actor: string; query: string; users: AdminUser[]; total: number } | null>(null);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(true);
-  const unfinished = pendingGrantTargets(actorPublicId);
+  const [actorVerified, setActorVerified] = useState(false);
+  const unfinished = [...new Set([...pendingGrantTargets(actorPublicId), ...pendingAdjustmentTargets(actorPublicId)])];
   useEffect(() => {
     if (target) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true); setError("");
-      void verifyActor(actorPublicId, controller.signal).then(() => getAdminUsers({ q: query.trim(), sort: "created", offset: 0, limit: 8 }, controller.signal)).then(value => {
-        if (!controller.signal.aborted) setResult({ query: query.trim(), users: value.users, total: value.total });
+      void verifyActor(actorPublicId, controller.signal).then(() => getAdminUsers({ q: query.trim(), sort: "created", offset: 0, limit: 8 }, controller.signal)).then(async value => {
+        await verifyActor(actorPublicId, controller.signal);
+        if (!controller.signal.aborted) { setActorVerified(true); setResult({ actor: actorPublicId, query: query.trim(), users: value.users, total: value.total }); }
       }).catch(cause => {
         if (controller.signal.aborted) return;
-        if (isAccessError(cause)) onAccessLost(cause); else setError(message(cause));
+        if (isAccessError(cause)) { setActorVerified(false); setResult(null); onAccessLost(cause); } else setError(message(cause));
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, query ? 250 : 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [actorPublicId, query, reload, target, onAccessLost]);
   if (target) return <GrantWorkspace key={target.publicId} {...props} target={target} />;
-  const shown = result?.query === query.trim() ? result : null;
+  if (!actorVerified) return <p className={styles.hint} role="status">{error || "Проверяем доступ к выдаче…"}</p>;
+  const shown = result?.actor === actorPublicId && result.query === query.trim() ? result : null;
   return <div className={styles.start}>
     <section className={styles.playerSearch}>
       <div className={styles.stepTitle}><span>1</span><div><h2>Кому выдаём?</h2><p>Найдите игрока по имени или вставьте его полный ID.</p></div></div>
-      {unfinished.length > 0 && <div className={styles.warning}><p>Есть выдачи без подтверждённого ответа. Откройте получателя, чтобы проверить прежний запрос.</p>{unfinished.map(id => <button className={styles.button} key={id} onClick={() => setQuery(id)}>Найти {id}</button>)}</div>}
+      {unfinished.length > 0 && <div className={styles.warning}><p>Есть изменения без подтверждённого ответа. Откройте получателя, чтобы проверить прежний запрос.</p>{unfinished.map(id => <button className={styles.button} key={id} onClick={() => setQuery(id)}>Найти {id}</button>)}</div>}
       <label className={styles.search}><Search size={20} aria-hidden="true" /><span className={styles.srOnly}>Имя или ID игрока</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Например, Дима или XXXX-XXXX-XXXX" maxLength={100} autoComplete="off" /></label>
       <div className={styles.searchCaption}><span>{query.trim() ? "Результаты поиска" : "Последние зарегистрированные игроки"}</span>{loading && <LoaderCircle size={17} className={styles.spin} aria-label="Поиск" />}</div>
       {error ? <div className={styles.error} role="alert">{error}<button className={styles.button} onClick={() => setReload(value => value + 1)}>Повторить</button></div>
@@ -106,7 +112,7 @@ function getOffers(category: Category, catalog: EconomyCatalog, state: EconomyVi
   ];
 }
 
-function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, onEconomy, onManage, onRewards, onLockChange }: Props & { target: AdminUser }) {
+export function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, onEconomy, onManage, onRewards, onLockChange }: Props & { target: AdminUser }) {
   const [restored] = useState(() => readGrantAttempt(actorPublicId, target.publicId));
   const [detail, setDetail] = useState<AdminEconomyDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,6 +123,9 @@ function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, o
   const [amount, setAmount] = useState("100");
   const [basket, setBasket] = useState<GrantEntry[]>(() => restored ? entriesFromGrant(restored) : []);
   const [reason, setReason] = useState(restored?.reason ?? "");
+  const [delivery, setDelivery] = useState<AdminDelivery>(restored?.delivery ?? "silent");
+  const [playerTitle, setPlayerTitle] = useState(restored?.playerMessage?.title ?? "");
+  const [playerBody, setPlayerBody] = useState(restored?.playerMessage?.body ?? "");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [review, setReview] = useState(!!restored);
@@ -125,16 +134,21 @@ function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, o
   const [journalUnavailable, setJournalUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stale, setStale] = useState(false);
+  const [adjustmentLocked, setAdjustmentLocked] = useState(false);
+  const [actorVerified, setActorVerified] = useState(false);
   const sending = useRef(false);
   const write = useRef<AbortController | null>(null);
   const reviewTrigger = useRef<HTMLButtonElement>(null);
-  const locked = busy || pending !== null;
+  const primaryLocked = busy || pending !== null;
+  const locked = primaryLocked || adjustmentLocked;
   const state = detail?.economy ?? null;
   const catalog = state?.catalog ?? economyCatalog;
   const offers = getOffers(category, catalog, state);
   const offer = offers.find(item => grantEntryKey(item) === selected);
   const filtered = offers.filter(item => `${item.name} ${item.description} ${item.id}`.toLocaleLowerCase("ru-RU").includes(search.trim().toLocaleLowerCase("ru-RU")));
   const issue = grantBasketIssue(basket, state, catalog);
+  const messageIssue = deliveryIssue(delivery, playerTitle, playerBody);
+  const playerMessage = deliveryMessage(delivery, playerTitle, playerBody);
   const quantity = Number(amount);
   const canAdd = detail && !stale && offer && !offer.disabled && Number.isSafeInteger(quantity) && quantity > 0
     && quantity <= (offer.kind === "coins" || offer.kind === "pearls" ? 1_000_000_000 : 10_000)
@@ -145,11 +159,16 @@ function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, o
     Promise.resolve().then(() => {
       if (controller.signal.aborted) return;
       setLoading(true);
-      return verifyActor(actorPublicId, controller.signal).then(() => getAdminEconomyPlayer(target.publicId, controller.signal)).then(value => {
+      return verifyActor(actorPublicId, controller.signal).then(() => {
+        if (controller.signal.aborted) return null;
+        setActorVerified(true); return getAdminEconomyPlayer(target.publicId, controller.signal);
+      }).then(async value => {
+        if (!value) return;
+        await verifyActor(actorPublicId, controller.signal);
         if (!controller.signal.aborted) { setDetail(value); setStale(false); setError(""); }
       }).catch(cause => {
         if (controller.signal.aborted) return;
-        if (isAccessError(cause)) onAccessLost(cause); else setError(message(cause));
+        if (isAccessError(cause)) { setActorVerified(false); setDetail(null); onAccessLost(cause); } else setError(message(cause));
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     });
     return () => controller.abort();
@@ -176,14 +195,16 @@ function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, o
     setNotice("");
   }
   async function submit() {
-    if (sending.current || (!pending && (!detail || !confirmed || !basket.length || issue || !validAdminReason(reason) || stale))) return;
-    const request = pending ?? makeEconomyGrant(basket, createUuidV4(), target.publicId, reason);
-    if (!saveGrantAttempt(actorPublicId, target.publicId, request)) setJournalUnavailable(true);
+    if (sending.current || (!pending && (adjustmentLocked || !detail || !confirmed || !basket.length || issue || messageIssue || !validAdminReason(reason) || stale))) return;
+    const request = pending ?? makeEconomyGrant(basket, createUuidV4(), target.publicId, reason, { delivery, ...(playerMessage ? { playerMessage } : {}) });
+    if (!saveGrantAttempt(actorPublicId, target.publicId, request)) { setJournalUnavailable(true); setError("Браузер не сохранил запрос. Выдача не отправлена. Разрешите хранилище и повторите."); return; }
+    setJournalUnavailable(false);
     setPending(request); setBusy(true); setError(""); sending.current = true;
     const controller = new AbortController(); write.current = controller;
     try {
       await verifyActor(actorPublicId, controller.signal);
       const receipt = await grantAdminEconomy(target.publicId, request, controller.signal);
+      await verifyActor(actorPublicId, controller.signal);
       if (controller.signal.aborted) return;
       saveGrantAttempt(actorPublicId, target.publicId, null);
       setPending(null); setReview(false); setConfirmed(false); setBasket([]); setStale(true);
@@ -191,14 +212,15 @@ function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, o
       setReload(value => value + 1);
     } catch (cause) {
       if (controller.signal.aborted) return;
-      if (isAccessError(cause)) { onAccessLost(cause); return; }
-      if (cause instanceof ApiError && [400, 404, 409, 422].includes(cause.status)) {
+      if (isAccessError(cause)) { setActorVerified(false); setPending(null); setDetail(null); onAccessLost(cause); return; }
+      if (definitiveAdminWriteFailure(cause)) {
         saveGrantAttempt(actorPublicId, target.publicId, null); setPending(null);
       }
       setError(message(cause));
     } finally { sending.current = false; if (!controller.signal.aborted) setBusy(false); }
   }
   const unit = offer?.kind === "building" ? "Новый уровень" : offer?.kind === "slots" ? "Всего мест после выдачи" : "Добавить количество";
+  if (!actorVerified) return <p className={styles.hint} role="status">{error || "Проверяем доступ к выдаче…"}</p>;
   return <div className={styles.workspace}>
     <section className={styles.playerCard}>
       <div className={styles.playerTop}><span className={styles.avatar}>{target.displayName.slice(0, 1).toUpperCase()}</span><div className={styles.identity}><span className={styles.eyebrow}>Получатель</span><strong><PlayerName name={detail?.displayName ?? target.displayName} tag={target.tag} /></strong><code>{target.publicId}</code></div><button className={styles.button} disabled={locked} onClick={() => onTargetChange(null)}><ArrowLeft size={16} />Другой игрок</button></div>
@@ -212,6 +234,8 @@ function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, o
       <div className={styles.playerLinks}><button className={styles.link} disabled={locked || loading} onClick={() => setReload(value => value + 1)}><RefreshCw size={15} className={loading ? styles.spin : undefined} />Обновить состояние</button><button className={styles.link} disabled={locked} onClick={() => onEconomy(target)}>Всё хозяйство</button><button className={styles.link} disabled={locked} onClick={() => onManage(target)}>Одежда, коллекции, аккаунт</button><button className={styles.link} disabled={locked} onClick={() => onRewards(target)}>Награды Мохлика</button></div>
       {detail && !state && <p className={styles.hint}>При первой выдаче хозяйство будет создано с сохранением прежнего прогресса и положенных стартовых припасов.</p>}
     </section>
+    <AdminAdjustmentPanel key={`adjust:${actorPublicId}:${target.publicId}`} actorPublicId={actorPublicId} targetPublicId={target.publicId} detail={detail} disabled={primaryLocked || loading || stale}
+      onLockChange={setAdjustmentLocked} onChanged={() => { setStale(true); setReload(value => value + 1); }} onAccessLost={onAccessLost} />
     {notice && <p className={styles.success} role="status"><Check size={20} />{notice}</p>}
     {error && !review && <div className={styles.error} role="alert">{error}<button className={styles.button} disabled={locked || loading} onClick={() => setReload(value => value + 1)}>Обновить</button></div>}
     <div className={styles.grantColumns}>
@@ -240,7 +264,9 @@ function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, o
         {issue && <p className={styles.warning} role="status">{issue}</p>}
         <label className={styles.field}>Причина выдачи<textarea rows={3} maxLength={240} minLength={8} placeholder="Например, компенсация за потерянный улов" value={reason} disabled={locked} onChange={event => setReason(event.target.value)} /><small>{reason.trim().length}/240 · от 8 символов, останется в журнале</small>{reason.trim().length >= 8 && !validAdminReason(reason) && <small>Введите причину одной строкой, без табуляции и скрытых символов.</small>}</label>
         <div className={styles.reasonPresets}>{reasons.map(value => <button key={value} disabled={locked} onClick={() => setReason(value)}>{value}</button>)}</div>
-        <button ref={reviewTrigger} className={styles.primaryButton} disabled={locked || loading || stale || !detail || !basket.length || !validAdminReason(reason) || !!issue} onClick={() => { setConfirmed(false); setError(""); setReview(true); }}>Проверить и выдать <ArrowRight size={18} /></button>
+        <AdminDeliveryFields delivery={delivery} title={playerTitle} body={playerBody} disabled={locked} onDelivery={setDelivery} onTitle={setPlayerTitle} onBody={setPlayerBody} />
+        {messageIssue && <p className={styles.warning} role="status">{messageIssue}</p>}
+        <button ref={reviewTrigger} className={styles.primaryButton} disabled={locked || loading || stale || !detail || !basket.length || !validAdminReason(reason) || !!issue || !!messageIssue} onClick={() => { setConfirmed(false); setError(""); setReview(true); }}>Проверить и выдать <ArrowRight size={18} /></button>
         <p className={styles.hint}>Весь набор применяется одновременно. При ошибке ни одна его часть не будет выдана.</p>
         {pending && !review && <button className={styles.button} onClick={() => setReview(true)}>Проверить незавершённую выдачу</button>}
       </aside>
@@ -251,10 +277,11 @@ function GrantWorkspace({ actorPublicId, target, onTargetChange, onAccessLost, o
         <div className={styles.reviewPlayer}><UserRound size={24} /><div><strong>{target.displayName}</strong><code>{target.publicId}</code></div></div>
         <ul className={styles.reviewList}>{basket.map(entry => <li key={grantEntryKey(entry)}><span>{entry.name}</span><strong>{grantAmountLabel(entry)}</strong></li>)}</ul>
         <p className={styles.hint}>Причина: {pending?.reason ?? reason.trim()}</p>
+        <AdminDeliveryPreview {...(pending ?? { delivery, playerMessage })} />
         <label className={styles.confirmation}><input type="checkbox" checked={confirmed} disabled={locked} onChange={event => setConfirmed(event.target.checked)} /><span>Получатель и состав верны. Выдать этот набор.</span></label>
         {error && <div className={styles.error} role="alert">{error}{pending && <p>Ответ не подтверждён. Повтор проверит ту же выдачу и не добавит набор второй раз.</p>}</div>}
         {restored && pending && !error && <p className={styles.warning}>Восстановлена незавершённая выдача. Проверьте её тем же запросом — повторная награда не начислится.</p>}
-        {journalUnavailable && pending && <p className={styles.warning}>Браузер не разрешил сохранить незавершённую выдачу. Дождитесь подтверждения, не обновляя страницу.</p>}
+        {journalUnavailable && <p className={styles.warning}>Без сохранения запроса выдача не отправляется. Разрешите хранилище браузера и повторите.</p>}
         <div className={styles.dialogActions}><button className={styles.button} disabled={locked} onClick={() => setReview(false)}>Изменить набор</button><button className={styles.primaryButton} disabled={busy || (!pending && !confirmed)} onClick={() => void submit()}>{busy ? <LoaderCircle size={18} className={styles.spin} /> : <Gift size={18} />}{busy ? "Выдаём…" : pending ? "Проверить ту же выдачу" : "Выдать игроку"}</button></div>
       </DialogContent>
     </Dialog>

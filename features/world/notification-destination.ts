@@ -1,7 +1,7 @@
 import type { EconomyView } from "@/features/economy/domain/model";
 import type { NotificationTarget } from "@/features/notifications/notification-browser";
 
-export type WorldNotificationEntry = { ownerPublicId: string; request: number; target: Exclude<NotificationTarget, "checkin"> };
+export type WorldNotificationEntry = { ownerPublicId: string; request: number; target: Exclude<NotificationTarget, "checkin" | "mailbox"> };
 export type WorldNotificationDestination = { kind: "activities" } | { kind: "pantry" } | { kind: "builder" }
   | { kind: "station"; stationId: string; recipeId?: string };
 

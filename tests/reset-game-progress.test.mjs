@@ -41,14 +41,14 @@ test("game reset reviews every table and the latest migration without clearing i
   }
   for (const name of ["app_users", "app_sessions", "account_login_identities", "account_recovery_codes",
     "circles", "circle_memberships", "direct_requests", "check_ins", "admin_actions", "promo_redemptions", "managed_promo_codes",
-    "notification_subscriptions", "notification_preferences", "game_presence_daily", "player_security_observations"]) assert.ok(preserved.includes(name), name);
+    "notification_subscriptions", "notification_preferences", "game_presence_daily", "player_mail_messages", "admin_mail_broadcasts", "player_security_observations"]) assert.ok(preserved.includes(name), name);
   assert.deepEqual(partial, ["notification_events"]);
   for (const name of ["economy_profiles", "world_profiles", "forest_memory", "game_profiles"])
     assert.ok(reinitialized.includes(name), `${name}: preserve a monotonic revision fence`);
   assert.doesNotMatch(sql, /\bCASCADE\b|DISABLE\s+TRIGGER|DROP\s+(TABLE|SCHEMA|DATABASE)/i);
   assert.match(sql, /SET TRANSACTION READ ONLY/);
-  assert.match(sql, /DELETE FROM public\.notification_events WHERE category <> 'checkin'/);
-  assert.match(sql, /INSERT INTO public\.notification_events SELECT \* FROM game_reset_checkin_events/);
+  assert.match(sql, /DELETE FROM public\.notification_events WHERE category NOT IN \('checkin','mail'\)/);
+  assert.match(sql, /INSERT INTO public\.notification_events SELECT \* FROM game_reset_service_events/);
   assert.match(sql, /previous_revision >= 9007199254740990/);
   assert.match(sql, /\(previous_revision \+ 1\)::bigint/);
 });

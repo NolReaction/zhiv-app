@@ -1,10 +1,11 @@
 import { economyCatalog } from "@/features/economy/domain/model";
 import { worldCatalog } from "@/features/world/domain/model";
+import { GAME_ITEMS, GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
 
 const labels: Record<string, string> = {
   revoke_sessions: "Завершение сеансов", grant_item: "Календарный предмет", grant_achievement: "Достижение",
   grant_resource: "Прежние ресурсы", grant_world_item: "Предмет мира", grant_find: "Находка",
-  grant_economy: "Выдача игроку", promo_create: "Создание промокода", promo_update: "Изменение промокода",
+  grant_economy: "Выдача игроку", adjust_economy: "Корректировка баланса", mail_broadcast: "Рассылка игрокам", promo_create: "Создание промокода", promo_update: "Изменение промокода",
   promo_delete: "Удаление промокода", set_tag: "Тег", ban: "Блокировка", unban: "Разблокировка",
   watch: "Наблюдение", unwatch: "Снятие наблюдения", clear_signal: "Сигнал проверен",
 };
@@ -22,6 +23,16 @@ export function adminActionDetails(details: string): string {
   try {
     const payload = record(JSON.parse(details));
     const value = payload.request ? record(payload.request) : payload;
+    const delivery = value.delivery === "notify" ? " · Письмо и уведомление" : value.delivery === "silent" ? " · Тихо" : "";
+    if ((value.kind === "item" || value.kind === "achievement") && text(value.rewardId)) {
+      const reward = (value.kind === "item" ? GAME_ITEMS : GAME_ACHIEVEMENTS).find(item => item.id === value.rewardId);
+      return `${value.kind === "item" ? "Календарный предмет" : "Достижение"}: ${reward?.title ?? text(value.rewardId)}${delivery}`;
+    }
+    if (value.coinsDelta !== undefined || value.pearlsDelta !== undefined) {
+      const signed = (amount: unknown) => typeof amount === "number" && Number.isSafeInteger(amount) ? `${amount > 0 ? "+" : ""}${count(amount)}` : "?";
+      return `Монеты: ${signed(value.coinsDelta)} · Жемчуг: ${signed(value.pearlsDelta)}${delivery}`;
+    }
+    if (value.audience === "all" || value.audience === "players") return `${text(value.title) || "Письмо"} · ${value.audience === "all" ? "всем доступным аккаунтам" : "выбранным игрокам"} · ${value.notify ? "почта и уведомление" : "только почта"}`;
     if (value.promoId) {
       const definition = record(value.definition);
       const code = text(definition.code) || text(value.promoId);
@@ -35,7 +46,7 @@ export function adminActionDetails(details: string): string {
       for (const [id, level] of Object.entries(record(value.buildings))) if (number(level)) result.push(`${catalogName(id)} → ур. ${count(number(level))}`);
       for (const [id, slots] of Object.entries(record(value.productionSlots))) if (number(slots)) result.push(`${catalogName(id)} → ${count(number(slots))} мест`);
       for (const key of ["rods", "hooks"]) if (Array.isArray(value[key])) for (const id of value[key]) if (typeof id === "string") result.push(catalogName(id));
-      return result.join(" · ") || "Без новых начислений";
+      return (result.join(" · ") || "Без новых начислений") + delivery;
     }
     if (value.action === "grant_resource") {
       const resources: Record<string, string> = { sparks: "Искры", wood: "Дерево", stone: "Камень" };

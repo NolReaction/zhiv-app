@@ -1799,3 +1799,29 @@ test("an old scene arrival callback cannot complete or dismiss the next account'
     assert.equal(values.size, 0, "callbacks retained by the previous scene have no active preference store");
   } finally { pointer.restore(); }
 });
+
+test("mailbox is a real More entry with an account-bound unread badge and opens without gameplay commands", () => {
+  const nav = navigation(); let opened = 0;
+  try {
+    nav.props.mailbox = { ownerPublicId: nav.props.ownerPublicId, unreadCount: 3, open() { opened++; } };
+    const more = nav.find(element => element.props["data-world-quick"] === "more");
+    assert.equal(more.props["data-mail-unread"], true); assert.match(more.props["aria-label"], /Непрочитанных писем: 3/);
+    more.props.onClick();
+    const entry = nav.find(element => element.props["data-world-mailbox-trigger"] !== undefined);
+    assert.ok(entry); entry.props.onClick(); assert.equal(opened, 1); assert.equal(nav.refreshes, 0);
+    assert.ok(nav.focused.includes("more"), "the More button remains a connected return-focus target");
+  } finally { nav.restore(); }
+});
+
+test("a foreign retained mailbox cannot leak its badge or open from a stale More handler after owner switch", () => {
+  const nav = navigation(); let opened = 0;
+  try {
+    nav.props.mailbox = { ownerPublicId: nav.props.ownerPublicId, unreadCount: 7, open() { opened++; } };
+    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+    const stale = nav.find(element => element.props["data-world-mailbox-trigger"] !== undefined);
+    nav.props.ownerPublicId = "another-owner"; nav.render(); stale.props.onClick();
+    assert.equal(opened, 0);
+    assert.equal(nav.find(element => element.props["data-world-quick"] === "more").props["data-mail-unread"], undefined);
+    assert.equal(nav.find(element => element.props["data-world-mailbox-trigger"] !== undefined), undefined);
+  } finally { nav.restore(); }
+});

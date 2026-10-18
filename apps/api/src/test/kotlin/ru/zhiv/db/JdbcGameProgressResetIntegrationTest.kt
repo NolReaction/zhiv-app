@@ -106,8 +106,19 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO notification_subscriptions(endpoint_hash,user_id,session_id,endpoint,p256dh,auth)
                   VALUES (decode(repeat('34',32),'hex'),'10000000-0000-4000-8000-000000000001',
                     '30000000-0000-4000-8000-000000000003','https://example.invalid/push/reset-test','key','auth');
+                INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,
+                    action,reason,affected_sessions,payload,changed)
+                  VALUES ('c0000000-0000-4000-8000-00000000000c','10000000-0000-4000-8000-000000000001',
+                    '10000000-0000-4000-8000-000000000001','0000-0000-0001','0000-0000-0001',
+                    'mail_broadcast','Gameplay reset retention test',0,'{}',true);
+                INSERT INTO admin_mail_broadcasts(request_id,title,body,audience,notify,recipient_count,created_at)
+                  VALUES ('c0000000-0000-4000-8000-00000000000c','Service letter','Keep this letter','players',true,1,clock_timestamp());
+                INSERT INTO player_mail_messages(id,user_id,source_key,type,title,body,notify)
+                  VALUES ('b0000000-0000-4000-8000-00000000000b','10000000-0000-4000-8000-000000000001',
+                    'broadcast:c0000000-0000-4000-8000-00000000000c','admin_notice','Service letter','Keep this letter',true);
                 INSERT INTO notification_events(user_id,source_key,category,due_at,next_attempt_at) VALUES
                   ('10000000-0000-4000-8000-000000000001','checkin:test','checkin',clock_timestamp(),clock_timestamp()),
+                  ('10000000-0000-4000-8000-000000000001','mail:b0000000-0000-4000-8000-00000000000b','mail',clock_timestamp(),clock_timestamp()),
                   ('10000000-0000-4000-8000-000000000001','job:test','exploration',clock_timestamp(),clock_timestamp());
                 INSERT INTO promo_redemptions(user_id,origin_user_id,promo_id,request_id,title,reward,accepted_revision)
                   VALUES ('10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','already-used',
@@ -120,13 +131,13 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='61' WHERE version='60'")
+            execute(source, "UPDATE flyway_schema_history SET version='62' WHERE version='61'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V60"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V61"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='60' WHERE version='61'")
+            execute(source, "UPDATE flyway_schema_history SET version='61' WHERE version='62'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
@@ -165,6 +176,7 @@ class JdbcGameProgressResetIntegrationTest {
                 assertEquals(before.getValue(table), after.getValue(table), "Preserved full contents: $table")
             for (table in tables("cleared_tables")) assertEquals("[]", after.getValue(table), "Cleared: $table")
             assertTrue(after.getValue("notification_events").contains("checkin:test"))
+            assertTrue(after.getValue("notification_events").contains("mail:b0000000-0000-4000-8000-00000000000b"))
             assertTrue(!after.getValue("notification_events").contains("job:test"))
 
             val user = UUID.fromString("10000000-0000-4000-8000-000000000001")

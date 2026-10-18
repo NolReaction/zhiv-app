@@ -7,6 +7,7 @@ export const notificationPreferencesSchema = z.object({
   constructionCompleted: z.boolean(),
   explorationCompleted: z.boolean(),
   productionCompleted: z.boolean(),
+  administrationMessages: z.boolean().default(true),
   checkinReminder: z.boolean(),
   quietHoursEnabled: z.boolean(),
   quietStart: clock,
@@ -20,7 +21,7 @@ export const notificationPreferencesSchema = z.object({
 });
 export type NotificationPreferences = z.infer<typeof notificationPreferencesSchema>;
 export function defaultNotificationPreferences(timeZone = "UTC"): NotificationPreferences {
-  return { constructionCompleted: true, explorationCompleted: true, productionCompleted: true,
+  return { constructionCompleted: true, explorationCompleted: true, productionCompleted: true, administrationMessages: true,
     checkinReminder: false, quietHoursEnabled: true, quietStart: "23:00", quietEnd: "10:00",
     timeZone: isTimeZone(timeZone) ? timeZone : "UTC", rateLimitsEnabled: false, maxPerDay: 2, minIntervalMinutes: 120 };
 }

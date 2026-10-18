@@ -8,12 +8,14 @@ import type { WorldController } from "@/features/world/state/use-world";
 import WorldView from "./world-view";
 import type { WorldFriendsState } from "@/features/world/ui/profile/world-profile-friends";
 import type { WorldNotificationEntry } from "./notification-destination";
+import type { MailboxController } from "@/features/mailbox/use-mailbox";
 import styles from "./world.module.css";
 
 export type WorldPortalProps = {
   open: boolean; onClose: () => void; origin: CSSProperties; returnFocus: () => void;
   suspended?: boolean;
   connectionStatus?: ReactNode;
+  mailbox?: MailboxController;
   onSceneReady?: () => void;
   sceneReady?: boolean; notificationEntry?: WorldNotificationEntry;
   onNotificationHandled?: (request: number) => void;

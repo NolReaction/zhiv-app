@@ -7,6 +7,7 @@ import kotlinx.serialization.encodeToString
 import ru.zhiv.admin.*
 import ru.zhiv.world.*
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.mail.MailAttachments
 import java.sql.Connection
 import java.sql.ResultSet
 import java.time.OffsetDateTime
@@ -98,9 +99,13 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         // All admin actions share this global fence, including older moderation
         // endpoints. The receipt always wins over newer player state on replay.
         c.one("SELECT pg_advisory_xact_lock(?)", requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }
-        val previous = c.one("SELECT *,payload=?::jsonb AS same_payload FROM admin_actions WHERE request_id=?", payload, requestId) { r ->
+        val previous = c.one("SELECT * FROM admin_actions WHERE request_id=?", requestId) { r ->
             val matching = r.getString("actor_public_id") == initial.publicId && r.getString("target_public_id") == targetPublicId &&
-                r.getString("action") == "grant_economy" && r.getBoolean("same_payload")
+                r.getString("action") == "grant_economy" && runCatching {
+                    // Old silent receipts predate delivery/playerMessage. DTO defaults
+                    // preserve their original meaning without changing stored audits.
+                    ru.zhiv.economy.economyJson.decodeFromString<AdminEconomyGrantRequest>(r.getString("payload")) == request
+                }.getOrDefault(false)
             matching to if (matching) AdminEconomyGrantReceipt(requestId.toString(), targetPublicId, r.getBoolean("changed"),
                 r.getLong("accepted_revision"), r.time("created_at")!!) else null
         }
@@ -124,6 +129,44 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
             VALUES (?,?,?,?,?,'grant_economy',?,0,?::jsonb,?,?) RETURNING created_at""",
             requestId, current.id, target, current.publicId, targetPublicId, request.reason, payload, changed, revision) {
             AdminEconomyGrantReceipt(requestId.toString(), targetPublicId, changed, revision, it.time("created_at")!!)
+        }!!
+    }
+
+    override suspend fun adjustEconomy(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminEconomyAdjustmentRequest): AdminEconomyGrantReceipt = tx { c ->
+        val initial = actor(c, sessionHash)
+        AdminEconomyAdjustments.validate(request)
+        if (request.confirmationPublicId != targetPublicId || request.requestId != requestId.toString() ||
+            requestId.version() != 4 || requestId.variant() != 2) invalid()
+        val payload = ru.zhiv.economy.economyJson.encodeToString(request)
+        c.one("SELECT pg_advisory_xact_lock(?)", requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }
+        val previous = c.one("SELECT * FROM admin_actions WHERE request_id=?", requestId) { r ->
+            val matching = r.getString("actor_public_id") == initial.publicId && r.getString("target_public_id") == targetPublicId &&
+                r.getString("action") == "adjust_economy" && runCatching {
+                    ru.zhiv.economy.economyJson.decodeFromString<AdminEconomyAdjustmentRequest>(r.getString("payload")) == request
+                }.getOrDefault(false)
+            matching to if (matching) AdminEconomyGrantReceipt(requestId.toString(), targetPublicId, r.getBoolean("changed"),
+                r.getLong("accepted_revision"), r.time("created_at")!!) else null
+        }
+        if (previous != null) {
+            c.one("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", initial.id) { true }
+            val current = actor(c, sessionHash, lockSession = true)
+            if (current.id != initial.id || !previous.first)
+                fail("ADMIN_REQUEST_CONFLICT", "Этот запрос уже использован с другими параметрами", 409)
+            return@tx checkNotNull(previous.second)
+        }
+        val target = c.one("SELECT id FROM app_users WHERE public_id=? AND deleted_at IS NULL", targetPublicId) { it.getObject(1, UUID::class.java) }
+            ?: fail("ADMIN_USER_NOT_FOUND", "Профиль не найден", 404)
+        c.rows("SELECT id FROM app_users WHERE id IN (?,?) ORDER BY id FOR NO KEY UPDATE", initial.id, target) { true }
+        val current = actor(c, sessionHash, lockSession = true)
+        if (current.id != initial.id) fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
+        if (c.one("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL", target) { true } != true)
+            fail("ADMIN_USER_NOT_FOUND", "Профиль не найден", 404)
+        val revision = adjustAdminEconomy(c, target, requestId, request, now(c).toInstant())
+        c.one("""INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,
+                action,reason,affected_sessions,payload,changed,accepted_revision)
+            VALUES (?,?,?,?,?,'adjust_economy',?,0,?::jsonb,true,?) RETURNING created_at""",
+            requestId, current.id, target, current.publicId, targetPublicId, request.reason, payload, revision) {
+            AdminEconomyGrantReceipt(requestId.toString(), targetPublicId, true, revision, it.time("created_at")!!)
         }!!
     }
 
@@ -286,24 +329,31 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
 
     override suspend fun grantReward(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminGrantRequest): AdminGrantReceipt = tx { c ->
         val initial = actor(c, sessionHash)
+        validateAdminDelivery(request.delivery, request.playerMessage)
         val (confirmation,kind,rewardId,reason) = listOf(request.confirmationPublicId,request.kind,request.rewardId,request.reason)
         val catalog = when (kind) { "item" -> ru.zhiv.game.GameRewards.items; "achievement" -> ru.zhiv.game.GameRewards.achievements; else -> invalid() }
         if (confirmation != targetPublicId || request.requestId != requestId.toString()
             || !validAdminReason(reason)
             || requestId.version() != 4 || requestId.variant() != 2) invalid()
         val action = "grant_$kind"
+        val payload = ru.zhiv.economy.economyJson.encodeToString(request)
         c.one("SELECT pg_advisory_xact_lock(?)", requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }
         val previous = c.one("SELECT * FROM admin_actions WHERE request_id=?",requestId) { r ->
-            AdminAuditEvent(r.getObject("request_id").toString(),r.getString("actor_public_id"),r.getString("target_public_id"),
+            val event = AdminAuditEvent(r.getObject("request_id").toString(),r.getString("actor_public_id"),r.getString("target_public_id"),
                 r.getString("action"),r.getString("reason"),r.getInt("affected_sessions"),r.time("created_at")!!,
                 r.getString("reward_id"),r.getObject("granted") as Boolean?)
+            val saved = r.getString("payload")
+            event to if (saved == null) request.delivery == "silent" && request.playerMessage == null else runCatching {
+                ru.zhiv.economy.economyJson.decodeFromString<AdminGrantRequest>(saved) == request
+            }.getOrDefault(false)
         }
         if (previous != null) {
             c.one("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE",initial.id) { true }
             val current = actor(c,sessionHash,lockSession=true)
-            if (current.publicId != previous.actorPublicId || targetPublicId != previous.targetPublicId || action != previous.action
-                || rewardId != previous.rewardId || reason != previous.reason) fail("ADMIN_REQUEST_CONFLICT","Этот запрос уже использован с другими параметрами",409)
-            return@tx AdminGrantReceipt(requestId.toString(),kind,rewardId,checkNotNull(previous.granted),previous.createdAt)
+            val event = previous.first
+            if (!previous.second || current.publicId != event.actorPublicId || targetPublicId != event.targetPublicId || action != event.action
+                || rewardId != event.rewardId || reason != event.reason) fail("ADMIN_REQUEST_CONFLICT","Этот запрос уже использован с другими параметрами",409)
+            return@tx AdminGrantReceipt(requestId.toString(),kind,rewardId,checkNotNull(event.granted),event.createdAt)
         }
         if (rewardId !in catalog) invalid()
         val target = c.one("SELECT id FROM app_users WHERE public_id=? AND deleted_at IS NULL",targetPublicId) { it.getObject(1,UUID::class.java) }
@@ -322,10 +372,14 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
             recordAchievementTiers(c,target,rewardId,ru.zhiv.game.GameRewards.achievements.getValue(rewardId),instant,rewardEligible=false)
         else if (kind == "achievement") c.update("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at,reward_eligible) VALUES (?,?,?,false) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
         else c.update("INSERT INTO $table(user_id,$column,unlocked_at) VALUES (?,?,?) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
+        if (granted && request.delivery == "notify") insertAdminMail(c, target, "admin:$requestId", "admin_grant",
+            request.playerMessage?.title ?: "Подарок от команды",
+            request.playerMessage?.body ?: "Награда уже добавлена в профиль. Состав указан ниже.", true, instant,
+            if (kind == "item") MailAttachments(gameItems = listOf(rewardId)) else MailAttachments(achievements = listOf(rewardId)))
         c.one("""
-            INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,action,reason,affected_sessions,reward_id,granted)
-            VALUES (?,?,?,?,?,?,?,0,?,?) RETURNING created_at
-        """.trimIndent(),requestId,current.id,target,current.publicId,targetPublicId,action,reason,rewardId,granted) {
+            INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,action,reason,affected_sessions,reward_id,granted,payload)
+            VALUES (?,?,?,?,?,?,?,0,?,?,?::jsonb) RETURNING created_at
+        """.trimIndent(),requestId,current.id,target,current.publicId,targetPublicId,action,reason,rewardId,granted,payload) {
             AdminGrantReceipt(requestId.toString(),kind,rewardId,granted,it.time("created_at")!!)
         }!!
     }
@@ -390,8 +444,10 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
             || requestId.version()!=4 || requestId.variant()!=2) invalid()
         val payload = worldJson.encodeToString(request)
         c.one("SELECT pg_advisory_xact_lock(?)",requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }
-        val previous = c.one("SELECT *,payload=?::jsonb AS same_payload FROM admin_actions WHERE request_id=?",payload,requestId) { r ->
-            Triple(r.getString("actor_public_id") == initial.publicId && r.getString("target_public_id")==targetPublicId && r.getBoolean("same_payload"),
+        val previous = c.one("SELECT * FROM admin_actions WHERE request_id=?",requestId) { r ->
+            Triple(r.getString("actor_public_id") == initial.publicId && r.getString("target_public_id")==targetPublicId && runCatching {
+                worldJson.decodeFromString<AdminPlayerCommand>(r.getString("payload")) == request
+            }.getOrDefault(false),
                 r.getString("action"),AdminPlayerReceipt(requestId.toString(),r.getString("action"),r.getBoolean("changed"),r.getInt("affected_sessions"),r.time("created_at")!!))
         }
         if (previous != null) {
@@ -411,6 +467,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         if (request.action in setOf("ban","unban") && (targetPublicId in config.allowedPublicIds || target==current.id))
             fail("ADMIN_PROTECTED_ACCOUNT","Администраторов нельзя блокировать из панели",409)
         var affected = 0
+        var mailAttachments: MailAttachments? = null
         val changed = when(request.action) {
             "ban" -> {
                 val updated = c.update("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason=? WHERE id=? AND banned_at IS NULL",request.reason,target)>0
@@ -443,6 +500,8 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                     else -> invalid()
                 }
                 if(after!=before) {
+                    mailAttachments = MailAttachments(worldItems = after.inventory.filterNot { it in before.inventory },
+                        finds = after.collection.filterNot { it in before.collection })
                     c.update("UPDATE world_profiles SET state=?::jsonb,revision=revision+1,updated_at=clock_timestamp() WHERE user_id=?",worldJson.encodeToString(after),target)
                     c.update("INSERT INTO world_ledger(user_id,source_key,kind,sparks,wood,stone) VALUES (?,?,'admin_grant',?,?,?)",
                         target,"admin:$requestId",after.resources.sparks-before.resources.sparks,after.resources.wood-before.resources.wood,after.resources.stone-before.resources.stone)
@@ -451,6 +510,10 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                 after!=before
             }
         }
+        if (changed && request.delivery == "notify" && mailAttachments?.let { it.worldItems.isNotEmpty() || it.finds.isNotEmpty() } == true)
+            insertAdminMail(c, target, "admin:$requestId", "admin_grant",
+            request.playerMessage?.title ?: "Подарок от команды",
+            request.playerMessage?.body ?: "Подарок уже добавлен в профиль. Состав указан ниже.", true, now(c), checkNotNull(mailAttachments))
         c.one("""INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,action,reason,affected_sessions,payload,changed)
             VALUES (?,?,?,?,?,?,?,?,?::jsonb,?) RETURNING created_at""",
             requestId,current.id,target,current.publicId,targetPublicId,request.action,request.reason,affected,payload,changed) {

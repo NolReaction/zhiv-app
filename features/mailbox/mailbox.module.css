@@ -1,0 +1,46 @@
+.scrim { z-index: 92; background: #07130bcc; backdrop-filter: blur(4px); }
+.dialog { position: fixed; z-index: 93; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(580px, calc(100vw - 24px)); max-height: min(760px, calc(100dvh - 32px)); overflow: hidden; border: 1px solid #a9bd8270; border-radius: 23px; background: #17291e; color: #edf0dc; box-shadow: 0 24px 90px #0008; outline: none; }
+.header { display: flex; align-items: center; gap: 6px; padding: 18px 17px 12px; border-bottom: 1px solid #a9bd822c; }
+.header h2 { display: flex; align-items: center; gap: 10px; flex: 1; margin: 0; font-size: 19px; outline: none; }
+.header h2 > svg { color: #dec48e; }
+.header button, .inboxActions button, .error button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 12px; gap: 7px; border: 1px solid #a8b88a40; border-radius: 12px; background: #a8b88a12; color: inherit; cursor: pointer; }
+.header button { width: 44px; padding: 8px; border: 0; background: transparent; }
+.dialog button:focus-visible, .notification button:focus-visible { outline: 2px solid #e7d29f; outline-offset: 2px; }
+.dialog button:disabled { opacity: .5; cursor: default; }
+.count { display: inline-grid; place-items: center; min-width: 23px; height: 23px; padding: 0 5px; border-radius: 8px; background: #d9c086; color: #283820; font: 700 12px/1 system-ui; }
+.description { margin: 0; padding: 10px 20px; color: #bbcaad; font-size: 11px; line-height: 1.5; }
+.inbox, .letter { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 9px 16px 20px; }
+.letters { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.letters button { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 74px; padding: 13px 12px; border: 1px solid #b8c79425; border-radius: 14px; background: #ffffff04; color: inherit; text-align: left; cursor: pointer; }
+.letters button[data-unread="true"] { border-color: #ddc99155; background: linear-gradient(130deg, #dcc89012, #bdc39705); }
+.letterIcon { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 40px; color: #c1cca8; }
+.letters button[data-unread="true"] .letterIcon { color: #e5cb91; }
+.letterSummary { display: grid; gap: 6px; min-width: 0; flex: 1; }
+.letterSummary > span { font-size: 14px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.letterSummary small { color: #b0bfa2; font-size: 10px; line-height: 1.5; }
+.unreadDot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: #dfc486; }
+.empty { display: grid; justify-items: center; gap: 12px; padding: 42px 24px; text-align: center; }
+.empty > svg { color: #c7b580; }
+.empty strong { font-size: 18px; }
+.empty p { max-width: 290px; margin: 0; color: #bdc9ae; font-size: 13px; line-height: 1.6; }
+.inboxActions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding-top: 15px; font-size: 12px; }
+.error, .offline { color: #ddc294; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.letter { margin: 0 12px 16px; padding: 25px 24px 18px; border: 1px solid #c6b38b; border-radius: 5px 5px 18px 5px; background: linear-gradient(135deg, #f3e9ce, #e5d5af); color: #35432a; box-shadow: 0 7px 22px #0003; }
+.eyebrow { display: block; color: #69734e; font: 600 10px/1.5 system-ui; letter-spacing: .07em; }
+.letter h2 { margin: 12px 0 8px; font-family: Georgia, serif; font-size: clamp(21px, 5vw, 28px); line-height: 1.25; overflow-wrap: anywhere; }
+.letter time { font-size: 11px; color: #73795c; }
+.letterBody { margin: 25px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: Georgia, serif; font-size: 16px; line-height: 1.8; }
+.attachments { border-top: 1px dashed #8b966a; padding-top: 14px; font: 12px/1.6 system-ui; }
+.attachments strong { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.attachments ul { padding-left: 20px; }
+.readStatus { display: flex; align-items: center; gap: 5px; margin-top: 18px; color: #65704b; font: 11px/1.5 system-ui; }
+.letter .error { color: #765235; }
+.letter .error button { border-color: #8d956c66; }
+.notification { display: flex; align-items: flex-start; gap: 12px; width: min(420px, calc(100vw - 32px)); padding: 17px; border: 1px solid #d8c18b80; border-radius: 17px; background: #213222; color: #f2ecd7; box-shadow: 0 12px 35px #0006; }
+.notification > svg { flex: 0 0 auto; color: #ddc58c; margin-top: 3px; }
+.notification > div { flex: 1; min-width: 0; }
+.notification p { margin: 6px 0 10px; color: #c1cbb0; font-size: 12px; line-height: 1.5; }
+.notification button { min-height: 36px; padding: 6px 10px; border: 1px solid #dcc18a44; border-radius: 9px; background: #dfc58c12; color: inherit; cursor: pointer; font-size: 12px; }
+.notification > button { flex: 0 0 auto; padding: 6px; background: transparent; border: 0; }
+@media (max-width: 380px) { .dialog { width: calc(100vw - 12px); max-height: calc(100dvh - 16px); border-radius: 17px; } .header { padding: 12px; } .description { padding-inline: 16px; } .letter { margin-inline: 8px; padding: 20px 16px; } .inbox { padding-inline: 10px; } }
+@media (prefers-reduced-motion: reduce) { .dialog, .scrim { animation: none !important; transition: none !important; } }

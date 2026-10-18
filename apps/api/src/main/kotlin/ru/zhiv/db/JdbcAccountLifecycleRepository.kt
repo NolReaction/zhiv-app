@@ -357,6 +357,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM game_presence_clients WHERE user_id=?",id)
         c.update("DELETE FROM game_presence_daily WHERE user_id=?",id)
         c.update("DELETE FROM game_presence_accounts WHERE user_id=?",id)
+        c.update("DELETE FROM player_mail_messages WHERE user_id=?",id)
         c.update("DELETE FROM player_security_observations WHERE user_id=?",id)
         c.update("DELETE FROM game_tap_activity_minutes WHERE user_id=?",id)
         c.update("DELETE FROM game_tap_activity_seconds WHERE user_id=?",id)
@@ -437,6 +438,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM game_tap_activity_minutes WHERE user_id IN (?,?)",id,s.other)
         c.update("DELETE FROM game_tap_activity_seconds WHERE user_id IN (?,?)",id,s.other)
         c.update("UPDATE app_users SET tap_signal_at=GREATEST(tap_signal_at,(SELECT tap_signal_at FROM app_users WHERE id=?)) WHERE id=?",s.other,id)
+        mergePlayerMail(c,id,s.other)
         mergeSecurityObservations(c,id,s.other)
         c.update("UPDATE player_feedback SET user_id=? WHERE user_id=?",id,s.other)
         // Convert separately before merging old worlds, otherwise conversion caps could drop wealth.

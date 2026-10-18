@@ -166,7 +166,7 @@ def main():
                           AND m.started_at=h.installed_on::timestamptz))
                     OR (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
                         FROM flyway_schema_history h ORDER BY h.installed_rank)
-                        = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true']
+                        = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true']
                       AND m.started_at BETWEEN to_timestamp({reset_started_epoch}) AND clock_timestamp())
                   )) FROM game_tap_collection_metadata m""") == "t"
     assert original_volumes == {name: volume_mounts(name, project) for name in ("db", "caddy")}

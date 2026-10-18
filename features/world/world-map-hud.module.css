@@ -43,6 +43,11 @@
 .moreActions { display: grid; gap: 3px; }
 .quickMenu .moreActions > button { width: 100%; justify-content: flex-start; min-height: 44px; padding: 9px 10px; border: 0; border-radius: 10px; background: transparent; font-size: 13px; text-align: left; }
 .moreActions svg { flex: 0 0 auto; color: #c2d7a2; }
+.moreIcon { position: relative; display: flex; flex: 0 0 auto; }
+.mailCount { position: absolute; top: -8px; right: -12px; display: grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; border: 1px solid #665c38; border-radius: 8px; background: #e4cb92; color: #2e3d25; font: 700 9px/1 system-ui; }
+.dock button[data-mail-unread="true"] { border-color: #dbc3878c; animation: mailAttention 2.8s ease-in-out infinite; }
+@keyframes mailAttention { 0%, 100% { box-shadow: 0 3px 14px #06100755; } 50% { box-shadow: 0 0 0 3px #dfc68a25, 0 3px 18px #d9c08025; } }
+@media (prefers-reduced-motion: reduce) { .dock button[data-mail-unread="true"] { animation: none; } }
 .moreLabel { display: flex; flex-direction: column; gap: 3px; min-width: 0; line-height: 1.3; }
 .moreLabel small { color: #b8c9a7; font-size: 10px; }
 @media (max-width: 640px) {

@@ -1,7 +1,7 @@
 "use client";
 import { WorldDevEntry } from "./dev/world-dev-entry";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { ArrowLeft, BookOpen, BookOpenCheck, Check, Compass, X, Info, Leaf, MoreHorizontal, Package, PawPrint, Pin, Shirt, ShoppingBag, Store } from "lucide-react";
+import { ArrowLeft, BookOpen, BookOpenCheck, Check, Compass, X, Info, Leaf, Mail, MoreHorizontal, Package, PawPrint, Pin, Shirt, ShoppingBag, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "@/features/world/ui/collections/decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -66,8 +66,9 @@ type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | 
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
-export default function WorldView({ open, suspended = false, world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+export default function WorldView({ open, suspended = false, world, economy, mailbox, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const currentOwner = useRef(ownerPublicId);
+  const mailUnread = mailbox?.ownerPublicId === ownerPublicId ? mailbox.unreadCount : 0;
   useLayoutEffect(() => { currentOwner.current = ownerPublicId; }, [ownerPublicId]);
   const constructionGoal = useConstructionGoal(ownerPublicId, economy.snapshot);
   const onboarding = useWorldOnboarding(ownerPublicId);
@@ -196,6 +197,12 @@ export default function WorldView({ open, suspended = false, world, economy, own
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [hasWorld]);
   const clearObject = useCallback(() => { selectedId.current = null; setSelection(null); setShopGalleryOwner(null); }, []);
+  const openMailbox = () => {
+    if (currentOwner.current !== ownerPublicId || mailbox?.ownerPublicId !== ownerPublicId) return;
+    clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(false);
+    worldElement.current?.querySelector<HTMLElement>('[data-world-quick="more"]')?.focus({ preventScroll: true });
+    mailbox.open();
+  };
   const openDailyRewards = useCallback(() => {
     leavingDaily.current = false;
     setGiftPantryOwner(null);
@@ -551,7 +558,9 @@ export default function WorldView({ open, suspended = false, world, economy, own
           aria-label={orders.ready > 0 ? `Журнал заказов. Можно выполнить: ${orders.ready}` : "Журнал заказов"} onClick={event => openOrders(undefined, event.currentTarget)}>
           <span className={hudStyles.orderIcon}><BookOpenCheck size={18} aria-hidden="true" />{orders.ready > 0 && <span className={hudStyles.orderCount} aria-hidden="true">{orders.ready}</span>}</span><span>Заказы</span>
         </button>
-        <button data-audio-cue={quickMenu === "more" ? "ui.close" : "ui.open"} data-world-quick="more" aria-haspopup="dialog" aria-expanded={quickMenu === "more"} aria-controls={quickMenu === "more" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("more")}><MoreHorizontal size={19} aria-hidden="true" /><span>Ещё</span></button>
+        <button data-audio-cue={quickMenu === "more" ? "ui.close" : "ui.open"} data-world-quick="more" data-mail-unread={mailUnread > 0 || undefined}
+          aria-label={mailUnread > 0 ? `Ещё. Непрочитанных писем: ${mailUnread}` : "Ещё"} aria-haspopup="dialog" aria-expanded={quickMenu === "more"} aria-controls={quickMenu === "more" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("more")}>
+          <span className={hudStyles.moreIcon}><MoreHorizontal size={19} aria-hidden="true" />{mailUnread > 0 && <span className={hudStyles.mailCount} aria-hidden="true">{mailUnread > 99 ? "99+" : mailUnread}</span>}</span><span>Ещё</span></button>
       </nav>
     </div>
     {quickMenu && <section ref={quickFrame} id="world-quick-menu" className={`${hudStyles.quickMenu} ${styles.quickMenu}`} data-kind={quickMenu} role="dialog" aria-modal="false" aria-labelledby="world-quick-title" tabIndex={-1}
@@ -568,6 +577,8 @@ export default function WorldView({ open, suspended = false, world, economy, own
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onFishSaleOpenChange={onFishSaleOpenChange} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: openStation, explore: () => openQuick("expeditions") }} onReturnToGift={giftPantryOwner === ownerPublicId ? returnToGift : undefined} onExplore={() => openQuick("expeditions")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
+          {mailbox?.ownerPublicId === ownerPublicId && <button type="button" data-world-mailbox-trigger aria-haspopup="dialog" onClick={openMailbox}>
+            <Mail size={18} aria-hidden="true" /><span className={styles.moreLabel}>Почта<small>{mailUnread > 0 ? `Непрочитанных: ${mailUnread}` : "Письма команды и события"}</small></span></button>}
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" /><span className={styles.moreLabel}>Гардероб<small>Одежда и оттенки мха</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" /><span className={styles.moreLabel}>Коллекции<small>Книга личных находок</small></span></button>

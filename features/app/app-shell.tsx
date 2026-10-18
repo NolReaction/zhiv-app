@@ -89,6 +89,9 @@ import { CheckInReceipt } from "@/features/check-in/check-in-receipt";
 import { useSimpleView } from "@/features/app/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useNotificationNavigation, useNotificationPresence } from "@/features/notifications/use-notification-presence";
+import { useMailbox } from "@/features/mailbox/use-mailbox";
+import { MailboxDialog } from "@/features/mailbox/mailbox-dialog";
+import { MailboxNotifications } from "@/features/mailbox/mailbox-notifications";
 import type { WorldNotificationEntry } from "@/features/world/notification-destination";
 import { ForestSessionNotice } from "@/features/world/ui/feedback/forest-session-notice";
 import { useWorld } from "@/features/world/state/use-world";
@@ -717,6 +720,12 @@ function CheckInContent() {
   }, [startupActive, screen, activityMode, activityRetryAt, retryActivity]);
   const worldDevOwner = screen === "home" ? me?.user.publicId ?? null : null;
   const worldEntryButton = useRef<HTMLButtonElement>(null);
+  const refreshMailEconomy = economy.refresh, refreshMailWorld = world.refresh, refreshMailGame = game.refresh;
+  const refreshMailboxRewards = useCallback(() => {
+    void refreshMailEconomy(); void refreshMailWorld(); void refreshMailGame();
+  }, [refreshMailEconomy, refreshMailWorld, refreshMailGame]);
+  const mailbox = useMailbox({ ownerPublicId: worldDevOwner, isOnline,
+    enabled: screen === "home" && !startupActive && activity.active, onSessionLost: loseSession, onReceived: refreshMailboxRewards });
   useNotificationPresence(worldDevOwner, isOnline);
   useNotificationNavigation({ ownerPublicId: worldDevOwner,
     ready: screen === "home" && appearanceReady && !startupActive && activity.active && sceneCanMount,
@@ -724,6 +733,7 @@ function CheckInContent() {
       if (!worldDevOwner) return;
       setCalendarOpen(false); setGameOpen(false); setStatusOpen(false);
       if (target === "checkin") { worldPortal.close(); setActiveView("check-in"); return; }
+      if (target === "mailbox") { setNotificationEntry(undefined); mailbox.open(); return; }
       setNotificationEntry({ ownerPublicId: worldDevOwner, target, request: ++notificationRequest.current });
       setWorldMounted(true);
       if (!worldPortal.open) worldPortal.enter(worldEntryButton.current, null);
@@ -1862,13 +1872,15 @@ function CheckInContent() {
             worldPeopleReturn.current = false;
             appNavigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus({ preventScroll: true });
           } else worldPortal.returnFocus();
-        }} world={world} economy={economy}
+        }} world={world} economy={economy} mailbox={mailbox}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
         isOnline={isOnline} onSessionLost={loseSession}
         friends={{ data: people, loading: peopleLoading, error: peopleError, updatedAt: peopleUpdatedAt, isOnline, onRefresh: () => refreshPeople() }}
         onOpenPeople={() => { worldPeopleReturn.current = true; worldPortal.close(); selectView("people"); }}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
+      {me && screen === "home" && <MailboxDialog key={`mailbox:${me.user.publicId}`} mailbox={mailbox} />}
+      {me && screen === "home" && <MailboxNotifications key={`mailbox-notifications:${me.user.publicId}`} mailbox={mailbox} />}
       <footer ref={appNavigationRef} className={styles.footer}>
         <AppNavigation active={activeView} onSelect={selectView}
           invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />

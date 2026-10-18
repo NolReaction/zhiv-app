@@ -114,6 +114,13 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
             }
         }
         rateLimit(RateLimitName("admin-write")) {
+            post("/users/{publicId}/adjust-economy") {
+                val hash = call.adminSessionHash(config, codec, writing = true)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                val request = call.receive<AdminEconomyAdjustmentRequest>()
+                val id = parseCanonicalUuidV4(request.requestId) ?: badQuery()
+                call.respond(repository.adjustEconomy(hash, target, id, request))
+            }
             post("/users/{publicId}/grant-economy") {
                 val hash = call.adminSessionHash(config, codec, writing = true)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()

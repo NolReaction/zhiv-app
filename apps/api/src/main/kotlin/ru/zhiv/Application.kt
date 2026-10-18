@@ -104,6 +104,9 @@ import java.security.MessageDigest
 import ru.zhiv.notifications.NotificationRepository
 import ru.zhiv.notifications.WebPushConfig
 import ru.zhiv.notifications.WebPushSender
+import ru.zhiv.mail.MailRepository
+import ru.zhiv.mail.mailRoutes
+import ru.zhiv.db.JdbcMailRepository
 import ru.zhiv.notifications.notificationRoutes
 import ru.zhiv.db.JdbcNotificationRepository
 import ru.zhiv.db.NotificationMaintenance
@@ -168,6 +171,7 @@ fun Application.module() {
         notifications = JdbcNotificationRepository(dataSource, pushConfig),
         promo = JdbcPromoRepository(dataSource),
         adminPromo = JdbcAdminPromoRepository(dataSource, AdminConfig(config.adminPublicIds)),
+        playerMail = JdbcMailRepository(dataSource, AdminConfig(config.adminPublicIds)),
     )
 }
 
@@ -202,6 +206,7 @@ fun Application.installZhivApi(
     notifications: NotificationRepository? = null,
     promo: PromoRepository? = null,
     adminPromo: AdminPromoRepository? = null,
+    playerMail: MailRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -235,6 +240,9 @@ fun Application.installZhivApi(
             "forest-memory-write" to 30,
             "game-session" to 120,
             "presence-write" to 1_200,
+            "mail-read" to 240,
+            "mail-write" to 120,
+            "admin-mail-write" to 6,
             "notifications-read" to 120,
             "notifications-write" to 60,
             "notifications-presence" to 120,
@@ -365,6 +373,7 @@ fun Application.installZhivApi(
         forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config, presence) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         notifications?.let { notificationRoutes(it, tokenCodec, config) }
+        playerMail?.let { mailRoutes(it, tokenCodec, config) }
         promo?.let { promoRoutes(it, tokenCodec, config, presence) }
         adminPromo?.let { adminPromoRoutes(it, tokenCodec, config) }
         admin?.let { repository ->

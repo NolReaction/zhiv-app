@@ -172,6 +172,7 @@ internal fun notificationMessage(events: List<NotificationMessageEvent>): Notifi
     val current = unique.filterNot { it.category == "production" && it.phase == "harvest" && it.job?.id in collectedIds }
     val grouped = current.groupBy { it.category }
     val sections = buildList {
+        if ("mail" in grouped) add(NotificationSection("Новое письмо от администрации. Откройте почту.", "Новое письмо от администрации. Откройте почту."))
         grouped["exploration"]?.let { add(explorationSection(it)) }
         grouped["construction"]?.let { add(constructionSection(it)) }
         grouped["production"]?.let { add(productionSection(it)) }
@@ -182,6 +183,7 @@ internal fun notificationMessage(events: List<NotificationMessageEvent>): Notifi
         "construction" -> "Стройка завершена"
         "production" -> "Ресурсы готовы"
         "checkin" -> "Пора отметиться"
+        "mail" -> "Письмо от администрации"
         else -> "Новости полянки"
     }
     val bodies = sections.map { it.full }.toMutableList()

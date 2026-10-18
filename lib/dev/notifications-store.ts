@@ -1,5 +1,5 @@
 import { getDevIdentity } from "./api-store";
-import { defaultNotificationPreferences, type NotificationPreferences, type NotificationSnapshot } from "@/features/notifications/notification-contract";
+import { defaultNotificationPreferences, notificationPreferencesSchema, type NotificationPreferences, type NotificationSnapshot } from "@/features/notifications/notification-contract";
 
 type Store = Map<string, NotificationPreferences>;
 const globalNotifications = globalThis as typeof globalThis & { zhivDevNotificationPreferences?: Store };
@@ -10,13 +10,13 @@ export function getDevNotifications(token: string | undefined, expectedOwnerPubl
   const identity = getDevIdentity(token);
   if (!identity) return { kind: "unauthorized" };
   if (identity.user.publicId !== expectedOwnerPublicId) return { kind: "owner-mismatch" };
-  const preferences = store().get(expectedOwnerPublicId) ?? defaultNotificationPreferences(identity.profile.timeZone);
+  const preferences = notificationPreferencesSchema.parse(store().get(expectedOwnerPublicId) ?? defaultNotificationPreferences(identity.profile.timeZone));
   return { kind: "ok", value: { ownerPublicId: expectedOwnerPublicId, preferences: structuredClone(preferences),
     delivery: { configured: false, publicKey: null, reason: "not_configured" }, subscription: { subscribed: false } } };
 }
 export function saveDevNotificationPreferences(token: string | undefined, owner: string, preferences: NotificationPreferences): DevNotificationResult {
   const identity = getDevNotifications(token, owner);
   if (identity.kind !== "ok") return identity;
-  store().set(owner, structuredClone(preferences));
+  store().set(owner, notificationPreferencesSchema.parse(preferences));
   return getDevNotifications(token, owner);
 }

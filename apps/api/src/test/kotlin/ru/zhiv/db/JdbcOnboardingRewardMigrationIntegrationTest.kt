@@ -45,7 +45,7 @@ class JdbcOnboardingRewardMigrationIntegrationTest {
             val before=retained(source)
             val daily=scalar(source,"SELECT (to_jsonb(r)-'onboarding_claimed_at')::text FROM game_daily_rewards r WHERE user_id=?",user)
             DatabaseFactory.migrate(source)
-            assertEquals("60",scalar(source,"SELECT max(version::int)::text FROM flyway_schema_history"))
+            assertEquals("61",scalar(source,"SELECT max(version::int)::text FROM flyway_schema_history"))
             assertEquals(before,retained(source),"Migration never awards an old local completion or rewrites money and receipts")
             assertEquals(daily,scalar(source,"SELECT (to_jsonb(r)-'onboarding_claimed_at')::text FROM game_daily_rewards r WHERE user_id=?",user))
             assertEquals("true",scalar(source,"SELECT (onboarding_claimed_at IS NULL)::text FROM game_daily_rewards WHERE user_id=?",user))

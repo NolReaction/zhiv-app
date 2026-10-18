@@ -14,6 +14,18 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.sql.DataSource
 
+/** Called only for a new server-authored letter, in the same transaction as mail.
+ * Saving a letter never grants permission or creates a browser subscription. */
+internal fun enqueueMailNotification(c: Connection, user: UUID, mailId: UUID, now: OffsetDateTime) {
+    c.economyUpdate("""INSERT INTO notification_events(user_id,source_key,category,due_at,next_attempt_at)
+        SELECT m.user_id,'mail:' || m.id::text,'mail',?,? FROM player_mail_messages m
+        WHERE m.user_id=? AND m.id=? AND m.notify AND m.read_at IS NULL
+          AND EXISTS(SELECT 1 FROM notification_preferences p WHERE p.user_id=m.user_id)
+          AND EXISTS(SELECT 1 FROM notification_subscriptions n JOIN app_sessions s ON s.id=n.session_id AND s.user_id=n.user_id
+            WHERE n.user_id=m.user_id AND s.revoked_at IS NULL AND s.expires_at>?)
+        ON CONFLICT(user_id,source_key) DO NOTHING""",now,now,user,mailId,now)
+}
+
 /** Durable reservation before network I/O. An interrupted/ambiguous send is
  * never replayed; accepted delivery cannot be made exactly-once by HTTP. */
 class NotificationDispatcher(
@@ -23,7 +35,7 @@ class NotificationDispatcher(
 ) {
     private data class Event(val key: String, val category: String, val due: Instant, val attempts: Int)
     private data class Batch(val id: UUID, val user: UUID)
-    private data class Sources(val state: EconomyState?, val hasLegacyJourney: Boolean) {
+    private data class Sources(val state: EconomyState?, val hasLegacyJourney: Boolean, val unreadMail: Set<String>) {
         val jobs: List<EconomyJob> get() = state?.jobs.orEmpty()
     }
     private data class SourceEvent(val event: Event, val job: EconomyJob?, val readiness: NotificationJobReadiness)
@@ -52,17 +64,27 @@ class NotificationDispatcher(
         else "SELECT source_key,category,due_at,attempts FROM notification_events WHERE user_id=? AND state='sending' AND batch_id=? ORDER BY due_at",
         user,batch ?: now.notificationSqlTime()
     ) { Event(it.getString(1),it.getString(2),it.getObject(3,OffsetDateTime::class.java).toInstant(),it.getInt(4)) }
-    private fun sources(c: Connection,user: UUID): Sources {
+    private fun sources(c: Connection,user: UUID,events: List<Event>): Sources {
         val state=c.economyRows("SELECT state::text FROM economy_profiles WHERE user_id=?",user) {
             economyJson.decodeFromString<EconomyState>(it.getString(1))
         }.singleOrNull()
         val legacy=c.economyRows("SELECT jsonb_array_length(coalesce(state->'journeys','[]'::jsonb))>0 FROM world_profiles WHERE user_id=?",user) {
             it.getBoolean(1)
         }.singleOrNull() ?: false
-        return Sources(state,legacy)
+        // The reserved batch is bounded. Do not scan a long-lived whole inbox,
+        // and never load private letter text or correction amounts for push.
+        val mailIds=events.filter { it.category=="mail" && it.key.startsWith("mail:") }
+            .mapNotNull { runCatching { UUID.fromString(it.key.removePrefix("mail:")) }.getOrNull() }.distinct()
+        val mail=if(mailIds.isEmpty()) emptySet() else c.economyRows("""SELECT id FROM player_mail_messages
+            WHERE user_id=? AND notify AND read_at IS NULL AND id IN (${mailIds.joinToString(",") { "?" }})""",
+            user,*mailIds.toTypedArray()) { "mail:${it.getObject(1,UUID::class.java)}" }.toSet()
+        return Sources(state,legacy,mail)
     }
     private fun sourceEvents(events: List<Event>,sources: Sources,now: Instant): List<SourceEvent> = events.mapNotNull { event ->
         if(event.category=="checkin") SourceEvent(event,null,NotificationJobReadiness(event.due))
+        else if(event.category=="mail") {
+            if(event.key in sources.unreadMail) SourceEvent(event,null,NotificationJobReadiness(event.due)) else null
+        }
         else sources.jobs.singleOrNull { "job:${it.id}"==event.key && it.kind==event.category }?.let { job ->
             val readiness=notificationJobReadiness(job,sources.jobs,sources.hasLegacyJourney,now)
             // The queue persists the actual availability after an actor wait;
@@ -100,7 +122,7 @@ class NotificationDispatcher(
         c.economyRows("SELECT notification_sync_sources_at(?,?::timestamptz)",user,now.notificationSqlTime()) { true }
         val due=events(c,user,now)
         if(due.isEmpty()) return@transaction null
-        val current=sourceEvents(due,sources(c,user),now)
+        val current=sourceEvents(due,sources(c,user,due),now)
         val stale=due.filter { event ->
             val source=current.singleOrNull { it.event==event }
             source==null || !p.enabled(event.category) || sourceIsStale(source,now) || event.attempts>=3
@@ -128,7 +150,7 @@ class NotificationDispatcher(
         // Source deletion/speedup/claim between reservation and send is observed.
         c.economyRows("SELECT notification_sync_sources_at(?,?::timestamptz)",batch.user,now.notificationSqlTime()) { true }
         val queued=events(c,batch.user,now,batch.id)
-        val sources=sources(c,batch.user)
+        val sources=sources(c,batch.user,queued)
         val current=sourceEvents(queued,sources,now).filter {
             p?.enabled(it.event.category)==true && !sourceIsStale(it,now)
         }
@@ -171,6 +193,7 @@ class NotificationDispatcher(
         // Only the ready confirmed batch determines the actor and destination.
         val onlyMine=readySources.all { it.job?.let(EconomyRules::isMinerJob)==true }
         val target=when {
+            "mail" in categories -> "mailbox"
             onlyMine -> "world&section=mine"
             "exploration" in categories -> "world&section=activities"
             "construction" in categories -> "world&section=construction"

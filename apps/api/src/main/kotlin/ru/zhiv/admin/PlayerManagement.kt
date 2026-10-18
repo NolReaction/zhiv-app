@@ -4,6 +4,7 @@ import ru.zhiv.identity.PlayerTag
 import ru.zhiv.identity.hasUserTextControls
 import kotlinx.serialization.Serializable
 import ru.zhiv.world.WorldState
+import ru.zhiv.mail.PlayerMailMessage
 
 internal fun validAdminReason(reason: String): Boolean =
     reason.length in 8..240 && reason == reason.trim() && !hasUserTextControls(reason)
@@ -16,6 +17,7 @@ internal fun validAdminReason(reason: String): Boolean =
 @Serializable data class AdminPlayerCommand(
     val requestId: String, val confirmationPublicId: String, val reason: String, val action: String,
     val target: String = "", val amount: Long = 0, val tag: PlayerTag? = null,
+    val delivery: String = "silent", val playerMessage: PlayerMailMessage? = null,
 )
 @Serializable data class AdminPlayerReceipt(
     val requestId: String, val action: String, val changed: Boolean, val affectedSessions: Int, val createdAt: String,
@@ -26,6 +28,8 @@ object PlayerManagement {
     val actions = setOf("grant_resource", "grant_world_item", "grant_find", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal")
     fun valid(command: AdminPlayerCommand): Boolean {
         if (command.action !in actions) return false
+        if (runCatching { validateAdminDelivery(command.delivery, command.playerMessage) }.isFailure ||
+            command.delivery != "silent" && command.action !in setOf("grant_world_item", "grant_find")) return false
         if (!validAdminReason(command.reason)) return false
         if (command.tag != null && (command.action != "set_tag" || command.tag.color !in colors ||
                 !Regex("^[A-Za-zА-Яа-яЁё0-9_-]{1,16}$").matches(command.tag.text))) return false

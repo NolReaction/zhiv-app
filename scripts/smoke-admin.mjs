@@ -342,4 +342,136 @@ while (performance.now() < deadline) {
   await delay(Math.max(0, Math.min(2_000, deadline - performance.now())));
 }
 assert.ok(monitoringReady, "Real API/node scrapes and CPU, memory, disk values must appear within 60 seconds");
-console.log("Admin production smoke passed: authorization, restricted SQL grants, tags, bans, tap telemetry, security observation recording and review, idempotent audit, internal metrics and real host monitoring.");
+
+// Keep these additional mutations after the original exact audit/user counts.
+// A fresh fixture and the peer administrator's separate write budget prevent
+// earlier moderation checks or their per-account rate limit from being changed.
+const mailTarget = await profile("CI isolated mail recipient");
+assert.match(mailTarget.publicId, /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
+await resumePresence(mailTarget.cookie);
+const mailGrantPath = `/api/v1/admin/users/${mailTarget.publicId}/grant-economy`;
+const adjustmentPath = `/api/v1/admin/users/${mailTarget.publicId}/adjust-economy`;
+const mailboxPath = `/api/v1/mail?expectedOwnerPublicId=${mailTarget.publicId}&limit=50`;
+async function fixtureInbox() {
+  const response = await api("GET", mailboxPath, { cookie: mailTarget.cookie });
+  assert.equal(response.headers["cache-control"], "no-store");
+  assert.equal(response.headers["x-robots-tag"], "noindex, nofollow");
+  assert.equal(response.data.ownerPublicId, mailTarget.publicId);
+  assert.equal(response.data.nextCursor, null);
+  return response.data;
+}
+function mailSourceCount(sourceKey) {
+  assert.match(sourceKey, /^(?:admin|broadcast):[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  return Number(sql(`SELECT count(*) FROM player_mail_messages WHERE user_id=(SELECT id FROM app_users WHERE public_id='${mailTarget.publicId}') AND source_key='${sourceKey}';`));
+}
+function ledgerSourceCount(requestId) {
+  assert.match(requestId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  return Number(sql(`SELECT count(*) FROM economy_ledger WHERE user_id=(SELECT id FROM app_users WHERE public_id='${mailTarget.publicId}') AND source_key='admin:${requestId}';`));
+}
+const initialMailEconomy = (await api("GET", "/api/v1/economy", { cookie: mailTarget.cookie })).data;
+assert.deepEqual((await fixtureInbox()).messages, []);
+await api("GET", mailboxPath, { expected: 401 });
+await api("GET", mailboxPath, { cookie: ordinary.cookie, expected: 409 });
+
+const silentGrant = { requestId: randomUUID(), confirmationPublicId: mailTarget.publicId,
+  reason: "CI private quiet grant reason", coins: 11, delivery: "silent" };
+await api("POST", mailGrantPath, { cookie: ordinary.cookie, body: silentGrant, expected: 403 });
+await api("POST", mailGrantPath, { cookie: peer.cookie, body: silentGrant, source: "https://untrusted.invalid", expected: 403 });
+const silentReceipt = await api("POST", mailGrantPath, { cookie: peer.cookie, body: silentGrant });
+assert.equal(silentReceipt.data.changed, true);
+assert.equal(silentReceipt.headers["cache-control"], "no-store");
+const afterSilent = (await api("GET", "/api/v1/economy", { cookie: mailTarget.cookie })).data;
+assert.equal(afterSilent.wallet.coins, initialMailEconomy.wallet.coins + 11);
+assert.equal(afterSilent.wallet.pearls, initialMailEconomy.wallet.pearls);
+assert.deepEqual((await fixtureInbox()).messages, []);
+assert.equal(mailSourceCount(`admin:${silentGrant.requestId}`), 0);
+
+const privateGrantReason = "CI private notified grant audit reason";
+const notifiedGrant = { requestId: randomUUID(), confirmationPublicId: mailTarget.publicId,
+  reason: privateGrantReason, coins: 23, pearls: 3, delivery: "notify",
+  playerMessage: { title: "Подарок для тестового игрока", body: "Начисление уже применено к вашему хозяйству." } };
+const notifiedReceipt = await api("POST", mailGrantPath, { cookie: peer.cookie, body: notifiedGrant });
+assert.deepEqual((await api("POST", mailGrantPath, { cookie: peer.cookie, body: notifiedGrant })).data, notifiedReceipt.data);
+const afterNotified = (await api("GET", "/api/v1/economy", { cookie: mailTarget.cookie })).data;
+assert.equal(afterNotified.wallet.coins, afterSilent.wallet.coins + 23);
+assert.equal(afterNotified.wallet.pearls, afterSilent.wallet.pearls + 6, "Three visible pearls store exactly six units once");
+assert.equal(afterNotified.revision, notifiedReceipt.data.acceptedRevision);
+const grantInbox = await fixtureInbox();
+assert.equal(grantInbox.messages.length, 1);
+assert.equal(grantInbox.unreadCount, 1);
+const grantLetter = grantInbox.messages[0];
+assert.match(grantLetter.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+assert.equal(grantLetter.type, "admin_grant");
+assert.equal(grantLetter.notify, true);
+assert.equal(grantLetter.title, notifiedGrant.playerMessage.title);
+assert.equal(grantLetter.body, notifiedGrant.playerMessage.body);
+assert.equal(grantLetter.attachments.coins, 23);
+assert.equal(grantLetter.attachments.pearls, 3);
+assert.equal(JSON.stringify(grantInbox).includes(privateGrantReason), false);
+assert.equal(mailSourceCount(`admin:${notifiedGrant.requestId}`), 1);
+assert.equal(ledgerSourceCount(notifiedGrant.requestId), 1);
+const letterReadPath = `/api/v1/mail/${grantLetter.id}/read`;
+const readBody = { expectedOwnerPublicId: mailTarget.publicId };
+await api("POST", letterReadPath, { cookie: ordinary.cookie, body: { expectedOwnerPublicId: ordinary.publicId }, expected: 404 });
+await api("POST", letterReadPath, { cookie: mailTarget.cookie, body: readBody, source: "https://untrusted.invalid", expected: 403 });
+const readReceipt = await api("POST", letterReadPath, { cookie: mailTarget.cookie, body: readBody });
+assert.equal(readReceipt.headers["cache-control"], "no-store");
+assert.equal(readReceipt.data.ownerPublicId, mailTarget.publicId);
+assert.equal(readReceipt.data.id, grantLetter.id);
+assert.equal(readReceipt.data.unreadCount, 0);
+assert.ok(readReceipt.data.readAt);
+const readReplay = await api("POST", letterReadPath, { cookie: mailTarget.cookie, body: readBody });
+assert.equal(readReplay.data.readAt, readReceipt.data.readAt);
+const afterRead = (await api("GET", "/api/v1/economy", { cookie: mailTarget.cookie })).data;
+assert.deepEqual(afterRead.wallet, afterNotified.wallet, "Reading a letter cannot claim its attached receipt a second time");
+assert.equal(afterRead.revision, afterNotified.revision);
+
+const privateAdjustmentReason = "CI private signed correction audit reason";
+const adjustment = { requestId: randomUUID(), confirmationPublicId: mailTarget.publicId,
+  reason: privateAdjustmentReason, expectedRevision: afterRead.revision, coinsDelta: -7, pearlsDelta: -1, delivery: "notify",
+  playerMessage: { title: "Поправка тестового кошелька", body: "Поправка уже отражена в кошельке." } };
+await api("POST", adjustmentPath, { cookie: peer.cookie,
+  body: { ...adjustment, requestId: randomUUID(), expectedRevision: afterRead.revision - 1 }, expected: 409 });
+const adjustedReceipt = await api("POST", adjustmentPath, { cookie: peer.cookie, body: adjustment });
+assert.deepEqual((await api("POST", adjustmentPath, { cookie: peer.cookie, body: adjustment })).data, adjustedReceipt.data);
+const afterAdjustment = (await api("GET", "/api/v1/economy", { cookie: mailTarget.cookie })).data;
+assert.equal(afterAdjustment.wallet.coins, afterRead.wallet.coins - 7);
+assert.equal(afterAdjustment.wallet.pearls, afterRead.wallet.pearls - 2);
+assert.equal(afterAdjustment.revision, adjustedReceipt.data.acceptedRevision);
+const correctionInbox = await fixtureInbox();
+assert.equal(correctionInbox.messages.length, 2);
+const correctionLetter = correctionInbox.messages.find(message => message.type === "balance_correction");
+assert.equal(correctionLetter.attachments.coins, -7);
+assert.equal(correctionLetter.attachments.pearls, -1);
+assert.equal(correctionLetter.body, adjustment.playerMessage.body);
+assert.equal(JSON.stringify(correctionInbox).includes(privateAdjustmentReason), false);
+assert.equal(mailSourceCount(`admin:${adjustment.requestId}`), 1);
+assert.equal(ledgerSourceCount(adjustment.requestId), 1);
+
+// No all-player broadcast: the selected audience is this one new CI fixture.
+const broadcast = { requestId: randomUUID(), reason: "CI private targeted broadcast audit reason",
+  title: "Изолированное объявление команды", body: "Письмо только одному тестовому получателю.",
+  audience: "players", publicIds: [mailTarget.publicId], notify: true, confirmation: "ОТПРАВИТЬ" };
+const broadcastPath = "/api/v1/admin/mail/broadcast";
+await api("POST", broadcastPath, { body: broadcast, expected: 401 });
+await api("POST", broadcastPath, { cookie: ordinary.cookie, body: broadcast, expected: 403 });
+await api("POST", broadcastPath, { cookie: peer.cookie, body: broadcast, source: "https://untrusted.invalid", expected: 403 });
+const broadcastReceipt = await api("POST", broadcastPath, { cookie: peer.cookie, body: broadcast });
+assert.equal(broadcastReceipt.headers["cache-control"], "no-store");
+assert.equal(broadcastReceipt.data.requestId, broadcast.requestId);
+assert.equal(broadcastReceipt.data.recipientCount, 1);
+assert.equal(broadcastReceipt.data.changed, true);
+assert.deepEqual((await api("POST", broadcastPath, { cookie: peer.cookie, body: broadcast })).data, broadcastReceipt.data);
+const finalInbox = await fixtureInbox();
+assert.equal(finalInbox.messages.length, 3);
+assert.equal(new Set(finalInbox.messages.map(message => message.id)).size, 3);
+assert.equal(finalInbox.unreadCount, 2);
+const broadcastLetter = finalInbox.messages.find(message => message.title === broadcast.title);
+assert.equal(broadcastLetter.type, "admin_notice");
+assert.equal(broadcastLetter.body, broadcast.body);
+assert.equal(broadcastLetter.notify, true);
+assert.equal(JSON.stringify(finalInbox).includes(broadcast.reason), false);
+assert.equal(mailSourceCount(`broadcast:${broadcast.requestId}`), 1);
+assert.equal(sql(`SELECT count(*) FROM notification_subscriptions WHERE user_id=(SELECT id FROM app_users WHERE public_id='${mailTarget.publicId}');`), "0", "Mail creation cannot create device consent or external push capability");
+
+console.log("Admin production smoke passed: authorization, restricted SQL grants, tags, bans, tap telemetry, security observation recording and review, idempotent audit, private mail, silent/notified grants, signed wallet corrections, targeted broadcasts, internal metrics and real host monitoring.");

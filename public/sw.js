@@ -334,7 +334,7 @@ function notificationUrl(value, expectedOwner) {
     if (url.origin !== self.location.origin || url.pathname !== "/" || url.searchParams.get("owner") !== expectedOwner) return null;
     const notification = url.searchParams.get("notification");
     const section = url.searchParams.get("section");
-    if (notification !== "checkin" && !(notification === "world" && ["activities", "production", "construction"].includes(section))) return null;
+    if (notification !== "checkin" && notification !== "mailbox" && !(notification === "world" && ["activities", "mine", "production", "construction"].includes(section))) return null;
     const safe = new URL("/", self.location.origin);
     safe.searchParams.set("notification", notification);
     safe.searchParams.set("owner", expectedOwner);

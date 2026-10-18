@@ -9,6 +9,15 @@ import ru.zhiv.economy.EconomyRules
 import kotlin.test.*
 
 class NotificationMessagesTest {
+    @Test fun `mail push contains a generic invitation and no letter payload`() {
+        val mail=NotificationMessageEvent("mail")
+        val actual=notificationMessage(listOf(mail,mail))
+        assertEquals("Письмо от администрации",actual.title)
+        assertEquals("Новое письмо от администрации. Откройте почту.",actual.body)
+        val combined=notificationMessage(listOf(mail,NotificationMessageEvent("checkin")))
+        assertContains(combined.body,actual.body)
+        assertTrue(combined.body.length<=360)
+    }
     private val startedAt = "2026-10-13T08:00:00Z"
     private val finishesAt = "2026-10-13T09:00:00Z"
     private fun job(kind: String, target: String, rewards: Map<String, Long> = emptyMap(), id: String = "$kind:$target") =

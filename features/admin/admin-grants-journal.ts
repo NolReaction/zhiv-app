@@ -1,8 +1,7 @@
 import { adminEconomyGrantSchema, type AdminEconomyGrant } from "./admin-grants-api";
 import { economyCatalog } from "@/features/economy/domain/model";
 import type { GrantEntry } from "./admin-grants-model";
-
-const key = (actor: string, target: string) => `zhiv:admin-grant:${actor}:${target}`;
+import { readAdminAttempt, saveAdminAttempt } from "./admin-attempt-journal";
 
 export function pendingGrantTargets(actor: string): string[] {
   if (typeof window === "undefined") return [];
@@ -16,21 +15,12 @@ export function pendingGrantTargets(actor: string): string[] {
 
 /** A tab-local journal keeps an uncertain write immutable across a page reload. */
 export function readGrantAttempt(actor: string, target: string): AdminEconomyGrant | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const saved = window.sessionStorage.getItem(key(actor, target));
-    if (!saved) return null;
-    const parsed = adminEconomyGrantSchema.safeParse(JSON.parse(saved));
-    return parsed.success && parsed.data.confirmationPublicId === target ? parsed.data : null;
-  } catch { return null; }
+  const request = readAdminAttempt("grant", actor, target, adminEconomyGrantSchema);
+  return request?.confirmationPublicId === target ? request : null;
 }
 
 export function saveGrantAttempt(actor: string, target: string, request: AdminEconomyGrant | null): boolean {
-  try {
-    if (request) window.sessionStorage.setItem(key(actor, target), JSON.stringify(request));
-    else window.sessionStorage.removeItem(key(actor, target));
-    return true;
-  } catch { return false; }
+  return saveAdminAttempt("grant", actor, target, request);
 }
 
 export function entriesFromGrant(request: AdminEconomyGrant): GrantEntry[] {

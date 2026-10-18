@@ -34,6 +34,32 @@ test("malformed, external, missing-owner and economic-action push targets never 
   assert.equal(h.shown.length, 0);
 });
 
+test("mail push and click retain only the known owner bound mailbox destination", async () => {
+  const h = harness();
+  const mail = { ...payload, title: "Письмо от администрации", body: "Новое письмо от администрации. Откройте почту.",
+    url: `/?notification=mailbox&owner=${payload.ownerPublicId}&redirect=https://evil.example&grant=all&section=admin` };
+  await h.dispatch("push", { data: { json: () => mail } });
+  assert.equal(h.shown.length, 1);
+  const [, options] = h.shown[0];
+  assert.equal(options.body, mail.body);
+  await h.dispatch("notificationclick", { notification: { data: options.data, close() {} } });
+  const target = new URL(h.opened[0]);
+  assert.equal(target.origin, origin);
+  assert.equal(target.pathname, "/");
+  assert.deepEqual([...target.searchParams], [["notification", "mailbox"], ["owner", payload.ownerPublicId]]);
+  const rejected = harness();
+  for (const url of ["https://evil.example/?notification=mailbox", "/api/v1/mail?notification=mailbox", "/?notification=mailbox&owner=another"])
+    await rejected.dispatch("push", { data: { json: () => ({ ...mail, url }) } });
+  assert.equal(rejected.shown.length, 0);
+});
+
+test("known miner notification remains a safe read only destination", async () => {
+  const h = harness();
+  await h.dispatch("push", { data: { json: () => ({ ...payload, url: `/?notification=world&section=mine&owner=${payload.ownerPublicId}` }) } });
+  assert.equal(h.shown.length, 1);
+  assert.equal(new URL(h.shown[0][1].data.url).searchParams.get("section"), "mine");
+});
+
 test("legacy API titles do not repeat the platform app name or lose grouped events", async () => {
   const body = "Мохлик вернулся из путешествия. Стройка завершена. Ресурсы готовы.";
   for (const title of ["Я Живой", "Я живой", "  Я   ЖИВОЙ  ", "Мохлик"]) {
