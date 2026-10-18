@@ -89,7 +89,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
-  const [weatherEnabled, setWeatherEnabled] = useState(() => cameraSession?.readPreferences().weatherEnabled ?? false);
+  const [weatherEnabled, setWeatherEnabled] = useState(() => cameraSession?.readPreferences().weatherEnabled ?? true);
   const weatherEnabledRef = useRef(weatherEnabled);
   const weatherControllerRef = useRef<ReturnType<typeof createEarthWeatherController> | null>(null);
   const [weatherState, setWeatherState] = useState<EarthWeatherState>({ status: "disabled", area: null, snapshot: null, nextRequestAt: null, error: null });
@@ -665,7 +665,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     </div>}
     {ready && tileStatus === "idle" && cache.pending > 0 && <p className={styles.tileProgress} role="status">Загружаем окрестности…</p>}
     {ready && weatherEnabled && <p className={styles.weatherBadge} data-earth-weather-status={weatherState.status} role="status">
-      <span aria-hidden="true">{weatherState.snapshot?.condition === "clear" ? "☀" : "☁"}</span>
+      <span aria-hidden="true">{weatherState.snapshot?.condition === "clear" ? weatherState.snapshot.isDay ? "☀" : "☾" : "☁"}</span>
       {weatherState.snapshot ? `${weatherConditionLabel(weatherState.snapshot.condition)}${weatherState.snapshot.temperatureC === null ? "" : ` · ${Math.round(weatherState.snapshot.temperatureC) > 0 ? "+" : ""}${Math.round(weatherState.snapshot.temperatureC)}°`}${weatherState.status === "stale" ? " · старый прогноз" : ""}`
         : weatherState.status === "zoom-in" ? "Приблизьте карту для погоды"
           : (weatherState.status === "error" || weatherState.status === "waiting") && weatherState.nextRequestAt

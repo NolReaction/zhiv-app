@@ -78,7 +78,8 @@ export function EarthFriends({ people, loading, error, online, onRefresh, onOpen
 
 export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, isOnline, people, peopleLoading, peopleError,
   onRefreshPeople, onOpenPeople, onOpenWorld }: Props) {
-  const location = useEarthLocation({ ownerPublicId, enabled: active && visible });
+  const autoLocate = sharing.pendingGhost ? false : sharing.settings ? sharing.settings.mode !== "GHOST" : null;
+  const location = useEarthLocation({ ownerPublicId, enabled: active && visible, autoStartWhenGranted: autoLocate });
   const [focusRequest, setFocusRequest] = useState(0);
   const [panelSelection, setPanelSelection] = useState<{ visible: boolean; value: "friends" | "sharing" | "info" | null }>({ visible, value: null });
   if (panelSelection.visible !== visible) setPanelSelection({ visible, value: null });
@@ -145,6 +146,10 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     <strong role="status">{locationSummary(location.status, location.position)}</strong>
     {location.position && <p>{age > 0 ? `Обновлено ${age} мин. назад` : "Координаты получены только что"}</p>}
     {location.error && <p className={styles.locationError}>{location.error}</p>}
+    {location.status === "idle" && !location.error && <>
+      <button className={styles.stopButton} type="button" onClick={locate}>Показать меня на карте</button>
+      <p>Если доступ ещё не выдан, браузер запросит разрешение. Доступ близким включается отдельно.</p>
+    </>}
     <p><ShieldCheck size={15} aria-hidden="true" />{sharing.publishing ? "Позиция передаётся только выбранным близким, пока открыта карта." : "Кнопка «Найти себя» показывает вашу позицию только вам. Доступ друзьям включается отдельно."}</p>
     {watching && <button className={styles.stopButton} type="button" onClick={stopGps}>Остановить GPS и обновление позиции</button>}
   </section>;

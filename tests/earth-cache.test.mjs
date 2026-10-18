@@ -367,7 +367,9 @@ test("tile churn protects the active installed SDK while keeping byte and entry 
   assert.equal((await offline.readResource(sdk + "maplibre-gl-worker.mjs", "string")).data, "data");
 });
 
-test("a full pinned SDK falls back to session tiles and a new SDK group can replace the old version", async () => {
+test("a full pinned SDK falls back to session tiles and a new SDK group can replace the old version", async (t) => {
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
   const s = platform({ maxEntries: 2, maxBytes: 8, fetcher: async () => new Response("data") });
   const prior = "https://zhiv.test/vendor/maplibre-gl-6.14.0/maplibre-gl.mjs";
   const current = "https://zhiv.test/vendor/maplibre-gl-6.15.0/maplibre-gl.mjs";
@@ -378,6 +380,8 @@ test("a full pinned SDK falls back to session tiles and a new SDK group can repl
   assert.equal(s.cache.records.has(prior), false);
   assert.equal(s.cache.records.has(current), true);
   assert.equal(s.cache.records.has(worker), true);
+  // The session tile is newer than the pinned SDK, even on a fast test runner.
+  now += 1;
   await s.controller.readResource(`${base}/overflow`, "string");
   assert.equal(s.cache.records.size, 2);
   assert.equal(s.controller.getSnapshot().storedBytes, 8);

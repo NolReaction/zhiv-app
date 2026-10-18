@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { earthTestCanvasContext } from "./earth-canvas-harness.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -270,148 +271,106 @@ test("the bounded memory cache keeps recently used cells and never shortens a re
 });
 
 function rendererFixture() {
-  let writes = 0;
-  const markers = [], listeners = new Map(), camera = { lng: 38, lat: 55, zoom: 5 };
-  const ownerDocument = { createElement(tag) {
-    return { tag, attributes: {}, children: [], dataset: {}, className: "",
-      style: new Proxy({}, { set(target, key, value) { writes++; target[key] = value; return true; } }),
-      append(...children) { this.children.push(...children); },
-      setAttribute(key, value) { writes++; this.attributes[key] = value; } };
-  }, createElementNS(namespace, tag) { assert.equal(namespace, "http://www.w3.org/2000/svg"); return this.createElement(tag); } };
-  const container = { ownerDocument, clientWidth: 600, clientHeight: 600 };
+  const elements = [], listeners = new Map(), camera = { lng: 38, lat: 55, zoom: 5 };
+  const ownerDocument = { defaultView: { devicePixelRatio: 3 }, createElement(tag) {
+    const context = earthTestCanvasContext();
+    const element = { tag, attributes: {}, children: [], dataset: {}, className: "", style: {}, hidden: false, width: 0, height: 0, removed: 0,
+      append(...children) { this.children.push(...children); }, remove() { this.removed++; },
+      setAttribute(key, value) { this.attributes[key] = value; }, getContext: () => context, context };
+    elements.push(element); return element;
+  } };
+  const container = { ownerDocument, clientWidth: 600, clientHeight: 600, children: [], append(...children) { this.children.push(...children); } };
   const mercatorY = latitude => (1 - Math.asinh(Math.tan(latitude * Math.PI / 180)) / Math.PI) / 2;
-  const map = { getContainer: () => container, getCenter: () => camera, getZoom: () => camera.zoom,
-    unproject([x, y]) {
+  const map = { getContainer: () => container, getCanvasContainer: () => container, getCenter: () => camera, getZoom: () => camera.zoom,
+    project(position) {
+      const [lng, lat] = Array.isArray(position) ? position : [position.lng, position.lat];
+      const scale = 512 * 2 ** camera.zoom;
+      const delta = ((lng - camera.lng + 540) % 360) - 180;
+      return { x: container.clientWidth / 2 + delta / 360 * scale,
+        y: container.clientHeight / 2 + (mercatorY(lat) - mercatorY(camera.lat)) * scale };
+    },
+    unproject(point) {
+      const [x, y] = Array.isArray(point) ? point : [point.x, point.y];
       const scale = 512 * 2 ** camera.zoom;
       return { lng: camera.lng + (x - container.clientWidth / 2) / scale * 360,
         lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * (mercatorY(camera.lat) + (y - container.clientHeight / 2) / scale)))) * 180 / Math.PI };
     },
     on(type, callback) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(callback); },
     off(type, callback) { listeners.get(type)?.delete(callback); if (!listeners.get(type)?.size) listeners.delete(type); } };
-  class Marker {
-    constructor(options) {
-      this.options = options; this.positions = []; this.removed = 0; markers.push(this);
-      options.element.style.opacity = "0.73"; options.element.style.transform = "translate(12px, 34px)";
-    }
-    setLngLat(position) { this.positions.push([...position]); return this; }
-    addTo(target) { assert.equal(target, map); return this; }
-    remove() { this.removed++; }
-  }
-  const renderer = createEarthWeather(map, Marker);
+  class ForbiddenMarker { constructor() { throw new Error("Weather must not create repeated icon markers"); } }
+  const renderer = createEarthWeather(map, ForbiddenMarker);
   const snapshot = values => ({ ...reading(), area: earthWeatherArea(38, 55), fetchedAt: BASE_TIME, ...values });
-  return { renderer, markers, listeners, camera, snapshot, get writes() { return writes; },
+  return { renderer, elements, listeners, camera, snapshot, container, map,
     move(values) { Object.assign(camera, values); for (const callback of listeners.get("move") ?? []) callback(); },
-    get element() { return markers[0]?.options.element; }, get art() { return this.element?.children[0].children; } };
+    get field() { return container.children[0]; }, get calls() { return this.field?.context.calls ?? []; } };
 }
 
-test("weather artwork is lazy, non-interactive and never follows an old forecast across cell or zoom boundaries", () => {
-  const s = rendererFixture(); s.renderer.setWeather(s.snapshot()); assert.equal(s.markers.length, 0);
-  s.renderer.setVisible(true); assert.equal(s.markers.length, 1); assert.equal(s.element.style.display, "");
-  assert.equal(s.element.attributes["aria-hidden"], "true"); assert.equal(s.element.style.pointerEvents, "none");
-  assert.equal(s.element.style.opacity, "0.73"); assert.equal(s.element.style.transform, "translate(12px, 34px)");
-  s.move({ lng: 38.2 }); assert.deepEqual(s.markers[0].positions.at(-1), [38, 55], "the region summary stays at its geographic anchor");
-  s.move({ lng: 40 }); assert.equal(s.element.style.display, "none"); assert.equal(s.renderer.hasMotion(), false);
-  s.move({ lng: 38, zoom: 2.9 }); assert.equal(s.element.style.display, "none");
-  s.move({ zoom: 5 }); assert.equal(s.element.style.display, ""); assert.equal(s.markers.length, 1);
-  s.renderer.setWeather(s.snapshot({ condition: "unknown" })); assert.equal(s.element.style.display, "none");
-  s.renderer.dispose();
+test("weather is one lazy non-interactive canvas and never carries a forecast into another cell", () => {
+  const s = rendererFixture(); s.renderer.setWeather(s.snapshot()); assert.equal(s.container.children.length, 0);
+  s.renderer.setVisible(true); assert.equal(s.container.children.length, 1); assert.equal(s.field.hidden, false);
+  assert.equal(s.field.tag, "canvas"); assert.equal(s.field.attributes["aria-hidden"], "true"); assert.equal(s.field.style.pointerEvents, "none");
+  s.move({ lng: 40 }); assert.equal(s.field.hidden, true); assert.equal(s.renderer.hasMotion(), false);
+  const count = s.calls.length; s.renderer.update(1_000); assert.equal(s.calls.length, count);
+  s.move({ lng: 38, zoom: 2.9 }); assert.equal(s.field.hidden, true);
+  s.move({ zoom: 14 }); assert.equal(s.field.hidden, false); assert.equal(s.container.children.length, 1);
+  s.renderer.setWeather(s.snapshot({ condition: "unknown" })); assert.equal(s.field.hidden, true);
+  s.renderer.dispose(); assert.equal(s.field.removed, 1); assert.equal(s.listeners.size, 0);
 });
 
-test("rain and snow use twelve particles on the shared clock; reduced motion is a static drawing", () => {
-  const s = rendererFixture(); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot());
-  assert.equal(s.art.length - 5, 12); const particles = s.art.slice(5);
-  const initial = particles.map(particle => particle.attributes.transform);
-  s.renderer.update(1_000); assert.notDeepEqual(particles.map(particle => particle.attributes.transform), initial);
-  s.renderer.setMotionEnabled(false); assert.equal(s.renderer.hasMotion(), false);
-  const staticFrame = particles.map(particle => particle.attributes.transform), writes = s.writes;
-  s.renderer.update(10_000); assert.equal(s.writes, writes); assert.deepEqual(particles.map(particle => particle.attributes.transform), staticFrame);
+test("rain and snow use a bounded continuous forecast field; reduced motion freezes every draw", () => {
+  const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot());
+  assert.ok(s.calls.some(call => call[0] === "drawImage")); assert.ok(s.calls.some(call => call[0] === "stroke"));
+  assert.ok(Number(s.field.dataset.weatherParticles) > 0 && Number(s.field.dataset.weatherParticles) <= 56);
+  const initial = s.calls.length;
+  s.renderer.update(1_000); assert.ok(s.calls.length > initial);
+  s.renderer.setMotionEnabled(false); const still = s.calls.length;
+  s.renderer.update(10_000); assert.equal(s.calls.length, still); assert.equal(s.renderer.hasMotion(), false);
   s.renderer.setWeather(s.snapshot({ condition: "snow" }));
-  assert.ok(particles.every(particle => particle.attributes.d === "M-2.5 0h5M0-2.5v5"));
-  assert.ok(particles.every(particle => particle.style.display === ""));
+  assert.ok(s.calls.slice(still).some(call => call[0] === "arc"));
+  assert.ok(Number(s.field.dataset.weatherParticles) > 0 && Number(s.field.dataset.weatherParticles) <= 42);
   s.renderer.setMotionEnabled(true); assert.equal(s.renderer.hasMotion(), true);
-  s.renderer.update(2_000); assert.notDeepEqual(particles.map(particle => particle.attributes.transform), staticFrame);
   s.renderer.dispose();
 });
 
-test("clear night shows a still moon, and hidden/disposed artwork receives no particle updates", () => {
-  const s = rendererFixture(); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot({ condition: "clear", isDay: false }));
-  const [sun, moon, cloud, fog, lightning, ...particles] = s.art;
-  assert.equal(sun.style.display, "none"); assert.equal(moon.style.display, ""); assert.equal(cloud.style.display, "none");
-  assert.equal(fog.style.display, "none"); assert.equal(lightning.style.display, "none");
-  assert.ok(particles.every(particle => particle.style.display === "none")); assert.equal(s.renderer.hasMotion(), false);
-  s.renderer.setWeather(s.snapshot()); s.renderer.setVisible(false); const hiddenWrites = s.writes;
-  s.renderer.update(5_000); assert.equal(s.writes, hiddenWrites);
-  s.renderer.dispose(); s.renderer.dispose(); const disposedWrites = s.writes;
-  s.renderer.update(10_000); s.move({ lng: 20 }); s.renderer.setVisible(true); s.renderer.setMotionEnabled(true);
-  assert.equal(s.writes, disposedWrites); assert.equal(s.listeners.size, 0); assert.equal(s.markers[0].removed, 1);
-  assert.equal(s.renderer.hasMotion(), false);
-});
-
-test("street rain spans the visible sampled area with bounded georeferenced patches, and small pans do not drag them", () => {
-  const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot());
-  const active = () => s.markers.filter(marker => marker.options.element.style.display !== "none");
-  assert.equal(active().length, 9); assert.equal(s.markers.length, 9);
-  const anchors = active().map(marker => marker.positions.at(-1));
-  assert.ok(anchors.every(([lng, lat]) => earthWeatherArea(lng, lat).key === "55:38"));
-  assert.ok(new Set(anchors.map(([lng]) => lng)).size >= 3); assert.ok(new Set(anchors.map(([, lat]) => lat)).size >= 3);
-  assert.ok(active().every(marker => marker.options.element.dataset.weatherScale === "coverage"));
-  s.move({ lng: 38.000001 });
-  assert.deepEqual(active().map(marker => marker.positions.at(-1)), anchors, "the fixed geographic grid survives a small camera pan");
-  for (let index = 0; index < 20; index++) s.move({ zoom: 12 + index % 4, lng: 38 + index / 1000 });
-  assert.equal(s.markers.length, 9, "panning and zooming reuse a bounded marker pool");
-  s.move({ lng: 39 }); assert.equal(active().length, 0);
-  s.renderer.dispose(); assert.ok(s.markers.every(marker => marker.removed === 1));
-});
-
-test("clear and missing forecasts never acquire rain coverage and reduced motion freezes all street patches", () => {
-  const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot());
-  s.renderer.setMotionEnabled(false); const writes = s.writes;
-  s.renderer.update(1_000); s.renderer.update(10_000); assert.equal(s.writes, writes);
-  s.renderer.setWeather(s.snapshot({ condition: "clear", cloudCoverPercent: 0 }));
-  const active = s.markers.filter(marker => marker.options.element.style.display !== "none");
-  assert.equal(active.length, 1);
-  assert.ok(active[0].options.element.children[0].children.slice(-12).every(particle => particle.style.display === "none"));
-  s.renderer.setWeather(null); assert.ok(s.markers.every(marker => marker.options.element.style.display === "none"));
-  s.renderer.setWeather(s.snapshot({ condition: "unknown" })); assert.ok(s.markers.every(marker => marker.options.element.style.display === "none"));
-  s.renderer.dispose();
-});
-
-test("cloud coverage controls the number of street patches without inventing precipitation", () => {
+test("clouds use continuous material without moon/sun stamps, and clear/missing data never invents precipitation", () => {
   const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true);
-  s.renderer.setWeather(s.snapshot({ condition: "partly-cloudy", cloudCoverPercent: 30, precipitationMm: 0 }));
-  let active = s.markers.filter(marker => marker.options.element.style.display !== "none");
-  assert.equal(active.length, 3);
-  assert.ok(active.every(marker => marker.options.element.children[0].children.slice(-12).every(particle => particle.style.display === "none")));
-  s.renderer.setWeather(s.snapshot({ condition: "cloudy", cloudCoverPercent: 100, precipitationMm: 0 }));
-  active = s.markers.filter(marker => marker.options.element.style.display !== "none");
-  assert.equal(active.length, 9);
-  assert.ok(active.every(marker => marker.options.element.children[0].children.slice(-12).every(particle => particle.style.display === "none")));
-  s.move({ lng: 38.2 });
-  s.renderer.setWeather(s.snapshot({ condition: "partly-cloudy", cloudCoverPercent: 5, precipitationMm: 0 }));
-  active = s.markers.filter(marker => marker.options.element.style.display !== "none");
-  assert.equal(active.length, 1);
-  assert.ok(Math.abs(active[0].positions.at(-1)[0] - 38.2) < .01, "light cloud cover still samples a visible Earth-fixed grid point");
+  s.renderer.setWeather(s.snapshot({ condition: "partly-cloudy", cloudCoverPercent: 40, precipitationMm: 0, isDay: false }));
+  assert.equal(s.field.tag, "canvas"); assert.equal(s.container.children.length, 1);
+  assert.equal(s.field.dataset.weatherParticles, "0");
+  assert.equal(s.calls.some(call => ["stroke", "arc"].includes(call[0])), false);
+  s.renderer.setWeather(s.snapshot({ condition: "clear", cloudCoverPercent: 0 }));
+  assert.equal(s.field.hidden, true); assert.equal(s.renderer.hasMotion(), false);
+  const clear = s.calls.length; s.renderer.update(10_000); assert.equal(s.calls.length, clear);
+  s.renderer.setWeather(null); assert.equal(s.field.hidden, true);
+  s.renderer.setWeather(s.snapshot({ condition: "unknown" })); assert.equal(s.field.hidden, true);
   s.renderer.dispose();
 });
 
-test("coverage remains finite and in its sampled cell across the date line and near both poles", () => {
+test("high-DPI weather buffers and cached textures stay bounded during repeated camera changes and disposal frees them", () => {
+  const s = rendererFixture(); s.container.clientWidth = 3840; s.container.clientHeight = 2160;
+  s.move({ zoom: 14 }); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot());
+  assert.ok(s.field.width * s.field.height <= 1_048_576); assert.ok(Math.max(s.field.width, s.field.height) <= 1536);
+  for (let index = 0; index < 12; index++) s.move({ lng: 38 + index / 100, zoom: 12 + index % 4 });
+  assert.ok(Number(s.field.dataset.weatherTextures) <= 4);
+  const live = s.elements.filter(element => element.tag === "canvas" && element.width > 1);
+  assert.ok(live.length <= 5); assert.ok(live.reduce((sum, element) => sum + element.width * element.height * 4, 0) <= 5 * 1024 * 1024);
+  s.renderer.setVisible(false); const hidden = s.calls.length;
+  s.renderer.update(20_000); s.move({ lng: 38.3 }); assert.equal(s.calls.length, hidden);
+  s.renderer.dispose(); s.renderer.dispose(); assert.ok(s.elements.every(element => element.width <= 1));
+  const disposed = s.calls.length; s.renderer.setVisible(true); s.renderer.update(30_000); assert.equal(s.calls.length, disposed);
+});
+
+test("forecast clipping survives the date line and polar views and rejects an off-planet round trip", () => {
   for (const [longitude, latitude] of [[179.999, 85], [-179.999, -85], [0, 89], [0, -89]]) {
     const s = rendererFixture(); s.move({ zoom: 14, lng: longitude, lat: latitude }); s.renderer.setVisible(true);
     const area = earthWeatherArea(longitude, latitude);
     s.renderer.setWeather(s.snapshot({ area, condition: "snow" }));
-    const active = () => s.markers.filter(marker => marker.options.element.style.display !== "none");
-    assert.ok(active().length > 1 && active().length <= 9);
-    for (const marker of active()) {
-      const [lng, lat] = marker.positions.at(-1);
-      assert.ok(Number.isFinite(lng) && Number.isFinite(lat));
-      assert.ok(lng >= -180 && lng < 180 && lat > -90 && lat < 90);
-      assert.equal(earthWeatherArea(lng, lat).key, area.key);
-    }
-    if (Math.abs(longitude) > 179) {
-      s.move({ lng: longitude > 0 ? -179.999 : 179.999 });
-      assert.ok(active().length > 0, "the opposite representation of the same date-line cell remains available");
-      assert.ok(active().every(marker => earthWeatherArea(...marker.positions.at(-1)).key === area.key));
-    }
+    assert.equal(s.field.hidden, false); assert.equal(s.field.dataset.weatherCell, area.key);
+    assert.ok(s.calls.some(call => call[0] === "clip"));
+    assert.ok(s.calls.filter(call => ["moveTo", "lineTo", "transform"].includes(call[0])).every(call => call.slice(1).every(Number.isFinite)));
+    const unproject = s.map.unproject;
+    s.map.unproject = point => ({ ...unproject(point), lat: 0 }); s.move({});
+    assert.equal(s.field.hidden, true, "a false globe projection cannot paint weather over space");
     s.renderer.dispose();
   }
 });

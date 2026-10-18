@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { createEarthLocationController, readEarthPosition } = await vite.ssrLoadModule("/features/earth/location.ts");
+const { createEarthSharingController } = await vite.ssrLoadModule("/features/earth/sharing.ts");
 after(() => vite.close());
 
 function browser(overrides = {}) {
@@ -255,4 +256,93 @@ test("an explicit request on an inactive screen waits for visibility and an empt
   assert.equal(s.watches.length, 1);
   assert.equal(anonymous.getSnapshot().status, "idle");
   deactivate();
+});
+
+
+const settlePermission = async () => { for (let index = 0; index < 6; index++) await Promise.resolve(); };
+
+test("an initial private lookup starts only with known granted permission and never retries after a manual stop", async () => {
+  const s = session();
+  s.permission.state = "granted";
+  s.controller.setAutomaticStartPolicy(null); await settlePermission();
+  assert.equal(s.watches.length, 0, "wait for sharing metadata before probing");
+  s.controller.setAutomaticStartPolicy(true); await settlePermission();
+  assert.equal(s.watches.length, 1); assert.equal(s.controller.getSnapshot().status, "requesting");
+  s.watches[0].success(fix()); assert.equal(s.controller.getSnapshot().status, "active");
+  s.controller.stop(); s.controller.setAutomaticStartPolicy(true);
+  s.controller.setEnabled(false); s.controller.setEnabled(true); await settlePermission();
+  assert.equal(s.watches.length, 1, "incidental renders and map return do not override a stop");
+  s.deactivate();
+});
+
+test("prompt, denied and unavailable permission APIs never request automatic GPS or a browser prompt", async () => {
+  for (const value of ["prompt", "denied", "missing", "reject"]) {
+    const s = session(value === "missing" ? { queryPermission: undefined }
+      : value === "reject" ? { queryPermission: () => Promise.reject(new Error("unsupported")) } : {});
+    if (value === "prompt" || value === "denied") s.permission.state = value;
+    s.controller.setAutomaticStartPolicy(true); await settlePermission();
+    assert.equal(s.watches.length, 0); assert.equal(s.controller.getSnapshot().status, "idle");
+    assert.equal(s.permissionListeners.size, 0);
+    s.controller.start(); assert.equal(s.watches.length, 1, "the explicit private action remains usable");
+    s.deactivate();
+  }
+});
+
+test("ghost suppresses automatic GPS for this visit but still allows an explicit private lookup", async () => {
+  const s = session(); s.permission.state = "granted";
+  s.controller.setAutomaticStartPolicy(false); s.controller.setAutomaticStartPolicy(true); await settlePermission();
+  assert.equal(s.watches.length, 0, "a later OFF metadata change cannot silently override initial ghost");
+  s.controller.start(); assert.equal(s.watches.length, 1);
+  s.controller.stop(); s.controller.setAutomaticStartPolicy(true); await settlePermission();
+  assert.equal(s.watches.length, 1);
+  s.deactivate();
+});
+
+test("delayed granted probes cannot start after stop, hidden/disabled transition, owner teardown or ghost", async () => {
+  for (const interrupt of [s => s.controller.stop(), s => s.setVisible(false), s => s.controller.setEnabled(false),
+    s => s.controller.setAutomaticStartPolicy(false), s => s.deactivate()]) {
+    let resolve; const permission = new Promise(accept => { resolve = accept; });
+    const s = session({ queryPermission: () => permission });
+    s.permission.state = "granted"; s.controller.setAutomaticStartPolicy(true); interrupt(s);
+    resolve(s.permission); await settlePermission();
+    assert.equal(s.watches.length, 0); assert.equal(s.permissionListeners.size, 0);
+    s.deactivate();
+  }
+});
+
+test("strict effect replay fences the first granted probe and starts just one watch from the live activation", async () => {
+  const probes = [];
+  const s = session({ queryPermission: () => new Promise(resolve => probes.push(resolve)) });
+  s.permission.state = "granted"; s.controller.setAutomaticStartPolicy(true);
+  assert.equal(probes.length, 1); s.deactivate();
+  const cleanup = s.controller.activate(); s.controller.setEnabled(true); s.controller.setAutomaticStartPolicy(true);
+  assert.equal(probes.length, 2);
+  probes[0](s.permission); await settlePermission(); assert.equal(s.watches.length, 0);
+  probes[1](s.permission); await settlePermission(); assert.equal(s.watches.length, 1);
+  if (probes[2]) probes[2](s.permission); await settlePermission();
+  cleanup(); assert.equal(s.visibilityListeners.size, 0); assert.equal(s.permissionListeners.size, 0);
+});
+
+test("automatic private coordinates do not publish even when saved server consent remains SHARING", async () => {
+  const s = session(); s.permission.state = "granted";
+  const writes = [], epoch = Date.parse("2026-10-18T17:00:00Z"), owner = "AAAA-BBBB-CCCC";
+  const sharing = createEarthSharingController({ ownerPublicId: owner, getEnvironment: () => ({
+    now: () => epoch, monotonicNow: () => 0, visible: () => true, schedule: () => 1, cancel() {},
+    onVisibilityChange: () => () => {}, loadPending: () => null, savePending() {}, clearPending() {},
+    onPendingChange: () => () => {}, createId: () => "11111111-1111-4111-8111-111111111111",
+  }), transport: {
+    getEarthSharing: async () => ({ ownerPublicId: owner, mode: "SHARING", revision: 1, precision: "APPROXIMATE",
+      recipientCircleIds: ["11111111-1111-4111-8111-111111111111"], sharingUntil: null, publicationEpoch: null, serverTime: new Date(epoch).toISOString() }),
+    getEarthPeople: async () => ({ ownerPublicId: owner, people: [], serverTime: new Date(epoch).toISOString() }),
+    updateEarthSharing: async write => { writes.push(write); }, publishEarthPosition: async write => { writes.push(write); },
+    stopEarthPublication: async write => { writes.push(write); },
+  } });
+  const deactivateSharing = sharing.activate(); sharing.setContext({ visible: true, isOnline: true }); await settlePermission();
+  const unsubscribe = s.controller.subscribe(() => { sharing.setPosition(s.controller.getSnapshot().position); });
+  s.controller.setAutomaticStartPolicy(true); await settlePermission();
+  s.watches[0].success(fix({ timestamp: epoch })); await settlePermission();
+  assert.equal(s.controller.getSnapshot().status, "active");
+  assert.equal(sharing.getSnapshot().settings.mode, "SHARING"); assert.equal(sharing.getSnapshot().publishing, false);
+  assert.deepEqual(writes, [], "the initial private marker never upgrades persisted consent into a live publisher");
+  unsubscribe(); s.deactivate(); deactivateSharing();
 });

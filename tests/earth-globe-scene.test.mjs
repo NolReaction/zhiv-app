@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { earthTestCanvasContext } from "./earth-canvas-harness.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createEarthGlobeScene } = await vite.ssrLoadModule("/features/earth/globe-scene.ts");
-const { createEarthLightingData, EARTH_LIGHTING_SOURCE, EARTH_LIGHTS_SOURCE } = await vite.ssrLoadModule("/features/earth/globe-lighting.ts");
+const { createEarthLightingData, EARTH_LIGHTS_SOURCE } = await vite.ssrLoadModule("/features/earth/globe-lighting.ts");
 
 function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recordLighting = false } = {}) {
   const originals = { window: globalThis.window, document: globalThis.document, performance: globalThis.performance };
@@ -16,7 +17,7 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
   let center = { lng: 38, lat: 55 };
   const timers = new Map(), listeners = new Map(), visibilityListeners = new Set(), preferenceListeners = new Set();
   const markers = [];
-  const shadeUpdates = [];
+  const lightsUpdates = [];
   const ownerDocument = {
     hidden: false,
     addEventListener(type, callback) { assert.equal(type, "visibilitychange"); visibilityListeners.add(callback); },
@@ -24,6 +25,7 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
     createElement(tag) {
       const handlers = new Map();
       return { tag, attributes: {}, dataset: {}, children: [], style: { setProperty(key, value) { this[key] = value; } },
+        context: earthTestCanvasContext(), getContext() { return this.context; }, remove() { this.removed = (this.removed ?? 0) + 1; },
         classList: { contains: () => false },
         setAttribute(key, value) { this.attributes[key] = value; },
         append(...children) { this.children.push(...children); },
@@ -46,12 +48,12 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
     clearTimeout(id) { timers.delete(id); },
   };
   Object.defineProperty(globalThis, "performance", { configurable: true, value: { now: () => time } });
-  const container = { ownerDocument, clientWidth: 800, clientHeight: 600 };
+  const container = { ownerDocument, clientWidth: 800, clientHeight: 600, children: [], append(...children) { this.children.push(...children); } };
   const mercatorY = latitude => (1 - Math.asinh(Math.tan(latitude * Math.PI / 180)) / Math.PI) / 2;
   const map = {
-    getContainer: () => container, getCenter: () => center, getZoom: () => zoom,
-    getSource: id => recordLighting && [EARTH_LIGHTING_SOURCE, EARTH_LIGHTS_SOURCE].includes(id)
-      ? { setData(data) { if (id === EARTH_LIGHTING_SOURCE) shadeUpdates.push(data); } } : undefined,
+    getContainer: () => container, getCanvasContainer: () => container, getCenter: () => center, getZoom: () => zoom,
+    getSource: id => recordLighting && id === EARTH_LIGHTS_SOURCE
+      ? { setData(data) { lightsUpdates.push(data); } } : undefined,
     getLayer: () => undefined, hasImage: () => true, setSky() {}, setLight() {},
     updateImage() { imageUpdates++; }, triggerRepaint() {}, addLayer() {}, removeLayer() {},
     project(position) {
@@ -85,9 +87,9 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
   }
   const emit = type => { for (const callback of [...listeners.get(type) ?? []]) callback(); };
   const scene = createEarthGlobeScene(map, Marker, mode, eveningCenter);
-  return { scene, map, markers, timers, listeners, visibilityListeners, preferenceListeners, shadeUpdates,
+  return { scene, map, markers, timers, listeners, visibilityListeners, preferenceListeners, lightsUpdates,
     get imageUpdates() { return imageUpdates; },
-    get weatherMarker() { return markers.find(marker => marker.options.element.dataset.earthWeather); },
+    get weatherField() { return container.children.find(element => element.dataset.earthWeather); },
     advance(duration) {
       const end = time + duration;
       while (timers.size) {
@@ -111,27 +113,28 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
 }
 
 const rain = { condition: "rain", area: { key: "55:38", latitude: 55, longitude: 38 } };
-const particles = state => state.markers.filter(marker => marker.options.element.dataset.earthWeather)
-  .flatMap(marker => marker.options.element.children[0].children.slice(-12));
-const transforms = state => particles(state).map(particle => particle.attributes.transform);
+const transforms = state => {
+  const count = Number(state.weatherField.dataset.weatherParticles);
+  return state.weatherField.context.calls.filter(call => call[0] === "lineTo" || call[0] === "arc").slice(-count);
+};
 
 test("a restored evening keeps its geographic sun anchor across camera movement and mode changes", () => {
   const anchor = { lng: 35, lat: 27 };
-  const expected = createEarthLightingData("evening", 0, anchor).shade;
+  const expected = createEarthLightingData("evening", 0, anchor).lights;
   const s = fixture({ mode: "evening", eveningCenter: anchor, recordLighting: true });
   try {
-    assert.deepEqual(s.shadeUpdates.at(-1), expected, "a remounted scene uses the saved evening rather than the restored camera centre");
+    assert.deepEqual(s.lightsUpdates.at(-1), expected, "a remounted scene uses the saved evening rather than the restored camera centre");
     s.scene.setReady(true);
     s.move({ lng: -90, lat: 40 }); s.advance(125);
     s.scene.setLighting("evening");
-    assert.deepEqual(s.shadeUpdates.at(-1), expected, "panning and a repeated mode effect do not move the sun");
+    assert.deepEqual(s.lightsUpdates.at(-1), expected, "panning and a repeated mode effect do not move the sun");
     s.scene.setLighting("day");
-    assert.equal(s.shadeUpdates.at(-1).features.length, 0);
+    assert.equal(s.lightsUpdates.at(-1).features.length, 0);
     s.scene.setLighting("evening");
-    assert.deepEqual(s.shadeUpdates.at(-1), expected, "a mode without a new anchor preserves the existing selection");
+    assert.deepEqual(s.lightsUpdates.at(-1), expected, "a mode without a new anchor preserves the existing selection");
     const nextAnchor = { lng: 120, lat: -20 };
     s.scene.setLighting("evening", nextAnchor);
-    assert.deepEqual(s.shadeUpdates.at(-1), createEarthLightingData("evening", 0, nextAnchor).shade,
+    assert.deepEqual(s.lightsUpdates.at(-1), createEarthLightingData("evening", 0, nextAnchor).lights,
       "an explicit user selection can place a new evening");
   } finally { s.restore(); }
 });
@@ -144,19 +147,19 @@ test("one scene clock animates overview decor, while street weather leaves ocean
     assert.equal(s.timers.size, 1);
     s.advance(250);
     assert.ok(s.imageUpdates > 0);
-    const cloudPositions = s.markers.slice(0, 8).map(marker => marker.positions.length);
+    const cloudPositions = s.markers.filter(marker => marker.options.element.dataset.earthCloud).map(marker => marker.positions.length);
     const uploads = s.imageUpdates;
     s.setZoom(4.2);
     assert.equal(s.timers.size, 0, "globe decor stops at the street-detail boundary");
     s.setZoom(12);
     s.scene.setWeather(rain);
-    assert.equal(s.markers.filter(marker => marker.options.element.dataset.earthWeather).length, 9);
+    assert.equal(s.weatherField.tag, "canvas"); assert.equal(s.weatherField.hidden, false);
     assert.equal(s.timers.size, 1, "the shared clock supports street-level rain");
     const previous = transforms(s);
     s.advance(500);
     assert.notDeepEqual(transforms(s), previous);
     assert.equal(s.imageUpdates, uploads);
-    assert.deepEqual(s.markers.slice(0, 8).map(marker => marker.positions.length), cloudPositions);
+    assert.deepEqual(s.markers.filter(marker => marker.options.element.dataset.earthCloud).map(marker => marker.positions.length), cloudPositions);
   } finally { s.restore(); }
 });
 
@@ -166,12 +169,12 @@ test("panning out of a weather cell stops street motion immediately and panning 
     s.scene.setReady(true); s.scene.setWeather(rain);
     assert.equal(s.timers.size, 1);
     s.move({ lng: 39, lat: 55 });
-    assert.equal(s.weatherMarker.options.element.style.display, "none");
-    assert.ok(s.markers.filter(marker => marker.options.element.dataset.earthWeather).every(marker => marker.options.element.style.display === "none"));
+    assert.equal(s.weatherField.hidden, true);
+    assert.equal(s.weatherField.hidden, true);
     assert.equal(s.timers.size, 0, "a hidden old forecast cannot retain a background clock");
     s.advance(60_000);
     s.move({ lng: 38, lat: 55 });
-    assert.equal(s.weatherMarker.options.element.style.display, "");
+    assert.equal(s.weatherField.hidden, false);
     assert.equal(s.timers.size, 1);
     const previous = transforms(s);
     s.advance(125);
@@ -190,8 +193,8 @@ test("reduced motion and hidden/retained maps have no timer, and terminal callba
     assert.deepEqual(transforms(s), still, "manual movement cannot advance reduced-motion particles");
     s.reduce(false); assert.equal(s.timers.size, 1);
     s.hide(true); assert.equal(s.timers.size, 0);
-    assert.equal(s.weatherMarker.options.element.style.display, "none");
-    assert.ok(s.markers.filter(marker => marker.options.element.dataset.earthWeather).every(marker => marker.options.element.style.display === "none"));
+    assert.equal(s.weatherField.hidden, true);
+    assert.equal(s.weatherField.hidden, true);
     s.hide(false); assert.equal(s.timers.size, 1);
     s.scene.setVisible(false); assert.equal(s.timers.size, 0);
     s.scene.setVisible(true); assert.equal(s.timers.size, 1);

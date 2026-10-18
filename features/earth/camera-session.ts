@@ -14,7 +14,7 @@ export type EarthMapPreferences = {
   eveningCenter: EarthLightingCenter | null;
 };
 
-const DEFAULT_PREFERENCES: EarthMapPreferences = { weatherEnabled: false, lightingMode: "auto", buildings3d: true, eveningCenter: null };
+const DEFAULT_PREFERENCES: EarthMapPreferences = { weatherEnabled: true, lightingMode: "auto", buildings3d: true, eveningCenter: null };
 
 export type EarthCameraSession = {
   read(): EarthCameraSnapshot | null;

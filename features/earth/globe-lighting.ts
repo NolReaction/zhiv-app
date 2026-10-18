@@ -1,12 +1,12 @@
-import type { Feature, FeatureCollection, Point, Polygon } from "geojson";
+import type { FeatureCollection, Point } from "geojson";
+import { createEarthNightShadeLayer, EARTH_NIGHT_SHADE_LAYER } from "./night-shade-layer";
 import type { ExpressionSpecification, GeoJSONSource, GeoJSONSourceSpecification, LayerSpecification, LightSpecification, Map, SkySpecification } from "maplibre-gl";
 
 export type EarthLightingMode = "auto" | "day" | "evening";
 export type EarthLightingCenter = { lng: number; lat: number };
 type GlobePoint = [number, number];
-type EarthLightingMap = Pick<Map, "getSource" | "setSky" | "setLight">;
+type EarthLightingMap = Pick<Map, "getSource" | "setSky" | "setLight" | "getCenter" | "getLayer" | "addLayer" | "removeLayer" | "triggerRepaint">;
 
-export const EARTH_LIGHTING_SOURCE = "earth-globe-lighting";
 export const EARTH_LIGHTS_SOURCE = "earth-globe-city-lights";
 const DEGREES = Math.PI / 180;
 const MINUTE = 60_000;
@@ -62,75 +62,24 @@ export function earthSolarFacing(point: GlobePoint, sun: GlobePoint): number {
   return normal.reduce((sum, component, index) => sum + component * light[index], 0);
 }
 
-/**
- * A cap no larger than a hemisphere. Unwrapped longitudes keep the date-line
- * local; a pole closure prevents a polar cap from being filled through Earth.
- */
-function sphericalCap(center: GlobePoint, radiusDegrees: number): Polygon {
-  const latitude = center[1] * DEGREES;
-  const longitude = center[0] * DEGREES;
-  const radius = radiusDegrees * DEGREES;
-  const ring: number[][] = [];
-  for (let index = 0; index < 96; index += 1) {
-    const bearing = index * Math.PI / 48;
-    const pointLatitude = Math.asin(clamp(Math.sin(latitude) * Math.cos(radius)
-      + Math.cos(latitude) * Math.sin(radius) * Math.cos(bearing), -1, 1));
-    let pointLongitude = (longitude + Math.atan2(Math.sin(bearing) * Math.sin(radius) * Math.cos(latitude),
-      Math.cos(radius) - Math.sin(latitude) * Math.sin(pointLatitude))) / DEGREES;
-    const previous = ring.at(-1)?.[0] ?? center[0];
-    while (pointLongitude - previous > 180) pointLongitude -= 360;
-    while (pointLongitude - previous < -180) pointLongitude += 360;
-    ring.push([pointLongitude, pointLatitude / DEGREES]);
-  }
-  const first = ring[0];
-  const last = ring[ring.length - 1];
-  if (Math.abs(last[0] - first[0]) > 180) {
-    const pole = center[1] >= 0 ? 90 : -90;
-    let closureLongitude = first[0];
-    while (closureLongitude - last[0] > 180) closureLongitude -= 360;
-    while (closureLongitude - last[0] < -180) closureLongitude += 360;
-    // Finish the final arc before climbing to the pole. Climbing directly
-    // from the last sample would leave a narrow unshaded polar wedge.
-    ring.push([closureLongitude, first[1]], [closureLongitude, pole], [first[0], pole]);
-  }
-  ring.push([...first]);
-  return { type: "Polygon", coordinates: [ring] };
-}
-
 export function createEarthLightingData(mode: EarthLightingMode = "auto", now = Date.now(), eveningCenter = DEFAULT_CENTER): {
-  shade: FeatureCollection<Polygon>;
   lights: FeatureCollection<Point>;
 } {
-  const shade: FeatureCollection<Polygon> = { type: "FeatureCollection", features: [] };
   const lights: FeatureCollection<Point> = { type: "FeatureCollection", features: [] };
-  if (mode === "day") return { shade, lights };
+  if (mode === "day") return { lights };
   const sun = mode === "evening" ? earthEveningSun(eveningCenter) : earthSunPosition(now);
-  const night: GlobePoint = [normalizeLongitude(sun[0] + 180), -sun[1]];
-  // Many very low-alpha caps make a soft gradient without a visible cell grid,
-  // large textures, globe shaders or a continuously changing GeoJSON source.
-  // Most twilight happens within roughly twenty degrees of the terminator.
-  // Spreading the same fade over the entire hemisphere left evening views
-  // almost indistinguishable from day, even with the sun below the horizon.
-  const radii = Array.from({ length: 64 }, (_, index) => 89.8 - index * 20.8 / 63);
-  shade.features = radii.map((radius, index): Feature<Polygon> => ({
-    type: "Feature", properties: {
-      color: index < 6 ? "#e5a87e" : "#101d3b",
-      alpha: index < 6 ? 0.01 : 0.022,
-    }, geometry: sphericalCap(night, radius),
-  }));
   for (const [index, point] of LIGHT_SEEDS.entries()) {
     const darkness = clamp((-earthSolarFacing(point, sun) + 0.06) / 0.4, 0, 1);
     if (darkness <= 0) continue;
     lights.features.push({ type: "Feature", properties: { strength: darkness * (0.7 + index % 4 * 0.1) },
       geometry: { type: "Point", coordinates: [...point] } });
   }
-  return { shade, lights };
+  return { lights };
 }
 
 export function earthLightingSources(now = Date.now(), mode: EarthLightingMode = "auto", eveningCenter = DEFAULT_CENTER): Record<string, GeoJSONSourceSpecification> {
   const data = createEarthLightingData(mode, now, eveningCenter);
   return {
-    [EARTH_LIGHTING_SOURCE]: { type: "geojson", data: data.shade, maxzoom: 0, tolerance: 0, buffer: 0 },
     [EARTH_LIGHTS_SOURCE]: { type: "geojson", data: data.lights, maxzoom: 0, tolerance: 0, buffer: 0 },
   };
 }
@@ -143,10 +92,6 @@ function opacityFade(property: string, end: number, strength = 1): ExpressionSpe
 /** Insert after physical geometry/3D objects and before labels/position indicators. */
 export function earthLightingLayers(): LayerSpecification[] {
   return [
-    // Night belongs to its geographic hemisphere at every camera distance.
-    // Fading this layer by zoom turned the same place into daylight on approach.
-    { id: "earth-evening-shade", type: "fill", source: EARTH_LIGHTING_SOURCE,
-      paint: { "fill-color": ["get", "color"], "fill-opacity": ["get", "alpha"], "fill-antialias": false } },
     { id: "earth-city-lights-glow", type: "circle", source: EARTH_LIGHTS_SOURCE, maxzoom: 4.5,
       paint: { "circle-color": "#ffb967", "circle-radius": 6.5, "circle-blur": 0.85,
         "circle-opacity": opacityFade("strength", 4.5, 0.85), "circle-pitch-alignment": "map", "circle-pitch-scale": "viewport" } },
@@ -181,15 +126,17 @@ export function createEarthLightingController(map: EarthLightingMap, options: {
   let center = options.center ?? DEFAULT_CENTER;
   let lastKey = "";
   let disposed = false;
+  const night = createEarthNightShadeLayer(map);
+  map.addLayer(night.layer, map.getLayer("earth-city-lights-glow") ? "earth-city-lights-glow" : undefined);
   const update = (now = Date.now()) => {
     if (disposed || !Number.isFinite(now)) return;
     const key = mode === "auto" ? `${mode}:${Math.floor(now / MINUTE)}` : `${mode}:${center.lng}:${center.lat}`;
     if (key === lastKey) return;
-    const shadeSource = map.getSource(EARTH_LIGHTING_SOURCE) as GeoJSONSource | undefined;
     const lightsSource = map.getSource(EARTH_LIGHTS_SOURCE) as GeoJSONSource | undefined;
-    if (!shadeSource?.setData || !lightsSource?.setData) return;
+    if (!lightsSource?.setData) return;
     const data = createEarthLightingData(mode, Math.floor(now / MINUTE) * MINUTE, center);
-    shadeSource.setData(data.shade);
+    const sun = mode === "evening" ? earthEveningSun(center) : earthSunPosition(Math.floor(now / MINUTE) * MINUTE);
+    night.setLighting(mode === "day" ? null : globeVector(sun));
     lightsSource.setData(data.lights);
     if (!lastKey || !lastKey.startsWith(`${mode}:`)) {
       map.setSky(earthLightingSky(mode));
@@ -206,6 +153,12 @@ export function createEarthLightingController(map: EarthLightingMap, options: {
       if (nextCenter) center = { ...nextCenter };
       update(now);
     },
-    dispose() { disposed = true; },
+    setVisible(value: boolean) { night.setVisible(value); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      if (map.getLayer(EARTH_NIGHT_SHADE_LAYER)) map.removeLayer(EARTH_NIGHT_SHADE_LAYER);
+      night.dispose();
+    },
   };
 }

@@ -69,13 +69,13 @@
   position: absolute;
   z-index: 5;
   left: var(--earth-overlay-left);
-  bottom: calc(var(--earth-navigation-clearance, 84px) + 12px);
+  bottom: calc(var(--earth-navigation-clearance, 84px) + 30px);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
   width: min(360px, calc(100% - var(--earth-overlay-left) - var(--earth-overlay-right)));
-  max-height: calc(100% - var(--earth-overlay-top) - 70px - var(--earth-navigation-clearance, 84px));
+  max-height: calc(100% - var(--earth-overlay-top) - 88px - var(--earth-navigation-clearance, 84px));
   pointer-events: none;
 }
 .bottomOverlay > * { pointer-events: auto; }
@@ -91,7 +91,7 @@
 .sharingButton span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sharingButton[aria-expanded="true"] { background: #315347; border-color: #c5e3ad7a; }
 .quickGhost { flex-shrink: 0; width: 44px; padding: 8px; color: #dce7f2; background: #2b4148f5; }
-.notice { position: absolute; z-index: 4; bottom: calc(var(--earth-navigation-clearance, 84px) + 72px); left: var(--earth-overlay-left); max-width: min(340px, calc(100% - var(--earth-overlay-left) - 76px)); margin: 0; border: 1px solid #f1d3a230; border-radius: 15px; background: #263d30f5; color: #f3d9b1; padding: 10px 12px; font-size: 11px; line-height: 1.55; }
+.notice { position: absolute; z-index: 4; bottom: calc(var(--earth-navigation-clearance, 84px) + 90px); left: var(--earth-overlay-left); max-width: min(340px, calc(100% - var(--earth-overlay-left) - 76px)); margin: 0; border: 1px solid #f1d3a230; border-radius: 15px; background: #263d30f5; color: #f3d9b1; padding: 10px 12px; font-size: 11px; line-height: 1.55; }
 .friendsPanel { width: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 22px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 15px; }
 .friendsPanel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .friendsPanel h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
@@ -129,7 +129,7 @@
 }
 @media (max-height: 500px) and (min-width: 501px) {
   .view { --earth-overlay-top: max(10px, env(safe-area-inset-top)); }
-  .bottomOverlay { max-height: calc(100% - var(--earth-overlay-top) - 60px - var(--earth-navigation-clearance, 84px)); }
+  .bottomOverlay { max-height: calc(100% - var(--earth-overlay-top) - 78px - var(--earth-navigation-clearance, 84px)); }
   .friendsPanel { padding: 12px; }
   .friendsIntro, .hint { font-size: 11px; }
 }

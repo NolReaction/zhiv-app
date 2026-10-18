@@ -9,9 +9,9 @@ type Program = { program: WebGLProgram; uniforms: Record<string, WebGLUniformLoc
 const uniformNames = ["u_projection_matrix", "u_projection_fallback_matrix", "u_projection_tile_mercator_coords",
   "u_projection_clipping_plane", "u_projection_transition", "u_anchor", "u_scale", "u_meters", "u_opacity"] as const;
 
-/** One shared VAO/buffer, nine fixed draw ranges, at most two projection programs. */
+/** One shared VAO/buffer, fixed detail ranges, at most two projection programs. */
 export function createEarthLandmarkMeshLayer(map: LibreMap) {
-  const ranges = EARTH_LANDMARKS.map(landmark => ({ landmark, start: 0, count: 0,
+  const ranges = EARTH_LANDMARKS.map(landmark => ({ landmark, start: 0, count: 0, overviewCount: 0,
     anchor: [(landmark.location[0] + 180) / 360,
       (1 - Math.log(Math.tan(Math.PI / 4 + landmark.location[1] * Math.PI / 360)) / Math.PI) / 2] as const,
     meters: EARTH_CIRCUMFERENCE * Math.cos(landmark.location[1] * Math.PI / 180) }));
@@ -84,6 +84,8 @@ void main() { fragColor = vec4(v_color * u_opacity, u_opacity); }`;
       const mesh = createEarthLandmarkMesh(range.landmark.kind);
       range.start = geometry.length / 6; range.count = mesh.length / 6;
       for (const value of mesh) geometry.push(value);
+      range.overviewCount = range.landmark.kind === "eiffel-tower"
+        ? createEarthLandmarkMesh(range.landmark.kind, "overview").length / 6 : range.count;
     }
     buffer = gl.createBuffer(); vao = gl.createVertexArray();
     if (!buffer || !vao) throw new Error("Earth landmark GPU buffer unavailable");
@@ -138,7 +140,10 @@ void main() { fragColor = vec4(v_color * u_opacity, u_opacity); }`;
         const fallback = new Float32Array(data.fallbackMatrix);
         if (globe) for (let index = 8; index < 12; index++) fallback[index] /= range.meters;
         gl.uniformMatrix4fv(uniforms.u_projection_fallback_matrix, false, fallback);
-        gl.drawArrays(gl.TRIANGLES, range.start, range.count);
+        // Below this size fine lattice aliases. Both levels are already in the
+        // same immutable buffer: camera changes select a range, never upload.
+        const overview = map.getZoom() < 1.5;
+        gl.drawArrays(gl.TRIANGLES, range.start, overview ? range.overviewCount : range.count);
       }
       gl.bindVertexArray(null);
     },

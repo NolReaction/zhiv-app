@@ -35,10 +35,47 @@ test("nine original models have bounded solid geometry grounded at z=0 and no ex
   assert.equal(new Set(meshes.map(mesh => Buffer.from(mesh.buffer).toString("base64"))).size, 9);
 });
 
+// Orthographic front-view ray hit. This checks the actual solid triangles, not
+// names/comments: a solid pedestal or braces across the arch would fail it.
+function frontHit(mesh, x, z) {
+  for (let offset = 0; offset < mesh.length; offset += 18) {
+    const points = [0, 6, 12].map(vertex => [mesh[offset + vertex], mesh[offset + vertex + 2]]);
+    const [a, b, c] = points;
+    const cross = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+    const area = cross(a, b, c);
+    if (Math.abs(area) < 1e-10) continue;
+    const weights = [cross(a, b, [x, z]), cross(b, c, [x, z]), cross(c, a, [x, z])];
+    if (weights.every(value => value >= -1e-10) || weights.every(value => value <= 1e-10)) return true;
+  }
+  return false;
+}
+
+test("Eiffel keeps its slender proportions, three low platforms and an actual open arch in both levels", () => {
+  for (const level of ["overview", "detail"]) {
+    const mesh = createEarthLandmarkMesh("eiffel-tower", level);
+    const x = [], z = [];
+    for (let index = 0; index < mesh.length; index += 6) { x.push(mesh[index]); z.push(mesh[index + 2]); }
+    const ratio = Math.max(...z) / (Math.max(...x) - Math.min(...x));
+    assert.ok(ratio > 2.5 && ratio < 2.8, `330 m high, 125 m base silhouette: ${ratio}`);
+    assert.equal(frontHit(mesh, 0, 0.08), false, "ground-level arch is hollow through the whole model");
+    assert.equal(frontHit(mesh, 0, 0.15), true, "curved arch crown connects the supports");
+    for (const floor of [57, 115, 276]) assert.equal(frontHit(mesh, 0, floor / 330 + 0.005), true);
+    assert.equal(frontHit(mesh, 0, 0.96), true, "slender upper antenna remains visible");
+    assert.ok(mesh.length / 18 < 2_000, "the detailed tower remains a small static mesh");
+  }
+});
+
+test("overview geometry is a shared prefix; detail adds railings without moving the foundation", () => {
+  const overview = createEarthLandmarkMesh("eiffel-tower", "overview");
+  const detail = createEarthLandmarkMesh("eiffel-tower", "detail");
+  assert.ok(overview.length < detail.length * 0.75);
+  assert.deepEqual(detail.subarray(0, overview.length), overview, "no duplicate LOD upload is needed");
+});
+
 function fixture() {
   let zoom = 2.5, nextId = 0, uploads = 0, draws = 0, failCompile = false;
   const live = { program: new Set(), shader: new Set(), buffer: new Set(), vao: new Set() };
-  const uniforms = [];
+  const uniforms = [], drawRanges = [];
   const allocate = kind => { const value = { id: ++nextId }; live[kind].add(value); return value; };
   const gl = {
     VERTEX_SHADER: 1, FRAGMENT_SHADER: 2, COMPILE_STATUS: 3, LINK_STATUS: 4, ARRAY_BUFFER: 5, STATIC_DRAW: 6,
@@ -52,7 +89,7 @@ function fixture() {
     bufferData(_, buffer) { uploads++; assert.ok(buffer.byteLength < 400_000); },
     uniform2fv(name, value) { uniforms.push([name, [...value]]); },
     uniform1f(name, value) { uniforms.push([name, value]); },
-    uniformMatrix4fv() {}, uniform4fv() {}, drawArrays() { draws++; },
+    uniformMatrix4fv() {}, uniform4fv() {}, drawArrays(_, start, count) { draws++; drawRanges.push([start, count]); },
   };
   for (const name of ["bindVertexArray", "bindBuffer", "enableVertexAttribArray", "vertexAttribPointer", "shaderSource",
     "compileShader", "attachShader", "linkProgram", "useProgram", "disable", "enable", "depthMask", "blendFunc"]) gl[name] = () => {};
@@ -62,7 +99,7 @@ function fixture() {
   const input = { shaderData: { variantName: "globe", define: "#define GLOBE", vertexShaderPrelude: "" },
     defaultProjectionData: { mainMatrix: matrix, fallbackMatrix: matrix, tileMercatorCoords: [0, 0, 1, 1],
       clippingPlane: [0, 0, 1, 0], projectionTransition: 1 } };
-  return { models, gl, map, live, uniforms, input,
+  return { models, gl, map, live, uniforms, input, drawRanges,
     get draws() { return draws; }, get uploads() { return uploads; },
     zoom(value) { zoom = value; }, fail() { failCompile = true; },
     render() { models.layer.render(gl, input); } };
@@ -86,6 +123,20 @@ test("one fixed GPU buffer serves anchored geometry; hidden, distant and culled 
   f.models.dispose(); f.models.dispose(); f.models.layer.onRemove(f.map, f.gl);
   for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
   f.models.setVisible(true, new Set(["eiffel-tower"])); f.render(); assert.equal(f.draws, 4);
+});
+
+test("Eiffel detail changes only the fixed draw count as the globe grows", () => {
+  const f = fixture(); f.models.layer.onAdd(f.map, f.gl);
+  f.models.setVisible(true, new Set(["eiffel-tower"]));
+  f.zoom(0.5); f.render();
+  const [start, overviewCount] = f.drawRanges.at(-1);
+  assert.equal(overviewCount, createEarthLandmarkMesh("eiffel-tower", "overview").length / 6);
+  f.zoom(1.5); f.render();
+  assert.deepEqual(f.drawRanges.at(-1), [start, createEarthLandmarkMesh("eiffel-tower", "detail").length / 6]);
+  f.zoom(1.49); f.render();
+  assert.deepEqual(f.drawRanges.at(-1), [start, overviewCount]);
+  assert.equal(f.uploads, 1);
+  f.models.dispose();
 });
 
 test("projection shader variants stay bounded and shader failures cannot break or leak the map", () => {

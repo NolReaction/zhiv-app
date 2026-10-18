@@ -10,6 +10,7 @@ type TileRecord = { tile: EarthTileId; failed: boolean };
 type Footprint = { points: Pixel[]; path: string; area: number };
 const maxTracked = 128;
 const maxPatches = 16;
+const maxBadges = 2;
 let overlaySequence = 0;
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -172,6 +173,7 @@ export function createEarthTileLoadingOverlay(map: LibreMap, sourceId = "earth-s
     };
     const drawn: { tile: EarthTileId; footprint: Footprint }[] = [];
     const groups: string[] = [];
+    const badges: Pixel[] = [];
     const ordered = [...candidates.values()].sort((a, b) => b.tile.z - a.tile.z);
     for (const candidate of ordered) {
       if (groups.length >= maxPatches) break;
@@ -185,22 +187,27 @@ export function createEarthTileLoadingOverlay(map: LibreMap, sourceId = "earth-s
       const state = !online ? "offline" : candidate.failed || status === "failed" ? "failed" : "loading";
       const label = state === "offline" ? "Нет сети" : state === "failed" ? "Не загрузилось" : "Загружаем";
       const id = `${prefix}-${groups.length}`;
+      const showBadge = footprint.area >= 12_000 && badges.length < maxBadges
+        && badges.every(point => Math.hypot(point.x - anchor.x, point.y - anchor.y) > 220);
+      if (showBadge) badges.push(anchor);
       groups.push(`<defs><mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}"><path d="${footprint.path}" fill="white"/>${covered.map(value => `<path d="${value.path}" fill="black"/>`).join("")}</mask></defs>
         <g mask="url(#${id})" class="${styles.patch}" data-loading-tile="${key(candidate.tile)}" data-state="${state}">
-          <path d="${footprint.path}" class="${styles.surface}"/>
-          <path d="${footprint.path}" fill="url(#${prefix}-grain)"/>
-          <g transform="translate(${anchor.x.toFixed(2)} ${anchor.y.toFixed(2)})">
-            <path d="M-35 8C-47 8-48-10-36-13-35-29-14-34-5-21 10-33 31-25 31-11 47-10 47 8 34 8Z" class="${styles.cloud}"/>
-            <g class="${styles.leaves}"><path d="M-17 0C-27-2-27-10-26-12-19-12-15-7-17 0Z"/><path d="M0 0C-5-8 0-15 3-16 8-10 7-3 0 0Z"/><path d="M17 0C15-8 22-13 27-12 27-5 23-1 17 0Z"/></g>
+          <path d="${footprint.path}" fill="url(#${prefix}-mist)" class="${styles.surface}"/>
+          ${showBadge ? `<g data-loading-badge="" transform="translate(${anchor.x.toFixed(2)} ${anchor.y.toFixed(2)})">
+            <path d="M-20 5C-29 5-30-7-21-10-20-22-5-25 2-15 12-23 26-15 24-5 34-3 30 6 21 6Z" fill="url(#${prefix}-cloud)" class="${styles.cloud}"/>
             <text y="25" text-anchor="middle" class="${styles.label}">${label}</text>
-          </g>
+          </g>` : ""}
         </g>`);
       drawn.push({ tile: candidate.tile, footprint });
     }
     element.setAttribute("viewBox", `0 0 ${width || 1} ${height || 1}`);
     element.setAttribute("data-patch-count", String(groups.length));
+    element.setAttribute("data-badge-count", String(badges.length));
     element.style.display = visible && groups.length ? "" : "none";
-    const markup = groups.length ? `<defs><pattern id="${prefix}-grain" width="42" height="42" patternUnits="userSpaceOnUse"><path d="M7 14q6-5 12 0M27 33q5-4 10 0" fill="none" stroke="#fffbee" stroke-opacity=".45" stroke-width="2" stroke-linecap="round"/></pattern></defs>${groups.join("")}` : "";
+    const markup = groups.length ? `<defs>
+      <linearGradient id="${prefix}-mist" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${width}" y2="${height}"><stop stop-color="#dce9e8" stop-opacity=".12"/><stop offset=".5" stop-color="#e8eeea" stop-opacity=".20"/><stop offset="1" stop-color="#c4d5dd" stop-opacity=".10"/></linearGradient>
+      <linearGradient id="${prefix}-cloud" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#c6d7df"/></linearGradient>
+    </defs>${groups.join("")}` : "";
     if (markup !== previousMarkup) { element.innerHTML = markup; previousMarkup = markup; }
   }
 

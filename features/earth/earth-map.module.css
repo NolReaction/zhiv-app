@@ -42,15 +42,15 @@
 .controls button[aria-pressed="true"]:hover:not(:disabled) { background: #e1f5bf; }
 .controls button[data-active="true"] { box-shadow: 0 0 0 3px #d1edaa2b, 0 5px 20px #001e2430; }
 .controls button[aria-busy="true"] svg { animation: locate-search 1.4s ease-in-out infinite; }
-.infoButton { position: absolute; z-index: 4; right: var(--earth-overlay-right, 16px); bottom: calc(var(--earth-navigation-clearance, 84px) + 12px); width: 48px; height: 48px; border-radius: 50%; }
+.infoButton { position: absolute; z-index: 4; right: var(--earth-overlay-right, 16px); bottom: calc(var(--earth-navigation-clearance, 84px) + 30px); width: 48px; height: 48px; border-radius: 50%; }
 .infoButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
 .infoPanel {
   position: absolute;
   z-index: 5;
   right: var(--earth-overlay-right, 16px);
-  bottom: calc(var(--earth-navigation-clearance, 84px) + 70px);
+  bottom: calc(var(--earth-navigation-clearance, 84px) + 88px);
   width: min(360px, calc(100% - var(--earth-overlay-left, 16px) - var(--earth-overlay-right, 16px)));
-  max-height: calc(100% - var(--earth-overlay-top, 16px) - 130px - var(--earth-navigation-clearance, 84px));
+  max-height: calc(100% - var(--earth-overlay-top, 16px) - 148px - var(--earth-navigation-clearance, 84px));
   overflow: auto;
   overscroll-behavior: contain;
   border: 1px solid #cce1b83d;
@@ -93,7 +93,7 @@
 @media (max-height: 500px) {
   .controls { grid-template-columns: repeat(6, 44px); gap: 4px; }
   .controls .locateButton { margin: 0; }
-  .infoPanel { max-height: calc(100% - var(--earth-overlay-top, 16px) - 125px - var(--earth-navigation-clearance, 84px)); padding: 12px; }
+  .infoPanel { max-height: calc(100% - var(--earth-overlay-top, 16px) - 143px - var(--earth-navigation-clearance, 84px)); padding: 12px; }
   .networkNotice, .tileProgress { top: calc(var(--earth-overlay-top, 16px) + 112px); }
 }
 @keyframes locate-search { 50% { opacity: .45; transform: scale(.82); } }

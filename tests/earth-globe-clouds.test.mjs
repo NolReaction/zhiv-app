@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { earthTestCanvasContext } from "./earth-canvas-harness.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createEarthClouds } = await vite.ssrLoadModule("/features/earth/globe-clouds.ts");
+const { createEarthClouds, EARTH_DECORATIVE_CLOUD_COUNT } = await vite.ssrLoadModule("/features/earth/globe-clouds.ts");
 
 function scene({ zoom = 1, failAttachmentAt = -1 } = {}) {
   const markers = [];
@@ -16,7 +17,8 @@ function scene({ zoom = 1, failAttachmentAt = -1 } = {}) {
   const ownerDocument = {
     createElement(tag) {
       return {
-        tag, attributes: {}, children: [],
+        tag, attributes: {}, children: [], dataset: {},
+        context: earthTestCanvasContext(), getContext() { return this.context; },
         style: new Proxy({}, { set(target, key, value) { styleWrites++; target[key] = value; return true; } }),
         setAttribute(name, value) { this.attributes[name] = value; },
         append(...children) { this.children.push(...children); },
@@ -60,10 +62,10 @@ function lastPosition(marker) { return marker.positions.at(-1); }
 function wrapper(marker) { return marker.options.element; }
 function visual(marker) { return wrapper(marker).children[0]; }
 
-test("eight decorative native markers preserve SDK projection and back-globe occlusion", () => {
+test("five soft decorative native banks preserve SDK projection and back-globe occlusion", () => {
   const state = scene();
   const clouds = state.create();
-  assert.equal(state.markers.length, 8);
+  assert.equal(state.markers.length, EARTH_DECORATIVE_CLOUD_COUNT);
   for (const marker of state.markers) {
     assert.equal(marker.options.opacityWhenCovered, 0);
     assert.equal(marker.options.subpixelPositioning, true);
@@ -73,8 +75,12 @@ test("eight decorative native markers preserve SDK projection and back-globe occ
     assert.equal(wrapper(marker).style.pointerEvents, "none");
     assert.equal(wrapper(marker).style.opacity, "0", "covered opacity belongs to MapLibre");
     assert.equal(wrapper(marker).style.transform, "translate(12px, 34px)");
-    assert.equal(visual(marker).children.length, 2, "shadow and puff are separate original vectors");
-    assert.ok(visual(marker).children.every(node => node.tag === "svg" && node.attributes.focusable === "false"));
+    assert.equal(wrapper(marker).dataset.earthCloud, "decorative");
+    assert.equal(visual(marker).children.length, 1, "a bank is one continuous material rather than an SVG icon");
+    const bank = visual(marker).children[0];
+    assert.equal(bank.tag, "canvas");
+    assert.equal(bank.width, 256); assert.equal(bank.height, 128);
+    assert.ok(bank.context.imageData.data.some((value, index) => index % 4 === 3 && value > 0));
   }
   clouds.update(5_000);
   for (const marker of state.markers) {
@@ -121,7 +127,7 @@ test("extreme zoom-out hides decorative clouds instead of piling them over a tin
   clouds.dispose();
 });
 
-test("the shared absolute clock gives deterministic bounded drift, throttled to ten position writes per second", () => {
+test("the shared absolute clock gives deterministic bounded drift, throttled to eight position writes per second", () => {
   const first = scene();
   const second = scene();
   const firstClouds = first.create();
@@ -129,7 +135,7 @@ test("the shared absolute clock gives deterministic bounded drift, throttled to 
   const initial = first.markers.map(lastPosition);
   const initialWrites = first.markers[0].positions.length;
   for (let time = 0; time < 1_000; time += 16) firstClouds.update(time);
-  assert.ok(first.markers[0].positions.length - initialWrites <= 10);
+  assert.ok(first.markers[0].positions.length - initialWrites <= 8);
   firstClouds.update(60_000);
   secondClouds.update(60_000);
   assert.deepEqual(first.markers.map(lastPosition), second.markers.map(lastPosition));
@@ -175,6 +181,7 @@ test("disposal is idempotent and releases the zoom listener and every marker", (
   clouds.dispose();
   assert.equal(state.listeners.size, 0);
   assert.ok(state.markers.every(marker => marker.removed === 1));
+  assert.ok(state.markers.every(marker => visual(marker).children[0].width === 1));
   const writes = state.styleWrites;
   clouds.update(60_000);
   clouds.setVisible(false);

@@ -39,7 +39,7 @@ test("a ready camera survives game resource release and map-retention expiry exa
 
 test("map preferences survive resource teardown, are copied, and reset only with their account session", () => {
   const controller = createEarthCameraSession("owner-a"); const deactivate = controller.activate();
-  const defaults = { weatherEnabled: false, lightingMode: "auto", buildings3d: true, eveningCenter: null };
+  const defaults = { weatherEnabled: true, lightingMode: "auto", buildings3d: true, eveningCenter: null };
   assert.deepEqual(controller.session.readPreferences(), defaults);
   const input = { weatherEnabled: true, lightingMode: "evening", buildings3d: false, eveningCenter: { lng: 35, lat: 27 } };
   const expected = { ...input, eveningCenter: { ...input.eveningCenter } };
@@ -58,7 +58,7 @@ test("map preferences survive resource teardown, are copied, and reset only with
   deactivate(); controller.session.savePreferences(expected);
   assert.deepEqual(controller.session.readPreferences(), defaults);
   const next = createEarthCameraSession("owner-b"); const deactivateNext = next.activate();
-  assert.deepEqual(next.session.readPreferences(), defaults, "another account retains the default opt-in policy");
+  assert.deepEqual(next.session.readPreferences(), defaults, "another account receives its own fresh map preferences");
   const replayCleanup = controller.activate();
   assert.deepEqual(controller.session.readPreferences(), defaults);
   replayCleanup(); deactivateNext();

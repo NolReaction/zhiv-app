@@ -121,6 +121,21 @@ test("hidden/overview/disposed overlays do no coverage work and geometry stays b
   assert.equal(s.svg.removed, 1); assert.equal(s.state.queries, queries);
 });
 
+test("many missing tiles keep a sparse loading treatment with at most two spaced badges", async () => {
+  const s = fixture();
+  s.container.clientWidth = 900; s.container.clientHeight = 600; s.state.worldSize = 4096;
+  for (let y = 5; y <= 10; y++) for (let x = 5; x <= 10; x++) s.overlay.observe(event("sourcedataloading", x, y, 4));
+  s.overlay.refresh();
+  assert.ok(Number(s.svg.attributes["data-patch-count"]) > 2);
+  assert.ok(Number(s.svg.attributes["data-badge-count"]) <= 2);
+  assert.ok((s.svg.innerHTML.match(/data-loading-badge=/g) ?? []).length <= 2);
+  const badges = [...s.svg.innerHTML.matchAll(/data-loading-badge="" transform="translate\(([^ ]+) ([^)]+)\)"/g)];
+  if (badges.length === 2) assert.ok(Math.hypot(Number(badges[0][1]) - Number(badges[1][1]), Number(badges[0][2]) - Number(badges[1][2])) > 220);
+  const pixels = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600">${s.svg.innerHTML}</svg>`)).ensureAlpha().raw().toBuffer();
+  const nonBadgeAlpha = pixels[(590 * 900 + 890) * 4 + 3];
+  assert.ok(nonBadgeAlpha < 80, "unloaded geography remains readable through a light mist instead of an opaque repeated texture");
+});
+
 test("native globe projection rejects the reverse hemisphere and keeps date-line tile boundaries near the viewport", async () => {
   const load = path => vite.ssrLoadModule(`/node_modules/maplibre-gl/src/${path}.ts`);
   const { Camera } = await load("ui/camera");

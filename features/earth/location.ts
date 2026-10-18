@@ -72,7 +72,8 @@ export function browserEarthLocationEnvironment(): EarthLocationEnvironment {
 
 /**
  * One foreground session belongs to one account and lives only in memory.
- * Enabling the screen never requests location: start() is an explicit user action.
+ * The optional initial private lookup requires an already granted permission.
+ * Explicit start() remains separate from permission probing and friend sharing.
  */
 export function createEarthLocationController(
   ownerPublicId: string,
@@ -84,6 +85,9 @@ export function createEarthLocationController(
   let mounted = false;
   let enabled = false;
   let requested = false;
+  let automaticPolicy: boolean | null = false;
+  let automaticAttempted = false;
+  let automaticEpoch = 0;
   let watchId: number | null = null;
   let watching = false;
   let watchEpoch = 0;
@@ -180,10 +184,44 @@ export function createEarthLocationController(
   }
 
   function stop() {
+    automaticAttempted = true;
+    automaticEpoch += 1;
     requested = false;
     clearWatch();
     clearPermission();
     publish(IDLE);
+  }
+
+  // Permissions.query is passive: an unknown/prompt permission never opens a
+  // browser prompt. A delayed answer cannot revive a stopped/hidden session.
+  function maybeStartAutomatically() {
+    if (automaticPolicy !== true || automaticAttempted || !mounted || !enabled || requested
+      || !ownerPublicId || !environment?.visible()) return;
+    automaticAttempted = true;
+    if (!environment.secure || !environment.geolocation || !environment.queryPermission) return;
+    const epoch = ++automaticEpoch;
+    const currentEnvironment = environment;
+    void environment.queryPermission().then(permission => {
+      if (!mounted || !enabled || requested || epoch !== automaticEpoch || automaticPolicy !== true
+        || environment !== currentEnvironment || !environment.visible() || permission.state !== "granted") return;
+      start();
+    }).catch(() => {
+      // Without a reliable permission result, the explicit private GPS button
+      // remains available; never try geolocation just to discover permission.
+    });
+  }
+  function start() {
+    if (!mounted || !ownerPublicId || requested) return;
+    automaticAttempted = true;
+    automaticEpoch += 1;
+    requested = true;
+    reconcile();
+    if (requested) observePermission();
+  }
+  function visibilityChanged() {
+    if (!environment?.visible()) automaticEpoch += 1;
+    reconcile();
+    maybeStartAutomatically();
   }
 
   return {
@@ -195,8 +233,11 @@ export function createEarthLocationController(
     },
     activate() {
       mounted = true;
+      automaticAttempted = false;
+      automaticEpoch += 1;
       environment = getEnvironment();
-      removeVisibilityListener = environment.onVisibilityChange(reconcile);
+      removeVisibilityListener = environment.onVisibilityChange(visibilityChanged);
+      maybeStartAutomatically();
       return () => {
         mounted = false;
         stop();
@@ -207,14 +248,17 @@ export function createEarthLocationController(
     },
     setEnabled(value: boolean) {
       enabled = value;
+      if (!enabled) automaticEpoch += 1;
       reconcile();
+      maybeStartAutomatically();
     },
-    start() {
-      if (!mounted || !ownerPublicId || requested) return;
-      requested = true;
-      reconcile();
-      if (requested) observePermission();
+    /** null waits for privacy metadata; false permanently suppresses this mount's auto attempt. */
+    setAutomaticStartPolicy(value: boolean | null) {
+      automaticPolicy = value;
+      if (value === false) { automaticAttempted = true; automaticEpoch += 1; }
+      maybeStartAutomatically();
     },
+    start,
     stop,
   };
 }

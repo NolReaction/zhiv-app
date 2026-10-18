@@ -39,6 +39,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
     const visible = ready && foreground && !document.hidden;
     const animate = visible && !motionPreference?.matches;
     weather.setVisible(visible);
+    lighting.setVisible(visible);
     weather.setMotionEnabled(animate);
     const globeMotion = animate && map.getZoom() < EARTH_SCENE_MOTION_MAX_ZOOM;
     clouds.setVisible(visible);

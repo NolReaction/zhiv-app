@@ -1,7 +1,7 @@
 .credits {
   position: absolute;
   z-index: 2;
-  bottom: calc(var(--earth-navigation-clearance, 84px) + 72px);
+  bottom: calc(var(--earth-navigation-clearance, 84px) + 7px);
   left: var(--earth-overlay-left, 16px);
   display: flex;
   flex-wrap: wrap;

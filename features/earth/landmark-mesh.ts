@@ -2,6 +2,7 @@ import type { EarthLandmarkKind } from "./landmark-catalog";
 
 type Point = readonly [number, number, number];
 type Color = readonly [number, number, number];
+export type EarthLandmarkDetail = "overview" | "detail";
 const cream: Color = [0.94, 0.86, 0.65];
 const stone: Color = [0.78, 0.59, 0.39];
 const white: Color = [0.96, 0.95, 0.84];
@@ -10,7 +11,7 @@ const red: Color = [0.78, 0.28, 0.22];
 const gold: Color = [1, 0.69, 0.22];
 
 /** Original low-poly architecture, in a local east/north/up frame. No fetched models. */
-export function createEarthLandmarkMesh(kind: EarthLandmarkKind): Float32Array {
+export function createEarthLandmarkMesh(kind: EarthLandmarkKind, detail: EarthLandmarkDetail = "detail"): Float32Array {
   const vertices: number[] = [];
   function triangle(a: Point, b: Point, c: Point, color: Color) {
     const u = b.map((value, axis) => value - a[axis]);
@@ -66,15 +67,67 @@ export function createEarthLandmarkMesh(kind: EarthLandmarkKind): Float32Array {
   }
 
   if (kind === "eiffel-tower") {
-    box(0, 0, 0, 0.8, 0.8, 0.035, cream);
+    // Recognizable engineering silhouette: 330 m / 125 m; platforms at
+    // 57, 115 and 276 m. Detail is original geometry, not a surveyed model.
+    const iron: Color = [0.67, 0.53, 0.38], edge: Color = [0.83, 0.68, 0.48];
+    const fine = detail === "detail";
+    const legs = [[0.012, 0.17], [0.065, 0.143], [0.12, 0.113], [57 / 330, 0.088],
+      [0.25, 0.069], [115 / 330, 0.051], [0.48, 0.037], [0.61, 0.027],
+      [0.73, 0.02], [276 / 330, 0.014]] as const;
     for (const x of [-1, 1]) for (const y of [-1, 1]) {
-      beam([x * 0.34, y * 0.34, 0.035], [x * 0.14, y * 0.14, 0.5], 0.085, stone);
-      beam([x * 0.14, y * 0.14, 0.5], [x * 0.045, y * 0.045, 0.88], 0.065, stone);
+      box(x * 0.17, y * 0.17, 0, 0.038, 0.038, 0.012, stone);
+      for (let index = 1; index < legs.length; index++) {
+        const [z, radius] = legs[index - 1], [nextZ, nextRadius] = legs[index];
+        const width = z < 0.18 ? 0.021 : z < 0.35 ? 0.014 : 0.009;
+        beam([x * radius, y * radius, z], [x * nextRadius, y * nextRadius, nextZ], width, iron);
+      }
     }
-    box(0, 0, 0.32, 0.5, 0.5, 0.065, cream);
-    box(0, 0, 0.58, 0.31, 0.31, 0.05, cream);
-    box(0, 0, 0.86, 0.15, 0.15, 0.065, stone);
-    beam([0, 0, 0.9], [0, 0, 1.2], 0.035, stone);
+    // Four open arches, recessed towards the first-floor corners as they rise.
+    // The opening stays empty all the way through, including the far facade.
+    const archSegments = 8;
+    const face = (side: number, across: number, radius: number, z: number): Point => side < 2
+      ? [across, (side === 0 ? -1 : 1) * radius, z]
+      : [(side === 2 ? -1 : 1) * radius, across, z];
+    const arch = (side: number, t: number): Point => {
+      const rise = Math.sin(t * Math.PI) * 0.092;
+      return face(side, -Math.cos(t * Math.PI) * 0.139, 0.139 - rise * 0.48, 0.058 + rise);
+    };
+    for (let side = 0; side < 4; side++) {
+      for (let segment = 1; segment <= archSegments; segment++) {
+        beam(arch(side, (segment - 1) / archSegments), arch(side, segment / archSegments), 0.01, edge);
+      }
+      // Lattice on the tapering shaft, never across the ground-level arch.
+      for (let index = 4; index < legs.length; index++) {
+        const [z, radius] = legs[index - 1], [nextZ, nextRadius] = legs[index];
+        beam(face(side, -radius, radius, z), face(side, nextRadius, nextRadius, nextZ), 0.0045, edge);
+        beam(face(side, radius, radius, z), face(side, -nextRadius, nextRadius, nextZ), 0.0045, iron);
+      }
+    }
+    const platforms = [[57 / 330, 0.23], [115 / 330, 0.137], [276 / 330, 0.057]];
+    for (const [z, size] of platforms) box(0, 0, z, size, size, 0.011, iron);
+    box(0, 0, 0.848, 0.029, 0.029, 0.037, iron);
+    rings(0, 0, [[0.885, 0.024], [0.907, 0.006]], edge, 4);
+    beam([0, 0, 0.904], [0, 0, 1], 0.004, iron);
+    // Append-only detail: the overview is an exact prefix of this same buffer.
+    // Camera movement can change vertex count without duplicating/uploading it.
+    if (fine) {
+      for (let side = 0; side < 4; side++) {
+        for (const [z, radius] of legs.slice(4))
+          beam(face(side, -radius, radius, z), face(side, radius, radius, z), 0.0045, edge);
+        for (const t of [0.25, 0.5, 0.75]) {
+          const start = arch(side, t);
+          beam(start, face(side, start[side < 2 ? 0 : 1], 0.088, 57 / 330), 0.0045, iron);
+        }
+      }
+      for (const [z, size] of platforms) {
+        for (const sign of [-1, 1]) {
+          box(0, sign * size / 2, z + 0.023, size, 0.004, 0.004, edge);
+          box(sign * size / 2, 0, z + 0.023, 0.004, size, 0.004, edge);
+        }
+        for (const x of [-1, 1]) for (const y of [-1, 1])
+          box(x * size / 2, y * size / 2, z + 0.011, 0.004, 0.004, 0.016, iron);
+      }
+    }
   } else if (kind === "giza-pyramids") {
     box(0, 0, 0, 1.22, 0.78, 0.025, cream);
     for (const [x, y, size] of [[-0.3, 0.1, 0.6], [0.23, -0.1, 0.48], [0.48, 0.24, 0.25]]) {
