@@ -27,6 +27,7 @@ import ru.zhiv.world.worldJson
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
@@ -105,6 +106,9 @@ class JdbcNotificationRepositoryIntegrationTest {
         execute("""INSERT INTO check_ins(user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
             VALUES (?,?,?,?,?,'Europe/Moscow',?)""",p.id,p.session,UUID.randomUUID(),at.notificationSqlTime(),at.plusSeconds(30).notificationSqlTime(),at.atZone(ZoneId.of("Europe/Moscow")).toLocalDate())
     }
+    // Freeze the worker at PostgreSQL's timestamp precision. A nanosecond clock
+    // can round due_at upwards and incorrectly postpone a fixture before reserve.
+    private fun mailClock(): Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
     private fun mail(p: Player,now: Instant,notify: Boolean=true): UUID {
         val id=UUID.randomUUID()
         source.connection.use { c ->
@@ -117,7 +121,7 @@ class JdbcNotificationRepositoryIntegrationTest {
     }
 
     @Test fun `mail uses existing opted in subscription and generic owner bound push only once`() = runBlocking<Unit> {
-        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); val now=Instant.now(); val id=mail(p,now)
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); val now=mailClock(); val id=mail(p,now)
         val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
         worker.tick(); worker.tick()
         assertEquals(1,sent.size)
@@ -129,7 +133,7 @@ class JdbcNotificationRepositoryIntegrationTest {
         assertEquals("1",scalar("SELECT count(*) FROM player_mail_messages WHERE id=? AND read_at IS NULL",id))
     }
     @Test fun `mail never creates device consent or replays earlier letters after first connection`() = runBlocking<Unit> {
-        val p=player(); val now=Instant.now(); mail(p,now)
+        val p=player(); val now=mailClock(); mail(p,now)
         assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",p.id))
         repository.snapshot(p.hash,p.owner); mail(p,now)
         assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",p.id))
@@ -153,7 +157,7 @@ class JdbcNotificationRepositoryIntegrationTest {
     }
     @Test fun `read and revoked owner sessions suppress a reserved mail before provider send`() = runBlocking<Unit> {
         listOf("read","revoke","visible").forEach { change ->
-            val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); val now=Instant.now(); val id=mail(p,now)
+            val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); val now=mailClock(); val id=mail(p,now)
             var calls=0; val sent=CopyOnWriteArrayList<PushPayload>()
             dispatcher({
                 if(++calls==2) when(change) {
@@ -163,6 +167,7 @@ class JdbcNotificationRepositoryIntegrationTest {
                 }
                 now
             },sent).tick()
+            assertEquals(2,calls,"$change must occur after a real reservation and before provider delivery")
             assertTrue(sent.isEmpty(),change)
             assertEquals("dismissed",scalar("SELECT state FROM notification_batches WHERE user_id=?",p.id))
             assertEquals("1",scalar("SELECT count(*) FROM player_mail_messages WHERE user_id=?",p.id))
@@ -170,7 +175,7 @@ class JdbcNotificationRepositoryIntegrationTest {
     }
     @Test fun `forged cross owner mail queue source cannot reveal or send another players letter`() = runBlocking<Unit> {
         val owner=player(); val stranger=player(); connect(owner,noQuiet.copy(rateLimitsEnabled=false)); connect(stranger,noQuiet.copy(rateLimitsEnabled=false))
-        val now=Instant.now(); val id=mail(owner,now,notify=false)
+        val now=mailClock(); val id=mail(owner,now,notify=false)
         execute("UPDATE player_mail_messages SET notify=true WHERE id=?",id)
         source.connection.use { c -> enqueueMailNotification(c,stranger.id,id,now.notificationSqlTime()); c.commit() }
         assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",stranger.id))

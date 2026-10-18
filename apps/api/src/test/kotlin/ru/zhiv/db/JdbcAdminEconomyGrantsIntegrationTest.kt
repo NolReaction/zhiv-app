@@ -24,10 +24,15 @@ import ru.zhiv.economy.*
 import ru.zhiv.installZhivApi
 import ru.zhiv.mail.MailAttachments
 import ru.zhiv.mail.PlayerMailMessage
+import ru.zhiv.notifications.BrowserPushSubscription
+import ru.zhiv.notifications.NotificationPreferences
+import ru.zhiv.notifications.PushKeys
+import ru.zhiv.notifications.WebPushConfig
 import ru.zhiv.world.WorldRules
 import ru.zhiv.world.WorldState
 import ru.zhiv.security.TokenCodec
 import java.util.UUID
+import java.util.Base64
 import java.sql.SQLException
 import kotlin.test.*
 
@@ -74,9 +79,17 @@ class JdbcAdminEconomyGrantsIntegrationTest {
         "Исправление внутренней ошибки расчёта", revision)
     private suspend fun adjust(repo: JdbcAdminRepository, actor: User, target: User, request: AdminEconomyAdjustmentRequest) =
         repo.adjustEconomy(actor.hash, target.publicId, UUID.fromString(request.requestId), request)
+    private suspend fun optIntoPush(target: User) {
+        val notifications = JdbcNotificationRepository(source, WebPushConfig("test-public", "test-private", "mailto:test@example.test"))
+        notifications.preferences(target.hash, target.publicId, NotificationPreferences(quietHoursEnabled = false))
+        val encoder = Base64.getUrlEncoder().withoutPadding()
+        notifications.subscribe(target.hash, target.publicId, BrowserPushSubscription("https://fcm.googleapis.com/fcm/send/${UUID.randomUUID()}",
+            PushKeys(encoder.encodeToString(ByteArray(65).also { it[0] = 4 }), encoder.encodeToString(ByteArray(16)))))
+    }
 
     @Test fun `notified grants atomically publish only actual additions and same receipt never sends another letter`() = runBlocking<Unit> {
         val admin = user(); val target = user(); val repo = repository(admin)
+        optIntoPush(target)
         val command = request(target).copy(coins = 20, pearls = 3, items = mapOf("wood" to 2L), buildings = mapOf("home" to 1),
             rods = listOf("reed_rod"), delivery = "notify", playerMessage = PlayerMailMessage("Подарок лесному жителю", "Спасибо за помощь!"))
         val replies = coroutineScope { List(2) { async(Dispatchers.IO) { grant(repo, admin, target, command) } }.awaitAll() }
@@ -108,6 +121,9 @@ class JdbcAdminEconomyGrantsIntegrationTest {
         assertEquals("-40", scalar("SELECT coins FROM economy_ledger WHERE kind='admin_adjustment'"))
         assertEquals("-6", scalar("SELECT pearls FROM economy_ledger WHERE kind='admin_adjustment'"))
         assertEquals("balance_correction", scalar("SELECT type FROM player_mail_messages"))
+        assertEquals("0", scalar("SELECT count(*) FROM notification_events WHERE category='mail'"), "A letter cannot grant browser push consent")
+        assertEquals("0", scalar("SELECT count(*) FROM notification_preferences"))
+        assertEquals("0", scalar("SELECT count(*) FROM notification_subscriptions"))
         val attachments = economyJson.decodeFromString<MailAttachments>(assertNotNull(scalar("SELECT attachments::text FROM player_mail_messages")))
         assertEquals(-40L, attachments.coins); assertEquals(-3L, attachments.pearls)
         grant(repo, admin, target, request(target).copy(coins = 2))
@@ -150,7 +166,7 @@ class JdbcAdminEconomyGrantsIntegrationTest {
         assertEquals("0", scalar("SELECT count(*) FROM economy_profiles"))
         JdbcEconomyRepository(source).snapshot(target.hash)
         for (predicate in listOf("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE user_id=?",
-            "UPDATE app_sessions SET expires_at=clock_timestamp()-interval '1 minute' WHERE user_id=?",
+            "UPDATE app_sessions SET created_at=statement_timestamp()-interval '2 minutes',last_seen_at=statement_timestamp()-interval '2 minutes',expires_at=statement_timestamp()-interval '1 minute' WHERE user_id=?",
             "UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Test moderation' WHERE id=?",
             "UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?")) {
             val actor = user(); val actorsRepo = repository(actor)
@@ -202,6 +218,7 @@ class JdbcAdminEconomyGrantsIntegrationTest {
 
     @Test fun `legacy gifts discoveries and cosmetic rewards notify only on actual changes`() = runBlocking<Unit> {
         val admin = user(); val target = user(); val repo = repository(admin)
+        optIntoPush(target)
         val cosmetic = AdminPlayerCommand(UUID.randomUUID().toString(), target.publicId, "Внутренняя причина подарка", "grant_world_item", "explorer_cap",
             delivery = "notify", playerMessage = PlayerMailMessage("Подарок", "Новый наряд уже доступен."))
         val first = repo.managePlayer(admin.hash, target.publicId, UUID.fromString(cosmetic.requestId), cosmetic)

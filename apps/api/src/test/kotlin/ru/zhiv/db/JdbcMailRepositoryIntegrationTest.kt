@@ -116,7 +116,7 @@ class JdbcMailRepositoryIntegrationTest {
 
     @Test fun `broadcast snapshots eligible recipients and an uncertain retry never sends to later accounts`()=runBlocking<Unit> {
         val admin=player();val a=player();val banned=player();val deleted=player();val repository=repo(admin)
-        execute("UPDATE app_users SET banned_at=clock_timestamp() WHERE id=?",banned.id)
+        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Проверка фильтра рассылки' WHERE id=?",banned.id)
         execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",deleted.id)
         val request=broadcast();val receipt=repository.broadcast(admin.hash,request)
         assertEquals(2L,receipt.recipientCount);assertTrue(receipt.changed)

@@ -78,7 +78,17 @@ class JdbcReleaseUpgradeIntegrationTest {
             val repository = JdbcAdminRepository(source, ru.zhiv.admin.AdminConfig(setOf(admin.publicId)))
             val requestId = UUID.randomUUID()
             val reward = ru.zhiv.admin.AdminGrantRequest(requestId.toString(), player.publicId, "item", "flower", "Награда до обновления")
-            val receipt = repository.grantReward(token.hash, player.publicId, requestId, reward)
+            // Seed the deployed V50 operation, whose audit requires payload=NULL.
+            // The current server's delivery payload is introduced only by V61.
+            val receipt = source.connection.use { c ->
+                c.economyUpdate("INSERT INTO game_items(user_id,item_id) VALUES (?,'flower')",player.id)
+                c.economyRows("""INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,
+                    action,reason,affected_sessions,reward_id,granted) VALUES (?,?,?,?,?,'grant_item',?,0,'flower',true) RETURNING created_at""",
+                    requestId,admin.id,player.id,admin.publicId,player.publicId,reward.reason) {
+                    ru.zhiv.admin.AdminGrantReceipt(requestId.toString(),"item","flower",true,
+                        it.getObject(1,java.time.OffsetDateTime::class.java).toInstant().toString())
+                }.single().also { c.commit() }
+            }
             val moderation = ru.zhiv.admin.AdminPlayerCommand(UUID.randomUUID().toString(), player.publicId, "Проверка до обновления", "watch")
             repository.managePlayer(token.hash, player.publicId, UUID.fromString(moderation.requestId), moderation)
             JdbcEconomyRepository(source).snapshot(playerToken.hash)
