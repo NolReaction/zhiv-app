@@ -211,7 +211,12 @@ test("map keeps focused actions and retains collection of saved legacy journeys"
   const economy = { snapshot: null, market: null, now: world.now, busy: false, uncertain: false, error: null, notice: "", retryAt: 0, act() {}, actMarket() {}, retry() {}, refresh() {}, refreshMarket() {} };
   const props = { world, economy, ownerPublicId: "test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 30 };
   const markup = renderToStaticMarkup(createElement(WorldView, props));
-  assert.match(markup, /data-world-quick="more" aria-haspopup="dialog" aria-expanded="false"/);
+  const more = /<button\b[^>]*\bdata-world-quick="more"[^>]*>/.exec(markup)?.[0];
+  assert.ok(more, "secondary actions keep a native accessible More button");
+  assert.match(more, /aria-label="Ещё"/);
+  assert.match(more, /aria-haspopup="dialog"/);
+  assert.match(more, /aria-expanded="false"/);
+  assert.doesNotMatch(more, /aria-controls=|tabindex="-1"/);
   assert.match(markup, /В путь/); assert.match(markup, /Кладовая/);
   assert.doesNotMatch(markup, /Хозяйство|Как Мохлик\?/);
   for (const place of ["house", "garden", "campfire", "workshop", "quarry", "bridge", "lighthouse",

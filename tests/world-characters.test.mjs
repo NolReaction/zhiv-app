@@ -1805,10 +1805,30 @@ test("mailbox is a real More entry with an account-bound unread badge and opens 
   try {
     nav.props.mailbox = { ownerPublicId: nav.props.ownerPublicId, unreadCount: 3, open() { opened++; } };
     const more = nav.find(element => element.props["data-world-quick"] === "more");
+    assert.equal(more.type, "button", "More uses native Enter/Space activation");
+    assert.equal(more.props["aria-expanded"], false); assert.equal(more.props["aria-haspopup"], "dialog");
     assert.equal(more.props["data-mail-unread"], true); assert.match(more.props["aria-label"], /Непрочитанных писем: 3/);
     more.props.onClick();
+    const quick = nav.find(element => element.props.id === "world-quick-menu");
+    assert.equal(quick.props.role, "dialog"); assert.equal(quick.props["aria-modal"], "false");
+    let prevented = 0, stopped = 0;
+    const key = value => ({ key: value, preventDefault() { prevented++; }, stopPropagation() { stopped++; } });
+    quick.props.onKeyDown(key("ArrowDown"));
+    assert.equal(prevented, 0); assert.equal(stopped, 0);
+    assert.ok(nav.find(element => element.props.id === "world-quick-menu"));
+    quick.props.onKeyDown(key("Escape"));
+    assert.equal(prevented, 1); assert.equal(stopped, 1);
+    assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined);
+    assert.equal(opened, 0, "Escape closes More without opening a letter");
+    assert.deepEqual(nav.focused, ["more"], "keyboard dismissal returns focus to its connected trigger");
+    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+    const expanded = nav.find(element => element.props["data-world-quick"] === "more");
+    assert.equal(expanded.props["aria-expanded"], true); assert.equal(expanded.props["aria-controls"], "world-quick-menu");
     const entry = nav.find(element => element.props["data-world-mailbox-trigger"] !== undefined);
-    assert.ok(entry); entry.props.onClick(); assert.equal(opened, 1); assert.equal(nav.refreshes, 0);
+    assert.ok(entry); assert.equal(entry.type, "button"); assert.equal(entry.props.type, "button");
+    assert.equal(entry.props["aria-haspopup"], "dialog");
+    entry.props.onClick(); assert.equal(opened, 1); assert.equal(nav.refreshes, 0);
+    assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined, "mail takes over after closing More");
     assert.ok(nav.focused.includes("more"), "the More button remains a connected return-focus target");
   } finally { nav.restore(); }
 });

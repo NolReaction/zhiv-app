@@ -225,9 +225,16 @@ test("retry is explicit and its control blocks busy, cooldown, offline and missi
 test("world HUD keeps help visible and moves secondary actions under More", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
   const world = { snapshot: { state: newWorldState(), gifts: [] }, now: Date.parse("2026-09-23T12:00:00Z"), act() {} };
-  const markup = renderToStaticMarkup(createElement(WorldView, { world, economy: { snapshot: null, now: world.now }, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
+  const renderWorld = mailbox => renderToStaticMarkup(createElement(WorldView, { world, economy: { snapshot: null, now: world.now }, mailbox, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
+  const markup = renderWorld();
+  const moreButton = html => /<button\b[^>]*\bdata-world-quick="more"[^>]*>/.exec(html)?.[0];
   assert.match(markup, /aria-label="Справка по игре"/);
-  assert.match(markup, /data-world-quick="more" aria-haspopup="dialog" aria-expanded="false"/);
+  const more = moreButton(markup);
+  assert.ok(more, "More remains a native keyboard-activatable button");
+  assert.match(more, /aria-label="Ещё"/);
+  assert.match(more, /aria-haspopup="dialog"/);
+  assert.match(more, /aria-expanded="false"/);
+  assert.doesNotMatch(more, /data-mail-unread|aria-controls=|tabindex="-1"/);
   assert.match(markup, /aria-label="Открыть кладовую"/);
   assert.doesNotMatch(markup, /aria-label="Открыть коллекции"/);
   assert.match(markup, /aria-label="Профиль Мохлика\. Мохлик, уровень 1"/);
@@ -236,6 +243,13 @@ test("world HUD keeps help visible and moves secondary actions under More", asyn
   assert.deepEqual([...dock.matchAll(/data-world-quick="([^"]+)"/g)].map(match => match[1]), ["pantry", "expeditions", "more"]);
   assert.doesNotMatch(markup, /Как Мохлик\?|Хозяйство/);
   assert.match(markup, /lucide-info/);
+  const unread = renderWorld({ ownerPublicId: "help-test", unreadCount: 125, open() { assert.fail("Rendering cannot open mail"); } });
+  assert.match(moreButton(unread), /aria-label="Ещё\. Непрочитанных писем: 125"/);
+  assert.match(moreButton(unread), /data-mail-unread="true"/);
+  assert.match(unread, /aria-hidden="true">99\+<\/span>/, "the compact visual badge never truncates the accessible unread count");
+  const foreign = moreButton(renderWorld({ ownerPublicId: "another-player", unreadCount: 125 }));
+  assert.match(foreign, /aria-label="Ещё"/);
+  assert.doesNotMatch(foreign, /data-mail-unread|Непрочитанных/);
 });
 
 
