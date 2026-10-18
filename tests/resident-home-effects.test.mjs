@@ -14,7 +14,17 @@ const { createForestVillagers, rehydrateForestVillagers } = await vite.ssrLoadMo
 const { residentScenePresentation } = await vite.ssrLoadModule("/features/world/scene/resident-scene-presentation.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+const { createWorldNavigation } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 after(() => vite.close());
+
+function deliveryGround() {
+  const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
+  const scene = { width: 300, height: 200, actor: { size: 50 }, terrain: [], paths: [],
+    sites: [{ id: "lopukh-home", bounds: { x: 10, y: 10, width: 20, height: 20 }, collision: rect(10, 10, 20, 20) }],
+    navigation: { version: 1, cellSize: 10, areas: [{ id: "ground", points: rect(0, 0, 300, 200) }], obstacles: [], interests: [] },
+    water: { surfaces: [], exclusions: [] } };
+  return { scene, places: { woodcutting: {}, navigation: createWorldNavigation(scene, 4.4) } };
+}
 
 test("the real indoor fish follow their authored door-side centre, level and size without moving the resident", () => {
   const state = { elapsed: 12, pleskMind: { home: { phase: "inside" } } }, before = structuredClone(state);
@@ -111,12 +121,12 @@ test("only a completed unload records one cosmetic delivery, never an early or r
   const mind = { id: "lopukh", action: "unload", age: .5, socialNeed: .2, position: { x: 70, y: 80 }, target: null,
     intent: "home", route: null, noticePending: false, job: true, workNeed: .3, fatigue: .2, elapsed: 1,
     woodwork: { phase: "unload", elapsed: .5, failures: 0, retryAt: 0, completedCycles: 0, chopSeconds: 8 } };
-  const places = { woodcutting: {} };
-  advanceWoodcutterCycle(mind, {}, places, .5, []); assert.equal(mind.woodwork.lastDelivery, undefined);
-  advanceWoodcutterCycle(mind, {}, places, .1, []);
+  const { scene, places } = deliveryGround();
+  advanceWoodcutterCycle(mind, scene, places, .5, []); assert.equal(mind.woodwork.lastDelivery, undefined);
+  advanceWoodcutterCycle(mind, scene, places, .1, []);
   assert.deepEqual(mind.woodwork.lastDelivery, { position: { x: 70, y: 80 }, sequence: 1 }); assert.equal(mind.action, "rest");
   const delivery = structuredClone(mind.woodwork.lastDelivery);
-  mind.position.x += 1; advanceWoodcutterCycle(mind, {}, places, .2, []);
+  mind.position.x += 1; advanceWoodcutterCycle(mind, scene, places, .2, []);
   assert.deepEqual(mind.woodwork.lastDelivery, delivery, "rest and later movement cannot repeat or drag the delivered log");
   assert.equal(mind.job, true); assert.equal(mind.woodwork.completedCycles, 0);
 });
@@ -147,13 +157,14 @@ test("a scene handoff preserves delivered logs without sharing their mutable pos
 });
 
 test("successful unload history retains the last three original drops and never drags earlier logs", () => {
+  const { scene, places } = deliveryGround();
   const mind = { id: "lopukh", action: "unload", age: .5, socialNeed: .2, position: { x: 70, y: 80 }, target: null,
     intent: "home", route: null, noticePending: false, job: true, workNeed: .3, fatigue: .2, elapsed: 1,
     woodwork: { phase: "unload", elapsed: 1, failures: 0, retryAt: 0, completedCycles: 0, chopSeconds: 8 } };
   for (let index = 0; index < 4; index++) {
     mind.position = { x: 70 + index * 20, y: 80 + index * 5 };
     mind.woodwork.phase = "unload"; mind.woodwork.elapsed = 1;
-    advanceWoodcutterCycle(mind, {}, { woodcutting: {} }, .1, []);
+    advanceWoodcutterCycle(mind, scene, places, .1, []);
     assert.equal(mind.woodwork.lastDelivery.sequence, index + 1);
     assert.ok(mind.woodwork.deliveries.length <= 3);
     for (const delivery of mind.woodwork.deliveries) assert.deepEqual(delivery.position,

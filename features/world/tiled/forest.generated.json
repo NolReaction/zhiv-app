@@ -26821,139 +26821,43 @@
       }
     }
   ],
-  "effectAnchors": [
-    {
-      "id": "plesk-home-fish",
-      "effect": "resident-home",
-      "residentId": "plesk",
-      "position": {
-        "x": 1127,
-        "y": 529
-      },
-      "size": 44,
-      "when": {
-        "siteId": "plesk-shop",
-        "level": 1
-      }
-    }
-  ],
-  "lights": [
-    {
-      "id": "home-lantern",
-      "position": {
-        "x": 678.19,
-        "y": 624.76
-      },
-      "kind": "lantern",
-      "radius": 135,
-      "intensity": 1.15,
-      "color": "#ffcf87",
-      "flicker": 0.045
-    },
-    {
-      "id": "clearing-torch",
-      "position": {
-        "x": 530.398344066237,
-        "y": 670.897884084637
-      },
-      "kind": "torch",
-      "radius": 100,
-      "intensity": 1,
-      "color": "#ffb45d",
-      "flicker": 0.12
-    },
-    {
-      "id": "quarry-torch-1",
-      "position": {
-        "x": 733.163042367061,
-        "y": 277.398453627629
-      },
-      "kind": "torch",
-      "radius": 85,
-      "intensity": 1,
-      "color": "#ffb45d",
-      "flicker": 0.1
-    },
-    {
-      "id": "north-fork-torch",
-      "position": {
-        "x": 937,
-        "y": 249
-      },
-      "kind": "torch",
-      "radius": 78,
-      "intensity": 1,
-      "color": "#ffbc72",
-      "flicker": 0.13
-    },
-    {
-      "id": "river-path-torch",
-      "position": {
-        "x": 921.111408916287,
-        "y": 791.502015265696
-      },
-      "kind": "torch",
-      "radius": 85,
-      "intensity": 1,
-      "color": "#ffb45d",
-      "flicker": 0.1
-    },
-    {
-      "id": "bridge-torch-right",
-      "position": {
-        "x": 672.731234339253,
-        "y": 998.474779387733
-      },
-      "kind": "torch",
-      "radius": 85,
-      "intensity": 1,
-      "color": "#ffb45d",
-      "flicker": 0.1
-    },
-    {
-      "id": "plesk-torch-1",
-      "position": {
-        "x": 1200.87541069282,
-        "y": 684.858008048534
-      },
-      "kind": "torch",
-      "radius": 85,
-      "intensity": 1,
-      "color": "#ffb45d",
-      "flicker": 0.1
-    },
-    {
-      "id": "studio-light-1",
-      "position": {
-        "x": 557.8,
-        "y": 634.7
-      },
-      "kind": "glow",
-      "radius": 100,
-      "intensity": 0.65,
-      "color": "#8adbd0",
-      "flicker": 0,
-      "height": 12,
-      "enabled": false,
-      "manualPosition": true
-    },
-    {
-      "id": "studio-light-2",
-      "position": {
-        "x": 503.8,
-        "y": 589.5
-      },
-      "kind": "lantern",
-      "radius": 160,
-      "intensity": 1,
-      "color": "#ffd28a",
-      "flicker": 0.04,
-      "height": 24,
-      "enabled": false,
-      "manualPosition": true
-    }
-  ],
   "destinations": [
+    {
+      "id": "lopukh-work-tree-1",
+      "position": {
+        "x": 947,
+        "y": 270
+      },
+      "pauseSeconds": 8,
+      "siteId": "lopukh-home"
+    },
+    {
+      "id": "lopukh-work-tree-2",
+      "position": {
+        "x": 953,
+        "y": 277
+      },
+      "pauseSeconds": 8,
+      "siteId": "lopukh-home"
+    },
+    {
+      "id": "lopukh-delivery",
+      "position": {
+        "x": 930,
+        "y": 303
+      },
+      "pauseSeconds": 8,
+      "siteId": "lopukh-home"
+    },
+    {
+      "id": "lopukh-rest",
+      "position": {
+        "x": 940,
+        "y": 290
+      },
+      "pauseSeconds": 8,
+      "siteId": "lopukh-home"
+    },
     {
       "id": "plesk-trade",
       "position": {
@@ -27099,6 +27003,138 @@
         "y": 713
       },
       "pauseSeconds": 12
+    }
+  ],
+  "effectAnchors": [
+    {
+      "id": "plesk-home-fish",
+      "effect": "resident-home",
+      "residentId": "plesk",
+      "position": {
+        "x": 1127,
+        "y": 529
+      },
+      "size": 44,
+      "when": {
+        "siteId": "plesk-shop",
+        "level": 1
+      }
+    }
+  ],
+  "lights": [
+    {
+      "id": "home-lantern",
+      "position": {
+        "x": 678.19,
+        "y": 624.76
+      },
+      "kind": "lantern",
+      "radius": 135,
+      "intensity": 1.15,
+      "color": "#ffcf87",
+      "flicker": 0.045
+    },
+    {
+      "id": "clearing-torch",
+      "position": {
+        "x": 530.398344066237,
+        "y": 670.897884084637
+      },
+      "kind": "torch",
+      "radius": 100,
+      "intensity": 1,
+      "color": "#ffb45d",
+      "flicker": 0.12
+    },
+    {
+      "id": "quarry-torch-1",
+      "position": {
+        "x": 733.163042367061,
+        "y": 277.398453627629
+      },
+      "kind": "torch",
+      "radius": 85,
+      "intensity": 1,
+      "color": "#ffb45d",
+      "flicker": 0.1
+    },
+    {
+      "id": "north-fork-torch",
+      "position": {
+        "x": 937,
+        "y": 249
+      },
+      "kind": "torch",
+      "radius": 78,
+      "intensity": 1,
+      "color": "#ffbc72",
+      "flicker": 0.13
+    },
+    {
+      "id": "river-path-torch",
+      "position": {
+        "x": 921.111408916287,
+        "y": 791.502015265696
+      },
+      "kind": "torch",
+      "radius": 85,
+      "intensity": 1,
+      "color": "#ffb45d",
+      "flicker": 0.1
+    },
+    {
+      "id": "bridge-torch-right",
+      "position": {
+        "x": 672.731234339253,
+        "y": 998.474779387733
+      },
+      "kind": "torch",
+      "radius": 85,
+      "intensity": 1,
+      "color": "#ffb45d",
+      "flicker": 0.1
+    },
+    {
+      "id": "plesk-torch-1",
+      "position": {
+        "x": 1200.87541069282,
+        "y": 684.858008048534
+      },
+      "kind": "torch",
+      "radius": 85,
+      "intensity": 1,
+      "color": "#ffb45d",
+      "flicker": 0.1
+    },
+    {
+      "id": "studio-light-1",
+      "position": {
+        "x": 557.8,
+        "y": 634.7
+      },
+      "kind": "glow",
+      "radius": 100,
+      "intensity": 0.65,
+      "color": "#8adbd0",
+      "flicker": 0,
+      "height": 12,
+      "enabled": false,
+      "manualPosition": true
+    },
+    {
+      "id": "studio-light-2",
+      "position": {
+        "x": 503.8,
+        "y": 589.5
+      },
+      "kind": "lantern",
+      "radius": 160,
+      "intensity": 1,
+      "color": "#ffd28a",
+      "flicker": 0.04,
+      "height": 24,
+      "enabled": false,
+      "manualPosition": true
     }
   ],
   "occluders": [

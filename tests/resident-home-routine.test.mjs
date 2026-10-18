@@ -161,7 +161,7 @@ test("house three unlock and boat completion independently gate the merchant, in
 test("paused home clocks, door progress and decorative deliveries survive geometry handoff without sharing mutable state", () => {
   const state = setup("lopukh"), mind = state.residents.lopukh;
   requestForestVillagerHome(state, scene, "lopukh"); until(state, "lopukh", mind => mind.doorPhase === "inside");
-  mind.woodwork.lastDelivery = { sequence: 2, position: { x: 944, y: 280 } };
+  mind.woodwork.lastDelivery = { sequence: 2, position: { ...forestVillagerPlaces(scene, "lopukh").woodcutting.delivery[0].position } };
   const saved = structuredClone(state);
   for (let count = 0; count < 100; count++) advanceForestVillagers(state, scene, 0, { now: now + 86_400_000 });
   assert.deepEqual(state, saved);

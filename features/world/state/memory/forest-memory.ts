@@ -1,6 +1,8 @@
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 import { isWalkable } from "@/features/world/navigation/navigation";
+import { forestTorchGeometryKey } from "@/features/world/environment/lighting/forest-torch-fixture";
+import { forestLightSources } from "@/features/world/environment/lighting/forest-light-sources";
 import { CLEARING_AWAKE_GRACE_SECONDS, requestClearingSleep } from "@/features/world/simulation/clearing-activity";
 import { restoreForestMind } from "@/features/world/simulation/forest-mind";
 import type { ForestMemoryPayload } from "./forest-memory-model";
@@ -38,7 +40,7 @@ export function forestSceneFingerprint(scene: FixedWorldScene): string {
     actor: scene.actor, navigation: scene.navigation, sites: scene.sites.map(site => ({ id: site.id,
       entry: site.entry, doorway: site.doorway, collision: site.collision })), paths: scene.paths, destinations: scene.destinations,
     bushes: scene.bushes, campfires: scene.campfires, mushrooms: scene.mushrooms, habitats: scene.habitats, water: scene.water?.surfaces,
-    basket: scene.basket });
+    basket: scene.basket, torches: forestTorchGeometryKey(forestLightSources(scene)) });
   let hash = 2166136261;
   for (let index = 0; index < input.length; index++) hash = Math.imul(hash ^ input.charCodeAt(index), 16777619);
   const fingerprint = `${input.length.toString(36)}-${(hash >>> 0).toString(36)}`;

@@ -139,7 +139,11 @@ test("a real Tiled rabbit unload creates one visible bounded woodpile without re
   const env = browser();
   try {
     const levels = { ...live.initialPreviewLevels(live.TILED_WORLD), home: 3, quarry: 1, woodlot: 1 };
-    const scene = live.previewWorldScene(live.TILED_WORLD, levels), villagers = live.createForestVillagers(scene);
+    const scene = structuredClone(live.previewWorldScene(live.TILED_WORLD, levels));
+    // This regression specifically needs separate drops; the normal Tiled
+    // work zone intentionally has a single storage point.
+    scene.destinations.push({ id: "lopukh-delivery-2", position: { x: 930, y: 318 }, pauseSeconds: 8, siteId: "lopukh-home" });
+    const villagers = live.createForestVillagers(scene);
     live.configureForestVillagers(villagers, scene, { confirmed: true, buildings: levels, arrivalSeen: true, lopukhArrivalSeen: true, leaftailReady: true });
     for (const id of ["kamneshmyg", "leaftail"]) villagers.residents[id].available = false;
     const rabbit = villagers.residents.lopukh, places = live.forestVillagerPlaces(scene, "lopukh");

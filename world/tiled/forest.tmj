@@ -9834,6 +9834,149 @@
                 {
                  "id":140,
                  "layers":[
+{
+    "id": 179,
+    "name": "LopukhWorkZone",
+    "opacity": 1,
+    "type": "group",
+    "visible": true,
+    "x": 0,
+    "y": 0,
+    "layers": [
+        {
+            "id": 180,
+            "name": "Destinations",
+            "opacity": 1,
+            "type": "objectgroup",
+            "visible": true,
+            "draworder": "index",
+            "x": 0,
+            "y": 0,
+            "objects": [
+                {
+                    "height": 0,
+                    "id": 558,
+                    "name": "lopukh-work-tree-1",
+                    "opacity": 1,
+                    "point": true,
+                    "properties": [
+                        {
+                            "name": "role",
+                            "type": "string",
+                            "value": "destination"
+                        },
+                        {
+                            "name": "siteId",
+                            "type": "string",
+                            "value": "lopukh-home"
+                        },
+                        {
+                            "name": "pauseSeconds",
+                            "type": "float",
+                            "value": 8
+                        }
+                    ],
+                    "rotation": 0,
+                    "type": "",
+                    "visible": true,
+                    "width": 0,
+                    "x": 947,
+                    "y": 270
+                },
+                {
+                    "height": 0,
+                    "id": 559,
+                    "name": "lopukh-work-tree-2",
+                    "opacity": 1,
+                    "point": true,
+                    "properties": [
+                        {
+                            "name": "role",
+                            "type": "string",
+                            "value": "destination"
+                        },
+                        {
+                            "name": "siteId",
+                            "type": "string",
+                            "value": "lopukh-home"
+                        },
+                        {
+                            "name": "pauseSeconds",
+                            "type": "float",
+                            "value": 8
+                        }
+                    ],
+                    "rotation": 0,
+                    "type": "",
+                    "visible": true,
+                    "width": 0,
+                    "x": 953,
+                    "y": 277
+                },
+                {
+                    "height": 0,
+                    "id": 560,
+                    "name": "lopukh-delivery",
+                    "opacity": 1,
+                    "point": true,
+                    "properties": [
+                        {
+                            "name": "role",
+                            "type": "string",
+                            "value": "destination"
+                        },
+                        {
+                            "name": "siteId",
+                            "type": "string",
+                            "value": "lopukh-home"
+                        },
+                        {
+                            "name": "pauseSeconds",
+                            "type": "float",
+                            "value": 8
+                        }
+                    ],
+                    "rotation": 0,
+                    "type": "",
+                    "visible": true,
+                    "width": 0,
+                    "x": 930,
+                    "y": 303
+                },
+                {
+                    "height": 0,
+                    "id": 561,
+                    "name": "lopukh-rest",
+                    "opacity": 1,
+                    "point": true,
+                    "properties": [
+                        {
+                            "name": "role",
+                            "type": "string",
+                            "value": "destination"
+                        },
+                        {
+                            "name": "siteId",
+                            "type": "string",
+                            "value": "lopukh-home"
+                        },
+                        {
+                            "name": "pauseSeconds",
+                            "type": "float",
+                            "value": 8
+                        }
+                    ],
+                    "rotation": 0,
+                    "type": "",
+                    "visible": true,
+                    "width": 0,
+                    "x": 940,
+                    "y": 290
+                }
+            ]
+        }
+    ]
+},
                         {
                          "id":141,
                          "layers":[
@@ -47496,8 +47639,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":179,
- "nextobjectid":558,
+ "nextlayerid":181,
+ "nextobjectid":562,
  "orientation":"orthogonal",
  "properties":[
         {

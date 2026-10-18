@@ -1,4 +1,5 @@
 import type { FixedWorldScene } from "@/features/world/tiled/types";
+import { forestTorchGeometryKey } from "@/features/world/environment/lighting/forest-torch-fixture";
 
 const lightingKeys = ["lights", "shadowCasters", "shadowReceivers"] as const;
 const geometry = (scene: FixedWorldScene) => JSON.stringify(Object.fromEntries(Object.entries(scene)
@@ -13,7 +14,7 @@ export function subscribeWorldLightingRefresh(listener: () => void): () => void 
 
 /** Keep live scene ownership when Studio changes only authored lighting. */
 export function applyWorldLightingRefresh(current: FixedWorldScene, next: FixedWorldScene): boolean {
-  if (geometry(current) !== geometry(next)) return false;
+  if (geometry(current) !== geometry(next) || forestTorchGeometryKey(current.lights) !== forestTorchGeometryKey(next.lights)) return false;
   for (const key of lightingKeys) {
     if (next[key] === undefined) delete current[key];
     else Object.assign(current, { [key]: next[key] });

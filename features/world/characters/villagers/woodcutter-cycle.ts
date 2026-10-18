@@ -31,7 +31,8 @@ function resting(mind: ForestVillagerMind) {
 function deliver(mind: ForestVillagerMind, places: VillagerPlaces, occupants: readonly ResidentOccupant[]) {
   const cycle = mind.woodwork!, plan = places.woodcutting!;
   const started = selectVillagerRoute(mind, places, rotate(plan.delivery, cycle.failures + cycle.completedCycles), "home", "unload", occupants);
-  if (!started) { cycle.failures++; cycle.retryAt = mind.elapsed + WOODCUTTER_CYCLE_LIMITS.retry; stopVillager(mind, "carry"); }
+  if (started) cycle.elapsed = 0;
+  else { cycle.failures++; cycle.retryAt = mind.elapsed + WOODCUTTER_CYCLE_LIMITS.retry; stopVillager(mind, "carry"); }
 }
 
 /** Return false only when the ordinary movement/attention director should
@@ -40,6 +41,13 @@ export function advanceWoodcutterCycle(mind: ForestVillagerMind, scene: FixedWor
   occupants: readonly ResidentOccupant[]): boolean {
   const cycle = mind.woodwork, plan = places.woodcutting;
   if (!cycle || !plan || cycle.phase === "idle" || mind.socialVisit) return false;
+  // Moving the storage marker during an artwork handoff must not finish an
+  // old unload at yesterday's work spot. Keep the log in his paws and walk to
+  // the new storage, preserving the real feet instead of moving the pile.
+  if (cycle.phase === "unload" && !woodcutterSafeDrop(scene, places.navigation, mind.position, 44)) {
+    cycle.phase = "haul"; cycle.elapsed = 0; cycle.failures = 0; cycle.retryAt = mind.elapsed;
+    stopVillager(mind, "carry"); deliver(mind, places, occupants); return true;
+  }
   if (mind.route && mind.intent === "yield") return false;
   if (mind.noticePending && !mind.job && !woodcutterLoaded(mind)) { cycle.phase = "idle"; return false; }
   mind.socialNeed = Math.min(1, mind.socialNeed + dt * .007);
@@ -77,7 +85,7 @@ export function advanceWoodcutterCycle(mind: ForestVillagerMind, scene: FixedWor
   if (cycle.phase === "unload") {
     setVillagerAction(mind, "unload");
     if (cycle.elapsed + 1e-7 >= WOODCUTTER_CYCLE_LIMITS.unload) {
-      const delivery = { position: { ...mind.position }, sequence: (cycle.lastDelivery?.sequence ?? 0) + 1 };
+      const delivery = { position: { ...mind.position }, sequence: Math.max(cycle.lastDelivery?.sequence ?? 0, mind.checkedDelivery ?? 0) + 1 };
       cycle.deliveries = [...(cycle.deliveries ?? (cycle.lastDelivery ? [cycle.lastDelivery] : [])), delivery].slice(-3);
       cycle.lastDelivery = delivery;
       resting(mind);

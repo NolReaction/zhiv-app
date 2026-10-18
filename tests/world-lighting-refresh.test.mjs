@@ -10,7 +10,10 @@ const require = createRequire(import.meta.url);
 const { webpack } = require("next/dist/compiled/webpack/webpack");
 const helperSource = await readFile(new URL("../features/world/scene/lighting-refresh.ts", import.meta.url), "utf8");
 const transpile = source => ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-const { applyWorldLightingRefresh } = await import(`data:text/javascript;base64,${Buffer.from(transpile(helperSource)).toString("base64")}`);
+const fixtureSource = await readFile(new URL("../features/world/environment/lighting/forest-torch-fixture.ts", import.meta.url), "utf8");
+const fixtureUrl = `data:text/javascript;base64,${Buffer.from(transpile(fixtureSource)).toString("base64")}`;
+const fixtureImport = "@/features/world/environment/lighting/forest-torch-fixture";
+const { applyWorldLightingRefresh } = await import(`data:text/javascript;base64,${Buffer.from(transpile(helperSource).replace(fixtureImport, fixtureUrl)).toString("base64")}`);
 const scene = () => ({ schemaVersion: 1, id: "test-forest", width: 100, height: 100, sites: [], terrain: [], paths: [],
   focus: { x: 0, y: 0, width: 100, height: 100 }, actor: { spawn: { x: 50, y: 50 }, size: 10 },
   lights: [{ id: "glow", kind: "glow", position: { x: 20, y: 30 }, radius: 50, intensity: .6, color: "#8adbd0", flicker: 0 }],
@@ -36,12 +39,32 @@ test("a non-lighting Tiled edit follows the normal refresh without partially app
   assert.deepEqual(current, before);
 });
 
+test("physical torch edits require a navigation refresh; flame-only edits keep the live owner", () => {
+  const source = scene();
+  source.lights[0].kind = "torch";
+  for (const edit of [value => value.lights[0].position.x++, value => value.lights[0].position.y++,
+    value => { value.lights[0].manualPosition = true; },
+    value => { value.lights[0].enabled = false; }, value => { value.lights[0].kind = "lantern"; },
+    value => { value.lights = []; }, value => value.lights.push({ ...value.lights[0], id: "second", position: { x: 70, y: 70 } })]) {
+    const current = structuredClone(source), next = structuredClone(source);
+    edit(next);
+    assert.equal(applyWorldLightingRefresh(current, next), false);
+    assert.deepEqual(current, source, "no partial in-place mutation before rebuilding geometry");
+  }
+  const next = structuredClone(source);
+  Object.assign(next.lights[0], { color: "#ffffff", radius: 100, intensity: 0, height: 90, flicker: .5 });
+  const current = structuredClone(source);
+  assert.equal(applyWorldLightingRefresh(current, next), true);
+  assert.deepEqual(current.lights, next.lights);
+});
+
 test("webpack accepts repeated glow edit/delete/Undo without replacing the live game importer", { timeout: 30_000 }, async t => {
   const root = await mkdtemp(path.join(tmpdir(), "zhiv-lighting-refresh-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const presentation = await readFile(new URL("../features/world/scene/presentation.ts", import.meta.url), "utf8");
   await writeFile(path.join(root, "presentation.js"), transpile(presentation).replaceAll("@/features/world/tiled/forest.generated.json", "./forest.generated.json").replace('"./lighting-refresh"', '"./lighting-refresh.js"'));
-  await writeFile(path.join(root, "lighting-refresh.js"), transpile(helperSource));
+  await writeFile(path.join(root, "lighting-refresh.js"), transpile(helperSource).replace(fixtureImport, "./forest-torch-fixture.js"));
+  await writeFile(path.join(root, "forest-torch-fixture.js"), transpile(fixtureSource));
   const current = scene(), file = path.join(root, "forest.generated.json");
   await writeFile(file, JSON.stringify(current));
   await writeFile(path.join(root, "entry.js"), `import { TILED_WORLD } from "./presentation.js";

@@ -1,4 +1,6 @@
 import { campfireFootprint } from "@/features/world/activities/campfire/forest-campfire";
+import { forestLightSources } from "@/features/world/environment/lighting/forest-light-sources";
+import { forestTorchFootprints } from "@/features/world/environment/lighting/forest-torch-fixture";
 import { forestPerformanceProfiler } from "@/features/world/dev/forest-performance-profiler";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "@/features/world/tiled/types";
 
@@ -252,6 +254,7 @@ function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigatio
   const rowCount = Math.max(1, Math.ceil(box.height / rowStep) + 1);
   const budget = { remaining: WORLD_NAVIGATION_LIMITS.preparationChecks as number };
   const rawBlockers = [...source.obstacles.map(item => item.points), ...scene.sites.map(site => site.collision),
+    ...forestTorchFootprints(forestLightSources(scene)),
     ...(scene.water?.surfaces.map(surface => surface.points) ?? []),
     ...(scene.campfires ?? []).map(campfireFootprint)];
   if (rawBlockers.some(points => !Array.isArray(points))

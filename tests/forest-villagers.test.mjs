@@ -561,7 +561,7 @@ test("the actual Tiled rabbit cuts a tree, delivers in front of the facade, unlo
   const scene = previewWorldScene(TILED_WORLD, levels), saved = structuredClone(scene), state = setup(scene, { buildings: levels });
   const mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh"), plan = places.woodcutting;
   const house = scene.sites.find(site => site.id === "lopukh-home"), front = house.bounds.y + house.bounds.height + 44 * 45 / 48 + 2;
-  assert.ok(plan); assert.ok(plan.work[0].id.startsWith("lopukh-tree:"), "the authored tree replaces the missing woodlot image");
+  assert.ok(plan); assert.ok(plan.work[0].id.startsWith("lopukh-work-tree-"), "the authored work zone selects the tree-side work positions");
   for (const stop of [...plan.work, ...plan.delivery, ...plan.rest]) {
     assert.ok(isWalkable(places.navigation, stop.position)); assert.ok(stop.position.y >= front);
   }

@@ -1,5 +1,7 @@
 import type { FixedWorldScene, PreviewLevels, WorldLight, WorldPoint } from "@/features/world/tiled/types";
-import { forestBuildingLights, type ForestLightSource } from "./forest-building-lights";
+import { forestLightSources } from "./forest-light-sources";
+import { TORCH_FIXTURE } from "./forest-torch-fixture";
+export { forestLightSources } from "./forest-light-sources";
 import { drawLighthouseBeams, drawLighthouseLens } from "./forest-lighthouse";
 export { forestLighthouseAngle } from "./forest-lighthouse";
 
@@ -17,37 +19,6 @@ const clamp = (value: number, max = 1) => Number.isFinite(value) ? Math.max(0, M
 const textures = new WeakMap<FixedWorldScene, Map<string, HTMLCanvasElement>>();
 const colorParts = (color: string) => [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16));
 const rgba = (color: string, alpha: number) => `rgba(${colorParts(color).join(",")},${clamp(alpha)})`;
-
-/** Authored positions are shared by every camera. Legacy site markers remain valid. */
-export function forestLightSources(scene: FixedWorldScene, options: Pick<ForestLightingOptions, "showBuildings" | "levels"> = {}): ForestLightSource[] {
-  const buildingLights = forestBuildingLights(scene, options.levels);
-  const sources: ForestLightSource[] = [...(scene.lights ?? [])];
-  for (const light of buildingLights) {
-    const index = sources.findIndex(source => source.id === light.id);
-    // Authored sources can mute their automatic counterpart. Moving a bound
-    // source explicitly detaches it; its old glass clip/beam must not follow.
-    if (index >= 0) {
-      const authored = sources[index];
-      const merged: ForestLightSource = { ...light, ...authored,
-        position: authored.manualPosition ? authored.position : light.position };
-      if (authored.manualPosition) {
-        delete merged.glass; delete merged.beamLength; delete merged.beamGround; delete merged.siteId;
-      }
-      sources[index] = merged;
-    } else sources.push(light);
-  }
-  for (const site of scene.sites) {
-    if (buildingLights.some(light => light.siteId === site.id)) continue;
-    if (!site.light || (options.levels?.[site.id] ?? site.initialLevel) < 1) continue;
-    if (sources.some(light => Math.hypot(light.position.x - site.light!.x, light.position.y - site.light!.y) < 2)) continue;
-    sources.push({ id: `site:${site.id}`, position: site.light, kind: "lantern", radius: 70,
-      intensity: 1, color: "#ffd28a", flicker: .04 });
-  }
-  return sources.filter(light => light.enabled !== false && (options.showBuildings !== false || light.manualPosition || !light.siteId && !scene.sites.some(site => {
-    const p = light.position, b = site.bounds;
-    return p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
-  })));
-}
 
 function seed(id: string) {
   let result = 0;
@@ -139,8 +110,8 @@ export function drawForestLightFixtures(ctx: CanvasRenderingContext2D, scene: Fi
     const { x, y } = light.position;
     ctx.save(); ctx.translate(x, y);
     ctx.fillStyle = "rgba(16,22,12,.25)";
-    ctx.beginPath(); ctx.ellipse(3, 16.5, 7, 2.2, -.14, 0, TAU); ctx.fill();
-    ctx.fillStyle = "#382d20"; ctx.fillRect(-1.8, 1.5, 3.6, 15);
+    ctx.beginPath(); ctx.ellipse(3, TORCH_FIXTURE.footOffsetY, 7, 2.2, -.14, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#382d20"; ctx.fillRect(-1.8, 1.5, 3.6, TORCH_FIXTURE.footOffsetY - 1.5);
     ctx.fillStyle = "#8b6940"; ctx.fillRect(-1.2, 2, 1.1, 13.8);
     ctx.fillStyle = "#a18a59"; ctx.fillRect(-2.1, 6.8, 4.2, 1.2); ctx.fillRect(-2.1, 9, 4.2, 1.2);
     ctx.fillStyle = "#303b35"; ctx.beginPath(); ctx.moveTo(-4, -.4); ctx.lineTo(4, -.4);

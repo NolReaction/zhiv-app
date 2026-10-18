@@ -11,6 +11,7 @@ import { FOREST_VILLAGER_IDS as ids, FOREST_VILLAGER_LIMITS, createWoodcutterCyc
 import { selectVillagerRoute as select, setVillagerAction as setAction, stopVillager as stop,
   walkForestVillager as walk, yieldForestVillagerPassage } from "./villager-movement";
 import { advanceWoodcutterCycle, beginWoodcutterCycle, woodcutterLoaded, WOODCUTTER_CYCLE_LIMITS } from "./woodcutter-cycle";
+import { woodcutterSafeDrop } from "./woodcutter-navigation";
 import { advanceVillagerDoor, approachVillagerDoor, validVillagerDoor, villagerDoorOpacity } from "./villager-doorway";
 import { tryVillagerHome } from "./villager-home-routine";
 import { resumeVillagerGoal } from "./villager-goal";
@@ -137,6 +138,16 @@ export function configureForestVillagers(state: ForestVillagersState, scene: Fix
       mind.available = false; mind.route = null; mind.socialVisit = null; continue;
     }
     const places = forestVillagerPlaces(scene, id);
+    if (changedScene && mind.woodwork) {
+      // Existing cosmetic logs keep their actual drop coordinates. A storage
+      // edit removes obsolete drops; it never slides them into the new yard.
+      const history = mind.woodwork.deliveries ?? (mind.woodwork.lastDelivery ? [mind.woodwork.lastDelivery] : []);
+      const deliveries = places ? history.filter(delivery => woodcutterSafeDrop(scene, places.navigation,
+        delivery.position, FOREST_VILLAGER_PROFILES[id].size)) : [];
+      mind.woodwork.deliveries = deliveries;
+      mind.woodwork.lastDelivery = deliveries.at(-1);
+      if (mind.habit?.kind === "woodpile") mind.habit = null;
+    }
     if (!places) {
       mind.available = false; mind.route = null; mind.socialVisit = null; continue;
     }

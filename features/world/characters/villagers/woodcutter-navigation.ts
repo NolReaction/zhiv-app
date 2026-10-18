@@ -5,18 +5,28 @@ import type { VillagerStop } from "./villager-navigation";
 export type WoodcutterPlaces = { work: VillagerStop[]; delivery: VillagerStop[]; rest: VillagerStop[] };
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const finite = (point: WorldPoint | undefined): point is WorldPoint => !!point && Number.isFinite(point.x) && Number.isFinite(point.y);
+const belongsTo = (id: string, prefix: string) => id === prefix || id.startsWith(`${prefix}-`);
+const hasWorkMarkers = (scene: FixedWorldScene) => scene.destinations?.some(stop => ["lopukh-work", "lopukh-delivery", "lopukh-rest"]
+  .some(prefix => belongsTo(stop.id, prefix)));
 function edgeDistance(point: WorldPoint, a: WorldPoint, b: WorldPoint) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const ratio = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
   return distance(point, { x: a.x + dx * ratio, y: a.y + dy * ratio });
 }
-/** An emergency set-down still needs visible, unblocked ground in front of the
- * house; this never grants permission to cross its wall or a water polygon. */
-export function woodcutterSafeDrop(scene: FixedWorldScene, navigation: WorldNavigation, point: WorldPoint, size: number): boolean {
+function safeOutdoorGround(scene: FixedWorldScene, navigation: WorldNavigation, point: WorldPoint, size: number): boolean {
   const house = scene.sites.find(site => site.id === "lopukh-home");
   return !!house && point.y >= house.bounds.y + house.bounds.height + size * 45 / 48 + 2
     && isWalkable(navigation, point) && house.collision.every((a, index, points) =>
       edgeDistance(point, a, points[(index + 1) % points.length]) >= size * .32);
+}
+
+/** Authored storage is the only unload target, including an occupied-yard retry.
+ * Old maps without that marker retain their safe outdoor compatibility. */
+export function woodcutterSafeDrop(scene: FixedWorldScene, navigation: WorldNavigation, point: WorldPoint, size: number): boolean {
+  if (!safeOutdoorGround(scene, navigation, point, size)) return false;
+  const storage = scene.destinations?.filter(stop => belongsTo(stop.id, "lopukh-delivery"));
+  return storage?.length ? storage.some(stop => finite(stop.position)
+    && safeOutdoorGround(scene, navigation, stop.position, size) && distance(stop.position, point) <= 3) : !hasWorkMarkers(scene);
 }
 
 /** Work, delivery and rest are different outdoor stops. The visual centre of
@@ -30,13 +40,20 @@ export function woodcutterPlaces(scene: FixedWorldScene, navigation: WorldNaviga
   const side = { x: -outward.y, y: outward.x };
   // The carried log and ears must stay in front of the complete facade, not
   // merely fit a tiny navigation support disk behind its roof.
-  const safe = (point: WorldPoint) => woodcutterSafeDrop(scene, navigation, point, size);
+  const safe = (point: WorldPoint) => safeOutdoorGround(scene, navigation, point, size);
+  const hasAuthoredZone = hasWorkMarkers(scene);
+  const authored = (prefix: string): VillagerStop[] | undefined => {
+    const markers = scene.destinations?.filter(stop => belongsTo(stop.id, prefix));
+    // An edited but blocked marker must not silently choose a different yard.
+    return markers?.length ? markers.slice(0, 6).filter(stop => finite(stop.position) && safe(stop.position))
+      .map(stop => ({ id: stop.id, position: { ...stop.position }, lookAt: { ...house.entry } })) : hasAuthoredZone ? [] : undefined;
+  };
   const front = (name: string, forward: readonly number[], across: readonly number[]) => forward.flatMap(ahead => across.map(across => ({
     x: house.entry.x + outward.x * size * ahead + side.x * size * across,
     y: house.entry.y + outward.y * size * ahead + side.y * size * across,
   }))).filter(safe).slice(0, 6).map((position, index) => ({ id: `lopukh-${name}:${index}`, position, lookAt: { ...house.entry } }));
-  const delivery = front("delivery", [.9, 1.15, 1.4, 1.7], [.35, -.35, 0, .85, -.85, 1.2, -1.2]);
-  const rest = front("rest", [1.45, 1.7, 2], [.35, -.35, .85, -.85, 0, 1.2, -1.2]);
+  const delivery = authored("lopukh-delivery") ?? front("delivery", [.9, 1.15, 1.4, 1.7], [.35, -.35, 0, .85, -.85, 1.2, -1.2]);
+  const rest = authored("lopukh-rest") ?? front("rest", [1.45, 1.7, 2], [.35, -.35, .85, -.85, 0, 1.2, -1.2]);
   if (!delivery.length || !rest.length) return null;
   const treeCandidates = (scene.treeInteractions ?? []).filter(tree => tree.points.length >= 3 && Number.isFinite(tree.frontY))
     .map(tree => ({ tree, proximity: Math.min(...tree.points.map(point => distance(point, house.entry))) }))
@@ -54,6 +71,15 @@ export function woodcutterPlaces(scene: FixedWorldScene, navigation: WorldNaviga
   }
   // Compatibility maps without authored trees still have a safe outdoor
   // workbench; never fall back to a roof-side entrance offset.
-  const work = treeStops.length ? treeStops.slice(0, 6) : front("workbench", [1.05, 1.35, 1.65], [1.75, -1.75, .35, -.35, 0, 2.15, -2.15]);
+  const markedWork = authored("lopukh-work");
+  if (markedWork) for (const stop of markedWork) {
+    const trees = (scene.treeInteractions ?? []).flatMap(tree => tree.points)
+      .filter(finite).sort((a, b) => distance(a, stop.position) - distance(b, stop.position));
+    if (trees[0]) stop.lookAt = { ...trees[0] };
+  }
+  const work = (markedWork ?? (treeStops.length ? treeStops.slice(0, 6)
+    : front("workbench", [1.05, 1.35, 1.65], [1.75, -1.75, .35, -.35, 0, 2.15, -2.15])))
+    .filter(stop => !scene.destinations?.some(marker => belongsTo(marker.id, "lopukh-delivery")
+      && finite(marker.position) && distance(marker.position, stop.position) < size * .6));
   return work.length ? { work, delivery, rest } : null;
 }
