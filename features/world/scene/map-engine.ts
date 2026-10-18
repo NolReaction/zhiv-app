@@ -432,8 +432,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick);
   }
   function visibility() {
+    const wasPanning = panSurface.active;
+    const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
     panSurface.reset(); rasterCamera = null;
-    if (document.hidden) {
+    if (backgrounded) {
       pendingEditorMove = null;
       lightingEditor.blur();
       cancelled = true;
@@ -441,8 +443,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       pointers.clear();
     }
     cancelAnimationFrame(raf); raf = 0;
-    const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
     rehearsal.configure(options, dev?.scenePreview, backgrounded);
+    // Suspension can leave the portal visible during its exit animation. Resetting
+    // an expanded backing clears its pixels, so finish that visible frame first.
+    if (!disposed && wasPanning && backgrounded && !document.hidden && inView) draw();
     if (!disposed && !backgrounded) { draw(); if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick); }
   }
   function resize() {

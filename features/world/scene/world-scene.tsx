@@ -116,7 +116,7 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   useEffect(() => { objectRequest.current = openObjectRequest; applyObjectRequest(); }, [openObjectRequest, applyObjectRequest]);
   useEffect(() => {
     if (!ready || suspended || !guidePlace) { engine.current?.setGuidePlace(null); return; }
-    const world = root.current?.parentElement, surface = canvas.current;
+    const world = root.current?.parentElement, surface = root.current;
     if (!world || !surface) return;
     return observeMapGuideInset(world, surface, bottom => engine.current?.setGuidePlace(guidePlace, bottom));
   }, [ready, suspended, guidePlace]);

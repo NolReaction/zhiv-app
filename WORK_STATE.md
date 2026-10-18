@@ -1,42 +1,38 @@
 # Рабочее состояние — work/0.7.1
 
-## Camera drag checkpoint: остановлено по просьбе пользователя
+## Camera drag: интеграция завершена
 
-Пользователь попросил немедленно закончить и push как есть из-за оставшегося лимита. Это сохранение незавершённой работы в work/0.7.1, не готовый релиз. Master и деплой не затрагивать. Полного CI не ждать.
+Продолжение `acc5fdb` поверх `86f45fa`, обычный коммит для `work/0.7.1`. Master, сервер и посторонние локальные правки не менялись. Ассеты, Tiled, экономика и игровые часы прежние.
 
-База: 86f45faa88ca1315599631a54e117f653ce5ebfb. Локальная ветка: work/camera-drag-performance-071.
+### Исправлено
 
-### Что сохранено
+- `observeMapGuideInset` измеряет неподвижный root `WorldScene`, а не расширенный/сдвинутый canvas. Позднее появление обучения и масштаб предка проверены регрессией.
+- Guard мягких масок учитывает смену floor/ceil на один физический пиксель при дробном движении. Проверены оба перехода soft/hard около 1 048 576 пикселей / 2048 px; независимый oracle охватывает 500 прямоугольников, пять DPR и до 64 crop.
+- При suspension во время drag обычный canvas дорисовывается для видимой анимации выхода; любой уход в фон освобождает captures. Возврат не продолжает старое касание.
+- Добавлены семь engine integration проверок: root/DPR, 120Hz input, маркеры/меню/реплики, border refresh, release/cancel/direct API, wheel/pinch, resize, guide, reduced motion, editor, suspension/resume; реальная несовместимость масок проверяет повтор normal paint в том же RAF и panBlocked до нового жеста.
+- Canvas fixtures содержат style/context.canvas; performance.now и RAF используют одну шкалу. Premount-preview assertion сохранён. Старый speech-тест проверяет очистку всего физического backing при identity transform вместо прежних логических размеров.
+- Сохранены оптимизации checkpoint: CSS pan исходного canvas с 32px запасом при прежнем DPR (до 4 194 304 пикселей), отдельные часы растрового кадра, spatial audio без повторного чтения контактов, однократная очистка опустевших реплик. Документация обновлена в `docs/game/world-foundation.md`.
 
-- Перетягивание запускало полный world paint каждый input RAF (60/120 Гц), хотя симуляция работает около 30 Гц.
-- Новый map-pan-surface.ts расширяет ИСХОДНЫЙ main canvas на 32 CSS px с каждой стороны при прежнем физическом DPR, до 4 Мп. Между world paint камера перемещает этот canvas через CSS. Второго canvas/копирования кадра нет. Маркеры и отдельные реплики обновляются каждый input RAF.
-- Интеграция в map-engine.ts/world-scene.tsx: неподвижный root для размеров/input, отдельные растровые часы, прямой путь для zoom/release/editor/guide/reduced motion/resize/скрытия. При несовместимости масок обычная поверхность рисуется повторно в том же кадре, pan блокируется до нового жеста.
-- canvas-viewport-compatibility.ts и вызов в forest-occlusion.ts защищают выбор мягкой маски от смены 1 Мп/2048 px fallback. Проверяется весь диапазон возможных crop, включая вход из border. Последнее уточнение этого guard ещё не прогонялось.
-- CSS анимация входа освобождает fullscreen transform после завершения: backwards, конечный transform:none. Прежде навсегда сохранялся scale(1) на всей сцене.
-- Вспомогательные изменения: камера обновляет точный spatial audio mix без повторного чтения контактов того же тика; пустой speechCanvas не очищается каждый кадр, исчезнувшая реплика очищается один раз.
-- Ассеты, Tiled, экономика и игровые часы не изменены.
+### Проверки итогового кода
 
-### Что действительно проверено
+- Финальные TypeScript и полный ESLint прошли; architecture (853 modules), world export check, security (0 findings, включая новые staged-файлы) и audio catalog (111 ready) прошли.
+- Широкий source-прогон всех shared scene-fixture consumers кроме отдельной группы residents/pan: **178/178**, без skipped. Часы fixture в этом прогоне уже исправлены.
+- Residents + engine pan + pan surface: **57 passed**, затем исправленный устаревший physical-clear assertion отдельно **1/1**. Это покрытие 58 уникальных проверок, а не повторный полный прогон 58 после assertion-only правки.
+- Guard/occlusion: **28/28**; audio/speech profile: **78/78**; camera/viewport/timing/options/guide: **15/15**. Группы не пересекаются с двумя предыдущими.
+- Обе production-сборки прошли последовательно: `npm run build:vps`, затем `npm run build` (Sites). После них rendered HTML + portal + world UI: **16/16**. Всего покрыты **373 уникальные целевые проверки**; полный `npm test` здесь не запускался.
+- Настоящий Next dev: начальный маршрут HTTP 200. Локальная ссылка node_modules заменена физическим каталогом для Turbopack; затронутые этим watcher-прогоны остановлены и не засчитаны. Финальные source-проверки выполнены после исправления окружения.
 
-- Audio: 58/58 профильных тестов, отдельно water 8/8; две speech overlay проверки прошли; scoped ESLint audio/speech прошёл ДО последней pan-интеграции.
-- Guard первого варианта + существующие forest-occlusion: 25/25. После уточнения guard на все возможные crop повторного прогона НЕ было.
-- tests/map-pan-surface.test.mjs: 4 новых unit-теста сохранены, ещё НЕ запускались. Новых engine integration тестов pan нет.
-- Финальный npm run typecheck прошёл (exit 0). Лог: /tmp/zhiv-drag-final-typecheck.log.
-- Финальные сборки, общий lint/architecture/world checks и финальный native A/B НЕ выполнены.
+### Браузер
 
-### Профилирование: не путать прототип с production
+Стенд монтирует настоящий WorldScene, production/construction badges, speech overlay и portal CSS; верхний/нижний HUD и coach — представительные статические элементы с реальными refs. Production-файлы стендом не меняются.
 
-Стенд теперь монтирует настоящий WorldScene, HUD, production/construction markers и portal, ввод генерируется внутри браузера через RAF. Старый harness без DOM/React и paintCPU-only недостаточен.
+- Mobile 393×852/DPR1.5 и desktop 1280×900/DPR1.25: pinch/release, guide во время drag, suspension/resume, speech, resize, reduced motion, ночь/ливень/края. Пустые края и заметная смена масок не обнаружены; desktop functional report без JS errors. Последний кадр выхода сохраняется, reduced motion отключает CSS pan.
+- A/B против `86f45fa`: 16 motion-сценариев, mobile/desktop, requested input 60/120Hz — **0 coverage failures**, CSS reuse реально активен. Software renderer шумит, устойчивое улучшение FPS не доказано. 120Hz здесь — частота запрошенного ввода, не частота дисплея. Физического телефона/GPU в окружении нет; числа Chromium нельзя переносить на iPhone.
 
-Прототип CSS pan БЕЗ overscan дал center 38.5→55.2 и water 38.4→59.4 updates/s; RAF-интервалы >25 мс за 3.2 с: center 66→15, water 69→0. Это НЕ замер текущего production checkpoint. Chromium работает через SwiftShader/software compositing: абсолютные FPS не переносить на iPhone/физический GPU.
+### Release gate и следующий шаг
 
-Освобождение portal scene transform проверено в двух порядках: modest улучшение presentation. Обычные полнокадровые и background-only canvas caches, source crop, desynchronized context, materialization shadows/masks/mips не помогли/регрессировали и в production НЕ внесены. Дорогой участок на market grounding был точкой оплаты накопленных Canvas-команд, а не причиной тени.
+[CI исходного `acc5fdb`](https://github.com/NolReaction/zhiv-app/actions/runs/39163275390): web 5751 pass / 71 fail, backend 922 tests / 7 fail. Из web 65 ошибок вызваны отсутствующим canvas.style: fixtures исправлены. Остальные 6 web связаны с meal-availability, pearl-spending UI, Plesk firefly, builder food, expeditions text и LeafTail shop text; эти файлы здесь не менялись. Backend: migration history count 13/14, merchant assortment fixture, reset mail event, isolation внутри welcome claim, даты expired session и welcome mail в broadcast fixture. Они не исправлялись в этой задаче; прохождение на родителе не проверено.
 
-### Следующему ассистенту — порядок продолжения
+Перед выпуском нужны отдельный зелёный полный CI/API/PostgreSQL/Compose и проверка плавности/качества на физическом телефоне. Текущие целевые проверки их не подменяют. Новый CI оценивать по новому коммиту после push, не по прежнему результату.
 
-1. Известный незакрытый край: observeMapGuideInset пока измеряет canvas. При первом появлении обучения во время расширенного drag возможен неверный inset на один кадр. Перевести surface parameter в map-guide-inset.ts на HTMLElement и передать стабильный root из WorldScene; затем проверить обучение.
-2. Проверить pan-интеграцию: 60/120 Гц, дробная камера/DPR, быстрые движения за border, pinch/zoom, resize, hidden/resume, editor/guide/reduced motion, прямые API draw, выбор/маркеры/реплики и fallback масок. Добавить engine integration тесты. Запустить оба новых unit-файла и профильные scene/camera/occlusion/audio тесты.
-3. Native A/B конечной production версии с overscan/guard против exact86: mobile/desktop, center/water, screenshot во время дробного drag и после release, ночь/дождь/края. Проверить отсутствие пустых краёв, заметного временного размытия, смены soft masks. Guard может отключать pan на части масштабов — измерить, не ослаблять ради цифр.
-4. Обновить docs/game/world-foundation.md. Выполнить typecheck/lint/architecture/world/security checks, сборки Sites и VPS последовательно. Тесты, читающие dist, также последовательно со сборками. Полную тяжёлую npm test suite не выдавать за пройденную.
-
-Артефакты окружения: /tmp/zhiv-css-pan-prototype.mjs, /tmp/zhiv-drag-native-portal.mjs; frozen source /tmp/zhiv-drag-final-current-source.json; отчёты /tmp/zhiv-drag-portal-baseline,released-current-0-summary.json и /tmp/zhiv-drag-portal-released,baseline,csspan-current-1-summary.json. Эти временные файлы в Git не входят. Production-код и этот handoff сохранены в коммите.
+Временные скрипты, скриншоты и отчёты: `/tmp/zhiv-browser-qa/`, логи: `/tmp/zhiv-finish-*` и `/tmp/zhiv-pan-residents-final.log`. Они не входят в Git.

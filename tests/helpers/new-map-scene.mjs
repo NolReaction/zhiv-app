@@ -121,8 +121,9 @@ function browser() {
         return true;
       },
     });
-    return {
+    const canvas = {
       width: 1, height: 1, clientWidth: width, clientHeight: height, calls, context, events,
+      style: { position: "", left: "", top: "", width: "", height: "", transform: "" },
       getContext: () => context,
       getBoundingClientRect() { return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight }; },
       addEventListener: (name, callback) => events.set(name, callback),
@@ -133,6 +134,8 @@ function browser() {
       focus() {},
       flushFrame() { const current = [...frames.values()]; frames.clear(); frameTime += 34; current.forEach(callback => callback(frameTime)); },
     };
+    context.canvas = canvas;
+    return canvas;
   }
   install("document", { hidden: false, createElement: () => surface(320, 320, true),
     addEventListener(name, callback) {
@@ -142,6 +145,9 @@ function browser() {
     removeEventListener(name, callback) { documentEvents.get(name)?.delete(callback); },
   });
   install("window", { devicePixelRatio: 2, addEventListener() {}, removeEventListener() {} });
+  // Browser RAF timestamps and performance.now share one time origin. Direct
+  // paints must not save a real wall-clock deadline ahead of this fake RAF.
+  install("performance", { now: () => frameTime });
   install("Image", class {
     naturalWidth = 2560; naturalHeight = 2560;
     set src(path) {
@@ -195,7 +201,7 @@ function browser() {
       if (error) request.image.onerror?.(); else request.image.onload?.();
       return request.image;
     },
-    tick(now) { const current = [...frames.values()]; frames.clear(); current.forEach(callback => callback(now)); },
+    tick(now) { frameTime = now; const current = [...frames.values()]; frames.clear(); current.forEach(callback => callback(now)); },
     visibility(hidden) {
       document.hidden = hidden;
       for (const callback of documentEvents.get("visibilitychange") ?? []) callback();

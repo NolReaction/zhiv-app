@@ -63,3 +63,48 @@ test("invalid normal viewports cannot approve presentation of an expanded frame"
     assert.equal(painted, true, "the caller receives the failed compatibility result after its paint callback");
   }
 });
+
+test("fractional camera raster phases cannot cross the pixel budget or side cap in either direction", () => {
+  const check = (width, height, bounds) => {
+    const ctx = context(width + 64, height + 64);
+    return withExpandedCanvasViewport(ctx, { x: 32, y: 32, width, height }, () => mask(ctx, ...bounds));
+  };
+  assert.equal(check(1400, 900, [70, 70, 1350, 870]), false,
+    "1280 × 800 fits, but fractional x movement needs 1312 × 800 after allocation rounding");
+  assert.equal(check(2200, 100, [70, 20, 2118, 80]), false,
+    "a 2048-pixel subject becomes 2080 physical pixels when its floor/ceil phase changes");
+  assert.equal(check(1336, 1136, [70, 70, 1127, 1062]), false,
+    "a fractional interior crop can shrink 1088 × 992 hard clipping to 1056 × 992 soft masking");
+  assert.equal(check(1400, 900, [70, 70, 1318, 838]), true,
+    "ordinary bounded subjects remain eligible despite a one-pixel phase change");
+});
+
+test("approved masks keep the renderer's choice across cropped corners and fractional DPR phases", () => {
+  const fits = (width, height) => width <= 2048 && height <= 2048 && width * height <= 1024 * 1024;
+  const requested = (start, end, offset, visible) => Math.ceil(Math.max(0,
+    Math.min(visible, Math.ceil(end - offset) + 2) - Math.max(0, Math.floor(start - offset) - 2)) / 32) * 32;
+  let seed = 0x071acc5;
+  const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
+  let approved = 0, rejected = 0;
+  for (const dpr of [1, 1.25, 1.5, 2, 2.625]) for (let sample = 0; sample < 100; sample++) {
+    const width = Math.round((500 + random() * 1100) * dpr), height = Math.round((300 + random() * 900) * dpr);
+    const pad = Math.ceil(32 * dpr), ctx = context(width + pad * 2, height + pad * 2);
+    const viewport = { x: pad, y: pad, width, height };
+    const left = (random() * 600 - 300) * dpr, top = (random() * 600 - 300) * dpr;
+    const right = left + (100 + random() * 2200) * dpr, bottom = top + (100 + random() * 1400) * dpr;
+    const compatible = withExpandedCanvasViewport(ctx, viewport, () =>
+      mask(ctx, Math.floor(left) - 2, Math.floor(top) - 2, Math.ceil(right) + 2, Math.ceil(bottom) + 2));
+    if (!compatible) { rejected++; continue; }
+    approved++;
+    const original = fits(requested(left, right, 0, ctx.canvas.width), requested(top, bottom, 0, ctx.canvas.height));
+    // Independently recompute the renderer's floor/ceil envelope after moving
+    // its physical camera; include both crop edges and interior raster phases.
+    const offsets = [0, .125, .5, pad - .25, pad, pad + .375, pad * 2 - .125, pad * 2];
+    for (const x of offsets) for (const y of offsets) {
+      const w = requested(left, right, x, width), h = requested(top, bottom, y, height);
+      if (w && h) assert.equal(fits(w, h), original,
+        `DPR ${dpr}, subject ${[left, top, right, bottom]}, crop ${[x, y]}, allocation ${[w, h]}`);
+    }
+  }
+  assert.ok(approved > 100 && rejected > 20, "the oracle exercises both ordinary reuse and guarded fallbacks");
+});

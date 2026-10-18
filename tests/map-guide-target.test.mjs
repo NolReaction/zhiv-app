@@ -157,3 +157,18 @@ test("map guide observer stops pending measurements and all observers when the c
   notify(world, "childList"); notify(world.coach, "attributes"); notify(canvas, "resize"); flush();
   assert.deepEqual(values, [], "no camera work survives the disposed lesson");
 }));
+
+test("a coach mounting during overscan measures the fixed root in local CSS pixels", () => observeEnvironment(({ world, card, notify, flush, frames, observers }) => {
+  const surface = { clientHeight: 665, getBoundingClientRect: () => ({ bottom: 600, height: 532 }) };
+  const canvas = { clientHeight: 729, getBoundingClientRect() { throw new Error("the moving canvas is not the viewport"); } };
+  world.coach = card(400);
+  const values = [], stop = observeMapGuideInset(world, surface, value => values.push(value));
+  try {
+    flush(); assert.deepEqual(values, [262], "account for an ancestor's scale using the root's height");
+    assert.ok(observers.some(observer => observer.name === "ResizeObserver" && observer.nodes.has(surface)));
+    notify(canvas, "resize"); assert.equal(frames.size, 0, "overscan backing changes do not remeasure the coach");
+    world.coach.top = 360; notify(world.coach, "attributes"); flush();
+    assert.deepEqual(values, [262, 312], "a moving coach still updates against the same visible area");
+    notify(surface, "resize"); flush(); assert.deepEqual(values, [262, 312]);
+  } finally { stop(); }
+}));

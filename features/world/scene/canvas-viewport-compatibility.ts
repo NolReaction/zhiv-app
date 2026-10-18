@@ -21,27 +21,39 @@ export function withExpandedCanvasViewport(ctx: CanvasRenderingContext2D, viewpo
 }
 
 /** Bounds already include the renderer's integer physical-pixel feather guard.
- * A fitting expanded subject fits every smaller crop. For a hard-clipped subject,
- * even the smallest possible crop must require that same fallback: overlap of
- * two intervals is concave in their offset, so its minimum lies at an endpoint.
+ * Fractional camera movement can change the floor/ceil envelope by one pixel,
+ * even when the visible subject fits inside both surfaces. Check that raster
+ * phase as well as every crop: interval overlap has its minimum at an endpoint.
  * This also protects subjects entering from the spare border during CSS reuse. */
 export function checkExpandedCanvasMask(ctx: CanvasRenderingContext2D,
   left: number, top: number, right: number, bottom: number,
   quantum: number, maxSide: number, maxPixels: number): void {
   const expansion = expansions.get(ctx);
   if (!expansion || !expansion.compatible) return;
-  const width = Math.ceil((Math.min(ctx.canvas.width, right) - Math.max(0, left)) / quantum) * quantum;
-  const height = Math.ceil((Math.min(ctx.canvas.height, bottom) - Math.max(0, top)) / quantum) * quantum;
+  const quantize = (size: number) => Math.ceil(Math.max(0, size) / quantum) * quantum;
+  const overlapWidth = Math.min(ctx.canvas.width, right) - Math.max(0, left);
+  const overlapHeight = Math.min(ctx.canvas.height, bottom) - Math.max(0, top);
+  const width = quantize(overlapWidth), height = quantize(overlapHeight);
   if (width <= 0 || height <= 0) return;
   const fits = (w: number, h: number) => w <= maxSide && h <= maxSide && w * h <= maxPixels;
-  if (fits(width, height)) return;
+  const { viewport } = expansion;
+  const phaseX = Number(ctx.canvas.width > viewport.width), phaseY = Number(ctx.canvas.height > viewport.height);
+  if (fits(width, height)) {
+    // A physical crop is integer-sized, but its camera offset need not be.
+    // Re-rounding the translated bounds can add one pixel before quantization.
+    const maximumWidth = quantize(Math.min(viewport.width, overlapWidth + phaseX));
+    const maximumHeight = quantize(Math.min(viewport.height, overlapHeight + phaseY));
+    if (!fits(maximumWidth, maximumHeight)) expansion.compatible = false;
+    return;
+  }
   const minimumOverlap = (start: number, end: number, visible: number, surface: number) => {
     const atStart = Math.min(visible, end) - Math.max(0, start);
     const offset = surface - visible;
     const atEnd = Math.min(surface, end) - Math.max(offset, start);
-    return Math.ceil(Math.max(0, Math.min(atStart, atEnd)) / quantum) * quantum;
+    // The same raster phase can remove one pixel from an interior crop.
+    return quantize(Math.min(atStart, atEnd) - Number(surface > visible));
   };
-  const minimumWidth = minimumOverlap(left, right, expansion.viewport.width, ctx.canvas.width);
-  const minimumHeight = minimumOverlap(top, bottom, expansion.viewport.height, ctx.canvas.height);
+  const minimumWidth = minimumOverlap(left, right, viewport.width, ctx.canvas.width);
+  const minimumHeight = minimumOverlap(top, bottom, viewport.height, ctx.canvas.height);
   if (minimumWidth <= 0 || minimumHeight <= 0 || fits(minimumWidth, minimumHeight)) expansion.compatible = false;
 }

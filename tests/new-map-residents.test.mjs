@@ -1546,7 +1546,8 @@ test("map speech uses a transparent surface that follows DPR resizing and clears
     const loading = createMapEngine(canvas, options, () => {}, [], undefined, {}, {}, speech);
     env.finish(); engine = await loading;
     assert.deepEqual([speech.width, speech.height], [800, 800]);
-    assert.ok(speech.calls.some(call => call.method === "clearRect" && call.args[2] === 400));
+    assert.deepEqual(speech.calls.findLast(call => call.method === "clearRect").args, [0, 0, 800, 800],
+      "the initial transparent overlay clears its entire physical backing");
     assert.equal(speech.calls.some(call => call.method === "drawImage"), false, "the speech surface stays transparent outside bubbles");
     canvas.calls.length = 0; speech.calls.length = 0;
     engine.notice();
@@ -1558,11 +1559,14 @@ test("map speech uses a transparent surface that follows DPR resizing and clears
     env.resize(canvas);
     assert.deepEqual([speech.width, speech.height], [540, 960]);
     assert.deepEqual(speech.calls.findLast(call => call.method === "setTransform").args, [1.5, 0, 0, 1.5, 0, 0]);
-    assert.ok(speech.calls.some(call => call.method === "clearRect" && call.args[2] === 360 && call.args[3] === 640));
+    const resizeClear = speech.calls.findLastIndex(call => call.method === "clearRect");
+    assert.deepEqual(speech.calls[resizeClear].args, [0, 0, 540, 960], "resize clears the complete DPR-scaled backing");
+    assert.deepEqual(speech.calls[resizeClear - 1], { method: "setTransform", args: [1, 0, 0, 1, 0, 0] },
+      "physical clear coordinates use an identity transform");
     assert.ok(speech.calls.some(call => call.method === "fillText" && call.args[0] === "Мохлик"), "resizing preserves the active reply");
     speech.calls.length = 0;
     for (const id of [...env.timers.keys()]) env.fireTimer(id);
-    const finalClear = speech.calls.findLastIndex(call => call.method === "clearRect" && call.args[2] === 360 && call.args[3] === 640);
+    const finalClear = speech.calls.findLastIndex(call => call.method === "clearRect" && call.args[2] === 540 && call.args[3] === 960);
     assert.ok(finalClear >= 0, "the finite expiry timer clears the speech surface without an options update");
     assert.equal(speech.calls.slice(finalClear).some(call => call.method === "fillText"), false, "expired bubbles leave no stale glyphs above hints");
     const expiryPaints = speech.calls.length;
