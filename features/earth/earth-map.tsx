@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Compass, Earth, LocateFixed, Minus, Plus, RotateCw, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Compass, Earth, HardDriveDownload, LocateFixed, Minus, Plus } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import type { EarthPosition } from "./location";
-import { EARTH_ACCURACY_SOURCE, EARTH_CENTER, EARTH_SKY, EARTH_STYLE_URL, globeZoom, positionAccuracyData, positionZoom } from "./map-style";
+import { EARTH_ACCURACY_SOURCE, EARTH_CENTER, EARTH_SKY, EARTH_STYLE_URL, globeZoom, positionAccuracyData, positionZoom, prepareEarthStyle } from "./map-style";
+import { EarthLoading, formatEarthLoadingBytes, type EarthLoadingStage } from "./earth-loading";
+import { EARTH_CACHE_PROTOCOL, earthResourceCache } from "./resource-cache";
+import { loadEarthRuntime } from "./runtime-loader";
+import { getEarthErrorResourceUrls } from "./resource-recovery";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
@@ -14,6 +18,7 @@ type EarthMapProps = {
   position: EarthPosition | null;
   active: boolean;
   focusRequest: number;
+  isOnline: boolean;
 };
 
 function reducedMotion(): boolean {
@@ -42,16 +47,55 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
   });
 }
 
-export function EarthMap({ position, active, focusRequest }: EarthMapProps) {
+export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapProps) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LibreMap | null>(null);
   const syncPositionRef = useRef<((value: EarthPosition | null) => void) | null>(null);
   const latestPosition = useRef(position);
   const savedCamera = useRef<{ center: [number, number]; zoom: number; bearing: number; pitch: number } | null>(null);
   const handledFocus = useRef(0);
+  const repairs = useRef<Promise<unknown>>(Promise.resolve());
+  const retrying = useRef(false);
   const [phase, setPhase] = useState<MapPhase>("loading");
+  const [stage, setStage] = useState<EarthLoadingStage>("engine");
+  const [failure, setFailure] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [persisting, setPersisting] = useState(false);
   const [retry, setRetry] = useState(0);
   const [partialFailure, setPartialFailure] = useState(false);
+  const cache = useSyncExternalStore(earthResourceCache.subscribe, earthResourceCache.getSnapshot, earthResourceCache.getSnapshot);
+  const phaseRef = useRef(phase);
+  const activeRef = useRef(active);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+
+  const persistMap = useCallback(async () => {
+    setPersisting(true);
+    try { await earthResourceCache.requestPersistence(); }
+    finally { setPersisting(false); }
+  }, []);
+
+  const retryMap = useCallback(async () => {
+    if (retrying.current) return;
+    retrying.current = true;
+    setPhase("loading");
+    setFailure(null);
+    setStage("engine");
+    setPartialFailure(false);
+    try { await repairs.current; }
+    finally { retrying.current = false; setRetry(value => value + 1); }
+  }, []);
+
+  useEffect(() => {
+    const reconnect = () => { if (phaseRef.current === "failed") retryMap(); };
+    window.addEventListener("online", reconnect);
+    return () => window.removeEventListener("online", reconnect);
+  }, [retryMap]);
+
+  useEffect(() => {
+    activeRef.current = active;
+    if (!active) mapRef.current?.stop();
+    else mapRef.current?.resize();
+  }, [active]);
 
   useEffect(() => {
     latestPosition.current = position;
@@ -62,48 +106,94 @@ export function EarthMap({ position, active, focusRequest }: EarthMapProps) {
     const element = host.current;
     if (!element || !active) return;
     let cancelled = false;
+    const controller = new AbortController();
     let map: LibreMap | null = null;
     let marker: Marker | null = null;
-    let loaded = false;
+    let initialReady = false;
+    let attemptFailed = false;
     let styleReady = false;
-    let resourceFailed = false;
-    let contextFailed = false;
+    let idle = false;
     let timeout = 0;
+    let unsubscribe: (() => void) | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let intersectionObserver: IntersectionObserver | null = null;
     let canvas: HTMLCanvasElement | null = null;
 
     function resize() {
-      if (!cancelled && map && !document.hidden && element!.clientWidth && element!.clientHeight) map.resize();
+      if (!cancelled && map && activeRef.current && !document.hidden && element!.clientWidth && element!.clientHeight) map.resize();
     }
     function visibilityChanged() {
-      if (document.hidden) map?.stop();
-      else resize();
+      if (document.hidden) { window.clearTimeout(timeout); map?.stop(); }
+      else { armDeadline(); resize(); }
+    }
+    function fail(message: string) {
+      if (cancelled || attemptFailed) return;
+      attemptFailed = true;
+      controller.abort();
+      window.clearTimeout(timeout);
+      map?.stop();
+      setFailure(message);
+      setPhase("failed");
     }
     function contextLost() {
-      if (!cancelled) {
-        contextFailed = true;
-        map?.stop();
-        setPhase("failed");
+      fail("Браузер приостановил графику карты. Попробуйте открыть её снова; доступные сохранённые файлы будут использованы повторно.");
+    }
+    function armDeadline() {
+      window.clearTimeout(timeout);
+      if (!document.hidden && !initialReady && !attemptFailed) timeout = window.setTimeout(() =>
+        fail("Подготовка занимает слишком много времени. Продолжите загрузку: доступные сохранённые файлы будут использованы повторно."), 180_000);
+    }
+    function checkReady() {
+      if (cancelled || attemptFailed || initialReady || !map || !styleReady) return;
+      const progress = earthResourceCache.getSnapshot();
+      if (progress.failed > 0) {
+        fail("Не удалось получить часть карты. Продолжите загрузку, когда появится связь; доступные сохранённые файлы будут использованы повторно.");
+        return;
+      }
+      if (progress.pending === 0) setStage("render");
+      // MapLibre treats errored tiles as settled; its load/idle events alone are insufficient.
+      if (idle && progress.pending === 0 && map.loaded() && map.areTilesLoaded()) {
+        initialReady = true;
+        window.clearTimeout(timeout);
+        setPhase("ready");
       }
     }
 
     async function initialize() {
       try {
-        // The SDK and worker are loaded only when the map tab is opened.
-        const sdk = await import("maplibre-gl");
-        if (cancelled) return;
+        earthResourceCache.resetProgress();
+        await earthResourceCache.initialize();
+        if (cancelled || attemptFailed) return;
+        // Ask the browser to protect this explicitly requested map installation from automatic eviction.
+        if (earthResourceCache.getSnapshot().persistence === "unknown") void earthResourceCache.requestPersistence();
+        setRestoring(earthResourceCache.getSnapshot().storedEntries > 0);
         setPhase("loading");
+        setFailure(null);
+        setStage("engine");
         setPartialFailure(false);
         if (!canRenderGlobe()) {
+          window.clearTimeout(timeout);
+          attemptFailed = true;
           setPhase("unsupported");
           return;
         }
-        sdk.setWorkerUrl(`/vendor/maplibre-gl-${sdk.getVersion()}/maplibre-gl-worker.mjs`);
-        sdk.setWorkerCount(1);
+        const sdk = await loadEarthRuntime({ signal: controller.signal });
+        if (cancelled || attemptFailed) return;
+        sdk.addProtocol(EARTH_CACHE_PROTOCOL, earthResourceCache.protocol);
+        sdk.setMaxParallelImageRequests(4);
+        setStage("resources");
+        // Style data and every subsequent source/sprite/tile request use the same durable cache.
+        let style;
+        try { style = prepareEarthStyle((await earthResourceCache.readResource(EARTH_STYLE_URL, "json", controller.signal)).data); }
+        catch (error) {
+          if (!controller.signal.aborted) await earthResourceCache.invalidate(EARTH_STYLE_URL);
+          throw error;
+        }
+        if (cancelled || attemptFailed) return;
         map = new sdk.Map({
           container: element!,
-          style: EARTH_STYLE_URL,
+          style,
+          transformRequest: earthResourceCache.transformRequest,
           center: savedCamera.current?.center ?? EARTH_CENTER,
           zoom: savedCamera.current?.zoom ?? globeZoom(element!.clientWidth, element!.clientHeight),
           bearing: savedCamera.current?.bearing ?? 0,
@@ -123,6 +213,11 @@ export function EarthMap({ position, active, focusRequest }: EarthMapProps) {
         });
         const current = map;
         mapRef.current = current;
+        unsubscribe = earthResourceCache.subscribe(checkReady);
+        current.on("remove", () => {
+          // Release the GPU while playing; a return starts from cached data and the saved camera.
+          if (!activeRef.current) { setPhase("loading"); setStage("engine"); }
+        });
         current.addControl(new sdk.AttributionControl({ compact: false }), "bottom-left");
         current.addControl(new sdk.ScaleControl({ maxWidth: 100, unit: "metric" }), "bottom-right");
         canvas = current.getCanvas();
@@ -174,27 +269,18 @@ export function EarthMap({ position, active, focusRequest }: EarthMapProps) {
           });
           syncPosition(latestPosition.current);
         });
-        current.on("load", () => {
+        current.on("dataloading", () => { idle = false; });
+        current.on("movestart", () => { idle = false; });
+        current.on("load", checkReady);
+        current.on("idle", () => { idle = true; checkReady(); });
+        current.on("error", event => {
           if (cancelled) return;
-          loaded = true;
-          window.clearTimeout(timeout);
-          if (!contextFailed) {
-            setPhase("ready");
-            setPartialFailure(resourceFailed);
-          }
+          const resources = getEarthErrorResourceUrls(event, current);
+          if (resources.length) repairs.current = repairs.current.then(() =>
+            Promise.all(resources.map(url => earthResourceCache.invalidate(url)))).catch(() => undefined);
+          if (initialReady) setPartialFailure(true);
+          else fail("Не удалось подготовить карту целиком. Продолжите загрузку: доступные сохранённые файлы будут использованы повторно.");
         });
-        current.on("error", () => {
-          if (cancelled) return;
-          resourceFailed = true;
-          setPartialFailure(true);
-          if (!loaded && !styleReady) {
-            window.clearTimeout(timeout);
-            setPhase("failed");
-          }
-        });
-        timeout = window.setTimeout(() => {
-          if (!cancelled && !loaded) setPhase("failed");
-        }, 25_000);
 
         resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
         resizeObserver?.observe(element!);
@@ -204,16 +290,20 @@ export function EarthMap({ position, active, focusRequest }: EarthMapProps) {
           else current.stop();
         });
         intersectionObserver?.observe(element!);
-        document.addEventListener("visibilitychange", visibilityChanged);
       } catch {
-        if (!cancelled) setPhase("failed");
+        if (!cancelled) fail("Загрузка прервалась. Проверьте подключение и продолжите: сохранённые файлы будут использованы повторно.");
       }
     }
+    // This deadline includes engine installation and body writes, rather than revealing a half-loaded canvas.
+    document.addEventListener("visibilitychange", visibilityChanged);
+    armDeadline();
     void initialize();
 
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timeout);
+      unsubscribe?.();
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();
       window.removeEventListener("resize", resize);
@@ -237,15 +327,9 @@ export function EarthMap({ position, active, focusRequest }: EarthMapProps) {
     flyToPosition(mapRef.current, position);
   }, [active, phase, position, focusRequest]);
 
-  function retryMap() {
-    setPhase("loading");
-    setPartialFailure(false);
-    setRetry(value => value + 1);
-  }
-
   const ready = active && phase === "ready";
   return <div className={styles.root} data-earth-map data-map-status={phase}>
-    <div ref={host} className={styles.canvas} />
+    <div ref={host} className={styles.canvas} data-visible={phase === "ready"} aria-hidden={phase !== "ready"} inert={phase !== "ready" || undefined} />
     <div className={styles.controls} role="group" aria-label="Управление картой">
       <button type="button" disabled={!ready} title="Показать всю Землю" aria-label="Показать всю Землю" onClick={() => {
         const current = mapRef.current;
@@ -259,17 +343,19 @@ export function EarthMap({ position, active, focusRequest }: EarthMapProps) {
         if (mapRef.current && position) flyToPosition(mapRef.current, position);
       }}><LocateFixed size={21} aria-hidden="true" /></button>
     </div>
-    {phase !== "ready" && <div className={styles.statusOverlay}>
-      <div className={styles.statusCard} role="status" aria-live="polite">
-        {phase === "loading" ? <Earth className={styles.loadingIcon} size={34} aria-hidden="true" /> : <TriangleAlert size={30} aria-hidden="true" />}
-        <strong>{phase === "loading" ? "Открываем Землю" : phase === "unsupported" ? "Для глобуса нужен WebGL 2" : "Карта пока недоступна"}</strong>
-        <p>{phase === "loading" ? "Загружаем карту мира и названия мест…" : phase === "unsupported" ? "Попробуйте обновить браузер или включить аппаратное ускорение в его настройках." : "Не удалось загрузить карту. Проверьте подключение к интернету и попробуйте ещё раз."}</p>
-        {phase !== "loading" && <button type="button" onClick={retryMap}><RotateCw size={16} aria-hidden="true" /> Повторить</button>}
-      </div>
-    </div>}
+    {phase !== "ready" && <EarthLoading stage={stage} restoring={restoring} isOnline={isOnline}
+      progress={{ completed: cache.completed, pending: cache.pending, failed: cache.failed, bytes: cache.networkBytes, cacheHits: cache.cacheHits }}
+      error={phase === "unsupported" ? "Для глобуса нужен WebGL 2. Обновите браузер или включите аппаратное ускорение." : failure}
+      storageStatus={cache.storage} persistentGranted={cache.persistence === "granted"} persisting={persisting}
+      onPersist={persistMap} onRetry={phase === "unsupported" ? undefined : retryMap} />}
     {ready && partialFailure && <div className={styles.networkNotice} role="status">
       <span>Не все данные карты загрузились</span><button type="button" onClick={retryMap}>Повторить</button>
     </div>}
-    {ready && !partialFailure && <p className={styles.gestureHint}>Вращайте Землю · приближайте города</p>}
+    {ready && !partialFailure && <p className={styles.gestureHint}>{cache.pending > 0 ? "Загружаем новый участок…" : "Вращайте Землю · приближайте города"}</p>}
+    {ready && !partialFailure && <div className={styles.storageNotice} title={cache.storage === "device" ? "Сохранённые участки используются при повторном открытии. Очистка данных браузера удалит карту." : "Браузер не разрешил сохранить карту. После закрытия страницы загрузка может понадобиться снова."}>
+      <span>{cache.storage === "device" ? `На устройстве: ${formatEarthLoadingBytes(cache.storedBytes)}` : "Карта доступна в этой сессии"}</span>
+      {cache.storage === "device" && cache.persistence !== "granted" && <button type="button" onClick={persistMap} disabled={persisting} aria-label="Закрепить карту на устройстве"><HardDriveDownload size={14} aria-hidden="true" />{persisting ? "Сохраняем…" : "Закрепить"}</button>}
+      {cache.persistence === "granted" && cache.storage === "device" && <span>Закреплена</span>}
+    </div>}
   </div>;
 }

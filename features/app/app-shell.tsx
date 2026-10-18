@@ -13,6 +13,7 @@ import dynamic from "next/dynamic";
 import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
 import { reportIncident, incidentCode, reportStartupIncident, resolveStartupIncidents } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
+import { rememberEarthSection, restoreEarthSection } from "./earth-navigation-state";
 import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
@@ -406,7 +407,10 @@ function CheckInContent() {
   const [tapFeedbackBurst, setTapFeedbackBurst] = useState(0);
   const [tapActive, setTapActive] = useState(false);
   const [seriesBreakBurst, setSeriesBreakBurst] = useState<number | null>(null);
-  const [activeView, setActiveView] = useState<ActiveView>("check-in");
+  const [viewSelection, setViewSelection] = useState<{ owner: string | null; view: ActiveView }>({ owner: null, view: "check-in" });
+  const viewOwner = me?.user.publicId ?? null;
+  const activeView: ActiveView = viewSelection.owner === viewOwner ? viewSelection.view
+    : viewOwner && restoreEarthSection(viewOwner) ? "earth" : "check-in";
   const [viewDirection, setViewDirection] = useState(1);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const appOnboardingEntry = useRef<AppOnboardingEntry>(null);
@@ -440,7 +444,8 @@ function CheckInContent() {
       if (next !== activeView) playUiCue(getAudioRuntime(), "ui.click");
       const order = appViews;
       setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
-      setActiveView(next);
+      setViewSelection({ owner: viewOwner, view: next });
+      if (me) rememberEarthSection(me.user.publicId, next === "earth");
       if (next === "profile") void game.refresh();
     };
     if (activeView === "profile" && next !== activeView && notificationSettingsExit.current) notificationSettingsExit.current.requestLeave(leave);
@@ -625,7 +630,7 @@ function CheckInContent() {
     resetTransientCheckIn();
     setPeople(null);
     setGroups(null);
-    setActiveView("check-in");
+    setViewSelection({ owner: null, view: "check-in" });
     accountReturn.current = false;
     setScreen("session-lost");
   }, [
@@ -736,7 +741,12 @@ function CheckInContent() {
     onNavigate: target => {
       if (!worldDevOwner) return;
       setCalendarOpen(false); setGameOpen(false); setStatusOpen(false);
-      if (target === "checkin") { worldPortal.close(); setActiveView("check-in"); return; }
+      if (target === "checkin") {
+        worldPortal.close();
+        setViewSelection({ owner: worldDevOwner, view: "check-in" });
+        rememberEarthSection(worldDevOwner, false);
+        return;
+      }
       if (target === "mailbox") { setNotificationEntry(undefined); mailbox.open(); return; }
       setNotificationEntry({ ownerPublicId: worldDevOwner, target, request: ++notificationRequest.current });
       setWorldMounted(true);
@@ -858,7 +868,8 @@ function CheckInContent() {
     syncMeSnapshot(identity);
     setNameError(null);
     setSystemError(null);
-    setActiveView(accountReturn.current ? "profile" : "check-in");
+    setViewSelection({ owner: identity.user.publicId,
+      view: accountReturn.current ? "profile" : restoreEarthSection(identity.user.publicId) ? "earth" : "check-in" });
     accountReturn.current = false;
     setScreen("home");
   }, [
@@ -1898,7 +1909,8 @@ function CheckInContent() {
       {!startupActive && <CapabilityLanding
         authenticated={true}
         onInviteAccepted={() => {
-          setActiveView("people");
+          setViewSelection({ owner: viewOwner, view: "people" });
+          if (viewOwner) rememberEarthSection(viewOwner, false);
           void refreshPeople();
           void refreshGroups();
         }}

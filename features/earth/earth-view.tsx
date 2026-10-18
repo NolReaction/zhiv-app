@@ -87,7 +87,7 @@ export function EarthView({ ownerPublicId, active, isOnline, people, peopleLoadi
     </header>
 
     <div className={styles.stage}>
-      <EarthMap position={location.position} active={active} focusRequest={focusRequest} />
+      <EarthMap position={location.position} active={active} focusRequest={focusRequest} isOnline={isOnline} />
       {!isOnline && <p className={styles.offline} role="status">Нет сети. Новые участки карты могут не загрузиться.</p>}
       {friendsOpen && <section id="earth-friends-panel" className={styles.friendsPanel} aria-labelledby="earth-friends-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }

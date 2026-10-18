@@ -1,11 +1,27 @@
 import type { FeatureCollection, Polygon } from "geojson";
-import type { SkySpecification } from "maplibre-gl";
+import type { SkySpecification, StyleSpecification } from "maplibre-gl";
 import type { EarthPosition } from "./location";
 
 export const EARTH_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 export const EARTH_CENTER: [number, number] = [35, 27];
 export const EARTH_ACCURACY_SOURCE = "earth-position-accuracy";
 const EARTH_RADIUS_METERS = 6_371_008.8;
+
+/** MapLibre 6 renders labels locally when glyphs is absent, avoiding a font download per alphabet. */
+export function prepareEarthStyle(value: unknown): StyleSpecification {
+  if (!value || typeof value !== "object" || !("version" in value) || value.version !== 8
+    || !("sources" in value) || !value.sources || typeof value.sources !== "object"
+    || !("layers" in value) || !Array.isArray(value.layers)) throw new Error("Invalid Earth map style");
+  const source = value as StyleSpecification;
+  const style: StyleSpecification = { ...source, layers: source.layers.map(layer => {
+    if (layer.type !== "symbol" || !layer.layout?.["text-field"]) return layer;
+    const font = JSON.stringify(layer.layout["text-font"] ?? "");
+    const family = /bold/i.test(font) ? "Arial Bold" : /italic/i.test(font) ? "Arial Italic" : "Arial";
+    return { ...layer, layout: { ...layer.layout, "text-font": [family, "Arial", "sans-serif"] } };
+  }) };
+  delete style.glyphs;
+  return style;
+}
 
 export const EARTH_SKY: SkySpecification = {
   "sky-color": "#071c24",

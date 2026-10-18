@@ -6,8 +6,24 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { positionAccuracyData, globeZoom, positionZoom } = await vite.ssrLoadModule("/features/earth/map-style.ts");
+const { positionAccuracyData, globeZoom, positionZoom, prepareEarthStyle } = await vite.ssrLoadModule("/features/earth/map-style.ts");
 const position = { latitude: 55.75, longitude: 37.61, accuracy: 150, timestamp: 1000 };
+
+test("local labels eliminate network glyph requests while preserving sources, icons and provider attribution", () => {
+  const source = { version: 8, glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+    sprite: "https://tiles.openfreemap.org/sprites/liberty", sources: { osm: { type: "vector", attribution: "OSM", tiles: ["https://tiles.openfreemap.org/{z}/{x}/{y}.pbf"] } },
+    layers: [{ id: "label", type: "symbol", layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Bold"] } },
+      { id: "icon", type: "symbol", layout: { "icon-image": "park" } }] };
+  const style = prepareEarthStyle(source);
+  assert.equal(style.glyphs, undefined);
+  assert.match(source.glyphs, /fonts/, "cached provider JSON remains untouched");
+  assert.deepEqual(style.sources, source.sources);
+  assert.equal(style.sprite, source.sprite);
+  assert.deepEqual(style.layers[0].layout["text-font"], ["Arial Bold", "Arial", "sans-serif"]);
+  assert.deepEqual(style.layers[0].layout["text-field"], ["get", "name"]);
+  assert.deepEqual(style.layers[1], source.layers[1]);
+  for (const value of [null, "<html>", {}, { ...source, version: 7 }, { ...source, layers: null }]) assert.throws(() => prepareEarthStyle(value));
+});
 
 function distanceMeters(a, b) {
   const radians = Math.PI / 180;

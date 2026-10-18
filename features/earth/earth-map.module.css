@@ -9,7 +9,8 @@
   background: radial-gradient(ellipse at 45% 45%, #153d44 0%, #0b262e 44%, #06171f 85%);
 }
 
-.canvas { position: absolute; inset: 0; }
+.canvas { position: absolute; inset: 0; visibility: hidden; }
+.canvas[data-visible="true"] { visibility: visible; }
 .canvas :global(.maplibregl-canvas):focus-visible { outline: 3px solid #9bd9bf; outline-offset: -4px; }
 .canvas :global(.maplibregl-ctrl-bottom-left),
 .canvas :global(.maplibregl-ctrl-bottom-right) { z-index: 2; }
@@ -46,45 +47,9 @@
 }
 .controls button:hover:not(:disabled) { background: #244a49; }
 .controls button:active:not(:disabled) { transform: scale(.94); }
-.controls button:focus-visible, .statusCard button:focus-visible, .networkNotice button:focus-visible { outline: 3px solid #c6ed8c; outline-offset: 3px; }
+.controls button:focus-visible, .storageNotice button:focus-visible, .networkNotice button:focus-visible { outline: 3px solid #c6ed8c; outline-offset: 3px; }
 .controls button:disabled { opacity: .35; cursor: default; }
 
-.statusOverlay {
-  position: absolute;
-  z-index: 4;
-  inset: 0;
-  display: grid;
-  place-items: safe center;
-  overflow: auto;
-  padding: 24px;
-  background: #071b24c7;
-}
-.statusCard {
-  display: grid;
-  justify-items: center;
-  gap: 13px;
-  width: min(100%, 310px);
-  color: #ddf1e8;
-  text-align: center;
-}
-.statusCard > svg { color: #9dccb5; }
-.statusCard strong { font-size: 18px; font-weight: 650; }
-.statusCard p { margin: 0; color: #b8d2ca; font-size: 13px; line-height: 1.55; }
-.statusCard button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 42px;
-  margin-top: 5px;
-  padding: 8px 17px;
-  border: 1px solid #85bda266;
-  border-radius: 13px;
-  background: #d7ebc4;
-  color: #17382f;
-  font-weight: 650;
-  cursor: pointer;
-}
-.loadingIcon { animation: breathe 1.7s ease-in-out infinite; }
 .gestureHint {
   position: absolute;
   z-index: 1;
@@ -120,18 +85,34 @@
 .positionDot { display: block; width: 24px; height: 24px; border: 4px solid #f1fbf5; border-radius: 50%; background: #197e77; box-shadow: 0 0 0 6px #278c8033, 0 3px 12px #001d3740; }
 .positionLabel { position: absolute; top: 32px; left: 50%; transform: translateX(-50%); padding: 4px 9px; border: 1px solid #cde6d7; border-radius: 9px; color: #17483e; background: #f3fff7; white-space: nowrap; font-size: 11px; font-weight: 700; box-shadow: 0 3px 10px #001d3726; }
 
-@keyframes breathe { 50% { opacity: .45; transform: scale(.94); } }
 @media (max-height: 600px) { .controls { top: 10px; gap: 4px; } .controls button { height: 40px; width: 40px; border-radius: 12px; } }
 @container (max-height: 300px) {
   .controls { grid-template-columns: repeat(5, 40px); gap: 4px; top: 10px; right: 10px; }
   .controls button { height: 40px; width: 40px; border-radius: 12px; }
   .gestureHint { display: none; }
   .networkNotice { top: 58px; max-width: calc(100% - 28px); }
-  .statusOverlay { padding: 12px; }
-  .statusCard { gap: 6px; }
-  .statusCard > svg { display: none; }
-  .statusCard strong { font-size: 15px; }
-  .statusCard p { font-size: 11px; }
+  .storageNotice { top: 58px; max-width: calc(100% - 24px); }
   .canvas :global(.maplibregl-ctrl-scale) { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .loadingIcon { animation: none; } .controls button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .controls button { transition: none; } }
+
+.storageNotice {
+  position: absolute;
+  z-index: 2;
+  top: 54px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 7px;
+  max-width: calc(100% - 88px);
+  padding: 5px 8px;
+  border-radius: 9px;
+  color: #afc9b4;
+  background: #08242be8;
+  font-size: 9px;
+  line-height: 1.4;
+}
+.storageNotice button { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 3px; color: #def0c6; background: transparent; border: 0; font: inherit; cursor: pointer; }
+.storageNotice button:disabled { opacity: .6; cursor: default; }
+@container (max-height: 300px) { .storageNotice { top: 58px; max-width: calc(100% - 24px); } }
