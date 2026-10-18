@@ -521,7 +521,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
 
   const explorationNow = () => economicTimestamp + (options.devRehearsal ? state.elapsed * 1000
     : Math.max(0, performance.now() - economicReceivedAt));
-  function updateAudio(emitEvents = false) {
+  function updateAudio(emitEvents = false, cameraOnly = false) {
     const now = explorationNow();
     const dusk = reducedMotion(options, dev) || !session.isSimulationAllowed() ? Number(options.dusk) : state.dusk;
     // Weather follows the painted simulation clock; economy deadlines still
@@ -538,7 +538,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       cookingPreview: dev?.showHero !== false && !actorAway() && !forestJourneyFishingFrame(state, world)
         ? cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev)) : null,
       fires: state.life.campfires, showBuildings: dev?.showBuildings,
-    }, { scope: options.view === "world" ? "world" : "music", visible: active(), observationOwner: session.isObservationOwner(), emitEvents,
+    }, { scope: options.view === "world" ? "world" : "music", visible: active(), observationOwner: session.isObservationOwner(), emitEvents, cameraOnly,
       showHero: dev?.showHero !== false, actorAway: actorAway(), reducedMotion: reducedMotion(options, dev), waterFish: dev?.waterFish });
   }
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
@@ -1427,7 +1427,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         && audioCamera.zoom === camera.zoom && audioCamera.viewportWidth === camera.viewportWidth
         && audioCamera.viewportHeight === camera.viewportHeight) return;
       audioCamera = { ...camera };
-      updateAudio();
+      updateAudio(false, true);
     },
     position: () => {
       const actor = clearingActivityFrame(state.clearing);

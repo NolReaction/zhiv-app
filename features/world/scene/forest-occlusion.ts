@@ -1,6 +1,7 @@
 import type { FixedSite, FixedWorldScene, WorldBounds, WorldImage, WorldPoint } from "@/features/world/tiled/types";
 import { previewPointInPolygon } from "@/features/world/tiled/preview-state";
 import { forestOcclusionTexture, type ForestOcclusionContour } from "./forest-occlusion-mask";
+import { checkExpandedCanvasMask } from "./canvas-viewport-compatibility";
 
 type Doorway = { siteId: string; top: number };
 type Actor = WorldPoint & { size: number; doorwayOcclusion?: Doorway };
@@ -138,10 +139,13 @@ function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBo
   const corners = [[bounds.x, bounds.y], [bounds.x + bounds.width, bounds.y],
     [bounds.x, bounds.y + bounds.height], [bounds.x + bounds.width, bounds.y + bounds.height]]
     .map(([x, y]) => ({ x: t.a * x + t.c * y + t.e, y: t.b * x + t.d * y + t.f }));
-  const x = Math.max(0, Math.floor(Math.min(...corners.map(point => point.x))) - 2);
-  const y = Math.max(0, Math.floor(Math.min(...corners.map(point => point.y))) - 2);
-  const right = Math.min(ctx.canvas.width, Math.ceil(Math.max(...corners.map(point => point.x))) + 2);
-  const bottom = Math.min(ctx.canvas.height, Math.ceil(Math.max(...corners.map(point => point.y))) + 2);
+  const leftBound = Math.floor(Math.min(...corners.map(point => point.x))) - 2;
+  const topBound = Math.floor(Math.min(...corners.map(point => point.y))) - 2;
+  const rightBound = Math.ceil(Math.max(...corners.map(point => point.x))) + 2;
+  const bottomBound = Math.ceil(Math.max(...corners.map(point => point.y))) + 2;
+  checkExpandedCanvasMask(ctx, leftBound, topBound, rightBound, bottomBound, 32, LAYER_MAX_SIDE, LAYER_PIXEL_BUDGET);
+  const x = Math.max(0, leftBound), y = Math.max(0, topBound);
+  const right = Math.min(ctx.canvas.width, rightBound), bottom = Math.min(ctx.canvas.height, bottomBound);
   const width = Math.ceil((right - x) / 32) * 32, height = Math.ceil((bottom - y) / 32) * 32;
   if (width <= 0 || height <= 0) return true;
   // Bound transient GPU memory on mobile; an unusually large DEV scale uses

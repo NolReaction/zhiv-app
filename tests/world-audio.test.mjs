@@ -350,6 +350,85 @@ test('stationary audio keeps a one-second reconciliation heartbeat for retries a
   } finally { controller.dispose(); session.release(); }
 });
 
+test('camera-only updates keep the exact spatial mix without rebuilding character contacts between simulation ticks', () => {
+  const map = { ...scene, audio: { ...scene.audio, emitters: [...scene.audio.emitters,
+    emitter('distant-fire', 'always', { profileId: 'campfire', position: { x: 600, y: 400 } })],
+    zones: [{ id: 'river', profileId: 'river', points: polygon, fadeDistance: 200, gainDb: 0 }] } };
+  const session = connectForestSession(undefined, map, 'world', now, 0, () => {}, { persistence: false, sync: false });
+  const reads = new Map(), state = new Proxy(session.state, { get(target, key) {
+    reads.set(key, (reads.get(key) ?? 0) + 1); return Reflect.get(target, key);
+  } });
+  const frames = [], events = [], controller = createWorldAudioController({
+    updateFrame: frame => frames.push(frame), clearFrame() {}, play: event => events.push(event),
+  });
+  const control = { scope: 'world', visible: true, observationOwner: true, reducedMotion: false,
+    showHero: true, actorAway: false, emitEvents: false };
+  const environment = input({ production: snapshot([job('working')]), rain: .4, dusk: .7 });
+  try {
+    controller.update(map, state, environment, control);
+    assert.ok(reads.get('social') > 0, 'the initial update establishes actual character contacts');
+    const ownerId = controller.getFrame().ownerId;
+    reads.clear();
+    for (let step = 0; step < 120; step++) {
+      const camera = { x: 80 + step * 5, y: 100 + step * 2.5, zoom: step < 60 ? 1 : 2, viewportWidth: 390, viewportHeight: 844 };
+      const current = { ...environment, camera, now: now + step * 10 };
+      controller.update(map, state, current, { ...control, cameraOnly: true });
+      assert.deepEqual(controller.getFrame(), buildWorldAudioFrame(map, { ...current, ownerId }),
+        'gain, pan, source selection, production deadlines and music ducking use the current camera immediately');
+    }
+    assert.deepEqual([...reads.keys()].sort(), ['clearing', 'elapsed'], 'camera input only checks the observed tick identity');
+    assert.equal(reads.get('clearing'), 120);
+    assert.equal(reads.get('elapsed'), 120);
+    assert.equal(frames.length, 121, 'all 120 camera positions reach the mixer without throttling');
+    assert.equal(events.length, 0, 'camera movement cannot create action sounds');
+    assert.equal(cue(controller.getFrame(), 'workshop.woodworking').length, 0, 'finished production is silent even between simulation ticks');
+  } finally { controller.dispose(); session.release(); }
+});
+
+test('camera-only audio preserves first baselines, real contacts, muted updates and hidden/resume transitions', () => {
+  for (const reducedMotion of [false, true]) {
+    const session = connectForestSession(undefined, { ...scene, sites: [] }, 'world', now, 0, () => {}, { persistence: false, sync: false });
+    const events = [], cleared = [], controller = createWorldAudioController({ updateFrame() {},
+      clearFrame: owner => cleared.push(owner), play: event => events.push(event) });
+    const state = session.state, control = { scope: 'world', visible: true, observationOwner: true, reducedMotion,
+      showHero: true, actorAway: false, emitEvents: true };
+    const camera = { ...point, zoom: 1, viewportWidth: 390, viewportHeight: 844 };
+    const environment = input({ camera });
+    const pan = () => controller.update(scene, state, { ...environment, camera: { ...camera, x: camera.x + 1 } },
+      { ...control, cameraOnly: true, emitEvents: false });
+    const speech = id => { state.social.current = { id, origin: 'interaction', speaker: 'mochlik', text: 'Hello', elapsed: 0, duration: 3 }; };
+    try {
+      speech('restored'); pan();
+      controller.update(scene, state, environment, control);
+      assert.equal(events.length, 0, 'first camera-only use still consumes the restored baseline');
+      speech('new-contact');
+      controller.update(scene, state, environment, control);
+      assert.equal(events.length, 1, 'a real same-tick action remains audible with reduced motion too');
+      for (let step = 0; step < 10; step++) pan();
+      controller.update(scene, state, environment, control);
+      assert.equal(events.length, 1, 'panning and repeated simulation observations never replay a contact');
+
+      speech('muted');
+      controller.update(scene, state, environment, { ...control, emitEvents: false });
+      pan(); controller.update(scene, state, environment, control);
+      assert.equal(events.length, 1, 'ordinary muted observations still consume contact tokens');
+
+      controller.update(scene, state, environment, { ...control, visible: false });
+      speech('while-hidden');
+      pan(); controller.update(scene, state, environment, control);
+      assert.equal(cleared.length, 1);
+      assert.equal(events.length, 1, 'resume establishes a fresh baseline instead of replaying hidden contacts');
+
+      state.elapsed += .05; speech('unobserved-tick'); pan();
+      controller.update(scene, state, environment, control);
+      assert.equal(events.length, 1, 'a changed tick cannot incorrectly take the camera-only shortcut');
+      speech('after-resume');
+      controller.update(scene, state, environment, { ...control, cameraOnly: true });
+      assert.equal(events.length, 2, 'an explicitly emitting update always samples real actions');
+    } finally { controller.dispose(); session.release(); }
+  }
+});
+
 test('circle stays music-only during rain, production and character actions; entering the map starts no action backlog', () => {
   let active = null;
   const events = [];

@@ -138,7 +138,7 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
             objectAnchorsEnabled: anchorTracking.current.enabled,
             objectMarkerHeight: place => markerHeights.current.get(place) ?? CONSTRUCTION_MARKER.height,
             onObjectAnchorsChange: values => { if (!disposed) anchorStore.publish(values); },
-          }, speechCanvas.current);
+          }, speechCanvas.current, root.current);
       },
       release(value) { value.dispose(); if (engine.current === value) engine.current = null; },
       onReady(value) {

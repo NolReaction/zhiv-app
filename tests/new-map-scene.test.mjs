@@ -992,6 +992,70 @@ test("HUD-only resize retains backing surfaces while viewport and DPR changes ke
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("empty dedicated speech canvas stays untouched during pan and clears once when the last line disappears", async () => {
+  const { createMapEngine, worldDevStore, connectForestSession, TILED_WORLD, worldLightingEditorStore } = await modules();
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(393, 852), speech = env.surface(393, 852), top = { offsetHeight: 40 };
+    speech.width = 786; speech.height = 1704;
+    const initial = { ...options, presenceKey: "empty-speech-overlay", serverNow: 100_000 };
+    const loading = createMapEngine(canvas, initial, assert.fail, [], undefined, { top }, {}, speech);
+    env.finish(); await flush(); engine = await loading;
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const clears = () => speech.calls.filter(call => call.method === "clearRect").length;
+    assert.equal(clears(), 1, "the initial overlay clears any pixels retained by a reused DOM canvas");
+    assert.deepEqual(speech.calls.find(call => call.method === "clearRect").args, [0, 0, 786, 1704],
+      "bootstrap clears the whole reused overlay before the map viewport is measured");
+    const cleanCalls = speech.calls.length;
+    engine.control("home");
+    for (let index = 0; index < 20; index++) dragMap(canvas, index % 2 ? 13.5 : -13.5, 1.25);
+    env.resize(canvas); top.offsetHeight = 80; env.resize(top);
+    assert.equal(speech.calls.length, cleanCalls, "empty panning and unchanged backing dimensions do not dirty the overlay");
+    canvas.clientWidth = 500; env.resize(canvas);
+    assert.equal(clears(), 2, "a resized overlay establishes one fresh transparent frame");
+    probe.state.social.current = { id: "overlay-line", speaker: "mochlik", text: "Река сегодня тихая.", elapsed: 1, duration: 4 };
+    probe.publish();
+    assert.ok(speech.calls.some(call => call.method === "fillText" && call.args[0].includes("Река")), "live speech draws on the separate canvas");
+    const withSpeech = clears();
+    dragMap(canvas, 12, 1);
+    assert.ok(clears() > withSpeech, "a live line follows camera movement with a clean previous frame");
+    probe.state.social.current = null;
+    const beforeRemoval = clears(); probe.publish();
+    assert.equal(clears(), beforeRemoval + 1, "the disappeared line is cleared exactly once");
+    const emptyCalls = speech.calls.length;
+    dragMap(canvas, -12, -1); engine.control("home");
+    worldLightingEditorStore.setEnabled(true); worldLightingEditorStore.setEnabled(false);
+    assert.equal(speech.calls.length, emptyCalls, "remaining empty and editor transitions cannot redraw an empty overlay");
+    probe.state.social.current = { id: "before-hide", speaker: "mochlik", text: "Привет!", elapsed: 1, duration: 4 };
+    probe.publish(); env.visibility(true); probe.state.social.current = null;
+    const beforeResume = clears(); env.visibility(false);
+    assert.equal(clears(), beforeResume + 1, "resume removes a line that ended while the map was hidden");
+    const resumedCalls = speech.calls.length; engine.control("home");
+    assert.equal(speech.calls.length, resumedCalls);
+    const beforeDispose = clears(); engine.dispose(); engine = null;
+    assert.equal(clears(), beforeDispose + 1, "disposal leaves the shared DOM overlay transparent");
+  } finally { probe?.release(); engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("speech without a dedicated overlay still redraws over every painted map frame", async () => {
+  const { createMapEngine, worldDevStore, connectForestSession, TILED_WORLD } = await modules();
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(393, 852), initial = { ...options, presenceKey: "speech-map-fallback", serverNow: 100_000 };
+    const loading = createMapEngine(canvas, initial, assert.fail, []);
+    env.finish(); await flush(); engine = await loading;
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    probe.state.social.current = { id: "fallback-line", speaker: "mochlik", text: "Привет!", elapsed: 1, duration: 4 };
+    probe.publish();
+    const texts = () => canvas.calls.filter(call => call.method === "fillText" && call.args[0] === "Привет!").length;
+    assert.ok(texts() > 0);
+    const before = texts(); engine.control("home");
+    assert.equal(texts(), before + 1, "fallback text is never lost when its world canvas repaints");
+  } finally { probe?.release(); engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
 test("overlapping phone marker targets resolve the nearest available anchor rather than DOM stacking", async () => {
   const fire = { id: "test-fire", position: { x: 700, y: 650 }, seat: { x: 720, y: 680 }, radius: 10 };
   const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome], campfires: [fire] });

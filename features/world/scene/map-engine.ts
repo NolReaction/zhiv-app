@@ -20,6 +20,8 @@ import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget, leaftailAr
 import { createMapSceneRehearsal } from "./map-scene-rehearsal";
 import { worldFrameDue } from "./frame-timing";
 import { sameSceneOptions } from "./scene-options";
+import { createMapPanSurface } from "./map-pan-surface";
+import { withExpandedCanvasViewport } from "./canvas-viewport-compatibility";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -41,7 +43,7 @@ type StudioViewport = { camera: Camera; framing: MapFraming };
 const studioViewports = WORLD_DEV_ENABLED ? retainWorldDevClientState("studio-map-viewports",
   `v1:1:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}`,
   () => new WeakMap<HTMLCanvasElement, StudioViewport>()).value : null;
-export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}, interactions: MapInteractionCallbacks = {}, speechCanvas?: HTMLCanvasElement | null) {
+export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}, interactions: MapInteractionCallbacks = {}, speechCanvas?: HTMLCanvasElement | null, viewportRoot?: HTMLElement | null) {
   let ground: HTMLImageElement;
   const rebuilding = WORLD_PRESENTATION.rebuilding;
   const bounds = rebuilding ? NEW_MAP_BOUNDS : { width: MAP_SIZE, height: MAP_SIZE };
@@ -54,7 +56,12 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Canvas unavailable");
   const speechContext = speechCanvas?.getContext("2d") ?? ctx;
+  let speechSurfaceDirty = speechContext !== ctx;
   let options = initial, disposed = false, raf = 0, last = 0, redrawPending = false;
+  const viewportElement = viewportRoot ?? canvas;
+  const panSurface = createMapPanSurface(canvas);
+  let normalBacking = { width: 1, height: 1 };
+  let rasterCamera: Camera | null = null, panBlocked = false;
   let viewportRect: DOMRect | null = null;
   let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
   const initialCameraEventId = dev?.cameraEvent?.id;
@@ -102,7 +109,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const single = document.querySelector?.<HTMLElement>(selector);
     const panels = document.querySelectorAll ? [...document.querySelectorAll<HTMLElement>(selector)] : single ? [single] : [];
     if (!panels.length) return safe;
-    const viewport = canvas.getBoundingClientRect();
+    const viewport = viewportElement.getBoundingClientRect();
     let candidates = [safe];
     for (const node of panels) {
       const panel = node.getBoundingClientRect();
@@ -294,7 +301,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     onPlace(selection.place, selection);
     return true;
   }
-  function draw() {
+  function draw(allowPan = false, rasterClock = performance.now()) {
     if (disposed || !ctx) return;
     redrawPending = false;
     const arriving = arrivalTarget();
@@ -305,44 +312,83 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     followedArrival = Boolean(arriving && framing === "guide");
     habitat.setAudioCamera?.({ x: camera.x, y: camera.y, zoom: camera.zoom, viewportWidth: view.width, viewportHeight: view.height });
     if (!pointers.size) viewportRect = null;
-    const ratio = canvas.width / view.width;
-    ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "low";
-    ctx.fillStyle = "#13231a"; ctx.fillRect(0, 0, view.width, view.height);
-    ctx.translate(view.width / 2, view.height / 2); ctx.scale(camera.zoom, camera.zoom); ctx.translate(-camera.x, -camera.y);
-    if (rebuilding) habitat.paintWorld?.(ctx);
-    else {
-      // Both views share the detailed tile and fixed world anchors. Its outer rim
-      // contains the original map pixels; animation coordinates remain unchanged.
-      ctx.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
-      const weather = habitat.ambience();
-      drawWaterAmbience(ctx, weather.elapsed, options.reducedMotion, weather.rain);
-      if (boatArt) drawBoatWreck(ctx, boatArt);
-      drawRouteProps(ctx);
-      habitat.paintVisitors(ctx, "ground");
-      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, MAP_SIZE, MAP_SIZE);
-      ctx.rect(HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size); ctx.clip("evenodd");
-      habitat.paintJourney(ctx); ctx.restore();
-      habitat.paintLighting(ctx);
-      ctx.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
-      habitat.paintVisitors(ctx, "air");
-      habitat.paintWeather(ctx);
-    }
-    if (editingLight()) {
-      ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
-      lightingEditor.draw(ctx, p => worldToScreen(p, camera, view));
-    }
+    const ratio = normalBacking.width / view.width, ratioY = normalBacking.height / view.height;
     const objects = habitat.mapObjects?.() ?? [];
     const guideTarget = currentGuideTarget(objects);
-    if (guideTarget) {
-      ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
-      drawMapGuideTarget(ctx, guideTarget, camera, view, habitat.ambience().elapsed, motionReduced() || paused());
+    // Only camera motion uses compositor frames. Simulation and artwork still
+    // refresh at their normal 30Hz, with direct draws for explicit state changes.
+    const panning = allowPan && rebuilding && viewportRoot && viewportRoot !== canvas
+      && pointers.size === 1 && !multiTouch && travelled > 0 && !panBlocked
+      && speechContext !== ctx && !editingLight() && !guideTarget && !motionReduced() && !paused()
+      && (!rasterCamera || rasterCamera.zoom === camera.zoom);
+    if (!panning) panSurface.reset();
+    const moved = Boolean(panning && panSurface.active && rasterCamera && !worldFrameDue(rasterClock, last)
+      && panSurface.present((rasterCamera.x - camera.x) * camera.zoom, (rasterCamera.y - camera.y) * camera.zoom));
+    if (!moved) {
+      if (panning) panSurface.activate();
+      if (panSurface.active) panSurface.present(0, 0);
+      function paintRaster() {
+        const expanded = panSurface.active ? panSurface.geometry : null;
+        const padX = expanded?.padX ?? 0, padY = expanded?.padY ?? 0;
+        ctx!.setTransform(ratio, 0, 0, ratioY, padX, padY);
+        ctx!.imageSmoothingEnabled = true; ctx!.imageSmoothingQuality = "low";
+        ctx!.fillStyle = "#13231a";
+        ctx!.fillRect(-padX / ratio, -padY / ratioY, canvas.width / ratio, canvas.height / ratioY);
+        ctx!.translate(view.width / 2, view.height / 2); ctx!.scale(camera.zoom, camera.zoom); ctx!.translate(-camera.x, -camera.y);
+        if (rebuilding) {
+          if (expanded) return withExpandedCanvasViewport(ctx!, {
+            x: padX, y: padY, width: normalBacking.width, height: normalBacking.height,
+          }, () => habitat.paintWorld?.(ctx!));
+          habitat.paintWorld?.(ctx!);
+        } else {
+          // Both views share the detailed tile and fixed world anchors. Its outer rim
+          // contains the original map pixels; animation coordinates remain unchanged.
+          ctx!.drawImage(ground, 0, 0, MAP_SIZE, MAP_SIZE);
+          const weather = habitat.ambience();
+          drawWaterAmbience(ctx!, weather.elapsed, options.reducedMotion, weather.rain);
+          if (boatArt) drawBoatWreck(ctx!, boatArt);
+          drawRouteProps(ctx!);
+          habitat.paintVisitors(ctx!, "ground");
+          ctx!.save(); ctx!.beginPath(); ctx!.rect(0, 0, MAP_SIZE, MAP_SIZE);
+          ctx!.rect(HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size); ctx!.clip("evenodd");
+          habitat.paintJourney(ctx!); ctx!.restore();
+          habitat.paintLighting(ctx!);
+          ctx!.drawImage(home, HOME_AREA.x, HOME_AREA.y, HOME_AREA.size, HOME_AREA.size);
+          habitat.paintVisitors(ctx!, "air");
+          habitat.paintWeather(ctx!);
+        }
+        return true;
+      }
+      if (!paintRaster()) {
+        // Discard an expanded frame whose mask budget would change the artwork.
+        // Retry only once per gesture, before the browser can present that frame.
+        panBlocked = true; panSurface.reset(); paintRaster();
+      }
+      rasterCamera = { ...camera }; last = rasterClock;
+      if (editingLight()) {
+        ctx.setTransform(ratio, 0, 0, ratioY, 0, 0);
+        lightingEditor.draw(ctx, p => worldToScreen(p, camera, view));
+      }
+      if (guideTarget) {
+        ctx.setTransform(ratio, 0, 0, ratioY, 0, 0);
+        drawMapGuideTarget(ctx, guideTarget, camera, view, habitat.ambience().elapsed, motionReduced() || paused());
+      }
     }
-    speechContext.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
-    if (speechContext !== ctx) speechContext.clearRect(0, 0, view.width, view.height);
-    drawForestSpeech(speechContext, (habitat.speechFrames?.() ?? []).map(frame => ({ ...frame,
-      anchor: worldToScreen(frame.anchor, camera, view) })), { ...view, insets: cameraInsets,
-      reducedMotion: motionReduced(), night: options.dusk });
+    const speechFrames = habitat.speechFrames?.() ?? [];
+    // An empty separate overlay stays transparent. Clearing its full backing
+    // surface on every drag frame needlessly updates another viewport-sized
+    // canvas. Keep live speech repainting and clear once when its last line ends.
+    if (speechContext === ctx || speechFrames.length || speechSurfaceDirty) {
+      if (speechContext !== ctx) {
+        speechContext.setTransform(1, 0, 0, 1, 0, 0);
+        speechContext.clearRect(0, 0, speechCanvas!.width, speechCanvas!.height);
+      }
+      speechContext.setTransform(ratio, 0, 0, ratioY, 0, 0);
+      drawForestSpeech(speechContext, speechFrames.map(frame => ({ ...frame,
+        anchor: worldToScreen(frame.anchor, camera, view) })), { ...view, insets: cameraInsets,
+        reducedMotion: motionReduced(), night: options.dusk });
+      speechSurfaceDirty = speechFrames.length > 0;
+    }
     for (const node of anchors) {
       if (editingLight()) { node.style.visibility = "hidden"; continue; }
       // Keyboard/touch shortcuts follow the geometry committed with the visible artwork.
@@ -381,11 +427,12 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     // Input updates the camera immediately, but a burst of pointer events gets
     // one paint in the next browser frame, shared with ambient animation.
     if (redrawPending || !paused() && worldFrameDue(time, last)) {
-      draw(); last = time;
+      draw(true, time);
     }
     if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick);
   }
   function visibility() {
+    panSurface.reset(); rasterCamera = null;
     if (document.hidden) {
       pendingEditorMove = null;
       lightingEditor.blur();
@@ -402,7 +449,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (disposed) return;
     viewportRect = null;
     // CSS entrance scaling changes the visual rect, not the map's layout viewport.
-    view = { width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight) };
+    view = { width: Math.max(1, viewportElement.clientWidth), height: Math.max(1, viewportElement.clientHeight) };
     // Both HUDs are anchored to the viewport edges. Layout height includes their
     // safe-area padding and avoids entrance transforms changing the pan limits.
     cameraInsets = { top: cameraHud.top?.offsetHeight ?? 0, bottom: cameraHud.bottom?.offsetHeight ?? 0 };
@@ -410,11 +457,11 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const width = Math.round(view.width * scale), height = Math.round(view.height * scale);
     // A HUD-only ResizeObserver notification changes camera insets, not the
     // backing surface. Reassigning even equal dimensions discards that surface.
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
+    normalBacking = { width, height };
+    panSurface.configure(view, width, height); rasterCamera = null;
     if (speechCanvas) {
-      if (speechCanvas.width !== width) speechCanvas.width = width;
-      if (speechCanvas.height !== height) speechCanvas.height = height;
+      if (speechCanvas.width !== width) { speechCanvas.width = width; speechSurfaceDirty = true; }
+      if (speechCanvas.height !== height) { speechCanvas.height = height; speechSurfaceDirty = true; }
     }
     const guideTarget = framing === "guide" ? currentGuideTarget() : undefined;
     if (restoreStudioViewport && editingLight()) {
@@ -429,15 +476,15 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     } else camera = guideTarget ? mapGuideCamera(guideTarget, view, bounds, guideInsets()) : framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds, cameraInsets);
     restoreStudioViewport = false; draw();
   }
-  const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(canvas);
+  const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(viewportElement);
   if (cameraHud.top) resizeObserver.observe(cameraHud.top, { box: "border-box" });
   if (cameraHud.bottom) resizeObserver.observe(cameraHud.bottom, { box: "border-box" });
   resize();
-  const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; visibility(); }); observer.observe(canvas);
+  const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; visibility(); }); observer.observe(viewportElement);
   const point = (event: Pick<PointerEvent, "clientX" | "clientY">): Point => {
     // Marker transforms are written during paint. Re-reading layout on every
     // move forces the browser to flush those writes during high-rate input.
-    viewportRect ??= canvas.getBoundingClientRect();
+    viewportRect ??= viewportElement.getBoundingClientRect();
     return viewportPoint({ x: event.clientX, y: event.clientY }, viewportRect, view);
   };
   const invalidateViewportRect = () => { viewportRect = null; };
@@ -458,7 +505,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const midpoint = () => { const pair = [...pointers.values()].slice(0, 2); return { x: (pair[0].position.x + pair[1].position.x) / 2, y: (pair[0].position.y + pair[1].position.y) / 2 }; };
   function down(event: PointerEvent, objectId?: string, target: HTMLElement = canvas) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    if (!pointers.size) { travelled = 0; multiTouch = false; cancelled = false; viewportRect = null; }
+    if (!pointers.size) { travelled = 0; multiTouch = false; cancelled = false; viewportRect = null; panBlocked = false; }
     const p = point(event);
     if (pointers.size && editingLight()) {
       pendingEditorMove = null;
@@ -475,6 +522,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const capture = typeof target.setPointerCapture === "function" ? target : canvas;
     pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined, capture, editor, additive: event.ctrlKey || event.metaKey });
     multiTouch ||= pointers.size > 1; capture.setPointerCapture(event.pointerId); capture.focus?.({ preventScroll: true });
+    if (panSurface.active && pointers.size !== 1) draw();
     if (editingLight()) requestDraw();
   }
   function move(event: PointerEvent) {
@@ -550,7 +598,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       }
     }
     if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
-    requestDraw();
+    if (panSurface.active) draw(); else requestDraw();
   }
   function wheel(event: WheelEvent) { event.preventDefault(); pendingEditorMove = null; lightingEditor.cancel(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
   function control(action: MapAction) {
@@ -683,6 +731,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     dispose() {
       if (studioWasActive) studioViewports?.set(canvas, { camera: { ...camera }, framing });
       else studioViewports?.delete(canvas);
+      panSurface.dispose(); rasterCamera = null;
       disposed = true; pendingEditorMove = null; lightingEditor.blur(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); rehearsal.dispose(); resizeObserver.disconnect(); observer.disconnect();
       if (speechCanvas && speechContext !== ctx) {
         speechContext.setTransform(1, 0, 0, 1, 0, 0); speechContext.clearRect(0, 0, speechCanvas.width, speechCanvas.height);

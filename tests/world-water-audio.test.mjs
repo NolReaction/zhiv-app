@@ -134,7 +134,7 @@ test('map controller consumes contacts in menu and at view/visibility handoff wi
     for (let tick = 100; tick < 300; tick++) {
       step(tick * .025, { scope: 'world' });
       step(tick * .025, { scope: 'world', observationOwner: false }, input, secondary);
-      step(tick * .025, { scope: 'world', emitEvents: false }, { ...input, camera: { ...camera, x: 900 + tick % 3 } });
+      step(tick * .025, { scope: 'world', emitEvents: false, cameraOnly: true }, { ...input, camera: { ...camera, x: 900 + tick % 3 } });
     }
     assert.ok(waterEvents(events).length > 0);
     events.length = 0;

@@ -144,8 +144,10 @@
 
 /* World-only motion; never inherit the centered modal transform utilities. */
 .portalScrim[data-slot='dialog-overlay'] { animation-duration: 650ms; background: #0610095c; }
-.portal[data-state='open'] .scene { animation: terrain-arrive 950ms cubic-bezier(.22,.65,.25,1) both; transform-origin: var(--portal-x, 50%) var(--portal-y, 50%); }
-@keyframes terrain-arrive { from { transform: scale(1.055); } to { transform: scale(1); } }
+/* Release the fullscreen transform after entry, so panning does not keep an
+   additional transformed scene around the canvases and map controls. */
+.portal[data-state='open'] .scene { animation: terrain-arrive 950ms cubic-bezier(.22,.65,.25,1) backwards; transform-origin: var(--portal-x, 50%) var(--portal-y, 50%); }
+@keyframes terrain-arrive { from { transform: scale(1.055); } to { transform: none; } }
 .scene .away { border: 0; padding: 0; background: none; min-height: 46px; top: calc(112px + env(safe-area-inset-top)); }
 .routeChooser { overflow: hidden; margin: 8px 0 14px; border-radius: 16px; border: 1px solid #c9dca438; background: var(--forest-paper-light); }
 .routeChooser > img { display: block; width: 100%; height: clamp(115px, 20dvh, 190px); object-fit: cover; image-rendering: pixelated; }
