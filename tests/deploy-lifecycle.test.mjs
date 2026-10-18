@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm, access } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm, access, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -13,12 +13,15 @@ test("both build commands share the same immutable embedded ID and public status
   const directory = await mkdtemp(join(tmpdir(), "zhiv-build-status-"));
   try {
     const packageJson = JSON.parse(await readFile(join(repository, "package.json"), "utf8"));
+    await writeFile(join(directory, "package.json"), JSON.stringify(packageJson));
+    await symlink(join(repository, "node_modules"), join(directory, "node_modules"), "dir");
     assert.match(packageJson.scripts.build, /app-build\.mjs -- bash scripts\/build-verified\.sh$/);
     assert.match(packageJson.scripts["build:vps"], /app-build\.mjs -- next build$/);
     const result = spawnSync(process.execPath, [join(repository, "scripts/app-build.mjs"), "--", process.execPath, "-e",
       'console.log(JSON.stringify({embedded:process.env.NEXT_PUBLIC_APP_BUILD_ID,status:JSON.parse(require("node:fs").readFileSync("public/app-status.json","utf8"))}))'],
     { cwd: directory, env: { ...process.env, APP_BUILD_ID: "release-test-123" }, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
+    await access(join(directory, "public/vendor", `maplibre-gl-${packageJson.dependencies["maplibre-gl"]}`, "maplibre-gl-worker.mjs"));
     assert.deepEqual(JSON.parse(result.stdout), { embedded: "release-test-123", status: { schemaVersion: 1, buildId: "release-test-123", maintenance: false } });
     assert.notEqual(appBuildId(""), appBuildId(""));
     assert.throws(() => appBuildId('bad"value'), /Invalid/);

@@ -1,0 +1,61 @@
+.view { display: grid; grid-template-rows: auto minmax(160px, 1fr) auto; min-width: 0; min-height: 0; height: 100%; gap: 12px; color: #e5ecdf; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.eyebrow { display: flex; align-items: center; gap: 6px; color: #9cac98; font-size: 9px; font-weight: 750; letter-spacing: .16em; }
+.header h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 5px 0 0; font-size: clamp(19px, 4.8vw, 26px); line-height: 1.2; letter-spacing: -.035em; }
+.header h1:focus, .friendsPanel h2:focus { outline: none; }
+.beta { border: 1px solid #bdd5b330; border-radius: 6px; padding: 3px 5px; color: #bdcfad; font-size: 9px; font-weight: 600; letter-spacing: 0; }
+.worldButton, .locateButton, .friendsButton, .panelActions button, .friendsPanel header button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; border: 1px solid #bcd7ab2b; border-radius: 13px; background: #a6c18d10; color: #d8e8c9; padding: 9px 12px; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.worldButton { flex-shrink: 0; }
+.stage { position: relative; min-height: 0; overflow: hidden; isolation: isolate; border: 1px solid #97c3bf26; border-radius: 24px; background: #081921; }
+.dock { padding: 13px 15px 10px; border: 1px solid #b7d8a223; border-radius: 20px; background: linear-gradient(120deg, #c8ddae0b, #c8ddae02); }
+.locationRow { display: flex; align-items: center; gap: 10px; }
+.locationIcon { display: grid; width: 38px; height: 38px; flex-shrink: 0; place-items: center; border-radius: 12px; background: #bdd5b310; color: #a2b39c; }
+.locationIcon[data-active="true"] { background: #a6d18f24; color: #c9efae; }
+.locationText { min-width: 0; flex: 1; }
+.locationText strong { display: block; font-size: 12px; font-weight: 650; line-height: 1.4; }
+.locationText > span { display: block; margin-top: 3px; color: #96a28f; font-size: 10px; line-height: 1.4; }
+.locateButton { flex-shrink: 0; background: #c9e4ad; color: #20351e; border-color: transparent; min-height: 40px; }
+.dockBottom { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 10px; }
+.dockBottom > p { display: flex; align-items: center; gap: 5px; margin: 0; color: #9ba991; font-size: 10px; }
+.stopButton { min-height: 32px; padding: 4px; border: 0; background: none; color: #d2c2ac; font: inherit; font-size: 10px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.friendsButton { min-height: 34px; margin-left: auto; padding: 6px 9px; font-size: 10px; }
+.friendsButton > span { display: grid; min-width: 17px; height: 17px; border-radius: 6px; background: #c8ddae16; place-items: center; }
+.foregroundHint { display: flex; align-items: center; gap: 5px; margin: 7px 0 0; color: #8c9984; font-size: 9px; line-height: 1.4; }
+.locationError { margin: 8px 0 0; color: #f3c18f; font-size: 11px; line-height: 1.5; }
+.offline { position: absolute; top: 12px; left: 12px; right: 65px; z-index: 2; max-width: 300px; margin: 0; border: 1px solid #ffc28330; border-radius: 12px; background: #1d211eeb; color: #efd1a4; padding: 9px 11px; font-size: 11px; }
+.friendsPanel { position: absolute; inset: auto 12px 34px; z-index: 5; max-height: calc(100% - 55px); overflow: auto; overscroll-behavior: contain; border: 1px solid #b7d8a236; border-radius: 18px; background: #15221af7; box-shadow: 0 15px 45px #0005; padding: 14px; }
+.friendsPanel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.friendsPanel h2 { margin: 0; font-size: 16px; }
+.friendsPanel header button { min-width: 36px; min-height: 36px; padding: 7px; }
+.friendsIntro, .hint { margin: 9px 0; color: #aab6a3; font-size: 11px; line-height: 1.6; }
+.friendsList { list-style: none; margin: 13px 0; padding: 0; }
+.friendsList li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #c5dfb912; }
+.avatar { display: grid; width: 34px; height: 34px; flex-shrink: 0; place-items: center; border-radius: 12px; background: #c5dfb915; color: #d4e5c7; font-size: 13px; font-weight: 700; }
+.friendsList li > div { min-width: 0; }
+.friendsList strong { display: block; overflow-wrap: anywhere; font-size: 12px; }
+.friendsList li > div > span { display: block; margin-top: 3px; color: #899c86; font-size: 10px; }
+.panelActions { display: flex; gap: 8px; }
+.panelActions button:first-child { flex: 1; }
+.view button:focus-visible { outline: 2px solid #d9ee94; outline-offset: 3px; }
+.view button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 380px) {
+  .view { gap: 8px; }
+  .header h1 { font-size: 19px; }
+  .worldButton { padding: 8px; font-size: 10px; }
+  .worldButton span { max-width: 50px; }
+  .dock { padding: 10px; }
+  .locationRow { gap: 7px; }
+  .locationIcon { display: none; }
+  .locateButton { padding: 8px; }
+  .dockBottom > p { font-size: 9px; }
+}
+@media (max-height: 670px) {
+  .view { gap: 7px; grid-template-rows: auto minmax(110px, 1fr) auto; }
+  .eyebrow, .foregroundHint { display: none; }
+  .header h1 { margin: 0; font-size: 18px; }
+  .dock { padding: 8px 10px; }
+  .dockBottom { margin-top: 5px; }
+}
+@media (max-height: 500px) {
+  .view { min-height: 300px; }
+}

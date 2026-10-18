@@ -153,6 +153,14 @@
   gap: 18px;
 }
 
+/* Earth has its own compact heading; keep room for a usable globe. */
+.shell[data-active-view="earth"] {
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+.shell[data-active-view="earth"] > .header { display: none; }
+
 .identityWrap {
   position: relative;
   display: grid;
@@ -804,7 +812,7 @@
 .bottomNav {
   display: grid;
   width: min(100%, 410px);
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 20px;
@@ -823,6 +831,7 @@
   position: relative;
   display: flex;
   min-height: 48px;
+  min-width: 0;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -834,6 +843,7 @@
   font: inherit;
   font-size: 12px;
   font-weight: 780;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 160ms ease, color 160ms ease;
 }
@@ -1103,6 +1113,22 @@
     touch-action: none;
   }
 
+  .shell[data-active-view="earth"] {
+    --floating-nav-clearance: 80px;
+    grid-template-rows: minmax(0, 1fr);
+    position: fixed;
+    inset: 0;
+    height: 100svh;
+    overflow: hidden;
+    overscroll-behavior: none;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .shell[data-active-view="earth"] .viewTransition {
+    padding-bottom: var(--floating-nav-clearance);
+    overflow: hidden;
+  }
+
   .action {
     padding-bottom: var(--floating-nav-clearance);
     scroll-padding-bottom: var(--floating-nav-clearance);
@@ -1162,7 +1188,7 @@
     left: 0;
     width: min(
       calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right) - 28px),
-      316px
+      360px
     );
     display: flex;
     justify-content: center;
@@ -1176,7 +1202,7 @@
     position: relative;
     width: 100%;
     min-height: 64px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0;
     overflow: hidden;
     isolation: isolate;
@@ -1212,7 +1238,7 @@
     bottom: 5px;
     left: 5px;
     display: block;
-    width: calc((100% - 10px) / 3);
+    width: calc((100% - 10px) / 4);
     border: 1px solid rgba(223, 241, 212, 0.17);
     border-radius: 999px;
     background:
@@ -1231,17 +1257,22 @@
     transform: translate3d(100%, 0, 0);
   }
 
-  .bottomNav[data-active-view="profile"] .navLens {
+  .bottomNav[data-active-view="earth"] .navLens {
     transform: translate3d(200%, 0, 0);
+  }
+
+  .bottomNav[data-active-view="profile"] .navLens {
+    transform: translate3d(300%, 0, 0);
   }
 
   .bottomNav button {
     z-index: 2;
     min-height: 52px;
+    flex-direction: column;
     border-radius: 999px;
     background: transparent;
     color: #9aa196;
-    gap: 6px;
+    gap: 3px;
     font-size: 11px;
     transition:
       color 220ms ease,
@@ -1267,7 +1298,8 @@
 
 @media (display-mode: standalone) and (max-width: 700px),
   (display-mode: standalone) and (hover: none) and (pointer: coarse) {
-  .shell[data-active-view="check-in"] {
+  .shell[data-active-view="check-in"],
+  .shell[data-active-view="earth"] {
     height: 100dvh;
   }
 }
@@ -1391,6 +1423,12 @@
   min-height: 0;
   animation: view-enter 220ms cubic-bezier(.2,.8,.2,1);
 }
+@media (max-height: 500px) {
+  .shell[data-active-view="earth"] .viewTransition {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
 .streakPill { cursor: pointer; font-family: inherit; transition: background 160ms ease; }
 .streakPill:hover { background: rgba(248,164,72,.14); }
 .streakPill:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
@@ -1447,6 +1485,10 @@
   margin-bottom: 8px;
   border-radius: 16px;
 }
+.shell[data-active-view="earth"]:has(> [data-guide-coach="app"]) .viewTransition {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .shell:has(> [data-guide-coach="app"]) > .footer {
   position: relative;
   inset: auto;
@@ -1458,7 +1500,7 @@
   pointer-events: auto;
 }
 @media (max-width: 700px), (hover: none) and (pointer: coarse) {
-  .shell:has(> [data-guide-coach="app"]) > .footer .bottomNav { width: min(100%, 316px); }
+  .shell:has(> [data-guide-coach="app"]) > .footer .bottomNav { width: min(100%, 360px); }
   .shell[data-active-view="check-in"]:has(> [data-guide-coach="app"]) .action {
     overflow-y: auto;
     touch-action: pan-y;

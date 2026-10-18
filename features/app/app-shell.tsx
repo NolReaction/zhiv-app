@@ -116,6 +116,10 @@ import type { SceneLoadState } from "@/features/startup/scene-load-state";
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
 const WorldPortal = dynamic(() => import("@/features/world/world-portal"), { ssr: false });
+const EarthView = dynamic(() => import("@/features/earth/earth-view").then(module => module.EarthView), {
+  ssr: false,
+  loading: () => <p role="status">Открываем карту Земли…</p>,
+});
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
 
@@ -1813,6 +1817,12 @@ function CheckInContent() {
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
         />
+      ) : activeView === "earth" && me ? (
+        <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
+          active={activity.active && !startupActive && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen}
+          isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
+          onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
+          onOpenWorld={trigger => { setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />
       ) : me ? (
         <ProfileView
           simpleView={simpleView} onSimpleViewChange={setSimpleView}

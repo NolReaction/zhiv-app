@@ -9,6 +9,7 @@
 | Что нужно изменить | Начните здесь |
 |---|---|
 | Сборка приложения, переключение основных экранов | [`features/app/app-shell.tsx`](../features/app/app-shell.tsx), [`navigation.tsx`](../features/app/navigation.tsx) |
+| Вкладка «Карта», реальная Земля, геопозиция и будущие друзья на глобусе | [`features/earth/`](../features/earth/README.md), [устройство и проверка](development/earth-map.md) |
 | Публичная страница `/site`, установка PWA, первый вход из браузера | [`features/site/`](../features/site/), [`features/pwa/`](../features/pwa/), [`game-entry.tsx`](../features/app/game-entry.tsx); [устройство и проверка](development/product-site-and-pwa.md) |
 | «Мой Мохлик»: имя, статистика, настроение, друзья | [`features/world/ui/profile/`](../features/world/ui/profile/), основной экран — `world-profile-menu.tsx`, оформление — соседний `.module.css` |
 | Профиль аккаунта, вход и привязки | [`features/account/profile-view.tsx`](../features/account/profile-view.tsx), остальные файлы `account/` |

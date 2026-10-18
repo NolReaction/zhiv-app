@@ -800,7 +800,7 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   assert.match(app, /<AppNavigation active=\{activeView\}/);
   assert.match(navigation, /className=\{styles\.navLens\}/);
   assert.match(navigation, /aria-current=\{active === id \? "page" : undefined\}/);
-  assert.equal((navigation.match(/name: "/g) ?? []).length, 3);
+  assert.equal((navigation.match(/name: "/g) ?? []).length, 4);
 
   assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*overflow-y:\s*auto;/s);
@@ -816,7 +816,7 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   assert.match(mobileFooter, /width:\s*min\(/);
   assert.match(mobileFooter, /safe-area-inset-left/);
   assert.match(mobileFooter, /safe-area-inset-right/);
-  assert.match(mobileFooter, /316px/);
+  assert.match(mobileFooter, /360px/);
   assert.match(mobileFooter, /margin-inline:\s*auto;/);
   assert.match(mobileFooter, /bottom:[^;]*safe-area-inset-bottom[^;]*;/);
   assert.match(mobileFooter, /background:\s*transparent;/);
@@ -839,11 +839,15 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   );
   assert.match(mobileBottomNav, /pointer-events:\s*auto;/);
   assert.match(mobileAppStyles, /\.bottomNav\[data-active-view="people"\] \.navLens/);
-  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/);
-  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 3\);/);
+  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
+  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 4\);/);
   assert.match(
     mobileAppStyles,
-    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(200%, 0, 0\)/s,
+    /\.bottomNav\[data-active-view="earth"\] \.navLens\s*\{[^}]*translate3d\(200%, 0, 0\)/s,
+  );
+  assert.match(
+    mobileAppStyles,
+    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(300%, 0, 0\)/s,
   );
   assert.match(appStyles, /@supports not \(\(-webkit-backdrop-filter:/);
 

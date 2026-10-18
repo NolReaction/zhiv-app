@@ -25,6 +25,11 @@ async function fixture(t, overrides = {}, cli = "process.exit(0);") {
   const directory = join(root, "node_modules/next/dist/bin");
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, "next"), cli);
+  const mapPackage = join(root, "node_modules/maplibre-gl");
+  await mkdir(join(mapPackage, "dist"), { recursive: true });
+  await writeFile(join(mapPackage, "package.json"), JSON.stringify({ name: "maplibre-gl", version: manifest.dependencies["maplibre-gl"] }));
+  await writeFile(join(mapPackage, "LICENSE.txt"), "Map worker test license");
+  for (const file of ["maplibre-gl-worker.mjs", "maplibre-gl-shared.mjs"]) await writeFile(join(mapPackage, "dist", file), "export {};\n");
   return root;
 }
 

@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeAppBuildStatus } from "./app-build.mjs";
+import { prepareEarthAssets } from "./prepare-earth-assets.mjs";
 
 const DEVELOPMENT_PACKAGES = ["next", "react", "react-dom"];
 const RESTART_INSTRUCTIONS = "Stop the running development server, run npm ci, then start it again with npm run dev:local or npm run dev:lan.";
@@ -41,6 +42,7 @@ export function nextDevArguments(args = []) {
 async function main() {
   const projectRoot = process.cwd();
   const { nextBin } = checkNextDevDependencies(projectRoot);
+  await prepareEarthAssets(projectRoot);
   await writeAppBuildStatus(projectRoot, "development");
   const child = spawn(process.execPath, [nextBin, ...nextDevArguments(process.argv.slice(2))], {
     cwd: projectRoot, env: { ...process.env, NODE_ENV: "development", APP_BUILD_ID: "development", NEXT_PUBLIC_APP_BUILD_ID: "development" }, stdio: "inherit",

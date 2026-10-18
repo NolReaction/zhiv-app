@@ -6,7 +6,7 @@ export type AppOnboardingProgress =
   | { version: 2; status: "completed" | "skipped" };
 
 export type AppOnboardingEvidence = {
-  activeView: "check-in" | "people" | "profile";
+  activeView: "check-in" | "people" | "earth" | "profile";
   lastCheckInAt: string | null;
   nextAllowedAt: string | null;
   nowMs: number;
