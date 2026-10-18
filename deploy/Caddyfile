@@ -65,6 +65,14 @@
             header Retry-After "15"
             respond "Приложение обновляется. Пожалуйста, подождите немного и обновите страницу." 503
         }
+        # The public, bounded weather proxy belongs to the web runtime in both builds.
+        @earthWeather {
+            method GET
+            path /api/v1/earth/weather
+        }
+        handle @earthWeather {
+            reverse_proxy web:3000
+        }
         @api path /api/* /healthz /readyz
         handle @api {
             reverse_proxy api:8080

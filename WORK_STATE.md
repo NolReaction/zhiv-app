@@ -1,3 +1,36 @@
+# WIP handoff: earth, 2026-10-18
+
+Работа остановлена по прямому запросу Димы из-за окончания кредитов. Этот коммит сохраняет текущее НЕЗАВЕРШЁННОЕ состояние. Не считать релизом или проверенной интеграцией. Продолжать только в `earth`; последний полностью проверенный коммит до этого этапа: `2d3e704948a0dd74e4c60e05a25233ac6012fb12`. Ничего не деплоилось.
+
+## Уже написано
+
+- `features/app/earth-map-retention.ts`, `use-earth-map-retention.ts`, AppShell/EarthView: один готовый Map сохраняется до 120 секунд при Profile/People, камера остаётся; owner/logout/AFK/startup/overlay освобождают карту. Скрытая панель inert/display:none. При выходе GPS stop в layout effect, координаты очищаются, автозапуска GPS при возврате нет.
+- `resource-protocol.ts`: createEarthRequestScope(lifetimeSignal) с setVisible/dispose, новая AbortSignal generation при возврате; старые запросы отменяются. EarthMap интегрирует visible/onReadyChange, остановку декора/погоды/запросов; если уход прервал загрузки готовой карты, при возврате пересоздаётся только earth-streets source. Это важно: MapLibre6.15 после AbortError может оставить tile.state=loading/reloadPromise. Cold installation в фоне может завершиться в пределах retention budget.
+- `tile-loading-overlay.ts/.module.css`: оригинальные мультяшные облака/листочки над реально ожидающими тайлами. Public source events coord.canonical, public project/unproject, SVG masks вычитают уже загруженные same/higher zoom tile bases. До16patches, без новых map sources/таймерного цикла. Loading/failed/offline различаются, reveal delay300ms, reduced motion. EarthMap forwards events/render/visibility. Браузерная геометрия ещё не проверена.
+- `globe-lighting.ts`: evening sun112°, 64 мягкие caps, центр заметно темнее (~74% shade), тёплый край и усиленные огни. `earth-stars.ts/.module.css`:128 статичных оригинальных звёзд, public projection clipping только вне сферы, fade1.5→2.5, no animation loop. EarthMap подключает звёзды и lighting mode.
+- `lib/server/earth-weather.ts`, `lib/earth-weather-contract.ts`, `app/api/v1/earth/weather/route.ts`: MET Norway same-origin server adapter, только целые lat/lng, 64cell bounded cache/dedup, 8s timeout/512KB body cap, User-Agent с реальным GitHub проекта, Expires/LastModified/304/backoff, не чаще1upstreamrequest/sec/process, ограниченный stale. GET `/api/v1/earth/weather?lat=55&lng=38`. Caddy exact GET exception ведёт этот path в web:3000 до общего Ktor /api matcher и после maintenance gate.
+- `weather.ts`: opt-in controller/provider, zoom>=3, округление центра просмотра до1°, 450ms settle, минимум1мин между запросами,16cell memory cache, cancellation/TTL. `earth-weather.ts/.module.css`: оригинальный SVG weather marker,12particles, clock общий с globe-scene, без собственного animation loop. Root интегрировал Погода toggle (defaultOFF), статус/прогноз/credit в О карте. Погода не блокирует первичную загрузку, не использует GPS. Данные являются прогнозом, не наблюдением.
+- About: длинные тире заменены разделителями, название исправлено на «Я живой». EarthView brand тоже исправлен.
+
+## Обязательно доделать следующему ИИ
+
+1. Проверить текущие файлы и завершить интеграцию EarthMap/globe-scene/weather. Работа остановлена сразу после первичного соединения модулей. Последние изменения weather агент успел записать перед остановкой, но финальные результаты typecheck неизвестны. Проверить nullable temperature/cloudCover, unknown condition, wire stale и exact upstream expires; не превращать stale60s в15min fresh; clamp polar latitude до[-89,89]; ограничить возраст client stale (server ограничивает6h, client failurecache тоже должен).
+2. Добавить поведенческие тесты frontend weather controller/provider/renderer. Сейчас есть server weather tests, но frontend weather tests агент не успел сохранить. Покрыть coarsening, budget, TTL/stale, hidden/abort/late result, renderer/reduced motion. Проверить общий scene clock при zoom>=3 и street zoom: погодные частицы могут работать, океан/глобальные облака должны останавливаться после4.2; hidden/reduced без анимации. Проверить scene movement в другую weather cell не оставляет старый прогноз на экране.
+3. `tests/production-dev-gates.test.mjs`: существующий тест считает ВСЕ app/api route development-only и ожидает503DEV_API_DISABLED. Новый публичный weather endpoint должен получить узкое исключение ровно этого GET route с отдельной проверкой координат/отсутствия account/game зависимости. Остальные production gates не ослаблять.
+4. Чистый browser QA: cold load/F5, готовый Profile→Map→People→Map без opaque loader и тот же Map, GPS start→Profile→Map без auto-resume, hide/return с задержанными tile requests и recovery, tile overlay на действительно отсутствующих участках/исчезновение после загрузки/не на ocean, контраст day/evening, stars не поверх Земли. Погода: actual endpoint smoke и детерминированный дождь/снег, tiny response/cache headers, disabled0requests, coarse params, hiddenabort, мобильный390×844/reduced.
+5. Запустить typecheck/lint/architecture:check/world:check, scopedEarth/navigation/PWA/dev/deploy/production-gates tests, security:check после индексации. Обе production builds Next/VPS и Sites последовательно; не запускать проверки dist одновременно со сборкой. Caddy binary здесь отсутствует, runtime Caddy/Compose не проверены.
+6. Обновить `features/earth/README.md`, `docs/development/earth-map.md` с итоговым lifecycle/weather/лицензией. MET attribution уже добавлена в About: MET Norway, CC BY4.0, отметить упрощённую визуализацию. Primary sources: https://api.met.no/doc/TermsOfService ; https://docs.api.met.no/doc/License.html ; https://docs.api.met.no/doc/WebClients.html . Open-Meteo free API не выбран из-за noncommercial условий; MET proxy подходит обоим контурам без localhost Origin проблем. Не обещать юридическую гарантию/FPS/battery без устройства.
+
+## Что проверено отдельно до остановки
+
+Модульные агенты сообщили: retention29/29 (8новых), protocol12/12, lighting/stars11/11, Caddy focused2/2, weather server10/10; scoped ESLint этих модулей чист. Это НЕ общий интеграционный прогон. Overlay tests сохранены, результат финального прогона неизвестен. Финальный browser QA/обе production builds этого этапа НЕ выполнены. Последний интеграционный typecheck был запущен, при остановке лог ещё без итогового статуса.
+
+## Локальные QA подсказки (transient, не требуются для клонирования)
+
+Repo `/workspace/scratch/8ae1ae48c498/zhiv-app-earth`. QA runner draft `/tmp/earth-chromium/stability-weather-qa.mjs`, ещё не запускался; Chrome153 `/tmp/earth-chromium/chromium`, Playwright `/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs`. Сервер+браузер запускать в одном exec network namespace. Next HMR может удалить lazyEarthCSS и исказить высоту canvas; заморозить код и чисто перезапустить сервер перед финальным QA. Никакого production debug instrumentation. Селекторы: `[data-earth-map][data-map-status=ready]`, `[data-earth-tile-loading-overlay][data-patch-count]`, `[data-loading-tile][data-state]`, `[data-earth-stars]`, `[data-earth-weather]`, `[data-earth-weather-status]`.
+
+---
+
 # Рабочее состояние: earth
 
 ## Достопримечательности на своих географических местах

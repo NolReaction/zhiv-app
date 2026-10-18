@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Globe2, Leaf, RefreshCw, ShieldCheck, Users, X } from "lucide-react";
 import type { PeopleResponse } from "@/lib/check-in-contract";
 import { personDisplayName } from "@/lib/person-nickname";
@@ -13,6 +13,8 @@ import styles from "./earth-view.module.css";
 type Props = {
   ownerPublicId: string;
   active: boolean;
+  visible: boolean;
+  onReadyChange?: (ready: boolean) => void;
   isOnline: boolean;
   people: PeopleResponse | null;
   peopleLoading: boolean;
@@ -56,22 +58,28 @@ export function EarthFriends({ people, loading, error, online, onRefresh, onOpen
   </div>;
 }
 
-export function EarthView({ ownerPublicId, active, isOnline, people, peopleLoading, peopleError,
+export function EarthView({ ownerPublicId, active, visible, onReadyChange, isOnline, people, peopleLoading, peopleError,
   onRefreshPeople, onOpenPeople, onOpenWorld }: Props) {
-  const location = useEarthLocation({ ownerPublicId, enabled: active });
+  const location = useEarthLocation({ ownerPublicId, enabled: active && visible });
   const [focusRequest, setFocusRequest] = useState(0);
-  const [panel, setPanel] = useState<"friends" | "info" | null>(null);
+  const [panelSelection, setPanelSelection] = useState<{ visible: boolean; value: "friends" | "info" | null }>({ visible, value: null });
+  if (panelSelection.visible !== visible) setPanelSelection({ visible, value: null });
+  const panel = panelSelection.visible === visible ? panelSelection.value : null;
+  const setPanel = (value: "friends" | "info" | null) => setPanelSelection({ visible, value });
   const friendsOpen = panel === "friends";
   const [now, setNow] = useState(() => Date.now());
   const heading = useRef<HTMLHeadingElement>(null);
   const friendsButton = useRef<HTMLButtonElement>(null);
   const panelHeading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { heading.current?.focus({ preventScroll: true }); }, []);
+  const stopLocation = location.stop;
+  // A retained map is allowed to keep its tiles/camera, never a location watch.
+  useLayoutEffect(() => { if (!visible) stopLocation(); }, [visible, stopLocation]);
+  useEffect(() => { if (visible) heading.current?.focus({ preventScroll: true }); }, [visible]);
   useEffect(() => {
-    if (!active || !location.position) return;
+    if (!active || !visible || !location.position) return;
     const interval = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(interval);
-  }, [active, location.position]);
+  }, [active, visible, location.position]);
   useEffect(() => { if (friendsOpen) panelHeading.current?.focus({ preventScroll: true }); }, [friendsOpen]);
   const closeFriends = () => { setPanel(null); friendsButton.current?.focus({ preventScroll: true }); };
   const locating = location.status === "requesting";
@@ -94,13 +102,14 @@ export function EarthView({ ownerPublicId, active, isOnline, people, peopleLoadi
   return <section className={styles.view} aria-labelledby="earth-title" data-earth-world>
     <p id="earth-location-privacy" className={styles.srOnly}>Геопозиция видна только вам. Обновляется, пока карта открыта, и очищается при выходе из раздела.</p>
     <div className={styles.stage}>
-      <EarthMap position={location.position} active={active} focusRequest={focusRequest} isOnline={isOnline}
+      <EarthMap position={visible ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange}
+        focusRequest={focusRequest} isOnline={isOnline}
         onLocate={locate} locating={locating} locationActive={location.status === "active"}
         locationDetails={locationDetails} infoOpen={panel === "info"} onInfoOpenChange={open => setPanel(open ? "info" : null)} />
     </div>
     <header className={styles.header}>
       <h1 id="earth-title" ref={heading} tabIndex={-1} className={styles.brand}>
-        <Globe2 size={21} aria-hidden="true" /><span>Живой<span className={styles.brandDivider}>·</span><span className={styles.brandPlace}>Земля</span></span>
+        <Globe2 size={21} aria-hidden="true" /><span>Я живой<span className={styles.brandDivider}>·</span><span className={styles.brandPlace}>Земля</span></span>
       </h1>
       <button type="button" className={styles.worldButton} onClick={event => onOpenWorld(event.currentTarget)} aria-label="Войти в мир Мохлика" aria-haspopup="dialog">
         <Leaf size={18} aria-hidden="true" /><span>Моя полянка</span>

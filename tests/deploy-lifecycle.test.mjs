@@ -210,3 +210,14 @@ test("Caddy serves lifecycle JSON ahead of the maintenance gate and blocks both 
   assert.match(compose, /\.\/runtime:\/srv\/deploy:ro/);
   assert.match(compose, /APP_BUILD_ID: \$\{APP_BUILD_ID:-\}/);
 });
+
+test("Caddy sends only the exact public weather GET to web after maintenance and before the Ktor API catch-all", async () => {
+  const caddy = await readFile(join(repository, "deploy/Caddyfile"), "utf8");
+  const matcher = caddy.match(/@earthWeather\s*\{([^{}]+)\}/)?.[1].trim().replace(/\s+/g, " ");
+  assert.equal(matcher, "method GET path /api/v1/earth/weather", "do not divert other API paths or write methods to the web runtime");
+  assert.match(caddy, /handle @earthWeather\s*\{\s*reverse_proxy web:3000\s*\}/);
+  assert.ok(caddy.indexOf("handle @maintenance") < caddy.indexOf("handle @earthWeather"));
+  assert.ok(caddy.indexOf("handle @earthWeather") < caddy.indexOf("handle @api"));
+  assert.match(caddy, /@api path \/api\/\* \/healthz \/readyz\s*handle @api\s*\{\s*reverse_proxy api:8080\s*\}/,
+    "the remaining API, health and readiness routes retain the Ktor upstream");
+});

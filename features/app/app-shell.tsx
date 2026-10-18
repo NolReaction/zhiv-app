@@ -15,6 +15,7 @@ import { reportIncident, incidentCode, reportStartupIncident, resolveStartupInci
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
 import { rememberEarthSection, restoreEarthSection } from "./earth-navigation-state";
 import { earthMapAvailable } from "./earth-map-availability";
+import { useEarthMapRetention } from "./use-earth-map-retention";
 import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
@@ -659,6 +660,11 @@ function CheckInContent() {
     setActivityPauseVersion(value => value + 1);
   }, [setWorldAvailable, setEconomyAvailable, setWorldDirectActions, setEconomyDirectActions, setLocalEconomyActions]);
   const activity = useActivity(screen === "home" ? me?.user.publicId ?? null : null, reconcileGameplay, loseSession, pauseGameplay);
+  const earthSelected = activeView === "earth";
+  const earthAvailable = earthMapAvailable({ mode: activity.mode, startupActive,
+    covered: worldPortal.open || calendarOpen || gameOpen || statusOpen });
+  const earthRetention = useEarthMapRetention({ owner: screen === "home" ? viewOwner : null,
+    selected: earthSelected, available: earthAvailable, documentHidden: activity.mode === "hidden" });
   useEconomyAudioFeedback(economy, screen === "home" && activity.active);
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
@@ -1604,7 +1610,8 @@ function CheckInContent() {
         calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
         simpleView={simpleView} />}
 
-      <div key={activeView} className={styles.viewTransition} style={{ "--view-direction": viewDirection } as CSSProperties}>
+      <div key={activeView} className={styles.viewTransition} hidden={earthSelected}
+        style={{ "--view-direction": viewDirection, display: earthSelected ? "none" : undefined } as CSSProperties}>
       {activeView === "check-in" ? (
         <section
           id="check-in-panel"
@@ -1829,14 +1836,7 @@ function CheckInContent() {
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
         />
-      ) : activeView === "earth" && me ? (
-        <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
-          active={earthMapAvailable({ mode: activity.mode, startupActive,
-            covered: worldPortal.open || calendarOpen || gameOpen || statusOpen })}
-          isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
-          onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
-          onOpenWorld={trigger => { setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />
-      ) : me ? (
+      ) : activeView === "profile" && me ? (
         <ProfileView
           simpleView={simpleView} onSimpleViewChange={setSimpleView}
           notificationSettingsExit={notificationSettingsExit}
@@ -1872,6 +1872,14 @@ function CheckInContent() {
           onSessionLost={loseSession}
         />
       ) : null}
+      </div>
+      <div key="earth-session" className={styles.viewTransition} hidden={!earthSelected} inert={!earthSelected || undefined}
+        style={{ display: earthSelected ? undefined : "none" }} data-earth-session-visible={earthSelected}>
+        {earthRetention.mounted && me && <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
+          active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange}
+          isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
+          onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
+          onOpenWorld={trigger => { setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />}
       </div>
       {me && streak ? <CheckInCalendar key={`calendar:${me.user.publicId}`} open={calendarOpen} onOpenChange={setCalendarOpen}
         streak={streak} items={game.progress?.items} lastCheckInAt={lastCheckInAt} timeZone={me.profile.timeZone} onSessionLost={loseSession}

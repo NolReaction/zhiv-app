@@ -3,6 +3,8 @@ import { createEarthClouds } from "./globe-clouds";
 import { createEarthOceanMotion } from "./globe-ocean";
 import { createEarthLightingController, type EarthLightingMode } from "./globe-lighting";
 import { createEarthSceneClock } from "./scene-clock";
+import { createEarthWeather } from "./earth-weather";
+import type { EarthWeatherSnapshot } from "./weather";
 import { createEarthLandmarks } from "./globe-landmarks";
 
 export const EARTH_SCENE_MOTION_MAX_ZOOM = 4.2;
@@ -12,9 +14,11 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
   const clouds = createEarthClouds(map, MarkerConstructor);
   const ocean = createEarthOceanMotion(map, MarkerConstructor);
   const lighting = createEarthLightingController(map, { mode, center: map.getCenter() });
+  const weather = createEarthWeather(map, MarkerConstructor);
   const landmarks = createEarthLandmarks(map, MarkerConstructor);
   const motionPreference = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   let ready = false;
+  let foreground = true;
   let disposed = false;
   let elapsed = 0;
   const clock = createEarthSceneClock({
@@ -23,20 +27,22 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
     cancel: handle => window.clearTimeout(handle),
     step: time => {
       elapsed = time;
-      clouds.update(time);
-      ocean.update(time);
+      if (map.getZoom() < EARTH_SCENE_MOTION_MAX_ZOOM) { clouds.update(time); ocean.update(time); }
+      weather.update(time);
       lighting.update(Date.now());
     },
   });
 
   function synchronize() {
     if (disposed) return;
-    const visible = ready && !document.hidden;
-    const animate = visible && !motionPreference?.matches && map.getZoom() < EARTH_SCENE_MOTION_MAX_ZOOM;
+    const visible = ready && foreground && !document.hidden;
+    const animate = visible && !motionPreference?.matches;
+    weather.setVisible(visible);
+    const globeMotion = animate && map.getZoom() < EARTH_SCENE_MOTION_MAX_ZOOM;
     clouds.setVisible(visible);
     landmarks.setVisible(visible);
-    ocean.setEnabled(animate);
-    clock.setRunning(animate);
+    ocean.setEnabled(globeMotion);
+    clock.setRunning(globeMotion || animate && weather.hasMotion());
     if (visible) lighting.update(Date.now());
   }
   const onClick = (event: MapMouseEvent) => { ocean.ripple(event.point, elapsed); };
@@ -48,6 +54,8 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
   motionPreference?.addEventListener("change", synchronize);
 
   return {
+    setVisible(value: boolean) { foreground = value; synchronize(); },
+    setWeather(value: EarthWeatherSnapshot | null) { weather.setWeather(value); synchronize(); },
     setReady(value: boolean) { ready = value; synchronize(); },
     setLighting(value: EarthLightingMode) {
       lighting.setMode(value, map.getCenter());
@@ -65,6 +73,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
       ocean.dispose();
       lighting.dispose();
       landmarks.dispose();
+      weather.dispose();
     },
   };
 }

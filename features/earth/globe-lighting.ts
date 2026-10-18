@@ -45,13 +45,13 @@ function globeVector([longitude, latitude]: GlobePoint): [number, number, number
   return [cosine * Math.cos(longitude * DEGREES), cosine * Math.sin(longitude * DEGREES), Math.sin(latitude * DEGREES)];
 }
 
-/** Fix the sun just above the western horizon of the selected view, then leave it in world space. */
+/** Compose a visible blue-hour night with a warm western rim, then keep the sun in world space. */
 export function earthEveningSun(center: EarthLightingCenter = DEFAULT_CENTER): GlobePoint {
   const longitude = Number.isFinite(center.lng) ? normalizeLongitude(center.lng) : DEFAULT_CENTER.lng;
   const latitude = Number.isFinite(center.lat) ? clamp(center.lat, -90, 90) : DEFAULT_CENTER.lat;
   const normal = globeVector([longitude, latitude]);
   const west = [Math.sin(longitude * DEGREES), -Math.cos(longitude * DEGREES), 0];
-  const angle = 82 * DEGREES;
+  const angle = 112 * DEGREES;
   const sun = normal.map((component, index) => component * Math.cos(angle) + west[index] * Math.sin(angle));
   return [normalizeLongitude(Math.atan2(sun[1], sun[0]) / DEGREES), Math.asin(clamp(sun[2], -1, 1)) / DEGREES];
 }
@@ -108,11 +108,14 @@ export function createEarthLightingData(mode: EarthLightingMode = "auto", now = 
   const night: GlobePoint = [normalizeLongitude(sun[0] + 180), -sun[1]];
   // Many very low-alpha caps make a soft gradient without a visible cell grid,
   // large textures, globe shaders or a continuously changing GeoJSON source.
-  const radii = Array.from({ length: 48 }, (_, index) => 89.8 - index * 84.8 / 47);
+  // Most twilight happens within roughly twenty degrees of the terminator.
+  // Spreading the same fade over the entire hemisphere left evening views
+  // almost indistinguishable from day, even with the sun below the horizon.
+  const radii = Array.from({ length: 64 }, (_, index) => 89.8 - index * 20.8 / 63);
   shade.features = radii.map((radius, index): Feature<Polygon> => ({
     type: "Feature", properties: {
-      color: index < 4 ? "#e4af8a" : "#142b49",
-      alpha: index < 4 ? 0.012 : 0.016,
+      color: index < 6 ? "#e5a87e" : "#101d3b",
+      alpha: index < 6 ? 0.01 : 0.022,
     }, geometry: sphericalCap(night, radius),
   }));
   for (const [index, point] of LIGHT_SEEDS.entries()) {
@@ -143,10 +146,10 @@ export function earthLightingLayers(): LayerSpecification[] {
     { id: "earth-evening-shade", type: "fill", source: EARTH_LIGHTING_SOURCE, maxzoom: 6,
       paint: { "fill-color": ["get", "color"], "fill-opacity": opacityFade("alpha", 6), "fill-antialias": false } },
     { id: "earth-city-lights-glow", type: "circle", source: EARTH_LIGHTS_SOURCE, maxzoom: 4.5,
-      paint: { "circle-color": "#ffc88b", "circle-radius": 5, "circle-blur": 0.85,
-        "circle-opacity": opacityFade("strength", 4.5, 0.65), "circle-pitch-alignment": "map", "circle-pitch-scale": "viewport" } },
+      paint: { "circle-color": "#ffb967", "circle-radius": 6.5, "circle-blur": 0.85,
+        "circle-opacity": opacityFade("strength", 4.5, 0.85), "circle-pitch-alignment": "map", "circle-pitch-scale": "viewport" } },
     { id: "earth-city-lights-core", type: "circle", source: EARTH_LIGHTS_SOURCE, maxzoom: 4.5,
-      paint: { "circle-color": "#fff0b5", "circle-radius": 1.15, "circle-blur": 0.2,
+      paint: { "circle-color": "#fff2bd", "circle-radius": 1.5, "circle-blur": 0.12,
         "circle-opacity": opacityFade("strength", 4.5), "circle-pitch-alignment": "map", "circle-pitch-scale": "viewport" } },
   ];
 }
@@ -154,10 +157,10 @@ export function earthLightingLayers(): LayerSpecification[] {
 export function earthLightingSky(mode: EarthLightingMode): SkySpecification {
   const evening = mode === "evening";
   return {
-    "sky-color": evening ? "#17273d" : "#123b42",
-    "horizon-color": evening ? "#e7b69a" : "#9bd4cf",
-    "fog-color": evening ? "#c5b4ad" : "#abd5cc",
-    "sky-horizon-blend": evening ? 0.28 : 0.18,
+    "sky-color": evening ? "#0c142e" : "#123b42",
+    "horizon-color": evening ? "#d89982" : "#9bd4cf",
+    "fog-color": evening ? "#a89cae" : "#abd5cc",
+    "sky-horizon-blend": evening ? 0.32 : 0.18,
     "horizon-fog-blend": 0.35, "fog-ground-blend": 0.45,
     "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.38, 5, 0.22, 8, 0],
   };

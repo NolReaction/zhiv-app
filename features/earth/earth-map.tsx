@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Compass, Earth, HardDriveDownload, Info, LocateFixed, Minus, Plus, X } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import type { EarthPosition } from "./location";
@@ -9,7 +9,7 @@ import { EarthLoading, formatEarthLoadingBytes, type EarthLoadingStage } from ".
 import { EARTH_CACHE_PROTOCOL, earthResourceCache } from "./resource-cache";
 import { EARTH_RUNTIME_DIRECTORY, loadEarthRuntime } from "./runtime-loader";
 import { getEarthErrorResourceUrls } from "./resource-recovery";
-import { createEarthResourceProtocol } from "./resource-protocol";
+import { createEarthRequestScope, createEarthResourceProtocol } from "./resource-protocol";
 import { refreshEarthTileSource } from "./source-recovery";
 import { createEarthTileRecovery, type EarthTileRecoveryStatus } from "./tile-recovery";
 import { EARTH_BUILDINGS_3D_LAYER } from "./building-style";
@@ -21,6 +21,10 @@ import { EARTH_OCEAN_MATERIAL_IMAGE, registerEarthOceanMaterialImage } from "./g
 import { bindEarthPositionMarkerMotion } from "./marker-motion";
 import { createEarthGlobeScene } from "./globe-scene";
 import type { EarthLightingMode } from "./globe-lighting";
+import { createEarthTileLoadingOverlay } from "./tile-loading-overlay";
+import { createEarthStars } from "./earth-stars";
+import { createEarthWeatherController, createEarthWeatherProvider, type EarthWeatherState } from "./weather";
+import { EARTH_WEATHER_ATTRIBUTION } from "@/lib/earth-weather-contract";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
@@ -29,6 +33,8 @@ type MapPhase = "loading" | "ready" | "failed" | "unsupported";
 type EarthMapProps = {
   position: EarthPosition | null;
   active: boolean;
+  visible: boolean;
+  onReadyChange?: (ready: boolean) => void;
   focusRequest: number;
   isOnline: boolean;
   onLocate: () => void;
@@ -38,6 +44,10 @@ type EarthMapProps = {
   infoOpen: boolean;
   onInfoOpenChange: (open: boolean) => void;
 };
+
+function weatherConditionLabel(condition: string): string {
+  return ({ clear: "Ясно", "partly-cloudy": "Переменная облачность", cloudy: "Облачно", fog: "Туман", rain: "Дождь", snow: "Снег", sleet: "Мокрый снег", thunderstorm: "Гроза" } as Record<string, string>)[condition] ?? "Погода в центре карты";
+}
 
 function reducedMotion(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -65,8 +75,15 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
   });
 }
 
-export function EarthMap({ position, active, focusRequest, isOnline, onLocate, locating, locationActive,
+export function EarthMap({ position, active, visible, onReadyChange, focusRequest, isOnline, onLocate, locating, locationActive,
   locationDetails, infoOpen, onInfoOpenChange }: EarthMapProps) {
+  const visibleRef = useRef(visible);
+  const foregroundRef = useRef<(() => void) | null>(null);
+  const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
+  const [weatherEnabled, setWeatherEnabled] = useState(false);
+  const weatherEnabledRef = useRef(weatherEnabled);
+  const weatherControllerRef = useRef<ReturnType<typeof createEarthWeatherController> | null>(null);
+  const [weatherState, setWeatherState] = useState<EarthWeatherState>({ status: "disabled", area: null, snapshot: null, nextRequestAt: null, error: null });
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LibreMap | null>(null);
   const syncPositionRef = useRef<((value: EarthPosition | null) => void) | null>(null);
@@ -93,12 +110,21 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
   const cache = useSyncExternalStore(earthResourceCache.subscribe, earthResourceCache.getSnapshot, earthResourceCache.getSnapshot);
   const phaseRef = useRef(phase);
   const activeRef = useRef(active);
-  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { phaseRef.current = phase; onReadyChange?.(phase === "ready"); }, [phase, onReadyChange]);
+  useLayoutEffect(() => {
+    visibleRef.current = visible;
+    foregroundRef.current?.();
+  }, [visible]);
+  useEffect(() => {
+    weatherEnabledRef.current = weatherEnabled;
+    weatherControllerRef.current?.setEnabled(weatherEnabled);
+  }, [weatherEnabled]);
   useEffect(() => {
     lightingModeRef.current = lightingMode;
     sceneRef.current?.setLighting(lightingMode);
+    starsRef.current?.setMode(lightingMode);
   }, [lightingMode]);
-  useEffect(() => { if (infoOpen) infoHeading.current?.focus({ preventScroll: true }); }, [infoOpen]);
+  useEffect(() => { if (infoOpen && visible) infoHeading.current?.focus({ preventScroll: true }); }, [infoOpen, visible]);
   useEffect(() => {
     buildings3dRef.current = buildings3d;
     const current = mapRef.current;
@@ -147,6 +173,12 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
     if (!element || !active) return;
     let cancelled = false;
     const controller = new AbortController();
+    const requests = createEarthRequestScope(controller.signal);
+    let interruptedDownloads = false;
+    let foreground = false;
+    let tileOverlay: ReturnType<typeof createEarthTileLoadingOverlay> | null = null;
+    let stars: ReturnType<typeof createEarthStars> | null = null;
+    let weather: ReturnType<typeof createEarthWeatherController> | null = null;
     let map: LibreMap | null = null;
     let marker: Marker | null = null;
     let disposeMarkerMotion: (() => void) | null = null;
@@ -167,13 +199,44 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
     let restoreGlobeCamera: (() => void) | null = null;
 
     function resize() {
-      if (!cancelled && map && activeRef.current && !document.hidden && element!.clientWidth && element!.clientHeight) map.resize();
+      if (!cancelled && map && activeRef.current && visibleRef.current && !document.hidden && element!.clientWidth && element!.clientHeight) map.resize();
     }
-    function visibilityChanged() {
-      if (document.hidden) { window.clearTimeout(timeout); map?.stop(); }
-      else { armDeadline(); resize(); }
+    function updateForeground() {
+      if (cancelled) return;
+      const next = activeRef.current && visibleRef.current && !document.hidden;
+      const returning = next && !foreground;
+      if (!next) {
+        window.clearTimeout(timeout);
+        map?.stop();
+        // Cold installation can finish during a brief background pause. Ready
+        // maps release downloads immediately; a return renews the request scope.
+        if (initialReady) {
+          interruptedDownloads ||= earthResourceCache.getSnapshot().pending > 0;
+          requests.setVisible(false);
+        }
+      } else {
+        requests.setVisible(true);
+        armDeadline();
+        if (returning && interruptedDownloads && map && styleReady) {
+          interruptedDownloads = false;
+          // Fresh vector actors recover requests aborted while the section was
+          // hidden. Keep this Map, the camera, terrain and decorative sources.
+          refreshEarthTileSource(map, { sourceId: "earth-streets" });
+          map.setSourceTileLodParams(4, 2, "earth-streets");
+        }
+        resize();
+      }
+      foreground = next;
+      scene?.setVisible(next);
+      stars?.setVisible(next && initialReady);
+      tileOverlay?.setVisible(next && initialReady);
+      tileOverlay?.setStatus(recoveryStatus, navigator.onLine);
+      tileOverlay?.refresh();
+      weather?.setVisible(next && initialReady);
       tileRecovery?.check();
     }
+    foregroundRef.current = updateForeground;
+    function visibilityChanged() { updateForeground(); }
     function fail(message: string) {
       if (cancelled || attemptFailed) return;
       attemptFailed = true;
@@ -181,6 +244,9 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
       window.clearTimeout(timeout);
       map?.stop();
       scene?.setReady(false);
+      stars?.setVisible(false);
+      tileOverlay?.setVisible(false);
+      weather?.setVisible(false);
       setFailure(message);
       setPhase("failed");
     }
@@ -189,7 +255,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
     }
     function armDeadline() {
       window.clearTimeout(timeout);
-      if (!document.hidden && !initialReady && !attemptFailed) timeout = window.setTimeout(() =>
+      if (visibleRef.current && !document.hidden && !initialReady && !attemptFailed) timeout = window.setTimeout(() =>
         fail("Подготовка занимает слишком много времени. Продолжите загрузку: доступные сохранённые файлы будут использованы повторно."), 180_000);
     }
     function checkReady() {
@@ -209,6 +275,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
         window.clearTimeout(timeout);
         setPhase("ready");
         scene?.setReady(true);
+        updateForeground();
       }
     }
     function scheduleReadyCheck() {
@@ -238,7 +305,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
         }
         const sdk = await loadEarthRuntime({ signal: controller.signal });
         if (cancelled || attemptFailed) return;
-        sdk.addProtocol(EARTH_CACHE_PROTOCOL, createEarthResourceProtocol(earthResourceCache.protocol, controller.signal));
+        sdk.addProtocol(EARTH_CACHE_PROTOCOL, createEarthResourceProtocol(earthResourceCache.protocol, requests.signal));
         sdk.setMaxParallelImageRequests(4);
         setStage("resources");
         // Style data and every subsequent source/sprite/tile request use the same durable cache.
@@ -279,10 +346,26 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           if (id === EARTH_OCEAN_MATERIAL_IMAGE) registerEarthOceanMaterialImage(current);
         });
         mapRef.current = current;
+        tileOverlay = createEarthTileLoadingOverlay(current);
+        stars = createEarthStars(current, element!, lightingModeRef.current);
+        starsRef.current = stars;
+        weather = createEarthWeatherController({ provider: createEarthWeatherProvider(), onState: state => {
+          if (cancelled) return;
+          setWeatherState(state);
+          scene?.setWeather(state.status === "ready" || state.status === "stale" ? state.snapshot : null);
+        } });
+        weatherControllerRef.current = weather;
+        weather.setEnabled(weatherEnabledRef.current);
+        const updateWeatherView = () => {
+          const center = current.getCenter();
+          weather?.setView({ longitude: center.lng, latitude: center.lat, zoom: current.getZoom() });
+        };
+        updateWeatherView();
+        current.on("moveend", updateWeatherView);
         tileRecovery = createEarthTileRecovery({
           readState: () => {
             const progress = earthResourceCache.getSnapshot();
-            return { enabled: styleReady && !attemptFailed && !cancelled, visible: !document.hidden && activeRef.current,
+            return { enabled: styleReady && !attemptFailed && !cancelled, visible: !document.hidden && activeRef.current && visibleRef.current,
               online: navigator.onLine, moving: current.isMoving(), ready: current.loaded() && current.areTilesLoaded(),
               pending: progress.pending, progress: progress.completed };
           },
@@ -299,6 +382,8 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
             if (cancelled) return;
             recoveryStatus = status;
             setTileStatus(status);
+            tileOverlay?.setStatus(status, navigator.onLine);
+            tileOverlay?.refresh();
             if (!initialReady && status === "failed") fail("Не удалось завершить отрисовку карты. Попробуйте открыть её снова: сохранённые данные будут использованы повторно.");
             else scheduleReadyCheck();
           },
@@ -309,10 +394,11 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           const pending = earthResourceCache.getSnapshot().pending;
           // The protocol settles before MapLibre consumes the response. Schedule
           // one frame for that boundary, rather than depending on an idle callback.
-          if (!initialReady && pending === 0 && previousPending > 0) current.triggerRepaint();
+          if (foreground && !initialReady && pending === 0 && previousPending > 0) current.triggerRepaint();
           previousPending = pending;
           scheduleReadyCheck();
           tileRecovery?.check();
+          if (foreground) tileOverlay?.refresh();
         });
         current.on("remove", () => {
           // Cleanup runs before the active-ref effect. The actual removal event,
@@ -372,23 +458,30 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current);
           sceneRef.current = scene;
           scene.setReady(initialReady);
+          scene.setVisible(foreground);
+        });
+        for (const eventName of ["sourcedataloading", "sourcedata", "sourcedataabort"] as const) current.on(eventName, event => {
+          tileOverlay?.observe(event);
+          if (foreground) tileOverlay?.refresh();
         });
         current.on("dataloading", scheduleReadyCheck);
         current.on("dataabort", () => {
           if (cancelled) return;
           // MapLibre forwards dataabort without invalidating a frame. An aborted
           // offscreen tile must not leave initial readiness or recovery asleep.
-          current.triggerRepaint();
+          if (foreground) current.triggerRepaint();
           scheduleReadyCheck();
           tileRecovery?.check();
         });
         current.on("movestart", () => tileRecovery?.check());
         current.on("moveend", () => { scheduleReadyCheck(); tileRecovery?.check(); });
-        current.on("render", () => { rendered = true; scheduleReadyCheck(); });
+        current.on("render", () => { rendered = true; scheduleReadyCheck(); if (foreground) tileOverlay?.refresh(); });
         current.on("load", scheduleReadyCheck);
         current.on("idle", () => { scheduleReadyCheck(); tileRecovery?.check(true); });
         current.on("error", event => {
-          if (cancelled) return;
+          if (cancelled || attemptFailed || !foreground && initialReady) return;
+          tileOverlay?.observe(event);
+          tileOverlay?.refresh();
           const resources = getEarthErrorResourceUrls(event, current);
           if (resources.length) repairs.current = repairs.current.then(() =>
             Promise.all(resources.map(url => earthResourceCache.invalidate(url)))).catch(() => undefined);
@@ -407,6 +500,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           else current.stop();
         });
         intersectionObserver?.observe(element!);
+        updateForeground();
       } catch {
         if (!cancelled) fail("Загрузка прервалась. Проверьте подключение и продолжите: сохранённые файлы будут использованы повторно.");
       }
@@ -419,6 +513,13 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
     return () => {
       cancelled = true;
       controller.abort();
+      requests.dispose();
+      if (foregroundRef.current === updateForeground) foregroundRef.current = null;
+      weather?.dispose();
+      if (weatherControllerRef.current === weather) weatherControllerRef.current = null;
+      stars?.dispose();
+      if (starsRef.current === stars) starsRef.current = null;
+      tileOverlay?.dispose();
       window.clearTimeout(timeout);
       unsubscribe?.();
       tileRecovery?.dispose();
@@ -445,13 +546,13 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
   }, [active, retry]);
 
   useEffect(() => {
-    if (!active || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;
+    if (!active || !visible || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;
     handledFocus.current = focusRequest;
     flyToPosition(mapRef.current, position);
-  }, [active, phase, position, focusRequest]);
+  }, [active, visible, phase, position, focusRequest]);
 
-  const ready = active && phase === "ready";
-  return <div className={styles.root} data-earth-map data-map-status={phase}>
+  const ready = active && visible && phase === "ready";
+  return <div className={styles.root} data-earth-map data-map-status={phase} data-lighting={lightingMode}>
     <div ref={host} className={styles.canvas} data-visible={phase === "ready"} aria-hidden={phase !== "ready"} inert={phase !== "ready" || undefined} />
     <div className={styles.controls} role="group" aria-label="Управление картой">
       <button type="button" disabled={!ready} title="Показать всю Землю" aria-label="Показать всю Землю" onClick={() => {
@@ -476,6 +577,11 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
       <button type="button" disabled={!isOnline || tileStatus === "retrying"} onClick={() => tileRecoveryRef.current?.retry()}>Повторить</button>
     </div>}
     {ready && tileStatus === "idle" && cache.pending > 0 && <p className={styles.tileProgress} role="status">Загружаем окрестности…</p>}
+    {ready && weatherEnabled && <p className={styles.weatherBadge} data-earth-weather-status={weatherState.status} role="status">
+      <span aria-hidden="true">{weatherState.snapshot?.condition === "clear" ? "☀" : "☁"}</span>
+      {weatherState.snapshot ? `${weatherConditionLabel(weatherState.snapshot.condition)}${weatherState.snapshot.temperatureC === null ? "" : ` · ${Math.round(weatherState.snapshot.temperatureC) > 0 ? "+" : ""}${Math.round(weatherState.snapshot.temperatureC)}°`}${weatherState.status === "stale" ? " · старый прогноз" : ""}`
+        : weatherState.status === "zoom-in" ? "Приблизьте карту для погоды" : weatherState.status === "error" ? "Прогноз пока недоступен" : weatherState.status === "waiting" ? "Прогноз обновится чуть позже" : "Узнаём погоду…"}
+    </p>}
     {ready && <EarthAttribution />}
     {ready && <button ref={infoButton} type="button" className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => onInfoOpenChange(!infoOpen)}><Info size={21} aria-hidden="true" /></button>}
@@ -495,6 +601,14 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           <button type="button" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
         <p>Появляются при приближении к улицам. Наклоните карту двумя пальцами или перетаскивайте её с зажатой правой кнопкой мыши.</p>
       </section>
+      <section className={styles.infoSection}><div className={styles.infoRow}><h3 id="earth-weather-label">Погода</h3>
+        <button type="button" className={styles.infoToggle} role="switch" aria-checked={weatherEnabled} aria-labelledby="earth-weather-label" onClick={() => setWeatherEnabled(value => !value)}><span aria-hidden="true" /></button></div>
+        <p>Прогноз для центра карты. При приближении показываем облачка, дождь или снег. Данные обновляются с паузой; при перемещении в другой район нужно немного подождать.</p>
+        <p>При включении передаём только центр просмотра, округлённый до целых градусов. Доступ к геопозиции для этого не нужен.</p>
+        {weatherEnabled && weatherState.snapshot && <p>Прогноз на {new Date(weatherState.snapshot.forecastAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. {weatherState.status === "stale" ? "Данные сохранены ранее; свежий прогноз пока недоступен." : "Это прогноз для района, а не точное измерение на вашей улице."}</p>}
+        <p className={styles.attribution}>На основе прогноза <a href={EARTH_WEATHER_ATTRIBUTION.sourceUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.name}</a>{" · "}
+          <a href={EARTH_WEATHER_ATTRIBUTION.licenseUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.license}</a>. Упрощённая визуализация для «Я живой».</p>
+      </section>
       {locationDetails}
       <section className={styles.infoSection}><h3>На устройстве</h3><div className={styles.storageDetails}>
         <strong>{cache.storage === "device" ? `Сохранено ${formatEarthLoadingBytes(cache.storedBytes)}` : "Доступно в этой сессии"}
@@ -507,7 +621,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
         <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" · "}
         <a href="https://openmaptiles.org" target="_blank" rel="noreferrer">OpenMapTiles</a>{" · "}
         <a href="https://www.naturalearthdata.com" target="_blank" rel="noreferrer">Natural Earth</a>
-      </p><p>Данные OpenStreetMap распространяются по <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">ODbL</a>, дизайн схемы OpenMapTiles — <a href="https://github.com/openmaptiles/openmaptiles/blob/master/LICENSE.md" target="_blank" rel="noreferrer">CC BY 4.0</a>. Natural Earth — общественное достояние. Оформление карты изменено для «Живой».</p>
+      </p><p>Данные OpenStreetMap распространяются по <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">ODbL</a>, дизайн схемы OpenMapTiles · <a href="https://github.com/openmaptiles/openmaptiles/blob/master/LICENSE.md" target="_blank" rel="noreferrer">CC BY 4.0</a>. Natural Earth · общественное достояние. Оформление карты изменено для «Я живой».</p>
         <p>Движок: <a href={`${EARTH_RUNTIME_DIRECTORY}/LICENSE.txt`} target="_blank" rel="noreferrer">MapLibre GL JS и лицензии компонентов</a>.</p>
       </section>
     </section>}

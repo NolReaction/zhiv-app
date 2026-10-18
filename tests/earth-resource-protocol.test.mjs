@@ -8,7 +8,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
 const { createEarthResourceCache } = await vite.ssrLoadModule("/features/earth/resource-cache.ts");
-const { createEarthResourceProtocol } = await vite.ssrLoadModule("/features/earth/resource-protocol.ts");
+const { createEarthResourceProtocol, createEarthRequestScope } = await vite.ssrLoadModule("/features/earth/resource-protocol.ts");
 const { createEarthRuntimeLoader, EARTH_RUNTIME_VERSION, EARTH_RUNTIME_DIRECTORY, EARTH_RUNTIME_MANIFEST_URL } = await vite.ssrLoadModule("/features/earth/runtime-loader.ts");
 const { EARTH_TILE_BASE_LAYER } = await vite.ssrLoadModule("/features/earth/tile-base.ts");
 after(() => vite.close());
@@ -183,4 +183,115 @@ test("removing a map cancels its protocol queue without cancelling the shared ru
   assert.equal(s.cache.getSnapshot().pending, 0);
   assert.equal(s.cache.getSnapshot().failed, 0);
   assertReleased(s.map, oldSdk);
+});
+
+test("hiding a retained map aborts its generation, rejects hidden work and resumes with fresh resources", async () => {
+  let finishOld;
+  const signals = [], fetched = [];
+  const s = fixture((url, init) => {
+    signals.push(init.signal); fetched.push(url);
+    return signals.length === 1 ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve(new Response("fresh"));
+  }, { concurrency: 1 });
+  const scope = createEarthRequestScope(s.map.signal);
+  const protocol = createEarthResourceProtocol(s.cache.protocol, scope.signal);
+  const firstGeneration = scope.signal();
+  const oldSdk = new AbortController(), hiddenSdk = new AbortController(), nextSdk = new AbortController();
+  const old = cancelled(protocol(request(`${base}/retained`, "string"), oldSdk));
+  await tick();
+  scope.setVisible(false);
+  assert.equal(firstGeneration.aborted, true);
+  assert.equal(oldSdk.signal.aborted, false);
+  const hidden = cancelled(protocol(request(`${base}/hidden`, "string"), hiddenSdk));
+  await Promise.all([old, hidden]);
+  assert.equal(signals[0].aborted, true);
+  assert.deepEqual(fetched, [`${base}/retained`]);
+  scope.setVisible(true);
+  const nextGeneration = scope.signal();
+  assert.notEqual(nextGeneration, firstGeneration);
+  assert.equal(nextGeneration.aborted, false);
+  assert.equal((await protocol(request(`${base}/retained`, "string"), nextSdk)).data, "fresh");
+  finishOld(new Response("late stale bytes"));
+  await tick();
+  assert.equal((await s.cache.readResource(`${base}/retained`, "string")).data, "fresh");
+  assert.equal(s.cache.getSnapshot().pending, 0);
+  assert.equal(s.cache.getSnapshot().failed, 0);
+  assert.equal(s.cache.getSnapshot().completed, 2, "one downloaded result and one subsequent cache hit");
+  assert.equal(s.cache.getSnapshot().networkBytes, new TextEncoder().encode("fresh").byteLength);
+  scope.dispose();
+  assert.equal(scope.signal().aborted, true);
+  assertReleased(s.map, oldSdk, hiddenSdk, nextSdk, { signal: firstGeneration }, { signal: nextGeneration });
+});
+
+test("lifetime teardown is terminal even after a hidden generation and resume cannot revive it", async () => {
+  for (const hidden of [false, true]) {
+    const s = fixture(async () => new Response("unused"));
+    const scope = createEarthRequestScope(s.map.signal);
+    if (hidden) scope.setVisible(false);
+    s.map.abort();
+    const terminal = scope.signal();
+    scope.setVisible(false); scope.setVisible(true);
+    assert.equal(scope.signal(), terminal);
+    assert.equal(terminal.aborted, true);
+    await cancelled(createEarthResourceProtocol(s.cache.protocol, scope.signal)(request(`${base}/terminal`), new AbortController()));
+    assert.equal(s.cache.getSnapshot().pending, 0);
+    assertReleased(s.map);
+  }
+});
+
+test("scope disposal aborts active work and removes its lifetime listener", async () => {
+  let networkSignal;
+  const s = fixture((_url, init) => { networkSignal = init.signal; return new Promise(() => {}); });
+  const scope = createEarthRequestScope(s.map.signal);
+  assert.equal(getEventListeners(s.map.signal, "abort").length, 1);
+  const sdk = new AbortController();
+  const pending = cancelled(createEarthResourceProtocol(s.cache.protocol, scope.signal)(request(`${base}/dispose`), sdk));
+  await tick();
+  scope.dispose(); scope.dispose(); scope.setVisible(true);
+  await pending;
+  await tick();
+  assert.equal(networkSignal.aborted, true);
+  assert.equal(scope.signal().aborted, true);
+  assert.equal(s.cache.getSnapshot().pending, 0);
+  assertReleased(s.map, sdk, { signal: scope.signal() });
+});
+
+test("initially hidden or already removed scopes reject requests without allocating cache work", async () => {
+  let calls = 0;
+  const s = fixture(async () => { calls += 1; return new Response("visible"); });
+  const scope = createEarthRequestScope(s.map.signal, false);
+  const hiddenGeneration = scope.signal();
+  scope.setVisible(false);
+  assert.equal(scope.signal(), hiddenGeneration);
+  const protocol = createEarthResourceProtocol(s.cache.protocol, scope.signal);
+  await cancelled(protocol(request(`${base}/initially-hidden`, "string"), new AbortController()));
+  assert.equal(calls, 0);
+  scope.setVisible(true);
+  const activeGeneration = scope.signal();
+  scope.setVisible(true);
+  assert.equal(scope.signal(), activeGeneration, "repeated visible state does not cancel working requests");
+  assert.equal((await protocol(request(`${base}/visible`, "string"), new AbortController())).data, "visible");
+  scope.dispose();
+  const removed = new AbortController(); removed.abort();
+  const removedScope = createEarthRequestScope(removed.signal);
+  removedScope.setVisible(false); removedScope.setVisible(true);
+  assert.equal(removedScope.signal().aborted, true);
+  assertReleased(s.map, removed);
+});
+
+test("SDK per-request cancellation does not pause the shared visible generation", async () => {
+  let finish, networkSignal;
+  const s = fixture((_url, init) => { networkSignal = init.signal; return new Promise(resolve => { finish = resolve; }); });
+  const scope = createEarthRequestScope(s.map.signal);
+  const protocol = createEarthResourceProtocol(s.cache.protocol, scope.signal);
+  const first = new AbortController(), second = new AbortController();
+  const removed = cancelled(protocol(request(`${base}/shared-generation`, "string"), first));
+  const kept = protocol(request(`${base}/shared-generation`, "string"), second);
+  await tick();
+  first.abort(); await removed;
+  assert.equal(scope.signal().aborted, false);
+  assert.equal(networkSignal.aborted, false);
+  finish(new Response("kept"));
+  assert.equal((await kept).data, "kept");
+  scope.dispose();
+  assertReleased(s.map, first, second);
 });

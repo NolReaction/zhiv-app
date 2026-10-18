@@ -30,15 +30,15 @@ test("decorative auto lighting follows UTC and the seasons; manual evening is ti
   for (const center of [{ lng: 35, lat: 27 }, { lng: 179.9, lat: 80 }, { lng: -179.9, lat: -80 }, { lng: 0, lat: 90 }]) {
     const sun = earthEveningSun(center);
     assert.ok(sun.every(Number.isFinite));
-    assert.ok(Math.abs(earthSolarFacing([center.lng, center.lat], sun) - Math.cos(82 * Math.PI / 180)) < 1e-10);
+    assert.ok(Math.abs(earthSolarFacing([center.lng, center.lat], sun) - Math.cos(112 * Math.PI / 180)) < 1e-10);
   }
 });
 
 test("night caps remain finite and closed beside the date line and both poles without interior crossings", () => {
   for (const month of [0, 2, 5, 8, 11]) for (const hour of [0, 3, 6, 12, 18, 23]) {
     const data = createEarthLightingData("auto", Date.UTC(2026, month, 21, hour));
-    assert.equal(data.shade.features.length, 48);
-    assert.ok(data.shade.features.every(feature => feature.properties.alpha <= 0.016), "individual gradient boundaries stay subtle");
+    assert.equal(data.shade.features.length, 64);
+    assert.ok(data.shade.features.every(feature => feature.properties.alpha <= 0.022), "individual gradient boundaries stay subtle");
     for (const feature of data.shade.features) {
       const ring = feature.geometry.coordinates[0];
       assert.deepEqual(ring.at(-1), ring[0]);
@@ -61,6 +61,17 @@ test("night caps remain finite and closed beside the date line and both poles wi
   assert.deepEqual(createEarthLightingData("day", noon), {
     shade: { type: "FeatureCollection", features: [] }, lights: { type: "FeatureCollection", features: [] },
   });
+});
+
+test("manual evening visibly darkens the selected view while preserving a warm daylight rim", () => {
+  const center = { lng: 35, lat: 27 };
+  const data = createEarthLightingData("evening", noon, center);
+  const covers = point => data.shade.features.filter(feature => [-720, -360, 0, 360, 720]
+    .some(offset => insideRing([point[0] + offset, point[1]], feature.geometry.coordinates[0])));
+  const transmittance = features => features.reduce((value, feature) => value * (1 - feature.properties.alpha), 1);
+  assert.ok(transmittance(covers([center.lng, center.lat])) < 0.3, "view centre belongs to a clearly visible night");
+  assert.equal(covers([-35, 27]).length, 0, "the western edge still has a daylight crescent");
+  assert.ok(data.lights.features.some(feature => Math.abs(feature.geometry.coordinates[0] - center.lng) < 10), "nearby inhabited regions glow in the selected evening");
 });
 
 test("caps cover the correct spherical side, including the final arc of a polar cap", () => {
