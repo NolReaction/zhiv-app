@@ -26,7 +26,7 @@ function ownerRecord(owner: string): DevEarthOwner {
 }
 function invalidate(record: DevEarthOwner) {
   record.publicationEpoch = null; record.publisherSession = null; record.position = null;
-  record.sequence = 0; record.capturedAt = null;
+  record.sequence = 0; record.capturedAt = null; record.nextPublishAt = 0;
 }
 function publisherActive(owner: string, record: DevEarthOwner, time: number) {
   return record.mode === "SHARING" && (record.sharingUntil === null || record.sharingUntil > time)

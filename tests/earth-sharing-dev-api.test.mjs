@@ -120,7 +120,7 @@ test("precision or audience edits rotate epochs and require a new fix; old scope
   ok(store.putDevEarthPosition(a.token, position(a, first)));
   const second = enable(a, [circle]);
   assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
-  t.mock.timers.tick(30_000); ok(store.putDevEarthPosition(a.token, position(a, second)));
+  t.mock.timers.tick(1); ok(store.putDevEarthPosition(a.token, position(a, second)));
   ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: first.publicationEpoch }));
   assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1);
   ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: second.publicationEpoch }));
@@ -286,7 +286,7 @@ test("removing any recipient fences the publisher while preserving remaining cho
   assert.equal(paused.publicationEpoch, null);
   assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
   assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, [], "remaining recipients cannot keep the pre-edit point");
-  t.mock.timers.tick(30_000);
+  t.mock.timers.tick(1);
   error(store.putDevEarthPosition(a.token, position(a, shared, { sequence: 2 })), 409, "EARTH_PUBLICATION_CONFLICT");
   const confirmed = enable(a, [ac], { precision: "PRECISE" });
   assert.notEqual(confirmed.publicationEpoch, shared.publicationEpoch);
@@ -294,4 +294,27 @@ test("removing any recipient fences the publisher while preserving remaining cho
   ok(store.putDevEarthPosition(a.token, position(a, confirmed)));
   assert.equal(ok(store.getDevEarthPeople(c.token)).people.length, 1);
   assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+});
+
+
+test("fresh publication epochs resume immediately after ghost and scoped stop while their own GPS cadence remains bounded", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const a = player(), b = player(), circle = connect(a, b);
+  const first = enable(a, [circle]);
+  ok(store.putDevEarthPosition(a.token, position(a, first)));
+  error(store.putDevEarthPosition(a.token, position(a, first, { sequence: 2, capturedAt: new Date(Date.now() + 1).toISOString() })), 429);
+  ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST" })));
+  const resumed = enable(a, [circle]);
+  t.mock.timers.tick(1);
+  ok(store.putDevEarthPosition(a.token, position(a, resumed)));
+  assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1);
+  error(store.putDevEarthPosition(a.token, position(a, first, { sequence: 2 })), 409, "EARTH_PUBLICATION_CONFLICT");
+  error(store.putDevEarthPosition(a.token, position(a, resumed, { sequence: 2, capturedAt: new Date(Date.now() + 1).toISOString() })), 429);
+  ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: resumed.publicationEpoch }));
+  const restarted = enable(a, [circle]);
+  t.mock.timers.tick(1);
+  ok(store.putDevEarthPosition(a.token, position(a, restarted)));
+  error(store.putDevEarthPosition(a.token, position(a, restarted, { sequence: 2, capturedAt: new Date(Date.now() + 1).toISOString() })), 429);
+  t.mock.timers.tick(30_000);
+  ok(store.putDevEarthPosition(a.token, position(a, restarted, { sequence: 2 })));
 });

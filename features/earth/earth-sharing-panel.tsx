@@ -43,7 +43,7 @@ export function EarthSharingPanel({ sharing, people, peopleLoading, online, onSh
   return <div className={styles.panel}>
     <section className={styles.status} aria-labelledby="earth-sharing-status">
       <div><Ghost size={20} aria-hidden="true" /><strong id="earth-sharing-status">{sharingSummary(sharing)}</strong></div>
-      <p>Разрешение браузера и доступ друзей — разные настройки. Кнопка «Найти себя» сама по себе никому не передаёт координаты.</p>
+      <p>Разрешение браузера и доступ друзей — разные настройки. Кнопка «Найти себя» сама по себе не открывает друзьям вашу геопозицию.</p>
       {sharing.pendingGhost && <p role="status" className={styles.pending}>Отправка на этом устройстве остановлена. Скрытие на сервере ещё не подтверждено. Без сети последняя точка исчезнет не позднее чем через 2 минуты после её обновления.</p>}
       {active && !sharing.pendingGhost && <>
         <p>{sharing.publishing ? "Позиция обновляется, пока открыта карта." : "Доступ настроен, но GPS сейчас не публикуется. Для возобновления подтвердите настройки ниже."}</p>

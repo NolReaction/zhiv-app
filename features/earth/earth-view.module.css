@@ -83,7 +83,7 @@
 .friendsButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
 .friendsIcon { display: grid; width: 32px; height: 32px; border-radius: 50%; background: #bedda018; color: #d9edbd; place-items: center; }
 .friendsCount { display: grid; min-width: 20px; height: 20px; border-radius: 50%; background: #c8ddae1c; color: #d2e4c2; place-items: center; font-size: 10px; font-weight: 700; }
-.bottomButtons { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; }
+.bottomButtons { display: flex; align-items: center; gap: 7px; width: min(100%, calc(100vw - var(--earth-overlay-left) - var(--earth-overlay-right) - 60px)); min-width: 0; }
 .bottomButtons .friendsButton { flex-shrink: 0; gap: 6px; padding-right: 10px; font-size: 11px; }
 .sharingButton, .quickGhost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 46px; border: 1px solid #cbdcc33d; border-radius: 16px; padding: 8px 10px; background: #173c33f5; color: #d9e9ce; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
 .sharingButton { max-width: 180px; }
@@ -118,6 +118,7 @@
 .view button:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 3px; }
 .view button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 380px) {
+  .bottomButtons .friendsCount { display: none; }
   .header { gap: 8px; }
   .brand { padding-inline: 10px; gap: 6px; font-size: 12px; }
   .brand > svg { width: 19px; }

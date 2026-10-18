@@ -34,6 +34,6 @@ export function revokeDevEarthCircle(circleId: string) {
     record.revision++;
     // Every audience change requires a new explicit publication and fresh fix.
     record.publicationEpoch = null; record.publisherSession = null; record.position = null;
-    record.sequence = 0; record.capturedAt = null;
+    record.sequence = 0; record.capturedAt = null; record.nextPublishAt = 0;
   }
 }

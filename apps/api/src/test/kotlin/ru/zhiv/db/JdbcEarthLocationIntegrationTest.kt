@@ -159,16 +159,17 @@ class JdbcEarthLocationIntegrationTest {
             val a=account();val b=account();val s=enable(a,direct(a,b));repo.publish(a.hash,fix(a,s))
             when(event) {
                 "session" -> execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",a.hash)
-                "ban" -> execute("UPDATE app_users SET banned_at=clock_timestamp() WHERE id=?",a.id)
+                "ban" -> execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Earth privacy regression' WHERE id=?",a.id)
                 else -> execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",a.id)
             }
             assertTrue(repo.people(b.hash).people.isEmpty())
             assertEquals("0",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))
             rejected("UNAUTHORIZED") { repo.publish(a.hash,fix(a,s,2)) }
         }
-        for(column in listOf("banned_at","deleted_at")) {
+        for(event in listOf("ban","delete")) {
             val a=account();val b=account();val s=enable(a,direct(a,b));repo.publish(a.hash,fix(a,s))
-            execute("UPDATE app_users SET $column=clock_timestamp() WHERE id=?",b.id)
+            if(event=="ban") execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Earth privacy regression' WHERE id=?",b.id)
+            else execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",b.id)
             assertTrue(repo.settings(a.hash).revision>s.revision)
             assertTrue(repo.settings(a.hash).recipientCircleIds.isEmpty())
             assertEquals("0",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))

@@ -14,8 +14,8 @@
 
 - Полный Earth suite: 324/324; отдельные cross-feature auth/privacy/relationships/operations: 117/117 — прошли.
 - TypeScript, ESLint, architecture (879 модулей), world export прошли. Браузерная QA с двумя тестовыми аккаунтами выполняется; production-сборки ожидают завершения QA. GPS подменён браузерной тестовой средой, координаты пользователя не используются.
-- JDK 25 и Gradle 9.6 подготовлены в `/tmp/geo-env`; compileKotlin упёрся в сетевое разрешение Kotlin plugin 2.4.10, проверяем без смены версий. PostgreSQL локально не стартует из-за root-only UID namespace; Docker отсутствует. Новые DB-тесты нельзя объявлять пройденными. CI предыдущего `63cbc9c`: backend/PostgreSQL зелёный. Для этого изменения требуется новый CI-прогон.
-- Secret scan: 0 findings. QA подтвердила корректную остановку при native GPS error; сохранено сообщение об ошибке вместо сброса в idle. Далее: завершить двухстороннюю QA, обе production-сборки последовательно и новый CI PostgreSQL; обновить этот файл фактическими итогами.
+- CI `edf3a4a`: production Kotlin и тесты скомпилированы; 905/906 backend checks прошли. Один новый PostgreSQL revoke test имел некорректную ban fixture (не был указан обязательный ban_reason); fixture исправлена по текущей схеме, нужен повтор CI. Локально PostgreSQL недоступен (root-only UID namespace, Docker отсутствует), Gradle resolver ограничен сетью; новый CI остаётся обязательным. Версии зависимостей не менялись.
+- Secret scan: 0 findings. Браузер: opt-in/coarse feed/реальный marker/ghost/old epoch409/no mail, glade16s/offline reconnect/cross-tab/F5/GPS errors — прошли. Сохранено сообщение об ошибке GPS; исправлено перекрытие mobile ghost/info. DEV pacing выровнен с production: 30 секунд внутри epoch, первый свежий fix после нового явного согласия сразу (enable quota 10/мин остаётся). Далее: короткая QA hidden/mobile/resume, обе production-сборки последовательно и новый CI PostgreSQL; обновить этот файл фактическими итогами.
 
 ## Ограничения
 
