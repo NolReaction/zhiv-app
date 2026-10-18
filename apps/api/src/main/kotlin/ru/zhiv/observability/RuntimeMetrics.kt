@@ -74,6 +74,7 @@ class RuntimeMetrics {
         append("# TYPE zhiv_game_batches_total counter\n")
         append("zhiv_game_batches_total{result=\"committed\"} ${gameCommitted.sum()}\n")
         append("zhiv_game_batches_total{result=\"replayed\"} ${gameReplayed.sum()}\n")
+        append(ru.zhiv.db.SecurityObservationRecorderMetrics.shared.exposition())
         val runtime = ManagementFactory.getRuntimeMXBean()
         val memory = ManagementFactory.getMemoryMXBean()
         append("# TYPE zhiv_process_uptime_seconds gauge\nzhiv_process_uptime_seconds ${runtime.uptime / 1000.0}\n")

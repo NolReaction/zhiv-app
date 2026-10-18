@@ -1,5 +1,7 @@
 import rawCatalog from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_MAX_PEARLS } from "@/features/economy/domain/money";
+import type { EconomyState } from "@/features/economy/domain/model";
+import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { GAME_ACHIEVEMENT_TARGETS } from "./achievement-progress";
 import type { GameAchievementId } from "./game-api";
 import type { AchievementReward, GameReward, GameRewards } from "./game-rewards-api";
@@ -12,6 +14,12 @@ export const progressionRewardsCatalog = catalog;
 export type DailyRewardState = { step: number; lastClaimAt: string | null; lastClaimDate: string | null };
 export const initialDailyRewardState = (): DailyRewardState => ({ step: 1, lastClaimAt: null, lastClaimDate: null });
 const DAY = 86_400_000;
+/** Match the practical order lesson, including saved legacy progress. The server
+ * owns these fields; local tutorial screens cannot qualify an early payout. */
+export function onboardingRewardEligible(state: Pick<EconomyState, "tutorialOrder">): boolean {
+  const progress = tutorialOrderProgress(state);
+  return progress.completed || progress.step > 0;
+}
 /** Saved, completed home level only: unfinished construction and purchased slots never multiply gifts. */
 export function dailyRewardCycle(homeLevel = 1): GameReward[] {
   const level = Number.isSafeInteger(homeLevel) ? Math.min(5, Math.max(1, homeLevel)) : 1;

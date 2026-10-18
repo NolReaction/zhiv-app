@@ -9,6 +9,16 @@ import kotlin.test.*
 
 class ProgressionRewardsTest {
     private fun at(value: String)=Instant.parse(value)
+    @Test fun `onboarding qualification requires the server order and preserves legacy paid steps`() {
+        val initial=EconomyRules.initial(0,0,0)
+        for (version in 1..3) {
+            for ((completed,step,expected) in listOf(Triple(false,0,false),Triple(true,0,true),Triple(false,1,true))) {
+                assertEquals(expected,ProgressionRewardRules.onboardingEligible(initial.copy(
+                    tutorialOrder=EconomyTutorialOrder(ingredientsClaimed=true,completed=completed,version=version,step=step))))
+            }
+        }
+        assertFalse(ProgressionRewardRules.onboardingEligible(initial.copy(buildings=initial.buildings+("home" to 5))))
+    }
     @Test fun `catalog pays finite achievement pearls and seven valuable bundles`() {
         assertEquals(3000L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
         assertEquals(21,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })

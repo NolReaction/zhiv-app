@@ -42,8 +42,20 @@ trap 'exit 143' TERM
 
 docker_command=(docker)
 if (( EUID != 0 )); then docker_command=(sudo docker); fi
-dc() { "${docker_command[@]}" compose --env-file deploy/.env -f deploy/compose.yml "$@"; }
+compose_files=(-f deploy/compose.yml)
+alert_delivery=0
+if [[ -f deploy/.secrets/alerts/enabled ]]; then
+  python3 scripts/check-alert-delivery.py
+  compose_files+=(-f deploy/monitoring/alerting.compose.yml --profile monitoring)
+  alert_delivery=1
+fi
+dc() { "${docker_command[@]}" compose --env-file deploy/.env "${compose_files[@]}" "$@"; }
 dc config --quiet
+if (( alert_delivery == 1 )); then
+  # Validate before maintenance; bad optional configuration cannot stop a live game.
+  dc run --rm --no-deps --entrypoint /bin/amtool alertmanager check-config /etc/alertmanager/alertmanager.yml
+  dc run --rm --no-deps --entrypoint /bin/promtool prometheus check config /etc/prometheus/prometheus.yml
+fi
 # sudo normally strips APP_BUILD_ID from the environment. Pass it as an explicit
 # build argument so the image and the deployment status always use the same ID.
 dc build --build-arg "APP_BUILD_ID=$APP_BUILD_ID"
@@ -82,15 +94,28 @@ fetch("http://127.0.0.1:3000/app-status.json", { cache: "no-store" })
     if (status.schemaVersion !== 1 || status.maintenance !== false || status.buildId !== process.env.EXPECTED_BUILD_ID)
       throw new Error("The running web build does not match this deployment");
   }).catch(error => { console.error(error.message); process.exit(1); });'
-# Alert rules are bind-mounted too. Reload them when monitoring is already active;
-# do not enable the optional monitoring stack on installations that don't use it.
-if dc ps --services --status running | grep -qx prometheus; then
-  dc run --rm --no-deps --entrypoint /bin/promtool prometheus check rules /etc/prometheus/alerts.yml
-  dc up -d --no-deps --no-build --force-recreate --wait --wait-timeout 90 prometheus
-fi
-dc ps -a
-# Reopen traffic only after both application services and edge connectivity pass.
+# Reopen as soon as the application is healthy. Optional monitoring must neither
+# hold maintenance open nor re-arm it if a collector/notifier fails afterwards.
 rm -f "$runtime_dir/maintenance"
 publish_status false ''
 maintenance_started=0
+# Alert rules are bind-mounted too. Reload them when monitoring is already active;
+# do not enable the optional monitoring stack on installations that don't use it.
+monitoring_ready=1
+if dc ps --services --status running | grep -qx prometheus; then
+  if ! dc run --rm --no-deps --entrypoint /bin/promtool prometheus check rules /etc/prometheus/alerts.yml; then
+    monitoring_ready=0
+    echo 'WARNING: Monitoring rule validation failed; the running collector was preserved. Inspect monitoring before relying on alerts.' >&2
+  elif ! dc up -d --no-deps --no-build --force-recreate --wait --wait-timeout 90 prometheus; then
+    monitoring_ready=0
+    echo 'WARNING: Monitoring did not restart. The healthy game remains available; inspect prometheus.' >&2
+  fi
+fi
+if (( alert_delivery == 1 && monitoring_ready == 1 )); then
+  # Failure of an optional notifier must not leave a healthy game in maintenance.
+  if ! dc up -d --no-deps --no-build --wait --wait-timeout 90 prometheus node-exporter alertmanager; then
+    echo 'WARNING: External alert delivery did not start. Inspect alertmanager before relying on notifications.' >&2
+  fi
+fi
+dc ps -a
 echo "Update complete: $APP_BUILD_ID. The app can now refresh to this release."

@@ -20,6 +20,12 @@ const player = () => ids.createDevIdentity("Мохлик", crypto.randomUUID());
 const request = (p, extra = {}) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, kind: "daily", ...extra });
 const claim = (p, command, now) => rewards.claimDevProgressionReward(p.token, command, now);
 const profile = p => globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+function completeTutorial(p, now) {
+  const before = economy.getDevEconomy(p.token, now);
+  profile(p).state.inventory.berries = 1;
+  return economy.commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
+    expectedRevision: before.revision, action: "complete_resident_order", targetId: "tutorial_first_order" }, now).state;
+}
 const row = (p, id, level, now) => rewards.getDevProgressionRewards(p.token, now).achievementRewards.find(r => r.achievementId === id && r.level === level);
 
 test("v4 catalog grants 1500 visible lifetime achievement pearls and 500 visible pearls per received cycle", () => {
@@ -51,7 +57,7 @@ test("onboarding catalog credits exactly 100 visible pearls and 1000 coins with 
   const reward = rules.progressionRewardsCatalog.onboarding;
   assert.deepEqual(reward, { coins: 1000, pearls: 200, items: {} });
   assert.equal(money.pearlDisplayAmount(reward.pearls), 100);
-  const opened = rewards.getDevProgressionRewards(p.token, now), before = economy.getDevEconomy(p.token, now);
+  const before = completeTutorial(p, now), opened = rewards.getDevProgressionRewards(p.token, now);
   assert.equal(opened.onboarding.claimedAt, null);
   const command = request(p, { kind: "onboarding" }), paid = claim(p, command, now);
   assert.deepEqual(paid.claim.reward, reward); assert.equal(paid.claim.kind, "onboarding");
@@ -70,6 +76,7 @@ test("onboarding catalog credits exactly 100 visible pearls and 1000 coins with 
 
 test("onboarding wallet failure consumes neither completion nor UUID and full pantry accepts currency only", () => {
   const p = player(), now = at("2026-10-18T00:00:00Z");
+  completeTutorial(p, now);
   rewards.getDevProgressionRewards(p.token, now);
   const value = profile(p), command = request(p, { kind: "onboarding" });
   value.state.wallet.pearls = money.ECONOMY_MAX_PEARLS - 100;
@@ -85,6 +92,32 @@ test("onboarding wallet failure consumes neither completion nor UUID and full pa
   assert.equal(paid.economy.storage.used, paid.economy.storage.capacity);
   value.state.inventory.wood -= 3;
   assert.equal(claim(p, request(p), now + 2000).claim.kind, "daily", "separate daily remains available after freeing room");
+});
+
+test("early onboarding requests cannot credit wallets and the same UUID remains usable after the real order", () => {
+  const p = player(), now = at("2026-10-18T00:00:00Z"), command = request(p, { kind: "onboarding" });
+  const before = economy.getDevEconomy(p.token, now);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    assert.throws(() => claim(p, attempt % 2 ? command : request(p, { kind: "onboarding" }), now + attempt),
+      error => error.code === "ONBOARDING_REWARD_UNAVAILABLE");
+  }
+  assert.deepEqual(economy.getDevEconomy(p.token, now).wallet, before.wallet);
+  assert.equal(economy.getDevEconomy(p.token, now).revision, before.revision);
+  assert.equal(rewards.getDevProgressionRewards(p.token, now).onboarding.claimedAt, null);
+  const qualified = completeTutorial(p, now + 1000);
+  const paid = claim(p, command, now + 365 * 86400_000);
+  assert.equal(paid.claim.kind, "onboarding");
+  assert.equal(paid.economy.wallet.coins, qualified.wallet.coins + 1000);
+  assert.equal(paid.economy.wallet.pearls, qualified.wallet.pearls + 200);
+  assert.equal(paid.replayed, false);
+});
+
+test("onboarding eligibility preserves old completed orders and first paid legacy steps", () => {
+  for (const version of [1, 2, 3]) {
+    for (const [completed, step, expected] of [[false, 0, false], [true, 0, true], [false, 1, true]]) {
+      assert.equal(rules.onboardingRewardEligible({ tutorialOrder: { version, completed, step, ingredientsClaimed: true, terms: null } }), expected);
+    }
+  }
 });
 
 test("completed home tiers scale only coins and keep compact gifts within unlocked production", () => {

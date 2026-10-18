@@ -6,6 +6,9 @@ import kotlinx.serialization.encodeToString
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.economy.*
 import ru.zhiv.game.*
+import ru.zhiv.world.WorldRules
+import ru.zhiv.world.WorldState
+import ru.zhiv.world.worldJson
 import java.sql.Connection
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -13,7 +16,7 @@ import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
-/** User row lock serializes reward, inventory, market, merge and gameplay mutations. */
+/** Only initialization/reconciliation and claims take the shared mutation lock. */
 class JdbcProgressionRewardsRepository(private val source: DataSource) : ProgressionRewardsRepository {
     private data class Actor(val id: UUID, val publicId: String)
     private data class Ownership(val id: String, val level: Int, val at: String, val eligible: Boolean)
@@ -45,14 +48,16 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
     private fun daily(c: Connection,user: UUID): DailyRewardsState = c.economyRows(
         "SELECT next_step,last_claim_at FROM game_daily_rewards WHERE user_id=?",user) {
         DailyRewardsState(it.getInt(1),it.getObject(2,OffsetDateTime::class.java)?.toInstant()) }.single()
-    private fun view(c: Connection,actor: Actor,now: Instant): ProgressionRewardsView {
-        val owned=c.economyRows("""
+    private fun ownership(c: Connection,user: UUID): Map<Pair<String,Int>,Ownership> = c.economyRows("""
             SELECT achievement_id,1 AS level,unlocked_at,reward_eligible FROM game_achievements
             WHERE user_id=? AND achievement_id IN ('seven_day_streak','thousand_taps','five_friends','ten_thousand_series',
                 'linked_email','saved_recovery_code','full_collection')
             UNION ALL SELECT achievement_id,level,unlocked_at,reward_eligible FROM game_achievement_tiers WHERE user_id=?
-        """.trimIndent(),actor.id,actor.id) { Ownership(it.getString(1),it.getInt(2),it.getObject(3,OffsetDateTime::class.java).toInstant().toString(),it.getBoolean(4)) }
+        """.trimIndent(),user,user) { Ownership(it.getString(1),it.getInt(2),it.getObject(3,OffsetDateTime::class.java).toInstant().toString(),it.getBoolean(4)) }
             .associateBy { it.id to it.level }
+    private fun view(c: Connection,actor: Actor,now: Instant,
+        owned: Map<Pair<String,Int>,Ownership> = ownership(c,actor.id),
+        state: EconomyState = readEconomyProfile(c,actor.id).state): ProgressionRewardsView {
         val paid=c.economyRows("SELECT achievement_id,level,claimed_at FROM game_achievement_reward_claims WHERE user_id=?",actor.id) {
             (it.getString(1) to it.getInt(2)) to it.getObject(3,OffsetDateTime::class.java).toInstant().toString() }.toMap()
         val rows=GameRewards.tiers.flatMap { (id,targets) -> targets.mapIndexed { i,target ->
@@ -61,12 +66,63 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
             val blocked=when { pearls==0L -> "no_reward"; ownership==null -> "not_earned"; !ownership.eligible -> "admin_grant"; else -> null }
             AchievementRewardView(id,level,target,pearls,ownership?.at,claimedAt,ownership!=null && ownership.eligible && pearls>0 && claimedAt==null,blocked)
         } }
-        val homeLevel=readEconomyProfile(c,actor.id).state.buildings["home"] ?: 1
+        val homeLevel=state.buildings["home"] ?: 1
         val onboarding=c.economyRows("SELECT onboarding_claimed_at FROM game_daily_rewards WHERE user_id=?",actor.id) {
             OnboardingRewardView(it.getObject(1,OffsetDateTime::class.java)?.toInstant()?.toString()) }.single()
         return ProgressionRewardsView(actor.publicId,now.toString(),daily=ProgressionRewardRules.dailyView(daily(c,actor.id),now,homeLevel),achievementRewards=rows,onboarding=onboarding)
     }
-    override suspend fun snapshot(sessionHash: ByteArray): ProgressionRewardsView = transaction(sessionHash) { c,a,now -> view(c,a,now) }
+    /** Detect missing historical awards without turning every read into INSERT/UPDATE.
+     * A detected change is persisted by the existing locked reconciler, so dates,
+     * admin eligibility and rolling-upgrade discovery keep their original meaning. */
+    private fun needsReconciliation(c: Connection,a: Actor,now: Instant,
+        owned: Map<Pair<String,Int>,Ownership>,state: EconomyState): Boolean {
+        fun missing(id: String,level: Int=1)=owned[id to level]?.eligible != true
+        val items=c.economyRows("SELECT item_id FROM game_items WHERE user_id=?",a.id) { it.getString(1) }.toSet()
+        if (missing("seven_day_streak") || GameRewards.items.keys.any { it !in items }) {
+            val longest=c.economyRows("SELECT longest_days FROM rolling_check_in_streak(?,?)",a.id,now.atOffset(ZoneOffset.UTC)) { it.getLong(1) }.firstOrNull() ?: 0L
+            if (longest>=7 && missing("seven_day_streak") || GameRewards.items.any { (id,target) -> longest>=target && id !in items }) return true
+        }
+        if (missing("thousand_taps") || missing("ten_thousand_series")) {
+            val taps=c.economyRows("SELECT lifetime_taps,best_series FROM game_profiles WHERE user_id=?",a.id) { it.getLong(1) to it.getLong(2) }.firstOrNull()
+            if (taps != null && (taps.first>=1000 && missing("thousand_taps") || taps.second>=10000 && missing("ten_thousand_series"))) return true
+        }
+        if (missing("five_friends") && c.economyRows("SELECT count(*) FROM (SELECT user_id FROM active_direct_friend_ids(?) LIMIT 5) friends",a.id) { it.getLong(1) }.single()>=5) return true
+        if (missing("linked_email") && c.economyRows("SELECT 1 FROM account_login_identities WHERE user_id=? AND provider='email' LIMIT 1",a.id) { true }.isNotEmpty()) return true
+        if (missing("saved_recovery_code") && c.economyRows("SELECT 1 FROM account_recovery_codes WHERE user_id IN (SELECT user_id FROM account_history_user_ids(?)) LIMIT 1",a.id) { true }.isNotEmpty()) return true
+        if (missing("full_collection")) {
+            val collection=c.economyRows("SELECT state FROM world_profiles WHERE user_id=?",a.id) { worldJson.decodeFromString<WorldState>(it.getString(1)).collection }.firstOrNull().orEmpty()
+            if (WorldRules.catalog.finds.count { it.id in collection }.toLong()>=GameRewards.achievements.getValue("full_collection")) return true
+        }
+        return readEconomyAchievementProgress(c,a.id,state).any { (id,progress) ->
+            GameRewards.tiers.getValue(id).withIndex().any { (index,target) -> progress>=target && missing(id,index+1) }
+        }
+    }
+    private suspend fun readSnapshot(hash: ByteArray): ProgressionRewardsView? = withContext(Dispatchers.IO) {
+        source.connection.use { c ->
+            c.autoCommit=false
+            c.transactionIsolation=Connection.TRANSACTION_REPEATABLE_READ
+            c.isReadOnly=true
+            try {
+                val a=actor(c,hash)
+                val initialized=c.economyRows("""SELECT EXISTS(SELECT 1 FROM economy_profiles WHERE user_id=?)
+                    AND EXISTS(SELECT 1 FROM game_daily_rewards WHERE user_id=?)""",a.id,a.id) { it.getBoolean(1) }.single()
+                val now=c.economyRows("SELECT clock_timestamp()") { it.getObject(1,OffsetDateTime::class.java).toInstant() }.single()
+                val result=if (!initialized) null else {
+                    val owned=ownership(c,a.id); val state=readEconomyProfile(c,a.id).state
+                    if (needsReconciliation(c,a,now,owned,state)) null else view(c,a,now,owned,state)
+                }
+                c.commit()
+                // A merge/revocation committed while this consistent snapshot was
+                // being read must not return private data under its old identity.
+                c.transactionIsolation=Connection.TRANSACTION_READ_COMMITTED
+                val current=actor(c,hash)
+                if (current != a) economyFailure("ECONOMY_OWNER_CHANGED","Аккаунт изменился. Обновите награды")
+                c.commit(); result
+            } catch(error: Exception) { c.rollback(); throw error }
+        }
+    }
+    override suspend fun snapshot(sessionHash: ByteArray): ProgressionRewardsView =
+        readSnapshot(sessionHash) ?: transaction(sessionHash) { c,a,now -> view(c,a,now) }
     override suspend fun claim(sessionHash: ByteArray,command: ProgressionRewardClaim): ProgressionRewardResult {
         validateRewardClaim(command)
         return transaction(sessionHash,command.ownerPublicId) { c,a,now ->
@@ -93,6 +149,8 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
                 ProgressionRewardReceipt("daily",current.daily.reward,now.toString(),step=current.daily.step)
             } else if(command.kind=="onboarding") {
                 if(current.onboarding.claimedAt!=null) rewardFailure("ONBOARDING_REWARD_CLAIMED","Награда за обучение уже получена")
+                if(!ProgressionRewardRules.onboardingEligible(readEconomyProfile(c,a.id).state))
+                    rewardFailure("ONBOARDING_REWARD_UNAVAILABLE","Сначала выполни учебный заказ. Награда останется доступна после него")
                 ProgressionRewardReceipt("onboarding",ProgressionRewardRules.onboarding,now.toString())
             } else {
                 val row=current.achievementRewards.single { it.achievementId==command.achievementId && it.level==command.level }

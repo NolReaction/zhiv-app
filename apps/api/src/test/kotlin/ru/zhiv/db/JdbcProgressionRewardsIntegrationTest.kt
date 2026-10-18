@@ -47,9 +47,60 @@ class JdbcProgressionRewardsIntegrationTest {
     private fun scalar(sql: String,vararg values: Any?): String=source.connection.use { c -> c.economyRows(sql,*values) { it.getString(1) }.single() }
     private fun command(p: Player,id: String=UUID.randomUUID().toString(),achievement: String?=null,level: Int?=null)=
         ProgressionRewardClaim(id,p.publicId,if(achievement==null) "daily" else "achievement",achievement,level)
+    private suspend fun completeTutorial(p: Player): EconomyView {
+        val before=economy.snapshot(p.hash)
+        val state=source.connection.use { readEconomyProfile(it,p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(
+            state.copy(inventory=state.inventory+("berries" to 1L))),p.id)
+        return economy.command(p.hash,EconomyCommand(UUID.randomUUID().toString(),p.publicId,before.revision,
+            "complete_resident_order","tutorial_first_order")).state
+    }
+
+    @Test fun `initialized snapshots do not wait for the gameplay mutation lock or write reward rows`()=runBlocking<Unit> {
+        val p=player(); val initial=rewards.snapshot(p.hash)
+        val stored=scalar("SELECT row_to_json(r)::text FROM game_daily_rewards r WHERE user_id=?",p.id)
+        source.connection.use { locked ->
+            locked.autoCommit=false
+            locked.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE",p.id) { true }
+            try {
+                val snapshots=withTimeout(2_000) { List(3) { async(Dispatchers.IO) { rewards.snapshot(p.hash) } }.awaitAll() }
+                assertTrue(snapshots.all { it.ownerPublicId==p.publicId && it.daily.step==initial.daily.step })
+                assertTrue(snapshots.all { it.achievementRewards==initial.achievementRewards })
+            } finally { locked.rollback() }
+        }
+        assertEquals(stored,scalar("SELECT row_to_json(r)::text FROM game_daily_rewards r WHERE user_id=?",p.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",p.id))
+    }
+
+    @Test fun `historical reconciliation remains durable and subsequent reads no longer lock`()=runBlocking<Unit> {
+        val p=player(); rewards.snapshot(p.hash)
+        val state=source.connection.use { readEconomyProfile(it,p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state.copy(completedExplorations=10)),p.id)
+        val discovered=rewards.snapshot(p.hash).achievementRewards.single { it.achievementId=="explorer" && it.level==1 }
+        assertTrue(discovered.eligible)
+        assertEquals("true",scalar("SELECT reward_eligible::text FROM game_achievement_tiers WHERE user_id=? AND achievement_id='explorer' AND level=1",p.id))
+        assertEquals(discovered,rewards.snapshot(p.hash).achievementRewards.single { it.achievementId=="explorer" && it.level==1 })
+        execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",p.hash)
+        assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { rewards.snapshot(p.hash) }.code)
+    }
+
+    @Test fun `parallel early onboarding claims cannot earn or consume the UUID before the actual lesson`()=runBlocking<Unit> {
+        val p=player(); val initial=economy.snapshot(p.hash); val request=command(p).copy(kind="onboarding")
+        val results=List(6) { index -> async(Dispatchers.IO) {
+            runCatching { rewards.claim(p.hash,if(index%2==0) request else command(p).copy(kind="onboarding")) }
+        } }.awaitAll()
+        assertTrue(results.all { (it.exceptionOrNull() as? AuthFailure)?.code=="ONBOARDING_REWARD_UNAVAILABLE" })
+        assertEquals(initial.wallet,economy.snapshot(p.hash).wallet)
+        assertEquals(initial.revision,economy.snapshot(p.hash).revision)
+        assertEquals("0",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",p.id))
+        val qualified=completeTutorial(p)
+        val paid=rewards.claim(p.hash,request)
+        assertFalse(paid.replayed); assertEquals(qualified.wallet.coins+1000,paid.economy.wallet.coins)
+        assertEquals(paid.claim,rewards.claim(p.hash,request).claim)
+    }
 
     @Test fun `onboarding concurrent same and distinct UUIDs pay one fixed gift independently of daily`()=runBlocking<Unit> {
-        val p=player(); val before=economy.snapshot(p.hash)
+        val p=player(); val before=completeTutorial(p)
         assertEquals(null,rewards.snapshot(p.hash).onboarding.claimedAt)
         assertEquals(before.wallet,economy.snapshot(p.hash).wallet,"A snapshot does not reward historical local tutorial state")
         val request=command(p).copy(kind="onboarding")
@@ -66,7 +117,7 @@ class JdbcProgressionRewardsIntegrationTest {
         assertTrue(paid.rewards.daily.claimable); assertEquals(1,paid.rewards.daily.step)
         assertEquals("REWARD_REQUEST_CONFLICT",assertFailsWith<AuthFailure> { rewards.claim(p.hash,request.copy(kind="daily")) }.code)
         assertEquals("ONBOARDING_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(p.hash,command(p).copy(kind="onboarding")) }.code)
-        val other=player(); val different=List(2) { async(Dispatchers.IO) {
+        val other=player(); completeTutorial(other); val different=List(2) { async(Dispatchers.IO) {
             runCatching { rewards.claim(other.hash,command(other).copy(kind="onboarding")) }
         } }.awaitAll()
         assertEquals(1,different.count { it.isSuccess })
@@ -74,7 +125,7 @@ class JdbcProgressionRewardsIntegrationTest {
     }
 
     @Test fun `onboarding wallet failure rolls back the marker and same UUID succeeds later with full pantry`()=runBlocking<Unit> {
-        val p=player(); economy.snapshot(p.hash)
+        val p=player(); completeTutorial(p)
         val original=source.connection.use { readEconomyProfile(it,p.id).state }
         val capacity=EconomyRules.storage(original).capacity
         val full=original.copy(wallet=original.wallet.copy(pearls=ECONOMY_MAX_PEARLS-100),inventory=mapOf("wood" to capacity))
@@ -92,7 +143,7 @@ class JdbcProgressionRewardsIntegrationTest {
     }
 
     @Test fun `onboarding merge preserves source fence despite target newer daily and retains both paid origins`()=runBlocking<Unit> {
-        val target=player(); val origin=player()
+        val target=player(); val origin=player(); completeTutorial(origin)
         val sourcePaid=rewards.claim(origin.hash,command(origin).copy(kind="onboarding"))
         rewards.claim(target.hash,command(target))
         val before=economy.snapshot(target.hash)
@@ -100,7 +151,7 @@ class JdbcProgressionRewardsIntegrationTest {
         assertEquals(sourcePaid.claim.claimedAt,rewards.snapshot(target.hash).onboarding.claimedAt)
         assertEquals(before.wallet,economy.snapshot(target.hash).wallet,"Merging payout fences never credits currencies")
         assertEquals("ONBOARDING_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(target.hash,command(target).copy(kind="onboarding")) }.code)
-        val second=player(); rewards.claim(second.hash,command(second).copy(kind="onboarding"))
+        val second=player(); completeTutorial(second); rewards.claim(second.hash,command(second).copy(kind="onboarding"))
         source.connection.use { c -> c.autoCommit=false; mergeProgressionRewards(c,target.id,second.id); c.commit() }
         assertEquals("2",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=? AND kind='onboarding'",target.id))
         assertEquals("ONBOARDING_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(target.hash,command(target).copy(kind="onboarding")) }.code)

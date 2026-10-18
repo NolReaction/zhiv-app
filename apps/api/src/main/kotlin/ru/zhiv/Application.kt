@@ -76,6 +76,10 @@ import ru.zhiv.db.JdbcGameRepository
 import ru.zhiv.observability.GameEventSink
 import ru.zhiv.observability.Slf4jGameEventSink
 import ru.zhiv.observability.RequestDiagnostics
+import ru.zhiv.observability.RequestTraffic
+import ru.zhiv.observability.RequestTrafficObservation
+import ru.zhiv.observability.RequestTrafficSnapshot
+import ru.zhiv.observability.trafficUserId
 import ru.zhiv.observability.recordApiFailure
 import ru.zhiv.observability.recordAuthFailure
 import ru.zhiv.relationships.GuestProfileRepository
@@ -209,8 +213,10 @@ fun Application.installZhivApi(
     playerMail: MailRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
+    val traffic = RequestTraffic()
     val monitoring = MonitoringService(config.monitoringUrl)
     install(RequestMetrics) { this.metrics = metrics }
+    install(RequestTrafficObservation) { this.traffic = traffic }
     install(RequestDiagnostics) {
         persist = { call, code, status ->
             val raw = call.sessionCookie(config)
@@ -262,6 +268,7 @@ fun Application.installZhivApi(
                     val userId = call.sessionCookie(config)?.let { raw ->
                         identities.findSessionUserId(tokenCodec.hash(raw))
                     }
+                    if (userId != null) call.attributes.put(trafficUserId, userId)
                     // Forged cookies share one anonymous budget; they cannot create new buckets.
                     userId?.let { "user:$it" } ?: "anonymous:${clientIpKey(call)}"
                 }
@@ -379,6 +386,26 @@ fun Application.installZhivApi(
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
             rateLimit(RateLimitName("admin-read")) {
+                get("/api/v1/admin/request-traffic") {
+                    call.response.header(HttpHeaders.CacheControl, "no-store")
+                    call.response.header("X-Robots-Tag", "noindex, nofollow")
+                    val raw = call.sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
+                    val hash = tokenCodec.hash(raw)
+                    val actor = repository.access(hash)
+                    if (!call.request.queryParameters.isEmpty()) throw AuthFailure("INVALID_ADMIN_QUERY", "Проверьте параметры запроса", 400)
+                    val samples = traffic.samples()
+                    val ids = samples.mapNotNull { it.userId }.distinct()
+                    val players = if (ids.isEmpty()) emptyMap() else repository.trafficPlayers(hash, ids).associateBy { it.id }
+                    val signals = samples.mapNotNull { sample ->
+                        if (sample.userId == null) sample.signal
+                        else players[sample.userId]?.let { sample.signal.copy(publicId = it.publicId, displayName = it.displayName) }
+                    }
+                    // A concurrent logout or revoke must not expose a completed private snapshot.
+                    if (repository.access(hash).publicId != actor.publicId)
+                        throw AuthFailure("ADMIN_FORBIDDEN", "Аккаунт администратора сменился. Откройте панель заново", 403)
+                    call.respond(RequestTrafficSnapshot(actor.publicId, java.time.Instant.now().toString(), traffic.startedAt,
+                        RequestTraffic.RETENTION_SECONDS, traffic.capacity, traffic.evicted(), signals))
+                }
                 get("/api/v1/admin/monitoring") {
                     call.response.header(HttpHeaders.CacheControl, "no-store")
                     call.response.header("X-Robots-Tag", "noindex, nofollow")

@@ -64,6 +64,18 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         AdminAccess(actor.publicId, actor.displayName, now(c).toInstant().toString())
     }
 
+    override suspend fun trafficPlayers(sessionHash: ByteArray, ids: List<UUID>): List<ru.zhiv.observability.TrafficPlayer> = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        if (ids.size > 100) invalid()
+        if (ids.isEmpty()) return@tx emptyList()
+        val values = c.createArrayOf("uuid", ids.distinct().toTypedArray())
+        try {
+            c.rows("SELECT id,public_id,display_name FROM app_users WHERE id=ANY(?) AND deleted_at IS NULL", values) {
+                ru.zhiv.observability.TrafficPlayer(it.getObject(1, UUID::class.java), it.getString(2), it.getString(3))
+            }
+        } finally { values.free() }
+    }
+
     override suspend fun analytics(sessionHash: ByteArray, query: AdminAnalyticsQuery): AdminAnalytics = tx(readOnlySnapshot = true) { c ->
         actor(c, sessionHash)
         val time = now(c).toInstant()

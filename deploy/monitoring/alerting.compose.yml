@@ -1,0 +1,40 @@
+# Opt in with deploy/.secrets/alerts/enabled; deploy-update.sh keeps the overlay.
+# Always use AFTER deploy/compose.yml: bind paths are relative to deploy/.
+services:
+  prometheus:
+    volumes:
+      - ./monitoring/prometheus-alerting.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-delivery.yml:/etc/prometheus/alert-delivery.yml:ro
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --data.retention=120h
+      - --cluster.listen-address=
+    networks: [backend, outbound]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./.secrets/alerts/webhook_url:/run/secrets/alert_webhook_url:ro
+      - alertmanager_data:/alertmanager
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, 'wget --quiet --spider http://127.0.0.1:9093/-/ready']
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+
+volumes:
+  alertmanager_data:

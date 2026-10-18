@@ -9,8 +9,89 @@ import ru.zhiv.economy.economyJson
 import ru.zhiv.game.ProgressionRewardClaim
 import ru.zhiv.game.progressionRewardsJson
 import java.sql.Connection
+import java.sql.SQLException
 import java.time.OffsetDateTime
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.LongAdder
+
+internal enum class SecurityObservationRecordResult {
+    PERSISTED, DUPLICATE, BUSY, BUDGET, FAILED, MISSING_USER,
+}
+
+/** Fixed-size diagnostics only: no account, request, payload or address labels. */
+internal class SecurityObservationRecorderMetrics {
+    private val counts = SecurityObservationRecordResult.entries.associateWith { LongAdder() }
+    fun record(result: SecurityObservationRecordResult) = counts.getValue(result).increment()
+    fun exposition(): String = buildString {
+        append("# HELP zhiv_security_observation_attempts_total Best-effort diagnostic persistence outcomes; skipped events are not gameplay limits.\n")
+        append("# TYPE zhiv_security_observation_attempts_total counter\n")
+        counts.forEach { (result, count) ->
+            append("zhiv_security_observation_attempts_total{result=\"${result.name.lowercase()}\"} ${count.sum()}\n")
+        }
+    }
+    companion object { val shared = SecurityObservationRecorderMetrics() }
+}
+
+/** A process-local budget for diagnostics AFTER gameplay has already been denied.
+ * Never waits for a persistence slot, enqueues work or changes a command decision.
+ * Cache only committed UUIDs: failed/skipped events remain eligible on a retry.
+ * SQL still owns review state, threshold calculation and cross-instance deduplication. */
+internal class SecurityObservationWriteBudget(
+    private val nanoTime: () -> Long = System::nanoTime,
+    private val ratePerSecond: Int = 20,
+    private val burstCapacity: Int = 20,
+    private val cacheCapacity: Int = 2048,
+    private val duplicateTtlNanos: Long = 60_000_000_000L,
+) {
+    internal data class Key(val userId: UUID, val kind: SecurityObservationKind, val requestId: UUID)
+    private val committed = LinkedHashMap<Key, Long>()
+    private var inFlight = false
+    private var tokens = burstCapacity.toDouble()
+    private var refilledAt = nanoTime()
+
+    init { require(ratePerSecond > 0 && burstCapacity > 0 && cacheCapacity > 0 && duplicateTtlNanos > 0) }
+
+    /** Null admits exactly one writer; all other results finish without touching JDBC. */
+    @Synchronized fun tryAcquire(key: Key): SecurityObservationRecordResult? {
+        val now = nanoTime()
+        committed[key]?.let { at ->
+            if (now - at < duplicateTtlNanos) return SecurityObservationRecordResult.DUPLICATE
+            committed.remove(key)
+        }
+        if (inFlight) return SecurityObservationRecordResult.BUSY
+        val elapsed = (now - refilledAt).coerceAtLeast(0)
+        if (elapsed > 0) {
+            tokens = minOf(burstCapacity.toDouble(), tokens + elapsed.toDouble() / 1_000_000_000 * ratePerSecond)
+            refilledAt = now
+        }
+        if (tokens < 1) return SecurityObservationRecordResult.BUDGET
+        tokens -= 1
+        inFlight = true
+        return null
+    }
+
+    @Synchronized fun release(key: Key, persisted: Boolean) {
+        if (persisted) {
+            if (committed.size >= cacheCapacity && key !in committed) committed.remove(committed.keys.first())
+            committed[key] = nanoTime()
+        }
+        inFlight = false
+    }
+
+    companion object { val shared = SecurityObservationWriteBudget() }
+}
+
+private val observationWarningAt = AtomicLong(Long.MIN_VALUE)
+
+/** A failing database must not turn rejected commands into a second log flood. */
+private fun warnObservationFailure() {
+    val now = System.nanoTime()
+    val previous = observationWarningAt.get()
+    if ((previous == Long.MIN_VALUE || now - previous >= 60_000_000_000L) && observationWarningAt.compareAndSet(previous, now)) {
+        LoggerFactory.getLogger("ru.zhiv.security.observations").warn("Could not persist rejected security observations; see diagnostic outcome counters")
+    }
+}
 
 /** Construct only after authenticated ownership was rechecked under the account lock. */
 internal class ObservedSecurityFailure(
@@ -50,18 +131,36 @@ internal fun semanticRewardTamper(previous: String, command: ProgressionRewardCl
  * same connection in a fresh short transaction; never keep gameplay mutations.
  * The observation is best effort: its storage failure cannot accept the action
  * or replace the original public denial with a 500. No payload/session is logged. */
-internal fun recordRejectedSecurityObservation(c: Connection, error: Exception) {
+internal fun recordRejectedSecurityObservation(
+    c: Connection, error: Exception,
+    budget: SecurityObservationWriteBudget = SecurityObservationWriteBudget.shared,
+    metrics: SecurityObservationRecorderMetrics = SecurityObservationRecorderMetrics.shared,
+) {
     if (error !is ObservedSecurityFailure) return
+    val key = SecurityObservationWriteBudget.Key(error.userId, error.kind, error.requestId)
+    budget.tryAcquire(key)?.let { metrics.record(it); return }
+    var persisted = false
     try {
-        c.economyUpdate("SET LOCAL lock_timeout = '500ms'")
+        // A gameplay transaction that already owns this account always takes priority.
+        // NOWAIT avoids consuming a pool connection while waiting for its user lock.
         c.economyUpdate("SET LOCAL statement_timeout = '1s'")
-        if (c.economyRows("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL FOR NO KEY UPDATE", error.userId) { true }.isNotEmpty()) {
+        val exists = c.economyRows("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL FOR NO KEY UPDATE NOWAIT", error.userId) { true }.isNotEmpty()
+        if (exists) {
             recordSecurityObservation(c, error)
         }
         c.commit()
-    } catch (_: Exception) {
+        persisted = exists
+        metrics.record(if (exists) SecurityObservationRecordResult.PERSISTED else SecurityObservationRecordResult.MISSING_USER)
+    } catch (failure: Exception) {
         runCatching { c.rollback() }
-        LoggerFactory.getLogger("ru.zhiv.security.observations").warn("Could not persist rejected security observation: {}", error.kind.name)
+        if (failure is SQLException && failure.sqlState == "55P03") {
+            metrics.record(SecurityObservationRecordResult.BUSY)
+        } else {
+            metrics.record(SecurityObservationRecordResult.FAILED)
+            warnObservationFailure()
+        }
+    } finally {
+        budget.release(key, persisted)
     }
 }
 

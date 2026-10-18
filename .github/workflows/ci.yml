@@ -215,6 +215,18 @@ jobs:
           docker compose -f deploy/compose.yml run --rm --no-deps --entrypoint /bin/promtool prometheus check config /etc/prometheus/prometheus.yml
           docker compose -f deploy/compose.yml run --rm --no-deps --entrypoint /bin/promtool prometheus check rules /etc/prometheus/alerts.yml
 
+      - name: Validate optional alert delivery without sending notifications
+        run: |
+          mkdir -p deploy/.secrets/alerts
+          chmod 755 deploy/.secrets/alerts
+          printf '%s\n' 'https://alerts.example.invalid/ci-only' > deploy/.secrets/alerts/webhook_url
+          chmod 444 deploy/.secrets/alerts/webhook_url
+          python3 scripts/check-alert-delivery.py
+          docker compose -f deploy/compose.yml -f deploy/monitoring/alerting.compose.yml config --format json | python3 scripts/check-deploy-perimeter.py
+          docker compose -f deploy/compose.yml -f deploy/monitoring/alerting.compose.yml run --rm --no-deps --entrypoint /bin/amtool alertmanager check-config /etc/alertmanager/alertmanager.yml
+          docker compose -f deploy/compose.yml -f deploy/monitoring/alerting.compose.yml run --rm --no-deps --entrypoint /bin/promtool prometheus check config /etc/prometheus/prometheus.yml
+          docker compose -f deploy/compose.yml -f deploy/monitoring/alerting.compose.yml run --rm --no-deps --entrypoint /bin/promtool prometheus check rules /etc/prometheus/alert-delivery.yml
+
       - name: Reproduce a checkout with restrictive file permissions
         run: chmod --recursive go-rwx public
 

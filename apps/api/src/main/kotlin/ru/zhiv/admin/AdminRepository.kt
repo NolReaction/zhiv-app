@@ -64,6 +64,7 @@ data class AdminGrantRequest(val requestId: String, val confirmationPublicId: St
 data class AdminGrantReceipt(val requestId: String, val kind: String, val rewardId: String, val granted: Boolean, val createdAt: String)
 
 interface AdminRepository {
+    suspend fun trafficPlayers(sessionHash: ByteArray, ids: List<UUID>): List<ru.zhiv.observability.TrafficPlayer> = throw UnsupportedOperationException()
     suspend fun security(sessionHash: ByteArray, targetPublicId: String): AdminSecurityObservations = throw UnsupportedOperationException()
     suspend fun grantEconomy(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminEconomyGrantRequest): AdminEconomyGrantReceipt = throw UnsupportedOperationException()
     suspend fun adjustEconomy(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminEconomyAdjustmentRequest): AdminEconomyGrantReceipt = throw UnsupportedOperationException()

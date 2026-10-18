@@ -67,7 +67,10 @@ test("cross-site wrong content-type forged gift and excessive bodies leave walle
 });
 
 test("intentional onboarding completion credits 100 visible pearls and 1000 coins once without consuming daily", async () => {
-  const p = player(), before = economy.getDevEconomy(p.token);
+  const p = player(), initial = economy.getDevEconomy(p.token);
+  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory.berries = 1;
+  const before = economy.commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
+    expectedRevision: initial.revision, action: "complete_resident_order", targetId: "tutorial_first_order" }).state;
   const request = { ...command(p), kind: "onboarding" };
   for (let visit = 0; visit < 3; visit++) {
     const preview = await (await GET(read())).json();
@@ -93,6 +96,8 @@ test("intentional onboarding completion credits 100 visible pearls and 1000 coin
 
 test("onboarding reward trusts no client sums skipped states clocks or other owner", async () => {
   const p = player(), before = economy.getDevEconomy(p.token), request = { ...command(p), kind: "onboarding" };
+  const early = await POST(post(request));
+  assert.equal(early.status, 409); assert.equal((await early.json()).code, "ONBOARDING_REWARD_UNAVAILABLE");
   for (const extra of [{ reward: { coins: 100000 } }, { pearls: 100 }, { skipped: true }, { completed: true }, { now: 0 }, { achievementId: "explorer", level: 1 }]) {
     assert.equal((await POST(post({ ...request, ...extra }))).status, 400);
   }

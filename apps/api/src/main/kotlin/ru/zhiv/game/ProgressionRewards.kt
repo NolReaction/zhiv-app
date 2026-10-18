@@ -72,6 +72,13 @@ object ProgressionRewardRules {
     val daily = catalog.daily
     val onboarding = catalog.onboarding
     val achievementPearls = catalog.achievementPearls
+    /** The course already requires this server-confirmed lesson. Merely opening
+     * screens, a local completion flag or an administrative building grant is not proof.
+     * Preserve the legacy multi-order first step and its merge/read projection. */
+    fun onboardingEligible(state: EconomyState): Boolean {
+        val progress=EconomyTutorialOrders.normalize(state).tutorialOrder
+        return progress.completed || progress.step>0
+    }
     init {
         require(catalog.version==4 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
         // One visible pearl is two integral wallet units; this is 100 visible pearls.

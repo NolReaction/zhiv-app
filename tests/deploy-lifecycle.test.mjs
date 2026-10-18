@@ -29,31 +29,41 @@ test("both build commands share the same immutable embedded ID and public status
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-async function simulateDeploy(failCommand = "") {
+async function simulateDeploy(failCommand = "", { alerts = false, webhook = "https://alerts.example.invalid/private-test" } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "zhiv-deploy-test-"));
   const project = join(directory, "app");
   await mkdir(join(project, "scripts"), { recursive: true });
   await mkdir(join(project, "deploy/runtime"), { recursive: true });
   await mkdir(join(directory, "bin"));
   await copyFile(join(repository, "scripts/deploy-update.sh"), join(project, "scripts/deploy-update.sh"));
+  if (alerts) {
+    await copyFile(join(repository, "scripts/check-alert-delivery.py"), join(project, "scripts/check-alert-delivery.py"));
+    await mkdir(join(project, "deploy/.secrets"), { mode: 0o700 });
+    await mkdir(join(project, "deploy/.secrets/alerts"));
+    await writeFile(join(project, "deploy/.secrets/alerts/webhook_url"), `${webhook}\n`, { mode: 0o444 });
+    await writeFile(join(project, "deploy/.secrets/alerts/enabled"), "");
+  }
   await writeFile(join(directory, "bin/git"), '#!/bin/sh\nif [ "$1" = rev-parse ]; then echo abcdef123456; fi\n', { mode: 0o755 });
   // Model sudo's environment reset even when this test runner itself is root.
   await writeFile(join(directory, "bin/docker"), '#!/bin/sh\nunset APP_BUILD_ID\nexec node -- "$0.js" "$@"\n', { mode: 0o755 });
   await writeFile(join(directory, "bin/docker.js"), `
 const fs = require("node:fs");
 const args = process.argv.slice(2);
-const command = args.slice(5).join(" ");
+let offset = 1;
+while (["--env-file", "-f", "--profile"].includes(args[offset])) offset += 2;
+const commandArgs = args.slice(offset);
+const command = commandArgs.join(" ");
 const root = process.cwd() + "/deploy/runtime/";
 const status = fs.existsSync(root+"app-status.json") ? JSON.parse(fs.readFileSync(root+"app-status.json","utf8")) : null;
-fs.appendFileSync(process.env.DEPLOY_TEST_LOG, JSON.stringify({command,status,gated:fs.existsSync(root+"maintenance"),environmentBuildId:process.env.APP_BUILD_ID ?? null})+"\\n");
+fs.appendFileSync(process.env.DEPLOY_TEST_LOG, JSON.stringify({command,options:args.slice(0,offset),status,gated:fs.existsSync(root+"maintenance"),environmentBuildId:process.env.APP_BUILD_ID ?? null})+"\\n");
 if (process.env.DEPLOY_TEST_FAIL && command.includes(process.env.DEPLOY_TEST_FAIL)) process.exit(42);
-if (args[5] === "build") {
+if (commandArgs[0] === "build") {
   const buildArguments = args.filter((argument, index) => args[index - 1] === "--build-arg");
   const explicitId = buildArguments.find(argument => argument.startsWith("APP_BUILD_ID="))?.slice("APP_BUILD_ID=".length);
   // app-build.mjs generates a fresh ID when Docker receives no release ID.
   fs.writeFileSync(root+"built-status.json", JSON.stringify({schemaVersion:1,buildId:explicitId || require("node:crypto").randomUUID(),maintenance:false}));
 }
-if (args[5] === "exec" && args.some(argument => argument.startsWith("EXPECTED_BUILD_ID="))) {
+if (commandArgs[0] === "exec" && args.some(argument => argument.startsWith("EXPECTED_BUILD_ID="))) {
   const expected = args.find(argument => argument.startsWith("EXPECTED_BUILD_ID=")).slice("EXPECTED_BUILD_ID=".length);
   const status = JSON.parse(fs.readFileSync(root+"built-status.json", "utf8"));
   const script = args[args.indexOf("node") + 2];
@@ -67,6 +77,7 @@ if (args[5] === "exec" && args.some(argument => argument.startsWith("EXPECTED_BU
 }
 if (command.includes("pg_dump")) process.stdout.write("verified-backup");
 if (command.includes("pg_restore")) fs.readFileSync(0);
+if (command === "ps --services --status running" && process.env.DEPLOY_TEST_ALERTS === "yes") process.stdout.write("prometheus\\n");
 `);
   await writeFile(join(directory, "bin/flock"), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   // The real script uses sudo for non-root operators; this shim only invokes our fake docker.
@@ -74,11 +85,11 @@ if (command.includes("pg_restore")) fs.readFileSync(0);
   const log = join(directory, "events.jsonl");
   const result = spawnSync("bash", [join(project, "scripts/deploy-update.sh")], {
     cwd: project, encoding: "utf8", timeout: 20_000,
-    env: { ...process.env, PATH: `${join(directory, "bin")}:${process.env.PATH}`, DEPLOY_TEST_LOG: log, DEPLOY_TEST_FAIL: failCommand },
+    env: { ...process.env, PATH: `${join(directory, "bin")}:${process.env.PATH}`, DEPLOY_TEST_LOG: log, DEPLOY_TEST_FAIL: failCommand, DEPLOY_TEST_ALERTS: alerts ? "yes" : "no" },
   });
   assert.notEqual(result.error?.code, "ETIMEDOUT", result.stderr);
-  const events = (await readFile(log, "utf8").catch(() => { throw new Error(`Deploy simulator did not start: ${result.stderr}`); }))
-    .trim().split("\n").map(line => JSON.parse(line));
+  const events = (await readFile(log, "utf8").catch(() => ""))
+    .trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
   return { directory, project, result, events };
 }
 
@@ -106,6 +117,56 @@ test("deployment builds and backs up live, gates before stopping API, then reope
     const ready = JSON.parse(await readFile(join(run.project, "deploy/runtime/app-status.json"), "utf8"));
     assert.equal(ready.maintenance, false);
     assert.equal(ready.buildId, expected.status.buildId);
+    await assert.rejects(access(join(run.project, "deploy/runtime/maintenance")));
+  } finally { await rm(run.directory, { recursive: true, force: true }); }
+});
+
+test("optional alert delivery survives deploy recreation and notifier failure does not close a healthy game", async () => {
+  for (const failCommand of ["", "90 prometheus node-exporter alertmanager"]) {
+    const run = await simulateDeploy(failCommand, { alerts: true });
+    try {
+      assert.equal(run.result.status, 0, run.result.stderr);
+      assert.ok(run.events.length > 10);
+      assert.ok(run.events.every(event => event.options.includes("deploy/monitoring/alerting.compose.yml")));
+      const validation = run.events.find(event => event.command.includes("amtool"));
+      assert.equal(validation.gated, false, "receiver validation must precede maintenance");
+      assert.ok(run.events.some(event => event.command.includes("90 prometheus node-exporter alertmanager")));
+      assert.equal(JSON.parse(await readFile(join(run.project, "deploy/runtime/app-status.json"), "utf8")).maintenance, false);
+      await assert.rejects(access(join(run.project, "deploy/runtime/maintenance")));
+      if (failCommand) assert.match(run.result.stderr, /External alert delivery did not start/);
+    } finally { await rm(run.directory, { recursive: true, force: true }); }
+  }
+});
+
+test("collector validation or recreation failure happens after reopening and cannot gate a healthy game", async () => {
+  for (const failCommand of ["check rules /etc/prometheus/alerts.yml", "--force-recreate --wait --wait-timeout 90 prometheus"]) {
+    const run = await simulateDeploy(failCommand, { alerts: true });
+    try {
+      assert.equal(run.result.status, 0, run.result.stderr);
+      const failed = run.events.find(event => event.command.includes(failCommand));
+      assert.ok(failed, "the requested failure must actually execute");
+      assert.equal(failed.gated, false);
+      assert.equal(failed.status.maintenance, false);
+      const applicationReady = run.events.findIndex(event => event.command.includes("EXPECTED_BUILD_ID="));
+      assert.ok(run.events.indexOf(failed) > applicationReady);
+      assert.match(run.result.stderr, /WARNING: Monitoring/);
+      assert.ok(!run.events.some(event => event.command.includes("90 prometheus node-exporter alertmanager")), "a later optional startup must not bypass the failed collector validation/restart");
+      assert.equal(JSON.parse(await readFile(join(run.project, "deploy/runtime/app-status.json"), "utf8")).maintenance, false);
+      await assert.rejects(access(join(run.project, "deploy/runtime/maintenance")));
+      if (failCommand.startsWith("check rules")) {
+        assert.ok(!run.events.some(event => event.command.includes("--force-recreate --wait --wait-timeout 90 prometheus")), "invalid rules must not force-restart the running collector");
+      }
+    } finally { await rm(run.directory, { recursive: true, force: true }); }
+  }
+});
+
+test("bad optional notification secrets fail before Docker or maintenance without disclosing the destination", async () => {
+  const secret = "http://private.example.invalid/SENSITIVE_TOKEN";
+  const run = await simulateDeploy("", { alerts: true, webhook: secret });
+  try {
+    assert.equal(run.result.status, 1);
+    assert.equal(run.events.length, 0);
+    assert.ok(!(run.result.stdout + run.result.stderr).includes("SENSITIVE_TOKEN"));
     await assert.rejects(access(join(run.project, "deploy/runtime/maintenance")));
   } finally { await rm(run.directory, { recursive: true, force: true }); }
 });
