@@ -19,6 +19,7 @@ import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./constru
 import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget, leaftailArrivalGuideTarget } from "./map-guide-target";
 import { createMapSceneRehearsal } from "./map-scene-rehearsal";
 import { worldFrameDue } from "./frame-timing";
+import { sameSceneOptions } from "./scene-options";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -666,6 +667,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     },
     setTime(now: number) { naturalHabitat.setTime(now); },
     update(next: SceneOptions) {
+      // Camera/UI publications can rebuild the wrapper object while all game
+      // inputs remain unchanged. Reconfiguring would stop the simulation RAF
+      // and discard its previous timestamp on every selected-object pan.
+      if (disposed || sameSceneOptions(options, next)) return;
       options = next;
       visibility();
     },

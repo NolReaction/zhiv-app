@@ -30,6 +30,66 @@ const INK = { mochlik: "#667847", plesk: "#417d86", builder: "#987044",
   lopukh: "#94714b", kamneshmyg: "#657887", leaftail: "#947047" } as const;
 const PADDING = 10, VERTICAL_PADDING = 8, LINE_HEIGHT = 17, LABEL_HEIGHT = 13, MAX_LINES = 2;
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
+type SpeechTextLayout = { lines: string[]; widths: number[]; truncated: boolean };
+type SpeechTextLayoutReader = (text: string, width: number) => SpeechTextLayout;
+const TEXT_LAYOUT_LIMIT = 48, TEXT_MEASURE_LIMIT = 512;
+const fontEpochs = new WeakMap<FontFaceSet, { value: number }>();
+const textCaches = new WeakMap<CanvasRenderingContext2D, {
+  fonts: FontFaceSet | undefined; epoch: number; typography: string;
+  layouts: Map<string, SpeechTextLayout>; widths: Map<string, number>;
+}>();
+
+function fontEpoch(fonts: FontFaceSet | undefined) {
+  if (!fonts) return 0;
+  let epoch = fontEpochs.get(fonts);
+  if (!epoch) {
+    epoch = { value: 0 };
+    fontEpochs.set(fonts, epoch);
+    const current = epoch;
+    // Listeners retain only the shared revision, never a canvas or its cache.
+    const invalidate = () => { current.value++; };
+    fonts.addEventListener?.("loading", invalidate);
+    fonts.addEventListener?.("loadingdone", invalidate);
+    fonts.addEventListener?.("loadingerror", invalidate);
+  }
+  return epoch.value;
+}
+
+function remember<K, V>(cache: Map<K, V>, key: K, value: V, limit: number): V {
+  if (cache.size >= limit) cache.delete(cache.keys().next().value!);
+  cache.set(key, value);
+  return value;
+}
+
+function measuredText(text: string, width: number, measure: (text: string) => number): SpeechTextLayout {
+  const wrapped = wrap(text, width, measure);
+  return { ...wrapped, widths: wrapped.lines.map(measure) };
+}
+
+function textLayoutReader(ctx: CanvasRenderingContext2D): SpeechTextLayoutReader {
+  const canvas = ctx.canvas;
+  const document = canvas?.ownerDocument ?? globalThis.document;
+  const fonts = document?.fonts, epoch = fontEpoch(fonts);
+  const typography = JSON.stringify([ctx.font, ctx.fontKerning, ctx.fontStretch, ctx.fontVariantCaps,
+    ctx.letterSpacing, ctx.wordSpacing, ctx.textRendering, ctx.direction, canvas?.lang, document?.documentElement?.lang]);
+  let cache = textCaches.get(ctx);
+  if (!cache || cache.fonts !== fonts || cache.epoch !== epoch || cache.typography !== typography) {
+    cache = { fonts, epoch, typography, layouts: new Map(), widths: new Map() };
+    textCaches.set(ctx, cache);
+  }
+  // Do not preserve fallback metrics while any document face is still loading.
+  if (fonts?.status === "loading") {
+    cache.layouts.clear(); cache.widths.clear();
+    return (text, width) => measuredText(text, width, value => ctx.measureText(value).width);
+  }
+  const { layouts, widths } = cache;
+  const measure = (text: string) => widths.get(text)
+    ?? remember(widths, text, ctx.measureText(text).width, TEXT_MEASURE_LIMIT);
+  return (text, width) => {
+    const key = JSON.stringify([text, width]);
+    return layouts.get(key) ?? remember(layouts, key, measuredText(text, width, measure), TEXT_LAYOUT_LIMIT);
+  };
+}
 
 function wrap(text: string, width: number, measure: (text: string) => number): { lines: string[]; truncated: boolean } {
   const words = text.replace(/\s+/gu, " ").trim().slice(0, 280).split(" ");
@@ -59,6 +119,11 @@ function wrap(text: string, width: number, measure: (text: string) => number): {
 /** Pure layout; never moves a resident, advances speech or mutates its frame. */
 export function layoutForestSpeech(frame: ForestSpeechCanvasFrame, viewport: ForestSpeechViewport,
   measure: (text: string) => number): ForestSpeechLayout | null {
+  return layoutSpeech(frame, viewport, (text, width) => measuredText(text, width, measure));
+}
+
+function layoutSpeech(frame: ForestSpeechCanvasFrame, viewport: ForestSpeechViewport,
+  readText: SpeechTextLayoutReader): ForestSpeechLayout | null {
   const { width, height } = viewport, { anchor, elapsed, duration } = frame;
   if (![width, height, anchor.x, anchor.y, elapsed, duration].every(Number.isFinite)
     || width <= 0 || height <= 0 || duration <= 0 || elapsed < 0 || elapsed >= duration
@@ -71,18 +136,18 @@ export function layoutForestSpeech(frame: ForestSpeechCanvasFrame, viewport: For
   const available = right - left;
   if (available < 92 || bottom - top < 60) return null;
   const contentWidth = Math.min(154, available - PADDING * 2);
-  let { lines } = wrap(frame.text, contentWidth, measure);
+  let { lines, widths } = readText(frame.text, contentWidth);
   if (!lines.length) return null;
   const rightX = anchor.x + 9;
   const rightWidth = Math.min(174, right - rightX);
   // A narrow, complete two-line reply keeps the bubble beside the head even
   // inside the circular view. Never trade away words just to force this side.
-  if (rightWidth >= 92 && lines.some(line => measure(line) + PADDING * 2 > rightWidth)) {
-    const compact = wrap(frame.text, rightWidth - PADDING * 2, measure);
-    if (!compact.truncated) lines = compact.lines;
+  if (rightWidth >= 92 && widths.some(width => width + PADDING * 2 > rightWidth)) {
+    const compact = readText(frame.text, rightWidth - PADDING * 2);
+    if (!compact.truncated) { lines = compact.lines; widths = compact.widths; }
   }
   const boxWidth = Math.min(available, Math.max(88,
-    ...lines.map(line => measure(line) + PADDING * 2)));
+    ...widths.map(width => width + PADDING * 2)));
   const boxHeight = VERTICAL_PADDING * 2 + LABEL_HEIGHT + lines.length * LINE_HEIGHT - 3;
   if (boxHeight > bottom - top) return null;
   const entrance = clamp(elapsed / .24, 0, 1);
@@ -97,7 +162,7 @@ export function layoutForestSpeech(frame: ForestSpeechCanvasFrame, viewport: For
   const x = clamp(preferredX, left, right - boxWidth);
   const y = clamp(side === "bottom" ? anchor.y - 14 - boxHeight + rise : anchor.y + 14 - rise, top, bottom - boxHeight);
   const tailX = clamp(anchor.x, x + 17, x + boxWidth - 17);
-  return { id: frame.id, speaker: frame.speaker, label: LABELS[frame.speaker], lines,
+  return { id: frame.id, speaker: frame.speaker, label: LABELS[frame.speaker], lines: lines.slice(),
     x, y, width: boxWidth, height: boxHeight, opacity,
     tail: { side, x: tailX, tipX: clamp(anchor.x, tailX - 28, tailX + 28),
       tipY: side === "bottom" ? y + boxHeight + 7 : y - 7 } };
@@ -129,9 +194,10 @@ export function drawForestSpeech(ctx: CanvasRenderingContext2D, frames: readonly
   ctx.save();
   try {
     ctx.font = FOREST_SPEECH_FONT;
+    const readText = textLayoutReader(ctx);
     let box: ForestSpeechLayout | null = null;
     for (const frame of frames) {
-      box = layoutForestSpeech(frame, viewport, text => ctx.measureText(text).width);
+      box = layoutSpeech(frame, viewport, readText);
       if (box) break;
     }
     if (!box || box.opacity <= 0) return box;

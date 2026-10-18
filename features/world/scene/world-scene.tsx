@@ -3,7 +3,7 @@ import type { EconomySceneProduction } from "@/features/world/state/economy/econ
 import type { WorldResidentId } from "@/features/world/characters/world-characters-model";
 import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
 import type { EconomySceneResidents, ResidentArrivalPresentation } from "@/features/world/state/economy/economy-residents-state";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { LoaderCircle } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
@@ -54,7 +54,9 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   const readyCallback = useRef(onReady);
   useEffect(() => { readyCallback.current = onReady; }, [onReady]);
   const { lampOn, dusk } = habitatLighting(now, timeZone);
-  const latest = useRef({ tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, garden });
+  const latest = useRef({ tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, garden });
+  const interactions = useRef({ onPlace, onResident });
+  useEffect(() => { interactions.current = { onPlace, onResident }; }, [onPlace, onResident]);
   const selection = useRef({ selectedObjectId, onObjectSelection });
   const objectRequest = useRef(openObjectRequest), handledObjectRequest = useRef<number | null>(null);
   const applyObjectRequest = useCallback(() => {
@@ -99,10 +101,10 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   }, [constructionActive, productionActive, completions, gains]);
   const loader = useRef<ReturnType<typeof createSceneLoader<Awaited<ReturnType<typeof createMapEngine>>>> | null>(null);
   useEffect(() => {
-    latest.current = { tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, garden };
+    latest.current = { tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, garden };
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     engine.current?.update({ tutorialActive, lampOn, dusk, paused: false, backgrounded: suspended, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
-  }, [tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, garden]);
+  }, [tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, garden]);
   useEffect(() => {
     // Report after the engine options update, also when a ready portal reopens
     // before its exit animation unmounts the canvas. The circle then yields.
@@ -128,10 +130,10 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
       async load(signal) {
         const mapModule = await import("./map-engine");
         signal.throwIfAborted();
-        return mapModule.createMapEngine(canvas.current!, options(), (place, selection) => latest.current.onPlace(place, selection), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), signal,
+        return mapModule.createMapEngine(canvas.current!, options(), (place, selection) => interactions.current.onPlace(place, selection), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), signal,
           { top: topHud.current, bottom: bottomHud.current }, {
             onSelectionChange: value => selection.current.onObjectSelection?.(value),
-            onResident: id => latest.current.onResident?.(id),
+            onResident: id => interactions.current.onResident?.(id),
             objectAnchorsEnabled: anchorTracking.current.enabled,
             objectMarkerHeight: place => markerHeights.current.get(place) ?? CONSTRUCTION_MARKER.height,
             onObjectAnchorsChange: values => { if (!disposed) anchorStore.publish(values); },
@@ -199,7 +201,9 @@ function MapFeedback({ anchorStore, economy, onOpen, onOpenProduction, ready, hi
 }) {
   const anchors = useSyncExternalStore(anchorStore.subscribe, anchorStore.getSnapshot, anchorStore.getSnapshot);
   const garden = useGardenCollection();
-  const groups = mapProductionGroups(economy?.snapshot ?? null, economy?.now ?? NaN, garden);
+  const snapshot = economy?.snapshot ?? null, now = economy?.now ?? NaN;
+  // Camera anchors move independently of confirmed jobs, their clock and harvest.
+  const groups = useMemo(() => mapProductionGroups(snapshot, now, garden), [snapshot, now, garden]);
   const construction = economy?.snapshot?.jobs.find(job => job.kind === "construction");
   const constructionAnchors = anchors.filter(anchor => !groups.some(group => group.place === anchor.place));
   const reserved = constructionAnchors.filter(anchor => anchor.place === constructionMapPlace(construction?.targetId ?? ""));

@@ -854,6 +854,57 @@ test("60Hz browser frames keep both world presentation and simulation near 30Hz 
   } finally { probe?.release(); engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("selected camera updates keep the simulation clock and real lifecycle transitions still take effect", async () => {
+  const { createMapEngine, worldDevStore, connectForestSession, TILED_WORLD } = await modules({ sites: [clearingHome] });
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const canvas = env.surface(393, 852), selections = [];
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "selected-pan-account",
+      residentArrival: { seen: true, enabled: false, onComplete: assert.fail },
+      merchantArrival: { seen: true, enabled: false, onComplete: assert.fail } };
+    const repack = () => ({ ...initial, residentArrival: { ...initial.residentArrival }, merchantArrival: { ...initial.merchantArrival } });
+    const loading = createMapEngine(canvas, initial, assert.fail, [], undefined, {}, { onSelectionChange: value => selections.push(value) });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    engine.control("home"); engine.setSelectedObject("home");
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const elapsed = probe.state.elapsed;
+    const pointer = { pointerId: 1, pointerType: "touch", button: 0, clientX: 196, clientY: 426 };
+    canvas.events.get("pointerdown")({ ...pointer, type: "pointerdown" });
+    for (let frame = 1; frame <= 120; frame++) {
+      canvas.events.get("pointermove")({ ...pointer, type: "pointermove", clientX: 196 + (frame % 2 ? 8 : -8) });
+      env.tick(frame * 1000 / 60);
+      // Mirrors a UI render/effect after the selected popup's new screen position.
+      engine.update(repack());
+    }
+    canvas.events.get("pointerup")({ ...pointer, type: "pointerup", clientX: 188 });
+    assert.ok(selections.filter(Boolean).length >= 100, "the test follows a selected building through actual camera movement");
+    approximately(probe.state.elapsed - elapsed, 118 / 60, "no-op updates cannot repeatedly discard the simulation timestamp");
+    assert.equal(env.frames.size, 2, "one map RAF and one simulation RAF remain scheduled");
+
+    engine.update({ ...repack(), paused: true });
+    assert.equal(env.frames.size, 0);
+    const frozen = probe.state.elapsed, frozenTimestamp = probe.state.timestamp;
+    engine.update({ ...repack(), paused: true }); env.tick(5000);
+    assert.equal(probe.state.elapsed, frozen);
+    engine.update({ ...repack(), backgrounded: true });
+    assert.equal(env.frames.size, 0);
+    engine.setTime(200_000);
+    assert.equal(probe.state.timestamp, frozenTimestamp, "hidden time is buffered without advancing the scene");
+    engine.update({ ...repack(), reducedMotion: true });
+    assert.equal(env.frames.size, 0);
+    dragMap(canvas, 20, 10);
+    assert.equal(probe.state.elapsed, frozen, "reduced-motion camera redraws remain independent of simulation");
+    assert.equal(env.frames.size, 0);
+    engine.update({ ...repack(), dusk: true });
+    assert.equal(env.frames.size, 2);
+    env.tick(6000); env.tick(6034);
+    approximately(probe.state.elapsed - frozen, .034, "resume retains the existing no-catch-up clock policy");
+    assert.ok(probe.state.dusk > 0, "changed lighting options reach the natural scene");
+    approximately(probe.state.timestamp, 200_034, "buffered time survives no-op wrappers and is applied on resume");
+  } finally { probe?.release(); engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
 test("construction anchor projection can be suspended until a visible timer or completion effect needs it", async () => {
   const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
   const env = browser(); let engine;
@@ -1621,4 +1672,31 @@ test("shared DEV transitions apply once and pause, reduced motion and account ch
     assert.equal(other.state.animation, null); assert.equal(other.state.wetness, 0);
     await flush(); assert.equal(env.frames.size, 2, "different accounts and anonymous scenes remain independent");
   } finally { probes.forEach(probe => probe.release()); scenes.forEach(scene => scene.dispose()); worldDevStore.reset(); env.restore(); }
+});
+
+test("optional artwork preparation starts after ready and stops for pause, hidden tabs, account changes and disposal", async () => {
+  const home = { id: "home", label: "Дом", bounds: { x: 20, y: 20, width: 80, height: 80 },
+    anchor: { x: 60, y: 100 }, entry: { x: 60, y: 110 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [{ level: 1, label: "Дом", image: "/idle-home.webp" }] };
+  const { mountHabitat } = await modules({ sites: [home] });
+  const env = browser(), idle = new Map(); let scene, serial = 0, ready = 0;
+  window.requestIdleCallback = callback => { idle.set(++serial, callback); return serial; };
+  window.cancelIdleCallback = id => idle.delete(id);
+  const fire = () => { const [id, callback] = idle.entries().next().value; idle.delete(id); callback({ timeRemaining: () => 0 }); };
+  try {
+    scene = mountHabitat(env.surface(), options, { activity() {}, failure: assert.fail, ready() { ready++; assert.equal(idle.size, 0); } });
+    assert.equal(idle.size, 0); env.finishPath("/test-ground.webp"); await flush();
+    assert.equal(ready, 1); assert.equal(idle.size, 0, "optional artwork has not downloaded yet");
+    env.finishPath("/idle-home.webp"); await flush(); assert.equal(idle.size, 1);
+    scene.configure({ ...options, paused: true }); assert.equal(idle.size, 0);
+    scene.configure(options); assert.equal(idle.size, 1);
+    fire(); assert.equal(idle.size, 1, "a busy frame postpones optional work");
+    env.visibility(true); assert.equal(idle.size, 0);
+    env.visibility(false); assert.equal(idle.size, 1);
+    const stale = [...idle.values()][0];
+    scene.configure({ ...options, presenceKey: "new-artwork-owner" });
+    assert.equal(idle.size, 0, "a different account cancels work owned by the old scene");
+    stale({ timeRemaining: () => 10 }); assert.equal(idle.size, 0);
+    scene.dispose(); scene.configure(options); assert.equal(idle.size, 0); assert.equal(env.frames.size, 0);
+  } finally { scene?.dispose(); env.restore(); }
 });

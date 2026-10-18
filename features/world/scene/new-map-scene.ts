@@ -98,6 +98,7 @@ import { createWorldAudioController } from "@/features/world/audio/world-audio-c
 import { quarryAudioWorking, type WorldAudioCamera } from "@/features/world/audio/world-audio-frame";
 import { drawWorldAudioDebug } from "@/features/world/audio/world-audio-debug";
 import { worldArtworkUrls } from "./world-artwork";
+import { createArtworkPreparation } from "./artwork-preparation";
 import { drawResidentHomeIndicator } from "@/features/world/characters/resident-home-effects";
 import { drawLopukhWoodpile } from "@/features/world/characters/lopukh/lopukh-woodpile-painter";
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
@@ -437,6 +438,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings));
   let trees = createForestTreeInteractions(world);
   let visuals = visualsFor(accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings)), requestedKey: string | null = null, artworkVersion = 0;
+  let artworkPreparation: ReturnType<typeof createArtworkPreparation> | null = null;
   let unsubscribe = () => {};
   let frame = 0, previous = 0;
   let configuredTimestamp = Number.isFinite(initial.serverNow) ? initial.serverNow! : null;
@@ -1044,6 +1046,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
   }
   function stop() {
+    artworkPreparation?.pause();
     advanceStaticSpeech();
     cancelAnimationFrame(frame); frame = 0; previous = 0; cancelReactionTimer();
     if (speechTimer !== null) { clearTimeout(speechTimer); speechTimer = null; }
@@ -1114,6 +1117,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function resume() {
     syncOwner();
+    if (active()) artworkPreparation?.resume(); else artworkPreparation?.pause();
     if (!active() || !session.isOwner() || reducedMotion(options, dev)) clearForestTreeInteractions(trees);
     if (!active() || !session.isOwner()) return;
     waterContacts(false);
@@ -1161,6 +1165,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   document.addEventListener("visibilitychange", visibilityChanged);
   function dispose() {
     if (disposed) return;
+    artworkPreparation?.dispose(); artworkPreparation = null;
     disposed = true; artworkVersion++; stop(); clearForestTreeInteractions(trees); unsubscribe(); unsubscribeAudioDebug(); unsubscribeLightingEditor(); audio.dispose(); observer.disconnect(); art = null;
     residentDiagnosticsStore.clear(options.presenceKey ?? "forest", residentDiagnosticsOwner);
     document.removeEventListener("visibilitychange", visibilityChanged); session.release({ retain: !options.devRehearsal });
@@ -1172,6 +1177,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const key = JSON.stringify([options.view ?? "circle", Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image])]);
     if (key === requestedKey) return;
     requestedKey = key;
+    artworkPreparation?.dispose(); artworkPreparation = null;
     const version = ++artworkVersion;
     // A first circle needs only its visible artwork. Full-map entry and every
     // later geometry replacement still require a complete atomic scene.
@@ -1229,6 +1235,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (WORLD_DEV_ENABLED) worldDevStore.reportArtError(null);
       if (visible()) draw();
       if (first) callbacks.ready();
+      if (!disposed && version === artworkVersion) artworkPreparation = createArtworkPreparation(world, visuals, committed, active);
       resume();
       if (disposed || version !== artworkVersion || !background.length) return;
       // Start optional downloads only after ready. A failed remote building
@@ -1238,6 +1245,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         if (disposed || version !== artworkVersion) return;
         for (const result of results) if (result.status === "fulfilled") committed.set(...result.value);
         if (visible()) draw();
+        artworkPreparation?.dispose();
+        artworkPreparation = createArtworkPreparation(world, visuals, committed, active);
+        artworkPreparation.resume();
       });
     }).catch(error => {
       if (disposed || version !== artworkVersion) return;
@@ -1397,7 +1407,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (disposed) return;
       const identityChanged = next.presenceKey !== options.presenceKey;
       options = { ...next }; stop();
-      if (identityChanged) clearForestTreeInteractions(trees);
+      if (identityChanged) {
+        clearForestTreeInteractions(trees);
+        artworkPreparation?.dispose(); artworkPreparation = null;
+      }
       if (Number.isFinite(next.serverNow) && (identityChanged || next.serverNow !== configuredTimestamp)) setEconomicTime(next.serverNow!);
       if (identityChanged) { session.release(); session = connect(); state = session.state; pendingTimestamp = null; }
       syncOwner();

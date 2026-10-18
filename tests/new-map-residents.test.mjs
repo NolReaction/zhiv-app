@@ -1560,10 +1560,14 @@ test("map speech uses a transparent surface that follows DPR resizing and clears
     assert.deepEqual(speech.calls.findLast(call => call.method === "setTransform").args, [1.5, 0, 0, 1.5, 0, 0]);
     assert.ok(speech.calls.some(call => call.method === "clearRect" && call.args[2] === 360 && call.args[3] === 640));
     assert.ok(speech.calls.some(call => call.method === "fillText" && call.args[0] === "Мохлик"), "resizing preserves the active reply");
+    speech.calls.length = 0;
     for (const id of [...env.timers.keys()]) env.fireTimer(id);
-    speech.calls.length = 0; engine.update(options);
-    assert.ok(speech.calls.some(call => call.method === "clearRect" && call.args[2] === 360 && call.args[3] === 640));
-    assert.equal(speech.calls.some(call => call.method === "fillText"), false, "expired bubbles leave no stale glyphs above hints");
+    const finalClear = speech.calls.findLastIndex(call => call.method === "clearRect" && call.args[2] === 360 && call.args[3] === 640);
+    assert.ok(finalClear >= 0, "the finite expiry timer clears the speech surface without an options update");
+    assert.equal(speech.calls.slice(finalClear).some(call => call.method === "fillText"), false, "expired bubbles leave no stale glyphs above hints");
+    const expiryPaints = speech.calls.length;
+    engine.update(options);
+    assert.equal(speech.calls.length, expiryPaints, "equal scene options do not trigger an extra cleanup repaint");
     assert.equal(env.frames.size, 0, "reduced motion still uses finite expiry timers");
     engine.dispose();
     assert.deepEqual(speech.calls.at(-1), { method: "clearRect", args: [0, 0, 540, 960] });
@@ -1649,7 +1653,14 @@ test("a delayed speech font repaints static glyph metrics once without advancing
     worldDevStore.patch({ ...quietClearing, autoLife: false });
     const requests = []; let resolveFont, fontReady = false, glyphsUsingReadyFont = 0;
     const pendingFont = new Promise(resolve => { resolveFont = resolve; });
-    document.fonts = { load(font, text) { requests.push({ font, text }); return pendingFont; } };
+    const fonts = new EventTarget();
+    fonts.status = "loaded";
+    fonts.load = (font, text) => {
+      requests.push({ font, text }); fonts.status = "loading";
+      fonts.dispatchEvent(new Event("loading"));
+      return pendingFont;
+    };
+    document.fonts = fonts;
     const canvas = env.surface(), disposedCanvas = env.surface();
     canvas.context.measureText = text => {
       if (fontReady) glyphsUsingReadyFont++;
@@ -1673,7 +1684,8 @@ test("a delayed speech font repaints static glyph metrics once without advancing
     const timers = [...env.timers.keys()], before = rendered, deadBefore = disposedRendered;
     const callsBefore = canvas.calls.length, deadCallsBefore = disposedCanvas.calls.length;
     const oldTextWidth = canvas.calls.findLast(call => call.method === "fillText").args[3];
-    fontReady = true; resolveFont([{}]); await flush();
+    fontReady = true; fonts.status = "loaded"; resolveFont([{}]);
+    fonts.dispatchEvent(new Event("loadingdone")); await flush();
     assert.equal(rendered, before + 1, "font readiness invalidates the still canvas exactly once");
     assert.ok(glyphsUsingReadyFont > 0, "the repaint measures real loaded glyphs rather than retaining fallback line widths");
     const repainted = canvas.calls.slice(callsBefore);
