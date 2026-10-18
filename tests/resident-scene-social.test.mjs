@@ -31,7 +31,7 @@ function factsState() {
 function routeState() {
   const state = { social: createForestSocial("scene-routes"), builderMind: createBuilderMind(scene),
     villagers: createForestVillagers(scene), economyResidents: access() };
-  configureForestVillagers(state.villagers, scene, { confirmed: true, buildings: levels, arrivalSeen: true, leaftailReady: true, now });
+  configureForestVillagers(state.villagers, scene, { confirmed: true, buildings: levels, arrivalSeen: true, lopukhArrivalSeen: true, leaftailReady: true, now });
   return state;
 }
 

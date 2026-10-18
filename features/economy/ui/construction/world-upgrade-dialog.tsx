@@ -110,7 +110,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
       const level = state.catalog.buildings.find(building => building.id === upgrade.stationId)?.levels.find(level => level.level === 1);
       cards.push({ id: `building:${upgrade.stationId}`, label: upgrade.name, details: level && requirementDetails(worldRequirements(level), "Для этой постройки"), content: <>
         <span className={styles.benefitArt} data-kind="building"><ConstructionBuildingArt stationId={upgrade.stationId} level={upgrade.level} /></span>
-        <span className={styles.benefitKind}>Новая постройка</span><strong className={styles.benefitTitle}>{upgrade.name}</strong><span className={styles.benefitDescription}>Можно обустроить · ур. 1</span>
+        <span className={styles.benefitKind}>{upgrade.stationId === "dryer" ? "Развитие костра" : "Новая постройка"}</span><strong className={styles.benefitTitle}>{upgrade.name}</strong><span className={styles.benefitDescription}>{upgrade.stationId === "dryer" ? "Можно улучшить · ур. 1" : "Можно обустроить · ур. 1"}</span>
         {level && requirements(worldRequirements(level))}
       </> });
     }
@@ -213,7 +213,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
       <div className={styles.heading}>
         <Dialog.Title data-upgrade-heading tabIndex={-1}>{name}</Dialog.Title>
         <Dialog.Description className={styles.srOnly}>{!state ? "Уровни, условия и стоимость улучшения." : construction ? "Улучшение уже оплачено. Здесь можно следить за работой и завершить её." : target ? "Следующий уровень: возможности, условия и стоимость." : "Ваш текущий уровень и возможности постройки."}</Dialog.Description>
-        {state ? <div className={styles.levels}><span>{restoration ? current ? "Восстановлено" : "Разрушено" : current ? `Уровень ${current}` : "Не обустроено"}</span>{target ? <><ArrowRight size={12} aria-hidden="true" /><strong>{restoration ? "Восстановление" : `Уровень ${target.level}`}</strong></> : <strong><Check size={12} aria-hidden="true" />{restoration ? "Готово" : "Максимум"}</strong>}</div> : <span className={styles.muted}>Загружаем хозяйство…</span>}
+        {state ? <div className={styles.levels}><span>{restoration ? current ? "Восстановлено" : "Разрушено" : current || stationId === "dryer" ? `Уровень ${current}` : "Не обустроено"}</span>{target ? <><ArrowRight size={12} aria-hidden="true" /><strong>{restoration ? "Восстановление" : `Уровень ${target.level}`}</strong></> : <strong><Check size={12} aria-hidden="true" />{restoration ? "Готово" : "Максимум"}</strong>}</div> : <span className={styles.muted}>Загружаем хозяйство…</span>}
       </div>
       <button type="button" className={styles.close} aria-label="Закрыть окно улучшения" onClick={onClose}><X size={19} aria-hidden="true" /></button>
     </header>
@@ -242,7 +242,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>{`Сыт · скорость +${meal.builderSpeedBps / 100}%`}</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>{`Сыт · скорость +${meal.builderSpeedBps / 100}%`}</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

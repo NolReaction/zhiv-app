@@ -138,9 +138,9 @@ test("the indoor caravan keeps its home effect without a window face or outdoor 
 test("a real Tiled rabbit unload creates one visible bounded woodpile without rewards, repeated delivery or hit targets", () => {
   const env = browser();
   try {
-    const levels = { ...live.initialPreviewLevels(live.TILED_WORLD), home: 3, quarry: 1 };
+    const levels = { ...live.initialPreviewLevels(live.TILED_WORLD), home: 3, quarry: 1, woodlot: 1 };
     const scene = live.previewWorldScene(live.TILED_WORLD, levels), villagers = live.createForestVillagers(scene);
-    live.configureForestVillagers(villagers, scene, { confirmed: true, buildings: levels, arrivalSeen: true, leaftailReady: true });
+    live.configureForestVillagers(villagers, scene, { confirmed: true, buildings: levels, arrivalSeen: true, lopukhArrivalSeen: true, leaftailReady: true });
     for (const id of ["kamneshmyg", "leaftail"]) villagers.residents[id].available = false;
     const rabbit = villagers.residents.lopukh, places = live.forestVillagerPlaces(scene, "lopukh");
     const economy = structuredClone(villagers.production), source = JSON.stringify(scene);

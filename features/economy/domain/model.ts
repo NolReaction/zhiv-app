@@ -165,10 +165,12 @@ export const economyCatalogSchema = z.object({
     level: z.number().int().min(1).max(100), seconds: count, cost: economyCostSchema, requiredHomeLevel: z.number().int().min(1).max(5),
     requiredBuildings, warehouseCapacity: count.positive().nullish(),
   })).max(100) })).max(100),
-  recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(), requiredHomeLevel: count.positive(),
+  recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(), baseCampfire: z.literal(true).optional(), requiredHomeLevel: count.positive(),
     maxBatch: count.positive().max(100).nullish(),
     fishInput: z.object({ itemIds: z.array(id).min(1).max(100).refine(ids => new Set(ids).size === ids.length) }).nullish(),
     requiredBuildings, requiredRecipes: quantities.default({}), seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
+    .refine(recipe => !recipe.baseCampfire || recipe.id === "cook_grilled_fish" && recipe.buildingId === "dryer" && recipe.buildingLevel === 1,
+      "Only grilled fish is available at the base campfire")
     .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && hasGardenBerryReward(recipe.rewards),
       "Berry collection requires a garden recipe with known berries")
     .refine(recipe => !recipe.fishInput || recipe.fishInput.itemIds.filter(itemId => (recipe.cost.items[itemId] ?? 0) > 0).length === 1,
@@ -243,6 +245,12 @@ export const economyCatalogSchema = z.object({
     invalid("Fish recipe choices must reference catalog fish");
 });
 export const economyCatalog = economyCatalogSchema.parse(catalogJson);
+
+/** Keep the positive wire level readable by older clients; the flag opens only the existing base fire. */
+export function recipeBuildingLevel(recipe: { id?: string; buildingId: string; buildingLevel: number; baseCampfire?: boolean }): number {
+  return recipe.baseCampfire === true && recipe.id === "cook_grilled_fish" && recipe.buildingId === "dryer" && recipe.buildingLevel === 1
+    ? 0 : recipe.buildingLevel;
+}
 export const economyBookCollectionSchema = z.object({
   finds: z.array(id).max(100).default([]), travelSeconds: count.max(ECONOMY_MAX_ITEMS).default(0), quarrySeconds: count.max(ECONOMY_MAX_ITEMS).default(0),
 }).default({ finds: [], travelSeconds: 0, quarrySeconds: 0 });

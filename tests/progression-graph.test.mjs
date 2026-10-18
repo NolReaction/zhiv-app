@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { recipeBuildingLevel } from "./helpers/recipe-level.mjs";
 
 const catalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
 // The real model schema supplies this default before graph construction.
@@ -26,7 +27,7 @@ const context = { exports: {}, require: specifier => {
     config.secondsPerPearl, moneyContext.exports.ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints) };
   if (specifier === "@/apps/api/src/main/resources/world/progression-rewards-catalog.json") return { default: JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8")) };
   assert.equal(specifier, "@/features/economy/domain/model");
-  return { economyCatalog: catalog };
+  return { economyCatalog: catalog, recipeBuildingLevel };
 } };
 vm.runInNewContext(code, context);
 const { progressionGraph: graph, buildProgressionGraph, getPrerequisiteIds, getProgressionResourceSource, buildingLabels, progressionLocations } = context.exports;
@@ -41,6 +42,18 @@ const { buildProgressionLayout, NODE_WIDTH, NODE_HEIGHT } = layoutContext.export
 const plain = value => JSON.parse(JSON.stringify(value));
 const node = id => graph.nodes.find(value => value.id === id);
 const hasEdge = (source, target, kind) => graph.edges.some(edge => edge.source === source && edge.target === target && edge.kind === kind);
+
+test("the base campfire exposes fish from level zero without requiring its paid improvement", () => {
+  const base = node("b:dryer:0"), fish = node("r:cook_grilled_fish");
+  assert.ok(base);
+  assert.equal(base.cost.coins, 0);
+  assert.equal(base.seconds, 0);
+  assert.equal(fish.level, 0);
+  assert.equal(fish.requirements.dryer, 0);
+  assert.ok(hasEdge(base.id, fish.id, "unlock"));
+  assert.equal(hasEdge("b:dryer:1", fish.id, "unlock"), false);
+  assert.equal(node("r:cook_compote").level, 1);
+});
 
 test("recipe prerequisites name their claimed products without repeating action verbs", () => {
   const strawberry = node("r:grow_strawberries");
@@ -67,8 +80,8 @@ function reachableIds(currentGraph, accepts) {
   return seen;
 }
 
-test("progression contains every catalog building level, recipe and exploration exactly once", () => {
-  assert.equal(graph.nodes.filter(value => value.kind === "building").length, catalog.buildings.reduce((sum, building) => sum + building.levels.length, 0));
+test("progression contains every catalog level, recipe and exploration plus the existing base fire exactly once", () => {
+  assert.equal(graph.nodes.filter(value => value.kind === "building").length, catalog.buildings.reduce((sum, building) => sum + building.levels.length, 0) + 1);
   assert.equal(graph.nodes.filter(value => value.kind === "recipe").length, catalog.recipes.length);
   assert.equal(graph.nodes.filter(value => value.kind === "exploration").length, catalog.explorations.length);
   for (const building of catalog.buildings) for (const level of building.levels) {
@@ -79,7 +92,7 @@ test("progression contains every catalog building level, recipe and exploration 
     assert.equal(value.seconds, level.seconds);
     if (level.warehouseCapacity) assert.equal(value.warehouseCapacity, level.warehouseCapacity);
     assert.deepEqual(Array.from(value.children).sort(), [
-      ...catalog.recipes.filter(recipe => recipe.buildingId === building.id && recipe.buildingLevel === level.level).map(recipe => `r:${recipe.id}`),
+      ...catalog.recipes.filter(recipe => recipe.buildingId === building.id && recipeBuildingLevel(recipe) === level.level).map(recipe => `r:${recipe.id}`),
       ...(building.id === "quarry" ? catalog.explorations.filter(route => route.requiredBuildings.quarry === level.level).map(route => `e:${route.id}`) : []),
     ].sort());
   }
@@ -89,7 +102,7 @@ test("progression contains every catalog building level, recipe and exploration 
     assert.deepEqual(plain(value.cost), recipe.cost);
     assert.deepEqual(plain(value.rewards), recipe.rewards);
     assert.equal(value.seconds, recipe.seconds);
-    assert(hasEdge(`b:${recipe.buildingId}:${recipe.buildingLevel}`, value.id, "unlock"));
+    assert(hasEdge(`b:${recipe.buildingId}:${recipeBuildingLevel(recipe)}`, value.id, "unlock"));
   }
   for (const exploration of catalog.explorations) {
     const value = node(`e:${exploration.id}`);

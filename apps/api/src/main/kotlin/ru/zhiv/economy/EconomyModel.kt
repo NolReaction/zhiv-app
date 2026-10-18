@@ -157,9 +157,15 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val requiredBuildings: Map<String, Int> = emptyMap(), val collection: EconomyCollectionSpec? = null,
     val maxBatch: Int? = null, val fishInput: EconomyRecipeFishInput? = null,
     val requiredRecipes: Map<String, Long> = emptyMap(),
+    val baseCampfire: Boolean? = null,
 ) {
-    init { require(collection == null || buildingId == "garden" &&
-        rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L }) }
+    init {
+        require(buildingLevel > 0)
+        require(baseCampfire == null || baseCampfire == true && id == "cook_grilled_fish" && buildingId == "dryer" && buildingLevel == 1)
+        require(collection == null || buildingId == "garden" &&
+            rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L })
+    }
+    val effectiveBuildingLevel: Int get() = if (baseCampfire == true) 0 else buildingLevel
 }
 @Serializable data class EconomyExploration(
     val id: String, val name: String, val description: String, val requiredHomeLevel: Int = 1,

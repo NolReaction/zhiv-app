@@ -2,7 +2,7 @@ import { ClipboardList, Hammer, RefreshCw } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { canStartTutorialWorkshop, workshopStarterCost } from "@/features/economy/domain/workshop-starter";
 import { tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
-import { WORLD_CHARACTERS } from "@/features/world/characters/world-characters-model";
+import { WORLD_CHARACTERS, worldResidentAvailable } from "@/features/world/characters/world-characters-model";
 import styles from "./world-onboarding.module.css";
 
 /** A quote from the shared catalog, never a receipt or an optimistic balance. */
@@ -41,8 +41,8 @@ export function WorkshopTutorialConstruction({ economy, isOnline }: { economy: E
 }
 
 /** Reusable detailed introduction only lists residents the player has already met. */
-export function NeighborIntroduction({ economy, quarryBuilt = false, leaftailAvailable = false }: {
-  economy: EconomyController; quarryBuilt?: boolean; leaftailAvailable?: boolean;
+export function NeighborIntroduction({ economy, quarryBuilt = false, leaftailAvailable = false, lopukhAvailable = false }: {
+  economy: EconomyController; quarryBuilt?: boolean; leaftailAvailable?: boolean; lopukhAvailable?: boolean;
 }) {
   if (!economy.snapshot) return null;
   const roles = {
@@ -53,8 +53,7 @@ export function NeighborIntroduction({ economy, quarryBuilt = false, leaftailAva
     leaftail: "торговец находками",
   };
   return <ul className={styles.neighbors} aria-label="Жители леса и знакомство с ними">
-    {WORLD_CHARACTERS.filter(character => character.id !== "kamneshmyg" || quarryBuilt)
-      .filter(character => character.id !== "leaftail" || leaftailAvailable).map(character => <li key={character.id} data-guide-neighbor={character.id}>
+    {WORLD_CHARACTERS.filter(character => worldResidentAvailable(character.id, quarryBuilt, leaftailAvailable, lopukhAvailable)).map(character => <li key={character.id} data-guide-neighbor={character.id}>
       <strong>{character.name}</strong> - {roles[character.id]}.
     </li>)}
   </ul>;

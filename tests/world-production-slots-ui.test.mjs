@@ -243,6 +243,38 @@ test("unfinished stations expose construction instead of slot purchases in the m
   }
 });
 
+test("the basic campfire exposes its existing capacity without selling extra slots before level one", () => {
+  hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
+  economy.snapshot.buildings.dryer = 0;
+  let tree = render(economy, "dryer");
+  assert.equal(elements(tree).filter(node => node.props["data-production-slot"]).length, 1);
+  assert.match(renderToStaticMarkup(tree), /Свободно 1 из 1/);
+  assert.equal(card(tree, 2), undefined);
+  economy.snapshot.jobs = [production("first-fish", "dryer", { recipeId: "cook_grilled_fish", rewards: { grilled_fish: 1 } })];
+  tree = render(economy, "dryer");
+  assert.match(renderToStaticMarkup(tree), /data-job-id="first-fish"/);
+  assert.match(renderToStaticMarkup(tree), /Свободно 0 из 1/);
+  economy.snapshot.productionSlots.dryer = 2;
+  assert.equal(elements(render(economy, "dryer")).filter(node => node.props["data-production-slot"]).length, 2, "previously earned places remain after an admin level change");
+  economy.snapshot.jobs = []; economy.snapshot.buildings.dryer = 1; delete economy.snapshot.productionSlots.dryer;
+  click(card(render(economy, "dryer"), 2));
+  assert.ok(buy(render(economy, "dryer")), "level one preserves the existing paid confirmation");
+  economy.snapshot.buildings.dryer = 0;
+  assert.equal(buy(render(economy, "dryer")), undefined, "an old purchase quote cannot bypass the building gate");
+  for (const entry of ["map", "hub"]) {
+    hooks.reset();
+    const parent = entry === "map" ? TestSlotMenuBody({ economy, onClose() {}, selection: { place: "campfire", objectId: "campfire.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 } })
+      : TestSlotProduction({ economy, focusId: "cook_compote", navigate() {} });
+    const nodes = elements(parent);
+    assert.equal(nodes.some(node => node.type === WorldStationSetup), false, entry);
+    assert.equal(nodes.some(node => node.type === WorldProductionSlots), true, entry);
+    if (entry === "hub") {
+      assert.deepEqual(nodes.filter(node => node.props.recipe).map(node => node.props.recipe.id), ["cook_grilled_fish"]);
+    }
+  }
+  assert.deepEqual(calls, []);
+});
+
 test("both entry points discard confirmation on station or owner changes, including return to the original context", () => {
   for (const entry of ["map", "hub"]) {
     const calls = [], economy = controller({ act: (...args) => calls.push(args) });

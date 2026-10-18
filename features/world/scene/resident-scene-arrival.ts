@@ -61,3 +61,24 @@ export function advanceSceneMerchantArrival(state: ForestSessionState, dt: numbe
   advanceLeaftailBoatArrival(boat, dt, { occupants });
   if (boat.completed) handOverMerchant(state);
 }
+
+/** Shared-session delivery claim survives remounts before the preference update. */
+export function announceSceneLopukhArrival(state: ForestSessionState, onComplete: () => void, current: () => boolean) {
+  const villagers = state.villagers;
+  if (!villagers?.lopukhArrivalCompleted) return;
+  const notice = villagers.lopukhCompletionNotice ??= { delivered: false };
+  if (notice.delivered) return;
+  if (notice.pending) {
+    queueMicrotask(() => {
+      if (!notice.delivered && !notice.pending && current()) announceSceneLopukhArrival(state, onComplete, current);
+    });
+    return;
+  }
+  const token = {}; notice.pending = token;
+  queueMicrotask(() => {
+    if (notice.pending !== token) return;
+    delete notice.pending;
+    if (!current()) return;
+    notice.delivered = true; onComplete();
+  });
+}

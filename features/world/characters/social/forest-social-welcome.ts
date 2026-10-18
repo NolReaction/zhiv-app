@@ -1,7 +1,7 @@
 import type { ForestConversation } from "./forest-conversations";
 import type { ForestSocialActor, ForestSocialState, ForestSpeaker } from "./forest-social";
 
-export type ForestWelcomeResident = "kamneshmyg" | "leaftail";
+export type ForestWelcomeResident = "lopukh" | "kamneshmyg" | "leaftail";
 export type ForestWelcomeRequest = { resident: ForestWelcomeResident; at: number; after: number; attempts: number };
 export const FOREST_WELCOME_LIMITS = { life: 240, retry: 20, attempts: 4, distance: 460 } as const;
 
@@ -42,7 +42,12 @@ export function rememberForestWelcome(state: ForestSocialState, resident: Forest
 const names = { builder: "Шишколап", plesk: "Плёска", lopukh: "Лопоух" } as const;
 export function forestWelcomeConversation(resident: ForestWelcomeResident, guest: ForestSpeaker): ForestConversation {
   const name = names[guest as keyof typeof names];
-  return { id: `welcome-${resident}-${guest}`, pair: `${guest}-${resident}`, purpose: "welcome", lines: resident === "kamneshmyg" ? [
+  return { id: `welcome-${resident}-${guest}`, pair: `${guest}-${resident}`, purpose: "welcome", lines: resident === "lopukh" ? [
+    { speaker: guest, text: `Привет! Я ${name}. Обживаешь лесной участок?` },
+    { speaker: resident, text: "Лопоух! Уши дорогу нашли, лапы догнали." },
+    { speaker: guest, text: "Будем знакомы. Покажу, где у нас костёр." },
+    { speaker: resident, text: "Спасибо! С дороги как раз песню допою." },
+  ] : resident === "kamneshmyg" ? [
     { speaker: guest, text: `Привет! Я ${name}. Мы тут соседи.` },
     { speaker: resident, text: "Камнешмыг. Рад знакомству, голубчик." },
     { speaker: guest, text: "С дороги устал? У костра отдохнёшь." },

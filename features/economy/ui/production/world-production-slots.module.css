@@ -3,6 +3,8 @@
 .heading h3 { margin: 0; font-size: 11px; font-weight: 600; }
 .heading > span { font-size: 10px; color: #59674d; font-variant-numeric: tabular-nums; }
 .track { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 5px; }
+.track[data-slot-columns="1"] { grid-template-columns: minmax(0, 1fr); }
+.track[data-slot-columns="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .slots.slots .slot { display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 4px; box-sizing: border-box; height: 118px; min-height: 118px; min-width: 0; padding: 6px 4px; border: 1px solid #b3bb8c; border-radius: 8px; background: #e2e5c5; color: #394d3e; text-align: center; font: inherit; font-size: 10px; line-height: 1.3; }
 .slot > span, .slot > strong { min-width: 0; overflow-wrap: anywhere; }
 .slotNumber { flex: 0 0 12px; align-self: stretch; font-size: 9px; line-height: 12px; font-weight: 400; color: #66704f; }

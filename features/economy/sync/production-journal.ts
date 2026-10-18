@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { economyCommandSchema, economyViewSchema, type EconomyCommand, type EconomyView } from "@/features/economy/domain/model";
+import { economyCommandSchema, economyViewSchema, recipeBuildingLevel, type EconomyCommand, type EconomyView } from "@/features/economy/domain/model";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 
@@ -41,7 +41,7 @@ export function safeProductionRecipe(state: EconomyView, targetId: string) {
 export function reserveProduction(state: EconomyView, entry: ProductionIntent): EconomyView | null {
   const recipe = safeProductionRecipe(state, entry.targetId);
   if (!recipe || state.jobs.length >= 18 || (state.buildings.home ?? 1) < recipe.requiredHomeLevel
-    || (state.buildings[recipe.buildingId] ?? 0) < recipe.buildingLevel
+    || (state.buildings[recipe.buildingId] ?? 0) < recipeBuildingLevel(recipe)
     || Object.entries(recipe.requiredBuildings).some(([id, level]) => (state.buildings[id] ?? 0) < level)
     || Object.entries(recipe.requiredRecipes).some(([id, count]) => (state.progression.recipes[id] ?? 0) < count)
     || state.jobs.some(job => job.targetId === recipe.buildingId && job.kind === "construction")

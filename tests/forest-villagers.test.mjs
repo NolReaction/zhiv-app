@@ -38,7 +38,7 @@ function fixture() {
 }
 function setup(scene = fixture(), config = {}) {
   const state = createForestVillagers(scene);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1, woodlot: 1 }, leaftailReady: true, arrivalSeen: true, now, ...config });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1, woodlot: 1 }, leaftailReady: true, arrivalSeen: true, lopukhArrivalSeen: true, now, ...config });
   return state;
 }
 function run(state, scene, seconds, environment = {}) {
@@ -76,7 +76,7 @@ test("miner remains hidden until confirmed quarry unlock and explicit free-world
   configureForestVillagers(state, scene, { confirmed: false, buildings: { home: 3, quarry: 9 }, allowArrival: true, now });
   assert.deepEqual(forestVillagerFrames(state), []); assert.equal(state.arrivalPending, false);
   configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 0 }, allowArrival: true, now });
-  assert.deepEqual(forestVillagerFrames(state).map(frame => frame.id), ["lopukh", "leaftail"]);
+  assert.deepEqual(forestVillagerFrames(state).map(frame => frame.id), ["leaftail"], "the unopened rabbit home keeps its resident hidden");
   configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, now });
   assert.equal(state.arrivalPending, true); assert.equal(state.arrivalPhase, "waiting");
   run(state, scene, 3); assert.equal(state.residents.kamneshmyg.available, false);
@@ -299,7 +299,7 @@ test("artwork handoff retains confirmed jobs against the supplied corrected serv
 });
 
 test("published Tiled geometry supports all residents and an actual northern miner arrival", () => {
-  const levels = { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1 };
+  const levels = { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1, woodlot: 1 };
   const scene = previewWorldScene(TILED_WORLD, levels), state = setup(scene, { buildings: levels, arrivalSeen: false, allowArrival: true });
   assert.deepEqual(forestVillagerFrames(state).map(frame => frame.id), ["lopukh", "kamneshmyg", "leaftail"]);
   assert.ok(state.residents.kamneshmyg.position.y < 50);
@@ -557,7 +557,7 @@ for (const role of ["host", "guest"]) test(`social ${role} waits for its own pri
 
 
 test("the actual Tiled rabbit cuts a tree, delivers in front of the facade, unloads promptly and rests without changing geometry", () => {
-  const levels = { ...initialPreviewLevels(TILED_WORLD), quarry: 1 };
+  const levels = { ...initialPreviewLevels(TILED_WORLD), quarry: 1, woodlot: 1 };
   const scene = previewWorldScene(TILED_WORLD, levels), saved = structuredClone(scene), state = setup(scene, { buildings: levels });
   const mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh"), plan = places.woodcutting;
   const house = scene.sites.find(site => site.id === "lopukh-home"), front = house.bounds.y + house.bounds.height + 44 * 45 / 48 + 2;

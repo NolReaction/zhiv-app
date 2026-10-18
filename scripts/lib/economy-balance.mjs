@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createLiquidation } from "./economy-math.mjs";
+import { createLiquidation, recipeBuildingLevel } from "./economy-math.mjs";
 
 /** Timed production can create value; an unattended bundle must not create
  * extra raw materials or outperform its unlocked elementary station jobs. */
@@ -9,7 +9,7 @@ export function auditProductionBalance(catalog) {
   const rows = [];
   const mining = catalog.explorations.filter(route => route.activity === "mining" && route.requiredBuildings?.quarry && route.id.startsWith("quarry_"));
   const station = recipe => recipe.buildingId ?? (recipe.activity === "mining" ? "quarry" : null);
-  const level = recipe => recipe.buildingLevel ?? recipe.requiredBuildings?.quarry;
+  const level = recipe => recipeBuildingLevel(recipe) ?? recipe.requiredBuildings?.quarry;
   const definitions = [...catalog.recipes, ...mining];
   for (const recipe of definitions) {
     const batchLimit = recipe.buildingId ? recipe.maxBatch : 1;
@@ -164,7 +164,7 @@ export function auditFourthStageBudget(catalog, requiredConstruction) {
   const expand = (itemId, count, path = new Set()) => {
     assert(!path.has(itemId), `Fourth stage recipe cycle at ${itemId}`);
     const recipe = catalog.recipes.filter(recipe => (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
-      a.requiredHomeLevel - b.requiredHomeLevel || a.buildingLevel - b.buildingLevel
+      a.requiredHomeLevel - b.requiredHomeLevel || recipeBuildingLevel(a) - recipeBuildingLevel(b)
       || Object.keys(a.requiredRecipes ?? {}).length - Object.keys(b.requiredRecipes ?? {}).length
       || a.id.localeCompare(b.id))[0];
     if (!recipe) return;

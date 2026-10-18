@@ -498,8 +498,8 @@ const compactVillagerFixture = () => {
     destinations: [{ id: "quarry", siteId: "quarry", position: { x: 730, y: 445 }, pauseSeconds: 15 }],
     water: { surfaces: [], exclusions: [] }, occluders: [], mushrooms: [] };
 };
-const confirmedVillagers = (ownerPublicId, revision = 1, quarry = 1, jobs = []) => ({ ownerPublicId, revision,
-  buildings: { quarry }, production: { ownerPublicId, revision, jobs } });
+const confirmedVillagers = (ownerPublicId, revision = 1, quarry = 1, jobs = [], woodlot = 0) => ({ ownerPublicId, revision,
+  buildings: { quarry, woodlot }, production: { ownerPublicId, revision, jobs } });
 async function finishVillagerArtwork(env) {
   for (let pass = 0; pass < 4; pass++) { while (env.pending.length) env.finish(); await flush(); }
 }

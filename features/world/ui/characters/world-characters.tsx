@@ -24,8 +24,8 @@ function UnknownResident() {
 }
 
 /** Only introduced residents expose their portrait, name and conversation. */
-export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false, leaftailAvailable = false, leaftailUnlocked = false, onCloseAutoFocus, focusedCharacter }: {
-  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void; quarryBuilt?: boolean;
+export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false, lopukhAvailable = false, lopukhUnlocked = false, leaftailAvailable = false, leaftailUnlocked = false, onCloseAutoFocus, focusedCharacter }: {
+  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void; quarryBuilt?: boolean; lopukhAvailable?: boolean; lopukhUnlocked?: boolean;
   leaftailAvailable?: boolean; leaftailUnlocked?: boolean;
   onCloseAutoFocus: (event: Event) => void; focusedCharacter?: WorldCharacterId;
 }) {
@@ -46,8 +46,9 @@ export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false
         </header>
         <ul className={styles.grid} aria-label="Персонажи леса">
           {WORLD_CHARACTERS.map(character => {
-            const available = worldResidentAvailable(character.id, quarryBuilt, leaftailAvailable), Portrait = portraits[character.id];
-            const arrivalHint = character.id === "kamneshmyg" ? "Постройте каменоломню"
+            const available = worldResidentAvailable(character.id, quarryBuilt, leaftailAvailable, lopukhAvailable), Portrait = portraits[character.id];
+            const arrivalHint = character.id === "lopukh" ? lopukhUnlocked ? "Дождитесь прибытия" : "Откройте лесной участок"
+              : character.id === "kamneshmyg" ? "Постройте каменоломню"
               : leaftailUnlocked ? "Дождитесь прибытия" : "Дом 3-го уровня";
             return <li key={character.id}>
               <button type="button" className={`${styles.card} ${available ? styles.available : styles.locked}`} data-world-character={character.id}

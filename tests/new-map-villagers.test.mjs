@@ -224,7 +224,8 @@ test("new villagers keep a new resident host available when the real social loop
   try {
     worldDevStore.patch({ ...quietClearing, autoLife: true });
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
-      economyBuildings: { home: 3 }, economyResidents: { ...confirmedVillagers(owner, 1, 0), buildings: { home: 3, quarry: 0 } },
+      economyBuildings: { home: 3, woodlot: 1 }, economyResidents: { ...confirmedVillagers(owner, 1, 0), buildings: { home: 3, quarry: 0, woodlot: 1 } },
+      lopukhArrival: { seen: true, enabled: false, onComplete: assert.fail },
       merchantArrival: { seen: true, enabled: false, onComplete: assert.fail } };
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail }); await finishVillagerArtwork(env);
     probe = connectForestSession(key, TILED_WORLD, "circle", 100_000, 0, () => {});
@@ -269,7 +270,8 @@ test("new villagers share real insect visitors across cameras and release the sa
   try {
     worldDevStore.patch({ ...quietClearing, butterflies: "on", autoLife: true });
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
-      economyResidents: confirmedVillagers(owner, 1, 0) };
+      economyBuildings: { woodlot: 1 }, economyResidents: confirmedVillagers(owner, 1, 0, [], 1),
+      lopukhArrival: { seen: true, enabled: false, onComplete: assert.fail } };
     const callbacks = { activity() {}, ready() {}, failure: assert.fail };
     const world = mountHabitat(env.surface(), initial, callbacks); views.push(world); await finishVillagerArtwork(env);
     probe = connectForestSession(key, TILED_WORLD, "circle", 100_000, 0, () => {});
@@ -311,7 +313,7 @@ test("new villagers share real insect visitors across cameras and release the sa
 
     const woodJob = { id: "rabbit-priority-work", stationId: "woodlot", stationLevel: 1, recipeId: "woodlot_wood",
       startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };
-    const confirmed = confirmedVillagers(owner, 2, 0, [woodJob]), original = structuredClone(confirmed);
+    const confirmed = confirmedVillagers(owner, 2, 0, [woodJob], 1), original = structuredClone(confirmed);
     const animalFeet = { x: butterfly.x, y: butterfly.y };
     world.configure({ ...initial, economyResidents: confirmed });
     assert.equal(rabbit.job, true);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "vite";
+import { recipeBuildingLevel } from "./lib/economy-math.mjs";
 
 // Read-only player policy: every state change uses the shipped TS domain rules.
 // No market, achievement reward claims, legacy grant, admin command,
@@ -108,7 +109,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   const gap = isActive ? 1 : mode === "visits2" ? 12 * hour : 8 * hour;
   const uuid = () => `00000000-0000-4000-8000-${(++sequence).toString(16).padStart(12, "0")}`;
   const eligible = d => (state.buildings.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
-    && (!d.buildingId || state.buildings[d.buildingId] >= d.buildingLevel)
+    && (!d.buildingId || state.buildings[d.buildingId] >= recipeBuildingLevel(d))
     && Object.entries(d.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
   const courseTerms = () => state.tutorialOrder?.ingredientsClaimed && !state.tutorialOrder.completed
     ? state.tutorialOrder.terms : stageOrders.stageResidentOrder(state, catalog);
@@ -203,7 +204,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     const predicted = { ...state.buildings };
     for (const j of state.jobs.filter(j => j.kind === "construction")) predicted[j.targetId] = j.targetLevel;
     return (predicted.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (predicted[id] ?? 0) >= level)
-      && (!d.buildingId || predicted[d.buildingId] >= d.buildingLevel)
+      && (!d.buildingId || predicted[d.buildingId] >= recipeBuildingLevel(d))
       && Object.entries(d.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
   };
   const sources = itemId => [...catalog.recipes, ...catalog.explorations.filter(route => !Object.keys(route.cost.items).length && !route.cost.coins)

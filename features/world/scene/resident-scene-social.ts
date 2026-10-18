@@ -12,7 +12,7 @@ import { constructionMapPlace } from "./construction-map-anchor";
 export type ResidentSceneFacts = {
   owner?: string; revision: number; buildings: Record<string, number>;
   jobs: Map<string, { finish: number; kind: "wood" | "mining" }>;
-  minerWelcomeArmed?: boolean; observedWelcomes?: string[];
+  lopukhWelcomeArmed?: boolean; minerWelcomeArmed?: boolean; observedWelcomes?: string[];
   fish: number; wood: number; sequence: number; events: ForestSocialContextEvent[];
 };
 const factsFor = (state: ForestSessionState): ResidentSceneFacts => state.residentSceneFacts ??= {
@@ -31,7 +31,7 @@ export function residentSceneSocialContext(state: ForestSessionState, now: numbe
       facts.owner = access.ownerPublicId; facts.revision = -1; facts.jobs.clear(); facts.events = [];
       facts.fish = state.pleskMind?.catchCount ?? 0;
       facts.wood = state.villagers?.residents.lopukh.woodwork?.completedCycles ?? 0;
-      facts.sequence = 0; facts.minerWelcomeArmed = false; facts.observedWelcomes = [];
+      facts.sequence = 0; facts.minerWelcomeArmed = false; facts.lopukhWelcomeArmed = false; facts.observedWelcomes = [];
     }
     if (access.revision > facts.revision) {
       if (!first) for (const [station, level] of Object.entries(access.buildings)) {
@@ -58,9 +58,12 @@ export function residentSceneSocialContext(state: ForestSessionState, now: numbe
   // survive camera handoffs, and never infer an arrival from house/quarry levels.
   const phase = state.villagers?.arrivalPhase;
   if (phase === "running" || phase === "greeting") facts.minerWelcomeArmed = true;
+  const lopukhPhase = state.villagers?.lopukhArrivalPhase;
+  if (lopukhPhase === "running" || lopukhPhase === "greeting") facts.lopukhWelcomeArmed = true;
   const welcomed = facts.observedWelcomes ??= [];
-  for (const resident of ["kamneshmyg", "leaftail"] as const) {
-    const arrived = resident === "kamneshmyg" ? facts.minerWelcomeArmed && phase === "complete"
+  for (const resident of ["lopukh", "kamneshmyg", "leaftail"] as const) {
+    const arrived = resident === "lopukh" ? facts.lopukhWelcomeArmed && lopukhPhase === "complete"
+      : resident === "kamneshmyg" ? facts.minerWelcomeArmed && phase === "complete"
       : state.leaftailBoat?.completed && Boolean(state.leaftailBoat.route);
     if (!arrived || welcomed.includes(resident)) continue;
     welcomed.push(resident); queueForestSocialWelcome(state.social, resident);

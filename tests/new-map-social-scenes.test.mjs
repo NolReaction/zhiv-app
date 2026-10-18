@@ -40,7 +40,8 @@ test("a free neighbour walks to Leaftail's actual window and completes the excha
   try {
     worldDevStore.patch({ ...quietClearing, autoLife: true });
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
-      economyBuildings: { home: 3 }, economyResidents: { ...confirmedVillagers(owner, 1, 0), buildings: { home: 3, quarry: 0 } },
+      economyBuildings: { home: 3, woodlot: 1 }, economyResidents: { ...confirmedVillagers(owner, 1, 0), buildings: { home: 3, quarry: 0, woodlot: 1 } },
+      lopukhArrival: { seen: true, enabled: false, onComplete: assert.fail },
       merchantArrival: { seen: true, enabled: false, onComplete() {} } };
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
     await finishVillagerArtwork(env);
@@ -106,7 +107,8 @@ test("a neighbour asks the real fishing Plesk about fish without consuming her p
   try {
     worldDevStore.patch({ ...quietClearing, autoLife: true });
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
-      economyResidents: confirmedVillagers(owner, 1, 0) };
+      economyBuildings: { woodlot: 1 }, economyResidents: confirmedVillagers(owner, 1, 0, [], 1),
+      lopukhArrival: { seen: true, enabled: false, onComplete: assert.fail } };
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail }); await finishVillagerArtwork(env);
     const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
     probe = connectForestSession(key, effective, "circle", 100_000, 0, () => {});

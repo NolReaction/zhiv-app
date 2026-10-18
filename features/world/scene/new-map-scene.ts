@@ -107,7 +107,7 @@ import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-d
 import { forestPerformanceProfiler } from "@/features/world/dev/forest-performance-profiler";
 import { residentScenePresentation } from "./resident-scene-presentation";
 import { residentSceneSocialContext, residentSceneFollowups } from "./resident-scene-social";
-import { syncSceneMerchantArrival, advanceSceneMerchantArrival, announceSceneMerchantArrival } from "./resident-scene-arrival";
+import { syncSceneMerchantArrival, advanceSceneMerchantArrival, announceSceneMerchantArrival, announceSceneLopukhArrival } from "./resident-scene-arrival";
 
 
 const REACTION_SECONDS = .9;
@@ -540,13 +540,17 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (!session.isOwner()) return;
     const villagers = state.villagers ??= createForestVillagers(world), access = state.economyResidents;
     const presentingArrival = Boolean(options.view === "world" && active() && options.residentArrival?.enabled);
+    const presentingLopukh = Boolean(options.view === "world" && active() && options.lopukhArrival?.enabled);
     const merchantReady = syncSceneMerchantArrival(state, world, options, active(), reducedMotion(options, dev), residentOccupants());
     // A completed construction also changes its collision silhouette. Wait for
     // the matching artwork before planning any resident's first approach.
     const quarryReady = (access?.buildings.quarry ?? 0) < 1 || (visuals.quarry?.level ?? 0) > 0;
-    configureForestVillagers(villagers, world, { buildings: access?.buildings ?? {}, confirmed: Boolean(access && quarryReady),
+    const lopukhReady = (access?.buildings.woodlot ?? 0) < 1 || (visuals["lopukh-home"]?.level ?? 0) > 0;
+    configureForestVillagers(villagers, world, { buildings: access?.buildings ?? {}, confirmed: Boolean(access && quarryReady && lopukhReady),
       production: access?.production, now: explorationNow(), arrivalSeen: options.residentArrival?.seen ?? villagers.arrivalCompleted,
-      allowArrival: presentingArrival && quarryReady, leaftailReady: merchantReady });
+      allowArrival: presentingArrival && quarryReady, leaftailReady: merchantReady,
+      lopukhArrivalSeen: options.lopukhArrival?.seen ?? villagers.lopukhArrivalCompleted,
+      allowLopukhArrival: presentingLopukh && lopukhReady });
     const boat = state.leaftailBoat;
     if (boat?.completed && options.merchantArrival?.enabled && !options.merchantArrival.seen) {
       const presenceKey = options.presenceKey;
@@ -555,6 +559,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     }
     reconcileWildlife();
     if (reducedMotion(options, dev) && presentingArrival) settleForestVillagerArrival(villagers, residentOccupants());
+    if (reducedMotion(options, dev) && presentingLopukh) settleForestVillagerArrival(villagers, residentOccupants(), "lopukh");
+    if (villagers.lopukhArrivalCompleted && presentingLopukh && options.lopukhArrival && !options.lopukhArrival.seen) {
+      const presenceKey = options.presenceKey;
+      announceSceneLopukhArrival(state, options.lopukhArrival.onComplete, () => !disposed && options.presenceKey === presenceKey
+        && state.villagers === villagers && active() && session.isOwner() && options.view === "world" && options.lopukhArrival?.enabled === true);
+    }
     if (villagers.arrivalCompleted && presentingArrival && options.residentArrival && !options.residentArrival.seen && !announcedArrivals.has(villagers)) {
       const presenceKey = options.presenceKey;
       announcedArrivals.add(villagers);
@@ -579,6 +589,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     advanceForestVillagers(state.villagers, world, dt, { rain, dusk, now: explorationNow(),
       production: state.economyResidents?.production, occupants: residentOccupants(),
       arrivalActive: Boolean(options.view === "world" && options.residentArrival?.enabled && active() && session.isOwner()),
+      lopukhArrivalActive: Boolean(options.view === "world" && options.lopukhArrival?.enabled && active() && session.isOwner()),
       wildlifeHolds: villagerWildlifeHolds(wildlife, state.fauna),
       socialPartners: meeting ? { [meeting.host]: meeting.guest, [meeting.guest]: meeting.host } : undefined,
       socialHolds: (["lopukh", "kamneshmyg", "leaftail"] as const).filter(socialResidentHeld) });
@@ -729,7 +740,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           && !state.builderMind?.noticePending && state.builderMind?.action !== "finish",
         context: occupant.moving ? "walk" : state.builderMind?.job ? state.builderMind.ready ? "ready" : state.builderMind.blocked ? "busy" : "build" : "idle" };
       if (occupant.id === "lopukh" || occupant.id === "kamneshmyg" || occupant.id === "leaftail") {
-        const mind = state.villagers?.residents[occupant.id], arriving = occupant.id === "kamneshmyg" && state.villagers?.arrivalPhase !== "complete";
+        const mind = state.villagers?.residents[occupant.id], arriving = occupant.id === "kamneshmyg" && state.villagers?.arrivalPhase !== "complete"
+          || occupant.id === "lopukh" && state.villagers?.lopukhArrivalPhase !== "complete";
         const wildlife = villagerWildlifeHolds(state.villagerWildlife, state.fauna).includes(occupant.id);
         const outside = mind?.doorPhase === "outside";
         const passing = Boolean(mind && !mind.job && mind.intent === "wander" && mind.route && !mind.socialVisit);
@@ -1455,6 +1467,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     merchantArrivalPoint() {
       const frame = state.leaftailBoat && leaftailBoatArrivalFrame(state.leaftailBoat);
       return frame ? { x: frame.resident.x, y: frame.resident.y, size: frame.phase === "sailing" ? 64 : frame.resident.size } : null;
+    },
+    lopukhArrivalPoint() {
+      const resident = residentFrames().find(resident => resident.id === "lopukh" && "arriving" in resident && resident.arriving);
+      return resident ? { x: resident.x, y: resident.y, size: resident.size } : null;
     },
     residentArrivalPoint() {
       const resident = residentFrames().find(resident => resident.id === "kamneshmyg" && "arriving" in resident && resident.arriving);

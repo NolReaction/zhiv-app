@@ -1,4 +1,4 @@
-import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState } from "./model";
+import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, recipeBuildingLevel, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState } from "./model";
 
 import { fishingClassWeights, fishingState, fishClassInventory, fishingClassItemId, fishClassForItem } from "./fishing";
 
@@ -83,7 +83,7 @@ export function obtainableResidentOrderItems(state: OrderSource, catalog = state
   while (changed) {
     const before = reachable.size;
     for (const source of [...catalog.explorations, ...catalog.recipes]) {
-      if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < source.buildingLevel) continue;
+      if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < recipeBuildingLevel(source)) continue;
       if ("requiredRecipes" in source && Object.entries(source.requiredRecipes).some(([id, count]) => (state.progression?.recipes[id] ?? 0) < count)) continue;
       const fishInput = "fishInput" in source ? source.fishInput?.itemIds : undefined;
       if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !fishInput?.includes(id))) continue;

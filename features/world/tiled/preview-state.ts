@@ -1,11 +1,20 @@
-import type { FixedSite, FixedWorldScene, PreviewLevels, WorldPoint, WorldVisibilityCondition } from "./types";
+import type { FixedSite, FixedWorldScene, PreviewLevels, SiteVisual, WorldPoint, WorldVisibilityCondition } from "./types";
 
 /** Preview state contains levels only; each level may select its own authored geometry. */
 export function initialPreviewLevels(scene: FixedWorldScene): PreviewLevels {
   return Object.fromEntries(scene.sites.map(site => [site.id, site.initialLevel]));
 }
 
+const closedHomes = new WeakMap<FixedSite, SiteVisual>();
+
 export function previewSiteVisual(site: FixedSite, levels: PreviewLevels) {
+  if (site.id === "lopukh-home" && levels[site.id] === 0 && !site.states.some(state => state.level === 0)) {
+    // The user will supply a closed exterior later. Keep the authored ground,
+    // doorway, hit target and construction footprint; no replacement image.
+    let visual = closedHomes.get(site);
+    if (!visual) { visual = { level: 0, label: "Заброшенный лесной участок", image: "" }; closedHomes.set(site, visual); }
+    return visual;
+  }
   return site.states.find(state => state.level === levels[site.id])
     ?? site.states.find(state => state.level === site.initialLevel)
     ?? site.states[0];

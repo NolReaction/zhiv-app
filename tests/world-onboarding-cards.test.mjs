@@ -24,19 +24,19 @@ const controller = () => {
 test("the optional detailed introduction shows only met residents and requires their actual arrival state", () => {
   const economy = controller();
   const html = renderToStaticMarkup(NeighborIntroduction({ economy }));
-  for (const character of WORLD_CHARACTERS.filter(character => ["builder", "plesk", "lopukh"].includes(character.id))) {
+  for (const character of WORLD_CHARACTERS.filter(character => ["builder", "plesk"].includes(character.id))) {
     assert.ok(html.includes(`data-guide-neighbor="${character.id}"`));
     assert.ok(html.includes(character.name));
   }
-  assert.doesNotMatch(html, /Камнешмыг|Листохвост|data-guide-neighbor="kamneshmyg"|data-guide-neighbor="leaftail"|лодк|3-го/);
+  assert.doesNotMatch(html, /Лопоух|Камнешмыг|Листохвост|data-guide-neighbor="kamneshmyg"|data-guide-neighbor="leaftail"|лодк|3-го/);
   assert.doesNotMatch(html, /<button/);
   economy.snapshot.buildings = { home: 3, quarry: 1, workshop: 0 };
   const beforeArrival = renderToStaticMarkup(NeighborIntroduction({ economy }));
-  assert.doesNotMatch(beforeArrival, /Камнешмыг|Листохвост/, "a house level alone does not reveal a resident who has not arrived");
+  assert.doesNotMatch(beforeArrival, /Лопоух|Камнешмыг|Листохвост/, "a house level alone does not reveal a resident who has not arrived");
   const quarry = renderToStaticMarkup(NeighborIntroduction({ economy, quarryBuilt: true }));
   assert.match(quarry, /Камнешмыг.*шахтёр, работает в каменоломне/);
   assert.doesNotMatch(quarry, /Листохвост/);
-  const later = renderToStaticMarkup(NeighborIntroduction({ economy, quarryBuilt: true, leaftailAvailable: true }));
+  const later = renderToStaticMarkup(NeighborIntroduction({ economy, quarryBuilt: true, leaftailAvailable: true, lopukhAvailable: true }));
   for (const character of WORLD_CHARACTERS) {
     assert.ok(later.includes(`data-guide-neighbor="${character.id}"`));
     assert.ok(later.includes(character.name));

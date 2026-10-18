@@ -388,7 +388,7 @@ object EconomyRules {
                 if (parts.size > 2 || parts.getOrNull(1) == "") economyFailure("ECONOMY_RECIPE_FISH", "Эта рыба не подходит для выбранного блюда")
                 val recipe = EconomyFood.recipeWithFish(baseRecipe, parts.getOrNull(1))
                 if (command.quantity > (recipe.maxBatch ?: catalog.maxBatch)) invalidEconomy()
-                if ((state.buildings[recipe.buildingId] ?: 0) < recipe.buildingLevel)
+                if ((state.buildings[recipe.buildingId] ?: 0) < recipe.effectiveBuildingLevel)
                     economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание")
                 requireHome(state, recipe.requiredHomeLevel)
                 requireBuildings(state, recipe.requiredBuildings)

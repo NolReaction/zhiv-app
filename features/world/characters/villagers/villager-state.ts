@@ -43,10 +43,13 @@ export type ForestVillagersState = {
   /** The confirmed house level is always required; the arrival controller can
    * additionally withhold this resident until its boat introduction completes. */
   leaftailReady: boolean | null;
+  lopukhCompletionNotice?: { delivered: boolean; pending?: object };
+  lopukhArrivalPending: boolean; lopukhArrivalPhase: "waiting" | "running" | "greeting" | "complete"; lopukhArrivalCompleted: boolean;
 };
 export type ForestVillagerConfiguration = {
   buildings: Readonly<Record<string, number>>; confirmed: boolean; arrivalSeen?: boolean; allowArrival?: boolean;
   leaftailReady?: boolean;
+  lopukhArrivalSeen?: boolean; allowLopukhArrival?: boolean;
   production?: EconomySceneProduction | null; now?: number;
 };
 export type ForestVillagerEnvironment = {
@@ -56,6 +59,7 @@ export type ForestVillagerEnvironment = {
   socialPartners?: Partial<Record<ForestVillagerId, string>>;
   /** The map owns this spotlight; closing it pauses only the miner's entrance. */
   arrivalActive?: boolean;
+  lopukhArrivalActive?: boolean;
   wildlifeHolds?: readonly ForestVillagerId[];
 };
 

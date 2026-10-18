@@ -113,6 +113,7 @@ object EconomyMarketRules {
 
     fun requiredHomeLevel(itemId: String, catalog: EconomyCatalog = EconomyRules.catalog): Int {
         fun buildingHome(id: String, level: Int, seen: Set<String> = emptySet()): Int {
+            if (id == "dryer" && level == 0) return 1
             if (id == "home") return level
             val key = "$id:$level"
             if (key in seen) return Int.MAX_VALUE
@@ -126,7 +127,7 @@ object EconomyMarketRules {
             buildings.maxOfOrNull { (id, level) -> buildingHome(id, level) } ?: 1)
         val sources = (catalog.recipes.filter { (it.rewards[itemId] ?: 0L) > 0L }.map { recipe ->
             requirements(recipe.requiredHomeLevel, recipe.requiredBuildings + (recipe.buildingId to
-                maxOf(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?: 0)))
+                maxOf(recipe.effectiveBuildingLevel, recipe.requiredBuildings[recipe.buildingId] ?: 0)))
         } + catalog.explorations.filter { (it.rewards[itemId] ?: 0L) > 0L }
             .map { requirements(it.requiredHomeLevel, it.requiredBuildings) }).toMutableList()
         catalog.fishing?.let { fishing ->

@@ -84,16 +84,27 @@ export function forestVillagerRoute(places: VillagerPlaces, from: WorldPoint, ca
 
 type ArrivalPath = { start: WorldPoint; target: VillagerStop; route: SteeringPath };
 const arrivals = new WeakMap<VillagerPlaces, ArrivalPath | null>();
+const easternArrivals = new WeakMap<VillagerPlaces, ArrivalPath | null>();
 
 /** Flood the actual quarry-connected grid once. Selecting the northmost cell
  * after reachability excludes disconnected islands above the river. Every edge
  * is a swept-disk check, including diagonals beside building corners. */
 export function forestVillagerNorthernArrival(places: VillagerPlaces): ArrivalPath | null {
-  if (arrivals.has(places)) return arrivals.get(places)!;
+  return edgeArrival(places, "kamneshmyg", "north", arrivals);
+}
+
+/** Start at the rightmost reachable shore/ground, never across a disconnected island. */
+export function forestVillagerEasternArrival(places: VillagerPlaces): ArrivalPath | null {
+  return edgeArrival(places, "lopukh", "east", easternArrivals);
+}
+
+function edgeArrival(places: VillagerPlaces, resident: "lopukh" | "kamneshmyg", edge: "north" | "east",
+  cache: WeakMap<VillagerPlaces, ArrivalPath | null>): ArrivalPath | null {
+  if (cache.has(places)) return cache.get(places)!;
   const navigation = places.navigation, { grid, cellSize } = navigation;
   const point = (id: number) => ({ x: grid.origin.x + id % grid.columns * cellSize,
     y: grid.origin.y + Math.floor(id / grid.columns) * cellSize });
-  const targets = places.work.slice(0, 4);
+  const targets = (resident === "lopukh" ? [places.home] : places.work).slice(0, 4);
   let target: VillagerStop | undefined, seed = -1;
   for (const candidate of targets) {
     const column = Math.round((candidate.position.x - grid.origin.x) / cellSize);
@@ -105,14 +116,15 @@ export function forestVillagerNorthernArrival(places: VillagerPlaces): ArrivalPa
     }
     if (target) break;
   }
-  if (!target || seed < 0) { arrivals.set(places, null); return null; }
+  if (!target || seed < 0) { cache.set(places, null); return null; }
   const parents = new Int32Array(grid.walkable.length).fill(-1), queue = new Int32Array(grid.walkable.length);
   parents[seed] = seed; queue[0] = seed;
   let count = 1, best = seed;
   for (let at = 0; at < count; at++) {
     const id = queue[at], current = point(id), column = id % grid.columns, row = Math.floor(id / grid.columns);
-    const north = point(best);
-    if (current.y < north.y || current.y === north.y && Math.abs(current.x - target.position.x) < Math.abs(north.x - target.position.x)) best = id;
+    const selected = point(best);
+    if (edge === "north" ? current.y < selected.y || current.y === selected.y && Math.abs(current.x - target.position.x) < Math.abs(selected.x - target.position.x)
+      : current.x > selected.x || current.x === selected.x && current.y < selected.y) best = id;
     for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
       const x = column + dx, y = row + dy, next = y * grid.columns + x;
       if (x < 0 || x >= grid.columns || y < 0 || y >= grid.rows || !grid.walkable[next] || parents[next] >= 0) continue;
@@ -130,7 +142,7 @@ export function forestVillagerNorthernArrival(places: VillagerPlaces): ArrivalPa
     const a = points[index - 1], b = points[index + 1];
     return Math.abs((value.x - a.x) * (b.y - value.y) - (value.y - a.y) * (b.x - value.x)) > 1e-7;
   });
-  const route = prepareSteeringPath(navigation, compact, FOREST_VILLAGER_PROFILES.kamneshmyg.size);
+  const route = prepareSteeringPath(navigation, compact, FOREST_VILLAGER_PROFILES[resident].size);
   const result = route && route.length > 1 ? { start: { ...points[0] }, target, route } : null;
-  arrivals.set(places, result); return result;
+  cache.set(places, result); return result;
 }

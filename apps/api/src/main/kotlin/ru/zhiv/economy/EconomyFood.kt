@@ -180,7 +180,7 @@ object EconomyFood {
             }
             catalog.recipes.forEach { recipe ->
                 val options = recipe.fishInput?.itemIds
-                if (unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) && (state.buildings[recipe.buildingId] ?: 0) >= recipe.buildingLevel &&
+                if (unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) && (state.buildings[recipe.buildingId] ?: 0) >= recipe.effectiveBuildingLevel &&
                     recipe.requiredRecipes.all { (id, amount) -> (state.progression.recipes[id] ?: 0L) >= amount } &&
                     recipe.cost.items.keys.all { it in reachable || it in (options ?: emptyList()) } &&
                     (options == null || options.any { it in reachable })) reachable += recipe.rewards.filterValues { it > 0 }.keys

@@ -230,7 +230,7 @@ test("idle production shows three places and reveals each expansion price only a
 test("all unfinished production places show construction without slots, products or filters at phone and desktop widths", () => {
   const buildings = { home: 5, workshop: 5, kiln: 5, garden: 5, woodlot: 5, dryer: 5, quarry: 5, warehouse: 5 };
   for (const viewportWidth of [320, 1280]) {
-    for (const [place, stationId] of [["garden", "garden"], ["woodlot", "woodlot"], ["campfire", "dryer"], ["workshop", "workshop"], ["workshop", "kiln"], ["quarry", "quarry"]]) {
+    for (const [place, stationId] of [["garden", "garden"], ["woodlot", "woodlot"], ["workshop", "workshop"], ["workshop", "kiln"], ["quarry", "quarry"]]) {
       const state = snapshot({ buildings: { ...buildings, [stationId]: 0 } });
       const economy = controller({ snapshot: state, act() { assert.fail("Reviewing an unbuilt place cannot send an economic command"); } });
       const extra = { initialStationId: stationId, initialRecipeId: state.catalog.recipes.find(recipe => recipe.buildingId === stationId)?.id,
@@ -251,8 +251,41 @@ test("all unfinished production places show construction without slots, products
       html = render(place, economy, extra);
       assert.doesNotMatch(html, /data-station-setup=/);
       assert.match(html, stationId === "quarry" ? /data-mining-duration=/ : /data-production-slots=/);
-      if (stationId === "dryer") assert.match(html, /data-cooking-duration=/);
     }
+  }
+});
+
+test("the basic campfire cooks fish before its paid first improvement at phone and desktop widths", () => {
+  for (const viewportWidth of [320, 1280]) {
+    const fish = economyCatalog.recipes.find(recipe => recipe.id === "cook_grilled_fish");
+    const first = economyCatalog.buildings.find(building => building.id === "dryer").levels[0];
+    const state = snapshot({ buildings: { home: 1, dryer: 0, warehouse: 1 }, wallet: { coins: 10_000, pearls: 2000 }, inventory: { ...first.cost.items, ...fish.cost.items } });
+    const economy = controller({ snapshot: state, act() { assert.fail("Reviewing the fire cannot start production or its upgrade"); } });
+    const extra = { initialRecipeId: "cook_compote", selection: { place: "campfire", objectId: "campfire.position", x: 195, y: 380, viewportWidth, viewportHeight: 844 } };
+    const before = structuredClone(state);
+    let html = render("campfire", economy, extra);
+    assert.match(html, /Уровень 0/);
+    assert.match(html, /data-production-slots="dryer"/);
+    assert.deepEqual([...html.matchAll(/data-production-slot="(\d+)"/g)].map(match => match[1]), ["1"]);
+    assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_grilled_fish"]);
+    assert.doesNotMatch(html, /data-station-setup=|Сначала постройте|Пока не обустроено|data-cooking-duration=|Обустроить|data-recipe="cook_compote"/);
+    assert.equal(disabled(button(html, "Улучшить")), false);
+    const upgrade = renderUpgrade("dryer", economy);
+    assert.match(upgrade, /Уровень 0/);
+    assert.equal(disabled(button(upgrade, "Улучшить до ур. 1")), false);
+    assert.doesNotMatch(upgrade, /Не обустроено|Начать обустройство/);
+    assert.deepEqual(state, before);
+    state.jobs = [job({ id: "upgrade-fire", kind: "construction", targetId: "dryer", recipeId: null, targetLevel: 1, rewards: {} })];
+    html = render("campfire", economy, extra);
+    assert.match(html, /data-job-id="upgrade-fire"/);
+    assert.doesNotMatch(html, /data-station-setup=|data-recipe=|data-production-slot=/);
+    state.jobs[0].finishesAt = new Date(now).toISOString();
+    assert.equal(disabled(button(render("campfire", economy, extra), "Завершить")), false);
+    state.jobs = []; state.buildings.dryer = 1;
+    html = render("campfire", economy, extra);
+    assert.match(html, /data-recipe="cook_compote"/);
+    assert.match(html, /data-cooking-duration=/);
+    assert.equal([...html.matchAll(/data-production-slot="/g)].length, 3);
   }
 });
 

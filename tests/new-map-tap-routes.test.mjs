@@ -137,9 +137,10 @@ test("body taps preserve a real promised woodpile inspection during its walk and
     worldDevStore.patch({ ...quietClearing, autoLife: true });
     const canvas = env.surface(500), initial = {
       ...options, reducedMotion: false, serverNow: 100_000, presenceKey: key,
-      economyBuildings: { home: 3, quarry: 1 }, economyResidents: {
-        ...confirmedVillagers(owner), buildings: { home: 3, quarry: 1 },
+      economyBuildings: { home: 3, quarry: 1, woodlot: 1 }, economyResidents: {
+        ...confirmedVillagers(owner), buildings: { home: 3, quarry: 1, woodlot: 1 },
       },
+      lopukhArrival: { seen: true, enabled: false, onComplete: assert.fail },
       merchantArrival: { seen: true, enabled: false, onComplete: assert.fail },
       residentArrival: { seen: true, enabled: false, onComplete: assert.fail },
     };

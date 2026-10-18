@@ -486,7 +486,7 @@ test("neighbors are learned through the real More and Characters path without sh
   let coach = h.render();
   assert.equal(coach.progress.total, 9);
   assert.equal(coach.children, undefined, "the compact coach has no long residents list");
-  assert.match(coach.text, /Шишколап.*Плёска.*Лопоух/);
+  assert.match(coach.text, /Шишколап.*Плёска.*откроешь лесной участок.*Лопоух/);
   assert.doesNotMatch(`${coach.summary} ${coach.text} ${coach.hint}`, /Камнешмыг|Листохвост|лодк|3-го/);
   assert.equal(coach.primary, undefined);
   assert.equal(coach.target, '[data-world-quick="more"]');

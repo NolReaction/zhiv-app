@@ -25,14 +25,14 @@ const villagers = {
 };
 
 /** The live resident and his useful action share one conversation. */
-export function WorldVillagerDialog({ id, open, ownerPublicId, economy, isOnline, quarryBuilt, onClose, onBack, onCloseAutoFocus, onOpenStation }: {
-  id: NewVillagerId; open: boolean; ownerPublicId: string; economy: EconomyController; isOnline: boolean; quarryBuilt: boolean;
+export function WorldVillagerDialog({ id, open, ownerPublicId, economy, isOnline, quarryBuilt, lopukhAvailable = false, onClose, onBack, onCloseAutoFocus, onOpenStation }: {
+  id: NewVillagerId; open: boolean; ownerPublicId: string; economy: EconomyController; isOnline: boolean; quarryBuilt: boolean; lopukhAvailable?: boolean;
   onClose: () => void; onBack?: () => void; onCloseAutoFocus: (event: Event) => void; onOpenStation: (stationId: string) => void;
 }) {
   const { name, role, Portrait, greeting, description } = villagers[id];
   const currentOwner = economy.snapshot?.ownerPublicId === ownerPublicId;
-  const available = id !== "kamneshmyg" || quarryBuilt;
-  return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
+  const available = id === "lopukh" ? lopukhAvailable : id !== "kamneshmyg" || quarryBuilt;
+  return <Dialog open={open && available && currentOwner} onOpenChange={next => { if (!next) onClose(); }}>
     <DialogPortal>
       <DialogOverlay className={styles.scrim} />
       <DialogPrimitive.Content data-slot="dialog-content" data-world-villager={id} className={styles.dialog} onCloseAutoFocus={onCloseAutoFocus}>
@@ -44,7 +44,7 @@ export function WorldVillagerDialog({ id, open, ownerPublicId, economy, isOnline
         </header>
         <div className={styles.body} data-resident-scroll>
           <ResidentSpeech owner={ownerPublicId} speaker={id} />
-          {!available ? <p className={styles.greeting}>Камнешмыг придёт, когда вы построите каменоломню и подтвердите завершение у Шишколапа.</p> : <>
+          {!available ? <p className={styles.greeting}>{id === "lopukh" ? "Лопоух придёт, когда вы откроете лесной участок и подтвердите завершение у Шишколапа. Дождитесь, пока он добежит до дома." : "Камнешмыг придёт, когда вы построите каменоломню и подтвердите завершение у Шишколапа."}</p> : <>
             <p className={styles.greeting}>«{greeting}»</p>
             {id === "leaftail" ? currentOwner ? <WorldLeaftailMarket key={ownerPublicId} economy={economy} isOnline={isOnline} introduced /> : <p role="status">Проверяем запасы текущего игрока…</p> : <>
               <p className={styles.description}>{description}</p>

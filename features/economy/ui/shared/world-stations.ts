@@ -1,5 +1,5 @@
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
-import type { EconomyCatalog, EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
+import { recipeBuildingLevel, type EconomyCatalog, type EconomyCost, type EconomyJob, type EconomyView } from "@/features/economy/domain/model";
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
@@ -69,9 +69,9 @@ export function worldStableMenuPosition(selection: Pick<MapObjectSelection, "x" 
 }
 export type WorldRecipe = EconomyCatalog["recipes"][number];
 export type WorldBuildingLevel = EconomyCatalog["buildings"][number]["levels"][number];
-export function worldRequirements(value: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }, recipe?: Pick<WorldRecipe, "buildingId" | "buildingLevel">) {
+export function worldRequirements(value: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }, recipe?: Parameters<typeof recipeBuildingLevel>[0]) {
   const required: Record<string, number> = { ...value.requiredBuildings, home: Math.max(value.requiredHomeLevel, value.requiredBuildings.home ?? 0) };
-  if (recipe) required[recipe.buildingId] = Math.max(required[recipe.buildingId] ?? 0, recipe.buildingLevel);
+  if (recipe) required[recipe.buildingId] = Math.max(required[recipe.buildingId] ?? 0, recipeBuildingLevel(recipe));
   return required;
 }
 export function worldMissingRequirements(state: EconomyView, required: Record<string, number>) {

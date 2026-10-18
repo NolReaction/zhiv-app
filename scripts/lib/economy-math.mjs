@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 
+export const recipeBuildingLevel = recipe => recipe.baseCampfire === true && recipe.id === "cook_grilled_fish"
+  && recipe.buildingId === "dryer" && recipe.buildingLevel === 1 ? 0 : recipe.buildingLevel;
+
 const add = (into, values, scale = 1) => {
   for (const [key, value] of Object.entries(values)) into[key] = (into[key] ?? 0) + value * scale;
 };
@@ -43,6 +46,7 @@ export function economicMath(catalog) {
   const recipes = new Map(catalog.recipes.map(recipe => [recipe.id, recipe]));
   const homeCache = new Map();
   function buildingHome(id, level, path = []) {
+    if (id === "dryer" && level === 0) return 1;
     const key = `${id}:${level}`;
     if (homeCache.has(key)) return homeCache.get(key);
     assert(!path.includes(key), `Unlock cycle: ${key}`);
@@ -55,7 +59,7 @@ export function economicMath(catalog) {
   const definitionHome = (d, path = []) => {
     assert(!path.includes(d.id), `Recipe unlock cycle: ${[...path, d.id].join(" -> ")}`);
     return Math.max(d.requiredHomeLevel,
-      ...(d.buildingId ? [buildingHome(d.buildingId, d.buildingLevel)] : []),
+      ...(d.buildingId ? [buildingHome(d.buildingId, recipeBuildingLevel(d))] : []),
       ...Object.entries(d.requiredBuildings ?? {}).map(([id, level]) => buildingHome(id, level)),
       ...Object.keys(d.requiredRecipes ?? {}).map(id => {
         const prior = recipes.get(id); assert(prior, `Unknown recipe unlock ${id}`);
@@ -64,7 +68,7 @@ export function economicMath(catalog) {
   };
   const unlockPrerequisites = (d, path = []) => {
     assert(!path.includes(d.id), `Recipe unlock cycle: ${[...path, d.id].join(" -> ")}`);
-    const levels = { ...d.requiredBuildings, ...(d.buildingId ? { [d.buildingId]: d.buildingLevel } : {}), home: d.requiredHomeLevel };
+    const levels = { ...d.requiredBuildings, ...(d.buildingId ? { [d.buildingId]: recipeBuildingLevel(d) } : {}), home: d.requiredHomeLevel };
     const completedRecipes = { ...d.requiredRecipes };
     for (const id of Object.keys(d.requiredRecipes ?? {})) {
       const recipe = recipes.get(id); assert(recipe, `Unknown recipe unlock ${id}`);

@@ -107,6 +107,21 @@ test("actual loaded geometry owns effects and moved or removed markers do not le
   assert.deepEqual(forestProductionFrames(snapshot([{ ...job("dryer"), stationLevel: 0 }]), actual, visuals, start, 3), []);
 });
 
+test("the existing level-zero fire animates only a confirmed grilled-fish job without creating or changing work", () => {
+  const work = { ...job("dryer"), stationLevel: 0, recipeId: "cook_grilled_fish" };
+  const saved = snapshot([work]), before = structuredClone(saved);
+  const [frame] = forestProductionFrames(saved, actual, visuals, start, 3);
+  assert.equal(frame.stationId, "dryer");
+  assert.equal(frame.recipeId, "cook_grilled_fish");
+  assert.equal(frame.phase, "working");
+  assert.equal(forestProductionFrames(saved, actual, visuals, finish, 4)[0].phase, "ready");
+  assert.deepEqual(saved, before, "the visual frame cannot award fish or alter a paid deadline");
+  for (const patch of [{ recipeId: "cook_compote" }, { recipeId: "cook_fish_soup" }, { stationLevel: -1 },
+    { stationLevel: .5 }, { stationId: "workshop" }, { stationId: "woodlot" }]) {
+    assert.deepEqual(forestProductionFrames(snapshot([{ ...work, ...patch }]), actual, visuals, start, 3), []);
+  }
+});
+
 test("shared revision fence keeps removals across background cameras and does not mix owners", () => {
   const holder = {}, active = snapshot(), removed = snapshot([], 2);
   assert.equal(syncForestProduction(holder, active, owner), true);

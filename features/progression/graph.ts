@@ -1,4 +1,4 @@
-import { economyCatalog, type EconomyCatalog, type EconomyCost } from "@/features/economy/domain/model";
+import { economyCatalog, recipeBuildingLevel, type EconomyCatalog, type EconomyCost } from "@/features/economy/domain/model";
 import { formatPearls } from "@/features/economy/domain/money";
 import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
 import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
@@ -151,7 +151,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     return add({ id, title, label: title, icon, phase, description, kind, status, requirements: {}, children: [] });
   }
 
-  fixed("start", "Начало", "🌱", 0, `Есть дом 1, ягодный куст 1 и кладовая 1. Старт: ${catalog.onboarding?.startingWallet.coins ?? 0} монет; ${Object.entries(catalog.onboarding?.startingItems ?? {}).map(([id, amount]) => `${items.get(id)?.name ?? id} × ${amount}`).join(", ")}. Выполните один учебный заказ на малину, затем ${firstStageCount} просьбы к дому 2, чтобы построить лесной участок, костёр, мастерскую и улучшить дом. Бесплатная лесная вылазка восстанавливает проданные материалы. Тапы не дают хозяйственную валюту.`);
+  fixed("start", "Начало", "🌱", 0, `Есть дом 1, ягодный куст 1, кладовая 1 и костёр 0. Старт: ${catalog.onboarding?.startingWallet.coins ?? 0} монет; ${Object.entries(catalog.onboarding?.startingItems ?? {}).map(([id, amount]) => `${items.get(id)?.name ?? id} × ${amount}`).join(", ")}. Выполните один учебный заказ на малину, затем ${firstStageCount} просьбы к дому 2, чтобы открыть лесной участок, построить мастерскую, улучшить костёр и дом. Бесплатная лесная вылазка восстанавливает проданные материалы. Тапы не дают хозяйственную валюту.`);
   fixed("trader", "Быстрая продажа", "🧑‍🌾", 0, `Продажа из кладовой с начала игры: ${fullPriceBuyer ? "все продаваемые товары NPC выкупает по полной базовой цене за каждую единицу. Сырую рыбу Плёска покупает по той же полной цене её класса" : `для части товаров каталог задаёт фиксированные цены NPC. Остальные продаются с уценкой ${100 - (catalog.localBuyer?.payoutBps ?? 10000) / 100}% от базовой цены, итог стопки округляется вниз до кратного ${catalog.currencyScale} монетам. Плёска покупает сырую рыбу по полной базовой цене её класса`}. В холодильнике листайте ряд нужной редкости и нажмите вид: единая компактная панель предлагает количество именно этой рыбы. Другая карточка переключает вид, повторный тап добавляет одну рыбу без изменения размеров элементов. «Продать» расходует выбранных рыб по прежней цене класса. Общая панель экономики также предлагает выбор перед рыбной продажей NPC. Рынок игроков открывается позднее; покупатель там не гарантирован.`);
   fixed("coins", "Монеты", "🪙", 0, "Выручка за товары идёт на строительство и улучшения. Монеты не занимают место на складе.");
   fixed("pearls", "Жемчуг · ускорение", "◉", 0, `Можно сразу завершить текущую стройку. Примеры цены по оставшемуся времени: ${constructionExamples}. Промежуточная цена рассчитывается по действующей кривой каталога. Цена округляется вверх с шагом ${formatPearls(catalog.constructionSpeedup.priceStepPearls)}, убывает со временем и подтверждается перед списанием. Можно бесплатно дождаться таймера. Производство, вылазки и интервалы проектных поставок не ускоряются. Жемчуг также обновляет предложения Плёски и открывает места отдельно для каждого производства: ${catalog.productionSlots.upgrades.map(upgrade => `${upgrade.slots}-е — ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`).join("; ")}. У шахтёра своя очередь без платных слотов. Дополнительные места продавца на рынке покупаются по очереди: ${catalog.market.slotPricesPearls.map((price, index) => `${catalog.market.baseSlots + index + 1}-е — ${formatPearls(price)} жемчужин`).join("; ")}. Источники: ${formatPearls(dailyPearls)} жемчужин за полный цикл ежедневных наград и до ${formatPearls(achievementPearls)} за самостоятельно полученные ступени достижений, однократно. Кнопки «+» рядом с монетами и жемчугом открывают соответствующую вкладку витрины валют; покупки и обмен пока отключены. Торговец реликвиями ещё не реализован.`);
@@ -173,10 +173,13 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     const rank = (id: string) => order.includes(id) ? order.indexOf(id) : order.length;
     return rank(a.id) - rank(b.id);
   });
-  const levels = [...new Set(catalog.buildings.flatMap(building => building.levels.map(level => level.level)))].sort((a, b) => a - b);
+  const basicFire = catalog.recipes.some(recipe => recipe.buildingId === "dryer" && recipeBuildingLevel(recipe) === 0);
+  const levels = [...new Set([...(basicFire ? [0] : []), ...catalog.buildings.flatMap(building => building.levels.map(level => level.level))])].sort((a, b) => a - b);
   for (const level of levels) {
     for (const building of orderedBuildings) {
-      const data = building.levels.find(value => value.level === level);
+      const data = building.levels.find(value => value.level === level)
+        ?? (basicFire && building.id === "dryer" && level === 0 ? { ...building.levels[0], level: 0,
+          seconds: 0, cost: { coins: 0, items: {} }, requiredHomeLevel: 1, requiredBuildings: {} } : undefined);
       if (!data) continue;
       const requirements: Record<string, number> = { home: data.requiredHomeLevel, ...data.requiredBuildings };
       if (level > 1) requirements[building.id] = Math.max(requirements[building.id] || 0, level - 1);
@@ -189,20 +192,20 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
         kind: "building", status: "active", phase: building.id === "warehouse" ? data.requiredHomeLevel : level,
         buildingId: building.id, locationId: locationByBuilding.get(building.id)?.id, level,
         cost: cloneCost(data.cost), seconds: data.seconds, requirements, children: [],
-        description: `${initialBuildings.has(building.id) && level === 1 ? "Есть на старте. " : ""}${building.description}${building.id === "warehouse" ? " Каждая единица товара занимает место; монеты, жемчуг и удочки не занимают. Товар в объявлениях рынка продолжает занимать место. Перед получением результата может понадобиться освободить склад. Расширение удобно для запасов, но не требуется для улучшения дома." : " В хозяйстве идёт только одна стройка. Заказ этого оборудования нужно забрать перед его улучшением."}`,
+        description: `${initialBuildings.has(building.id) && level === 1 || building.id === "dryer" && level === 0 ? "Есть на старте. " : ""}${building.description}${building.id === "warehouse" ? " Каждая единица товара занимает место; монеты, жемчуг и удочки не занимают. Товар в объявлениях рынка продолжает занимать место. Перед получением результата может понадобиться освободить склад. Расширение удобно для запасов, но не требуется для улучшения дома." : " В хозяйстве идёт только одна стройка. Заказ этого оборудования нужно забрать перед его улучшением."}`,
         ...(data.warehouseCapacity != null ? { warehouseCapacity: data.warehouseCapacity } : {}),
       });
-      for (const recipe of catalog.recipes.filter(value => value.buildingId === building.id && value.buildingLevel === level)) {
+      for (const recipe of catalog.recipes.filter(value => value.buildingId === building.id && recipeBuildingLevel(value) === level)) {
         const outputs = Object.keys(recipe.rewards), single = outputs.length === 1, itemId = outputs[0];
         const fishIngredients = catalog.fishing?.classes.filter(group => (recipe.cost.items[group.itemId] ?? 0) > 0) ?? [];
         const outputLabel = itemLabels[itemId] || items.get(itemId)?.name || recipe.name;
         const requirements: Record<string, number> = { home: recipe.requiredHomeLevel, ...recipe.requiredBuildings };
-        requirements[recipe.buildingId] = Math.max(requirements[recipe.buildingId] || 0, recipe.buildingLevel);
+        requirements[recipe.buildingId] = Math.max(requirements[recipe.buildingId] || 0, recipeBuildingLevel(recipe));
         const child = add({
           id: `r:${recipe.id}`, title: recipe.name,
           label: `${single ? outputLabel : "Партия"} · ${shortTime(recipe.seconds)}`,
           icon: single ? itemIcons[itemId] || "📦" : "📦", kind: "recipe", status: "active", phase: level,
-          buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipe.buildingLevel, cost: cloneCost(recipe.cost), seconds: recipe.seconds,
+          buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipeBuildingLevel(recipe), cost: cloneCost(recipe.cost), seconds: recipe.seconds,
           rewards: { ...recipe.rewards }, requirements, children: [],
           description: `${fishIngredients.length ? `Рыбный ингредиент по классу: ${fishIngredients.map(group => items.get(group.itemId)?.name ?? group.itemId).join(", ")}. Виды внутри нужного класса взаимозаменяемы. Быстрый выбор показывает собственных подходящих рыб; автозаполнение сначала берёт неуточнённый остаток, затем самые многочисленные виды. Только «Готовить» расходует выбранное. Более редкий класс автоматически не подставляется. ` : ""}${recipe.collection ? "После созревания нажмите «Собрать всё»: Мохлик заберёт все уже готовые ягоды за один подход. Общая серверная фаза сбора длится не менее 8 секунд и сохраняется после перезагрузки. Во время активной вылазки он занят, сбор ждёт возвращения. " : ""}${Object.keys(recipe.requiredRecipes).length ? `Для открытия произведите и заберите: ${Object.entries(recipe.requiredRecipes).map(([id, count]) => `${recipeResultName(id, catalog)} × ${count}`).join(", ")}. ` : ""}${recipe.rewards.fish_soup && catalog.food ? `Рыбный суп даёт Мохлику +${(catalog.food.meals.find(meal => meal.itemId === "fish_soup")?.heroSpeedBps ?? 0) / 100}% скорости одной вылазки и строителю +${(catalog.food.meals.find(meal => meal.itemId === "fish_soup")?.builderSpeedBps ?? 0) / 100}% скорости одной стройки; шахтёра не ускоряет. ` : ""}В карточке рисунок и название предмета стоят рядом, ниже время и необходимые материалы с нехваткой. Одиночный результат не повторяет «×1», соседние карточки выровнены. ${fishIngredients.length ? "Нажатие открывает выбор рыб и подтверждение готовки." : "Нажатие сразу запускает производство."} Незавершённую работу можно отменить вторым нажатием в её ячейке в течение 5 секунд после «Удалить?» с возвратом потраченного; таймаут ничего не отменяет. Живой таймер показывает секунды в MM:SS или H:MM:SS без повторных «Осталось» и «Ещё». Он идёт и после закрытия приложения; готовый результат нужно забрать. Каждый запуск выпускает один предмет и занимает отдельное место до получения. Изначально место одно; второе открывается за ${formatPearls(catalog.productionSlots.upgrades[0].pricePearls)} жемчужин с дома ${catalog.productionSlots.upgrades[0].requiredHomeLevel}, третье за ${formatPearls(catalog.productionSlots.upgrades[1].pricePearls)} с дома ${catalog.productionSlots.upgrades[1].requiredHomeLevel}. Перед получением проверьте место в кладовой.`,
         });

@@ -1,5 +1,5 @@
 import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features/world/domain/wardrobe";
-import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, recipeBuildingLevel, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
 import { recipeResultName } from "./recipe-prerequisites";
 
@@ -206,7 +206,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const recipe = recipeWithFish(source, fishItemId);
       if (command.quantity > (recipe.maxBatch ?? economyCatalog.maxBatch))
         throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого заказа превышено число партий", 400);
-      if ((state.buildings[recipe.buildingId] ?? 0) < recipe.buildingLevel) fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание");
+      if ((state.buildings[recipe.buildingId] ?? 0) < recipeBuildingLevel(recipe)) fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание");
       requireHome(state, recipe.requiredHomeLevel);
       requireBuildings(state, recipe.requiredBuildings);
       const missingRecipes = Object.entries(recipe.requiredRecipes).filter(([recipeId, count]) => (state.progression.recipes[recipeId] ?? 0) < count);

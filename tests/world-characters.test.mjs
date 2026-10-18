@@ -66,7 +66,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       export function useForestObservation() { return guideContext.observation ?? null; }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
+      if (id.endsWith("/features/world/ui/hud/world-selected-object-menu.tsx") || id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-resident-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
         return source.replace('from "react";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-forest-observation";', `from "${hookModule}";`)
@@ -78,6 +78,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { WORLD_CHARACTERS, worldCharacterResident, worldResidentAvailable } = await vite.ssrLoadModule("/features/world/characters/world-characters-model.ts");
 const { WorldCharacters } = await vite.ssrLoadModule("/features/world/ui/characters/world-characters.tsx");
+const { WorldVillagerDialog } = await vite.ssrLoadModule("/features/world/ui/characters/world-villager-dialog.tsx");
 const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
 const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -87,7 +88,15 @@ function elements(tree) {
   const found = [];
   function visit(element) {
     if (!isValidElement(element)) return;
-    found.push(element); Children.forEach(element.props.children, visit);
+    found.push(element);
+    // The position subscriber moved below WorldView in the performance pass.
+    // Render this narrow hook-only wrapper so navigation assertions still inspect
+    // the real menu props, including live camera projection and its existing key.
+    if (typeof element.type === "function" && element.type.name === "WorldSelectedObjectMenu") {
+      const menu = element.type(element.props);
+      visit(createElement(menu.type, { ...menu.props, key: element.key }));
+    }
+    Children.forEach(element.props.children, visit);
   }
   visit(tree); return found;
 }
@@ -109,22 +118,22 @@ test("the modal reveals only available residents and gives the others anonymous 
   gallery.props.onOpenChange(false); assert.equal(closed, 1);
   const nodes = elements(gallery), list = nodes.find(element => element.type === "ul");
   const html = renderToStaticMarkup(list);
-  assert.equal((html.match(/<canvas/g) ?? []).length, 3, "locked portraits are not mounted, even invisibly");
-  assert.equal((html.match(/<strong>Незнакомый житель<\/strong>/g) ?? []).length, 2);
-  for (const name of ["Шишколап", "Лопоух", "Плёска"]) assert.match(html, new RegExp(name));
-  assert.doesNotMatch(html, /Камнешмыг|Листохвост|Шахтёр и знаток камня|Торговец находками/);
+  assert.equal((html.match(/<canvas/g) ?? []).length, 2, "locked portraits are not mounted, even invisibly");
+  assert.equal((html.match(/<strong>Незнакомый житель<\/strong>/g) ?? []).length, 3);
+  for (const name of ["Шишколап", "Плёска"]) assert.match(html, new RegExp(name));
+  assert.doesNotMatch(html, /Лопоух|Камнешмыг|Листохвост|Шахтёр и знаток камня|Торговец находками/);
   for (const character of WORLD_CHARACTERS) {
     const card = nodes.find(element => element.props["data-world-character"] === character.id);
     card.props.onClick();
-    if (character.id === "kamneshmyg" || character.id === "leaftail") {
+    if (character.id === "lopukh" || character.id === "kamneshmyg" || character.id === "leaftail") {
       assert.equal(card.props["aria-disabled"], true);
       assert.equal(card.props["aria-haspopup"], undefined);
-      assert.match(card.props["aria-label"], character.id === "kamneshmyg" ? /Постройте каменоломню/ : /Дом 3-го уровня/);
+      assert.match(card.props["aria-label"], character.id === "lopukh" ? /Откройте лесной участок/ : character.id === "kamneshmyg" ? /Постройте каменоломню/ : /Дом 3-го уровня/);
       assert.doesNotMatch(card.props["aria-label"], new RegExp(character.name));
     } else assert.equal(card.props["aria-haspopup"], "dialog");
   }
-  assert.deepEqual(residents, ["builder", "lopukh", "plesk"]);
-  const unlocked = WorldCharacters({ open: true, quarryBuilt: true, leaftailAvailable: true, leaftailUnlocked: true, onClose() {}, onCloseAutoFocus() {}, onResident: id => residents.push(id) });
+  assert.deepEqual(residents, ["builder", "plesk"]);
+  const unlocked = WorldCharacters({ open: true, quarryBuilt: true, lopukhAvailable: true, leaftailAvailable: true, leaftailUnlocked: true, onClose() {}, onCloseAutoFocus() {}, onResident: id => residents.push(id) });
   const revealed = renderToStaticMarkup(elements(unlocked).find(element => element.type === "ul"));
   assert.equal((revealed.match(/<canvas/g) ?? []).length, 5);
   assert.match(revealed, /Камнешмыг/); assert.match(revealed, /Листохвост/);
@@ -133,7 +142,7 @@ test("the modal reveals only available residents and gives the others anonymous 
   elements(unlocked).find(element => element.props["data-world-character"] === "leaftail").props.onClick();
   assert.equal(residents.at(-1), "leaftail");
   for (const id of WORLD_CHARACTERS.map(item => item.id)) {
-    const returning = WorldCharacters({ open: true, quarryBuilt: true, leaftailAvailable: true, onClose() {}, onCloseAutoFocus() {}, onResident() {}, focusedCharacter: id });
+    const returning = WorldCharacters({ open: true, quarryBuilt: true, lopukhAvailable: true, leaftailAvailable: true, onClose() {}, onCloseAutoFocus() {}, onResident() {}, focusedCharacter: id });
     const content = elements(returning).find(element => element.props["data-slot"] === "dialog-content");
     let focused = false;
     content.props.onOpenAutoFocus({ target: { querySelector(selector) {
@@ -1578,8 +1587,8 @@ test("the manual market lesson waits for canonical confirmed access instead of c
 test("all three new residents open their own useful conversation and return to the same gallery card", () => {
   for (const resident of ["lopukh", "kamneshmyg", "leaftail"]) for (const exit of ["onBack", "onClose"]) {
     const pointer = pointerNavigation(), { nav } = pointer;
-    window.localStorage = { getItem: key => key.startsWith("zhiv.leaftail-arrival.v1:") ? '{"version":1,"arrived":true,"dismissed":true}' : null, setItem() {} };
-    nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.quarry = 1;
+    window.localStorage = { getItem: key => (key.startsWith("zhiv.leaftail-arrival.v1:") || key.startsWith("zhiv.lopukh-arrival.v1:")) ? '{"version":1,"arrived":true,"dismissed":true}' : null, setItem() {} };
+    nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.quarry = 1; nav.props.economy.snapshot.buildings.woodlot = 1;
     try {
       pointer.render(); pointer.render();
       nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
@@ -1703,10 +1712,14 @@ test("restoring a known merchant keeps his card openable only for the confirmed 
 });
 
 test("new resident callbacks reject stale owners and do not restore foreign focus", () => {
-  const nav = guideNavigation();
+  const pointer = pointerNavigation(), { nav } = pointer;
+  window.localStorage = { getItem: key => key.startsWith("zhiv.lopukh-arrival.v1:") ? '{"version":1,"arrived":true,"dismissed":true}' : null, setItem() {} };
+  nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.woodlot = 1;
   try {
+    pointer.render(); pointer.render();
     nav.component("WorldScene").props.onResident("lopukh");
     const previous = nav.component("WorldVillagerDialog");
+    assert.equal(previous.props.open, true);
     nav.props.ownerPublicId = "new-owner";
     assert.equal(nav.component("WorldVillagerDialog").props.open, false);
     previous.props.onCloseAutoFocus({ preventDefault() {} });
@@ -1716,7 +1729,7 @@ test("new resident callbacks reject stale owners and do not restore foreign focu
     previous.props.onOpenStation("woodlot");
     assert.equal(nav.component("EconomyPanel"), undefined);
     assert.equal(nav.component("WorldScene").props.openObjectRequest, undefined);
-  } finally { nav.restore(); }
+  } finally { pointer.restore(); }
 });
 
 test("the real miner arrival hook keeps the physical run separate from coach dismissal and persists the greeting", () => {
@@ -1844,4 +1857,140 @@ test("a foreign retained mailbox cannot leak its badge or open from a stale More
     assert.equal(nav.find(element => element.props["data-world-quick"] === "more").props["data-mail-unread"], undefined);
     assert.equal(nav.find(element => element.props["data-world-mailbox-trigger"] !== undefined), undefined);
   } finally { nav.restore(); }
+});
+
+
+test("Lopukh stays anonymous until a confirmed opened woodlot and a completed physical arrival", () => {
+  const pointer = pointerNavigation(), { nav } = pointer;
+  const values = new Map();
+  window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  nav.props.ownerPublicId = "lopukh-arrival-physical";
+  nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+  nav.props.economy.snapshot.buildings.home = 1;
+  const attempt = () => {
+    nav.component("WorldScene").props.onResident("lopukh");
+    nav.component("WorldCharacters").props.onResident("lopukh");
+    assert.equal(nav.component("WorldVillagerDialog"), undefined);
+  };
+  try {
+    pointer.render(); pointer.render();
+    attempt();
+    nav.props.economy.snapshot.jobs = [{ kind: "construction", targetId: "woodlot", targetLevel: 1, finishesAt: "2000-01-01T00:00:00Z" }];
+    nav.props.economy.snapshotConfirmed = true; pointer.render();
+    assert.equal(nav.component("WorldCharacters").props.lopukhUnlocked, false, "a ready timer is not a claimed building"); attempt();
+    nav.props.economy.snapshot.buildings.woodlot = 1;
+    nav.props.economy.snapshotConfirmed = false; pointer.render();
+    assert.equal(nav.component("WorldScene").props.lopukhArrival.enabled, false, "cached construction cannot introduce a resident"); attempt();
+    nav.props.economy.snapshotConfirmed = true;
+    nav.props.economy.snapshot.ownerPublicId = "foreign-account"; pointer.render(); attempt();
+    nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId; pointer.render();
+    assert.equal(nav.component("WorldScene").props.lopukhArrival.enabled, true);
+    assert.equal(nav.component("WorldScene").props.guidePlace, "lopukh-home");
+    assert.equal(nav.component("WorldCharacters").props.lopukhUnlocked, true);
+    assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, false);
+    assert.equal(nav.component("WorldOnboardingSession").props.open, false);
+    nav.component("LopukhArrivalOnboarding").props.onMeet(); attempt();
+    nav.component("LopukhArrivalOnboarding").props.onDismiss(); pointer.render();
+    assert.equal(nav.component("LopukhArrivalOnboarding").props.open, false);
+    assert.equal(nav.component("WorldScene").props.lopukhArrival.enabled, true, "closing the text does not finish the physical run"); attempt();
+    nav.component("WorldScene").props.lopukhArrival.onComplete(); pointer.render();
+    assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, true);
+    nav.component("WorldCharacters").props.onResident("lopukh");
+    assert.equal(nav.component("WorldVillagerDialog").props.open, true);
+    assert.equal(nav.component("WorldVillagerDialog").props.lopukhAvailable, true);
+    assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [{ version: 1, arrived: true, dismissed: true }]);
+    assert.equal(nav.refreshes, 0, "arrival presentation issues no economic commands");
+  } finally { pointer.restore(); }
+});
+
+test("Lopukh arrival callbacks and saved introduction remain fenced to the current confirmed owner", () => {
+  const pointer = pointerNavigation(), { nav } = pointer;
+  const values = new Map();
+  window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  nav.props.ownerPublicId = "lopukh-owner-one";
+  nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+  nav.props.economy.snapshotConfirmed = true;
+  nav.props.economy.snapshot.buildings = { ...nav.props.economy.snapshot.buildings, home: 1, woodlot: 1 };
+  try {
+    pointer.render(); pointer.render();
+    const oldComplete = nav.component("WorldScene").props.lopukhArrival.onComplete;
+    const oldDismiss = nav.component("LopukhArrivalOnboarding").props.onDismiss;
+    nav.props.ownerPublicId = "lopukh-owner-two";
+    pointer.render(); pointer.render();
+    oldComplete(); oldDismiss(); pointer.render();
+    assert.equal(values.size, 0);
+    assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, false);
+    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: nav.props.ownerPublicId };
+    pointer.render(); pointer.render();
+    oldComplete(); oldDismiss(); pointer.render();
+    assert.equal(values.size, 0, "old callbacks cannot complete the next owner’s route");
+    assert.equal(nav.component("WorldScene").props.lopukhArrival.enabled, true);
+    nav.component("WorldScene").props.lopukhArrival.onComplete(); pointer.render();
+    nav.component("LopukhArrivalOnboarding").props.onDismiss(); pointer.render();
+    assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, true);
+    hooks.reset(); hooks.captureEffects(); pointer.render(); pointer.render();
+    assert.equal(nav.component("WorldScene").props.lopukhArrival.enabled, false, "completed route is restored without replay");
+    assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, true);
+    nav.props.economy.snapshotConfirmed = false; pointer.render();
+    assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, false, "local presentation alone cannot grant access");
+    nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.woodlot = 0; pointer.render();
+    assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, false);
+  } finally { pointer.restore(); }
+});
+
+test("the rabbit gallery hint distinguishes a closed woodlot from a resident still on the path", () => {
+  const gallery = WorldCharacters({ open: true, lopukhUnlocked: true, onClose() {}, onCloseAutoFocus() {}, onResident() { assert.fail("pending resident cannot open"); } });
+  const card = elements(gallery).find(element => element.props["data-world-character"] === "lopukh");
+  assert.match(card.props["aria-label"], /Незнакомый житель.*Дождитесь прибытия/);
+  assert.doesNotMatch(renderToStaticMarkup(card), /<canvas|Лопоух|Весёлый лесоруб/);
+  card.props.onClick();
+  for (const quarry of [false, true]) for (const merchant of [false, true]) {
+    assert.equal(worldResidentAvailable("lopukh", quarry, merchant), false);
+    assert.equal(worldResidentAvailable("lopukh", quarry, merchant, true), true);
+  }
+});
+
+test("resident arrival coaches run one at a time and the first course does not require opening Lopukh", () => {
+  const pointer = pointerNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "neighbors" } } }), { nav } = pointer;
+  const values = new Map();
+  window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  nav.props.ownerPublicId = "lopukh-coach-order";
+  nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+  nav.props.economy.snapshotConfirmed = true;
+  nav.props.economy.snapshot.buildings = { ...nav.props.economy.snapshot.buildings, woodlot: 1, quarry: 1, home: 3 };
+  try {
+    pointer.render(); pointer.render();
+    assert.equal(nav.component("WorldScene").props.lopukhArrival.enabled, false);
+    assert.equal(nav.component("WorldOnboardingSession").props.open, true, "the unfinished first course keeps its own neighbor lesson");
+    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+    nav.find(element => element.props["data-world-characters-trigger"] !== undefined).props.onClick();
+    assert.equal(nav.component("WorldCharacters").props.open, true);
+    assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, false, "first-course neighbors need no construction or rabbit conversation");
+    nav.component("WorldCharacters").props.onClose(); pointer.render();
+    nav.find(element => element.props["aria-label"] === "Закрыть: Ещё").props.onClick(); pointer.render();
+    hooks.setGuideContext({ onboarding: { progress: { version: 2, status: "completed" } } }); pointer.render();
+    let scene = nav.component("WorldScene");
+    assert.equal(scene.props.lopukhArrival.enabled, true);
+    assert.equal(scene.props.residentArrival.enabled, false);
+    assert.equal(scene.props.merchantArrival.enabled, false);
+    scene.props.lopukhArrival.onComplete(); pointer.render();
+    assert.equal(nav.component("LopukhArrivalOnboarding").props.open, true);
+    assert.equal(nav.component("WorldScene").props.residentArrival.enabled, false, "the finished newcomer keeps his greeting until dismissed");
+    nav.component("LopukhArrivalOnboarding").props.onDismiss(); pointer.render();
+    scene = nav.component("WorldScene");
+    assert.equal(scene.props.lopukhArrival.enabled, false);
+    assert.equal(scene.props.residentArrival.enabled, true);
+    assert.equal(scene.props.merchantArrival.enabled, false);
+  } finally { pointer.restore(); }
+});
+
+
+test("a retained rabbit conversation component cannot reopen its portal before arrival or for a foreign owner", () => {
+  const economy = { snapshot: { ownerPublicId: "lopukh-dialog-owner" } };
+  const props = { id: "lopukh", open: true, ownerPublicId: "lopukh-dialog-owner", economy, isOnline: true,
+    quarryBuilt: true, onClose() {}, onCloseAutoFocus() {}, onOpenStation() {} };
+  assert.equal(WorldVillagerDialog(props).props.open, false);
+  assert.equal(WorldVillagerDialog({ ...props, lopukhAvailable: true }).props.open, true);
+  economy.snapshot.ownerPublicId = "another-account";
+  assert.equal(WorldVillagerDialog({ ...props, lopukhAvailable: true }).props.open, false);
 });

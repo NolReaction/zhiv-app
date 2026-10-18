@@ -15,12 +15,12 @@ const { forestVillagerPlaces, FOREST_VILLAGER_PROFILES } = await vite.ssrLoadMod
 const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1 });
+const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1, woodlot: 1 });
 const levels = { home: 3, quarry: 1, woodlot: 1 }, now = Date.parse("2026-10-17T12:00:00Z");
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function setup(id, production = null) {
   const state = createForestVillagers(scene);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: levels, arrivalSeen: true, leaftailReady: true, production, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: levels, arrivalSeen: true, lopukhArrivalSeen: true, leaftailReady: true, production, now });
   // Visit contracts below use real exterior host coordinates; only the guest
   // is simulated here, while the social director has its own integration tests.
   for (const [other, mind] of Object.entries(state.residents)) if (other !== id) mind.available = false;

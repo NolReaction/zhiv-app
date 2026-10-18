@@ -18,7 +18,7 @@ const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presenta
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const now = Date.parse("2026-10-17T12:00:00Z"), distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
-const actual = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1 });
+const actual = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1, woodlot: 1 });
 function corridor() {
   return { schemaVersion: 1, id: "steady-villager", width: 600, height: 200, terrain: [], paths: [],
     focus: { x: 0, y: 0, width: 600, height: 200 }, actor: { spawn: { x: 80, y: 120 }, size: 40 },
@@ -31,7 +31,7 @@ function corridor() {
 }
 function setup(id, scene = actual, production = null) {
   const state = createForestVillagers(scene);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1, woodlot: 1 }, arrivalSeen: true,
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1, woodlot: 1 }, arrivalSeen: true, lopukhArrivalSeen: true,
     leaftailReady: true, production, now });
   for (const [other, mind] of Object.entries(state.residents)) if (other !== id) mind.available = false;
   return state;

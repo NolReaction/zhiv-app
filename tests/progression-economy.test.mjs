@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { recipeBuildingLevel } from "./helpers/recipe-level.mjs";
 
 const readJson = path => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 const catalog = readJson("../apps/api/src/main/resources/world/economy-catalog.json");
@@ -26,7 +27,7 @@ const sale = load("../features/economy/domain/local-sale.ts", { "./model": money
 const currencyShop = load("../features/economy/domain/currency-shop.ts");
 const gameRewards = load("../features/game/game-rewards.ts");
 const model = load("../features/progression/economy-data.ts", {
-  "@/features/economy/domain/model": { economyCatalog: catalog },
+  "@/features/economy/domain/model": { economyCatalog: catalog, recipeBuildingLevel },
   "@/features/economy/domain/money": money,
   "@/features/economy/domain/currency-shop": currencyShop,
   "@/features/game/game-rewards": gameRewards,
@@ -39,6 +40,17 @@ const { progressionEconomy: economy, calculateRecipePlan, buildProgressionEconom
 const recipe = id => economy.recipes.find(value => value.id === id);
 const item = id => economy.items.find(value => value.id === id);
 const queue = (plan, id) => plan.queues.find(value => value.buildingId === id);
+
+test("recipe references show the functional level-zero fire while leaving its wire catalog compatible", () => {
+  const wire = catalog.recipes.find(value => value.id === "cook_grilled_fish");
+  assert.equal(wire.buildingLevel, 1);
+  assert.equal(wire.baseCampfire, true);
+  assert.equal(recipe("cook_grilled_fish").buildingLevel, 0);
+  const fish = item("grilled_fish").sources.find(value => value.recipeId === "cook_grilled_fish");
+  assert.equal(fish.requiredBuildings.dryer, 0);
+  assert.match(fish.detail, /уровень 0/);
+  assert.equal(recipe("cook_compote").buildingLevel, 1);
+});
 
 test("economy reference covers every actual item and recipe, with sources and reverse uses", () => {
   assert.equal(economy.items.length, catalog.items.length);
@@ -84,7 +96,7 @@ test("source costs and prerequisites are complete catalog copies, including the 
     const source = reference.items.find(item => item.id === Object.keys(recipe.rewards)[0]).sources.find(source => source.recipeId === recipe.id);
     assert.deepEqual(plain(source.cost), recipe.cost);
     assert.deepEqual(plain(source.requiredBuildings), { ...recipe.requiredBuildings,
-      [recipe.buildingId]: Math.max(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?? 0) });
+      [recipe.buildingId]: Math.max(recipeBuildingLevel(recipe), recipe.requiredBuildings[recipe.buildingId] ?? 0) });
     assert.deepEqual(plain(source.requiredRecipes), recipe.requiredRecipes);
     source.cost.coins += 1;
     source.requiredBuildings[recipe.buildingId] += 1;

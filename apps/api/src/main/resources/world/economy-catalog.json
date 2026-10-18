@@ -1801,6 +1801,7 @@
       "name": "Пожарить рыбу",
       "buildingId": "dryer",
       "buildingLevel": 1,
+      "baseCampfire": true,
       "requiredHomeLevel": 1,
       "requiredBuildings": {},
       "seconds": 180,

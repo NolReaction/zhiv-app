@@ -224,6 +224,7 @@ test("the actual boat handover invites one old neighbour through a real Tiled ro
     worldDevStore.patch({ ...quietClearing, autoLife: true });
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
       economyBuildings: { home: 3, quarry: 0, woodlot: 1 }, economyResidents: access(owner, 1, 3),
+      lopukhArrival: { seen: true, enabled: false, onComplete: assert.fail },
       residentArrival: { seen: true, enabled: false, onComplete: assert.fail },
       merchantArrival: { seen: false, enabled: true, onComplete() {} } };
     const canvas = env.surface(); scene = mountHabitat(canvas, initial, callback()); await finishVillagerArtwork(env);

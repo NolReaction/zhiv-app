@@ -16,7 +16,7 @@ import { createWorldLightingEditorMap, WORLD_LIGHTING_EDITOR_FOCUS_EVENT, takeWo
 import { WORLD_STUDIO_MAP_KEY_EVENT, type WorldStudioMapKeyRequest } from "@/features/world/dev/world-studio-keyboard";
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
-import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget, leaftailArrivalGuideTarget } from "./map-guide-target";
+import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget, leaftailArrivalGuideTarget, lopukhArrivalGuideTarget } from "./map-guide-target";
 import { createMapSceneRehearsal } from "./map-scene-rehearsal";
 import { worldFrameDue } from "./frame-timing";
 import { sameSceneOptions } from "./scene-options";
@@ -223,6 +223,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     draw();
   }
   function arrivalTarget() {
+    if (guidePlace === "lopukh-home" && options.lopukhArrival?.enabled && !options.lopukhArrival.seen && !editingLight()) {
+      const point = habitat.lopukhArrivalPoint?.();
+      return point ? lopukhArrivalGuideTarget(point) : undefined;
+    }
     if (guidePlace === "leaftail-caravan" && options.merchantArrival?.enabled && !options.merchantArrival.seen && !editingLight()) {
       const point = habitat.merchantArrivalPoint?.();
       return point ? leaftailArrivalGuideTarget(point) : undefined;

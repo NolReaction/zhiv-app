@@ -12,7 +12,7 @@ import styles from "./world-production-slots.module.css";
 
 type SlotConfirmation = { stationId: string; owner: string; slot: number; pricePearls: number };
 
-/** Built places expose slots; finished orders keep their place until the ordinary claim. */
+/** Active places, including the basic campfire, retain finished orders until the ordinary claim. */
 export function WorldProductionSlots({ economy, stationId, compact = false, openPantry }: { economy: ReadyEconomy; stationId: string; compact?: boolean; openPantry?: () => void }) {
   const dialogId = useId();
   const [confirmation, setConfirmation] = useState<SlotConfirmation | null>(null);
@@ -25,8 +25,9 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   const capacity = productionSlotCount(state, stationId), offer = productionSlotOffer(state, stationId);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === stationId);
   const construction = state.jobs.some(job => job.kind === "construction" && job.targetId === stationId);
-  const unavailable = construction || !(state.buildings[stationId] > 0);
-  const currentConfirmation = confirmation?.stationId === stationId && confirmation.owner === state.ownerPublicId && confirmation.slot === capacity + 1 ? confirmation : null;
+  const basicCampfire = stationId === "dryer" && !(state.buildings[stationId] > 0);
+  const unavailable = construction || !basicCampfire && !(state.buildings[stationId] > 0);
+  const currentConfirmation = !basicCampfire && confirmation?.stationId === stationId && confirmation.owner === state.ownerPublicId && confirmation.slot === capacity + 1 ? confirmation : null;
   const selectedOffer = state.catalog.productionSlots.upgrades.find(entry => entry.slots === currentConfirmation?.slot);
   const reason = !(state.buildings[stationId] > 0) ? "Сначала обустройте это место"
     : construction ? "Дождитесь завершения улучшения"
@@ -55,7 +56,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   return <section ref={slotsSection} tabIndex={-1} className={`${styles.slots} ${compact ? styles.compact : ""}`} aria-label="Места производства" data-production-slots={stationId}
     data-section-guide-target="workshop-queue" data-running-orders={jobs.some(job => !economy.pendingProductionIds?.includes(job.id) && !worldJobProgress(state, job, economy.now).ready) ? stationId : undefined}>
     <header className={styles.heading}><h3>Производство</h3><span aria-live="polite" aria-atomic="true">Свободно {free} из {capacity}</span></header>
-    <div className={styles.track}>{Array.from({ length: 3 }, (_, index) => {
+    <div className={styles.track} data-slot-columns={basicCampfire ? capacity : 3}>{Array.from({ length: basicCampfire ? capacity : 3 }, (_, index) => {
       const job = jobs[index], opened = index < capacity;
       const queued = Boolean(job && economy.pendingProductionIds?.includes(job.id));
       const tier = state.catalog.productionSlots.upgrades.find(entry => entry.slots === index + 1);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { economicMath } from "./lib/economy-math.mjs";
+import { economicMath, recipeBuildingLevel } from "./lib/economy-math.mjs";
 import { auditEconomyProgression } from "./audit-economy-progression.mjs";
 
 const rounded = value => Number(value.toFixed(3));
@@ -33,7 +33,7 @@ export function auditFoodEconomy(catalog) {
   const defaultProducer = id => catalog.recipes.find(recipe => recipe.rewards[id] > 0 && Object.keys(recipe.rewards).length === 1);
   const hasRequirements = (definition, buildings) => (buildings.home ?? 1) >= definition.requiredHomeLevel
     && Object.entries(definition.requiredBuildings ?? {}).every(([id, level]) => (buildings[id] ?? 0) >= level)
-    && (!definition.buildingId || (buildings[definition.buildingId] ?? 0) >= definition.buildingLevel);
+    && (!definition.buildingId || (buildings[definition.buildingId] ?? 0) >= recipeBuildingLevel(definition));
   // Independent fixed-point audit of prerequisites, including ingredient chains.
   const obtainable = buildings => {
     const reachable = new Set(), completedRecipes = new Set(); let changed = true;
@@ -106,7 +106,7 @@ export function auditFoodEconomy(catalog) {
         shopFishCookingSaleProfitCoins: purchaseCost === null ? null : revenue - purchaseCost,
         fullBatchSaleProfitCoins: batchProfit };
     });
-    return { recipeId: recipe.id, homeLevel: recipe.requiredHomeLevel, stationLevel: recipe.buildingLevel,
+    return { recipeId: recipe.id, homeLevel: recipe.requiredHomeLevel, stationLevel: recipeBuildingLevel(recipe),
       minutes: recipe.seconds / 60, output: recipe.rewards, maxBatch: recipe.maxBatch,
       singleSlotBatchesPerDay: rounded(86400 / recipe.seconds), outputSaleCoins: revenue, variants,
       defaultInputSourceSlotMinutes: Object.fromEntries(Object.entries(math.batch(recipe).slotMinutes).map(([id, minutes]) => [id, rounded(minutes)])) };

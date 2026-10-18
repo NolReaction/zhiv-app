@@ -17,6 +17,11 @@ export function leaftailArrivalGuideTarget(point: { x: number; y: number; size: 
   return target ? { ...target, id: "leaftail-arrival", place: "leaftail-caravan", label: "Листохвост" } : undefined;
 }
 
+export function lopukhArrivalGuideTarget(point: { x: number; y: number; size: number }): MapInteractiveObject | undefined {
+  const target = minerArrivalGuideTarget(point);
+  return target ? { ...target, id: "lopukh-arrival", place: "lopukh-home", label: "Лопоух" } : undefined;
+}
+
 /** Frame the current artwork's authored contour without selecting or opening it. */
 export function mapGuideCamera(object: MapInteractiveObject, view: Viewport, bounds: Viewport,
   insets: VerticalCameraInsets): Camera {
@@ -34,7 +39,7 @@ export function drawMapGuideTarget(context: CanvasRenderingContext2D, object: Ma
   camera: Camera, view: Viewport, elapsedSeconds = 0, reducedMotion = false) {
   // Arrival geometry remains available to the camera and hit handling; a box
   // around a living neighbour is deliberately not painted.
-  if (["kamneshmyg-arrival", "leaftail-arrival"].includes(object.id) || object.hitArea.length < 3) return;
+  if (["kamneshmyg-arrival", "leaftail-arrival", "lopukh-arrival"].includes(object.id) || object.hitArea.length < 3) return;
   const points = object.hitArea.map(point => worldToScreen(point, camera, view));
   context.save();
   context.beginPath();

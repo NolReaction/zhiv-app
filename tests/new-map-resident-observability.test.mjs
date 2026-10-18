@@ -11,7 +11,7 @@ function initial(key) {
   const production = { ownerPublicId: key, revision: 1, jobs: [] };
   return { ...options, view: "world", reducedMotion: false, serverNow: 100_000, presenceKey: key,
     economyBuildings: buildings, economyResidents: { ...production, buildings, production }, economyProduction: production,
-    residentArrival: { seen: true, enabled: false }, merchantArrival: { seen: true, enabled: false } };
+    lopukhArrival: { seen: true, enabled: false }, residentArrival: { seen: true, enabled: false }, merchantArrival: { seen: true, enabled: false } };
 }
 function probeFor(settings) {
   const world = live.previewWorldScene(live.TILED_WORLD,

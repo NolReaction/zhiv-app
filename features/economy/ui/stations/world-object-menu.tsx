@@ -11,6 +11,7 @@ import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
 import { canStartTutorialWorkshop } from "@/features/economy/domain/workshop-starter";
+import { recipeBuildingLevel } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldPlaceForStation, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
@@ -69,17 +70,19 @@ const cookingSectionIcons: Record<string, LucideIcon> = { fish: Fish, drinks: Cu
 
 export function CampfireRecipeCatalog({ economy, recipes, focusedRecipeId, onHelpContextChange }: { economy: ReadyEconomy; recipes: WorldRecipe[]; focusedRecipeId: string | null; onHelpContextChange?: (context: WorldHelpContext) => void }) {
   const [selection, setSelection] = useState<{ focus: string | null; filter: CampfireDurationFilter }>({ focus: focusedRecipeId, filter: "all" });
-  const available = worldRecipeGroups(economy.snapshot, recipes);
+  const basicCampfire = !(economy.snapshot.buildings.dryer > 0);
+  const visibleRecipes = basicCampfire ? recipes.filter(recipe => recipeBuildingLevel(recipe) === 0) : recipes;
+  const available = worldRecipeGroups(economy.snapshot, visibleRecipes);
   const keys = new Set(available.map(product => product.key));
-  const products = worldRecipeGroups(economy.snapshot, recipes, { includeFuture: true })
+  const products = worldRecipeGroups(economy.snapshot, visibleRecipes, { includeFuture: true })
     .filter(product => keys.has(product.key) || product.methods.some(method => method.id === focusedRecipeId));
   const focusedProduct = products.find(product => product.methods.some(method => method.id === focusedRecipeId));
   // A new source/help target stays visible; choosing another filter is always read-only.
-  const filter = selection.focus !== focusedRecipeId && focusedProduct && !campfireDurationMatches(focusedProduct.recipe.seconds, selection.filter) ? "all" : selection.filter;
+  const filter = basicCampfire || selection.focus !== focusedRecipeId && focusedProduct && !campfireDurationMatches(focusedProduct.recipe.seconds, selection.filter) ? "all" : selection.filter;
   const groups = campfireRecipeGroups(products, filter);
-  if (!(economy.snapshot.buildings.dryer > 0) || economy.snapshot.jobs.some(job => job.kind === "construction" && job.targetId === "dryer")) return null;
+  if (economy.snapshot.jobs.some(job => job.kind === "construction" && job.targetId === "dryer")) return null;
   return <div className={styles.cookingCatalog} data-campfire-catalog>
-    <div className={styles.cookingFilters} role="group" aria-label="Время приготовления">{campfireDurationFilters.map(entry => <button key={entry.id} type="button" aria-pressed={filter === entry.id} data-cooking-duration={entry.id} onClick={() => setSelection({ focus: focusedRecipeId, filter: entry.id })}>{entry.label}</button>)}</div>
+    {basicCampfire ? <p className={styles.small}>На костре уже можно жарить рыбу. Улучшите костёр, чтобы открыть новые блюда и напитки.</p> : <div className={styles.cookingFilters} role="group" aria-label="Время приготовления">{campfireDurationFilters.map(entry => <button key={entry.id} type="button" aria-pressed={filter === entry.id} data-cooking-duration={entry.id} onClick={() => setSelection({ focus: focusedRecipeId, filter: entry.id })}>{entry.label}</button>)}</div>}
     {groups.map(group => {
       const SectionIcon = cookingSectionIcons[group.id] ?? Package;
       return <section key={group.id} className={styles.recipeGroup} data-cooking-group={group.id} aria-label={group.label}>
@@ -87,7 +90,7 @@ export function CampfireRecipeCatalog({ economy, recipes, focusedRecipeId, onHel
         <div className={styles.recipeGrid}>{group.recipes.map(product => <WorldProductionCard key={product.key} economy={economy} recipe={product.recipe} focused={product.methods.some(recipe => recipe.id === focusedRecipeId)} onHelpContextChange={onHelpContextChange} />)}</div>
       </section>;
     })}
-    {!groups.length && <p className={styles.empty}>{products.length ? "Нет рецептов с таким временем. Выберите другой фильтр." : "Сначала обустройте костёр."}</p>}
+    {!groups.length && <p className={styles.empty}>{products.length ? "Нет рецептов с таким временем. Выберите другой фильтр." : "Пока нет доступных рецептов."}</p>}
   </div>;
 }
 
@@ -152,13 +155,13 @@ function ObjectMenuBody({ guide, tutorialWorkshop = false, leaftailAvailable = f
   const building = state?.catalog.buildings.find(entry => entry.id === stationId);
   const target = building?.levels.find(level => level.level === current + 1);
   const recipes = state?.catalog.recipes.filter(recipe => recipe.buildingId === stationId) ?? [];
-  const focusedRecipe = state ? worldRecipeGroups(state, recipes, { includeFuture: stationId === "dryer" }).find(group => group.methods.some(recipe => recipe.id === recipeId))?.recipe : undefined;
+  const focusedRecipe = state ? worldRecipeGroups(state, recipes, { includeFuture: stationId === "dryer" && current > 0 }).find(group => group.methods.some(recipe => recipe.id === recipeId))?.recipe : undefined;
   const focusedRecipeId = focusedRecipe?.id;
   const jobs = state?.jobs.filter(entry => ["production", "construction"].includes(entry.kind) && entry.targetId === stationId) ?? [];
   const construction = jobs.find(entry => entry.kind === "construction");
   const guidedWorkshopSetup = tutorialWorkshop && stationId === "workshop" && !current && state
     && canStartTutorialWorkshop(state);
-  const needsSetup = (productionStationSupported(stationId) || stationId === "quarry") && (!current || Boolean(construction));
+  const needsSetup = stationId !== "dryer" && (productionStationSupported(stationId) || stationId === "quarry") && (!current || Boolean(construction));
   const fitOverview = position.side === "sheet" && (needsSetup || ["garden", "dryer", "woodlot", "workshop", "kiln"].includes(stationId));
   const readyJobs = state ? jobs.filter(job => job.kind === "production" && worldJobProgress(state, job, economy.now).ready) : [];
   const runningJobs = state ? jobs.filter(job => job.kind === "production" && !worldJobProgress(state, job, economy.now).ready) : [];
@@ -239,8 +242,8 @@ function ObjectMenuBody({ guide, tutorialWorkshop = false, leaftailAvailable = f
             event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[nextIndex]?.focus({ preventScroll: true });
           }}><StationIcon size={15} aria-hidden="true" /><span>{title}<small>{level ? `ур. ${level}` : "закрыто"}</small></span></button>;
         })}
-      </nav> : <><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{placeStatus ?? (definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : landmark ? current ? "Восстановлено" : "Требует восстановления" : current ? `Уровень ${current}` : "Пока не обустроено")}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : placeLabel}</h2></div></>}
-      {state && !definition.future && target && !guidedWorkshopSetup && <button type="button" data-guide-station-upgrade={stationId} className={styles.headerUpgrade} aria-haspopup="dialog" aria-label={`${construction ? "Ход улучшения" : landmark ? "Восстановить" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}: ${current} → ${target.level} уровень`} onClick={openUpgrade}><Hammer size={17} aria-hidden="true" /><span>{construction ? "Стройка" : landmark ? "Восстановить" : current ? "Улучшить" : "Построить"}</span></button>}
+      </nav> : <><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{placeStatus ?? (definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : landmark ? current ? "Восстановлено" : "Требует восстановления" : current || stationId === "dryer" ? `Уровень ${current}` : "Пока не обустроено")}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : placeLabel}</h2></div></>}
+      {state && !definition.future && target && !guidedWorkshopSetup && <button type="button" data-guide-station-upgrade={stationId} className={styles.headerUpgrade} aria-haspopup="dialog" aria-label={`${construction ? "Ход улучшения" : landmark ? "Восстановить" : current || stationId === "dryer" ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}: ${current} → ${target.level} уровень`} onClick={openUpgrade}><Hammer size={17} aria-hidden="true" /><span>{construction ? "Стройка" : landmark ? "Восстановить" : current || stationId === "dryer" ? "Улучшить" : "Построить"}</span></button>}
       <button type="button" className={styles.close} aria-label="Закрыть меню объекта" onClick={onClose}><X size={17} aria-hidden="true" /></button>
     </header>
     <div data-guide-coach-slot />

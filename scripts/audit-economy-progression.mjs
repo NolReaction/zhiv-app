@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { auditFourthStageBudget, auditProductionBalance, auditProjectCourses } from "./lib/economy-balance.mjs";
-import { createLiquidation } from "./lib/economy-math.mjs";
+import { createLiquidation, recipeBuildingLevel } from "./lib/economy-math.mjs";
 
 const catalogPath = new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url);
 const startingBuildings = { home: 1, garden: 1, warehouse: 1 };
@@ -92,7 +92,7 @@ export function auditEconomyProgression(catalog) {
         assert.equal(maximum, 1, `${building.id}: current landmark has one restoration tier`);
         assert(catalog.explorations.some(route => route.requiredBuildings?.[building.id] === level.level), `${key}: restoration has no exploration benefit`);
       } else if (building.id !== "home") {
-        assert(catalog.recipes.some(recipe => recipe.buildingId === building.id && recipe.buildingLevel === level.level), `${key}: upgrade has no production benefit`);
+        assert(catalog.recipes.some(recipe => recipe.buildingId === building.id && recipeBuildingLevel(recipe) === level.level), `${key}: upgrade has no production benefit`);
       }
     }
   }
@@ -119,7 +119,11 @@ export function auditEconomyProgression(catalog) {
     assert(Object.keys(definition.rewards).length > 0, `${definition.id}: empty output`);
     assert(Number.isSafeInteger(definition.seconds) && definition.seconds > 0, `${definition.id}: invalid duration`);
     if (definition.buildingId) {
-      assert(nodes.has(`${definition.buildingId}:${definition.buildingLevel}`), `${definition.id}: unknown producer`);
+      assert(Number.isInteger(definition.buildingLevel) && definition.buildingLevel > 0, `${definition.id}: invalid wire producer level`);
+      assert(definition.baseCampfire === undefined || definition.baseCampfire === true && definition.id === "cook_grilled_fish"
+        && definition.buildingId === "dryer" && definition.buildingLevel === 1, `${definition.id}: invalid base campfire recipe`);
+      const level = recipeBuildingLevel(definition);
+      assert(level === 0 || nodes.has(`${definition.buildingId}:${level}`), `${definition.id}: unknown producer`);
       const inputValue = npcValue(definition.cost.items) + definition.cost.coins;
       assert(npcValue(definition.rewards) > inputValue, `${definition.id}: crafting destroys NPC value`);
       assert(cashValue(definition.rewards) > cashValue(definition.cost.items) + definition.cost.coins, `${definition.id}: crafting destroys actual sale proceeds`);
@@ -261,7 +265,7 @@ export function auditEconomyProgression(catalog) {
   for (const definition of production) {
     const prerequisites = new Set();
     for (const [id, level] of Object.entries(requirements(definition))) closure(`${id}:${level}`, new Set(), prerequisites);
-    if (definition.buildingId) closure(`${definition.buildingId}:${definition.buildingLevel}`, new Set(), prerequisites);
+    if (definition.buildingId && recipeBuildingLevel(definition) > 0) closure(`${definition.buildingId}:${recipeBuildingLevel(definition)}`, new Set(), prerequisites);
     const storageLevel = Math.max(1, ...[...prerequisites].filter(id => id.startsWith("warehouse:")).map(id => nodes.get(id).level));
     const capacity = buildings.get("warehouse").levels[storageLevel - 1].warehouseCapacity;
     assert(Object.values(definition.cost.items).reduce((sum, amount) => sum + amount, 0) <= capacity, `${definition.id}: one batch input exceeds available storage`);
@@ -284,7 +288,7 @@ export function auditEconomyProgression(catalog) {
     for (const definition of production) {
       if (!hasRequirements(definition) || !hasMaterials(definition.cost)
         || Object.keys(definition.requiredRecipes ?? {}).some(id => !completedRecipes.has(id))) continue;
-      if (definition.buildingId && (completed[definition.buildingId] ?? 0) < definition.buildingLevel) continue;
+      if (definition.buildingId && (completed[definition.buildingId] ?? 0) < recipeBuildingLevel(definition)) continue;
       if (definition.buildingId && !completedRecipes.has(definition.id)) { completedRecipes.add(definition.id); changed = true; }
       if (!definition.buildingId && !completedRoutes.has(definition.id)) { completedRoutes.add(definition.id); changed = true; }
       for (const item of Object.keys(definition.rewards)) {

@@ -1,4 +1,4 @@
-import { economyCatalog, type EconomyCatalog, type EconomyCost } from "@/features/economy/domain/model";
+import { economyCatalog, recipeBuildingLevel, type EconomyCatalog, type EconomyCost } from "@/features/economy/domain/model";
 import { economyLocalSellPrice } from "@/features/economy/domain/local-sale";
 import { pearlDisplayAmount } from "@/features/economy/domain/money";
 import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
@@ -109,7 +109,7 @@ function npcValue(catalog: EconomyCatalog, items: Record<string, number>): numbe
 /** Stable baseline: the earliest recipe, before optional mastery variants. */
 function baselineRecipe(catalog: EconomyCatalog, itemId: string) {
   return catalog.recipes.filter(recipe => (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
-    a.requiredHomeLevel - b.requiredHomeLevel || a.buildingLevel - b.buildingLevel
+    a.requiredHomeLevel - b.requiredHomeLevel || recipeBuildingLevel(a) - recipeBuildingLevel(b)
     || Object.keys(a.requiredRecipes ?? {}).length - Object.keys(b.requiredRecipes ?? {}).length
     || a.id.localeCompare(b.id))[0];
 }
@@ -138,7 +138,7 @@ function recipeUnlockHomes(catalog: EconomyCatalog): Map<string, number> {
     return resolve(id, recipeCache, () => {
       const recipe = catalog.recipes.find(recipe => recipe.id === id);
       if (!recipe) return 1;
-      return Math.max(recipe.requiredHomeLevel, buildingHome(recipe.buildingId, recipe.buildingLevel),
+      return Math.max(recipe.requiredHomeLevel, buildingHome(recipe.buildingId, recipeBuildingLevel(recipe)),
         ...Object.entries(recipe.requiredBuildings).map(([id, level]) => buildingHome(id, level)),
         ...Object.keys(recipe.requiredRecipes ?? {}).map(recipeHome));
     });
@@ -287,7 +287,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
   const recipes: EconomyRecipe[] = catalog.recipes.map(recipe => {
     const inputNpcValue = npcValue(catalog, recipe.cost.items), outputNpcValue = npcValue(catalog, recipe.rewards);
     const count = Object.values(recipe.rewards).reduce((sum, value) => sum + value, 0);
-    return { ...recipe, cost: copyCost(recipe.cost), rewards: { ...recipe.rewards }, requiredBuildings: { ...recipe.requiredBuildings }, requiredRecipes: { ...recipe.requiredRecipes },
+    return { ...recipe, buildingLevel: recipeBuildingLevel(recipe), cost: copyCost(recipe.cost), rewards: { ...recipe.rewards }, requiredBuildings: { ...recipe.requiredBuildings }, requiredRecipes: { ...recipe.requiredRecipes },
       ...(recipe.collection ? { collection: { ...recipe.collection } } : {}), inputNpcValue, outputNpcValue,
       addedNpcValue: outputNpcValue - inputNpcValue - recipe.cost.coins, unitsPerHour: 3600 * count / recipe.seconds,
       grossNpcPerHour: 3600 * outputNpcValue / recipe.seconds, collectionSeconds: recipe.collection?.seconds ?? 0,

@@ -1,5 +1,5 @@
 import { fishClassForItem, fishingClassItemId, fishingIneligibility } from "./fishing";
-import { economyCatalog, type EconomyCatalog, type EconomyMarketListing, type EconomyState } from "./model";
+import { economyCatalog, recipeBuildingLevel, type EconomyCatalog, type EconomyMarketListing, type EconomyState } from "./model";
 import { unlockedEconomyItems, type ItemUnlockSource } from "./item-unlocks";
 
 /** Only confirmed restoration opens trade; paid, ready and unclaimed jobs do not. */
@@ -12,6 +12,7 @@ export function economyMarketUnlocked(state: Pick<EconomyState, "buildings" | "c
 /** Catalog source threshold for descriptions; permanent discovery controls actual trades. */
 export function marketRequiredHomeLevel(itemId: string, catalog: EconomyCatalog = economyCatalog): number {
   const buildingHome = (id: string, level: number, seen = new Set<string>()): number => {
+    if (id === "dryer" && level === 0) return 1;
     if (id === "home") return level;
     const key = `${id}:${level}`;
     if (seen.has(key)) return Infinity;
@@ -25,7 +26,7 @@ export function marketRequiredHomeLevel(itemId: string, catalog: EconomyCatalog 
     Math.max(home, ...Object.entries(buildings).map(([id, level]) => buildingHome(id, level)));
   const sources = [
     ...catalog.recipes.filter(recipe => (recipe.rewards[itemId] ?? 0) > 0).map(recipe => requirements(recipe.requiredHomeLevel,
-      { ...recipe.requiredBuildings, [recipe.buildingId]: Math.max(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?? 0) })),
+      { ...recipe.requiredBuildings, [recipe.buildingId]: Math.max(recipeBuildingLevel(recipe), recipe.requiredBuildings[recipe.buildingId] ?? 0) })),
     ...catalog.explorations.filter(route => (route.rewards[itemId] ?? 0) > 0).map(route => requirements(route.requiredHomeLevel, route.requiredBuildings)),
   ];
   const bait = catalog.fishing?.baits.find(item => item.itemId === itemId);

@@ -7,7 +7,7 @@ import { ArrowLeftRight, ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Co
 import type { LucideIcon } from "lucide-react";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import { ItemIcon } from "@/features/items/item-icon";
-import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "@/features/economy/domain/model";
+import { recipeBuildingLevel, type EconomyCost, type EconomyJob, type EconomyMarketListing, type EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { formatPearls } from "@/features/economy/domain/money";
@@ -62,9 +62,9 @@ export function economyDuration(seconds: number) {
   return `${hours} ч${rest ? ` ${rest} мин` : ""}`;
 }
 
-function requirements(value: Requirements, station?: { buildingId: string; buildingLevel: number }) {
+function requirements(value: Requirements, station?: Parameters<typeof recipeBuildingLevel>[0]) {
   const result: Record<string, number> = { ...value.requiredBuildings, home: Math.max(value.requiredHomeLevel, value.requiredBuildings?.home ?? 0) };
-  if (station) result[station.buildingId] = Math.max(result[station.buildingId] ?? 0, station.buildingLevel);
+  if (station) result[station.buildingId] = Math.max(result[station.buildingId] ?? 0, recipeBuildingLevel(station));
   return result;
 }
 
@@ -187,7 +187,7 @@ function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: Navi
 }
 
 function Unlocks({ state, building, level, navigate }: { state: EconomyView; building: Building; level: Building["levels"][number]; navigate: Navigate }) {
-  const usesLevel = (value: Requirements, station?: { buildingId: string; buildingLevel: number }) => requirements(value, station)[building.id] === level.level;
+  const usesLevel = (value: Requirements, station?: Parameters<typeof recipeBuildingLevel>[0]) => requirements(value, station)[building.id] === level.level;
   const recipes = state.catalog.recipes.filter(recipe => usesLevel(recipe, recipe));
   const routes = state.catalog.explorations.filter(route => usesLevel(route));
   const upgrades = state.catalog.buildings.flatMap(other => other.id === building.id ? [] : other.levels.filter(target => usesLevel(target)).map(target => ({ building: other, level: target.level })));
@@ -219,20 +219,20 @@ function BuildingCard({ economy, building, navigate }: { economy: ReadyEconomy; 
   return <div className={styles.stack}>
     {ownJob && <JobCard economy={economy} job={ownJob} navigate={navigate} />}
     <article className={styles.card}>
-      <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{building.name}</h3><p className={styles.muted}>{building.description}</p></div><span className={styles.level}>{level ? `Ур. ${level}` : "Проект"}</span></div>
+      <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{building.name}</h3><p className={styles.muted}>{building.description}</p></div><span className={styles.level}>{level || building.id === "dryer" ? `Ур. ${level}` : "Проект"}</span></div>
       <nav className={styles.tiers} aria-label={`Уровни: ${building.name}`}>{building.levels.map(tier => <button key={tier.level} aria-pressed={target?.level === tier.level} onClick={() => setPreview(tier.level)}>{tier.level <= level && <Check size={12} aria-hidden />}Ур. {tier.level}</button>)}</nav>
       {target && <>
         <h3>{target.level <= level ? "Уже обустроено" : target.level === level + 1 ? "Следующий шаг" : "Будущий уровень"} · ур. {target.level}</h3>
         {target.level > level && <><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={target.cost} /></>}
         <Unlocks state={state} building={building} level={target} navigate={navigate} />
         {target.level > level && <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(target.seconds)}</span>
-          <button className={styles.primary} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_construction", building.id)}>{level ? `Улучшить до ур. ${target.level}` : "Построить"}<span className={styles.sr}>: {building.name}</span></button>
+          <button className={styles.primary} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_construction", building.id)}>{level || building.id === "dryer" ? `Улучшить до ур. ${target.level}` : "Построить"}<span className={styles.sr}>: {building.name}</span></button>
         </div>}
       </>}
       {reason && <p className={styles.hint}>{target && target.level <= level ? <Check size={14} aria-hidden /> : <LockKeyhole size={14} aria-hidden />}{reason}</p>}
       {target && target.level > level + 1 && <button className={styles.textButton} onClick={() => setPreview(null)}>К ближайшему улучшению<ArrowRight size={15} aria-hidden /></button>}
       {level > 0 && building.id === "quarry" && <button className={styles.textButton} onClick={() => navigate("exploration", "quarry_stone")}>Выбрать участок для добычи<ArrowRight size={15} aria-hidden /></button>}
-      {level > 0 && state.catalog.recipes.some(recipe => recipe.buildingId === building.id) && <button className={styles.textButton} onClick={() => navigate("production", building.id)}>{production ? "К текущему заказу" : "Открыть производство"}<ArrowRight size={15} aria-hidden /></button>}
+      {(level > 0 || building.id === "dryer") && state.catalog.recipes.some(recipe => recipe.buildingId === building.id) && <button className={styles.textButton} onClick={() => navigate("production", building.id)}>{production ? "К текущему заказу" : "Открыть производство"}<ArrowRight size={15} aria-hidden /></button>}
       {target && target.level > level && Object.entries(target.cost.items).some(([id, amount]) => (state.inventory[id] ?? 0) < amount) && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(target.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount)?.[0])}>Где взять недостающие материалы?<ArrowRight size={15} aria-hidden /></button>}
     </article>
   </div>;
@@ -244,7 +244,7 @@ function Buildings({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Развитие хозяйства</h2><p className={styles.muted}>Выберите постройку и посмотрите её следующий шаг. Одна стройка за раз; остальные здания продолжают работать.</p></div></div>
     <div className={styles.buildingGrid} aria-label="Выбрать постройку">{state.catalog.buildings.map(entry => {
       const Icon = buildingIcons[entry.id] ?? House, level = state.buildings[entry.id] ?? 0;
-      return <button key={entry.id} aria-pressed={entry.id === building?.id} onClick={() => navigate("buildings", entry.id)}><Icon size={19} aria-hidden /><span><strong>{entry.name}</strong><small>{level ? `Ур. ${level} / ${entry.levels.length}` : "Не построено"}</small></span></button>;
+      return <button key={entry.id} aria-pressed={entry.id === building?.id} onClick={() => navigate("buildings", entry.id)}><Icon size={19} aria-hidden /><span><strong>{entry.name}</strong><small>{level || entry.id === "dryer" ? `Ур. ${level} / ${entry.levels.length}` : "Не построено"}</small></span></button>;
     })}</div>
     {building && <BuildingCard key={building.id} economy={economy} building={building} navigate={navigate} />}
   </div>;
@@ -257,19 +257,22 @@ function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; nav
   const station = focusedRecipe?.buildingId ?? stations.find(building => building.id === focusId)?.id ?? stations.find(building => (state.buildings[building.id] ?? 0) > 0)?.id ?? stations[0]?.id ?? "";
   const selectId = useId();
   const jobs = state.jobs.filter(entry => entry.kind === "production" && entry.targetId === station);
-  const needsSetup = !(state.buildings[station] > 0) || state.jobs.some(job => job.kind === "construction" && job.targetId === station);
-  const recipes = state.catalog.recipes.filter(recipe => recipe.buildingId === station);
+  const construction = state.jobs.find(job => job.kind === "construction" && job.targetId === station);
+  const basicCampfire = station === "dryer" && !(state.buildings[station] > 0);
+  const needsSetup = station !== "dryer" && (!(state.buildings[station] > 0) || Boolean(construction));
+  const recipes = state.catalog.recipes.filter(recipe => recipe.buildingId === station && (!basicCampfire || recipeBuildingLevel(recipe) === 0));
   const groups = worldRecipeGroups(state, recipes, { includeFuture: true });
   const open = groups.filter(group => group.methods.some(recipe => !unmetRequirement(state, requirements(recipe, recipe))));
   const locked = groups.filter(group => group.methods.every(recipe => unmetRequirement(state, requirements(recipe, recipe))));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесное хозяйство</h2><p className={styles.muted}>До трёх заказов на каждом производстве. Каждый занимает своё место до получения результата.</p></div></div>
-    <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 ? `ур. ${state.buildings[building.id]}` : "не построено"}</option>)}</select></label>
-    {state.buildings[station] > 0 && <button className={styles.textButton} onClick={() => navigate("buildings", station)}><House size={16} aria-hidden />Развитие: {buildingName(state, station)}<ArrowRight size={15} aria-hidden /></button>}
+    <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 || building.id === "dryer" ? `ур. ${state.buildings[building.id] ?? 0}` : "не построено"}</option>)}</select></label>
+    {(state.buildings[station] > 0 || station === "dryer") && <button className={styles.textButton} onClick={() => navigate("buildings", station)}><House size={16} aria-hidden />Развитие: {buildingName(state, station)}<ArrowRight size={15} aria-hidden /></button>}
     {needsSetup ? <WorldStationSetup economy={economy} stationId={station} onOpenConstruction={() => navigate("buildings", station)} onOpenPantry={() => navigate("inventory")} /> : <>
+    {construction && <JobCard economy={economy} job={construction} navigate={navigate} />}
     <WorldProductionSlots key={`${state.ownerPublicId}:${station}`} economy={economy} stationId={station} openPantry={() => navigate("inventory")} />
     {!productionStationSupported(station) && jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
-    <div className={styles.productionGrid}>{open.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div>
-    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.productionGrid}>{locked.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div></details>}
+    {!construction && <><div className={styles.productionGrid}>{open.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div>
+    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.productionGrid}>{locked.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div></details>}</>}
     </>}
   </div>;
 }

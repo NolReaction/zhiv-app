@@ -23,7 +23,7 @@ const production = id => ({ ownerPublicId: "home-test", revision: 1, jobs: [{ id
   stationLevel: 1, recipeId: id, startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 600_000).toISOString() }] });
 function setup(id) {
   const state = createForestVillagers(scene);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: levels, arrivalSeen: true, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: levels, arrivalSeen: true, lopukhArrivalSeen: true, now });
   for (const [other, mind] of Object.entries(state.residents)) if (other !== id) mind.available = false;
   return state;
 }
