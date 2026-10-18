@@ -12,6 +12,9 @@ const { createClearingActivity } = await vite.ssrLoadModule("/features/world/sim
 const { createBuilderMind, advanceBuilderMind } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
 const { createPleskMind } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-mind.ts");
 const { forestResidentOccupants } = await vite.ssrLoadModule("/features/world/characters/forest-resident-occupancy.ts");
+const { createForestGarden } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden.ts");
+const { forestGardenVisualFrame, forestGardenGroundBasket } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
+const { basketGroundFootprint } = await vite.ssrLoadModule("/features/world/navigation/ground-props.ts");
 function state() {
   return { clearing: createClearingActivity(scene), builderMind: createBuilderMind(scene, { awaitConstruction: true }),
     pleskMind: createPleskMind(scene) };
@@ -71,4 +74,31 @@ test("occupancy is detached and resampled from committed feet without becoming a
   current.clearing.position.x += 5;
   assert.equal(occupants(current).find(person => person.id === "mochlik").position.x, current.clearing.position.x);
   assert.equal(current.clearing.elapsed, elapsed);
+});
+
+test("parked and active grounded baskets publish the exact visual support, carried props release it", () => {
+  const current = state(), garden = createForestGarden(scene);
+  garden.basket = { position: { x: 100, y: 120 }, approach: { x: 80, y: 120 }, homePosition: { x: 100, y: 120 },
+    homeApproach: { x: 80, y: 120 }, size: 14, berries: 0, capacity: 12 };
+  current.life = { garden };
+  const parked = occupants(current, { heroVisible: false }).find(prop => prop.id === "garden-basket");
+  assert.deepEqual(parked.position, garden.basket.position, "a parked prop remains after its owner disappears");
+  parked.groundFootprint[0].x += 100;
+  assert.notEqual(occupants(current).find(prop => prop.id === "garden-basket").groundFootprint[0].x, parked.groundFootprint[0].x);
+  const body = current.clearing;
+  garden.routine = { kind: "harvest-berries", bushId: "", phase: "collect", elapsed: 2, totalElapsed: 2, carryingBasket: true };
+  const frame = forestGardenVisualFrame(garden, { ...body.position, size: body.size }, { pose: "idle", frame: 0, direction: "front" }, true);
+  const grounded = forestGardenGroundBasket(garden, body.size, frame), active = occupants(current).find(prop => prop.id === "garden-basket");
+  assert.deepEqual(active.position, { x: grounded.x, y: grounded.y });
+  assert.notDeepEqual(active.position, garden.basket.position, "collect uses the lowered basket, not its stale home marker");
+  assert.deepEqual(active.groundFootprint, basketGroundFootprint(grounded, grounded.size));
+  garden.routine.elapsed = 4.5;
+  assert.equal(occupants(current).some(prop => prop.id === "garden-basket"), false, "lifting stops reserving ground at once");
+  garden.routine = null; garden.basket.held = true;
+  assert.equal(occupants(current).some(prop => prop.id === "garden-basket"), false);
+  const gathering = { held: false, basket: { x: 230, y: 250, size: 16 } };
+  assert.deepEqual(occupants(current, { gathering }).find(prop => prop.id === "supply-basket").groundFootprint,
+    basketGroundFootprint(gathering.basket, 16));
+  gathering.held = true;
+  assert.equal(occupants(current, { gathering }).some(prop => prop.id === "supply-basket"), false);
 });

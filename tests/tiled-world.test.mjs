@@ -26,6 +26,8 @@ const waterPolygon = (id, name = "", x = 30.125, y = 50.375) => ({
 const waterLayer = (id, name, objects) => ({ id, name, type: "objectgroup", draworder: "topdown", objects });
 const groupLayer = (id, name, layers = []) => ({ id, name, type: "group", layers });
 const objectLayer = (id, name, objects) => ({ ...waterLayer(id, name, objects), draworder: "index" });
+const homeEffectAnchor = (extra = {}) => ({ id: 70, name: "plesk-home-fish", x: 35, y: 45, width: 0, height: 0,
+  point: true, class: "EffectAnchor", properties: props({ role: "effect-anchor", effect: "resident-home", residentId: "plesk", siteId: "plesk-shop", level: 1, size: 44 }), ...extra });
 const layerObjects = (layers, offset = { x: 0, y: 0 }) => layers.flatMap(layer => {
   const shift = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
   return layer.layers ? layerObjects(layer.layers, shift) : layer.objects.map(object => ({ ...object, x: object.x + shift.x, y: object.y + shift.y }));
@@ -94,6 +96,48 @@ async function fixture(t, { directoryRoot = tmpdir() } = {}) {
   const options = { mapPath, publicDir };
   return { map, options, directory, writeImage, compile: value => compileTiledWorld(value ?? map, options) };
 }
+
+test("EffectAnchors export exact visible-motif centres, sizes and site levels through movable Tiled folders", async t => {
+  const { map, compile } = await fixture(t);
+  for (const object of [...map.layers[0].objects, ...map.tilesets[0].tiles]) {
+    const site = object.properties?.find(property => property.name === "siteId");
+    if (site) site.value = "plesk-shop";
+  }
+  map.layers.push({ ...groupLayer(20, "Pleska", [objectLayer(21, "EffectAnchors", [homeEffectAnchor()])]), offsetx: 5, offsety: 7 });
+  const before = clone(map), scene = await compile();
+  assert.deepEqual(scene.effectAnchors, [{ id: "plesk-home-fish", effect: "resident-home", residentId: "plesk",
+    position: { x: 40, y: 52 }, size: 44, when: { siteId: "plesk-shop", level: 1 } }]);
+  assert.deepEqual(map, before);
+  map.layers.at(-1).offsetx += 13;
+  assert.deepEqual((await compile()).effectAnchors[0].position, { x: 53, y: 52 }, "moving the folder moves the motif without changing its local point or the PNG");
+});
+
+test("EffectAnchors reject unknown owners/effects, malformed points, duplicates and invalid visual levels", async t => {
+  const { map, compile } = await fixture(t);
+  for (const object of [...map.layers[0].objects, ...map.tilesets[0].tiles]) {
+    const site = object.properties?.find(property => property.name === "siteId");
+    if (site) site.value = "plesk-shop";
+  }
+  const anchor = homeEffectAnchor();
+  map.layers.push(objectLayer(20, "EffectAnchors", [anchor]));
+  await compile();
+  const cases = [
+    [value => setProp(value, "effect", "unknown-effect"), /resident-home/],
+    [value => setProp(value, "residentId", "someone"), /unknown residentId/],
+    [value => setProp(value, "residentId", "builder"), /unknown residentId/],
+    [value => setProp(value, "siteId", "kiln"), /own site/],
+    [value => setProp(value, "level", 55), /unknown visual level/],
+    [value => setProp(value, "size", 81), /effect size/],
+    [value => { value.x = -1; }, /finite number/],
+    [value => { value.point = false; }, /expected true/],
+    [value => { delete value.point; value.width = 2; value.height = 2; }, /expected "point"/],
+  ];
+  for (const [change, expected] of cases) {
+    const invalid = clone(map); change(invalid.layers.at(-1).objects[0]); await assert.rejects(compile(invalid), expected);
+  }
+  const duplicate = clone(map); duplicate.layers.at(-1).objects.push({ ...clone(anchor), id: 71, name: "another-fish" });
+  await assert.rejects(compile(duplicate), /duplicate resident-home anchor/);
+});
 
 test("Tiled source compiles physical image scale, top-left objects and local geometry into deterministic world coordinates", async t => {
   const { map, options, compile } = await fixture(t);
@@ -1712,8 +1756,10 @@ test("destination validation rejects unknown owners, unsafe placement, duplicate
   targets.push({ ...targets[0], id: 301 });
   await assert.rejects(compile(duplicate), /duplicate destination ID/);
   const overflow = structuredClone(map);
-  overflow.layers.at(-1).objects = Array.from({ length: 17 }, (_, i) => livingPoint(300 + i, `visit-${i}`, 70, 70, { role: "destination" }));
-  await assert.rejects(compile(overflow), /at most 16 destinations/);
+  overflow.layers.at(-1).objects = Array.from({ length: 32 }, (_, i) => livingPoint(300 + i, `visit-${i}`, 70, 70, { role: "destination" }));
+  assert.equal((await compile(overflow)).destinations.length, 32, "the complete bounded destination set must survive export");
+  overflow.layers.at(-1).objects.push(livingPoint(332, "visit-32", 70, 70, { role: "destination" }));
+  await assert.rejects(compile(overflow), /at most 32 destinations/);
   const noAreas = structuredClone(map);
   noAreas.layers = noAreas.layers.filter(l => l.name !== "WalkAreas" && l.name !== "PointsOfInterest");
   await assert.rejects(compile(noAreas), /destinations require WalkAreas/);

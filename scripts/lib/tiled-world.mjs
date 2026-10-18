@@ -436,6 +436,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const navigationIds = new Set(), habitats = new Map(), habitatExclusions = [], habitatAnchors = [], anchorIds = new Set();
   const destinationIds = new Set(), occluderIds = new Set();
   const treeInteractionIds = new Set();
+  const effectAnchorIds = new Set(), effectAnchorOwners = new Set();
   const shadowIds = { "shadow-caster": new Set(), "shadow-receiver": new Set() };
   const audioIds = new Set(), audioReferences = [];
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Destinations: "destination", Occluders: "occluder", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
@@ -450,6 +451,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       record(layer, layerAt);
       const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights"
         : layer.name === "TreeInteractions" ? "tree-interaction"
+        : layer.name === "EffectAnchors" ? "effect-anchor"
         : layer.name === "ShadowCasters" ? "shadow-caster" : layer.name === "ShadowReceivers" ? "shadow-receiver"
         : layer.name === "AudioEmitters" ? "audio-emitter" : layer.name === "AudioZones" ? "audio-zone"
           : own(livingKinds, layer.name) ? livingKinds[layer.name] : undefined;
@@ -476,6 +478,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       if (livingKind === "destination") world.destinations ??= [];
       if (livingKind === "occluder") world.occluders ??= [];
       if (metadataKind === "tree-interaction") world.treeInteractions ??= [];
+      if (metadataKind === "effect-anchor") world.effectAnchors ??= [];
       if (shadowKind === "shadow-caster") world.shadowCasters ??= [];
       if (shadowKind === "shadow-receiver") world.shadowReceivers ??= [];
       if (["wildlife-habitat", "wildlife-anchor"].includes(livingKind)) world.habitats ??= [];
@@ -487,7 +490,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const terrainOnly = Array.isArray(layer.objects) && layer.objects.every(object => tiles.get(object.gid)?.role === "terrain");
         if (metadataKind || isLifeLayer || terrainOnly) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata/terrain");
         else exact(layer.draworder, "index", `${layerAt}.draworder`);
-        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", isTreeLayer: metadataKind === "tree-interaction", livingKind, audioKind, shadowKind, groups, offset: layerOffset };
+        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", isTreeLayer: metadataKind === "tree-interaction", isEffectLayer: metadataKind === "effect-anchor", livingKind, audioKind, shadowKind, groups, offset: layerOffset };
       }
     }
   }
@@ -506,9 +509,9 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     }
   }
   const routeOwners = [], visibilityReferences = [];
-  for (const { layer, layerAt, waterKind, isLightLayer, isTreeLayer, livingKind, audioKind, shadowKind, groups, offset } of leaves) {
+  for (const { layer, layerAt, waterKind, isLightLayer, isTreeLayer, isEffectLayer, livingKind, audioKind, shadowKind, groups, offset } of leaves) {
     const entries = [...array(layer.objects, `${layerAt}.objects`).entries()];
-    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !isTreeLayer && !livingKind && !audioKind && !shadowKind) entries.sort((a, b) => a[1].y - b[1].y);
+    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !isTreeLayer && !isEffectLayer && !livingKind && !audioKind && !shadowKind) entries.sort((a, b) => a[1].y - b[1].y);
     for (const [objectIndex, authoredObject] of entries) {
       const at = `${layerAt}.objects[${objectIndex}]`;
       record(authoredObject, at);
@@ -517,7 +520,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         y: number(authoredObject.y, `${at}.y`) + offset.y } : authoredObject;
       absent(object, ["template", "text", "ellipse", "capsule", "offsetx", "offsety"], at);
       const rotation = own(object, "rotation") ? number(object.rotation, `${at}.rotation`) : 0;
-      const isImage = !waterKind && !isLightLayer && !isTreeLayer && !livingKind && !audioKind && !shadowKind && own(object, "gid");
+      const isImage = !waterKind && !isLightLayer && !isTreeLayer && !isEffectLayer && !livingKind && !audioKind && !shadowKind && own(object, "gid");
       defaultValue(object, "opacity", 1, at);
       editorVisibility(object, at);
       const objectId = integer(object.id, `${at}.id`, 1);
@@ -527,6 +530,31 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       requireThat(shapes.length <= 1, at, "object must have exactly one shape");
       const shape = shapes[0] ?? "rectangle";
       if (!isImage && shape === "rectangle") exact(rotation, 0, `${at}.rotation`);
+      if (isEffectLayer) {
+        const effectAt = `${at} (${object.name || `object ${objectId}`})`;
+        const props = properties(object, effectAt, { role: "string", effect: "string", residentId: "string", siteId: "string", level: "int", size: "float" });
+        exact(props.role, "effect-anchor", `${effectAt}.properties.role`);
+        exact(props.effect, "resident-home", `${effectAt}.properties.effect`);
+        exact(shape, "point", `${effectAt} shape`);
+        exact(object.point, true, `${effectAt}.point`);
+        defaultValue(object, "width", 0, effectAt); defaultValue(object, "height", 0, effectAt);
+        for (const key of ["class", "type"]) if (own(object, key) && object[key] !== "") exact(object[key], "EffectAnchor", `${effectAt}.${key}`);
+        const id = identifier(object.name, `${effectAt}.name`);
+        const residents = { plesk: "plesk-shop", lopukh: "lopukh-home", kamneshmyg: "quarry", leaftail: "leaftail-caravan" };
+        requireThat(own(residents, props.residentId), effectAt, "unknown residentId for resident-home effect");
+        const when = siteLevelCondition(props, effectAt);
+        requireThat(when && when.siteId === residents[props.residentId], effectAt, "resident-home effect must reference the resident's own site and visual level");
+        const size = number(props.size ?? 44, `${effectAt}.properties.size`, 12);
+        requireThat(size <= 80, effectAt, "effect size must be from 12 to 80 world units");
+        requireThat(!effectAnchorIds.has(id), effectAt, `duplicate effect anchor ID ${id}`);
+        const owner = `${props.effect}:${props.residentId}:${when.siteId}:${when.level}`;
+        requireThat(!effectAnchorOwners.has(owner), effectAt, "duplicate resident-home anchor for the same resident and visual level");
+        effectAnchorIds.add(id); effectAnchorOwners.add(owner);
+        requireThat(world.effectAnchors.length < 32, effectAt, "at most 32 effect anchors are supported");
+        visibilityReferences.push({ when, at: effectAt });
+        world.effectAnchors.push({ id, effect: props.effect, residentId: props.residentId, position: point(object, effectAt, world), size, when });
+        continue;
+      }
       if (isLightLayer) {
         const light = compileLight(object, shape, at, world);
         requireThat(!lightIds.has(light.id), at, `duplicate light ID ${light.id}`);
@@ -672,7 +700,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
           const pauseSeconds = props.pauseSeconds ?? 8;
           requireThat(pauseSeconds >= 2 && pauseSeconds <= 60, livingAt, "pauseSeconds must be from 2 to 60 seconds");
           world.destinations ??= [];
-          requireThat(world.destinations.length < 16, livingAt, "at most 16 destinations are supported");
+          requireThat(world.destinations.length < 32, livingAt, "at most 32 destinations are supported");
           world.destinations.push({ id, position: point(object, livingAt, world), pauseSeconds,
             ...(own(props, "siteId") ? { siteId: identifier(props.siteId, `${livingAt}.properties.siteId`) } : {}) });
         } else if (role === "occluder") {

@@ -297,8 +297,8 @@ test("without nearby water the coastal hero stays visibly at rest instead of cas
   session.release();
 });
 
-test("non-coastal jobs remain away and a replacement job cannot inherit the old fishing owner", () => {
-  const session = create(), state = session.state, shore = journey(), forest = journey("forest");
+test("unsupported off-map jobs remain away and a replacement job cannot inherit the old fishing owner", () => {
+  const session = create(), state = session.state, shore = journey(), forest = journey("coastal_deposits");
   syncForestJourneyTravel(state, scene, shore, start + 60_000, false);
   assert.ok(forestJourneyFishingFrame(state, scene));
   const position = { ...state.clearing.position };

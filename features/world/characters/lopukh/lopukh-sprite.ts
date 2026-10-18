@@ -11,7 +11,7 @@ export type LopukhSpriteRig = {
   ears: readonly WorldPoint[];
   feet: readonly WorldPoint[];
   arms: readonly { hand: "left" | "right"; shoulder: WorldPoint; palm: WorldPoint }[];
-  axe: { grip: WorldPoint; head: WorldPoint; behindBody: boolean; visible: boolean };
+  axe: { grip: WorldPoint; head: WorldPoint; butt: WorldPoint; blade: readonly WorldPoint[]; behindBody: boolean; visible: boolean };
   log?: { center: WorldPoint; leftGrip: WorldPoint; rightGrip: WorldPoint };
 };
 
@@ -22,7 +22,7 @@ const palette = {
   outline: "#64432e", shadow: "#967044", fur: "#c59655", honey: "#ddb16b", light: "#edc987",
   cream: "#f1dbad", pale: "#ffebc5", blush: "#cc957c", innerEar: "#dfae91", eye: "#382e28",
   scarf: "#617453", scarfLight: "#88946a", bark: "#775134", barkLight: "#a87947",
-  end: "#deb67c", ring: "#b88b55", steel: "#849993", steelLight: "#c1cec0", handle: "#b38955",
+  end: "#deb67c", ring: "#b88b55", steelDark: "#536963", steel: "#849993", steelLight: "#c1cec0", handle: "#b38955",
 };
 const directions: readonly PixelDirection[] = ["front", "back", "left", "right"];
 const actions: readonly ForestVillagerAction[] = ["idle", "walk", "work", "carry", "unload", "inspect", "greet", "rest", "trade"];
@@ -67,6 +67,22 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
       const at = mix(a, b, i / steps); rect(at.x - half, at.y - half, width, width, color);
     }
   };
+  const polygon = (vertices: readonly WorldPoint[], color: string) => {
+    const minY = Math.min(...vertices.map(vertex => vertex.y)), maxY = Math.max(...vertices.map(vertex => vertex.y));
+    for (let y = minY; y <= maxY; y++) {
+      const crossings: number[] = [];
+      vertices.forEach((a, index) => {
+        const b = vertices[(index + 1) % vertices.length];
+        if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) crossings.push(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x));
+      });
+      crossings.sort((a, b) => a - b);
+      for (let i = 0; i + 1 < crossings.length; i += 2) {
+        const left = Math.ceil(crossings[i]), right = Math.floor(crossings[i + 1]);
+        if (right >= left) rect(left, y, right - left + 1, 1, color);
+      }
+    }
+    vertices.forEach((a, index) => segment(a, vertices[(index + 1) % vertices.length], color, 1));
+  };
   const gait = forestVillagerGait(stride), step = gait.step;
   const bob = action === "walk" || action === "carry" ? gait.bob : 0;
   const rise = bob - breathe + (action === "rest" ? 1 : 0), p = stage / 16;
@@ -82,19 +98,19 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
   const shoulder = point(side ? 32 : back ? 31 : 16, 32 + upperRise);
   const farShoulder = point(side ? mirrored && !carry ? 32 : 24 : back ? 16 : 32, 32 + upperRise);
   const rest = point(side ? 35 : back ? 34 : 13, 36 + upperRise);
-  const restHead = point(side ? 38 : back ? 35 : 12, 41 + rise);
+  const axeRest = point(rest.x, rest.y - 2);
   const toolBehind = back || mirrored;
-  let palm = point(rest.x, rest.y + gait.swing);
-  let axeHead = point(restHead.x, restHead.y + gait.swing);
+  let palm = point(axeRest.x, axeRest.y + gait.swing);
+  let axeAngle = Math.PI * .4;
   let farPalm = point(side ? mirrored && !carry ? 35 : 27 : back ? 15 : 34, 36 + rise - gait.swing);
   if (action === "work") {
-    const lifted = point(side ? 37 : back ? 37 : 11, 32 + rise);
-    const liftedHead = point(side ? 42 : back ? 41 : 6, 34 + rise);
-    const struck = point(side ? 37 : back ? 37 : 11, 37 + rise);
-    const struckHead = point(side ? 42 : back ? 41 : 6, 40 + rise);
-    const pose = (start: WorldPoint, lift: WorldPoint, strike: WorldPoint) => p < .25 ? mix(start, lift, p / .25)
-      : p < .4375 ? mix(lift, strike, (p - .25) / .1875) : p < .75 ? mix(strike, start, (p - .4375) / .3125) : start;
-    palm = pose(rest, lifted, struck); axeHead = pose(restHead, liftedHead, struckHead);
+    const lifted = point(side || back ? 35 : 12, 32 + rise);
+    const struck = point(side || back ? 35 : 12, 37 + rise);
+    const pose = (start: number, lift: number, strike: number) => p < .25 ? start + (lift - start) * p / .25
+      : p < .4375 ? lift + (strike - lift) * (p - .25) / .1875
+        : p < .75 ? strike + (start - strike) * (p - .4375) / .3125 : start;
+    palm = point(pose(axeRest.x, lifted.x, struck.x), pose(axeRest.y, lifted.y, struck.y));
+    axeAngle = pose(.4, -.04, .32) * Math.PI;
   } else if (carry) {
     palm = mix(point(side ? 34 : back ? 32 : 16, 37 + rise + lowered), rest, release);
     farPalm = mix(point(side ? 23 : back ? 15 : 32, 37 + rise + lowered),
@@ -104,13 +120,23 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
   } else if (action === "inspect" || action === "trade") {
     farPalm = mix(farPalm, point(side ? 29 : back ? 18 : 29, (action === "trade" ? 35 : 33) + rise), gesture);
   }
+  const outward = side || back ? 1 : -1;
+  const axis = { x: Math.cos(axeAngle) * outward, y: Math.sin(axeAngle) };
+  const normal = { x: axis.y * outward, y: -axis.x * outward };
+  const axeHead = point(palm.x + axis.x * 7, palm.y + axis.y * 7);
+  const axePoint = (along: number, across: number) => point(axeHead.x + axis.x * along + normal.x * across,
+    axeHead.y + axis.y * along + normal.y * across);
+  const axeButt = point(palm.x - axis.x * 3, palm.y - axis.y * 3);
+  const axeBlade = [[-1, -1], [1, -1], [3.5, 5], [-3.5, 5]].map(([along, across]) => axePoint(along, across));
   const drawAxe = () => {
-    segment(palm, axeHead, palette.outline, 3); segment(palm, axeHead, palette.handle, 1);
-    const outward = side || back ? 1 : -1;
-    rect(axeHead.x - 1, axeHead.y - 2, 3, 5, palette.outline);
-    rect(axeHead.x + (outward > 0 ? 1 : -4), axeHead.y - 3, 4, 6, palette.outline);
-    rect(axeHead.x + (outward > 0 ? 1 : -3), axeHead.y - 2, 3, 4, palette.steel);
-    rect(axeHead.x + (outward > 0 ? 3 : -3), axeHead.y - 2, 1, 4, palette.steelLight);
+    // One rigid hatchet rotates around the anatomical right paw. The eye sits
+    // on the haft, while the steel wedge flares across it.
+    segment(axeButt, axeHead, palette.outline, 3);
+    segment(axeButt, axeHead, palette.handle, 1);
+    polygon(axeBlade, palette.steelDark);
+    polygon([[-1, 0], [1, 0], [2.5, 4], [-2.5, 4]].map(([along, across]) => axePoint(along, across)), palette.steel);
+    segment(axePoint(-2.5, 4), axePoint(2.5, 4), palette.steelLight, 1);
+    const eye = axePoint(0, 0); rect(eye.x, eye.y, 1, 1, palette.handle);
   };
   const drawPaw = (from: WorldPoint, to: WorldPoint, near: boolean) => {
     segment(mix(from, to, .3), to, palette.shadow, 4);
@@ -199,7 +225,7 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
     head: mirror(head), ears: [uprightTip, foldedTip].map(mirror), feet: feet.map(mirror),
     arms: [{ hand: "left", shoulder: mirror(farShoulder), palm: mirror(farPalm) },
       { hand: "right", shoulder: mirror(shoulder), palm: mirror(palm) }],
-    axe: { grip: mirror(palm), head: mirror(axeHead), behindBody: toolBehind, visible: !carry },
+    axe: { grip: mirror(palm), head: mirror(axeHead), butt: mirror(axeButt), blade: axeBlade.map(mirror), behindBody: toolBehind, visible: !carry },
     ...(carry ? { log: { center: mirror(logCenter), leftGrip: mirror(logLeftGrip), rightGrip: mirror(logRightGrip) } } : {}),
   });
   cache.set(key, canvas);

@@ -9,12 +9,13 @@ import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import { fishSpeciesId, type FishSpeciesId } from "@/features/world/activities/fishing/fish-species";
 import { MINING_PORTAL_SECONDS } from "@/features/world/activities/mining/forest-mining";
 import { forestJobFishingPlan, forestJobFishingFrame, forestJobFishingCleanup, type ForestJobFishingPlan } from "@/features/world/activities/fishing/forest-job-fishing";
+import { syncForestSupplyJourney, type ForestSupplyTravel } from "./forest-supply-journey";
 
 export type ForestJourneyTravel = {
   jobId: string;
   finishesAt: number;
   cancelled?: boolean;
-  phase: "leaving" | "fishing" | "entering" | "working" | "exiting" | "away" | "returning";
+  phase: "leaving" | "fishing" | "entering" | "working" | "exiting" | "away" | "returning" | "gathering" | "packing" | "ready";
   shore: WorldPoint;
   home: WorldPoint;
   beganAt: number;
@@ -29,6 +30,7 @@ export type ForestJourneyTravel = {
   catchSpecies?: FishSpeciesId;
   catchRevealed?: boolean;
   mining?: { entry: WorldPoint; doorway: WorldPoint; workCue: WorldPoint; phaseAt: number; prepared: boolean };
+  gathering?: ForestSupplyTravel;
   jobFishing?: ForestJobFishingPlan;
   jobStartedAt?: number;
   jobAge?: number;
@@ -43,6 +45,7 @@ const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b
 
 export const forestJourneyWalking = (state: ForestSessionState) => state.journeyTravel?.phase === "leaving" || state.journeyTravel?.phase === "returning";
 export const forestJourneyEnding = (state: ForestSessionState) => Boolean(state.journeyTravel?.ending
+  || state.journeyTravel?.phase === "packing"
   || state.journeyTravel?.mining && (state.journeyTravel.phase==="entering" || state.journeyTravel.phase==="exiting"));
 
 /** Economic time owns rewards. Local shore/mine trips retain their physical
@@ -51,6 +54,7 @@ export function forestJourneyActorAway(state: ForestSessionState, journey: Econo
   const travel = state.journeyTravel;
   return economyJourneyAway(journey, now)
     && !travel?.ending
+    && !(travel?.gathering && travel.phase !== "away")
     && !(travel?.phase === "returning" || travel?.mining && travel.phase === "exiting")
     && !(travel?.jobId === journey?.id && (travel?.phase === "leaving" || travel?.phase === "fishing" || travel?.phase === "entering" || travel?.phase === "exiting"
       || travel?.cancelled));
@@ -245,7 +249,7 @@ function revealFishingCatch(travel: ForestJourneyTravel, journey: EconomySceneJo
  * Rest is the truthful fallback if a map has no usable water near its marker. */
 export function forestJourneyFishingFrame(state: ForestSessionState, scene: FixedWorldScene, still = false): ForestFishingFrame | null {
   const travel = state.journeyTravel;
-  if (!travel || travel.mining || travel.scene !== scene || state.life.garden.basket?.held) return null;
+  if (!travel || travel.mining || travel.gathering || travel.scene !== scene || state.life.garden.basket?.held) return null;
   if (forestJourneyWalking(state)) {
     const body = clearingActivityFrame(state.clearing, { still });
     if (body.residing || body.homeSleeping || body.bush?.occupied || body.opacity < 1) return null;
@@ -271,6 +275,7 @@ export function forestJourneyFishingFrame(state: ForestSessionState, scene: Fixe
 export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedWorldScene,
   journey: EconomySceneJourney | null | undefined, now: number, still: boolean, cancelledExplorations: readonly string[] = [],
   quarryBuilt = true) {
+  if (syncForestSupplyJourney(state,scene,journey,now,still,cancelledExplorations)) return;
   // A new confirmed assignment replaces an ordinary walk from its actual
   // feet. Portal crossings and visible catch/tackle cleanup finish first;
   // the previous cosmetic road home is never a prerequisite for departure.

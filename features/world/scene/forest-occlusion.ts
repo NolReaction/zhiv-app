@@ -2,7 +2,8 @@ import type { FixedSite, FixedWorldScene, WorldBounds, WorldImage, WorldPoint } 
 import { previewPointInPolygon } from "@/features/world/tiled/preview-state";
 import { forestOcclusionTexture, type ForestOcclusionContour } from "./forest-occlusion-mask";
 
-type Actor = WorldPoint & { size: number };
+type Doorway = { siteId: string; top: number };
+type Actor = WorldPoint & { size: number; doorwayOcclusion?: Doorway };
 type Mask = ForestOcclusionContour & {
   frontY: number;
   siteId?: string;
@@ -10,6 +11,30 @@ type Mask = ForestOcclusionContour & {
 };
 type Geometry = { masks: Mask[]; margin: number; width: number; height: number };
 const geometry = new WeakMap<FixedWorldScene, Geometry>();
+const doorwayMasks = new WeakMap<Mask, Map<number, Mask | null>>();
+
+/** A threshold reveals only its own lower artwork. Keep the roof/awning above
+ * the bounded opening, and leave every unrelated foreground contour intact. */
+function doorwayMask(mask: Mask, doorway?: Doorway): Mask | null {
+  if (!doorway || mask.siteId !== doorway.siteId || !Number.isFinite(doorway.top) || mask.bottom <= doorway.top) return mask;
+  if (mask.top >= doorway.top) return null;
+  let cache = doorwayMasks.get(mask);
+  if (!cache) { cache = new Map(); doorwayMasks.set(mask, cache); }
+  if (cache.has(doorway.top)) return cache.get(doorway.top)!;
+  const points: WorldPoint[] = [];
+  for (let index = 0; index < mask.points.length; index++) {
+    const a = mask.points[index], b = mask.points[(index + 1) % mask.points.length];
+    if (a.y < doorway.top) points.push(a);
+    if ((a.y < doorway.top) !== (b.y < doorway.top)) {
+      const fraction = (doorway.top - a.y) / (b.y - a.y);
+      points.push({ x: a.x + (b.x - a.x) * fraction, y: doorway.top });
+    }
+  }
+  const result = points.length >= 3 ? { ...mask, points, bottom: doorway.top, path: undefined, texture: undefined } : null;
+  if (cache.size >= 8) cache.delete(cache.keys().next().value!);
+  cache.set(doorway.top, result);
+  return result;
+}
 
 function compiled(scene: FixedWorldScene): Geometry {
   let cached = geometry.get(scene);
@@ -103,14 +128,15 @@ function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBo
 }
 
 /** Match visual masking when deciding whether a tap can reach the hero. */
-export function forestPointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint): boolean {
-  return pointOccluded(scene, feetY, point);
+export function forestPointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint, doorway?: Doorway): boolean {
+  return pointOccluded(scene, feetY, point, undefined, doorway);
 }
 
-function pointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint, excludeSiteId?: string): boolean {
+function pointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint, excludeSiteId?: string, doorway?: Doorway): boolean {
   if (!scene.occluders?.length || !Number.isFinite(feetY) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
   return compiled(scene).masks.some(mask => feetY < mask.frontY
     && (excludeSiteId === undefined || mask.siteId !== excludeSiteId)
+    && !(doorway && mask.siteId === doorway.siteId && Number.isFinite(doorway.top) && point.y >= doorway.top)
     && point.x >= mask.left && point.x <= mask.right && point.y >= mask.top && point.y <= mask.bottom
     && previewPointInPolygon(point, mask.points));
 }
@@ -144,7 +170,7 @@ export function withForestOcclusion(ctx: CanvasRenderingContext2D, scene: FixedW
   // sprite. Only nearby masks reach the canvas; geometry is shared by cameras.
   const bounds = validBounds(renderBounds) ? renderBounds : { x: actor.x - actor.size * 2,
     y: actor.y - actor.size * 2.5, width: actor.size * 4, height: actor.size * 3.5 };
-  withOcclusion(ctx, scene, actor.y, bounds, draw);
+  withOcclusion(ctx, scene, actor.y, bounds, draw, undefined, actor.doorwayOcclusion);
 }
 
 /** Paint one building using its effective level geometry. The authored anchor
@@ -174,12 +200,13 @@ export function withForestImageOcclusion(ctx: CanvasRenderingContext2D, scene: F
 }
 
 function withOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, feetY: number, bounds: WorldBounds,
-  draw: (target: CanvasRenderingContext2D) => void, excludeSiteId?: string): void {
+  draw: (target: CanvasRenderingContext2D) => void, excludeSiteId?: string, doorway?: Doorway): void {
   const area = compiled(scene);
   const { x: left, y: top } = bounds, right = left + bounds.width, bottom = top + bounds.height;
   const masks = area.masks.filter(mask => feetY < mask.frontY
     && (excludeSiteId === undefined || mask.siteId !== excludeSiteId) && right >= mask.left
-    && left <= mask.right && bottom >= mask.top && top <= mask.bottom);
+    && left <= mask.right && bottom >= mask.top && top <= mask.bottom)
+    .map(mask => doorwayMask(mask, doorway)).filter((mask): mask is Mask => mask !== null);
   if (!masks.length) { draw(ctx); return; }
   if (feathered(ctx, masks, bounds, draw)) return;
   let saved = false;

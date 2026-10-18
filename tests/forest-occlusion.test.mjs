@@ -9,6 +9,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { withForestOcclusion, forestPointOccluded } = await vite.ssrLoadModule("/features/world/scene/forest-occlusion.ts");
+const { createPleskMind, advancePleskMind, pleskMindFrame, requestPleskHome, requestPleskTrade } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-mind.ts");
+const { forestResidentAt } = await vite.ssrLoadModule("/features/world/characters/forest-residents.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 
 const rectangle = (id = "tree", x = 40, y = 30, width = 40, height = 50, frontY = 80) => ({ id, frontY,
   points: [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }] });
@@ -56,6 +59,48 @@ function surface() {
   ctx.getImageData = ctx.drawImage = () => assert.fail("occlusion must not copy or sample background artwork");
   return ctx;
 }
+
+test("real Pleska entry/exit frames stand before their own stairs while roofs and other foreground still mask paint and taps", () => {
+  for (const dusk of [0, 1]) {
+    const mind = createPleskMind(TILED_WORLD, 7), env = { rain: 0, dusk };
+    requestPleskHome(mind);
+    const frames = [], phases = new Set();
+    for (let step = 0; step < 4000; step++) {
+      advancePleskMind(mind, TILED_WORLD, .1, env);
+      if (mind.home.phase === "inside") { requestPleskTrade(mind); continue; }
+      if (["enter", "exit"].includes(mind.home.phase)) {
+        const frame = pleskMindFrame(mind, TILED_WORLD, false);
+        if (mind.home.progress > .1 && mind.home.progress < .9) { frames.push(frame); phases.add(mind.home.phase); }
+        assert.deepEqual(pleskMindFrame(mind, TILED_WORLD, true)?.doorwayOcclusion, frame?.doorwayOcclusion, "reduced motion never changes doorway depth");
+      } else if (phases.has("exit")) break;
+    }
+    assert.deepEqual([...phases], ["enter", "exit"]);
+    let checked = 0;
+    for (const frame of frames) {
+      assert.equal(frame.doorwayOcclusion.siteId, "plesk-shop");
+      let stair;
+      for (let y = frame.y - frame.size * .8; !stair && y < frame.y; y += 1) for (let x = frame.x - frame.size * .35; x < frame.x + frame.size * .35; x += 1) {
+        const point = { x, y };
+        if (forestPointOccluded(TILED_WORLD, frame.y, point) && !forestPointOccluded(TILED_WORLD, frame.y, point, frame.doorwayOcclusion)) { stair = point; break; }
+      }
+      if (!stair) continue;
+      const ctx = surface();
+      withForestOcclusion(ctx, TILED_WORLD, frame, target => target.paint(stair.x, stair.y));
+      assert.equal(ctx.read(stair.x, stair.y), "actor", "the old stairs mask must no longer cut a moving body");
+      assert.equal(forestResidentAt(TILED_WORLD, mind.elapsed, false, stair, [frame]), "plesk");
+      const other = { ...TILED_WORLD, occluders: [...TILED_WORLD.occluders, rectangle("nearby-tree", stair.x - 3, stair.y - 3, 6, 6, frame.y + 1)] };
+      const hidden = surface(); withForestOcclusion(hidden, other, frame, target => target.paint(stair.x, stair.y));
+      assert.equal(hidden.read(stair.x, stair.y), undefined); assert.equal(forestResidentAt(other, mind.elapsed, false, stair, [frame]), null);
+      const shop = TILED_WORLD.sites.find(site => site.id === "plesk-shop"), roof = { x: shop.bounds.x + shop.bounds.width * .5, y: shop.bounds.y + shop.bounds.height * .3 };
+      assert.equal(forestPointOccluded(TILED_WORLD, frame.y, roof, frame.doorwayOcclusion), true);
+      const above = surface(); withForestOcclusion(above, TILED_WORLD, frame, target => target.paint(roof.x, roof.y));
+      assert.equal(above.read(roof.x, roof.y), undefined, "the exception must not expose body/props through the roof");
+      checked++;
+    }
+    assert.ok(checked >= 4, `day/night ${dusk}: multiple actual movement frames must exercise the stair overlap`);
+    assert.equal(pleskMindFrame(mind, TILED_WORLD, false)?.doorwayOcclusion, undefined, "normal outdoor walking keeps all original depth masks");
+  }
+});
 
 test("only actor pixels behind the authored front line disappear, preserving background and front actors", () => {
   for (const y of [70, 79.999, 80, 81]) {

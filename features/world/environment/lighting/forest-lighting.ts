@@ -1,5 +1,7 @@
 import type { FixedWorldScene, PreviewLevels, WorldLight, WorldPoint } from "@/features/world/tiled/types";
 import { forestBuildingLights, type ForestLightSource } from "./forest-building-lights";
+import { drawLighthouseBeams, drawLighthouseLens } from "./forest-lighthouse";
+export { forestLighthouseAngle } from "./forest-lighthouse";
 
 export type ForestLightingOptions = {
   night: number;
@@ -7,12 +9,12 @@ export type ForestLightingOptions = {
   reducedMotion: boolean;
   showBuildings?: boolean;
   levels?: PreviewLevels;
+  quality?: "low" | "high";
 };
 const TAU = Math.PI * 2;
 const TEXTURE_SIZE = 768;
 const clamp = (value: number, max = 1) => Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : 0;
 const textures = new WeakMap<FixedWorldScene, Map<string, HTMLCanvasElement>>();
-let beamTexture: HTMLCanvasElement | undefined;
 const colorParts = (color: string) => [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16));
 const rgba = (color: string, alpha: number) => `rgba(${colorParts(color).join(",")},${clamp(alpha)})`;
 
@@ -29,7 +31,7 @@ export function forestLightSources(scene: FixedWorldScene, options: Pick<ForestL
       const merged: ForestLightSource = { ...light, ...authored,
         position: authored.manualPosition ? authored.position : light.position };
       if (authored.manualPosition) {
-        delete merged.glass; delete merged.beamLength; delete merged.siteId;
+        delete merged.glass; delete merged.beamLength; delete merged.beamGround; delete merged.siteId;
       }
       sources[index] = merged;
     } else sources.push(light);
@@ -115,46 +117,17 @@ function visible(ctx: CanvasRenderingContext2D, point: WorldPoint, radius: numbe
     && (point.y + radius) * t.d + t.f >= 0 && (point.y - radius) * t.d + t.f <= ctx.canvas.height;
 }
 
-function lighthouseBeamTexture() {
-  if (beamTexture || typeof document === "undefined") return beamTexture;
-  const canvas = document.createElement("canvas"); canvas.width = 384; canvas.height = 144;
-  const ctx = canvas.getContext("2d"); if (!ctx) return undefined;
-  // Bake a smooth density field once: no layered triangle stripes or per-frame blur.
-  const pixels = ctx.createImageData(canvas.width, canvas.height);
-  for (let x = 0; x < canvas.width; x++) {
-    const progress = x / (canvas.width - 1), spread = 1.5 + progress * 68;
-    const fade = .24 * Math.min(1, progress / .025) * (1 - progress) ** 1.7;
-    for (let y = 0; y < canvas.height; y++) {
-      const across = (y - (canvas.height - 1) / 2) / spread;
-      if (Math.abs(across) >= 1) continue;
-      const offset = (y * canvas.width + x) * 4;
-      pixels.data[offset] = 255; pixels.data[offset + 1] = 235; pixels.data[offset + 2] = 176;
-      pixels.data[offset + 3] = Math.round(255 * fade * (1 - across * across) ** 2);
-    }
-  }
-  ctx.putImageData(pixels, 0, 0);
-  beamTexture = canvas; return canvas;
-}
-
-/** Twin optics make one quiet revolution per 36 seconds; shared clock/pause apply. */
-export function forestLighthouseAngle(elapsed: number, reducedMotion: boolean) {
-  return -.32 + (reducedMotion || !Number.isFinite(elapsed) ? 0 : elapsed % 36 / 36 * TAU);
-}
-
-/** Atmospheric rays use two tiny cached sprites, in world coordinates in both views. */
+/** Finite atmospheric volume and optional ground spill share world coordinates. */
 export function drawForestLighthouseBeams(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, options: ForestLightingOptions) {
   const night = clamp(options.night); if (!night) return;
   for (const light of forestLightSources(scene, options)) {
-    if (!light.beamLength || light.intensity <= 0 || !visible(ctx, light.position, light.beamLength)) continue;
-    const texture = lighthouseBeamTexture(); if (!texture) continue;
-    ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = night * clamp(light.intensity);
-    ctx.translate(light.position.x, light.position.y);
-    // The sweep follows the horizontal plane of this oblique map, not the screen circle.
-    ctx.scale(1, .48); ctx.rotate(forestLighthouseAngle(options.elapsed, options.reducedMotion));
-    const height = light.beamLength * texture.height / texture.width;
-    ctx.drawImage(texture, 0, -height / 2, light.beamLength, height);
-    ctx.rotate(Math.PI);
-    ctx.drawImage(texture, 0, -height / 2, light.beamLength, height);
+    if (!light.beamLength || light.intensity <= 0) continue;
+    const spillOffset = light.beamGround ? Math.hypot(light.beamGround.x - light.position.x, light.beamGround.y - light.position.y) : 0;
+    if (!visible(ctx, light.position, light.beamLength + spillOffset)) continue;
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(scene.width, 0); ctx.lineTo(scene.width, scene.height);
+    ctx.lineTo(0, scene.height); ctx.closePath(); ctx.clip();
+    drawLighthouseBeams(ctx, light, { ...options, night });
     ctx.restore();
   }
 }
@@ -184,7 +157,9 @@ export function drawForestLightEmitters(ctx: CanvasRenderingContext2D, scene: Fi
     if (light.intensity <= 0) continue;
     const { x, y } = light.position, pulse = forestLightPulse(light, options.elapsed, options.reducedMotion);
     const glowRadius = Math.min(20, light.radius * .25) * pulse;
-    if (!visible(ctx, light.position, Math.max(glowRadius, 9 * pulse))) continue;
+    const lensRadius = light.beamLength && light.glass ? Math.max(light.glass.width, light.glass.height) * 2.6 : 0;
+    if (!visible(ctx, light.position, Math.max(glowRadius, 9 * pulse, lensRadius))) continue;
+    if (light.beamLength && light.glass) { drawLighthouseLens(ctx, light, { ...options, night }); continue; }
     ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = night;
     const glow = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
     glow.addColorStop(0, rgba(light.color, .33 * light.intensity * pulse));

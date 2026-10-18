@@ -13,7 +13,32 @@ const { advanceWoodcutterCycle } = await vite.ssrLoadModule("/features/world/cha
 const { createForestVillagers, rehydrateForestVillagers } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-mind.ts");
 const { residentScenePresentation } = await vite.ssrLoadModule("/features/world/scene/resident-scene-presentation.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 after(() => vite.close());
+
+test("the real indoor fish follow their authored door-side centre, level and size without moving the resident", () => {
+  const state = { elapsed: 12, pleskMind: { home: { phase: "inside" } } }, before = structuredClone(state);
+  const anchor = TILED_WORLD.effectAnchors.find(anchor => anchor.id === "plesk-home-fish");
+  assert.ok(anchor);
+  const presentation = residentScenePresentation(state, TILED_WORLD), cue = presentation.homes[0];
+  assert.deepEqual(cue.position, anchor.position); assert.equal(cue.centered, true); assert.equal(cue.size, anchor.size);
+  const shop = TILED_WORLD.sites.find(site => site.id === "plesk-shop");
+  assert.ok(Math.hypot(anchor.position.x - shop.doorway.x, anchor.position.y - shop.doorway.y) < 25);
+  const moved = structuredClone(TILED_WORLD); moved.effectAnchors[0].position.x += 17; moved.effectAnchors[0].position.y += 9;
+  const next = residentScenePresentation(state, moved).homes[0];
+  for (const still of [false, true]) {
+    const first = residentHomeParticles(cue, still), second = residentHomeParticles(next, still);
+    first.forEach((particle, index) => {
+      assert.ok(Math.abs(second[index].x - particle.x - 17) < 1e-8); assert.ok(Math.abs(second[index].y - particle.y - 9) < 1e-8);
+      assert.ok(Math.abs(particle.y - anchor.position.y) < 7, "the point marks the visible motif centre, not a hidden roof offset");
+    });
+  }
+  const hidden = structuredClone(TILED_WORLD); hidden.effectAnchors[0].when.level = 2;
+  assert.equal(previewWorldScene(hidden, initialPreviewLevels(hidden)).effectAnchors.length, 0);
+  const legacy = { ...TILED_WORLD, effectAnchors: undefined };
+  assert.deepEqual(residentScenePresentation(state, legacy).homes[0].position, shop.doorway);
+  assert.deepEqual(state, before); assert.deepEqual(cue.position, anchor.position);
+});
 
 function context() {
   const paints = [], images = [], clips = [], stack = [];

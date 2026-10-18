@@ -1,4 +1,5 @@
 import { canTraverse, findWorldPath, isWalkable, withWorldNavigationObstacle, type WorldNavigation } from "./navigation";
+import { canTraverseGroundFootprint } from "./ground-props";
 import type { WorldPoint } from "@/features/world/tiled/types";
 
 /** Transient visible feet, never an economic reservation or a saved coordinate. */
@@ -6,10 +7,12 @@ export type ResidentOccupant = {
   readonly id: string; readonly position: WorldPoint; readonly size: number; readonly moving?: boolean;
   /** A short forward corridor, detached from the route owner's state. */
   readonly intent?: ResidentRouteIntent;
+  /** A physical prop sole, with foot clearance instead of personal space. */
+  readonly groundFootprint?: readonly WorldPoint[];
 };
 export type ResidentRouteIntent = { readonly points: readonly WorldPoint[]; readonly target: WorldPoint; readonly priority: number };
 export const RESIDENT_TRAFFIC_LIMITS = { clearanceRatio: .28, occupants: 8, retry: .8, priorityWait: .35,
-  searches: 4, polygonSides: 12, intentPoints: 16, lookAheadRatio: 2.5, localDetourRatio: 2 } as const;
+  groundProps: 4, searches: 4, polygonSides: 12, intentPoints: 16, lookAheadRatio: 2.5, localDetourRatio: 2 } as const;
 const finite = (point: WorldPoint) => Number.isFinite(point?.x) && Number.isFinite(point?.y);
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const EPS = 1e-7;
@@ -19,8 +22,15 @@ export function residentClearance(size: number, otherSize: number): number {
   return (size + otherSize) * RESIDENT_TRAFFIC_LIMITS.clearanceRatio;
 }
 function neighbours(occupants: readonly ResidentOccupant[] | undefined, selfId: string) {
-  return (occupants ?? []).slice(0, RESIDENT_TRAFFIC_LIMITS.occupants)
-    .filter(other => other.id !== selfId && finite(other.position) && Number.isFinite(other.size) && other.size > 0);
+  return (occupants ?? []).filter(other => !other.groundFootprint && other.id !== selfId
+    && finite(other.position) && Number.isFinite(other.size) && other.size > 0).slice(0, RESIDENT_TRAFFIC_LIMITS.occupants);
+}
+function groundProps(occupants: readonly ResidentOccupant[] | undefined, selfId: string) {
+  return (occupants ?? []).filter(other => other.groundFootprint && other.id !== selfId
+    && finite(other.position) && Number.isFinite(other.size) && other.size > 0).slice(0, RESIDENT_TRAFFIC_LIMITS.groundProps);
+}
+function clearGround(from: WorldPoint, to: WorldPoint, size: number, props: readonly ResidentOccupant[]) {
+  return props.every(prop => canTraverseGroundFootprint(prop.groundFootprint!, from, to, size * .1));
 }
 function segmentDistance(point: WorldPoint, from: WorldPoint, to: WorldPoint) {
   const dx = to.x - from.x, dy = to.y - from.y;
@@ -92,6 +102,7 @@ export function residentYieldPoint(navigation: WorldNavigation, from: WorldPoint
 export function canTraverseResidents(from: WorldPoint, to: WorldPoint, size: number,
   occupants: readonly ResidentOccupant[] | undefined, selfId: string): boolean {
   if (!finite(from) || !finite(to) || !Number.isFinite(size) || size <= 0) return false;
+  if (!clearGround(from, to, size, groundProps(occupants, selfId))) return false;
   return neighbours(occupants, selfId).every(other => {
     const gap = residentClearance(size, other.size), before = distance(from, other.position);
     if (before < gap - EPS) {
@@ -116,6 +127,10 @@ const passing = new WeakMap<object, { navigation: WorldNavigation; target: strin
 export function residentWalkingStep(options: DetourOptions, to: WorldPoint): { clear: boolean; path?: WorldPoint[] } {
   const { owner, navigation, from, target, size, occupants, selfId } = options;
   if (!canTraverse(navigation, from, to)) return { clear: false };
+  if (!clearGround(from, to, size, groundProps(occupants, selfId))) {
+    const path = residentTrafficDetour(options);
+    return path ? { clear: false, path } : { clear: false };
+  }
   const targetKey = `${target.x}:${target.y}`, others = neighbours(occupants, selfId);
   let pass = passing.get(owner);
   if (pass?.navigation !== navigation || pass.target !== targetKey) { passing.delete(owner); pass = undefined; }
@@ -142,12 +157,13 @@ export function residentWalkingStep(options: DetourOptions, to: WorldPoint): { c
 export function residentTrafficDetour(options: DetourOptions): WorldPoint[] | null {
   const { owner, navigation, from, target, size, occupants, selfId, time } = options;
   if (!finite(from) || !finite(target) || !Number.isFinite(time) || !Number.isFinite(size) || size <= 0) return null;
-  const others = neighbours(occupants, selfId);
-  if (!others.length) return findWorldPath(navigation, from, target);
+  const others = neighbours(occupants, selfId), props = groundProps(occupants, selfId);
+  if (!others.length && !props.length) return findWorldPath(navigation, from, target);
   let previous = attempts.get(owner);
   // Even moving occupants cannot request a new grid every frame.
   if (previous?.base === navigation && time < previous.retryAt) return null;
-  const key = `${size};${others.map(other => `${other.id}:${other.position.x}:${other.position.y}:${other.size}`).join(";")}`;
+  const key = `${size};${others.map(other => `${other.id}:${other.position.x}:${other.position.y}:${other.size}`).join(";")};`
+    + props.map(prop => `${prop.id}:${prop.groundFootprint!.map(point => `${point.x}:${point.y}`).join(",")}`).join(";");
   if (!previous || previous.base !== navigation || previous.key !== key) {
     previous = { base: navigation, key, navigation: null, retryAt: time, waited: false, failed: false };
     attempts.set(owner, previous);
@@ -165,13 +181,19 @@ export function residentTrafficDetour(options: DetourOptions): WorldPoint[] | nu
   const baseline = findWorldPath(navigation, from, target);
   if (!baseline) return fail();
   const pathLength = (points: WorldPoint[]) => points.reduce((sum, point, index) => sum + (index ? distance(points[index - 1], point) : 0), 0);
-  const localBudget = Math.max(...others.map(other => residentClearance(size, other.size))) * RESIDENT_TRAFFIC_LIMITS.localDetourRatio;
+  const clearance = Math.max(...others.map(other => residentClearance(size, other.size)),
+    ...props.map(prop => prop.size * .5 + navigation.radius + navigation.cellSize));
+  const localBudget = clearance * RESIDENT_TRAFFIC_LIMITS.localDetourRatio;
   const baselineLength = pathLength(baseline);
   const local = (points: WorldPoint[]) => pathLength(points) <= baselineLength + localBudget
     && points.every(point => baseline.some((end, index) => index > 0 && segmentDistance(point, baseline[index - 1], end) <= localBudget));
   let dynamic = previous.navigation;
   if (!dynamic) {
     dynamic = navigation;
+    for (const prop of props) {
+      dynamic = withWorldNavigationObstacle(dynamic, prop.groundFootprint!);
+      if (!dynamic) return fail();
+    }
     for (const other of others) {
       const radius = Math.max(.5, residentClearance(size, other.size) - navigation.radius + .75)
         / Math.cos(Math.PI / RESIDENT_TRAFFIC_LIMITS.polygonSides);
@@ -193,7 +215,7 @@ export function residentTrafficDetour(options: DetourOptions): WorldPoint[] | nu
   }
   // Hydration or a newly visible neighbour can leave overlapping initial feet.
   // Escape along a checked ground segment, then join a normal safe detour.
-  const gap = Math.max(...others.map(other => residentClearance(size, other.size))) + navigation.cellSize * 2;
+  const gap = clearance + navigation.cellSize * 2;
   const heading = Math.atan2(target.y - from.y, target.x - from.x);
   let searches = 0;
   // Polygon padding may enclose otherwise separated feet beside a river or a

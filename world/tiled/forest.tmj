@@ -16756,7 +16756,63 @@
                                  "visible":false,
                                  "x":0,
                                  "y":0
-                                }],
+                                },
+        {
+          "draworder": "index",
+          "id": 177,
+          "name": "EffectAnchors",
+          "objects": [
+            {
+              "id": 548,
+              "name": "plesk-home-fish",
+              "point": true,
+              "x": 1127,
+              "y": 529,
+              "width": 0,
+              "height": 0,
+              "rotation": 0,
+              "visible": true,
+              "class": "EffectAnchor",
+              "properties": [
+                {
+                  "name": "role",
+                  "type": "string",
+                  "value": "effect-anchor"
+                },
+                {
+                  "name": "effect",
+                  "type": "string",
+                  "value": "resident-home"
+                },
+                {
+                  "name": "residentId",
+                  "type": "string",
+                  "value": "plesk"
+                },
+                {
+                  "name": "siteId",
+                  "type": "string",
+                  "value": "plesk-shop"
+                },
+                {
+                  "name": "level",
+                  "type": "int",
+                  "value": 1
+                },
+                {
+                  "name": "size",
+                  "type": "float",
+                  "value": 44
+                }
+              ]
+            }
+          ],
+          "opacity": 1,
+          "type": "objectgroup",
+          "visible": true,
+          "x": 0,
+          "y": 0
+        }],
                          "name":"Shop-lvl-1",
                          "opacity":1,
                          "type":"group",
@@ -32046,6 +32102,29 @@
          "name":"Destinations",
          "objects":[
                 {
+                  "id": 549,
+                  "name": "foraging",
+                  "point": true,
+                  "x": 680,
+                  "y": 715,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "properties": [
+                    {
+                      "name": "role",
+                      "type": "string",
+                      "value": "destination"
+                    },
+                    {
+                      "name": "pauseSeconds",
+                      "type": "float",
+                      "value": 8
+                    }
+                  ]
+                },
+                {
                  "height":0,
                  "id":384,
                  "name":"home",
@@ -47068,8 +47147,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":177,
- "nextobjectid":548,
+ "nextlayerid":178,
+ "nextobjectid":550,
  "orientation":"orthogonal",
  "properties":[
         {

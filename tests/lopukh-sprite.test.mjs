@@ -115,7 +115,7 @@ test("walking alternates planted feet without stretching limbs or hiding the ear
 test("the rabbit's sixteen-pose step moves each foot, head and held tool by at most one source pixel", () => {
   for (const action of ["walk", "carry"]) for (const direction of directions) {
     const rigs = Array.from({ length: 16 }, (_, frame) => lopukhSpriteRig(lopukhSprite(action, direction, frame)));
-    const anchors = rig => [rig.head, ...rig.feet, ...rig.arms.map(arm => arm.palm), rig.axe.grip, rig.axe.head];
+    const anchors = rig => [rig.head, ...rig.feet, ...rig.arms.map(arm => arm.palm), rig.axe.grip, rig.axe.head, rig.axe.butt, ...rig.axe.blade];
     for (let frame = 0; frame < 16; frame++) {
       const a = rigs[frame], b = rigs[(frame + 1) % 16];
       anchors(a).forEach((p, i) => {
@@ -127,7 +127,8 @@ test("the rabbit's sixteen-pose step moves each foot, head and held tool by at m
   }
 });
 
-test("the axe lifts once, strikes below the face, then returns to a calm resting grip", () => {
+test("the axe pivots once around the holding paw, clears the face and returns to its resting grip", () => {
+  const metal = new Set(["#536963", "#849993", "#c1cec0"]);
   for (const direction of directions) {
     const start = lopukhSpriteRig(lopukhSprite("work", direction, 0, 0));
     const lift = lopukhSpriteRig(lopukhSprite("work", direction, 0, .25));
@@ -137,14 +138,54 @@ test("the axe lifts once, strikes below the face, then returns to a calm resting
     assert.deepEqual(start.feet, strike.feet);
     let previous;
     for (let phase = 0; phase <= 16; phase++) {
-      const rig = lopukhSpriteRig(lopukhSprite("work", direction, 0, phase / 16));
-      assert.ok(rig.axe.head.y - 3 >= rig.head.y + 8, "blade stays below the muzzle");
-      assert.ok(Math.hypot(rig.axe.grip.x - rig.axe.head.x, rig.axe.grip.y - rig.axe.head.y) <= 7, `${direction}/${phase}: the handle stays in the paw ${JSON.stringify(rig.axe)}`);
-      if (previous) assert.ok(Math.hypot(rig.axe.head.x - previous.x, rig.axe.head.y - previous.y) <= 4);
+      const sprite = lopukhSprite("work", direction, 0, phase / 16), rig = lopukhSpriteRig(sprite);
+      const axis = { x: rig.axe.head.x - rig.axe.grip.x, y: rig.axe.head.y - rig.axe.grip.y };
+      const haftLength = Math.hypot(axis.x, axis.y);
+      assert.ok(haftLength >= 6.25 && haftLength <= 7.75, "a seven-pixel haft keeps its length after integer rounding");
+      for (const [key, color] of sprite.pixels) if (metal.has(color)) {
+        const [x, y] = key.split(":").map(Number);
+        assert.ok(Math.abs(x - rig.head.x) >= 11 || y >= rig.head.y + 10, `${direction}/${phase}: the actual blade clears the face`);
+      }
+      if (previous) assert.ok(Math.hypot(rig.axe.head.x - previous.x, rig.axe.head.y - previous.y) <= 5, "the downstroke has no disconnected pose jump");
       previous = rig.axe.head;
       assert.equal(rig.axe.behindBody, direction === "left" || direction === "back");
     }
     for (const phase of [.75, .875, 1]) assert.deepEqual(lopukhSpriteRig(lopukhSprite("work", direction, 5000, phase)).axe, start.axe);
+  }
+});
+
+test("a flared steel wedge, wooden eye and visible haft remain attached behind the holding paw in every view", () => {
+  const metal = new Set(["#536963", "#849993", "#c1cec0"]);
+  for (const direction of directions) for (let phase = 0; phase <= 16; phase++) {
+    const sprite = lopukhSprite("work", direction, 0, phase / 16), { axe, arms } = lopukhSpriteRig(sprite);
+    const at = point => sprite.pixels.get(`${point.x}:${point.y}`);
+    assert.deepEqual(axe.grip, arms.find(arm => arm.hand === "right").palm);
+    const gripColors = axe.behindBody ? ["#edc987", "#ddb16b", "#c59655", "#f1dbad", "#ffebc5", "#967044", "#64432e"] : ["#edc987"];
+    assert.ok(gripColors.includes(at(axe.grip)), `${direction}/${phase}: paw or nearer torso covers the haft at the grip (${at(axe.grip)})`);
+    if (direction === "back" && phase === 10) assert.equal(at(axe.grip), "#64432e", "the far right hand passes behind the torso on recovery");
+    assert.equal(at(axe.head), "#b38955", "the wooden haft passes through the metal eye");
+    assert.ok([...sprite.pixels.values()].filter(color => color === "#b38955").length >= 3, "wood is visible outside the closed paw");
+    const axis = { x: axe.head.x - axe.grip.x, y: axe.head.y - axe.grip.y };
+    const butt = { x: axe.butt.x - axe.grip.x, y: axe.butt.y - axe.grip.y };
+    assert.ok(axis.x * butt.x + axis.y * butt.y < 0, "the butt stays on the other side of the grip");
+    assert.ok(Math.abs(axis.x * butt.y - axis.y * butt.x) <= 5, "both wooden ends share one haft axis");
+    const [neckA, neckB, edgeA, edgeB] = axe.blade;
+    assert.ok(Math.hypot(neckA.x - neckB.x, neckA.y - neckB.y) <= 3);
+    const edge = { x: edgeA.x - edgeB.x, y: edgeA.y - edgeB.y }, edgeLength = Math.hypot(edge.x, edge.y);
+    assert.ok(edgeLength >= 6 && edgeLength <= 8.5, "the cutting edge visibly widens from the narrow eye");
+    assert.ok(Math.abs(axis.x * edge.x + axis.y * edge.y) / Math.hypot(axis.x, axis.y) / edgeLength >= .95,
+      "the cutting edge rotates together with the haft");
+    const pixels = new Set([...sprite.pixels].filter(([, color]) => metal.has(color)).map(([key]) => key));
+    assert.ok(pixels.size >= 20, "the metal wedge has a readable area");
+    const queue = [pixels.values().next().value]; pixels.delete(queue[0]);
+    for (let index = 0; index < queue.length; index++) {
+      const [x, y] = queue[index].split(":").map(Number);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const key = `${x + dx}:${y + dy}`;
+        if (pixels.delete(key)) queue.push(key);
+      }
+    }
+    assert.equal(pixels.size, 0, "the blade silhouette has no floating metal pixels");
   }
 });
 

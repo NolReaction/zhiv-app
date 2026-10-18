@@ -1,6 +1,7 @@
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import { canTraverseWorldObstacle, createWorldNavigation, findWorldPath, isWalkable, withWorldNavigationObstacle, type WorldNavigation } from "@/features/world/navigation/navigation";
 import { compileWorldInteractions } from "@/features/world/navigation/interaction-navigation";
+import { basketGroundFootprint } from "@/features/world/navigation/ground-props";
 import { isForestGroundClear } from "@/features/world/environment/weather/forest-ground-weather";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { forestGardenBerryLayout } from "./forest-garden-layout";
@@ -47,10 +48,7 @@ export function gardenBasketFootprint(state: ForestGardenState): WorldPoint[] | 
 }
 function basketFootprint(position: WorldPoint, size: number): WorldPoint[] {
   size = Number.isFinite(size) && size > 0 ? size : FOREST_GARDEN_LIMITS.basketSize;
-  return Array.from({ length: 8 }, (_, index) => ({
-    x: position.x + Math.cos(index * Math.PI / 4) * size * .5,
-    y: position.y - size * .1 + Math.sin(index * Math.PI / 4) * size * .21,
-  }));
+  return basketGroundFootprint(position, size);
 }
 function corridorsClear(nav: WorldNavigation, corridors: WorldPoint[][]) {
   return corridors.every(points => points.every((point, index) => !index || canTraverseWorldObstacle(nav, points[index - 1], point)));

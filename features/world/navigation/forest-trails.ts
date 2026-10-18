@@ -37,7 +37,7 @@ export function forestTrails(scene: FixedWorldScene): ReadonlyMap<string, Forest
 export function forestDestinations(scene: FixedWorldScene): ReadonlyMap<string, WorldDestination> {
   const existing = destinationCache.get(scene); if (existing) return existing;
   const result = new Map<string, WorldDestination>(), source = scene.destinations;
-  if (Array.isArray(source) && source.length <= 16) {
+  if (Array.isArray(source) && source.length <= 32) {
     const nav = createWorldNavigation(scene, (scene.actor?.size ?? 50) * .1);
     if (nav) for (const item of source) {
       if (!item || typeof item.id !== "string" || !item.id.trim() || !item.position

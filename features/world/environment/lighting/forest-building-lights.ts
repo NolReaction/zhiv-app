@@ -7,6 +7,8 @@ export type ForestLightSource = WorldLight & {
   /** Size of the painted glass in world units; the frame and mullions stay visible. */
   glass?: { width: number; height: number; rotation: number; contour?: WorldPoint[] };
   beamLength?: number;
+  /** Ground-plane origin follows the same active artwork transform as its lens. */
+  beamGround?: WorldPoint;
 };
 
 type ArtworkLamp = {
@@ -30,7 +32,7 @@ const artworkLamps: Record<string, readonly ArtworkLamp[]> = {
       contour: [[.214, .544], [.249, .552], [.249, .618], [.214, .604]] },
   ],
   "lighthouse-level-1.png": [{ id: "lighthouse-lens", u: .51, v: .326, width: .055, height: .065,
-    radius: .85, intensity: 1.24, color: "#ffe5a6", beam: 3.3 }],
+    radius: .85, intensity: 1.24, color: "#ffe5a6", beam: 4.1 }],
 };
 
 /** Decorative lights follow only known, visibly equipped artwork. Ruins stay dark. */
@@ -50,7 +52,8 @@ export function forestBuildingLights(scene: FixedWorldScene, levels: PreviewLeve
         glass: { width: placement.width * lamp.width, height: placement.height * lamp.height,
           rotation: (geometry.imagePlacement?.rotation ?? 0) * Math.PI / 180,
           contour: lamp.contour?.map(([u, v]) => siteImagePoint(geometry, u, v)) },
-        ...(lamp.beam ? { beamLength: placement.width * lamp.beam } : {}) });
+        ...(lamp.beam ? { beamLength: placement.width * lamp.beam,
+          beamGround: siteImagePoint(geometry, lamp.u, .91) } : {}) });
     }
   }
   return result;

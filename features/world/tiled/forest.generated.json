@@ -26667,6 +26667,22 @@
       }
     }
   ],
+  "effectAnchors": [
+    {
+      "id": "plesk-home-fish",
+      "effect": "resident-home",
+      "residentId": "plesk",
+      "position": {
+        "x": 1127,
+        "y": 529
+      },
+      "size": 44,
+      "when": {
+        "siteId": "plesk-shop",
+        "level": 1
+      }
+    }
+  ],
   "lights": [
     {
       "id": "home-lantern",
@@ -26859,6 +26875,14 @@
       "position": {
         "x": 716.969220779,
         "y": 659.668917749
+      },
+      "pauseSeconds": 8
+    },
+    {
+      "id": "foraging",
+      "position": {
+        "x": 680,
+        "y": 715
       },
       "pauseSeconds": 8
     },

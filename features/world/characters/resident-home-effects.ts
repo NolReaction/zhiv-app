@@ -6,6 +6,8 @@ export type ResidentHomeIndicator = {
   position: WorldPoint;
   elapsed: number;
   size?: number;
+  /** Authored anchors mark the visible motif centre rather than feet. */
+  centered?: boolean;
 };
 export type ResidentHomeParticle = WorldPoint & { unit: number; opacity: number; flipped: boolean };
 
@@ -17,7 +19,7 @@ export function residentHomeParticles(indicator: ResidentHomeIndicator, still: b
   return [0, 1].map(index => {
     const phase = still ? .32 + index * .28 : ((indicator.elapsed * .18 + index * .5) % 1 + 1) % 1;
     return { x: x + (index ? 3 : -5) * size / 44 + (still ? 0 : Math.sin(phase * Math.PI * 2) * size * .035),
-      y: y - size * (.5 + phase * .28), unit: size / 44 * (index ? .85 : 1),
+      y: y - size * (indicator.centered ? (phase - .5) * .28 : .5 + phase * .28), unit: size / 44 * (index ? .85 : 1),
       opacity: still ? .72 : Math.sin(phase * Math.PI) * .78, flipped: index === 1 };
   });
 }

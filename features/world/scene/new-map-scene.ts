@@ -28,7 +28,7 @@ import { forestLifeFrame, type ForestLifeState } from "@/features/world/simulati
 import { drawForestLifePartner, drawForestMushrooms } from "@/features/world/simulation/forest-life-painter";
 import { drawForestBush, forestBushForegroundActive } from "@/features/world/activities/garden/forest-bush-painter";
 import { forestBushArtworkAvailable } from "@/features/world/activities/garden/forest-bush-artwork";
-import { drawForestGardenGround, drawForestGardenPlants, drawForestGardenProps, forestGardenVisualFrame } from "@/features/world/activities/garden/forest-garden-painter";
+import { drawForestGardenBasket, drawForestGardenPlants, drawForestGardenProps, forestGardenGroundBasket, forestGardenVisualFrame } from "@/features/world/activities/garden/forest-garden-painter";
 import { drawWaterDebug } from "@/features/world/dev/water-debug";
 import { clearingActivityFrame, clearingNavigationFrame, noticeClearingActivity } from "@/features/world/simulation/clearing-activity";
 import { advanceForestDirector, cancelForestDirector, noticeForestDirector, requestForestDirective, requestForestGardenHarvest, requestForestTradeVisit, forestTradeVisitFrame, type ForestDirectorOptions } from "@/features/world/simulation/forest-director";
@@ -56,6 +56,9 @@ import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLife
 import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
 import { interactiveMapObjects } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "@/features/world/activities/journeys/forest-journey-travel";
+import { forestJourneyGatheringFrame } from "@/features/world/activities/journeys/forest-supply-journey";
+import type { ForestGatheringFrame } from "@/features/world/activities/journeys/forest-gathering";
+import { drawForestGatheringBasket, drawForestGatheringHero, forestGatheringBounds } from "@/features/world/activities/journeys/forest-gathering-painter";
 
 import { advancePleskMind, rehydratePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade, pleskAvailableForLeisure,
   pleskCanPausePassing, pleskCanReceiveVisit, requestPleskSocialVisit, cancelPleskSocialVisit } from "@/features/world/characters/plesk/plesk-mind";
@@ -137,6 +140,12 @@ function drawHomeSleep(ctx: CanvasRenderingContext2D, door: WorldPoint, elapsed:
 }
 
 type ManualAnimation = { pose: PixelPose; elapsed: number };
+function gatheringAtSize(frame: ForestGatheringFrame | null | undefined, size: number): ForestGatheringFrame | null {
+  if (!frame) return null;
+  const scale = size / frame.size;
+  return { ...frame, size, basket: { x: frame.x + (frame.basket.x - frame.x) * scale,
+    y: frame.y + (frame.basket.y - frame.y) * scale, size: frame.basket.size * scale } };
+}
 export type NewMapPaintPreview = {
   scene?: FixedWorldScene;
   water?: ForestWaterDynamics;
@@ -159,6 +168,7 @@ export type NewMapPaintPreview = {
   fishing?: ForestFishingFrame | null;
   mining?: ForestMiningFrame | null;
   cooking?: ForestCookingFrame | null;
+  gathering?: ForestGatheringFrame | null;
   productions?: readonly ForestProductionFrame[];
   residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
   builderSleeping?: ReturnType<typeof builderSleepIndicator>;
@@ -214,10 +224,12 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   const selectedLevels = Object.fromEntries(Object.entries(selectedVisuals).map(([id, visual]) => [id, visual.level]));
   const walking = preview?.clearing;
   const visibleMining = selectedLevels.quarry > 0 ? preview?.mining : null;
-  const actor = { x: visibleMining?.x ?? walking?.x ?? NEW_MAP_SPAWN.x, y: visibleMining?.y ?? walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
+  const actor = { x: visibleMining?.x ?? preview?.gathering?.x ?? walking?.x ?? NEW_MAP_SPAWN.x,
+    y: visibleMining?.y ?? preview?.gathering?.y ?? walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
   const mining = visibleMining ? { ...visibleMining, size:actor.size } : null;
   const fishing = preview?.fishing ? withForestWaterBuoyancy({ ...preview.fishing, size: actor.size }, preview.water, still) : null;
   const cooking = !fishing && preview?.cooking ? { ...preview.cooking, size: actor.size } : null;
+  const gathering = !mining && !fishing && !cooking ? gatheringAtSize(preview?.gathering, actor.size) : null;
   const atmosphere = { ...atmosphereOptions(options, timestamp, dusk, preview), elapsed };
   const birds = atmosphere.birdFrame ?? forestBirdFrame(world, { ...atmosphere, ...forestAtmosphereState(world, atmosphere) });
   atmosphere.birdFrame = birds;
@@ -231,14 +243,14 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
     butterflies: fauna.butterflies.filter(p => !behindButterflies.includes(p)),
     fireflies: fauna.fireflies.filter(p => !behindFireflies.includes(p)),
   };
-  const automatic = heroVisible && !fishing && !mining && !cooking && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
+  const automatic = heroVisible && !fishing && !mining && !cooking && !gathering && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
   const motion = automatic && walking ? walking : null;
   // A cancelled carry may wait for clear ground; attention cannot hide its basket.
   const garden = automatic || life?.garden.basket?.held ? forestGardenVisualFrame(life?.garden, actor,
     { pose: motion?.pose ?? "idle", frame: motion?.frame ?? 0, direction: motion?.direction ?? "front" }, still) : null;
-  const routine = heroVisible && !fishing && !mining && life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
+  const routine = heroVisible && !fishing && !mining && !gathering && life?.routine && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto")
     ? forestLifeFrame(life, { ...actor, propSize: PET_SIZE }, elapsed) : null;
-  const encounter = heroVisible && !fishing && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
+  const encounter = heroVisible && !fishing && !gathering && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto") && preview?.fauna
     ? faunaInteractionFrame(preview.fauna) : null;
   const trading = automatic ? preview?.tradeVisit : null;
   const birdwatch = automatic && !still && preview?.birdwatch ? forestBirdwatchFrame(preview.birdwatch, actor) : null;
@@ -247,8 +259,30 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   const behindFires = (life?.campfires ?? []).filter(item => item.position.y < actor.y);
   const frontFires = (life?.campfires ?? []).filter(item => item.position.y >= actor.y);
   const productions = preview?.productions ?? forestProductionFrames(options.economyProduction, world, selectedVisuals, timestamp, elapsed, dev?.showBuildings !== false);
+  const residents = preview?.residents ?? forestResidentFrames(world, elapsed, still);
+  const depthProps: { y: number; paint: () => void }[] = [];
+  const parkedBasket = forestGardenGroundBasket(life?.garden, actor.size, garden);
+  if (parkedBasket) depthProps.push({ y: parkedBasket.y, paint: () => withForestOcclusion(context, world, parkedBasket,
+    target => drawForestGardenBasket(target, parkedBasket), { x: parkedBasket.x - parkedBasket.size * .55,
+      y: parkedBasket.y - parkedBasket.size * .9, width: parkedBasket.size * 1.1, height: parkedBasket.size * 1.1 }) });
+  if (gathering && !gathering.held) {
+    const basket = gathering.basket;
+    depthProps.push({ y: basket.y, paint: () => withForestOcclusion(context, world, basket,
+      target => drawForestGatheringBasket(target, gathering), { x: basket.x - basket.size * .6,
+        y: basket.y - basket.size, width: basket.size * 1.2, height: basket.size * 1.15 }) });
+  }
+  // Ground props share the residents' actual feet depth, including objects
+  // beside a working hero. Carrying props stay in their owner's hand pass.
+  const paintResidentLayer = (layer: "behind" | "front") => {
+    let fromY = -Infinity;
+    for (const prop of depthProps.filter(prop => (prop.y < actor.y) === (layer === "behind")).sort((a, b) => a.y - b.y)) {
+      drawForestResidents(context, world, elapsed, still, actor.y, layer, residents.filter(resident => resident.y >= fromY && resident.y < prop.y));
+      prop.paint(); fromY = prop.y;
+    }
+    drawForestResidents(context, world, elapsed, still, actor.y, layer, residents.filter(resident => resident.y >= fromY));
+  };
   const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
-    showBuildings: dev?.showBuildings, levels: selectedLevels };
+    showBuildings: dev?.showBuildings, levels: selectedLevels, quality: dev?.lightQuality };
   // Confirmed production uses the same source as its visible cooking burner.
   const cookingFires = (life?.campfires ?? []).map(fire => productions.some(frame => frame.fireId === fire.id && frame.phase === "working")
     ? { ...fire, flame: Math.max(fire.flame, .45), embers: Math.max(fire.embers, .4) } : fire);
@@ -311,7 +345,6 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   drawForestCampfires(context, behindFires, elapsed, still);
   paintProduction(false);
   drawForestGardenPlants(context, world, life?.garden);
-  drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined);
   // A moving cutout may own the artwork while its actor is still in front.
   // Rustling never promotes leaves over an approaching or emerging body.
   if (!walking?.bush?.occlude) paintBush();
@@ -319,7 +352,7 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   // Paint once before the solid body; takeoff keeps this depth until it clears.
   for (const particle of behindButterflies) drawForestButterfly(context, particle, fauna!.elapsed);
   for (const particle of behindFireflies) drawForestFirefly(context, particle, fauna!.elapsed);
-  drawForestResidents(context, world, elapsed, still, actor.y, "behind", preview?.residents);
+  paintResidentLayer("behind");
   for (const bird of groundBirds) if (bird.groundY! < actor.y) drawForestBird(context, bird);
   if (heroVisible && (walking?.opacity ?? 1) > 0) {
     const manualDirection = dev && !motion?.bush?.occupied && (still || dev.autoLife === false && motion?.pose === "idle") ? dev.direction : undefined;
@@ -337,18 +370,21 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
         drawForestCookingHero(actorContext, cooking, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
         return;
       }
-      drawForestGardenProps(actorContext, garden, "behind");
+      if (gathering) {
+        drawForestGatheringHero(actorContext, gathering, dev?.equipment ?? options.worldState?.equipment, still, dev?.heroShadow);
+        return;
+      }
+      drawForestGardenProps(actorContext, garden, "behind", true);
       drawGroundedHero(actorContext, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? trading?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
         ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? trading ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
         appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression,
         rig: garden?.rig ?? routine?.rig });
       if (routine) drawForestLifePartner(actorContext, routine, elapsed);
-      drawForestGardenProps(actorContext, garden, "front");
-    }, fishing ? fishingPropsBounds(fishing) : cooking ? forestCookingBounds(cooking) : undefined);
+      drawForestGardenProps(actorContext, garden, "front", true);
+    }, gathering ? forestGatheringBounds(gathering) : fishing ? fishingPropsBounds(fishing) : cooking ? forestCookingBounds(cooking) : undefined);
     context.restore();
   }
-  drawForestResidents(context, world, elapsed, still, actor.y, "front", preview?.residents);
-  drawForestGardenGround(context, life?.garden, actor.size, garden, heroVisible ? actor : undefined, "front");
+  paintResidentLayer("front");
   for (const bird of groundBirds) if (bird.groundY! >= actor.y) drawForestBird(context, bird);
   if (walking?.bush?.occlude) paintBush();
   if (walking?.homeSleeping && home && heroVisible && dev?.showBuildings !== false) {
@@ -656,6 +692,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const occupants = forestResidentOccupants(state, world, { heroVisible: dev?.showHero !== false && !actorAway(), heroScale: dev?.heroScale,
       heroManual: Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto"),
       fishing: forestJourneyFishingFrame(state, world), mining: forestJourneyMiningFrame(state, world),
+      gathering: gatheringAtSize(forestJourneyGatheringFrame(state, world), state.clearing.size * (dev?.heroScale ?? 1)),
       cooking: cookingPreviewFrame(state, dev?.cookingPreview) });
     const arriving = state.leaftailBoat && leaftailBoatArrivalOccupant(state.leaftailBoat);
     if (arriving) occupants.push(arriving);
@@ -671,7 +708,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       dev?.builderPreview?.id === state.builderPreview?.id ? state.builderPreview?.startedAt : state.elapsed);
     const manual = Boolean(state.animation || dev?.pose && dev.pose !== "auto" || dev?.showHero === false || dev?.residentPreview || builderRehearsal);
     const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
-    const actors: ForestSocialActor[] = occupants.map(occupant => {
+    const actors: ForestSocialActor[] = occupants.filter(occupant => !occupant.groundFootprint).map(occupant => {
       if (occupant.id === "mochlik") {
         const available = !manual && !exploring() && !forestJourneyWalking(state) && !forestJourneyEnding(state)
           && !cooking && !state.pendingLife && !state.pendingAttention && state.reaction <= 0
@@ -864,7 +901,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
-    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.director.tradeVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing" || state.journeyTravel?.mining)
+    const gathering = forestJourneyGatheringFrame(state, world);
+    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.director.tradeVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing" || state.journeyTravel?.mining || gathering && gathering.action !== "ready")
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {
@@ -882,7 +920,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const cooking = state.cookingPreview;
     const visitors = faunaVisitors();
     const watchedBird = state.villagerWildlife?.birdwatch?.watch.birdId;
-    return { autoLife: !options.devRehearsal && !cooking && dev?.autoLife !== false, blocked: blocked || Boolean(forestSocialHolding(state.social)) || exploring() || forestJourneyWalking(state) || forestJourneyEnding(state)
+    return { autoLife: !options.devRehearsal && !cooking && dev?.autoLife !== false, blocked: blocked || Boolean(forestSocialHolding(state.social)) || exploring() || forestJourneyWalking(state) || forestJourneyEnding(state) || Boolean(forestJourneyGatheringFrame(state, world))
       || Boolean(cooking && cooking.startedAt !== null), actorAway: actorAway(),
       explicitTravel: !blocked && (forestJourneyWalking(state) || Boolean(cooking && cooking.startedAt === null)
         || Boolean(options.devRehearsal && state.clearing.requestedPoint)), dusk: environment.dusk, rain: environment.rain,
@@ -903,6 +941,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       residents: residentFrames().map(resident => resident.id === "plesk"
         ? withForestWaterBuoyancy(resident, dev?.waterSurface === false ? undefined : state.water, reducedMotion(options, dev)) : resident),
       fishing: forestJourneyFishingFrame(state, world, reducedMotion(options, dev)),
+      gathering: gatheringAtSize(forestJourneyGatheringFrame(state, world, reducedMotion(options, dev)), state.clearing.size * (dev?.heroScale ?? 1)),
       builderSleeping: builderSleepIndicator(state.builderMind, world),
       residentPresentation: residentScenePresentation(state, world),
       merchantBoat: state.leaftailBoat ? leaftailBoatArrivalFrame(state.leaftailBoat) : null,

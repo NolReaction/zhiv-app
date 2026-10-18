@@ -46,7 +46,7 @@ export function forestResidentAt(scene: FixedWorldScene, elapsed: number, still:
   // Resolve the visible frontmost body, rather than the first resident in the registry.
   for (const resident of [...frames].sort((a, b) => b.y - a.y)) {
     if ("opacity" in resident && (resident.opacity ?? 1) <= .05) continue;
-    if (forestPointOccluded(scene, resident.y, point)) continue;
+    if (forestPointOccluded(scene, resident.y, point, resident.id === "plesk" ? resident.doorwayOcclusion : undefined)) continue;
     const bounds = hitBounds(resident);
     if (point.x >= bounds.x && point.x <= bounds.x + bounds.width
       && point.y >= bounds.y && point.y <= bounds.y + bounds.height) return resident.id;

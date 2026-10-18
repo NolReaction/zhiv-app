@@ -407,7 +407,7 @@ export function pleskMindFrame(mind: PleskMind | null, scene: FixedWorldScene, s
   const stage = mind.stage, phase = clamp(mind.age / stage.duration);
   const walk = stage.trail ? samplePleskTrail(stage.trail, mind.age) : undefined;
   const direction = walk?.direction ?? stage.direction ?? (stage.target.id === places.base.id ? places.direction : "front");
-  return { id: "plesk", ...mind.position, size: PLESK.size, ...(home ? { opacity: home.opacity } : {}), direction: home?.direction ?? direction, action: home ? mind.trafficWaiting ? "idle" : "walk" : mind.trafficWaiting && stage.action === "walk" ? "idle" : stage.action, phase,
+  return { id: "plesk", ...mind.position, size: PLESK.size, ...(home ? { opacity: home.opacity, doorwayOcclusion: home.doorwayOcclusion } : {}), direction: home?.direction ?? direction, action: home ? mind.trafficWaiting ? "idle" : "walk" : mind.trafficWaiting && stage.action === "walk" ? "idle" : stage.action, phase,
     frame: still ? 0 : home ? Math.floor(mind.home.progress * mind.home.door!.length / (PLESK.size * .06)) % 8 : walk?.frame ?? Math.floor(mind.age * 8) % 32,
     destinationId: stage.target.id,
     // During pack only the current held catch matters. Stored fish must not

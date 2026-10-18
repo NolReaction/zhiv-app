@@ -10,7 +10,7 @@ const fixture = {
   focus: { x: 455, y: 480, width: 350, height: 350 },
   actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [], destinations: [],
   water: { surfaces: [], exclusions: [] }, bushes: [], campfires: [], basket: undefined, navigation: undefined, habitats: undefined,
-  shadowCasters: undefined, shadowReceivers: undefined,
+  shadowCasters: undefined, shadowReceivers: undefined, effectAnchors: undefined,
   mushrooms: [{ id: "test-mushroom", position: { x: 635, y: 665 } }],
 };
 const livingHabitats = [

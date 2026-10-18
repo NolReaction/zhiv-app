@@ -74,6 +74,16 @@ export type WorldHabitat = {
   anchors: { id: string; position: WorldPoint; kind: "rest" | "shelter" }[];
 };
 export type WorldMushroom = { id: string; position: WorldPoint };
+/** A movable animation origin. It never creates an activity, clock or reward. */
+export type WorldEffectAnchor = {
+  id: string;
+  effect: "resident-home";
+  residentId: "plesk" | "lopukh" | "kamneshmyg" | "leaftail";
+  /** Centre of the visible motif, in world coordinates (not an actor's feet). */
+  position: WorldPoint;
+  size: number;
+  when: WorldVisibilityCondition;
+};
 export type WorldBush = {
   id: string;
   /** Optional terrain-object ID; absent means foliage baked into the background. */
@@ -173,6 +183,8 @@ export type FixedWorldScene = {
   sites: FixedSite[];
   paths: WorldPath[];
   mushrooms?: WorldMushroom[];
+  /** Authored effect positions; no anchors means doorway-based compatibility. */
+  effectAnchors?: WorldEffectAnchor[];
   campfires?: WorldCampfire[];
   /** Absent retains automatic placement for older maps. */
   basket?: WorldBasket;

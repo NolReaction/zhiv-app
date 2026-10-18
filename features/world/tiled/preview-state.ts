@@ -21,6 +21,7 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
     || scene.navigation?.areas.some(area => area.when) || scene.navigation?.obstacles.some(obstacle => obstacle.when)
     || scene.occluders?.some(occluder => occluder.when)
     || scene.treeInteractions?.some(tree => tree.when)
+    || scene.effectAnchors?.some(anchor => anchor.when)
     || scene.shadowCasters?.some(caster => caster.when) || scene.shadowReceivers?.some(receiver => receiver.when)
     || scene.audio?.emitters.some(emitter => emitter.when) || scene.audio?.zones.some(zone => zone.when);
   if (!hasGeometry && !hasConditions) return scene;
@@ -39,6 +40,7 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
     ...(scene.audio ? { audio: { emitters: filterVisible(scene.audio.emitters), zones: filterVisible(scene.audio.zones) } } : {}),
     ...(scene.occluders ? { occluders: filterVisible(scene.occluders) } : {}),
     ...(scene.treeInteractions ? { treeInteractions: filterVisible(scene.treeInteractions) } : {}),
+    ...(scene.effectAnchors ? { effectAnchors: filterVisible(scene.effectAnchors) } : {}),
     ...(scene.shadowCasters ? { shadowCasters: filterVisible(scene.shadowCasters) } : {}),
     ...(scene.shadowReceivers ? { shadowReceivers: filterVisible(scene.shadowReceivers) } : {}),
     ...(scene.navigation ? { navigation: { ...scene.navigation,

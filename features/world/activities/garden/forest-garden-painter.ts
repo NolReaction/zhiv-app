@@ -17,13 +17,13 @@ type GardenBerry = WorldPoint & { radius: number; growth: number; picked: number
 const smooth = (value: number) => { const t = unit(value); return t * t * (3 - 2 * t); };
 const mixPoint = (a: WorldPoint, b: WorldPoint, progress: number) => blend(a, b, smooth(progress));
 const COLLECT = { lowerEnd: .65, pickStart: .85, cycle: 1, liftStart: 4.15, end: 5 } as const;
-type BasketVisual = WorldPoint & { size: number; berries: number; behind: boolean; grounded: boolean; itemId?: string;
+export type ForestGardenBasketVisual = WorldPoint & { size: number; berries: number; behind: boolean; grounded: boolean; itemId?: string;
   /** Cosmetic deposited fruit, including different species in the same basket. */
   itemIds?: (string | undefined)[] };
 type GardenArm = { shoulder: WorldPoint; elbow: WorldPoint; hand: WorldPoint };
 export type ForestGardenVisualFrame = {
   pose: PixelPose; direction: PixelDirection; frame: number; rig?: PixelRigOptions;
-  basket: BasketVisual | null;
+  basket: ForestGardenBasketVisual | null;
   can: (WorldPoint & { size: number; side: number; tilt: number; spout: WorldPoint; target: WorldPoint; pouring: boolean }) | null;
   pickedBerry: (WorldPoint & { size: number; itemId?: string; jobId?: string }) | null;
   arms: GardenArm[]; actor: FaunaActor;
@@ -204,7 +204,7 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
     const distance = Math.hypot(hand.x - shoulders[index].x, hand.y - shoulders[index].y);
     return mixPoint(rests[index], hand, 1 - unit((distance / actor.size - .21) / .045));
   });
-  let basket: BasketVisual | null = null, pickedBerry: ForestGardenVisualFrame["pickedBerry"] = null;
+  let basket: ForestGardenBasketVisual | null = null, pickedBerry: ForestGardenVisualFrame["pickedBerry"] = null;
   if (garden.basket && carries) {
     let position = held, grounded = false;
     if (routine.phase === "take-basket") {
@@ -288,7 +288,7 @@ function drawGardenArms(ctx: CanvasRenderingContext2D, frame: ForestGardenVisual
   }
 }
 
-function drawBasket(ctx: CanvasRenderingContext2D, basket: BasketVisual) {
+export function drawForestGardenBasket(ctx: CanvasRenderingContext2D, basket: ForestGardenBasketVisual) {
   const u = basket.size / 14, { x, y } = basket;
   ctx.save(); ctx.translate(x, y); ctx.scale(u, u);
   const alpha = ctx.globalAlpha;
@@ -314,6 +314,16 @@ function drawBasket(ctx: CanvasRenderingContext2D, basket: BasketVisual) {
   ctx.restore();
 }
 
+/** One actual support for both traffic and depth. The sole is basket.y; the
+ * handle reaches y-size*12/14 and never enlarges the physical footprint. */
+export function forestGardenGroundBasket(garden: ForestGardenState | undefined, size: number,
+  frame: ForestGardenVisualFrame | null): ForestGardenBasketVisual | null {
+  if (frame?.basket) return frame.basket.grounded ? { ...frame.basket } : null;
+  if (!garden?.basket || garden.routine?.carryingBasket || garden.basket.held) return null;
+  return { ...garden.basket.position, size: garden.basket.size ?? size * .28,
+    berries: garden.production === undefined ? garden.basket.berries : 0, behind: false, grounded: true };
+}
+
 /** A parked basket remains attached to its safe ground point after cancellation. */
 export function drawForestGardenGround(ctx: CanvasRenderingContext2D, garden: ForestGardenState | undefined,
   size: number, frame: ForestGardenVisualFrame | null, actor?: WorldPoint, layer: "behind" | "front" = "behind") {
@@ -323,16 +333,18 @@ export function drawForestGardenGround(ctx: CanvasRenderingContext2D, garden: Fo
   if (garden.routine?.carryingBasket || garden.basket.held) return;
   const inFront = actor && garden.basket.position.y >= actor.y;
   if (Boolean(inFront) !== (layer === "front")) return;
-  drawBasket(ctx, { ...garden.basket.position, size: garden.basket.size ?? size * .28,
+  drawForestGardenBasket(ctx, { ...garden.basket.position, size: garden.basket.size ?? size * .28,
     berries: garden.production === undefined ? garden.basket.berries : 0, behind: false, grounded: true });
 }
 
-export function drawForestGardenProps(ctx: CanvasRenderingContext2D, frame: ForestGardenVisualFrame | null, layer: "behind" | "front") {
+export function drawForestGardenProps(ctx: CanvasRenderingContext2D, frame: ForestGardenVisualFrame | null,
+  layer: "behind" | "front", deferGroundBasket = false) {
   if (!frame) return;
   ctx.save(); ctx.imageSmoothingEnabled = false;
   const behind = frame.direction === "back";
   if (behind === (layer === "behind")) drawGardenArms(ctx, frame);
-  if (frame.basket && frame.basket.behind === (layer === "behind")) drawBasket(ctx, frame.basket);
+  if (frame.basket && !(deferGroundBasket && frame.basket.grounded)
+    && frame.basket.behind === (layer === "behind")) drawForestGardenBasket(ctx, frame.basket);
   if (layer === "behind") { if (behind) drawGardenArms(ctx, frame, true); ctx.restore(); return; }
   if (frame.can) {
     const can = frame.can, u = can.size / 14;

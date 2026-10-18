@@ -9,7 +9,10 @@ export function residentScenePresentation(state: ForestSessionState, scene: Fixe
   const addHome = (id: ResidentHomeIndicator["id"], siteId: string) => {
     const site = scene.sites.find(site => site.id === siteId);
     if (!site) return;
-    homes.push({ id, position: { x: site.bounds.x + site.bounds.width * .55, y: site.bounds.y + site.bounds.height * .35 }, elapsed: state.elapsed });
+    const anchor = scene.effectAnchors?.find(anchor => anchor.effect === "resident-home" && anchor.residentId === id
+      && anchor.when.siteId === siteId);
+    homes.push({ id, position: { ...(anchor?.position ?? site.doorway ?? site.entry) }, elapsed: state.elapsed,
+      ...(anchor ? { size: anchor.size, centered: true } : {}) });
   };
   if (state.pleskMind?.home.phase === "inside") addHome("plesk", "plesk-shop");
   for (const id of ["lopukh", "kamneshmyg", "leaftail"] as const) {

@@ -115,6 +115,10 @@ export function pleskHomeFrame(mind: PleskMind) {
   if (!door || !["enter", "exit"].includes(home.phase)) return null;
   const entering = home.phase === "enter", dx = (door.doorway.x - door.entry.x) * (entering ? 1 : -1);
   const dy = (door.doorway.y - door.entry.y) * (entering ? 1 : -1);
+  const expected = { x: door.entry.x + (door.doorway.x - door.entry.x) * home.progress,
+    y: door.entry.y + (door.doorway.y - door.entry.y) * home.progress };
+  const threshold = home.progress >= 0 && home.progress <= 1 && distance(mind.position, expected) < 1e-5;
   return { opacity: Math.max(0, 1 - home.progress), direction: Math.abs(dx) > Math.abs(dy)
-    ? dx > 0 ? "right" as const : "left" as const : dy > 0 ? "front" as const : "back" as const };
+    ? dx > 0 ? "right" as const : "left" as const : dy > 0 ? "front" as const : "back" as const,
+    ...(threshold ? { doorwayOcclusion: { siteId: "plesk-shop" as const, top: door.doorway.y - PLESK.size * .84 } } : {}) };
 }

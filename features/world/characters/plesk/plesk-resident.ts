@@ -12,6 +12,8 @@ export type PleskResidentFrame = WorldPoint & FishingMotion & {
   id: "plesk";
   size: number;
   opacity?: number;
+  /** Only a validated personal threshold may reveal its own ground/front art. */
+  doorwayOcclusion?: { siteId: "plesk-shop"; top: number };
   direction: PixelDirection;
   action: PleskAction;
   /** Progress through this action, independent of the sprite's animation frame. */

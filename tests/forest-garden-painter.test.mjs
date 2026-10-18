@@ -9,7 +9,7 @@ const vite = await createServer({ appType: 'custom', configFile: false, root,
   resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { forestGardenBerries, forestGardenVisualFrame, drawForestGardenPlants, drawForestGardenGround,
-  drawForestGardenProps } = await vite.ssrLoadModule('/features/world/activities/garden/forest-garden-painter.ts');
+  drawForestGardenProps, forestGardenGroundBasket, drawForestGardenBasket } = await vite.ssrLoadModule('/features/world/activities/garden/forest-garden-painter.ts');
 const { previewPointInPolygon } = await vite.ssrLoadModule('/features/world/tiled/preview-state.ts');
 const { createForestGarden, cancelForestGarden, gardenWorkReachable, syncForestGardenProduction } = await vite.ssrLoadModule('/features/world/activities/garden/forest-garden.ts');
 const { forestFruitVisual, forestFruitAppearance, FOREST_FRUIT_APPEARANCES } = await vite.ssrLoadModule('/features/world/activities/garden/forest-fruit-appearance.ts');
@@ -38,6 +38,26 @@ function setup(phase = 'water', elapsed = 2) {
     phase, elapsed, totalElapsed: elapsed + 3, carryingBasket: ['collect', 'return-basket', 'deposit'].includes(phase) };
   return { garden, actor };
 }
+
+test('ground basket depth can be deferred independently while carried props retain actor depth', () => {
+  const { garden, actor } = setup('collect', 2), original = structuredClone(garden);
+  for (const still of [false, true]) {
+    const frame = forestGardenVisualFrame(garden, actor, motion, still), normal = context(), deferred = context(), ground = context();
+    assert.deepEqual(forestGardenGroundBasket(garden, actor.size, frame), frame.basket);
+    for (const layer of ['behind', 'front']) {
+      drawForestGardenProps(normal.ctx, frame, layer); drawForestGardenProps(deferred.ctx, frame, layer, true);
+    }
+    drawForestGardenBasket(ground.ctx, forestGardenGroundBasket(garden, actor.size, frame));
+    const baskets = calls => calls.filter(call => call.method === 'translate' && call.args[0] === frame.basket.x && call.args[1] === frame.basket.y);
+    assert.equal(baskets(normal.calls).length, 1); assert.equal(baskets(deferred.calls).length, 0); assert.equal(baskets(ground.calls).length, 1);
+    assert.deepEqual(garden, original, 'still/depth sampling never advances the owner');
+  }
+  garden.routine.phase = 'return-basket';
+  const carried = forestGardenVisualFrame(garden, actor, motion), painted = context();
+  assert.equal(forestGardenGroundBasket(garden, actor.size, carried), null);
+  for (const layer of ['behind', 'front']) drawForestGardenProps(painted.ctx, carried, layer, true);
+  assert.equal(painted.calls.filter(call => call.method === 'translate' && call.args[0] === carried.basket.x && call.args[1] === carried.basket.y).length, 1);
+});
 
 test('growth overlays stay inside the exact authored foliage and use the same positions at every stage', () => {
   const { garden } = setup();
