@@ -5,6 +5,7 @@ import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/econ
 import { constructionCompletions, type ConstructionCompletion } from "@/features/economy/domain/construction-completion";
 import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryGain } from "@/features/economy/domain/inventory-gain";
 import { localSaleFromReceipt, type LocalSaleReceipt } from "@/features/economy/domain/local-sale-receipt";
+import { localLeaftailPurchaseFromReceipt, type LocalLeaftailPurchase } from "@/features/economy/domain/local-leaftail-purchase";
 import { localExplorationFromReceipt, type LocalExplorationReceipt } from "@/features/economy/domain/local-exploration-receipt";
 import { barterCommandSchema, type BarterCommand, type BarterIntent, type BarterResult, type BarterView } from "@/features/economy/domain/barter-model";
 import { hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
@@ -46,6 +47,8 @@ type View = {
   productionStarts?: readonly ProductionStart[];
   /** Latest confirmed local sale; transient, never reconstructed from a GET. */
   localSale?: LocalSaleReceipt;
+  /** Exact accepted local trader purchase; names and debit never follow later catalogs. */
+  localLeaftailPurchase?: LocalLeaftailPurchase;
   /** Exact locally initiated departure, including its same-session retry. */
   localExploration?: LocalExplorationReceipt;
 };
@@ -60,6 +63,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   // A reload may recover the command, but must not pretend the player just
   // started it in this course. Keep this intent out of receipt persistence.
   let localExplorationIntent: { requestId: string; before: EconomyView } | null = null;
+  let localLeaftailPurchaseIntent: { requestId: string; before: EconomyView } | null = null;
   let reading: Promise<void> | null = null, marketReading: Promise<void> | null = null, barterReading: Promise<void> | null = null;
   let barterBlockedUntil = 0, rateLimitedUntil = 0;
   let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0;
@@ -195,7 +199,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   ].slice(-16));
   function remember(value: Pending | null) {
     pending = value;
-    if (!value) localExplorationIntent = null;
+    if (!value) { localExplorationIntent = null; localLeaftailPurchaseIntent = null; }
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Receipt remains in memory if browser storage is unavailable. */ }
   }
   function restore() {
@@ -314,6 +318,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     const generation = epoch, request = controller(), before = view.snapshot;
     ++readSequence; ++marketSequence; ++barterSequence; reading = null; marketReading = null; barterReading = null; remember(value);
     publish({ busy: true, error: null, notice: "", retryAt: 0,
+      ...(value.kind === "economy" && value.command.action === "buy_leaftail_item" ? { localLeaftailPurchase: undefined } : {}),
       ...(localProductionStart ? { productionStarts: productionStarts(value.command.requestId) } : {}) });
     let reloadMarket = false, reloadBarter = false;
     try {
@@ -335,6 +340,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(before, result, value.command) : null;
         const sale = value.kind === "economy" && view.snapshot?.revision === result.state.revision
           && view.localSale?.id !== value.command.requestId ? localSaleFromReceipt(before, result, value.command) : null;
+        const purchase = value.kind === "economy" && localLeaftailPurchaseIntent?.requestId === value.command.requestId
+          && view.localLeaftailPurchase?.id !== value.command.requestId
+          ? localLeaftailPurchaseFromReceipt(localLeaftailPurchaseIntent.before, result, value.command) : null;
         const departure = value.kind === "economy"
           && localExplorationIntent?.requestId === value.command.requestId && view.localExploration?.id !== value.command.requestId
           ? localExplorationFromReceipt(localExplorationIntent.before, result, value.command) : null;
@@ -345,6 +353,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
         }
         remember(null); publish({ notice: result.message, uncertain: false, syncError: null,
           ...(sale ? { localSale: sale } : {}),
+          ...(purchase ? { localLeaftailPurchase: purchase } : {}),
           ...(exploration ? { localExploration: exploration } : {}),
           ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),
           ...(cancelled ? { cancelledExplorations: Object.freeze([...(view.cancelledExplorations ?? []), cancelled].slice(-8)) } : {}),
@@ -438,6 +447,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
         ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) };
       if (action === "start_exploration" || action === "start_fishing")
         localExplorationIntent = { requestId: command.requestId, before: view.snapshot };
+      if (action === "buy_leaftail_item") localLeaftailPurchaseIntent = { requestId: command.requestId, before: view.snapshot };
       void execute({ kind: "economy", command }, action === "start_production");
       return true;
     },

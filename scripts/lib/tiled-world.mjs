@@ -14,6 +14,8 @@ const spatialAudioProfiles = new Set(audioCatalog.profiles.filter(profile => pro
 const audioStations = new Set(economyCatalog.buildings.map(building => building.id));
 // Interior equipment uses its real Tiled host, matching construction-map-anchor.
 const audioStationSites = { kiln: "workshop", warehouse: "home", dryer: "campfire" };
+const constructionHosts = new Set(economyCatalog.buildings.map(building =>
+  ({ ...audioStationSites, woodlot: "lopukh-home" })[building.id] ?? building.id));
 const audioActivations = ["always", "production-working", "construction-working", "campfire-lit"];
 
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -437,6 +439,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const destinationIds = new Set(), occluderIds = new Set();
   const treeInteractionIds = new Set();
   const effectAnchorIds = new Set(), effectAnchorOwners = new Set();
+  const constructionSiteIds = new Set();
   const shadowIds = { "shadow-caster": new Set(), "shadow-receiver": new Set() };
   const audioIds = new Set(), audioReferences = [];
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Destinations: "destination", Occluders: "occluder", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
@@ -452,6 +455,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights"
         : layer.name === "TreeInteractions" ? "tree-interaction"
         : layer.name === "EffectAnchors" ? "effect-anchor"
+        : layer.name === "ConstructionSites" ? "construction-site"
         : layer.name === "ShadowCasters" ? "shadow-caster" : layer.name === "ShadowReceivers" ? "shadow-receiver"
         : layer.name === "AudioEmitters" ? "audio-emitter" : layer.name === "AudioZones" ? "audio-zone"
           : own(livingKinds, layer.name) ? livingKinds[layer.name] : undefined;
@@ -479,6 +483,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       if (livingKind === "occluder") world.occluders ??= [];
       if (metadataKind === "tree-interaction") world.treeInteractions ??= [];
       if (metadataKind === "effect-anchor") world.effectAnchors ??= [];
+      if (metadataKind === "construction-site") world.constructionSites ??= [];
       if (shadowKind === "shadow-caster") world.shadowCasters ??= [];
       if (shadowKind === "shadow-receiver") world.shadowReceivers ??= [];
       if (["wildlife-habitat", "wildlife-anchor"].includes(livingKind)) world.habitats ??= [];
@@ -490,7 +495,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const terrainOnly = Array.isArray(layer.objects) && layer.objects.every(object => tiles.get(object.gid)?.role === "terrain");
         if (metadataKind || isLifeLayer || terrainOnly) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata/terrain");
         else exact(layer.draworder, "index", `${layerAt}.draworder`);
-        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", isTreeLayer: metadataKind === "tree-interaction", isEffectLayer: metadataKind === "effect-anchor", livingKind, audioKind, shadowKind, groups, offset: layerOffset };
+        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", isTreeLayer: metadataKind === "tree-interaction", isEffectLayer: metadataKind === "effect-anchor", isConstructionLayer: metadataKind === "construction-site", livingKind, audioKind, shadowKind, groups, offset: layerOffset };
       }
     }
   }
@@ -509,9 +514,9 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     }
   }
   const routeOwners = [], visibilityReferences = [];
-  for (const { layer, layerAt, waterKind, isLightLayer, isTreeLayer, isEffectLayer, livingKind, audioKind, shadowKind, groups, offset } of leaves) {
+  for (const { layer, layerAt, waterKind, isLightLayer, isTreeLayer, isEffectLayer, isConstructionLayer, livingKind, audioKind, shadowKind, groups, offset } of leaves) {
     const entries = [...array(layer.objects, `${layerAt}.objects`).entries()];
-    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !isTreeLayer && !isEffectLayer && !livingKind && !audioKind && !shadowKind) entries.sort((a, b) => a[1].y - b[1].y);
+    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !isTreeLayer && !isEffectLayer && !isConstructionLayer && !livingKind && !audioKind && !shadowKind) entries.sort((a, b) => a[1].y - b[1].y);
     for (const [objectIndex, authoredObject] of entries) {
       const at = `${layerAt}.objects[${objectIndex}]`;
       record(authoredObject, at);
@@ -520,7 +525,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         y: number(authoredObject.y, `${at}.y`) + offset.y } : authoredObject;
       absent(object, ["template", "text", "ellipse", "capsule", "offsetx", "offsety"], at);
       const rotation = own(object, "rotation") ? number(object.rotation, `${at}.rotation`) : 0;
-      const isImage = !waterKind && !isLightLayer && !isTreeLayer && !isEffectLayer && !livingKind && !audioKind && !shadowKind && own(object, "gid");
+      const isImage = !waterKind && !isLightLayer && !isTreeLayer && !isEffectLayer && !isConstructionLayer && !livingKind && !audioKind && !shadowKind && own(object, "gid");
       defaultValue(object, "opacity", 1, at);
       editorVisibility(object, at);
       const objectId = integer(object.id, `${at}.id`, 1);
@@ -530,6 +535,24 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       requireThat(shapes.length <= 1, at, "object must have exactly one shape");
       const shape = shapes[0] ?? "rectangle";
       if (!isImage && shape === "rectangle") exact(rotation, 0, `${at}.rotation`);
+      if (isConstructionLayer) {
+        const where = `${at} (${object.name || `object ${objectId}`})`;
+        const props = properties(object, where, { role: "string", siteId: "string", materials: "bool" });
+        exact(props.role, "construction-site", `${where}.properties.role`);
+        exact(shape, "polyline", `${where} shape`);
+        defaultValue(object, "width", 0, where); defaultValue(object, "height", 0, where);
+        const id = identifier(object.name, `${where}.name`), siteId = identifier(props.siteId, `${where}.properties.siteId`);
+        requireThat(constructionHosts.has(siteId), where, `unknown construction host ${siteId}`);
+        requireThat(!constructionSiteIds.has(id), where, `duplicate construction site ID ${id}`);
+        constructionSiteIds.add(id);
+        const points = vertices(object, "polyline", where, world);
+        requireThat(points.length <= 12, where, "at most 12 fence vertices are supported");
+        const length = points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0);
+        requireThat(length <= 180, where, "construction fence length must not exceed 180 world units");
+        requireThat(world.constructionSites.length < 32, where, "at most 32 construction fence lines are supported");
+        world.constructionSites.push({ id, siteId, points, ...(props.materials ? { materials: true } : {}) });
+        continue;
+      }
       if (isEffectLayer) {
         const effectAt = `${at} (${object.name || `object ${objectId}`})`;
         const props = properties(object, effectAt, { role: "string", effect: "string", residentId: "string", siteId: "string", level: "int", size: "float" });

@@ -84,12 +84,19 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false }: {
   const arrivalMessage = !economy.snapshotConfirmed || !state ? "Проверяем возвращение путника…"
     : !shop?.unlocked ? `Путник в дороге. Он вернётся, когда дом достигнет ${shop?.requiredHomeLevel ?? 3}-го уровня.`
       : "Путник ещё в дороге. Дождитесь прибытия.";
+  const purchaseConfirmed = economy.notice === "Покупка у Листохвоста отправлена в кладовую" && !economy.error && !economy.uncertain && !economy.busy;
+  const receipt = purchaseConfirmed && economy.localLeaftailPurchase?.ownerPublicId === state?.ownerPublicId
+    ? economy.localLeaftailPurchase : null;
   return <div ref={shopElement} tabIndex={-1} className={styles.shop} aria-label={introduced ? "Лавка Листохвоста" : "Домик путника"} aria-busy={economy.busy || undefined} data-leaftail-shop>
     {!introduced ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{arrivalMessage}</span></p>
       : !state ? <>{recovery}<p role="status">Проверяем ваши запасы…</p></> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p>
       : !shop.unlocked ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{leaftailTravelMessage(shop.requiredHomeLevel)}</span></p> : <>
       <p className={styles.intro}><Leaf size={18} aria-hidden="true" /><span>«Собрал кое-что для твоего поселения. Выбирай, пока не разобрали!»</span></p>
       {recovery}
+      {purchaseConfirmed && <div className={styles.success} role="status" data-leaftail-receipt={receipt?.id}>
+        <Check size={16} aria-hidden="true" /><div>{receipt ? <><p>В кладовую: {receipt.items.map(item => `${item.name} ×${number(item.quantity)}`).join(", ")}.</p>
+          <p>Потрачено {number(receipt.coins)} монет.</p></> : <p>Покупка отправлена в кладовую.</p>}</div>
+      </div>}
       <div className={styles.wallet}><span>Ваши монеты</span><strong><ItemIcon itemId="coins" size={18} />{number(state.wallet.coins)}</strong></div>
       <p className={styles.hint}>Одна покупка каждого товара на игрока за поставку.</p>
       <div className={styles.tabs} role="tablist" aria-label="Товары Листохвоста">{sections.map((entry, index) => <button key={entry.id}
@@ -120,7 +127,6 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false }: {
           {disabledReason && shop.unlocked && offer.remaining > 0 && <p className={styles.reason}>{disabledReason}</p>}
         </article>;
       })}</div>}
-      {economy.notice === "Покупка у Листохвоста отправлена в кладовую" && !economy.error && <p className={styles.success} role="status"><Check size={15} aria-hidden="true" />Покупка в кладовой.</p>}
       <p className={styles.delivery}><Clock3 size={14} aria-hidden="true" /><span>{deliveryLabel}<small>Ежедневно в 00:00 UTC (03:00 МСК).</small></span></p>
     </>}
   </div>;

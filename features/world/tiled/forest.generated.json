@@ -18998,6 +18998,160 @@
       }
     ]
   },
+  "constructionSites": [
+    {
+      "id": "home-building-work",
+      "siteId": "home",
+      "points": [
+        {
+          "x": 594,
+          "y": 650
+        },
+        {
+          "x": 600,
+          "y": 663
+        },
+        {
+          "x": 609,
+          "y": 666
+        }
+      ],
+      "materials": true
+    },
+    {
+      "id": "workshop-building-work",
+      "siteId": "workshop",
+      "points": [
+        {
+          "x": 169,
+          "y": 578
+        },
+        {
+          "x": 179,
+          "y": 586
+        },
+        {
+          "x": 188,
+          "y": 587
+        }
+      ],
+      "materials": true
+    },
+    {
+      "id": "woodlot-building-work",
+      "siteId": "lopukh-home",
+      "points": [
+        {
+          "x": 941,
+          "y": 226
+        },
+        {
+          "x": 949,
+          "y": 234
+        },
+        {
+          "x": 959,
+          "y": 236
+        }
+      ],
+      "materials": true
+    },
+    {
+      "id": "quarry-building-work",
+      "siteId": "quarry",
+      "points": [
+        {
+          "x": 590,
+          "y": 251
+        },
+        {
+          "x": 599,
+          "y": 257
+        },
+        {
+          "x": 609,
+          "y": 259
+        }
+      ],
+      "materials": true
+    },
+    {
+      "id": "garden-building-work",
+      "siteId": "garden",
+      "points": [
+        {
+          "x": 531,
+          "y": 614
+        },
+        {
+          "x": 540,
+          "y": 620
+        },
+        {
+          "x": 548,
+          "y": 621
+        }
+      ],
+      "materials": true
+    },
+    {
+      "id": "campfire-building-work",
+      "siteId": "campfire",
+      "points": [
+        {
+          "x": 690,
+          "y": 699
+        },
+        {
+          "x": 699,
+          "y": 702
+        },
+        {
+          "x": 708,
+          "y": 700
+        }
+      ],
+      "materials": true
+    },
+    {
+      "id": "bridge-building-work",
+      "siteId": "bridge",
+      "points": [
+        {
+          "x": 543,
+          "y": 1050
+        },
+        {
+          "x": 544,
+          "y": 1059
+        },
+        {
+          "x": 549,
+          "y": 1066
+        }
+      ],
+      "materials": true
+    },
+    {
+      "id": "lighthouse-building-work",
+      "siteId": "lighthouse",
+      "points": [
+        {
+          "x": 1168,
+          "y": 1076
+        },
+        {
+          "x": 1177,
+          "y": 1073
+        },
+        {
+          "x": 1184,
+          "y": 1067
+        }
+      ],
+      "materials": true
+    }
+  ],
   "water": {
     "surfaces": [
       {

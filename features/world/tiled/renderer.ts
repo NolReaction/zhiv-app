@@ -148,6 +148,11 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
       ctx.beginPath(); path.points.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.stroke();
     }
     for (const mushroom of scene.mushrooms ?? []) debugPoint(ctx, mushroom.position, "#ffd995", mushroom.id);
+    for (const fence of scene.constructionSites ?? []) {
+      ctx.strokeStyle = "#e7b572";
+      ctx.beginPath(); fence.points.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.stroke();
+      if (fence.points[0]) debugLabel(ctx, fence.points[0], "#e7b572", `${fence.id} · ${fence.siteId}`);
+    }
     if (scene.basket) debugPoint(ctx, scene.basket.position, "#e8c180", scene.basket.id);
     for (const bush of scene.bushes ?? []) {
       ctx.strokeStyle = "#c7ed82"; polygon(ctx, bush.points); ctx.stroke();

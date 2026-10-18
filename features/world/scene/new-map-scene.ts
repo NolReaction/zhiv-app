@@ -65,7 +65,9 @@ import { advancePleskMind, rehydratePleskMind, pleskMindFrame, noticePleskMind, 
   pleskCanPausePassing, pleskCanReceiveVisit, requestPleskSocialVisit, cancelPleskSocialVisit } from "@/features/world/characters/plesk/plesk-mind";
 import { advanceBuilderMind, builderMindFrame, builderSleepIndicator, noticeBuilderMind,
   requestBuilderVisit, cancelBuilderVisit } from "@/features/world/characters/builder/builder-mind";
-import { syncForestConstruction } from "@/features/world/state/economy/economy-construction-state";
+import { syncForestConstruction, type EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
+import { forestConstructionProps, drawForestConstructionProp } from "./forest-construction-painter";
+import { boundsInCanvas, canvasWorldViewport } from "./canvas-viewport";
 import { previewForestResidents } from "@/features/world/dev/forest-resident-preview";
 import { builderPreviewActive, previewForestBuilder } from "@/features/world/dev/forest-builder-preview";
 import { drawForestFishingHero } from "@/features/world/activities/fishing/forest-fishing-painter";
@@ -172,6 +174,7 @@ export type NewMapPaintPreview = {
   cooking?: ForestCookingFrame | null;
   gathering?: ForestGatheringFrame | null;
   productions?: readonly ForestProductionFrame[];
+  construction?: EconomySceneConstruction | null;
   residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
   builderSleeping?: ReturnType<typeof builderSleepIndicator>;
   residentPresentation?: ReturnType<typeof residentScenePresentation>;
@@ -263,6 +266,16 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   const productions = preview?.productions ?? forestProductionFrames(options.economyProduction, world, selectedVisuals, timestamp, elapsed, dev?.showBuildings !== false);
   const residents = preview?.residents ?? forestResidentFrames(world, elapsed, still);
   const depthProps: { y: number; paint: () => void }[] = [];
+  if (dev?.showBuildings !== false) {
+    const viewport = canvasWorldViewport(context), owner = options.presenceKey?.replace(/^zhiv:mochlik:presence:/, "");
+    const construction = preview && Object.hasOwn(preview, "construction") ? preview.construction : options.economyConstruction;
+    for (const prop of forestConstructionProps(world, construction, timestamp, owner)) {
+      if (!boundsInCanvas(viewport, prop.bounds)) continue;
+      depthProps.push({ y: prop.y, paint: () => withForestOcclusion(context, world,
+        { x: prop.bounds.x + prop.bounds.width / 2, y: prop.y, size: Math.max(prop.bounds.width, prop.bounds.height) },
+        target => drawForestConstructionProp(target, prop), prop.bounds) });
+    }
+  }
   const parkedBasket = forestGardenGroundBasket(life?.garden, actor.size, garden);
   if (parkedBasket) depthProps.push({ y: parkedBasket.y, paint: () => withForestOcclusion(context, world, parkedBasket,
     target => drawForestGardenBasket(target, parkedBasket), { x: parkedBasket.x - parkedBasket.size * .55,
@@ -963,6 +976,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       mining: forestJourneyMiningFrame(state,world,reducedMotion(options,dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),
+      // A restored session can retain its last accepted builder state while
+      // waiting for GET; it must not reveal decoration as confirmed new work.
+      construction: options.economyConstruction?.ownerPublicId === options.presenceKey?.replace(/^zhiv:mochlik:presence:/, "")
+        ? state.economyConstruction : null,
       fauna: state.fauna, birdFrame: visibleBirds(), birdwatch: state.director.birdwatch, campfireVisit: state.director.campfireVisit, tradeVisit: forestTradeVisitFrame(state),
       livingDebug: dev?.debugNavigation || dev?.debugFauna ? {
         debugNavigation: dev.debugNavigation, debugFauna: dev.debugFauna, nav: state.clearing.navigation,

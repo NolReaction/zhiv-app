@@ -146,6 +146,15 @@ export type WorldShadowReceiver = WorldStudioElementMetadata & {
 export type WorldCampfire = { id: string; position: WorldPoint; seat: WorldPoint; radius: number };
 /** Ground contact at the bottom center of the parked berry basket. */
 export type WorldBasket = { id: string; position: WorldPoint };
+/** Decorative, editable building-site boundary. Never navigation or hit geometry. */
+export type WorldConstructionSite = {
+  id: string;
+  /** Physical host, including the image-free garden and campfire. */
+  siteId: string;
+  points: WorldPoint[];
+  /** A small board stack beside the first stake. */
+  materials?: boolean;
+};
 export type WorldAudioActivation = "always" | "production-working" | "construction-working" | "campfire-lit";
 /** Authored spatial sound source. Station IDs reference economy equipment, while
  * site IDs reference its physical Tiled host (e.g. kiln belongs to workshop). */
@@ -188,6 +197,8 @@ export type FixedWorldScene = {
   campfires?: WorldCampfire[];
   /** Absent retains automatic placement for older maps. */
   basket?: WorldBasket;
+  /** Only confirmed account construction can reveal these temporary props. */
+  constructionSites?: WorldConstructionSite[];
   bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];

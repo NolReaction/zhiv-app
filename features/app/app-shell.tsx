@@ -657,7 +657,7 @@ function CheckInContent() {
   const renderedWorldState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const economicProduction = useMemo(() => economySceneProduction(economy.snapshot), [economy.snapshot]);
-  const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot), [economy.snapshot]);
+  const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot, economy.snapshotConfirmed, me?.user.publicId), [economy.snapshot, economy.snapshotConfirmed, me?.user.publicId]);
   const economicResidents = useMemo(() => economySceneResidents(economy.snapshot, economy.snapshotConfirmed, me?.user.publicId), [economy.snapshot, economy.snapshotConfirmed, me?.user.publicId]);
   const economicActivity = useMemo(() => economySceneActivity(economy.snapshot), [economy.snapshot]);
   const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);

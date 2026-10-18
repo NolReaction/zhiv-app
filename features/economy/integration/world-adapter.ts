@@ -62,8 +62,9 @@ export function economySceneResidents(economy: EconomyView | null | undefined, c
 }
 
 /** Only confirmed construction reaches the builder; a completed timer still reserves him until claim. */
-export function economySceneConstruction(economy: EconomyView | null | undefined): EconomySceneConstruction | null {
-  if (!economy) return null;
+export function economySceneConstruction(economy: EconomyView | null | undefined, confirmed: boolean,
+  expectedOwner?: string): EconomySceneConstruction | null {
+  if (!economy || !confirmed || expectedOwner && economy.ownerPublicId !== expectedOwner) return null;
   return { ownerPublicId: economy.ownerPublicId, revision: economy.revision, jobs: economy.jobs.flatMap(job =>
     job.kind === "construction" && Number.isInteger(job.targetLevel) && job.targetLevel! > 0
       ? [{ id: job.id, stationId: job.targetId, targetLevel: job.targetLevel!, startedAt: job.startedAt, finishesAt: job.finishesAt }]

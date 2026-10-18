@@ -10,7 +10,7 @@ const fixture = {
   focus: { x: 455, y: 480, width: 350, height: 350 },
   actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [], destinations: [],
   water: { surfaces: [], exclusions: [] }, bushes: [], campfires: [], basket: undefined, navigation: undefined, habitats: undefined,
-  shadowCasters: undefined, shadowReceivers: undefined, effectAnchors: undefined,
+  shadowCasters: undefined, shadowReceivers: undefined, effectAnchors: undefined, constructionSites: undefined,
   mushrooms: [{ id: "test-mushroom", position: { x: 635, y: 665 } }],
 };
 const livingHabitats = [
@@ -93,6 +93,7 @@ async function modules(override) {
 
 function browser() {
   const saved = new Map(), pending = [], requests = [], timers = new Map(), frames = new Map(), observers = [];
+  const imageWaiters = new Set(), realSetTimeout = globalThis.setTimeout, realClearTimeout = globalThis.clearTimeout;
   const displayedCalls = [];
   const documentEvents = new Map();
   let id = 0, frameTime = 0;
@@ -143,7 +144,12 @@ function browser() {
   install("window", { devicePixelRatio: 2, addEventListener() {}, removeEventListener() {} });
   install("Image", class {
     naturalWidth = 2560; naturalHeight = 2560;
-    set src(path) { if (path) { requests.push(path); pending.push({ path, image: this }); } }
+    set src(path) {
+      if (path) {
+        requests.push(path); pending.push({ path, image: this });
+        for (const waiter of imageWaiters) if (waiter.path === path) waiter.complete();
+      }
+    }
   });
   install("setTimeout", (callback, ms) => { timers.set(++id, { callback, ms }); return id; });
   install("clearTimeout", key => timers.delete(key));
@@ -169,6 +175,18 @@ function browser() {
       const request = pending.shift(); assert.ok(request, "an image is awaiting completion");
       if (error) request.image.onerror?.(); else request.image.onload?.();
       return request.image;
+    },
+    waitForImage(path) {
+      if (pending.some(request => request.path === path)) return Promise.resolve();
+      // Asset discovery may follow asynchronous Vite loading. Wait for the
+      // actual request rather than assuming one event-loop turn is sufficient.
+      return new Promise((resolve, reject) => {
+        const waiter = { path, complete: () => { realClearTimeout(timeout); imageWaiters.delete(waiter); resolve(); } };
+        const timeout = realSetTimeout(() => {
+          imageWaiters.delete(waiter); reject(new Error(`image ${path} was never requested`));
+        }, 5000);
+        imageWaiters.add(waiter);
+      });
     },
     finishPath(path, error = false) {
       const index = pending.findIndex(request => request.path === path);

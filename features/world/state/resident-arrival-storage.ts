@@ -23,12 +23,15 @@ export function createResidentArrivalStore(storageKey: string, storage?: Arrival
     // Read the latest value first so a second tab cannot erase a finished run or dismissed coach.
     const previous = snapshot.progress;
     restore();
+    const freshCompletion = part === "arrived" && !previous?.arrived && !snapshot.progress?.arrived;
+    const coachDismissed = Boolean(previous?.dismissed || snapshot.progress?.dismissed);
     const progress: ResidentArrivalProgress = { version: 1, arrived: Boolean(previous?.arrived || snapshot.progress?.arrived), dismissed: Boolean(previous?.dismissed || snapshot.progress?.dismissed), [part]: true };
     try {
       if (!storage) throw new Error("Storage unavailable");
       storage.setItem(storageKey, JSON.stringify(progress)); memory.delete(storageKey);
     } catch { memory.set(storageKey, progress); }
     update(progress);
+    return freshCompletion && coachDismissed;
   };
   return { storageKey, getSnapshot: () => snapshot, getServerSnapshot: () => serverSnapshot,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },

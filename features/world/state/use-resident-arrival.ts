@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { residentArrivalCanStart } from "@/features/world/domain/resident-arrival-onboarding";
 import type { MarketUnlockOnboardingCourse } from "@/features/world/domain/market-unlock-onboarding";
 import { createResidentArrivalStore } from "./resident-arrival-storage";
@@ -11,6 +11,8 @@ function browserStorage() {
 
 export function useResidentArrival(storageKey: string, options: { unlocked: boolean; enabled: boolean; onboarding: MarketUnlockOnboardingCourse }) {
   const store = useMemo(() => createResidentArrivalStore(storageKey, browserStorage()), [storageKey]);
+  // This belongs to the live arrival, never to restored presentation preferences.
+  const [completionNotice, setCompletionNotice] = useState<object | null>(null);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const allowed = residentArrivalCanStart({ loaded: state.loaded, ...options });
   const current = useRef({ store, allowed, unlocked: options.unlocked });
@@ -21,9 +23,15 @@ export function useResidentArrival(storageKey: string, options: { unlocked: bool
     window.addEventListener("storage", restore);
     return () => window.removeEventListener("storage", restore);
   }, [store]);
-  const complete = useCallback(() => { if (current.current.store === store && current.current.unlocked) store.complete(); }, [store]);
+  const complete = useCallback(() => {
+    if (current.current.store === store && current.current.unlocked && store.complete()) setCompletionNotice(store);
+  }, [store]);
   const dismiss = useCallback(() => { if (current.current.store === store && current.current.allowed) store.dismiss(); }, [store]);
+  const dismissCompletion = useCallback(() => {
+    if (current.current.store === store && current.current.allowed) setCompletionNotice(null);
+  }, [store]);
   const seen = Boolean(state.progress?.arrived);
   return { loaded: state.loaded, seen, enabled: allowed && !seen,
-    open: allowed && !state.progress?.dismissed, complete, dismiss };
+    open: allowed && !state.progress?.dismissed, complete, dismiss,
+    completionNotice: allowed && seen && completionNotice === store, dismissCompletion };
 }

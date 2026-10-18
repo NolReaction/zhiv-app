@@ -174,6 +174,39 @@ test("Tiled source compiles physical image scale, top-left objects and local geo
   assert.equal(map.layers[0].objects[1].gid, 2, "initial level may differ from the editor preview tile");
 });
 
+test("ConstructionSites export movable decorative lines without changing any gameplay geometry", async t => {
+  const { map, compile } = await fixture(t), before = await compile();
+  const fence = { id: 70, name: "workshop-build", x: 40, y: 70, width: 0, height: 0, rotation: 90,
+    polyline: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }],
+    properties: [...props({ role: "construction-site", siteId: "workshop" }), { name: "materials", type: "bool", value: true }] };
+  map.layers.push({ ...groupLayer(20, "Movable building", [objectLayer(21, "ConstructionSites", [fence])]), offsetx: 3, offsety: 4 });
+  const source = clone(map), scene = await compile();
+  assert.deepEqual(scene.constructionSites, [{ id: "workshop-build", siteId: "workshop", materials: true,
+    points: [{ x: 43, y: 74 }, { x: 43, y: 84 }, { x: 33, y: 84 }] }]);
+  const { constructionSites, ...unchanged } = scene;
+  assert.equal(constructionSites.length, 1); assert.deepEqual(unchanged, before); assert.deepEqual(map, source);
+});
+
+test("ConstructionSites reject unknown hosts, closed shapes, excessive work and duplicate IDs", async t => {
+  const { map, compile } = await fixture(t);
+  const fence = { id: 70, name: "home-build", x: 10, y: 10, width: 0, height: 0,
+    polyline: [{ x: 0, y: 0 }, { x: 15, y: 0 }], properties: props({ role: "construction-site", siteId: "home" }) };
+  map.layers.push(objectLayer(20, "ConstructionSites", [fence])); await compile();
+  const cases = [
+    [value => setProp(value, "siteId", "imaginary"), /unknown construction host/],
+    [value => setProp(value, "role", "nav-obstacle"), /construction-site/],
+    [value => { value.polygon = value.polyline; delete value.polyline; }, /expected "polyline"/],
+    [value => { value.polyline = [{ x: 0, y: 0 }, { x: 0, y: 0 }]; }, /adjacent vertices/],
+    [value => { value.polyline = Array.from({ length: 13 }, (_, i) => ({ x: i, y: i % 2 })); }, /at most 12/],
+    [value => { value.polyline = [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 0, y: 80 }, { x: 80, y: 80 }]; }, /length must not exceed/],
+  ];
+  for (const [change, expected] of cases) {
+    const invalid = clone(map); change(invalid.layers.at(-1).objects[0]); await assert.rejects(compile(invalid), expected);
+  }
+  const duplicate = clone(map); duplicate.layers.at(-1).objects.push({ ...clone(fence), id: 71 });
+  await assert.rejects(compile(duplicate), /duplicate construction site ID/);
+});
+
 test("moving authoring geometry and replacing image bytes changes only the generated data it owns", async t => {
   const { map, compile, writeImage } = await fixture(t);
   const before = await compile();

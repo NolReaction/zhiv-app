@@ -509,7 +509,7 @@ test("construction anchors follow live map projection without repeated React not
     const canvas = env.surface(400), samples = [], top = { offsetHeight: 40 }, bottom = { offsetHeight: 40 };
     const loading = createMapEngine(canvas, options, assert.fail, [], undefined, { top, bottom },
       { onObjectAnchorsChange: anchors => samples.push(anchors) });
-    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    env.finish(); await env.waitForImage("/test-residence.webp"); env.finishPath("/test-residence.webp"); engine = await loading;
     engine.control("overview");
     const expected = () => {
       const projection = mapProjection(canvas);

@@ -45,7 +45,7 @@ export function builderWorkDiagnosticContext(source: FixedWorldScene, preview: P
   const levels = accountSceneLevels(source, houseLevel, preview, economy?.buildings);
   const scene = previewWorldScene(source, levels), authored = initialPreviewLevels(source);
   const previewing = preview.previewBuildings || Object.entries(preview.levels).some(([id, level]) => level !== authored[id]);
-  const active = forestConstructionJob(economySceneConstruction(economy), now);
+  const active = forestConstructionJob(economySceneConstruction(economy, true), now);
   const stations = (economy?.catalog ?? economyCatalog).buildings.filter(station => constructionMapPlace(station.id)).map(station => {
     const currentLevel = (previewing ? levels[station.id] ?? economy?.buildings[station.id] : economy?.buildings[station.id])
       ?? (station.id === "home" ? houseLevel : undefined) ?? levels[station.id] ?? 0;

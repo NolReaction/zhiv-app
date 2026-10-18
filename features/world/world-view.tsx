@@ -48,6 +48,7 @@ import { useLopukhArrival } from "@/features/world/state/use-lopukh-arrival";
 import { LopukhArrivalOnboarding } from "@/features/world/ui/onboarding/lopukh-arrival-onboarding";
 import { useMinerArrival } from "@/features/world/state/use-miner-arrival";
 import { MinerArrivalOnboarding } from "@/features/world/ui/onboarding/miner-arrival-onboarding";
+import { ResidentArrivalNotice } from "@/features/world/ui/onboarding/resident-arrival-notice";
 import { WorldCharacters } from "@/features/world/ui/characters/world-characters";
 import { DailyRewardsButton, DailyRewardsDialog } from "@/features/game/daily-rewards";
 import { CurrencyShopPanel, type CurrencyShopPage } from "@/features/economy/ui/market/currency-shop-panel";
@@ -197,7 +198,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const economicProduction = useMemo(() => economySceneProduction(economy.snapshot), [economy.snapshot]);
   const economicResidents = useMemo(() => economySceneResidents(economy.snapshot, Boolean(economy.snapshotConfirmed), ownerPublicId), [economy.snapshot, economy.snapshotConfirmed, ownerPublicId]);
-  const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot), [economy.snapshot]);
+  const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot, economy.snapshotConfirmed, ownerPublicId), [economy.snapshot, economy.snapshotConfirmed, ownerPublicId]);
   const renderedState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const topHud = useRef<HTMLElement>(null), bottomHud = useRef<HTMLDivElement>(null);
   const hasWorld = Boolean(world.snapshot);
@@ -519,6 +520,12 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const guideWantsWorkshop = guideStep === "workshop";
   const guidePlace = marketGuide.open ? "market" : lopukhArrival.open || lopukhArrival.enabled ? "lopukh-home" : minerArrival.open || minerArrival.enabled ? "quarry" : merchantArrival.open || merchantArrival.enabled ? "leaftail-caravan" : guideMapAvailable ? guideWantsGarden ? "garden"
     : guideStep === "orders" ? "bulletin-board" : guideWantsWorkshop ? "workshop" : null : null;
+  const arrivalNoticesAllowed = !mainCourseActive && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled
+    && !minerArrival.open && !minerArrival.enabled && !merchantArrival.open && !merchantArrival.enabled;
+  const arrivalNotice = !arrivalNoticesAllowed ? null
+    : lopukhArrival.completionNotice ? { resident: "lopukh" as const, arrival: lopukhArrival, place: "lopukh-home" as const, station: "woodlot" }
+    : minerArrival.completionNotice ? { resident: "kamneshmyg" as const, arrival: minerArrival, place: "quarry" as const, station: "quarry" }
+    : merchantArrival.completionNotice ? { resident: "leaftail" as const, arrival: merchantArrival, place: "leaftail-caravan" as const, station: undefined } : null;
   if (!snapshot) return <section className={styles.loading} aria-live="polite"><button id="world-exit" onClick={onClose}><ArrowLeft size={18} />Назад</button><Compass size={32} /><h1>Лес Мохлика</h1>
     <p>{world.error ?? "Открываем вашу полянку…"}</p>{world.error && <button onClick={() => void world.retry()}>Попробовать ещё раз</button>}</section>;
   const state = renderedState ?? snapshot.state;
@@ -739,6 +746,13 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       onMeet={() => { if (openResident("kamneshmyg")) minerArrival.dismiss(); }} onDismiss={minerArrival.dismiss} />
     <LeaftailArrivalOnboarding open={merchantArrival.open} arrived={merchantArrival.seen} worldElement={worldElement}
       onMeet={() => { if (leaftailAvailable) { openObject("leaftail-caravan"); merchantArrival.dismiss(); } }} onDismiss={merchantArrival.dismiss} />
+    {arrivalNotice && <ResidentArrivalNotice key={`${ownerPublicId}:${arrivalNotice.resident}`} resident={arrivalNotice.resident} open worldElement={worldElement}
+      onDismiss={arrivalNotice.arrival.dismissCompletion}
+      onShow={() => {
+        if (currentOwner.current !== ownerPublicId) return;
+        arrivalNotice.arrival.dismissCompletion();
+        openObject(arrivalNotice.place, arrivalNotice.station);
+      }} />}
     <WorldOnboardingReward key={`onboarding-reward:${ownerPublicId}`} owner={ownerPublicId} progress={onboarding.progress}
       economy={economy} isOnline={isOnline !== false} onSessionLost={onSessionLost} onAcknowledged={onboarding.acknowledgeReward}
       open={Boolean(open && !suspended && !panel && !quickMenu && !selection && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen

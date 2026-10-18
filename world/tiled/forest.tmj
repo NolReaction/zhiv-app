@@ -2,6 +2,355 @@
  "height":1254,
  "infinite":false,
  "layers":[
+{
+    "id": 178,
+    "name": "ConstructionSites",
+    "type": "objectgroup",
+    "draworder": "index",
+    "opacity": 1,
+    "visible": true,
+    "x": 0,
+    "y": 0,
+    "color": "#ffcc9670",
+    "objects": [
+        {
+            "id": 550,
+            "name": "home-building-work",
+            "type": "ConstructionSite",
+            "x": 594,
+            "y": 650,
+            "width": 0,
+            "height": 0,
+            "rotation": 0,
+            "visible": true,
+            "polyline": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 6,
+                    "y": 13
+                },
+                {
+                    "x": 15,
+                    "y": 16
+                }
+            ],
+            "properties": [
+                {
+                    "name": "role",
+                    "type": "string",
+                    "value": "construction-site"
+                },
+                {
+                    "name": "siteId",
+                    "type": "string",
+                    "value": "home"
+                },
+                {
+                    "name": "materials",
+                    "type": "bool",
+                    "value": true
+                }
+            ]
+        },
+        {
+            "id": 551,
+            "name": "workshop-building-work",
+            "type": "ConstructionSite",
+            "x": 169,
+            "y": 578,
+            "width": 0,
+            "height": 0,
+            "rotation": 0,
+            "visible": true,
+            "polyline": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 10,
+                    "y": 8
+                },
+                {
+                    "x": 19,
+                    "y": 9
+                }
+            ],
+            "properties": [
+                {
+                    "name": "role",
+                    "type": "string",
+                    "value": "construction-site"
+                },
+                {
+                    "name": "siteId",
+                    "type": "string",
+                    "value": "workshop"
+                },
+                {
+                    "name": "materials",
+                    "type": "bool",
+                    "value": true
+                }
+            ]
+        },
+        {
+            "id": 552,
+            "name": "woodlot-building-work",
+            "type": "ConstructionSite",
+            "x": 941,
+            "y": 226,
+            "width": 0,
+            "height": 0,
+            "rotation": 0,
+            "visible": true,
+            "polyline": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 8,
+                    "y": 8
+                },
+                {
+                    "x": 18,
+                    "y": 10
+                }
+            ],
+            "properties": [
+                {
+                    "name": "role",
+                    "type": "string",
+                    "value": "construction-site"
+                },
+                {
+                    "name": "siteId",
+                    "type": "string",
+                    "value": "lopukh-home"
+                },
+                {
+                    "name": "materials",
+                    "type": "bool",
+                    "value": true
+                }
+            ]
+        },
+        {
+            "id": 553,
+            "name": "quarry-building-work",
+            "type": "ConstructionSite",
+            "x": 590,
+            "y": 251,
+            "width": 0,
+            "height": 0,
+            "rotation": 0,
+            "visible": true,
+            "polyline": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 9,
+                    "y": 6
+                },
+                {
+                    "x": 19,
+                    "y": 8
+                }
+            ],
+            "properties": [
+                {
+                    "name": "role",
+                    "type": "string",
+                    "value": "construction-site"
+                },
+                {
+                    "name": "siteId",
+                    "type": "string",
+                    "value": "quarry"
+                },
+                {
+                    "name": "materials",
+                    "type": "bool",
+                    "value": true
+                }
+            ]
+        },
+        {
+            "id": 554,
+            "name": "garden-building-work",
+            "type": "ConstructionSite",
+            "x": 531,
+            "y": 614,
+            "width": 0,
+            "height": 0,
+            "rotation": 0,
+            "visible": true,
+            "polyline": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 9,
+                    "y": 6
+                },
+                {
+                    "x": 17,
+                    "y": 7
+                }
+            ],
+            "properties": [
+                {
+                    "name": "role",
+                    "type": "string",
+                    "value": "construction-site"
+                },
+                {
+                    "name": "siteId",
+                    "type": "string",
+                    "value": "garden"
+                },
+                {
+                    "name": "materials",
+                    "type": "bool",
+                    "value": true
+                }
+            ]
+        },
+        {
+            "id": 555,
+            "name": "campfire-building-work",
+            "type": "ConstructionSite",
+            "x": 690,
+            "y": 699,
+            "width": 0,
+            "height": 0,
+            "rotation": 0,
+            "visible": true,
+            "polyline": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 9,
+                    "y": 3
+                },
+                {
+                    "x": 18,
+                    "y": 1
+                }
+            ],
+            "properties": [
+                {
+                    "name": "role",
+                    "type": "string",
+                    "value": "construction-site"
+                },
+                {
+                    "name": "siteId",
+                    "type": "string",
+                    "value": "campfire"
+                },
+                {
+                    "name": "materials",
+                    "type": "bool",
+                    "value": true
+                }
+            ]
+        },
+        {
+            "id": 556,
+            "name": "bridge-building-work",
+            "type": "ConstructionSite",
+            "x": 543,
+            "y": 1050,
+            "width": 0,
+            "height": 0,
+            "rotation": 0,
+            "visible": true,
+            "polyline": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 1,
+                    "y": 9
+                },
+                {
+                    "x": 6,
+                    "y": 16
+                }
+            ],
+            "properties": [
+                {
+                    "name": "role",
+                    "type": "string",
+                    "value": "construction-site"
+                },
+                {
+                    "name": "siteId",
+                    "type": "string",
+                    "value": "bridge"
+                },
+                {
+                    "name": "materials",
+                    "type": "bool",
+                    "value": true
+                }
+            ]
+        },
+        {
+            "id": 557,
+            "name": "lighthouse-building-work",
+            "type": "ConstructionSite",
+            "x": 1168,
+            "y": 1076,
+            "width": 0,
+            "height": 0,
+            "rotation": 0,
+            "visible": true,
+            "polyline": [
+                {
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "x": 9,
+                    "y": -3
+                },
+                {
+                    "x": 16,
+                    "y": -9
+                }
+            ],
+            "properties": [
+                {
+                    "name": "role",
+                    "type": "string",
+                    "value": "construction-site"
+                },
+                {
+                    "name": "siteId",
+                    "type": "string",
+                    "value": "lighthouse"
+                },
+                {
+                    "name": "materials",
+                    "type": "bool",
+                    "value": true
+                }
+            ]
+        }
+    ]
+},
         {
          "draworder":"index",
          "id":1,
@@ -47147,8 +47496,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":178,
- "nextobjectid":550,
+ "nextlayerid":179,
+ "nextobjectid":558,
  "orientation":"orthogonal",
  "properties":[
         {

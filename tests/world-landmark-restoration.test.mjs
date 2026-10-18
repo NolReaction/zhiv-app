@@ -49,7 +49,7 @@ for (const id of ["bridge", "lighthouse"]) {
     assert.equal(state.buildings[id], 0);
     const deadline = Date.parse(job.finishesAt);
     assert.throws(() => issue(state, "claim_job", job.id, deadline - 1), { code: "ECONOMY_JOB_NOT_READY" });
-    const construction = economySceneConstruction({ ...state, ownerPublicId: "landmark-player", revision: 1 });
+    const construction = economySceneConstruction({ ...state, ownerPublicId: "landmark-player", revision: 1 }, true);
     assert.equal(forestConstructionJob(construction, deadline).stationId, id,
       "the ready job still belongs to the builder until claimed");
     assert.match(image(), new RegExp(`${id}-level-0\\.png`), "the timer cannot locally restore artwork");
@@ -61,7 +61,7 @@ for (const id of ["bridge", "lighthouse"]) {
     assert.match(image(), new RegExp(`${id}-level-1\\.png`));
     assert.ok((await stat(new URL(`../public${image().split("?")[0]}`, import.meta.url))).size > 0,
       "the restored image exists as a public asset for both builds");
-    assert.equal(forestConstructionJob(economySceneConstruction({ ...state, ownerPublicId: "landmark-player", revision: 2 }), deadline), null);
+    assert.equal(forestConstructionJob(economySceneConstruction({ ...state, ownerPublicId: "landmark-player", revision: 2 }, true), deadline), null);
     if (id === "lighthouse") {
       const light = forestLightSources(world, { levels: selected() }).find(light => light.id === "lighthouse-lens");
       assert.ok(light?.glass); assert.ok(light.beamLength > 0, "restoration enables the authored rotating beam");

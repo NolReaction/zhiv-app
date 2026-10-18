@@ -29,6 +29,9 @@
 .actions { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
 .delivery { display: flex; align-items: flex-start; gap: 6px; }
 .delivery small { display: block; margin-top: 2px; font-size: 9px; }
-.success { display: flex; align-items: center; gap: 5px; color: #476b3c; font-size: 11px; }
+.success { display: flex; align-items: flex-start; gap: 7px; padding: 9px; border: 1px solid #a6b691; border-radius: 9px; color: #395a30; background: #dce5c5; font-size: 11px; }
+.success > svg { flex-shrink: 0; }
+.success > div { min-width: 0; overflow-wrap: anywhere; }
+.success p + p { margin-top: 3px; }
 .recovery { padding: 9px; border-radius: 8px; background: #ead1b2; color: #86432d; font-size: 11px; }
 @media (max-width: 360px) { .offerBottom { flex-wrap: wrap; } .offerBottom > small { flex: 1 1 100%; } .shop.shop .buy { min-height: 44px; } }
