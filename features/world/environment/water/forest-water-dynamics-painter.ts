@@ -55,8 +55,8 @@ function surfaceTexture(state: ForestWaterDynamics, dusk: number) {
 
 /** Drawing never advances the shared solver. Exact vector clipping is deliberately
  * applied after texture upscaling, so even sub-grid WaterExclusions remain dry.
- * Separate outside clips subtract the UNION of exclusions; one evenodd compound
- * path would wrongly paint their overlaps back in. */
+ * The compiled wet boundary subtracts the UNION of exclusions; unsupported
+ * geometry retains separate complement clips so overlapping holes stay dry. */
 export function drawForestWaterDynamics(ctx: CanvasRenderingContext2D, scene: FixedWorldScene,
   state: ForestWaterDynamics | null | undefined, options: WaterDynamicsOptions) {
   if (!state || options.reducedMotion || !state.active.length) return;

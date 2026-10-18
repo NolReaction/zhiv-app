@@ -65,11 +65,69 @@ function traceInverse(target: CanvasRenderingContext2D | Path2D, mask: Mask, are
 }
 
 type Layer = { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; busy: boolean };
-const layers = new WeakMap<CanvasRenderingContext2D, Layer>();
+const layers = new WeakMap<CanvasRenderingContext2D, Layer[]>();
+const LAYER_MAX_SIDE = 2048;
+const LAYER_PIXEL_BUDGET = 1024 * 1024;
+const LAYER_COUNT = 6;
+const LAYER_MAX_OVERSIZE = 2;
+const layerPixels = (layer: Layer) => layer.canvas.width * layer.canvas.height;
+
+/** Tall and wide subjects need not share a bounding rectangle. Retain a small
+ * pool under the original aggregate pixel budget, growing capacity in steps
+ * rather than reallocating it on every small change of camera scale. */
+function subjectLayer(ctx: CanvasRenderingContext2D, width: number, height: number): Layer | null {
+  let pool = layers.get(ctx);
+  if (!pool) { pool = []; layers.set(ctx, pool); }
+  if (pool.some(layer => layer.busy)) return null;
+  // Bound the backing store used by each subject as well as aggregate memory.
+  // A large land patch must not monopolize later, much smaller subject draws.
+  const maximumPixels = width * height * LAYER_MAX_OVERSIZE;
+  let layer = pool.filter(layer => layer.canvas.width >= width && layer.canvas.height >= height && layerPixels(layer) <= maximumPixels)
+    .sort((a, b) => layerPixels(a) - layerPixels(b))[0];
+  if (layer) {
+    pool.splice(pool.indexOf(layer), 1); pool.push(layer);
+    return layer;
+  }
+  let nextWidth = width, nextHeight = height, growth = width * height;
+  for (const candidate of pool) {
+    const capacity = (current: number, required: number) => current >= required ? current
+      : Math.max(required, Math.ceil(current * 1.5 / 32) * 32);
+    let candidateWidth = capacity(candidate.canvas.width, width), candidateHeight = capacity(candidate.canvas.height, height);
+    if (candidateWidth > LAYER_MAX_SIDE || candidateHeight > LAYER_MAX_SIDE || candidateWidth * candidateHeight > LAYER_PIXEL_BUDGET) {
+      candidateWidth = Math.max(candidate.canvas.width, width); candidateHeight = Math.max(candidate.canvas.height, height);
+    }
+    if (candidateWidth > LAYER_MAX_SIDE || candidateHeight > LAYER_MAX_SIDE
+      || candidateWidth * candidateHeight > Math.min(LAYER_PIXEL_BUDGET, maximumPixels)) continue;
+    const extra = candidateWidth * candidateHeight - layerPixels(candidate);
+    if (extra <= growth) { layer = candidate; nextWidth = candidateWidth; nextHeight = candidateHeight; growth = extra; }
+  }
+  const retained = () => pool!.reduce((total, item) => total + (item === layer ? 0 : layerPixels(item)), 0);
+  while (retained() + nextWidth * nextHeight > LAYER_PIXEL_BUDGET || (!layer && pool.length >= LAYER_COUNT)) {
+    const oldest = pool.find(item => item !== layer && layerPixels(item) > maximumPixels) ?? pool.find(item => item !== layer);
+    if (!oldest) return null;
+    pool.splice(pool.indexOf(oldest), 1);
+    // Dropping a reference alone need not release a browser's backing store.
+    oldest.canvas.width = 0; oldest.canvas.height = 0;
+  }
+  if (!layer) {
+    const canvas = document.createElement("canvas"); canvas.width = nextWidth; canvas.height = nextHeight;
+    const target = canvas.getContext("2d");
+    if (!target || typeof target.setTransform !== "function" || typeof target.drawImage !== "function") {
+      canvas.width = 0; canvas.height = 0; return null;
+    }
+    layer = { canvas, ctx: target, busy: false };
+  } else {
+    if (layer.canvas.width !== nextWidth) layer.canvas.width = nextWidth;
+    if (layer.canvas.height !== nextHeight) layer.canvas.height = nextHeight;
+    pool.splice(pool.indexOf(layer), 1);
+  }
+  pool.push(layer);
+  return layer;
+}
 
 /** Composite just the subject, at physical screen resolution. Its original pixels
- * never pass through a blur or a resized texture. One scratch surface is reused
- * per camera; even long fishing props are clipped to the visible viewport. */
+ * never pass through a blur or a resized texture. Bounded scratch capacity is
+ * reused per camera; long fishing props are clipped to the visible viewport. */
 function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBounds,
   draw: (target: CanvasRenderingContext2D) => void): boolean {
   if (typeof document === "undefined" || typeof ctx.getTransform !== "function"
@@ -88,24 +146,11 @@ function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBo
   if (width <= 0 || height <= 0) return true;
   // Bound transient GPU memory on mobile; an unusually large DEV scale uses
   // the original vector clip instead of allocating a full-screen extra layer.
-  if (width > 2048 || height > 2048 || width * height > 1024 * 1024) return false;
-  let layer = layers.get(ctx);
-  if (layer?.busy) return false;
-  if (!layer) {
-    const canvas = document.createElement("canvas"), target = canvas.getContext("2d");
-    if (!target || typeof target.setTransform !== "function" || typeof target.drawImage !== "function") return false;
-    layer = { canvas, ctx: target, busy: false }; layers.set(ctx, layer);
-  }
+  if (width > LAYER_MAX_SIDE || height > LAYER_MAX_SIDE || width * height > LAYER_PIXEL_BUDGET) return false;
   const textures = masks.map(forestOcclusionTexture);
   if (textures.some(texture => !texture)) return false;
-  // Buildings, props and residents share this surface. Shrinking it to every
-  // subject's size reallocates the backing store several times per frame.
-  // Retain capacity while preserving the existing per-camera memory bound.
-  const capacityWidth = Math.max(layer.canvas.width, width), capacityHeight = Math.max(layer.canvas.height, height);
-  const canGrow = capacityWidth <= 2048 && capacityHeight <= 2048 && capacityWidth * capacityHeight <= 1024 * 1024;
-  const nextWidth = canGrow ? capacityWidth : width, nextHeight = canGrow ? capacityHeight : height;
-  if (layer.canvas.width !== nextWidth) layer.canvas.width = nextWidth;
-  if (layer.canvas.height !== nextHeight) layer.canvas.height = nextHeight;
+  const layer = subjectLayer(ctx, width, height);
+  if (!layer) return false;
   const target = layer.ctx;
   target.setTransform(1, 0, 0, 1, 0, 0); target.clearRect(0, 0, width, height);
   target.save(); layer.busy = true;

@@ -79,7 +79,7 @@ function withPaths(run) {
   try { run(); } finally { if (previousPath === undefined) delete globalThis.Path2D; else globalThis.Path2D = previousPath; }
 }
 
-test("actual Tiled exclusions share cached separated clips without changing their individual fallback paths", () => withPaths(() => {
+test("actual Tiled water uses one cached final boundary while retaining individual fallback paths", () => withPaths(() => {
   const mask = renderMask(TILED_WORLD);
   assert.equal(mask.exclusions.length, 53, "the real map retains every authored exclusion");
   assert.equal(mask.batches.length, 4, "separated holes share four exact complement paths");
@@ -87,15 +87,18 @@ test("actual Tiled exclusions share cached separated clips without changing thei
   assert.equal(renderMask(TILED_WORLD), mask, "paths belong to the unchanged authored Water object");
   const ctx = context({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
   clipMask(ctx, mask);
-  assert.equal(ctx.clips.length, 5, "one water union plus four exclusion complements replace 54 clips");
-  assert.equal(ctx.reads, 1, "all exclusion visibility checks share one transform read");
-  assert.deepEqual(ctx.clips.map(([path, rule]) => [path, rule]), [
-    [mask.water, "nonzero"], ...mask.batches.map(batch => [batch.outside, "evenodd"]),
-  ]);
+  assert.ok(mask.boundary, "the actual authored geometry compiles successfully");
+  assert.deepEqual(ctx.clips, [[mask.boundary, "evenodd"]], "the final wet boundary needs only one clip");
+  assert.equal(ctx.reads, 0, "a compiled vector boundary works at every camera transform");
+  for (const transform of [{ a: .3, b: 0, c: 0, d: .3, e: 50, f: 50 },
+    { a: -2, b: 0, c: 0, d: -3, e: 2508, f: 3762 }, { a: 1, b: .2, c: -.3, d: 1, e: 0, f: 0 }]) {
+    const other = context(transform); clipMask(other, mask);
+    assert.deepEqual(other.clips, [[mask.boundary, "evenodd"]]);
+  }
 }));
 
 test("small, nonfinite and unsupported transforms retain exact original exclusion paths and order", () => withPaths(() => {
-  const mask = renderMask(TILED_WORLD);
+  const mask = { ...renderMask(TILED_WORLD), boundary: undefined };
   for (const transform of [undefined, ...[.01, .3, .4, .6, .999].map(scale => ({ a: scale, b: 0, c: 0, d: scale, e: 500, f: 500 })),
     { a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 }, { a: NaN, b: 0, c: 0, d: 1, e: 0, f: 0 },
     { a: 1, b: .1, c: -.1, d: 1, e: 0, f: 0 }]) {
@@ -110,7 +113,7 @@ test("small, nonfinite and unsupported transforms retain exact original exclusio
 }));
 
 test("batched visibility observes individual members and does not clip an entirely hidden batch", () => withPaths(() => {
-  const mask = renderMask(TILED_WORLD), member = mask.batches[0].members.at(-1);
+  const mask = { ...renderMask(TILED_WORLD), boundary: undefined }, member = mask.batches[0].members.at(-1);
   const ctx = context({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
   clipMask(ctx, mask, bounds => bounds === member.bounds);
   assert.deepEqual(ctx.clips, [[mask.water, "nonzero"], [mask.batches[0].outside, "evenodd"]],

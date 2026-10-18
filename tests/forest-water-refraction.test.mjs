@@ -58,7 +58,7 @@ test("a scene with replacement shoreline geometry retains exact clipping while i
   const ctx = context();
   draw(ctx, changed, state, image, terrain, {});
   assert.ok(ctx.draws.length > 10);
-  assert.equal(ctx.clips.length, 2, "water union and the new island both clip the old solver's patches");
+  assert.equal(ctx.clips.length, 1, "the compiled wet boundary includes the new island when clipping the old solver's patches");
   const current = context();
   draw(current, changed, create(changed), image, terrain, {});
   assert.equal(current.clips.length, 0, "replacement solver geometry restores the certified fast path");

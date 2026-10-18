@@ -1,10 +1,10 @@
 import type { FixedWorldScene, WorldBounds, WorldImage } from "@/features/world/tiled/types";
 import type { ForestWaterDynamics } from "./forest-water-dynamics";
-import { sampleForestWater } from "./forest-water-dynamics";
+import { createForestWaterPointSampler } from "./forest-water-dynamics";
 import { dynamicsFootprintFits, type WaterDynamicsGeometry } from "./water-dynamics-geometry";
 import { clipForestWaterRenderMask, createForestWaterBoundsVisibility, getForestWaterRenderMask } from "./forest-water-render-mask";
 
-type Patch = WorldBounds & { centerX: number; centerY: number };
+type Patch = WorldBounds & { centerX: number; centerY: number; sample: ReturnType<typeof createForestWaterPointSampler> };
 const patches = new WeakMap<WaterDynamicsGeometry, Patch[]>();
 
 function waterPatches(state: ForestWaterDynamics) {
@@ -18,7 +18,8 @@ function waterPatches(state: ForestWaterDynamics) {
     const x = state.origin.x + column * state.cellSize, y = state.origin.y + row * state.cellSize;
     const centerX = x + size / 2, centerY = y + size / 2;
     if (dynamicsFootprintFits(state.geometry, { x: centerX, y: centerY }, radius)) {
-      result.push({ x, y, width: size, height: size, centerX, centerY });
+      result.push({ x, y, width: size, height: size, centerX, centerY,
+        sample: createForestWaterPointSampler(state.geometry, { x: centerX, y: centerY }) });
     }
   }
   patches.set(state.geometry, result); return result;
@@ -54,7 +55,7 @@ export function drawForestWaterRefraction(ctx: CanvasRenderingContext2D, scene: 
   for (const patch of waterPatches(state)) {
     if (!visible(patch)) continue;
     const x = patch.centerX / state.scale, y = patch.centerY / state.scale;
-    const wave = sampleForestWater(state, { x: patch.centerX, y: patch.centerY });
+    const wave = patch.sample(state);
     const dx = Math.max(-1.2, Math.min(1.2, Math.sin(x * .026 + y * .035 - state.elapsed * .72) * .42
       + wave.slopeX * state.scale * 8)) * state.scale;
     const dy = Math.max(-.7, Math.min(.7, Math.sin(x * .041 - y * .021 + state.elapsed * .48) * .22

@@ -1,9 +1,10 @@
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "@/features/world/tiled/types";
+import { compileWaterRenderBoundary } from "./water-render-boundary";
 
 type WaterExclusion = { outside: Path2D; bounds: WorldBounds };
 type WaterExclusionBatch = { outside: Path2D; members: WaterExclusion[]; gap: number };
 export type ForestWaterRenderMask = { water: Path2D; exclusions: WaterExclusion[];
-  batches: WaterExclusionBatch[]; bounds: WorldBounds };
+  batches: WaterExclusionBatch[]; bounds: WorldBounds; boundary?: Path2D };
 
 const masks = new WeakMap<NonNullable<FixedWorldScene["water"]>, ForestWaterRenderMask>();
 
@@ -78,7 +79,10 @@ export function getForestWaterRenderMask(scene: FixedWorldScene): ForestWaterRen
     }
     return { outside, members, gap };
   });
-  const result = { water, exclusions, batches, bounds: area }; masks.set(scene.water, result); return result;
+  const compiled = compileWaterRenderBoundary(scene.water);
+  const boundary = compiled && new Path2D();
+  if (compiled && boundary) for (const ring of compiled.rings) appendPolygon(boundary, ring);
+  const result = { water, exclusions, batches, bounds: area, boundary }; masks.set(scene.water, result); return result;
 }
 
 type AxisTransform = Pick<DOMMatrix, "a" | "d" | "e" | "f">;
@@ -108,6 +112,7 @@ export function createForestWaterBoundsVisibility(ctx: CanvasRenderingContext2D)
 /** Apply the exact Water union and subtract every exclusion. Caller owns save/restore. */
 export function clipForestWaterRenderMask(ctx: CanvasRenderingContext2D, mask: ForestWaterRenderMask,
   visible?: (box: WorldBounds) => boolean) {
+  if (mask.boundary) { ctx.clip(mask.boundary, "evenodd"); return; }
   const transform = ctx.getTransform?.();
   const axis = transform && !transform.b && !transform.c;
   const scale = axis && Number.isFinite(transform.a) && Number.isFinite(transform.d)

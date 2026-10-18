@@ -295,7 +295,7 @@ test("mask textures are shared across cameras while each camera reuses its bound
 test("alternating subject sizes retain camera buffer capacity without copying stale pixels", () => {
   withRasterDocument(allocated => {
     const target = occlusionRaster(), ctx = target.getContext("2d"), shape = scene();
-    const large = { x: 20, y: 20, width: 140, height: 120 }, small = { x: 20, y: 20, width: 30, height: 40 };
+    const large = { x: 20, y: 20, width: 140, height: 120 }, small = { x: 20, y: 20, width: 70, height: 100 };
     const paint = bounds => withForestOcclusion(ctx, shape, actor,
       scratch => scratch.fillRect(bounds.x, bounds.y, bounds.width, bounds.height), bounds);
     paint(large);
@@ -319,6 +319,125 @@ test("alternating subject sizes retain camera buffer capacity without copying st
     assert.ok(buffer.width <= 2048 && buffer.height <= 2048 && buffer.width * buffer.height <= 1024 * 1024);
     assert.equal(allocated.filter(canvas => canvas.getContext("2d").strokeCalls === 0).length, 1,
       "the camera retains one subject buffer");
+  });
+});
+
+test("wide and tall subjects retain separate buffers within the original aggregate camera budget", () => {
+  withRasterDocument(allocated => {
+    const target = occlusionRaster(1200, 1200), ctx = target.getContext("2d"), shape = scene();
+    const paint = bounds => {
+      withForestOcclusion(ctx, shape, actor, () => {}, bounds);
+      return ctx.drawCalls.at(-1).source;
+    };
+    const wide = { x: 20, y: 20, width: 1100, height: 200 }, tall = { x: 20, y: 20, width: 200, height: 1100 };
+    const horizontal = paint(wide), vertical = paint(tall);
+    assert.notEqual(horizontal, vertical, "a shared bounding rectangle would exceed the memory cap");
+    const resizes = horizontal.resizeCount + vertical.resizeCount;
+    for (let frame = 0; frame < 3; frame++) {
+      assert.equal(paint(wide), horizontal); assert.equal(paint(tall), vertical);
+    }
+    assert.equal(horizontal.resizeCount + vertical.resizeCount, resizes, "alternating subject aspect ratios do not reset backing stores");
+    const buffers = allocated.filter(canvas => canvas.getContext("2d").strokeCalls === 0);
+    assert.equal(buffers.length, 2);
+    assert.ok(buffers.reduce((pixels, canvas) => pixels + canvas.width * canvas.height, 0) <= 1024 * 1024);
+    // A near-budget subject has to evict the older capacity. Its backing store
+    // is released immediately, while the new subject still uses physical pixels.
+    const large = paint({ x: 20, y: 20, width: 950, height: 950 });
+    assert.equal(horizontal.width * horizontal.height, 0); assert.equal(vertical.width * vertical.height, 0);
+    assert.ok(large.width >= 950 && large.height >= 950);
+    assert.ok(allocated.filter(canvas => canvas.getContext("2d").strokeCalls === 0)
+      .reduce((pixels, canvas) => pixels + canvas.width * canvas.height, 0) <= 1024 * 1024);
+  });
+});
+
+test("incremental camera zoom amortizes subject-buffer growth without changing the active copy size", () => {
+  withRasterDocument(() => {
+    const target = occlusionRaster(500, 500), ctx = target.getContext("2d"), shape = scene();
+    const bounds = { x: 20, y: 20, width: 100, height: 100 };
+    withForestOcclusion(ctx, shape, actor, () => {}, bounds);
+    const buffer = ctx.drawCalls.at(-1).source, before = buffer.resizeCount;
+    for (let step = 0; step < 24; step++) {
+      const scale = 1 + step * .015;
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      withForestOcclusion(ctx, shape, actor, () => {}, bounds);
+      const copy = ctx.drawCalls.at(-1);
+      assert.equal(copy.source, buffer);
+      assert.equal(copy.sw, copy.w); assert.equal(copy.sh, copy.h);
+      assert.ok(copy.sw <= buffer.width && copy.sh <= buffer.height);
+    }
+    assert.ok(buffer.resizeCount - before <= 2, "small zoom increments share geometrically grown capacity");
+    assert.ok(buffer.width * buffer.height <= 1024 * 1024);
+  });
+});
+
+test("visiting a large land subject does not force later small water subjects through its oversized backing store", () => {
+  withRasterDocument(allocated => {
+    const target = occlusionRaster(1200, 1200), ctx = target.getContext("2d"), shape = scene();
+    const paint = bounds => {
+      withForestOcclusion(ctx, shape, actor, () => {}, bounds);
+      return ctx.drawCalls.at(-1).source;
+    };
+    const land = paint({ x: 20, y: 20, width: 1000, height: 1000 });
+    assert.equal(land.width * land.height, 1024 * 1024);
+    const smallBounds = { x: 20, y: 20, width: 100, height: 100 }, small = paint(smallBounds);
+    assert.notEqual(small, land);
+    assert.ok(small.width * small.height <= 128 * 128, "the active subject gets a small physical-resolution backing store");
+    assert.equal(land.width * land.height, 0, "the old large store is released before exceeding the aggregate budget");
+    const count = allocated.length, resizes = small.resizeCount;
+    for (let frame = 0; frame < 6; frame++) assert.equal(paint(smallBounds), small);
+    assert.equal(allocated.length, count, "the smaller class remains reusable after the camera moves");
+    assert.equal(small.resizeCount, resizes);
+    const mediumBounds = { x: 20, y: 20, width: 300, height: 300 }, largeBounds = { x: 20, y: 20, width: 700, height: 700 };
+    paint(mediumBounds); const large = paint(largeBounds), medium = paint(mediumBounds), warmedSmall = paint(smallBounds);
+    const warmCount = allocated.length;
+    const backingResizes = () => allocated.reduce((total, canvas) => total + canvas.resizeCount, 0), warmResizes = backingResizes();
+    for (let frame = 0; frame < 3; frame++) {
+      assert.equal(paint(smallBounds), warmedSmall); assert.equal(paint(mediumBounds), medium); assert.equal(paint(largeBounds), large);
+    }
+    assert.equal(allocated.length, warmCount, "a warmed ordinary three-subject sequence does not allocate on each frame");
+    assert.equal(backingResizes(), warmResizes);
+    assert.ok(allocated.filter(canvas => canvas.getContext("2d").strokeCalls === 0 && canvas.width * canvas.height > 0).length <= 3);
+    assert.ok(allocated.filter(canvas => canvas.getContext("2d").strokeCalls === 0)
+      .reduce((pixels, canvas) => pixels + canvas.width * canvas.height, 0) <= 1024 * 1024);
+  });
+});
+
+test("the measured 288 by 256 land-history buffer gives 192 by 160 subjects a stable compact class", () => {
+  withRasterDocument(() => {
+    const target = occlusionRaster(600, 600), ctx = target.getContext("2d"), shape = scene();
+    const paint = bounds => {
+      withForestOcclusion(ctx, shape, actor, () => {}, bounds);
+      return ctx.drawCalls.at(-1).source;
+    };
+    const previous = paint({ x: 20, y: 20, width: 280, height: 248 });
+    assert.deepEqual([previous.width, previous.height], [288, 256]);
+    const bounds = { x: 20, y: 20, width: 184, height: 152 }, compact = paint(bounds);
+    assert.notEqual(compact, previous, "2.4 times the active area is too large for this subject class");
+    assert.deepEqual([compact.width, compact.height], [192, 160]);
+    const resizes = compact.resizeCount;
+    for (let frame = 0; frame < 6; frame++) assert.equal(paint(bounds), compact);
+    assert.equal(compact.resizeCount, resizes);
+  });
+});
+
+test("the measured land-to-water subject sequence stabilizes without per-frame buffer replacement", () => {
+  withRasterDocument(allocated => {
+    const target = occlusionRaster(800, 1000), ctx = target.getContext("2d"), shape = scene();
+    const paint = ([width, height]) => {
+      withForestOcclusion(ctx, shape, actor, () => {}, { x: 20, y: 20, width: width - 4, height: height - 4 });
+      return ctx.drawCalls.at(-1).source;
+    };
+    const land = [[416, 480], [352, 640], [448, 704], [416, 480], [32, 288]];
+    const water = [[192, 160], [64, 320], [256, 192], [256, 192], [224, 160], [192, 192], [64, 64]];
+    for (let frame = 0; frame < 2; frame++) land.forEach(paint);
+    for (let frame = 0; frame < 3; frame++) water.forEach(paint);
+    const subjects = water.map(paint), count = allocated.length;
+    const totalResizes = () => allocated.reduce((total, canvas) => total + canvas.resizeCount, 0), resizes = totalResizes();
+    for (let frame = 0; frame < 3; frame++) water.forEach((size, index) => assert.equal(paint(size), subjects[index]));
+    assert.equal(allocated.length, count); assert.equal(totalResizes(), resizes);
+    const buffers = allocated.filter(canvas => canvas.getContext("2d").strokeCalls === 0 && canvas.width * canvas.height > 0);
+    assert.ok(buffers.length <= 6);
+    assert.ok(buffers.reduce((pixels, canvas) => pixels + canvas.width * canvas.height, 0) <= 1024 * 1024);
   });
 });
 
