@@ -11,12 +11,6 @@
 .canvas { position: absolute; inset: 0; visibility: hidden; }
 .canvas[data-visible="true"] { visibility: visible; }
 .canvas :global(.maplibregl-canvas):focus-visible { outline: 3px solid #d6eeaf; outline-offset: -4px; }
-.canvas :global(.maplibregl-ctrl-bottom-left),
-.canvas :global(.maplibregl-ctrl-bottom-right) { z-index: 2; bottom: calc(var(--earth-navigation-clearance, 84px) + 72px); max-width: calc(100% - 32px); }
-.canvas :global(.maplibregl-ctrl-attrib) { border: 0; color: #e1ebd8; background: #12372bdb; font-size: 10px; line-height: 1.4; border-radius: 10px; padding: 5px 8px; }
-.canvas :global(.maplibregl-ctrl-attrib a) { color: inherit; }
-.canvas :global(.maplibregl-ctrl-bottom-left .maplibregl-ctrl) { margin: 0 0 0 var(--earth-overlay-left, 16px); }
-.canvas :global(.maplibregl-ctrl-bottom-right .maplibregl-ctrl) { margin: 0 var(--earth-overlay-right, 16px) 0 0; }
 .controls {
   position: absolute;
   z-index: 3;
@@ -86,10 +80,6 @@
 .infoToggle:disabled { opacity: .5; cursor: default; }
 .attribution { color: #b4cbb0; font-size: 11px; line-height: 1.7; }
 .attribution a { color: #d9edbd; text-underline-offset: 3px; }
-.canvas :global(.maplibregl-ctrl-attrib.maplibregl-compact) { box-sizing: border-box; min-height: 32px; padding: 6px 8px 6px 38px; border-radius: 11px; }
-.canvas :global(.maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)) { width: 32px; padding: 0; background: #153b32d9; }
-.canvas :global(.maplibregl-ctrl-attrib-button) { width: 32px; height: 32px; border-radius: 11px; filter: invert(1); background-color: transparent; background-repeat: no-repeat; background-position: center; background-size: 20px 20px; }
-.canvas :global(.maplibregl-ctrl-attrib-button):focus-visible { outline: 2px solid #345026; outline-offset: 2px; }
 .tileProgress { position: absolute; z-index: 2; top: calc(var(--earth-overlay-top, 16px) + 60px); left: var(--earth-overlay-left, 16px); display: inline-flex; align-items: center; gap: 7px; max-width: calc(100% - 92px); margin: 0; padding: 7px 10px; border: 1px solid #d9efcd20; border-radius: 999px; color: #d4e4c9; background: #153b32eb; font-size: 10px; line-height: 1.4; pointer-events: none; }
 .tileProgress::before { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: #cbe99e; content: ""; }
 .networkNotice { position: absolute; z-index: 2; top: calc(var(--earth-overlay-top, 16px) + 60px); left: var(--earth-overlay-left, 16px); max-width: min(340px, calc(100% - 92px)); display: grid; gap: 4px; padding: 9px 11px; border: 1px solid #d6c38d45; border-radius: 15px; color: #f1dfb7; background: #263d30f5; font-size: 11px; line-height: 1.45; }

@@ -14,6 +14,7 @@ import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
 import { reportIncident, incidentCode, reportStartupIncident, resolveStartupIncidents } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
 import { rememberEarthSection, restoreEarthSection } from "./earth-navigation-state";
+import { earthMapAvailable } from "./earth-map-availability";
 import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
@@ -1830,7 +1831,8 @@ function CheckInContent() {
         />
       ) : activeView === "earth" && me ? (
         <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
-          active={activity.active && !startupActive && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen}
+          active={earthMapAvailable({ mode: activity.mode, startupActive,
+            covered: worldPortal.open || calendarOpen || gameOpen || statusOpen })}
           isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
           onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
           onOpenWorld={trigger => { setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />

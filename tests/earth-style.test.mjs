@@ -19,7 +19,7 @@ test("cartoon style validates against installed MapLibre and owns no remote rast
   const style = createCartoonEarthStyle(source);
   assert.deepEqual(validateStyleMin(style).map(error => error.message), []);
   assert.deepEqual(style.projection, { type: "globe" }, "sources start with globe subdivision instead of rebuilding after a Mercator frame");
-  assert.ok(style.layers.length <= 28);
+  assert.ok(style.layers.length <= 32);
   assert.deepEqual(style.sources[EARTH_VECTOR_SOURCE], source);
   assert.equal(style.glyphs, undefined);
   assert.equal(style.sprite, undefined);

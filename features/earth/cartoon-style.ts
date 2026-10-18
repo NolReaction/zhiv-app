@@ -4,6 +4,8 @@ import land from "./data/land-110m.json";
 import { EARTH_TILE_BASE_LAYER } from "./tile-base";
 import { EARTH_OVERVIEW_SOURCE, earthOverviewData } from "./globe-overview";
 import { createEarthBuildingLayer } from "./building-style";
+import { earthLandMaterialLayer } from "./land-material";
+import { EARTH_COAST_SOURCE, createEarthCoastlineData, earthCoastMaterialLayers } from "./coast-material";
 
 export const EARTH_LAND_SOURCE = "earth-local-land";
 export const EARTH_VECTOR_SOURCE = "earth-streets";
@@ -22,6 +24,7 @@ const textPaint = { "text-color": EARTH_PALETTE.ink, "text-halo-color": EARTH_PA
 export function createCartoonEarthStyle(vector: VectorSourceSpecification): StyleSpecification {
   const p = EARTH_PALETTE;
   const details = { source: EARTH_VECTOR_SOURCE, minzoom: 4 };
+  const coast = earthCoastMaterialLayers();
   const textLayout = { "text-field": names, "text-font": ["Arial", "sans-serif"], "text-max-width": 9, "text-padding": 5 };
   const layers: LayerSpecification[] = [
     { id: "earth-ocean", type: "background", paint: { "background-color": p.ocean } },
@@ -29,14 +32,18 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       filter: ["==", ["get", "kind"], "grid"],
       paint: { "line-color": "#c4ece1", "line-width": 0.7,
         "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.26, 2, 0.18, 3, 0] } },
+    coast.shadow,
     { id: "earth-land", type: "fill", source: EARTH_LAND_SOURCE,
       paint: { "fill-color": p.land, "fill-antialias": false } },
+    earthLandMaterialLayer("earth-land-material", EARTH_LAND_SOURCE),
+    coast.edge,
     { id: "earth-overview-ice", type: "fill", source: EARTH_OVERVIEW_SOURCE,
       filter: ["==", ["get", "kind"], "ice"], paint: { "fill-color": p.ice, "fill-antialias": false } },
     { id: "earth-overview-lakes", type: "fill", source: EARTH_OVERVIEW_SOURCE,
       filter: ["==", ["get", "kind"], "lake"], paint: { "fill-color": p.ocean, "fill-antialias": false } },
     { id: "earth-detail-land", type: "fill", ...details, "source-layer": EARTH_TILE_BASE_LAYER,
       paint: { "fill-color": p.land, "fill-antialias": false } },
+    earthLandMaterialLayer("earth-detail-land-material", EARTH_VECTOR_SOURCE, EARTH_TILE_BASE_LAYER),
     { id: "earth-landcover", type: "fill", ...details, minzoom: 1.5, "source-layer": "landcover",
       paint: { "fill-antialias": false, "fill-color": ["match", ["get", "class"], "wood", p.forest,
         ["grass", "farmland"], p.grass, "ice", p.ice, "sand", p.sand, p.land], "fill-opacity": 0.7 } },
@@ -118,6 +125,7 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
         tolerance: 0, buffer: 0, attribution: '<a href="https://www.naturalearthdata.com/">Natural Earth</a>' },
       [EARTH_VECTOR_SOURCE]: { ...vector },
       [EARTH_OVERVIEW_SOURCE]: { type: "geojson", data: earthOverviewData, maxzoom: 0, tolerance: 0, buffer: 0 },
+      [EARTH_COAST_SOURCE]: { type: "geojson", data: createEarthCoastlineData(land as FeatureCollection<Polygon>), maxzoom: 0, tolerance: 0, buffer: 0 },
     }, layers,
   };
 }

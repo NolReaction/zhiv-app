@@ -7,13 +7,16 @@ import type { EarthPosition } from "./location";
 import { EARTH_ACCURACY_SOURCE, EARTH_CENTER, EARTH_SKY, EARTH_STYLE_URL, globeZoom, positionAccuracyData, positionZoom, prepareEarthStyle } from "./map-style";
 import { EarthLoading, formatEarthLoadingBytes, type EarthLoadingStage } from "./earth-loading";
 import { EARTH_CACHE_PROTOCOL, earthResourceCache } from "./resource-cache";
-import { loadEarthRuntime } from "./runtime-loader";
+import { EARTH_RUNTIME_DIRECTORY, loadEarthRuntime } from "./runtime-loader";
 import { getEarthErrorResourceUrls } from "./resource-recovery";
+import { createEarthResourceProtocol } from "./resource-protocol";
 import { refreshEarthTileSource } from "./source-recovery";
 import { createEarthTileRecovery, type EarthTileRecoveryStatus } from "./tile-recovery";
-import { appendEarthTileBase, isEarthTileIndexUrl, isEarthVectorTileUrl, prepareEarthTileIndex } from "./tile-base";
 import { EARTH_BUILDINGS_3D_LAYER } from "./building-style";
 import { createEarthPositionMarker, updateEarthPositionMarkerLabel } from "./position-marker";
+import { installEarthMaterialImages, registerEarthMaterialImage } from "./land-material";
+import { EarthAttribution } from "./earth-attribution";
+import { installEarthGlobeCamera } from "./globe-camera";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
@@ -90,21 +93,6 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
     const current = mapRef.current;
     if (current?.getLayer(EARTH_BUILDINGS_3D_LAYER)) current.setLayoutProperty(EARTH_BUILDINGS_3D_LAYER, "visibility", buildings3d ? "visible" : "none");
   }, [buildings3d]);
-  useEffect(() => {
-    if (phase !== "ready" || !active) return;
-    const attribution = host.current?.querySelector<HTMLDetailsElement>(".maplibregl-ctrl-attrib");
-    if (!attribution) return;
-    // Show the credit on first display, then retain a discoverable information control.
-    attribution.classList.add("maplibregl-compact-show");
-    attribution.open = true;
-    const timeout = window.setTimeout(() => {
-      attribution.classList.remove("maplibregl-compact-show");
-      attribution.open = false;
-    }, 5_000);
-    const keepUserChoice = () => window.clearTimeout(timeout);
-    attribution.addEventListener("click", keepUserChoice);
-    return () => { window.clearTimeout(timeout); attribution.removeEventListener("click", keepUserChoice); };
-  }, [active, phase]);
 
   const persistMap = useCallback(async () => {
     setPersisting(true);
@@ -163,6 +151,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
     let intersectionObserver: IntersectionObserver | null = null;
     let canvas: HTMLCanvasElement | null = null;
     let tileRecovery: ReturnType<typeof createEarthTileRecovery> | null = null;
+    let restoreGlobeCamera: (() => void) | null = null;
 
     function resize() {
       if (!cancelled && map && activeRef.current && !document.hidden && element!.clientWidth && element!.clientHeight) map.resize();
@@ -234,15 +223,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
         }
         const sdk = await loadEarthRuntime({ signal: controller.signal });
         if (cancelled || attemptFailed) return;
-        sdk.addProtocol(EARTH_CACHE_PROTOCOL, async (parameters, requestController) => {
-          const response = await earthResourceCache.protocol(parameters, requestController);
-          if (isEarthTileIndexUrl(parameters.url)) return { ...response, data: prepareEarthTileIndex(response.data) };
-          if (response.data instanceof ArrayBuffer && isEarthVectorTileUrl(parameters.url)) {
-            // A successful detail tile covers its own area; missing neighbors retain the local world silhouette.
-            return { ...response, data: appendEarthTileBase(response.data) };
-          }
-          return response;
-        });
+        sdk.addProtocol(EARTH_CACHE_PROTOCOL, createEarthResourceProtocol(earthResourceCache.protocol, controller.signal));
         sdk.setMaxParallelImageRequests(4);
         setStage("resources");
         // Style data and every subsequent source/sprite/tile request use the same durable cache.
@@ -278,6 +259,8 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           },
         });
         const current = map;
+        restoreGlobeCamera = installEarthGlobeCamera(current);
+        installEarthMaterialImages(current);
         mapRef.current = current;
         tileRecovery = createEarthTileRecovery({
           readState: () => {
@@ -315,14 +298,11 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           tileRecovery?.check();
         });
         current.on("remove", () => {
-          // Release the GPU while playing; a return starts from cached data and the saved camera.
-          if (!activeRef.current) { setPhase("loading"); setStage("engine"); }
+          // Cleanup runs before the active-ref effect. The actual removal event,
+          // rather than that old ref, determines whether a new map must load.
+          setPhase("loading");
+          setStage("engine");
         });
-        current.addControl(new sdk.AttributionControl({ compact: true,
-          // The first globe view may use only local land. Credit street data
-          // during the initial disclosure too, before it appears on zoom-in.
-          customAttribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
-        }), "bottom-left");
         canvas = current.getCanvas();
         canvas.setAttribute("aria-label", "Карта Земли. Перетаскивайте глобус, приближайте двумя пальцами или колёсиком. Стрелки перемещают карту; плюс и минус меняют масштаб.");
         canvas.addEventListener("webglcontextlost", contextLost);
@@ -349,6 +329,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
 
         current.on("style.load", () => {
           if (cancelled) return;
+          registerEarthMaterialImage(current);
           styleReady = true;
           // Style replacement discards projection, atmosphere and our own layers.
           current.setProjection({ type: "globe" });
@@ -425,6 +406,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
       syncPositionRef.current = null;
       marker?.remove();
       map?.stop();
+      restoreGlobeCamera?.();
       if (map) {
         const center = map.getCenter();
         savedCamera.current = { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
@@ -466,6 +448,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
       <button type="button" disabled={!isOnline || tileStatus === "retrying"} onClick={() => tileRecoveryRef.current?.retry()}>Повторить</button>
     </div>}
     {ready && tileStatus === "idle" && cache.pending > 0 && <p className={styles.tileProgress} role="status">Загружаем окрестности…</p>}
+    {ready && <EarthAttribution />}
     {ready && <button ref={infoButton} type="button" className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => onInfoOpenChange(!infoOpen)}><Info size={21} aria-hidden="true" /></button>}
     {ready && infoOpen && <section id="earth-info-panel" className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
@@ -490,7 +473,9 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
         <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" · "}
         <a href="https://openmaptiles.org" target="_blank" rel="noreferrer">OpenMapTiles</a>{" · "}
         <a href="https://www.naturalearthdata.com" target="_blank" rel="noreferrer">Natural Earth</a>
-      </p></section>
+      </p><p>Данные OpenStreetMap распространяются по <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">ODbL</a>, дизайн схемы OpenMapTiles — <a href="https://github.com/openmaptiles/openmaptiles/blob/master/LICENSE.md" target="_blank" rel="noreferrer">CC BY 4.0</a>. Natural Earth — общественное достояние. Оформление карты изменено для «Живой».</p>
+        <p>Движок: <a href={`${EARTH_RUNTIME_DIRECTORY}/LICENSE.txt`} target="_blank" rel="noreferrer">MapLibre GL JS и лицензии компонентов</a>.</p>
+      </section>
     </section>}
   </div>;
 }
