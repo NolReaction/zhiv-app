@@ -2,11 +2,13 @@ import type { FeatureCollection, Polygon } from "geojson";
 import type { ExpressionSpecification, LayerSpecification, StyleSpecification, VectorSourceSpecification } from "maplibre-gl";
 import land from "./data/land-110m.json";
 import { EARTH_TILE_BASE_LAYER } from "./tile-base";
+import { EARTH_OVERVIEW_SOURCE, earthOverviewData } from "./globe-overview";
+import { createEarthBuildingLayer } from "./building-style";
 
 export const EARTH_LAND_SOURCE = "earth-local-land";
 export const EARTH_VECTOR_SOURCE = "earth-streets";
 export const EARTH_PALETTE = {
-  ocean: "#72cdd0", land: "#b5dca1", forest: "#87c697", grass: "#a1d59b",
+  ocean: "#65bdc7", land: "#b5d39b", forest: "#75b58b", grass: "#9acb91",
   sand: "#efe4ae", ice: "#edf7e4", neighborhood: "#cbe0b2", park: "#94d2a0",
   road: "#fff6da", highway: "#f3cb82", roadEdge: "#b6c89e", building: "#e5c6a7",
   buildingEdge: "#c6a98d", ink: "#315b53", mutedInk: "#4e7970", halo: "#f5fae9",
@@ -23,11 +25,19 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
   const textLayout = { "text-field": names, "text-font": ["Arial", "sans-serif"], "text-max-width": 9, "text-padding": 5 };
   const layers: LayerSpecification[] = [
     { id: "earth-ocean", type: "background", paint: { "background-color": p.ocean } },
+    { id: "earth-ocean-grid", type: "line", source: EARTH_OVERVIEW_SOURCE, maxzoom: 3,
+      filter: ["==", ["get", "kind"], "grid"],
+      paint: { "line-color": "#c4ece1", "line-width": 0.7,
+        "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.26, 2, 0.18, 3, 0] } },
     { id: "earth-land", type: "fill", source: EARTH_LAND_SOURCE,
       paint: { "fill-color": p.land, "fill-antialias": false } },
+    { id: "earth-overview-ice", type: "fill", source: EARTH_OVERVIEW_SOURCE,
+      filter: ["==", ["get", "kind"], "ice"], paint: { "fill-color": p.ice, "fill-antialias": false } },
+    { id: "earth-overview-lakes", type: "fill", source: EARTH_OVERVIEW_SOURCE,
+      filter: ["==", ["get", "kind"], "lake"], paint: { "fill-color": p.ocean, "fill-antialias": false } },
     { id: "earth-detail-land", type: "fill", ...details, "source-layer": EARTH_TILE_BASE_LAYER,
       paint: { "fill-color": p.land, "fill-antialias": false } },
-    { id: "earth-landcover", type: "fill", ...details, "source-layer": "landcover",
+    { id: "earth-landcover", type: "fill", ...details, minzoom: 1.5, "source-layer": "landcover",
       paint: { "fill-antialias": false, "fill-color": ["match", ["get", "class"], "wood", p.forest,
         ["grass", "farmland"], p.grass, "ice", p.ice, "sand", p.sand, p.land], "fill-opacity": 0.7 } },
     { id: "earth-neighborhoods", type: "fill", ...details, minzoom: 9, "source-layer": "landuse",
@@ -61,9 +71,25 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       paint: { "line-color": p.road, "line-width": zoomWidth(0.2, 2), "line-dasharray": [2, 1] } },
     { id: "earth-buildings", type: "fill", ...details, minzoom: 14, "source-layer": "building",
       paint: { "fill-color": p.building, "fill-outline-color": p.buildingEdge } },
-    { id: "earth-country-names", type: "symbol", source: EARTH_VECTOR_SOURCE, "source-layer": "place", minzoom: 1, maxzoom: 8,
+    createEarthBuildingLayer(EARTH_VECTOR_SOURCE, p.building),
+    { id: "earth-continent-names", type: "symbol", source: EARTH_OVERVIEW_SOURCE, maxzoom: 2.6,
+      filter: ["==", ["get", "kind"], "continent"],
+      layout: { ...textLayout, "text-font": ["Arial Bold", "Arial", "sans-serif"], "text-size": 13,
+        "text-letter-spacing": 0.08, "text-max-width": 7, "text-pitch-alignment": "map", "text-rotation-alignment": "map" },
+      paint: { ...textPaint, "text-halo-width": 1,
+        "text-opacity": ["interpolate", ["linear"], ["zoom"], 2, 0.92, 2.6, 0] } },
+    { id: "earth-ocean-names", type: "symbol", source: EARTH_OVERVIEW_SOURCE, maxzoom: 3.5,
+      filter: ["==", ["get", "kind"], "ocean"],
+      layout: { ...textLayout, "text-font": ["Arial Italic", "Arial", "sans-serif"], "text-size": 11,
+        "text-letter-spacing": 0.1, "text-max-width": 10, "text-pitch-alignment": "map", "text-rotation-alignment": "map" },
+      paint: { "text-color": "#2d7180", "text-halo-color": "#a0d8d6", "text-halo-width": 0.6,
+        "text-opacity": ["interpolate", ["linear"], ["zoom"], 2.5, 0.85, 3.5, 0] } },
+    { id: "earth-country-names", type: "symbol", source: EARTH_VECTOR_SOURCE, "source-layer": "place", minzoom: 2.4, maxzoom: 8,
       filter: ["==", ["get", "class"], "country"],
-      layout: { ...textLayout, "text-font": ["Arial Bold", "Arial", "sans-serif"], "text-size": ["interpolate", ["linear"], ["zoom"], 1, 11, 6, 17] }, paint: textPaint },
+      layout: { ...textLayout, "text-font": ["Arial Bold", "Arial", "sans-serif"],
+        "text-pitch-alignment": "map", "text-rotation-alignment": "map",
+        "text-size": ["interpolate", ["linear"], ["zoom"], 1, 11, 6, 17] },
+      paint: { ...textPaint, "text-opacity": ["interpolate", ["linear"], ["zoom"], 2.4, 0, 3, 1] } },
     { id: "earth-city-names", type: "symbol", source: EARTH_VECTOR_SOURCE, "source-layer": "place", minzoom: 3,
       filter: ["==", ["get", "class"], "city"],
       layout: { ...textLayout, "text-size": ["interpolate", ["linear"], ["zoom"], 3, 11, 12, 17] }, paint: textPaint },
@@ -85,10 +111,13 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       paint: { ...textPaint, "text-color": p.mutedInk } },
   ];
   return {
-    version: 8, name: "Жив — Земля", sources: {
+    version: 8, name: "Жив — Земля", projection: { type: "globe" },
+    light: { anchor: "viewport", color: "#fff7e9", intensity: 0.35, position: [1.5, 210, 35] },
+    sources: {
       [EARTH_LAND_SOURCE]: { type: "geojson", data: land as FeatureCollection<Polygon>, maxzoom: 0,
         tolerance: 0, buffer: 0, attribution: '<a href="https://www.naturalearthdata.com/">Natural Earth</a>' },
       [EARTH_VECTOR_SOURCE]: { ...vector },
+      [EARTH_OVERVIEW_SOURCE]: { type: "geojson", data: earthOverviewData, maxzoom: 0, tolerance: 0, buffer: 0 },
     }, layers,
   };
 }

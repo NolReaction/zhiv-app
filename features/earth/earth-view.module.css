@@ -22,119 +22,102 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   pointer-events: none;
 }
-.header::before {
-  position: absolute;
-  z-index: -1;
-  inset: calc(-1 * var(--earth-overlay-top)) calc(-1 * var(--earth-overlay-right)) -36px calc(-1 * var(--earth-overlay-left));
-  background: linear-gradient(#0a202de0, #0a202d70 55%, transparent);
-  content: "";
-  pointer-events: none;
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  border: 1px solid #d9efcd30;
+  border-radius: 18px;
+  padding: 8px 12px;
+  color: #f0f7e7;
+  background: #153b32ed;
+  box-shadow: 0 4px 18px #001e2420;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -.02em;
+  white-space: nowrap;
 }
-.eyebrow { display: flex; align-items: center; gap: 6px; color: #c2d9c6; font-size: 9px; font-weight: 750; letter-spacing: .15em; }
-.header h1 { margin: 5px 0 0; font-size: clamp(20px, 4.8vw, 27px); line-height: 1.2; letter-spacing: -.04em; text-shadow: 0 2px 10px #09242d80; }
-.header h1:focus, .friendsPanel h2:focus { outline: none; }
-.worldButton, .locateButton, .friendsButton, .panelActions button, .friendsPanel header button {
+.brand > svg { color: #cfe9a9; flex-shrink: 0; }
+.brandDivider { margin-inline: 5px; color: #9eb89f; font-weight: 400; }
+.brandPlace { color: #c3d9bb; font-size: 11px; font-weight: 550; }
+.brand:focus, .friendsPanel h2:focus { outline: none; }
+.worldButton, .friendsButton, .panelActions button, .friendsPanel header button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   min-height: 44px;
-  border: 1px solid #d4e9bf35;
+  border: 1px solid #d9efcd30;
   border-radius: 16px;
-  background: #1b382dec;
-  color: #e4f3d7;
+  background: #153b32f2;
+  color: #e7f3da;
   padding: 9px 12px;
   font: inherit;
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
 }
-.worldButton { flex-shrink: 0; pointer-events: auto; box-shadow: 0 5px 18px #001c2730; }
+.worldButton { flex-shrink: 0; border-radius: 18px; pointer-events: auto; box-shadow: 0 4px 18px #001e2420; }
+.worldButton > svg { color: #cfe9a9; }
 .bottomOverlay {
   position: absolute;
   z-index: 5;
-  left: max(12px, env(safe-area-inset-left));
-  right: max(12px, env(safe-area-inset-right));
-  bottom: calc(var(--earth-navigation-clearance, 84px) + 36px);
+  left: var(--earth-overlay-left);
+  bottom: calc(var(--earth-navigation-clearance, 84px) + 12px);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: min(440px, calc(100% - max(12px, env(safe-area-inset-left)) - max(12px, env(safe-area-inset-right))));
-  max-height: calc(100% - var(--earth-overlay-top) - 80px - var(--earth-navigation-clearance, 84px));
-  margin-inline: auto;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(360px, calc(100% - var(--earth-overlay-left) - var(--earth-overlay-right)));
+  max-height: calc(100% - var(--earth-overlay-top) - 70px - var(--earth-navigation-clearance, 84px));
   pointer-events: none;
 }
 .bottomOverlay > * { pointer-events: auto; }
-.dock {
-  flex-shrink: 0;
-  max-height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 12px 14px 9px;
-  border: 1px solid #d4e9bf33;
-  border-radius: 23px;
-  background: #142d28f5;
-  box-shadow: 0 10px 35px #00182240;
-}
-.locationRow { display: flex; align-items: center; gap: 10px; }
-.locationIcon { display: grid; width: 36px; height: 36px; flex-shrink: 0; place-items: center; border-radius: 13px; background: #bdd5b311; color: #a8bfa4; }
-.locationIcon[data-active="true"] { background: #a6d18f24; color: #d0f5ab; }
-.locationText { min-width: 0; flex: 1; }
-.locationText strong { display: block; font-size: 12px; font-weight: 650; line-height: 1.4; }
-.locationText > span { display: block; margin-top: 3px; color: #adc2ac; font-size: 10px; line-height: 1.4; }
-.locateButton { flex-shrink: 0; background: #d0edaa; color: #243f21; border-color: transparent; }
-.dockBottom { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; margin-top: 4px; }
-.dockBottom > p { display: flex; align-items: center; gap: 5px; margin: 0; color: #b1c8ad; font-size: 10px; }
-.stopButton { min-height: 40px; padding: 4px; border: 0; background: none; color: #e7d2ad; font: inherit; font-size: 10px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.friendsButton { min-height: 40px; margin-left: auto; padding: 6px 9px; border: 0; border-radius: 12px; background: #bedda012; font-size: 11px; }
-.friendsButton[aria-expanded="true"] { background: #bedda02b; }
-.friendsButton > span { display: grid; min-width: 19px; height: 19px; border-radius: 7px; background: #c8ddae1c; place-items: center; font-size: 10px; }
-.locationError { margin: 8px 0 0; color: #f3c18f; font-size: 11px; line-height: 1.5; }
-.offline { flex-shrink: 0; margin: 0; border: 1px solid #ffc28330; border-radius: 13px; background: #243027f5; color: #f4dcb4; padding: 9px 12px; font-size: 11px; line-height: 1.45; }
-.friendsPanel { min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 21px; background: #152d25fc; box-shadow: 0 15px 45px #0005; padding: 14px; }
+.friendsButton { flex-shrink: 0; min-height: 48px; gap: 9px; border-radius: 999px; padding: 6px 13px 6px 7px; box-shadow: 0 5px 20px #001e2430; font-size: 12px; }
+.friendsButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
+.friendsIcon { display: grid; width: 32px; height: 32px; border-radius: 50%; background: #bedda018; color: #d9edbd; place-items: center; }
+.friendsCount { display: grid; min-width: 20px; height: 20px; border-radius: 50%; background: #c8ddae1c; color: #d2e4c2; place-items: center; font-size: 10px; font-weight: 700; }
+.notice { position: absolute; z-index: 4; bottom: calc(var(--earth-navigation-clearance, 84px) + 72px); left: var(--earth-overlay-left); max-width: min(340px, calc(100% - var(--earth-overlay-left) - 76px)); margin: 0; border: 1px solid #f1d3a230; border-radius: 15px; background: #263d30f5; color: #f3d9b1; padding: 10px 12px; font-size: 11px; line-height: 1.55; }
+.friendsPanel { width: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 22px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 15px; }
 .friendsPanel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.friendsPanel h2 { margin: 0; font-size: 16px; }
-.friendsPanel header button { min-width: 44px; min-height: 44px; padding: 7px; }
-.friendsIntro, .hint { margin: 9px 0; color: #b5c6ae; font-size: 11px; line-height: 1.6; }
+.friendsPanel h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+.friendsPanel header button { min-width: 44px; min-height: 44px; padding: 7px; background: #c5dfb910; }
+.friendsIntro, .hint { margin: 10px 0; color: #b8cdb1; font-size: 12px; line-height: 1.6; }
 .friendsList { list-style: none; margin: 13px 0; padding: 0; }
-.friendsList li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #c5dfb91c; }
-.avatar { display: grid; width: 34px; height: 34px; flex-shrink: 0; place-items: center; border-radius: 12px; background: #c5dfb915; color: #d4e5c7; font-size: 13px; font-weight: 700; }
+.friendsList li { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #c5dfb91c; }
+.avatar { display: grid; width: 36px; height: 36px; flex-shrink: 0; place-items: center; border-radius: 50%; background: #c5dfb915; color: #d4e5c7; font-size: 13px; font-weight: 700; }
 .friendsList li > div { min-width: 0; }
 .friendsList strong { display: block; overflow-wrap: anywhere; font-size: 12px; }
-.friendsList li > div > span { display: block; margin-top: 3px; color: #a7bba0; font-size: 10px; }
+.friendsList li > div > span { display: block; margin-top: 4px; color: #a9bf9f; font-size: 11px; }
 .panelActions { display: flex; gap: 8px; }
 .panelActions button:first-child { flex: 1; }
+.locationDetails h3 { margin: 0 0 9px; color: #e7f3da; font-size: 13px; font-weight: 700; }
+.locationDetails > strong { color: #d8eac7; font-size: 12px; font-weight: 600; line-height: 1.5; }
+.locationDetails > p { margin: 8px 0 0; color: #b4cbb0; font-size: 11px; line-height: 1.6; }
+.locationDetails > p > svg { display: inline; margin-right: 5px; vertical-align: -3px; color: #cbe3ae; }
+.locationDetails > .locationError { color: #f3c18f; }
+.stopButton { min-height: 44px; margin-top: 9px; padding: 9px 12px; border: 1px solid #f0cc9e33; border-radius: 12px; background: #d5b27d0e; color: #e7d2ad; font: inherit; font-size: 11px; cursor: pointer; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .view button:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 3px; }
 .view button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 380px) {
   .header { gap: 8px; }
-  .header h1 { font-size: 19px; }
+  .brand { padding-inline: 10px; gap: 6px; font-size: 12px; }
+  .brand > svg { width: 19px; }
+  .brandDivider { margin-inline: 4px; }
+  .brandPlace { font-size: 10px; }
   .worldButton { padding: 8px 10px; font-size: 10px; }
-  .worldButton svg { width: 16px; }
-  .dock { padding: 10px 12px 7px; }
-  .locationRow { gap: 7px; }
-  .locationIcon { display: none; }
-  .locateButton { padding: 8px 10px; }
-  .dockBottom { gap: 3px 5px; }
-  .dockBottom > p { font-size: 9px; }
-  .friendsButton { gap: 5px; padding-inline: 7px; }
+  .worldButton > svg { width: 16px; }
 }
 @media (max-height: 500px) and (min-width: 501px) {
   .view { --earth-overlay-top: max(10px, env(safe-area-inset-top)); }
-  .header h1 { font-size: 19px; margin-top: 2px; }
-  .eyebrow { font-size: 8px; }
-  .bottomOverlay { left: var(--earth-overlay-left); right: auto; bottom: 36px; width: min(340px, calc(50% - 24px)); max-height: calc(100% - var(--earth-overlay-top) - 66px - 36px); }
-  .dock { padding: 9px 11px 6px; border-radius: 19px; }
-  .locationIcon { display: none; }
-  .locationText > span { display: none; }
-  .locationText strong { font-size: 11px; }
-  .locateButton { padding-inline: 9px; }
-  .dockBottom { gap: 3px 5px; margin-top: 2px; }
-  .dockBottom > p { font-size: 9px; }
-  .friendsButton { padding-inline: 6px; }
-  .offline { padding: 6px 10px; font-size: 10px; }
+  .bottomOverlay { max-height: calc(100% - var(--earth-overlay-top) - 60px - var(--earth-navigation-clearance, 84px)); }
+  .friendsPanel { padding: 12px; }
+  .friendsIntro, .hint { font-size: 11px; }
 }

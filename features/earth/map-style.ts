@@ -23,17 +23,17 @@ export function prepareEarthStyle(value: unknown): StyleSpecification {
 
 export const EARTH_SKY: SkySpecification = {
   "sky-color": "#123b42",
-  "horizon-color": "#d2f1d5",
-  "fog-color": "#c0e6d3",
-  "sky-horizon-blend": 0.35,
-  "horizon-fog-blend": 0.6,
-  "fog-ground-blend": 0.85,
-  "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.8, 5, 0.65, 8, 0],
+  "horizon-color": "#9bd4cf",
+  "fog-color": "#abd5cc",
+  "sky-horizon-blend": 0.18,
+  "horizon-fog-blend": 0.35,
+  "fog-ground-blend": 0.45,
+  "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.38, 5, 0.22, 8, 0],
 };
 
 /** Fit the whole globe on a narrow phone as well as a wide desktop panel. */
 export function globeZoom(width: number, height: number): number {
-  return Math.max(-1.5, Math.min(1.4, Math.log2(Math.max(180, Math.min(width, height)) / 512) + 0.4));
+  return Math.max(-1.5, Math.min(2, Math.log2(Math.max(180, Math.min(width, height)) / 512) + 0.9));
 }
 
 /** Keep a coarse fix in view instead of suggesting street-level precision. */

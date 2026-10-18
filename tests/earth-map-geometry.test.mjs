@@ -78,6 +78,8 @@ test("camera accommodates both small viewports and low-accuracy fixes", () => {
   assert.ok(globeZoom(320, 200) < globeZoom(900, 700));
   assert.equal(globeZoom(300, 600), globeZoom(600, 300));
   assert.ok(Number.isFinite(globeZoom(0, 0)));
+  assert.ok(globeZoom(320, 568) > 0, "the initial phone globe uses the available width");
+  assert.equal(globeZoom(4000, 4000), 2, "large displays retain the full globe instead of starting among countries");
   assert.ok(positionZoom(5000) < positionZoom(20));
   assert.equal(positionZoom(0), 15);
   assert.ok(positionZoom(200000) >= 3);

@@ -1,0 +1,58 @@
+.marker {
+  position: absolute;
+  width: 48px;
+  height: 60px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+.marker::before {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  top: 39px;
+  left: 18px;
+  border-radius: 2px;
+  background: #fff9e8;
+  transform: rotate(45deg);
+  box-shadow: 3px 3px 8px #123d392b;
+}
+
+.marker::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 19px;
+  width: 10px;
+  height: 5px;
+  border: 1px solid #f3f9e8;
+  border-radius: 50%;
+  background: #367f6b;
+  box-shadow: 0 0 0 3px #e9f6df45, 0 2px 5px #183e4a40;
+}
+
+.portrait {
+  position: absolute;
+  top: 0;
+  left: 1px;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  overflow: hidden;
+  border: 3px solid #fff9e8;
+  border-radius: 50%;
+  background: linear-gradient(150deg, #f3f8da, #bad7aa);
+  box-shadow: 0 0 0 1px #366f5f45, 0 4px 12px #123d393b;
+}
+
+.sprite {
+  display: block;
+  width: 40px;
+  height: 40px;
+  image-rendering: pixelated;
+}
+
+.fallback { font-size: 27px; line-height: 1; }

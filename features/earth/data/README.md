@@ -42,3 +42,23 @@ with open("land-110m.json", "w") as output:
 С масштаба 4 загруженные векторные тайлы OpenStreetMap накрывают его точной
 геометрией: локально добавленный MVT-слой подложки и вода рендерятся из одного
 тайла. Данные провайдера на диске сохраняются без изменения.
+
+## Ледники и крупные озёра
+
+`physical-110m.json` содержит 11 полигонов ледников и 24 крупных озера из того же
+Natural Earth `v5.1.2`; общий размер 27 958 байт. Исходные файлы:
+
+- [ne_110m_glaciated_areas.geojson](https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_110m_glaciated_areas.geojson), 21 720 байт; SHA-256 `e61e3f45e22f087f861ac2fda6258fc15c849a216d74c27ccf0164eeafbd950a`.
+- [ne_110m_lakes.geojson](https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_110m_lakes.geojson), 36 648 байт; SHA-256 `eb02ecc86c82004fccbf979058bfabbbd6c2d07968c7844d38eb1c9152d2ffc9`.
+
+Для воспроизведения примените функцию `coordinates` из примера выше к обоим
+файлам, в указанном порядке. В `properties` каждого ледника оставьте только
+`{"kind":"ice"}`, каждого озера — `{"kind":"lake"}`. Объедините массивы
+`features` и запишите `FeatureCollection` тем же компактным `json.dumps`.
+Лицензия этих данных также public domain.
+
+`globe-overview.ts` добавляет редкую сетку меридианов/параллелей и подписи частей
+света/океанов. Координаты подписей выбраны для размещения текста и не задают
+границы. Весь обзор хранится в одном локальном GeoJSON-тайле `maxzoom: 0`;
+сетка и подписи исчезают до масштаба улиц. Ледники и озёра лежат под точными
+тайлами OSM, поэтому локальный обзор не заменяет их при приближении.

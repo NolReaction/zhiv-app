@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Compass, Earth, HardDriveDownload, LocateFixed, Minus, Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Compass, Earth, HardDriveDownload, Info, LocateFixed, Minus, Plus, X } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import type { EarthPosition } from "./location";
 import { EARTH_ACCURACY_SOURCE, EARTH_CENTER, EARTH_SKY, EARTH_STYLE_URL, globeZoom, positionAccuracyData, positionZoom, prepareEarthStyle } from "./map-style";
@@ -12,6 +12,8 @@ import { getEarthErrorResourceUrls } from "./resource-recovery";
 import { refreshEarthTileSource } from "./source-recovery";
 import { createEarthTileRecovery, type EarthTileRecoveryStatus } from "./tile-recovery";
 import { appendEarthTileBase, isEarthTileIndexUrl, isEarthVectorTileUrl, prepareEarthTileIndex } from "./tile-base";
+import { EARTH_BUILDINGS_3D_LAYER } from "./building-style";
+import { createEarthPositionMarker, updateEarthPositionMarkerLabel } from "./position-marker";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
@@ -22,6 +24,12 @@ type EarthMapProps = {
   active: boolean;
   focusRequest: number;
   isOnline: boolean;
+  onLocate: () => void;
+  locating: boolean;
+  locationActive: boolean;
+  locationDetails: ReactNode;
+  infoOpen: boolean;
+  onInfoOpenChange: (open: boolean) => void;
 };
 
 function reducedMotion(): boolean {
@@ -50,7 +58,8 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
   });
 }
 
-export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapProps) {
+export function EarthMap({ position, active, focusRequest, isOnline, onLocate, locating, locationActive,
+  locationDetails, infoOpen, onInfoOpenChange }: EarthMapProps) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LibreMap | null>(null);
   const syncPositionRef = useRef<((value: EarthPosition | null) => void) | null>(null);
@@ -67,10 +76,35 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
   const [persisting, setPersisting] = useState(false);
   const [retry, setRetry] = useState(0);
   const [tileStatus, setTileStatus] = useState<EarthTileRecoveryStatus>("idle");
+  const [buildings3d, setBuildings3d] = useState(true);
+  const buildings3dRef = useRef(buildings3d);
+  const infoButton = useRef<HTMLButtonElement>(null);
+  const infoHeading = useRef<HTMLHeadingElement>(null);
   const cache = useSyncExternalStore(earthResourceCache.subscribe, earthResourceCache.getSnapshot, earthResourceCache.getSnapshot);
   const phaseRef = useRef(phase);
   const activeRef = useRef(active);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { if (infoOpen) infoHeading.current?.focus({ preventScroll: true }); }, [infoOpen]);
+  useEffect(() => {
+    buildings3dRef.current = buildings3d;
+    const current = mapRef.current;
+    if (current?.getLayer(EARTH_BUILDINGS_3D_LAYER)) current.setLayoutProperty(EARTH_BUILDINGS_3D_LAYER, "visibility", buildings3d ? "visible" : "none");
+  }, [buildings3d]);
+  useEffect(() => {
+    if (phase !== "ready" || !active) return;
+    const attribution = host.current?.querySelector<HTMLDetailsElement>(".maplibregl-ctrl-attrib");
+    if (!attribution) return;
+    // Show the credit on first display, then retain a discoverable information control.
+    attribution.classList.add("maplibregl-compact-show");
+    attribution.open = true;
+    const timeout = window.setTimeout(() => {
+      attribution.classList.remove("maplibregl-compact-show");
+      attribution.open = false;
+    }, 5_000);
+    const keepUserChoice = () => window.clearTimeout(timeout);
+    attribution.addEventListener("click", keepUserChoice);
+    return () => { window.clearTimeout(timeout); attribution.removeEventListener("click", keepUserChoice); };
+  }, [active, phase]);
 
   const persistMap = useCallback(async () => {
     setPersisting(true);
@@ -119,7 +153,10 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
     let initialReady = false;
     let attemptFailed = false;
     let styleReady = false;
-    let idle = false;
+    let rendered = false;
+    let readyCheckQueued = false;
+    let recoveryStatus: EarthTileRecoveryStatus = "idle";
+    let previousPending = 0;
     let timeout = 0;
     let unsubscribe: (() => void) | null = null;
     let resizeObserver: ResizeObserver | null = null;
@@ -159,13 +196,22 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
         fail("Не удалось получить часть карты. Продолжите загрузку, когда появится связь; доступные сохранённые файлы будут использованы повторно.");
         return;
       }
-      if (progress.pending === 0) setStage("render");
-      // MapLibre treats errored tiles as settled; its load/idle events alone are insufficient.
-      if (idle && progress.pending === 0 && map.loaded() && map.areTilesLoaded()) {
+      setStage(progress.pending === 0 ? "render" : "resources");
+      // A canceled source request may settle without another idle event. Check
+      // the actual painted map; an old idle flag must not hold a warm start shut.
+      // Errored tiles count as loaded in MapLibre, so failures/recovery still gate it.
+      if (rendered && recoveryStatus === "idle" && progress.pending === 0
+        && !map.isMoving() && map.loaded() && map.areTilesLoaded()) {
         initialReady = true;
         window.clearTimeout(timeout);
         setPhase("ready");
       }
+    }
+    function scheduleReadyCheck() {
+      if (readyCheckQueued || cancelled || initialReady || attemptFailed) return;
+      readyCheckQueued = true;
+      // Source events can fire before the SDK has updated its own loaded flags.
+      queueMicrotask(() => { readyCheckQueued = false; checkReady(); });
     }
 
     async function initialize() {
@@ -236,7 +282,7 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
         tileRecovery = createEarthTileRecovery({
           readState: () => {
             const progress = earthResourceCache.getSnapshot();
-            return { enabled: initialReady && !attemptFailed && !cancelled, visible: !document.hidden && activeRef.current,
+            return { enabled: styleReady && !attemptFailed && !cancelled, visible: !document.hidden && activeRef.current,
               online: navigator.onLine, moving: current.isMoving(), ready: current.loaded() && current.areTilesLoaded(),
               pending: progress.pending, progress: progress.completed };
           },
@@ -249,16 +295,34 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
               if (refreshEarthTileSource(current, target) && !target.tiles) current.setSourceTileLodParams(4, 2, target.sourceId);
             }
           },
-          onChange: status => { if (!cancelled) setTileStatus(status); },
+          onChange: status => {
+            if (cancelled) return;
+            recoveryStatus = status;
+            setTileStatus(status);
+            if (!initialReady && status === "failed") fail("Не удалось завершить отрисовку карты. Попробуйте открыть её снова: сохранённые данные будут использованы повторно.");
+            else scheduleReadyCheck();
+          },
         });
         tileRecoveryRef.current = tileRecovery;
-        unsubscribe = earthResourceCache.subscribe(() => { checkReady(); tileRecovery?.check(); });
+        previousPending = earthResourceCache.getSnapshot().pending;
+        unsubscribe = earthResourceCache.subscribe(() => {
+          const pending = earthResourceCache.getSnapshot().pending;
+          // The protocol settles before MapLibre consumes the response. Schedule
+          // one frame for that boundary, rather than depending on an idle callback.
+          if (!initialReady && pending === 0 && previousPending > 0) current.triggerRepaint();
+          previousPending = pending;
+          scheduleReadyCheck();
+          tileRecovery?.check();
+        });
         current.on("remove", () => {
           // Release the GPU while playing; a return starts from cached data and the saved camera.
           if (!activeRef.current) { setPhase("loading"); setStage("engine"); }
         });
-        current.addControl(new sdk.AttributionControl({ compact: false }), "bottom-left");
-        current.addControl(new sdk.ScaleControl({ maxWidth: 100, unit: "metric" }), "bottom-right");
+        current.addControl(new sdk.AttributionControl({ compact: true,
+          // The first globe view may use only local land. Credit street data
+          // during the initial disclosure too, before it appears on zoom-in.
+          customAttribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+        }), "bottom-left");
         canvas = current.getCanvas();
         canvas.setAttribute("aria-label", "Карта Земли. Перетаскивайте глобус, приближайте двумя пальцами или колёсиком. Стрелки перемещают карту; плюс и минус меняют масштаб.");
         canvas.addEventListener("webglcontextlost", contextLost);
@@ -274,20 +338,12 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
           }
           if (!source) return;
           if (!marker) {
-            const pin = document.createElement("div");
-            pin.className = styles.positionMarker;
-            pin.setAttribute("role", "img");
-            pin.setAttribute("aria-label", "Ваше местоположение");
-            const dot = document.createElement("span");
-            dot.className = styles.positionDot;
-            const label = document.createElement("span");
-            label.className = styles.positionLabel;
-            label.textContent = "Вы здесь";
-            pin.append(dot, label);
-            marker = new sdk.Marker({ element: pin, anchor: "center", subpixelPositioning: true, opacityWhenCovered: 0 })
+            marker = new sdk.Marker({ element: createEarthPositionMarker(), anchor: "bottom",
+              pitchAlignment: "viewport", rotationAlignment: "viewport", subpixelPositioning: true, opacityWhenCovered: 0 })
               .setLngLat([value.longitude, value.latitude]).addTo(current);
           }
           marker.setLngLat([value.longitude, value.latitude]);
+          updateEarthPositionMarkerLabel(marker.getElement(), value.accuracy);
         };
         syncPositionRef.current = syncPosition;
 
@@ -297,6 +353,7 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
           // Style replacement discards projection, atmosphere and our own layers.
           current.setProjection({ type: "globe" });
           current.setSky(EARTH_SKY);
+          current.setLayoutProperty(EARTH_BUILDINGS_3D_LAYER, "visibility", buildings3dRef.current ? "visible" : "none");
           // Reduce distant high-pitch detail before asking the device to decode more tiles.
           current.setSourceTileLodParams(4, 2);
           current.addSource(EARTH_ACCURACY_SOURCE, { type: "geojson", data: positionAccuracyData(latestPosition.current) });
@@ -310,11 +367,20 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
           });
           syncPosition(latestPosition.current);
         });
-        current.on("dataloading", () => { idle = false; });
-        current.on("movestart", () => { idle = false; tileRecovery?.check(); });
-        current.on("moveend", () => tileRecovery?.check());
-        current.on("load", checkReady);
-        current.on("idle", () => { idle = true; checkReady(); tileRecovery?.check(true); });
+        current.on("dataloading", scheduleReadyCheck);
+        current.on("dataabort", () => {
+          if (cancelled) return;
+          // MapLibre forwards dataabort without invalidating a frame. An aborted
+          // offscreen tile must not leave initial readiness or recovery asleep.
+          current.triggerRepaint();
+          scheduleReadyCheck();
+          tileRecovery?.check();
+        });
+        current.on("movestart", () => tileRecovery?.check());
+        current.on("moveend", () => { scheduleReadyCheck(); tileRecovery?.check(); });
+        current.on("render", () => { rendered = true; scheduleReadyCheck(); });
+        current.on("load", scheduleReadyCheck);
+        current.on("idle", () => { scheduleReadyCheck(); tileRecovery?.check(true); });
         current.on("error", event => {
           if (cancelled) return;
           const resources = getEarthErrorResourceUrls(event, current);
@@ -386,9 +452,9 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
       <button type="button" disabled={!ready} title="Приблизить" aria-label="Приблизить карту" onClick={() => mapRef.current?.zoomIn({ duration: reducedMotion() ? 0 : 250 })}><Plus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Отдалить" aria-label="Отдалить карту" onClick={() => mapRef.current?.zoomOut({ duration: reducedMotion() ? 0 : 250 })}><Minus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
-      <button type="button" disabled={!ready || !position} title={position ? "К моему местоположению" : "Сначала определите местоположение"} aria-label="Показать моё местоположение" onClick={() => {
-        if (mapRef.current && position) flyToPosition(mapRef.current, position);
-      }}><LocateFixed size={21} aria-hidden="true" /></button>
+      <button type="button" disabled={!ready || locating} data-active={locationActive} aria-busy={locating}
+        title={locating ? "Определяем местоположение…" : position ? "К моему местоположению" : "Найти себя на карте"}
+        aria-label="Показать моё местоположение" aria-describedby="earth-location-privacy" onClick={onLocate}><LocateFixed size={21} aria-hidden="true" /></button>
     </div>
     {phase !== "ready" && <EarthLoading stage={stage} restoring={restoring} isOnline={isOnline}
       progress={{ completed: cache.completed, pending: cache.pending, failed: cache.failed, bytes: cache.networkBytes, cacheHits: cache.cacheHits }}
@@ -399,11 +465,32 @@ export function EarthMap({ position, active, focusRequest, isOnline }: EarthMapP
       <span>{!isOnline || tileStatus === "failed" ? "Часть деталей пока недоступна" : "Восстанавливаем детали карты…"}</span>
       <button type="button" disabled={!isOnline || tileStatus === "retrying"} onClick={() => tileRecoveryRef.current?.retry()}>Повторить</button>
     </div>}
-    {ready && tileStatus === "idle" && <p className={styles.gestureHint}>{cache.pending > 0 ? "Загружаем новый участок…" : "Вращайте Землю · приближайте города"}</p>}
-    {ready && tileStatus === "idle" && <div className={styles.storageNotice} title={cache.storage === "device" ? "Сохранённые участки используются при повторном открытии. Очистка данных браузера удалит карту." : "Браузер не разрешил сохранить карту. После закрытия страницы загрузка может понадобиться снова."}>
-      <span>{cache.storage === "device" ? `На устройстве: ${formatEarthLoadingBytes(cache.storedBytes)}` : "Карта доступна в этой сессии"}</span>
-      {cache.storage === "device" && cache.persistence !== "granted" && <button type="button" onClick={persistMap} disabled={persisting} aria-label="Закрепить карту на устройстве"><HardDriveDownload size={14} aria-hidden="true" />{persisting ? "Сохраняем…" : "Закрепить"}</button>}
-      {cache.persistence === "granted" && cache.storage === "device" && <span>Закреплена</span>}
-    </div>}
+    {ready && tileStatus === "idle" && cache.pending > 0 && <p className={styles.tileProgress} role="status">Загружаем окрестности…</p>}
+    {ready && <button ref={infoButton} type="button" className={styles.infoButton} aria-label="О карте и её настройках"
+      aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => onInfoOpenChange(!infoOpen)}><Info size={21} aria-hidden="true" /></button>}
+    {ready && infoOpen && <section id="earth-info-panel" className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
+      if (event.key === "Escape") { event.stopPropagation(); onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }
+    }}>
+      <header className={styles.infoHeader}><h2 ref={infoHeading} tabIndex={-1} id="earth-info-title">О карте</h2>
+        <button type="button" className={styles.infoClose} aria-label="Закрыть настройки карты" onClick={() => { onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }}><X size={18} aria-hidden="true" /></button></header>
+      <section className={styles.infoSection}><h3>Вид карты</h3>
+        <div className={styles.infoRow}><span id="earth-buildings-label">Объёмные здания</span>
+          <button type="button" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
+        <p>Появляются при приближении к улицам. Наклоните карту двумя пальцами или перетаскивайте её с зажатой правой кнопкой мыши.</p>
+      </section>
+      {locationDetails}
+      <section className={styles.infoSection}><h3>На устройстве</h3><div className={styles.storageDetails}>
+        <strong>{cache.storage === "device" ? `Сохранено ${formatEarthLoadingBytes(cache.storedBytes)}` : "Доступно в этой сессии"}
+          {cache.persistence === "granted" && cache.storage === "device" ? " · Закреплено" : ""}</strong>
+        <p>{cache.storage === "device" ? "Изученные участки открываются из сохранённых данных. Новые места и масштабы загружаются по мере приближения. Очистка данных браузера удалит карту." : "Браузер не разрешил сохранить карту на устройстве. После закрытия страницы потребуется повторная загрузка."}</p>
+        {cache.storage === "device" && cache.persistence !== "granted" && <button type="button" onClick={persistMap} disabled={persisting}><HardDriveDownload size={16} aria-hidden="true" />{persisting ? "Сохраняем…" : "Закрепить карту"}</button>}
+      </div></section>
+      <section className={styles.infoSection}><h3>Источники карты</h3><p className={styles.attribution}>
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>{" · "}
+        <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" · "}
+        <a href="https://openmaptiles.org" target="_blank" rel="noreferrer">OpenMapTiles</a>{" · "}
+        <a href="https://www.naturalearthdata.com" target="_blank" rel="noreferrer">Natural Earth</a>
+      </p></section>
+    </section>}
   </div>;
 }

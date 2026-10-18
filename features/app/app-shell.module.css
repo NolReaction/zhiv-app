@@ -1428,14 +1428,7 @@
   min-height: 0;
   animation: view-enter 220ms cubic-bezier(.2,.8,.2,1);
 }
-@media (max-height: 500px) and (min-width: 501px) {
-  .shell[data-active-view="earth"] > .footer {
-    left: auto;
-    right: max(16px, env(safe-area-inset-right));
-    width: min(360px, calc(50% - 24px));
-    margin: 0;
-  }
-}
+
 .streakPill { cursor: pointer; font-family: inherit; transition: background 160ms ease; }
 .streakPill:hover { background: rgba(248,164,72,.14); }
 .streakPill:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }

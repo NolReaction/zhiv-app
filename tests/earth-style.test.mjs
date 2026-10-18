@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
+import { createExpression, featureFilter, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { VectorTile } from "@mapbox/vector-tile";
 import { PbfReader, PbfWriter } from "pbf";
 
@@ -10,20 +10,119 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createCartoonEarthStyle, EARTH_LAND_SOURCE, EARTH_VECTOR_SOURCE, EARTH_PALETTE } = await vite.ssrLoadModule("/features/earth/cartoon-style.ts");
+const { EARTH_OVERVIEW_SOURCE } = await vite.ssrLoadModule("/features/earth/globe-overview.ts");
+const { EARTH_BUILDINGS_3D_LAYER, EARTH_BUILDINGS_3D_MIN_ZOOM, EARTH_BUILDINGS_HEIGHT_LIMIT } = await vite.ssrLoadModule("/features/earth/building-style.ts");
 const { appendEarthTileBase, isEarthVectorTileUrl, isEarthTileIndexUrl, prepareEarthTileIndex, EARTH_TILE_BASE_LAYER } = await vite.ssrLoadModule("/features/earth/tile-base.ts");
 const source = { type: "vector", url: "https://tiles.openfreemap.org/planet", attribution: "OpenStreetMap contributors" };
 
 test("cartoon style validates against installed MapLibre and owns no remote raster, glyph or icon dependency", () => {
   const style = createCartoonEarthStyle(source);
   assert.deepEqual(validateStyleMin(style).map(error => error.message), []);
-  assert.ok(style.layers.length <= 24);
+  assert.deepEqual(style.projection, { type: "globe" }, "sources start with globe subdivision instead of rebuilding after a Mercator frame");
+  assert.ok(style.layers.length <= 28);
   assert.deepEqual(style.sources[EARTH_VECTOR_SOURCE], source);
   assert.equal(style.glyphs, undefined);
   assert.equal(style.sprite, undefined);
-  assert.ok(!style.layers.some(layer => ["raster", "fill-extrusion"].includes(layer.type)));
+  assert.ok(!style.layers.some(layer => layer.type === "raster"));
   assert.ok(style.layers.every(layer => !layer.layout?.["icon-image"]));
   assert.ok(style.layers.filter(layer => layer.type === "symbol").every(layer =>
     layer.layout["text-font"].includes("Arial") && layer.layout["text-field"].some(part => Array.isArray(part) && part[1] === "name:ru")));
+});
+
+test("glacier/lake detail and world labels are local and bounded, and do not add street-level geometry", () => {
+  const style = createCartoonEarthStyle(source);
+  const overview = style.sources[EARTH_OVERVIEW_SOURCE];
+  assert.equal(overview.maxzoom, 0);
+  assert.equal(typeof overview.data, "object");
+  assert.ok(Buffer.byteLength(JSON.stringify(overview.data)) < 45_000);
+  assert.equal(overview.data.features.filter(feature => feature.properties.kind === "ice").length, 11);
+  assert.equal(overview.data.features.filter(feature => feature.properties.kind === "lake").length, 24);
+  assert.equal(overview.data.features.filter(feature => feature.properties.kind === "ocean").length, 5);
+  for (const layer of style.layers.filter(layer => layer.source === EARTH_OVERVIEW_SOURCE && layer.type !== "fill")) {
+    assert.ok(layer.maxzoom <= 3.5);
+  }
+  const detailIndex = style.layers.findIndex(layer => layer["source-layer"] === EARTH_TILE_BASE_LAYER);
+  assert.ok(style.layers.findIndex(layer => layer.id === "earth-overview-lakes") < detailIndex);
+  assert.ok(style.layers.findIndex(layer => layer.id === "earth-overview-ice") < detailIndex);
+});
+
+test("3D uses one opaque building layer from the existing source and only at close zoom", () => {
+  const style = createCartoonEarthStyle(source);
+  const extrusions = style.layers.filter(layer => layer.type === "fill-extrusion");
+  assert.equal(extrusions.length, 1);
+  const layer = extrusions[0];
+  assert.equal(layer.id, EARTH_BUILDINGS_3D_LAYER);
+  assert.equal(layer.minzoom, EARTH_BUILDINGS_3D_MIN_ZOOM);
+  assert.ok(layer.minzoom >= 15);
+  assert.equal(layer.source, EARTH_VECTOR_SOURCE);
+  assert.equal(layer["source-layer"], "building");
+  assert.equal(layer.paint["fill-extrusion-opacity"], 1);
+  assert.equal(layer.paint["fill-extrusion-pattern"], undefined);
+  assert.equal(layer.layout.visibility, "visible");
+  assert.ok(style.layers.some(layer => layer.id === "earth-buildings" && layer.type === "fill"), "2D footprint remains available when 3D is toggled off");
+});
+
+test("overview names follow the sphere and countries fade in after the initial globe view", () => {
+  const { layers } = createCartoonEarthStyle(source);
+  for (const id of ["earth-continent-names", "earth-ocean-names", "earth-country-names"]) {
+    const layer = layers.find(item => item.id === id);
+    assert.equal(layer.layout["text-pitch-alignment"], "map", `${id} must project glyph vertices onto the globe rather than spill beyond its horizon`);
+    assert.equal(layer.layout["text-rotation-alignment"], "map");
+  }
+  const continent = layers.find(item => item.id === "earth-continent-names");
+  const country = layers.find(item => item.id === "earth-country-names");
+  assert.ok(country.minzoom > 2, "countries do not crowd the initial desktop globe");
+  const opacity = layer => {
+    const expression = createExpression(layer.paint["text-opacity"], "text-opacity");
+    assert.equal(expression.result, "success");
+    return zoom => expression.value.evaluate({ zoom });
+  };
+  assert.equal(opacity(continent)(2), 0.92);
+  assert.equal(opacity(continent)(continent.maxzoom), 0);
+  assert.equal(opacity(country)(country.minzoom), 0);
+  assert.equal(opacity(country)(3), 1);
+  assert.equal(layers.find(item => item.id === "earth-city-names").layout["text-pitch-alignment"], undefined);
+});
+
+test("building heights grow smoothly, bound malformed values, and never put a base above its roof", () => {
+  const layer = createCartoonEarthStyle(source).layers.find(item => item.id === EARTH_BUILDINGS_3D_LAYER);
+  const compile = key => {
+    const compiled = createExpression(layer.paint[key], key);
+    assert.equal(compiled.result, "success");
+    return (zoom, properties) => compiled.value.evaluate({ zoom }, { type: 3, properties });
+  };
+  const height = compile("fill-extrusion-height"); const base = compile("fill-extrusion-base");
+  assert.equal(height(14, { render_height: 40 }), 0);
+  assert.equal(height(15, { render_height: 40 }), 0);
+  assert.equal(height(15.5, { render_height: 40 }), 20);
+  assert.equal(height(16, { render_height: 40 }), 40);
+  assert.equal(height(18, { render_height: "24" }), 24);
+  assert.equal(height(18, {}), 8);
+  assert.equal(height(18, { render_height: "broken", height: 12 }), 12);
+  assert.equal(height(18, { render_height: -20 }), 0);
+  assert.equal(height(18, { render_height: 1000000 }), EARTH_BUILDINGS_HEIGHT_LIMIT);
+  for (const properties of [{ render_height: 10, render_min_height: 20 }, { render_height: 40, render_min_height: -5 },
+    { render_height: "broken", render_min_height: "broken" }, { render_height: 80, render_min_height: 20 }]) {
+    for (const zoom of [15, 15.4, 16, 18]) {
+      assert.ok(base(zoom, properties) >= 0);
+      assert.ok(base(zoom, properties) <= height(zoom, properties));
+    }
+  }
+});
+
+test("extrusions respect provider hide_3d and exclude indoor/underground or nonpositive-height structures", () => {
+  const layer = createCartoonEarthStyle(source).layers.find(item => item.id === EARTH_BUILDINGS_3D_LAYER);
+  const filter = featureFilter(layer.filter, "filter");
+  const visible = properties => filter.filter({ zoom: 16 }, { type: 3, properties });
+  assert.equal(visible({ render_height: 15 }), true);
+  assert.equal(visible({ hide_3d: false }), true);
+  for (const value of [true, "true", 1, "1", "yes"]) {
+    assert.equal(visible({ hide_3d: value, render_height: 30 }), false);
+    assert.equal(visible({ indoor: value, render_height: 30 }), false);
+  }
+  assert.equal(visible({ location: "underground", render_height: 12 }), false);
+  assert.equal(visible({ render_height: 0 }), false);
+  assert.equal(visible({ render_height: -10 }), false);
 });
 
 function insideRing([x, y], ring) {
