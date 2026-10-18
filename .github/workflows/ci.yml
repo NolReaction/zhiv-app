@@ -154,7 +154,7 @@ jobs:
             echo "Security observations must run with real PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest; do
+          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcEarthLocationIntegrationTest; do
             mail_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${mail_report}"
             grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${mail_report}"

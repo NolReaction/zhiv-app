@@ -388,6 +388,11 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             val fresh=c.one("SELECT account_transfer_group_owner(?,?,?,?,?,?)",group,s.other,id,previewHash,sessionHash,browserHash){it.getBoolean(1)} ?: false
             group.takeIf{fresh}
         }.toSet()
+        // A merge changes account identity even when the surviving browser session
+        // is retained. Neither account's location consent or publisher survives it.
+        c.update("""UPDATE earth_sharing_settings SET mode='OFF',revision=least(revision+1,9007199254740990),
+            sharing_until=NULL,publication_epoch=NULL,publisher_session_id=NULL,
+            last_sequence=0,last_captured_at=NULL,last_accepted_at=NULL WHERE user_id IN (?,?)""",id,s.other)
         clearCapabilities(c,id,sessionHash);clearCapabilities(c,s.other)
         closeSocial(c,s.other,false)
         peers.forEach { peer ->

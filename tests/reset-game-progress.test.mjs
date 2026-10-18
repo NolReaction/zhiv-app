@@ -34,14 +34,16 @@ test("game reset reviews every table and the latest migration without clearing i
       const migration = await readFile(new URL(file, migrationDir), "utf8");
       assert.doesNotMatch(migration, /^\s*(?:DROP\s+TABLE|ALTER\s+TABLE\s+(?:public\.)?\w+\s+RENAME\s+TO)\b/im,
         `${file}: review inventory parsing for a dropped/renamed table`);
-      created.push(...[...migration.matchAll(/^\s*CREATE\s+TABLE\s+(?:public\.)?(\w+)\s*\(/gim)].map(match => match[1]));
+      created.push(...[...migration.matchAll(/^\s*CREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:public\.)?(\w+)\s*\(/gim)].map(match => match[1]));
     }
     assert.equal(new Set(created).size, created.length, `${path.name}: duplicate table definitions`);
     assert.deepEqual(classified.toSorted(), created.toSorted(), `${path.name}: game reset must classify every table`);
   }
   for (const name of ["app_users", "app_sessions", "account_login_identities", "account_recovery_codes",
     "circles", "circle_memberships", "direct_requests", "check_ins", "admin_actions", "promo_redemptions", "managed_promo_codes",
-    "notification_subscriptions", "notification_preferences", "game_presence_daily", "player_mail_messages", "admin_mail_broadcasts", "player_security_observations"]) assert.ok(preserved.includes(name), name);
+    "notification_subscriptions", "notification_preferences", "game_presence_daily", "player_mail_messages", "admin_mail_broadcasts", "player_security_observations",
+    "earth_sharing_settings", "earth_sharing_recipients"]) assert.ok(preserved.includes(name), name);
+  assert.ok(cleared.includes("earth_latest_locations"), "a gameplay reset discards ephemeral points without changing account consent");
   assert.deepEqual(partial, ["notification_events"]);
   for (const name of ["economy_profiles", "world_profiles", "forest_memory", "game_profiles"])
     assert.ok(reinitialized.includes(name), `${name}: preserve a monotonic revision fence`);

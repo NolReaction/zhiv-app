@@ -15,6 +15,7 @@
 | `GET/PATCH /api/v1/me`, calendar, time-zone, status, bootstrap | [identity/IdentityRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/identity/IdentityRoutes.kt), `identity/*` | [db/JdbcZhivRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcZhivRepository.kt), [db/CheckInCalendarQuery.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/CheckInCalendarQuery.kt) | [lib/check-in-contract.ts](../../lib/check-in-contract.ts), [lib/check-in-api.ts](../../lib/check-in-api.ts) |
 | `POST /api/v1/check-ins` | [checkins/CheckInRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/checkins/CheckInRoutes.kt), [CheckInRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/checkins/CheckInRepository.kt) | [db/JdbcZhivRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcZhivRepository.kt) | [lib/check-in-api.ts](../../lib/check-in-api.ts) |
 | `/people`, `/users/{publicId}`, `/direct-requests` | [relationships/RelationshipRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/relationships/RelationshipRoutes.kt) | [db/JdbcRelationshipRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcRelationshipRepository.kt) | [lib/check-in-api.ts](../../lib/check-in-api.ts) |
+| `/earth/sharing`, `/earth/location`, `/earth/people` | [earth/EarthLocationRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/earth/EarthLocationRoutes.kt) | [db/JdbcEarthLocationRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcEarthLocationRepository.kt), V62 | [Доступ к геопозиции и призрак](earth-sharing.md), `lib/earth-sharing-contract.ts` |
 | `/groups`, `/group-invites` | [groups/GroupRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/groups/GroupRoutes.kt) | [db/JdbcGroupRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcGroupRepository.kt) | [lib/check-in-api.ts](../../lib/check-in-api.ts) |
 | `/direct-invite-links`, preview, redeem | [invites/DirectInviteRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/invites/DirectInviteRoutes.kt) | [db/JdbcDirectInviteRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcDirectInviteRepository.kt) | [lib/check-in-api.ts](../../lib/check-in-api.ts), [lib/invite-import.ts](../../lib/invite-import.ts) |
 | `/auth/*`, `/recovery-code` | [auth/AuthRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/auth/AuthRoutes.kt), [recovery/CodeRecoveryRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/recovery/CodeRecoveryRoutes.kt) | [db/JdbcAuthRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAuthRepository.kt), [JdbcAccountLifecycleRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAccountLifecycleRepository.kt), [JdbcCodeRecoveryRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcCodeRecoveryRepository.kt) | [lib/auth-api.ts](../../lib/auth-api.ts), [lib/account-lifecycle.ts](../../lib/account-lifecycle.ts) |
@@ -51,7 +52,7 @@
 
 Таблица ниже — ориентиры исторических изменений, а не список шагов создания новой БД.
 
-Текущая итоговая версия схемы — **58**: B49 → V50–V58 или V1–V58.
+Текущая итоговая версия схемы — **62**: B49 → V50–V62 или V1–V62.
 
 | Область | Миграции-ориентиры |
 |---|---|

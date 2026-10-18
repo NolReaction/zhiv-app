@@ -26,9 +26,32 @@ test("Earth friends lists actual contacts without claiming their location is sha
   const html = renderToStaticMarkup(EarthFriends({ ...defaults, people }));
   assert.match(html, /&lt;script&gt;friend&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
-  assert.match(html, /Обмен геопозицией ещё готовится/);
-  assert.match(html, /Геопозиция пока недоступна/);
+  assert.match(html, /только близкие, которые разрешили/);
+  assert.match(html, /Нет доступной геопозиции/);
   assert.doesNotMatch(html, /latitude|longitude|TEST-1/);
+});
+
+test("only an available authorized friend gets a map action, without exposing coordinates in HTML", () => {
+  const people = { people: [{ circleId: "friend-one", user: { publicId: "TEST-1", displayName: "Лена" }, nickname: null },
+    { circleId: "friend-two", user: { publicId: "TEST-2", displayName: "Дима" }, nickname: null }] };
+  const locations = [{ circleId: "friend-one", user: people.people[0].user, latitude: 55.75, longitude: 37.62,
+    accuracyMeters: 1500, precision: "APPROXIMATE", updatedAt: "2026-10-18T20:00:00Z", expiresAt: "2026-10-18T20:02:00Z", expiresAtMonotonic: 120_000 }];
+  const calls = [];
+  const tree = EarthFriends({ ...defaults, people, locations, onFocusPerson: id => calls.push(id) });
+  const html = renderToStaticMarkup(tree);
+  assert.match(html, /Примерный район/);
+  assert.match(html, /1,5 км/);
+  assert.equal((html.match(/Показать на карте:/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /55\.75|37\.62|publicationEpoch|GHOST|TEST-1/);
+  const buttons = [];
+  function walk(node) {
+    if (!isValidElement(node)) return;
+    if (node.type === "button" && node.props["aria-label"]?.startsWith("Показать на карте:")) buttons.push(node);
+    Children.forEach(node.props.children, walk);
+  }
+  walk(tree);
+  buttons[0].props.onClick();
+  assert.deepEqual(calls, ["friend-one"]);
 });
 
 test("empty, offline, stale and loading friends remain explicit and actionable", () => {

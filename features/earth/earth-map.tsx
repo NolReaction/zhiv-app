@@ -26,10 +26,14 @@ import { createEarthTileLoadingOverlay } from "./tile-loading-overlay";
 import { createEarthStars } from "./earth-stars";
 import { createEarthWeatherController, createEarthWeatherProvider, type EarthWeatherSnapshot, type EarthWeatherState } from "./weather";
 import { EARTH_WEATHER_ATTRIBUTION } from "@/lib/earth-weather-contract";
+import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
+import { createEarthFriendMarkers } from "./friend-markers";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
 type MapPhase = "loading" | "ready" | "failed" | "unsupported";
+const EMPTY_FRIENDS: readonly EarthMapPerson[] = [];
+export type EarthFriendFocusRequest = { circleId: string; requestId: number };
 
 type EarthMapProps = {
   position: EarthPosition | null;
@@ -45,6 +49,9 @@ type EarthMapProps = {
   locationDetails: ReactNode;
   infoOpen: boolean;
   onInfoOpenChange: (open: boolean) => void;
+  friends?: readonly EarthMapPerson[];
+  friendFocusRequest?: EarthFriendFocusRequest | null;
+  onSelectFriends?: (circleIds: string[]) => void;
 };
 
 function weatherConditionLabel(condition: string): string {
@@ -78,7 +85,7 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 }
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
-  locationDetails, infoOpen, onInfoOpenChange }: EarthMapProps) {
+  locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -114,6 +121,16 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const cache = useSyncExternalStore(earthResourceCache.subscribe, earthResourceCache.getSnapshot, earthResourceCache.getSnapshot);
   const phaseRef = useRef(phase);
   const activeRef = useRef(active);
+  const latestFriends = useRef<readonly EarthMapPerson[]>(friends);
+  const latestFriendFocus = useRef(friendFocusRequest);
+  const handledFriendFocus = useRef(0);
+  const selectFriendsRef = useRef(onSelectFriends);
+  const syncFriendsRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => { selectFriendsRef.current = onSelectFriends; }, [onSelectFriends]);
+  useLayoutEffect(() => {
+    latestFriendFocus.current = friendFocusRequest;
+    syncFriendsRef.current?.();
+  }, [friendFocusRequest]);
   useEffect(() => {
     cameraSession?.savePreferences({ weatherEnabled, lightingMode, eveningCenter, buildings3d });
   }, [cameraSession, weatherEnabled, lightingMode, eveningCenter, buildings3d]);
@@ -122,6 +139,11 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     visibleRef.current = visible;
     foregroundRef.current?.();
   }, [visible]);
+  useLayoutEffect(() => {
+    // Only a new feed snapshot may restore positions after leaving/backgrounding.
+    latestFriends.current = activeRef.current && visibleRef.current && !document.hidden ? friends : EMPTY_FRIENDS;
+    syncFriendsRef.current?.();
+  }, [friends]);
   useEffect(() => {
     weatherEnabledRef.current = weatherEnabled;
     weatherControllerRef.current?.setEnabled(weatherEnabled);
@@ -192,6 +214,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     let marker: Marker | null = null;
     let disposeMarkerMotion: (() => void) | null = null;
     let scene: ReturnType<typeof createEarthGlobeScene> | null = null;
+    let friendMarkers: ReturnType<typeof createEarthFriendMarkers> | null = null;
     let initialReady = false;
     let attemptFailed = false;
     let styleReady = false;
@@ -206,6 +229,20 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     let canvas: HTMLCanvasElement | null = null;
     let tileRecovery: ReturnType<typeof createEarthTileRecovery> | null = null;
     let restoreGlobeCamera: (() => void) | null = null;
+
+    function syncFriends() {
+      if (cancelled || attemptFailed || !friendMarkers) return;
+      const available = foreground && initialReady;
+      friendMarkers.setVisible(available);
+      if (!available) return;
+      friendMarkers.setSelfPosition(latestPosition.current);
+      friendMarkers.setSnapshot(latestFriends.current);
+      const request = latestFriendFocus.current;
+      if (request && request.requestId > handledFriendFocus.current && friendMarkers.focusFriend(request.circleId)) {
+        handledFriendFocus.current = request.requestId;
+      }
+    }
+    syncFriendsRef.current = syncFriends;
 
     function savePreparedCamera() {
       if (!initialReady || !map) return;
@@ -223,6 +260,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       const next = activeRef.current && visibleRef.current && !document.hidden;
       const returning = next && !foreground;
       if (!next) {
+        latestFriends.current = EMPTY_FRIENDS;
+        latestFriendFocus.current = null;
         earthResourceCache.setView(null);
         window.clearTimeout(timeout);
         map?.stop();
@@ -248,6 +287,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         resize();
       }
       foreground = next;
+      syncFriends();
       scene?.setVisible(next);
       stars?.setVisible(next && initialReady);
       tileOverlay?.setVisible(next && initialReady);
@@ -269,6 +309,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       stars?.setVisible(false);
       tileOverlay?.setVisible(false);
       weather?.setVisible(false);
+      friendMarkers?.setVisible(false);
+      latestFriends.current = EMPTY_FRIENDS;
       setFailure(message);
       setPhase("failed");
     }
@@ -445,6 +487,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
 
         const syncPosition = (value: EarthPosition | null) => {
           if (cancelled) return;
+          friendMarkers?.setSelfPosition(value);
           const source = current.getSource<GeoJSONSource>(EARTH_ACCURACY_SOURCE);
           source?.setData(positionAccuracyData(value));
           if (!value) {
@@ -465,6 +508,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           updateEarthPositionMarkerLabel(marker.getElement(), value.accuracy);
         };
         syncPositionRef.current = syncPosition;
+        friendMarkers = createEarthFriendMarkers(current, sdk.Marker, ids => selectFriendsRef.current?.(ids));
 
         current.on("style.load", () => {
           if (cancelled) return;
@@ -556,6 +600,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       controller.abort();
       requests.dispose();
       if (foregroundRef.current === updateForeground) foregroundRef.current = null;
+      if (syncFriendsRef.current === syncFriends) syncFriendsRef.current = null;
+      friendMarkers?.dispose();
+      latestFriends.current = EMPTY_FRIENDS;
       weather?.dispose();
       if (weatherControllerRef.current === weather) weatherControllerRef.current = null;
       stars?.dispose();

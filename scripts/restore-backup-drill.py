@@ -127,7 +127,7 @@ def main() -> int:
     parser.add_argument("dump", type=Path, help="Trusted local custom-format PostgreSQL dump; never a URL")
     parser.add_argument("--execute", action="store_true", help="Actually create the isolated local container and restore")
     parser.add_argument("--timeout-seconds", type=int, default=1800, help="Restore deadline, 30–3600 seconds")
-    parser.add_argument("--expect-schema", help="Optional exact latest successful Flyway version, e.g. 61")
+    parser.add_argument("--expect-schema", help="Optional exact latest successful Flyway version, e.g. 62")
     args = parser.parse_args()
     if not 30 <= args.timeout_seconds <= 3600:
         parser.error("Restore deadline must be between 30 and 3600 seconds.")

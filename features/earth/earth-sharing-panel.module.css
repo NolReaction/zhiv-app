@@ -1,0 +1,30 @@
+.panel { color: #d7e8cc; font-size: 12px; line-height: 1.55; }
+.panel p { margin: 8px 0; color: #bacfb3; }
+.status { padding: 12px; margin-top: 12px; border: 1px solid #cce1b830; border-radius: 16px; background: #cce1b808; }
+.status > div { display: flex; align-items: center; gap: 8px; color: #e6f5d6; font-size: 13px; }
+.panel button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border: 1px solid #d7eac038; border-radius: 12px; padding: 9px 12px; background: #c6dfa315; color: #e2efce; font: inherit; font-weight: 650; cursor: pointer; }
+.panel button:focus-visible, .panel input:focus-visible, .panel select:focus-visible { outline: 2px solid #d8f4a9; outline-offset: 3px; }
+.panel button:disabled { opacity: .5; cursor: default; }
+.panel .ghostButton { width: 100%; margin-top: 6px; background: #c6d4e319; border-color: #c6d4e34d; }
+.panel .quiet { font-size: 11px; color: #aebfae; }
+.panel .pending, .panel .error { color: #f2d7a9; }
+.error button { margin-top: 6px; }
+.panel form { margin-top: 16px; }
+.panel fieldset { min-width: 0; padding: 0; margin: 0 0 16px; border: 0; }
+.panel legend { margin-bottom: 4px; color: #e6f2d8; font-size: 13px; font-weight: 700; }
+.recipients { max-height: 200px; overflow: auto; overscroll-behavior: contain; margin-top: 8px; border: 1px solid #cce1b82b; border-radius: 12px; }
+.recipients label { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 8px 10px; cursor: pointer; }
+.recipients label + label { border-top: 1px solid #cce1b81a; }
+.recipients span { overflow-wrap: anywhere; }
+.panel input[type="checkbox"], .panel input[type="radio"] { width: 19px; height: 19px; margin: 0; flex-shrink: 0; accent-color: #cce8a2; }
+.search, .duration { display: grid; gap: 5px; font-weight: 650; color: #e0edd2; }
+.panel input[type="search"], .panel select { min-height: 44px; width: 100%; padding: 8px 10px; border: 1px solid #cce1b838; border-radius: 11px; background: #102e28; color: #e6f2d7; font: inherit; }
+.precision > label { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 9px 0; cursor: pointer; }
+.precision input { margin-top: 3px !important; }
+.precision strong, .precision small { display: block; }
+.precision small { color: #adc4a6; font-size: 11px; font-weight: 400; }
+.panel .explanation { display: flex; gap: 8px; margin-top: 14px; font-size: 11px; }
+.explanation svg { flex-shrink: 0; margin-top: 3px; }
+.panel .shareButton { width: 100%; margin-top: 6px; border-color: #dbefb45c; background: #cce7a6; color: #244330; }
+.panel .removeButton { width: 100%; margin-top: 16px; background: #d5a9850b; color: #e8c8a5; font-weight: 500; }
+@media (prefers-reduced-motion: reduce) { .panel * { scroll-behavior: auto; } }

@@ -86,6 +86,10 @@ import ru.zhiv.relationships.GuestProfileRepository
 import ru.zhiv.relationships.guestProfileRoutes
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.relationshipRoutes
+import ru.zhiv.earth.EarthLocationRepository
+import ru.zhiv.earth.earthLocationRoutes
+import ru.zhiv.db.JdbcEarthLocationRepository
+import ru.zhiv.db.EarthLocationMaintenance
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.auth.*
 import ru.zhiv.db.JdbcAuthRepository
@@ -125,6 +129,7 @@ fun Application.module() {
     val config = AppConfig.fromEnvironment()
     val dataSource = DatabaseFactory.create(config)
     val tapMaintenance = ru.zhiv.db.TapActivityMaintenance(dataSource)
+    val earthMaintenance = EarthLocationMaintenance(dataSource)
     val pushConfig = WebPushConfig.fromEnvironment()
     val pushSender = if (pushConfig.configured) WebPushSender(pushConfig) else null
     val pushMaintenance = pushSender?.let { NotificationMaintenance(dataSource, it) }
@@ -140,6 +145,7 @@ fun Application.module() {
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         tapMaintenance.close()
+        earthMaintenance.close()
         pushMaintenance?.close()
         pushSender?.close()
         telegram?.close()
@@ -151,6 +157,7 @@ fun Application.module() {
         repository,
         config,
         relationships = relationships,
+        earthLocations = JdbcEarthLocationRepository(dataSource),
         guestProfiles = JdbcGuestProfileRepository(dataSource),
         groups = groups,
         directInvites = directInvites,
@@ -211,6 +218,7 @@ fun Application.installZhivApi(
     promo: PromoRepository? = null,
     adminPromo: AdminPromoRepository? = null,
     playerMail: MailRepository? = null,
+    earthLocations: EarthLocationRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val traffic = RequestTraffic()
@@ -238,6 +246,7 @@ fun Application.installZhivApi(
             "profile-read" to 600,
             "check-in-attempt" to 240,
             "relationships" to 2_400,
+            "earth-read" to 600,
             "game-events" to 2_400,
             "game-read" to 1_200,
             "world-read" to 60,
@@ -418,6 +427,7 @@ fun Application.installZhivApi(
             }
         }
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
+        earthLocations?.let { earthLocationRoutes(it, tokenCodec, config) }
         guestProfiles?.let { guestProfileRoutes(it, tokenCodec, config) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
         directInvites?.let { directInviteRoutes(it, tokenCodec, config) }

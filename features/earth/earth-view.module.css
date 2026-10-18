@@ -83,6 +83,14 @@
 .friendsButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
 .friendsIcon { display: grid; width: 32px; height: 32px; border-radius: 50%; background: #bedda018; color: #d9edbd; place-items: center; }
 .friendsCount { display: grid; min-width: 20px; height: 20px; border-radius: 50%; background: #c8ddae1c; color: #d2e4c2; place-items: center; font-size: 10px; font-weight: 700; }
+.bottomButtons { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; }
+.bottomButtons .friendsButton { flex-shrink: 0; gap: 6px; padding-right: 10px; font-size: 11px; }
+.sharingButton, .quickGhost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 46px; border: 1px solid #cbdcc33d; border-radius: 16px; padding: 8px 10px; background: #173c33f5; color: #d9e9ce; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
+.sharingButton { max-width: 180px; }
+.sharingButton svg { flex-shrink: 0; }
+.sharingButton span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sharingButton[aria-expanded="true"] { background: #315347; border-color: #c5e3ad7a; }
+.quickGhost { flex-shrink: 0; width: 44px; padding: 8px; color: #dce7f2; background: #2b4148f5; }
 .notice { position: absolute; z-index: 4; bottom: calc(var(--earth-navigation-clearance, 84px) + 72px); left: var(--earth-overlay-left); max-width: min(340px, calc(100% - var(--earth-overlay-left) - 76px)); margin: 0; border: 1px solid #f1d3a230; border-radius: 15px; background: #263d30f5; color: #f3d9b1; padding: 10px 12px; font-size: 11px; line-height: 1.55; }
 .friendsPanel { width: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 22px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 15px; }
 .friendsPanel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -93,11 +101,14 @@
 .friendsList li { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #c5dfb91c; }
 .avatar { display: grid; width: 36px; height: 36px; flex-shrink: 0; place-items: center; border-radius: 50%; background: #c5dfb915; color: #d4e5c7; font-size: 13px; font-weight: 700; }
 .friendsList li > div { min-width: 0; }
+.friendsList .friendLocate { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; margin-left: auto; border: 1px solid #c5dfb936; border-radius: 12px; background: #c5dfb913; color: #dcebc9; cursor: pointer; }
+.allFriends { min-height: 44px; margin-top: 10px; border: 0; background: transparent; color: #d1e7b8; font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
 .friendsList strong { display: block; overflow-wrap: anywhere; font-size: 12px; }
 .friendsList li > div > span { display: block; margin-top: 4px; color: #a9bf9f; font-size: 11px; }
 .panelActions { display: flex; gap: 8px; }
 .panelActions button:first-child { flex: 1; }
 .locationDetails h3 { margin: 0 0 9px; color: #e7f3da; font-size: 13px; font-weight: 700; }
+.friendsPanel .locationDetails { margin-top: 18px; padding-top: 14px; border-top: 1px solid #c5dfb92a; }
 .locationDetails > strong { color: #d8eac7; font-size: 12px; font-weight: 600; line-height: 1.5; }
 .locationDetails > p { margin: 8px 0 0; color: #b4cbb0; font-size: 11px; line-height: 1.6; }
 .locationDetails > p > svg { display: inline; margin-right: 5px; vertical-align: -3px; color: #cbe3ae; }

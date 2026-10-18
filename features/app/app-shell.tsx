@@ -16,6 +16,7 @@ import { AppNavigation, appViews, type AppView } from "@/features/app/navigation
 import { rememberEarthSection, restoreEarthSection } from "./earth-navigation-state";
 import { earthMapAvailable } from "./earth-map-availability";
 import { useEarthMapRetention } from "./use-earth-map-retention";
+import { useEarthSharing } from "@/features/earth/use-earth-sharing";
 import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
@@ -665,6 +666,8 @@ function CheckInContent() {
     covered: worldPortal.open || calendarOpen || gameOpen || statusOpen });
   const earthRetention = useEarthMapRetention({ owner: screen === "home" ? viewOwner : null,
     selected: earthSelected, available: earthAvailable, documentHidden: activity.mode === "hidden" });
+  const earthSharing = useEarthSharing({ ownerPublicId: screen === "home" ? viewOwner : null,
+    visible: screen === "home" && earthSelected && earthAvailable, isOnline, onSessionLost: loseSession });
   useEconomyAudioFeedback(economy, screen === "home" && activity.active);
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
@@ -1876,7 +1879,7 @@ function CheckInContent() {
       <div key="earth-session" className={styles.viewTransition} hidden={!earthSelected} inert={!earthSelected || undefined}
         style={{ display: earthSelected ? undefined : "none" }} data-earth-session-visible={earthSelected}>
         {earthRetention.mounted && me && <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
-          active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange} cameraSession={earthRetention.cameraSession}
+          active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange} cameraSession={earthRetention.cameraSession} sharing={earthSharing}
           isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
           onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
           onOpenWorld={trigger => { setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />}

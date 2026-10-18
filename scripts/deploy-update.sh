@@ -68,7 +68,7 @@ backup_dir="$project_dir/../zhiv-backups"
   mkdir -p "$backup_dir"
   chmod 700 "$backup_dir"
   backup_file="$(mktemp "$backup_dir/before-update-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
-  dc exec -T db pg_dump -U zhiv -d zhiv --format=custom --no-owner --no-acl > "$backup_file"
+  dc exec -T db pg_dump -U zhiv -d zhiv --format=custom --exclude-table-data=public.earth_latest_locations --no-owner --no-acl > "$backup_file"
   test -s "$backup_file"
   dc exec -T db pg_restore --list < "$backup_file" > /dev/null
   echo "Backup archive is readable: $backup_file"

@@ -38,6 +38,7 @@ import { resetDevWorldStoreForTests, getDevCollectionFinds } from "@/lib/dev/wor
 import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-rewards-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
 import { resetDevMailState } from "@/lib/dev/mail-state";
+import { resetDevEarthSharingState, revokeDevEarthCircle } from "@/lib/dev/earth-sharing-state";
 import {
   calculateRollingStreak,
   formatLocalDate,
@@ -212,6 +213,7 @@ function store(): Store {
 
 export function resetDevStoreForTests() {
   delete globalStore.__zhivDevStore;
+  resetDevEarthSharingState();
   resetDevForestMemoryStoreForTests();
   resetDevMailState();
   resetDevWorldStoreForTests();
@@ -1247,6 +1249,7 @@ export function removeDevPerson(
   }
   preserveRecipientDenies(currentUser.id);
   circle.archivedAt = new Date().toISOString();
+  revokeDevEarthCircle(circle.id);
   return { kind: "ok", value: { serverTime: circle.archivedAt } };
 }
 

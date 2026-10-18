@@ -105,7 +105,8 @@ trap 'rm -f -- "${backup_dump}"' EXIT
 
 docker compose --env-file deploy/.env -f deploy/compose.yml \
   exec -T db pg_dump --username zhiv --dbname zhiv \
-  --format=custom --no-owner --no-acl >"${backup_dump}"
+  --format=custom --exclude-table-data=public.earth_latest_locations \
+  --no-owner --no-acl >"${backup_dump}"
 
 docker compose --env-file deploy/.env -f deploy/compose.yml \
   exec -T db pg_restore --list <"${backup_dump}" >/dev/null
@@ -113,6 +114,10 @@ restic backup --stdin --stdin-filename zhiv.dump --tag zhiv-db <"${backup_dump}"
 restic snapshots --tag zhiv-db --latest 1
 )
 ```
+
+Схема геопозиции и настройки доступа сохраняются, но данные временной таблицы
+`earth_latest_locations` исключаются: резервные копии не должны превращаться
+в историю перемещений.
 
 Временный dump содержит пользовательские данные и создаётся с доступом только
 для пользователя запуска. Используйте зашифрованный диск; файл удаляется даже при ошибке.
