@@ -4,11 +4,13 @@ export type { EarthWeatherCondition } from "@/lib/earth-weather-contract";
 export const EARTH_WEATHER_MIN_ZOOM = 3;
 export const EARTH_WEATHER_CACHE_TTL_MS = 15 * 60_000;
 export const EARTH_WEATHER_MAX_STALE_MS = 6 * 60 * 60_000;
-export const EARTH_WEATHER_MIN_INTERVAL_MS = 60_000;
+export const EARTH_WEATHER_MIN_INTERVAL_MS = 15_000;
 export const EARTH_WEATHER_CACHE_LIMIT = 16;
 const REQUEST_TIMEOUT_MS = 12_000;
 const VIEW_SETTLE_MS = 450;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const ERROR_RETRY_MS = 15_000;
+const MAX_ERROR_RETRY_MS = 60_000;
 
 export type EarthWeatherArea = { readonly key: string; readonly longitude: number; readonly latitude: number };
 export type EarthWeatherSnapshot = {
@@ -167,6 +169,7 @@ export function createEarthWeatherController({ provider, onState, cache = shared
   let timer: Timer | null = null;
   let request: { controller: AbortController; deadline: Timer; version: number } | null = null;
   let version = 0;
+  let failureCount = 0;
   let state: EarthWeatherState = { status: "disabled", area: null, snapshot: null, nextRequestAt: null, error: null };
   const minimumInterval = Math.max(EARTH_WEATHER_MIN_INTERVAL_MS,
     Number.isFinite(provider?.minimumIntervalMs) ? provider!.minimumIntervalMs! : 0);
@@ -209,9 +212,10 @@ export function createEarthWeatherController({ provider, onState, cache = shared
     // Retry-After keeps the next request farther into the future.
     after(Math.min(requestAt, cached?.staleUntil ?? Infinity) - now(), () => reconcile());
   }
-  function failure(key: string) {
+  function failure(key: string, providerRetryAt: number | null = null) {
     const cached = cachedWeather(key);
-    const retryAt = Math.max(cache.nextRequestAt(), now() + EARTH_WEATHER_CACHE_TTL_MS);
+    const retryDelay = Math.min(MAX_ERROR_RETRY_MS, ERROR_RETRY_MS * 2 ** Math.min(failureCount++, 2));
+    const retryAt = Math.max(cache.nextRequestAt(), providerRetryAt ?? now() + retryDelay);
     cache.reserve(retryAt);
     publish(cached ? "stale" : "error", cached, retryAt, "Не удалось обновить прогноз.");
     waitUntil(retryAt, cached);
@@ -251,14 +255,14 @@ export function createEarthWeatherController({ provider, onState, cache = shared
         expiresAt,
         staleUntil: Math.min(reading.staleUntil, expiresAt + EARTH_WEATHER_MAX_STALE_MS) };
       cache.put(key, snapshot);
+      failureCount = 0;
       publish(snapshot.stale ? "stale" : "ready", snapshot);
       after(snapshot.expiresAt - now(), () => reconcile());
     }).catch(error => {
       if (disposed || request?.version !== currentVersion || controller.signal.aborted) return;
       cancel(deadline);
       request = null;
-      if (error instanceof WeatherRequestError && error.retryAt !== null) cache.reserve(Math.max(cache.nextRequestAt(), error.retryAt));
-      failure(key);
+      failure(key, error instanceof WeatherRequestError ? error.retryAt : null);
     });
   }
   function reconcile(settleMs = 0) {

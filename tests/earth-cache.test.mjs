@@ -27,13 +27,24 @@ class MemoryCache {
   }
   async delete(key) { const url = typeof key === "string" ? key : key.url; this.deletions.push(url); if (this.deleteError) throw this.deleteError; return this.records.delete(url); }
 }
+class MemoryLocks {
+  tail = Promise.resolve();
+  request(name, options, callback) {
+    const result = this.tail.then(() => {
+      if (options.signal.aborted) throw new DOMException("cancelled", "AbortError");
+      return callback({ name });
+    });
+    this.tail = result.catch(() => undefined);
+    return result;
+  }
+}
 function platform(overrides = {}) {
   const cache = new MemoryCache();
   const opened = [];
   const calls = [];
   const environment = {
     cacheStorage: { async open(name) { opened.push(name); return cache; } },
-    storageManager: null,
+    storageManager: null, lockManager: new MemoryLocks(),
     fetcher: async (url, init) => { calls.push({ url, init }); return new Response(JSON.stringify(mapJson(url)), { headers: { "content-type": "application/json" } }); },
     attempts: 1, timeoutMs: 500, origin: "https://zhiv.test", ...overrides,
   };
@@ -438,9 +449,7 @@ test("stalled cache open, inventory, lookup and body reads fall back to usable s
     if (operation === "match" || operation === "body") {
       await s.controller.initialize();
       s.cache.match = operation === "match" ? async () => new Promise(() => {}) : async () => {
-        const response = new Response("saved");
-        response.arrayBuffer = async () => new Promise(() => {});
-        return response;
+        return new Response(new ReadableStream({ start() { /* The actual body read never settles. */ } }));
       };
     }
     const url = `${base}/recovered-${operation}`;
@@ -507,4 +516,168 @@ test("revisited tiles use bounded memory before disk while a reload still reads 
   assert.equal(lookups, beforeRead + 1, "disk-hit tiles are retained for immediate rotations back");
   assert.equal(s.calls.length, 1);
   assert.equal(reloaded.getSnapshot().cacheHits, 2);
+});
+
+test("frequent visited detail survives a scan of one-off distant tiles within disk and memory caps", async () => {
+  const s = platform({ maxEntries: 2, maxBytes: 8, fetcher: async () => new Response(new Uint8Array([10, 1, 0])) });
+  const frequent = `${base}/planet/dated/10/512/512.pbf`;
+  for (let i = 0; i < 5; i++) await s.controller.readResource(frequent);
+  for (let i = 0; i < 20; i++) {
+    await s.controller.readResource(`${base}/planet/dated/14/${i}/0.pbf`);
+    const snapshot = s.controller.getSnapshot();
+    assert.ok(snapshot.storedEntries <= 2);
+    assert.ok(snapshot.storedBytes <= 8);
+    assert.ok(snapshot.memoryEntries <= 2);
+    assert.ok(snapshot.memoryBytes <= 8);
+    assert.equal(s.cache.records.has(frequent), true);
+  }
+  assert.equal(s.opened.length, 1);
+});
+
+test("current viewport admits nearby detail while unrelated once-read detail can be skipped", async () => {
+  const s = platform({ maxEntries: 1, maxBytes: 8, fetcher: async () => new Response(new Uint8Array([10, 1, 0])) });
+  const local = `${base}/planet/dated/10/512/512.pbf`, distant = `${base}/planet/dated/10/20/20.pbf`;
+  s.controller.setView({ longitude: 0, latitude: 0, zoom: 10 });
+  await s.controller.readResource(local);
+  await s.controller.readResource(distant);
+  assert.equal(s.cache.records.has(local), true);
+  assert.equal(s.cache.records.has(distant), false);
+  s.controller.setView({ longitude: -172.8, latitude: 84.3, zoom: 10 });
+  await s.controller.readResource(distant);
+  assert.equal(s.cache.records.has(distant), true);
+  assert.equal(s.cache.records.size, 1);
+  assert.equal(s.controller.getSnapshot().storageIssue, null);
+});
+
+test("slow disk keeps completed bodies inside the same global slots instead of building an unbounded write queue", async () => {
+  const releases = [], fetched = [];
+  const s = platform({ concurrency: 2, storageTimeoutMs: 1000, fetcher: async url => { fetched.push(url); return new Response("tile"); } });
+  const put = s.cache.put.bind(s.cache);
+  s.cache.put = async (...args) => { await new Promise(resolve => releases.push(resolve)); return put(...args); };
+  const requests = [0, 1, 2, 3].map(i => s.controller.readResource(`${base}/slow-disk-${i}`, "string"));
+  await tick(); await tick();
+  assert.equal(fetched.length, 2, "only two bodies can wait for disk at once");
+  while (s.controller.getSnapshot().pending) {
+    for (const release of releases.splice(0)) release();
+    await tick();
+  }
+  assert.equal((await Promise.all(requests)).length, 4);
+  assert.ok(s.controller.getSnapshot().memoryBytes <= s.controller.getBudgets().memoryBytes);
+});
+
+test("pending job count is globally bounded and duplicate consumers still share a full queue", async () => {
+  let finish, calls = 0;
+  const s = platform({ concurrency: 1, fetcher: async () => { calls++; await new Promise(resolve => { finish = resolve; }); return new Response("ok"); } });
+  const owner = new AbortController();
+  const pending = Array.from({ length: s.controller.getBudgets().pendingEntries }, (_, i) => s.controller.readResource(`${base}/bounded-${i}`, "string", owner.signal));
+  const settled = Promise.allSettled(pending);
+  await tick();
+  await assert.rejects(s.controller.readResource(`${base}/overflow`, "string"), /queue is full/);
+  const shared = s.controller.readResource(`${base}/bounded-0`, "string");
+  owner.abort();
+  finish();
+  assert.equal((await shared).data, "ok");
+  await settled;
+  assert.equal(calls, 1);
+  assert.equal(s.controller.getSnapshot().pending, 0);
+});
+
+test("streamed bodies stop at the resource budget before aggregation even without Content-Length", async () => {
+  let cancelled = false, pulled = 0;
+  const s = platform({ fetcher: async () => new Response(new ReadableStream({
+    pull(controller) { pulled++; controller.enqueue(new Uint8Array(1024 * 1024)); },
+    cancel() { cancelled = true; },
+  })) });
+  await assert.rejects(s.controller.readResource(`${base}/oversized-stream`, "string"), /size limit/);
+  assert.equal(cancelled, true);
+  assert.ok(pulled <= s.controller.getBudgets().resourceBytes / (1024 * 1024) + 2);
+  assert.equal(s.controller.getSnapshot().memoryBytes, 0);
+  assert.equal(s.cache.records.size, 0);
+});
+
+test("origin-wide cache locks reconcile concurrent controllers before enforcing shared byte and entry limits", async () => {
+  class SharedLocks {
+    tail = Promise.resolve();
+    active = 0;
+    peak = 0;
+    request(name, options, callback) {
+      assert.equal(name, EARTH_CACHE_NAME);
+      assert.equal(options.mode, "exclusive");
+      const result = this.tail.then(async () => {
+        if (options.signal.aborted) throw new DOMException("cancelled", "AbortError");
+        this.active++;
+        this.peak = Math.max(this.peak, this.active);
+        try { return await callback({ name }); }
+        finally { this.active--; }
+      });
+      this.tail = result.catch(() => undefined);
+      return result;
+    }
+  }
+  const locks = new SharedLocks();
+  const s = platform({ maxEntries: 2, maxBytes: 8, lockManager: locks, fetcher: async () => new Response("data") });
+  const other = createEarthResourceCache(s.environment);
+  await Promise.all([s.controller.initialize(), other.initialize()]);
+  await Promise.all(Array.from({ length: 12 }, (_, i) => (i % 2 ? other : s.controller).readResource(`${base}/shared-${i}`, "string")));
+  assert.equal(locks.peak, 1);
+  assert.ok(s.cache.records.size <= 2);
+  const bytes = await Promise.all([...s.cache.records.values()].map(async value => (await value.clone().arrayBuffer()).byteLength));
+  assert.ok(bytes.reduce((sum, value) => sum + value, 0) <= 8);
+  assert.deepEqual(s.opened, [EARTH_CACHE_NAME, EARTH_CACHE_NAME]);
+});
+
+test("without Web Locks old device data stays readable but new resources use only bounded RAM", async () => {
+  const s = platform();
+  const old = `${base}/old-persistent`, added = `${base}/new-readonly`;
+  await s.controller.readResource(old, "json");
+  const writes = s.cache.writes;
+  const readonly = createEarthResourceCache({ ...s.environment, lockManager: null });
+  await readonly.readResource(old, "json");
+  await readonly.readResource(added, "json");
+  await readonly.readResource(added, "json");
+  assert.equal(readonly.getSnapshot().storage, "session");
+  assert.equal(readonly.getSnapshot().cacheHits, 2);
+  assert.equal(s.cache.writes, writes);
+  assert.equal(s.cache.records.has(added), false);
+});
+
+test("a canceled queued lock cannot later mutate storage even if a broken lock provider invokes it", async () => {
+  let queued;
+  const s = platform({ storageTimeoutMs: 5, lockManager: { request(_name, _options, callback) { queued = callback; return new Promise(() => {}); } } });
+  assert.equal((await s.controller.readResource(`${base}/lock-timeout`, "json")).data.name, `${base}/lock-timeout`);
+  assert.equal(s.controller.getSnapshot().storage, "session");
+  await assert.rejects(queued(), /lock timed out/);
+  assert.equal(s.cache.writes, 0);
+});
+
+test("a timed-out physical put retains its origin writer lock until native storage actually settles", async () => {
+  let held = false, finish;
+  const lockManager = { async request(_name, _options, callback) { held = true; try { return await callback(); } finally { held = false; } } };
+  const s = platform({ storageTimeoutMs: 5, lockManager, fetcher: async () => new Response("body") });
+  const put = s.cache.put.bind(s.cache);
+  s.cache.put = async (...args) => { await new Promise(resolve => { finish = resolve; }); return put(...args); };
+  assert.equal((await s.controller.readResource(`${base}/late-write`, "string")).data, "body");
+  assert.equal(s.controller.getSnapshot().storage, "session");
+  assert.equal(held, true, "a different tab cannot race the outstanding native commit");
+  finish();
+  await tick(); await tick();
+  assert.equal(held, false);
+  assert.equal(s.cache.records.size, 1);
+  assert.equal(s.controller.getSnapshot().storedEntries, 0, "late completion must not claim installation success");
+});
+
+test("a stalled disk body still falls back to network while another timed-out physical put holds the writer lock", async () => {
+  const s = platform({ concurrency: 2, storageTimeoutMs: 5, fetcher: async url => new Response(url.endsWith('b') ? 'fresh-b' : 'fresh-a') });
+  await s.controller.initialize();
+  const match = s.cache.match.bind(s.cache);
+  s.cache.match = async key => String(key).endsWith('b') ? new Response(new ReadableStream({ start() {} })) : match(key);
+  let finish;
+  s.cache.put = async () => { await new Promise(resolve => { finish = resolve; }); };
+  const a = s.controller.readResource(`${base}/blocked-a`, "string");
+  const b = s.controller.readResource(`${base}/blocked-b`, "string");
+  try {
+    assert.deepEqual((await Promise.all([a, b])).map(result => result.data), ['fresh-a', 'fresh-b']);
+    assert.equal(s.controller.getSnapshot().pending, 0);
+    assert.equal(s.controller.getSnapshot().failed, 0);
+  } finally { finish?.(); await tick(); }
 });

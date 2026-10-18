@@ -2,11 +2,10 @@ import type { Map as LibreMap } from "maplibre-gl";
 import type { EarthLightingMode } from "./globe-lighting";
 import styles from "./earth-stars.module.css";
 
-type StarMap = Pick<LibreMap, "on" | "off" | "getCanvas" | "getZoom" | "project" | "unproject">;
+type StarMap = Pick<LibreMap, "on" | "off" | "getCanvas" | "project" | "unproject">;
 type ScreenPoint = { x: number; y: number };
 type Star = ScreenPoint & { radius: number; opacity: number; warm: boolean };
 export const EARTH_STAR_COUNT = 128;
-const DRAW_INTERVAL = 100;
 const HORIZON_CLEARANCE = 10;
 
 /** A fixed original sky, not an astronomical catalogue or a random per-frame pattern. */
@@ -43,27 +42,23 @@ export function createEarthStars(map: StarMap, host: HTMLElement, initialMode: E
   let visible = false;
   let disposed = false;
   let mode = initialMode;
-  let lastDraw = -Infinity;
   let lastOutline: number[] = [];
-  let outlineChangedDuringMove = false;
-  const now = () => owner.defaultView?.performance.now() ?? performance.now();
 
   function dimensions() {
     const nativeCanvas = map.getCanvas();
     return { width: nativeCanvas.clientWidth, height: nativeCanvas.clientHeight };
   }
   function outline(width: number, height: number) {
-    return [[0, 0], [width, 0], [width, height], [0, height]].flatMap(point => {
+    return [width, height, ...[[0, 0], [width / 2, 0], [width, 0], [width, height / 2],
+      [width, height], [width / 2, height], [0, height], [0, height / 2]].flatMap(point => {
       const projected = map.project(map.unproject(point as [number, number]));
       return [projected.x, projected.y];
-    });
+    })];
   }
-  function draw() {
+  function draw(currentOutline?: number[]) {
     if (disposed || !visible || !context) return;
     const { width, height } = dimensions();
-    const zoom = map.getZoom();
-    const fade = Math.max(0, Math.min(1, (2.5 - zoom) / 1));
-    if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(zoom) || width <= 0 || height <= 0 || fade <= 0) {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
       canvas.hidden = true;
       return;
     }
@@ -73,10 +68,14 @@ export function createEarthStars(map: StarMap, host: HTMLElement, initialMode: E
     if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
-    const intensity = fade * (mode === "evening" ? 1 : mode === "day" ? 0.4 : 0.7);
+    // The actual projected horizon clips the sky at every zoom. A zoom cutoff
+    // would also remove stars from still-visible space during approach/pitch.
+    const intensity = mode === "evening" ? 1 : mode === "day" ? 0.4 : 0.7;
+    let painted = false;
     for (const star of stars) {
       const point = { x: star.x * width, y: star.y * height };
       if (!isEarthStarInSpace(map, point, star.radius)) continue;
+      painted = true;
       context.globalAlpha = star.opacity * intensity;
       context.fillStyle = star.warm ? "#f9d8b4" : "#d9e8ff";
       context.beginPath(); context.arc(point.x, point.y, star.radius, 0, Math.PI * 2); context.fill();
@@ -86,25 +85,25 @@ export function createEarthStars(map: StarMap, host: HTMLElement, initialMode: E
       }
     }
     context.globalAlpha = 1;
-    lastOutline = outline(width, height);
-    lastDraw = now();
-    canvas.hidden = false;
+    lastOutline = currentOutline ?? outline(width, height);
+    canvas.hidden = !painted;
   }
   function onMove() {
-    if (disposed || !visible || !context || outlineChangedDuringMove) return;
-    if (map.getZoom() >= 2.5) { canvas.hidden = true; return; }
+    if (disposed || !visible || !context) return;
     const { width, height } = dimensions();
-    const currentOutline = outline(width, height);
-    // Rotation usually preserves the silhouette. If zoom/pitch changes it,
-    // hide until moveend rather than leave stale stars drawn over new land.
-    if (lastOutline.length && currentOutline.some((value, index) => !Number.isFinite(value) || Math.abs(value - lastOutline[index]) > 2)) {
-      outlineChangedDuringMove = true;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
       canvas.hidden = true;
+      lastOutline = [];
       return;
     }
-    if (now() - lastDraw >= DRAW_INTERVAL) draw();
+    const currentOutline = outline(width, height);
+    // Rotation normally preserves the silhouette and leaves this static bitmap
+    // intact. Zoom/pitch redraw the changed clipping immediately on the camera
+    // event: no hidden-until-moveend blink and no independent animation loop.
+    if (!lastOutline.length || currentOutline.some((value, index) => !Number.isFinite(value)
+      || Math.abs(value - lastOutline[index]) > 0.1)) draw(currentOutline);
   }
-  function onMoveEnd() { outlineChangedDuringMove = false; draw(); }
+  function onMoveEnd() { draw(); }
   map.on("move", onMove);
   map.on("moveend", onMoveEnd);
   map.on("resize", onMoveEnd);
@@ -112,7 +111,6 @@ export function createEarthStars(map: StarMap, host: HTMLElement, initialMode: E
     setVisible(next: boolean) {
       if (disposed || next === visible) return;
       visible = next;
-      outlineChangedDuringMove = false;
       if (visible) draw(); else canvas.hidden = true;
     },
     setMode(next: EarthLightingMode) { if (!disposed && next !== mode) { mode = next; draw(); } },

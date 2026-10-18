@@ -49,11 +49,12 @@ function fixture() {
   let now = 0, sequence = 0;
   const timers = new Map();
   const mapEvents = new Events();
-  const camera = { longitude: 0, latitude: 0, bearing: 0, pitch: 0 };
+  const camera = { longitude: 0, latitude: 0, bearing: 0, pitch: 0, zoom: 1 };
   const map = {
     getCenter: () => ({ lng: camera.longitude, lat: camera.latitude }),
     getBearing: () => camera.bearing,
     getPitch: () => camera.pitch,
+    getZoom: () => camera.zoom,
     on: (type, listener) => mapEvents.addEventListener(type, listener),
     off: (type, listener) => mapEvents.removeEventListener(type, listener),
   };
@@ -114,6 +115,21 @@ test("rotation only moves the portrait; settling leaves no JavaScript animation 
   assert.equal(s.portrait.dataset.motion, "settling");
   assert.equal(s.portrait.style["--marker-lean"], "0deg");
   assert.equal(s.timers.size, 0);
+  s.dispose();
+});
+
+test("the player portrait hides at extreme distance and returns at its geographic anchor", () => {
+  const s = fixture();
+  s.marker.emit("click");
+  assert.equal(s.timers.size, 1);
+  s.move({ zoom: -1.5 });
+  assert.equal(s.marker.style.visibility, "hidden");
+  assert.ok("disabled" in s.marker.attributes);
+  assert.equal(s.timers.size, 0);
+  assert.equal(s.marker.style.transform, "translate(100px, 120px)");
+  s.move({ zoom: 0.5 });
+  assert.equal(s.marker.style.visibility, "");
+  assert.ok(!("disabled" in s.marker.attributes));
   s.dispose();
 });
 

@@ -108,19 +108,21 @@ test("only ready-visible space receives dots; day, auto and evening have distinc
   stars.dispose();
 });
 
-test("camera draws are throttled, silhouette changes cannot leave stale stars over Earth, and moveend restores them", () => {
+test("rotation keeps a static sky and zoom redraws its horizon immediately without hiding during camera motion", () => {
   const state = scene();
   const stars = state.create();
   stars.setVisible(true);
   for (let time = 1; time < 100; time += 10) { state.setTime(time); state.emit("move"); }
   assert.equal(state.clears, 1);
   state.setTime(100); state.emit("move");
-  assert.equal(state.clears, 2);
+  assert.equal(state.clears, 1, "unchanged silhouette does not redraw a fixed star bitmap");
   state.setRadius(190);
   state.setTime(110); state.emit("move");
-  assert.equal(state.canvas.hidden, true, "a stale clipping mask is never painted over a zooming or pitched globe");
+  assert.equal(state.canvas.hidden, false, "safe updated stars remain visible throughout zoom/pitch");
+  assert.equal(state.clears, 2);
+  for (const dot of state.painted) assert.ok(Math.hypot(dot.x - 195, dot.y - 422) > 200 + dot.radius);
   state.setTime(300); state.emit("move");
-  assert.equal(state.clears, 2, "unsafe camera motion stays hidden until its final projection");
+  assert.equal(state.clears, 2, "only a changed projected horizon needs a redraw");
   state.emit("moveend");
   assert.equal(state.canvas.hidden, false);
   assert.equal(state.clears, 3);
@@ -128,17 +130,32 @@ test("camera draws are throttled, silhouette changes cannot leave stale stars ov
   stars.dispose();
 });
 
-test("street zoom, hidden state, missing Canvas2D and disposal perform no continuing star work", () => {
+test("stars follow visible space at any zoom and disappear only when Earth fills the view", () => {
   const state = scene();
   const stars = state.create();
   stars.setVisible(true);
-  state.setZoom(2.5); state.emit("moveend");
+  for (const zoom of [1.5, 2.5, 4.2, 16]) {
+    state.setZoom(zoom); state.emit("moveend");
+    assert.equal(state.canvas.hidden, false, "remaining sky is not erased by a zoom cutoff");
+    assert.ok(state.painted.length > 0);
+  }
+  state.setRadius(1_000); state.emit("move");
   assert.equal(state.canvas.hidden, true);
+  assert.equal(state.painted.length, 0, "no star remains over an Earth-filled viewport");
+  state.setRadius(160); state.emit("move");
+  assert.equal(state.canvas.hidden, false, "a newly visible horizon restores stars before moveend");
+  stars.dispose();
+});
+
+test("hidden state, missing Canvas2D and disposal perform no continuing star work", () => {
+  const state = scene({ radius: 1_000 });
+  const stars = state.create();
+  stars.setVisible(true);
   const streetClears = state.clears;
   const streetProjections = state.projections;
   state.setTime(1000); state.emit("move");
   assert.equal(state.clears, streetClears);
-  assert.equal(state.projections, streetProjections);
+  assert.ok(state.projections > streetProjections, "camera events only inspect the current horizon");
   stars.setVisible(false);
   const hiddenProjections = state.projections;
   state.emit("move"); state.emit("moveend"); state.emit("resize"); stars.setMode("evening");

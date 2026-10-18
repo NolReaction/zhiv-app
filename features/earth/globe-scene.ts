@@ -1,7 +1,7 @@
 import type { Map as LibreMap, MapMouseEvent, Marker } from "maplibre-gl";
 import { createEarthClouds } from "./globe-clouds";
 import { createEarthOceanMotion } from "./globe-ocean";
-import { createEarthLightingController, type EarthLightingMode } from "./globe-lighting";
+import { createEarthLightingController, type EarthLightingCenter, type EarthLightingMode } from "./globe-lighting";
 import { createEarthSceneClock } from "./scene-clock";
 import { createEarthWeather } from "./earth-weather";
 import type { EarthWeatherSnapshot } from "./weather";
@@ -10,10 +10,11 @@ import { createEarthLandmarks } from "./globe-landmarks";
 export const EARTH_SCENE_MOTION_MAX_ZOOM = 4.2;
 
 /** All decorative motion belongs to this map, never the app or the GPS watch. */
-export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof Marker, mode: EarthLightingMode) {
+export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof Marker, mode: EarthLightingMode,
+  initialEveningCenter?: EarthLightingCenter) {
   const clouds = createEarthClouds(map, MarkerConstructor);
   const ocean = createEarthOceanMotion(map, MarkerConstructor);
-  const lighting = createEarthLightingController(map, { mode, center: map.getCenter() });
+  const lighting = createEarthLightingController(map, { mode, center: initialEveningCenter ?? map.getCenter() });
   const weather = createEarthWeather(map, MarkerConstructor);
   const landmarks = createEarthLandmarks(map, MarkerConstructor);
   const motionPreference = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
@@ -61,9 +62,9 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
     setVisible(value: boolean) { if (disposed) return; foreground = value; synchronize(); },
     setWeather(value: EarthWeatherSnapshot | null) { if (disposed) return; weather.setWeather(value); synchronize(); },
     setReady(value: boolean) { if (disposed) return; ready = value; synchronize(); },
-    setLighting(value: EarthLightingMode) {
+    setLighting(value: EarthLightingMode, eveningCenter?: EarthLightingCenter) {
       if (disposed) return;
-      lighting.setMode(value, map.getCenter());
+      lighting.setMode(value, eveningCenter);
       synchronize();
     },
     dispose() {

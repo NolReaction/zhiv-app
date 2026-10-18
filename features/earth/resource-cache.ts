@@ -1,4 +1,5 @@
 import type { AddProtocolAction, RequestParameters } from "maplibre-gl";
+import { createEarthCachePolicy, earthCacheBudgets, type EarthCacheView } from "./resource-cache-policy";
 
 export const EARTH_CACHE_PROTOCOL = "earth-cache";
 export const EARTH_CACHE_NAME = "zhiv-earth-openfreemap-v1";
@@ -17,14 +18,20 @@ export type EarthCacheSnapshot = {
   storedEntries: number;
   quotaBytes: number | null;
   usageBytes: number | null;
+  diskLimitBytes: number;
+  memoryLimitBytes: number;
+  memoryBytes: number;
+  memoryEntries: number;
 };
 
 export type EarthCacheOptions = {
   cacheStorage?: Pick<CacheStorage, "open"> | null;
   storageManager?: Pick<StorageManager, "persist" | "persisted" | "estimate"> | null;
+  lockManager?: Pick<LockManager, "request"> | null;
   fetcher?: typeof fetch;
   origin?: string;
   maxBytes?: number;
+  deviceMemory?: number;
   maxEntries?: number;
   concurrency?: number;
   timeoutMs?: number;
@@ -48,9 +55,19 @@ function isAbort(error: unknown): boolean { return error instanceof Error && err
 
 /** Public map data only: never account API calls, location fixes, or arbitrary URLs. */
 export function createEarthResourceCache(options: EarthCacheOptions = {}) {
-  const maxBytes = options.maxBytes ?? 100 * 1024 * 1024;
-  const maxEntries = options.maxEntries ?? 512;
-  const concurrency = Math.max(1, options.concurrency ?? 4);
+  let deviceMemory = options.deviceMemory;
+  if (deviceMemory === undefined) {
+    try { deviceMemory = typeof navigator === "undefined" ? undefined : (navigator as Navigator & { deviceMemory?: number }).deviceMemory; } catch { /* Optional hint. */ }
+  }
+  let budgets = earthCacheBudgets({ ...options, deviceMemory });
+  let maxBytes = budgets.diskBytes;
+  const maxEntries = budgets.diskEntries;
+  const concurrency = budgets.concurrency;
+  const policy = createEarthCachePolicy();
+  let lockManager = options.lockManager;
+  if (lockManager === undefined) {
+    try { lockManager = typeof navigator === "undefined" ? null : navigator.locks ?? null; } catch { lockManager = null; }
+  }
   const timeoutMs = options.timeoutMs ?? 20_000;
   const storageTimeoutMs = options.storageTimeoutMs ?? 3000;
   const attempts = Math.max(1, Math.min(3, options.attempts ?? 2));
@@ -60,19 +77,21 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
   const inFlight = new Map<string, PendingResource>();
   const session = new Map<string, StoredResource>();
   const invalidated = new Set<string>();
-  const queue: Array<() => void> = [];
+  const queue: Array<{ ready: () => void; url: string }> = [];
   let running = 0;
   let memoryBytes = 0;
   let cache: Cache | null = null;
   let writable = true;
   let initialization: Promise<void> | null = null;
   let mutations: Promise<unknown> = Promise.resolve();
+  const physicalMutations = new Set<Promise<unknown>>();
   let inventory = new Map<string, InventoryEntry>();
   let protectedVendor: string | null = null;
   let snapshot: EarthCacheSnapshot = {
     storage: "checking", persistence: "unknown", storageIssue: null,
     pending: 0, completed: 0, failed: 0, cacheHits: 0, networkBytes: 0,
     storedBytes: 0, storedEntries: 0, quotaBytes: null, usageBytes: null,
+    diskLimitBytes: maxBytes, memoryLimitBytes: budgets.memoryBytes, memoryBytes: 0, memoryEntries: 0,
   };
 
   function update(values: Partial<EarthCacheSnapshot>) {
@@ -82,8 +101,36 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
   function inventoryChanged() {
     update({ storedEntries: inventory.size, storedBytes: [...inventory.values()].reduce((sum, item) => sum + item.size, 0) });
   }
+  async function withCacheLock<T>(operation: () => Promise<T>): Promise<T> {
+    if (!lockManager) return operation();
+    const controller = new AbortController();
+    let complete!: (value: T) => void;
+    let fail!: (reason: unknown) => void;
+    const outcome = new Promise<T>((resolve, reject) => { complete = resolve; fail = reject; });
+    const timer = setTimeout(() => {
+      controller.abort(); fail(new StorageTimeoutError("Map storage lock timed out"));
+    }, storageTimeoutMs);
+    try {
+      const locked = lockManager.request(EARTH_CACHE_NAME, { mode: "exclusive", signal: controller.signal }, async () => {
+        clearTimeout(timer);
+        if (controller.signal.aborted) throw new StorageTimeoutError("Map storage lock timed out");
+        try { complete(await operation()); }
+        catch (error) { fail(error); }
+        finally {
+          // Cache Storage mutations cannot be aborted. Return the bounded
+          // operation outcome to callers while retaining the origin writer lock
+          // until a timed-out native put/delete can no longer commit later.
+          await Promise.allSettled([...physicalMutations]);
+        }
+      });
+      void locked.catch(fail);
+    } catch (error) { fail(error); }
+    try { return await outcome; }
+    finally { clearTimeout(timer); }
+  }
   function serialize<T>(operation: () => Promise<T>): Promise<T> {
-    const result = mutations.then(operation, operation);
+    const run = () => withCacheLock(async () => { await reconcileInventory(); return operation(); });
+    const result = mutations.then(run, run);
     mutations = result.catch(() => undefined);
     return result;
   }
@@ -104,6 +151,12 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
       throw error;
     }
   }
+  function diskMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = operation();
+    physicalMutations.add(pending);
+    void pending.finally(() => physicalMutations.delete(pending)).catch(() => undefined);
+    return cacheOperation(() => pending);
+  }
   function platformStorage(): EarthCacheOptions["storageManager"] {
     if (options.storageManager !== undefined) return options.storageManager;
     try { return typeof navigator === "undefined" ? null : navigator.storage; } catch { return null; }
@@ -112,6 +165,7 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
     const prefix = `${EARTH_CACHE_PROTOCOL}://resource?url=`;
     if (value.startsWith(prefix)) value = decodeURIComponent(value.slice(prefix.length));
     const origin = options.origin ?? (typeof location === "undefined" ? undefined : location.origin);
+    if (value.length > 2048) throw new Error("Unsupported map resource URL");
     const url = new URL(value, origin);
     if (url.username || url.password || url.hash) throw new Error("Unsupported map resource URL");
     if (url.protocol === "https:" && url.hostname === "tiles.openfreemap.org" && !url.port) return url.href;
@@ -128,7 +182,11 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
   async function refreshEstimate() {
     try {
       const estimate = await storageDeadline(async () => platformStorage()?.estimate());
-      if (estimate) update({ quotaBytes: estimate.quota ?? null, usageBytes: estimate.usage ?? null });
+      if (estimate) {
+        budgets = earthCacheBudgets({ ...options, deviceMemory, quotaBytes: estimate.quota, usageBytes: estimate.usage, storedBytes: snapshot.storedBytes });
+        maxBytes = budgets.diskBytes;
+        update({ quotaBytes: estimate.quota ?? null, usageBytes: estimate.usage ?? null, diskLimitBytes: maxBytes });
+      }
     } catch { /* Storage estimates are optional, unlike cached response validation. */ }
   }
   function unavailable(issue: EarthCacheSnapshot["storageIssue"]) {
@@ -141,83 +199,129 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
         const storage = options.cacheStorage !== undefined ? options.cacheStorage : globalThis.caches;
         if (!storage) throw new Error("Cache Storage unavailable");
         cache = await cacheOperation(() => storage.open(EARTH_CACHE_NAME));
-        const records = new Map<string, InventoryEntry>();
-        const disk = cache;
-        const keys = await cacheOperation(() => disk.keys());
-        // Read metadata in small batches instead of a disk round-trip per tile.
-        for (let offset = 0; offset < keys.length; offset += 16) {
-          const batch = keys.slice(offset, offset + 16);
-          const responses = await Promise.all(batch.map(key => cacheOperation(() => disk.match(key))));
-          for (const [index, key] of batch.entries()) {
-            const response = responses[index];
-            const size = Number(response?.headers.get(SIZE));
-            const saved = Number(response?.headers.get(SAVED));
-            let allowed = false;
-            try { allowed = originalUrl(key.url) === key.url; } catch { /* Remove obsolete/unrecognized records. */ }
-            if (allowed && response?.headers.get(MARKER) === EARTH_CACHE_NAME && Number.isSafeInteger(size) && size >= 0 && size <= MAX_RESOURCE_BYTES && Number.isFinite(saved) && saved > 0) {
-              records.set(key.url, { url: key.url, size, saved });
-            } else await cacheOperation(() => disk.delete(key));
+        await withCacheLock(async () => {
+          const records = new Map<string, InventoryEntry>();
+          const disk = cache!;
+          const keys = await cacheOperation(() => disk.keys());
+          // Read metadata in small batches instead of a disk round-trip per tile.
+          for (let offset = 0; offset < keys.length; offset += 16) {
+            const batch = keys.slice(offset, offset + 16);
+            const responses = await Promise.all(batch.map(key => cacheOperation(() => disk.match(key))));
+            for (const [index, key] of batch.entries()) {
+              const response = responses[index];
+              const size = Number(response?.headers.get(SIZE));
+              const saved = Number(response?.headers.get(SAVED));
+              let allowed = false;
+              try { allowed = originalUrl(key.url) === key.url; } catch { /* Remove obsolete/unrecognized records. */ }
+              if (allowed && response?.headers.get(MARKER) === EARTH_CACHE_NAME && Number.isSafeInteger(size) && size >= 0 && size <= MAX_RESOURCE_BYTES && Number.isFinite(saved) && saved > 0) {
+                records.set(key.url, { url: key.url, size, saved });
+              } else await diskMutation(() => disk.delete(key));
+            }
           }
-        }
-        inventory = records;
-        if (!protectedVendor) {
-          const versions = [...new Set([...records.keys()].map(vendorVersion).filter((value): value is string => value !== null))];
-          versions.sort((left, right) => {
-            const a = left.split(".").map(Number), b = right.split(".").map(Number);
-            return b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
-          });
-          protectedVendor = versions[0] ?? null;
-        }
-        const protectedEntries = [...records.values()].filter(item => vendorVersion(item.url) === protectedVendor);
-        if (protectedEntries.length > maxEntries || protectedEntries.reduce((sum, item) => sum + item.size, 0) > maxBytes) protectedVendor = null;
-        await trim();
-        inventoryChanged();
-        update({ storage: "device" });
+          inventory = records;
+          if (!protectedVendor) {
+            const versions = [...new Set([...records.keys()].map(vendorVersion).filter((value): value is string => value !== null))];
+            versions.sort((left, right) => {
+              const a = left.split(".").map(Number), b = right.split(".").map(Number);
+              return b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
+            });
+            protectedVendor = versions[0] ?? null;
+          }
+          inventoryChanged();
+          await refreshEstimate();
+          const protectedEntries = [...records.values()].filter(item => vendorVersion(item.url) === protectedVendor);
+          if (protectedEntries.length > maxEntries || protectedEntries.reduce((sum, item) => sum + item.size, 0) > maxBytes) protectedVendor = null;
+          await trim();
+          inventoryChanged();
+          update({ storage: "device" });
+          // Without origin-wide serialization, read existing data but never
+          // grow a persistent namespace concurrently from independent tabs.
+          if (!lockManager) unavailable("unavailable");
+        });
         try { if (await storageDeadline(async () => platformStorage()?.persisted())) update({ persistence: "granted" }); } catch { /* Optional API. */ }
       } catch { cache = null; unavailable("unavailable"); }
-      await refreshEstimate();
+      if (!cache) await refreshEstimate();
     })();
     return initialization;
   }
-  async function trim(incomingBytes = 0, incomingEntries = 0) {
+  async function reconcileInventory() {
+    // Other tabs may have written since our previous mutation. Read headers in
+    // bounded batches under the origin-wide lock, never resource bodies.
+    if (!lockManager || !cache) return;
+    const disk = cache;
+    const keys = await cacheOperation(() => disk.keys());
+    const records = new Map<string, InventoryEntry>();
+    for (let offset = 0; offset < keys.length; offset += 16) {
+      const batch = keys.slice(offset, offset + 16);
+      const responses = await Promise.all(batch.map(key => cacheOperation(() => disk.match(key))));
+      for (const [index, key] of batch.entries()) {
+        const response = responses[index];
+        const size = Number(response?.headers.get(SIZE)), saved = Number(response?.headers.get(SAVED));
+        let allowed = false;
+        try { allowed = originalUrl(key.url) === key.url; } catch { /* Invalid entry in our own namespace. */ }
+        if (allowed && response?.headers.get(MARKER) === EARTH_CACHE_NAME && Number.isSafeInteger(size) && size >= 0 && size <= MAX_RESOURCE_BYTES && Number.isFinite(saved) && saved > 0) {
+          records.set(key.url, { url: key.url, size, saved });
+        } else await diskMutation(() => disk.delete(key));
+        void response?.body?.cancel().catch(() => undefined);
+      }
+    }
+    inventory = records;
+  }
+  async function trim(incomingBytes = 0, incomingEntries = 0, incoming?: InventoryEntry) {
     let bytes = [...inventory.values()].reduce((sum, item) => sum + item.size, 0);
-    for (const item of [...inventory.values()].sort((a, b) => a.saved - b.saved)) {
-      if (bytes + incomingBytes <= maxBytes && inventory.size + incomingEntries <= maxEntries) break;
+    let entries = inventory.size;
+    const victims: InventoryEntry[] = [];
+    const candidates = [...inventory.values(), ...(incoming ? [incoming] : [])].sort(policy.compare);
+    for (const item of candidates) {
+      if (bytes + incomingBytes <= maxBytes && entries + incomingEntries <= maxEntries) break;
       if (protectedVendor && vendorVersion(item.url) === protectedVendor) continue;
+      // Admission control: a one-off distant detail must not evict more useful visited data.
+      if (item === incoming) return false;
+      victims.push(item); bytes -= item.size; entries--;
+    }
+    if (bytes + incomingBytes > maxBytes || entries + incomingEntries > maxEntries) return false;
+    for (const item of victims) {
       if (!cache) return false;
       const disk = cache;
-      await cacheOperation(() => disk.delete(item.url));
+      await diskMutation(() => disk.delete(item.url));
       inventory.delete(item.url);
-      bytes -= item.size;
     }
-    return bytes + incomingBytes <= maxBytes && inventory.size + incomingEntries <= maxEntries;
+    return true;
   }
   function remember(url: string, resource: StoredResource) {
     memoryBytes -= session.get(url)?.bytes.byteLength ?? 0;
     session.delete(url);
     session.set(url, resource);
     memoryBytes += resource.bytes.byteLength;
-    const memoryLimit = Math.min(maxBytes, 32 * 1024 * 1024);
-    while (memoryBytes > memoryLimit || session.size > Math.min(maxEntries, 128)) {
-      const oldest = session.keys().next().value as string | undefined;
+    while (memoryBytes > budgets.memoryBytes || session.size > budgets.memoryEntries) {
+      const oldest = [...session].map(([key, value]) => ({ url: key, size: value.bytes.byteLength, saved: value.savedAt })).sort(policy.compare)[0]?.url;
       if (!oldest) break;
       memoryBytes -= session.get(oldest)!.bytes.byteLength;
       session.delete(oldest);
+    }
+    update({ memoryBytes, memoryEntries: session.size });
+  }
+  function markInvalidated(url: string) {
+    invalidated.add(url);
+    if (invalidated.size > 512) {
+      // A failed disk cannot leave an unbounded poison history or become readable again.
+      cache = null; unavailable("write-failed"); invalidated.clear();
     }
   }
   async function invalidate(value: string) {
     const url = originalUrl(value);
     // A failed physical deletion must not make the poisoned entry readable again.
-    invalidated.add(url);
+    markInvalidated(url);
     memoryBytes -= session.get(url)?.bytes.byteLength ?? 0;
     session.delete(url);
+    update({ memoryBytes, memoryEntries: session.size });
     await initialize();
-    await serialize(async () => {
-      try { if (cache) { const disk = cache; await cacheOperation(() => disk.delete(url)); } }
+    await cacheOperation(() => serialize(async () => {
+      try { if (cache) { const disk = cache; await diskMutation(() => disk.delete(url)); } }
       catch (error) { if (!(error instanceof StorageTimeoutError)) unavailable("write-failed"); }
       inventory.delete(url);
       inventoryChanged();
-    });
+    }));
   }
   function validate(resource: StoredResource, url: string, type: EarthResourceType) {
     const bytes = new Uint8Array(resource.bytes);
@@ -269,19 +373,27 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
       const disk = cache;
       const response = await cacheOperation(() => disk.match(url));
       if (!response) return null;
-      const resource = { bytes: await cacheOperation(() => response.arrayBuffer()), contentType: response.headers.get("content-type") ?? "", cacheControl: response.headers.get("cache-control"), expires: response.headers.get("expires"), savedAt: Number(response.headers.get(SAVED)) };
+      const reading = new AbortController();
+      let bytes: ArrayBuffer;
+      try { bytes = await cacheOperation(() => boundedBody(response, reading.signal)); }
+      finally { reading.abort(); }
+      const resource = { bytes, contentType: response.headers.get("content-type") ?? "", cacheControl: response.headers.get("cache-control"), expires: response.headers.get("expires"), savedAt: Number(response.headers.get(SAVED)) };
       if (!response.ok || response.headers.get(MARKER) !== EARTH_CACHE_NAME || Number(response.headers.get(SIZE)) !== resource.bytes.byteLength) throw new Error("Damaged map cache");
       validate(resource, url, type);
       remember(url, resource);
       return resource;
     } catch {
-      invalidated.add(url);
-      await serialize(async () => {
-        try { if (cache) { const disk = cache; await cacheOperation(() => disk.delete(url)); } }
+      markInvalidated(url);
+      try { await cacheOperation(() => serialize(async () => {
+        try { if (cache) { const disk = cache; await diskMutation(() => disk.delete(url)); } }
         catch (error) { if (!(error instanceof StorageTimeoutError)) unavailable("write-failed"); }
         inventory.delete(url);
         inventoryChanged();
-      });
+      })); } catch {
+        // A different timed-out physical mutation may still own the writer lock.
+        // Poisoned disk cleanup must not block the usable network/session path.
+        inventory.delete(url); inventoryChanged();
+      }
       return null;
     }
   }
@@ -297,11 +409,13 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
       try {
         const disk = cache;
         const previous = inventory.get(url);
-        if (previous) { await cacheOperation(() => disk.delete(url)); inventory.delete(url); }
-        const room = await trim(resource.bytes.byteLength, 1);
+        if (previous) { await diskMutation(() => disk.delete(url)); inventory.delete(url); }
+        const room = await trim(resource.bytes.byteLength, 1, { url, size: resource.bytes.byteLength, saved: resource.savedAt });
         if (!writable || cache !== disk) return;
         if (!room) {
-          update({ storageIssue: "resource-too-large" });
+          // Report a genuinely full pinned runtime separately from policy admission.
+          const pinned = [...inventory.values()].filter(item => protectedVendor && vendorVersion(item.url) === protectedVendor);
+          if (pinned.length + 1 > maxEntries || pinned.reduce((sum, item) => sum + item.size, 0) + resource.bytes.byteLength > maxBytes) update({ storageIssue: "resource-too-large" });
           remember(url, resource);
           inventoryChanged();
           return;
@@ -310,7 +424,7 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
         const headers = new Headers({ [MARKER]: EARTH_CACHE_NAME, [SIZE]: String(resource.bytes.byteLength), [SAVED]: String(saved), "content-type": resource.contentType });
         if (resource.cacheControl) headers.set("cache-control", resource.cacheControl);
         if (resource.expires) headers.set("expires", resource.expires);
-        await cacheOperation(() => disk.put(url, new Response(resource.bytes.slice(0), { headers })));
+        await diskMutation(() => disk.put(url, new Response(resource.bytes.slice(0), { headers })));
         if (!writable || cache !== disk) return;
         invalidated.delete(url);
         inventory.set(url, { url, size: resource.bytes.byteLength, saved });
@@ -321,86 +435,122 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
       inventoryChanged();
     });
   }
-  async function slot(signal: AbortSignal): Promise<() => void> {
+  async function slot(signal: AbortSignal, url: string): Promise<() => void> {
     if (signal.aborted) throw abortError();
     const waited = running >= concurrency;
     function release() {
+      queue.sort((a, b) => -policy.compare({ url: a.url, size: 0, saved: 0 }, { url: b.url, size: 0, saved: 0 }));
       const next = queue.shift();
-      if (next) next();
+      if (next) next.ready();
       else running -= 1;
     }
     if (waited) await new Promise<void>((resolve, reject) => {
       function ready() { signal.removeEventListener("abort", aborted); resolve(); }
-      function aborted() { const index = queue.indexOf(ready); if (index >= 0) queue.splice(index, 1); reject(abortError()); }
-      queue.push(ready);
+      function aborted() { const index = queue.findIndex(item => item.ready === ready); if (index >= 0) queue.splice(index, 1); reject(abortError()); }
+      queue.push({ ready, url });
       signal.addEventListener("abort", aborted, { once: true });
     });
     if (signal.aborted) { if (waited) release(); throw abortError(); }
     if (!waited) running += 1;
     return release;
   }
-  async function download(url: string, type: EarthResourceType, signal: AbortSignal, revalidate = false): Promise<StoredResource> {
-    const attemptLimit = revalidate ? 1 : attempts;
-    const deadlineMs = revalidate ? Math.min(timeoutMs, 5000) : timeoutMs;
-    for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
-      // A timed-out tile rejoins the queue, so its retry cannot hold a network
-      // slot while all the newly visible tiles wait behind it.
-      const release = await slot(signal);
-      const controller = new AbortController();
-      const abort = () => controller.abort();
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        if (signal.aborted) throw abortError();
-        signal.addEventListener("abort", abort, { once: true });
-        return await Promise.race([
-          (async () => {
-            const response = await fetcher(url, { signal: controller.signal, mode: "cors", credentials: "omit", cache: revalidate ? "no-cache" : "default" });
-            if (!response.ok || response.type === "opaque" || response.type === "opaqueredirect") throw new Error(`Map resource HTTP ${response.status}`);
-            if (response.url) originalUrl(response.url);
-            if (Number(response.headers.get("content-length")) > MAX_RESOURCE_BYTES) throw new Error("Map resource exceeds the size limit");
-            const resource = { bytes: await response.arrayBuffer(), contentType: response.headers.get("content-type") ?? "", cacheControl: response.headers.get("cache-control"), expires: response.headers.get("expires"), savedAt: Date.now() };
-            if (controller.signal.aborted) throw signal.aborted ? abortError() : new Error("Map request timed out");
-            update({ networkBytes: snapshot.networkBytes + resource.bytes.byteLength });
-            validate(resource, url, type);
-            return resource;
-          })(),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => { controller.abort(); reject(new Error("Map request timed out")); }, deadlineMs);
-            controller.signal.addEventListener("abort", () => reject(signal.aborted ? abortError() : new Error("Map request timed out")), { once: true });
-          }),
-        ]);
-      } catch (error) {
-        if (signal.aborted) throw abortError();
-        if (attempt + 1 === attemptLimit) throw isAbort(error) ? new Error("Map request interrupted") : error;
-      }
-      finally { if (timer) clearTimeout(timer); signal.removeEventListener("abort", abort); release(); }
+  async function boundedBody(response: Response, signal?: AbortSignal) {
+    const limit = Math.min(MAX_RESOURCE_BYTES, budgets.resourceBytes);
+    if (Number(response.headers.get("content-length")) > limit) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new Error("Map resource exceeds the size limit");
     }
-    throw new Error("Map request failed");
+    if (!response.body) return new ArrayBuffer(0);
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    const abort = () => { void reader.cancel().catch(() => undefined); };
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      if (signal?.aborted) throw abortError();
+      while (true) {
+        const part = await reader.read();
+        if (signal?.aborted) throw abortError();
+        if (part.done) break;
+        length += part.value.byteLength;
+        if (length > limit) {
+          void reader.cancel().catch(() => undefined);
+          throw new Error("Map resource exceeds the size limit");
+        }
+        if (part.value.byteLength) chunks.push(part.value);
+        if (chunks.length > 4096) {
+          void reader.cancel().catch(() => undefined);
+          throw new Error("Map resource has too many body chunks");
+        }
+      }
+      const result = new Uint8Array(length);
+      let offset = 0;
+      for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
+      return result.buffer;
+    } finally { signal?.removeEventListener("abort", abort); reader.releaseLock(); }
+  }
+  async function download(url: string, type: EarthResourceType, signal: AbortSignal, revalidate = false): Promise<StoredResource> {
+    const deadlineMs = revalidate ? Math.min(timeoutMs, 5000) : timeoutMs;
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (signal.aborted) throw abortError();
+      signal.addEventListener("abort", abort, { once: true });
+      return await Promise.race([
+        (async () => {
+          const response = await fetcher(url, { signal: controller.signal, mode: "cors", credentials: "omit", cache: revalidate ? "no-cache" : "default" });
+          if (!response.ok || response.type === "opaque" || response.type === "opaqueredirect") throw new Error(`Map resource HTTP ${response.status}`);
+          if (response.url) originalUrl(response.url);
+          const resource = { bytes: await boundedBody(response, controller.signal), contentType: response.headers.get("content-type") ?? "", cacheControl: response.headers.get("cache-control"), expires: response.headers.get("expires"), savedAt: Date.now() };
+          if (controller.signal.aborted) throw signal.aborted ? abortError() : new Error("Map request timed out");
+          update({ networkBytes: snapshot.networkBytes + resource.bytes.byteLength });
+          validate(resource, url, type);
+          return resource;
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => { controller.abort(); reject(new Error("Map request timed out")); }, deadlineMs);
+          controller.signal.addEventListener("abort", () => reject(signal.aborted ? abortError() : new Error("Map request timed out")), { once: true });
+        }),
+      ]);
+    } finally { if (timer) clearTimeout(timer); signal.removeEventListener("abort", abort); }
   }
   async function load(url: string, type: EarthResourceType, signal: AbortSignal) {
     await initialize();
-    if (signal.aborted) throw abortError();
-    const found = await stored(url, type);
-    if (signal.aborted) throw abortError();
-    const parsed = new URL(url);
-    const mutable = parsed.hostname === "tiles.openfreemap.org" && (parsed.pathname.startsWith("/styles/") || /^\/planet\/?$/.test(parsed.pathname));
-    const stale = found && mutable && Date.now() - found.savedAt >= mutableMaxAgeMs;
-    if (found && !stale) { update({ cacheHits: snapshot.cacheHits + 1 }); return found; }
-    let resource: StoredResource;
-    try { resource = await download(url, type, signal, Boolean(stale)); }
-    catch (error) {
-      if (signal.aborted) throw abortError();
-      // A usable saved index is more useful offline than a failed refresh.
-      if (found) { update({ cacheHits: snapshot.cacheHits + 1 }); return found; }
-      throw error;
+    let found: StoredResource | null = null;
+    let stale = false;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      // One slot covers disk body, network body and queued save. Completed
+      // responses cannot pile up behind slow writes after freeing network slots.
+      const release = await slot(signal, url);
+      try {
+        if (signal.aborted) throw abortError();
+        if (attempt === 0) {
+          found = await stored(url, type);
+          if (signal.aborted) throw abortError();
+          const parsed = new URL(url);
+          const mutable = parsed.hostname === "tiles.openfreemap.org" && (parsed.pathname.startsWith("/styles/") || /^\/planet\/?$/.test(parsed.pathname));
+          stale = Boolean(found && mutable && Date.now() - found.savedAt >= mutableMaxAgeMs);
+          if (found && !stale) { update({ cacheHits: snapshot.cacheHits + 1 }); return found; }
+        }
+        let resource: StoredResource;
+        try { resource = await download(url, type, signal, stale); }
+        catch (error) {
+          if (signal.aborted) throw abortError();
+          if (found) { update({ cacheHits: snapshot.cacheHits + 1 }); return found; }
+          throw error;
+        }
+        if (signal.aborted) throw abortError();
+        try { await cacheOperation(() => save(url, resource)); }
+        catch (error) { if (!(error instanceof StorageTimeoutError)) throw error; }
+        if (signal.aborted) throw abortError();
+        return resource;
+      } catch (error) {
+        if (signal.aborted) throw abortError();
+        if (attempt + 1 === attempts) throw isAbort(error) ? new Error("Map request interrupted") : error;
+      } finally { release(); }
     }
-    if (signal.aborted) throw abortError();
-    // Bound the queue wait too: many individually slow writes must not freeze
-    // decoded tiles behind disk work. The validated session copy already exists.
-    try { await cacheOperation(() => save(url, resource)); }
-    catch (error) { if (!(error instanceof StorageTimeoutError)) throw error; }
-    if (signal.aborted) throw abortError();
-    return resource;
+    throw new Error("Map request failed");
   }
   async function readResource(value: string, type: EarthResourceType = "arrayBuffer", signal?: AbortSignal) {
     const url = originalUrl(value);
@@ -409,6 +559,8 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
     if (version) protectedVendor = version;
     let entry = inFlight.get(url);
     if (!entry) {
+      if (inFlight.size >= budgets.pendingEntries) throw new Error("Map request queue is full");
+      policy.touch(url);
       const controller = new AbortController();
       update({ pending: snapshot.pending + 1 });
       entry = { controller, consumers: 0, promise: Promise.resolve(null as unknown as StoredResource) };
@@ -450,9 +602,17 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
     catch { update({ persistence: "best-effort" }); }
     await initialize();
     await refreshEstimate();
+    if (!cache || !writable) return;
+    try { await cacheOperation(() => serialize(async () => {
+      const protectedBytes = [...inventory.values()].filter(item => vendorVersion(item.url) === protectedVendor).reduce((sum, item) => sum + item.size, 0);
+      if (protectedBytes > maxBytes) protectedVendor = null;
+      await trim(); inventoryChanged();
+    })); } catch { /* Persistence controls also have a bounded disk deadline. */ }
   }
   return {
     initialize, readResource, protocol, transformRequest, invalidate, requestPersistence,
+    setView(view: EarthCacheView | null) { policy.setView(view); },
+    getBudgets: () => budgets,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot: () => snapshot,
     resetProgress() { update({ completed: 0, failed: 0, cacheHits: 0, networkBytes: 0 }); },

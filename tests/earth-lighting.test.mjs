@@ -93,7 +93,7 @@ test("caps cover the correct spherical side, including the final arc of a polar 
   }
 });
 
-test("lighting validates in the pinned SDK, uses only local bounded data and disappears before streets", () => {
+test("lighting validates in the pinned SDK and preserves geographic night from the globe through street zoom", () => {
   const style = { version: 8, sources: earthLightingSources(noon), layers: earthLightingLayers(),
     sky: earthLightingSky("evening"), light: earthLightingLight("evening") };
   assert.deepEqual(validateStyleMin(style).map(error => error.message), []);
@@ -106,9 +106,17 @@ test("lighting validates in the pinned SDK, uses only local bounded data and dis
     const property = layer.type === "fill" ? "fill-opacity" : "circle-opacity";
     const opacity = createExpression(layer.paint[property], property);
     assert.equal(opacity.result, "success");
-    assert.ok(opacity.value.evaluate({ zoom: 0 }, { properties: { alpha: 0.12, strength: 1 } }) > 0);
-    assert.equal(opacity.value.evaluate({ zoom: 6 }, { properties: { alpha: 0.12, strength: 1 } }), 0);
-    assert.ok(layer.maxzoom <= 6);
+    const properties = { alpha: 0.12, strength: 1 };
+    assert.ok(opacity.value.evaluate({ zoom: 0 }, { properties }) > 0);
+    if (layer.id === "earth-evening-shade") {
+      assert.equal(layer.maxzoom, undefined, "a real region's night cannot end at a camera zoom threshold");
+      for (const zoom of [0, 3, 4.2, 6, 12, 16, 18]) {
+        assert.equal(opacity.value.evaluate({ zoom }, { properties }), properties.alpha);
+      }
+    } else {
+      assert.equal(opacity.value.evaluate({ zoom: 6 }, { properties }), 0);
+      assert.ok(layer.maxzoom <= 6, "decorative overview city dots still disappear before street geometry");
+    }
   }
 });
 

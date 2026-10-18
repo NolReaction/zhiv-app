@@ -1,7 +1,7 @@
 .marker {
   position: absolute;
-  width: 56px;
-  height: 64px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -14,18 +14,10 @@
 .marker:disabled, .marker:global(.maplibregl-marker-covered) { pointer-events: none; }
 .marker[data-selected="true"] { z-index: 2; }
 .marker:focus-visible { outline: none; }
-.marker:focus-visible .visual { filter: drop-shadow(0 0 2px #effacf) drop-shadow(0 0 2px #173e35); }
-.visual { position: absolute; inset: 0; pointer-events: none; }
-.visual > svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  /* The common artwork foot is y=112 in a 120-unit viewBox. Scaling keeps that
-     exact ground point at the SDK's bottom anchor instead of lifting it. */
-  transform: scale(var(--landmark-scale, 1)) translateY(6.666667%);
-  transform-origin: 50% 100%;
-}
+.marker:focus-visible .visual { border: 2px solid #effacf; box-shadow: 0 0 0 2px #173e35; }
+/* Actual architecture is rendered in the map's shared 3D layer. The clear hit
+   area stays at the geographic foot and never becomes another billboard. */
+.visual { position: absolute; inset: 8px; border-radius: 50%; pointer-events: none; }
 .label {
   position: absolute;
   bottom: calc(var(--landmark-label-height, 64px) + 6px);

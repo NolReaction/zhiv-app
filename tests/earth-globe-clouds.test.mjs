@@ -105,6 +105,22 @@ test("a paused scene stays still while manual zoom fades and then completely rem
   clouds.dispose();
 });
 
+test("extreme zoom-out hides decorative clouds instead of piling them over a tiny Earth", () => {
+  const state = scene({ zoom: -1.5 });
+  const clouds = state.create();
+  assert.ok(state.markers.every(marker => wrapper(marker).style.display === "none"));
+  const positions = state.markers.map(marker => marker.positions.length);
+  clouds.update(30_000);
+  assert.deepEqual(state.markers.map(marker => marker.positions.length), positions);
+  state.setZoom(0.2);
+  assert.ok(state.markers.every(marker => Math.abs(Number(visual(marker).style.opacity) - 0.5) < 0.00001));
+  state.setZoom(0.6);
+  assert.ok(state.markers.every(marker => visual(marker).style.opacity === "1"));
+  state.setZoom(-0.2);
+  assert.ok(state.markers.every(marker => wrapper(marker).style.display === "none"));
+  clouds.dispose();
+});
+
 test("the shared absolute clock gives deterministic bounded drift, throttled to ten position writes per second", () => {
   const first = scene();
   const second = scene();

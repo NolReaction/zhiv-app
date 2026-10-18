@@ -4,7 +4,7 @@ import styles from "./position-marker.module.css";
 
 type MarkerCamera = { longitude: number; latitude: number; bearing: number; pitch: number };
 type MarkerMotion = { lean: number; x: number; y: number };
-type MarkerMap = Pick<LibreMap, "getCenter" | "getBearing" | "getPitch" | "on" | "off">;
+type MarkerMap = Pick<LibreMap, "getCenter" | "getBearing" | "getPitch" | "getZoom" | "on" | "off">;
 type MarkerEnvironment = {
   document: Pick<Document, "visibilityState" | "addEventListener" | "removeEventListener">;
   reducedMotion: Pick<MediaQueryList, "matches" | "addEventListener" | "removeEventListener"> | null;
@@ -64,7 +64,9 @@ export function bindEarthPositionMarkerMotion(map: MarkerMap, marker: HTMLElemen
     greeting = false;
   };
   const syncAvailability = () => {
-    const unavailable = !visible() || covered();
+    const distant = map.getZoom() <= -0.2;
+    marker.style.visibility = distant ? "hidden" : "";
+    const unavailable = distant || !visible() || covered();
     marker.toggleAttribute("disabled", unavailable);
     if (unavailable) { stopGreeting(); rest(); }
     return !unavailable;

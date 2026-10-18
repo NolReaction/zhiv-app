@@ -12,19 +12,19 @@ const { earthLandmarkView, layoutEarthLandmarks, EARTH_LANDMARK_WIDTH, EARTH_LAN
 const viewport = { width: 390, height: 844 };
 const candidate = (id, x, y, priority = 1, covered = false) => ({ id, x, y, priority, covered });
 
-test("landmark size follows the overview scale, stays bounded and keeps a bottom-anchored footprint", () => {
-  assert.equal(EARTH_LANDMARK_WIDTH, 56);
-  assert.equal(EARTH_LANDMARK_HEIGHT, 64);
-  for (const [zoom, expected] of [[-20, 0.68], [-1.5, 0.68], [0.5, 0.85], [1.8, 1], [3.8, 1.12], [20, 1.12]]) {
-    const view = earthLandmarkView(zoom);
-    assert.ok(Math.abs(view.scale - expected) < 1e-12);
-    assert.equal(view.width, 56 * view.scale);
-    assert.equal(view.height, 64 * view.scale);
-  }
+test("native miniature size stays compact and strongly zoomed-out globes have no objects", () => {
+  assert.equal(EARTH_LANDMARK_WIDTH, 48);
+  assert.equal(EARTH_LANDMARK_HEIGHT, 48);
+  for (const zoom of [-20, -1.5, -0.3, -0.2]) assert.equal(earthLandmarkView(zoom).opacity, 0);
+  assert.ok(earthLandmarkView(0.2).opacity > 0 && earthLandmarkView(0.2).opacity < 1);
+  assert.equal(earthLandmarkView(0.6).opacity, 1);
+  assert.ok(earthLandmarkView(-0.199).opacity < 0.00001, "miniatures appear gradually");
   let previous = 0;
   for (let zoom = -2; zoom <= 6; zoom += 0.1) {
     const view = earthLandmarkView(zoom);
-    assert.ok(view.scale >= previous && view.scale >= 0.68 && view.scale <= 1.12);
+    assert.ok(view.scale >= previous && view.scale >= 0.3 && view.scale <= 1);
+    assert.equal(view.width, 48 * view.scale);
+    assert.equal(view.height, 48 * view.scale);
     previous = view.scale;
   }
 });
@@ -47,14 +47,14 @@ test("illustrations fade smoothly before street view and invalid zoom never show
 
 test("far Europe gives the higher-priority Eiffel tower room; separating projected points reveals both landmarks", () => {
   const closeEurope = [candidate("colosseum", 160, 220, 20), candidate("eiffel", 130, 205, 30)];
-  assert.deepEqual([...layoutEarthLandmarks(closeEurope, viewport, earthLandmarkView(0.5))], ["eiffel"]);
+  assert.deepEqual([...layoutEarthLandmarks(closeEurope, viewport, earthLandmarkView(2.1))], ["eiffel"]);
   const zoomedEurope = [candidate("colosseum", 285, 250, 20), candidate("eiffel", 110, 205, 30)];
   assert.deepEqual([...layoutEarthLandmarks(zoomedEurope, viewport, earthLandmarkView(3))], ["eiffel", "colosseum"]);
   assert.deepEqual(closeEurope, [candidate("colosseum", 160, 220, 20), candidate("eiffel", 130, 205, 30)], "decluttering never reorders caller data");
 });
 
 test("collision checks use the scaled art rectangles and preserve four pixels of breathing room", () => {
-  const view = earthLandmarkView(-1.5);
+  const view = earthLandmarkView(2.1);
   const separation = view.width + 4;
   assert.equal(layoutEarthLandmarks([candidate("a", 100, 200), candidate("b", 100 + separation - 0.1, 200)], viewport, view).size, 1);
   assert.equal(layoutEarthLandmarks([candidate("a", 100, 200), candidate("b", 100 + separation, 200)], viewport, view).size, 2);
@@ -89,7 +89,7 @@ test("horizon-covered, nonfinite and fully offscreen art cannot hide visible can
     candidate("nan", NaN, 200, 100), candidate("infinite-y", 100, Infinity, 100), candidate("invalid-priority", 100, 200, NaN),
     candidate("left", -100, 100), candidate("right", 500, 100), candidate("above", 200, -1), candidate("below", 200, 1000)];
   assert.deepEqual([...layoutEarthLandmarks(candidates, viewport, earthLandmarkView(1.8))], ["good"]);
-  assert.deepEqual([...layoutEarthLandmarks([candidate("partial-left", -20, 100), candidate("partial-bottom", 200, 870)], viewport, earthLandmarkView(1.8))],
+  assert.deepEqual([...layoutEarthLandmarks([candidate("partial-left", -15, 100), candidate("partial-bottom", 200, 870)], viewport, earthLandmarkView(1.8))],
     ["partial-left", "partial-bottom"], "partially visible artwork remains visible even when its anchor lies offscreen");
 });
 
@@ -104,4 +104,11 @@ test("equal priorities are stable, duplicate ids are harmless and invalid viewpo
     const view = { ...earthLandmarkView(1.8), [property]: NaN };
     assert.equal(layoutEarthLandmarks(candidates, viewport, view).size, 0);
   }
+});
+
+test("normal mobile globe keeps at most three compact models while regional views allow six", () => {
+  const candidates = Array.from({ length: 9 }, (_, index) => candidate(String(index), 50 + index * 100, 100));
+  assert.equal(layoutEarthLandmarks(candidates, { width: 1000, height: 500 }, earthLandmarkView(0.5)).size, 3);
+  assert.ok(earthLandmarkView(0.5).height < 24);
+  assert.equal(layoutEarthLandmarks(candidates, { width: 1000, height: 500 }, earthLandmarkView(2.5)).size, 6);
 });

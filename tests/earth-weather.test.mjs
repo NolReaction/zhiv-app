@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createEarthWeatherProvider, createEarthWeatherController, createEarthWeatherCache, earthWeatherArea,
-  EARTH_WEATHER_CACHE_LIMIT, EARTH_WEATHER_CACHE_TTL_MS, EARTH_WEATHER_MAX_STALE_MS } = await vite.ssrLoadModule("/features/earth/weather.ts");
+  EARTH_WEATHER_CACHE_LIMIT, EARTH_WEATHER_CACHE_TTL_MS, EARTH_WEATHER_MAX_STALE_MS, EARTH_WEATHER_MIN_INTERVAL_MS } = await vite.ssrLoadModule("/features/earth/weather.ts");
 const { createEarthWeather } = await vite.ssrLoadModule("/features/earth/earth-weather.ts");
 const BASE_TIME = Date.parse("2026-10-18T12:20:00Z");
 const MINUTE = 60_000;
@@ -117,15 +117,15 @@ test("camera movement clears another cell's forecast immediately and shares the 
   s.controller.setView({ longitude: 40.3, latitude: 50.1, zoom: 3 });
   assert.equal(s.state.status, "waiting"); assert.equal(s.state.snapshot, null);
   const other = controllerFixture({ cache }); other.activate({ longitude: 0, latitude: 0, zoom: 5 }); await flush();
-  assert.equal(other.calls.length, 0, "another map cannot bypass the one-minute budget"); other.controller.dispose();
-  await s.advance(MINUTE - 2); assert.equal(s.calls.length, 1);
+  assert.equal(other.calls.length, 0, "another map cannot bypass the shared request budget"); other.controller.dispose();
+  await s.advance(EARTH_WEATHER_MIN_INTERVAL_MS - 2); assert.equal(s.calls.length, 1);
   await s.advance(1); assert.equal(s.calls.length, 2);
   assert.deepEqual(s.calls[1].area, earthWeatherArea(40.3, 50.1));
   s.controller.dispose();
 });
 
 test("fresh entries expire at the proxy boundary, and stale responses never become fifteen-minute fresh forecasts", async () => {
-  const s = controllerFixture({ fetchWeather: async (_area, _signal, time) => reading(time, {
+  const s = controllerFixture({ minimumIntervalMs: MINUTE, fetchWeather: async (_area, _signal, time) => reading(time, {
     expiresAt: time + 20_000, staleUntil: time + HOUR, stale: true,
   }) });
   s.activate(); await flush();
@@ -176,7 +176,7 @@ test("returning from a hidden request observes its reserved budget and uses a ne
   const s = controllerFixture({ fetchWeather: () => new Promise(resolve => pending.push(resolve)) });
   s.activate(); await flush(); s.controller.setVisible(false); s.controller.setVisible(true);
   assert.equal(s.state.status, "waiting"); assert.equal(s.state.snapshot, null);
-  await s.advance(MINUTE); assert.equal(s.calls.length, 2);
+  await s.advance(EARTH_WEATHER_MIN_INTERVAL_MS); assert.equal(s.calls.length, 2);
   assert.notEqual(s.calls[0].signal, s.calls[1].signal); assert.equal(s.calls[1].signal.aborted, false);
   pending[0](reading()); await flush(); assert.equal(s.state.status, "loading");
   pending[1](reading(s.time)); await flush(); assert.equal(s.state.status, "ready");
@@ -190,7 +190,7 @@ test("a previous cell's pending result is aborted and cannot replace the new for
   s.controller.setView({ longitude: 0, latitude: 10, zoom: 5 });
   assert.equal(s.calls[0].signal.aborted, true); assert.equal(s.state.snapshot, null);
   pending[0](reading()); await flush(); assert.equal(s.state.status, "waiting");
-  await s.advance(MINUTE); pending[1](reading(s.time)); await flush();
+  await s.advance(EARTH_WEATHER_MIN_INTERVAL_MS); pending[1](reading(s.time)); await flush();
   assert.equal(s.state.snapshot.area.key, "10:0"); assert.equal(s.cache.get("test:56:38"), undefined);
   s.controller.dispose();
 });
@@ -232,6 +232,35 @@ test("request deadlines abort hanging providers and cleanly back off; disposal r
   await s.advance(HOUR); assert.equal(s.calls.length, 1);
 });
 
+test("temporary failures retry in fifteen seconds, then back off to thirty and sixty seconds and reset after success", async () => {
+  let calls = 0;
+  const s = controllerFixture({ fetchWeather: async (_area, _signal, time) => {
+    if (++calls <= 3 || calls === 5) throw new Error("network unavailable");
+    return reading(time);
+  } });
+  s.activate(); await flush();
+  assert.equal(s.state.nextRequestAt, BASE_TIME + 15_000);
+  await s.advance(15_000); assert.equal(calls, 2); assert.equal(s.state.nextRequestAt, BASE_TIME + 45_000);
+  await s.advance(30_000); assert.equal(calls, 3); assert.equal(s.state.nextRequestAt, BASE_TIME + 105_000);
+  await s.advance(60_000); assert.equal(calls, 4); assert.equal(s.state.status, "ready");
+  s.controller.setView({ longitude: 0, latitude: 10, zoom: 10 });
+  await s.advance(15_000); assert.equal(calls, 5); assert.equal(s.state.nextRequestAt, BASE_TIME + 135_000);
+  s.controller.dispose();
+});
+
+test("a short provider throttle obeys the fifteen-second shared budget without adding fifteen minutes", async () => {
+  let calls = 0, s;
+  const provider = createEarthWeatherProvider({ now: () => s.time, fetch: async () => ++calls === 1
+    ? new Response(null, { status: 429, headers: { "Retry-After": "1" } }) : Response.json(responseBody()) });
+  s = controllerFixture({ provider }); s.activate({ longitude: 38, latitude: 55, zoom: 5 }); await flush();
+  assert.equal(s.state.nextRequestAt, BASE_TIME + 15_000);
+  await s.advance(14_999); assert.equal(calls, 1);
+  await s.advance(1); assert.equal(calls, 2); assert.equal(s.state.status, "ready");
+  s.controller.setView({ longitude: 38, latitude: 55, zoom: 12 }); await s.advance(MINUTE);
+  assert.equal(calls, 2, "zooming within the same cell reuses its forecast");
+  s.controller.dispose();
+});
+
 test("the bounded memory cache keeps recently used cells and never shortens a reserved request budget", () => {
   const cache = createEarthWeatherCache();
   for (let index = 0; index < EARTH_WEATHER_CACHE_LIMIT; index++) cache.put(String(index), reading());
@@ -249,7 +278,14 @@ function rendererFixture() {
       append(...children) { this.children.push(...children); },
       setAttribute(key, value) { writes++; this.attributes[key] = value; } };
   }, createElementNS(namespace, tag) { assert.equal(namespace, "http://www.w3.org/2000/svg"); return this.createElement(tag); } };
-  const map = { getContainer: () => ({ ownerDocument }), getCenter: () => camera, getZoom: () => camera.zoom,
+  const container = { ownerDocument, clientWidth: 600, clientHeight: 600 };
+  const mercatorY = latitude => (1 - Math.asinh(Math.tan(latitude * Math.PI / 180)) / Math.PI) / 2;
+  const map = { getContainer: () => container, getCenter: () => camera, getZoom: () => camera.zoom,
+    unproject([x, y]) {
+      const scale = 512 * 2 ** camera.zoom;
+      return { lng: camera.lng + (x - container.clientWidth / 2) / scale * 360,
+        lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * (mercatorY(camera.lat) + (y - container.clientHeight / 2) / scale)))) * 180 / Math.PI };
+    },
     on(type, callback) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(callback); },
     off(type, callback) { listeners.get(type)?.delete(callback); if (!listeners.get(type)?.size) listeners.delete(type); } };
   class Marker {
@@ -273,7 +309,7 @@ test("weather artwork is lazy, non-interactive and never follows an old forecast
   s.renderer.setVisible(true); assert.equal(s.markers.length, 1); assert.equal(s.element.style.display, "");
   assert.equal(s.element.attributes["aria-hidden"], "true"); assert.equal(s.element.style.pointerEvents, "none");
   assert.equal(s.element.style.opacity, "0.73"); assert.equal(s.element.style.transform, "translate(12px, 34px)");
-  s.move({ lng: 38.2 }); assert.deepEqual(s.markers[0].positions.at(-1), [38.2, 55]);
+  s.move({ lng: 38.2 }); assert.deepEqual(s.markers[0].positions.at(-1), [38, 55], "the region summary stays at its geographic anchor");
   s.move({ lng: 40 }); assert.equal(s.element.style.display, "none"); assert.equal(s.renderer.hasMotion(), false);
   s.move({ lng: 38, zoom: 2.9 }); assert.equal(s.element.style.display, "none");
   s.move({ zoom: 5 }); assert.equal(s.element.style.display, ""); assert.equal(s.markers.length, 1);
@@ -290,7 +326,7 @@ test("rain and snow use twelve particles on the shared clock; reduced motion is 
   const staticFrame = particles.map(particle => particle.attributes.transform), writes = s.writes;
   s.renderer.update(10_000); assert.equal(s.writes, writes); assert.deepEqual(particles.map(particle => particle.attributes.transform), staticFrame);
   s.renderer.setWeather(s.snapshot({ condition: "snow" }));
-  assert.ok(particles.every(particle => particle.attributes.d === "M-2 0h4M0-2v4"));
+  assert.ok(particles.every(particle => particle.attributes.d === "M-2.5 0h5M0-2.5v5"));
   assert.ok(particles.every(particle => particle.style.display === ""));
   s.renderer.setMotionEnabled(true); assert.equal(s.renderer.hasMotion(), true);
   s.renderer.update(2_000); assert.notDeepEqual(particles.map(particle => particle.attributes.transform), staticFrame);
@@ -309,4 +345,73 @@ test("clear night shows a still moon, and hidden/disposed artwork receives no pa
   s.renderer.update(10_000); s.move({ lng: 20 }); s.renderer.setVisible(true); s.renderer.setMotionEnabled(true);
   assert.equal(s.writes, disposedWrites); assert.equal(s.listeners.size, 0); assert.equal(s.markers[0].removed, 1);
   assert.equal(s.renderer.hasMotion(), false);
+});
+
+test("street rain spans the visible sampled area with bounded georeferenced patches, and small pans do not drag them", () => {
+  const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot());
+  const active = () => s.markers.filter(marker => marker.options.element.style.display !== "none");
+  assert.equal(active().length, 9); assert.equal(s.markers.length, 9);
+  const anchors = active().map(marker => marker.positions.at(-1));
+  assert.ok(anchors.every(([lng, lat]) => earthWeatherArea(lng, lat).key === "55:38"));
+  assert.ok(new Set(anchors.map(([lng]) => lng)).size >= 3); assert.ok(new Set(anchors.map(([, lat]) => lat)).size >= 3);
+  assert.ok(active().every(marker => marker.options.element.dataset.weatherScale === "coverage"));
+  s.move({ lng: 38.000001 });
+  assert.deepEqual(active().map(marker => marker.positions.at(-1)), anchors, "the fixed geographic grid survives a small camera pan");
+  for (let index = 0; index < 20; index++) s.move({ zoom: 12 + index % 4, lng: 38 + index / 1000 });
+  assert.equal(s.markers.length, 9, "panning and zooming reuse a bounded marker pool");
+  s.move({ lng: 39 }); assert.equal(active().length, 0);
+  s.renderer.dispose(); assert.ok(s.markers.every(marker => marker.removed === 1));
+});
+
+test("clear and missing forecasts never acquire rain coverage and reduced motion freezes all street patches", () => {
+  const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot());
+  s.renderer.setMotionEnabled(false); const writes = s.writes;
+  s.renderer.update(1_000); s.renderer.update(10_000); assert.equal(s.writes, writes);
+  s.renderer.setWeather(s.snapshot({ condition: "clear", cloudCoverPercent: 0 }));
+  const active = s.markers.filter(marker => marker.options.element.style.display !== "none");
+  assert.equal(active.length, 1);
+  assert.ok(active[0].options.element.children[0].children.slice(-12).every(particle => particle.style.display === "none"));
+  s.renderer.setWeather(null); assert.ok(s.markers.every(marker => marker.options.element.style.display === "none"));
+  s.renderer.setWeather(s.snapshot({ condition: "unknown" })); assert.ok(s.markers.every(marker => marker.options.element.style.display === "none"));
+  s.renderer.dispose();
+});
+
+test("cloud coverage controls the number of street patches without inventing precipitation", () => {
+  const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true);
+  s.renderer.setWeather(s.snapshot({ condition: "partly-cloudy", cloudCoverPercent: 30, precipitationMm: 0 }));
+  let active = s.markers.filter(marker => marker.options.element.style.display !== "none");
+  assert.equal(active.length, 3);
+  assert.ok(active.every(marker => marker.options.element.children[0].children.slice(-12).every(particle => particle.style.display === "none")));
+  s.renderer.setWeather(s.snapshot({ condition: "cloudy", cloudCoverPercent: 100, precipitationMm: 0 }));
+  active = s.markers.filter(marker => marker.options.element.style.display !== "none");
+  assert.equal(active.length, 9);
+  assert.ok(active.every(marker => marker.options.element.children[0].children.slice(-12).every(particle => particle.style.display === "none")));
+  s.move({ lng: 38.2 });
+  s.renderer.setWeather(s.snapshot({ condition: "partly-cloudy", cloudCoverPercent: 5, precipitationMm: 0 }));
+  active = s.markers.filter(marker => marker.options.element.style.display !== "none");
+  assert.equal(active.length, 1);
+  assert.ok(Math.abs(active[0].positions.at(-1)[0] - 38.2) < .01, "light cloud cover still samples a visible Earth-fixed grid point");
+  s.renderer.dispose();
+});
+
+test("coverage remains finite and in its sampled cell across the date line and near both poles", () => {
+  for (const [longitude, latitude] of [[179.999, 85], [-179.999, -85], [0, 89], [0, -89]]) {
+    const s = rendererFixture(); s.move({ zoom: 14, lng: longitude, lat: latitude }); s.renderer.setVisible(true);
+    const area = earthWeatherArea(longitude, latitude);
+    s.renderer.setWeather(s.snapshot({ area, condition: "snow" }));
+    const active = () => s.markers.filter(marker => marker.options.element.style.display !== "none");
+    assert.ok(active().length > 1 && active().length <= 9);
+    for (const marker of active()) {
+      const [lng, lat] = marker.positions.at(-1);
+      assert.ok(Number.isFinite(lng) && Number.isFinite(lat));
+      assert.ok(lng >= -180 && lng < 180 && lat > -90 && lat < 90);
+      assert.equal(earthWeatherArea(lng, lat).key, area.key);
+    }
+    if (Math.abs(longitude) > 179) {
+      s.move({ lng: longitude > 0 ? -179.999 : 179.999 });
+      assert.ok(active().length > 0, "the opposite representation of the same date-line cell remains available");
+      assert.ok(active().every(marker => earthWeatherArea(...marker.positions.at(-1)).key === area.key));
+    }
+    s.renderer.dispose();
+  }
 });

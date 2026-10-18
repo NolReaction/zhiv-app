@@ -140,11 +140,13 @@ function opacityFade(property: string, end: number, strength = 1): ExpressionSpe
   return ["interpolate", ["linear"], ["zoom"], 0, opacity, 3, opacity, end, 0];
 }
 
-/** Insert after physical geometry and before labels/position indicators. */
+/** Insert after physical geometry/3D objects and before labels/position indicators. */
 export function earthLightingLayers(): LayerSpecification[] {
   return [
-    { id: "earth-evening-shade", type: "fill", source: EARTH_LIGHTING_SOURCE, maxzoom: 6,
-      paint: { "fill-color": ["get", "color"], "fill-opacity": opacityFade("alpha", 6), "fill-antialias": false } },
+    // Night belongs to its geographic hemisphere at every camera distance.
+    // Fading this layer by zoom turned the same place into daylight on approach.
+    { id: "earth-evening-shade", type: "fill", source: EARTH_LIGHTING_SOURCE,
+      paint: { "fill-color": ["get", "color"], "fill-opacity": ["get", "alpha"], "fill-antialias": false } },
     { id: "earth-city-lights-glow", type: "circle", source: EARTH_LIGHTS_SOURCE, maxzoom: 4.5,
       paint: { "circle-color": "#ffb967", "circle-radius": 6.5, "circle-blur": 0.85,
         "circle-opacity": opacityFade("strength", 4.5, 0.85), "circle-pitch-alignment": "map", "circle-pitch-scale": "viewport" } },

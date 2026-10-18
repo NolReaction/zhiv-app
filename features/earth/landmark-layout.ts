@@ -1,5 +1,7 @@
-export const EARTH_LANDMARK_WIDTH = 56;
-export const EARTH_LANDMARK_HEIGHT = 64;
+export const EARTH_LANDMARK_WIDTH = 48;
+export const EARTH_LANDMARK_HEIGHT = 48;
+export const EARTH_LANDMARK_MIN_ZOOM = -0.2;
+export const EARTH_LANDMARK_APPEAR_ZOOM = 0.6;
 export const EARTH_LANDMARK_FADE_START = 3.8;
 export const EARTH_LANDMARK_MAX_ZOOM = 5.2;
 
@@ -12,17 +14,20 @@ type LandmarkCandidate = {
   width?: number;
   height?: number;
 };
-type LandmarkView = { scale: number; opacity: number; width: number; height: number };
+type LandmarkView = { scale: number; opacity: number; width: number; height: number; limit: number };
 type Rectangle = { left: number; right: number; top: number; bottom: number };
 const LANDMARK_GAP = 4;
-const SCALE_STOPS = [[-1.5, 0.68], [0.5, 0.85], [1.8, 1], [EARTH_LANDMARK_FADE_START, 1.12]] as const;
+const SCALE_STOPS = [[EARTH_LANDMARK_MIN_ZOOM, 0.3], [EARTH_LANDMARK_APPEAR_ZOOM, 0.5],
+  [1.5, 0.72], [2.1, 0.85], [EARTH_LANDMARK_FADE_START, 1]] as const;
 
-/** The illustration's bottom centre remains attached to its geographic point. */
+/** Tiny globes have no miniatures; their ground origin never leaves its WGS84 anchor. */
 export function earthLandmarkView(zoom: number): LandmarkView {
   let scale: number = SCALE_STOPS[0][1];
   let opacity = 0;
   if (Number.isFinite(zoom)) {
-    opacity = 1;
+    const appear = Math.max(0, Math.min(1, (zoom - EARTH_LANDMARK_MIN_ZOOM)
+      / (EARTH_LANDMARK_APPEAR_ZOOM - EARTH_LANDMARK_MIN_ZOOM)));
+    opacity = appear * appear * (3 - 2 * appear);
     for (let index = 1; index < SCALE_STOPS.length; index += 1) {
       const [startZoom, startScale] = SCALE_STOPS[index - 1];
       const [endZoom, endScale] = SCALE_STOPS[index];
@@ -32,9 +37,10 @@ export function earthLandmarkView(zoom: number): LandmarkView {
     }
     const fade = Math.max(0, Math.min(1, (zoom - EARTH_LANDMARK_FADE_START)
       / (EARTH_LANDMARK_MAX_ZOOM - EARTH_LANDMARK_FADE_START)));
-    opacity = 1 - fade * fade * (3 - 2 * fade);
+    opacity *= 1 - fade * fade * (3 - 2 * fade);
   }
-  return { scale, opacity, width: EARTH_LANDMARK_WIDTH * scale, height: EARTH_LANDMARK_HEIGHT * scale };
+  return { scale, opacity, width: EARTH_LANDMARK_WIDTH * scale, height: EARTH_LANDMARK_HEIGHT * scale,
+    limit: zoom < 1.5 ? 3 : 6 };
 }
 
 /** Greedy, stable decluttering in screen pixels; no coordinate or DOM mutation. */
@@ -42,14 +48,15 @@ export function layoutEarthLandmarks(candidates: readonly LandmarkCandidate[], v
   width: number; height: number;
 }, view: LandmarkView): Set<string> {
   const visible = new Set<string>();
-  if (![viewport.width, viewport.height, view.width, view.height, view.scale, view.opacity].every(Number.isFinite)
+  if (![viewport.width, viewport.height, view.width, view.height, view.scale, view.opacity, view.limit].every(Number.isFinite)
     || viewport.width <= 0 || viewport.height <= 0 || view.width <= 0 || view.height <= 0
-    || view.scale <= 0 || view.opacity <= 0) return visible;
+    || view.scale <= 0 || view.opacity <= 0 || view.limit <= 0) return visible;
   const accepted: Rectangle[] = [];
   const ordered = candidates.map((candidate, index) => ({ candidate, index }))
     .filter(({ candidate }) => !candidate.covered && [candidate.x, candidate.y, candidate.priority].every(Number.isFinite))
     .sort((a, b) => b.candidate.priority - a.candidate.priority || a.index - b.index);
   for (const { candidate } of ordered) {
+    if (visible.size >= view.limit) break;
     if (visible.has(candidate.id)) continue;
     const width = candidate.width ?? view.width;
     const height = candidate.height ?? view.height;

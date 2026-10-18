@@ -1,11 +1,16 @@
 .marker {
   position: absolute;
-  width: 104px;
-  height: 88px;
+  width: 138px;
+  height: 160px;
   pointer-events: none;
   user-select: none;
   contain: layout style;
   z-index: 0;
+}
+
+.marker[data-weather-scale="coverage"] {
+  width: 190px;
+  height: 222px;
 }
 
 .visual {
@@ -14,5 +19,9 @@
   height: 100%;
   overflow: visible;
   pointer-events: none;
-  opacity: 0.88;
+  opacity: .84;
+}
+
+.marker[data-weather-scale="coverage"] .visual {
+  opacity: .72;
 }

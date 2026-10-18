@@ -12,6 +12,8 @@ export type EarthClouds = {
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const FADE_START_ZOOM = 2.5;
 const HIDDEN_ZOOM = 4.2;
+const DISTANT_HIDDEN_ZOOM = -0.2;
+const DISTANT_VISIBLE_ZOOM = 0.6;
 const POSITION_INTERVAL_MS = 100;
 
 // Original vector puffs, not weather data. A small fixed population gives the
@@ -115,7 +117,9 @@ export function createEarthClouds(map: MapLibreMap, MarkerConstructor: typeof Ma
     if (disposed) return;
     const zoom = map.getZoom();
     const progress = Math.min(1, Math.max(0, (zoom - FADE_START_ZOOM) / (HIDDEN_ZOOM - FADE_START_ZOOM)));
-    const opacity = visible && Number.isFinite(progress) ? 1 - progress * progress * (3 - 2 * progress) : 0;
+    const approach = Math.min(1, Math.max(0, (zoom - DISTANT_HIDDEN_ZOOM) / (DISTANT_VISIBLE_ZOOM - DISTANT_HIDDEN_ZOOM)));
+    const opacity = visible && Number.isFinite(progress) && Number.isFinite(approach)
+      ? (1 - progress * progress * (3 - 2 * progress)) * approach * approach * (3 - 2 * approach) : 0;
     const wasDrawing = drawing;
     drawing = opacity > 0;
     if (opacity !== lastOpacity) {

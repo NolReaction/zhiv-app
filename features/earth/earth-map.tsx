@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Compass, Earth, HardDriveDownload, Info, LocateFixed, Minus, Plus, X } from "lucide-react";
+import { CloudSun, Compass, Earth, HardDriveDownload, Info, LocateFixed, Minus, Plus, X } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import type { EarthPosition } from "./location";
+import type { EarthCameraSession, EarthCameraSnapshot } from "./camera-session";
 import { EARTH_ACCURACY_SOURCE, EARTH_CENTER, EARTH_SKY, EARTH_STYLE_URL, globeZoom, positionAccuracyData, positionZoom, prepareEarthStyle } from "./map-style";
 import { EarthLoading, formatEarthLoadingBytes, type EarthLoadingStage } from "./earth-loading";
 import { EARTH_CACHE_PROTOCOL, earthResourceCache } from "./resource-cache";
@@ -20,7 +21,7 @@ import { installEarthGlobeCamera } from "./globe-camera";
 import { EARTH_OCEAN_MATERIAL_IMAGE, registerEarthOceanMaterialImage } from "./globe-ocean";
 import { bindEarthPositionMarkerMotion } from "./marker-motion";
 import { createEarthGlobeScene } from "./globe-scene";
-import type { EarthLightingMode } from "./globe-lighting";
+import type { EarthLightingCenter, EarthLightingMode } from "./globe-lighting";
 import { createEarthTileLoadingOverlay } from "./tile-loading-overlay";
 import { createEarthStars } from "./earth-stars";
 import { createEarthWeatherController, createEarthWeatherProvider, type EarthWeatherSnapshot, type EarthWeatherState } from "./weather";
@@ -35,6 +36,7 @@ type EarthMapProps = {
   active: boolean;
   visible: boolean;
   onReadyChange?: (ready: boolean) => void;
+  cameraSession?: EarthCameraSession;
   focusRequest: number;
   isOnline: boolean;
   onLocate: () => void;
@@ -75,12 +77,12 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
   });
 }
 
-export function EarthMap({ position, active, visible, onReadyChange, focusRequest, isOnline, onLocate, locating, locationActive,
+export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
   locationDetails, infoOpen, onInfoOpenChange }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
-  const [weatherEnabled, setWeatherEnabled] = useState(false);
+  const [weatherEnabled, setWeatherEnabled] = useState(() => cameraSession?.readPreferences().weatherEnabled ?? false);
   const weatherEnabledRef = useRef(weatherEnabled);
   const weatherControllerRef = useRef<ReturnType<typeof createEarthWeatherController> | null>(null);
   const [weatherState, setWeatherState] = useState<EarthWeatherState>({ status: "disabled", area: null, snapshot: null, nextRequestAt: null, error: null });
@@ -88,7 +90,7 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
   const mapRef = useRef<LibreMap | null>(null);
   const syncPositionRef = useRef<((value: EarthPosition | null) => void) | null>(null);
   const latestPosition = useRef(position);
-  const savedCamera = useRef<{ center: [number, number]; zoom: number; bearing: number; pitch: number } | null>(null);
+  const savedCamera = useRef<EarthCameraSnapshot | null>(null);
   const handledFocus = useRef(0);
   const repairs = useRef<Promise<unknown>>(Promise.resolve());
   const retrying = useRef(false);
@@ -100,16 +102,21 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
   const [persisting, setPersisting] = useState(false);
   const [retry, setRetry] = useState(0);
   const [tileStatus, setTileStatus] = useState<EarthTileRecoveryStatus>("idle");
-  const [buildings3d, setBuildings3d] = useState(true);
+  const [buildings3d, setBuildings3d] = useState(() => cameraSession?.readPreferences().buildings3d ?? true);
   const buildings3dRef = useRef(buildings3d);
-  const [lightingMode, setLightingMode] = useState<EarthLightingMode>("auto");
+  const [lightingMode, setLightingMode] = useState<EarthLightingMode>(() => cameraSession?.readPreferences().lightingMode ?? "auto");
   const lightingModeRef = useRef(lightingMode);
+  const [eveningCenter, setEveningCenter] = useState<EarthLightingCenter | null>(() => cameraSession?.readPreferences().eveningCenter ?? null);
+  const eveningCenterRef = useRef(eveningCenter);
   const sceneRef = useRef<ReturnType<typeof createEarthGlobeScene> | null>(null);
   const infoButton = useRef<HTMLButtonElement>(null);
   const infoHeading = useRef<HTMLHeadingElement>(null);
   const cache = useSyncExternalStore(earthResourceCache.subscribe, earthResourceCache.getSnapshot, earthResourceCache.getSnapshot);
   const phaseRef = useRef(phase);
   const activeRef = useRef(active);
+  useEffect(() => {
+    cameraSession?.savePreferences({ weatherEnabled, lightingMode, eveningCenter, buildings3d });
+  }, [cameraSession, weatherEnabled, lightingMode, eveningCenter, buildings3d]);
   useEffect(() => { phaseRef.current = phase; onReadyChange?.(phase === "ready"); }, [phase, onReadyChange]);
   useLayoutEffect(() => {
     visibleRef.current = visible;
@@ -121,9 +128,10 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
   }, [weatherEnabled]);
   useEffect(() => {
     lightingModeRef.current = lightingMode;
-    sceneRef.current?.setLighting(lightingMode);
+    eveningCenterRef.current = eveningCenter;
+    sceneRef.current?.setLighting(lightingMode, eveningCenter ?? undefined);
     starsRef.current?.setMode(lightingMode);
-  }, [lightingMode]);
+  }, [lightingMode, eveningCenter]);
   useEffect(() => { if (infoOpen && visible) infoHeading.current?.focus({ preventScroll: true }); }, [infoOpen, visible]);
   useEffect(() => {
     buildings3dRef.current = buildings3d;
@@ -199,6 +207,14 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
     let tileRecovery: ReturnType<typeof createEarthTileRecovery> | null = null;
     let restoreGlobeCamera: (() => void) | null = null;
 
+    function savePreparedCamera() {
+      if (!initialReady || !map) return;
+      const center = map.getCenter();
+      const camera: EarthCameraSnapshot = { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
+      savedCamera.current = camera;
+      cameraSession?.save(camera);
+    }
+
     function resize() {
       if (!cancelled && map && activeRef.current && visibleRef.current && !document.hidden && element!.clientWidth && element!.clientHeight) map.resize();
     }
@@ -207,6 +223,7 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
       const next = activeRef.current && visibleRef.current && !document.hidden;
       const returning = next && !foreground;
       if (!next) {
+        earthResourceCache.setView(null);
         window.clearTimeout(timeout);
         map?.stop();
         // Cold installation can finish during a brief background pause. Ready
@@ -216,6 +233,10 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
           requests.setVisible(false);
         }
       } else {
+        if (map) {
+          const center = map.getCenter();
+          earthResourceCache.setView({ longitude: center.lng, latitude: center.lat, zoom: map.getZoom() });
+        }
         requests.setVisible(true);
         armDeadline();
         if (returning && interruptedDownloads && map && styleReady) {
@@ -239,6 +260,7 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
     function visibilityChanged() { updateForeground(); }
     function fail(message: string) {
       if (cancelled || attemptFailed) return;
+      savePreparedCamera();
       attemptFailed = true;
       controller.abort();
       window.clearTimeout(timeout);
@@ -316,20 +338,22 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
           throw error;
         }
         if (cancelled || attemptFailed) return;
+        const camera = savedCamera.current ?? cameraSession?.read();
         map = new sdk.Map({
           container: element!,
           style,
           transformRequest: earthResourceCache.transformRequest,
-          center: savedCamera.current?.center ?? EARTH_CENTER,
-          zoom: savedCamera.current?.zoom ?? globeZoom(element!.clientWidth, element!.clientHeight),
-          bearing: savedCamera.current?.bearing ?? 0,
-          pitch: savedCamera.current?.pitch ?? 0,
+          center: camera?.center ?? EARTH_CENTER,
+          zoom: camera?.zoom ?? globeZoom(element!.clientWidth, element!.clientHeight),
+          bearing: camera?.bearing ?? 0,
+          pitch: camera?.pitch ?? 0,
           minZoom: -1.5,
           maxZoom: 18,
           maxPitch: 60,
           // Keep useful parent detail while zooming; the persistent cache handles revisits.
           cancelPendingTileRequestsWhileZooming: false,
-          maxTileCacheSize: 96,
+          maxTileCacheSize: earthResourceCache.getBudgets().tileEntries,
+          maxTileCacheZoomLevels: 3,
           attributionControl: false,
           renderWorldCopies: false,
           pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
@@ -341,6 +365,13 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
           },
         });
         const current = map;
+        const updateCacheView = () => {
+          if (cancelled || attemptFailed || !visibleRef.current || document.hidden) return;
+          const center = current.getCenter();
+          earthResourceCache.setView({ longitude: center.lng, latitude: center.lat, zoom: current.getZoom() });
+        };
+        updateCacheView();
+        current.on("move", updateCacheView);
         restoreGlobeCamera = installEarthGlobeCamera(current);
         installEarthMaterialImages(current, id => {
           if (id === EARTH_OCEAN_MATERIAL_IMAGE) registerEarthOceanMaterialImage(current);
@@ -457,7 +488,7 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
           });
           syncPosition(latestPosition.current);
           scene?.dispose();
-          scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current);
+          scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current, eveningCenterRef.current ?? undefined);
           sceneRef.current = scene;
           scene.setWeather(weatherSnapshot);
           scene.setReady(initialReady);
@@ -482,7 +513,7 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
           tileRecovery?.check();
         });
         current.on("movestart", () => tileRecovery?.check());
-        current.on("moveend", () => { scheduleReadyCheck(); tileRecovery?.check(); });
+        current.on("moveend", () => { savePreparedCamera(); scheduleReadyCheck(); tileRecovery?.check(); });
         current.on("render", () => { rendered = true; scheduleReadyCheck(); if (foreground) tileOverlay?.refresh(); });
         current.on("load", scheduleReadyCheck);
         current.on("idle", () => { scheduleReadyCheck(); tileRecovery?.check(true); });
@@ -519,6 +550,8 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
     void initialize();
 
     return () => {
+      savePreparedCamera();
+      earthResourceCache.setView(null);
       cancelled = true;
       controller.abort();
       requests.dispose();
@@ -544,14 +577,10 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
       if (sceneRef.current === scene) sceneRef.current = null;
       map?.stop();
       restoreGlobeCamera?.();
-      if (map) {
-        const center = map.getCenter();
-        savedCamera.current = { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
-      }
       map?.remove();
       if (mapRef.current === map) mapRef.current = null;
     };
-  }, [active, retry]);
+  }, [active, retry, cameraSession]);
 
   useEffect(() => {
     if (!active || !visible || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;
@@ -571,9 +600,12 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
       <button type="button" disabled={!ready} title="Приблизить" aria-label="Приблизить карту" onClick={() => mapRef.current?.zoomIn({ duration: reducedMotion() ? 0 : 250 })}><Plus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Отдалить" aria-label="Отдалить карту" onClick={() => mapRef.current?.zoomOut({ duration: reducedMotion() ? 0 : 250 })}><Minus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
-      <button type="button" disabled={!ready || locating} data-active={locationActive} aria-busy={locating}
+      <button type="button" className={styles.locateButton} disabled={!ready || locating} data-active={locationActive} aria-busy={locating}
         title={locating ? "Определяем местоположение…" : position ? "К моему местоположению" : "Найти себя на карте"}
         aria-label="Показать моё местоположение" aria-describedby="earth-location-privacy" onClick={onLocate}><LocateFixed size={21} aria-hidden="true" /></button>
+      <button type="button" disabled={!ready} data-active={weatherEnabled} aria-pressed={weatherEnabled}
+        title="Погода для центра карты" aria-label={weatherEnabled ? "Выключить погоду" : "Включить погоду"}
+        onClick={() => setWeatherEnabled(value => !value)}><CloudSun size={21} aria-hidden="true" /></button>
     </div>
     {phase !== "ready" && <EarthLoading stage={stage} restoring={restoring} isOnline={isOnline}
       progress={{ completed: cache.completed, pending: cache.pending, failed: cache.failed, bytes: cache.networkBytes, cacheHits: cache.cacheHits }}
@@ -588,7 +620,10 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
     {ready && weatherEnabled && <p className={styles.weatherBadge} data-earth-weather-status={weatherState.status} role="status">
       <span aria-hidden="true">{weatherState.snapshot?.condition === "clear" ? "☀" : "☁"}</span>
       {weatherState.snapshot ? `${weatherConditionLabel(weatherState.snapshot.condition)}${weatherState.snapshot.temperatureC === null ? "" : ` · ${Math.round(weatherState.snapshot.temperatureC) > 0 ? "+" : ""}${Math.round(weatherState.snapshot.temperatureC)}°`}${weatherState.status === "stale" ? " · старый прогноз" : ""}`
-        : weatherState.status === "zoom-in" ? "Приблизьте карту для погоды" : weatherState.status === "error" ? "Прогноз пока недоступен" : weatherState.status === "waiting" ? "Прогноз обновится чуть позже" : "Узнаём погоду…"}
+        : weatherState.status === "zoom-in" ? "Приблизьте карту для погоды"
+          : (weatherState.status === "error" || weatherState.status === "waiting") && weatherState.nextRequestAt
+            ? `${weatherState.error ? "Прогноз недоступен · повтор" : "Обновим прогноз"} в ${new Date(weatherState.nextRequestAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+            : weatherState.status === "error" ? "Прогноз пока недоступен" : "Узнаём погоду…"}
     </p>}
     {ready && <EarthAttribution />}
     {ready && <button ref={infoButton} type="button" className={styles.infoButton} aria-label="О карте и её настройках"
@@ -601,17 +636,23 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
       <section className={styles.infoSection}><h3>Вид карты</h3>
         <div className={styles.lightingModes} role="group" aria-label="Освещение глобуса">
           {([ ["auto", "Авто"], ["day", "День"], ["evening", "Вечер"] ] as const).map(([value, label]) =>
-            <button key={value} type="button" aria-pressed={lightingMode === value} onClick={() => setLightingMode(value)}>{label}</button>)}
+            <button key={value} type="button" aria-pressed={lightingMode === value} onClick={() => {
+              if (value === "evening" && lightingMode !== "evening") {
+                const center = mapRef.current?.getCenter();
+                if (center) setEveningCenter({ lng: center.lng, lat: center.lat });
+              }
+              setLightingMode(value);
+            }}>{label}</button>)}
         </div>
         <p>{lightingMode === "auto" ? "Светлая и тёмная стороны следуют времени суток. Облачка и волны оживляют Землю при отдалении." : lightingMode === "evening" ? "Тёплый закат и огоньки городов. Вечер остаётся на выбранной стороне Земли." : "Светлый глобус, чтобы рассмотреть все детали."}</p>
-        <p>Миниатюры достопримечательностей стоят на своих географических местах. Нажмите на любую, чтобы узнать название. Близкие объекты появляются по мере приближения, перед улицами миниатюры исчезают.</p>
+        <p>Объёмные миниатюры достопримечательностей стоят на своих географических местах и поворачиваются вместе с Землёй. Нажмите на любую, чтобы узнать название. При сильном отдалении и перед масштабом улиц они скрываются.</p>
         <div className={styles.infoRow}><span id="earth-buildings-label">Объёмные здания</span>
           <button type="button" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
         <p>Появляются при приближении к улицам. Наклоните карту двумя пальцами или перетаскивайте её с зажатой правой кнопкой мыши.</p>
       </section>
       <section className={styles.infoSection}><div className={styles.infoRow}><h3 id="earth-weather-label">Погода</h3>
         <button type="button" className={styles.infoToggle} role="switch" aria-checked={weatherEnabled} aria-labelledby="earth-weather-label" onClick={() => setWeatherEnabled(value => !value)}><span aria-hidden="true" /></button></div>
-        <p>Прогноз для центра карты. При приближении показываем облачка, дождь или снег. Данные обновляются с паузой; при перемещении в другой район нужно немного подождать.</p>
+        <p>Прогноз для района в центре карты: облака и осадки появляются там, где их ожидает прогноз. В ясную погоду дождя и снега нет. После перехода в другой район обновляем данные с короткой паузой.</p>
         <p>При включении передаём только центр просмотра, округлённый до целых градусов. Доступ к геопозиции для этого не нужен.</p>
         {weatherEnabled && weatherState.snapshot && <p>Прогноз на {new Date(weatherState.snapshot.forecastAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. {weatherState.status === "stale" ? "Данные сохранены ранее; свежий прогноз пока недоступен." : "Это прогноз для района, а не точное измерение на вашей улице."}</p>}
         <p className={styles.attribution}>На основе прогноза <a href={EARTH_WEATHER_ATTRIBUTION.sourceUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.name}</a>{" · "}
@@ -619,9 +660,9 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
       </section>
       {locationDetails}
       <section className={styles.infoSection}><h3>На устройстве</h3><div className={styles.storageDetails}>
-        <strong>{cache.storage === "device" ? `Сохранено ${formatEarthLoadingBytes(cache.storedBytes)}` : "Доступно в этой сессии"}
+        <strong>{cache.storage === "device" ? `Сохранено ${formatEarthLoadingBytes(cache.storedBytes)} из ${formatEarthLoadingBytes(cache.diskLimitBytes)}` : "Доступно в этой сессии"}
           {cache.persistence === "granted" && cache.storage === "device" ? " · Закреплено" : ""}</strong>
-        <p>{cache.storage === "device" ? "Изученные участки открываются из сохранённых данных. Новые места и масштабы загружаются по мере приближения. Очистка данных браузера удалит карту." : "Браузер не разрешил сохранить карту на устройстве. После закрытия страницы потребуется повторная загрузка."}</p>
+        <p>{cache.storage === "device" ? "Кеш ограничен: текущий район и часто открываемые места сохраняются в первую очередь. Редко используемые подробные участки освобождают место новым. Новые районы загружаются по мере просмотра." : "Карта использует ограниченный кеш этой сессии. После закрытия страницы часть данных потребуется загрузить заново."}</p>
         {cache.storage === "device" && cache.persistence !== "granted" && <button type="button" onClick={persistMap} disabled={persisting}><HardDriveDownload size={16} aria-hidden="true" />{persisting ? "Сохраняем…" : "Закрепить карту"}</button>}
       </div></section>
       <section className={styles.infoSection}><h3>Источники карты</h3><p className={styles.attribution}>

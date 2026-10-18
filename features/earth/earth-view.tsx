@@ -6,6 +6,7 @@ import type { PeopleResponse } from "@/lib/check-in-contract";
 import { personDisplayName } from "@/lib/person-nickname";
 import { PlayerName } from "@/components/player-name";
 import { EarthMap } from "./earth-map";
+import type { EarthCameraSession } from "./camera-session";
 import { useEarthLocation } from "./use-earth-location";
 import type { EarthLocationStatus, EarthPosition } from "./location";
 import styles from "./earth-view.module.css";
@@ -15,6 +16,7 @@ type Props = {
   active: boolean;
   visible: boolean;
   onReadyChange?: (ready: boolean) => void;
+  cameraSession?: EarthCameraSession;
   isOnline: boolean;
   people: PeopleResponse | null;
   peopleLoading: boolean;
@@ -58,7 +60,7 @@ export function EarthFriends({ people, loading, error, online, onRefresh, onOpen
   </div>;
 }
 
-export function EarthView({ ownerPublicId, active, visible, onReadyChange, isOnline, people, peopleLoading, peopleError,
+export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, isOnline, people, peopleLoading, peopleError,
   onRefreshPeople, onOpenPeople, onOpenWorld }: Props) {
   const location = useEarthLocation({ ownerPublicId, enabled: active && visible });
   const [focusRequest, setFocusRequest] = useState(0);
@@ -102,7 +104,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, isOnl
   return <section className={styles.view} aria-labelledby="earth-title" data-earth-world>
     <p id="earth-location-privacy" className={styles.srOnly}>Геопозиция видна только вам. Обновляется, пока карта открыта, и очищается при выходе из раздела.</p>
     <div className={styles.stage}>
-      <EarthMap position={visible ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange}
+      <EarthMap position={visible ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange} cameraSession={cameraSession}
         focusRequest={focusRequest} isOnline={isOnline}
         onLocate={locate} locating={locating} locationActive={location.status === "active"}
         locationDetails={locationDetails} infoOpen={panel === "info"} onInfoOpenChange={open => setPanel(open ? "info" : null)} />

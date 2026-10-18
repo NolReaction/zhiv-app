@@ -15,6 +15,7 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
   const elements = [];
   const listeners = new Map();
   const projected = [];
+  const layers = new Map();
   const points = new Map();
   let writes = 0;
   const emit = type => { for (const callback of listeners.get(type) ?? []) callback(); };
@@ -61,6 +62,10 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
   const map = {
     getContainer: () => container,
     getZoom: () => zoom,
+    getLayer: id => layers.get(id),
+    addLayer(layer, before) { layers.set(layer.id, { ...layer, before }); },
+    removeLayer: id => layers.delete(id),
+    triggerRepaint() {},
     project(location) {
       projected.push([...location]);
       const [longitude, latitude] = location;
@@ -103,7 +108,7 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
   }
   return {
     create: () => createEarthLandmarks(map, Marker),
-    markers, elements, listeners, projected, container, emit,
+    markers, elements, listeners, projected, container, emit, layers,
     element(id) { return markers.find(marker => marker.options.element.dataset.earthLandmark === id).options.element; },
     setZoom(value) { zoom = value; emit("move"); },
     setPoint(id, point) {
@@ -150,7 +155,7 @@ test("nine fixed catalog anchors are installed once and remain inaccessible unti
     assertHidden(element);
   }
   landmarks.setVisible(true);
-  assert.ok(state.markers.every(marker => !marker.options.element.disabled));
+  assert.equal(state.markers.filter(marker => !marker.options.element.disabled).length, 6);
   for (const event of ["move", "resize", "idle"]) state.emit(event);
   landmarks.setVisible(false);
   landmarks.setVisible(true);
@@ -160,22 +165,18 @@ test("nine fixed catalog anchors are installed once and remain inaccessible unti
   landmarks.dispose();
 });
 
-test("every landmark has bounded original vector artwork without active markup or external assets", () => {
+test("landmarks render native 3D geometry and retain only clear accessible DOM hit targets", () => {
   const state = scene();
   const landmarks = state.create();
-  const artworks = [];
+  const layer = state.layers.get("earth-landmark-models");
+  assert.equal(layer.type, "custom");
+  assert.equal(layer.renderingMode, "3d");
   for (const { options: { element } } of state.markers) {
-    const svg = visual(element).children[0];
-    assert.equal(svg.tag, "svg");
-    assert.deepEqual(svg.attributes, { viewBox: "0 0 100 120", "aria-hidden": "true", focusable: "false" });
-    assert.ok(svg.innerHTML.length > 300 && svg.innerHTML.length < 8_000);
-    const tags = [...svg.innerHTML.matchAll(/<([a-z][\w:-]*)\b/gi)].map(match => match[1]);
-    assert.ok(tags.length <= 80 && tags.every(tag => ["g", "path", "ellipse", "circle"].includes(tag)));
-    assert.doesNotMatch(svg.innerHTML, /\b(?:href|src|id|on\w+)\s*=|url\(|https?:|<text|<image|<svg|<script|<animate|<foreignObject/i);
-    artworks.push(svg.innerHTML);
+    assert.equal(visual(element).children.length, 0, "no camera-facing SVG artwork");
+    assert.equal(visual(element).attributes["aria-hidden"], "true");
   }
-  assert.equal(new Set(artworks).size, 9);
   landmarks.dispose();
+  assert.equal(state.layers.size, 0, "scene disposal removes its GPU layer");
 });
 
 test("native globe coverage removes a landmark from interaction without overwriting SDK transforms or opacity", () => {
@@ -184,7 +185,7 @@ test("native globe coverage removes a landmark from interaction without overwrit
   landmarks.setVisible(true);
   const tower = state.element("eiffel-tower");
   for (const { options } of state.markers) {
-    assert.equal(options.anchor, "bottom");
+    assert.equal(options.anchor, "center");
     assert.equal(options.pitchAlignment, "viewport");
     assert.equal(options.rotationAlignment, "viewport");
     assert.equal(options.subpixelPositioning, true);
@@ -207,7 +208,7 @@ test("native globe coverage removes a landmark from interaction without overwrit
   landmarks.dispose();
 });
 
-test("hidden scenes and street zoom close labels and remove every marker from keyboard navigation", () => {
+test("hidden scenes, tiny globes and street zoom close labels and remove every marker from keyboard navigation", () => {
   const state = scene();
   const landmarks = state.create();
   landmarks.setVisible(true);
@@ -225,6 +226,10 @@ test("hidden scenes and street zoom close labels and remove every marker from ke
   for (const marker of state.markers) assertHidden(marker.options.element);
   state.setZoom(18);
   for (const marker of state.markers) assertHidden(marker.options.element);
+  for (const zoom of [-1.5, -1, -0.5, -0.2]) {
+    state.setZoom(zoom);
+    for (const marker of state.markers) assertHidden(marker.options.element);
+  }
   state.setZoom(1.8);
   assert.equal(tower.disabled, false);
   assert.equal(tower.tabIndex, 0);
