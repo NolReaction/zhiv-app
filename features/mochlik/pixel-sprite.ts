@@ -196,12 +196,51 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
         rect(17, 6 + hatY, 16, 2, "#69583c");
         if (direction !== "back") { rect(direction === "left" ? 17 : 29, 6 + hatY, 3, 2, "#d7c584"); }
       } else if (appearance.head === "rain_hood") {
-        // The open hood keeps its side panels outside both turning eye glyphs.
-        rect(16, 3 + hatY, 18, 6, "#3c5668"); rect(19, 1 + hatY, 12, 6, "#55788b");
-        rect(14, 7 + hatY, 22, 4, "#55788b"); rect(16, 8 + hatY, 18, 2, "#90a9ad");
-        rect(12, 10 + hatY, 3, 11, "#3c5668"); rect(34, 10 + hatY, 3, 11, "#3c5668");
-        rect(13, 11 + hatY, 2, 9, "#55788b"); rect(34, 11 + hatY, 2, 9, "#55788b");
-        if (direction === "back") { rect(15, 10 + hatY, 19, 12, "#55788b"); rect(24, 8 + hatY, 1, 12, "#90a9ad"); }
+        const hood = "#55788b", fold = "#3c5668", edge = "#90a9ad", light = "#7294a0";
+        if (direction === "back") {
+          // A rounded, gathered hood drapes onto the shoulders rather than ending
+          // as a straight helmet. Its seam bends with the fabric's soft folds.
+          oval(24, 15 + hatY, 14, 14, fold); oval(24, 14 + hatY, 13, 13, hood);
+          oval(21, 9 + hatY, 7, 6, light); oval(23, 11 + hatY, 8, 6, hood);
+          rect(26, 4 + hatY, 1, 7, edge); rect(27, 11 + hatY, 1, 7, light);
+          rect(26, 18 + hatY, 1, 6, edge); rect(25, 24 + hatY, 1, 3, fold);
+          rect(12, 20 + hatY, 2, 4, fold); rect(14, 24 + hatY, 3, 3, fold);
+          rect(34, 16 + hatY, 2, 6, fold); rect(32, 22 + hatY, 3, 3, fold);
+          rect(17, 27 + hatY, 14, 2, fold); rect(19, 28 + hatY, 10, 2, hood);
+          rect(19, 27 + hatY, 5, 1, edge);
+        } else {
+          // Rasterize the open arch directly: no face repaint/readback, and the
+          // opening stays outside both eye glyphs even in a turning fishing rig.
+          const openingX = direction === "left" ? 23 : direction === "right" ? 25 : 24;
+          for (let row = 1; row <= 26; row++) {
+            const outer = Math.floor(14 * Math.sqrt(Math.max(0, 1 - ((row - 15) / 14) ** 2)));
+            const inner = row < 7 ? -1 : Math.floor(12 * Math.sqrt(Math.max(0, 1 - ((row - 20) / 14) ** 2)));
+            const left = 24 - outer, right = 24 + outer;
+            if (inner < 0) {
+              rect(left, row + hatY, outer * 2 + 1, 1, fold);
+              if (outer > 1) rect(left + 1, row + hatY, outer * 2 - 1, 1, row < 5 ? light : hood);
+            } else {
+              const leftWidth = Math.max(0, Math.min(right + 1, openingX - inner) - left);
+              const rightX = Math.max(left, openingX + inner + 1), rightWidth = right - rightX + 1;
+              if (leftWidth > 0) {
+                rect(left, row + hatY, leftWidth, 1, fold);
+                if (leftWidth > 1) rect(left + 1, row + hatY, leftWidth - 1, 1, hood);
+                rect(left + leftWidth - 1, row + hatY, 1, 1, edge);
+              }
+              if (rightWidth > 0) {
+                rect(rightX, row + hatY, rightWidth, 1, fold);
+                if (rightWidth > 2) rect(rightX + 1, row + hatY, rightWidth - 2, 1, hood);
+                rect(rightX, row + hatY, 1, 1, light);
+              }
+            }
+          }
+          rect(18, 5 + hatY, 7, 1, edge); rect(27, 5 + hatY, 4, 1, light);
+          rect(12, 25 + hatY, 4, 3, fold); rect(13, 26 + hatY, 5, 3, hood);
+          rect(33, 24 + hatY, 4, 3, fold); rect(31, 26 + hatY, 5, 3, hood);
+          rect(16, 28 + hatY, 4, 2, edge); rect(29, 28 + hatY, 5, 2, light);
+          rect(19, 30 + hatY, 1, 4, "#d1c79a"); rect(28, 30 + hatY, 1, 3, "#d1c79a");
+          rect(18, 33 + hatY, 2, 1, fold); rect(28, 32 + hatY, 2, 1, fold);
+        }
       } else if (appearance.head === "acorn_cap") {
         // Low rounded acorn cup; the stem follows the crown while bending.
         rect(14, 7 + hatY, 22, 3, "#654b36"); rect(16, 4 + hatY, 18, 4, "#996743");

@@ -38,7 +38,7 @@ test("rod-only odds are explicit percentages and each specialist targets at leas
     if (targets[rod.id]) assert.ok(rod.classOddsBps[targets[rod.id]] >= 5500);
   }
   assert.equal(classChance(odds("starfall_rod", "bare_hook", null), "legendary"), .6);
-  assert.equal(classChance(odds("tide_rod", "bare_hook", null), "epic"), .65);
+  assert.ok(Math.abs(classChance(odds("tide_rod", "bare_hook", null), "epic") - .65) < 1e-12);
 });
 
 test("matching hook and bait multiply the rod tickets and improve its intended class", () => {
@@ -80,8 +80,9 @@ test("zero rod classes remain impossible even with the strongest hook and bait",
   }
 });
 
-test("all collection species are uniform within their class including added legendary fish on every hook", () => {
+test("legacy gear without species tickets stays uniform including added fish and irrelevant old metadata", () => {
   const spec = structuredClone(catalog);
+  for (const gear of [...spec.rods, ...spec.hooks]) delete gear.speciesWeights;
   spec.fish.push({ itemId: "fish_second_legendary", rarity: "legendary", description: "Test collection species", buyPrice: 1600, requiredHookId: "missing_hook", weight: 9999, affinity: 10 });
   for (const hook of catalog.hooks) {
     const chances = fishingOdds({}, spec, { rodId: "starfall_rod", hookId: hook.id, baitId: null });
@@ -94,8 +95,8 @@ test("all collection species are uniform within their class including added lege
     assert.ok(first > 0);
     assert.ok(Math.abs(classChance(chances, "legendary", spec) - classChance(odds("starfall_rod", hook.id, null), "legendary")) < 1e-12);
   }
-  const epics = fishingOdds({}, catalog, { rodId: "tide_rod", hookId: "bare_hook", baitId: null })
-    .filter(row => catalog.fish.find(fish => fish.itemId === row.itemId).rarity === "epic");
+  const epics = fishingOdds({}, spec, { rodId: "tide_rod", hookId: "bare_hook", baitId: null })
+    .filter(row => spec.fish.find(fish => fish.itemId === row.itemId).rarity === "epic");
   assert.equal(epics.length, 2); assert.equal(epics[0].probability, .65 / 2); assert.equal(epics[1].probability, .65 / 2);
 });
 
@@ -121,7 +122,7 @@ test("private class and species hash vectors match Kotlin for specialist gear an
   assert.deepEqual(seeds.map(seed => selectFishingCatch(seed, "starfall_rod", "firefly_bait", catalog, "tide_hook")),
     ["fish_mirror_koi", "fish_shark", "fish_sturgeon", "fish_shark", "fish_mirror_koi", "fish_shark"]);
   assert.deepEqual(Array.from({ length: 8 }, (_, index) => selectFishingCatch(seeds[0], "river_rod", "worm_bait", catalog, "barbed_hook", index)),
-    ["fish_bream", "fish_bream", "fish_bream", "fish_dace", "fish_bream", "fish_dace", "fish_dace", "fish_dace"]);
+    ["fish_bream", "fish_bream", "fish_bream", "fish_bream", "fish_bream", "fish_bream", "fish_dace", "fish_bream"]);
 });
 
 test("bait boosts its class only where the rod allows it and all loadouts retain a positive trip value", () => {

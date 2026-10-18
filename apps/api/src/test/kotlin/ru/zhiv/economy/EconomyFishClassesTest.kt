@@ -78,13 +78,18 @@ class EconomyFishClassesTest {
         }.code)
     }
 
-    @Test fun `adding species cannot change class weights and all species in a class are uniform`() {
+    @Test fun `adding species cannot change class weights and species weights conserve their class`() {
         val original = EconomyRules.fishingClassWeights("river_rod", "worm_bait", "barbed_hook", spec)
         val expanded = spec.copy(fish = spec.fish + spec.fish.first().copy(itemId = "fish_new_collection_entry", weight = 9999))
         assertEquals(original, EconomyRules.fishingClassWeights("river_rod", "worm_bait", "barbed_hook", expanded))
         val weights = EconomyRules.fishingWeights("river_rod", "worm_bait", "barbed_hook")
         for (rarity in spec.classes.map { it.rarity }) {
-            assertEquals(1, weights.filter { it.first.rarity == rarity }.map { it.second }.distinct().size)
+            val tickets = EconomyRules.fishingSpeciesWeights("river_rod", rarity, "barbed_hook")
+            val total = tickets.sumOf { it.second }
+            val classWeight = original.single { it.first.rarity == rarity }.second.toDouble()
+            for ((fish, value) in weights.filter { it.first.rarity == rarity })
+                assertEquals(if (total == 0) 0.0 else classWeight * tickets.single { it.first.itemId == fish.itemId }.second / total, value)
+            assertEquals(classWeight, weights.filter { it.first.rarity == rarity }.sumOf { it.second }, 1e-10)
         }
         assertTrue(EconomyRules.fishingClassWeights("reed_rod", "firefly_bait", "leviathan_hook")
             .single { it.first.rarity == "legendary" }.second == 0)

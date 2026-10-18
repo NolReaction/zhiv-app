@@ -133,6 +133,7 @@ test("the axe pivots once around the holding paw, clears the face and returns to
     const start = lopukhSpriteRig(lopukhSprite("work", direction, 0, 0));
     const lift = lopukhSpriteRig(lopukhSprite("work", direction, 0, .25));
     const strike = lopukhSpriteRig(lopukhSprite("work", direction, 0, .4375));
+    assert.ok(start.axe.head.y < start.axe.grip.y, "the resting hatchet is held blade-up");
     assert.ok(lift.axe.head.y < start.axe.head.y - 5);
     assert.ok(strike.axe.head.y > lift.axe.head.y + 5);
     assert.deepEqual(start.feet, strike.feet);
@@ -162,9 +163,9 @@ test("a flared steel wedge, wooden eye and visible haft remain attached behind t
     assert.deepEqual(axe.grip, arms.find(arm => arm.hand === "right").palm);
     const gripColors = axe.behindBody ? ["#edc987", "#ddb16b", "#c59655", "#f1dbad", "#ffebc5", "#967044", "#64432e"] : ["#edc987"];
     assert.ok(gripColors.includes(at(axe.grip)), `${direction}/${phase}: paw or nearer torso covers the haft at the grip (${at(axe.grip)})`);
-    if (direction === "back" && phase === 10) assert.equal(at(axe.grip), "#64432e", "the far right hand passes behind the torso on recovery");
     assert.equal(at(axe.head), "#b38955", "the wooden haft passes through the metal eye");
-    assert.ok([...sprite.pixels.values()].filter(color => color === "#b38955").length >= 3, "wood is visible outside the closed paw");
+    assert.ok([...sprite.pixels.values()].filter(color => color === "#b38955").length >= (axe.behindBody ? 2 : 3),
+      "wood remains visible outside the closed paw and the nearer torso");
     const axis = { x: axe.head.x - axe.grip.x, y: axe.head.y - axe.grip.y };
     const butt = { x: axe.butt.x - axe.grip.x, y: axe.butt.y - axe.grip.y };
     assert.ok(axis.x * butt.x + axis.y * butt.y < 0, "the butt stays on the other side of the grip");

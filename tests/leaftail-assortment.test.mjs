@@ -33,14 +33,15 @@ test('additive delivery preserves six legacy offers and projects permanent owner
   const p = player(), view = stock(p), catalog = read(p).catalog;
   assert.equal(catalog.leaftailShop.offers.length, 6);
   assert.ok(catalog.leaftailShop.offers.every(item => item.kind === 'item'));
-  assert.equal(catalog.leaftailShop.travelOffers.length, 13);
+  assert.equal(catalog.leaftailShop.travelOffers.length, 21);
   assert.deepEqual(Object.fromEntries(['wardrobe', 'rod', 'hook', 'bait'].map(kind => [kind, view.offers.filter(item => item.kind === kind).length])),
-    { wardrobe: 6, rod: 3, hook: 2, bait: 2 });
+    { wardrobe: 6, rod: 7, hook: 6, bait: 2 });
   assert.ok(view.offers.filter(item => item.requiredHomeLevel === 4).every(item => !item.unlocked));
   assert.ok(view.offers.filter(item => item.requiredHomeLevel === 3).every(item => item.unlocked));
   const legacy = structuredClone(catalog); delete legacy.leaftailShop.travelOffers;
   assert.deepEqual(model.economyCatalogSchema.parse(legacy).leaftailShop.travelOffers, []);
-  assert.equal(shop.leaftailShopView({ buildings: { home: 3 } }, now, legacy).offers.length, 6);
+  assert.equal(shop.leaftailShopView({ buildings: { home: 3 } }, now, legacy).offers.length, 3,
+    'an unknown owner can preview supplies but cannot quote another account\'s finds');
 });
 
 test('all six clothes are permanent independent of full pantry, project into world immediately and do not equip themselves', () => {
@@ -131,8 +132,11 @@ test('clothing and rod receipts replay once, reject racing revisions and stale d
   }
 });
 
-test('Pleska generation and injected persisted offers cannot sell any Leaftail gear', () => {
-  const p = player(5), state = read(p), exclusive = stock(p).offers.filter(item => ['rod', 'hook', 'bait'].includes(item.kind));
+test('Pleska generation and injected persisted offers cannot sell Leaftail exclusive gear', () => {
+  const p = player(5), state = read(p), fishing = state.catalog.fishing;
+  const exclusive = stock(p).offers.filter(item => (item.kind === 'rod' ? fishing.rods.find(gear => gear.id === item.itemId)
+    : item.kind === 'hook' ? fishing.hooks.find(gear => gear.id === item.itemId)
+    : item.kind === 'bait' ? fishing.baits.find(gear => gear.itemId === item.itemId) : undefined)?.shop === 'leaftail');
   const ids = new Set(exclusive.map(item => item.itemId));
   for (let n = 0; n < 80; n++) {
     const generated = createFishingShop(saved(p), now, max => n % max);

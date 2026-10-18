@@ -170,6 +170,78 @@
         "priceCoins": 400,
         "stock": 1,
         "quantity": 5
+      },
+      {
+        "id": "abyss_rod",
+        "itemId": "abyss_rod",
+        "kind": "rod",
+        "requiredHomeLevel": 4,
+        "priceCoins": 44000,
+        "stock": 1,
+        "quantity": 1
+      },
+      {
+        "id": "deep_hook",
+        "itemId": "deep_hook",
+        "kind": "hook",
+        "requiredHomeLevel": 4,
+        "priceCoins": 18000,
+        "stock": 1,
+        "quantity": 1
+      },
+      {
+        "id": "float_rod",
+        "itemId": "float_rod",
+        "kind": "rod",
+        "requiredHomeLevel": 3,
+        "priceCoins": 900,
+        "stock": 1,
+        "quantity": 1
+      },
+      {
+        "id": "predator_rod",
+        "itemId": "predator_rod",
+        "kind": "rod",
+        "requiredHomeLevel": 3,
+        "priceCoins": 9000,
+        "stock": 1,
+        "quantity": 1
+      },
+      {
+        "id": "mirror_rod",
+        "itemId": "mirror_rod",
+        "kind": "rod",
+        "requiredHomeLevel": 3,
+        "priceCoins": 24000,
+        "stock": 1,
+        "quantity": 1
+      },
+      {
+        "id": "spoon_hook",
+        "itemId": "spoon_hook",
+        "kind": "hook",
+        "requiredHomeLevel": 3,
+        "priceCoins": 1200,
+        "stock": 1,
+        "quantity": 1
+      },
+      {
+        "id": "weedless_hook",
+        "itemId": "weedless_hook",
+        "kind": "hook",
+        "requiredHomeLevel": 3,
+        "priceCoins": 6000,
+        "stock": 1,
+        "quantity": 1
+      },
+      {
+        "id": "moth_hook",
+        "itemId": "moth_hook",
+        "kind": "hook",
+        "requiredHomeLevel": 3,
+        "priceCoins": 16000,
+        "stock": 1,
+        "quantity": 1
       }
     ]
   },
@@ -3233,6 +3305,9 @@
           "rare": 300,
           "epic": 0,
           "legendary": 0
+        },
+        "speciesWeights": {
+          "fish": 200
         }
       },
       {
@@ -3249,6 +3324,9 @@
           "rare": 900,
           "epic": 100,
           "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_bream": 200
         }
       },
       {
@@ -3265,6 +3343,10 @@
           "rare": 900,
           "epic": 100,
           "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_silverfin": 200,
+          "fish_dace": 200
         }
       },
       {
@@ -3281,6 +3363,9 @@
           "rare": 6000,
           "epic": 500,
           "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_mooncarp": 200
         }
       },
       {
@@ -3297,6 +3382,9 @@
           "rare": 1500,
           "epic": 6500,
           "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_sturgeon": 200
         }
       },
       {
@@ -3313,6 +3401,9 @@
           "rare": 1000,
           "epic": 1500,
           "legendary": 6000
+        },
+        "speciesWeights": {
+          "fish_mirror_koi": 200
         }
       },
       {
@@ -3330,6 +3421,11 @@
           "rare": 4000,
           "epic": 1000,
           "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_rudd": 200,
+          "fish_dace": 200,
+          "fish_pike": 200
         }
       },
       {
@@ -3347,6 +3443,11 @@
           "rare": 500,
           "epic": 4000,
           "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_reedperch": 200,
+          "fish_eel": 200,
+          "fish_mirror_koi": 200
         }
       },
       {
@@ -3364,6 +3465,94 @@
           "rare": 2000,
           "epic": 3500,
           "legendary": 3000
+        },
+        "speciesWeights": {
+          "fish_eel": 200,
+          "fish_mirror_koi": 200
+        }
+      },
+      {
+        "id": "float_rod",
+        "name": "Поплавочная удочка",
+        "description": "Лёгкая удочка с пробковым поплавком. Чаще ловит краснопёрку и камышового окунька своего класса.",
+        "price": 900,
+        "rareBonus": 1,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "classOddsBps": {
+          "common": 3500,
+          "uncommon": 5500,
+          "rare": 900,
+          "epic": 100,
+          "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_rudd": 300,
+          "fish_reedperch": 300
+        },
+        "shop": "plesk"
+      },
+      {
+        "id": "predator_rod",
+        "name": "Хищная удочка",
+        "description": "Жёсткая удочка с зубчатой катушкой. Среди редкой рыбы чаще попадается изумрудная щука.",
+        "price": 9000,
+        "rareBonus": 5,
+        "rarity": "rare",
+        "requiredHomeLevel": 2,
+        "classOddsBps": {
+          "common": 1500,
+          "uncommon": 2000,
+          "rare": 6000,
+          "epic": 500,
+          "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_pike": 300,
+          "fish_reedperch": 200
+        },
+        "shop": "plesk"
+      },
+      {
+        "id": "mirror_rod",
+        "name": "Зеркальная удочка",
+        "description": "Перламутровая удочка с плоской катушкой. Среди эпической рыбы чаще попадается зеркальный кои.",
+        "price": 24000,
+        "rareBonus": 8,
+        "rarity": "epic",
+        "requiredHomeLevel": 3,
+        "classOddsBps": {
+          "common": 1000,
+          "uncommon": 1000,
+          "rare": 1500,
+          "epic": 6500,
+          "legendary": 0
+        },
+        "speciesWeights": {
+          "fish_mirror_koi": 300,
+          "fish_mooncarp": 200
+        },
+        "shop": "plesk"
+      },
+      {
+        "id": "abyss_rod",
+        "name": "Глубинная удочка",
+        "description": "Тяжёлая дорожная удочка с закрытой катушкой. Чаще ловит угря и осетра внутри их классов.",
+        "price": 44000,
+        "rareBonus": 10,
+        "rarity": "legendary",
+        "requiredHomeLevel": 4,
+        "shop": "plesk",
+        "classOddsBps": {
+          "common": 500,
+          "uncommon": 1000,
+          "rare": 2000,
+          "epic": 3500,
+          "legendary": 3000
+        },
+        "speciesWeights": {
+          "fish_eel": 300,
+          "fish_sturgeon": 300
         }
       }
     ],
@@ -3605,6 +3794,88 @@
           "rare": 100,
           "epic": 125,
           "legendary": 125
+        }
+      },
+      {
+        "id": "spoon_hook",
+        "name": "Крючок-блесна",
+        "description": "Медная блесна: чаще попадается камышовый окунёк своего класса.",
+        "price": 1200,
+        "rareBonus": 2,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 100,
+          "uncommon": 150,
+          "rare": 100,
+          "epic": 100,
+          "legendary": 100
+        },
+        "speciesWeights": {
+          "fish_reedperch": 200,
+          "fish_silverfin": 200
+        },
+        "shop": "plesk"
+      },
+      {
+        "id": "weedless_hook",
+        "name": "Незацепляйка",
+        "description": "Защищённое жало: среди редкой рыбы чаще попадается изумрудная щука.",
+        "price": 6000,
+        "rareBonus": 4,
+        "rarity": "rare",
+        "requiredHomeLevel": 2,
+        "rarityWeights": {
+          "common": 100,
+          "uncommon": 100,
+          "rare": 150,
+          "epic": 100,
+          "legendary": 100
+        },
+        "speciesWeights": {
+          "fish_pike": 200
+        },
+        "shop": "plesk"
+      },
+      {
+        "id": "moth_hook",
+        "name": "Крючок-бабочка",
+        "description": "Перламутровые крылья: среди эпической рыбы чаще попадается зеркальный кои.",
+        "price": 16000,
+        "rareBonus": 7,
+        "rarity": "epic",
+        "requiredHomeLevel": 3,
+        "rarityWeights": {
+          "common": 100,
+          "uncommon": 100,
+          "rare": 100,
+          "epic": 150,
+          "legendary": 100
+        },
+        "speciesWeights": {
+          "fish_mirror_koi": 200
+        },
+        "shop": "plesk"
+      },
+      {
+        "id": "deep_hook",
+        "name": "Глубинный крючок",
+        "description": "Тяжёлое жало: чаще попадаются угорь и осётр внутри их классов.",
+        "price": 18000,
+        "rareBonus": 7,
+        "rarity": "epic",
+        "requiredHomeLevel": 4,
+        "shop": "plesk",
+        "rarityWeights": {
+          "common": 100,
+          "uncommon": 100,
+          "rare": 100,
+          "epic": 125,
+          "legendary": 125
+        },
+        "speciesWeights": {
+          "fish_eel": 200,
+          "fish_sturgeon": 200
         }
       }
     ],

@@ -62,12 +62,22 @@ export function fishingClassWeights(rodId: string, baitId: string | null, catalo
     return { rarity: group.rarity, itemId: group.itemId, weight: eligible ? weight : 0 };
   });
 }
-/** Per-species display only. Authoritative drawing always uses integer class tickets. */
+/** Positive integer tickets are normalised only among species of the drawn class.
+ * No bait/class multiplier enters this second draw; older gear remains uniform. */
+export function fishingSpeciesWeights(rodId: string, rarity: FishingClass["rarity"], catalog = economyCatalog.fishing!, hookId = "bare_hook") {
+  const rod = catalog.rods.find(item => item.id === rodId), hook = catalog.hooks.find(item => item.id === hookId);
+  return catalog.fish.filter(fish => fish.rarity === rarity && !fishingIneligibility(fish, rodId, hookId, catalog))
+    .map(fish => ({ itemId: fish.itemId, weight: (rod?.speciesWeights?.[fish.itemId] ?? 100) * (hook?.speciesWeights?.[fish.itemId] ?? 100) }));
+}
+/** Per-species display; class tickets remain exactly the economic draw above. */
 export function fishingWeights(rodId: string, baitId: string | null, catalog = economyCatalog.fishing!, hookId = "bare_hook"): { itemId: string; weight: number }[] {
   const classes = fishingClassWeights(rodId, baitId, catalog, hookId);
-  return catalog.fish.map(fish => ({ itemId: fish.itemId, weight: fishingIneligibility(fish, rodId, hookId, catalog) ? 0
-    : (classes.find(group => group.rarity === fish.rarity)?.weight ?? 0) / catalog.fish.filter(species => species.rarity === fish.rarity
-      && !fishingIneligibility(species, rodId, hookId, catalog)).length }));
+  const weights = new Map(classes.map(group => [group.rarity, fishingSpeciesWeights(rodId, group.rarity, catalog, hookId)]));
+  return catalog.fish.map(fish => {
+    const species = weights.get(fish.rarity)!, total = species.reduce((sum, row) => sum + row.weight, 0);
+    return { itemId: fish.itemId, weight: total ? (classes.find(group => group.rarity === fish.rarity)?.weight ?? 0)
+      * (species.find(row => row.itemId === fish.itemId)?.weight ?? 0) / total : 0 };
+  });
 }
 type FishingOverrides = { rodId?: string; hookId?: string; baitId?: string | null };
 export function fishingClassOdds(state: { fishing?: EconomyFishing }, catalog = economyCatalog.fishing!, override: FishingOverrides = {}) {
@@ -100,8 +110,15 @@ export function selectFishingCatch(serverSeed: string, rodId: string, baitId: st
   let roll = Math.floor(fishingDrawHash(`${serverSeed}:${drawIndex}:class`) * total / 4294967296);
   for (const group of weights) {
     if (roll < group.weight) {
-      const species = catalog.fish.filter(fish => fish.rarity === group.rarity && !fishingIneligibility(fish, rodId, hookId, catalog));
-      return species[Math.floor(fishingDrawHash(`${serverSeed}:${drawIndex}:species`) * species.length / 4294967296)].itemId;
+      const species = fishingSpeciesWeights(rodId, group.rarity, catalog, hookId);
+      const speciesTotal = species.reduce((sum, fish) => sum + fish.weight, 0);
+      // Exact for every schema-valid weight, including catalogs above JS's safe product range.
+      let speciesRoll = Number(BigInt(fishingDrawHash(`${serverSeed}:${drawIndex}:species`)) * BigInt(speciesTotal) / BigInt(4294967296));
+      for (const fish of species) {
+        if (speciesRoll < fish.weight) return fish.itemId;
+        speciesRoll -= fish.weight;
+      }
+      throw new RangeError("Invalid fishing species draw");
     }
     roll -= group.weight;
   }

@@ -90,6 +90,8 @@ object EconomyRules {
                 tier.buyPrice in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == tier.itemId && it.baseSellPrice < tier.buyPrice } &&
                 fishing.fish.any { it.rarity == tier.rarity } })
             require(fishing.fish.isNotEmpty() && fishing.fish.map { it.itemId }.distinct().size == fishing.fish.size)
+            require((fishing.rods.map { it.speciesWeights } + fishing.hooks.map { it.speciesWeights }).filterNotNull()
+                .all { weights -> weights.keys.all { id -> fishing.fish.any { it.itemId == id } } })
             require(fishing.collectionDrawsByRoute.keys == fishing.routeIds.toSet())
             require(fishing.collectionDrawsByRoute.all { (id, draws) -> id in fishing.routeIds && draws in 1..100 &&
                 draws.toLong() == catalog.explorations.first { it.id == id }.rewards.getValue("fish") })
@@ -228,12 +230,26 @@ object EconomyRules {
         } }
     }
 
-    /** Display-only distribution; the actual draw below first selects class, then uniform species. */
+    /** Species tickets never enter the independent economic class draw. */
+    fun fishingSpeciesWeights(rodId: String, rarity: String, hookId: String = "bare_hook",
+        spec: EconomyFishingCatalog = checkNotNull(catalog.fishing)): List<Pair<EconomyFishSpec, Int>> {
+        val rod = spec.rods.find { it.id == rodId }
+        val hook = spec.hooks.find { it.id == hookId }
+        if (rarity == "legendary" && rod?.rarity != "legendary" || rod?.classOddsBps?.get(rarity) == 0) return emptyList()
+        return spec.fish.filter { it.rarity == rarity }.map { fish -> fish to
+            ((rod?.speciesWeights?.get(fish.itemId) ?: 100) * (hook?.speciesWeights?.get(fish.itemId) ?: 100)) }
+    }
+
+    /** Display-only distribution; each class keeps its independent integer tickets. */
     fun fishingWeights(rodId: String, baitId: String?, hookId: String = "bare_hook"): List<Pair<EconomyFishSpec, Double>> {
         val spec = checkNotNull(catalog.fishing)
         val classes = fishingClassWeights(rodId, baitId, hookId).associate { it.first.rarity to it.second }
-        return spec.fish.map { fish -> fish to classes.getValue(fish.rarity).toDouble() / spec.fish.count {
-                it.rarity == fish.rarity }
+        val weights = spec.classes.associate { it.rarity to fishingSpeciesWeights(rodId, it.rarity, hookId) }
+        return spec.fish.map { fish ->
+            val species = weights.getValue(fish.rarity)
+            val total = species.sumOf { it.second }
+            fish to if (total == 0) 0.0 else classes.getValue(fish.rarity).toDouble() *
+                (species.find { it.first.itemId == fish.itemId }?.second ?: 0) / total
         }
     }
 
@@ -258,16 +274,22 @@ object EconomyRules {
     }
 
     /** Independent, server-private hash domains prevent class/species correlation and catch previews. */
-    fun selectFishingCatch(serverSeed: String, rodId: String, baitId: String?, hookId: String = "bare_hook", drawIndex: Int = 0): String {
-        val weights = fishingClassWeights(rodId, baitId, hookId).filter { it.second > 0 }
+    fun selectFishingCatch(serverSeed: String, rodId: String, baitId: String?, hookId: String = "bare_hook", drawIndex: Int = 0,
+        spec: EconomyFishingCatalog = checkNotNull(catalog.fishing)): String {
+        val weights = fishingClassWeights(rodId, baitId, hookId, spec).filter { it.second > 0 }
         var roll = fishingRoll(serverSeed, drawIndex, "class") * weights.sumOf { it.second } / 4294967296L
         var selected = weights.last().first
         for ((tier, weight) in weights) {
             if (roll < weight) { selected = tier; break }
             roll -= weight
         }
-        val species = checkNotNull(catalog.fishing).fish.filter { it.rarity == selected.rarity }
-        return species[(fishingRoll(serverSeed, drawIndex, "species") * species.size / 4294967296L).toInt()].itemId
+        val species = fishingSpeciesWeights(rodId, selected.rarity, hookId, spec)
+        var speciesRoll = fishingRoll(serverSeed, drawIndex, "species") * species.sumOf { it.second.toLong() } / 4294967296L
+        for ((fish, weight) in species) {
+            if (speciesRoll < weight) return fish.itemId
+            speciesRoll -= weight
+        }
+        error("Invalid fishing species draw")
     }
 
     /** Floor one whole stack; splitting cannot improve the payout. */

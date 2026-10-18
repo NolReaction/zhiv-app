@@ -131,7 +131,7 @@ test("lighthouse casts twin volumes and optional surface spill only at night; cl
     assert.equal(low.calls.filter(call => call.method === "drawImage").length, 2, "low retains the main optics without the optional ground spill");
     assert.deepEqual(night.state(), original); assert.equal(night.stack.length, 0);
     assert.notEqual(forestLighthouseAngle(12, false), forestLighthouseAngle(21, false));
-    assert.equal(forestLighthouseAngle(12, false), forestLighthouseAngle(48, false));
+    assert.equal(forestLighthouseAngle(12, false), forestLighthouseAngle(96, false));
     assert.equal(forestLighthouseAngle(12, true), forestLighthouseAngle(21, true));
     assert.equal(forestLighthouseAngle(Infinity, false), forestLighthouseAngle(0, true));
     const hidden = context(); drawForestLighthouseBeams(hidden.ctx, map, { ...options, showBuildings: false });

@@ -63,12 +63,15 @@ export const equipmentArt: Record<string, ReactNode> = {
     <path d="M30 26h3v2h-3Z" fill="#69583c" stroke="none" />
   </>,
   rain_hood: <>
-    <path d="M7 37 10 17C12 1 36 1 39 17l3 20-11 7H18Z" fill="#55788b" />
-    <path d="M25 9c-8 2-13 9-13 18l5 9h15l5-9c0-9-5-16-12-18Z" fill="#3c5668" />
-    <path d="M24 11c-7 2-10 9-10 17l5 7h11l5-7c0-8-4-15-11-17Z" fill="#c4d3ca" />
-    <path d="M24 7v6m-7 23-3 6m18-6 4 6" fill="none" stroke="#90a9ad" strokeWidth="2.2" />
-    <path d="m16 34 8 5 9-5-3 10H19Z" fill="#55788b" />
-    <path d="m21 37-2 9m8-9 3 9" fill="none" stroke="#d1c79a" strokeWidth="1.5" />
+    <path d="M8 29C4 13 12 3 25 3c12 0 20 11 16 27l-2 5 5 7-13 3-8-3-9 2-10-4Z" fill="#55788b" />
+    <path d="M10 18C12 8 20 5 28 7M8 31l6 6m21-7-2 7-8 3" fill="none" stroke="#7294a0" strokeWidth="3" />
+    <path d="M25 9c-8 1-14 9-13 19 0 4 4 8 11 10 8-1 14-6 14-12 0-9-6-16-12-17Z" fill="#3c5668" />
+    <path d="M25 12c-6 1-11 7-11 15 0 4 4 7 9 9 7-1 12-5 12-10 0-7-5-13-10-14Z" fill="#c4d3ca" />
+    <path d="M25 9c-8 1-14 9-13 19m13-19c6 1 12 8 12 17" fill="none" stroke="#90a9ad" strokeWidth="2.2" />
+    <path d="m14 31 9 7 13-6-4 10-9-2-7 2Z" fill="#55788b" />
+    <path d="m14 36 7 3m7 0 7-3M26 4l2 5" fill="none" stroke="#90a9ad" strokeWidth="1.5" />
+    <path d="m20 38-2 8m10-8 2 7" fill="none" stroke="#d1c79a" strokeWidth="1.5" />
+    <path d="m17 45 2 1m10-1 2 1" fill="none" stroke="#3c5668" strokeWidth="2" />
   </>,
   sea_neckerchief: <>
     <path d="M7 14c8-8 27-8 35 0L25 39Z" fill="#4d91a4" />

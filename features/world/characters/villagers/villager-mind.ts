@@ -208,7 +208,7 @@ export function configureForestVillagers(state: ForestVillagersState, scene: Fix
 }
 
 function decide(mind: ForestVillagerMind, places: VillagerPlaces, env: ForestVillagerEnvironment, occupants: readonly ResidentOccupant[]) {
-  const profile = FOREST_VILLAGER_PROFILES[mind.id], weather = villagerShelterWeather(env);
+  const profile = FOREST_VILLAGER_PROFILES[mind.id], weather = villagerShelterWeather(env, mind);
   const rest = mind.fatigue + (weather ? .7 : 0), work = mind.workNeed * profile.diligence;
   const social = mind.socialNeed * profile.sociability;
   if (tryVillagerHome(mind, places, env, occupants)) return;
@@ -257,7 +257,7 @@ export function advanceForestVillagers(state: ForestVillagersState, scene: Fixed
     mind.elapsed += step; mind.age += step;
     const own = forestVillagerOccupants(state);
     const occupants = [...(environment.occupants ?? []).filter(other => !ids.includes(other.id as ForestVillagerId)), ...own];
-    const weather = villagerShelterWeather(environment);
+    const weather = villagerShelterWeather(environment, mind);
     if (!arriving) {
       if (mind.job && id === "kamneshmyg" && mind.doorPhase === "outside" && places.door && mind.wait <= 0)
         approachVillagerDoor(mind, places, occupants);

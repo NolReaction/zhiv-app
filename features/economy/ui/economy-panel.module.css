@@ -180,3 +180,6 @@
 .stockGrid button { background: linear-gradient(145deg, #f5ecd5, #e4d5b1); box-shadow: inset 0 1px #fff7e5; }
 .stockGrid button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px #788854; }
 .stockGrid small { font-weight: 650; }
+
+.marketIntro { display: flex; align-items: center; gap: 7px; color: var(--economy-muted); font-size: .75rem; }
+.showcaseCard { display: grid; gap: 10px; min-width: 0; padding: 11px; border: 1px solid #c2c79f; border-radius: 12px; background: #e7e8ca; }

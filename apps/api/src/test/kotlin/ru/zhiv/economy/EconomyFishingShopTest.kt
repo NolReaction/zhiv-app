@@ -21,7 +21,7 @@ class EconomyFishingShopTest {
         val first = EconomyFishingShops.create(state, now, { 0 })
         val last = EconomyFishingShops.create(state, now, { it - 1 })
         assertEquals(listOf("river_rod", "barbed_hook", "crumb_bait", "fish_common"), first.offers.map { it.itemId })
-        assertEquals(listOf("starfall_rod", "leviathan_hook", "star_bait", "fish_common"), last.offers.map { it.itemId })
+        assertEquals(listOf("abyss_rod", "leviathan_hook", "star_bait", "fish_common"), last.offers.map { it.itemId })
         assertEquals(now.plusSeconds(21600).toString(), first.refreshAt)
         assertEquals(100L, first.refreshPricePearls)
         val spec = checkNotNull(EconomyRules.catalog.fishing)
@@ -45,7 +45,8 @@ class EconomyFishingShopTest {
         val shop = checkNotNull(current.fishingShop)
         assertEquals(1800L, shop.offers.single { it.itemId == "river_rod" }.unitPrice)
         assertEquals(1200L, shop.offers.single { it.itemId == "barbed_hook" }.unitPrice)
-        val alternate = EconomyFishingShops.create(current, now, { it - 1 })
+        val alternate = EconomyFishingShops.create(current.copy(fishing = current.fishing.copy(
+            ownedRods = current.fishing.ownedRods + "float_rod", ownedHooks = current.fishing.ownedHooks + "spoon_hook")), now, { it - 1 })
         assertEquals(900L, alternate.offers.single { it.itemId == "brook_rod" }.unitPrice)
         assertEquals(600L, alternate.offers.single { it.itemId == "round_hook" }.unitPrice)
         val saved = current.copy(fishingShop = shop.copy(offers = shop.offers.map {
@@ -168,9 +169,9 @@ class EconomyFishingShopTest {
         assertEquals(listOf("river_rod", "barbed_hook", "worm_bait", "fish_common"),
             checkNotNull(EconomyFishingShops.refresh(state, now, { 0 })).offers.map { it.itemId })
         val totals = mutableListOf<Int>()
-        assertEquals(listOf("starfall_rod", "leviathan_hook", "star_bait", "fish_common"),
+        assertEquals(listOf("abyss_rod", "leviathan_hook", "star_bait", "fish_common"),
             checkNotNull(EconomyFishingShops.refresh(state, now, { totals += it; it - 1 })).offers.map { it.itemId })
-        assertEquals(listOf(10000, 1, 10000, 1, 99, 1), totals)
+        assertEquals(listOf(10000, 2, 10000, 1, 99, 1), totals)
         var legendary = 0
         repeat(10000) { ticket ->
             val shop = checkNotNull(EconomyFishingShops.refresh(state, now, { if (it == 10000) ticket else 0 }, "paid"))
@@ -193,9 +194,11 @@ class EconomyFishingShopTest {
     }
 
     @Test fun `exhausted ordinary alternatives cannot charge or promote a rare replacement`() {
+        val spec = checkNotNull(EconomyRules.catalog.fishing)
         for (home in 1..5) {
             val initial = ready(home).let { it.copy(fishing = it.fishing.copy(
-                ownedRods = it.fishing.ownedRods + "brook_rod", ownedHooks = it.fishing.ownedHooks + "round_hook")) }
+                ownedRods = it.fishing.ownedRods + spec.rods.filter { rod -> rod.rarity == "uncommon" && rod.id != "river_rod" }.map { rod -> rod.id },
+                ownedHooks = it.fishing.ownedHooks + spec.hooks.filter { hook -> hook.rarity == "uncommon" && hook.id != "barbed_hook" }.map { hook -> hook.id })) }
             assertFalse(EconomyFishingShops.canRefresh(initial))
             assertNull(EconomyFishingShops.refresh(initial, now, { error("must not draw") }))
             assertEquals("ECONOMY_FISHING_SHOP_NO_REPLACEMENT", assertFailsWith<AuthFailure> {
@@ -205,7 +208,7 @@ class EconomyFishingShopTest {
             assertEquals(4, EconomyFishingShops.create(initial, now.plusSeconds(21600), { 0 }).offers.size)
         }
         val depleted = ready(5, 6000).let { it.copy(fishing = it.fishing.copy(
-            ownedRods = it.fishing.ownedRods + listOf("river_rod", "brook_rod"))) }
+            ownedRods = it.fishing.ownedRods + spec.rods.filter { rod -> rod.rarity == "uncommon" }.map { rod -> rod.id })) }
         assertFalse(EconomyFishingShops.canRefresh(depleted))
         assertNull(EconomyFishingShops.refresh(depleted, now, { error("must not draw") }))
     }

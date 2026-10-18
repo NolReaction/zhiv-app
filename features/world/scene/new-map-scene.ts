@@ -599,7 +599,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       rain, dusk, enabled: options.devRehearsal ? options.devRehearsal.scenario === "watch-birds" : dev?.autoLife !== false,
       reservedBirdIds: state.director.birdwatch ? [state.director.birdwatch.birdId] : [] });
     const meeting = state.social.meeting;
-    advanceForestVillagers(state.villagers, world, dt, { rain, dusk, now: explorationNow(),
+    advanceForestVillagers(state.villagers, world, dt, { rain, dusk, localHour: dev?.timeOfDay === "night" ? undefined : options.localHour, now: explorationNow(),
       production: state.economyResidents?.production, occupants: residentOccupants(),
       arrivalActive: Boolean(options.view === "world" && options.residentArrival?.enabled && active() && session.isOwner()),
       lopukhArrivalActive: Boolean(options.view === "world" && options.lopukhArrival?.enabled && active() && session.isOwner()),
@@ -649,6 +649,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     }
     advanceBuilderMind(state.builderMind, world, dt, { now: explorationNow(), construction: state.economyConstruction,
       occupants: residentOccupants(), socialHold: socialResidentHeld("builder"),
+      localHour: dev?.timeOfDay === "night" ? undefined : options.localHour,
       night: Number(atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }).dusk) >= .65 });
   }
   // DEV rehearsals use the same travel/animation controller with a local clock.
@@ -1105,7 +1106,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       advanceBuilder(step);
       if (state.pleskMind) {
         const resident = pleskMindFrame(state.pleskMind, world, false);
-        advancePleskMind(state.pleskMind, world, step, { rain: environment.rain, dusk: environment.dusk, occupants: residentOccupants(),
+        advancePleskMind(state.pleskMind, world, step, { rain: environment.rain, dusk: environment.dusk, localHour: dev?.timeOfDay === "night" ? undefined : options.localHour, occupants: residentOccupants(),
           socialHold: socialResidentHeld("plesk"),
           socialPartnerId: state.social.meeting?.host === "plesk" ? state.social.meeting.guest
             : state.social.meeting?.guest === "plesk" ? state.social.meeting.host : undefined,

@@ -1,3 +1,4 @@
+import { residentNightRest } from "../resident-evening-routine";
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import type { ForestVillagerAction, ForestVillagerId } from "@/features/world/characters/forest-villager-types";
 import type { SteeringPath } from "@/features/world/navigation/steering";
@@ -53,7 +54,7 @@ export type ForestVillagerConfiguration = {
   production?: EconomySceneProduction | null; now?: number;
 };
 export type ForestVillagerEnvironment = {
-  rain?: boolean | number; dusk?: boolean | number; occupants?: readonly ResidentOccupant[];
+  rain?: boolean | number; dusk?: boolean | number; localHour?: number; occupants?: readonly ResidentOccupant[];
   socialHolds?: readonly ForestVillagerId[]; production?: EconomySceneProduction | null; now?: number;
   /** The promised visitor and host never ask one another to clear their meeting. */
   socialPartners?: Partial<Record<ForestVillagerId, string>>;
@@ -64,6 +65,7 @@ export type ForestVillagerEnvironment = {
 };
 
 /** Dawn/night blends and the first raindrops do not cancel an outing. */
-export const villagerShelterWeather = (env: Pick<ForestVillagerEnvironment, "rain" | "dusk">): boolean =>
+export const villagerShelterWeather = (env: Pick<ForestVillagerEnvironment, "rain" | "dusk" | "localHour">,
+  mind?: Pick<ForestVillagerMind, "id" | "elapsed">): boolean =>
   (typeof env.rain === "boolean" ? env.rain : (env.rain ?? 0) >= .24)
-  || (typeof env.dusk === "boolean" ? env.dusk : (env.dusk ?? 0) >= .6);
+  || residentNightRest(mind?.id ?? "kamneshmyg", mind?.elapsed ?? 0, env.dusk ?? 0, env.localHour);

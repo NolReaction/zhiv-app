@@ -37,6 +37,8 @@ export const economyLeaftailShopSchema = z.object({
 export type EconomyLeaftailShop = z.infer<typeof economyLeaftailShopSchema>;
 const rarityWeights = z.object({ common: count.positive().max(1000), uncommon: count.positive().max(1000),
   rare: count.positive().max(1000), epic: count.positive().max(1000), legendary: count.positive().max(1000) });
+// Missing species use 100 tickets. These affect only the second, within-class draw.
+const speciesWeights = z.record(id, count.positive().max(1000)).refine(value => Object.keys(value).length <= 100).nullish();
 const defaultGearShopOdds = [
   { common: 0, uncommon: 10000, rare: 0, epic: 0, legendary: 0 },
   { common: 0, uncommon: 9000, rare: 1000, epic: 0, legendary: 0 },
@@ -63,9 +65,9 @@ export const economyFishingCatalogSchema = z.object({
   fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
     weight: count.positive().max(10000).nullish(), affinity: count.max(10).nullish(), buyPrice: balance.positive(), requiredHookId: id.nullish() })).min(1).max(100),
   rods: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
-    classOddsBps: fishingRodClassOdds.nullish(), shop: z.enum(["plesk", "leaftail"]).default("plesk"),
+    classOddsBps: fishingRodClassOdds.nullish(), speciesWeights, shop: z.enum(["plesk", "leaftail"]).default("plesk"),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100),
-  hooks: z.array(z.object({ id, name: z.string(), description: z.string(), shop: z.enum(["plesk", "leaftail"]).default("plesk"), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
+  hooks: z.array(z.object({ id, name: z.string(), description: z.string(), shop: z.enum(["plesk", "leaftail"]).default("plesk"), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(), speciesWeights,
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100)
     .default([{ id: "bare_hook", name: "Простой крючок", description: "Начальная снасть без дополнительных усилений.", price: 0, rareBonus: 0, rarity: "common", requiredHomeLevel: 1, shop: "plesk" }]),
   baits: z.array(z.object({ itemId: id, description: z.string(), shop: z.enum(["plesk", "leaftail"]).default("plesk"), price: balance.positive(), rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
@@ -197,7 +199,7 @@ export const economyCatalogSchema = z.object({
       const gear = offer.kind === "rod" ? catalog.fishing?.rods.find(item => item.id === offer.itemId)
         : offer.kind === "hook" ? catalog.fishing?.hooks.find(item => item.id === offer.itemId)
         : catalog.fishing?.baits.find(item => item.itemId === offer.itemId);
-      return !gear || gear.shop !== "leaftail" || offer.priceCoins !== gear.price * offer.quantity
+      return !gear || offer.priceCoins !== gear.price * offer.quantity
         || offer.kind !== "bait" && offer.quantity !== 1;
     })) invalid("Leaftail offers require valid exclusive clothing, tackle or non-profitable material bundles");
   if (catalog.fishing) {
@@ -209,6 +211,8 @@ export const economyCatalogSchema = z.object({
       || fishing.fish.some(fish => !itemIds.has(fish.itemId)))
       invalid("Fish species require unique known items");
     if (fishing.rods.some(rod => !rod.classOddsBps)) invalid("Current rods require explicit class odds");
+    if ([...fishing.rods, ...fishing.hooks].some(gear => Object.keys(gear.speciesWeights ?? {}).some(itemId => !fishIds.has(itemId))))
+      invalid("Tackle species weights require known collection fish");
     if (fishing.classes.some(group => !fishing.rods.some(rod => (rod.classOddsBps?.[group.rarity] ?? 0) > 0
       && (group.rarity !== "legendary" || rod.rarity === "legendary")))) invalid("Every fish class requires an eligible rod");
     if (Object.keys(fishing.collectionDrawsByRoute).some(routeId => !fishing.routeIds.includes(routeId)) || fishing.routeIds.some(routeId => !catalog.explorations.some(route => route.id === routeId && (route.rewards.fish ?? 0) > 0

@@ -49,9 +49,15 @@ function elements(tree) {
   function visit(element) { if (!isValidElement(element)) return; result.push(element); Children.forEach(element.props.children, visit); }
   visit(tree); return result;
 }
-function harness(component, props) {
+function flushEffects({ hidden = false, online = true } = {}) {
+  const before = Object.fromEntries(["document", "navigator"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { hidden } });
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine: online } });
+  try { hooks.flush(); } finally { for (const [key, descriptor] of Object.entries(before)) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
+}
+function harness(component, props, availability) {
   hooks.reset(); const focused = [];
-  const render = () => { hooks.render(); const tree = component(props), nodes = elements(tree); for (const node of nodes) if (node.props.ref) node.props.ref.current = { focus() { focused.push(node.props.role === "group" ? "confirmation" : "trigger"); } }; hooks.flush(); return { tree, nodes, html: renderToStaticMarkup(tree) }; };
+  const render = () => { hooks.render(); const tree = component(props), nodes = elements(tree); for (const node of nodes) if (node.props.ref) node.props.ref.current = { focus() { focused.push(node.props.role === "group" ? "confirmation" : "trigger"); } }; flushEffects(availability); return { tree, nodes, html: renderToStaticMarkup(tree) }; };
   return { render, focused };
 }
 
@@ -535,5 +541,14 @@ test("closed market distinguishes bridge work from unclaimed completion and neve
     assert.match(renderToStaticMarkup(action), new RegExp(phase === "ruins" ? "Восстановить мост" : phase === "building" ? "К стройке моста" : "Получить мост"));
     action.props.onClick();
     assert.deepEqual(destinations, [["buildings", "bridge"]]);
+  }
+});
+
+
+test("an initially hidden or offline market waits for availability before its first automatic read", () => {
+  for (const availability of [{ hidden: true }, { online: false }]) {
+    const e = economy(), reads = []; e.refreshMarket = () => { reads.push(true); };
+    harness(Market, { economy: e, navigate() {} }, availability).render();
+    assert.deepEqual(reads, []);
   }
 });

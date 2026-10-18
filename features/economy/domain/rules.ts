@@ -580,7 +580,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       return "Плёска подготовила новые предложения";
     }
     case "buy_leaftail_item": {
-      const shop = leaftailShopView(state, now);
+      // The adapter has already authenticated command.ownerPublicId before this
+      // transition; it is the same identity used by the displayed snapshot.
+      const shop = leaftailShopView({ ...state, ownerPublicId: command.ownerPublicId }, now);
       if (!shop) return fail("ECONOMY_LEAFTAIL_UNAVAILABLE", "Листохвост пока не открыл лавку");
       requireHome(state, shop.requiredHomeLevel);
       const offer = shop.offers.find(item => item.targetId === command.targetId);
@@ -588,9 +590,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       requireHome(state, offer.requiredHomeLevel);
       const item = offer.kind === "item" && economyCatalog.items.find(item => item.id === offer.itemId);
       const clothing = offer.kind === "wardrobe" && wardrobeItems.find(item => item.id === offer.itemId && !item.starter && !item.purchase && item.sparks === 0);
-      const rod = offer.kind === "rod" && economyCatalog.fishing?.rods.find(item => item.id === offer.itemId && item.shop === "leaftail");
-      const hook = offer.kind === "hook" && economyCatalog.fishing?.hooks.find(item => item.id === offer.itemId && item.shop === "leaftail");
-      const bait = offer.kind === "bait" && economyCatalog.fishing?.baits.find(item => item.itemId === offer.itemId && item.shop === "leaftail");
+      const rod = offer.kind === "rod" && economyCatalog.fishing?.rods.find(item => item.id === offer.itemId);
+      const hook = offer.kind === "hook" && economyCatalog.fishing?.hooks.find(item => item.id === offer.itemId);
+      const bait = offer.kind === "bait" && economyCatalog.fishing?.baits.find(item => item.itemId === offer.itemId);
       const gear = rod || hook || bait;
       if (item ? (item.category === "special" ? item.tradable || offer.quantity !== 1 : !["wood", "stone", "fiber"].includes(item.id)
         || !item.tradable || offer.priceCoins !== 2 * item.baseSellPrice * offer.quantity)

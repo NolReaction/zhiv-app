@@ -1,3 +1,4 @@
+import { residentEveningActive } from "../resident-evening-routine";
 import type { ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import type { ForestVillagerId } from "@/features/world/characters/forest-villager-types";
 import type { FixedWorldScene } from "@/features/world/tiled/types";
@@ -25,9 +26,11 @@ export function tryVillagerHome(mind: ForestVillagerMind, places: VillagerPlaces
     || env.socialHolds?.includes(mind.id) || env.wildlifeHolds?.includes(mind.id)
     || mind.intent === "yield" && mind.route || mind.woodwork && mind.woodwork.phase !== "idle"
     || mind.elapsed < mind.retryAt) return false;
-  if (!villagerShelterWeather(env) && mind.elapsed < mind.outdoorUntil && mind.fatigue < .7) return false;
+  if (residentEveningActive(mind.id, mind.elapsed, env.dusk ?? 0, env.localHour)
+    && !villagerShelterWeather(env, mind) && mind.fatigue < .85) return false;
+  if (!villagerShelterWeather(env, mind) && mind.elapsed < mind.outdoorUntil && mind.fatigue < .7) return false;
   if ((mind.goal?.intent === "wander" || mind.habit || mind.route && mind.intent === "wander")
-    && !villagerShelterWeather(env) && mind.fatigue < .7) return false;
+    && !villagerShelterWeather(env, mind) && mind.fatigue < .7) return false;
   mind.retryAt = mind.elapsed + 6;
   return approachVillagerDoor(mind, places, occupants);
 }

@@ -11,6 +11,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
 import { itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { FISH_RARITY_NAMES, type FishRarity } from "./fish-rarity";
+import { FishingSpeciesFocus, FishingSpeciesOdds } from "./fishing-species-odds";
 import styles from "./world-tackle-picker.module.css";
 
 export type TackleKind = "rod" | "hook" | "bait";
@@ -36,7 +37,7 @@ export function fishingTackleOptions(state: EconomyView, kind: TackleKind): Tack
   if (!catalog) return [];
   if (kind === "rod") return catalog.rods.filter(rod => gear.ownedRods.includes(rod.id)).map(rod => {
     const removesBait = Boolean(gear.equippedBaitId && !fishingBaitCompatible(rod.id, gear.equippedBaitId, catalog));
-    const targets = rod.shop === "leaftail" && rod.classOddsBps
+    const targets = rod.classOddsBps && (rod.shop === "leaftail" || rod.classOddsBps[rod.rarity] < 5000)
       ? (Object.keys(fishTargets) as FishRarity[]).filter(rarity => rod.classOddsBps![rarity] > 0)
         .sort((a, b) => rod.classOddsBps![b] - rod.classOddsBps![a]).slice(0, 2) : [rod.rarity];
     return { id: rod.id, name: rod.name, rarity: rod.rarity, targets, direction: direction(targets), selected: rod.id === gear.equippedRodId,
@@ -146,6 +147,7 @@ export function WorldTacklePicker(props: Props) {
           <span className={styles.optionArt}><TackleArt kind={kind} itemId={option.id} size={kind === "rod" ? 40 : 29} /></span>
           <span className={styles.optionText}><strong>{option.name}</strong><span>{option.direction}</span>
             {option.available ? <TargetOdds state={state} option={option} /> : <small>Не подходит к этой удочке</small>}
+            {option.available && kind !== "bait" && <FishingSpeciesFocus state={state} override={option.override} />}
             {option.stock !== undefined && <small>В запасе {number(option.stock)} · за поход 1</small>}
             {option.removesBait && <small>Наживка останется в кладовой</small>}
           </span>{option.selected ? <Check size={17} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />}
@@ -154,6 +156,7 @@ export function WorldTacklePicker(props: Props) {
       </Popover.Content></Popover.Portal>}
       </Popover.Root>;
     })}</div>
+    <FishingSpeciesOdds state={state} />
     {onOpenFishingShop && <button type="button" className={styles.shop} onClick={() => { navigating.current = true; setQuote(null); onOpenFishingShop(); }}>Купить снасти у Плёски<ArrowRight size={12} aria-hidden="true" /></button>}
   </section>;
 }

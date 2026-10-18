@@ -227,12 +227,25 @@ test("a personal showcase explains its fixed window and disables stale quotes un
   assert.match(html, /Ваша витрина · 1 \/ 12/);
   assert.match(html, /До 2 лотов от одной лавки/);
   assert.match(html, /Купленные и снятые лоты до смены не заменяются/);
-  assert.ok(button(html, "Проверить наличие"));
+  const refresh = (markup, label) => {
+    const control = buttons(markup).find(entry => entry.attributes.includes(`aria-label="${label}"`));
+    assert.ok(control, `Missing refresh control: ${label}`); return control;
+  };
+  assert.equal(disabled(refresh(html, "Проверить наличие")), false);
+  assert.match(html, /data-market-refresh="waiting"/);
+  assert.match(html, /role="timer"[^>]*>30:00<\/strong>/);
   assert.equal(disabled(button(html, "Купить весь лот")), false);
   assert.doesNotMatch(html, /Показать ещё/);
+  html = render("market", { ...economy, now: now + 900_000 });
+  assert.match(html, /role="timer"[^>]*>15:00<\/strong>/);
+  assert.match(html, /data-market-refresh="waiting"[\s\S]*?<progress[^>]*value="0\.5"/);
+  assert.equal(disabled(button(html, "Купить весь лот")), false);
   html = render("market", { ...economy, now: now + 1800_000 });
+  assert.match(html, /data-market-refresh="ready"/);
+  assert.match(html, /role="timer"[^>]*>00:00<\/strong>/);
+  assert.match(html, /data-market-refresh="ready"[\s\S]*?<progress[^>]*value="0"/);
   assert.equal(disabled(button(html, "Обновите витрину")), true);
-  assert.equal(disabled(button(html, "Обновить витрину")), false);
+  assert.equal(disabled(refresh(html, "Обновить витрину")), false);
 });
 
 test("stale offers stay hidden until personal discovery and cannot bypass the NPC resale price floor", () => {

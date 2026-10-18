@@ -69,6 +69,26 @@ test("rain and night keep a resting Plesk home, while the shop invitation brings
   assert.deepEqual(mind.position, pleskLocalPlaces(world).trade.position); assert.equal(mind.catchCount, 0);
 });
 
+test("an evening Plesk leaves her finished home rest and resumes fishing without waiting for dawn", () => {
+  const mind = createPleskMind(world, 7), evening = { rain: 0, dusk: 1, localHour: 21 };
+  mind.elapsed = 110;
+  requestPleskHome(mind);
+  until(mind, item => item.home.phase === "inside", 60, evening);
+  const feet = { ...mind.position };
+  tick(mind, 120, { ...evening, localHour: 2 });
+  assert.equal(mind.home.phase, "inside"); assert.deepEqual(mind.position, feet);
+  until(mind, item => item.home.phase === "outside", 100, evening);
+  until(mind, item => item.stage.action === "fish", 100, evening);
+  assert.equal(mind.home.phase, "outside");
+  assert.ok(pleskMindFrame(mind, world, false));
+  const paused = structuredClone(mind);
+  for (let sample = 0; sample < 10; sample++) {
+    advancePleskMind(mind, world, 0, evening);
+    pleskMindFrame(mind, world, true);
+  }
+  assert.deepEqual(mind, paused, "paused/reduced-motion reads do not consume an evening activity window");
+});
+
 test("a shop call reverses a partly completed entry without jumping feet or opacity at dt zero", () => {
   const mind = createPleskMind(world); requestPleskHome(mind);
   until(mind, item => item.home.phase === "enter" && item.home.progress > .3);

@@ -38,7 +38,7 @@ class EconomyFishingTest {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         spec.classes.forEach { fish -> assertTrue(fish.buyPrice > EconomyRules.catalog.items.single { it.id == fish.itemId }.baseSellPrice) }
         spec.baits.forEach { bait -> assertTrue(bait.price > EconomyRules.catalog.items.single { it.id == bait.itemId }.baseSellPrice) }
-        assertEquals(listOf("fish_bream", "fish_pike", "fish_reedperch"),
+        assertEquals(listOf("fish_bream", "fish_mooncarp", "fish_reedperch"),
             listOf("00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff")
                 .map { EconomyRules.selectFishingCatch(it, "willow_rod", "worm_bait") })
     }
@@ -184,7 +184,10 @@ class EconomyFishingTest {
 
     @Test fun `hooks remain durable unique purchases and saved fishing never adopts later loadout changes`() {
         val homeTwo = funded().copy(buildings = funded().buildings + ("home" to 2))
-        val initial = homeTwo.copy(fishingShop = EconomyFishingShops.create(homeTwo, now, { it - 1 }))
+        val drawn = EconomyFishingShops.create(homeTwo, now, { it - 1 })
+        // Pin the offered item; this test concerns command validation, not rotation ordering.
+        val initial = homeTwo.copy(fishingShop = drawn.copy(offers = drawn.offers.map { offer -> if (offer.kind == "hook")
+            offer.copy(id = "${drawn.id}:silver_hook", itemId = "silver_hook", unitPrice = 6000) else offer }))
         assertEquals("ECONOMY_FISHING_HOOK", assertFailsWith<AuthFailure> { apply(initial, "equip_fishing_hook", "silver_hook") }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "silver_hook", 2, 12000) }.code)
         val purchased = apply(initial, "buy_fishing_item", "silver_hook", price = 6000)
@@ -222,7 +225,7 @@ class EconomyFishingTest {
                 ownedHooks = listOf("bare_hook", "barbed_hook"), equippedHookId = "barbed_hook"))
         val active = apply(initial, "start_fishing", "shore_camp")
         val job = active.jobs.single()
-        assertEquals(mapOf("fish_bream" to 4L, "fish_dace" to 4L), job.rewards)
+        assertEquals(mapOf("fish_bream" to 7L, "fish_dace" to 1L), job.rewards)
         assertEquals(1L, active.inventory["worm_bait"])
         val changed = apply(active, "equip_fishing_rod", "reed_rod")
         assertEquals(job, changed.jobs.single())

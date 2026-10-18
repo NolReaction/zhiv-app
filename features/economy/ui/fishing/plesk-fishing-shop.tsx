@@ -20,6 +20,7 @@ import { listenForSectionGuideNavigation } from "@/features/onboarding/section-g
 import { itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { useFishingCommand } from "./use-fishing-command";
 import { PleskFishingCollection } from "./plesk-fishing-book";
+import { FishingSpeciesFocus, FishingSpeciesOdds } from "./fishing-species-odds";
 import { WorldFishStockList } from "./world-fish-stock-list";
 import { WorldFishSelection } from "./world-fish-selection";
 import { FishTapFeedbackQuantity, useFishTapFeedback, type FishTapFeedback } from "./fish-tap-feedback";
@@ -62,6 +63,8 @@ export function PleskCatchOdds({ state, catalog, override, preview = false, targ
         </dd>
       </div>;
     })}</dl>
+    <FishingSpeciesFocus state={state} override={override} />
+    <FishingSpeciesOdds state={state} override={override} />
   </section>;
 }
 

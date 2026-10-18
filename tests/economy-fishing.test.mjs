@@ -48,7 +48,7 @@ test("Pleska catalog has no buy-sell arbitrage and upgrades visibly improve thei
   assert.equal(fishingClassWeights("reed_rod", null).reduce((sum, fish) => sum + fish.weight, 0), 10000);
   // Same UUID vectors are asserted in Kotlin to keep weighted drawing identical.
   assert.deepEqual(["00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff"]
-    .map(id => selectFishingCatch(id, "willow_rod", "worm_bait")), ["fish_bream", "fish_pike", "fish_reedperch"]);
+    .map(id => selectFishingCatch(id, "willow_rod", "worm_bait")), ["fish_bream", "fish_mooncarp", "fish_reedperch"]);
 });
 
 test("specialized tackle keeps a stable private draw for identical gear", () => {
@@ -226,6 +226,8 @@ test("hooks are unique durable purchases, validated loadout and saved trip metad
   const p = player(); fund(p);
   stored(p).buildings.home = 2;
   stored(p).fishingShop = createFishingShop(stored(p), now, max => max - 1);
+  stored(p).fishingShop.offers = stored(p).fishingShop.offers.map(offer => offer.kind === 'hook'
+    ? { ...offer, id: `${stored(p).fishingShop.id}:silver_hook`, itemId: 'silver_hook', unitPrice: 6000 } : offer);
   const before = read(p);
   assert.throws(() => issue(p, 'equip_fishing_hook', 'silver_hook'), { code: 'ECONOMY_FISHING_HOOK' });
   assert.throws(() => issue(p, 'buy_fishing_item', 'silver_hook', { quantity: 2, totalPrice: 12000 }), { code: 'INVALID_ECONOMY_COMMAND' });
@@ -290,7 +292,7 @@ test("longer fishing snapshots eight actual species draws and claims classes exa
   initial.fishingCastSeed = "00000000-0000-4000-8000-000000000001";
   const publicJob = issue(p, "start_fishing", "shore_camp").jobs[0];
   const saved = structuredClone(stored(p).jobs[0]);
-  assert.deepEqual(saved.rewards, { fish_bream: 4, fish_dace: 4 });
+  assert.deepEqual(saved.rewards, { fish_bream: 7, fish_dace: 1 });
   assert.equal(stored(p).inventory.worm_bait, 1);
   issue(p, "equip_fishing_rod", "reed_rod");
   assert.deepEqual(stored(p).jobs[0], saved);

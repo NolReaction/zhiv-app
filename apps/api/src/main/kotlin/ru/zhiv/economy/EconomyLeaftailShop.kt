@@ -12,6 +12,28 @@ object EconomyLeaftailShops {
         return if (saved.cycle >= current) saved else EconomyLeaftailShopState(cycle = current)
     }
 
+    /** Matches the browser's unsigned 32-bit stock hash, including UTF-16 chars. */
+    private fun deliveryHash(value: String): Long {
+        var hash = 2166136261L.toInt()
+        for (character in value) hash = (hash xor character.code) * 16777619
+        hash = (hash xor (hash ushr 16)) * 0x7feb352d
+        hash = (hash xor (hash ushr 15)) * 0x846ca68b.toInt()
+        return (hash xor (hash ushr 16)).toLong() and 0xffffffffL
+    }
+
+    /** Identity is the authenticated account, not client entropy. Neither opening
+     * the shop nor buying an offer rerolls the other finds in this saved cycle. */
+    fun offers(catalog: EconomyCatalog, cycle: Long, ownerPublicId: String): List<EconomyLeaftailOffer> {
+        val spec = catalog.leaftailShop ?: return emptyList()
+        val offers = spec.offers + spec.travelOffers
+        val specialItems = catalog.items.filter { it.category == "special" }.map { it.id }.toSet()
+        val key = "leaftail-find-v1:$ownerPublicId:$cycle"
+        val chosen = offers.filter { ownerPublicId.isNotEmpty() && it.kind == "item" && it.itemId in specialItems }
+            .sortedWith(compareBy<EconomyLeaftailOffer> { deliveryHash("$key:${it.id}") }.thenBy { it.id })
+            .take(1 + (deliveryHash("$key:count") % 2).toInt()).map { it.id }.toSet()
+        return offers.filter { it.kind != "item" || it.itemId !in specialItems || it.id in chosen }
+    }
+
     /** Merging accounts cannot replenish either account's consumed daily offers. */
     fun merge(a: EconomyLeaftailShopState, b: EconomyLeaftailShopState): EconomyLeaftailShopState {
         if (a.cycle != b.cycle) return if (a.cycle > b.cycle) a else b
@@ -27,9 +49,11 @@ object EconomyLeaftailShops {
             else item.id in setOf("wood", "stone", "fiber") && item.tradable && offer.priceCoins == 2L * item.baseSellPrice * offer.quantity }
         if (offer.kind == "wardrobe") return offer.quantity == 1L && WorldRules.catalog.items.any {
             it.id == offer.itemId && it.slot in setOf("head", "neck", "palette") && !it.starter && it.purchase == null && it.sparks == 0L }
-        val rod = catalog.fishing?.rods?.find { offer.kind == "rod" && it.id == offer.itemId && it.shop == "leaftail" }
-        val hook = catalog.fishing?.hooks?.find { offer.kind == "hook" && it.id == offer.itemId && it.shop == "leaftail" }
-        val bait = catalog.fishing?.baits?.find { offer.kind == "bait" && it.itemId == offer.itemId && it.shop == "leaftail" }
+        // Explicit travelOffers membership chooses the merchant; default gear
+        // shop controls Pleska's rotation and may also supply this caravan.
+        val rod = catalog.fishing?.rods?.find { offer.kind == "rod" && it.id == offer.itemId }
+        val hook = catalog.fishing?.hooks?.find { offer.kind == "hook" && it.id == offer.itemId }
+        val bait = catalog.fishing?.baits?.find { offer.kind == "bait" && it.itemId == offer.itemId }
         val price = rod?.price ?: hook?.price ?: bait?.price ?: return false
         return offer.priceCoins == price * offer.quantity && (bait != null || offer.quantity == 1L)
     }
@@ -42,7 +66,9 @@ object EconomyLeaftailShops {
         if ((state.buildings["home"] ?: 1) < spec.requiredHomeLevel)
             economyFailure("ECONOMY_HOME_REQUIRED", "Сначала улучшите дом до уровня ${spec.requiredHomeLevel}")
         val stock = normalized(state.leaftailShop, now, spec)
-        val offer = (spec.offers + spec.travelOffers).find { command.targetId == "${stock.cycle}:${it.id}" }
+        // JdbcEconomyRepository verifies the command owner against the session
+        // before this transition, so direct requests cannot select another stock.
+        val offer = offers(catalog, stock.cycle, command.ownerPublicId).find { command.targetId == "${stock.cycle}:${it.id}" }
             ?: economyFailure("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Поставка обновилась. Проверьте товары Листохвоста")
         if (!validOffer(catalog, offer)) economyFailure("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Этот товар пока недоступен")
         val rod = catalog.fishing?.rods?.find { offer.kind == "rod" && it.id == offer.itemId }

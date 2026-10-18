@@ -27,8 +27,9 @@
 .confirmation h3 { font-size: 13px; }
 .confirmation h3:focus { outline: none; }
 .actions { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
-.delivery { display: flex; align-items: flex-start; gap: 6px; }
-.delivery small { display: block; margin-top: 2px; font-size: 9px; }
+.delivery { display: grid; gap: 5px; padding: 10px; border: 1px solid #b9c29b; border-radius: 10px; background: #e3e6c8; }
+.delivery summary { width: fit-content; padding-block: 2px; cursor: pointer; font-size: 10px; }
+.delivery details p { margin-top: 5px; line-height: 1.4; font-size: 10px; }
 .success { display: flex; align-items: flex-start; gap: 7px; padding: 9px; border: 1px solid #a6b691; border-radius: 9px; color: #395a30; background: #dce5c5; font-size: 11px; }
 .success > svg { flex-shrink: 0; }
 .success > div { min-width: 0; overflow-wrap: anywhere; }
@@ -36,7 +37,7 @@
 .recovery { padding: 9px; border-radius: 8px; background: #ead1b2; color: #86432d; font-size: 11px; }
 @media (max-width: 360px) { .offerBottom { flex-wrap: wrap; } .offerBottom > small { flex: 1 1 100%; } .shop.shop .buy { min-height: 44px; } }
 .tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
-.shop.shop .tabs button { padding: 5px 3px; font-size: 10px; }
+.shop.shop .tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 3px; font-size: 10px; }
 .hint { margin-bottom: 7px !important; line-height: 1.4; }
 .clothes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .clothes .offer { display: flex; flex-direction: column; padding: 8px; }

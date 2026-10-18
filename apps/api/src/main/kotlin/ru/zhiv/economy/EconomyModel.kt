@@ -47,16 +47,19 @@ internal val economyBerryItemIds = setOf("berries", "strawberries", "blueberries
     val weight: Int? = null, val affinity: Int? = null, val buyPrice: Long, val requiredHookId: String? = null)
 @Serializable data class EconomyRodSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int = 0,
     val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null,
-    val classOddsBps: Map<String, Int>? = null, val shop: String = "plesk") {
+    val classOddsBps: Map<String, Int>? = null, val shop: String = "plesk", val speciesWeights: Map<String, Int>? = null) {
     init { require(shop in setOf("plesk", "leaftail")) }
+    init { require(speciesWeights == null || speciesWeights.size <= 100 && speciesWeights.values.all { it in 1..1000 }) }
     init {
         require(classOddsBps == null || (classOddsBps.keys == setOf("common", "uncommon", "rare", "epic", "legendary") &&
             classOddsBps.values.all { it in 0..10000 } && classOddsBps.values.sum() == 10000))
     }
 }
 @Serializable data class EconomyHookSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int = 0,
-    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null, val shop: String = "plesk") {
+    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null, val shop: String = "plesk",
+    val speciesWeights: Map<String, Int>? = null) {
     init { require(shop in setOf("plesk", "leaftail")) }
+    init { require(speciesWeights == null || speciesWeights.size <= 100 && speciesWeights.values.all { it in 1..1000 }) }
 }
 @Serializable data class EconomyBaitSpec(val itemId: String, val description: String, val price: Long, val rareBonus: Int = 0,
     val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null, val shop: String = "plesk") {

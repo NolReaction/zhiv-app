@@ -1,4 +1,4 @@
-import { fishingClassWeights, fishingCollectionDraws, fishingIneligibility } from "@/features/economy/domain/fishing";
+import { fishingClassWeights, fishingCollectionDraws, fishingIneligibility, fishingSpeciesWeights } from "@/features/economy/domain/fishing";
 import { economyCatalog, type EconomyView } from "@/features/economy/domain/model";
 
 export type FishingDiagnosticSelection = { rodId: string; hookId: string; baitId: string | null; routeId: string };
@@ -26,8 +26,10 @@ export function fishingDiagnostics(selection: FishingDiagnosticSelection, catalo
   const rows = spec.fish.map(fish => {
     const group = classes.find(group => group.rarity === fish.rarity)!;
     const reason = fishingIneligibility(fish, rod.id, hook.id, spec);
-    const probability = !reason && group.eligibleSpecies ? group.probability / group.eligibleSpecies : 0;
-    return { ...fish, probability, eligibleSpecies: group.eligibleSpecies,
+    const tickets = fishingSpeciesWeights(rod.id, fish.rarity, spec, hook.id), speciesTotal = tickets.reduce((sum, row) => sum + row.weight, 0);
+    const speciesWeight = tickets.find(row => row.itemId === fish.itemId)?.weight ?? 0;
+    const probability = !reason && speciesTotal ? group.probability * speciesWeight / speciesTotal : 0;
+    return { ...fish, probability, eligibleSpecies: group.eligibleSpecies, speciesWeight, speciesTotal,
       name: catalog.items.find(item => item.id === fish.itemId)?.name ?? fish.itemId,
       reason, expectedCount: draws * probability,
       // Bernoulli model of the separately seeded draws; not a guarantee of a drop.

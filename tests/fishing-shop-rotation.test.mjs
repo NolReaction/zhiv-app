@@ -55,7 +55,7 @@ test('stock is private to each player, gated by home, weighted by rarity and exc
   const first = createFishingShop(state, now, () => 0, '00000000-0000-4000-8000-000000000001');
   const last = createFishingShop(state, now, max => max - 1, '00000000-0000-4000-8000-000000000001');
   assert.deepEqual(first.offers.map(offer => offer.itemId), ['river_rod', 'barbed_hook', 'crumb_bait', 'fish_common']);
-  assert.deepEqual(last.offers.map(offer => offer.itemId), ['starfall_rod', 'leviathan_hook', 'star_bait', 'fish_common']);
+  assert.deepEqual(last.offers.map(offer => offer.itemId), ['abyss_rod', 'leviathan_hook', 'star_bait', 'fish_common']);
   state.fishing.ownedRods = spec.rods.map(item => item.id); state.fishing.ownedHooks = spec.hooks.map(item => item.id);
   assert.deepEqual(createFishingShop(state, now, () => 0).offers.map(offer => offer.kind), ['bait', 'fish']);
 });
@@ -170,8 +170,8 @@ test('shared Kotlin vectors keep category slots and fixed rare tickets with down
     ['river_rod', 'barbed_hook', 'worm_bait', 'fish_common']);
   const totals = [];
   assert.deepEqual(refreshFishingShop(state, now, max => { totals.push(max); return max - 1; }).offers.map(item => item.itemId),
-    ['starfall_rod', 'leviathan_hook', 'star_bait', 'fish_common']);
-  assert.deepEqual(totals, [10000, 1, 10000, 1, 99, 1]);
+    ['abyss_rod', 'leviathan_hook', 'star_bait', 'fish_common']);
+  assert.deepEqual(totals, [10000, 2, 10000, 1, 99, 1]);
 });
 
 test('all 10000 tickets per home keep exact legendary odds even after collecting every lesser model', () => {
@@ -197,6 +197,8 @@ test('all 10000 tickets per home keep exact legendary odds even after collecting
 
 test('excluding prior rare offers cannot redistribute tickets into epic or legendary gear', () => {
   const p = player(); fund(p); const state = persisted(p); state.buildings.home = 5;
+  // Own the other rare profile so exclusion actually exhausts the rare tier.
+  state.fishing.ownedRods.push('predator_rod'); state.fishing.ownedHooks.push('weedless_hook');
   state.fishingShop = createFishingShop(state, now, max => max === 10000 ? 6000 : 0);
   const counts = { river_rod: 0, tide_rod: 0, starfall_rod: 0 };
   for (let ticket = 0; ticket < 10000; ticket++) {
@@ -208,7 +210,7 @@ test('excluding prior rare offers cannot redistribute tickets into epic or legen
 
 test('missing baseline replacement disables payment before draws and leaves natural replenishment free', () => {
   const p = player(); fund(p); const state = persisted(p);
-  state.fishing.ownedRods.push('brook_rod'); state.fishing.ownedHooks.push('round_hook');
+  state.fishing.ownedRods.push('brook_rod', 'float_rod'); state.fishing.ownedHooks.push('round_hook', 'spoon_hook');
   state.fishingShop = createFishingShop(state, now, () => 0);
   const before = read(p);
   assert.equal(canRefreshFishingShop(state), false);
@@ -282,7 +284,8 @@ test('starter tackle is cheaper only in new stock while a saved old quote stays 
   const state = persisted(p), current = createFishingShop(state, now, () => 0);
   assert.equal(current.offers.find(offer => offer.itemId === 'river_rod').unitPrice, 1800);
   assert.equal(current.offers.find(offer => offer.itemId === 'barbed_hook').unitPrice, 1200);
-  const alternate = createFishingShop(state, now, max => max - 1);
+  const alternate = createFishingShop({ ...state, fishing: { ...state.fishing,
+    ownedRods: [...state.fishing.ownedRods, 'float_rod'], ownedHooks: [...state.fishing.ownedHooks, 'spoon_hook'] } }, now, max => max - 1);
   assert.equal(alternate.offers.find(offer => offer.itemId === 'brook_rod').unitPrice, 900);
   assert.equal(alternate.offers.find(offer => offer.itemId === 'round_hook').unitPrice, 600);
   state.fishingShop = { ...current, offers: current.offers.map(offer => offer.itemId === 'river_rod' ? { ...offer, unitPrice: 18000 } : offer) };

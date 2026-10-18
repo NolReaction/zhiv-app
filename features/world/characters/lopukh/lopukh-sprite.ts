@@ -98,19 +98,19 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
   const shoulder = point(side ? 32 : back ? 31 : 16, 32 + upperRise);
   const farShoulder = point(side ? mirrored && !carry ? 32 : 24 : back ? 16 : 32, 32 + upperRise);
   const rest = point(side ? 35 : back ? 34 : 13, 36 + upperRise);
-  const axeRest = point(rest.x, rest.y - 2);
+  const axeRest = point(rest.x + (side || back ? 1 : 0), rest.y - 2);
   const toolBehind = back || mirrored;
   let palm = point(axeRest.x, axeRest.y + gait.swing);
-  let axeAngle = Math.PI * .4;
+  let axeAngle = -Math.PI * .28;
   let farPalm = point(side ? mirrored && !carry ? 35 : 27 : back ? 15 : 34, 36 + rise - gait.swing);
   if (action === "work") {
-    const lifted = point(side || back ? 35 : 12, 32 + rise);
-    const struck = point(side || back ? 35 : 12, 37 + rise);
+    const lifted = point(side || back ? 38 : 12, 29 + rise);
+    const struck = point(side || back ? 32 : 12, 34 + rise);
     const pose = (start: number, lift: number, strike: number) => p < .25 ? start + (lift - start) * p / .25
-      : p < .4375 ? lift + (strike - lift) * (p - .25) / .1875
-        : p < .75 ? strike + (start - strike) * (p - .4375) / .3125 : start;
+      : p < .5 ? lift + (strike - lift) * (p - .25) / .25
+        : p < .75 ? strike + (start - strike) * (p - .5) / .25 : start;
     palm = point(pose(axeRest.x, lifted.x, struck.x), pose(axeRest.y, lifted.y, struck.y));
-    axeAngle = pose(.4, -.04, .32) * Math.PI;
+    axeAngle = pose(-.28, -.46, .1) * Math.PI;
   } else if (carry) {
     palm = mix(point(side ? 34 : back ? 32 : 16, 37 + rise + lowered), rest, release);
     farPalm = mix(point(side ? 23 : back ? 15 : 32, 37 + rise + lowered),
@@ -122,7 +122,7 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
   }
   const outward = side || back ? 1 : -1;
   const axis = { x: Math.cos(axeAngle) * outward, y: Math.sin(axeAngle) };
-  const normal = { x: axis.y * outward, y: -axis.x * outward };
+  const normal = { x: -axis.y * outward, y: axis.x * outward };
   const axeHead = point(palm.x + axis.x * 7, palm.y + axis.y * 7);
   const axePoint = (along: number, across: number) => point(axeHead.x + axis.x * along + normal.x * across,
     axeHead.y + axis.y * along + normal.y * across);
@@ -132,7 +132,7 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
     // One rigid hatchet rotates around the anatomical right paw. The eye sits
     // on the haft, while the steel wedge flares across it.
     segment(axeButt, axeHead, palette.outline, 3);
-    segment(axeButt, axeHead, palette.handle, 1);
+    segment(axeButt, axeHead, palette.handle, 2);
     polygon(axeBlade, palette.steelDark);
     polygon([[-1, 0], [1, 0], [2.5, 4], [-2.5, 4]].map(([along, across]) => axePoint(along, across)), palette.steel);
     segment(axePoint(-2.5, 4), axePoint(2.5, 4), palette.steelLight, 1);

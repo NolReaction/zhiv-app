@@ -18,7 +18,7 @@ class EconomyLeaftailAssortmentTest {
     @Test fun `additive catalog leaves legacy delivery intact and mixed offers roundtrip with guarded kind`() {
         assertEquals(6, spec.offers.size)
         assertTrue(spec.offers.all { it.kind == "item" })
-        assertEquals(mapOf("wardrobe" to 6, "rod" to 3, "hook" to 2, "bait" to 2), spec.travelOffers.groupingBy { it.kind }.eachCount())
+        assertEquals(mapOf("wardrobe" to 6, "rod" to 7, "hook" to 6, "bait" to 2), spec.travelOffers.groupingBy { it.kind }.eachCount())
         assertEquals(spec, economyJson.decodeFromString<EconomyLeaftailShopConfig>(economyJson.encodeToString(spec)))
         val old = economyJson.decodeFromString<EconomyLeaftailOffer>("""{"id":"living_resin","itemId":"living_resin","priceCoins":2400,"stock":1}""")
         assertEquals("item", old.kind); assertEquals(1, old.requiredHomeLevel)
@@ -103,7 +103,7 @@ class EconomyLeaftailAssortmentTest {
     @Test fun `new gear home gates and exact quotes reject before spending while clock rollback never replenishes`() {
         val initial = ready()
         val dusk = spec.travelOffers.filter { it.requiredHomeLevel == 4 }
-        assertEquals(setOf("dusk_rod", "dusk_hook", "dusk_bait"), dusk.map { it.itemId }.toSet())
+        assertEquals(setOf("dusk_rod", "dusk_hook", "dusk_bait", "abyss_rod", "deep_hook"), dusk.map { it.itemId }.toSet())
         for (offer in dusk) failure("ECONOMY_HOME_REQUIRED") { EconomyRules.apply(initial, command(offer), now) }
         for (offer in spec.travelOffers.filter { it.requiredHomeLevel <= 3 }) {
             for (price in listOf(0L, offer.priceCoins - 1, offer.priceCoins + 1)) failure("ECONOMY_LEAFTAIL_PRICE_CHANGED") {
@@ -121,7 +121,9 @@ class EconomyLeaftailAssortmentTest {
 
     @Test fun `Pleska generation and injected saved offers reject all exclusive tackle`() {
         val state = ready(5)
-        val ids = spec.travelOffers.filter { it.kind in setOf("rod", "hook", "bait") }.map { it.itemId }.toSet()
+        val fishing = checkNotNull(EconomyRules.catalog.fishing)
+        val ids = (fishing.rods.filter { it.shop == "leaftail" }.map { it.id } +
+            fishing.hooks.filter { it.shop == "leaftail" }.map { it.id } + fishing.baits.filter { it.shop == "leaftail" }.map { it.itemId }).toSet()
         repeat(80) { ticket ->
             assertTrue(EconomyFishingShops.create(state, now, { ticket % it }).offers.none { it.itemId in ids })
         }

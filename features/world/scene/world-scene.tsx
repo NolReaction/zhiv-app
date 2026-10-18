@@ -8,7 +8,7 @@ import { LoaderCircle } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
 import { bindSceneLoaderEnvironment, createSceneLoader, WORLD_SCENE_TIMEOUT_MS } from "@/features/startup/scene-loader";
-import { habitatLighting } from "@/features/mochlik/lighting";
+import { habitatLighting, habitatLocalHour } from "@/features/mochlik/lighting";
 import { sceneJourney } from "@/features/world/activities/journeys/journey-timeline";
 import { JourneyProgress } from "@/features/world/ui/journeys/journey-progress";
 import type { GameItemId } from "@/features/game/game-rewards";
@@ -54,7 +54,8 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   const readyCallback = useRef(onReady);
   useEffect(() => { readyCallback.current = onReady; }, [onReady]);
   const { lampOn, dusk } = habitatLighting(now, timeZone);
-  const latest = useRef({ tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden });
+  const localHour = habitatLocalHour(now, timeZone);
+  const latest = useRef({ tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden });
   const interactions = useRef({ onPlace, onResident });
   useEffect(() => { interactions.current = { onPlace, onResident }; }, [onPlace, onResident]);
   const selection = useRef({ selectedObjectId, onObjectSelection });
@@ -101,10 +102,10 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   }, [constructionActive, productionActive, completions, gains]);
   const loader = useRef<ReturnType<typeof createSceneLoader<Awaited<ReturnType<typeof createMapEngine>>>> | null>(null);
   useEffect(() => {
-    latest.current = { tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden };
+    latest.current = { tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden };
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    engine.current?.update({ tutorialActive, lampOn, dusk, paused: false, backgrounded: suspended, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
-  }, [tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden]);
+    engine.current?.update({ tutorialActive, lampOn, dusk, localHour, paused: false, backgrounded: suspended, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
+  }, [tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden]);
   useEffect(() => {
     // Report after the engine options update, also when a ready portal reopens
     // before its exit animation unmounts the canvas. The circle then yields.
@@ -122,7 +123,7 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   useEffect(() => {
     let disposed = false;
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const options = (): SceneOptions => ({ tutorialActive: latest.current.tutorialActive, serverNow: time.current, lampOn: latest.current.lampOn, dusk: latest.current.dusk, paused: false, backgrounded: latest.current.suspended, view: "world", reducedMotion: media.matches,
+    const options = (): SceneOptions => ({ tutorialActive: latest.current.tutorialActive, serverNow: time.current, lampOn: latest.current.lampOn, dusk: latest.current.dusk, localHour: latest.current.localHour, paused: false, backgrounded: latest.current.suspended, view: "world", reducedMotion: media.matches,
       worldState: latest.current.state, economyJourney: latest.current.economyJourney, cancelledExplorations: latest.current.cancelledExplorations, economyBuildings: latest.current.economyBuildings, economyProduction: latest.current.economyProduction, economyConstruction: latest.current.economyConstruction, economyResidents: latest.current.economyResidents, residentArrival: latest.current.residentArrival, merchantArrival: latest.current.merchantArrival, lopukhArrival: latest.current.lopukhArrival, economyGarden: latest.current.garden?.crop, gardenHarvestRequest: latest.current.garden?.request, onGardenHarvestEvent: latest.current.garden?.sceneEvent, worldGifts: latest.current.gifts, items: latest.current.items,
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
     const loading = createSceneLoader<Awaited<ReturnType<typeof createMapEngine>>>({

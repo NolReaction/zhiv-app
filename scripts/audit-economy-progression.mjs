@@ -160,16 +160,16 @@ export function auditEconomyProgression(catalog) {
     const validGear = gear => rarity.has(gear.rarity) && Number.isInteger(gear.requiredHomeLevel) && gear.requiredHomeLevel >= 1 && gear.requiredHomeLevel <= 5;
     const merchantGearLevel = (entry, kind) => {
       assert(entry.shop === undefined || entry.shop === "plesk" || entry.shop === "leaftail", "Unknown fishing gear merchant");
-      if (entry.shop !== "leaftail") return entry.requiredHomeLevel;
       const spec = catalog.leaftailShop, itemId = entry.id ?? entry.itemId;
       const offer = [...(spec?.offers ?? []), ...(spec?.travelOffers ?? [])].find(offer => offer.itemId === itemId && offer.kind === kind);
+      if (entry.shop !== "leaftail" && !offer) return entry.requiredHomeLevel;
       assert(spec && offer && Number.isInteger(spec.requiredHomeLevel) && spec.requiredHomeLevel >= 3,
         "Leaftail gear needs an actual matching merchant offer");
       const quantity = offer.quantity ?? 1;
       assert(Number.isSafeInteger(quantity) && quantity > 0 && (kind === "bait" || quantity === 1)
         && offer.priceCoins === entry.price * quantity && offer.stock === 1,
       "Leaftail gear offer must preserve its catalog price and bounded stock");
-      return Math.max(entry.requiredHomeLevel, spec.requiredHomeLevel, offer.requiredHomeLevel ?? 1);
+      return entry.shop === "leaftail" ? Math.max(entry.requiredHomeLevel, spec.requiredHomeLevel, offer.requiredHomeLevel ?? 1) : entry.requiredHomeLevel;
     };
     for (const rod of fishing.rods) assert(Number.isSafeInteger(rod.price) && rod.price >= 0 && Number.isSafeInteger(rod.rareBonus) && rod.rareBonus >= 0 && validGear(rod), "Invalid rod price, bonus or progression");
     unique(fishing.hooks ?? [], "hook");
@@ -205,7 +205,7 @@ export function auditEconomyProgression(catalog) {
         && Object.values(rod.classOddsBps).reduce((sum, value) => sum + value, 0) === 10000,
       "Each rod needs five class probabilities adding to 100%");
       const requiredHomeLevel = merchantGearLevel(rod, "rod");
-      if (rod.shop === "leaftail") {
+      if (rod.shop === "leaftail" || requiredHomeLevel >= 3 && rod.classOddsBps[rod.rarity] < 5000) {
         const shares = Object.values(rod.classOddsBps).sort((a, b) => b - a);
         assert(requiredHomeLevel >= 3 && shares[0] <= 5000 && shares[1] >= 3000 && shares[0] + shares[1] >= 6000,
           "A travelling rod needs two useful directions without replacing a class specialist");
@@ -216,12 +216,16 @@ export function auditEconomyProgression(catalog) {
     for (const entry of gear) assert(entry.rarityWeights && Object.keys(entry.rarityWeights).length === rarity.size
       && [...rarity].every(id => Number.isSafeInteger(entry.rarityWeights[id]) && entry.rarityWeights[id] >= 1 && entry.rarityWeights[id] <= 1000), "Each fishing item needs finite positive specialization factors");
     for (const list of [fishing.hooks]) {
-      assert.equal(new Set(list.map(entry => JSON.stringify([...rarity].map(id => entry.rarityWeights[id])))).size, list.length, "Durable tackle must have distinct specializations");
+      assert.equal(new Set(list.map(entry => JSON.stringify([[...rarity].map(id => entry.rarityWeights[id]),
+        Object.entries(entry.speciesWeights ?? {}).sort(([a], [b]) => a.localeCompare(b))]))).size, list.length, "Durable tackle must have distinct specializations");
     }
+    for (const entry of [...fishing.rods, ...fishing.hooks]) assert(entry.speciesWeights == null || Object.entries(entry.speciesWeights)
+      .every(([id, value]) => fishing.fish.some(fish => fish.itemId === id) && Number.isSafeInteger(value) && value > 0 && value <= 1000),
+    "Species preferences require known fish and bounded positive tickets");
     for (const entry of gear) {
       const requiredHomeLevel = merchantGearLevel(entry, entry.id ? "hook" : "bait");
-      if (entry.shop === "leaftail") {
-        const boosted = [...rarity].filter(id => entry.rarityWeights[id] > 100);
+      const boosted = [...rarity].filter(id => entry.rarityWeights[id] > 100);
+      if (entry.shop === "leaftail" || boosted.length === 2) {
         assert(requiredHomeLevel >= 3 && boosted.length === 2 && boosted.includes(entry.rarity)
           && [...rarity].every(id => boosted.includes(id) ? entry.rarityWeights[id] < 150 : entry.rarityWeights[id] === 100),
         "Travelling hooks and bait need exactly two weaker-than-specialist class boosts");

@@ -30,9 +30,17 @@ class EconomyLocalSaleTest {
             "planks" to 40L, "berry_compote" to 30L, "grilled_fish" to 55L,
             "fiber" to 10L, "rope" to 30L, "clay" to 30L, "charcoal" to 50L, "bricks" to 100L)
         assertEquals(prices, EconomyRules.catalog.localBuyer.unitPrices.filterKeys { it in prices })
-        assertEquals(EconomyRules.catalog.items.filter { it.tradable }.associate { it.id to it.baseSellPrice },
+        // Existing travelling baits use the catalog fallback rather than an explicit full-price quote.
+        val fallbackItems = setOf("spice_bait", "dusk_bait")
+        assertEquals(fallbackItems, EconomyRules.catalog.items.filter { it.tradable }.map { it.id }.toSet() -
+            EconomyRules.catalog.localBuyer.unitPrices.keys)
+        assertEquals(EconomyRules.catalog.items.filter { it.tradable && it.id !in fallbackItems }.associate { it.id to it.baseSellPrice },
             EconomyRules.catalog.localBuyer.unitPrices)
         val items = EconomyRules.catalog.items.associateBy { it.id }
+        for (id in fallbackItems) for (quantity in listOf(1L, 9L, 10000L)) {
+            val base = items.getValue(id).baseSellPrice
+            assertEquals(EconomyRules.localSellPrice(base, quantity), EconomyRules.localSellPrice(base, quantity, itemId = id))
+        }
         for ((id, price) in prices) for (quantity in listOf(1L, 2L, 3L, 9999L, 10000L)) {
             val base = items.getValue(id).baseSellPrice
             val total = EconomyRules.localSellPrice(base, quantity, itemId = id)

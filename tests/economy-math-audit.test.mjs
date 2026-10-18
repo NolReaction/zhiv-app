@@ -132,7 +132,11 @@ test("the longer catch gives eight class draws and consumes one bait per trip", 
   assert(camp.speciesDrawsPerJob / camp.slotMinutes.mochlik < best.speciesDrawsPerJob / best.slotMinutes.mochlik);
   assert.equal(best.baitPurchaseCoins, catalog.fishing.baits.find(b => b.itemId === "star_bait").price);
   assert.equal(camp.baitPurchaseCoins, best.baitPurchaseCoins);
-  assert.equal(auditEconomicMath(catalog).fishingLoadouts.length, 216);
+  const loadouts = auditEconomicMath(catalog).fishingLoadouts;
+  const combinations = catalog.fishing.rods.length * catalog.fishing.hooks.length * (catalog.fishing.baits.length + 1);
+  assert.equal(loadouts.length, combinations);
+  assert.equal(new Set(loadouts.map(row => `${row.rodId}:${row.hookId}:${row.baitId}`)).size, combinations,
+    "the audit covers each distinct rod, hook and bait combination exactly once");
 });
 
 test("rare-material expectations describe each independent actor clock without invented NPC price or additive ingredient work", () => {
@@ -153,16 +157,21 @@ test("rare-material expectations describe each independent actor clock without i
 });
 
 test("fish references use the least expensive eligible rod and allow legendary fish with the free hook", () => {
-  const math = economicMath(readEconomyCatalog()), shark = math.profile("fish_shark");
+  const catalog = readEconomyCatalog(), math = economicMath(catalog), shark = math.profile("fish_shark");
   assert.equal(shark.sourceHome, 4); assert.equal(shark.referenceHome, 4);
   assert.equal(shark.catchReference.hookId, "bare_hook");
-  assert.equal(shark.catchReference.rodId, "starfall_rod");
-  const portfolio = math.catchPortfolio("starfall_rod", null, "shore", "bare_hook");
+  assert.equal(shark.catchReference.rodId, "dusk_rod");
+  const eligible = catalog.fishing.rods.filter(rod => rod.rarity === "legendary" && rod.classOddsBps.legendary > 0);
+  const reference = eligible.find(rod => rod.id === shark.catchReference.rodId);
+  assert.equal(reference.price, Math.min(...eligible.map(rod => rod.price)));
+  for (const rod of eligible) assert(math.catchPortfolio(rod.id, null, "shore", "bare_hook").classProbabilities.fish_legendary > 0,
+    `${rod.id}: legendary fish must remain available with the free hook`);
+  const portfolio = math.catchPortfolio(reference.id, null, "shore", "bare_hook");
   near(shark.catchReference.probability, portfolio.classProbabilities.fish_legendary);
   near(shark.slotMinutes.mochlik, 3 / portfolio.output.fish_legendary);
   assert.equal(shark.coins, 0, "the permanent hook startup price is disclosed separately from every catch");
   assert.equal(shark.catchReference.hookPurchaseCoins, 0);
-  assert.equal(shark.catchReference.rodPurchaseCoins, readEconomyCatalog().fishing.rods.find(rod => rod.id === "starfall_rod").price);
+  assert.equal(shark.catchReference.rodPurchaseCoins, reference.price);
   assert.equal(shark.catchReference.finiteGuarantee, false);
   assert.equal(math.profile("glow_bait").sourceHome, 2);
   assert.equal(math.profile("firefly_bait").sourceHome, 3);
@@ -173,8 +182,9 @@ test("fish references use the least expensive eligible rod and allow legendary f
 test("each specialist rod and hook can lead a distinct rarity objective instead of universally dominating cheaper gear", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   const roles = ["common", "uncommon", "rare", "epic", "legendary"];
-  const share = (portfolio, rarity) => catalog.fishing.fish.filter(fish => fish.rarity === rarity)
-    .reduce((sum, fish) => sum + portfolio.probabilities[fish.itemId], 0);
+  // Rarity objectives use economic class tickets, independent of roundoff when
+  // their probability is distributed among preferred collection species.
+  const share = (portfolio, rarity) => portfolio.classProbabilities[`fish_${rarity}`];
   for (const [index, rarity] of roles.entries()) {
     const rod = catalog.fishing.rods.find(item => item.id === ["reed_rod", "river_rod", "willow_rod", "tide_rod", "starfall_rod"][index]),
       hook = catalog.fishing.hooks.find(item => item.id === ["bare_hook", "barbed_hook", "silver_hook", "tide_hook", "leviathan_hook"][index]);

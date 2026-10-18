@@ -627,12 +627,18 @@ class EconomyRulesTest {
             assertEquals(rarities, specialization.keys)
             assertTrue(specialization.values.all { it in 1..1000 }, "Specialization factors must be finite and positive")
         }
-        assertEquals(fishing.rods.size, fishing.rods.map { it.classOddsBps }.toSet().size)
-        assertEquals(fishing.hooks.size, fishing.hooks.map { it.rarityWeights }.toSet().size)
+        assertEquals(fishing.rods.size, fishing.rods.map { it.classOddsBps to it.speciesWeights }.toSet().size)
+        assertEquals(fishing.hooks.size, fishing.hooks.map { it.rarityWeights to it.speciesWeights }.toSet().size)
         for (hook in fishing.hooks) {
             val factors = assertNotNull(hook.rarityWeights)
             assertTrue(factors.values.all { it >= 100 }, "Hooks boost their target without hidden penalties")
-            assertEquals(if (hook.id == "bare_hook") 0 else 1, factors.values.count { it > 100 })
+            val boosted = factors.filterValues { it > 100 }
+            if (hook.id == "bare_hook") assertTrue(boosted.isEmpty())
+            else {
+                assertTrue(boosted.size in 1..2)
+                assertTrue(hook.rarity in boosted)
+                if (boosted.size == 2) assertTrue(boosted.values.all { it < 150 }, "Mixed hooks stay weaker than class specialists")
+            }
         }
         return fishing.baits.map { it.itemId }.toSet()
     }

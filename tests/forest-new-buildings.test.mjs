@@ -93,18 +93,23 @@ test("new buildings are registered once with their intended independent visual l
     "the removed work plot does not reappear as a permanent terrain image");
 });
 
-test("the saved woodlot station selects rabbit home 2 only from its third claimed tier", () => {
+test("the closed woodlot keeps its footprint and selects rabbit home 2 only from its third claimed tier", () => {
   const initial = initialPreviewLevels(TILED_WORLD), rabbit = TILED_WORLD.sites.find(site => site.id === "lopukh-home");
   for (const level of [0, 1, 2, 3, 4, 5]) {
     const buildings = { home: 5, woodlot: level }, before = structuredClone(buildings);
     const levels = accountSceneLevels(TILED_WORLD, 5, { levels: initial }, buildings);
-    const wanted = level >= 3 ? 2 : 1;
+    const wanted = level === 0 ? 0 : level >= 3 ? 2 : 1;
     assert.equal(levels["lopukh-home"], wanted, `woodlot ${level}`);
+    const visual = previewSiteVisual(rabbit, levels);
+    assert.equal(visual.level, wanted);
+    if (level === 0) assert.equal(visual.image, "", "the locked home waits for its authored closed exterior");
+    else assert.ok(visual.image, "a claimed woodlot selects the corresponding home illustration");
     const selected = previewWorldScene(TILED_WORLD, levels).sites.find(site => site.id === "lopukh-home");
-    const authored = rabbit.states.find(state => state.level === wanted).geometry;
+    const authored = wanted === 0 ? rabbit : rabbit.states.find(state => state.level === wanted).geometry;
     assert.deepEqual(selected.collision, authored.collision);
     assert.deepEqual(selected.entry, authored.entry);
     assert.deepEqual(selected.hitArea, authored.hitArea);
+    assert.deepEqual(selected.doorway, authored.doorway);
     assert.deepEqual(buildings, before, "visual projection does not upgrade, rename or downgrade account stations");
   }
   const dev = { levels: { ...initial, "lopukh-home": 1 }, previewBuildings: true };

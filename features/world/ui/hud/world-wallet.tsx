@@ -57,7 +57,7 @@ function Currency({ kind, amount, onOpenShop }: { kind: WalletCurrency; amount: 
     const tick = (time: number) => {
       if (finished) return;
       const progress = Math.min(1, (time - start) / 650);
-      displayed.current = walletTween(from, amount, progress);
+      displayed.current = walletTween(from, amount, progress, kind);
       count.textContent = walletAmountLabel(displayed.current, kind);
       if (progress < 1) frame = requestAnimationFrame(tick);
     };

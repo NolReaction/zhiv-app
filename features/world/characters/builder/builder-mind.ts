@@ -1,3 +1,4 @@
+import { residentNightRest, residentEveningActive } from "../resident-evening-routine";
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import { BUILDER, type BuilderAction, type BuilderResidentFrame, type BuilderSleepPhase } from "./builder-types";
 import { builderDirection, builderLocalPlaces, builderRoute, builderWorkStops,
@@ -10,7 +11,7 @@ import { canTraverseResidents, residentClearance, residentWalkingStep, residentR
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
 export type BuilderEnvironment = { now: number; construction?: EconomySceneConstruction | null; occupants?: readonly ResidentOccupant[];
-  night?: boolean; socialHold?: boolean };
+  night?: boolean; localHour?: number; socialHold?: boolean };
 export type BuilderMind = {
   scene: FixedWorldScene; available: boolean; position: WorldPoint; direction: PixelDirection;
   elapsed: number; age: number; action: BuilderAction; ready: boolean;
@@ -307,16 +308,18 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
     || !atDoor && (changedScene || !mind.available) && !isWalkable(places.navigation, mind.position)) {
     mind.available = false; mind.route = null; mind.speed = 0; mind.blocked = true; mind.socialVisit = null; action(mind, "idle"); return null;
   }
+  const night = residentNightRest("builder", mind.elapsed, Boolean(env.night), env.localHour);
+  const eveningActive = residentEveningActive("builder", mind.elapsed, Boolean(env.night), env.localHour);
   const recovered = !mind.available;
   mind.available = true;
   if (atDoor) {
     mind.sleepHome = places.home; mind.blocked = false; mind.socialVisit = null; mind.noticePending = false;
-    if ((job || !env.night && (mind.homeReason !== "break" || mind.sleepPhase === "sleep" && mind.elapsed >= mind.homeUntil))
+    if ((job || !night && (mind.homeReason !== "break" && !eveningActive || mind.sleepPhase === "sleep" && mind.elapsed >= mind.homeUntil))
       && mind.sleepPhase !== "exit") mind.sleepPhase = "exit";
     action(mind, mind.sleepPhase === "sleep" ? "idle" : "walk");
     return places;
   }
-  const cancelApproach = mind.sleepPhase === "approach" && (!!job || mind.homeReason !== "break" && !env.night || !places.home);
+  const cancelApproach = mind.sleepPhase === "approach" && (!!job || mind.homeReason !== "break" && !night || !places.home);
   if (cancelApproach) wake(mind);
   if (changedJob || changedScene || recovered || cancelApproach) {
     mind.socialVisit = null;
@@ -340,7 +343,7 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
       action(mind, "finish"); mind.age = finishingAge ?? 0; mind.direction = workDirection;
     }
   } else if (job && !mind.route && !mind.blocked) action(mind, mind.ready ? "idle" : "work");
-  if (!job && env.night && places.home && mind.action !== "finish"
+  if (!job && night && !mind.socialVisit && !env.socialHold && places.home && mind.action !== "finish"
     && (mind.sleepPhase === "awake" || changedScene || recovered)) approachHome(mind, places);
   return places;
 }
@@ -365,7 +368,8 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
     return;
   }
   if (!mind.job && !mind.socialVisit && !environment.socialHold && !mind.noticePending && mind.action !== "greet"
-    && mind.sleepPhase === "awake" && mind.elapsed >= mind.homeNextAt && places.home) approachHome(mind, places, "break");
+    && mind.sleepPhase === "awake" && mind.elapsed >= mind.homeNextAt && places.home
+    && !residentEveningActive("builder", mind.elapsed, Boolean(environment.night), environment.localHour)) approachHome(mind, places, "break");
   yieldRequestedPassage(mind, places, environment.occupants);
   if (!mind.job && mind.sleepPhase === "awake") {
     if (mind.noticePending && mind.elapsed >= mind.greetAfter) {

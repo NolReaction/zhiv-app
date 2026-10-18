@@ -2,7 +2,7 @@
  * Prices and fishing bonuses belong to the economy catalog. Coordinates use
  * the gripping palm as origin, +x toward the tip, and one unit per actor size. */
 export const FISHING_ROD_IDS = ["reed_rod", "brook_rod", "river_rod", "willow_rod", "tide_rod", "starfall_rod",
-  "traveller_rod", "marsh_rod", "dusk_rod"] as const;
+  "traveller_rod", "marsh_rod", "dusk_rod", "float_rod", "predator_rod", "mirror_rod", "abyss_rod"] as const;
 export type FishingRodId = typeof FISHING_ROD_IDS[number];
 export type FishingRodAppearance = Readonly<{
   shaft: string; highlight: string; handle: string; reel: string; metal: string; wrap: string | null;
@@ -32,12 +32,21 @@ const marshRod: FishingRodAppearance = Object.freeze({ shaft: "#5f7150", highlig
   reel: "#8b6545", metal: "#d4bd81", wrap: "#a87b49" });
 const duskRod: FishingRodAppearance = Object.freeze({ shaft: "#514d72", highlight: "#c0b4d7", handle: "#65516b",
   reel: "#9b7a62", metal: "#e1d8b4", wrap: "#9189b1" });
+const floatRod: FishingRodAppearance = Object.freeze({ shaft: "#886a43", highlight: "#e3c994", handle: "#b48d5c",
+  reel: "#ad6b4f", metal: "#e2d0a0", wrap: "#ce7951" });
+const predatorRod: FishingRodAppearance = Object.freeze({ shaft: "#426653", highlight: "#a7c58a", handle: "#454c39",
+  reel: "#827d4a", metal: "#d5ce87", wrap: "#a18e45" });
+const mirrorRod: FishingRodAppearance = Object.freeze({ shaft: "#748b9d", highlight: "#e1edf0", handle: "#58647b",
+  reel: "#a4bcb5", metal: "#e3d6b4", wrap: "#c3a9cf" });
+const abyssRod: FishingRodAppearance = Object.freeze({ shaft: "#32465a", highlight: "#92aebb", handle: "#504a40",
+  reel: "#526a77", metal: "#c7bd91", wrap: "#77928c" });
 
 export function fishingRodId(value: unknown): FishingRodId {
   return FISHING_ROD_IDS.find(id => id === value) ?? "reed_rod";
 }
 export function fishingRodAppearance(rodId?: string): FishingRodAppearance {
-  return rodId === "traveller_rod" ? travellerRod : rodId === "marsh_rod" ? marshRod : rodId === "dusk_rod" ? duskRod
+  return rodId === "float_rod" ? floatRod : rodId === "predator_rod" ? predatorRod : rodId === "mirror_rod" ? mirrorRod : rodId === "abyss_rod" ? abyssRod
+    : rodId === "traveller_rod" ? travellerRod : rodId === "marsh_rod" ? marshRod : rodId === "dusk_rod" ? duskRod
     : rodId === "starfall_rod" ? starfallRod : rodId === "tide_rod" ? tideRod : rodId === "brook_rod" ? brookRod : rodId === "river_rod" ? riverRod : rodId === "willow_rod" ? willowRod : reedRod;
 }
 
@@ -162,6 +171,60 @@ export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOpti
     }
     line([["M", rx + .014, ry + .035 * side], ["L", rx + .043 + Math.cos(crank) * .05, ry + (.02 + Math.sin(crank) * .04) * side]], "metal", .018);
     ellipse(rx + .043 + Math.cos(crank) * .05, ry + (.02 + Math.sin(crank) * .04) * side, .025, .016, "handle");
+  } else if (id === "float_rod" || id === "predator_rod" || id === "mirror_rod" || id === "abyss_rod") {
+    const light = id === "float_rod", predator = id === "predator_rod", mirror = id === "mirror_rod";
+    const width = light ? .018 : predator ? .034 : mirror ? .023 : .04;
+    shaft(0, .52, width, width * .65); shaft(.52, 1, width * .65, .004);
+    line([["M", 0, -.007], ["Q", length * .5, bend - .007, length, 0]], "highlight", .012);
+    if (light) {
+      body([["M", -.16, -.022], ["Q", -.19, 0, -.16, .022], ["L", .1, .032],
+        ["L", .12, .012], ["L", .1, -.032], ["Z"]], "handle", "shaft", .009);
+      for (const at of [-.12, -.08, -.04]) band(at, .021, "wrap", .01);
+      // Attached cork float remains visible in shop and world silhouettes.
+      line([["M", .2 * length, 0], ["L", .22 * length, -.095 * side]], "metal", .007);
+      ellipse(.22 * length, -.07 * side, .018, .043, "wrap", "metal", .007);
+    } else if (predator) {
+      body([["M", -.17, -.04], ["L", .08, -.04], ["L", .12, -.014], ["L", .09, .03],
+        ["L", .025, .03], ["L", .005, .08], ["L", -.035, .07], ["L", -.04, .03], ["L", -.17, .03], ["Z"]], "handle", "metal", .009);
+      for (const at of [-.12, -.07, -.02]) band(at, .035, "wrap", .013);
+    } else if (mirror) {
+      body([["M", -.17, 0], ["Q", -.11, -.065, .08, -.025], ["L", .12, 0],
+        ["L", .08, .025], ["Q", -.11, .065, -.17, 0], ["Z"]], "handle", "metal", .009);
+      for (const at of [-.1, -.035, .03]) ellipse(at, 0, .012, .026, "wrap");
+    } else {
+      body([["M", -.18, -.04], ["L", .12, -.04], ["L", .12, .04], ["L", -.18, .04], ["Z"]], "handle", "metal", .012);
+      for (const at of [-.14, -.08, -.02, .04]) band(at, .036, "wrap", .019);
+      ellipse(-.18, 0, .025, .048, "metal", "shaft", .009);
+    }
+    for (const at of light ? [.4, .75, .95] : predator ? [.25, .49, .73, .95] : mirror ? [.32, .67, .94] : [.22, .45, .7, .94]) {
+      const x = at * length, y = curveAt(at);
+      line([["M", x, y], ["L", x + .012, y + .035 * side]], "metal", .012);
+      ellipse(x + .012, y + .04 * side, .019, .014, undefined, "metal", .009);
+    }
+    line([["M", .01, .012 * side], ["L", rx, ry]], "metal", .025);
+    reelStart = shapes.length;
+    if (light) {
+      ellipse(rx, ry, .058, .026, "reel", "metal", .01);
+      for (const at of [-.025, 0, .025]) line([["M", rx + at, ry - .019], ["L", rx + at, ry + .019]], "handle", .008);
+    } else if (predator) {
+      const teeth: RodPathCommand[] = [];
+      for (let index = 0; index < 20; index++) {
+        const angle = index * Math.PI / 10, radius = index % 2 ? .062 : .078;
+        teeth.push([index ? "L" : "M", rx + Math.cos(angle) * radius, ry + Math.sin(angle) * radius]);
+      }
+      body([...teeth, ["Z"]], "reel", "metal", .009); ellipse(rx, ry, .042, .042, "handle", "metal", .009);
+    } else if (mirror) {
+      body([["M", rx - .09, ry], ["L", rx - .045, ry - .052], ["L", rx + .045, ry - .052],
+        ["L", rx + .09, ry], ["L", rx + .045, ry + .052], ["L", rx - .045, ry + .052], ["Z"]], "reel", "metal", .01);
+      ellipse(rx, ry, .045, .025, "wrap", "metal", .009);
+    } else {
+      body([["M", rx - .079, ry - .049], ["Q", rx, ry - .085, rx + .068, ry - .04],
+        ["L", rx + .068, ry + .045], ["Q", rx, ry + .085, rx - .079, ry + .049], ["Z"]], "reel", "metal", .012);
+      ellipse(rx, ry, .035, .048, "handle", "metal", .01);
+      for (const at of [-.055, .05]) line([["M", rx + at, ry - .035], ["L", rx + at, ry + .035]], "wrap", .009);
+    }
+    line([["M", rx, ry], ["L", rx + Math.cos(crank) * .035, ry + Math.sin(crank) * .025]], "metal", .012);
+    ellipse(rx + Math.cos(crank) * .035, ry + Math.sin(crank) * .025, .017, .013, "handle");
   } else if (id === "traveller_rod") {
     // A compact jointed travelling pole: the folding hardware and flat reel
     // change its silhouette even when its colour is removed.

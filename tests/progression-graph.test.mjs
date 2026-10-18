@@ -238,8 +238,9 @@ test("fishing and friend profiles are current while glade visits and Pleska's ho
   assert.equal(node("player_level").status, "active");
   assert.equal(node("achievements").status, "active");
   assert.match(node("willow_rod").description, /отдельная вещь/);
-  assert.match(node("trader").description, /все продаваемые товары NPC выкупает по полной базовой цене за каждую единицу/);
-  assert.doesNotMatch(node("trader").description, /уценкой|выгоднее продать Плёске/);
+  assert.match(node("trader").description, /для части товаров каталог задаёт фиксированные цены NPC/);
+  assert.match(node("trader").description, /Остальные продаются с уценкой 40%/);
+  assert.match(node("trader").description, /Плёска покупает сырую рыбу по полной базовой цене её класса/);
   assert.match(node("b:warehouse:1").description, /объявлениях рынка/);
   for (const recipe of catalog.recipes) {
     assert.equal(recipe.maxBatch, 1, recipe.id);
@@ -275,6 +276,10 @@ test("graph labels use current unit-production timers and actual mining duration
 
 test("buyer description keeps discount rules only when the provided catalog actually uses them", () => {
   const changed = structuredClone(catalog);
+  changed.localBuyer.unitPrices = Object.fromEntries(changed.items.filter(item => item.tradable).map(item => [item.id, item.baseSellPrice]));
+  const fullPriceTrader = buildProgressionGraph(changed).nodes.find(value => value.id === "trader");
+  assert.match(fullPriceTrader.description, /все продаваемые товары NPC выкупает по полной базовой цене за каждую единицу/);
+  assert.doesNotMatch(fullPriceTrader.description, /с уценкой/);
   delete changed.localBuyer.unitPrices.berries;
   const trader = buildProgressionGraph(changed).nodes.find(value => value.id === "trader");
   assert.match(trader.description, /с уценкой 40%/);

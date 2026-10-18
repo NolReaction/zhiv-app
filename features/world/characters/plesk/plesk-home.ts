@@ -1,3 +1,4 @@
+import { residentNightRest } from "../resident-evening-routine";
 import { canTraverse, createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "@/features/world/navigation/navigation";
 import { canTraverseResidents } from "@/features/world/navigation/resident-traffic";
 import { prepareSteeringPath } from "@/features/world/navigation/steering";
@@ -81,9 +82,10 @@ export function advancePleskHome(mind: PleskMind, step: number, env: PleskEnviro
     const called = mind.noticePending || mind.tradePending;
     if (home.phase === "enter" && called) home.phase = "exit";
     if (home.phase === "inside") {
+      const sheltered = env.rain >= .6 || residentNightRest("plesk", mind.elapsed, env.dusk, env.localHour);
       mind.reason = "Дома сушит снасти и отдыхает перед следующей рыбалкой.";
-      if (!called && (mind.elapsed < home.until || env.rain >= .6 || env.dusk >= .72)) {
-        consume(env.rain >= .6 || env.dusk >= .72 ? remaining : Math.min(remaining, home.until - mind.elapsed));
+      if (!called && (mind.elapsed < home.until || sheltered)) {
+        consume(sheltered ? remaining : Math.min(remaining, home.until - mind.elapsed));
         if (remaining < 1e-8) break;
       }
       home.phase = "exit";

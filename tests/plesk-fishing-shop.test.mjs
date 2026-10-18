@@ -314,7 +314,12 @@ test("fish offers disclose their real art and name before payment, without openi
   const before = structuredClone(state), calls = [], economy = controller(state, { act(...args) { calls.push(args); } });
   const counter = inspect(PleskTackleCounter, { state, catalog: state.catalog.fishing, economy });
   assert.match(counter.html, /Обычная рыба/); assert.match(counter.html, /data-item-icon="fish_common"/);
-  assert.match(counter.html, /Редкая рыба/); assert.doesNotMatch(counter.html, /Незнакомая рыба|data-hidden-fish/);
+  assert.match(counter.html, /Редкая рыба/);
+  // Gear previews may hide undiscovered species; merchandise itself is disclosed.
+  const fishTiles = counter.html.match(/<button\b[^>]*data-guide-plesk-offer="fish"[\s\S]*?<\/button>/g) ?? [];
+  assert.ok(fishTiles.length > 0);
+  for (const tile of fishTiles)
+    assert.doesNotMatch(tile, /Незнакомая рыба|data-hidden-fish/);
   const detail = inspect(PleskFishOffer, { state, fish, economy });
   assert.match(detail.html, /data-item-icon="fish_common"/); assert.match(detail.html, /Покупка не открывает виды в книге/);
   detail.control("Купить рыбу: Обычная рыба").props.onClick();
@@ -493,8 +498,8 @@ test("owned fish remain visible goods without falsely opening the catch book", a
 
 test("merchant disables paid replacement when there are not enough different eligible goods", () => {
   const state = snapshot({ wallet: { coins: 0, pearls: 1000 } }), calls = [];
-  state.fishing.ownedRods.push("brook_rod");
-  state.fishing.ownedHooks.push("round_hook");
+  state.fishing.ownedRods.push("brook_rod", "float_rod");
+  state.fishing.ownedHooks.push("round_hook", "spoon_hook");
   const view = inspect(PleskMerchantHeader, { state, economy: controller(state, { act(...args) { calls.push(args); } }) });
   assert.match(view.html, /Пока не все товары можно заменить на другие/);
   assert.match(view.html, /6:00:00/);

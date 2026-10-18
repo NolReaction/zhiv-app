@@ -1,5 +1,6 @@
 import { wardrobeItems } from "@/features/world/domain/wardrobe";
 import type { EconomyCommand, EconomyResult, EconomyView } from "./model";
+import { leaftailShopOffers } from "./leaftail-shop";
 
 export type LocalLeaftailPurchase = Readonly<{
   id: string; ownerPublicId: string; revision: number; coins: number;
@@ -25,8 +26,7 @@ export function localLeaftailPurchaseFromReceipt(before: EconomyView | null, res
   const previousPurchased = before.leaftailShop?.cycle === stock?.cycle ? before.leaftailShop.purchased[offerId ?? ""] ?? 0 : 0;
   if (!offerId || !Number.isSafeInteger(previousPurchased) || previousPurchased < 0
     || stock.purchased[offerId] !== previousPurchased + 1) return null;
-  const spec = before.catalog.leaftailShop;
-  const offer = spec && [...spec.offers, ...(spec.travelOffers ?? [])].find(item => item.id === offerId);
+  const offer = leaftailShopOffers(before.catalog, stock.cycle, before.ownerPublicId).find(item => item.id === offerId);
   if (!offer || offer.priceCoins !== coins) return null;
   const { itemId } = offer, kind = offer.kind ?? "item", quantity = offer.quantity ?? 1;
   if (!Number.isSafeInteger(quantity) || quantity < 1) return null;

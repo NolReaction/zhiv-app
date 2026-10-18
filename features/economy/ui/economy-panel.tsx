@@ -26,6 +26,8 @@ import { productionStationSupported } from "@/features/economy/domain/production
 import { worldConstructionReason, worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import { economyMarketUnlocked, marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketSaleFee, marketSlotCount } from "@/features/economy/domain/market-rules";
 import { BarterMarket } from "@/features/economy/ui/market/barter-market";
+import { MarketRefreshProgress } from "@/features/economy/ui/shared/market-refresh-progress";
+import { marketRefreshAvailable, watchMarketRefreshAvailability } from "@/features/economy/ui/shared/market-refresh-availability";
 import { WorldMarketSlots } from "@/features/economy/ui/market/world-market-slots";
 import { worldRecipeGroups } from "@/features/economy/ui/stations/world-recipe-groups";
 import { WorldProductionCard } from "@/features/economy/ui/production/world-production-card";
@@ -563,7 +565,19 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
   const refreshIn = showcase ? Math.max(0, Math.ceil((Date.parse(showcase.refreshAt) - economy.now) / 1000)) : null;
   const refreshLabel = refreshIn === 0 ? "Обновить витрину" : "Проверить наличие";
   const refreshMarket = economy.refreshMarket;
-  useEffect(() => { if (unlocked) void refreshMarket(); }, [refreshMarket, unlocked]);
+  const requestedShowcase = useRef<string | null>(null);
+  useEffect(() => {
+    if (!unlocked) return;
+    if (marketRefreshAvailable()) void refreshMarket();
+    return watchMarketRefreshAvailability(refreshMarket);
+  }, [refreshMarket, unlocked]);
+  useEffect(() => {
+    if (!unlocked || section !== "browse" || !showcase || refreshIn !== 0 || busy || uncertain || !marketRefreshAvailable()) return;
+    const key = `${state.ownerPublicId}:${showcase.refreshAt}`;
+    if (requestedShowcase.current === key) return;
+    requestedShowcase.current = key;
+    void refreshMarket();
+  }, [unlocked, section, showcase, refreshIn, busy, uncertain, state.ownerPublicId, refreshMarket]);
   if (!unlocked) {
     const bridgeJob = state.jobs?.find(job => job.kind === "construction" && job.targetId === "bridge");
     const bridgeReady = bridgeJob && Date.parse(bridgeJob.finishesAt) <= economy.now;
@@ -584,24 +598,26 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
     </div>;
   }
   return <div className={`${styles.stack} ${styles.market}`} aria-label="Рынок игроков">
-    <p className={styles.muted}>На рынке торгуют игроки. Здесь покупают чужие товары и выставляют свои; монеты придут после покупки лота. Быстрая продажа торговцу доступна в кладовой.</p>
+    <p className={styles.marketIntro}><Store size={16} aria-hidden />Товары соседей и ваша лавка</p>
     <StorageStatus state={state} navigate={navigate} compact condensed />
     <button type="button" className={styles.textButton} onClick={() => navigate("barter")}><ArrowLeftRight size={16} aria-hidden />Обмен особыми материалами<ArrowRight size={15} aria-hidden /></button>
     <nav className={styles.subnav} aria-label="Раздел рынка"><button data-guide-market-tab="buy" aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button data-guide-market-tab="sell" aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button data-guide-market-tab="mine" aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
     {marketError && !economy.marketSyncError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
     {market && unlocked && <details className={styles.marketRules}><summary>Правила торговли и дневной объём</summary>
-      <p>Поселения с домами 2–3 и 4–5 торгуют в своих кругах. Цена партии: 1–{limits.maxPriceMultiplier} базовых стоимости. Сбор с новых продаж: {limits.feeBps / 100}%.</p>
+      <p>Поселения с домами 2–3 и 4–5 торгуют в своих кругах. Цена партии: 1–{limits.maxPriceMultiplier} базовых стоимости. Сбор с новых продаж: {limits.feeBps / 100}%. Быстрая продажа торговцу — в кладовой.</p>
       {budget && <><p>Покупки: {number(budget.buysUsed)} / {number(budget.limit)}. Продажи: {number(budget.salesUsed)} / {number(budget.limit)}.</p>
         <p>Объём считается по базовой стоимости предметов, независимо от цены лота. Обновление через {economyDuration(Math.max(0, Math.ceil((Date.parse(budget.resetsAt) - economy.now) / 1000)))}.</p></>}
     </details>}
     {!market && !marketError && unlocked && <p className={styles.muted} role="status">Открываем прилавки…</p>}
     {market && unlocked && section === "browse" && <>
-      <div className={styles.showcaseInfo}><div><strong>Ваша витрина · {listings.length} / {showcase?.slots ?? limits.showcaseSlots}</strong>
-        {unlocked && refreshIn !== null && <p className={styles.muted}>{refreshIn > 0 ? `Смена через ${economyDuration(refreshIn)}` : "Доступна новая витрина"}</p>}
-      </div><button disabled={busy || uncertain} onClick={() => void refreshMarket()}><RefreshCw size={14} aria-hidden />{refreshLabel}</button></div>
+      <div className={styles.showcaseCard}>
+        <div className={styles.showcaseInfo}><strong>Ваша витрина · {listings.length} / {showcase?.slots ?? limits.showcaseSlots}</strong>
+          <button disabled={busy || uncertain} aria-label={refreshLabel} onClick={() => void refreshMarket()}><RefreshCw size={14} aria-hidden />{refreshIn === 0 ? "Обновить" : "Проверить"}</button></div>
+        {showcase && <MarketRefreshProgress refreshAt={showcase.refreshAt} refreshSeconds={showcase.refreshSeconds} now={economy.now} />}
+      </div>
       <details className={styles.marketRules}><summary>Как обновляются предложения</summary><p>До {showcase?.maxPerSeller ?? limits.showcasePerSeller} лотов от одной лавки. Новая подборка раз в {economyDuration(showcase?.refreshSeconds ?? limits.showcaseRefreshSeconds)}. Купленные и снятые лоты до смены не заменяются.</p></details>
       {listings.length ? <div className={styles.shopGrid} role="list" aria-label="Предложения игроков">{listings.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} />)}</div>
-        : <div className={styles.empty}><Store size={32} aria-hidden /><h3>Прилавки пока свободны</h3><p className={styles.muted}>В вашей подборке нет доступных лотов. Предложения могли закончиться или пока не появиться. Новые товары попадут в следующую витрину.</p><button disabled={!unlocked} onClick={() => setSection("sell")}>Выставить товар</button></div>}
+        : <div className={styles.empty}><Store size={32} aria-hidden /><h3>Прилавки пока свободны</h3><p className={styles.muted}>Ждём товары соседей. Можно выставить свои.</p><button disabled={!unlocked} onClick={() => setSection("sell")}>Выставить товар</button></div>}
     </>}
     {market && (section === "sell" || section === "mine") && <><WorldMarketSlots economy={economy} used={market.mine.length} /><p className={styles.marketNote}>Новые лоты появятся у покупателей при смене витрины.</p></>}
     {market && section === "sell" && unlocked && <ListingForm economy={economy} />}

@@ -33,9 +33,15 @@ function economy(owned = false) {
     now, busy: false, uncertain: false, retryAt: 0, notice: "", error: null, barterError: null, refreshBarter() {}, actBarter() { assert.fail("navigation cannot exchange items"); } };
 }
 function elements(tree) { const nodes = []; function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); } visit(tree); return nodes; }
-function harness(component, props) {
+function flushEffects({ hidden = false, online = true } = {}) {
+  const before = Object.fromEntries(["document", "navigator"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { hidden } });
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine: online } });
+  try { hooks.flush(); } finally { for (const [key, descriptor] of Object.entries(before)) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
+}
+function harness(component, props, availability) {
   hooks.reset(); const focused = [];
-  const render = () => { hooks.render(); const tree = component(props), nodes = elements(tree); for (const node of nodes) if (node.props.ref) node.props.ref.current = { focus() { focused.push(node.props.role === "group" ? "confirmation" : "trigger"); } }; hooks.flush(); return { tree, nodes, html: renderToStaticMarkup(tree) }; };
+  const render = () => { hooks.render(); const tree = component(props), nodes = elements(tree); for (const node of nodes) if (node.props.ref) node.props.ref.current = { focus() { focused.push(node.props.role === "group" ? "confirmation" : "trigger"); } }; flushEffects(availability); return { tree, nodes, html: renderToStaticMarkup(tree) }; };
   return { render, focused };
 }
 const button = (view, text) => view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes(text));
@@ -94,7 +100,7 @@ test("home unlock and six-slot thirty-minute shelf explain exchange without coin
   const e = economy(); e.snapshot.buildings.home = 2; let reads = 0; e.refreshBarter = () => reads++;
   let h = harness(BarterMarket, { economy: e }), view = h.render(); assert.match(view.html, /дом 3 уровня и восстановленный мост/); assert.equal(reads, 0);
   e.snapshot.buildings.home = 3; h = harness(BarterMarket, { economy: e }); view = h.render();
-  assert.equal(reads, 1); assert.match(view.html, /1 \/ 6/); assert.match(view.html, /30 минут/); assert.match(view.html, /Без монет и жемчуга/);
+  assert.equal(reads, 1); assert.match(view.html, /1 \/ 6/); assert.match(view.html, /data-market-refresh="waiting"/); assert.match(view.html, /30:00/); assert.match(view.html, /Без монет и жемчуга/);
   assert.doesNotMatch(view.html, /Купить весь лот|Продать|type="number"/);
 });
 
@@ -128,4 +134,13 @@ test("a closed bridge hides foreign exchanges while the old owner's escrow can s
   assert.deepEqual(calls, [{ action: "cancel_offer", offerId: offer().id }]);
   const foreign = harness(BarterOfferCard, { economy: e, offer: offer() });
   assert.equal(button(foreign.render(), "Обменять").props.disabled, true);
+});
+
+
+test("an initially hidden or offline barter panel waits before reading its shelf", () => {
+  for (const availability of [{ hidden: true }, { online: false }]) {
+    const e = economy(), reads = []; e.refreshBarter = () => { reads.push(true); };
+    harness(BarterMarket, { economy: e }, availability).render();
+    assert.deepEqual(reads, []);
+  }
 });

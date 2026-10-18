@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Check, Clock3, Leaf, LockKeyhole, RefreshCw } from "lucide-react";
+import { Check, Fish, Gem, Leaf, LockKeyhole, Package, RefreshCw, Shirt } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { leaftailShopView, leaftailTravelMessage } from "@/features/economy/domain/leaftail-shop";
 import type { EconomyView } from "@/features/economy/domain/model";
@@ -10,17 +10,20 @@ import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { wardrobeItems } from "@/features/world/domain/wardrobe";
 import type { WorldState } from "@/features/world/domain/model";
 import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
+import { marketRefreshAvailable, watchMarketRefreshAvailability } from "@/features/economy/ui/shared/market-refresh-availability";
+import { FishingSpeciesFocus } from "@/features/economy/ui/fishing/fishing-species-odds";
+import { MarketRefreshProgress } from "@/features/economy/ui/shared/market-refresh-progress";
 import { WardrobePreview } from "@/features/world/ui/wardrobe/world-wardrobe";
 import styles from "./world-leaftail-market.module.css";
 
 type Offer = NonNullable<ReturnType<typeof leaftailShopView>>["offers"][number];
 type Quote = { owner: string; revision: number; targetId: string; itemId: string; kind?: Offer["kind"]; price: number; quantity: number };
 type ShopSection = Offer["section"];
-const sections: ReadonlyArray<{ id: ShopSection; label: string; hint: string }> = [
-  { id: "wardrobe", label: "Одежда", hint: "Вещи из путешествий останутся в гардеробе. Примерьте перед покупкой." },
-  { id: "tackle", label: "Снасти", hint: "Удочки и крючки не расходуются. Выбрать их можно перед рыбалкой в «В путь»." },
-  { id: "supplies", label: "Припасы", hint: "По одному набору каждого товара за поставку. Наборы отправятся в кладовую." },
-  { id: "finds", label: "Находки", hint: "Реликвии для развития поселения и больших построек." },
+const sections: ReadonlyArray<{ id: ShopSection; label: string; hint: string; Icon: typeof Shirt }> = [
+  { id: "wardrobe", label: "Одежда", Icon: Shirt, hint: "Примерьте на Мохлика." },
+  { id: "tackle", label: "Снасти", Icon: Fish, hint: "Не расходуются. Выбор — перед рыбалкой." },
+  { id: "supplies", label: "Припасы", Icon: Package, hint: "По одному набору за поставку." },
+  { id: "finds", label: "Находки", Icon: Gem, hint: "В каждой поставке — случайные находки." },
 ];
 const number = (value: number) => value.toLocaleString("ru-RU");
 const descriptions: Record<string, string> = {
@@ -46,6 +49,8 @@ function presentation(state: EconomyView, itemId: string, kind: Offer["kind"]) {
     ?? state.catalog.items.find(item => item.id === itemId)?.name ?? itemId;
   return { name, description: gear?.description ?? descriptions[itemId] ?? "Для развития поселения.", clothing };
 }
+// A full stop inside a multiplier (1.3) is not a sentence boundary.
+const shortDescription = (description: string) => description.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? description;
 const permanent = (kind: Offer["kind"]) => kind === "wardrobe" || kind === "rod" || kind === "hook";
 
 /** A visible quote belongs to this account, revision, offer kind and delivery. */
@@ -78,7 +83,24 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
   const shopElement = useRef<HTMLDivElement>(null), triggerItem = useRef<string | null>(null), heading = useRef<HTMLHeadingElement>(null);
   const wasConfirming = useRef(false), headingId = useId();
   useLayoutEffect(() => { latest.current = { economy, quote, isOnline, introduced }; }, [economy, quote, isOnline, introduced]);
-  const state = economy.snapshot, shop = state ? leaftailShopView(state, economy.now, state.catalog) : null;
+  const state = economy.snapshot;
+  // Keep the accepted delivery on screen until the next server snapshot arrives.
+  const acceptedAt = Date.parse(state?.serverTime ?? "");
+  const shop = state ? leaftailShopView(state, Number.isFinite(acceptedAt) ? acceptedAt : economy.now, state.catalog) : null;
+  const deliveryExpired = Boolean(shop && economy.now >= shop.refreshAt);
+  const requestedDelivery = useRef<string | null>(null);
+  const refresh = economy.refresh, refreshBlocked = locked(economy) || !economy.snapshotConfirmed;
+  useEffect(() => {
+    if (!introduced || !shop?.unlocked) return;
+    return watchMarketRefreshAvailability(refresh);
+  }, [introduced, shop?.unlocked, refresh]);
+  useEffect(() => {
+    if (!introduced || !shop?.unlocked || !deliveryExpired || refreshBlocked || !marketRefreshAvailable()) return;
+    const key = `${state?.ownerPublicId}:${shop.refreshAt}`;
+    if (requestedDelivery.current === key) return;
+    requestedDelivery.current = key;
+    void refresh();
+  }, [introduced, shop?.unlocked, shop?.refreshAt, deliveryExpired, refreshBlocked, state?.ownerPublicId, refresh]);
   const confirming = Boolean(introduced && quote);
   useEffect(() => {
     if (confirming) heading.current?.focus({ preventScroll: true });
@@ -110,7 +132,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
   // Cached snapshots are untrusted, including their delivery date.
   const deliveryDate = shop ? new Date(shop.refreshAt) : null;
   const deliveryLabel = deliveryDate && Number.isFinite(deliveryDate.getTime())
-    ? `Новая поставка ${resetDate.format(deliveryDate)} МСК.` : "Проверяем время новой поставки.";
+    ? `${resetDate.format(deliveryDate)} МСК` : "Проверяем время новой поставки";
   const arrivalMessage = !economy.snapshotConfirmed || !state ? "Проверяем возвращение путника…"
     : !shop?.unlocked ? `Путник в дороге. Он вернётся, когда дом достигнет ${shop?.requiredHomeLevel ?? 3}-го уровня.`
       : "Путник ещё в дороге. Дождитесь прибытия.";
@@ -125,8 +147,12 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
     {!introduced ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{arrivalMessage}</span></p>
       : !state ? <>{recovery}<p role="status">Проверяем ваши запасы…</p></> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p>
       : !shop.unlocked ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{leaftailTravelMessage(shop.requiredHomeLevel)}</span></p> : <>
-      <p className={styles.intro}><Leaf size={18} aria-hidden="true" /><span>«Дорога была долгой. Зато товар занятный. Смотри, только узлы не развязывай.»</span></p>
+      <p className={styles.intro}><Leaf size={18} aria-hidden="true" /><span>«Товар занятный. Только узлы не развязывай.»</span></p>
       {recovery}
+      <div className={styles.delivery}>
+        <MarketRefreshProgress refreshAt={shop.refreshAt} refreshSeconds={state.catalog.leaftailShop?.refreshSeconds ?? 86400} now={economy.now} label="Новая поставка" pendingLabel="Проверяем новую поставку" />
+        <details><summary>{deliveryLabel}</summary><p>Запасы обновляются с поставкой. Купленные вещи и снасти остаются у вас.</p></details>
+      </div>
       {purchaseConfirmed && <div className={styles.success} role="status" data-leaftail-receipt={receipt?.id}>
         <Check size={16} aria-hidden="true" /><div>{receipt ? <><p>{receipt.destination === "wardrobe" ? "В гардероб" : receipt.destination === "tackle" ? "В ваши снасти" : "В кладовую"}: {receipt.items.map(item => `${item.name} ×${number(item.quantity)}`).join(", ")}.</p>
           <p>Потрачено {number(receipt.coins)} монет.</p>{receipt.destination !== "pantry" && <p>{receipt.destination === "wardrobe" ? "Надеть можно в «Ещё» → «Гардероб» → «Мои вещи»." : "Выберите снасть перед рыбалкой в «В путь»."}</p>}</> : <p>{fallback}</p>}</div>
@@ -139,9 +165,10 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
             : event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : null;
           if (nextIndex === null) return;
           event.preventDefault(); changeSection(sections[nextIndex].id); tabButtons.current[nextIndex]?.focus();
-        }}>{entry.label}</button>)}</div>
+        }}><entry.Icon size={15} aria-hidden="true" />{entry.label}</button>)}</div>
       {confirming && quote ? <section className={styles.confirmation} role="tabpanel" id={`${tabsId}-offers`} aria-labelledby={headingId}>
         <h3 id={headingId} ref={heading} tabIndex={-1}>Купить {selected?.name ?? quote.itemId}?</h3>
+        {selected && (quote.kind === "rod" || quote.kind === "hook" || quote.kind === "bait") && <p className={styles.hint}>{selected.description}</p>}
         {preview && <div className={styles.fitting}><WardrobePreview appearance={preview} /><div><strong>Примерка</strong><p>{selected?.description}</p><small>Покупка добавит вещь в гардероб. Образ можно поменять позже.</small></div></div>}
         <p>{quote.kind === "wardrobe" ? "Вещь навсегда в гардероб" : quote.kind === "rod" || quote.kind === "hook" ? "Снасть навсегда в вашу коллекцию" : `${number(quote.quantity)} шт. в кладовую`} за <strong>{number(quote.price)} монет</strong>.</p>
         <p>Монеты: {number(state.wallet.coins)} → {number(Math.max(0, state.wallet.coins - quote.price))}</p>
@@ -151,10 +178,11 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
         <p className={styles.hint}>{sections.find(entry => entry.id === section)?.hint}</p>
         <div className={`${styles.offers} ${section === "wardrobe" ? styles.clothes : ""}`}>{shop.offers.filter(offer => offer.section === section).map(offer => {
           const nextQuote = { owner: state.ownerPublicId, revision: state.revision, targetId: offer.targetId, itemId: offer.itemId, kind: offer.kind, price: offer.priceCoins, quantity: offer.quantity };
-          const disabledReason = leaftailPurchaseReason(economy, nextQuote, isOnline);
+          const disabledReason = deliveryExpired ? "Проверяем новую поставку." : leaftailPurchaseReason(economy, nextQuote, isOnline);
           const { name, description } = presentation(state, offer.itemId, offer.kind);
           return <article className={styles.offer} key={offer.id} data-leaftail-item={offer.itemId} data-leaftail-kind={offer.kind} data-leaftail-quantity={offer.quantity}>
-            <div className={styles.item}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={40} /> : <ItemIcon itemId={offer.itemId} size={section === "wardrobe" ? 40 : 36} />}<div><strong>{name}</strong><small>{description}</small></div>{!permanent(offer.kind) && <span className={styles.stock} aria-label={`${offer.quantity} шт. в покупке. Осталось покупок: ${offer.remaining}`}>×{number(offer.quantity)}</span>}</div>
+            <div className={styles.item}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={40} /> : <ItemIcon itemId={offer.itemId} size={section === "wardrobe" ? 40 : 36} />}<div><strong>{name}</strong>{section !== "wardrobe" && <small>{section === "tackle" ? shortDescription(description) : description}</small>}</div>{!permanent(offer.kind) && <span className={styles.stock} aria-label={`${offer.quantity} шт. в покупке. Осталось покупок: ${offer.remaining}`}>×{number(offer.quantity)}</span>}</div>
+            {offer.kind === "rod" && <FishingSpeciesFocus state={state} override={{ rodId: offer.itemId, hookId: "bare_hook", baitId: null }} />}
             <div className={styles.offerBottom}><small>{offer.kind === "wardrobe" ? offer.owned ? "Уже в гардеробе" : "В гардероб навсегда" : permanent(offer.kind) ? "Не расходуется" : `В кладовой: ${number(state.inventory[offer.itemId] ?? 0)}`}</small><button type="button" className={styles.buy} data-leaftail-purchase={offer.itemId} disabled={offer.kind !== "wardrobe" && Boolean(disabledReason)} aria-label={offer.kind === "wardrobe" ? `Примерить ${name}` : offer.owned ? `${name}: уже есть` : `Купить ${name}: ${number(offer.quantity)} шт. за ${number(offer.priceCoins)} монет`} onClick={() => {
               const current = latest.current;
               if (!current.introduced || offer.kind !== "wardrobe" && leaftailPurchaseReason(current.economy, nextQuote, current.isOnline)) return;
@@ -164,7 +192,6 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
           </article>;
         })}</div>
       </div>}
-      <p className={styles.delivery}><Clock3 size={14} aria-hidden="true" /><span>{deliveryLabel}<small>Ежедневно в 00:00 UTC (03:00 МСК). Купленные вещи и снасти остаются у вас.</small></span></p>
     </>}
   </div>;
 }

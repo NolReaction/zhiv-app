@@ -2,6 +2,30 @@ import type { ReactNode } from "react";
 
 /** Durable tackle: the same native master is used in every shop preview. */
 export const hookArt: Record<string, ReactNode> = {
+  spoon_hook: <>
+    <ellipse cx="27" cy="8" rx="3" ry="4" fill="none" stroke="#b8a378" strokeWidth="2" />
+    <path d="M27 12c-16 5-13 18 0 20 11-6 13-16 0-20Z" fill="#ba8854" />
+    <path d="M26 15c-8 4-9 10-1 13" fill="none" stroke="#e8c796" strokeWidth="2" />
+    <path d="M27 31v6c0 9-12 9-12 1l3-5 1 7m8-8v5c0 8 11 9 12 1l-3-5-1 7" fill="none" stroke="#7d887c" strokeWidth="2.5" />
+  </>,
+  weedless_hook: <>
+    <ellipse cx="30" cy="8" rx="3" ry="4" fill="none" stroke="#c4cda3" strokeWidth="3" />
+    <path d="M30 12v19c0 12-19 16-20 3l6-11 2 9-4-1c0 6 10 7 11 0V12Z" fill="#728568" />
+    <path d="M28 14 16 24m12-8-9 10m9-8-7 10" fill="none" stroke="#b7c78d" strokeWidth="1.7" />
+    <path d="M29 16v15c0 9-13 12-16 5" fill="none" stroke="#d9dfb5" strokeWidth="1.5" />
+  </>,
+  moth_hook: <>
+    <path d="M27 15C9 1 5 16 24 23 7 20 11 35 27 25c17 10 22-4 5-4 17-6 12-21-5-6Z" fill="#c2b0d0" />
+    <path d="m12 13 12 6m17-7-10 7m-16 8 9-4m15 3-8-3" fill="none" stroke="#f0dcc4" strokeWidth="1.5" />
+    <path d="M27 9v27c0 8-12 11-14 3l3-7 1 8" fill="none" stroke="#7d97a5" strokeWidth="3" />
+    <ellipse cx="27" cy="8" rx="2.5" ry="3.5" fill="none" stroke="#c5d6df" strokeWidth="2" />
+  </>,
+  deep_hook: <>
+    <path d="m26 5 6-2 5 5-2 7-7 1-5-5Z" fill="#9ea5aa" /><circle cx="30" cy="9" r="2" fill="#3b5361" />
+    <path d="m29 15-3 13c-2 7-10 7-11 2l5-7-1 10-5-2c0 9 13 13 18 4 4-6 5-14 4-20Z" fill="#526f7b" />
+    <path d="m31 18 5 5-7 2 5 5m-4-12-3 11c-2 8-10 9-12 5" fill="none" stroke="#c6c89f" strokeWidth="1.7" />
+    <path d="m36 15 5 3-2 8-3-1Z" fill="#8e8e71" />
+  </>,
   tide_hook: <>
     <path d="M28 4c-6 0-7 9-2 12v15c0 9-10 11-12 4-1-3 1-6 3-8l3 2-1-13-9 10c-7 10-3 20 7 20 11 0 16-6 16-16V16c6-5 2-12-5-12Z" fill="#6daeb0" />
     <ellipse cx="29" cy="10" rx="2" ry="3" fill="#e8edcb" />

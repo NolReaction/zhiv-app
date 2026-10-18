@@ -1,3 +1,4 @@
+import { residentNightRest, residentEveningActive } from "../resident-evening-routine";
 import { fishingCastTarget } from "@/features/world/activities/fishing/forest-fishing";
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import { FISHING_PACK_RELEASE, type FishingMotion } from "@/features/world/activities/fishing/fishing-props";
@@ -17,7 +18,7 @@ import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
 export type PleskIntent = "fish" | "trade" | "rest" | "look" | "greet" | "tackle" | "walk";
 export type PleskNeeds = { energy: number; patience: number; social: number };
-export type PleskEnvironment = { rain: number; dusk: number; playerNear?: boolean; wildlife?: boolean;
+export type PleskEnvironment = { rain: number; dusk: number; localHour?: number; playerNear?: boolean; wildlife?: boolean;
   /** Only an accepted finite conversation may pause an otherwise idle resident. */
   socialHold?: boolean; socialPartnerId?: string; occupants?: readonly ResidentOccupant[] };
 export type PleskObservation = {
@@ -116,6 +117,8 @@ function pauseOptionalTravel(mind: PleskMind, failed: boolean) {
 
 function selectIntent(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment): { intent: PleskIntent; reason: string; home?: boolean } {
   const { energy, patience, social } = mind.needs;
+  const nightRest = residentNightRest("plesk", mind.elapsed, env.dusk, env.localHour);
+  const eveningActive = residentEveningActive("plesk", mind.elapsed, env.dusk, env.localHour);
   const candidates: { intent: PleskIntent; score: number; reason: string; home?: boolean }[] = [
     { intent: "rest", score: (1 - energy) * 2.4 + env.rain * 1.1 + env.dusk * .65 + (energy < .22 ? 4 : 0),
       reason: env.rain > .6 ? "Дождь усилился, откладывает удочку и отдыхает у пирса." : env.dusk > .7 ? "Стемнело, решила немного передохнуть." : "Устала, пора восстановить силы." },
@@ -133,10 +136,10 @@ function selectIntent(mind: PleskMind, places: PleskPlaces, env: PleskEnvironmen
   if ((mind.noticePending || env.playerNear) && mind.elapsed >= mind.greetAfter) candidates.push({ intent: "greet",
     score: mind.noticePending ? 8 : .3 + social * 1.6, reason: "Заметила гостя, здоровается." });
   if (!mind.tradePending && !mind.noticePending && pleskPersonalHome(mind.scene, places.nav)
-    && (mind.elapsed >= mind.home.nextAt || env.rain > .6 || env.dusk > .72)) candidates.push({ intent: "rest", home: true, score: 7,
-    reason: env.rain > .6 ? "Дождь усилился, пора убрать снасти и укрыться дома." : env.dusk > .72
+    && (!eveningActive && mind.elapsed >= mind.home.nextAt || env.rain > .6 || nightRest)) candidates.push({ intent: "rest", home: true, score: 7,
+    reason: env.rain > .6 ? "Дождь усилился, пора убрать снасти и укрыться дома." : nightRest
       ? "Стемнело, возвращается в свой домик." : "Хочет заглянуть домой и просушить снасти." });
-  if (!mind.catchCount && mind.elapsed >= mind.walkAfter && env.rain < .3 && env.dusk < .65 && leisureStops(mind, places).length)
+  if (!mind.catchCount && mind.elapsed >= mind.walkAfter && env.rain < .3 && (env.dusk < .65 || eveningActive) && leisureStops(mind, places).length)
     candidates.push({ intent: "walk", score: 3, reason: "Прогуляется от пирса к лавке и проверит, не пришли ли соседи." });
   for (const item of candidates) {
     item.score += random(mind) * .18;
@@ -299,7 +302,7 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
   if (mind.socialVisit && mind.socialVisit.phase !== "return" && (mind.noticePending || mind.tradePending || mind.elapsed >= mind.socialVisit.until))
     cancelPleskSocialVisit(mind);
   if (optionalTravel(mind) && (mind.noticePending || mind.tradePending
-    || mind.home.phase === "outside" && (environment.rain > .6 || environment.dusk > .72))) pauseOptionalTravel(mind, false);
+    || mind.home.phase === "outside" && (environment.rain > .6 || residentNightRest("plesk", mind.elapsed, environment.dusk, environment.localHour)))) pauseOptionalTravel(mind, false);
   // A conversation owns no doorway or work route. Yielding changes the visible
   // action to walking, so the social director releases the exchange next tick.
   if (!passageYields.has(mind)) beginPassageYield(mind, places, environment.occupants,
@@ -327,7 +330,7 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
     advancePassageYield(mind, places, step - homeTime, environment.occupants);
     observe(mind); return;
   }
-  const env = { rain: clamp(environment.rain), dusk: clamp(environment.dusk), playerNear: Boolean(environment.playerNear) };
+  const env = { rain: clamp(environment.rain), dusk: clamp(environment.dusk), localHour: environment.localHour, playerNear: Boolean(environment.playerNear) };
   if (mind.stage.action === "fish" && mind.age > 1 && (env.rain > .82 || mind.noticePending && mind.elapsed >= mind.greetAfter)) {
     mind.reason = env.rain > .82 ? "Начался сильный дождь, аккуратно сматывает леску." : "Гость позвал, сматывает леску, чтобы ответить.";
     mind.queue = [{ action: "reel", duration: 1.4, target: mind.stage.target, outcome: "miss", variation: "escape" },
@@ -369,7 +372,7 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
         mind.needs.social = clamp(mind.needs.social + remaining * .002);
         if (optionalTravel(mind)) {
           mind.walkBlockedFor += remaining;
-          if (mind.walkBlockedFor >= PLESK_MIND_LIMITS.leisurePatience && environment.rain < .6 && environment.dusk < .72)
+          if (mind.walkBlockedFor >= PLESK_MIND_LIMITS.leisurePatience && environment.rain < .6 && !residentNightRest("plesk", mind.elapsed, environment.dusk, environment.localHour))
             pauseOptionalTravel(mind, true);
         }
         remaining = 0; break;

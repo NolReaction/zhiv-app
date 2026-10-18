@@ -48,23 +48,41 @@ function lighthouseOptics(color: string): Optics | undefined {
   return value;
 }
 
-/** Twin optics complete a revolution in 36 seconds. Reduced motion is static. */
+/** Two unhurried sweeps alternate with a hold and a soft dark interval. The
+ * hidden return happens only after the ray has faded; no perpetual spinner. */
+export function forestLighthouseFrame(elapsed: number, reducedMotion: boolean) {
+  if (reducedMotion || !Number.isFinite(elapsed)) return { angle: -.32, strength: .48, counter: 0 };
+  const t = ((elapsed % 84) + 84) % 84;
+  const second = t >= 44, at = second ? t - 44 : t;
+  const sweep = second ? 24 : 28, end = second ? -2.05 : .65;
+  const hold = sweep + 8, fade = hold + 6;
+  const angle = at < sweep ? -.9 + (end + .9) * smooth(at / sweep)
+    : at < fade ? end : end + (-.9 - end) * smooth((at - fade) / 2);
+  const strength = .82 * smooth(at / 4) * smooth((fade - at) / 6);
+  // A second weaker optic joins only the first sweep, then gives way to a
+  // single quiet beam. It uses the existing texture and never adds a source.
+  const counter = second ? 0 : .28 * smooth((at - 7) / 5) * smooth((26 - at) / 5);
+  return { angle, strength, counter };
+}
+
 export function forestLighthouseAngle(elapsed: number, reducedMotion: boolean) {
-  return -.32 + (reducedMotion || !Number.isFinite(elapsed) ? 0 : elapsed % 36 / 36 * TAU);
+  return forestLighthouseFrame(elapsed, reducedMotion).angle;
 }
 
 export function drawLighthouseBeams(ctx: CanvasRenderingContext2D, light: ForestLightSource, options: BeamOptions) {
   const textures = lighthouseOptics(light.color), length = light.beamLength;
   if (!textures || !length) return;
-  const angle = forestLighthouseAngle(options.elapsed, options.reducedMotion);
+  const beam = forestLighthouseFrame(options.elapsed, options.reducedMotion);
   const energy = options.night * Math.max(0, Math.min(1, light.intensity));
   const ray = (texture: HTMLCanvasElement, ground: boolean, reverse: boolean) => {
+    const strength = reverse ? beam.counter : beam.strength;
+    if (strength <= 0) return;
     const origin = ground ? light.beamGround ?? light.position : light.position;
     ctx.save(); ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = energy * (ground ? .55 : reverse ? .72 : .96);
+    ctx.globalAlpha = energy * strength * (ground ? .55 : .96);
     ctx.translate(origin.x, origin.y);
     // Squeeze the world horizontal plane, not the final screen-space sprite.
-    ctx.scale(1, .48); ctx.rotate(angle + (reverse ? Math.PI : 0));
+    ctx.scale(1, .48); ctx.rotate(beam.angle + (reverse ? Math.PI : 0));
     const range = length * (ground ? .94 : 1), width = range * texture.height / texture.width;
     ctx.drawImage(texture, 0, -width / 2, range, width);
     ctx.restore();

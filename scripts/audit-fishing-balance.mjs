@@ -24,14 +24,18 @@ export function auditFishingBalance(catalog) {
     if (rod.classOddsBps) for (const rarity of rarities) if (!rod.classOddsBps[rarity]) assert.equal(shares[rarity], 0);
     for (const rarity of rarities) {
       const species = fishing.fish.filter(fish => fish.rarity === rarity);
-      for (const fish of species) assert(Math.abs(portfolio.probabilities[fish.itemId] - shares[rarity] / species.length) < 1e-12,
-        `${fish.itemId}: species of the same class must be equally likely`);
+      const weight = fish => (rod.speciesWeights?.[fish.itemId] ?? 100) * (hook.speciesWeights?.[fish.itemId] ?? 100);
+      const total = species.reduce((sum, fish) => sum + weight(fish), 0);
+      assert(Math.abs(shares[rarity] - portfolio.classProbabilities[`fish_${rarity}`]) < 1e-12,
+        `${rarity}: species preferences cannot change class odds`);
+      for (const fish of species) assert(Math.abs(portfolio.probabilities[fish.itemId] - shares[rarity] * weight(fish) / total) < 1e-12,
+        `${fish.itemId}: species must follow authored within-class tickets`);
     }
     return [{ rodId: rod.id, hookId: hook.id, baitId, shares }];
   })));
   const campDraws = fishing.collectionDrawsByRoute.shore_camp;
   const targets = rarities.map(rarity => {
-    const best = loadouts.reduce((a, b) => a.shares[rarity] >= b.shares[rarity] ? a : b), p = best.shares[rarity];
+    const best = loadouts.reduce((a, b) => a.shares[rarity] >= b.shares[rarity] - 1e-12 ? a : b), p = best.shares[rarity];
     return { rarity, rodId: best.rodId, hookId: best.hookId, baitId: best.baitId,
       probabilityPerFish: rounded(p), probabilityAtLeastOneInCamp: rounded(1 - (1 - p) ** campDraws),
       expectedFishRollsPerCatch: rounded(1 / p), expectedCatchesInCamp: rounded(campDraws * p) };
@@ -87,7 +91,7 @@ export function auditFishingBalance(catalog) {
   return { catalogVersion: catalog.version, combinations: loadouts.length, incompatibleBaits,
     examinedCombinations: loadouts.length + incompatibleBaits.length,
     currency: "coins as displayed in the UI; currencyScale is a legacy denomination marker, not a display divisor",
-    assumptions: ["Every fish rolls its class independently, then one eligible species uniformly; species counts do not alter class odds",
+    assumptions: ["Every fish rolls its class independently, then one eligible species by rod/hook tickets within that class; preferences and species counts do not alter class odds",
       "Camp at-least-one probability is 1-(1-p)^draws; expected catches are draws*p, neither is a guarantee",
       "There are no guaranteed common filler fish; the rod determines available classes, including legendary",
       "Arcade specialist rods strongly target their class; higher-class income grows with gear progression",

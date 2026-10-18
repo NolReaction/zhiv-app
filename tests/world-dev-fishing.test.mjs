@@ -36,7 +36,7 @@ test("DEV normalizes class and species probabilities for every route and tackle 
   }
 });
 
-test("every camp fish gets a class draw and collection species are uniform within the class", () => {
+test("every camp fish gets a class draw and species follow their independent within-class tickets", () => {
   const report = fishingDiagnostics(select({ rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "star_bait", routeId: "shore_camp" }));
   const shark = report.rows.find(row => row.itemId === "fish_shark"), legendary = report.classes.find(group => group.rarity === "legendary");
   assert.equal(report.draws, 8); assert.equal(report.totalFish, 8);
@@ -45,7 +45,7 @@ test("every camp fish gets a class draw and collection species are uniform withi
   near(legendary.atLeastOne, 1 - (1 - legendary.probability) ** 8);
   for (const group of report.classes) {
     const rows = report.rows.filter(row => row.rarity === group.rarity && !row.reason);
-    for (const row of rows) near(row.probability, group.probability / rows.length);
+    for (const row of rows) near(row.probability, group.probability * row.speciesWeight / row.speciesTotal);
   }
   assert.equal(legendary.rodBasisPoints, spec.rods.find(rod => rod.id === "starfall_rod").classOddsBps.legendary);
   assert.deepEqual([legendary.hookFactor, legendary.baitFactor], [150, 150]);

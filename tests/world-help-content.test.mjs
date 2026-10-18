@@ -43,7 +43,7 @@ test("help keeps durable topic links and separates concise answers into six usef
   assert.deepEqual(worldHelpTopics(true), worldHelpTopics(false), "old presentation argument must not hide released rules");
 });
 
-test("Leaftail help explains mixed stock, permanent ownership and both shop entrances", () => {
+test("Leaftail help explains personal finds, delivery progress, permanent ownership and both shop entrances", () => {
   const spec = economyCatalog.leaftailShop, text = answer("leaftail-shop");
   assert.match(text, new RegExp(`с дома ${spec.requiredHomeLevel}`, "i"));
   assert.match(text, /домик Листохвоста.*Персонажи/);
@@ -51,8 +51,10 @@ test("Leaftail help explains mixed stock, permanent ownership and both shop entr
   assert.match(text, /остаются навсегда без повторной оплаты/);
   assert.match(text, /наживка требуют места в кладовой/);
   assert.match(text, /Сумеречные снасти - с дома 4/);
-  assert.match(text, /Остаток личный/);
-  assert.match(text, /00:00 UTC \(03:00 МСК\)/);
+  assert.match(text, /Находок в поставке одна или две/);
+  assert.match(text, /у других игроков выбор может отличаться/);
+  assert.match(text, /Полоса над товарами показывает время до обновления/);
+  assert.match(text, /Повторное открытие не меняет поставку/);
   assert.match(text, /подтвердите покупку/);
   assert.ok(topic("relics").relatedIds.includes("leaftail-shop"));
 });
@@ -196,6 +198,9 @@ test("order instructions point to the standalone journal and meal help stays bes
 
 test("beginner answers explain costs, receipt of results, blocked work and recovery without destructive advice", () => {
   assert.match(answer("start"), /урожай бесплатный/);
+  assert.match(answer("start"), /одна малина в новом хозяйстве созревает сразу один раз/);
+  assert.match(answer("start"), /Повтор обучения помощь не возвращает/);
+  assert.match(answer("start"), /улучшите уже горящий костёр/);
   assert.match(answer("production"), /монеты и материалы зарезервируются/);
   assert.match(answer("production"), /нехватка выделена рядом с количеством/);
   assert.match(answer("production"), /Рядом с рисунком указано название предмета, ниже - время и материалы/);
@@ -298,7 +303,8 @@ test("fishing help quotes the real probability per fish class without promising 
     .filter(odds => odds.rarity === "legendary")
     .reduce((sum, odds) => sum + odds.probability, 0);
   assert.ok(answer("fishing").includes(`${(chance * 100).toFixed(2).replace(".", ",")}%`));
-  assert.match(answer("fishing"), /Каждая пойманная рыба получает класс/);
+  assert.match(answer("fishing"), /Каждая рыба получает класс, затем вид по предпочтениям удочки и крючка/);
+  assert.match(answer("fishing"), /рисунки и проценты видов; шанс класса от предпочтений не меняется/);
   assert.match(answer("fishing"), /Класс определяет цену и применение/);
   assert.match(answer("fishing"), /Вид открывается в коллекции/);
   assert.match(answer("plesk"), /одна наживка расходуется на весь поход/);

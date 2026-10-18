@@ -39,6 +39,39 @@ function until(state, id, predicate, env = {}, seconds = 120) {
   assert.ok(predicate(state.residents[id]), `${id} reached requested state, actual ${state.residents[id].doorPhase}/${state.residents[id].action}`);
 }
 
+test("the actual rabbit sleeps through deep night but walks outside again during his evening activity window", () => {
+  const state = setup("lopukh"), mind = state.residents.lopukh;
+  mind.elapsed = 170; // Begin at his personal evening rest window.
+  const evening = { dusk: 1, localHour: 21, rain: 0 };
+  until(state, "lopukh", mind => mind.doorPhase === "inside", evening);
+  const feet = { ...mind.position };
+  for (let at = 0; at < 160; at += .1) tick(state, "lopukh", { ...evening, localHour: 2 });
+  assert.equal(mind.doorPhase, "inside", "a night is not a seven-minute wake-up loop");
+  assert.deepEqual(mind.position, feet);
+  until(state, "lopukh", mind => mind.doorPhase === "outside", evening, 30);
+  assert.ok(forestVillagerFrames(state).some(frame => frame.id === "lopukh"));
+  assert.equal(mind.job, false); assert.equal("inventory" in state, false);
+  const saved = structuredClone(state);
+  for (let count = 0; count < 20; count++) {
+    advanceForestVillagers(state, scene, 0, { now, ...evening });
+    forestVillagerFrames(state); forestVillagerOccupants(state);
+  }
+  assert.deepEqual(state, saved, "pauses and camera reads cannot wake or advance an outing");
+});
+
+test("the builder stays outdoors in an evening activity window and keeps accepted visits when his rest window begins", () => {
+  const mind = createBuilderMind(scene), env = { now, night: true, localHour: 21,
+    construction: { ownerPublicId: "evening-builder", revision: 1, jobs: [] } };
+  for (let at = 0; at < 20; at += .1) advanceBuilderMind(mind, scene, .1, env);
+  assert.equal(mind.sleepPhase, "awake");
+  assert.ok(builderMindFrame(mind, scene, false));
+  mind.elapsed = 230;
+  mind.socialVisit = { targetId: "evening-guest", anchor: { ...mind.position } };
+  advanceBuilderMind(mind, scene, 0, { ...env, socialHold: true });
+  assert.equal(mind.sleepPhase, "awake");
+  assert.equal(mind.socialVisit.targetId, "evening-guest");
+});
+
 test("the actual rabbit doorway supports a complete finite home break while ordinary navigation keeps its walls", () => {
   const state = setup("lopukh"), mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh"), source = structuredClone(scene);
   assert.ok(places.door); assert.equal(places.door.id, "lopukh-home");

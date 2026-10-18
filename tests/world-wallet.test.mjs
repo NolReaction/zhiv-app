@@ -38,6 +38,32 @@ test("wallet delta distinguishes confirmed credits and spending", () => {
   assert.equal(walletAmountLabel(7, "coins"), "7");
 });
 
+test("credit animation uses whole visible units without rounding away real half-pearl balances", () => {
+  for (const kind of ["coins", "pearls"]) for (const [from, to] of [[81_330, 82_410], [82_410, 81_330]]) {
+    let previous = from;
+    for (let frame = 0; frame <= 100; frame++) {
+      const value = walletTween(from, to, frame / 100, kind);
+      assert.equal(value % (kind === "pearls" ? 2 : 1), 0);
+      assert.doesNotMatch(walletAmountLabel(value, kind), /[,\.]/);
+      assert.ok(to > from ? value >= previous : value <= previous);
+      previous = value;
+    }
+    assert.equal(previous, to);
+  }
+  for (const [from, to] of [[101, 151], [151, 100], [100, 151]]) {
+    assert.equal(walletTween(from, to, 0, "pearls"), from);
+    assert.equal(walletTween(from, to, 1, "pearls"), to);
+    for (let frame = 1; frame < 100; frame++) {
+      const value = walletTween(from, to, frame / 100, "pearls");
+      assert.ok(value >= Math.min(from, to) && value <= Math.max(from, to));
+      assert.ok(value % 2 === 0 || value === from || value === to);
+    }
+  }
+  assert.equal(walletAmountLabel(162_660.2, "pearls"), "81 330");
+  assert.equal(walletAmountLabel(81_330.1, "coins"), "81 330");
+  assert.equal(walletAmountLabel(101, "pearls"), "50,5");
+});
+
 test("wallet first render shows exact balances without a fabricated payout", () => {
   const html = renderToStaticMarkup(createElement(WorldWallet, { coins: 150, pearls: 7 }));
   assert.match(html, /data-currency="coins" data-balance="150"/);

@@ -108,9 +108,11 @@ export function economicMath(catalog) {
     const total = classes.reduce((sum, group) => sum + group.weight, 0);
     assert(total > 0, "Fishing requires an eligible class");
     const classProbabilities = Object.fromEntries(classes.map(group => [group.itemId, group.weight / total]));
+    const speciesWeight = fish => (tackle[0]?.speciesWeights?.[fish.itemId] ?? 100) * (tackle[1]?.speciesWeights?.[fish.itemId] ?? 100);
     const probabilities = Object.fromEntries(catalog.fishing.fish.map(f => {
       const group = classes.find(group => group.rarity === f.rarity);
-      return [f.itemId, eligible(f) && group.species.length ? group.weight / total / group.species.length : 0];
+      return [f.itemId, eligible(f) && group.species.length ? group.weight / total * speciesWeight(f)
+        / group.species.reduce((sum, species) => sum + speciesWeight(species), 0) : 0];
     }));
     const draws = catalog.fishing.collectionDrawsByRoute?.[routeId] ?? 1;
     assert(Number.isInteger(draws) && draws > 0 && draws <= route.rewards.fish, `${routeId}: invalid number of species draws`);
