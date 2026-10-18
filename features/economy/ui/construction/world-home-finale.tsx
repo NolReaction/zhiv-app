@@ -8,15 +8,15 @@ const AUTHOR = "Сломов Дмитрий";
 const ROLES = [
   "Автор идеи и ещё одной идеи",
   "Режиссёр лесной жизни",
-  "Главный программист",
+  "Главный по всему",
   "Художник всего, что поместилось",
-  "Укротитель Tiled",
-  "Начальник брёвен",
-  "Ремонт капюшонов без просветов",
-  "Испытатель кнопки «Улучшить»",
-  "Автор «ещё одной маленькой правки»",
-  "Отдел «запушь уже»",
-  "Тестировщик собственной выдержки",
+  "Постановщик красивых закатов",
+  "Хранитель последнего печенья",
+  "Организатор тихого часа",
+  "Ответственный за «ещё пять минут»",
+  "Специалист по внезапным идеям",
+  "Отдел «а давайте ещё вот это»",
+  "Испытатель собственного терпения",
   "Бухгалтер последней жемчужины",
   "Продюсер и спонсор чаепитий",
   "Весь остальной штат",
@@ -76,7 +76,7 @@ export function WorldHomeFinale() {
       <span className={styles.trophy} aria-hidden="true"><Trophy size={34} strokeWidth={1.5} /><Sprout size={18} className={styles.trophySprout} /></span>
       <span className={styles.eyebrow}>Дом мечты построен</span>
       <h3 className={styles.title}>Поздравляем!<br />Вы прошли игру.</h3>
-      <p className={styles.description}>Ну, дом точно. Дальше улучшать некуда — можно наконец-то пожить.</p>
+      <p className={styles.description}>Ну, дом точно. Дальше улучшать некуда - можно наконец-то пожить.</p>
       <p className={styles.aside}>Лесная жизнь продолжается. А съёмочная группа уже ждёт оваций.</p>
       <button ref={watchButton} type="button" className={`${styles.button} ${styles.primary}`} onClick={openCredits}><Clapperboard size={17} aria-hidden="true" />Смотреть титры</button>
     </div> : <div className={styles.cinema}>
@@ -93,7 +93,7 @@ export function WorldHomeFinale() {
             <span>Один человек. Целый лес.</span>
           </div>
           <ul className={styles.credits}>{ROLES.map(role => <li key={role}><span>{role}</span><strong>{AUTHOR}</strong></li>)}</ul>
-          <div className={styles.closing}><span>Особая благодарность</span><strong>{AUTHOR}</strong><p>А ещё вам — за то, что довели дом до титров.</p><Sprout size={24} aria-hidden="true" /><b>Продолжение следует.<br />Брёвна сами себя не принесут.</b></div>
+          <div className={styles.closing}><span>Особая благодарность</span><strong>{AUTHOR}</strong><p>А ещё вам - за то, что довели дом до титров.</p><Sprout size={24} aria-hidden="true" /><b>Продолжение следует.<br />Брёвна сами себя не принесут.</b></div>
         </div>
         {ended && !reducedMotion && <div className={styles.endCard} role="status"><Sprout size={30} aria-hidden="true" /><strong>Спасибо за игру!</strong><p>Мохлик ждёт. У него там целый лес.</p></div>}
       </div>
