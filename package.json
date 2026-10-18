@@ -19,6 +19,7 @@
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "test:web": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:construction-layout": "node scripts/check-construction-layout.mjs",
     "test:mail": "node --test --test-concurrency=1 tests/mail*.test.mjs tests/admin-mail*.test.mjs tests/admin-grants.test.mjs tests/admin-audit-details.test.mjs tests/world-characters.test.mjs tests/world-help.test.mjs tests/world-ui.test.mjs tests/notifications.test.mjs tests/notification-settings.test.mjs tests/notification-push.test.mjs tests/notification-destination.test.mjs",
     "test:security": "node --test --test-concurrency=1 tests/auth-security.test.mjs tests/user-text-security.test.mjs tests/production-dev-gates.test.mjs tests/deploy-security.test.mjs tests/economy-api.test.mjs tests/economy-offline-protocol.test.mjs tests/economy-production-journal.test.mjs tests/economy-session.test.mjs tests/economy-market-protection.test.mjs tests/admin-security.test.mjs tests/admin-security-state.test.mjs tests/world-studio-project-files.test.mjs tests/world-studio-project-save.test.mjs tests/pwa-contract.test.mjs tests/reset-user-data.test.mjs tests/reset-game-progress.test.mjs tests/security-sandbox-http.test.mjs tests/admin-request-traffic.test.mjs tests/operations-resilience.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
