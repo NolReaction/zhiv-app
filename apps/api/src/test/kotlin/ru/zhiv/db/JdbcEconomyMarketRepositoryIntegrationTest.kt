@@ -291,6 +291,9 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val results = coroutineScope { requests.map { (p, request) -> async(Dispatchers.IO) { runCatching { market.command(p.hash, request) } } }.awaitAll() }
         assertEquals(1, results.count { it.isSuccess })
         assertEquals("ECONOMY_MARKET_NOT_ACTIVE", (results.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
+        assertEquals(100L, economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(47L, market.market(seller.hash).mine.single().sale?.proceedsCoins)
+        market.command(seller.hash, command(seller, "claim_sale", lot.id))
         val views = listOf(seller, a, b).map { economy.snapshot(it.hash) }
         assertEquals(2097L, views.sumOf { it.wallet.coins })
         assertEquals(20L, views.sumOf { it.inventory["berries"] ?: 0L })
@@ -312,7 +315,8 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(1, results.count { it.replayed })
         assertEquals(2L, economy.snapshot(buyer.hash).inventory["berries"])
         assertEquals(980L, economy.snapshot(buyer.hash).wallet.coins)
-        assertEquals(1019L, economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(1000L, economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(19L, market.market(seller.hash).mine.single().sale?.proceedsCoins)
     }
 
     @Test fun `seller cancel racing a buy preserves either escrow refund or purchased goods`() = runBlocking<Unit> {
@@ -326,9 +330,13 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         }.awaitAll() }
         assertEquals(1, results.count { it.isSuccess })
         val views = listOf(seller, buyer).map { economy.snapshot(it.hash) }
-        assertEquals(if (results[1].isSuccess) 1999L else 2000L, views.sumOf { it.wallet.coins })
+        assertEquals(if (results[1].isSuccess) 1980L else 2000L, views.sumOf { it.wallet.coins })
         assertEquals(20L, views.sumOf { it.inventory["berries"] ?: 0L })
-        assertTrue(market.market(seller.hash).mine.isEmpty())
+        val mine = market.market(seller.hash).mine
+        if (results[1].isSuccess) {
+            assertEquals("sold", mine.single().status)
+            assertEquals(19L, mine.single().sale?.proceedsCoins)
+        } else assertTrue(mine.isEmpty())
     }
 
     @Test fun `reciprocal trades serialize sorted account locks and stale second command can retry`() = runBlocking<Unit> {
@@ -344,8 +352,10 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val failed = results.indexOfFirst { it.isFailure }
         val (p, request) = requests[failed]
         market.command(p.hash, request.copy(expectedRevision = economy.snapshot(p.hash).revision))
-        assertEquals(999L, economy.snapshot(a.hash).wallet.coins)
-        assertEquals(999L, economy.snapshot(b.hash).wallet.coins)
+        assertEquals(980L, economy.snapshot(a.hash).wallet.coins)
+        assertEquals(980L, economy.snapshot(b.hash).wallet.coins)
+        assertEquals(19L, market.market(a.hash).mine.single().sale?.proceedsCoins)
+        assertEquals(19L, market.market(b.hash).mine.single().sale?.proceedsCoins)
         assertEquals(20L, economy.snapshot(a.hash).inventory["berries"])
         assertEquals(20L, economy.snapshot(b.hash).inventory["berries"])
     }
@@ -479,6 +489,9 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val buyerBefore = economy.snapshot(buyer.hash)
         val buy = purchase(buyer, soldLot)
         market.command(buyer.hash, buy)
+        assertEquals(original.wallet.coins, economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(95L, market.market(seller.hash).mine.single().sale?.proceedsCoins)
+        market.command(seller.hash, command(seller, "claim_sale", soldLot.id))
         val sold = economy.snapshot(seller.hash)
         val bought = economy.snapshot(buyer.hash)
         assertEquals(340L, sold.storage.overflow)
@@ -634,12 +647,12 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         market.command(high.hash, buy)
         assertEquals(0, economy.snapshot(high.hash).buildings["workshop"], "specialization may replace owning a workshop")
         market.command(seller.hash, command(seller, "create_listing", "tools", 1, 1000))
-        val cheap = market.market(seller.hash).mine.single()
+        val cheap = market.market(seller.hash).mine.single { it.status == "active" }
         execute("UPDATE economy_market_listings SET total_price=10 WHERE id=?", UUID.fromString(cheap.id))
         val buyer = player(berries = 0); editState(buyer) { it.copy(buildings=it.buildings + ("home" to 4),
             unlockedItems=(it.unlockedItems+"tools").distinct()) }
         assertTrue(market.market(buyer.hash).listings.isEmpty())
-        assertEquals(10L, market.market(seller.hash).mine.single().totalPrice)
+        assertEquals(10L, market.market(seller.hash).mine.single { it.status == "active" }.totalPrice)
         market.command(seller.hash, command(seller, "cancel_listing", cheap.id))
         assertEquals(2L, economy.snapshot(seller.hash).inventory["tools"])
     }
@@ -677,7 +690,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
             assertTrue(result.state.fishing.catches.isEmpty())
 
             market.command(seller.hash, command(seller, "create_listing", itemId, 1, price))
-            val remaining = market.market(seller.hash).mine.single()
+            val remaining = market.market(seller.hash).mine.single { it.status == "active" }
             editState(seller) { it.copy(buildings=it.buildings + ("home" to home - 1)) }
             assertEquals(1L, market.command(seller.hash, command(seller, "cancel_listing", remaining.id)).state.inventory[itemId])
         }
@@ -759,6 +772,10 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         }
         market.command(low.hash,lowBuy)
         market.command(high.hash,purchase(high,lowLot))
+        assertEquals(980L,economy.snapshot(low.hash).wallet.coins)
+        assertEquals(980L,economy.snapshot(high.hash).wallet.coins)
+        market.command(low.hash,command(low,"claim_sale",lowLot.id))
+        market.command(high.hash,command(high,"claim_sale",highLot.id))
         val settledLow=economy.snapshot(low.hash); val settledHigh=economy.snapshot(high.hash)
         assertEquals(2,settledLow.buildings["home"]); assertEquals(5,settledHigh.buildings["home"])
         assertEquals(999L,settledLow.wallet.coins); assertEquals(999L,settledHigh.wallet.coins)
@@ -778,6 +795,8 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         market.command(buyer.hash,request)
         assertEquals(500,lot.feeBps)
         assertEquals(9960L,economy.snapshot(buyer.hash).wallet.coins)
+        assertEquals(1000L,economy.snapshot(seller.hash).wallet.coins)
+        market.command(seller.hash,command(seller,"claim_sale",lot.id))
         assertEquals(1038L,economy.snapshot(seller.hash).wallet.coins)
         assertEquals(2400L,market.market(buyer.hash).tradeBudget!!.buysUsed)
         assertEquals(20L,market.market(seller.hash).tradeBudget!!.salesUsed)
@@ -807,9 +826,14 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(1,results.count{it.isSuccess})
         assertEquals("ECONOMY_MARKET_SELLER_DAILY_LIMIT",(results.single{it.isFailure}.exceptionOrNull() as AuthFailure).code)
         assertEquals(2400L,market.market(seller.hash).tradeBudget!!.salesUsed)
-        assertEquals(1,market.market(seller.hash).mine.size)
+        val mine=market.market(seller.hash).mine
+        assertEquals(1,mine.count { it.status=="active" })
+        val sold=mine.single { it.status=="sold" }
+        assertEquals(19L,sold.sale?.proceedsCoins)
         assertEquals(2L,listOf(a,b).sumOf{economy.snapshot(it.hash).inventory["berries"]?:0L})
         assertEquals(20L,listOf(a,b).sumOf{market.market(it.hash).tradeBudget!!.buysUsed})
+        assertEquals(1000L,economy.snapshot(seller.hash).wallet.coins)
+        market.command(seller.hash,command(seller,"claim_sale",sold.id))
         assertEquals(1019L,economy.snapshot(seller.hash).wallet.coins)
     }
 
@@ -827,6 +851,9 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(0,loaded.feeBps)
         val historicalBuy=purchase(buyer,loaded)
         market.command(buyer.hash,historicalBuy)
+        assertEquals(1000L,economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(20L,market.market(seller.hash).mine.single().sale?.proceedsCoins)
+        market.command(seller.hash,command(seller,"claim_sale",loaded.id))
         assertEquals(1020L,economy.snapshot(seller.hash).wallet.coins)
         assertEquals(980L,economy.snapshot(buyer.hash).wallet.coins)
         assertEquals(20L,scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND source_key=?",seller.id,"market:sell:${loaded.id}"))

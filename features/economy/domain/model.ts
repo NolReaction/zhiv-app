@@ -316,13 +316,17 @@ export const economyCommandSchema = z.object({ ...commandBase,
   fishSelection: quantities.nullish(),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["create_listing", "buy_listing", "cancel_listing"]),
+  action: z.enum(["create_listing", "buy_listing", "cancel_listing", "claim_sale"]),
   fishSelection: quantities.nullish(),
 }).strict();
 export const economyMarketListingSchema = z.object({
   id: uuid, sellerPublicId: z.string().min(1), sellerName: z.string(), itemId: id,
   quantity: z.number().int().min(1).max(99), totalPrice: balance.positive(), status: z.enum(["active", "sold", "cancelled"]),
   createdAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), owned: z.boolean(), feeBps: count.max(10000).default(0),
+  sale: z.object({
+    buyerPublicId: z.string().min(1).max(40).nullable(), buyerName: z.string().min(1).max(100),
+    buyerAvatarUrl: z.string().url().nullable(), proceedsCoins: balance, claimedAt: z.string().datetime().nullable(),
+  }).strict().nullish(),
 });
 export const marketViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40),

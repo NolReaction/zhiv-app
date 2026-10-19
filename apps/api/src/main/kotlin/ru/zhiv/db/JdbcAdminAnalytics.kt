@@ -13,7 +13,7 @@ import java.time.ZoneOffset
 private const val technicalKinds = "'legacy_conversion','starting_pack','account_merge','merged_receipt','dev_grant_currency','dev_grant_item','dev_set_building_level','grant_economy','admin_adjustment'"
 private const val jobKinds = "'claim_job','claim_garden_collection','speedup_construction','start_collection','start_garden_collection','cancel_production','cancel_exploration'"
 private const val escrowKinds = "'market_create','market_cancel','barter_create','barter_cancel'"
-private const val passiveKinds = "'market_sell','barter_exchange'"
+private const val passiveKinds = "'market_sell','market_sold','barter_exchange'"
 private const val constructionStartKinds = "'start_construction','start_tutorial_workshop'"
 private const val maxAnalyticsGroups = 1000
 
@@ -54,7 +54,7 @@ private fun periodEvents(materialize: Boolean = false, cohort: Boolean = false) 
             CASE WHEN l.kind IN ($jobKinds) THEN CASE WHEN original->>'action' IN ($constructionStartKinds,'start_production','start_exploration','start_fishing')
               THEN nullif(original->>'targetId','') END ELSE nullif(command->>'targetId','') END) AS raw_target,
           CASE WHEN l.kind IN ($escrowKinds) THEN 'escrow'
-               WHEN l.kind IN ('market_buy','market_sell','barter_accept','barter_exchange') THEN 'trade' ELSE 'gameplay' END AS category,
+               WHEN l.kind IN ('market_buy','market_sell','market_sold','market_claim','barter_accept','barter_exchange') THEN 'trade' ELSE 'gameplay' END AS category,
           (l.kind='speedup_construction' OR (l.kind='claim_job' AND coalesce(l.context->>'originAction',original->>'action') IN ($constructionStartKinds))) IS TRUE AS construction_claim,
           l.kind NOT IN ($passiveKinds) AS active,
           left(l.source_key,8)='command:' OR l.kind IN ($jobKinds,$constructionStartKinds,'start_production','start_exploration','start_fishing') AS needs_context

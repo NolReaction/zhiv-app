@@ -101,6 +101,18 @@ class JdbcAdminRepositoryIntegrationTest {
         return requestId
     }
 
+    @Test fun `automatic sale is passive while manual proceeds collection is an active trade`() = runBlocking<Unit> {
+        val admin=user("Администратор"); val claimant=user("Получатель"); val waiting=user("Ждёт сбор")
+        val at="2020-01-02T12:00:00Z"
+        analyticsEntry(waiting,"market_sold",at)
+        analyticsEntry(claimant,"market_claim",at,coins=19)
+        val report=repository(admin).analytics(admin.hash,AdminAnalyticsQuery(from="2020-01-02",to="2020-01-04"))
+        assertEquals(1L,report.summary.activePlayers)
+        assertEquals(2L,report.summary.events)
+        assertEquals(19L,report.resources.single { it.resourceId=="coins" }.received)
+        assertEquals("trade",report.flows.single { it.kind=="market_claim" }.category)
+    }
+
     @Test fun `analytics separate escrow and passive receipts while normalizing every historic currency leg`() = runBlocking<Unit> {
         val admin = user("Администратор"); val peerAdmin = user("Второй администратор")
         val active = user("Покупатель"); val passive = user("Продавец"); val retired = user("Удалённый")

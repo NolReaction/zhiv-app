@@ -58,7 +58,7 @@ internal fun readAdminProgression(reads: AnalyticsReads, now: Instant): AdminAna
                 SELECT max(l.created_at) AS last_action_at FROM economy_ledger l
                 WHERE l.user_id=u.id AND l.created_at>=u.created_at AND l.created_at<moment.at
                   AND l.kind NOT IN ('legacy_conversion','starting_pack','account_merge','merged_receipt','dev_grant_currency',
-                    'dev_grant_item','dev_set_building_level','grant_economy','market_sell','barter_exchange')
+                    'dev_grant_item','dev_set_building_level','grant_economy','market_sell','market_sold','barter_exchange')
             ) history ON true
             LEFT JOIN LATERAL (
                 SELECT min(ready_at) FILTER (WHERE ready_at<moment.at-interval '24 hours') AS ready_since,

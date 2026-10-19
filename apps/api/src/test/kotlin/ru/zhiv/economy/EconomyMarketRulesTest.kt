@@ -22,6 +22,12 @@ class EconomyMarketRulesTest {
         )) assertFailsWith<AuthFailure> { EconomyMarketRules.validate(bad) }
         EconomyMarketRules.validate(command().copy(action = "cancel_listing", targetId = UUID.randomUUID().toString(), quantity = 1, totalPrice = 0))
         assertFailsWith<AuthFailure> { EconomyMarketRules.validate(command().copy(action = "cancel_listing", targetId = UUID.randomUUID().toString())) }
+        EconomyMarketRules.validate(command().copy(action = "claim_sale", targetId = UUID.randomUUID().toString(), quantity = 1, totalPrice = 0))
+        for (bad in listOf(
+            command().copy(action = "claim_sale", targetId = "berries", quantity = 1, totalPrice = 0),
+            command().copy(action = "claim_sale", targetId = UUID.randomUUID().toString(), quantity = 2, totalPrice = 0),
+            command().copy(action = "claim_sale", targetId = UUID.randomUUID().toString(), quantity = 1, totalPrice = 10),
+        )) assertFailsWith<AuthFailure> { EconomyMarketRules.validate(bad) }
     }
 
     @Test fun `whole lot price allows exact cap but no overflow or one coin over`() {

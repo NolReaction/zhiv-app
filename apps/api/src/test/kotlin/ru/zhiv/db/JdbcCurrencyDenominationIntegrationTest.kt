@@ -107,6 +107,11 @@ class JdbcCurrencyDenominationIntegrationTest {
                 economy.snapshot(buyerToken.hash).revision, "buy_listing", visible.id, 2, visible.totalPrice))
             assertEquals(940L, bought.state.wallet.coins)
             assertEquals(2L, bought.state.inventory["wood"])
+            assertEquals(1230L, economy.snapshot(sellerToken.hash).wallet.coins)
+            val pending = market.market(sellerToken.hash).mine.single { it.id == visible.id }
+            assertEquals(60L, pending.sale?.proceedsCoins, "The old zero-fee quote is stored until collection")
+            market.command(sellerToken.hash, EconomyCommand(UUID.randomUUID().toString(), seller.publicId,
+                economy.snapshot(sellerToken.hash).revision, "claim_sale", pending.id))
             assertEquals(1290L, economy.snapshot(sellerToken.hash).wallet.coins)
             val ownerLot = market.market(sellerToken.hash).mine.single()
             assertEquals(overpriced.toString(), ownerLot.id)

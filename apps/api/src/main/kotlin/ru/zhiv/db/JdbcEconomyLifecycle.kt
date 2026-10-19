@@ -66,7 +66,11 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
         states.maxOf { it.buildings[building] ?: 0 }
     }
     val mergedStorage = EconomyRules.storage(states.first().copy(inventory=combinedInventory, buildings=combinedBuildings))
+    val pendingSales = c.economyRows("""SELECT count(*) FROM economy_market_listings
+        WHERE sale_owner_id IN (?,?) AND status='sold' AND sale_claimed_at IS NULL""", target, source) { it.getLong(1) }.single()
     return buildList {
+        if (pendingSales > ru.zhiv.economy.EconomyMarketRules.MAX_LISTINGS)
+            add("Заберите выручку в лавках перед объединением профилей: вместе ожидают сбора больше десяти продаж.")
         if (states.any { it.jobs.isNotEmpty() }) add("Сначала получите результаты производства, строительства и исследований в обоих профилях. Затем повторите объединение.")
         if (states.all { it.food.heroMeal != null } || states.all { it.food.builderMeal != null })
             add("В обоих профилях есть сытый Мохлик или строитель. Сначала используйте бонус еды в одном профиле, чтобы сохранить второе угощение.")
@@ -84,6 +88,10 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     val b = readEconomyProfile(c, source).state
     val conflicts = economyMergeConflicts(c, target, source)
     if (conflicts.isNotEmpty()) throw AuthFailure("ACCOUNT_MERGE_CONFLICT", conflicts.joinToString(" "), 409)
+    // Proceeds are not in either wallet yet. Preserve their separate one-time claim,
+    // without changing the historic seller/buyer pair or triggering a second payout.
+    c.lifecycleEconomyUpdate("""UPDATE economy_market_listings SET sale_owner_id=?
+        WHERE sale_owner_id=? AND status='sold' AND sale_claimed_at IS NULL""", target, source)
     fun add(first: Long, second: Long,limit: Long=ECONOMY_MAX_BALANCE): Long {
         if (first > limit - second) throw AuthFailure("ECONOMY_CAPACITY", "Общий запас превышает вместимость экономики", 409)
         return first + second

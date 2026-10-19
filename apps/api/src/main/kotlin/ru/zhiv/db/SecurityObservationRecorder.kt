@@ -105,7 +105,7 @@ private val observedActions = setOf(
     "cancel_production", "cancel_exploration", "start_tutorial_workshop", "start_construction", "speedup_construction",
     "claim_garden_collection", "claim_job", "buy_market_slot", "buy_leaftail_item", "refresh_fishing_shop", "buy_wardrobe_item",
     "buy_fishing_item", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "sell", "sell_fish",
-    "create_listing", "buy_listing", "cancel_listing", "create_offer", "accept_offer", "cancel_offer", "daily", "achievement", "onboarding",
+    "create_listing", "buy_listing", "cancel_listing", "claim_sale", "create_offer", "accept_offer", "cancel_offer", "daily", "achievement", "onboarding",
 )
 
 internal fun requestTamper(user: UUID, action: String, requestId: UUID,

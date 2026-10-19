@@ -103,13 +103,15 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         val purchase=buy(buyer,lot);val result=worlds.purchase(buyer.hash,circle,purchase)
         assertEquals(980L,result.state.wallet.coins);assertEquals(22L,result.state.inventory["berries"])
         val sold=economy.snapshot(seller.hash)
-        assertEquals(1019L,sold.wallet.coins);assertEquals(18L,sold.inventory["berries"])
+        assertEquals(1000L,sold.wallet.coins);assertEquals(18L,sold.inventory["berries"])
+        assertEquals(buyer.publicId,market.market(seller.hash).mine.single().sale?.buyerPublicId)
+        assertEquals(19L,market.market(seller.hash).mine.single().sale?.proceedsCoins)
         assertTrue(worlds.world(buyer.hash,circle).market.listings.isEmpty())
         assertEquals(20L,scalar("SELECT buys_value FROM economy_market_daily_turnover WHERE user_id=?",buyer.id))
         assertEquals(20L,scalar("SELECT sales_value FROM economy_market_daily_turnover WHERE user_id=?",seller.id))
         val replay=worlds.purchase(buyer.hash,circle,purchase)
         assertTrue(replay.replayed);assertEquals(result.state.revision,replay.state.revision)
-        assertEquals(980L,replay.state.wallet.coins);assertEquals(1019L,economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(980L,replay.state.wallet.coins);assertEquals(1000L,economy.snapshot(seller.hash).wallet.coins)
     }
 
     @Test fun `friend seller binding applies before replay and a stranger cannot spend the buyer balance`() = runBlocking<Unit> {
@@ -155,7 +157,8 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         execute("DELETE FROM economy_market_daily_turnover WHERE user_id=?",buyer.id)
         val bought=worlds.purchase(buyer.hash,circle,buy(buyer,lot)).state
         assertEquals(980L,bought.wallet.coins);assertEquals(22L,bought.inventory["berries"])
-        assertEquals(1019L,economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(1000L,economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(19L,market.market(seller.hash).mine.single().sale?.proceedsCoins)
         assertTrue(worlds.world(buyer.hash,circle).market.listings.isEmpty())
     }
 
@@ -185,7 +188,8 @@ class JdbcGuestWorldRepositoryIntegrationTest {
             async(Dispatchers.IO){runCatching{worlds.purchase(b.hash,cb,bc)}}).awaitAll() }
         assertEquals(1,results.count { it.isSuccess });assertEquals("ECONOMY_MARKET_NOT_ACTIVE",(results.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
         assertEquals(42L,(economy.snapshot(a.hash).inventory["berries"] ?: 0) + (economy.snapshot(b.hash).inventory["berries"] ?: 0))
-        assertEquals(1019L,economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(1000L,economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(19L,market.market(seller.hash).mine.single().sale?.proceedsCoins)
     }
 
     @Test fun `HTTP guest world and purchase enforce session origin scope body and no store`() = testApplication {

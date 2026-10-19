@@ -68,14 +68,14 @@ internal fun mergeEconomyMarketReceipts(c: Connection, target: UUID, source: UUI
 }
 
 class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarketRepository {
-    private data class Actor(val id: UUID, val publicId: String)
-    private data class ListingRow(val seller: UUID, val listing: EconomyMarketListing, val originalItemId: String)
+    private data class Actor(val id: UUID, val publicId: String, val displayName: String)
+    private data class ListingRow(val seller: UUID, val listing: EconomyMarketListing, val originalItemId: String, val saleOwner: UUID?)
     private data class Receipt(val signature: String, val message: String, val revision: Long)
 
-    private fun actor(c: Connection, hash: ByteArray): Actor = c.economyRows("""SELECT u.id,u.public_id FROM app_users u
+    private fun actor(c: Connection, hash: ByteArray): Actor = c.economyRows("""SELECT u.id,u.public_id,u.display_name FROM app_users u
         JOIN app_sessions s ON s.user_id=u.id WHERE s.token_hash=? AND u.deleted_at IS NULL AND u.banned_at IS NULL
         AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()""", hash) {
-        Actor(it.getObject(1, UUID::class.java), it.getString(2))
+        Actor(it.getObject(1, UUID::class.java), it.getString(2), it.getString(3))
     }.firstOrNull() ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
 
     private suspend fun <T> transaction(block: (Connection) -> T): T = withContext(Dispatchers.IO) {
@@ -101,6 +101,13 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
     private fun listing(result: ResultSet, owner: UUID): ListingRow {
         val seller = result.getObject("seller_id", UUID::class.java)
         val originalItemId = result.getString("item_id")
+        val saleOwner = result.getObject("sale_owner_id", UUID::class.java)
+        val owned = if (result.getString("status") == "sold") saleOwner == owner else seller == owner
+        val sale = if (owned && saleOwner != null) EconomyMarketSale(
+            buyerPublicId = result.getString("sale_buyer_public_id"), buyerName = result.getString("sale_buyer_name"),
+            proceedsCoins = result.getLong("sale_proceeds_coins"),
+            claimedAt = result.getObject("sale_claimed_at", OffsetDateTime::class.java)?.toInstant()?.toString(),
+        ) else null
         return ListingRow(seller, EconomyMarketListing(
             id = result.getObject("id", UUID::class.java).toString(),
             sellerPublicId = result.getString("public_id"), sellerName = result.getString("display_name"),
@@ -108,8 +115,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             totalPrice = EconomyMoney.nominal(result.getLong("total_price"),result.getInt("currency_scale")), status = result.getString("status"),
             createdAt = result.getObject("created_at", OffsetDateTime::class.java).toInstant().toString(),
             closedAt = result.getObject("closed_at", OffsetDateTime::class.java)?.toInstant()?.toString(),
-            owned = seller == owner, feeBps = result.getInt("seller_fee_bps"),
-        ), originalItemId)
+            owned = owned, feeBps = result.getInt("seller_fee_bps"), sale = sale,
+        ), originalItemId, saleOwner)
     }
 
     private data class Showcase(val refreshAt: Instant, val ids: List<UUID>)
@@ -188,8 +195,9 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                 .filter { EconomyMarketRules.eligible(it.itemId, it.quantity, it.totalPrice, state) }
                 .sortedBy { selection.ids.indexOf(UUID.fromString(it.id)) }
             val mine = c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
-                JOIN app_users u ON u.id=l.seller_id WHERE l.status='active' AND l.seller_id=?
-                ORDER BY l.created_at DESC,l.id DESC LIMIT ?""", user.id, config.maxListings) { listing(it, user.id).listing }
+                JOIN app_users u ON u.id=l.seller_id WHERE (l.status='active' AND l.seller_id=?)
+                OR (l.status='sold' AND l.sale_claimed_at IS NULL AND l.sale_owner_id=?)
+                ORDER BY (l.status='sold') DESC,l.created_at DESC,l.id DESC LIMIT ?""", user.id, user.id, config.maxListings) { listing(it, user.id).listing }
             val usage = readEconomyTradeUsage(c, user.id, at)
             EconomyMarketView(user.publicId, selected.take(limit), mine, serverTime=at.toString(), showcase=EconomyMarketShowcase(
                 selection.refreshAt.toString(), config.showcaseSlots, config.showcasePerSeller, config.showcaseRefreshSeconds),
@@ -214,14 +222,16 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             val guest = circleId?.let { requireGuestWorldAccess(c, sessionHash, it) }
             // Read the immutable seller before locking; account merges cancel, never reassign, active lots.
             val listingId = if (command.action == "create_listing") null else UUID.fromString(command.targetId)
-            val seller = listingId?.let { id -> c.economyRows("SELECT seller_id FROM economy_market_listings WHERE id=?", id) {
-                it.getObject(1, UUID::class.java)
+            val parties = listingId?.let { id -> c.economyRows("SELECT seller_id,sale_owner_id FROM economy_market_listings WHERE id=?", id) {
+                it.getObject(1, UUID::class.java) to it.getObject(2, UUID::class.java)
             }.firstOrNull() }
+            val seller = parties?.first
             // Validate the expected friend even on an idempotent replay; a receipt never authorizes a different seller.
             if (guest != null && (guest.viewerId != initial.id || guest.sellerId != seller))
                 throw AuthFailure("GUEST_WORLD_UNAVAILABLE", "Мир друга недоступен", 404)
             // Use PostgreSQL's UUID ordering, matching account lifecycle and social writers.
-            c.economyRows("SELECT id FROM app_users WHERE id IN (?,?) ORDER BY id FOR NO KEY UPDATE", initial.id, seller ?: initial.id) { true }
+            c.economyRows("SELECT id FROM app_users WHERE id IN (?,?,?) ORDER BY id FOR NO KEY UPDATE",
+                initial.id, seller ?: initial.id, parties?.second ?: initial.id) { true }
             val user = actor(c, sessionHash)
             if (user.id != initial.id || user.publicId != command.ownerPublicId)
                 throw AuthFailure("ECONOMY_OWNER_CHANGED", "Открыт другой профиль. Обновите хозяйство.", 409)
@@ -248,24 +258,28 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             val before = readEconomyProfile(c, user.id)
             if (before.revision != command.expectedRevision)
                 throw AuthFailure("ECONOMY_REVISION_CONFLICT", "Хозяйство уже изменилось. Обновите его и повторите действие.", 409)
-            if (command.action != "cancel_listing" && !EconomyMarketRules.unlocked(before.state))
+            if (command.action !in setOf("cancel_listing", "claim_sale") && !EconomyMarketRules.unlocked(before.state))
                 throw AuthFailure("ECONOMY_MARKET_LOCKED", "Для торговли нужен дом второго уровня и восстановленный мост", 409)
 
             val message = when (command.action) {
                 "create_listing" -> create(c, user.id, before.state, command)
-                "buy_listing", "cancel_listing" -> {
+                "buy_listing", "cancel_listing", "claim_sale" -> {
                     val row = c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
-                        JOIN app_users u ON u.id=l.seller_id WHERE l.id=? AND u.deleted_at IS NULL AND u.banned_at IS NULL
-                        FOR UPDATE OF l""", listingId) { listing(it, user.id) }.firstOrNull()
+                        JOIN app_users u ON u.id=l.seller_id WHERE l.id=?
+                        AND (? OR (u.deleted_at IS NULL AND u.banned_at IS NULL))
+                        FOR UPDATE OF l""", listingId, command.action == "claim_sale") { listing(it, user.id) }.firstOrNull()
                         ?: throw AuthFailure("ECONOMY_MARKET_NOT_FOUND", "Объявление не найдено", 404)
                     if (row.seller != seller) throw AuthFailure("ECONOMY_MARKET_NOT_ACTIVE", "Объявление изменилось", 409)
-                    if (row.listing.status != "active") throw AuthFailure("ECONOMY_MARKET_NOT_ACTIVE", "Объявление уже закрыто", 409)
-                    if (command.action == "buy_listing") buy(c, user.id, before.state, row, command, personalShowcase = circleId != null)
+                    if (command.action == "claim_sale") claim(c, user.id, before.state, row)
                     else {
-                        if (row.seller != user.id) throw ObservedSecurityFailure(user.id,
-                            ru.zhiv.admin.SecurityObservationKind.MARKET_OWNERSHIP_DENIED, "market:cancel_listing", requestId,
-                            "ECONOMY_MARKET_OWNER", "Отменить объявление может только продавец", 403)
-                        cancel(c, user.id, before.state, row)
+                        if (row.listing.status != "active") throw AuthFailure("ECONOMY_MARKET_NOT_ACTIVE", "Объявление уже закрыто", 409)
+                        if (command.action == "buy_listing") buy(c, user, before.state, row, command, personalShowcase = circleId != null)
+                        else {
+                            if (row.seller != user.id) throw ObservedSecurityFailure(user.id,
+                                ru.zhiv.admin.SecurityObservationKind.MARKET_OWNERSHIP_DENIED, "market:cancel_listing", requestId,
+                                "ECONOMY_MARKET_OWNER", "Отменить объявление может только продавец", 403)
+                            cancel(c, user.id, before.state, row)
+                        }
                     }
                 }
                 else -> error("Validated market action")
@@ -286,7 +300,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         EconomyMarketRules.validatePrice(command.quantity, command.totalPrice, item.baseSellPrice, marketConfig.maxPriceMultiplier)
         if (item.baseSellPrice * command.quantity > EconomyMarketRules.dailyTradeLimit(state.buildings["home"] ?: 1))
             throw AuthFailure("ECONOMY_MARKET_DAILY_LOT_LIMIT", "Уменьшите партию: её базовая стоимость превышает дневной объём торговли", 409)
-        val active = c.economyRows("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'", user) { it.getInt(1) }.single()
+        val active = c.economyRows("""SELECT count(*) FROM economy_market_listings WHERE
+            (seller_id=? AND status='active') OR (sale_owner_id=? AND status='sold' AND sale_claimed_at IS NULL)""", user, user) { it.getInt(1) }.single()
         if (active >= state.marketSlots) throw AuthFailure("ECONOMY_MARKET_LIMIT", "Все места вашей лавки заняты", 409)
         val available = state.inventory[item.id] ?: 0L
         if (available < command.quantity) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно предметов для этой партии", 409)
@@ -303,7 +318,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         return "Партия выставлена на рынок"
     }
 
-    private fun buy(c: Connection, user: UUID, state: EconomyState, row: ListingRow, command: EconomyCommand, personalShowcase: Boolean = false): String {
+    private fun buy(c: Connection, buyer: Actor, state: EconomyState, row: ListingRow, command: EconomyCommand, personalShowcase: Boolean = false): String {
+        val user = buyer.id
         if (row.seller == user) throw AuthFailure("ECONOMY_MARKET_SELF_TRADE", "Нельзя купить свою партию", 409)
         val lot = row.listing
         if (lot.quantity != command.quantity || lot.totalPrice != command.totalPrice)
@@ -332,20 +348,34 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         EconomyMarketRules.assertTradeBudget(readEconomyTradeUsage(c, row.seller, at).sales, tradeValue,
             EconomyMarketRules.dailyTradeLimit(seller.buildings["home"] ?: 1), seller=true)
         val sellerProceeds = lot.totalPrice - EconomyMarketRules.sellerFee(lot.totalPrice, lot.feeBps)
-        if (seller.wallet.coins > ECONOMY_MAX_BALANCE - sellerProceeds)
-            throw AuthFailure("ECONOMY_CAPACITY", "Продавец пока не может принять монеты", 409)
         val inventory = EconomyRules.addItems(state.inventory, mapOf(lot.itemId to lot.quantity))
         val transferred = EconomyFishStock.escrow(seller, lot.id, mapOf(lot.itemId to lot.quantity), legacyItems = mapOf(row.originalItemId to lot.quantity))
         val next = EconomyFishStock.credit(state.copy(wallet = state.wallet.copy(coins = state.wallet.coins - lot.totalPrice), inventory = inventory), transferred)
         assertEconomyMarketCapacity(c, user, state, next)
-        c.economyUpdate("UPDATE economy_market_listings SET status='sold',buyer_id=?,closed_at=clock_timestamp() WHERE id=?", user, UUID.fromString(lot.id))
+        c.economyUpdate("""UPDATE economy_market_listings SET status='sold',buyer_id=?,closed_at=clock_timestamp(),
+            sale_owner_id=seller_id,sale_proceeds_coins=?,sale_buyer_public_id=?,sale_buyer_name=? WHERE id=?""",
+            user, sellerProceeds, buyer.publicId, buyer.displayName, UUID.fromString(lot.id))
         saveEconomyProfile(c, user, next)
-        saveEconomyProfile(c, row.seller, EconomyFishStock.release(seller.copy(wallet = seller.wallet.copy(coins = seller.wallet.coins + sellerProceeds)), lot.id))
+        saveEconomyProfile(c, row.seller, EconomyFishStock.release(seller, lot.id))
         addEconomyTradeUsage(c, user, at, buys=tradeValue)
         addEconomyTradeUsage(c, row.seller, at, sales=tradeValue)
         ledger(c, user, "market:buy:${lot.id}", "market_buy", -lot.totalPrice, lot.itemId, lot.quantity)
-        ledger(c, row.seller, "market:sell:${lot.id}", "market_sell", sellerProceeds, lot.itemId, 0L)
+        ledger(c, row.seller, "market:sold:${lot.id}", "market_sold", 0L, lot.itemId, 0L)
         return "Партия куплена"
+    }
+
+    private fun claim(c: Connection, user: UUID, state: EconomyState, row: ListingRow): String {
+        if (row.saleOwner != user && row.seller != user)
+            throw AuthFailure("ECONOMY_MARKET_OWNER", "Забрать выручку может только продавец", 403)
+        val sale = row.listing.sale
+        if (row.saleOwner != user || row.listing.status != "sold" || sale == null || sale.claimedAt != null)
+            throw AuthFailure("ECONOMY_MARKET_NOT_PENDING", "Выручка уже получена или партия ещё не продана", 409)
+        if (state.wallet.coins > ECONOMY_MAX_BALANCE - sale.proceedsCoins)
+            throw AuthFailure("ECONOMY_CAPACITY", "Потратьте часть монет перед сбором выручки", 409)
+        c.economyUpdate("UPDATE economy_market_listings SET sale_claimed_at=clock_timestamp() WHERE id=?", UUID.fromString(row.listing.id))
+        saveEconomyProfile(c, user, state.copy(wallet = state.wallet.copy(coins = state.wallet.coins + sale.proceedsCoins)))
+        ledger(c, user, "market:sell:${row.listing.id}", "market_claim", sale.proceedsCoins, row.listing.itemId, 0L)
+        return "Выручка получена"
     }
 
     private fun cancel(c: Connection, user: UUID, state: EconomyState, row: ListingRow): String {

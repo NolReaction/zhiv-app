@@ -5,6 +5,15 @@ import ru.zhiv.auth.AuthFailure
 import ru.zhiv.http.parseCanonicalUuidV4
 
 @Serializable
+data class EconomyMarketSale(
+    val buyerPublicId: String?,
+    val buyerName: String,
+    val buyerAvatarUrl: String? = null,
+    val proceedsCoins: Long,
+    val claimedAt: String? = null,
+)
+
+@Serializable
 data class EconomyMarketListing(
     val id: String,
     val sellerPublicId: String,
@@ -17,6 +26,7 @@ data class EconomyMarketListing(
     val closedAt: String? = null,
     val owned: Boolean,
     val feeBps: Int = 0,
+    val sale: EconomyMarketSale? = null,
 )
 
 @Serializable
@@ -88,14 +98,14 @@ object EconomyMarketRules {
         if (parseCanonicalUuidV4(command.requestId) == null || command.ownerPublicId.isBlank() ||
             command.ownerPublicId.length > 80 || command.expectedRevision !in 0L until 9_007_199_254_740_991L ||
             command.targetId.isBlank() || command.targetId.length > 80 ||
-            command.action !in setOf("create_listing", "buy_listing", "cancel_listing")) {
+            command.action !in setOf("create_listing", "buy_listing", "cancel_listing", "claim_sale")) {
             throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректный запрос рынка", 400)
         }
         if (command.action != "create_listing" && parseCanonicalUuidV4(command.targetId) == null)
             throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректное объявление", 400)
-        if (command.action == "cancel_listing") {
+        if (command.action in setOf("cancel_listing", "claim_sale")) {
             if (command.quantity != 1L || command.totalPrice != 0L)
-                throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректный запрос отмены", 400)
+                throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректный запрос лавки", 400)
         } else {
             if (command.quantity !in 1L..EconomyRules.catalog.market.maxLotQuantity)
                 throw AuthFailure("ECONOMY_MARKET_QUANTITY", "В объявлении может быть от 1 до 99 предметов", 400)
