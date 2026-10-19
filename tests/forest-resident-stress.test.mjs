@@ -22,7 +22,8 @@ for (const [index, selection] of cases.entries()) test(`DEV actual Tiled ${selec
       merchantArrival: { seen: false, enabled: true, onComplete() { assert.fail("the real merchant acknowledgement must stay outside the copy"); } } };
     const initial = rehearsalSceneOptions(original, request), surface = env.surface();
     scene = mountHabitat(surface, initial, { activity() {}, ready() {}, failure: assert.fail }); await finishVillagerArtwork(env);
-    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
+    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings,
+      { merchantArrived: initial.merchantArrival?.seen }));
     probe = connectForestSession(initial.presenceKey, effective, "circle", 100_000, 0, () => {}, { persistence: false, sync: false });
     const state = probe.state, runtime = state.devSceneRehearsal, clock = sceneClock(env), phases = new Set(), actions = new Set();
     assert.ok(runtime); assert.equal(state.memory.enabled, false);
@@ -35,7 +36,7 @@ for (const [index, selection] of cases.entries()) test(`DEV actual Tiled ${selec
     };
     clock.until(complete, "the real stress/home scene reaches a finite result", 3100);
     assert.equal(runtime.preview.phase, "complete", JSON.stringify({ request, message: runtime.preview.message, stress: runtime.stress,
-      actors: ["lopukh", "kamneshmyg"].map(id => { const m = state.villagers.residents[id]; return { id, position: m.position, action: m.action, door: m.doorPhase, intent: m.intent, job: m.job, wait: m.wait, target: m.target?.id, route: m.route?.length, wood: m.woodwork }; }), social: state.social.meeting }));
+      actors: ["lopukh", "kamneshmyg"].map(id => { const m = state.villagers.residents[id]; return { id, position: m.position, action: m.action, door: m.doorPhase, intent: m.intent, job: m.job, wait: m.wait, target: m.target?.id, route: m.route?.length, goal: m.goal, wood: m.woodwork }; }), social: state.social.meeting }));
     assert.ok(maxStep < 4, `feet stay continuous through setup and activity (${maxStep})`);
     if (selection.scenario === "narrow-passing") { assert.ok(phases.has("staging")); assert.ok(phases.has("crossing")); }
     if (selection.scenario === "occupied-door") assert.equal(runtime.stress.sawBlockedDoor, true);

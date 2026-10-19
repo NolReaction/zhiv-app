@@ -76,6 +76,14 @@ test("campfire building art uses the small cooking fire illustration instead of 
   assert.match(html, /viewBox="0 0 64 64"/);
 });
 
+test("mine construction artwork follows every authored level including the abandoned entrance", () => {
+  for (const level of [0, 1, 2, 3, 4, 5, 6]) {
+    const html = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "quarry", level }));
+    assert.match(html, new RegExp(`background-image:url\\(/world/buildings/quarry/quarry-lvl-${Math.min(5, level)}\\.png\\)`));
+    assert.match(html, new RegExp(`data-building-level="${level}"`));
+  }
+});
+
 test("woodlot requirement art uses the rabbit house and selects its second illustration from station tier 3", () => {
   for (const level of [1, 2, 3, 4, 5]) {
     const html = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "woodlot", level }));

@@ -81,7 +81,9 @@ function beginWalk(state: ForestSessionState, scene: FixedWorldScene, runtime: F
   if (villager(actor)) {
     const mind = state.villagers!.residents[actor], places = forestVillagerPlaces(scene, actor);
     if (!places) return false;
-    const stops = places.wander.filter(stop => distance(mind.position, stop.position) > WALK_MINIMUM_DISPLACEMENT)
+    // A resident's authored work stops also provide local ground for a walk
+    // when the map's shared leisure markers are beyond the normal wander budget.
+    const stops = [...places.wander, ...places.work].filter(stop => distance(mind.position, stop.position) > WALK_MINIMUM_DISPLACEMENT)
       .sort((a, b) => distance(a.position, mind.position) - distance(b.position, mind.position));
     if (!selectVillagerRoute(mind, places, stops, "wander", "inspect", environment.occupants)) return false;
     mind.outdoorUntil = mind.elapsed + 90; runtime.target = { ...mind.target!.position };

@@ -298,12 +298,16 @@ test("artwork handoff retains confirmed jobs against the supplied corrected serv
   assert.notEqual(next.production, state.production); assert.notEqual(next.production.jobs, state.production.jobs);
 });
 
-test("published Tiled geometry supports all residents and an actual northern miner arrival", () => {
-  const levels = { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1, woodlot: 1 };
-  const scene = previewWorldScene(TILED_WORLD, levels), state = setup(scene, { buildings: levels, arrivalSeen: false, allowArrival: true });
-  assert.deepEqual(forestVillagerFrames(state).map(frame => frame.id), ["lopukh", "kamneshmyg", "leaftail"]);
-  assert.ok(state.residents.kamneshmyg.position.y < 50);
-  run(state, scene, 40); assert.equal(state.arrivalCompleted, true);
+test("published Tiled geometry supports the northern miner arrival at every built mine level and hides him at zero", () => {
+  for (let level = 0; level <= 5; level++) {
+    const levels = { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: level, woodlot: 1, "leaftail-caravan": 1 };
+    const scene = previewWorldScene(TILED_WORLD, levels), state = setup(scene, { buildings: levels, arrivalSeen: false, allowArrival: true });
+    assert.deepEqual(forestVillagerFrames(state).map(frame => frame.id), level
+      ? ["lopukh", "kamneshmyg", "leaftail"] : ["lopukh", "leaftail"]);
+    if (!level) { assert.equal(state.arrivalPending, false); continue; }
+    assert.ok(state.residents.kamneshmyg.position.y < 50, `mine ${level} arrival starts at the reachable northern edge`);
+    run(state, scene, 40); assert.equal(state.arrivalCompleted, true, `mine ${level} arrival completes without crossing a collider`);
+  }
 });
 
 
@@ -421,20 +425,46 @@ test("shelter requires meaningful rain or darkness; wildlife holds leave real jo
 });
 
 test("private mine strips keep other obstacles and water blocked; wagon concealment keeps the normal collider", () => {
-  const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), quarry: 1 });
-  const places = forestVillagerPlaces(scene, "kamneshmyg"), doorway = places.door;
-  assert.ok(doorway); assert.equal(doorway.kind, "threshold"); assert.ok(doorway.length <= 90);
-  assert.equal(isWalkable(places.navigation, doorway.points.at(-1)), false);
-  for (let index = 1; index < doorway.points.length; index++) assert.ok(canTraverse(doorway.navigation, doorway.points[index - 1], doorway.points[index]));
-  const barrier = structuredClone(scene), entry = barrier.sites.find(site => site.id === "quarry").entry;
-  barrier.navigation.obstacles.push({ id: "private-door-blocker", points: rect(entry.x - 8, entry.y - 8, 16, 16) });
-  assert.equal(forestVillagerPlaces(barrier, "kamneshmyg").door, null);
-  const flooded = structuredClone(scene);
-  flooded.water.surfaces.push({ id: "private-door-water", points: rect(entry.x - 8, entry.y - 8, 16, 16) });
-  assert.equal(forestVillagerPlaces(flooded, "kamneshmyg").door, null);
+  for (let level = 1; level <= 5; level++) {
+    const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), quarry: level });
+    const places = forestVillagerPlaces(scene, "kamneshmyg"), doorway = places.door;
+    assert.ok(doorway, `mine ${level} has a validated personal doorway`);
+    assert.equal(doorway.kind, "threshold"); assert.ok(doorway.length <= 90);
+    assert.equal(isWalkable(places.navigation, doorway.points.at(-1)), false);
+    for (let index = 1; index < doorway.points.length; index++) assert.ok(canTraverse(doorway.navigation, doorway.points[index - 1], doorway.points[index]));
+    const barrier = structuredClone(scene), entry = barrier.sites.find(site => site.id === "quarry").entry;
+    barrier.navigation.obstacles.push({ id: "private-door-blocker", points: rect(entry.x - 8, entry.y - 8, 16, 16) });
+    assert.equal(forestVillagerPlaces(barrier, "kamneshmyg").door, null);
+    const flooded = structuredClone(scene);
+    flooded.water.surfaces.push({ id: "private-door-water", points: rect(entry.x - 8, entry.y - 8, 16, 16) });
+    assert.equal(forestVillagerPlaces(flooded, "kamneshmyg").door, null);
+  }
+  const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), "leaftail-caravan": 1 });
   const wagon = forestVillagerPlaces(scene, "leaftail");
   assert.ok(wagon.door); assert.equal(wagon.door.kind, "concealment"); assert.equal(wagon.door.navigation, wagon.navigation);
   assert.ok(canTraverse(wagon.navigation, wagon.door.points[0], wagon.door.points[1]));
+});
+
+test("every built mine admits a confirmed worker and returns him safely outside when extraction ends", () => {
+  for (let level = 1; level <= 5; level++) {
+    const levels = { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: level, woodlot: 1 };
+    const scene = previewWorldScene(TILED_WORLD, levels);
+    const production = { ownerPublicId: "owner", revision: 1, jobs: [{ id: `stone-${level}`, stationId: "quarry", stationLevel: level,
+      recipeId: "stone", startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 60000).toISOString() }] };
+    const state = setup(scene, { buildings: levels, production }), miner = state.residents.kamneshmyg;
+    for (const id of ["lopukh", "leaftail"]) state.residents[id].available = false;
+    run(state, scene, 10);
+    assert.equal(miner.doorPhase, "inside", `mine ${level} confirms actual entry before work`);
+    assert.equal(miner.action, "work");
+    assert.equal(forestVillagerFrames(state).some(frame => frame.id === "kamneshmyg"), false);
+    configureForestVillagers(state, scene, { confirmed: true, buildings: levels, production: { ...production, revision: 2, jobs: [] },
+      leaftailReady: true, arrivalSeen: true, lopukhArrivalSeen: true, now });
+    for (const id of ["lopukh", "leaftail"]) state.residents[id].available = false;
+    run(state, scene, 5);
+    assert.equal(miner.doorPhase, "outside", `mine ${level} returns along the same valid crossing`);
+    assert.equal(miner.job, false);
+    assert.ok(forestVillagerFrames(state).some(frame => frame.id === "kamneshmyg"));
+  }
 });
 
 
@@ -556,8 +586,8 @@ for (const role of ["host", "guest"]) test(`social ${role} waits for its own pri
 });
 
 
-test("the actual Tiled rabbit cuts a tree, delivers in front of the facade, unloads promptly and rests without changing geometry", () => {
-  const levels = { ...initialPreviewLevels(TILED_WORLD), quarry: 1, woodlot: 1 };
+for (const houseLevel of [1, 2]) test(`the actual Tiled rabbit at house ${houseLevel} cuts a tree, delivers in front of the facade, unloads promptly and rests without changing geometry`, () => {
+  const levels = { ...initialPreviewLevels(TILED_WORLD), quarry: 1, woodlot: 1, "lopukh-home": houseLevel };
   const scene = previewWorldScene(TILED_WORLD, levels), saved = structuredClone(scene), state = setup(scene, { buildings: levels });
   const mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh"), plan = places.woodcutting;
   const house = scene.sites.find(site => site.id === "lopukh-home"), front = house.bounds.y + house.bounds.height + 44 * 45 / 48 + 2;

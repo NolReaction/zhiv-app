@@ -25,7 +25,11 @@ const artworkLamps: Record<string, readonly ArtworkLamp[]> = {
   "home-level-3.png": [{ id: "home-lantern", u: .537, v: .673, width: .034, height: .04, radius: .7, intensity: 1.1 }],
   "home-level-4.png": [{ id: "home-lantern", u: .546, v: .666, width: .034, height: .04, radius: .7, intensity: 1.1 }],
   "home-level-5.png": [{ id: "home-lantern", u: .56, v: .65, width: .034, height: .04, radius: .7, intensity: 1.1 }],
-  "quarry-lvl-1.png": [{ id: "quarry-lantern", u: .617, v: .69, width: .022, height: .036, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-1.png": [{ id: "quarry-lantern", u: .895, v: .549, width: .035, height: .041, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-2.png": [{ id: "quarry-lantern", u: .895, v: .548, width: .035, height: .041, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-3.png": [{ id: "quarry-lantern", u: .895, v: .546, width: .035, height: .041, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-4.png": [{ id: "quarry-lantern", u: .896, v: .543, width: .035, height: .041, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-5.png": [{ id: "quarry-lantern", u: .898, v: .543, width: .035, height: .041, radius: .46, intensity: 1.18 }],
   "forest-workshop-level-2.png": [
     { id: "workshop-lantern", u: .518, v: .657, width: .023, height: .031, radius: .4, intensity: 1.15 },
     { id: "workshop-window", u: .233, v: .58, width: .04, height: .072, radius: .25, intensity: .58,

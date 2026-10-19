@@ -6,6 +6,9 @@
 | --- | --- |
 | `prototype/forest-ground.webp` | Единая новая карта для основной игры, круглой камеры и `/prototype/tiled-world`; 2560 × 2560, WebP без потерь |
 | `prototype/home-level-1.png` … `home-level-5.png` | Пять вариантов дома; рисунок, рамка, точки и коллизия выбираются вместе из Tiled |
+| `buildings/quarry/quarry-lvl-0.png` … `quarry-lvl-5.png` | Шесть уровней шахты с раздельной геометрией в Tiled |
+| `buildings/market/market-lvl-0.png`, `market-lvl-1.png` | Закрытый и открытый рынок; переключается по полученному мосту |
+| `buildings/leaftail-caravan/leaftail-caravan-lvl-0.png`, `leaftail-caravan-lvl-1.png` | Палатка до прибытия и лавка после знакомства с Листохвостом |
 | `prototype/bushv1.png` | Размещённый прозрачный куст `clearing-bush-image`; ягоды, землю и влажность рисует код |
 | `runtime/boat-wreck-lowquality.webp` | Сохранённая графика лодки; на чистой карте не отображается |
 | `routes/trail.webp` | Иллюстрация лесной прогулки |

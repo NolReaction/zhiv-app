@@ -24,15 +24,18 @@ const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/state/e
 const { forestProductionFrames } = await vite.ssrLoadModule("/features/world/state/economy/economy-production-state.ts");
 
 const expectedSites = {
-  market: [1], "leaftail-caravan": [1], "bulletin-board": [1], "lopukh-home": [1, 2], "plesk-shop": [1], "builder-home": [1],
+  quarry: [0, 1, 2, 3, 4, 5], market: [0, 1], "leaftail-caravan": [0, 1], "bulletin-board": [1], "lopukh-home": [1, 2], "plesk-shop": [1], "builder-home": [1],
 };
 const authoredImages = [
+  ...[340, 565, 569, 571, 572, 573].map((objectId, level) => ({ objectId, siteId: "quarry", level, file: `quarry-lvl-${level}.png` })),
+  { objectId: 562, siteId: "market", level: 0, file: "market-lvl-0.png" },
+  { objectId: 564, siteId: "leaftail-caravan", level: 0, file: "leaftail-caravan-lvl-0.png" },
   { objectId: 485, siteId: "market", level: 1, file: "market-lvl-1.png" },
-  { objectId: 488, siteId: "leaftail-caravan", level: 1, file: "leaftail-caravan-lvl-1.png" },
+  { objectId: 563, siteId: "leaftail-caravan", level: 1, file: "leaftail-caravan-lvl-1.png" },
   { objectId: 491, siteId: "bulletin-board", level: 1, file: "bulletin-board.png" },
   { objectId: 495, siteId: "lopukh-home", level: 1, file: "lopukh-house-lvl-1.png" },
   { objectId: 497, siteId: "lopukh-home", level: 2, file: "lopukh-house-lvl-2.png" },
-  { objectId: 422, siteId: "plesk-shop", level: 1, file: "pleska-market-lvl-1.png" },
+  { objectId: 422, siteId: "plesk-shop", level: 1, file: "pleska-market.png" },
   { objectId: 440, siteId: "builder-home", level: 1, file: "Shishkolap_House.png" },
 ];
 const objects = (layers, offset = { x: 0, y: 0 }) => layers.flatMap(layer => {
@@ -69,7 +72,7 @@ test("new buildings are registered once with their intended independent visual l
     const matches = TILED_WORLD.sites.filter(site => site.id === id);
     assert.equal(matches.length, 1, `${id} is one physical site`);
     assert.deepEqual(matches[0].states.map(state => state.level), levels, `${id} levels`);
-    assert.equal(matches[0].initialLevel, 1, `${id} starts at level 1`);
+    assert.equal(matches[0].initialLevel, levels[0], `${id} starts at its lowest visual level`);
     for (const level of levels) {
       const site = siteAtLevel(id, level);
       assert.ok(site.collision.length >= 3, `${id} level ${level} has a physical footprint`);
@@ -91,6 +94,41 @@ test("new buildings are registered once with their intended independent visual l
     "the original woodlot raster stays removed; its economic station is hosted by the rabbit home");
   assert.equal(TILED_WORLD.terrain.some(image => /woodlot/i.test(imagePath(image.image))), false,
     "the removed work plot does not reappear as a permanent terrain image");
+});
+
+test("every new state owns its silhouette and inactive building masks never hide actors", () => {
+  for (const id of ["quarry", "market", "leaftail-caravan"]) {
+    for (const level of expectedSites[id]) {
+      const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), [id]: level });
+      const masks = scene.occluders.filter(mask => mask.when?.siteId === id);
+      assert.ok(masks.length, `${id} ${level} has an authored silhouette`);
+      assert.ok(masks.every(mask => mask.when.level === level), `${id} ${level} excludes every inactive silhouette`);
+      assert.ok(masks.every(mask => Number.isFinite(mask.frontY) && mask.points.length >= 3));
+    }
+  }
+  for (const id of ["quarry-foreground-canopy", "quarry-east-low-shrub"]) {
+    const mask = TILED_WORLD.occluders.find(value => value.id === id);
+    assert.ok(mask, `${id} preserves the new static forest foliage contour`);
+    assert.equal(mask.when, undefined, "forest foliage is independent of the quarry upgrade");
+  }
+});
+
+test("quarry and closed exteriors use image, tracing and anchor folders for every visual state", () => {
+  const buildings = map.layers.find(layer => layer.name === "Buildings");
+  for (const [folder, prefix, levels] of [["Quarry", "Quarry", expectedSites.quarry],
+    ["Market", "Market", expectedSites.market], ["Leaftail", "Caravan", expectedSites["leaftail-caravan"]]]) {
+    const building = buildings.layers.find(layer => layer.name === folder);
+    for (const level of levels) {
+      const state = building.layers.find(layer => layer.name === `${prefix}-lvl-${level}`);
+      assert.ok(state, `${folder} ${level} has a state folder`);
+      assert.deepEqual(state.layers.map(layer => layer.name), [`${prefix}-image`, `${prefix}-tracing`, `${prefix}-anchors`]);
+      const tile = state.layers[0].objects;
+      assert.equal(tile.length, 1, `${folder} ${level} has exactly one image`);
+      assert.equal(tile[0].properties.find(property => property.name === "role")?.value, "site");
+      assert.equal(state.layers[1].visible, false, "tracing does not obscure artwork in Tiled");
+      assert.equal(state.layers[2].visible, false, "anchors do not obscure artwork in Tiled");
+    }
+  }
 });
 
 test("the closed woodlot keeps its footprint and selects rabbit home 2 only from its third claimed tier", () => {
@@ -163,7 +201,7 @@ test("every new visual footprint blocks actual navigation and remains a building
   }
 });
 
-test("all five mainland entrances remain connected through every existing building state", () => {
+test("all mainland entrances remain connected through every existing building state", () => {
   for (let stage = 0; stage <= 5; stage++) for (const houseLevel of [1, 2]) {
     const levels = Object.fromEntries(TILED_WORLD.sites.map(site => [site.id,
       Math.max(...site.states.map(state => state.level).filter(level => level <= Math.max(stage, site.initialLevel)))]));
@@ -189,7 +227,7 @@ test("the market has a safe local road while bridge restoration preserves the ex
   // walking across the river remains a separate feature, including at level 1.
   const landing = { x: 560, y: 1055 };
   for (const bridge of [0, 1]) {
-    const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), bridge });
+    const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), bridge, market: bridge });
     const navigation = createWorldNavigation(scene), market = scene.sites.find(site => site.id === "market");
     assert.ok(isWalkable(navigation, landing), `bridge ${bridge} leaves the western landing safe`);
     assert.ok(isWalkable(navigation, market.entry), `bridge ${bridge} leaves the market entrance safe`);

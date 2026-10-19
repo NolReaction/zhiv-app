@@ -28,7 +28,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       }
       export const useEffect = useLayoutEffect;
       export function useCallback(callback, dependencies) { return useMemo(() => callback, dependencies); }
-      export function useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }
+      export function useSyncExternalStore(subscribe, getSnapshot) {
+        useMemo(() => { cleanup.push(subscribe(() => {})); return null; }, [subscribe]);
+        return getSnapshot();
+      }
       export function flushEffects() { const pending = effects; effects = []; pending.forEach(callback => callback()); }
     `; },
     transform(source, id) { if (id.endsWith("/features/world/state/use-resident-arrival.ts"))
@@ -47,8 +50,11 @@ function browser(run, useArrival = useLeaftailArrival) {
     addEventListener(type, callback) { listeners.set(callback, type); }, removeEventListener(_type, callback) { listeners.delete(callback); },
   } });
   function useArrivalRender(owner, options = opts) { hooks.render(); const value = useArrival(owner, options); hooks.flushEffects(); return value; }
+  function renderMany(entries) {
+    hooks.render(); const values = entries.map(([owner, options = opts]) => useArrival(owner, options)); hooks.flushEffects(); return values;
+  }
   hooks.reset();
-  try { run({ render: useArrivalRender, data }); }
+  try { run({ render: useArrivalRender, renderMany, data }); }
   finally { hooks.reset(); if (original) Object.defineProperty(globalThis, "window", original); else delete globalThis.window; }
 }
 
@@ -73,6 +79,23 @@ test("late arrival callbacks and completion messages stay with the account that 
   current.dismiss(); current.complete(); current = render("hook-arrival-new"); assert.equal(current.open, false); assert.equal(current.completionNotice, true);
   render("hook-arrival-third"); current = render("hook-arrival-third", { ...opts, enabled: false });
   assert.equal(current.open, false); assert.equal(current.seen, false);
+}));
+
+test("two mounted views share an arrival immediately while other owners and completion notices stay isolated", () => browser(({ renderMany }) => {
+  const entries = [["hook-shared-arrival", opts], ["hook-shared-arrival", { ...opts, enabled: false }], ["hook-shared-other", opts]];
+  renderMany(entries); let [map, circle, other] = renderMany(entries);
+  assert.equal(map.seen, false); assert.equal(circle.seen, false); assert.equal(other.seen, false);
+  map.dismiss(); [map, circle, other] = renderMany(entries);
+  const lateCircleCompletion = circle.complete;
+  map.complete(); [map, circle, other] = renderMany(entries);
+  assert.equal(map.seen, true); assert.equal(circle.seen, true, "same-tab peers update without a native storage event or remount");
+  assert.equal(other.seen, false);
+  assert.equal(map.completionNotice, true); assert.equal(circle.completionNotice, false);
+  entries[1] = [entries[1][0], opts];
+  lateCircleCompletion(); [map, circle] = renderMany(entries);
+  assert.equal(circle.completionNotice, false, "a peer's late acknowledgement cannot create a second toast");
+  map.dismissCompletion(); [map, circle] = renderMany(entries);
+  assert.equal(map.completionNotice, false); assert.equal(circle.completionNotice, false);
 }));
 
 for (const [resident, useArrival] of [["leaftail", useLeaftailArrival], ["miner", useMinerArrival], ["lopukh", useLopukhArrival]]) {

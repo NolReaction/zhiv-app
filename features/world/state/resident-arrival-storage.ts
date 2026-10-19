@@ -4,6 +4,9 @@ type ArrivalStorage = Pick<Storage, "getItem" | "setItem">;
 type Snapshot = { loaded: boolean; progress: ResidentArrivalProgress | null };
 const serverSnapshot: Snapshot = { loaded: false, progress: null };
 const memory = new Map<string, ResidentArrivalProgress>();
+// Circle, map and DEV can observe separate stores in the same tab. Native
+// storage events only reach other tabs, so active peers share local changes.
+const peers = new Map<string, Set<(progress: ResidentArrivalProgress) => void>>();
 
 /** Arrival and coach dismissal are independent: closing the text never completes the run. */
 export function createResidentArrivalStore(storageKey: string, storage?: ArrivalStorage) {
@@ -31,9 +34,22 @@ export function createResidentArrivalStore(storageKey: string, storage?: Arrival
       storage.setItem(storageKey, JSON.stringify(progress)); memory.delete(storageKey);
     } catch { memory.set(storageKey, progress); }
     update(progress);
+    for (const peer of peers.get(storageKey) ?? []) if (peer !== update) peer(progress);
     return freshCompletion && coachDismissed;
   };
   return { storageKey, getSnapshot: () => snapshot, getServerSnapshot: () => serverSnapshot,
-    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      let active = peers.get(storageKey);
+      if (!active) { active = new Set(); peers.set(storageKey, active); }
+      active.add(update);
+      return () => {
+        listeners.delete(listener);
+        if (!listeners.size) {
+          active!.delete(update);
+          if (!active!.size && peers.get(storageKey) === active) peers.delete(storageKey);
+        }
+      };
+    },
     restore, complete: () => save("arrived"), dismiss: () => save("dismissed") };
 }

@@ -112,7 +112,11 @@ export function advanceResidentStress(state: ForestSessionState, scene: FixedWor
     stress.phase = "staging"; return running("Камнешмыг подходит ко второму концу будущей переноски.");
   }
   if (stress.phase === "staging") {
-    if (mole.route || request.scenario === "narrow-passing" && bunny.route) return running("Участники подходят к месту проверки.");
+    // Ordinary traffic can temporarily release the path while retaining the
+    // same goal for its bounded retry. That is still an active setup walk.
+    const retrying = mole.goal?.target.id === "dev-stress:kamneshmyg"
+      && distance(mole.goal.target.position, stress.goals![0]) < .001;
+    if (mole.route || retrying || request.scenario === "narrow-passing" && bunny.route) return running("Участники подходят к месту проверки.");
     if (distance(mole.position, stress.goals![0]) > 1) return blocked("Камнешмыг не смог дойти к стартовой точке.");
     if (request.scenario === "occupied-door") {
       if (requestForestVillagerHome(state.villagers!, scene, "lopukh", environment.occupants)) return blocked("Вход не оказался занят: проверьте положение порога.");

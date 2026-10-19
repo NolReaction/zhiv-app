@@ -15,7 +15,8 @@ function initial(key) {
 }
 function probeFor(settings) {
   const world = live.previewWorldScene(live.TILED_WORLD,
-    live.accountSceneLevels(live.TILED_WORLD, undefined, live.worldDevStore.getSnapshot(), settings.economyBuildings));
+    live.accountSceneLevels(live.TILED_WORLD, undefined, live.worldDevStore.getSnapshot(), settings.economyBuildings,
+      { merchantArrived: settings.merchantArrival?.seen }));
   return live.connectForestSession(settings.presenceKey, world, "circle", 100_000, 0, () => {});
 }
 const callbacks = { activity() {}, ready() {}, failure: assert.fail };

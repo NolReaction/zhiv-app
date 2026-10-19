@@ -56,6 +56,21 @@ test("a second tab cannot erase completed arrival or dismissal", () => {
   assert.deepEqual(first.getSnapshot().progress, { version: 1, arrived: true, dismissed: true });
 });
 
+test("same-owner active stores share changes and release peer notifications on unsubscribe", () => {
+  const local = storage(), map = createLeaftailArrivalStore("leaftail-live-peers", local),
+    circle = createLeaftailArrivalStore("leaftail-live-peers", local), other = createLeaftailArrivalStore("leaftail-live-other", local);
+  map.restore(); circle.restore(); other.restore();
+  let updates = 0, otherUpdates = 0;
+  const release = circle.subscribe(() => updates++), releaseOther = other.subscribe(() => otherUpdates++);
+  map.dismiss();
+  assert.equal(circle.getSnapshot().progress.dismissed, true); assert.equal(updates, 1); assert.equal(otherUpdates, 0);
+  release(); map.complete();
+  assert.equal(updates, 1, "unmounted views retain no peer callback");
+  assert.equal(circle.getSnapshot().progress.arrived, false);
+  circle.restore(); assert.equal(circle.getSnapshot().progress.arrived, true, "remount can restore the persisted completion");
+  releaseOther();
+});
+
 test("blocked and absent browser storage preserve both presentation flags for this session", () => {
   const blocked = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
   for (const [owner, local] of [["leaftail-blocked", blocked], ["leaftail-no-storage", undefined]]) {

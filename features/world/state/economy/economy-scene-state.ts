@@ -23,14 +23,23 @@ export function economyJourneyAway(journey: EconomySceneJourney | null | undefin
 
 /** Progression selects an authored level; future/unavailable art uses the nearest lower level. */
 export function accountSceneLevels(scene: FixedWorldScene, houseLevel: number | undefined,
-  preview?: { levels: PreviewLevels; previewBuildings?: boolean }, buildings?: EconomySceneBuildings | null): PreviewLevels {
+  preview?: { levels: PreviewLevels; previewBuildings?: boolean }, buildings?: EconomySceneBuildings | null,
+  presentation?: { merchantArrived?: boolean }): PreviewLevels {
   const authored = initialPreviewLevels(scene), levels = { ...authored };
   for (const site of scene.sites) {
     // The authored rabbit home hosts the saved woodlot station. Its second
     // exterior starts at station tier 3; neither artwork nor account keys change.
     const station = site.id === "lopukh-home" ? buildings?.woodlot : undefined;
+    // The market has no independent construction or saved level: only a claimed
+    // bridge opens it. A ready construction job still leaves buildings.bridge 0.
+    const bridge = buildings?.bridge, home = buildings?.home;
     const confirmed = site.id === "lopukh-home"
-      ? Number.isInteger(station) && station! >= 1 ? station! >= 3 ? 2 : 1 : 0 : buildings?.[site.id];
+      ? Number.isInteger(station) && station! >= 1 ? station! >= 3 ? 2 : 1 : 0
+      : site.id === "market" ? buildings ? Number.isInteger(bridge) && bridge! >= 1 ? 1 : 0 : undefined
+      // Unlocking house 3 starts the introduction; the abandoned tent remains
+      // until the merchant has actually finished arriving for this account.
+      : site.id === "leaftail-caravan" ? buildings ? Number.isInteger(home) && home! >= 3 && presentation?.merchantArrived ? 1 : 0 : undefined
+      : buildings?.[site.id];
     const level = Number.isInteger(confirmed) && confirmed! >= 0 ? confirmed
       : site.id === "home" && Number.isInteger(houseLevel) && houseLevel! > 0 ? houseLevel : undefined;
     if (level === undefined) continue;

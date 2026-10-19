@@ -558,7 +558,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       marketSales={marketSales} onOpenMarket={() => { clearObject(); setQuickMenu(null); openEconomy("market"); }}
       bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && !selection && quickUpgrade === null && !residentOpen && !charactersOpen && !dailyOpen}
-      onBotsChanged={onDevBotsChanged} onVisitBot={onDevVisitBot}
+      onBotsChanged={onDevBotsChanged} onVisitBot={onDevVisitBot} merchantArrived={merchantArrival.seen}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
       onOpenObject={openObject} onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
     <header ref={topHud} className={hudStyles.hud} data-world-hud="top">

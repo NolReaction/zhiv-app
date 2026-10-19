@@ -31,6 +31,7 @@ import { WorldDevAnimationStand } from "./world-dev-animation-stand";
 import { WorldDevResidentDiagnostics } from "./world-dev-resident-diagnostics";
 import { WORLD_DEV_SCENES } from "./forest-scene-preview";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
+import { useLeaftailArrival } from "@/features/world/state/use-leaftail-arrival";
 import { accountSceneLevels } from "@/features/world/state/economy/economy-scene-state";
 import type { ForestGardenObservation, ForestObservation } from "@/features/world/state/forest-observer";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
@@ -44,6 +45,7 @@ export type WorldDevPanelProps = {
   initialLightingStudio?: boolean;
   worldView?: boolean;
   presenceKey?: string;
+  merchantArrived?: boolean;
   onOpenWorld?: () => void;
   onOpenCalendar?: () => void;
   onOpenGame?: () => void;
@@ -195,11 +197,16 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const lighting = useSyncExternalStore(worldLightingEditorStore.subscribe, worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
   const [open, setOpen] = useState(initiallyOpen && !initialLightingStudio);
+  const merchant = useLeaftailArrival(economy?.snapshot?.ownerPublicId ?? world.snapshot?.ownerPublicId ?? "guest", {
+    unlocked: (economy?.snapshot?.buildings.home ?? 0) >= 3, enabled: false,
+    onboarding: { loaded: false, isPaused: false, progress: null },
+  });
+  const merchantSeen = merchantArrived ?? merchant.seen;
   const [tab, setTab] = useState<DevTab>("cheats");
   const [mochlikTab, setMochlikTab] = useState<MochlikTab>("scenes");
   const [sceneTab, setSceneTab] = useState<SceneTab>("actors");
@@ -371,7 +378,8 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
       </button>
     </div>
     {lighting.enabled && <WorldLightingStudio state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} onClose={closeLighting}
-      levels={accountSceneLevels(TILED_WORLD, world.snapshot?.state.houseLevel, state, economy?.snapshot?.buildings)} />}
+      levels={accountSceneLevels(TILED_WORLD, world.snapshot?.state.houseLevel, state, economy?.snapshot?.buildings,
+        { merchantArrived: merchantSeen })} />}
     {!open && lastAction && <p className={styles.closedFeedback} role="status">{repeatUnavailable ?? feedback}</p>}
     {open && <section id={drawerId} className={styles.drawer} aria-labelledby={titleId}>
       <header className={styles.header}>
@@ -402,7 +410,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
             hidden={page !== subpage} className={styles.body} tabIndex={page === subpage ? 0 : -1}
             ref={node => { if (node && page === subpage) node.scrollTop = scrollPositions.current[subpage] ?? 0; }}
             onScroll={event => { scrollPositions.current[subpage] = event.currentTarget.scrollTop; }}>
-            {page === subpage && <WorldDevPanelContent world={world} economy={economy} worldView={worldView} presenceKey={presenceKey}
+            {page === subpage && <WorldDevPanelContent world={world} economy={economy} worldView={worldView} presenceKey={presenceKey} merchantArrived={merchantSeen}
               onOpenWorld={onOpenWorld} onOpenCalendar={onOpenCalendar} onOpenGame={onOpenGame} onOpenStatus={onOpenStatus} onOpenWardrobe={onOpenWardrobe} onOpenCollection={onOpenCollection}
               onOpenObject={onOpenObject}
               onVisitBot={onVisitBot ? target => shortcut(() => onVisitBot(target)) : undefined} onBotsChanged={onBotsChanged} onOpenCheats={() => setTab("cheats")}
@@ -421,7 +429,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
 }
 
 /** Stateless controls: navigation never patches the world or launches a scene. */
-export function WorldDevPanelContent({ world, economy, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged, onOpenCheats,
+export function WorldDevPanelContent({ world, economy, worldView, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged, onOpenCheats,
   state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion, onOpenLighting,
 }: WorldDevPanelProps & {
   state: WorldDevState; observation?: ForestObservation | null; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
@@ -545,7 +553,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       </div>
       <p className={styles.hint}>Кнопки проигрывают действие один раз. Завершение работы здесь показано только жестом: стройка и ресурсы не меняются.</p>
       <WorldDevBuilderPoints source={TILED_WORLD} preview={state} houseLevel={world.snapshot?.state.houseLevel}
-        economy={economy?.snapshot} now={economy?.now ?? world.now} />
+        economy={economy?.snapshot} now={economy?.now ?? world.now} merchantArrived={merchantArrived} />
     </>}
     {page === "scenes" && <>
       <h3 className={styles.pageTitle}>Лесные сценки</h3>

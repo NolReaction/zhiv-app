@@ -35,7 +35,8 @@ for (const [index, selection] of scenarios.entries()) test(`isolated DEV ${selec
       butterflies: selection.scenario === "butterfly" ? "on" : "off", birds: selection.scenario === "watch-birds" ? "on" : "off" });
     const initial = rehearsalSceneOptions(original, request), canvas = env.surface();
     scene = mountHabitat(canvas, initial, { activity() {}, ready() {}, failure: assert.fail }); await finishVillagerArtwork(env);
-    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
+    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings,
+      { merchantArrived: initial.merchantArrival?.seen }));
     probe = connectForestSession(initial.presenceKey, effective, "circle", 100_000, 0, () => {}, { persistence: false, sync: false });
     const state = probe.state, runtime = state.devSceneRehearsal, clock = sceneClock(env);
     assert.ok(runtime); assert.equal(state.memory.enabled, false); assert.equal(state.memory.sync, undefined);

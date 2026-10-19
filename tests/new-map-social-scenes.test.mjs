@@ -45,7 +45,8 @@ test("a free neighbour walks to Leaftail's actual window and completes the excha
       merchantArrival: { seen: true, enabled: false, onComplete() {} } };
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
     await finishVillagerArtwork(env);
-    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
+    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings,
+      { merchantArrived: initial.merchantArrival?.seen }));
     probe = connectForestSession(key, effective, "circle", 100_000, 0, () => {});
     const state = probe.state, merchant = state.villagers.residents.leaftail, rabbit = waitRabbit(state);
     state.social.nextEncounterAt = state.social.nextPassingAt = 10_000;
@@ -110,7 +111,8 @@ test("a neighbour asks the real fishing Plesk about fish without consuming her p
       economyBuildings: { woodlot: 1 }, economyResidents: confirmedVillagers(owner, 1, 0, [], 1),
       lopukhArrival: { seen: true, enabled: false, onComplete: assert.fail } };
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail }); await finishVillagerArtwork(env);
-    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
+    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings,
+      { merchantArrived: initial.merchantArrival?.seen }));
     probe = connectForestSession(key, effective, "circle", 100_000, 0, () => {});
     const state = probe.state, mind = state.pleskMind, rabbit = waitRabbit(state), clock = sceneClock(env);
     state.social.nextEncounterAt = state.social.nextPassingAt = 10_000;
@@ -180,7 +182,8 @@ test("Plesk crosses her real doorway without ghost hits and shares one paused cl
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key };
     const worldCanvas = env.surface(), world = mountHabitat(worldCanvas, initial, { activity() {}, ready() {}, failure: assert.fail }); views.push(world);
     await finishVillagerArtwork(env);
-    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
+    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings,
+      { merchantArrived: initial.merchantArrival?.seen }));
     probe = connectForestSession(key, effective, "circle", 100_000, 0, () => {});
     const state = probe.state, mind = state.pleskMind, clock = sceneClock(env), initialFeet = { ...mind.position };
     assert.equal(requestPleskHome(mind), true); assert.deepEqual(mind.position, initialFeet);

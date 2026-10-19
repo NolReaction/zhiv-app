@@ -221,7 +221,8 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   options: SceneOptions, elapsed: number, reacting: boolean, timestamp: number,
   dusk: number, preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
-  const currentLevels = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
+  const currentLevels = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
+    { merchantArrived: options.merchantArrival?.seen });
   const authoredWorld = preview?.scene ?? previewWorldScene(TILED_WORLD, currentLevels);
   const world = WORLD_DEV_ENABLED && !options.readOnly ? worldLightingEditorStore.applyToScene(authoredWorld, currentLevels) : authoredWorld;
   const home = world.sites.find(site => site.id === "home");
@@ -448,9 +449,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
   if (WORLD_DEV_ENABLED && !options.readOnly) worldLightingEditorStore.hydrate();
   let dev = WORLD_DEV_ENABLED && !options.readOnly ? worldDevStore.getSnapshot() : undefined;
-  let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings));
+  let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
+    { merchantArrived: options.merchantArrival?.seen }));
   let trees = createForestTreeInteractions(world);
-  let visuals = visualsFor(accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings)), requestedKey: string | null = null, artworkVersion = 0;
+  let visuals = visualsFor(accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
+    { merchantArrived: options.merchantArrival?.seen })), requestedKey: string | null = null, artworkVersion = 0;
   let artworkPreparation: ReturnType<typeof createArtworkPreparation> | null = null;
   let unsubscribe = () => {};
   let frame = 0, previous = 0;
@@ -644,7 +647,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       // The first economy response can also replace default building art. Wait
       // for that geometry to commit before selecting the cold-entry work stop;
       // otherwise a worker can briefly appear beside the wrong building level.
-      const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
+      const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
+        { merchantArrived: options.merchantArrival?.seen });
       if (TILED_WORLD.sites.some(site => previewSiteVisual(site, selected)?.level !== visuals[site.id]?.level)) return;
     }
     advanceBuilderMind(state.builderMind, world, dt, { now: explorationNow(), construction: state.economyConstruction,
@@ -1201,7 +1205,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     document.removeEventListener("visibilitychange", visibilityChanged); session.release({ retain: !options.readOnly && !options.devRehearsal });
   }
   function prepareArtwork() {
-    const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
+    const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
+      { merchantArrived: options.merchantArrival?.seen });
     const nextWorld = previewWorldScene(TILED_WORLD, selected);
     const next = visualsFor(selected), urls = worldArtworkUrls(nextWorld, next);
     const key = JSON.stringify([options.view ?? "circle", Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image])]);
@@ -1390,7 +1395,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       && point.y > feetY - size && point.y < feetY;
   }
   const lightingWorld = () => WORLD_DEV_ENABLED && !options.readOnly ? worldLightingEditorStore.applyToScene(world,
-    accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings)) : world;
+    accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
+      { merchantArrived: options.merchantArrival?.seen })) : world;
   return {
     lightingReceivers: () => lightingWorld().shadowReceivers ?? [],
     lightingCasters: () => lightingWorld().shadowCasters ?? [],
@@ -1400,7 +1406,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       // Disabled authored lamps retain their effective artwork anchor in the editor.
       const inspectable = disabled.size ? { ...edited, lights: edited.lights?.map(light => disabled.has(light.id) ? { ...light, enabled: true } : light) } : edited;
       const sources = forestLightSources(inspectable, { showBuildings: dev?.showBuildings,
-        levels: accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings) })
+        levels: accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
+          { merchantArrived: options.merchantArrival?.seen }) })
         .map(light => ({ ...light, height: forestShadowLightHeight(edited, light), ...(disabled.has(light.id) ? { enabled: false } : {}) }));
       if (WORLD_DEV_ENABLED && !options.readOnly) worldLightingEditorStore.setLightProjections(sources.map(light => ({ id: light.id, position: light.position, height: light.height })));
       return sources;

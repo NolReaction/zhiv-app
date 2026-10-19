@@ -224,6 +224,8 @@ test("the actual boat handover invites one old neighbour through a real Tiled ro
     worldDevStore.patch({ ...quietClearing, autoLife: true });
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
       economyBuildings: { home: 3, quarry: 0, woodlot: 1 }, economyResidents: access(owner, 1, 3),
+      economyConstruction: { ownerPublicId: owner, revision: 1, jobs: [{ id: "welcome-home-upgrade", stationId: "home", targetLevel: 4,
+        startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() }] },
       lopukhArrival: { seen: true, enabled: false, onComplete: assert.fail },
       residentArrival: { seen: true, enabled: false, onComplete: assert.fail },
       merchantArrival: { seen: false, enabled: true, onComplete() {} } };
@@ -231,15 +233,20 @@ test("the actual boat handover invites one old neighbour through a real Tiled ro
     const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
     probe = connectForestSession(key, effective, "circle", 100_000, 0, () => {});
     const state = probe.state, rabbit = state.villagers.residents.lopukh, clock = sceneClock(env);
-    // Keep an actual idle established neighbour available, as in the ordinary
-    // social runtime tests. The new arrival and entire visit still run normally.
+    // Deliberately leave Lopukh as the only free neighbour: the builder owns a
+    // real construction job and Plesk keeps a cast while the full arrival runs.
+    assert.equal(rabbit.available, true, "the authored yard enables the established neighbour");
     rabbit.route = null; rabbit.action = "idle"; rabbit.intent = "wander"; rabbit.wait = 10_000;
+    const fisher = state.pleskMind;
+    fisher.intent = "fish"; fisher.stage = { ...fisher.stage, action: "fish", duration: 10_000 };
+    fisher.age = 0; fisher.queue = [];
     state.social.nextEncounterAt = state.social.nextPassingAt = state.social.nextAnimalAt = 10_000;
     state.clearing.waitSeconds = state.director.nextDecisionAt = 10_000;
     until(clock, () => state.leaftailBoat?.completed, "a genuine boat arrival completes before any welcome", [canvas]);
     assert.equal(state.social.meeting, null); assert.equal(state.villagers.residents.leaftail.action, "inspect");
     until(clock, () => state.social.meeting?.purpose === "welcome", "one available neighbour accepts the first introduction", [canvas], 400);
     assert.equal(state.social.meeting.host, "leaftail"); assert.equal(state.social.meeting.phase, "approach");
+    assert.equal(state.builderMind.job?.id, "welcome-home-upgrade"); assert.equal(fisher.intent, "fish");
     const guest = state.social.meeting.guest;
     assert.equal(guest, "lopukh", "the nearby idle resident visits, without recruiting the player");
     const start = { ...rabbit.position }, navigation = forestVillagerPlaces(state.villagers.scene, "lopukh").navigation;
@@ -260,7 +267,13 @@ test("the actual boat handover invites one old neighbour through a real Tiled ro
     assert.equal(rabbit.socialVisit, null); assert.deepEqual(state.social.welcomedResidents, ["leaftail"]);
     scene.configure({ ...initial, merchantArrival: { ...initial.merchantArrival, seen: true, enabled: false } });
     await finishVillagerArtwork(env);
+    // Arriving now replaces the abandoned exterior and may transfer the live
+    // simulation to its committed geometry. Observe that session, not old feet.
+    const settled = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(),
+      initial.economyBuildings, { merchantArrived: true }));
+    probe.release(); probe = connectForestSession(key, settled, "circle", 100_000, 0, () => {});
     for (let i = 0; i < 80; i++) tick(clock, [canvas]);
-    assert.equal(state.social.meeting, null); assert.equal(state.social.welcomes.length, 0, "seen refresh does not gather the neighbours again");
+    assert.equal(probe.state.social.meeting, null); assert.equal(probe.state.social.welcomes.length, 0,
+      "seen refresh and occupied exterior geometry do not gather the neighbours again");
   } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
 });

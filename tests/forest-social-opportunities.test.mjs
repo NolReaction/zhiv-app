@@ -192,15 +192,14 @@ test("actual caravan window annotation has a safe exterior footstop without modi
 });
 
 
-test("actual quarry neighbours use their own short sightline profile instead of rejecting the smaller miner's safe feet", () => {
+test("actual quarry neighbours speak from the upgraded mine's safe exterior feet", () => {
   const world = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1, woodlot: 1 });
   const hostPosition = forestVillagerPlaces(world, "kamneshmyg").home.position;
   const guestPosition = { x: 677.5858467, y: 274.8510622 };
   const heroNavigation = createWorldNavigation(world), conversationNavigation = createWorldNavigation(world, Math.min(44, 42) * .1);
   assert.equal(heroNavigation.radius, 5); assert.equal(conversationNavigation.radius, 4.2);
   assert.equal(isWalkable(heroNavigation, guestPosition), true);
-  assert.equal(isWalkable(heroNavigation, hostPosition), false, "the default hero radius excludes this legitimate authored miner stop");
-  assert.equal(canTraverse(heroNavigation, guestPosition, hostPosition), false);
+  assert.equal(isWalkable(heroNavigation, hostPosition), true, "the authored stone apron also leaves room for the hero");
   assert.equal(isWalkable(conversationNavigation, guestPosition), true); assert.equal(isWalkable(conversationNavigation, hostPosition), true);
   assert.equal(canTraverse(conversationNavigation, guestPosition, hostPosition), true);
   const state = createForestSocial("quarry-profile"), guest = actor("lopukh", guestPosition.x, { position: guestPosition });
@@ -218,6 +217,20 @@ test("actual quarry neighbours use their own short sightline profile instead of 
   const direct = createForestSocial("quarry-direct");
   assert.equal(requestForestSocialVisit(direct, "lopukh", "kamneshmyg", { scene: world, builder: null, actors: [guest, host] }), true);
   assert.equal(direct.meeting.phase, "talk", "already nearby neighbours use the same profile as approached neighbours");
+});
+
+test("conversation clearance uses the smaller neighbours' safe feet in a narrow authored corridor", () => {
+  const narrow = { ...scene, actor: { ...scene.actor, size: 50 }, navigation: { ...scene.navigation,
+    areas: [{ id: "narrow-path", points: rect(0, 165.5, 500, 9) }] } };
+  const guest = actor("lopukh", 50), host = actor("kamneshmyg", 95, { size: 42 });
+  const hero = createWorldNavigation(narrow), conversation = createWorldNavigation(narrow, 4.2);
+  assert.equal(isWalkable(hero, host.position), false);
+  assert.equal(isWalkable(conversation, guest.position), true);
+  assert.equal(isWalkable(conversation, host.position), true);
+  assert.equal(canTraverse(conversation, guest.position, host.position), true);
+  const state = createForestSocial("narrow-neighbours");
+  assert.equal(requestForestSocialVisit(state, guest.id, host.id, { scene: narrow, builder: null, actors: [guest, host] }), true);
+  assert.equal(state.meeting.phase, "talk");
 });
 
 test("the smaller conversation profile still rejects solid walls and water, including a callback claiming arrival", () => {

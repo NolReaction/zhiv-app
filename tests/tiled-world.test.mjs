@@ -1501,7 +1501,7 @@ test("committed authoring exports identically and --check refuses stale output w
   const quarry = scene.sites.find(site => site.id === "quarry");
   assert.ok(quarry, "the placed quarry must be exported as a site, not an untyped image");
   assert.equal(quarry.initialLevel, 0);
-  assert.deepEqual(quarry.states.map(state => state.level), [0, 1]);
+  assert.deepEqual(quarry.states.map(state => state.level), [0, 1, 2, 3, 4, 5]);
   const quarryEntry = withRole("entry").find(object => property(object, "siteId") === "quarry" && property(object, "level") === 0)
     ?? withRole("entry").find(object => property(object, "siteId") === "quarry");
   assert.deepEqual(quarry.entry, { x: quarryEntry.x, y: quarryEntry.y });

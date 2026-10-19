@@ -52,8 +52,12 @@ test("friend scene uses only the host equipment, gifts and confirmed levels with
   assert.equal(scene.state.houseLevel, 3); assert.equal(scene.state.workshopLevel, 2);
   assert.deepEqual(scene.state.resources, { sparks: 0, wood: 0, stone: 0 });
   assert.deepEqual(scene.state.inventory, []); assert.deepEqual(scene.state.collection, []);
-  const levels = accountSceneLevels(TILED_WORLD, scene.state.houseLevel, undefined, scene.buildings);
+  const tree = probe(FriendWorldView, { visit, now, timeZone: "UTC", onReturn() {}, onOpenShop() {} });
+  const runtime = elements(tree).find(element => element.type === WorldScene).props;
+  const levels = accountSceneLevels(TILED_WORLD, scene.state.houseLevel, undefined, scene.buildings,
+    { merchantArrived: runtime.merchantArrival?.seen });
   assert.equal(levels.home, 3); assert.equal(levels["lopukh-home"], 2);
+  assert.equal(levels["leaftail-caravan"], 1, "the public visit projection matches its settled merchant presentation");
   assert.equal(scene.construction.ownerPublicId, visit.user.publicId);
   assert.notEqual(scene.construction.ownerPublicId, visit.ownerPublicId);
   assert.equal(scene.construction.jobs[0].targetLevel, 4);

@@ -3,6 +3,7 @@ import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { createServer } from "vite";
+import sharp from "sharp";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -51,16 +52,53 @@ test("building glass follows active artwork and its rotation; unlit ruins never 
   const geometry = { bounds: { x: 80, y: 100, width: 100, height: 150 },
     imagePlacement: { x: 80, y: 100, width: 150, height: 100, rotation: 90 } };
   const map = { ...scene(), sites: [{ id: "quarry", initialLevel: 0, bounds: geometry.bounds,
-    states: [{ level: 0, image: "/world/prototype/quarry-lvl-0.png" },
-      { level: 1, image: "/world/prototype/quarry-lvl-1.png?v=changed", geometry }] }], lights: [] };
+    states: [{ level: 0, image: "/world/buildings/quarry/quarry-lvl-0.png" },
+      { level: 1, image: "/world/buildings/quarry/quarry-lvl-1.png?v=changed", geometry }] }], lights: [] };
   assert.deepEqual(forestLightSources(map), []);
   const [light] = forestLightSources(map, { levels: { quarry: 1 } });
   assert.equal(light.id, "quarry-lantern");
-  assert.ok(Math.abs(light.position.x - (80 - .69 * 100)) < 1e-8);
-  assert.ok(Math.abs(light.position.y - (100 + .617 * 150)) < 1e-8);
+  assert.ok(Math.abs(light.position.x - (80 - .549 * 100)) < 1e-8);
+  assert.ok(Math.abs(light.position.y - (100 + .895 * 150)) < 1e-8);
   assert.equal(light.glass.rotation, Math.PI / 2);
   assert.deepEqual(forestLightSources(map, { levels: { quarry: 1 }, showBuildings: false }), []);
   assert.deepEqual(forestLightSources({ ...map, sites: [{ ...map.sites[0], states: [{ level: 0, image: "/unknown.png" }] }] }), []);
+});
+
+test("every new mine illustration lights its painted lantern while level zero stays dark", async () => {
+  const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const quarry = map.sites.find(site => site.id === "quarry");
+  const { siteImagePoint } = await vite.ssrLoadModule("/features/world/tiled/site-image.ts");
+  assert.deepEqual(forestLightSources(map, { levels: { quarry: 0 } }).filter(light => light.siteId === "quarry"), []);
+  for (let level = 1; level <= 5; level++) {
+    const visual = quarry.states.find(state => state.level === level);
+    assert.ok(visual, `mine level ${level} has its own scene visual`);
+    const file = new URL(`../public${visual.image}`, import.meta.url);
+    const { width, height } = await sharp(fileURLToPath(file)).metadata();
+    // Resolve in image pixel coordinates, independently of the map's scale and rotation.
+    const geometry = { bounds: { x: 0, y: 0, width, height } };
+    const pixelMap = { ...map, lights: [], sites: [{ ...quarry, ...geometry,
+      states: [{ ...visual, geometry }] }] };
+    const lamps = forestLightSources(pixelMap, { levels: { quarry: level } });
+    assert.equal(lamps.length, 1, `mine level ${level} has exactly one fixture`);
+    const [lamp] = lamps;
+    assert.equal(lamp.id, "quarry-lantern");
+    assert.ok(lamp.position.x > width * .88 && lamp.position.x < width * .91);
+    assert.ok(lamp.position.y > height * .53 && lamp.position.y < height * .56);
+    const { data, info } = await sharp(fileURLToPath(file)).ensureAlpha().extract({
+      left: Math.round(lamp.position.x - lamp.glass.width / 2),
+      top: Math.round(lamp.position.y - lamp.glass.height / 2),
+      width: Math.round(lamp.glass.width), height: Math.round(lamp.glass.height),
+    }).raw().toBuffer({ resolveWithObject: true });
+    let litPixels = 0;
+    for (let pixel = 0; pixel < data.length; pixel += 4) {
+      if (data[pixel] >= 240 && data[pixel + 1] >= 200 && data[pixel + 3] >= 240) litPixels++;
+    }
+    assert.ok(litPixels > info.width * info.height * .1, `level ${level} glow covers the drawn lantern glass`);
+    const actual = forestLightSources(map, { levels: { quarry: level } }).find(light => light.siteId === "quarry");
+    const target = visual.geometry ?? quarry;
+    const expected = siteImagePoint(target, lamp.position.x / width, lamp.position.y / height);
+    assert.ok(Math.hypot(actual.position.x - expected.x, actual.position.y - expected.y) < 1e-8);
+  }
 });
 
 test("actual map uses one aligned home lamp at every level plus the working mine/workshop/lighthouse", async () => {
