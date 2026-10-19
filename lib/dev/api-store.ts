@@ -1,4 +1,6 @@
 import { GUEST_ACHIEVEMENT_IDS, guestCollections, type GuestProfile } from "@/features/people/guest-profile-model";
+import type { GuestWorld } from "@/features/people/guest-world-model";
+import { naturalItems } from "@/features/game/game-rewards";
 import { rollingStreakStartedAt } from "@/lib/daily-streak";
 import { isTimeZone, nextLocalDay } from "@/lib/time-zone";
 import type { GameAchievementId, GameAchievements } from "@/features/game/game-api";
@@ -33,8 +35,8 @@ import { activeUserStatus, normalizeUserStatus, validStatusDuration } from "@/li
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
-import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales } from "@/lib/dev/economy-store";
-import { resetDevWorldStoreForTests, getDevCollectionFinds } from "@/lib/dev/world-store";
+import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales, getDevGuestWorldEconomy } from "@/lib/dev/economy-store";
+import { resetDevWorldStoreForTests, getDevCollectionFinds, getDevGuestWorldAppearance } from "@/lib/dev/world-store";
 import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-rewards-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
 import { resetDevMailState } from "@/lib/dev/mail-state";
@@ -1014,12 +1016,9 @@ export function lookupDevUser(
 
 /** Read-only guest projection. No target profile initialization, award reconciliation, balances or private timestamps. */
 export function getDevGuestProfile(token: string | undefined, circleId: string): DevResult<GuestProfile> {
-  const viewer = sessionUser(token);
-  if (!viewer) return { kind: "unauthorized" };
-  const circle = store().circles.get(circleId);
-  if (!circle || circle.archivedAt || ![circle.lowUserId, circle.highUserId].includes(viewer.id)) return { kind: "not-found" };
-  const target = store().users.get(otherUserId(circle, viewer.id));
-  if (!target || effectiveRecipientSharing(target.id, viewer.id).mode === "OFF") return { kind: "not-found" };
+  const access = getDevGuestWorldAccess(token, circleId);
+  if (access.kind !== "ok") return access;
+  const { viewer, target } = access.value;
   const state = getDevEconomyAchievementState(target.publicId);
   const finds = [...getDevCollectionFinds(target.publicId), ...(state?.progression.collections.finds ?? [])];
   const awards = store().achievementAwards.get(target.id);
@@ -1034,6 +1033,29 @@ export function getDevGuestProfile(token: string | undefined, circleId: string):
     user: { publicId: target.publicId, displayName: target.displayName },
     homeLevel: Math.min(5, Math.max(1, state?.buildings.home ?? 1)), completedExplorations: state?.completedExplorations ?? 0,
     achievements, collections: guestCollections(finds, state?.fishing.catches ?? {}), serverTime: new Date().toISOString() } };
+}
+
+/** All guest reads and purchases use the same accepted direct friendship and effective privacy guard. */
+export function getDevGuestWorldAccess(token: string | undefined, circleId: string) {
+  const viewer = sessionUser(token);
+  if (!viewer) return { kind: "unauthorized" as const };
+  const circle = store().circles.get(circleId);
+  if (!circle || circle.archivedAt || ![circle.lowUserId, circle.highUserId].includes(viewer.id)) return { kind: "not-found" as const };
+  const target = store().users.get(otherUserId(circle, viewer.id));
+  if (!target || effectiveRecipientSharing(target.id, viewer.id).mode === "OFF") return { kind: "not-found" as const };
+  return { kind: "ok" as const, value: { viewer, target } };
+}
+
+export function getDevGuestWorld(token: string | undefined, circleId: string, now = Date.now()): DevResult<GuestWorld> {
+  const access = getDevGuestWorldAccess(token, circleId);
+  if (access.kind !== "ok") return access;
+  const { viewer, target } = access.value;
+  const appearance = getDevGuestWorldAppearance(target.publicId);
+  const economy = getDevGuestWorldEconomy(viewer.publicId, target.publicId, target.displayName, appearance);
+  return { kind: "ok", value: { ownerPublicId: viewer.publicId, circleId,
+    user: { publicId: target.publicId, displayName: target.displayName },
+    serverTime: new Date(now).toISOString(), world: { ...economy.world, equipment: appearance.equipment,
+      gifts: naturalItems(getDevItemStreak(target.publicId, now)), hiddenGifts: appearance.hiddenGifts }, market: economy.market } };
 }
 
 export function listDevPeople(token: string | undefined): DevResult<PeopleResponse> {

@@ -1,7 +1,7 @@
 import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
-import { economyResultSchema, economyViewSchema, marketViewSchema, type EconomyCommand, type MarketCommand } from "@/features/economy/domain/model";
+import { economyResultSchema, economyViewSchema, marketCommandSchema, marketViewSchema, type EconomyCommand, type MarketCommand } from "@/features/economy/domain/model";
 import type { EconomyDevCommand } from "@/features/economy/dev/dev-model";
 
 async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, command?: EconomyCommand | MarketCommand | EconomyDevCommand, signal?: AbortSignal): Promise<T> {
@@ -43,5 +43,15 @@ export const getEconomyMarket = (signal?: AbortSignal) => request(
   marketViewSchema, undefined, signal);
 export const sendMarketCommand = (command: MarketCommand, signal?: AbortSignal) => request(
   "/api/v1/economy/market/commands", economyResultSchema, command, signal);
+export async function sendFriendMarketCommand(circleId: string, command: MarketCommand, signal?: AbortSignal) {
+  const circle = z.string().uuid().safeParse(circleId);
+  const purchase = marketCommandSchema.extend({
+    action: z.literal("buy_listing"), targetId: z.string().uuid(), fishSelection: z.undefined().optional(),
+  }).safeParse(command);
+  if (!circle.success || !purchase.success) throw new ApiError("Не удалось определить покупку у друга", 400);
+  const result = await request(`/api/v1/people/${encodeURIComponent(circle.data)}/world/market/commands`, economyResultSchema, purchase.data, signal);
+  if (result.state.ownerPublicId !== command.ownerPublicId) throw new ApiError("Аккаунт изменился. Войдите в свой профиль заново.", 401);
+  return result;
+}
 export const sendEconomyDevCommand = (command: EconomyDevCommand, signal?: AbortSignal) => request(
   "/api/v1/economy/dev", economyResultSchema, command, signal);

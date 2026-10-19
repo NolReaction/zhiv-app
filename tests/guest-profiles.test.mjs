@@ -121,7 +121,7 @@ test("profile content renders labeled safe stats medals and collection chapters 
   const a = player(), b = player(), circle = connect(a, b), value = read(a, circle);
   value.achievements = [{ id: "home_builder", level: 2 }]; value.collections.travel = ["acorn"];
   const html = renderToStaticMarkup(createElement(ui.GuestProfileContents, { profile: value }));
-  for (const text of ["Уровень дома", "Завершено вылазок", "Страниц коллекции", "Достижения друга", "Книга находок", "Ступень 2 из 4", "Посещение самой поляны появится позже."])
+  for (const text of ["Уровень дома", "Завершено вылазок", "Страниц коллекции", "Достижения друга", "Книга находок", "Ступень 2 из 4", "Полянку друга можно открыть через «Друзья» в игровом профиле."])
     assert.ok(html.includes(text), text);
   assert.ok(html.includes('<summary>Путешествия')); assert.ok(html.includes('data-collection-icon="acorn"'));
   for (const text of ["Жемчуг", "Монеты", "Получить награду", "fishingCastSeed"]) assert.equal(html.includes(text), false);

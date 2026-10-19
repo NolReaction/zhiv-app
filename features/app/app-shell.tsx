@@ -31,6 +31,7 @@ import type {
   GroupsResponse,
   MeResponse,
   PeopleResponse,
+  Person,
 } from "@/lib/check-in-contract";
 import {
   ApiError,
@@ -94,6 +95,7 @@ import { MailboxDialog } from "@/features/mailbox/mailbox-dialog";
 import { MailboxNotifications } from "@/features/mailbox/mailbox-notifications";
 import type { WorldNotificationEntry } from "@/features/world/notification-destination";
 import { ForestSessionNotice } from "@/features/world/ui/feedback/forest-session-notice";
+import { currentProfileFriendVisit, profileFriendVisit, type ProfileFriendVisit } from "@/features/world/ui/profile/world-friend-visit";
 import { useWorld } from "@/features/world/state/use-world";
 import { useEconomy } from "@/features/economy/sync/use-economy";
 import { useEconomyAudioFeedback } from "@/features/economy/integration/use-economy-audio-feedback";
@@ -411,6 +413,7 @@ function CheckInContent() {
   const { simpleView, appearanceReady, setSimpleView } = useSimpleView();
   const mochlikVisible = appearanceReady && !simpleView;
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
+  const [friendSelection, setFriendSelection] = useState<ProfileFriendVisit | null>(null);
   const worldPeopleReturn = useRef(false);
   const appNavigationRef = useRef<HTMLElement | null>(null);
   const notificationSettingsExit = useRef<NotificationSettingsExit | null>(null);
@@ -419,7 +422,8 @@ function CheckInContent() {
   const notificationRequest = useRef(0);
   const notificationHandled = useCallback((request: number) => setNotificationEntry(previous => previous?.request === request ? undefined : previous), []);
   const startupModules = useStartupModules(screen === "home" && mochlikVisible, startupRetry);
-  const closeWorld = worldPortal.close;
+  const closePortal = worldPortal.close;
+  const closeWorld = useCallback(() => { setFriendSelection(null); closePortal(); }, [closePortal]);
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
   const gameTrigger = useRef<HTMLElement | null>(null);
   const openGame = useCallback((trigger: HTMLButtonElement) => {
@@ -732,9 +736,10 @@ function CheckInContent() {
     onNavigate: target => {
       if (!worldDevOwner) return;
       setCalendarOpen(false); setGameOpen(false); setStatusOpen(false);
-      if (target === "checkin") { worldPortal.close(); setActiveView("check-in"); return; }
+      if (target === "checkin") { closeWorld(); setActiveView("check-in"); return; }
       if (target === "mailbox") { setNotificationEntry(undefined); mailbox.open(); return; }
       setNotificationEntry({ ownerPublicId: worldDevOwner, target, request: ++notificationRequest.current });
+      setFriendSelection(null);
       setWorldMounted(true);
       if (!worldPortal.open) worldPortal.enter(worldEntryButton.current, null);
       void economy.reconcile();
@@ -769,6 +774,7 @@ function CheckInContent() {
       const response = await getPeople(signal);
       if (epoch !== identityEpoch.current || request !== peopleRequest.current) return;
       setPeople(response);
+      setFriendSelection(previous => previous && !currentProfileFriendVisit(previous.ownerPublicId, previous, response.people, true, true) ? null : previous);
       setPeopleUpdatedAt(Date.now());
       setPeopleError(null);
     } catch (error) {
@@ -783,6 +789,17 @@ function CheckInContent() {
       if (epoch === identityEpoch.current && request === peopleRequest.current) setPeopleLoading(false);
     }
   }, [loseSession]);
+
+  const visitFriend = (person: Person) => {
+    const selection = profileFriendVisit(screen === "home" ? me?.user.publicId : null, people?.people, person, isOnline);
+    if (!selection || !worldPortal.open) {
+      notify(isOnline ? "Мир друга сейчас недоступен. Обновите список друзей." : "Для посещения друга нужен интернет.", "error");
+      return;
+    }
+    setNotificationEntry(undefined);
+    setFriendSelection(selection);
+  };
+  const friendVisit = currentProfileFriendVisit(screen === "home" ? me?.user.publicId : null, friendSelection, people?.people, isOnline, worldPortal.open);
 
   const refreshGroups = useCallback(async (signal?: AbortSignal) => {
     const epoch = identityEpoch.current;
@@ -933,6 +950,7 @@ function CheckInContent() {
     };
     const markOffline = () => {
       setIsOnline(false);
+      setFriendSelection(null);
       recovery.pause();
       recovery.resume();
     };
@@ -1782,7 +1800,7 @@ function CheckInContent() {
               <button ref={worldEntryButton} type="button" className={`${glass.button} ${styles.mapEntry}`} data-audio-cue="ui.open" data-app-onboarding="world"
                 aria-label="Войти в мир Мохлика" aria-haspopup="dialog"
                 onPointerDown={event => event.stopPropagation()} onClick={event => {
-                  setWorldMounted(true); worldPortal.enter(event.currentTarget, buttonOrbit.current); void world.refresh();
+                  setFriendSelection(null); setWorldMounted(true); worldPortal.enter(event.currentTarget, buttonOrbit.current); void world.refresh();
                 }}>
                 <Map size={20} aria-hidden="true" /><span>Войти в мир</span>
               </button>
@@ -1865,7 +1883,7 @@ function CheckInContent() {
         onOpenWorld={() => worldEntryButton.current?.click()}
         onOpenCalendar={streak ? () => setCalendarOpen(true) : undefined}
         onOpenGame={() => setGameOpen(true)} />}
-      {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} suspended={gameplay.suspended} connectionStatus={worldPortal.open ? connectionStatus : null} open={worldPortal.open} onClose={worldPortal.close} onSceneReady={worldPortal.reportSceneReady}
+      {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} suspended={gameplay.suspended} connectionStatus={worldPortal.open ? connectionStatus : null} open={worldPortal.open} onClose={closeWorld} onSceneReady={worldPortal.reportSceneReady}
         sceneReady={worldPortal.sceneReady} notificationEntry={notificationEntry?.ownerPublicId === me.user.publicId ? notificationEntry : undefined} onNotificationHandled={notificationHandled}
         origin={worldPortal.origin} returnFocus={() => {
           if (worldPeopleReturn.current) {
@@ -1876,7 +1894,10 @@ function CheckInContent() {
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
         isOnline={isOnline} onSessionLost={loseSession}
         friends={{ data: people, loading: peopleLoading, error: peopleError, updatedAt: peopleUpdatedAt, isOnline, onRefresh: () => refreshPeople() }}
-        onOpenPeople={() => { worldPeopleReturn.current = true; worldPortal.close(); selectView("people"); }}
+        friendVisit={friendVisit} onVisitFriend={visitFriend} onLeaveFriend={() => {
+          setFriendSelection(null); void world.refresh(); void economy.refresh();
+        }}
+        onOpenPeople={() => { worldPeopleReturn.current = true; closeWorld(); selectView("people"); }}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
       {me && screen === "home" && <MailboxDialog key={`mailbox:${me.user.publicId}`} mailbox={mailbox} />}

@@ -1,0 +1,27 @@
+.visit { --visit-paper: #eee4c8; --visit-ink: #344c3a; }
+.header { position: absolute; z-index: 6; inset: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 14px 14px; background: linear-gradient(#12251be8 20%, #12251b00); pointer-events: none; }
+.header > button, .header > span { pointer-events: auto; flex-shrink: 0; }
+.header > button { width: 44px; padding: 0; }
+.owner { min-width: 0; margin-right: auto; text-shadow: 0 1px 4px #07130b; }
+.owner > span { display: block; color: #d1debb; font-size: 12px; }
+.owner h2 { margin: 1px 0 0; font-size: clamp(15px, 3.9vw, 19px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.level { display: flex; align-items: center; gap: 6px; border: 1px solid #d9e5b348; border-radius: 12px; padding: 9px 11px; background: #192b20e8; font-size: 14px; }
+.footer { position: absolute; z-index: 6; inset: auto 0 0; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); pointer-events: none; }
+.footer > * { pointer-events: auto; }
+.visit .shop { min-height: 48px; min-width: min(240px, 100%); max-width: 100%; border-color: #cebd8e; background: var(--visit-paper); color: var(--visit-ink); box-shadow: 0 4px 18px #07130b55; }
+.visit .shop:hover { background: #f8edd0; border-color: #daca9b; }
+.lotCount { margin-left: 8px; min-width: 24px; padding: 2px 6px; border-radius: 8px; background: #455f4520; font-size: 12px; font-variant-numeric: tabular-nums; }
+.object { width: min(420px, 100%); max-height: min(44dvh, 340px); overflow: auto; overscroll-behavior: contain; padding: 13px 14px; border: 1px solid #bfaf83; border-radius: 17px; background: var(--visit-paper); color: var(--visit-ink); box-shadow: 0 8px 26px #07130b66; }
+.objectHeading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.objectHeading > div { min-width: 0; }
+.objectHeading span { color: #5a6e50; font-size: 11px; }
+.objectHeading h3 { margin: 2px 0 0; font-size: 17px; overflow-wrap: anywhere; }
+.visit .objectHeading button { flex: 0 0 44px; width: 44px; padding: 0; color: var(--visit-ink); background: #596b4310; border-color: #8e9b7650; }
+.visit .objectHeading button:hover { color: var(--visit-ink); background: #596b4320; border-color: #8e9b76; }
+.buildingLevel { margin: 5px 0 0; color: #5a6e50; font-size: 13px; }
+.jobs { display: grid; gap: 8px; list-style: none; margin: 11px 0 0; padding: 0; }
+.jobs li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 12px; border-top: 1px solid #83936b3b; padding-top: 8px; font-size: 13px; }
+.jobs strong { font-size: 12px; font-weight: 500; color: #50673f; font-variant-numeric: tabular-nums; }
+.quiet { display: flex; align-items: center; gap: 7px; margin: 12px 0 0; color: #5a6e50; font-size: 12px; }
+.visit button:focus-visible { outline: 2px solid #bfa15d; outline-offset: 3px; }
+@media (max-height: 500px) { .object { max-height: 36dvh; } .header { padding-top: calc(6px + env(safe-area-inset-top)); } .footer { padding-bottom: calc(6px + env(safe-area-inset-bottom)); } }

@@ -7,6 +7,7 @@ import { ChevronRight, CircleHelp, Heart, Leaf, Settings, ShieldCheck } from "lu
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
+import type { Person } from "@/lib/check-in-contract";
 import { formatDayCount } from "@/lib/daily-streak";
 import { BOOK_COLLECTION_COUNT, COLLECTION_CHAPTERS, collectionBookEntries } from "@/features/world/domain/collection-book";
 import type { WorldController } from "@/features/world/state/use-world";
@@ -33,6 +34,7 @@ type Props = {
   initialTab?: WorldProfileDestination;
   friends?: WorldFriendsState;
   onOpenPeople?: () => void;
+  onVisitFriend?: (person: Person) => void;
   onOpenHelp?: () => void;
   onOpenOnboarding?: () => void;
   onboardingStatus?: "started" | "completed" | "skipped" | null;
@@ -99,7 +101,7 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
 /** Pure contents keep map focus ownership separate from data subscriptions. */
 export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver,
   rewards, callPulse = 0, initialTab = "profile", activeTab = initialTab === "mood" ? "profile" : initialTab, onTabChange, idPrefix = "world-profile",
-  friends, onOpenPeople, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef, tapHintSetting }: Omit<Props, "presenceKey" | "ownerPublicId"> & {
+  friends, onOpenPeople, onVisitFriend, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef, tapHintSetting }: Omit<Props, "presenceKey" | "ownerPublicId"> & {
   observation: ForestObservation | null;
   guideOpen?: boolean;
   onToggleGuide?: () => void;
@@ -178,7 +180,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
           </button>}
         </div>}
       </>}
-      {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} />}
+      {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} />}
       {activeTab === "settings" && <><AudioSettingsPanel tone="forest" />{tapHintSetting}</>}
     </div>
     {!memoryWarning && memory}

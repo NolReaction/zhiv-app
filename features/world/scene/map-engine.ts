@@ -63,7 +63,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let normalBacking = { width: 1, height: 1 };
   let rasterCamera: Camera | null = null, panBlocked = false;
   let viewportRect: DOMRect | null = null;
-  let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
+  let dev = WORLD_DEV_ENABLED && !initial.readOnly ? worldDevStore.getSnapshot() : undefined;
   const initialCameraEventId = dev?.cameraEvent?.id;
   const motionReduced = () => dev?.reducedMotion === "on" || dev?.reducedMotion !== "off" && options.reducedMotion;
   const paused = () => options.paused || Boolean(dev?.paused);
@@ -74,7 +74,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       zoom: close ? Math.min(viewport.width / NEW_MAP_FOCUS.width, viewport.height / NEW_MAP_FOCUS.height)
         : Math.min(viewport.width / bounds.width, viewport.height / bounds.height) }, viewport, bounds, cameraInsets)
     : close ? homeCamera(viewport) : worldCamera(viewport);
-  let studioWasActive = WORLD_DEV_ENABLED && worldLightingEditorStore.getSnapshot().enabled;
+  let studioWasActive = !initial.readOnly && WORLD_DEV_ENABLED && worldLightingEditorStore.getSnapshot().enabled;
   const retainedViewport = studioWasActive ? studioViewports?.get(canvas) : undefined;
   let restoreStudioViewport = Boolean(retainedViewport);
   let view = { width: 1, height: 1 }, camera = retainedViewport ? { ...retainedViewport.camera } : focusCamera(view, false);
@@ -101,7 +101,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   });
   const lightingEditor = createWorldLightingEditorMap(() => habitat.lightingCasters?.() ?? [], worldLightingEditorStore,
     { getLights: () => habitat.lightingLights?.() ?? [], getReceivers: () => habitat.lightingReceivers?.() ?? [], onFocus: focusLighting });
-  const editingLight = () => WORLD_DEV_ENABLED && rebuilding && worldLightingEditorStore.getSnapshot().enabled;
+  const editingLight = () => !options.readOnly && WORLD_DEV_ENABLED && rebuilding && worldLightingEditorStore.getSnapshot().enabled;
   function studioUsableRectangle() {
     type Rectangle = { left: number; right: number; top: number; bottom: number };
     const safe: Rectangle = { left: 20, right: view.width - 20, top: cameraInsets.top + 16, bottom: view.height - cameraInsets.bottom - 16 };
@@ -283,7 +283,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       framing = "manual";
       camera = clampCamera({ ...camera, x: object.anchor.x, y: object.anchor.y }, view, bounds, cameraInsets);
     }
-    if (object.place === "plesk-shop") {
+    if (!options.readOnly && object.place === "plesk-shop") {
       setSelectedObject(null);
       habitat.visitTradingPlace?.("plesk");
       draw();
@@ -296,7 +296,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (!selection) return false;
     // A deliberate house activation reaches the resident even behind its PNG,
     // while retaining the same building menu. Camera changes never take this path.
-    if (object.place === "house") habitat.wakeHomeResident?.();
+    if (!options.readOnly && object.place === "house") habitat.wakeHomeResident?.();
     draw();
     onPlace(selection.place, selection);
     return true;
@@ -581,13 +581,14 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         const visibleSite = habitat.hitSite?.(world);
         const object = mapObjectAt(habitat.hitSite ? objects.filter(object => object.kind !== "site" || object.id === visibleSite) : objects, world);
         const resident = habitat.hitResident?.(world.x, world.y);
-        if (resident) { setSelectedObject(null); habitat.noticeResident?.(resident); }
-        else if (habitat.hitVisiblePet?.(petPoint.x, petPoint.y)) { setSelectedObject(null); habitat.notice(); }
+        if (resident) { setSelectedObject(null); if (!options.readOnly) habitat.noticeResident?.(resident); }
+        else if (habitat.hitVisiblePet?.(petPoint.x, petPoint.y)) { setSelectedObject(null); if (!options.readOnly) habitat.notice(); }
         else if (markerObject) activateObject(markerObject.id);
         else if (object) activateObject(object.id);
         else {
           setSelectedObject(null);
-          if (habitat.disturbTree?.(world)) { /* A crown consumes its tap, including its quiet cooldown. */ }
+          if (options.readOnly) { /* Visitors inspect progress without directing its actors. */ }
+          else if (habitat.disturbTree?.(world)) { /* A crown consumes its tap, including its quiet cooldown. */ }
           else if (habitat.hitPet(petPoint.x, petPoint.y)) habitat.notice();
           else habitat.disturbWater?.(world);
         }
@@ -597,8 +598,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         if (place === "cave" || place === "fishing") onPlace(place);
         else if (habitat.hitPet(x, y)) onPlace("wardrobe");
         else if (place === "house") onPlace("house");
-        else if (place === "bush") habitat.invite("bush");
-        else if (x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);
+        else if (!options.readOnly && place === "bush") habitat.invite("bush");
+        else if (!options.readOnly && x >= 0 && x <= 1 && y >= 0 && y <= 1) habitat.moveTo(x, y);
       }
     }
     if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
@@ -681,16 +682,16 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     };
   });
   // Controls may have changed while the scene's selected artwork was loading.
-  if (WORLD_DEV_ENABLED) dev = worldDevStore.getSnapshot();
+  if (WORLD_DEV_ENABLED && !initial.readOnly) dev = worldDevStore.getSnapshot();
   document.addEventListener("visibilitychange", visibility); visibility();
-  const pendingLightingFocus = WORLD_DEV_ENABLED ? takeWorldLightingEditorFocus() : null;
+  const pendingLightingFocus = WORLD_DEV_ENABLED && !initial.readOnly ? takeWorldLightingEditorFocus() : null;
   const pendingLightingTarget = pendingLightingFocus === "selection" ? lightingEditor.focus() : pendingLightingFocus;
   if (pendingLightingTarget) focusLighting(pendingLightingTarget);
-  if (WORLD_DEV_ENABLED) createStudioElement(takeWorldStudioCreate());
+  if (WORLD_DEV_ENABLED && !initial.readOnly) createStudioElement(takeWorldStudioCreate());
   // An absolute DEV target chosen in the circle survives opening the full map.
   if ((!retainedViewport || dev?.cameraEvent?.id !== initialCameraEventId)
     && (dev?.cameraEvent?.action === "plesk" || dev?.cameraEvent?.action === "builder" || dev?.cameraEvent?.action === "fishing")) control(dev.cameraEvent.action);
-  const unsubscribeDev = WORLD_DEV_ENABLED ? worldDevStore.subscribe(() => {
+  const unsubscribeDev = WORLD_DEV_ENABLED && !initial.readOnly ? worldDevStore.subscribe(() => {
     if (disposed) return;
     const previousCamera = dev?.cameraEvent?.id;
     dev = worldDevStore.getSnapshot();
@@ -701,7 +702,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick);
     }
   }) : () => {};
-  const unsubscribeLightingEditor = WORLD_DEV_ENABLED ? worldLightingEditorStore.subscribe(() => {
+  const unsubscribeLightingEditor = WORLD_DEV_ENABLED && !initial.readOnly ? worldLightingEditorStore.subscribe(() => {
     studioWasActive ||= editingLight();
     if (!editingLight()) { pendingEditorMove = null; lightingEditor.blur(); }
     if (editingLight()) setSelectedObject(null);
@@ -730,8 +731,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       options = next;
       visibility();
     },
-    notice() { habitat.notice(); draw(); },
-    visitBush() { habitat.invite("bush"); draw(); },
+    notice() { if (!options.readOnly) habitat.notice(); draw(); },
+    visitBush() { if (!options.readOnly) habitat.invite("bush"); draw(); },
     dispose() {
       if (studioWasActive) studioViewports?.set(canvas, { camera: { ...camera }, framing });
       else studioViewports?.delete(canvas);

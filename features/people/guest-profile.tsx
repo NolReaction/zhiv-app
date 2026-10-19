@@ -47,7 +47,7 @@ export function GuestProfileContents({ profile }: { profile: GuestProfile }) {
         </ul>}
       </details>)}
     </section>
-    <p className={styles.hint}>Посещение самой поляны появится позже.</p>
+    <p className={styles.hint}>Полянку друга можно открыть через «Друзья» в игровом профиле.</p>
   </div>;
 }
 

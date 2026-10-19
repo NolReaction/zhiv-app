@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { z } from "zod";
 import { economyCommandSchema, marketCommandSchema, type EconomyCommand, type EconomyResult, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/domain/model";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { constructionCompletions, type ConstructionCompletion } from "@/features/economy/domain/construction-completion";
@@ -18,11 +19,17 @@ type Transport = {
   send: (command: EconomyCommand, signal: AbortSignal) => Promise<EconomyResult>;
   market: (signal: AbortSignal) => Promise<MarketView>;
   trade: (command: MarketCommand, signal: AbortSignal) => Promise<EconomyResult>;
+  friendTrade?: (circleId: string, command: MarketCommand, signal: AbortSignal) => Promise<EconomyResult>;
   dev?: (command: EconomyDevCommand, signal: AbortSignal) => Promise<EconomyResult>;
   barter?: (signal: AbortSignal) => Promise<BarterView>;
   barterTrade?: (command: BarterCommand, signal: AbortSignal) => Promise<BarterResult>;
 };
-type Pending = { kind: "economy"; command: EconomyCommand } | { kind: "market"; command: MarketCommand } | { kind: "dev"; command: EconomyDevCommand } | { kind: "barter"; command: BarterCommand };
+const friendMarketReceiptSchema = z.object({
+  kind: z.literal("friend_market"), circleId: z.string().uuid(),
+  command: marketCommandSchema.extend({ action: z.literal("buy_listing"), targetId: z.string().uuid(), fishSelection: z.undefined().optional() }),
+}).strict();
+type Pending = { kind: "economy"; command: EconomyCommand } | { kind: "market"; command: MarketCommand }
+  | z.infer<typeof friendMarketReceiptSchema> | { kind: "dev"; command: EconomyDevCommand } | { kind: "barter"; command: BarterCommand };
 type View = {
   snapshot: EconomyView | null; market: MarketView | null; marketError: string | null;
   barter: BarterView | null; barterError: string | null;
@@ -208,6 +215,15 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const raw = storage?.getItem(storageKey);
       if (!raw) return;
       const value = JSON.parse(raw) as { kind?: unknown; command?: unknown };
+      if (value.kind === "friend_market") {
+        const parsed = transport.friendTrade ? friendMarketReceiptSchema.safeParse(value) : null;
+        if (parsed?.success && parsed.data.command.ownerPublicId === owner) {
+          pending = parsed.data;
+          const message = "Остался неподтверждённый запрос. Проверьте его результат перед новым действием.";
+          publish({ uncertain: true, error: message, syncError: message });
+        } else storage?.removeItem(storageKey);
+        return;
+      }
       const schema = value.kind === "economy" ? economyCommandSchema : value.kind === "market" ? marketCommandSchema
         : value.kind === "dev" && transport.dev ? economyDevCommandSchema : value.kind === "barter" && transport.barterTrade ? barterCommandSchema : null;
       const parsed = schema?.safeParse(value.command);
@@ -314,7 +330,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     } finally { requests.delete(request); }
   }
   async function execute(value: Pending, localProductionStart = false) {
-    if (!active || !available || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev) || (value.kind === "barter" && !transport.barterTrade)) return;
+    if (!active || !available || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev) || (value.kind === "barter" && !transport.barterTrade) || (value.kind === "friend_market" && !transport.friendTrade)) return;
     const generation = epoch, request = controller(), before = view.snapshot;
     ++readSequence; ++marketSequence; ++barterSequence; reading = null; marketReading = null; barterReading = null; remember(value);
     publish({ busy: true, error: null, notice: "", retryAt: 0,
@@ -324,6 +340,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     try {
       const result = value.kind === "economy" ? await transport.send(value.command, request.signal)
         : value.kind === "market" ? await transport.trade(value.command, request.signal)
+        : value.kind === "friend_market" ? await transport.friendTrade!(value.circleId, value.command, request.signal)
         : value.kind === "barter" ? await transport.barterTrade!(value.command, request.signal)
         : await transport.dev!(value.command, request.signal);
       if (!valid(generation)) return;
@@ -455,6 +472,15 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (!owner || !view.snapshot || !view.snapshotConfirmed || !view.directActionsAvailable || pending || productionEntries.length || !active || !localActionsAvailable || !available || view.busy || performance.now() < blockedUntil) return false;
       void execute({ kind: "market", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
         ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) } });
+      return true;
+    },
+    actFriendMarket(circleId: string, targetId: string, quantity: number, totalPrice: number) {
+      if (!owner || !view.snapshot || !view.snapshotConfirmed || !view.directActionsAvailable || pending || productionEntries.length || !active || !localActionsAvailable || !available || view.busy || performance.now() < blockedUntil || !transport.friendTrade) return false;
+      const receipt = friendMarketReceiptSchema.safeParse({ kind: "friend_market", circleId,
+        command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision,
+          action: "buy_listing", targetId, quantity, totalPrice } });
+      if (!receipt.success) return false;
+      void execute(receipt.data);
       return true;
     },
     actBarter(intent: BarterIntent) {

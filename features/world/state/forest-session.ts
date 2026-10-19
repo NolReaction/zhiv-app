@@ -82,7 +82,7 @@ export function forgetForestSession(key: string | undefined) {
   }
 }
 
-export type ForestSessionOptions = { persistence?: boolean; environment?: ForestMemoryEnvironment | null;
+export type ForestSessionOptions = { /** A visit neither joins, replaces nor persists an account simulation. */ isolated?: boolean; persistence?: boolean; environment?: ForestMemoryEnvironment | null;
   /** Real account scenes wait for their first confirmed economic snapshot. */
   awaitBuilderConstruction?: boolean;
   sync?: false | { transport?: ForestMemoryTransport; environment?: ForestMemorySyncEnvironment } };
@@ -97,10 +97,11 @@ export function takeOverForestSession(key: string | undefined) {
 export function connectForestSession(key: string | undefined, scene: FixedWorldScene, view: View,
   timestamp: number, dusk: number, changed: Member["changed"],
   options: ForestSessionOptions = {}) {
+  if (options.isolated) { key = undefined; options = { ...options, persistence: false, sync: false }; }
   const identity = key ? `account:${key}:${forestSceneFingerprint(scene)}` : undefined;
   // Keep at most one unmounted forest, and never reuse another account's or
   // another map geometry's parked routes. Mounted views still share as before.
-  for (const [parkedIdentity, parked] of sessions) if (!parked.members.size && parkedIdentity !== identity) {
+  for (const [parkedIdentity, parked] of sessions) if (!options.isolated && !parked.members.size && parkedIdentity !== identity) {
     discardSession(parkedIdentity, parked);
   }
   let shared = identity === undefined ? undefined : sessions.get(identity);

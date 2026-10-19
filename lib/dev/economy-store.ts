@@ -5,7 +5,8 @@ import { wardrobeItems, wardrobeOwned } from "@/features/world/domain/wardrobe";
 import { createHash, randomInt } from "node:crypto";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, formatPearls, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/domain/money";
 import { marketBudgetReset, marketDailyLimit, marketDay, marketHomeBand, marketItemUnlocked, marketListingEligible, marketMinimumPrice, marketSaleFee, marketSameHomeBand, marketSlotCount } from "@/features/economy/domain/market-rules";
-import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
+import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, getDevGuestWorldAccess, lookupDevUser } from "@/lib/dev/api-store";
+import type { GuestWorld } from "@/features/people/guest-world-model";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney, getDevLegacyWardrobe, syncDevWorldWardrobe } from "@/lib/dev/world-store";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandSchema, economyResidentOrdersSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/domain/model";
@@ -95,9 +96,9 @@ function bump(value: Profile) {
   if (value.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
   value.revision++;
 }
-function receipt(value: Profile, owner: string, command: ReceiptCommand, now: number): EconomyResult | null {
+function receipt(value: Profile, owner: string, command: ReceiptCommand, now: number, scope = ""): EconomyResult | null {
   if (owner !== command.ownerPublicId) return fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите хозяйство");
-  const signature = commandSignature(command);
+  const signature = scope + commandSignature(command);
   const found = value.receipts.get(receiptKey(command));
   if (found) {
     if (found.signature !== signature) return fail("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия");
@@ -154,14 +155,14 @@ function persistItemUnlocks(owner: string, previous: EconomyState, next: Economy
   next.itemUnlockVersion = 1;
   persistEconomyItemUnlocks(next, confirmedRewards);
 }
-function commit(owner: string, value: Profile, next: EconomyState, command: ReceiptCommand, message: string, now: number): EconomyResult {
+function commit(owner: string, value: Profile, next: EconomyState, command: ReceiptCommand, message: string, now: number, scope = ""): EconomyResult {
   reconcileFishStock(next);
   persistItemUnlocks(owner, value.state, next);
   bump(value); value.state = next;
   if (!["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"].includes(command.action))
     awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
-    signature: commandSignature(command),
+    signature: scope + commandSignature(command),
     message, acceptedRevision: value.revision,
   });
   return { state: view(owner, value, now), message, acceptedRevision: value.revision, replayed: false };
@@ -319,6 +320,27 @@ function requireMarket(state: EconomyState) {
   if (!marketUnlocked(state)) fail("ECONOMY_MARKET_LOCKED", "Рынок откроется с домом уровня 2 после восстановления моста");
 }
 const compareListings = (a: Listing, b: Listing) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+
+/** No profile(), normalization, legacy conversion, showcase writes or host initialization during a visit. */
+export function getDevGuestWorldEconomy(viewer: string, target: string, sellerName: string, legacy: { homeLevel: number; workshopLevel: number }):
+  { world: Pick<GuestWorld["world"], "buildings" | "jobs">; market: GuestWorld["market"] } {
+  const saved = globalStore.__zhivDevEconomyStore;
+  const state = saved?.profiles.get(target)?.state, buyer = saved?.profiles.get(viewer)?.state;
+  const buildings = state ? { ...state.buildings } : Object.fromEntries(economyCatalog.buildings.map(building => [building.id,
+    building.id === "home" ? legacy.homeLevel : building.id === "workshop" ? legacy.workshopLevel : ["garden", "warehouse"].includes(building.id) ? 1 : 0]));
+  const reason = !buyer || !marketUnlocked(buyer) ? "buyer_locked" : !state || !marketUnlocked(state) ? "seller_locked"
+    : !marketSameHomeBand(buyer.buildings.home ?? 1, state.buildings.home ?? 1) ? "home_band" : null;
+  const listings = [...(saved?.listings.values() ?? [])].filter(listing => listing.sellerPublicId === target && listing.status === "active")
+    .sort(compareListings).slice(0, 10).map(listing => ({ id: listing.id, sellerPublicId: listing.sellerPublicId, sellerName,
+      itemId: listing.itemId, quantity: listing.quantity, totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1),
+      feeBps: listing.feeBps ?? 0, status: listing.status, createdAt: listing.createdAt, closedAt: listing.closedAt, owned: false }));
+  const jobs = (state?.jobs ?? []).map(job => ({ id: job.id, kind: job.kind, targetId: job.targetId, recipeId: job.recipeId,
+    targetLevel: job.targetLevel, startedAt: job.startedAt, finishesAt: job.finishesAt, actorId: job.actorId ?? null,
+    collection: job.collection ? { kind: job.collection.kind, seconds: job.collection.seconds,
+      startedAt: job.collection.startedAt ?? null, finishesAt: job.collection.finishesAt ?? null } : null }));
+  return { world: { buildings, jobs }, market: { listings, available: reason === null, reason } };
+}
+
 export function getDevEconomyMarket(token: string | undefined, options: { cursor?: string; limit?: number; ownerPublicId?: string } = {}, now = Date.now()): MarketView {
   const { owner, value } = profile(token, now);
   if (options.ownerPublicId && options.ownerPublicId !== owner) fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите рынок");
@@ -353,6 +375,23 @@ export function getDevEconomyMarket(token: string | undefined, options: { cursor
       slots: config.showcaseSlots, maxPerSeller: config.showcasePerSeller, refreshSeconds: config.showcaseRefreshSeconds } };
 }
 export function commandDevEconomyMarket(token: string | undefined, input: MarketCommand, now = Date.now()): EconomyResult {
+  return commandDevMarket(token, input, now);
+}
+
+/** Friend storefronts skip the random showcase only; every purchase invariant stays in the shared pipeline. */
+export function commandDevGuestWorldMarket(token: string | undefined, circleId: string, input: MarketCommand, now = Date.now()): EconomyResult {
+  const access = getDevGuestWorldAccess(token, circleId);
+  if (access.kind !== "ok") return fail(access.kind === "unauthorized" ? "UNAUTHORIZED" : "GUEST_WORLD_UNAVAILABLE",
+    "Поляна недоступна", access.kind === "unauthorized" ? 401 : 404);
+  const parsed = marketCommandSchema.safeParse(input);
+  if (!parsed.success || parsed.data.action !== "buy_listing") return fail("INVALID_ECONOMY_COMMAND", "В гостях можно только покупать товары", 400);
+  const listing = globalStore.__zhivDevEconomyStore?.listings.get(parsed.data.targetId.toLowerCase());
+  if (!listing || listing.sellerPublicId !== access.value.target.publicId)
+    return fail("GUEST_WORLD_UNAVAILABLE", "Предложение недоступно на этой поляне", 404);
+  return commandDevMarket(token, parsed.data, now, access.value.target.publicId, `friend:${circleId}:`);
+}
+
+function commandDevMarket(token: string | undefined, input: MarketCommand, now: number, friendSellerId?: string, receiptScope = ""): EconomyResult {
   const parsed = marketCommandSchema.safeParse(input);
   if (!parsed.success) return fail("INVALID_ECONOMY_COMMAND", "Некорректный запрос рынка", 400);
   const command = parsed.data;
@@ -367,7 +406,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
     if (command.quantity > economyCatalog.market.maxLotQuantity) return fail("ECONOMY_MARKET_QUANTITY", "В лоте может быть от 1 до 99 предметов", 400);
     if (command.totalPrice < command.quantity) return fail("ECONOMY_MARKET_PRICE", "Укажите цену всей партии в монетах", 400);
   }
-  const replay = receipt(value, owner, command, now);
+  const replay = receipt(value, owner, command, now, receiptScope);
   if (replay) return replay;
   if (command.action !== "cancel_listing") requireMarket(value.state);
   const next = structuredClone(value.state);
@@ -414,7 +453,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   if (listing.sellerPublicId === owner) return fail("ECONOMY_MARKET_SELF_TRADE", "Нельзя купить собственный лот");
   if (command.quantity !== listing.quantity || command.totalPrice !== listing.totalPrice) return fail("ECONOMY_MARKET_QUOTE_CHANGED", "Проверьте количество и цену лота");
   const selection = store().showcases.get(owner);
-  if (!selection || now >= selection.refreshAt || !selection.ids.includes(listing.id))
+  if (!friendSellerId && (!selection || now >= selection.refreshAt || !selection.ids.includes(listing.id)))
     return fail("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку");
   if (!marketListingEligible(listing, known))
     return fail("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока не открыт в хозяйстве или цена устарела");
@@ -447,7 +486,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   store().turnover.set(listing.sellerPublicId, { ...sellerTurnover, salesUsed: sellerTurnover.salesUsed + valueTraded });
   listing.status = "sold"; listing.closedAt = new Date(now).toISOString();
   awardDevMarketSale(listing.sellerPublicId, now);
-  return { ...commit(owner, value, next, command, "Покупка получена, монеты отправлены продавцу", now), listing: publicListing(listing, owner, token) };
+  return { ...commit(owner, value, next, command, "Покупка получена, монеты отправлены продавцу", now, receiptScope), listing: publicListing(listing, owner, token) };
 }
 
 /** Achievement reads must not initialize an economy, mint conversion grants or expose the private cast seed. */

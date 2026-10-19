@@ -220,13 +220,15 @@ test("the meal card uses saved pending or active work bonuses independently of m
   assert.doesNotMatch(mood({ economy: { snapshot: null } }).markup, /Бонус от еды/);
 });
 
-test("friends tab receives parent data and navigation without claiming friend profiles are available", () => {
+test("friends tab receives parent data, visit navigation and friend management", () => {
   const friends = { data: null, loading: true, error: null, onRefresh() {} };
   const onOpenPeople = () => {};
-  const view = profile({ activeTab: "friends", friends, onOpenPeople });
+  const onVisitFriend = () => {};
+  const view = profile({ activeTab: "friends", friends, onOpenPeople, onVisitFriend });
   const component = view.elements.find(element => element.type?.name === "WorldProfileFriends");
   assert.equal(component.props.friends, friends);
   assert.equal(component.props.onOpenPeople, onOpenPeople);
+  assert.equal(component.props.onVisitFriend, onVisitFriend);
   assert.match(view.markup, /Загружаем/);
   assert.doesNotMatch(view.markup, /Достижения Мохлика|Бонус от еды/);
 });

@@ -1,4 +1,5 @@
 "use client";
+import type { EconomySceneGarden } from "@/features/world/state/economy/economy-garden-state";
 import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
 import type { WorldResidentId } from "@/features/world/characters/world-characters-model";
 import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
@@ -35,7 +36,7 @@ import { ForestSpeechAnnouncements } from "@/features/world/characters/social/fo
 import { useTapHintPreference } from "@/features/world/state/use-tap-hint-preferences";
 import styles from "@/features/world/world.module.css";
 
-type Props = { tutorialActive?: boolean; suspended?: boolean; hideJourneyStatus?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; economyResidents?: EconomySceneResidents | null; residentArrival?: ResidentArrivalPresentation; merchantArrival?: ResidentArrivalPresentation; lopukhArrival?: ResidentArrivalPresentation; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
+type Props = { readOnly?: boolean; economyGarden?: EconomySceneGarden | null; tutorialActive?: boolean; suspended?: boolean; hideJourneyStatus?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; economyResidents?: EconomySceneResidents | null; residentArrival?: ResidentArrivalPresentation; merchantArrival?: ResidentArrivalPresentation; lopukhArrival?: ResidentArrivalPresentation; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
   constructionEconomy?: EconomyController; onOpenConstruction?: (stationId: string) => void; onOpenProduction?: (stationId: string) => void; hideConstructionStatus?: boolean;
   selectedObjectId?: string | null; onObjectSelection?: (selection: MapObjectSelection | null) => void;
   onResident?: (id: WorldResidentId) => void;
@@ -43,9 +44,10 @@ type Props = { tutorialActive?: boolean; suspended?: boolean; hideJourneyStatus?
   openObjectRequest?: { id: number; place: WorldPlace };
   guidePlace?: MapObjectPlace | null;
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ tutorialActive = false, suspended = false, hideJourneyStatus = false, constructionEconomy, onOpenConstruction, onOpenProduction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, onReady, selectedObjectId, onObjectSelection, openObjectRequest, guidePlace, topHud, bottomHud }: Props) {
+export function WorldScene({ readOnly = false, economyGarden, tutorialActive = false, suspended = false, hideJourneyStatus = false, constructionEconomy, onOpenConstruction, onOpenProduction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, onReady, selectedObjectId, onObjectSelection, openObjectRequest, guidePlace, topHud, bottomHud }: Props) {
   const { showTapHints } = useTapHintPreference(owner);
-  const garden = useGardenCollection();
+  const collection = useGardenCollection();
+  const garden = readOnly ? null : collection;
   const canvas = useRef<HTMLCanvasElement>(null), speechCanvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
   const time = useRef(now);
@@ -55,7 +57,7 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   useEffect(() => { readyCallback.current = onReady; }, [onReady]);
   const { lampOn, dusk } = habitatLighting(now, timeZone);
   const localHour = habitatLocalHour(now, timeZone);
-  const latest = useRef({ tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden });
+  const latest = useRef({ readOnly, economyGarden, tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden });
   const interactions = useRef({ onPlace, onResident });
   useEffect(() => { interactions.current = { onPlace, onResident }; }, [onPlace, onResident]);
   const selection = useRef({ selectedObjectId, onObjectSelection });
@@ -102,10 +104,10 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   }, [constructionActive, productionActive, completions, gains]);
   const loader = useRef<ReturnType<typeof createSceneLoader<Awaited<ReturnType<typeof createMapEngine>>>> | null>(null);
   useEffect(() => {
-    latest.current = { tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden };
+    latest.current = { readOnly, economyGarden, tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden };
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    engine.current?.update({ tutorialActive, lampOn, dusk, localHour, paused: false, backgrounded: suspended, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
-  }, [tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden]);
+    engine.current?.update({ readOnly, tutorialActive, lampOn, dusk, localHour, paused: false, backgrounded: suspended, view: "world", reducedMotion: media.matches, worldState: state, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, economyGarden: readOnly ? economyGarden : garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent, worldGifts: gifts, items, bestStreakDays, presenceKey: `zhiv:mochlik:presence:${owner}` });
+  }, [readOnly, economyGarden, tutorialActive, state, gifts, items, owner, bestStreakDays, lampOn, dusk, localHour, suspended, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, lopukhArrival, garden]);
   useEffect(() => {
     // Report after the engine options update, also when a ready portal reopens
     // before its exit animation unmounts the canvas. The circle then yields.
@@ -123,8 +125,8 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   useEffect(() => {
     let disposed = false;
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const options = (): SceneOptions => ({ tutorialActive: latest.current.tutorialActive, serverNow: time.current, lampOn: latest.current.lampOn, dusk: latest.current.dusk, localHour: latest.current.localHour, paused: false, backgrounded: latest.current.suspended, view: "world", reducedMotion: media.matches,
-      worldState: latest.current.state, economyJourney: latest.current.economyJourney, cancelledExplorations: latest.current.cancelledExplorations, economyBuildings: latest.current.economyBuildings, economyProduction: latest.current.economyProduction, economyConstruction: latest.current.economyConstruction, economyResidents: latest.current.economyResidents, residentArrival: latest.current.residentArrival, merchantArrival: latest.current.merchantArrival, lopukhArrival: latest.current.lopukhArrival, economyGarden: latest.current.garden?.crop, gardenHarvestRequest: latest.current.garden?.request, onGardenHarvestEvent: latest.current.garden?.sceneEvent, worldGifts: latest.current.gifts, items: latest.current.items,
+    const options = (): SceneOptions => ({ readOnly: latest.current.readOnly, tutorialActive: latest.current.tutorialActive, serverNow: time.current, lampOn: latest.current.lampOn, dusk: latest.current.dusk, localHour: latest.current.localHour, paused: false, backgrounded: latest.current.suspended, view: "world", reducedMotion: media.matches,
+      worldState: latest.current.state, economyJourney: latest.current.economyJourney, cancelledExplorations: latest.current.cancelledExplorations, economyBuildings: latest.current.economyBuildings, economyProduction: latest.current.economyProduction, economyConstruction: latest.current.economyConstruction, economyResidents: latest.current.economyResidents, residentArrival: latest.current.residentArrival, merchantArrival: latest.current.merchantArrival, lopukhArrival: latest.current.lopukhArrival, economyGarden: latest.current.readOnly ? latest.current.economyGarden : latest.current.garden?.crop, gardenHarvestRequest: latest.current.garden?.request, onGardenHarvestEvent: latest.current.garden?.sceneEvent, worldGifts: latest.current.gifts, items: latest.current.items,
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
     const loading = createSceneLoader<Awaited<ReturnType<typeof createMapEngine>>>({
       timeoutMs: WORLD_SCENE_TIMEOUT_MS,
@@ -164,7 +166,7 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
       disposed = true; unbind(); loading.dispose(); media.removeEventListener("change", change);
       if (loader.current === loading) loader.current = null;
     };
-  }, [owner, topHud, bottomHud, applyObjectRequest, anchorStore]);
+  }, [owner, readOnly, topHud, bottomHud, applyObjectRequest, anchorStore]);
 
   useEffect(() => {
     const taps = Math.max(0, wakeSignal - previousWake.current); previousWake.current = wakeSignal;
@@ -176,7 +178,7 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
   return <div ref={root} className={styles.scene} data-ready={ready}>
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика." />
     <canvas ref={speechCanvas} className={styles.speechCanvas} aria-hidden="true" />
-    <ForestSpeechAnnouncements key={`speech:${owner}`} owner={owner} />
+    {!readOnly && <ForestSpeechAnnouncements key={`speech:${owner}`} owner={owner} />}
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => loader.current?.retry()}>Повторить загрузку</button>}</div>}
     {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} data-tap-hints={showTapHints} hidden={!ready} role="group" aria-label="Объекты на карте">
       {objects.map(({ id, place, label }) => <button key={id} data-map-anchor data-object-id={id} data-kind={place}
@@ -187,7 +189,7 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
       <button data-map-anchor data-kind="cave" data-x={MAP_PLACES.cave.marker.x} data-y={MAP_PLACES.cave.marker.y} onClick={() => onPlace("cave")} aria-label="Войти в пещеру" title="Пещера" />
       <button data-map-anchor data-kind="fishing" data-x={MAP_PLACES.fishing.marker.x} data-y={MAP_PLACES.fishing.marker.y} onClick={() => onPlace("fishing")} aria-label="Открыть рыбалку" title="Рыбалка" />
     </div>}
-    <MapFeedback key={`feedback:${owner}`} anchorStore={anchorStore} economy={constructionEconomy} onOpen={onOpenConstruction} onOpenProduction={onOpenProduction} ready={ready} hidden={hideConstructionStatus} />
+    <MapFeedback key={`feedback:${owner}`} anchorStore={anchorStore} economy={readOnly ? undefined : constructionEconomy} onOpen={onOpenConstruction} onOpenProduction={onOpenProduction} ready={ready} hidden={hideConstructionStatus} />
     {!hideJourneyStatus && economyJourney && <button className={styles.away} onClick={() => onPlace("cave")} aria-label="Открыть исследование Мохлика">
       <span>{economyJourney.label ?? "Исследование"} · {now >= Date.parse(economyJourney.finishesAt) ? "Мохлик вернулся, забрать находки" : `${Math.max(1, Math.ceil((Date.parse(economyJourney.finishesAt) - now) / 60000))} мин до возвращения`}</span>
     </button>}

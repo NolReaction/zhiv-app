@@ -390,15 +390,18 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
   assert.match(answer("rewards"), /пропуск не сбрасывает шаг/);
 });
 
-test("profile guidance distinguishes mood, food, friends and future profile links", () => {
+test("profile guidance distinguishes mood, food, friend visits and private resources", () => {
   assert.match(answer("level"), /«Профиль».*«Друзья».*шестерёнка настроек/);
   assert.match(answer("level"), /Как Мохлик\?/);
   assert.doesNotMatch(answer("level"), /«Настроение»/);
   assert.match(answer("mochlik-life"), /офлайн силы не расходуются/);
   assert.match(answer("mochlik-life"), /Настроение не заменяет сытость/);
-  assert.match(answer("friend-profile"), /Карточки новой вкладки пока не открывают чужой профиль/);
-  assert.match(answer("friend-profile"), /если разрешена видимость/);
-  assert.match(answer("friend-profile"), /Кошелёк, запасы и задания остаются личными/);
+  assert.match(answer("friend-profile"), /«В гости»/);
+  assert.match(answer("friend-profile"), /его одежда, уровни построек и текущие работы/);
+  assert.match(answer("friend-profile"), /разрешённой видимостью друга/);
+  assert.match(answer("friend-profile"), /Кошелёк, кладовая и будущие награды друга остаются личными/);
+  assert.match(answer("friend-profile"), /Улучшать его постройки и собирать его урожай нельзя/);
+  assert.match(answer("friend-profile"), /«Лавка игрока»/);
   assert.match(answer("future-world"), /ещё готовятся/);
   assert.doesNotMatch(answer("friend-profile"), /онлайн|последний вход|чужие запасы/);
 });
