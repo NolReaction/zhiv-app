@@ -2,7 +2,7 @@
 
 ## Лавка, продажи на карте и экономика v12
 
-2026-10-19. Продолжение 020585a (ручная выручка рынка, V63). Дима попросил открывать свою лавку, уведомлять о продаже над рынком, продавать реликвии за жемчуг, убрать четыре страницы коллекции с восьмичасовой работы, менять ассортимент Листохвоста и покупать припасы поштучно. Публикация разрешена; master, earth, деплой и production DB вне задачи. Изначально дерево чистое.
+2026-10-19. Продолжение 020585a (ручная выручка рынка, V63). Дима попросил открывать свою лавку, уведомлять о продаже над рынком, продавать реликвии за жемчуг, убрать четыре страницы коллекции с восьмичасовой работы, менять ассортимент Листохвоста и покупать припасы поштучно. Основные56файлов опубликованы65a17e4. Публикация разрешена; master, earth, деплой и production DB вне задачи. Изначально дерево чистое.
 
 - Рынок открывается «Моя лавка». Над крышей плашка «Продано» с количеством незабранных продаж, нажатие ведёт к своей лавке. Использует существующий MapFeedback/anchorStore, не тяжёлую проекцию карты. Только owned sold pending из подтверждённого своего market; фоновые запросы раз30s только active/visible/online, cleanup при hidden/suspended/account/unmount; гостям нет.
 - Каталог v12. Листохвост: два предмета одежды, по одной удочке/крючку/наживке, три припаса, один или два вида реликвий. Персональный hash-ring + дневное смещение, одинаковое TS/Kotlin; соседняя поставка меняет пары одежды и тройки припасов. Покупка/owned не перебрасывает выбор. Сутки00:00UTC/03:00МСК.
@@ -17,10 +17,12 @@
 - Collection actualDEV/UI/achievements/actor43/43, старые/new jobs/cancel/replay/storage; root51/51 help/currency/mining, guard audit-economy-progression теперь12. Trader existing119/119, новый v2domain13/13, новыйUI6/6; независимые наборы с пересечениями, не суммировать вслепую. Логи /tmp/zhiv-trader-*.log, /tmp/zhiv-collection-core-final.log, /tmp/zhiv-leaftail-delivery-v2.log.
 - Full typecheck, ESLint, финальный scoped lint, architecture880modules и world/audio check прошли. Финальные Sites и VPS builds прошли последовательно после всех правок. У VPS пришлось очистить повреждённый generated Turbopack cache (invalid digit в persistence), после этого сборка exit0. Все исходники frozen. Tracked securityscan findings0, diffcheckgreen.
 - Trader actualRadixDialog +useEconomy+realDEV browser13/13green:qty3/debit/stock, relic150visible/raw300, doubletap, lostACK/reload, owned, owner/dayrotation, обаwallet,3shopbenchmarks.320/390/1280 безoverflow/JSerrors, финальные3скриншота просмотрены; CSSкнопки исправлен. Браузеры/серверы остановлены. Лог /tmp/zhiv-trader-browser-qa/run-dialog-final.log. Nativeвсеmain/testKotlin скомпилированы;40unitpassed,0failures/errors,9PGskippedлокальнобезDocker. Лог /tmp/zhiv-trader-v12-native-verified.log. Исходники заморожены.
-- CI market-sales расширен: старые manualclaims/Marketrules + JdbcLeaftailV12IntegrationTest, JdbcCollectionV12IntegrationTest, LeaftailShop/Assortment/BookProgression/FourthStage. Нужен реальный PG в GitHub после публикации; local skipped не passed.
+- CI market-sales расширен: старые manualclaims/Marketrules + JdbcLeaftailV12IntegrationTest, JdbcCollectionV12IntegrationTest, LeaftailShop/Assortment/BookProgression/FourthStage. Реальная проверка65a17e4 прошла66/66,0failures/errors/skips:21PostgreSQL +45units. НовыеPGtrader8/8иbook1/1, старыеmarketclaims12/12. Guard подтвердил все8suite. Ссылка: https://github.com/NolReaction/zhiv-app/actions/runs/39249372385/job/118049098883 .
 
-## Следующий шаг
+## Публикация и завершение
 
-Все локальные проверки и freeze готовы. Опубликовать обычным коммитом work/0.7.1 через Git Data (text batches, expectedparent, forcefalse, полное совпадение tree SHA). Затем дождаться focused CI с реальной PostgreSQL и исправить новые ошибки, если есть. Не запускать deploy/master/reset.
+Код65a17e4 опубликован обычным коммитом work/0.7.1 через Git Data с expectedparent/forcefalse; весь tree SHA совпал с локальным21f8ed98c5b91cbb70639bee58c89af3bcc041bc. Рабочее дерево после публикации было чистое. Затем найдены два оставшихся current-version asserts11→12: tests/economy-collection.test.mjs (10/10) и EconomyProgressionV10Test.kt (3/3); legacyfixtures не меняли. Финальный checkpoint включает только эти две проверки и этот документ; весь игровой код совпадает с проверенным65a17e4. Повторять сборки ради этих assert/doc не требуется.
+
+Все запрошенные изменения готовы и проверены. Web/API обновлять вместе без reset; миграция схемы остаётсяV63. После новых поштучных покупок старый API с purchased<=1 не читает новый профиль: откат требует совместимого обработчика либо согласованной резервной копии. Deploy/master/earth/productionDB не тронуты.
 
 Предыдущие17проверок ручной выручки были зелёные на8f610c1; общий старый CI имеет5посторонних mail/reset/fishing failures и history-size-limit art/earth/models/eiffel-tower/source.glb. Earth не менять. Подробности предыдущего этапа: 020585a:WORK_STATE.md.
