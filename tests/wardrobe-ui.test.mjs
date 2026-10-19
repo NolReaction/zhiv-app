@@ -70,6 +70,20 @@ test("travel collection is hidden from general sales and becomes equipable in ow
   assert.deepEqual(h.calls, [], "equipping does not issue a second purchase");
 });
 
+test("cash costumes stay out of the coin shop and confirmed special pieces appear in owned wardrobe", () => {
+  const h = harness();
+  let view = shop(h);
+  for (const name of ["Звёздная мантия", "Колпак звездочёта", "Угольный шарф", "Шляпа первопроходца"])
+    assert.ok(!view.html.includes(name));
+  h.world.snapshot.state.inventory.push("premium_stargazer_hat");
+  h.economy.snapshot.wardrobe.push("premium_stargazer_hat");
+  button(view, "Мои вещи").props.onClick(); view = h.render();
+  button(view, "Колпак звездочёта").props.onClick(); view = h.render();
+  button(view, "Надеть").props.onClick();
+  assert.deepEqual(h.equips, [["equip", "premium_stargazer_hat"]]);
+  assert.deepEqual(h.calls, [], "special wardrobe does not have a fake purchase path");
+});
+
 test("purchase confirms the currency quote once and waits for authoritative wardrobe before equipping", () => {
   const h = harness(); let view = shop(h);
   button(view, "Купить").props.onClick(); assert.deepEqual(h.calls, []); view = h.render();

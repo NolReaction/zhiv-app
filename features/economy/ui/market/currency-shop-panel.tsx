@@ -2,16 +2,18 @@
 
 import { PromoCodeForm } from "@/features/promo/promo-code-form";
 import { useId, useRef, useState } from "react";
-import { ArrowRight, Coins, Gem, House, Sprout } from "lucide-react";
+import { ArrowRight, Coins, Gem, Gift, House, Shirt, Sprout } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { currencyShopDevelopment, currencyShopGoldOffers, currencyShopPearlBenchmarks, HOME_BONUS_PERCENT, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { formatPearls } from "@/features/economy/domain/money";
+import { CostumeOffers, StarterOffer } from "./currency-shop-offers";
 import styles from "./currency-shop-panel.module.css";
 
-const pages = [{ id: "pearls", label: "Жемчуг", icon: Gem }, { id: "gold", label: "Золото", icon: Coins }] as const;
+const pages = [{ id: "starters", label: "Наборы", icon: Gift }, { id: "costumes", label: "Костюмы", icon: Shirt },
+  { id: "pearls", label: "Жемчуг", icon: Gem }, { id: "gold", label: "Золото", icon: Coins }] as const;
 export type CurrencyShopPage = typeof pages[number]["id"];
 const number = (value: number) => value.toLocaleString("ru-RU");
 
@@ -22,7 +24,7 @@ function CurrencyPile({ kind, tier }: { kind: "pearls" | "coins"; tier: number }
 }
 
 /** Purchases remain a preview; the separate promo form redeems a server-confirmed gift. */
-export function CurrencyShopPanel({ state, onRedeemed, initialPage = "pearls" }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown>; initialPage?: CurrencyShopPage }) {
+export function CurrencyShopPanel({ state, onRedeemed, initialPage = "starters" }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown>; initialPage?: CurrencyShopPage }) {
   const [page, setPage] = useState<CurrencyShopPage>(initialPage);
   const id = useId(), tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const development = state ? currencyShopDevelopment(state) : null;
@@ -31,12 +33,11 @@ export function CurrencyShopPanel({ state, onRedeemed, initialPage = "pearls" }:
     playUiCue(getAudioRuntime(), "ui.tab");
     setPage(next);
   }
-  return <section className={styles.shop} aria-label="Магазин валют">
+  return <section className={styles.shop} aria-label="Лесная лавка">
     <header className={styles.intro}>
-      <span className={styles.seal}><Gem size={27} aria-hidden="true" /></span>
-      <div><span className={styles.eyebrow}>Скоро в лесу</span><h2>Маленькие сокровища</h2><p>Жемчуг и золото для вашей полянки</p></div>
+      <span className={styles.seal}><Gift size={27} aria-hidden="true" /></span>
+      <div><span className={styles.eyebrow}>Для вашей полянки</span><h2>Лесная лавка</h2><p>Особые образы и маленькие сокровища</p></div>
     </header>
-    <PromoCodeForm key={state?.ownerPublicId ?? "loading"} state={state} onRedeemed={onRedeemed} />
     <div className={styles.tabs} role="tablist" aria-label="Разделы магазина">{pages.map((entry, index) => <button
       key={entry.id} type="button" ref={node => { tabs.current[index] = node; }} id={`${id}-${entry.id}`} role="tab"
       aria-selected={page === entry.id} aria-controls={`${id}-page`} tabIndex={page === entry.id ? 0 : -1}
@@ -51,15 +52,17 @@ export function CurrencyShopPanel({ state, onRedeemed, initialPage = "pearls" }:
       }}><entry.icon size={18} aria-hidden="true" />{entry.label}</button>)}</div>
     <p className={styles.preview} id={`${id}-preview`}>Витрина готовится к открытию. Покупки и обмен пока недоступны.</p>
     <div className={styles.page} role="tabpanel" id={`${id}-page`} aria-labelledby={`${id}-${page}`} tabIndex={0}>
+      {page === "starters" && <StarterOffer state={state} previewId={`${id}-preview`} />}
+      {page === "costumes" && <CostumeOffers previewId={`${id}-preview`} />}
       {page === "pearls" ? <>
         <div className={styles.heading}><h3>Жемчуг</h3><p>Для ускорений, новых слотов и особенных вещей</p></div>
         {state && <div className={styles.benchmarks} aria-label="На что потратить жемчуг"><h4>Цены на полянке</h4><ul>{currencyShopPearlBenchmarks(state.catalog).map(example => <li key={example.id}><ItemIcon itemId={example.itemId} size={19} /><span>{example.label}</span><strong><ItemIcon itemId="pearls" size={15} />{formatPearls(example.pearls)}</strong></li>)}</ul></div>}
         <div className={styles.packages}>{PEARL_SHOP_PACKAGES.map((pack, index) => <article className={styles.package} key={pack.id} data-shop-offer={`pearls-${pack.id}`}>
           <CurrencyPile kind="pearls" tier={index} /><h4>{pack.name}</h4>
           <strong className={styles.amount}><ItemIcon itemId="pearls" size={21} />{formatPearls(pack.pearls)}</strong>
-          <button type="button" disabled aria-describedby={`${id}-preview`}>Скоро</button>
+          <button type="button" disabled aria-describedby={`${id}-preview`}><span>{number(pack.priceRub)} ₽</span><small>Скоро</small></button>
         </article>)}</div>
-      </> : <>
+      </> : page === "gold" ? <>
         <div className={styles.heading}><h3>Золото за жемчуг</h3><p>Чем больше полянка, тем щедрее обмен</p></div>
         {state && development ? <>
           <div className={styles.development}>
@@ -76,7 +79,8 @@ export function CurrencyShopPanel({ state, onRedeemed, initialPage = "pearls" }:
             <button type="button" disabled aria-describedby={`${id}-preview`}>Обмен скоро</button>
           </article>)}</div>
         </> : <p className={styles.loading} role="status">Загружаем полянку, чтобы рассчитать ваш бонус…</p>}
-      </>}
+      </> : null}
     </div>
+    <div className={styles.promo}><PromoCodeForm key={state?.ownerPublicId ?? "loading"} state={state} onRedeemed={onRedeemed} /></div>
   </section>;
 }

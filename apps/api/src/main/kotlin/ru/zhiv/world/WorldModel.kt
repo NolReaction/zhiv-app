@@ -40,7 +40,7 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
 @Serializable data class WorldPurchase(val currency: String, val amount: Long) {
     init { require(currency in setOf("coins", "pearls") && amount > 0 && amount % (if (currency == "pearls") 50 else 10) == 0L) }
 }
-@Serializable data class WorldItem(val id: String, val name: String, val slot: String, val color: String, val sparks: Long, val starter: Boolean, val purchase: WorldPurchase? = null)
+@Serializable data class WorldItem(val id: String, val name: String, val slot: String, val color: String, val sparks: Long, val starter: Boolean, val purchase: WorldPurchase? = null, val premium: Boolean = false)
 @Serializable data class WorldFind(val id: String, val name: String, val description: String, val symbol: String, val group: String = "forest")
 @Serializable data class WorldRoute(val id: String, val name: String, val description: String, val seconds: Long, val houseLevel: Int,
     val once: Boolean, val sparks: Long, val wood: Long, val stone: Long, val finds: List<String>)
@@ -80,7 +80,7 @@ object WorldRules {
             spend(state,cost).copy(workshopLevel=cost.level) to "Мастерская стала уютнее и просторнее"
         }
         "craft" -> {
-            val item = catalog.items.find { it.id == command.target && !it.starter && it.sparks > 0 } ?: fail("WORLD_ITEM", "Этот предмет нельзя изготовить")
+            val item = catalog.items.find { it.id == command.target && !it.premium && !it.starter && it.sparks > 0 } ?: fail("WORLD_ITEM", "Этот предмет нельзя изготовить")
             if (!state.workshop) fail("WORLD_WORKSHOP_REQUIRED", "Сначала постройте мастерскую")
             if (item.id in state.inventory) fail("WORLD_ITEM_OWNED", "Предмет уже в рюкзаке")
             spend(state, WorldCost(item.sparks)).copy(inventory=(state.inventory+item.id).sorted()) to "${item.name} теперь в рюкзаке"

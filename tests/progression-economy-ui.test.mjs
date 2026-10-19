@@ -401,8 +401,19 @@ test("branch shop shows the disabled preview and current visible amounts alongsi
   assert.ok(table);
   assert.equal(elements(table).filter(node => node.type === "tbody").flatMap(node => elements(node).filter(entry => entry.type === "tr")).length, 5);
   const value = text(renderToStaticMarkup(tree));
-  assert.match(value, /Покупка жемчуга и обмен на монеты пока недоступны/);
-  assert.match(value, /Горсть жемчуга: 500 жемчужин/);
+  assert.match(value, /Это предпросмотр: покупки и обмен на монеты пока недоступны/);
+  assert.match(value, /Горсть жемчуга: 100 жемчужин · 99 ₽/);
+  assert.match(value, /Наборы по уровням дома/);
+  assert.match(value, /текущего завершённого уровня дома/);
+  assert.match(value, /одну покупку на аккаунт/);
+  assert.match(value, /старый не заменяется и не улучшается бесплатно/);
+  for (const pack of data.currencyShop.starterPacks) {
+    assert.ok(value.includes(`Дом ${pack.homeLevel} · ${pack.name}`));
+    assert.ok(value.includes(`${pack.priceRub} ₽ · ${pack.rewards.pearls} жемчужин`));
+  }
+  assert.match(value, /Особые костюмы/);
+  assert.match(value, /без бонусов к скорости или добыче/);
+  for (const offer of data.currencyShop.costumeOffers) assert.ok(value.includes(`${offer.name}: ${offer.priceRub} ₽`));
   assert.match(value, /Максимум: 8\s?500 монет за 100 жемчужин/);
   const details = text(renderToStaticMarkup(harness(ItemDetails, { item: item("strawberries"), home: 0, onSelect() {} }).render()));
   assert.match(details, /Сначала получить: Малиновый компот ×1/);

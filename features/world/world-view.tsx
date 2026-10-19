@@ -82,7 +82,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const sectionsReady = Boolean(open && economy.snapshot && onboarding.loaded && observation?.memory.sync?.mode !== "other-device");
   const mainCourseActive = onboarding.loaded && !onboarding.isPaused && (!onboarding.progress || onboarding.progress.status === "started");
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [shopPage, setShopPage] = useState<CurrencyShopPage>("pearls");
+  const [shopPage, setShopPage] = useState<CurrencyShopPage>("starters");
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const marketOpen = panel === "economy" && (economyTab === "market" || economyTab === "barter");
   const marketSales = useWorldMarketSales(economy, ownerPublicId, open && !suspended && !marketOpen);
@@ -387,6 +387,11 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     panelReturn.current = trigger;
     panelReturnOwner.current = ownerPublicId;
   };
+  const openStore = () => {
+    if (economy.snapshot?.ownerPublicId !== ownerPublicId) return;
+    setShopPage("starters");
+    openPanel("shop");
+  };
   const openContextHelp = (context?: WorldHelpContext, topicId?: string) => {
     setHelpEntry(value => ({ context, topicId, request: value.request + 1 }));
     if (quickUpgrade) { navigatingUpgrade.current = true; setQuickUpgrade(null); }
@@ -615,6 +620,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
             <Mail size={18} aria-hidden="true" /><span className={styles.moreLabel}>Почта<small>{mailUnread > 0 ? `Непрочитанных: ${mailUnread}` : "Письма автора и события"}</small></span></button>}
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" /><span className={styles.moreLabel}>Гардероб<small>Одежда и оттенки мха</small></span></button>
+          <button type="button" data-world-store-trigger aria-haspopup="dialog" disabled={economy.snapshot?.ownerPublicId !== ownerPublicId} onClick={openStore}><ShoppingBag size={18} aria-hidden="true" /><span className={styles.moreLabel}>Магазин<small>Наборы и особые костюмы</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" /><span className={styles.moreLabel}>Коллекции<small>Книга личных находок</small></span></button>
           {state.journeys.length > 0 && <button type="button" aria-haspopup="dialog" onClick={() => openPanel("journeys")}><Compass size={18} aria-hidden="true" /><span className={styles.moreLabel}>Старые походы<small>Забрать прежние награды</small></span></button>}
         </div>}
@@ -714,7 +720,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
           <DialogTitle><SheetIcon size={20} aria-hidden="true" />{panel === "help" ? "Справка по игре" : panel === "orders" ? "Журнал заказов" : panel === "economy" ? economyTab === "market" ? "Рынок игроков" : economyTab === "buildings" ? "Развитие хозяйства" : economyTab === "production" ? "Производство" : "Хозяйство" : panel === "shop" ? "Магазин" : panel === "customize" ? "Украшения" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Книга находок" : "Путешествия"}</DialogTitle>
           <button type="button" onClick={() => setPanel(null)} aria-label={panel === "orders" ? "Закрыть журнал заказов" : "Закрыть панель"}><X size={21} aria-hidden="true" /></button>
         </div>
-        <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите короткий ответ через поиск или выберите раздел." : panel === "orders" ? "Просьбы жителей и путь хозяйства. Проверьте припасы и награду, затем отдайте выбранный заказ." : panel === "economy" && economyTab === "market" ? "Объявления других игроков и ваш прилавок. Покупка и продажа товаров между игроками." : panel === "shop" ? "Предварительная витрина жемчуга и золота. Покупки и обмен пока недоступны." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
+        <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите короткий ответ через поиск или выберите раздел." : panel === "orders" ? "Просьбы жителей и путь хозяйства. Проверьте припасы и награду, затем отдайте выбранный заказ." : panel === "economy" && economyTab === "market" ? "Объявления других игроков и ваш прилавок. Покупка и продажа товаров между игроками." : panel === "shop" ? "Наборы для текущего уровня дома, особые костюмы, жемчуг и золото. Покупки и обмен пока недоступны." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
         {panel === "orders" && <div data-guide-coach-slot />}
         {open && panel === "orders" && <SectionGuide key={`${ownerPublicId}:orders`} owner={ownerPublicId} section="orders" enabled={sectionsReady && !mainCourseActive} targetRoot={panelRoot} />}
         {open && panel === "economy" && economyTab === "market" && <SectionGuide key={`${ownerPublicId}:market`} owner={ownerPublicId} section="market" enabled={sectionsReady && playerMarketUnlocked} targetRoot={panelRoot} />}

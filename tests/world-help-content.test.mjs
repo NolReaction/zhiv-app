@@ -248,13 +248,27 @@ test("food guidance names the choice tile and makes spending an explicit second 
   assert.match(answer("journeys"), /У начатой работы показаны оставшееся время и находки/);
 });
 
-test("premium shop guidance uses wallet currency buttons while keeping checkout unavailable", () => {
+test("premium shop guidance offers stage packs and costume previews while keeping checkout unavailable", () => {
   assert.match(answer("currency-shop"), /«\+» рядом с монетами.*«Золото».*рядом с жемчугом - «Жемчуг»/);
-  assert.match(answer("currency-shop"), /Витрина находится у кошелька, а не в меню «Ещё»/);
-  assert.match(answer("currency-shop"), /вверху магазина нажмите «Ввести промокод»/);
+  assert.match(answer("currency-shop"), /«Ещё» → «Магазин» открывает наборы/);
+  assert.match(answer("currency-shop"), /внизу магазина нажмите «Ввести промокод»/);
   assert.match(answer("currency-shop"), /Покупка за реальные деньги и обмен жемчуга на золото пока недоступны/);
   assert.match(answer("currency-shop-exchange"), /«\+» рядом с монетами.*вкладку «Золото». Обмен пока недоступен/);
-  assert.doesNotMatch(answer("currency-shop"), /«Ещё» → «Магазин»/);
+  const starters = answer("currency-shop-starters");
+  assert.match(starters, /текущего завершённого уровня дома/);
+  assert.match(starters, /149 ₽ \/ 299 ₽ \/ 399 ₽ \/ 499 ₽ \/ 599 ₽/);
+  assert.match(starters, /Прошлый набор.*не улучшается бесплатно.*больше не предлагается/);
+  assert.match(starters, /одну покупку на аккаунт для своего уровня/);
+  assert.match(starters, /не открывает рецепты.*не завершает постройки.*не пропускает проектные поставки/);
+  assert.match(starters, /предпросмотр.*получить его содержимое нельзя/);
+  const costumes = answer("currency-shop-costumes");
+  for (const name of ["Первопроходец", "Звездочёт", "Хранитель огня"]) assert.ok(costumes.includes(name));
+  assert.match(costumes, /Примерка не меняет сохранённую одежду/);
+  assert.match(costumes, /без бонусов к добыче, скорости или строительству/);
+  assert.match(costumes, /покупка и выдача костюма пока недоступны/);
+  for (const [query, expected] of [["стартер пакет", "currency-shop-starters"], ["донат костюм", "currency-shop-costumes"]]) {
+    assert.equal(searchWorldHelp(topics, query)[0]?.id, expected, query);
+  }
 });
 
 test("food, building speed and orders are distinct and use current catalog numbers", () => {

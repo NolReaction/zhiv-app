@@ -101,7 +101,7 @@ jobs:
         run: npm run test:engine
 
   market-sales:
-    name: Markets, trader and collections
+    name: Markets, trader, collections and costumes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -131,7 +131,10 @@ jobs:
             --tests ru.zhiv.economy.EconomyLeaftailShopTest \
             --tests ru.zhiv.economy.EconomyLeaftailAssortmentTest \
             --tests ru.zhiv.economy.EconomyBookProgressionTest \
-            --tests ru.zhiv.economy.EconomyFourthStageTest
+            --tests ru.zhiv.economy.EconomyFourthStageTest \
+            --tests ru.zhiv.world.WorldRulesTest \
+            --tests ru.zhiv.economy.EconomyWardrobeTest \
+            --tests ru.zhiv.db.JdbcPremiumCostumesIntegrationTest
 
       - name: Require PostgreSQL and all focused suites
         if: always()
@@ -139,7 +142,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest'):
+          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest', 'ru.zhiv.world.WorldRulesTest', 'ru.zhiv.economy.EconomyWardrobeTest', 'ru.zhiv.db.JdbcPremiumCostumesIntegrationTest'):
               path = Path('apps/api/build/test-results/test') / f'TEST-{name}.xml'
               report = ET.parse(path).getroot()
               count = int(report.get('tests', '0'))
@@ -165,6 +168,9 @@ jobs:
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailAssortmentTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyBookProgressionTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyFourthStageTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.world.WorldRulesTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyWardrobeTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcPremiumCostumesIntegrationTest.xml
           retention-days: 7
           if-no-files-found: error
 

@@ -3,6 +3,7 @@ import { economyLocalSellPrice } from "@/features/economy/domain/local-sale";
 import { pearlDisplayAmount } from "@/features/economy/domain/money";
 import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
 import { currencyShopGoldOffers, GOLD_SHOP_PACKAGES, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
+import { storefrontCatalog } from "@/features/economy/domain/storefront";
 import { VISIBLE_GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
 import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
@@ -388,6 +389,9 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
           pearls: pearlDisplayAmount(constructionTimePearlPrice(seconds, catalog.constructionSpeedup)) })) } },
     currencyShop: { preview: true,
       pearlPackages: PEARL_SHOP_PACKAGES.map(pack => ({ ...pack, pearls: pearlDisplayAmount(pack.pearls) })),
+      starterPacks: storefrontCatalog.starterPacks.map(pack => ({ ...pack,
+        rewards: { ...pack.rewards, pearls: pearlDisplayAmount(pack.rewards.pearls), items: { ...pack.rewards.items } } })),
+      costumeOffers: storefrontCatalog.costumeOffers.map(offer => ({ ...offer })),
       goldPrices: GOLD_SHOP_PACKAGES.map(pack => pearlDisplayAmount(pack.pearls)),
       productionBonusPercent: MAX_BUILDING_BONUS_PERCENT,
       goldByHome: (catalog.buildings.find(building => building.id === "home")?.levels ?? []).map(level => ({ homeLevel: level.level,

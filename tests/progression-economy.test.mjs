@@ -9,6 +9,7 @@ const readJson = path => JSON.parse(readFileSync(new URL(path, import.meta.url),
 const catalog = readJson("../apps/api/src/main/resources/world/economy-catalog.json");
 for (const recipe of catalog.recipes) recipe.requiredRecipes ??= {};
 const rewards = readJson("../apps/api/src/main/resources/world/progression-rewards-catalog.json");
+const storefrontCatalog = readJson("../apps/api/src/main/resources/world/storefront-catalog.json");
 const plain = value => JSON.parse(JSON.stringify(value));
 function load(path, dependencies = {}) {
   const context = { exports: {}, structuredClone, require: id => {
@@ -24,12 +25,15 @@ function load(path, dependencies = {}) {
 const money = load("../features/economy/domain/money.ts");
 const timePrice = load("../features/economy/domain/time-price.ts");
 const sale = load("../features/economy/domain/local-sale.ts", { "./model": money });
-const currencyShop = load("../features/economy/domain/currency-shop.ts");
+const currencyShop = load("../features/economy/domain/currency-shop.ts", {
+  "./money": money, "./time-price": timePrice, "./storefront": { storefrontCatalog },
+});
 const gameRewards = load("../features/game/game-rewards.ts");
 const model = load("../features/progression/economy-data.ts", {
   "@/features/economy/domain/model": { economyCatalog: catalog, recipeBuildingLevel },
   "@/features/economy/domain/money": money,
   "@/features/economy/domain/currency-shop": currencyShop,
+  "@/features/economy/domain/storefront": { storefrontCatalog },
   "@/features/game/game-rewards": gameRewards,
   "@/features/economy/domain/rules": { constructionTimePearlPrice: (seconds, config) => timePrice.durationPearlPrice(seconds * 1000,
     config.secondsPerPearl, money.ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints) },
@@ -197,7 +201,7 @@ test("stage budgets derive only required new buildings and preserve the seven da
   assert.equal(economy.stages.find(stage => stage.homeLevel === 4).preliminary, false);
 });
 
-test("pearl budgets respect visible denomination and distinguish repeat gifts from finite achievements", () => {
+test("pearl budgets respect visible denomination and distinguish seven gifts from finite achievements", () => {
   assert.equal(economy.pearls.dailyCycle, 500);
   assert.equal(economy.pearls.achievementLifetime, 1500);
   assert.deepEqual(plain(economy.pearls.dailyRewards.map(reward => reward.pearls)), [40, 50, 60, 70, 80, 90, 110]);
@@ -220,12 +224,33 @@ test("pearl budgets respect visible denomination and distinguish repeat gifts fr
 
 test("currency shop reference uses visible pearls and home quotes, excluding storage from production bonuses", () => {
   assert.equal(economy.currencyShop.preview, true);
-  assert.deepEqual(plain(economy.currencyShop.pearlPackages.map(pack => pack.pearls)), [500, 1200, 2500, 6500]);
+  assert.deepEqual(plain(economy.currencyShop.pearlPackages.map(pack => [pack.pearls, pack.priceRub])), [[100, 99], [350, 299], [800, 599]]);
   assert.deepEqual(plain(economy.currencyShop.goldPrices), [20, 50, 100]);
   assert.deepEqual(plain(economy.currencyShop.goldByHome.map(row => row.offers.map(offer => offer.coins))),
     [[400, 1000, 2000], [600, 1500, 3000], [900, 2250, 4500], [1200, 3000, 6000], [1600, 4000, 8000]]);
   assert.equal(economy.currencyShop.productionBonusPercent, 25);
   assert.equal(economy.currencyShop.maximumGold, 8500);
+});
+
+test("branch references all five stage packs and cosmetic prices without turning preview contents into free item sources", () => {
+  assert.deepEqual(plain(economy.currencyShop.starterPacks.map(pack => [pack.homeLevel, pack.priceRub, pack.rewards.pearls, pack.rewards.coins])),
+    [[1, 149, 150, 250], [2, 299, 350, 800], [3, 399, 500, 2000], [4, 499, 650, 5000], [5, 599, 800, 8000]]);
+  for (const pack of economy.currencyShop.starterPacks) {
+    const original = storefrontCatalog.starterPacks.find(value => value.id === pack.id);
+    assert.equal(pack.purchaseLimit, 1);
+    assert.deepEqual(plain(pack.rewards.items), original.rewards.items);
+    for (const id of Object.keys(pack.rewards.items)) {
+      assert.ok(item(id), id);
+      assert.ok(!item(id).sources.some(source => source.id === pack.id), "unavailable premium preview is not an acquisition route");
+    }
+  }
+  assert.deepEqual(plain(economy.currencyShop.costumeOffers.map(offer => [offer.outfitId, offer.priceRub])),
+    [["premium_explorer", 199], ["premium_stargazer", 299], ["premium_ember", 299]]);
+  const copied = buildProgressionEconomy();
+  copied.currencyShop.starterPacks[0].rewards.items.wood = 999;
+  copied.currencyShop.costumeOffers[0].priceRub = 1;
+  assert.equal(storefrontCatalog.starterPacks[0].rewards.items.wood, 3);
+  assert.equal(storefrontCatalog.costumeOffers[0].priceRub, 199);
 });
 
 test("house four has a separate twelve-delivery course, restored landmarks and guaranteed home-five relics", () => {

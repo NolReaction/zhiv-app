@@ -8,6 +8,7 @@ import { hookArt } from "./art-hooks";
 import { foodItemArt } from "./art-food";
 import { expeditionItemArt } from "./art-expeditions";
 import { berryTierArt } from "./art-berry-tiers";
+import { premiumCostumeArt } from "./art-premium-costumes";
 import { FishArt } from "@/features/world/activities/fishing/fish-icon";
 import { FISH_SPECIES_IDS, type FishSpeciesId } from "@/features/world/activities/fishing/fish-species";
 
@@ -86,7 +87,7 @@ const currencyArt: Record<string, ReactNode> = {
   pearls: collectionArt.river_pearl,
 };
 
-const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...relicItemArt, ...equipmentArt, ...currencyArt, ...fishingArt, ...hookArt, ...foodItemArt, ...expeditionItemArt, ...berryTierArt };
+const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...relicItemArt, ...equipmentArt, ...currencyArt, ...fishingArt, ...hookArt, ...foodItemArt, ...expeditionItemArt, ...berryTierArt, ...premiumCostumeArt };
 export const itemIconIds: readonly string[] = Object.keys(itemArt);
 export const collectionIconIds: readonly string[] = Object.keys(collectionArt);
 

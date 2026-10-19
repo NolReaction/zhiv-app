@@ -91,12 +91,31 @@ test("new outfits preserve the face, planted feet and individual front/back deta
 
 test("body and interaction painters share a safe palette for every new moss colour", async () => {
   const { mossPalette } = await vite.ssrLoadModule("/features/mochlik/appearance-palette.ts");
-  for (const id of ["moss", "fern", "autumn", "heather", "frost", "ember", "dune_moss", "storm_moss"]) {
+  for (const id of ["moss", "fern", "autumn", "heather", "frost", "ember", "dune_moss", "storm_moss", "premium_stargazer_moss", "premium_ember_moss", "premium_explorer_moss"]) {
     const palette = mossPalette(id);
     const sprite = pixelSprite("idle", "back", 0, { palette: id, head: null, neck: null });
     for (const color of Object.values(palette)) assert.ok([...sprite.pixels.values()].includes(color));
   }
   for (const id of [undefined, "unknown", "constructor", "__proto__"]) assert.equal(mossPalette(id), mossPalette("moss"));
+});
+
+test("special outfits have distinct visible drawings while work and sleep keep eyes and grounded soles", async () => {
+  const { premiumCostumes } = await vite.ssrLoadModule("/features/world/domain/premium-costumes.ts");
+  const signatures = [];
+  for (const { appearance } of premiumCostumes) {
+    signatures.push(JSON.stringify([...pixelSprite("idle", "front", 0, appearance).pixels]));
+    for (const direction of ["front", "back", "left", "right"]) for (const pose of ["idle", "walk", "stretch", "reach", "hold", "chew", "fish", "sleep", "drowsy"])
+      for (let frame = 0; frame < 4; frame++) {
+        const plain = pixelSprite(pose, direction, frame, { palette: appearance.palette, head: null, neck: null });
+        const dressed = pixelSprite(pose, direction, frame, appearance);
+        const eyes = sprite => [...sprite.pixels].filter(([, color]) => color === "#30291d");
+        assert.deepEqual(eyes(dressed), eyes(plain), "premium details do not hide a working face");
+        assert.deepEqual(pixelSpriteContact(dressed), pixelSpriteContact(plain), "new clothes cannot lift the feet");
+        if (pose === "sleep" || pose === "drowsy") assert.deepEqual(dressed.pixels, plain.pixels);
+        else assert.notDeepEqual(dressed.pixels, plain.pixels, `${appearance.head} has visible wearables from ${direction}`);
+      }
+  }
+  assert.equal(new Set(signatures).size, 3);
 });
 
 test("travel wearables keep their own visible colours and never cover fishing eyes or planted feet", () => {

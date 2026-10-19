@@ -1,5 +1,6 @@
 import { mossPalette } from "./appearance-palette";
 import { drawMiningPickaxe } from "./mining-pickaxe";
+import { drawPremiumHead, drawPremiumNeck, drawPremiumTorso } from "./premium-wearables";
 
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
@@ -95,6 +96,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(24, 32 + bob, 13, 11, c.outline); oval(24, 31 + bob, 12, 11, c.shade);
     oval(direction === "back" ? 24 : side > 0 ? 21 : 28, 29 + bob, 10, 9, c.moss);
     if (direction !== "back") oval(side > 0 ? 26 : side < 0 ? 20 : 22, 32 + bob, 9, 9, c.cream);
+    drawPremiumTorso(appearance?.palette, direction, bob, { rect, oval });
     leanOffset = 0;
     for (const [x, offset] of [[17, step], [31, -step]]) {
       oval(x, 42 + offset, 5, 2, c.outline); oval(x, 41 + offset, 4, 2, c.shade);
@@ -167,7 +169,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   }
   // Wearables share the rig's pose anchors and depth rules in every direction.
   if (appearance && pose !== "sleep" && pose !== "drowsy") {
-    if (appearance.neck) {
+    if (appearance.neck && !drawPremiumNeck(appearance.neck, direction, 31 + bob + Math.round((headOffset - bob) / 3), walking ? frame % 2 : 0, { rect, oval })) {
       const scarf = appearance.neck === "berry_scarf" ? "#b96374" : appearance.neck === "river_scarf" ? "#6299b1"
         : appearance.neck === "forest_bandana" ? "#77905f" : appearance.neck === "moon_scarf" ? "#b7afd7"
           : appearance.neck === "sea_neckerchief" ? "#4d91a4" : appearance.neck === "sunset_scarf" ? "#cd7652" : "#e2a44d";
@@ -189,7 +191,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
         if (appearance.neck === "sunset_scarf") { rect(16, neckY, 17, 1, "#efba79"); rect(knotX, neckY + 4, 4, 1, "#efba79"); rect(knotX, neckY + 6, 1, 2, "#894e47"); rect(knotX + 3, neckY + 6, 1, 2, "#894e47"); }
       }
     }
-    if (appearance.head) {
+    if (appearance.head && !drawPremiumHead(appearance.head, direction, headOffset, { rect, oval })) {
       const hatY = headOffset;
       if (appearance.head === "trail_hat") {
         // A low weathered crown and broad brim, distinct from the collection hat.

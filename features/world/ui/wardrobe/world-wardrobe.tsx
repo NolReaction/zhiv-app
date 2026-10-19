@@ -66,7 +66,7 @@ export function WorldWardrobe({ world, economy }: { world: WorldController; econ
     refreshed.current = token;
     void refreshWorld();
   }, [sameOwner, syncing, world.busy, economy.busy, economy.uncertain, owner, account?.revision, refreshWorld]);
-  const list = items.filter(item => section === "owned" ? owned.has(item.id) : !owned.has(item.id) && item.purchase)
+  const list = items.filter(item => section === "owned" ? owned.has(item.id) : !item.premium && !owned.has(item.id) && item.purchase)
     .filter(item => slot === "all" || item.slot === slot)
     .filter(item => section === "owned" || currency === "all" || item.purchase?.currency === currency)
     .filter(item => item.name.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru")));

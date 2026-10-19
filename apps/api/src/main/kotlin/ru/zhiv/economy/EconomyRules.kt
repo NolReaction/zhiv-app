@@ -642,7 +642,7 @@ object EconomyRules {
                     fishingShop = nextShop) to "Плёска подготовила новые предложения"
             }
             "buy_wardrobe_item" -> {
-                val item = WorldRules.catalog.items.find { it.slot != "rod" && it.purchase != null &&
+                val item = WorldRules.catalog.items.find { !it.premium && it.slot != "rod" && it.purchase != null &&
                     "${it.purchase.currency}:${it.id}" == command.targetId }
                     ?: economyFailure("ECONOMY_WARDROBE_ITEM", "Эта вещь не продаётся")
                 val price = checkNotNull(item.purchase)

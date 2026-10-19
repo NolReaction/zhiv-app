@@ -592,7 +592,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (!offer) return fail("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Поставка Листохвоста изменилась. Проверьте прилавок");
       requireHome(state, offer.requiredHomeLevel);
       const item = offer.kind === "item" && economyCatalog.items.find(item => item.id === offer.itemId);
-      const clothing = offer.kind === "wardrobe" && wardrobeItems.find(item => item.id === offer.itemId && !item.starter && !item.purchase && item.sparks === 0);
+      const clothing = offer.kind === "wardrobe" && wardrobeItems.find(item => item.id === offer.itemId && !item.premium && !item.starter && !item.purchase && item.sparks === 0);
       const rod = offer.kind === "rod" && economyCatalog.fishing?.rods.find(item => item.id === offer.itemId);
       const hook = offer.kind === "hook" && economyCatalog.fishing?.hooks.find(item => item.id === offer.itemId);
       const bait = offer.kind === "bait" && economyCatalog.fishing?.baits.find(item => item.itemId === offer.itemId);
@@ -628,7 +628,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
         : hook ? "Крючок у Листохвоста добавлен в коллекцию" : "Покупка у Листохвоста отправлена в кладовую";
     }
     case "buy_wardrobe_item": {
-      const item = wardrobeItems.find(item => item.purchase && wardrobePurchaseTarget(item) === command.targetId);
+      const item = wardrobeItems.find(item => !item.premium && item.purchase && wardrobePurchaseTarget(item) === command.targetId);
       if (!item?.purchase) return fail("ECONOMY_WARDROBE_ITEM", "Эта вещь не продаётся");
       const owned = wardrobeOwned(state.wardrobe);
       if (owned.includes(item.id)) return fail("ECONOMY_WARDROBE_OWNED", "Эта вещь уже есть в гардеробе");

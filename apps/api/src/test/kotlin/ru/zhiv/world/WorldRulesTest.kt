@@ -14,6 +14,22 @@ class WorldRulesTest {
     private val now = Instant.parse("2026-09-08T12:00:00Z")
     private fun command(action: String) = WorldCommand(UUID.randomUUID().toString(), "OWNER", 0, action)
 
+    @Test fun `special costumes cannot be crafted or worn before ownership but work when granted`() {
+        val special = WorldRules.catalog.items.filter { it.premium }
+        assertEquals(9, special.size)
+        val initial = WorldState(workshop = true, resources = WorldResources(1_000, 1_000, 1_000))
+        for (item in special) {
+            assertFalse(item.starter); assertEquals(0L, item.sparks); assertNull(item.purchase)
+            assertEquals("WORLD_ITEM", assertFailsWith<AuthFailure> { WorldRules.apply(initial, command("craft").copy(target = item.id), now) }.code)
+            assertEquals("WORLD_ITEM_NOT_OWNED", assertFailsWith<AuthFailure> { WorldRules.apply(initial, command("equip").copy(target = item.id), now) }.code)
+            val owned = initial.copy(inventory = initial.inventory + item.id)
+            val equipped = WorldRules.apply(owned, command("equip").copy(target = item.id), now).first
+            assertEquals(owned.resources, equipped.resources)
+            assertEquals(item.id, when (item.slot) { "palette" -> equipped.equipment.palette; "head" -> equipped.equipment.head; else -> equipped.equipment.neck })
+            assertTrue(item.id in WorldRules.merge(initial, equipped).inventory)
+        }
+    }
+
     @Test fun `decoration preferences keep resources and primary account choices`() {
         val before = WorldState(resources = WorldResources(10, 20, 30))
         val command = command("set_decoration").copy(target = "hide_leaf_garland")

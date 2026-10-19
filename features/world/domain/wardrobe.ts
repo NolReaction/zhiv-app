@@ -3,6 +3,7 @@ import catalog from "@/apps/api/src/main/resources/world/catalog.json";
 export type WardrobeItem = {
   id: string; name: string; slot: "palette" | "head" | "neck"; color: string;
   sparks: number; starter: boolean;
+  premium?: boolean;
   purchase?: { currency: "coins" | "pearls"; amount: number };
 };
 /** Clothing is permanent ownership, separate from consumables and fishing gear. */

@@ -30,8 +30,8 @@ const hooks = await vite.ssrLoadModule(hookModule);
 const state = buildings => ({ catalog: economyCatalog, buildings, jobs: [] });
 const firstQuote = buildings => shop.currencyShopGoldOffers(state(buildings))[0];
 
-test("shop quotes use current currency units and fixed packages without volume discounts", () => {
-  assert.deepEqual(shop.PEARL_SHOP_PACKAGES.map(pack => pack.pearls), [1000, 2400, 5000, 13000]);
+test("shop quotes use current currency units, ruble pearl packs and no gold volume discount", () => {
+  assert.deepEqual(shop.PEARL_SHOP_PACKAGES.map(pack => [pack.pearls, pack.priceRub]), [[200, 99], [700, 299], [1600, 599]]);
   assert.deepEqual(shop.GOLD_SHOP_PACKAGES.map(pack => pack.pearls), [40, 100, 200]);
   for (const pack of [...shop.PEARL_SHOP_PACKAGES, ...shop.GOLD_SHOP_PACKAGES]) assert.equal(pack.pearls % 2, 0);
   const offers = shop.currencyShopGoldOffers(state({ home: 1 }));
@@ -113,7 +113,7 @@ test("unknown, unfinished and future uncatalogued buildings cannot boost the quo
   for (const invalid of [NaN, Infinity, -1, 2.5]) assert.equal(firstQuote({ home: invalid, garden: invalid }).coins, 400);
 });
 
-function harness(snapshot = state({ home: 3, garden: 2 }), initialPage) {
+function harness(snapshot = state({ home: 3, garden: 2 }), initialPage = "pearls") {
   hooks.reset();
   const focused = [];
   const render = () => {
@@ -134,12 +134,12 @@ test("wallet entry selects the requested currency page while preserving the prev
     const selected = tabs(view).find(node => node.props["aria-selected"]);
     assert.equal(selected.props.id.endsWith(`-${initialPage}`), true);
     assert.equal(selected.props.tabIndex, 0);
-    assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, initialPage === "gold" ? 3 : 4);
+    assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, 3);
     for (const action of view.nodes.filter(node => node.type === "button" && node.props.role !== "tab")) {
       assert.equal(action.props.disabled, true);
       assert.equal(action.props.onClick, undefined);
     }
-    tabs(view).find(node => !node.props["aria-selected"]).props.onClick(); view = h.render();
+    tabs(view).find(node => node.props.id.endsWith(initialPage === "gold" ? "-pearls" : "-gold")).props.onClick(); view = h.render();
     assert.equal(tabs(view).filter(node => node.props["aria-selected"]).length, 1);
     assert.equal(tabs(view).find(node => node.props["aria-selected"]).props.id.endsWith(`-${initialPage}`), false);
   }
@@ -151,12 +151,12 @@ test("preview tabs show compact distinct currencies and cannot spend or grant ei
   const h = harness(snapshot);
   let view = h.render();
   assert.match(view.html, /Покупки и обмен пока недоступны/);
-  assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, 4);
-  assert.doesNotMatch(view.html, /₽|₸|€|\$/);
-  for (const page of [0, 1]) {
-    tabs(view)[page].props.onClick(); view = h.render();
+  assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, 3);
+  assert.match(view.html, /99 ₽/);
+  for (const page of ["pearls", "gold"]) {
+    tabs(view).find(node => node.props.id.endsWith(`-${page}`)).props.onClick(); view = h.render();
     const actions = view.nodes.filter(node => node.type === "button" && node.props.role !== "tab");
-    assert.equal(actions.length, page === 0 ? 4 : 3);
+    assert.equal(actions.length, 3);
     for (const action of actions) {
       assert.equal(action.props.disabled, true);
       assert.equal(action.props.onClick, undefined);
@@ -171,7 +171,7 @@ test("preview tabs show compact distinct currencies and cannot spend or grant ei
 
 test("shop tabs support arrows, Home and End with one focusable tab and connected panel", () => {
   const h = harness(); let view = h.render();
-  for (const [key, expected] of [["End", 1], ["Home", 0], ["ArrowLeft", 1], ["ArrowRight", 0]]) {
+  for (const [key, expected] of [["End", 3], ["Home", 0], ["ArrowLeft", 3], ["ArrowRight", 0]]) {
     const selected = tabs(view).find(node => node.props["aria-selected"]);
     let prevented = false;
     selected.props.onKeyDown({ key, preventDefault() { prevented = true; } });
@@ -188,8 +188,8 @@ test("shop tabs support arrows, Home and End with one focusable tab and connecte
 
 test("a missing economy snapshot never invents a gold quote", () => {
   const h = harness(null); let view = h.render();
-  assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, 4);
-  tabs(view)[1].props.onClick(); view = h.render();
+  assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, 3);
+  tabs(view).find(node => node.props.id.endsWith("-gold")).props.onClick(); view = h.render();
   assert.match(view.html, /Загружаем полянку/);
   assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, 0);
 });
@@ -198,9 +198,10 @@ test("a missing economy snapshot never invents a gold quote", () => {
 test("recalculated package prices display stored units as whole visible pearls", () => {
   const h = harness(state({ home: 1 })); let view = h.render();
   const amounts = () => [...view.html.matchAll(/<strong[^>]*>[\s\S]*?<\/strong>/g)].map(match => match[0].replace(/<[^>]*>/g, "").replace(/\s/g, ""));
-  assert.deepEqual(amounts().slice(-4), ["500", "1200", "2500", "6500"]);
-  assert.deepEqual(amounts().slice(0, -4), ["150", "100", "20"]);
-  tabs(view)[1].props.onClick(); view = h.render();
+  assert.deepEqual(amounts().slice(-3), ["100", "350", "800"]);
+  assert.deepEqual(amounts().slice(0, -3), ["150", "100", "20"]);
+  for (const price of [99, 299, 599]) assert.ok(view.html.includes(`${price} ₽`));
+  tabs(view).find(node => node.props.id.endsWith("-gold")).props.onClick(); view = h.render();
   assert.match(view.html, /<span>20<\/span>/);
   assert.match(view.html, /<span>50<\/span>/);
   assert.match(view.html, /<span>100<\/span>/);

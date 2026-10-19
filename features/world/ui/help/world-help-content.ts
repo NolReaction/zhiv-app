@@ -6,6 +6,7 @@ import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
 import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
 import { BARTER_HOME_LEVEL } from "@/features/economy/domain/barter-model";
 import { BASE_COINS_PER_PEARL, GOLD_SHOP_PACKAGES, HOME_BONUS_PERCENT, MAX_BUILDING_BONUS_PERCENT } from "@/features/economy/domain/currency-shop";
+import { storefrontCatalog } from "@/features/economy/domain/storefront";
 import { TRAVEL_COLLECTION_SECONDS, QUARRY_COLLECTION_SECONDS } from "@/features/world/domain/collection-book";
 import type { WorldHelpTarget } from "./world-help-types";
 export { searchWorldHelp, searchWorldHelpWithStatus } from "./world-help-search";
@@ -382,12 +383,35 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       steps: [
         `Получайте подарки за вход в профиле Мохлика: все семь подарков дают ${formatPearls(dailyPearls)} жемчужин один раз на аккаунт. После седьмого нового круга нет.`,
         `Забирайте жемчуг за выполненные ступени достижений в профиле аккаунта на главном экране: суммарно ${formatPearls(Object.values(progressionRewardsCatalog.achievementPearls).flat().reduce((sum, amount) => sum + amount, 0))} однократно. Более сложные ступени дают больше.`,
-        "«+» рядом с монетами вверху карты открывает «Золото», рядом с жемчугом - «Жемчуг». Витрина находится у кошелька, а не в меню «Ещё».",
-        "Если у вас есть промокод, вверху магазина нажмите «Ввести промокод». После подтверждения награды попадут в кошелёк и кладовую; один код можно получить один раз на аккаунт.",
+        "«Ещё» → «Магазин» открывает наборы. «+» рядом с монетами вверху карты открывает «Золото», рядом с жемчугом - «Жемчуг».",
+        "Если у вас есть промокод, внизу магазина нажмите «Ввести промокод». После подтверждения награды попадут в кошелёк и кладовую; один код можно получить один раз на аккаунт.",
       ],
       note: "Для подарка с предметами понадобится место в кладовой. Покупка за реальные деньги и обмен жемчуга на золото пока недоступны.",
       action: { label: "К профилю и подаркам", target: { kind: "profile", tab: "profile" } },
-      relatedIds: ["rewards", "pearls", "currency-shop-exchange"],
+      relatedIds: ["rewards", "pearls", "currency-shop-starters", "currency-shop-costumes", "currency-shop-exchange"],
+    },
+    {
+      id: "currency-shop-starters", group: "economy", title: "Как меняется стартовый набор?", summary: "Свой набор для каждого уровня дома",
+      keywords: "стартер стартовый пакет набор дом уровень блюдо буст припасы донат магазин цена рубли",
+      paragraphs: ["Откройте «Ещё» → «Магазин» → «Наборы». Показан один набор для текущего завершённого уровня дома: жемчуг, монеты, материалы и блюда с ускорением."],
+      steps: [
+        `Дом ${storefrontCatalog.starterPacks.map(pack => pack.homeLevel).join(" / ")}: ${storefrontCatalog.starterPacks.map(pack => `${pack.priceRub} ₽`).join(" / ")}. Состав виден до покупки.`,
+        "После получения нового уровня дома появляется другой набор. Прошлый набор не заменяет его, не улучшается бесплатно и больше не предлагается.",
+        "Каждый набор рассчитан на одну покупку на аккаунт для своего уровня. Он не открывает рецепты, не завершает постройки и не пропускает проектные поставки.",
+      ],
+      note: "Пока это предпросмотр: оплатить набор или получить его содержимое нельзя.",
+      relatedIds: ["currency-shop", "food", "construction", "currency-shop-costumes"],
+    },
+    {
+      id: "currency-shop-costumes", group: "mochlik", title: "Что дают особые костюмы?", summary: "Новый образ без прибавки к силе",
+      keywords: "донат костюм комплект образ одежда эксклюзивный уникальный звездочёт хранитель огня первопроходец магазин рубли",
+      paragraphs: ["В «Ещё» → «Магазин» → «Костюмы» можно примерить полный образ на Мохлике. Примерка не меняет сохранённую одежду."],
+      steps: [
+        storefrontCatalog.costumeOffers.map(offer => `«${offer.name}» - ${offer.priceRub} ₽`).join("; ") + ".",
+        "Костюмы меняют только внешность, без бонусов к добыче, скорости или строительству. Это отдельные образы, их нет в обычной поставке Листохвоста.",
+      ],
+      note: "Платежи ещё не подключены: примерка доступна, покупка и выдача костюма пока недоступны.",
+      relatedIds: ["wardrobe", "currency-shop-starters", "currency-shop"],
     },
     {
       id: "currency-shop-exchange", group: "economy", title: "Как считается золото в магазине?", summary: "Курс зависит от дома и производств",

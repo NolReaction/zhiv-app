@@ -201,7 +201,7 @@ export const economyCatalogSchema = z.object({
     || leafOffers.some(offer => {
       if (offer.kind === "item") return !catalog.items.some(item => item.id === offer.itemId && (item.category === "special" ? !item.tradable && offer.quantity === 1
         : ["wood", "stone", "fiber"].includes(item.id) && item.tradable && offer.priceCoins === 2 * item.baseSellPrice * offer.quantity));
-      if (offer.kind === "wardrobe") return offer.quantity !== 1 || !wardrobeItems.some(item => item.id === offer.itemId && !item.starter && !item.purchase && item.sparks === 0);
+      if (offer.kind === "wardrobe") return offer.quantity !== 1 || !wardrobeItems.some(item => item.id === offer.itemId && !item.premium && !item.starter && !item.purchase && item.sparks === 0);
       const gear = offer.kind === "rod" ? catalog.fishing?.rods.find(item => item.id === offer.itemId)
         : offer.kind === "hook" ? catalog.fishing?.hooks.find(item => item.id === offer.itemId)
         : catalog.fishing?.baits.find(item => item.itemId === offer.itemId);

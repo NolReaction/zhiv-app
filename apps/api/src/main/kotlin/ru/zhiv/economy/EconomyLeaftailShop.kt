@@ -103,7 +103,7 @@ object EconomyLeaftailShops {
             if (item.category == "special") !item.tradable && offer.quantity == 1L
             else item.id in setOf("wood", "stone", "fiber") && item.tradable && offer.priceCoins == 2L * item.baseSellPrice * offer.quantity }
         if (offer.kind == "wardrobe") return offer.quantity == 1L && WorldRules.catalog.items.any {
-            it.id == offer.itemId && it.slot in setOf("head", "neck", "palette") && !it.starter && it.purchase == null && it.sparks == 0L }
+            it.id == offer.itemId && it.slot in setOf("head", "neck", "palette") && !it.premium && !it.starter && it.purchase == null && it.sparks == 0L }
         // Explicit travelOffers membership chooses the merchant; default gear
         // shop controls Pleska's rotation and may also supply this caravan.
         val rod = catalog.fishing?.rods?.find { offer.kind == "rod" && it.id == offer.itemId }

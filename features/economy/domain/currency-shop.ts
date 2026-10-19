@@ -1,14 +1,10 @@
 import type { EconomyCatalog, EconomyView } from "./model";
 import { ECONOMY_PEARL_SCALE } from "./money";
 import { durationPearlPrice } from "./time-price";
+import { storefrontCatalog } from "./storefront";
 
 /** Preview terms only. A future purchase must receive a fresh server-authoritative quote. */
-export const PEARL_SHOP_PACKAGES = [
-  { id: "handful", name: "Горсть жемчуга", pearls: 1000 },
-  { id: "pouch", name: "Мешочек жемчуга", pearls: 2400 },
-  { id: "casket", name: "Шкатулка жемчуга", pearls: 5000 },
-  { id: "chest", name: "Сундук жемчуга", pearls: 13000 },
-] as const;
+export const PEARL_SHOP_PACKAGES = storefrontCatalog.pearlPacks;
 
 export const GOLD_SHOP_PACKAGES = [
   { id: "pouch", name: "Кошель золота", pearls: 40 },
