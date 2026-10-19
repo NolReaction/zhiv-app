@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "placements": [
+    {
+      "id": "eiffel-tower",
+      "longitude": 2.29444,
+      "latitude": 48.85826,
+      "heightMeters": 330,
+      "headingDegrees": 45,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 110,
+      "excludeBuildings": true
+    }
+  ]
+}

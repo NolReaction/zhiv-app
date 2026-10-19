@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CloudSun, Compass, Earth, HardDriveDownload, Info, LocateFixed, Minus, Plus, X } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import type { EarthPosition } from "./location";
@@ -33,6 +33,8 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
 type MapPhase = "loading" | "ready" | "failed" | "unsupported";
+const EarthModelEditor = process.env.NODE_ENV === "development"
+  ? lazy(() => import("./dev/earth-model-editor").then(module => ({ default: module.EarthModelEditor }))) : null;
 const EMPTY_FRIENDS: readonly EarthMapPerson[] = [];
 export type EarthFriendFocusRequest = { circleId: string; requestId: number };
 
@@ -53,6 +55,7 @@ type EarthMapProps = {
   friends?: readonly EarthMapPerson[];
   friendFocusRequest?: EarthFriendFocusRequest | null;
   onSelectFriends?: (circleIds: string[]) => void;
+  showLocationControl?: boolean;
 };
 
 function weatherConditionLabel(condition: string): string {
@@ -86,7 +89,7 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 }
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
-  locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends }: EarthMapProps) {
+  locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -96,6 +99,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const [weatherState, setWeatherState] = useState<EarthWeatherState>({ status: "disabled", area: null, snapshot: null, nextRequestAt: null, error: null });
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LibreMap | null>(null);
+  const [editorMap, setEditorMap] = useState<LibreMap | null>(null);
   const syncPositionRef = useRef<((value: EarthPosition | null) => void) | null>(null);
   const latestPosition = useRef(position);
   const savedCamera = useRef<EarthCameraSnapshot | null>(null);
@@ -421,6 +425,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           if (id === EARTH_OCEAN_MATERIAL_IMAGE) registerEarthOceanMaterialImage(current);
         });
         mapRef.current = current;
+        if (process.env.NODE_ENV === "development") setEditorMap(current);
         tileOverlay = createEarthTileLoadingOverlay(current);
         stars = createEarthStars(current, element!, lightingModeRef.current);
         starsRef.current = stars;
@@ -629,6 +634,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       restoreGlobeCamera?.();
       map?.remove();
       if (mapRef.current === map) mapRef.current = null;
+      if (process.env.NODE_ENV === "development") setEditorMap(null);
     };
   }, [active, retry, cameraSession]);
 
@@ -650,9 +656,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       <button type="button" disabled={!ready} title="Приблизить" aria-label="Приблизить карту" onClick={() => mapRef.current?.zoomIn({ duration: reducedMotion() ? 0 : 250 })}><Plus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Отдалить" aria-label="Отдалить карту" onClick={() => mapRef.current?.zoomOut({ duration: reducedMotion() ? 0 : 250 })}><Minus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
-      <button type="button" className={styles.locateButton} disabled={!ready || locating} data-active={locationActive} aria-busy={locating}
+      {showLocationControl && <button type="button" className={styles.locateButton} disabled={!ready || locating} data-active={locationActive} aria-busy={locating}
         title={locating ? "Определяем местоположение…" : position ? "К моему местоположению" : "Найти себя на карте"}
-        aria-label="Показать моё местоположение" aria-describedby="earth-location-privacy" onClick={onLocate}><LocateFixed size={21} aria-hidden="true" /></button>
+        aria-label="Показать моё местоположение" aria-describedby="earth-location-privacy" onClick={onLocate}><LocateFixed size={21} aria-hidden="true" /></button>}
       <button type="button" disabled={!ready} data-active={weatherEnabled} aria-pressed={weatherEnabled}
         title="Погода для центра карты" aria-label={weatherEnabled ? "Выключить погоду" : "Включить погоду"}
         onClick={() => setWeatherEnabled(value => !value)}><CloudSun size={21} aria-hidden="true" /></button>
@@ -676,6 +682,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             : weatherState.status === "error" ? "Прогноз пока недоступен" : "Узнаём погоду…"}
     </p>}
     {ready && <EarthAttribution />}
+    {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} /></Suspense>}
     {ready && <button ref={infoButton} type="button" className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => onInfoOpenChange(!infoOpen)}><Info size={21} aria-hidden="true" /></button>}
     {ready && infoOpen && <section id="earth-info-panel" className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {

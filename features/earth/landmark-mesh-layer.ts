@@ -5,13 +5,14 @@ import { createEarthLandmarkMesh } from "./landmark-mesh";
 import modelAssets from "./data/eiffel-model.json";
 import { browserEarthModelEnvironment, createEarthModelLoader, type EarthModelAssets, type EarthModelEnvironment, type EarthModelLod, type EarthIndexedModel } from "./landmark-model";
 import { EARTH_EIFFEL_HEIGHT_METERS, earthEiffelStreetOpacity, isEarthEiffelStreetZoom } from "./landmark-model-view";
+import { getEarthModelPlacements, subscribeEarthModelPlacements } from "./model-placement";
 
 export const EARTH_LANDMARK_MESH_LAYER = "earth-landmark-models";
 const EARTH_CIRCUMFERENCE = 40_030_228.884;
 type Program = { program: WebGLProgram; uniforms: Record<string, WebGLUniformLocation | null> };
 type ImportedGpuModel = { vertex: WebGLBuffer; index: WebGLBuffer; vao: WebGLVertexArrayObject; count: number };
 const uniformNames = ["u_projection_matrix", "u_projection_fallback_matrix", "u_projection_tile_mercator_coords",
-  "u_projection_clipping_plane", "u_projection_transition", "u_anchor", "u_scale", "u_height", "u_opacity"] as const;
+  "u_projection_clipping_plane", "u_projection_transition", "u_anchor", "u_scale", "u_height", "u_heading", "u_elevation", "u_opacity"] as const;
 
 /** One procedural atlas plus two bounded imported Eiffel LODs; at most two projection programs. */
 export function createEarthLandmarkMeshLayer(map: LibreMap, options: {
@@ -32,6 +33,7 @@ export function createEarthLandmarkMeshLayer(map: LibreMap, options: {
   let context: WebGL2RenderingContext | null = null;
   let disposed = false;
   let lastDraw = "none";
+  let activeStreetModels = new Set<string>();
   const modelEnvironment = options.environment === undefined
     ? browserEarthModelEnvironment(typeof map.getContainer === "function" ? map.getContainer().ownerDocument?.defaultView ?? null : null)
     : options.environment;
@@ -41,6 +43,20 @@ export function createEarthLandmarkMeshLayer(map: LibreMap, options: {
     options.onModelChange?.();
     if (visible) map.triggerRepaint();
   }, modelEnvironment);
+
+  function publishStreetModels(ids: ReadonlySet<string>) {
+    if (ids.size === activeStreetModels.size && [...ids].every(id => activeStreetModels.has(id))) return false;
+    activeStreetModels = new Set(ids);
+    return true;
+  }
+  const unsubscribePlacements = subscribeEarthModelPlacements(() => {
+    if (disposed) return;
+    // Valid transform edits keep the successfully drawn GPU model resident.
+    // Reconciliation removes culled/hidden IDs; retaining the rest avoids
+    // restoring and rebuilding native building filters on every slider input.
+    options.onModelChange?.();
+    if (visible) map.triggerRepaint();
+  });
 
   function desiredLod(): EarthModelLod | null {
     if (disposed || failed || !context || !visible || !shown.has("eiffel-tower")) return null;
@@ -88,10 +104,16 @@ layout(location=1) in vec3 a_color;
 uniform vec2 u_anchor;
 uniform float u_scale;
 uniform float u_height;
+uniform vec2 u_heading;
+uniform float u_elevation;
 out vec3 v_color;
 void main() {
-  vec2 position = u_anchor + vec2(a_position.x, -a_position.y) * u_scale;
-  float altitude = a_position.z * u_height;
+  // Local geometry is east,north,up. Positive heading turns clockwise around
+  // up: a north-facing point turns east at +90 degrees.
+  vec2 rotated = vec2(a_position.x * u_heading.x + a_position.y * u_heading.y,
+    -a_position.x * u_heading.y + a_position.y * u_heading.x);
+  vec2 position = u_anchor + vec2(rotated.x, -rotated.y) * u_scale;
+  float altitude = a_position.z * u_height + u_elevation;
   gl_Position = projectTileFor3D(position, altitude);
   v_color = a_color;
 }`;
@@ -171,7 +193,12 @@ void main() { fragColor = vec4(v_color * u_opacity, u_opacity); }`;
       const zoom = map.getZoom(), view = earthLandmarkView(zoom), street = isEarthEiffelStreetZoom(zoom);
       const opacity = street ? earthEiffelStreetOpacity(zoom) : view.opacity;
       lastDraw = "none";
-      if (disposed || failed || !visible || !shown.size || opacity <= 0 || !buffer || !vao) { updateDiagnostics(); return; }
+      if (disposed || failed || !visible || !shown.size || opacity <= 0 || !buffer || !vao) {
+        const changed = publishStreetModels(new Set());
+        updateDiagnostics();
+        if (changed) options.onModelChange?.();
+        return;
+      }
       let compiled = programs.get(input.shaderData.variantName);
       if (!compiled) {
         try {
@@ -179,7 +206,7 @@ void main() { fragColor = vec4(v_color * u_opacity, u_opacity); }`;
           // SDK names may evolve after setProjection. Never accumulate programs.
           if (programs.size >= 2) { for (const { program } of programs.values()) gl.deleteProgram(program); programs.clear(); }
           programs.set(input.shaderData.variantName, compiled);
-        } catch { failed = true; synchronizeImport(); options.onModelChange?.(); return; }
+        } catch { failed = true; publishStreetModels(new Set()); synchronizeImport(); options.onModelChange?.(); return; }
       }
       const { uniforms } = compiled;
       gl.useProgram(compiled.program); gl.bindVertexArray(vao);
@@ -190,6 +217,8 @@ void main() { fragColor = vec4(v_color * u_opacity, u_opacity); }`;
       gl.uniform1f(uniforms.u_opacity, opacity);
       const globe = input.shaderData.define.includes("GLOBE");
       let modelChanged = false;
+      const streetModels = new Set<string>();
+      const placements = new Map(getEarthModelPlacements().map(placement => [placement.id, placement]));
       for (const range of ranges) {
         const eiffel = range.landmark.id === "eiffel-tower";
         if (!shown.has(range.landmark.id) || street && !eiffel) continue;
@@ -204,38 +233,74 @@ void main() { fragColor = vec4(v_color * u_opacity, u_opacity); }`;
         let scale = EARTH_LANDMARK_HEIGHT * view.scale / (512 * 2 ** zoom);
         let height = scale * (globe ? range.meters : 1);
         let anchor: readonly [number, number] = range.anchor;
+        let meters = range.meters;
+        const placement = placements.get(range.landmark.id);
+        if (placement) {
+          anchor = [(placement.longitude + 180) / 360,
+            (1 - Math.log(Math.tan(Math.PI / 4 + placement.latitude * Math.PI / 360)) / Math.PI) / 2];
+          meters = EARTH_CIRCUMFERENCE * Math.cos(placement.latitude * Math.PI / 180);
+          height = scale * (globe ? meters : 1);
+        }
+        const heading = (placement?.headingDegrees ?? 0) * Math.PI / 180;
+        gl.uniform2fv(uniforms.u_heading, [Math.cos(heading), Math.sin(heading)]);
+        let elevation = 0;
         if (street) {
           // Native tile-local coordinates avoid float32 world-position jitter
           // at street zoom. Both tile projection paths accept heights in metres.
           const z = 14, tiles = 2 ** z, extent = 8192;
-          const x = Math.floor(range.anchor[0] * tiles), y = Math.floor(range.anchor[1] * tiles);
-          data = input.getProjectionData({ tileID: { canonical: { z, x, y }, wrap: 0 }, applyGlobeMatrix: true });
-          anchor = [(range.anchor[0] * tiles - x) * extent, (range.anchor[1] * tiles - y) * extent];
-          scale = EARTH_EIFFEL_HEIGHT_METERS / range.meters * tiles * extent; height = EARTH_EIFFEL_HEIGHT_METERS;
+          const x = Math.floor(anchor[0] * tiles), y = Math.floor(anchor[1] * tiles);
+          // +180° lies on the next world boundary. Keep canonical tile IDs
+          // inside [0, 2^z), retaining the world copy separately for Mercator.
+          const canonicalX = ((x % tiles) + tiles) % tiles, wrap = Math.floor(x / tiles);
+          data = input.getProjectionData({ tileID: { canonical: { z, x: canonicalX, y }, wrap }, applyGlobeMatrix: true });
+          anchor = [(anchor[0] * tiles - x) * extent, (anchor[1] * tiles - y) * extent];
+          height = placement?.heightMeters ?? EARTH_EIFFEL_HEIGHT_METERS;
+          scale = height / meters * tiles * extent;
+          elevation = placement?.elevationMeters ?? 0;
         }
         gl.uniformMatrix4fv(uniforms.u_projection_matrix, false, new Float32Array(data.mainMatrix));
         gl.uniform4fv(uniforms.u_projection_tile_mercator_coords, data.tileMercatorCoords);
         gl.uniform4fv(uniforms.u_projection_clipping_plane, data.clippingPlane);
         gl.uniform1f(uniforms.u_projection_transition, data.projectionTransition);
         gl.uniform2fv(uniforms.u_anchor, anchor); gl.uniform1f(uniforms.u_scale, scale); gl.uniform1f(uniforms.u_height, height);
+        gl.uniform1f(uniforms.u_elevation, elevation);
         // The public custom-layer fallback expects conformal mercator z; the
         // globe prelude expects meters. Convert that matrix column per anchor
         // so a globe/mercator projection transition cannot stretch the model.
         const fallback = new Float32Array(data.fallbackMatrix);
-        if (globe && !street) for (let index = 8; index < 12; index++) fallback[index] /= range.meters;
+        if (globe && !street) for (let index = 8; index < 12; index++) fallback[index] /= meters;
         gl.uniformMatrix4fv(uniforms.u_projection_fallback_matrix, false, fallback);
         // Prepared LODs reuse their indexed buffers. Until they arrive, the
         // procedural atlas uses its two fixed ranges without duplicate draws.
-        if (gpu) { gl.bindVertexArray(gpu.vao); gl.drawElements(gl.TRIANGLES, gpu.count, gl.UNSIGNED_INT, 0); lastDraw = "uploaded"; }
+        if (gpu) {
+          gl.bindVertexArray(gpu.vao);
+          try {
+            gl.drawElements(gl.TRIANGLES, gpu.count, gl.UNSIGNED_INT, 0);
+            lastDraw = "uploaded";
+            if (street) streetModels.add(range.landmark.id);
+          } catch {
+            // An unsuccessful draw must leave the native map available.
+            gpuFailures.add(lod);
+            gl.deleteBuffer(gpu.vertex); gl.deleteBuffer(gpu.index); gl.deleteVertexArray(gpu.vao);
+            importedGpu.delete(lod);
+            modelChanged = true;
+          }
+        }
         else { gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, range.start, zoom < 1.5 ? range.overviewCount : range.count); if (eiffel) lastDraw = "procedural"; }
       }
       gl.bindVertexArray(null);
+      if (publishStreetModels(streetModels)) modelChanged = true;
       updateDiagnostics();
       // Notify after the indexed draw, never from an asynchronous fetch callback
       // or halfway through setting WebGL state. This also hides failed targets.
       if (modelChanged) options.onModelChange?.();
     },
-    onRemove(_map, gl) { release(gl); context = null; imported.request(null); lastDraw = "none"; updateDiagnostics(); },
+    onRemove(_map, gl) {
+      release(gl); context = null; imported.request(null); lastDraw = "none";
+      const changed = publishStreetModels(new Set());
+      updateDiagnostics();
+      if (changed) options.onModelChange?.();
+    },
   };
   return {
     layer,
@@ -243,15 +308,24 @@ void main() { fragColor = vec4(v_color * u_opacity, u_opacity); }`;
       if (disposed) return;
       const changed = visible !== value || ids.size !== shown.size || [...ids].some(id => !shown.has(id));
       visible = value; shown = new Set(ids);
+      const active = visible && isEarthEiffelStreetZoom(map.getZoom()) && earthEiffelStreetOpacity(map.getZoom()) > 0
+        ? new Set([...activeStreetModels].filter(id => shown.has(id))) : new Set<string>();
+      publishStreetModels(active);
       if (!visible) lastDraw = "none";
       synchronizeImport();
       if (changed) map.triggerRepaint();
     },
     isImportedEiffelReady(lod: EarthModelLod = "detail") { return !disposed && !failed && !!context && importedGpu.has(lod); },
+    isImportedModelReady(id: string, lod: EarthModelLod = "detail") {
+      return id === "eiffel-tower" && !disposed && !failed && !!context && importedGpu.has(lod);
+    },
+    getActiveStreetModelIds(): ReadonlySet<string> { return activeStreetModels; },
     getModelSnapshot: imported.getSnapshot,
     dispose() {
       if (disposed) return;
       disposed = true; shown.clear();
+      unsubscribePlacements();
+      activeStreetModels.clear();
       imported.dispose(); lastDraw = "none";
       if (context) release(context);
       context = null;

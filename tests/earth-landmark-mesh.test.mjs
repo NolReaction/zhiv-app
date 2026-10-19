@@ -5,11 +5,14 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
+  resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createEarthLandmarkMesh } = await vite.ssrLoadModule("/features/earth/landmark-mesh.ts");
 const { createEarthLandmarkMeshLayer } = await vite.ssrLoadModule("/features/earth/landmark-mesh-layer.ts");
 const { EARTH_LANDMARKS } = await vite.ssrLoadModule("/features/earth/landmark-catalog.ts");
+const { updateEarthModelPlacement, resetEarthModelPlacements } = await vite.ssrLoadModule("/features/earth/model-placement.ts");
+const { isEarthEiffelNearBounds } = await vite.ssrLoadModule("/features/earth/landmark-model-view.ts");
 
 test("nine original models have bounded solid geometry grounded at z=0 and no external assets", () => {
   const meshes = EARTH_LANDMARKS.map(item => createEarthLandmarkMesh(item.kind));
@@ -75,7 +78,7 @@ test("overview geometry is a shared prefix; detail adds railings without moving 
 function fixture(options = {}) {
   let zoom = 2.5, nextId = 0, uploads = 0, draws = 0, failCompile = false, failUpload = false;
   const live = { program: new Set(), shader: new Set(), buffer: new Set(), vao: new Set() };
-  const uniforms = [], drawRanges = [], drawKinds = [], projectionRequests = [];
+  const uniforms = [], drawRanges = [], drawKinds = [], projectionRequests = [], shaderSources = [];
   const boundBuffers = new Map(), bufferSizes = new Map();
   const container = { dataset: {}, ownerDocument: { defaultView: null } };
   const allocate = kind => { const value = { id: ++nextId }; live[kind].add(value); return value; };
@@ -88,6 +91,7 @@ function fixture(options = {}) {
     createVertexArray: () => allocate("vao"), deleteVertexArray: value => live.vao.delete(value),
     getShaderParameter: () => !failCompile, getProgramParameter: () => true,
     getShaderInfoLog: () => "test shader failure", getUniformLocation: (_, name) => name,
+    shaderSource(_, source) { shaderSources.push(source); },
     bindBuffer(target, buffer) { boundBuffers.set(target, buffer); },
     bufferData(target, buffer) { uploads++; assert.ok(buffer.byteLength < 400_000); if (!failUpload) bufferSizes.set(boundBuffers.get(target), buffer.byteLength); },
     getBufferParameter(target, parameter) { assert.equal(parameter, gl.BUFFER_SIZE); return bufferSizes.get(boundBuffers.get(target)) ?? 0; },
@@ -96,7 +100,7 @@ function fixture(options = {}) {
     uniformMatrix4fv() {}, uniform4fv() {}, drawArrays(_, start, count) { draws++; drawRanges.push([start, count]); drawKinds.push("procedural"); },
     drawElements(_, count, type, offset) { assert.equal(type, 15); assert.equal(offset, 0); draws++; drawRanges.push([0, count]); drawKinds.push("uploaded"); },
   };
-  for (const name of ["bindVertexArray", "enableVertexAttribArray", "vertexAttribPointer", "shaderSource",
+  for (const name of ["bindVertexArray", "enableVertexAttribArray", "vertexAttribPointer",
     "compileShader", "attachShader", "linkProgram", "useProgram", "disable", "enable", "depthMask", "blendFunc"]) gl[name] = () => {};
   const map = { getZoom: () => zoom, getContainer: () => container, triggerRepaint() {} };
   const models = createEarthLandmarkMeshLayer(map, options);
@@ -105,7 +109,7 @@ function fixture(options = {}) {
     defaultProjectionData: { mainMatrix: matrix, fallbackMatrix: matrix, tileMercatorCoords: [0, 0, 1, 1],
       clippingPlane: [0, 0, 1, 0], projectionTransition: 1 },
     getProjectionData(request) { projectionRequests.push(request); return this.defaultProjectionData; } };
-  return { models, gl, map, live, uniforms, input, drawRanges, drawKinds, projectionRequests, container,
+  return { models, gl, map, live, uniforms, input, drawRanges, drawKinds, projectionRequests, container, shaderSources,
     get draws() { return draws; }, get uploads() { return uploads; },
     zoom(value) { zoom = value; }, fail() { failCompile = true; },
     failUpload(value = true) { failUpload = value; },
@@ -252,4 +256,95 @@ test("failed initial procedural buffers do not fetch imported assets", () => {
   assert.equal(f.requests.length, 0); assert.equal(f.draws, 0);
   assert.equal(f.container.dataset.earthEiffelModelStatus, "error");
   f.models.dispose(); for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
+});
+
+test("live placements update geographic tile, scale, clockwise heading and altitude without reuploading geometry", async () => {
+  const f = importedFixture();
+  try {
+    f.models.layer.onAdd(f.map, f.gl); f.zoom(17);
+    f.models.setVisible(true, new Set(["eiffel-tower"])); f.response(0); await flushModel(); f.render();
+    assert.deepEqual([...f.models.getActiveStreetModelIds()], ["eiffel-tower"]);
+    const uploads = f.uploads, original = [...EARTH_LANDMARKS.find(item => item.id === "eiffel-tower").location];
+    updateEarthModelPlacement("eiffel-tower", {
+      longitude: 2.31, latitude: 48.87, heightMeters: 412, headingDegrees: 90, elevationMeters: 18,
+    });
+    assert.equal(f.models.getActiveStreetModelIds().size, 1, "valid transform edits retain the successfully drawn resident GPU model");
+    f.render();
+    const lastUniform = name => f.uniforms.filter(([key]) => key === name).at(-1)[1];
+    assert.equal(lastUniform("u_height"), 412); assert.equal(lastUniform("u_elevation"), 18);
+    assert.ok(Math.abs(lastUniform("u_heading")[0]) < 1e-10); assert.equal(lastUniform("u_heading")[1], 1);
+    const mercator = [(2.31 + 180) / 360, (1 - Math.log(Math.tan(Math.PI / 4 + 48.87 * Math.PI / 360)) / Math.PI) / 2];
+    const tile = mercator.map(value => Math.floor(value * 2 ** 14));
+    assert.deepEqual(f.projectionRequests.at(-1).tileID.canonical, { z: 14, x: tile[0], y: tile[1] });
+    assert.deepEqual(lastUniform("u_anchor"), mercator.map((value, index) => (value * 2 ** 14 - tile[index]) * 8192));
+    assert.equal(lastUniform("u_scale"), 412 / (40_030_228.884 * Math.cos(48.87 * Math.PI / 180)) * 2 ** 14 * 8192);
+    assert.match(f.shaderSources.find(source => source.includes("u_heading")), /a_position\.x \* u_heading\.x \+ a_position\.y \* u_heading\.y/);
+    assert.equal(f.uploads, uploads, "editing uses uniforms and geographic projection only");
+    assert.equal(f.requests.length, 1, "the same model asset is retained");
+    assert.deepEqual(EARTH_LANDMARKS.find(item => item.id === "eiffel-tower").location, original, "public catalogue anchors are immutable");
+    assert.deepEqual([...f.models.getActiveStreetModelIds()], ["eiffel-tower"]);
+    f.models.dispose();
+    const uniforms = f.uniforms.length;
+    resetEarthModelPlacements(); f.render();
+    assert.equal(f.uniforms.length, uniforms, "retired renderers no longer observe placement changes");
+  } finally { f.models.dispose(); resetEarthModelPlacements(); }
+});
+
+test("street replacement eligibility disappears for every fallback and for an unsuccessful indexed draw", async () => {
+  const f = importedFixture(); f.models.layer.onAdd(f.map, f.gl); f.zoom(17);
+  f.models.setVisible(true, new Set(["eiffel-tower"])); f.response(0); await flushModel();
+  assert.equal(f.models.getActiveStreetModelIds().size, 0, "network completion cannot hide native buildings");
+  f.render(); assert.equal(f.models.getActiveStreetModelIds().size, 1);
+  f.models.setVisible(false, new Set(["eiffel-tower"])); assert.equal(f.models.getActiveStreetModelIds().size, 0);
+  f.models.setVisible(true, new Set(["eiffel-tower"])); f.render(); assert.equal(f.models.getActiveStreetModelIds().size, 1);
+  f.models.setVisible(true, new Set()); assert.equal(f.models.getActiveStreetModelIds().size, 0, "geographic culling immediately restores the map");
+  f.models.setVisible(true, new Set(["eiffel-tower"])); f.render(); f.zoom(15); f.render();
+  assert.equal(f.models.getActiveStreetModelIds().size, 0, "zero opacity cannot hide the fallback");
+  f.zoom(17); f.render(); f.models.layer.onRemove(f.map, f.gl);
+  assert.equal(f.models.getActiveStreetModelIds().size, 0, "context removal restores the native map");
+  f.models.layer.onAdd(f.map, f.gl); f.render(); assert.equal(f.models.getActiveStreetModelIds().size, 1);
+  f.gl.drawElements = () => { throw new Error("lost GPU draw"); };
+  assert.doesNotThrow(() => f.render()); assert.equal(f.models.getActiveStreetModelIds().size, 0);
+  assert.equal(f.models.isImportedModelReady("eiffel-tower"), false);
+  assert.equal(f.container.dataset.earthEiffelModelStatus, "error");
+  const uploads = f.uploads; f.render(); assert.equal(f.uploads, uploads, "failed draws do not cause an allocation loop");
+  f.models.dispose(); for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
+});
+
+test("geographic loading padding follows the edited model height and elevation", () => {
+  const bounds = { west: -.01, east: .01, south: .01, north: .02 };
+  const camera = { width: 390, height: 844, pitch: 0, verticalFieldOfView: 36.87 };
+  assert.equal(isEarthEiffelNearBounds([0, 0], bounds, camera, 1, 0), false);
+  assert.equal(isEarthEiffelNearBounds([0, 0], bounds, camera, 1_000, 0), true, "a tall roof can remain visible with its base outside the viewport");
+  assert.equal(isEarthEiffelNearBounds([0, 0], bounds, camera, 1, 1_000), true, "a raised model needs the same camera-ray allowance");
+  assert.equal(isEarthEiffelNearBounds([0, 0], bounds, { ...camera, padding: { top: 20 } }, 1_000, 0),
+    isEarthEiffelNearBounds([0, 0], bounds, { ...camera, padding: { top: 20, bottom: 0, left: 0, right: 0 } }, 1_000, 0),
+    "MapLibre partial padding defaults each unspecified edge to zero");
+  for (const height of [0, -1, NaN, Infinity]) assert.equal(isEarthEiffelNearBounds([0, 0], bounds, camera, height, 0), false);
+});
+
+test("both dateline endpoints and extreme accepted latitudes retain valid canonical street tiles", async () => {
+  const f = importedFixture();
+  try {
+    f.models.layer.onAdd(f.map, f.gl); f.zoom(17);
+    f.models.setVisible(true, new Set(["eiffel-tower"])); f.response(0); await flushModel();
+    const projectionData = f.input.getProjectionData;
+    f.input.getProjectionData = function(request) {
+      const { z, x, y } = request.tileID.canonical;
+      assert.ok(x >= 0 && x < 2 ** z && y >= 0 && y < 2 ** z, "native projection rejects out-of-range canonical tiles");
+      return projectionData.call(this, request);
+    };
+    for (const longitude of [-180, 180]) for (const latitude of [-85, 85]) {
+      updateEarthModelPlacement("eiffel-tower", { longitude, latitude });
+      assert.doesNotThrow(() => f.render());
+      const { tileID } = f.projectionRequests.at(-1);
+      assert.equal(tileID.canonical.x, 0); assert.equal(tileID.wrap, longitude === 180 ? 1 : 0);
+      const local = f.uniforms.filter(([name]) => name === "u_anchor").at(-1)[1];
+      assert.ok(local.every(value => value >= 0 && value < 8192));
+      assert.deepEqual([...f.models.getActiveStreetModelIds()], ["eiffel-tower"]);
+      const camera = { width: 390, height: 844, pitch: 0, verticalFieldOfView: 36.87 };
+      assert.equal(isEarthEiffelNearBounds([longitude, latitude], { west: 179, east: -179, south: latitude - .01, north: latitude + .01 }, camera), true);
+    }
+    assert.equal(f.requests.length, 1); assert.equal(f.uploads, 3);
+  } finally { f.models.dispose(); resetEarthModelPlacements(); }
 });

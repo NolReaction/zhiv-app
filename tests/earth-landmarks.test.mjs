@@ -6,18 +6,24 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
+  resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createEarthLandmarks } = await vite.ssrLoadModule("/features/earth/globe-landmarks.ts");
 const { EARTH_LANDMARKS } = await vite.ssrLoadModule("/features/earth/landmark-catalog.ts");
+const { updateEarthModelPlacement, resetEarthModelPlacements } = await vite.ssrLoadModule("/features/earth/model-placement.ts");
 
 function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440, failAttachmentAt = -1,
-  modelEnvironment = null, withGpu = false, geographicBounds = null, pitch = 0 } = {}) {
+  modelEnvironment = null, withGpu = false, geographicBounds = null, pitch = 0, withMask = false } = {}) {
   const markers = [];
   const elements = [];
   const listeners = new Map();
   const projected = [];
   const layers = new Map();
+  const originalFilter = ["!=", ["get", "hide_3d"], true];
+  let buildingFilter = originalFilter;
+  const maskWrites = [];
+  if (withMask) layers.set("earth-buildings-3d", { type: "fill-extrusion", sourceLayer: "building" });
   const points = new Map();
   let groundOffset = 0;
   let writes = 0;
@@ -87,6 +93,8 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
     getVerticalFieldOfView: () => 36.86989764584402,
     getPadding: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
     getLayer: id => layers.get(id),
+    getFilter: withMask ? () => buildingFilter : undefined,
+    setFilter: withMask ? (id, filter) => { assert.equal(id, "earth-buildings-3d"); buildingFilter = filter; maskWrites.push(filter); } : undefined,
     addLayer(layer, before) { layers.set(layer.id, { ...layer, before }); if (withGpu) layer.onAdd(map, gl); },
     removeLayer(id) { if (withGpu) layers.get(id)?.onRemove(map, gl); layers.delete(id); },
     triggerRepaint() {},
@@ -140,9 +148,10 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
   }
   return {
     create: () => createEarthLandmarks(map, Marker, { modelEnvironment }),
-    markers, elements, listeners, projected, container, emit, layers,
+    markers, elements, listeners, projected, container, emit, layers, maskWrites, originalFilter,
+    get buildingFilter() { return buildingFilter; },
     render() {
-      for (const layer of layers.values()) layer.render(gl, { shaderData: { variantName: "globe", define: "#define GLOBE", vertexShaderPrelude: "" },
+      for (const layer of layers.values()) layer.render?.(gl, { shaderData: { variantName: "globe", define: "#define GLOBE", vertexShaderPrelude: "" },
         defaultProjectionData: projection, getProjectionData: () => projection });
     },
     element(id) { return markers.find(marker => marker.options.element.dataset.earthLandmark === id).options.element; },
@@ -510,4 +519,70 @@ test("high-pitch street culling retains a visible roof when its geographic base 
   geographicBounds.west += 1; geographicBounds.east += 1; state.emit("move"); state.render();
   assert.equal(state.container.dataset.earthEiffelModelDraw, "none", "a distant geographic viewport culls the retained model");
   landmarks.dispose();
+});
+
+test("live placement moves the real marker and culling while native buildings are masked only after an imported draw", async () => {
+  const asset = preparedEnvironment();
+  const geographicBounds = { west: 2.29, east: 2.30, south: 48.85, north: 48.87 };
+  const state = scene({ zoom: 17, modelEnvironment: asset.environment, withGpu: true, withMask: true, geographicBounds });
+  const landmarks = state.create();
+  try {
+    landmarks.setVisible(true);
+    assert.deepEqual(state.buildingFilter, state.originalFilter);
+    await settleModel();
+    assert.deepEqual(state.buildingFilter, state.originalFilter, "a fetched CPU mesh cannot replace native buildings");
+    state.render();
+    assert.notDeepEqual(state.buildingFilter, state.originalFilter);
+    const firstMask = state.buildingFilter;
+    landmarks.setBuildingsEnabled(false);
+    assert.deepEqual(state.buildingFilter, state.originalFilter, "the 3D toggle restores the existing layer filter");
+    landmarks.setBuildingsEnabled(true);
+    assert.deepEqual(state.buildingFilter, state.originalFilter, "the next visible draw is required again");
+    state.render(); assert.deepEqual(state.buildingFilter, firstMask);
+    const filterWrites = state.maskWrites.length;
+    updateEarthModelPlacement("eiffel-tower", { headingDegrees: 90, heightMeters: 400, elevationMeters: 12 });
+    assert.deepEqual(state.buildingFilter, firstMask);
+    assert.equal(state.maskWrites.length, filterWrites, "orientation and scale edits do not rebuild native building filters");
+    updateEarthModelPlacement("eiffel-tower", { exclusionRadiusMeters: 90 });
+    assert.equal(state.maskWrites.length, filterWrites + 1, "radius editing updates the active exclusion directly");
+    assert.notDeepEqual(state.buildingFilter, state.originalFilter, "editing never withdraws a ready replacement's mask for one frame");
+    state.render(); assert.equal(state.maskWrites.length, filterWrites + 1, "the following draw does not repeat the same filter update");
+    updateEarthModelPlacement("eiffel-tower", { longitude: 10, latitude: 30 });
+    const marker = state.markers.find(marker => marker.options.element.dataset.earthLandmark === "eiffel-tower");
+    assert.deepEqual(marker.positions.at(-1), [10, 30]);
+    assert.deepEqual(state.buildingFilter, state.originalFilter, "moving outside the viewport restores the map immediately");
+    assertHidden(state.element("eiffel-tower"));
+    state.render(); assert.equal(state.container.dataset.earthEiffelModelDraw, "none");
+    updateEarthModelPlacement("eiffel-tower", { longitude: 2.295, latitude: 48.8585, exclusionRadiusMeters: 75 });
+    assert.deepEqual(marker.positions.at(-1), [2.295, 48.8585]);
+    assert.deepEqual(state.buildingFilter, state.originalFilter);
+    state.render(); assert.notDeepEqual(state.buildingFilter, state.originalFilter);
+    assert.notDeepEqual(state.buildingFilter, firstMask, "the exclusion follows the edited location and radius");
+    assert.equal(asset.requests.length, 1, "placement editing retains the existing imported model");
+    state.setZoom(15); assert.deepEqual(state.buildingFilter, state.originalFilter, "zero street opacity reveals the native model");
+    state.setZoom(17); state.render(); assert.notDeepEqual(state.buildingFilter, state.originalFilter);
+    landmarks.dispose(); assert.deepEqual(state.buildingFilter, state.originalFilter);
+    const writes = state.writes, positions = marker.positions.length;
+    resetEarthModelPlacements();
+    assert.equal(state.writes, writes); assert.equal(marker.positions.length, positions, "disposed markers no longer follow the placement store");
+  } finally { landmarks.dispose(); resetEarthModelPlacements(); }
+});
+
+test("placement markers and geographic culling preserve both dateline coordinate endpoints", async () => {
+  const asset = preparedEnvironment();
+  const geographicBounds = { west: 179, east: -179, south: 84, north: 86 };
+  const state = scene({ zoom: 17, modelEnvironment: asset.environment, withGpu: true, geographicBounds });
+  const landmarks = state.create();
+  try {
+    landmarks.setVisible(true);
+    const marker = state.markers.find(marker => marker.options.element.dataset.earthLandmark === "eiffel-tower");
+    for (const longitude of [-180, 180]) {
+      updateEarthModelPlacement("eiffel-tower", { longitude, latitude: 85 });
+      await settleModel(); state.render();
+      assert.deepEqual(marker.positions.at(-1), [longitude, 85]);
+      assert.equal(state.container.dataset.earthEiffelModelDraw, "uploaded");
+      assert.equal(state.element("eiffel-tower").disabled, false);
+    }
+    assert.equal(asset.requests.length, 1);
+  } finally { landmarks.dispose(); resetEarthModelPlacements(); }
 });

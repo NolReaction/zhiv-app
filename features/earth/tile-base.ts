@@ -1,3 +1,5 @@
+import { splitEarthBuildingTileGeometry } from "./building-tile-geometry";
+
 /** Private MVT layer name: never reused for a provider layer. */
 export const EARTH_TILE_BASE_LAYER = "__zhiv_earth_tile_base_v1";
 
@@ -18,9 +20,10 @@ const tileBase = new Uint8Array([26, layer.length, ...layer]);
  * This is applied only to the worker-bound copy; provider bytes on disk stay intact.
  */
 export function appendEarthTileBase(data: ArrayBuffer): ArrayBuffer {
-  const result = new Uint8Array(data.byteLength + tileBase.byteLength);
-  result.set(new Uint8Array(data));
-  result.set(tileBase, data.byteLength);
+  const buildings = splitEarthBuildingTileGeometry(data);
+  const result = new Uint8Array(buildings.byteLength + tileBase.byteLength);
+  result.set(new Uint8Array(buildings));
+  result.set(tileBase, buildings.byteLength);
   return result.buffer;
 }
 
