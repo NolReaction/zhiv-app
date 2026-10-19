@@ -10,17 +10,25 @@ export const BASELINE_GIFT_COMMIT = "56de26dad03985400a7775563a47e43436ed0574";
 const catalogFile = "apps/api/src/main/resources/world/progression-rewards-catalog.json";
 const sha = contents => createHash("sha256").update(contents).digest("hex");
 
-/** Keep the previous full daily cycle, including its coins/items/relic, in the
- * comparison. Comparing new full gifts with old pearl-only projections would
- * misleadingly attribute existing benefits to this update. */
+/** Historical comparison only: the pinned old full bundles repeat indefinitely.
+ * Keep that old calendar transition explicit so the current one-time chain
+ * cannot silently rewrite the before scenario. This is not a live reward rule. */
 export function baselineGiftRules(loaded, baseline) {
   assert.equal(baseline.dailyMinimumHours, loaded.progressionRewards.progressionRewardsCatalog.dailyMinimumHours);
   assert.equal(baseline.daily.length, loaded.progressionRewards.progressionRewardsCatalog.daily.length);
   return { ...loaded, progressionRewards: { ...loaded.progressionRewards,
     dailyRewardView(state, now, homeLevel) {
-      const view = loaded.progressionRewards.dailyRewardView(state, now, homeLevel);
-      return { ...view, reward: structuredClone(baseline.daily[state.step - 1]),
+      const last = state.lastClaimAt === null ? null : Date.parse(state.lastClaimAt);
+      const day = 86_400_000;
+      const next = last === null ? now : Math.max(Math.floor(last / day) * day + day, last + baseline.dailyMinimumHours * 3_600_000);
+      const level = Number.isSafeInteger(homeLevel) ? Math.min(5, Math.max(1, homeLevel)) : 1;
+      return { ...state, homeLevel: level, claimable: now >= next, nextClaimAt: new Date(next).toISOString(),
+        completed: false, reward: structuredClone(baseline.daily[state.step - 1]),
         cycle: baseline.daily.map((reward, index) => ({ step: index + 1, reward: structuredClone(reward) })) };
+    },
+    afterDailyClaim(state, now) {
+      const at = new Date(now).toISOString();
+      return { step: state.step % baseline.daily.length + 1, lastClaimAt: at, lastClaimDate: at.slice(0, 10), completed: false };
     } } };
 }
 
@@ -38,6 +46,11 @@ export function reviewDailyGiftProgression(loaded, baselineBytes, onScenario = (
         constructionSpeedups: false, dailyRewards: true, ...policy, rareSeed });
       assert(result.complete, `${giftVersion}/${id}/${rareSeed} stalled at ${result.stoppedAt}`);
       assert.equal(result.actions.speedup_construction, undefined);
+      if (giftVersion === "after") {
+        assert.equal(result.dailyRewards.claims, 7);
+        assert.equal(result.dailyRewards.completed, true);
+        assert.equal(result.dailyRewards.pearlsReceived, 1000);
+      }
       for (const failure of ["ECONOMY_BUILDING_BUSY", "ECONOMY_BUILDING_REQUIRED", "ECONOMY_PEARLS", "ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
         assert.equal(result.failures[failure], undefined, `${giftVersion}/${id} violated ${failure}`);
       for (const purchase of result.productionSlots.purchases) {
@@ -67,11 +80,11 @@ export function reviewDailyGiftProgression(loaded, baselineBytes, onScenario = (
     }));
     return { policy: id, ...phases };
   });
-  return { title: "Complete daily gifts: same player policies before and after home-scaled bundles", reviewDate: "2026-10-06",
-    baseline: { commit: BASELINE_GIFT_COMMIT, file: catalogFile, sha256: sha(baselineBytes), daily: baseline.daily },
+  return { title: "Historical repeating gifts versus the current one-time seven-gift chain", reviewDate: "2026-10-19",
+    baseline: { commit: BASELINE_GIFT_COMMIT, file: catalogFile, sha256: sha(baselineBytes), daily: baseline.daily, repeats: true },
     catalogVersion: loaded.catalog.version, allSlotsPricePearls,
     method: { visits: "07:00,15:00,23:00 UTC; at most ten minutes per session; three deterministic relic seeds, not population quantiles",
-      comparison: "Both phases claim complete real daily bundles: coins, pearls, ordinary items and the weekly relic. Only the selected daily cycle changes; calendar, planner, recipes and commands stay identical.",
+      comparison: "Both phases claim complete bundles: coins, pearls, ordinary items and the seventh-gift relic. Before uses the pinned historical repeating cycle; after uses the current one-time seven-gift chain and completed-home scaling. Calendar spacing, planner, recipes and commands stay identical.",
       grants: "dailyRewardView chooses the completed home at claim time. Inventory credit and storage checks use actual TS rules, matching the DEV grant adapter; rejected capacity leaves the whole gift/calendar untouched. Calendar advances only after successful credit. No escrow exists in these no-market policies.",
       accounting: "Raw catalog currency units; pearls displayed in game at raw/2. All item flows and pearls reconcile; gift relics and exploration relics are tracked separately.",
       completion: "Home level5 and the current comparison base: ordinary stations through tier5, bridge/lighthouse at their authored restored tier, and storage through tier5; not every collection or all future content",

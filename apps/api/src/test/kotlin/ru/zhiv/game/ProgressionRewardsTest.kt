@@ -55,18 +55,45 @@ class ProgressionRewardsTest {
         assertEquals(ProgressionRewardRules.dailyCycle(1),ProgressionRewardRules.dailyCycle(-1))
         assertEquals(ProgressionRewardRules.dailyCycle(5),ProgressionRewardRules.dailyCycle(99))
     }
-    @Test fun `skips preserve next step and seven wraps to one`() {
+    @Test fun `skips preserve the gift and the seventh permanently completes the chain`() {
         val state=DailyRewardsState(7,at("2026-09-01T12:00:00Z"))
         val opened=ProgressionRewardRules.dailyView(state,at("2026-10-05T12:00:00Z"))
         assertEquals(7,opened.step); assertTrue(opened.claimable)
-        assertEquals(1,ProgressionRewardRules.afterClaim(state,at("2026-10-05T12:00:00Z")).step)
+        val finished=ProgressionRewardRules.afterClaim(state,at("2026-10-05T12:00:00Z"))
+        assertEquals(7,finished.step); assertTrue(finished.completed)
+        for(now in listOf("2026-10-05T12:00:00Z","2026-10-06T12:00:00Z","2030-10-05T12:00:00Z")) {
+            val view=ProgressionRewardRules.dailyView(finished,at(now))
+            assertTrue(view.completed); assertFalse(view.claimable); assertNull(view.nextClaimAt)
+            assertEquals(7,view.step); assertEquals(ProgressionRewardRules.daily[6],view.reward)
+        }
+        assertEquals("DAILY_REWARD_COMPLETED",assertFailsWith<AuthFailure> {
+            ProgressionRewardRules.afterClaim(finished,at("2030-10-05T12:00:00Z")) }.code)
     }
-    @Test fun `merge keeps latest actual claim with its next step and target wins timestamp tie`() {
+    @Test fun `merge retains furthest gift and latest cooldown independently`() {
         val left=DailyRewardsState(5,at("2026-10-05T23:00:00Z")); val right=DailyRewardsState(2,at("2026-10-06T10:00:00Z"))
-        assertEquals(right,ProgressionRewardRules.mergeDaily(left,right))
-        assertEquals(right,ProgressionRewardRules.mergeDaily(right,right.copy(step=7)))
+        assertEquals(DailyRewardsState(5,right.lastClaimAt),ProgressionRewardRules.mergeDaily(left,right))
+        assertEquals(right.copy(step=7),ProgressionRewardRules.mergeDaily(right,right.copy(step=7)))
         assertFalse(ProgressionRewardRules.dailyView(ProgressionRewardRules.mergeDaily(left,right),at("2026-10-06T23:59:00Z")).claimable)
         assertEquals(right,ProgressionRewardRules.mergeDaily(DailyRewardsState(),right))
+        val complete=DailyRewardsState(7,left.lastClaimAt,true)
+        assertEquals(complete.copy(lastClaimAt=right.lastClaimAt),ProgressionRewardRules.mergeDaily(complete,right))
+        assertEquals(ProgressionRewardRules.mergeDaily(complete,right),ProgressionRewardRules.mergeDaily(right,complete))
+    }
+    @Test fun `seven gifts have one finite pearl and relic payout`() {
+        var state=DailyRewardsState()
+        var wallet=EconomyRules.initial(0,0,0)
+        val before=wallet.wallet
+        for(step in 1..7) {
+            val now=at("2026-10-01T12:00:00Z").plusSeconds((step-1)*86_400L)
+            val view=ProgressionRewardRules.dailyView(state,now)
+            assertEquals(step,view.step); assertTrue(view.claimable); assertFalse(view.completed)
+            wallet=ProgressionRewardRules.credit(wallet,view.reward)
+            state=ProgressionRewardRules.afterClaim(state,now)
+        }
+        assertEquals(before.pearls+1000,wallet.wallet.pearls)
+        assertEquals(before.coins+320,wallet.wallet.coins)
+        assertEquals(1L,wallet.inventory["ancient_core"])
+        assertFalse(ProgressionRewardRules.dailyView(state,at("2030-10-01T12:00:00Z")).claimable)
     }
     @Test fun `credit respects wallet limit and never changes completed counters`() {
         val initial=EconomyRules.initial(0,0,0)

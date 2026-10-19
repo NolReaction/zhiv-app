@@ -219,6 +219,6 @@
 
 История решений и отчёты — в [индексе документации](README.md#история-и-материалы); актуальный этап — в [WORK_STATE.md](../WORK_STATE.md).
 
-Награды и реликвии: [правила](game/rewards-and-relics.md), общий `progression-rewards-catalog.json`, `features/game/progression-rewards.ts`, `features/economy/domain/rare-drops.ts`, `features/economy/domain/barter-model.ts`; серверные `JdbcProgressionRewardsRepository`/`JdbcEconomyBarterRepository`, миграции V38–V39.
+Награды и реликвии: [правила](game/rewards-and-relics.md), общий `progression-rewards-catalog.json`, `features/game/progression-rewards.ts`, `features/economy/domain/rare-drops.ts`, `features/economy/domain/barter-model.ts`; серверные `JdbcProgressionRewardsRepository`/`JdbcEconomyBarterRepository`, миграции V38–V39, V59 и V64 (одноразовые семь подарков).
 
 Номинал валют: [правила конверсии и отображения](game/currency-units.md), `features/economy/domain/money.ts`, `EconomyMoney.kt`, V40–V41. Текущие монетные числа показываются напрямую, жемчуг — как raw/2 без умножения новых цен ×25. Маркеры ×10/×50 нужны для исторических снимков; старые квитанции читаются со своим масштабом.

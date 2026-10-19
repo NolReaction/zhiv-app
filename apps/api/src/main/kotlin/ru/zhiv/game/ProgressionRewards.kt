@@ -16,9 +16,10 @@ internal val progressionRewardsJson = Json { encodeDefaults = true; ignoreUnknow
     val daily: List<ProgressionReward>, val dailyByHomeLevel: Map<String,List<ProgressionReward>>, val achievementPearls: Map<String,List<Long>>,
     val onboarding: ProgressionReward)
 @Serializable data class DailyRewardCycle(val step: Int, val reward: ProgressionReward)
-data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null)
-@Serializable data class DailyRewardsView(val step: Int, val claimable: Boolean, val nextClaimAt: String,
-    val lastClaimAt: String?, val lastClaimDate: String?, val reward: ProgressionReward, val cycle: List<DailyRewardCycle>, val homeLevel: Int = 1)
+data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null, val completed: Boolean = false)
+@Serializable data class DailyRewardsView(val step: Int, val claimable: Boolean, val nextClaimAt: String?,
+    val lastClaimAt: String?, val lastClaimDate: String?, val reward: ProgressionReward, val cycle: List<DailyRewardCycle>, val homeLevel: Int = 1,
+    val completed: Boolean = false)
 @Serializable data class AchievementRewardView(val achievementId: String, val level: Int, val target: Long, val pearls: Long,
     val earnedAt: String?, val claimedAt: String?, val eligible: Boolean, val blockedReason: String?)
 @Serializable data class OnboardingRewardView(val claimedAt: String? = null)
@@ -106,14 +107,22 @@ object ProgressionRewardRules {
         val level=homeLevel.coerceIn(1,5)
         val cycle=dailyCycle(level)
         val last = state.lastClaimAt
-        val next = if(last==null) now else maxOf(last.atOffset(ZoneOffset.UTC).toLocalDate().plusDays(1)
+        val step=if(state.completed) 7 else state.step
+        val next = if(state.completed) null else if(last==null) now else maxOf(last.atOffset(ZoneOffset.UTC).toLocalDate().plusDays(1)
             .atStartOfDay().toInstant(ZoneOffset.UTC), last.plusSeconds(catalog.dailyMinimumHours*3600))
-        return DailyRewardsView(state.step,!now.isBefore(next),next.toString(),last?.toString(),
-            last?.atOffset(ZoneOffset.UTC)?.toLocalDate()?.toString(),cycle[state.step-1],cycle.mapIndexed { i,r -> DailyRewardCycle(i+1,r) },level)
+        return DailyRewardsView(step,next!=null && !now.isBefore(next),next?.toString(),last?.toString(),
+            last?.atOffset(ZoneOffset.UTC)?.toLocalDate()?.toString(),cycle[step-1],cycle.mapIndexed { i,r -> DailyRewardCycle(i+1,r) },level,state.completed)
     }
-    fun afterClaim(state: DailyRewardsState, now: Instant) = DailyRewardsState(state.step%7+1,now)
-    fun mergeDaily(left: DailyRewardsState, right: DailyRewardsState): DailyRewardsState =
-        if(left.lastClaimAt==null || right.lastClaimAt?.isAfter(left.lastClaimAt)==true) right else left
+    fun afterClaim(state: DailyRewardsState, now: Instant): DailyRewardsState {
+        if(state.completed) rewardFailure("DAILY_REWARD_COMPLETED","Все семь подарков уже получены")
+        return DailyRewardsState((state.step+1).coerceAtMost(7),now,state.step==7)
+    }
+    /** Progress and completion never go backwards; the latest claim still controls cooldown. */
+    fun mergeDaily(left: DailyRewardsState, right: DailyRewardsState): DailyRewardsState {
+        val completed=left.completed || right.completed
+        return DailyRewardsState(if(completed) 7 else maxOf(left.step,right.step),
+            listOfNotNull(left.lastClaimAt,right.lastClaimAt).maxOrNull(),completed)
+    }
     fun credit(state: EconomyState, reward: ProgressionReward): EconomyState {
         if(reward.coins !in 0L..(ECONOMY_MAX_BALANCE-state.wallet.coins)
             || reward.pearls !in 0L..(ECONOMY_MAX_PEARLS-state.wallet.pearls)) economyFailure("ECONOMY_CAPACITY","Кошелёк заполнен")

@@ -11,8 +11,16 @@ const catalog = rawCatalog as unknown as { version: 4; currencyScale: number; pe
   dailyByHomeLevel: Record<string, GameReward[]>;
   achievementPearls: Record<GameAchievementId, number[]> };
 export const progressionRewardsCatalog = catalog;
-export type DailyRewardState = { step: number; lastClaimAt: string | null; lastClaimDate: string | null };
-export const initialDailyRewardState = (): DailyRewardState => ({ step: 1, lastClaimAt: null, lastClaimDate: null });
+export type DailyRewardState = { step: number; lastClaimAt: string | null; lastClaimDate: string | null; completed: boolean };
+type SavedDailyRewardState = Omit<DailyRewardState, "completed"> & { completed?: boolean };
+export const initialDailyRewardState = (): DailyRewardState => ({ step: 1, lastClaimAt: null, lastClaimDate: null, completed: false });
+/** Upgrade a live DEV store created before the one-time chain. Receipts remain immutable. */
+export function normalizeDailyRewardState(state: SavedDailyRewardState, paidSteps: Iterable<number> = []): DailyRewardState {
+  let highestPaid = 0;
+  for (const step of paidSteps) highestPaid = Math.max(highestPaid, step);
+  const completed = state.completed === true || highestPaid >= catalog.daily.length || (state.step === 1 && state.lastClaimAt !== null);
+  return { ...state, completed, step: completed ? catalog.daily.length : Math.max(state.step, Math.min(catalog.daily.length, highestPaid + 1)) };
+}
 const DAY = 86_400_000;
 /** Match the practical order lesson, including saved legacy progress. The server
  * owns these fields; local tutorial screens cannot qualify an early payout. */
@@ -25,23 +33,27 @@ export function dailyRewardCycle(homeLevel = 1): GameReward[] {
   const level = Number.isSafeInteger(homeLevel) ? Math.min(5, Math.max(1, homeLevel)) : 1;
   return structuredClone(level === 1 ? catalog.daily : catalog.dailyByHomeLevel[String(level)]);
 }
-export function dailyRewardView(state: DailyRewardState, now: number, homeLevel = 1): GameRewards["daily"] {
+export function dailyRewardView(saved: SavedDailyRewardState, now: number, homeLevel = 1): GameRewards["daily"] {
+  const state = normalizeDailyRewardState(saved);
   const level = Number.isSafeInteger(homeLevel) ? Math.min(5, Math.max(1, homeLevel)) : 1;
   const cycle = dailyRewardCycle(level);
   const last = state.lastClaimAt === null ? null : Date.parse(state.lastClaimAt);
   const next = last === null ? now : Math.max(Math.floor(last / DAY) * DAY + DAY, last + catalog.dailyMinimumHours * 3_600_000);
-  return { ...state, homeLevel: level, claimable: now >= next, nextClaimAt: new Date(next).toISOString(),
+  return { ...state, homeLevel: level, claimable: !state.completed && now >= next, nextClaimAt: state.completed ? null : new Date(next).toISOString(),
     reward: structuredClone(cycle[state.step - 1]), cycle: cycle.map((reward, index) => ({ step: index + 1, reward })) };
 }
-export function afterDailyClaim(state: DailyRewardState, now: number): DailyRewardState {
-  return { step: state.step % catalog.daily.length + 1, lastClaimAt: new Date(now).toISOString(), lastClaimDate: new Date(now).toISOString().slice(0, 10) };
+export function afterDailyClaim(saved: SavedDailyRewardState, now: number): DailyRewardState {
+  const state = normalizeDailyRewardState(saved);
+  if (state.completed) return state;
+  return { step: Math.min(state.step + 1, catalog.daily.length), completed: state.step === catalog.daily.length,
+    lastClaimAt: new Date(now).toISOString(), lastClaimDate: new Date(now).toISOString().slice(0, 10) };
 }
-/** Preserve the sequence attached to the latest actual claim; skips never reset it. */
-export function mergeDailyRewards(left: DailyRewardState, right: DailyRewardState): DailyRewardState {
-  if (!left.lastClaimAt) return structuredClone(right);
-  if (!right.lastClaimAt) return structuredClone(left);
-  // Deterministic tie: target's state wins when two events have the same timestamp.
-  return structuredClone(Date.parse(right.lastClaimAt) > Date.parse(left.lastClaimAt) ? right : left);
+/** Neither a newer claim nor a merge can revive gifts already received on either account. */
+export function mergeDailyRewards(leftSaved: SavedDailyRewardState, rightSaved: SavedDailyRewardState): DailyRewardState {
+  const left = normalizeDailyRewardState(leftSaved), right = normalizeDailyRewardState(rightSaved);
+  const latest = !left.lastClaimAt || (right.lastClaimAt && Date.parse(right.lastClaimAt) > Date.parse(left.lastClaimAt)) ? right : left;
+  const completed = left.completed || right.completed;
+  return { ...latest, step: completed ? catalog.daily.length : Math.max(left.step, right.step), completed };
 }
 export function achievementRewardRows(earned: (id: GameAchievementId, level: number) => { at: string | null; eligible: boolean },
   claimed: (id: GameAchievementId, level: number) => string | null): AchievementReward[] {

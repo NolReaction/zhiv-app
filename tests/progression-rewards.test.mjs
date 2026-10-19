@@ -28,7 +28,7 @@ function completeTutorial(p, now) {
 }
 const row = (p, id, level, now) => rewards.getDevProgressionRewards(p.token, now).achievementRewards.find(r => r.achievementId === id && r.level === level);
 
-test("v4 catalog grants 1500 visible lifetime achievement pearls and 500 visible pearls per received cycle", () => {
+test("v4 catalog grants 1500 visible lifetime achievement pearls and 500 visible pearls in one lifetime gift chain", () => {
   const catalog = rules.progressionRewardsCatalog;
   assert.equal(catalog.version, 4);
   const achievementPearls = Object.values(catalog.achievementPearls).flat().reduce((a, b) => a + b, 0);
@@ -204,7 +204,7 @@ test("UTC midnight and twenty-hour fences both apply independently of player tim
   assert.equal(rules.dailyRewardView(state, at("2026-10-05T20:00:00Z")).claimable, false, "clock correction cannot reopen a claim");
 });
 
-test("opening rewards changes no wallet; seven manual claims wrap and skipped days preserve the step", () => {
+test("opening rewards changes no wallet; seven manual claims finish permanently and skipped days preserve the step", () => {
   const p = player(); let now = at("2026-10-05T12:00:00Z");
   economy.getDevEconomy(p.token, now);
   const initial = economy.getDevEconomy(p.token, now), opened = rewards.getDevProgressionRewards(p.token, now);
@@ -219,15 +219,23 @@ test("opening rewards changes no wallet; seven manual claims wrap and skipped da
     assert.equal(last.acceptedRevision, beforeClaim.revision + 1, "one atomic credit after the merchant window is reconciled");
     assert.equal(last.claim.step, step); assert.equal(last.replayed, false);
     assert.equal(api.gameRewardResultSchema.safeParse(last).success, true);
-    assert.throws(() => claim(p, request(p), now + 1000), { code: "DAILY_REWARD_COOLDOWN" });
+    assert.throws(() => claim(p, request(p), now + 1000), { code: step === 7 ? "DAILY_REWARD_COMPLETED" : "DAILY_REWARD_COOLDOWN" });
     now += (step === 2 ? 10 : 1) * 86400_000;
-    assert.equal(rewards.getDevProgressionRewards(p.token, now).daily.step, step % 7 + 1);
+    assert.equal(rewards.getDevProgressionRewards(p.token, now).daily.step, Math.min(step + 1, 7));
+    assert.equal(last.rewards.daily.completed, step === 7);
   }
   const final = economy.getDevEconomy(p.token, now);
   assert.equal(final.wallet.coins - initial.wallet.coins, 320); assert.equal(final.wallet.pearls - initial.wallet.pearls, 1000);
   for (const [id, amount] of Object.entries({ wood: 6, stone: 2, fiber: 4, berries: 3, fish_common: 1, planks: 3, ancient_core: 1 })) assert.equal((final.inventory[id] ?? 0) - (initial.inventory[id] ?? 0), amount);
   assert.equal(final.storage.overflow, 0);
-  assert.ok(final.revision >= initial.revision + 7); assert.equal(last.rewards.daily.step, 1);
+  assert.ok(final.revision >= initial.revision + 7); assert.equal(last.rewards.daily.step, 7);
+  assert.equal(last.rewards.daily.nextClaimAt, null);
+  const beforeRetry = structuredClone(final.wallet);
+  for (const later of [now, now + 7 * 86400_000, now + 365 * 86400_000]) {
+    assert.equal(rewards.getDevProgressionRewards(p.token, later).daily.completed, true);
+    assert.throws(() => claim(p, request(p), later), { code: "DAILY_REWARD_COMPLETED" });
+    assert.deepEqual(economy.getDevEconomy(p.token, later).wallet, beforeRetry);
+  }
 });
 
 test("lost-response replay preserves original reward, date and accepted revision alongside fresh economy", () => {
@@ -241,7 +249,7 @@ test("lost-response replay preserves original reward, date and accepted revision
   assert.throws(() => claim(p, { ...command, kind: "achievement", achievementId: "first_path", level: 1 }, now), { code: "REWARD_REQUEST_CONFLICT" });
 });
 
-test("v1 catalog receipts keep their original paid bundle after v4 previews replace the cycle", () => {
+test("v1 final receipts keep their original bundle and permanently finish the gifts", () => {
   const p = player(), now = at("2026-10-05T12:00:00Z"), command = request(p);
   rewards.getDevProgressionRewards(p.token, now);
   const value = profile(p), rewardProfile = globalThis.__zhivDevProgressionRewards.get(p.me.user.publicId);
@@ -261,12 +269,13 @@ test("v1 catalog receipts keep their original paid bundle after v4 previews repl
   assert.deepEqual(first.claim, original); assert.deepEqual(repeated.claim, original);
   assert.deepEqual(first.economy.wallet, before.wallet); assert.deepEqual(repeated.economy.wallet, before.wallet);
   assert.deepEqual(first.economy.inventory, before.inventory); assert.deepEqual(repeated.economy.inventory, before.inventory);
-  assert.deepEqual(first.rewards.daily.reward, { coins: 150, pearls: 80, items: { wood: 2, stone: 1 } });
+  assert.deepEqual(first.rewards.daily.reward, rules.dailyRewardCycle(5)[6]);
+  assert.equal(first.rewards.daily.completed, true);
   assert.deepEqual(rewardProfile.receipts.get(command.requestId), originalReceipt, "opening and retrying do not rewrite paid history");
-  assert.equal(rewardProfile.daily.step, 1);
+  assert.equal(rewardProfile.daily.step, 7);
 });
 
-test("paid v2 and v3 gifts retain their old pearl amounts while fresh v4 claims use the new cycle", () => {
+test("paid v2 and v3 finales retain their old amounts without opening another gift chain", () => {
   for (const oldPearls of [8, 20]) {
     const p = player(), now = at("2026-10-05T12:00:00Z"), oldRequest = request(p);
     rewards.getDevProgressionRewards(p.token, now);
@@ -283,10 +292,9 @@ test("paid v2 and v3 gifts retain their old pearl amounts while fresh v4 claims 
     assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, oldClaim);
     assert.equal(replay.rewards.catalogVersion, 4);
     assert.equal(replay.economy.wallet.pearls, oldPearls, "a fresh preview cannot top up an old paid receipt");
-    const freshRequest = request(p), fresh = claim(p, freshRequest, now);
-    assert.equal(fresh.claim.step, 1); assert.equal(fresh.claim.reward.pearls, 80);
-    assert.equal(fresh.economy.wallet.pearls, oldPearls + 80);
-    assert.deepEqual(claim(p, freshRequest, now + 1000).economy.wallet, fresh.economy.wallet);
+    assert.equal(replay.rewards.daily.completed, true);
+    assert.throws(() => claim(p, request(p), now), { code: "DAILY_REWARD_COMPLETED" });
+    assert.deepEqual(economy.getDevEconomy(p.token, now).wallet, replay.economy.wallet);
     assert.deepEqual(rewardProfile.receipts.get(oldRequest.requestId), oldReceipt);
   }
 });
@@ -400,13 +408,20 @@ test("reward UUID fences are shared with ordinary economy commands in both direc
   assert.throws(() => claim(p, { ...request(p), requestId: id }, now + 86400_000), { code: "ECONOMY_REQUEST_CONFLICT" });
 });
 
-test("merge daily keeps the latest next step and next deadline without resetting paid history", () => {
-  const left = { step: 5, lastClaimAt: "2026-10-05T23:00:00Z", lastClaimDate: "2026-10-05" };
-  const right = { step: 2, lastClaimAt: "2026-10-06T10:00:00Z", lastClaimDate: "2026-10-06" };
+test("merge daily preserves the greatest progress and latest cooldown independently", () => {
+  const left = { step: 5, lastClaimAt: "2026-10-05T23:00:00Z", lastClaimDate: "2026-10-05", completed: false };
+  const right = { step: 2, lastClaimAt: "2026-10-06T10:00:00Z", lastClaimDate: "2026-10-06", completed: false };
   const merged = rules.mergeDailyRewards(left, right);
-  assert.deepEqual(merged, right); assert.equal(rules.dailyRewardView(merged, at("2026-10-06T23:59:00Z")).claimable, false);
+  assert.deepEqual(merged, { ...right, step: 5 });
+  assert.equal(rules.dailyRewardView(merged, at("2026-10-06T23:59:00Z")).claimable, false);
   assert.equal(rules.dailyRewardView(merged, at("2026-10-07T06:00:00Z")).claimable, true);
-  assert.deepEqual(rules.mergeDailyRewards(right, { ...right, step: 7 }), right, "timestamp tie preserves target sequence");
+  assert.deepEqual(rules.mergeDailyRewards(right, { ...right, step: 7 }), { ...right, step: 7 });
+  const finished = { ...left, step: 7, completed: true };
+  for (const [a, b] of [[finished, right], [right, finished]]) {
+    const result = rules.mergeDailyRewards(a, b);
+    assert.deepEqual(result, { ...right, step: 7, completed: true });
+    assert.equal(rules.dailyRewardView(result, at("2027-10-07T06:00:00Z")).claimable, false);
+  }
 });
 
 
@@ -463,5 +478,41 @@ test("final gift credits its relic and currencies atomically, and exact replay n
   const replay = claim(p, command, now + 1000);
   assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, paid.claim);
   assert.deepEqual(replay.economy.wallet, paid.economy.wallet); assert.deepEqual(replay.economy.inventory, paid.economy.inventory);
-  assert.equal(replay.rewards.daily.step, 1);
+  assert.equal(replay.rewards.daily.step, 7);
+  assert.equal(replay.rewards.daily.completed, true);
+  assert.equal(replay.rewards.daily.nextClaimAt, null);
+});
+
+test("DEV upgrades an old wrapped chain and an old final receipt without issuing another gift", () => {
+  for (const withReceipt of [false, true]) {
+    const p = player(), now = at("2026-10-19T12:00:00Z");
+    const before = economy.getDevEconomy(p.token, now);
+    rewards.getDevProgressionRewards(p.token, now);
+    const saved = globalThis.__zhivDevProgressionRewards.get(p.me.user.publicId);
+    saved.daily = { step: withReceipt ? 4 : 1, lastClaimAt: "2026-10-17T12:00:00Z", lastClaimDate: "2026-10-17" };
+    const command = request(p), original = { kind: "daily", step: 7, reward: rules.dailyRewardCycle()[6], claimedAt: "2026-10-16T12:00:00Z" };
+    if (withReceipt) saved.receipts.set(command.requestId, { signature: JSON.stringify(command), claim: original,
+      acceptedRevision: before.revision, currencyScale: 10, pearlScale: 50 });
+    const migrated = rewards.getDevProgressionRewards(p.token, now);
+    assert.equal(migrated.daily.completed, true);
+    assert.equal(migrated.daily.step, 7);
+    assert.equal(migrated.daily.nextClaimAt, null);
+    assert.equal(api.gameRewardsSchema.safeParse(migrated).success, true);
+    assert.throws(() => claim(p, request(p), now), { code: "DAILY_REWARD_COMPLETED" });
+    if (withReceipt) {
+      const replay = claim(p, command, now);
+      assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, original);
+    }
+    assert.deepEqual(economy.getDevEconomy(p.token, now).wallet, before.wallet);
+  }
+});
+
+test("completed reward responses cannot advertise another deadline or another claim", () => {
+  const p = player(), now = at("2026-10-19T12:00:00Z");
+  const data = rewards.getDevProgressionRewards(p.token, now);
+  data.daily = { ...data.daily, step: 7, completed: true, claimable: false, nextClaimAt: null,
+    lastClaimAt: data.serverTime, lastClaimDate: data.serverTime.slice(0, 10) };
+  assert.equal(api.gameRewardsSchema.safeParse(data).success, true);
+  for (const patch of [{ step: 1 }, { claimable: true }, { nextClaimAt: data.serverTime }, { lastClaimAt: null }])
+    assert.equal(api.gameRewardsSchema.safeParse({ ...data, daily: { ...data.daily, ...patch } }).success, false);
 });

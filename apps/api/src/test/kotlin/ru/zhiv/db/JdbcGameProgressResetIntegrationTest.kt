@@ -12,6 +12,7 @@ import ru.zhiv.economy.EconomyCommand
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.mail.WELCOME_MAIL_SOURCE
 import ru.zhiv.forest.ForestMemoryCommand
+import ru.zhiv.game.ProgressionRewardClaim
 import ru.zhiv.world.WorldCommand
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
@@ -98,6 +99,16 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO game_items(user_id,item_id) VALUES ('10000000-0000-4000-8000-000000000001','flower');
                 INSERT INTO game_achievements(user_id,achievement_id)
                   VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps');
+                INSERT INTO game_daily_rewards(user_id,next_step,last_claim_at,last_claim_date,completed)
+                  VALUES ('10000000-0000-4000-8000-000000000001',7,'2026-10-01T00:00:00Z','2026-10-01',true);
+                INSERT INTO game_reward_claims(user_id,origin_user_id,request_id,signature,kind,daily_date,claim,accepted_revision,claimed_at)
+                  VALUES ('10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',
+                    'd0000000-0000-4000-8000-00000000000d',
+                    '{"requestId":"d0000000-0000-4000-8000-00000000000d","ownerPublicId":"0000-0000-0001","kind":"daily"}',
+                    'daily','2026-10-01','{"kind":"daily","step":7,"reward":{"coins":80,"pearls":220,"items":{"ancient_core":1}},"claimedAt":"2026-10-01T00:00:00Z"}',
+                    8,'2026-10-01T00:00:00Z');
+                INSERT INTO game_achievement_reward_claims(user_id,achievement_id,level,pearls,claimed_at)
+                  VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps',1,40,'2026-10-01T00:00:00Z');
                 INSERT INTO forest_memory(user_id,revision,snapshot,updated_at)
                   VALUES ('10000000-0000-4000-8000-000000000001',7,'{"oldScene":true}',clock_timestamp());
                 INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price)
@@ -117,10 +128,6 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO player_mail_messages(id,user_id,source_key,type,title,body,notify)
                   VALUES ('b0000000-0000-4000-8000-00000000000b','10000000-0000-4000-8000-000000000001',
                     'broadcast:c0000000-0000-4000-8000-00000000000c','admin_notice','Service letter','Keep this letter',true);
-                INSERT INTO notification_events(user_id,source_key,category,due_at,next_attempt_at) VALUES
-                  ('10000000-0000-4000-8000-000000000001','checkin:test','checkin',clock_timestamp(),clock_timestamp()),
-                  ('10000000-0000-4000-8000-000000000001','mail:b0000000-0000-4000-8000-00000000000b','mail',clock_timestamp(),clock_timestamp()),
-                  ('10000000-0000-4000-8000-000000000001','job:test','exploration',clock_timestamp(),clock_timestamp());
                 INSERT INTO promo_redemptions(user_id,origin_user_id,promo_id,request_id,title,reward,accepted_revision)
                   VALUES ('10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','already-used',
                     '70000000-0000-4000-8000-000000000007','Test gift','{}',1);
@@ -133,18 +140,26 @@ class JdbcGameProgressResetIntegrationTest {
             val welcomeId = UUID.fromString(welcome.id)
             val gift = mailbox.claim(hash, "0000-0000-0001", welcomeId)
             assertTrue(gift.gift.claimedAt != null)
+            // Wallet updates reconcile notification sources. Seed the operator's
+            // retention fixtures after that update, so they exist before reset.
+            execute(source, """
+                INSERT INTO notification_events(user_id,source_key,category,due_at,next_attempt_at) VALUES
+                  ('10000000-0000-4000-8000-000000000001','checkin:test','checkin',clock_timestamp(),clock_timestamp()),
+                  ('10000000-0000-4000-8000-000000000001','mail:b0000000-0000-4000-8000-00000000000b','mail',clock_timestamp(),clock_timestamp()),
+                  ('10000000-0000-4000-8000-000000000001','job:test','exploration',clock_timestamp(),clock_timestamp());
+            """.trimIndent())
             val before = snapshot(source)
             val preview = reset()
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='64' WHERE version='63'")
+            execute(source, "UPDATE flyway_schema_history SET version='65' WHERE version='64'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V63"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V64"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='63' WHERE version='64'")
+            execute(source, "UPDATE flyway_schema_history SET version='64' WHERE version='65'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
@@ -229,6 +244,10 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals("GAME_VISIBILITY_CONFLICT", assertFailsWith<AuthFailure> {
                 JdbcGameRepository(source).setVisibility(hash, true, 0, "0000-0000-0001")
             }.code)
+            assertEquals("DAILY_REWARD_COMPLETED", assertFailsWith<AuthFailure> {
+                JdbcProgressionRewardsRepository(source).claim(hash,ProgressionRewardClaim(
+                    UUID.randomUUID().toString(),"0000-0000-0001","daily"))
+            }.code,"The real operator reset must not start the seven gifts again")
             assertEquals(after, snapshot(source), "Rejected stale retries must not change any fresh or preserved data")
         }
     }

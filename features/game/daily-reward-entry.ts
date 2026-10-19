@@ -12,7 +12,7 @@ export function createDailyRewardEntryPrompt(ownerPublicId: string, initialReadV
       if (!autoPromptAllowed || dismissed || !isOnline || state.loading || state.busy || state.readVersion <= initialReadVersion
         || state.data?.ownerPublicId !== ownerPublicId) return false;
       const pendingDaily = state.uncertain && state.pending?.kind === "daily";
-      if (!pendingDaily && (!state.data.daily.claimable || state.pending !== null)) return false;
+      if (!pendingDaily && (state.data.daily.completed || !state.data.daily.claimable || state.pending !== null)) return false;
       dismissed = true;
       return true;
     },

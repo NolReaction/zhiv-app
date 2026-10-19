@@ -33,34 +33,40 @@ test("parallel progression buys capacity at real gates, reserves pending inputs 
   } finally { await loaded.close(); }
 });
 
-test("daily-only pearl projection follows gift payouts and cannot buy a slot before earning its price", async () => {
+test("one-time pearl projection ends at its earned budget and cannot buy a slot before earning its price", async () => {
   const loaded = await loadJourneyRules();
   try {
     const rewards = loaded.progressionRewards.progressionRewardsCatalog;
-    assert.deepEqual(dailyPearlThreshold(rewards, 200), { targetPearls: 200, giftClaims: 3, elapsedDaysWithFirstGiftToday: 2, pearlsReceived: 300 });
-    assert.deepEqual(dailyPearlThreshold(rewards, 3500), { targetPearls: 3500, giftClaims: 26, elapsedDaysWithFirstGiftToday: 25, pearlsReceived: 3600 });
+    assert.deepEqual(dailyPearlThreshold(rewards, 200), { targetPearls: 200, reachable: true, giftClaims: 3, elapsedDaysWithFirstGiftToday: 2, pearlsReceived: 300 });
+    assert.deepEqual(dailyPearlThreshold(rewards, 1000), { targetPearls: 1000, reachable: true, giftClaims: 7, elapsedDaysWithFirstGiftToday: 6, pearlsReceived: 1000 });
+    assert.deepEqual(dailyPearlThreshold(rewards, 1001), { targetPearls: 1001, reachable: false, giftClaims: null, elapsedDaysWithFirstGiftToday: null, pearlsReceived: 1000 });
+    assert.deepEqual(dailyPearlThreshold(rewards, 3500), { targetPearls: 3500, reachable: false, giftClaims: null, elapsedDaysWithFirstGiftToday: null, pearlsReceived: 1000 });
     const report = simulateJourney(loaded, "visits3", 40, { ...jointPlanningPolicy, constructionSpeedups: false,
       buyProductionSlots: true, dailyPearlsOnly: true });
     assert.equal(report.pearlBudget, 0);
-    assert.equal(report.dailyPearlProjection.claims, 40, "Multiple daily visits cannot duplicate the UTC gift");
-    const earned = Array.from({ length: 40 }, (_, index) => rewards.daily[index % rewards.daily.length].pearls).reduce((sum, amount) => sum + amount, 0);
+    assert.equal(report.dailyPearlProjection.claims, 7, "Multiple visits and later weeks cannot duplicate the seven gifts");
+    assert.equal(report.dailyPearlProjection.completed, true);
+    const earned = rewards.daily.reduce((sum, reward) => sum + reward.pearls, 0);
     assert.equal(report.dailyPearlProjection.pearlsReceived, earned);
     assert.equal(report.pearlsSpent + report.pearlsRemaining, earned);
-    assert.equal(earned, 5600);
-    assert.equal(report.productionSlots.purchases.length, 10, "forty earned daily gifts fund all five stations' two permanent expansions");
+    assert.equal(earned, 1000);
+    assert(report.productionSlots.purchases.length < 10, "The finite gifts cannot fund every permanent expansion");
     assert.equal(report.productionSlots.purchases[0].day, 2);
-    assert.equal(report.pearlsSpent, 3500);
-    assert.equal(report.pearlsRemaining, 2100);
-    assert(Object.values(report.productionSlots.finalCapacity).every(count => count === 3));
-    assert.equal(report.productionSlots.maximumProductionJobs.garden, 3);
-    assert.equal(report.productionSlots.maximumProductionJobs.workshop, 3, "Gift-funded crafting slots must actually run concurrently");
+    assert(report.pearlsSpent <= earned);
+    assert(Object.values(report.productionSlots.finalCapacity).some(count => count < 3));
+    for (const building of ["garden", "workshop"]) {
+      assert(report.productionSlots.maximumProductionJobs[building] > 1, "Affordable gift-funded slots actually work in parallel");
+      assert(report.productionSlots.maximumProductionJobs[building] <= report.productionSlots.finalCapacity[building]);
+    }
     assert.equal(report.productionSlots.finalCapacity.quarry, undefined, "Daily gifts must not add another mining actor");
-    const completedBase = simulateJourney(loaded, "visits3", 105, { ...jointPlanningPolicy, constructionSpeedups: false,
+    const completedBase = simulateJourney(loaded, "visits3", 500, { ...jointPlanningPolicy, constructionSpeedups: false,
       buyProductionSlots: true, dailyPearlsOnly: true });
     assert.equal(completedBase.complete, true);
     assert.equal(completedBase.stoppedAt, null);
-    assert(completedBase.elapsedDays < 105, "a completed policy stops instead of farming gifts indefinitely");
-    assert(completedBase.dailyPearlProjection.claims < 105);
+    assert(completedBase.elapsedDays < 500, "Ordinary progression continues with the affordable slots after gifts end");
+    assert.equal(completedBase.dailyPearlProjection.claims, 7);
+    assert.equal(completedBase.dailyPearlProjection.completed, true);
+    assert.equal(completedBase.dailyPearlProjection.pearlsReceived, 1000);
     assert.equal(completedBase.pearlsRemaining + completedBase.pearlsSpent, completedBase.dailyPearlProjection.pearlsReceived);
     for (const [days, earnedPearls] of [[1, 80], [2, 180]]) {
       const beforePrice = simulateJourney(loaded, "visits3", days, { ...jointPlanningPolicy, constructionSpeedups: false,
@@ -85,7 +91,7 @@ test("daily-only pearl projection follows gift payouts and cannot buy a slot bef
     assert.equal(earnedSlot.pearlsRemaining + earnedSlot.pearlsSpent, earnedSlot.dailyPearlProjection.pearlsReceived);
     for (const result of [report, completedBase, earnedSlot]) {
       for (const purchase of result.productionSlots.purchases) {
-        const byDay = Math.floor(purchase.day), earnedAtPurchase = Array.from({ length: byDay + 1 }, (_, index) => rewards.daily[index % rewards.daily.length].pearls).reduce((sum, amount) => sum + amount, 0);
+        const byDay = Math.floor(purchase.day), earnedAtPurchase = rewards.daily.slice(0, byDay + 1).reduce((sum, reward) => sum + reward.pearls, 0);
         const paidByPurchase = result.productionSlots.purchases.filter(row => row.day <= purchase.day).reduce((sum, row) => sum + row.pricePearls, 0);
         assert(paidByPurchase <= earnedAtPurchase, "Slots consume already earned pearls");
         const tier = loaded.catalog.productionSlots.upgrades.find(upgrade => upgrade.slots === purchase.slots);

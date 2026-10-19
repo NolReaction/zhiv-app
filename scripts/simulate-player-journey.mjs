@@ -335,7 +335,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   };
   function act() {
     let target = goal(); if (!target) return;
-    if (dailyPearlsOnly || dailyRewards) {
+    if ((dailyPearlsOnly || dailyRewards) && !dailyState.completed) {
       const gift = progressionRewards.dailyRewardView(dailyState, epoch + clock * 1000, state.buildings.home ?? 1);
       if (gift.claimable) {
         const next = structuredClone(state);
@@ -536,9 +536,9 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     commands, saleRevenue: revenue, coinFlow: { initial: initialCoins, sales: revenue, gifts: dailyCoins, orders: tutorialRevenue,
       spendingByAction: coinSpending, remaining: state.wallet.coins }, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
     ...(pearlBudget > 0 || dailyPearlsOnly || dailyRewards ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
-    ...(dailyPearlsOnly ? { dailyPearlProjection: { claims: dailyClaims, pearlsReceived: dailyPearls,
+    ...(dailyPearlsOnly ? { dailyPearlProjection: { claims: dailyClaims, completed: Boolean(dailyState.completed), pearlsReceived: dailyPearls,
       omitted: ["daily_reward_coins", "daily_reward_items", "daily_reward_relics", "achievement_rewards"] } } : {}),
-    ...(dailyRewards ? { dailyRewards: { claims: dailyClaims, coinsReceived: dailyCoins, pearlsReceived: dailyPearls,
+    ...(dailyRewards ? { dailyRewards: { claims: dailyClaims, completed: Boolean(dailyState.completed), coinsReceived: dailyCoins, pearlsReceived: dailyPearls,
       itemsReceived: dailyItems, storageDeferrals: dailyDeferredForStorage, claimRows: dailyClaimRows } } : {}),
     ...(parallelProductionPlanning ? { productionSlots: { constructionSpeedups, purchases: slotPurchases,
       maximumProductionJobs, finalCapacity: Object.fromEntries(productionStations.map(id => [id, slotCapacity(id)])) } } : {}),

@@ -45,7 +45,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 const at = "2026-10-05T12:00:00.000Z", reward = { coins: 10, pearls: 0, items: {} };
 function view(ownerPublicId, claimable = true) {
   return { ownerPublicId, serverTime: at, catalogVersion: 4,
-    daily: { step: 1, claimable, nextClaimAt: at, lastClaimAt: null, lastClaimDate: null, reward,
+    daily: { step: 1, completed: false, claimable, nextClaimAt: at, lastClaimAt: null, lastClaimDate: null, reward,
       cycle: Array.from({ length: 7 }, (_, index) => ({ step: index + 1, reward })) },
     achievementRewards: Object.entries(GAME_ACHIEVEMENT_TARGETS).flatMap(([achievementId, targets]) => targets.map((target, index) => ({
       achievementId, level: index + 1, target, pearls: achievementId === "full_collection" ? 0 : index + 1,

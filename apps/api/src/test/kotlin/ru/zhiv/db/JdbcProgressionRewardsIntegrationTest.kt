@@ -240,7 +240,11 @@ class JdbcProgressionRewardsIntegrationTest {
         assertTrue(repeated.replayed); assertEquals(paid.claim,repeated.claim)
         assertEquals(paid.economy.wallet,repeated.economy.wallet)
         assertEquals(paid.economy.inventory,repeated.economy.inventory)
-        assertEquals(1,repeated.rewards.daily.step)
+        assertEquals(7,repeated.rewards.daily.step)
+        assertTrue(repeated.rewards.daily.completed)
+        assertFalse(repeated.rewards.daily.claimable)
+        assertEquals(null,repeated.rewards.daily.nextClaimAt)
+        assertEquals("DAILY_REWARD_COMPLETED",assertFailsWith<AuthFailure> { rewards.claim(p.hash,command(p)) }.code)
     }
     @Test fun `admin award cannot pay until actual tier and ownership revocation cannot reset paid fence`()=runBlocking<Unit> {
         val p=player(); economy.snapshot(p.hash)
@@ -254,6 +258,59 @@ class JdbcProgressionRewardsIntegrationTest {
         execute("DELETE FROM game_achievements WHERE user_id=? AND achievement_id='explorer'",p.id)
         assertEquals(paid.claim.claimedAt,rewards.snapshot(p.hash).achievementRewards.single { it.achievementId=="explorer" && it.level==1 }.claimedAt)
         assertEquals("ACHIEVEMENT_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(p.hash,command(p,achievement="explorer",level=1)) }.code)
+    }
+    @Test fun `parallel final gift pays once and survives reload time and economy reset`()=runBlocking<Unit> {
+        val p=player(); val before=economy.snapshot(p.hash); rewards.snapshot(p.hash)
+        execute("UPDATE game_daily_rewards SET next_step=7 WHERE user_id=?",p.id)
+        val request=command(p)
+        val attempts=List(4) { index -> async(Dispatchers.IO) {
+            runCatching { rewards.claim(p.hash,if(index<2) request else command(p)) }
+        } }.awaitAll()
+        val success=attempts.mapNotNull { it.getOrNull() }
+        assertTrue(success.size in 1..2); assertEquals(1,success.count { !it.replayed })
+        assertTrue(attempts.filter { it.isFailure }.all { (it.exceptionOrNull() as AuthFailure).code=="DAILY_REWARD_COMPLETED" })
+        val paid=success.first()
+        assertEquals(before.wallet.pearls+220,paid.economy.wallet.pearls)
+        assertEquals(1L,paid.economy.inventory["ancient_core"])
+        assertEquals("1",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=? AND kind='daily'",p.id))
+        assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='daily_reward'",p.id))
+        // A new repository instance and an elapsed cooldown cannot start another round.
+        val reloaded=JdbcProgressionRewardsRepository(source)
+        execute("UPDATE game_daily_rewards SET last_claim_at=clock_timestamp()-interval '90 days',last_claim_date=((clock_timestamp()-interval '90 days') AT TIME ZONE 'UTC')::date WHERE user_id=?",p.id)
+        val complete=reloaded.snapshot(p.hash).daily
+        assertTrue(complete.completed); assertFalse(complete.claimable); assertEquals(null,complete.nextClaimAt)
+        assertEquals("DAILY_REWARD_COMPLETED",assertFailsWith<AuthFailure> { reloaded.claim(p.hash,command(p)) }.code)
+        // Administrative gameplay reset only removes the economy profile, not account payouts.
+        execute("DELETE FROM economy_profiles WHERE user_id=?",p.id)
+        val reset=economy.snapshot(p.hash)
+        assertTrue(reloaded.snapshot(p.hash).daily.completed)
+        assertEquals("DAILY_REWARD_COMPLETED",assertFailsWith<AuthFailure> { reloaded.claim(p.hash,command(p)) }.code)
+        val replay=reloaded.claim(p.hash,command(p,paid.requestId))
+        assertTrue(replay.replayed); assertEquals(paid.claim,replay.claim)
+        assertEquals(reset.wallet,replay.economy.wallet)
+        assertEquals(reset.revision,replay.economy.revision)
+    }
+    @Test fun `merge never regresses gift progress and completion survives either merge direction`()=runBlocking<Unit> {
+        val advanced=player(); val recent=player()
+        rewards.snapshot(advanced.hash); rewards.snapshot(recent.hash)
+        execute("UPDATE game_daily_rewards SET next_step=6,last_claim_at=clock_timestamp()-interval '50 hours',last_claim_date=((clock_timestamp()-interval '50 hours') AT TIME ZONE 'UTC')::date WHERE user_id=?",advanced.id)
+        val latest=rewards.claim(recent.hash,command(recent)).rewards.daily.lastClaimAt
+        source.connection.use { c -> mergeProgressionRewards(c,advanced.id,recent.id); c.commit() }
+        val combined=rewards.snapshot(advanced.hash).daily
+        assertEquals(6,combined.step); assertEquals(latest,combined.lastClaimAt); assertFalse(combined.completed)
+        assertEquals("DAILY_REWARD_COOLDOWN",assertFailsWith<AuthFailure> { rewards.claim(advanced.hash,command(advanced)) }.code)
+        val finished=player(); rewards.snapshot(finished.hash)
+        execute("UPDATE game_daily_rewards SET next_step=7 WHERE user_id=?",finished.id)
+        val request=command(finished); val final=rewards.claim(finished.hash,request)
+        val wallet=economy.snapshot(advanced.hash).wallet
+        source.connection.use { c -> mergeProgressionRewards(c,advanced.id,finished.id); c.commit() }
+        assertTrue(rewards.snapshot(advanced.hash).daily.completed)
+        assertEquals(wallet,economy.snapshot(advanced.hash).wallet,"Merging payout fences never grants currency")
+        assertEquals("DAILY_REWARD_COMPLETED",assertFailsWith<AuthFailure> { rewards.claim(advanced.hash,command(advanced)) }.code)
+        source.connection.use { c -> mergeProgressionRewards(c,finished.id,recent.id); c.commit() }
+        assertTrue(rewards.snapshot(finished.hash).daily.completed)
+        assertEquals("DAILY_REWARD_COMPLETED",assertFailsWith<AuthFailure> { rewards.claim(finished.hash,command(finished)) }.code)
+        assertEquals(final.claim,rewards.claim(finished.hash,request).claim)
     }
     @Test fun `historical owned tier is eligible and manual pearl credits have ledger and revision`()=runBlocking<Unit> {
         val p=player(); val initial=economy.snapshot(p.hash)

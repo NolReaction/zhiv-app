@@ -46,8 +46,8 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
         }
     }
     private fun daily(c: Connection,user: UUID): DailyRewardsState = c.economyRows(
-        "SELECT next_step,last_claim_at FROM game_daily_rewards WHERE user_id=?",user) {
-        DailyRewardsState(it.getInt(1),it.getObject(2,OffsetDateTime::class.java)?.toInstant()) }.single()
+        "SELECT next_step,last_claim_at,completed FROM game_daily_rewards WHERE user_id=?",user) {
+        DailyRewardsState(it.getInt(1),it.getObject(2,OffsetDateTime::class.java)?.toInstant(),it.getBoolean(3)) }.single()
     private fun ownership(c: Connection,user: UUID): Map<Pair<String,Int>,Ownership> = c.economyRows("""
             SELECT achievement_id,1 AS level,unlocked_at,reward_eligible FROM game_achievements
             WHERE user_id=? AND achievement_id IN ('seven_day_streak','thousand_taps','five_friends','ten_thousand_series',
@@ -145,6 +145,7 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
                 requestTamper(a.id,"reward:${command.kind}",key)
             val current=view(c,a,now)
             val claim=if(command.kind=="daily") {
+                if(current.daily.completed) rewardFailure("DAILY_REWARD_COMPLETED","Все семь подарков уже получены")
                 if(!current.daily.claimable) rewardFailure("DAILY_REWARD_COOLDOWN","Следующая награда пока недоступна")
                 ProgressionRewardReceipt("daily",current.daily.reward,now.toString(),step=current.daily.step)
             } else if(command.kind=="onboarding") {
@@ -164,7 +165,8 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
             saveEconomyProfile(c,a.id,next)
             val economic=economyView(c,a.id,a.publicId,now)
             val date=if(claim.kind=="daily") now.atOffset(ZoneOffset.UTC).toLocalDate() else null
-            if(claim.kind=="daily") c.economyUpdate("UPDATE game_daily_rewards SET next_step=?,last_claim_at=?,last_claim_date=? WHERE user_id=?",claim.step!!%7+1,now.atOffset(ZoneOffset.UTC),date,a.id)
+            if(claim.kind=="daily") c.economyUpdate("UPDATE game_daily_rewards SET next_step=?,last_claim_at=?,last_claim_date=?,completed=? WHERE user_id=?",
+                (claim.step!!+1).coerceAtMost(7),now.atOffset(ZoneOffset.UTC),date,claim.step==7,a.id)
             else if(claim.kind=="onboarding") c.economyUpdate("UPDATE game_daily_rewards SET onboarding_claimed_at=? WHERE user_id=?",now.atOffset(ZoneOffset.UTC),a.id)
             else c.economyUpdate("INSERT INTO game_achievement_reward_claims(user_id,achievement_id,level,pearls,claimed_at) VALUES (?,?,?,?,?)",a.id,claim.achievementId,claim.level,claim.reward.pearls,now.atOffset(ZoneOffset.UTC))
             c.economyUpdate("""INSERT INTO game_reward_claims(user_id,origin_user_id,request_id,signature,kind,daily_date,claim,accepted_revision,claimed_at)

@@ -75,7 +75,9 @@ test("an automated player visiting three times daily can complete all current bu
         + (report.dailyRewards.itemsReceived[id] ?? 0) - required, report.rareMaterials.inventory[id]);
     }
     assert(report.milestones.some(milestone => milestone.building === "warehouse:10"));
-    assert(report.dailyRewards.claims > 7);
+    assert.equal(report.dailyRewards.claims, 7);
+    assert.equal(report.dailyRewards.completed, true);
+    assert.equal(report.dailyRewards.pearlsReceived, 1000);
     assert.equal(report.actions.speedup_construction, undefined);
     assert.equal(report.actions.cancel_exploration, undefined);
     assert.equal(report.failures.ECONOMY_BUILDING_REQUIRED, undefined);

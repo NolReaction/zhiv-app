@@ -20,6 +20,7 @@ function enterGame(p) {
 }
 
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
+const rewards = await vite.ssrLoadModule("/lib/dev/progression-rewards-store.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/game/rewards/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/game/rewards/claims/route.ts");
@@ -53,6 +54,25 @@ test("manual HTTP claim echoes its key and a lost-response retry returns the sam
   const repeat = await (await POST(post(request))).json(); assert.equal(repeat.replayed, true); assert.deepEqual(repeat.claim, first.claim);
   assert.equal(repeat.economy.wallet.coins, first.economy.wallet.coins);
   const duplicate = await POST(post(command(p))); assert.equal(duplicate.status, 409); assert.equal((await duplicate.json()).code, "DAILY_REWARD_COOLDOWN");
+});
+test("the seventh HTTP gift finishes the chain; replay works and a new request cannot restart it", async () => {
+  const p = player(), now = Date.now();
+  for (let day = 6; day > 0; day--) rewards.claimDevProgressionReward(p.token, command(p), now - day * 86_400_000);
+  const finalRequest = command(p), response = await POST(post(finalRequest));
+  assert.equal(response.status, 200);
+  const paid = await response.json();
+  assert.equal(api.gameRewardResultSchema.safeParse(paid).success, true);
+  assert.equal(paid.claim.step, 7);
+  assert.equal(paid.rewards.daily.completed, true);
+  assert.equal(paid.rewards.daily.claimable, false);
+  assert.equal(paid.rewards.daily.nextClaimAt, null);
+  const repeat = await (await POST(post(finalRequest))).json();
+  assert.equal(repeat.replayed, true); assert.deepEqual(repeat.claim, paid.claim);
+  assert.deepEqual(repeat.economy.wallet, paid.economy.wallet);
+  const denied = await POST(post(command(p)));
+  assert.equal(denied.status, 409); assert.equal((await denied.json()).code, "DAILY_REWARD_COMPLETED");
+  assert.equal((await (await GET(read())).json()).daily.completed, true);
+  assert.deepEqual(economy.getDevEconomy(p.token).wallet, paid.economy.wallet);
 });
 test("cross-site wrong content-type forged gift and excessive bodies leave wallet and sequence unchanged", async () => {
   const p = player(), request = command(p), before = economy.getDevEconomy(p.token);

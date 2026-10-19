@@ -6,7 +6,7 @@ import { baselineGiftRules } from "../scripts/review-daily-gift-progression.mjs"
 
 const policy = { ...jointPlanningPolicy, constructionSpeedups: false, parallelProductionPlanning: true, dailyRewards: true };
 
-test("complete daily projection uses completed home tiers, the claim calendar and conserved inventory", async () => {
+test("one-time gift projection uses completed home tiers, ends after seven claims and conserves inventory", async () => {
   const loaded = await loadJourneyRules();
   try {
     const report = simulateJourney(loaded, "visits3", 40, { ...policy, buyProductionSlots: true });
@@ -22,8 +22,9 @@ test("complete daily projection uses completed home tiers, the claim calendar an
       - Object.values(report.coinFlow.spendingByAction).reduce((sum, value) => sum + value, 0));
     assert.equal(report.coinFlow.initial, 100);
     assert.equal(report.coinFlow.orders, delivered.reduce((sum, order) => sum + order.coins, 0));
-    assert(gifts.claims <= 40, "Three visits cannot create three daily bundles");
-    assert(gifts.claims + gifts.storageDeferrals >= 40, "Missed daily bundles must be explained by storage deferrals");
+    assert.equal(gifts.claims, 7, "A month of visits can claim the seven gifts only once");
+    assert.equal(gifts.completed, true);
+    assert.equal(gifts.pearlsReceived, 1000, "The account chain grants 500 visible pearls in raw storage units");
     assert(!report.excludedIncome.includes("daily_rewards"));
     assert(report.excludedIncome.includes("player_market"));
     assert(gifts.claimRows.some(row => row.homeLevel >= 2));
@@ -34,7 +35,7 @@ test("complete daily projection uses completed home tiers, the claim calendar an
       { ancient_core: 1, planks: 1, wood: 1 },
     ];
     for (const [index, row] of gifts.claimRows.entries()) {
-      assert.equal(row.step, index % 7 + 1);
+      assert.equal(row.step, index + 1);
       assert.deepEqual(row.reward, loaded.progressionRewards.dailyRewardCycle(row.homeLevel)[row.step - 1]);
       assert.equal(row.reward.coins, [30, 30, 40, 40, 50, 50, 80][row.step - 1] * row.homeLevel);
       assert.equal(row.reward.pearls, [80, 100, 120, 140, 160, 180, 220][row.step - 1]);
@@ -100,10 +101,43 @@ test("before comparison claims the entire pinned old bundle rather than only its
   const loaded = await loadJourneyRules();
   try {
     const baseline = { dailyMinimumHours: 20, daily: Array.from({ length: 7 }, () => ({ coins: 123, pearls: 2, items: { wood: 1 } })) };
-    const report = simulateJourney(baselineGiftRules(loaded, baseline), "visits3", 7, policy);
-    assert.equal(report.dailyRewards.claims, 7);
-    assert.equal(report.dailyRewards.coinsReceived, 861);
-    assert.equal(report.dailyRewards.pearlsReceived, 14);
-    assert.deepEqual(report.dailyRewards.itemsReceived, { wood: 7 });
+    const report = simulateJourney(baselineGiftRules(loaded, baseline), "visits3", 14, policy);
+    assert.equal(report.dailyRewards.claims, 14, "The before comparison explicitly retains its historical repeat");
+    assert.equal(report.dailyRewards.completed, false);
+    assert.equal(report.dailyRewards.coinsReceived, 1722);
+    assert.equal(report.dailyRewards.pearlsReceived, 28);
+    assert.deepEqual(report.dailyRewards.itemsReceived, { wood: 14 });
+    assert.deepEqual(report.dailyRewards.claimRows.map(row => row.step), [1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7]);
+  } finally { await loaded.close(); }
+});
+
+
+test("the completed chain stops checking gifts while ordinary progression continues", async () => {
+  const loaded = await loadJourneyRules();
+  try {
+    let giftViews = 0, viewsAtCompletion = null, claims = 0, completionAt = null, commandsAfterCompletion = 0;
+    const observed = { ...loaded, progressionRewards: { ...loaded.progressionRewards,
+      dailyRewardView(state, now, homeLevel) {
+        assert.equal(state.completed, false, "No polling or failed claim is needed after the chain ends");
+        giftViews++;
+        return loaded.progressionRewards.dailyRewardView(state, now, homeLevel);
+      },
+      afterDailyClaim(state, now) {
+        const next = loaded.progressionRewards.afterDailyClaim(state, now);
+        claims++;
+        if (next.completed) { viewsAtCompletion = giftViews; completionAt = now; }
+        return next;
+      } }, rules: { ...loaded.rules,
+      applyEconomyCommand(state, command, now, ...args) {
+        if (completionAt !== null && now > completionAt) commandsAfterCompletion++;
+        return loaded.rules.applyEconomyCommand(state, command, now, ...args);
+      } } };
+    const report = simulateJourney(observed, "visits3", 30, { ...policy, buyProductionSlots: true });
+    assert.equal(claims, 7);
+    assert.equal(giftViews, viewsAtCompletion, "Completed days do not count as storage deferrals or future gift work");
+    assert(commandsAfterCompletion > 0, "Production and upgrades continue after the last gift");
+    assert.equal(report.dailyRewards.completed, true);
+    assert.equal(report.dailyRewards.pearlsReceived, 1000);
+    assert.equal(report.pearlsRemaining + report.pearlsSpent, 1000);
   } finally { await loaded.close(); }
 });

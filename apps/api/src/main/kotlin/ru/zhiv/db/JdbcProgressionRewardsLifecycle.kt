@@ -6,10 +6,14 @@ import java.util.UUID
 /** Paid wallets were combined separately. Union payout fences without re-crediting or clawing back. */
 internal fun mergeProgressionRewards(c: Connection,target: UUID,source: UUID) {
     c.economyUpdate("""
-        INSERT INTO game_daily_rewards(user_id,next_step,last_claim_at,last_claim_date)
-        SELECT ?,next_step,last_claim_at,last_claim_date FROM game_daily_rewards WHERE user_id=?
-        ON CONFLICT(user_id) DO UPDATE SET next_step=EXCLUDED.next_step,last_claim_at=EXCLUDED.last_claim_at,last_claim_date=EXCLUDED.last_claim_date
-        WHERE game_daily_rewards.last_claim_at IS NULL OR EXCLUDED.last_claim_at>game_daily_rewards.last_claim_at
+        INSERT INTO game_daily_rewards(user_id,next_step,last_claim_at,last_claim_date,completed)
+        SELECT ?,next_step,last_claim_at,last_claim_date,completed FROM game_daily_rewards WHERE user_id=?
+        ON CONFLICT(user_id) DO UPDATE SET
+            next_step=CASE WHEN game_daily_rewards.completed OR EXCLUDED.completed THEN 7
+                ELSE GREATEST(game_daily_rewards.next_step,EXCLUDED.next_step) END,
+            last_claim_at=GREATEST(game_daily_rewards.last_claim_at,EXCLUDED.last_claim_at),
+            last_claim_date=GREATEST(game_daily_rewards.last_claim_date,EXCLUDED.last_claim_date),
+            completed=game_daily_rewards.completed OR EXCLUDED.completed
     """.trimIndent(),target,source)
     // This fence is independent of which account has the latest daily claim.
     c.economyUpdate("""

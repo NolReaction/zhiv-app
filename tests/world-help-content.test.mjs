@@ -508,9 +508,10 @@ test("berry ladder describes each source tier, preparation time and hero or buil
 
 test("gift budgets and project timing remain distinct from build durations and all help avoids em dashes", () => {
   const giftPearls = progressionRewardsCatalog.daily.reduce((sum, reward) => sum + reward.pearls, 0);
-  assert.ok(answer("rewards").includes(`Полный цикл даёт ${formatPearls(giftPearls)} жемчужин`));
-  assert.ok(answer("currency-shop").includes(`полный цикл даёт ${formatPearls(giftPearls)} жемчужин`));
+  assert.ok(answer("rewards").includes(`Все семь подарков дают ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
+  assert.ok(answer("currency-shop").includes(`все семь подарков дают ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
   assert.match(answer("rewards"), /новые сутки UTC.*20 часов/);
+  assert.match(answer("rewards"), /цепочка завершена и через неделю не повторяется/);
   const fourth = economyCatalog.stageOrders.find(course => course.homeLevel === 4);
   const fifthHome = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 5);
   const minimumHours = ((fourth.orders.length - 1) * fourth.intervalSeconds + fifthHome.seconds) / 3600;

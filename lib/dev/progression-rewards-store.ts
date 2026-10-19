@@ -4,7 +4,7 @@ import { getDevGameAchievements } from "./game-store";
 import { creditDevProgressionReward, getDevEconomy, DevEconomyError } from "./economy-store";
 import { gameRewardClaimSchema, type GameRewardClaim, type GameRewardResult, type GameRewards } from "@/features/game/game-rewards-api";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, nominalEconomyMoney, nominalEconomyPearls } from "@/features/economy/domain/money";
-import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, onboardingRewardEligible, progressionRewardsCatalog, type DailyRewardState } from "@/features/game/progression-rewards";
+import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, normalizeDailyRewardState, onboardingRewardEligible, progressionRewardsCatalog, type DailyRewardState } from "@/features/game/progression-rewards";
 
 type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRevision: number; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50 };
 type Profile = { daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt>; onboardingClaimedAt?: string | null };
@@ -19,6 +19,7 @@ function profile(token: string | undefined, expectedOwner?: string) {
   if (expectedOwner && owner !== expectedOwner) fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите награды");
   let value = store().get(owner);
   if (!value) store().set(owner, value = { daily: initialDailyRewardState(), claims: new Map(), receipts: new Map() });
+  value.daily = normalizeDailyRewardState(value.daily, [...value.receipts.values()].flatMap(({ claim }) => claim.kind === "daily" ? [claim.step] : []));
   return { owner, value };
 }
 function view(token: string | undefined, owner: string, value: Profile, now: number): GameRewards {
@@ -54,6 +55,7 @@ export function claimDevProgressionReward(token: string | undefined, input: unkn
   const current = getDevProgressionRewards(token, now), claimedAt = new Date(now).toISOString();
   let claim: GameRewardResult["claim"];
   if (command.kind === "daily") {
+    if (current.daily.completed) fail("DAILY_REWARD_COMPLETED", "Все семь подарков уже получены");
     if (!current.daily.claimable) fail("DAILY_REWARD_COOLDOWN", "Следующая награда пока недоступна");
     claim = { kind: "daily", step: current.daily.step, reward: current.daily.reward, claimedAt };
   } else if (command.kind === "onboarding") {

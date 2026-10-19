@@ -168,6 +168,71 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  one-time-rewards:
+    name: One-time gifts and migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run one-time gift and migration regressions
+        working-directory: apps/api
+        run: |
+          ./gradlew --no-daemon test \
+            --tests ru.zhiv.game.ProgressionRewardsTest \
+            --tests ru.zhiv.db.JdbcProgressionRewardsIntegrationTest \
+            --tests ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcSchemaBaselineIntegrationTest \
+            --tests ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest \
+            --tests ru.zhiv.db.JdbcGameProgressResetIntegrationTest
+
+      - name: Require every suite with real PostgreSQL
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest'):
+              report = ET.parse(Path('apps/api/build/test-results/test') / f'TEST-{name}.xml').getroot()
+              count = int(report.get('tests', '0'))
+              assert report.get('name') == name and count > 0, f'{name}: missing or empty suite'
+              assert all(int(report.get(key, '0')) == 0 for key in ('failures', 'errors', 'skipped')), f'{name}: failed or PostgreSQL skipped'
+              cases = report.findall('testcase')
+              assert len(cases) == count, f'{name}: incomplete cases'
+              assert not any(child.tag in ('failure', 'error', 'skipped') for case in cases for child in case), f'{name}: failed or skipped case'
+              print(f'{name}: {count} passed, 0 skipped, 0 failures, 0 errors.')
+          PY
+
+      - name: Upload one-time gift test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-time-rewards-test-reports-${{ github.run_attempt }}
+          path: |
+            apps/api/build/test-results/test/TEST-ru.zhiv.game.ProgressionRewardsTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcProgressionRewardsIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcSchemaBaselineIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcGameProgressResetIntegrationTest.xml
+          retention-days: 7
+          if-no-files-found: error
+
   backend:
     name: Ktor and PostgreSQL checks
     runs-on: ubuntu-latest

@@ -193,7 +193,7 @@ test("a foreground modal holds a ready invitation until the underlying map becom
   }
 });
 
-const rewardState = () => ({ data: { ownerPublicId: "PLAYER", daily: { claimable: true, reward: { coins: 1, pearls: 0, items: {} }, cycle: [] } },
+const rewardState = () => ({ data: { ownerPublicId: "PLAYER", daily: { completed: false, claimable: true, reward: { coins: 1, pearls: 0, items: {} }, cycle: [] } },
   readVersion: 2, loading: false, busy: false, pending: null, uncertain: false, result: null, retryAt: 0, now,
   refresh() {}, claimDaily() {}, retry() {} });
 
