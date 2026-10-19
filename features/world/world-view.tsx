@@ -70,7 +70,7 @@ type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | 
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
-export default function WorldView({ open, suspended = false, world, economy, mailbox, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onVisitFriend, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+export default function WorldView({ open, suspended = false, world, economy, mailbox, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onVisitFriend, onDevBotsChanged, onDevVisitBot, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const currentOwner = useRef(ownerPublicId);
   const mailUnread = mailbox?.ownerPublicId === ownerPublicId ? mailbox.unreadCount : 0;
   useLayoutEffect(() => { currentOwner.current = ownerPublicId; }, [ownerPublicId]);
@@ -547,6 +547,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       onOpenProduction={openStation}
       bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && !selection && quickUpgrade === null && !residentOpen && !charactersOpen && !dailyOpen}
+      onBotsChanged={onDevBotsChanged} onVisitBot={onDevVisitBot}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
       onOpenObject={openObject} onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
     <header ref={topHud} className={hudStyles.hud} data-world-hud="top">

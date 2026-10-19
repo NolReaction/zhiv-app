@@ -26,6 +26,7 @@ export type WorldPortalProps = {
   wakeSignal: number;
   friends?: WorldFriendsState; onOpenPeople?: () => void;
   friendVisit?: GuestWorldTarget; onVisitFriend?: (person: Person) => void; onLeaveFriend?: () => void;
+  onDevBotsChanged?: () => void; onDevVisitBot?: (target: GuestWorldTarget) => void;
   isOnline?: boolean; onSessionLost?: () => void;
   bestStreakDays: number; items?: readonly GameItemId[];
 };

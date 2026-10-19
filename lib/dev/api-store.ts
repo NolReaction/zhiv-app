@@ -62,6 +62,7 @@ type UserRecord = PublicUser & {
   avatarUrl: string | null;
 };
 type SessionRecord = { userId: string; expiresAt: number };
+type OwnedDevBot = { id: string; ownerUserId: string; publicId: string; token: string; circleId: string; createdAt: string };
 type CheckInRecord = { id: string; userId: string; checkedAt: string; localDate: string };
 type DirectCircleRecord = {
   id: string;
@@ -138,6 +139,7 @@ type DirectInviteLinkRecord = {
 type RecoveryCodeRecord = {userId:string;active:boolean;consumedAt?:number;retryHash?:string;sessionToken?:string};
 
 type Store = {
+  ownedDevBots: Map<string, OwnedDevBot>;
   achievementAwards: Map<string, Map<GameAchievementId, string>>;
   achievementRewardEligibility: Map<string, Map<string, boolean>>;
   achievementTierAwards: Map<string, Map<GameAchievementId, Map<number, string>>>;
@@ -177,6 +179,7 @@ const globalStore = globalThis as typeof globalThis & { __zhivDevStore?: Store }
 
 function store(): Store {
   globalStore.__zhivDevStore ??= {
+    ownedDevBots: new Map(),
     achievementAwards: new Map(),
     achievementRewardEligibility: new Map(),
     achievementTierAwards: new Map(),
@@ -209,6 +212,7 @@ function store(): Store {
   globalStore.__zhivDevStore.recipientSharing ??= new Map();
   globalStore.__zhivDevStore.favoritePeople ??= new Set();
   globalStore.__zhivDevStore.personNicknames ??= new Map();
+  globalStore.__zhivDevStore.ownedDevBots ??= new Map();
   return globalStore.__zhivDevStore;
 }
 
@@ -642,6 +646,58 @@ export function createDevIdentity(
 export function getDevIdentity(token: string | undefined): MeResponse | null {
   const user = sessionUser(token);
   return user ? asMe(user) : null;
+}
+
+/** Private server credentials; never serialize this record into a DEV/API response. */
+export function getDevOwnedBots(token: string | undefined): readonly OwnedDevBot[] {
+  if (process.env.NODE_ENV !== "development") return [];
+  const owner = sessionUser(token);
+  return owner ? [...store().ownedDevBots.values()].filter(bot => bot.ownerUserId === owner.id && getDevIdentity(bot.token)?.user.publicId === bot.publicId) : [];
+}
+
+export function createDevOwnedBot(token: string | undefined, displayName: string, now: number): OwnedDevBot | null {
+  if (process.env.NODE_ENV !== "development") return null;
+  const owner = sessionUser(token);
+  if (!owner || getDevOwnedBots(token).length >= 5) return null;
+  const identity = createDevIdentity(displayName, crypto.randomUUID(), owner.timezoneId);
+  const request = sendDevDirectRequest(token, identity.me.user.publicId, crypto.randomUUID());
+  if (request.kind !== "ok") throw new Error("Cannot create a local bot friendship");
+  const accepted = actOnDevDirectRequest(identity.token, request.value.request.requestId, "ACCEPTED");
+  if (accepted.kind !== "ok" || !accepted.value.person) throw new Error("Cannot accept a local bot friendship");
+  const bot: OwnedDevBot = { id: crypto.randomUUID(), ownerUserId: owner.id, publicId: identity.me.user.publicId,
+    token: identity.token, circleId: accepted.value.person.circleId, createdAt: new Date(now).toISOString() };
+  store().ownedDevBots.set(bot.id, bot);
+  return bot;
+}
+
+export function renameDevOwnedBot(token: string | undefined, botId: string, displayName: string): boolean {
+  const bot = getDevOwnedBots(token).find(item => item.id === botId);
+  const user = bot ? sessionUser(bot.token) : null;
+  if (!user) return false;
+  user.displayName = normalizeDisplayName(displayName);
+  return true;
+}
+
+/** Removes only a marked bot owned by this caller, never an arbitrary public ID. */
+export function deleteDevOwnedBot(token: string | undefined, botId: string): string | null {
+  const bot = getDevOwnedBots(token).find(item => item.id === botId);
+  const user = bot ? sessionUser(bot.token) : null;
+  if (!bot || !user) return null;
+  const data = store();
+  const circleIds = [...data.circles.values()].filter(circle => circle.lowUserId === user.id || circle.highUserId === user.id).map(circle => circle.id);
+  for (const circleId of circleIds) data.circles.delete(circleId);
+  for (const [key] of data.sharing) if (circleIds.some(id => key.startsWith(`${id}:`)) || key.endsWith(`:${user.id}`)) data.sharing.delete(key);
+  for (const [key] of data.personNicknames) if (key.startsWith(`${user.id}:`) || key.endsWith(`:${user.id}`)) data.personNicknames.delete(key);
+  for (const [key] of data.recipientSharing) if (key.startsWith(`${user.id}:`) || key.endsWith(`:${user.id}`)) data.recipientSharing.delete(key);
+  for (const key of data.favoritePeople) if (circleIds.some(id => key.startsWith(`${id}:`))) data.favoritePeople.delete(key);
+  for (const [id, request] of data.directRequests) if (request.requesterUserId === user.id || request.recipientUserId === user.id) data.directRequests.delete(id);
+  for (const [key, session] of data.sessions) if (session.userId === user.id) data.sessions.delete(key);
+  for (const [key, userId] of data.bootstrapKeys) if (userId === user.id) data.bootstrapKeys.delete(key);
+  for (const [key, event] of data.checkIns) if (event.userId === user.id) data.checkIns.delete(key);
+  data.audiences = data.audiences.filter(event => event.actorUserId !== user.id && event.recipientUserId !== user.id);
+  data.achievementAwards.delete(user.id); data.achievementRewardEligibility.delete(user.id); data.achievementTierAwards.delete(user.id);
+  data.users.delete(user.id); data.publicIds.delete(bot.publicId); data.ownedDevBots.delete(bot.id);
+  return bot.publicId;
 }
 
 function friendPublicIdsForUser(userId: string): string[] {

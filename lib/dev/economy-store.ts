@@ -292,6 +292,7 @@ export function creditDevLegacyJourney(token: string | undefined, journey: { id:
   bump(value); value.state = next; value.legacyJourneys.add(journey.id);
 }
 export function removeDevEconomyOwner(owner: string) {
+  store().turnover.delete(owner); store().promoClaims.delete(owner);
   store().profiles.delete(owner);
   store().showcases.delete(owner);
   store().barterShowcases.delete(owner); store().barterReceipts.delete(owner);

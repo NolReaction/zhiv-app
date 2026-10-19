@@ -9,6 +9,7 @@ type Profile = { state: WorldState; revision: number; day: string; earned: numbe
 const globalStore = globalThis as typeof globalThis & { __zhivDevWorldStore?: Map<string, Profile> };
 const store = () => globalStore.__zhivDevWorldStore ??= new Map();
 export const resetDevWorldStoreForTests = () => { delete globalStore.__zhivDevWorldStore; };
+export const removeDevWorldOwner = (owner: string) => { store().delete(owner); };
 export class DevWorldError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }
 }

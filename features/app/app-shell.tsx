@@ -94,6 +94,7 @@ import { useMailbox } from "@/features/mailbox/use-mailbox";
 import { MailboxDialog } from "@/features/mailbox/mailbox-dialog";
 import { MailboxNotifications } from "@/features/mailbox/mailbox-notifications";
 import type { WorldNotificationEntry } from "@/features/world/notification-destination";
+import type { GuestWorldTarget } from "@/features/people/guest-world-model";
 import { ForestSessionNotice } from "@/features/world/ui/feedback/forest-session-notice";
 import { currentProfileFriendVisit, profileFriendVisit, type ProfileFriendVisit } from "@/features/world/ui/profile/world-friend-visit";
 import { useWorld } from "@/features/world/state/use-world";
@@ -777,6 +778,7 @@ function CheckInContent() {
       setFriendSelection(previous => previous && !currentProfileFriendVisit(previous.ownerPublicId, previous, response.people, true, true) ? null : previous);
       setPeopleUpdatedAt(Date.now());
       setPeopleError(null);
+      return response;
     } catch (error) {
       if (epoch !== identityEpoch.current || request !== peopleRequest.current) return;
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -800,6 +802,18 @@ function CheckInContent() {
     setFriendSelection(selection);
   };
   const friendVisit = currentProfileFriendVisit(screen === "home" ? me?.user.publicId : null, friendSelection, people?.people, isOnline, worldPortal.open);
+  const visitDevBot = async (target: GuestWorldTarget) => {
+    if (process.env.NODE_ENV !== "development" || screen !== "home" || !me || !isOnline) return;
+    const epoch = identityEpoch.current, owner = me.user.publicId;
+    const response = await refreshPeople();
+    if (epoch !== identityEpoch.current || !navigator.onLine) return;
+    const selection = profileFriendVisit(owner, response?.people, { circleId: target.circleId,
+      user: { publicId: target.targetPublicId, displayName: target.displayName } }, isOnline);
+    if (!selection) { notify("Обновите список ботов: дружба или видимость мира изменились.", "error"); return; }
+    setNotificationEntry(undefined); setWorldMounted(true); setFriendSelection(selection);
+    if (!worldPortal.open) worldPortal.enter(worldEntryButton.current, buttonOrbit.current);
+    void economy.reconcile();
+  };
 
   const refreshGroups = useCallback(async (signal?: AbortSignal) => {
     const epoch = identityEpoch.current;
@@ -1827,7 +1841,7 @@ function CheckInContent() {
           isOnline={isOnline}
           updatedAt={peopleUpdatedAt}
           groupsUpdatedAt={groupsUpdatedAt}
-          onRefresh={() => refreshPeople()}
+          onRefresh={async () => { await refreshPeople(); }}
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
         />
@@ -1878,6 +1892,7 @@ function CheckInContent() {
       {me && mochlikVisible && activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen &&
         <ForestSessionNotice presenceKey={`zhiv:mochlik:presence:${me.user.publicId}`} />}
       {WorldDevPanel && me && <WorldDevPanel key={`dev:${me.user.publicId}`} world={world} economy={economy}
+        onBotsChanged={() => { void refreshPeople(); }} onVisitBot={target => { void visitDevBot(target); }}
         presenceKey={`zhiv:mochlik:presence:${me.user.publicId}`}
         active={activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen}
         onOpenWorld={() => worldEntryButton.current?.click()}
@@ -1893,10 +1908,11 @@ function CheckInContent() {
         }} world={world} economy={economy} mailbox={mailbox}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
         isOnline={isOnline} onSessionLost={loseSession}
-        friends={{ data: people, loading: peopleLoading, error: peopleError, updatedAt: peopleUpdatedAt, isOnline, onRefresh: () => refreshPeople() }}
+        friends={{ data: people, loading: peopleLoading, error: peopleError, updatedAt: peopleUpdatedAt, isOnline, onRefresh: async () => { await refreshPeople(); } }}
         friendVisit={friendVisit} onVisitFriend={visitFriend} onLeaveFriend={() => {
           setFriendSelection(null); void world.refresh(); void economy.refresh();
         }}
+        onDevBotsChanged={() => { void refreshPeople(); }} onDevVisitBot={target => { void visitDevBot(target); }}
         onOpenPeople={() => { worldPeopleReturn.current = true; closeWorld(); selectView("people"); }}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}

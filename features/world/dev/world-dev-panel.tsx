@@ -6,6 +6,7 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { PleskAction } from "@/features/world/characters/plesk/plesk-resident";
 import type { BuilderAction } from "@/features/world/characters/builder/builder-types";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
+import type { GuestWorldTarget } from "@/features/people/guest-world-model";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { worldCatalog } from "@/features/world/domain/model";
 import { TILED_WORLD } from "@/features/world/scene/presentation";
@@ -21,6 +22,7 @@ import { claimWorldLightingStudio, hasWorldLightingStudioOwner, releaseWorldLigh
 import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "./world-lighting-editor-store";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
+import { WorldDevBots } from "./world-dev-bots";
 import { WorldDevFishing } from "./world-dev-fishing";
 import { AudioDiagnosticsPanel } from "@/features/audio/dev/audio-diagnostics";
 import { WorldDevBuilderPoints } from "./world-dev-builder-points";
@@ -49,6 +51,8 @@ export type WorldDevPanelProps = {
   onOpenWardrobe?: () => void;
   onOpenCollection?: () => void;
   onOpenObject?: (place: MapObjectPlace) => void;
+  onVisitBot?: (target: GuestWorldTarget) => void;
+  onBotsChanged?: () => void;
 };
 type ManualAction = { kind: "scenario"; scenario: WorldDevScenario } | { kind: "pose"; pose: PixelPose }
   | ({ kind: "rehearsal" } & WorldDevSceneChoice)
@@ -153,7 +157,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
   </details>;
 }
 
-const DEV_TABS = [["cheats", "Читы"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
+const DEV_TABS = [["cheats", "Читы"], ["bots", "Боты"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
 const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"], ["builder", "Шишколап"]] as const;
 const SCENE_TABS = [["actors", "Жители"], ["scenarios", "Сценарии"], ["world", "Погода"], ["lighting", "Свет"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
 const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["fishing", "Рыбалка"], ["audio", "Звук"], ["app", "Приложение"]] as const;
@@ -161,7 +165,7 @@ type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
 type SceneTab = typeof SCENE_TABS[number][0];
 type DebugTab = typeof DEBUG_TABS[number][0];
-type DevPage = "cheats" | MochlikTab | SceneTab | DebugTab;
+type DevPage = "cheats" | "bots" | MochlikTab | SceneTab | DebugTab;
 
 /** Automatic activation: arrow keys move within this tablist; Tab enters its panel. */
 export function WorldDevTabs<T extends string>({ id, label, tabs, selected, onSelect, secondary = false }: {
@@ -191,7 +195,7 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const lighting = useSyncExternalStore(worldLightingEditorStore.subscribe, worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
@@ -371,12 +375,12 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     {!open && lastAction && <p className={styles.closedFeedback} role="status">{repeatUnavailable ?? feedback}</p>}
     {open && <section id={drawerId} className={styles.drawer} aria-labelledby={titleId}>
       <header className={styles.header}>
-        <div><h2 id={titleId}>Мастерская DEV</h2><p>{tab === "cheats" ? "Тестовый профиль · изменения сохраняются" : tab === "debug" ? "Диагностика мира и приложения" : "Предпросмотр · без выдачи наград"}</p></div>
+        <div><h2 id={titleId}>Мастерская DEV</h2><p>{tab === "cheats" ? "Тестовый профиль · изменения сохраняются" : tab === "bots" ? "Тестовые друзья · отдельные профили" : tab === "debug" ? "Диагностика мира и приложения" : "Предпросмотр · без выдачи наград"}</p></div>
         <button type="button" className={styles.headerButton} onClick={() => { worldDevStore.reset(); setLastAction(null); setFeedback("Все настройки вида сброшены"); }}
           title="Вернуть настройки вида. Память Мохлика и ресурсы сохранятся."><RotateCcw size={15} aria-hidden />Сброс вида</button>
         <button ref={closeButton} type="button" className={styles.headerButton} onClick={close} aria-label="Закрыть панель разработчика"><X size={16} aria-hidden />Закрыть</button>
       </header>
-      {tab !== "cheats" && <div className={styles.globalControls}>
+      {tab !== "cheats" && tab !== "bots" && <div className={styles.globalControls}>
         <button type="button" data-paused={state.paused} aria-label={state.paused ? "Продолжить сцену" : "Пауза сцены"} onClick={() => change({ paused: !state.paused }, state.paused ? "Сцена продолжена" : "Сцена на паузе")}>
           {state.paused ? "Продолжить" : "Пауза"}
         </button>
@@ -392,15 +396,16 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
           {tab === "scene" && <WorldDevTabs id={`${id}-scene`} label="Сцена и окружение" tabs={SCENE_TABS} selected={sceneTab} onSelect={setSceneTab} secondary />}
           {tab === "debug" && <WorldDevTabs id={`${id}-debug`} label="Инструменты отладки" tabs={DEBUG_TABS} selected={debugTab} onSelect={setDebugTab} secondary />}
           {(tab === "mochlik" ? MOCHLIK_TABS : tab === "debug" ? DEBUG_TABS : tab === "scene" ? SCENE_TABS : [[page, ""]] as const).map(([subpage]) => <div key={subpage}
-            role={tab !== "cheats" ? "tabpanel" : "region"}
-            id={tab !== "cheats" ? `${id}-${tab}-panel-${subpage}` : undefined}
-            aria-labelledby={tab !== "cheats" ? `${id}-${tab}-tab-${subpage}` : `${id}-tab-${tab}`}
+            role={tab !== "cheats" && tab !== "bots" ? "tabpanel" : "region"}
+            id={tab !== "cheats" && tab !== "bots" ? `${id}-${tab}-panel-${subpage}` : undefined}
+            aria-labelledby={tab !== "cheats" && tab !== "bots" ? `${id}-${tab}-tab-${subpage}` : `${id}-tab-${tab}`}
             hidden={page !== subpage} className={styles.body} tabIndex={page === subpage ? 0 : -1}
             ref={node => { if (node && page === subpage) node.scrollTop = scrollPositions.current[subpage] ?? 0; }}
             onScroll={event => { scrollPositions.current[subpage] = event.currentTarget.scrollTop; }}>
             {page === subpage && <WorldDevPanelContent world={world} economy={economy} worldView={worldView} presenceKey={presenceKey}
               onOpenWorld={onOpenWorld} onOpenCalendar={onOpenCalendar} onOpenGame={onOpenGame} onOpenStatus={onOpenStatus} onOpenWardrobe={onOpenWardrobe} onOpenCollection={onOpenCollection}
               onOpenObject={onOpenObject}
+              onVisitBot={onVisitBot ? target => shortcut(() => onVisitBot(target)) : undefined} onBotsChanged={onBotsChanged} onOpenCheats={() => setTab("cheats")}
               state={state} observation={observation} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
               heroUnavailable={heroUnavailable} birdsUnavailable={birdsUnavailable} unavailable={unavailable}
               change={change} play={play} outfit={outfit} shortcut={shortcut} onFeedback={setFeedback} prefersReducedMotion={prefersReducedMotion} onOpenLighting={openLighting} />}
@@ -416,7 +421,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
 }
 
 /** Stateless controls: navigation never patches the world or launches a scene. */
-export function WorldDevPanelContent({ world, economy, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject,
+export function WorldDevPanelContent({ world, economy, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged, onOpenCheats,
   state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion, onOpenLighting,
 }: WorldDevPanelProps & {
   state: WorldDevState; observation?: ForestObservation | null; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
@@ -425,6 +430,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
   outfit: (slot: "palette" | "head" | "neck", value: string) => void; shortcut: (callback: () => void) => void;
   onFeedback: (message: string) => void; prefersReducedMotion: boolean;
   onOpenLighting?: () => void;
+  onOpenCheats?: () => void;
 }) {
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
   const previewScene = page === "routes" ? previewWorldScene(TILED_WORLD, state.levels) : null;
@@ -453,6 +459,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       <WorldDevCheats world={world} economy={economy} previewBuildings={state.previewBuildings}
         onShowAccountBuildings={() => change({ previewBuildings: false }, "Карта показывает настоящие уровни хозяйства")} />
     </>}
+    {page === "bots" && <WorldDevBots world={world} economy={economy} onVisitBot={onVisitBot} onBotsChanged={onBotsChanged} onOpenCheats={onOpenCheats} />}
     {page === "scenarios" && <>
       <h3 className={styles.pageTitle}>Готовые сценарии</h3>
       <p className={styles.hint}>Один запуск задаёт погоду, время и нужное занятие, снимает паузу. Положение Мохлика, выбранный дом и масштаб сохраняются.</p>
