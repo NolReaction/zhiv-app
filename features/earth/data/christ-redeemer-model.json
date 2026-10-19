@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": "christ-redeemer",
+  "source": {
+    "sha256": "bd0b2f82fb1f56a80ba1d74941bd087c234deb4abd7c8e9e3148123112de5aa1",
+    "bytes": 2833380,
+    "author": "",
+    "license": "",
+    "url": "",
+    "title": ""
+  },
+  "coordinates": {
+    "axes": "east,north,up",
+    "gltfConversion": "x,-z,y",
+    "normalizedHeight": 1,
+    "heightMeters": 38,
+    "headingDegrees": 0,
+    "bounds": {
+      "min": [
+        -0.468684583902359,
+        -0.17906010150909424,
+        0
+      ],
+      "max": [
+        0.468684583902359,
+        0.17906010150909424,
+        1
+      ]
+    }
+  },
+  "preparation": {
+    "version": 2,
+    "simplifier": "meshoptimizer@1.1.1",
+    "inputTriangles": 18455,
+    "discardedDegenerateTriangles": 0,
+    "preserveTopFraction": 0,
+    "sourceHeight": 0.976959228515625,
+    "sourceOrigin": [
+      0,
+      0,
+      0
+    ],
+    "colors": "linear baseColor + vertexColor; sRGB baseColor texture; runtime normal/metallic/roughness lighting"
+  },
+  "overview": {
+    "url": "/earth/models/christ-redeemer/overview.elm",
+    "bytes": 503068,
+    "sha256": "4391e3e01f5e082ce3d1a308eb9581cd2b4bba74cd4b936e8565dcad6350be09",
+    "vertexCount": 8679,
+    "indexCount": 18000,
+    "triangles": 6000,
+    "targetTriangles": 6000,
+    "error": 0.005059112794697285,
+    "errorLimit": 0.03,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 11126,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 33290,
+        "width": 128,
+        "height": 128,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 4688,
+        "width": 64,
+        "height": 64,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  },
+  "detail": {
+    "url": "/earth/models/christ-redeemer/detail.elm",
+    "bytes": 1617144,
+    "sha256": "47953792858ddca90334c182dbebd8ff7eb1c00726a8de3fa0bd27f49156acf3",
+    "vertexCount": 19078,
+    "indexCount": 55365,
+    "triangles": 18455,
+    "targetTriangles": 24000,
+    "error": 0,
+    "errorLimit": 0.01,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 96450,
+        "width": 1024,
+        "height": 1024,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 387090,
+        "width": 512,
+        "height": 512,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 72624,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  }
+}

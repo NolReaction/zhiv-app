@@ -13,6 +13,7 @@ DECLARE
         'account_registration_tickets', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions', 'app_users', 'check_in_audiences',
         'check_ins', 'circle_invites', 'circle_memberships', 'circle_sharing_preferences',
         'circles', 'direct_invite_links', 'direct_invite_redemptions', 'direct_person_favorites', 'direct_requests',
+        'earth_sharing_settings', 'earth_sharing_recipients', 'earth_latest_locations',
         'economy_profiles', 'economy_commands', 'economy_ledger', 'economy_conversion_audit',
         'economy_market_listings', 'economy_market_receipts', 'economy_market_showcases', 'economy_market_daily_turnover',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
@@ -42,18 +43,19 @@ BEGIN
     END IF;
     -- V62 welcome claim timestamps are cleared with their account mail and admin data.
     -- V64 adds the one-time gift completion column; no user-data tables were added.
+    -- V65 sharing choices and ephemeral locations are cleared with account data.
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
     -- A known admin-history upgrade can install V50 after V51/V52.
     -- Verify either complete history by version, independently of install order.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 64
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 65
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,64) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,65) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V64. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V65. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

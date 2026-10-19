@@ -17,6 +17,7 @@ SET LOCAL statement_timeout = '3min';
 DO $$
 DECLARE
     cleared_tables text[] := ARRAY[
+        'earth_latest_locations',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
         'economy_commands',
         'economy_market_daily_turnover', 'economy_market_listings', 'economy_market_receipts',
@@ -39,7 +40,8 @@ DECLARE
         'account_registration_tickets', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions', 'app_users',
         'check_in_audiences', 'check_ins', 'circle_invites', 'circle_memberships',
         'circle_sharing_preferences', 'circles', 'direct_invite_links', 'direct_invite_redemptions',
-        'direct_person_favorites', 'direct_requests', 'game_presence_accounts', 'game_presence_daily',
+        'direct_person_favorites', 'direct_requests', 'earth_sharing_settings', 'earth_sharing_recipients',
+        'game_presence_accounts', 'game_presence_daily',
         'game_achievement_reward_claims', 'game_daily_rewards', 'game_reward_claims',
         'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes', 'notification_batches',
         'notification_preferences', 'notification_subscriptions', 'player_feedback',
@@ -67,16 +69,17 @@ BEGIN
     -- V62 welcome claim timestamps, account mail, broadcast receipts, and pending mail delivery survive gameplay-only resets.
     -- V63 pending sale proceeds are game wealth, intentionally cleared by this full-world reset like wallets.
     -- V64 one-time daily gift state and receipts remain in the preserved tables.
+    -- V65 location data is ephemeral; account sharing choices and recipients survive gameplay resets.
     -- Any later migration must be reviewed, including columns on retained tables.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 64
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 65
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,64) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,65) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V64. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V65. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

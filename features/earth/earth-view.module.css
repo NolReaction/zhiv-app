@@ -1,0 +1,135 @@
+.view {
+  --earth-overlay-top: max(16px, env(safe-area-inset-top));
+  --earth-overlay-left: max(16px, env(safe-area-inset-left));
+  --earth-overlay-right: max(16px, env(safe-area-inset-right));
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  color: #edf5e7;
+  background: #0b252d;
+}
+.stage { position: absolute; inset: 0; }
+.header {
+  position: absolute;
+  z-index: 4;
+  top: var(--earth-overlay-top);
+  left: var(--earth-overlay-left);
+  right: var(--earth-overlay-right);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  border: 1px solid #d9efcd30;
+  border-radius: 18px;
+  padding: 8px 12px;
+  color: #f0f7e7;
+  background: #153b32ed;
+  box-shadow: 0 4px 18px #001e2420;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+.brand > svg { color: #cfe9a9; flex-shrink: 0; }
+.brandDivider { margin-inline: 5px; color: #9eb89f; font-weight: 400; }
+.brandPlace { color: #c3d9bb; font-size: 11px; font-weight: 550; }
+.brand:focus, .friendsPanel h2:focus { outline: none; }
+.worldButton, .friendsButton, .panelActions button, .friendsPanel header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  border: 1px solid #d9efcd30;
+  border-radius: 16px;
+  background: #153b32f2;
+  color: #e7f3da;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.worldButton { flex-shrink: 0; border-radius: 18px; pointer-events: auto; box-shadow: 0 4px 18px #001e2420; }
+.worldButton > svg { color: #cfe9a9; }
+.bottomOverlay {
+  position: absolute;
+  z-index: 5;
+  left: var(--earth-overlay-left);
+  bottom: calc(var(--earth-navigation-clearance, 84px) + 30px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(360px, calc(100% - var(--earth-overlay-left) - var(--earth-overlay-right)));
+  max-height: calc(100% - var(--earth-overlay-top) - 88px - var(--earth-navigation-clearance, 84px));
+  pointer-events: none;
+}
+.bottomOverlay > * { pointer-events: auto; }
+.friendsButton { flex-shrink: 0; min-height: 48px; gap: 9px; border-radius: 999px; padding: 6px 13px 6px 7px; box-shadow: 0 5px 20px #001e2430; font-size: 12px; }
+.friendsButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
+.friendsIcon { display: grid; width: 32px; height: 32px; border-radius: 50%; background: #bedda018; color: #d9edbd; place-items: center; }
+.friendsCount { display: grid; min-width: 20px; height: 20px; border-radius: 50%; background: #c8ddae1c; color: #d2e4c2; place-items: center; font-size: 10px; font-weight: 700; }
+.bottomButtons { display: flex; align-items: center; gap: 7px; width: min(100%, calc(100vw - var(--earth-overlay-left) - var(--earth-overlay-right) - 60px)); min-width: 0; }
+.bottomButtons .friendsButton { flex-shrink: 0; gap: 6px; padding-right: 10px; font-size: 11px; }
+.sharingButton, .quickGhost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 46px; border: 1px solid #cbdcc33d; border-radius: 16px; padding: 8px 10px; background: #173c33f5; color: #d9e9ce; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
+.sharingButton { max-width: 180px; }
+.sharingButton svg { flex-shrink: 0; }
+.sharingButton span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sharingButton[aria-expanded="true"] { background: #315347; border-color: #c5e3ad7a; }
+.quickGhost { flex-shrink: 0; width: 44px; padding: 8px; color: #dce7f2; background: #2b4148f5; }
+.notice { position: absolute; z-index: 4; bottom: calc(var(--earth-navigation-clearance, 84px) + 90px); left: var(--earth-overlay-left); max-width: min(340px, calc(100% - var(--earth-overlay-left) - 76px)); margin: 0; border: 1px solid #f1d3a230; border-radius: 15px; background: #263d30f5; color: #f3d9b1; padding: 10px 12px; font-size: 11px; line-height: 1.55; }
+.friendsPanel { width: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 22px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 15px; }
+.friendsPanel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.friendsPanel h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+.friendsPanel header button { min-width: 44px; min-height: 44px; padding: 7px; background: #c5dfb910; }
+.friendsIntro, .hint { margin: 10px 0; color: #b8cdb1; font-size: 12px; line-height: 1.6; }
+.friendsList { list-style: none; margin: 13px 0; padding: 0; }
+.friendsList li { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #c5dfb91c; }
+.avatar { display: grid; width: 36px; height: 36px; flex-shrink: 0; place-items: center; border-radius: 50%; background: #c5dfb915; color: #d4e5c7; font-size: 13px; font-weight: 700; }
+.friendsList li > div { min-width: 0; }
+.friendsList .friendLocate { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; margin-left: auto; border: 1px solid #c5dfb936; border-radius: 12px; background: #c5dfb913; color: #dcebc9; cursor: pointer; }
+.allFriends { min-height: 44px; margin-top: 10px; border: 0; background: transparent; color: #d1e7b8; font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+.friendsList strong { display: block; overflow-wrap: anywhere; font-size: 12px; }
+.friendsList li > div > span { display: block; margin-top: 4px; color: #a9bf9f; font-size: 11px; }
+.panelActions { display: flex; gap: 8px; }
+.panelActions button:first-child { flex: 1; }
+.locationDetails h3 { margin: 0 0 9px; color: #e7f3da; font-size: 13px; font-weight: 700; }
+.friendsPanel .locationDetails { margin-top: 18px; padding-top: 14px; border-top: 1px solid #c5dfb92a; }
+.locationDetails > strong { color: #d8eac7; font-size: 12px; font-weight: 600; line-height: 1.5; }
+.locationDetails > p { margin: 8px 0 0; color: #b4cbb0; font-size: 11px; line-height: 1.6; }
+.locationDetails > p > svg { display: inline; margin-right: 5px; vertical-align: -3px; color: #cbe3ae; }
+.locationDetails > .locationError { color: #f3c18f; }
+.stopButton { min-height: 44px; margin-top: 9px; padding: 9px 12px; border: 1px solid #f0cc9e33; border-radius: 12px; background: #d5b27d0e; color: #e7d2ad; font: inherit; font-size: 11px; cursor: pointer; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.view button:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 3px; }
+.view button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 380px) {
+  .bottomButtons .friendsCount { display: none; }
+  .header { gap: 8px; }
+  .brand { padding-inline: 10px; gap: 6px; font-size: 12px; }
+  .brand > svg { width: 19px; }
+  .brandDivider { margin-inline: 4px; }
+  .brandPlace { font-size: 10px; }
+  .worldButton { padding: 8px 10px; font-size: 10px; }
+  .worldButton > svg { width: 16px; }
+}
+@media (max-height: 500px) and (min-width: 501px) {
+  .view { --earth-overlay-top: max(10px, env(safe-area-inset-top)); }
+  .bottomOverlay { max-height: calc(100% - var(--earth-overlay-top) - 78px - var(--earth-navigation-clearance, 84px)); }
+  .friendsPanel { padding: 12px; }
+  .friendsIntro, .hint { font-size: 11px; }
+}

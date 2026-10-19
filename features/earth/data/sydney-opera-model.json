@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": "sydney-opera",
+  "source": {
+    "sha256": "fc6afd4955953d62161d8249f9e6f141da1ebde4012cbc4649f682db18bb43a6",
+    "bytes": 4329920,
+    "author": "",
+    "license": "",
+    "url": "",
+    "title": ""
+  },
+  "coordinates": {
+    "axes": "east,north,up",
+    "gltfConversion": "x,-z,y",
+    "normalizedHeight": 1,
+    "heightMeters": 65,
+    "headingDegrees": 0,
+    "bounds": {
+      "min": [
+        -1.1166648864746094,
+        -0.5465059876441956,
+        0
+      ],
+      "max": [
+        1.1166648864746094,
+        0.5465059876441956,
+        1
+      ]
+    }
+  },
+  "preparation": {
+    "version": 2,
+    "simplifier": "meshoptimizer@1.1.1",
+    "inputTriangles": 50403,
+    "discardedDegenerateTriangles": 0,
+    "preserveTopFraction": 0,
+    "sourceHeight": 0.4386749267578125,
+    "sourceOrigin": [
+      0,
+      0,
+      0
+    ],
+    "colors": "linear baseColor + vertexColor; sRGB baseColor texture; runtime normal/metallic/roughness lighting"
+  },
+  "overview": {
+    "url": "/earth/models/sydney-opera/overview.elm",
+    "bytes": 379354,
+    "sha256": "280bda11de44ed1fd52dd6a41d424530b33a7a3c5a8b3234dcd25da2a65d12cd",
+    "vertexCount": 6352,
+    "indexCount": 17979,
+    "triangles": 5993,
+    "targetTriangles": 6000,
+    "error": 0.004023225512355566,
+    "errorLimit": 0.03,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 14786,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 8990,
+        "width": 128,
+        "height": 128,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 4086,
+        "width": 64,
+        "height": 64,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  },
+  "detail": {
+    "url": "/earth/models/sydney-opera/detail.elm",
+    "bytes": 1346774,
+    "sha256": "163f79bb2d8b12fbfff628889822f339e4d261f97b6b7b811f69857f9eaaf4c5",
+    "vertexCount": 18180,
+    "indexCount": 71967,
+    "triangles": 23989,
+    "targetTriangles": 24000,
+    "error": 0.0005177685525268316,
+    "errorLimit": 0.01,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 86850,
+        "width": 1024,
+        "height": 1024,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 119470,
+        "width": 512,
+        "height": 512,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 52578,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  }
+}

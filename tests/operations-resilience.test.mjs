@@ -10,6 +10,19 @@ import yaml from "js-yaml";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readYaml = async path => yaml.load(await readFile(join(root, path), "utf8"));
 
+test("all deployment and reset backups exclude ephemeral GPS rows while retaining their schema", async () => {
+  const scripts = ["scripts/deploy-update.sh", "scripts/reset-database.sh", "scripts/reset-user-data.sh", "scripts/reset-game-progress.sh"];
+  const sources = await Promise.all(scripts.map(script => readFile(join(root, script), "utf8")));
+  for (const [index, source] of sources.entries()) {
+    const dumps = source.split("\n").filter(line => /\bpg_dump\b/.test(line));
+    assert.ok(dumps.length > 0, `${scripts[index]}: backup entrypoint is checked`);
+    for (const dump of dumps) {
+      assert.match(dump, /--exclude-table-data=public\.earth_latest_locations(?:\s|$)/, scripts[index]);
+      assert.doesNotMatch(dump, /--exclude-table(?:=|\s)public\.earth_latest_locations/, "restore still needs the empty location table");
+    }
+  }
+});
+
 test("optional alert configuration preserves existing scrapes and exposes no additional port or application secret", async () => {
   const base = await readYaml("deploy/monitoring/prometheus.yml");
   const enabled = await readYaml("deploy/monitoring/prometheus-alerting.yml");

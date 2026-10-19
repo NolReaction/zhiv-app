@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm, access } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, copyFile, rm, access, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -13,12 +13,15 @@ test("both build commands share the same immutable embedded ID and public status
   const directory = await mkdtemp(join(tmpdir(), "zhiv-build-status-"));
   try {
     const packageJson = JSON.parse(await readFile(join(repository, "package.json"), "utf8"));
+    await writeFile(join(directory, "package.json"), JSON.stringify(packageJson));
+    await symlink(join(repository, "node_modules"), join(directory, "node_modules"), "dir");
     assert.match(packageJson.scripts.build, /app-build\.mjs -- bash scripts\/build-verified\.sh$/);
     assert.match(packageJson.scripts["build:vps"], /app-build\.mjs -- next build$/);
     const result = spawnSync(process.execPath, [join(repository, "scripts/app-build.mjs"), "--", process.execPath, "-e",
       'console.log(JSON.stringify({embedded:process.env.NEXT_PUBLIC_APP_BUILD_ID,status:JSON.parse(require("node:fs").readFileSync("public/app-status.json","utf8"))}))'],
     { cwd: directory, env: { ...process.env, APP_BUILD_ID: "release-test-123" }, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
+    await access(join(directory, "public/vendor", `maplibre-gl-${packageJson.dependencies["maplibre-gl"]}`, "maplibre-gl-worker.mjs"));
     assert.deepEqual(JSON.parse(result.stdout), { embedded: "release-test-123", status: { schemaVersion: 1, buildId: "release-test-123", maintenance: false } });
     assert.notEqual(appBuildId(""), appBuildId(""));
     assert.throws(() => appBuildId('bad"value'), /Invalid/);
@@ -206,4 +209,15 @@ test("Caddy serves lifecycle JSON ahead of the maintenance gate and blocks both 
   const compose = await readFile(join(repository, "deploy/compose.yml"), "utf8");
   assert.match(compose, /\.\/runtime:\/srv\/deploy:ro/);
   assert.match(compose, /APP_BUILD_ID: \$\{APP_BUILD_ID:-\}/);
+});
+
+test("Caddy sends only the exact public weather GET to web after maintenance and before the Ktor API catch-all", async () => {
+  const caddy = await readFile(join(repository, "deploy/Caddyfile"), "utf8");
+  const matcher = caddy.match(/@earthWeather\s*\{([^{}]+)\}/)?.[1].trim().replace(/\s+/g, " ");
+  assert.equal(matcher, "method GET path /api/v1/earth/weather", "do not divert other API paths or write methods to the web runtime");
+  assert.match(caddy, /handle @earthWeather\s*\{\s*reverse_proxy web:3000\s*\}/);
+  assert.ok(caddy.indexOf("handle @maintenance") < caddy.indexOf("handle @earthWeather"));
+  assert.ok(caddy.indexOf("handle @earthWeather") < caddy.indexOf("handle @api"));
+  assert.match(caddy, /@api path \/api\/\* \/healthz \/readyz\s*handle @api\s*\{\s*reverse_proxy api:8080\s*\}/,
+    "the remaining API, health and readiness routes retain the Ktor upstream");
 });

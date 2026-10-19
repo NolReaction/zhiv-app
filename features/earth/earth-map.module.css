@@ -1,0 +1,104 @@
+.root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  container-type: size;
+  background: radial-gradient(ellipse at 45% 45%, #153d44 0%, #0b262e 44%, #06171f 85%);
+}
+.canvas { position: absolute; inset: 0; visibility: hidden; }
+.canvas[data-visible="true"] { visibility: visible; }
+.canvas :global(.maplibregl-canvas):focus-visible { outline: 3px solid #d6eeaf; outline-offset: -4px; }
+.controls {
+  position: absolute;
+  z-index: 3;
+  right: var(--earth-overlay-right, 16px);
+  top: calc(var(--earth-overlay-top, 16px) + 60px);
+  display: grid;
+  gap: 8px;
+}
+.controls button, .infoButton {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  border: 1px solid #d9efcd30;
+  color: #e7f3da;
+  background: #153b32f2;
+  box-shadow: 0 4px 18px #001e2420;
+  cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease;
+}
+.controls button:hover:not(:disabled), .infoButton:hover { background: #285344; }
+.controls button:active:not(:disabled), .infoButton:active { transform: scale(.94); }
+.controls button:focus-visible, .infoButton:focus-visible, .infoPanel button:focus-visible, .infoPanel a:focus-visible, .networkNotice button:focus-visible { outline: 3px solid #dcf6a6; outline-offset: 3px; }
+.controls button:disabled { opacity: .4; cursor: default; }
+.controls .locateButton { margin-top: 6px; border-color: #e7f8be66; color: #21432b; background: #d1edaa; box-shadow: 0 5px 20px #001e2430; }
+.controls .locateButton:hover:not(:disabled) { background: #e1f5bf; }
+.controls button[aria-pressed="true"] { border-color: #e7f8be66; color: #21432b; background: #d1edaa; }
+.controls button[aria-pressed="true"]:hover:not(:disabled) { background: #e1f5bf; }
+.controls button[data-active="true"] { box-shadow: 0 0 0 3px #d1edaa2b, 0 5px 20px #001e2430; }
+.controls button[aria-busy="true"] svg { animation: locate-search 1.4s ease-in-out infinite; }
+.infoButton { position: absolute; z-index: 4; right: var(--earth-overlay-right, 16px); bottom: calc(var(--earth-navigation-clearance, 84px) + 30px); width: 48px; height: 48px; border-radius: 50%; }
+.infoButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
+.infoPanel {
+  position: absolute;
+  z-index: 5;
+  right: var(--earth-overlay-right, 16px);
+  bottom: calc(var(--earth-navigation-clearance, 84px) + 88px);
+  width: min(360px, calc(100% - var(--earth-overlay-left, 16px) - var(--earth-overlay-right, 16px)));
+  max-height: calc(100% - var(--earth-overlay-top, 16px) - 148px - var(--earth-navigation-clearance, 84px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #cce1b83d;
+  border-radius: 22px;
+  padding: 15px;
+  color: #e7f3da;
+  background: #15372efc;
+  box-shadow: 0 12px 35px #001e2440;
+}
+.infoPanel > header, .infoHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
+.infoPanel h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+.infoPanel h2:focus { outline: none; }
+.infoPanel > header > button, .infoHeader > button, .infoClose { display: grid; flex-shrink: 0; width: 44px; height: 44px; place-items: center; border: 1px solid #d9efcd30; border-radius: 16px; background: #c5dfb910; color: #e7f3da; cursor: pointer; }
+.infoPanel h3 { margin: 0 0 9px; font-size: 13px; font-weight: 700; }
+.infoPanel p { margin: 8px 0; color: #b4cbb0; font-size: 11px; line-height: 1.6; }
+.infoPanel a { color: #d9edbd; text-underline-offset: 3px; }
+.infoPanel > section + section, .infoSection + .infoSection { border-top: 1px solid #c5dfb91c; padding-top: 16px; margin-top: 16px; }
+.storageDetails { display: grid; gap: 8px; color: #b4cbb0; font-size: 12px; line-height: 1.5; }
+.storageDetails > strong { color: #d8eac7; font-size: 14px; font-weight: 600; }
+.storageDetails > p { margin: 0; }
+.storageDetails button, .infoAction { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 9px 12px; border: 1px solid #d9efcd30; border-radius: 12px; background: #c5dfb910; color: #e7f3da; font: inherit; font-size: 11px; cursor: pointer; }
+.storageDetails button:disabled, .infoAction:disabled { opacity: .5; cursor: default; }
+.infoRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; color: #d8eac7; font-size: 12px; line-height: 1.5; }
+.lightingModes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border: 1px solid #d9efcd20; border-radius: 16px; background: #0b2924; }
+.lightingModes button { min-height: 44px; padding: 7px 8px; border: 1px solid transparent; border-radius: 11px; color: #b4cbb0; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.lightingModes button[aria-pressed="true"] { color: #edf6da; border-color: #dae6ad38; background: #355a43; box-shadow: 0 2px 6px #001e2429; }
+.lightingModes button:hover { color: #edf6da; }
+.infoToggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 52px; height: 44px; padding: 0; border: 0; border-radius: 13px; background: transparent; cursor: pointer; }
+.infoToggle > span { position: relative; display: block; width: 42px; height: 24px; border-radius: 999px; background: #627e6d; box-shadow: inset 0 0 0 1px #d9efcd22; transition: background 160ms ease; }
+.infoToggle > span::before { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #edf5e7; box-shadow: 0 1px 4px #082b2550; content: ""; transition: transform 160ms ease, background 160ms ease; }
+.infoToggle[aria-checked="true"] > span { background: #cbe99e; }
+.infoToggle[aria-checked="true"] > span::before { transform: translateX(18px); background: #234b35; }
+.infoToggle:disabled { opacity: .5; cursor: default; }
+.attribution { color: #b4cbb0; font-size: 11px; line-height: 1.7; }
+.attribution a { color: #d9edbd; text-underline-offset: 3px; }
+.tileProgress { position: absolute; z-index: 2; top: calc(var(--earth-overlay-top, 16px) + 60px); left: var(--earth-overlay-left, 16px); display: inline-flex; align-items: center; gap: 7px; max-width: calc(100% - 92px); margin: 0; padding: 7px 10px; border: 1px solid #d9efcd20; border-radius: 999px; color: #d4e4c9; background: #153b32eb; font-size: 10px; line-height: 1.4; pointer-events: none; }
+.tileProgress::before { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: #cbe99e; content: ""; }
+.networkNotice { position: absolute; z-index: 2; top: calc(var(--earth-overlay-top, 16px) + 60px); left: var(--earth-overlay-left, 16px); max-width: min(340px, calc(100% - 92px)); display: grid; gap: 4px; padding: 9px 11px; border: 1px solid #d6c38d45; border-radius: 15px; color: #f1dfb7; background: #263d30f5; font-size: 11px; line-height: 1.45; }
+.networkNotice button { justify-self: start; min-height: 40px; padding: 0 4px; color: #e4efcf; text-decoration: underline; cursor: pointer; }
+@media (max-height: 500px) {
+  .controls { grid-template-columns: repeat(6, 44px); gap: 4px; }
+  .controls .locateButton { margin: 0; }
+  .infoPanel { max-height: calc(100% - var(--earth-overlay-top, 16px) - 143px - var(--earth-navigation-clearance, 84px)); padding: 12px; }
+  .networkNotice, .tileProgress { top: calc(var(--earth-overlay-top, 16px) + 112px); }
+}
+@keyframes locate-search { 50% { opacity: .45; transform: scale(.82); } }
+@media (prefers-reduced-motion: reduce) { .controls button, .infoButton, .infoToggle > span, .infoToggle > span::before { transition: none; } .controls button[aria-busy="true"] svg { animation: none; } }
+
+.root[data-lighting="evening"] { background: radial-gradient(ellipse at 35% 42%, #202d53, #10172d 55%, #070d1a 90%); }
+.weatherBadge { position: absolute; z-index: 2; bottom: calc(var(--earth-navigation-clearance, 84px) + 100px); left: var(--earth-overlay-left, 16px); display: inline-flex; align-items: center; gap: 7px; max-width: calc(100% - 92px); margin: 0; padding: 8px 11px; border: 1px solid #d9efcd25; border-radius: 14px; color: #e3edda; background: #153b32ed; font-size: 11px; line-height: 1.5; pointer-events: none; }
+.weatherBadge > span { color: #ebdcaa; font-size: 17px; }

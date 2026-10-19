@@ -13,6 +13,10 @@ import dynamic from "next/dynamic";
 import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
 import { reportIncident, incidentCode, reportStartupIncident, resolveStartupIncidents } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
+import { rememberEarthSection, restoreEarthSection } from "./earth-navigation-state";
+import { earthMapAvailable } from "./earth-map-availability";
+import { useEarthMapRetention } from "./use-earth-map-retention";
+import { useEarthSharing } from "@/features/earth/use-earth-sharing";
 import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
@@ -119,6 +123,10 @@ import type { SceneLoadState } from "@/features/startup/scene-load-state";
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
 const WorldPortal = dynamic(() => import("@/features/world/world-portal"), { ssr: false });
+const EarthView = dynamic(() => import("@/features/earth/earth-view").then(module => module.EarthView), {
+  ssr: false,
+  loading: () => <p className={styles.earthOpening} role="status">Открываем карту Земли…</p>,
+});
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
 
@@ -405,7 +413,10 @@ function CheckInContent() {
   const [tapFeedbackBurst, setTapFeedbackBurst] = useState(0);
   const [tapActive, setTapActive] = useState(false);
   const [seriesBreakBurst, setSeriesBreakBurst] = useState<number | null>(null);
-  const [activeView, setActiveView] = useState<ActiveView>("check-in");
+  const [viewSelection, setViewSelection] = useState<{ owner: string | null; view: ActiveView }>({ owner: null, view: "check-in" });
+  const viewOwner = me?.user.publicId ?? null;
+  const activeView: ActiveView = viewSelection.owner === viewOwner ? viewSelection.view
+    : viewOwner && restoreEarthSection(viewOwner) ? "earth" : "check-in";
   const [viewDirection, setViewDirection] = useState(1);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const appOnboardingEntry = useRef<AppOnboardingEntry>(null);
@@ -441,7 +452,8 @@ function CheckInContent() {
       if (next !== activeView) playUiCue(getAudioRuntime(), "ui.click");
       const order = appViews;
       setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
-      setActiveView(next);
+      setViewSelection({ owner: viewOwner, view: next });
+      if (me) rememberEarthSection(me.user.publicId, next === "earth");
       if (next === "profile") void game.refresh();
     };
     if (activeView === "profile" && next !== activeView && notificationSettingsExit.current) notificationSettingsExit.current.requestLeave(leave);
@@ -626,7 +638,7 @@ function CheckInContent() {
     resetTransientCheckIn();
     setPeople(null);
     setGroups(null);
-    setActiveView("check-in");
+    setViewSelection({ owner: null, view: "check-in" });
     accountReturn.current = false;
     setScreen("session-lost");
   }, [
@@ -654,6 +666,13 @@ function CheckInContent() {
     setActivityPauseVersion(value => value + 1);
   }, [setWorldAvailable, setEconomyAvailable, setWorldDirectActions, setEconomyDirectActions, setLocalEconomyActions]);
   const activity = useActivity(screen === "home" ? me?.user.publicId ?? null : null, reconcileGameplay, loseSession, pauseGameplay);
+  const earthSelected = activeView === "earth";
+  const earthAvailable = earthMapAvailable({ mode: activity.mode, startupActive,
+    covered: worldPortal.open || calendarOpen || gameOpen || statusOpen });
+  const earthRetention = useEarthMapRetention({ owner: screen === "home" ? viewOwner : null,
+    selected: earthSelected, available: earthAvailable, documentHidden: activity.mode === "hidden" });
+  const earthSharing = useEarthSharing({ ownerPublicId: screen === "home" ? viewOwner : null,
+    visible: screen === "home" && earthSelected && earthAvailable, isOnline, onSessionLost: loseSession });
   useEconomyAudioFeedback(economy, screen === "home" && activity.active);
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
@@ -737,7 +756,12 @@ function CheckInContent() {
     onNavigate: target => {
       if (!worldDevOwner) return;
       setCalendarOpen(false); setGameOpen(false); setStatusOpen(false);
-      if (target === "checkin") { closeWorld(); setActiveView("check-in"); return; }
+      if (target === "checkin") {
+        closeWorld();
+        setViewSelection({ owner: worldDevOwner, view: "check-in" });
+        rememberEarthSection(worldDevOwner, false);
+        return;
+      }
       if (target === "mailbox") { setNotificationEntry(undefined); mailbox.open(); return; }
       setNotificationEntry({ ownerPublicId: worldDevOwner, target, request: ++notificationRequest.current });
       setFriendSelection(null);
@@ -885,7 +909,8 @@ function CheckInContent() {
     syncMeSnapshot(identity);
     setNameError(null);
     setSystemError(null);
-    setActiveView(accountReturn.current ? "profile" : "check-in");
+    setViewSelection({ owner: identity.user.publicId,
+      view: accountReturn.current ? "profile" : restoreEarthSection(identity.user.publicId) ? "earth" : "check-in" });
     accountReturn.current = false;
     setScreen("home");
   }, [
@@ -1620,7 +1645,8 @@ function CheckInContent() {
         calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
         simpleView={simpleView} />}
 
-      <div key={activeView} className={styles.viewTransition} style={{ "--view-direction": viewDirection } as CSSProperties}>
+      <div key={activeView} className={styles.viewTransition} hidden={earthSelected}
+        style={{ "--view-direction": viewDirection, display: earthSelected ? "none" : undefined } as CSSProperties}>
       {activeView === "check-in" ? (
         <section
           id="check-in-panel"
@@ -1845,7 +1871,7 @@ function CheckInContent() {
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
         />
-      ) : me ? (
+      ) : activeView === "profile" && me ? (
         <ProfileView
           simpleView={simpleView} onSimpleViewChange={setSimpleView}
           notificationSettingsExit={notificationSettingsExit}
@@ -1881,6 +1907,14 @@ function CheckInContent() {
           onSessionLost={loseSession}
         />
       ) : null}
+      </div>
+      <div key="earth-session" className={styles.viewTransition} hidden={!earthSelected} inert={!earthSelected || undefined}
+        style={{ display: earthSelected ? undefined : "none" }} data-earth-session-visible={earthSelected}>
+        {earthRetention.mounted && me && <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
+          active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange} cameraSession={earthRetention.cameraSession} sharing={earthSharing}
+          isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
+          onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
+          onOpenWorld={trigger => { setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />}
       </div>
       {me && streak ? <CheckInCalendar key={`calendar:${me.user.publicId}`} open={calendarOpen} onOpenChange={setCalendarOpen}
         streak={streak} items={game.progress?.items} lastCheckInAt={lastCheckInAt} timeZone={me.profile.timeZone} onSessionLost={loseSession}
@@ -1925,7 +1959,8 @@ function CheckInContent() {
       {!startupActive && <CapabilityLanding
         authenticated={true}
         onInviteAccepted={() => {
-          setActiveView("people");
+          setViewSelection({ owner: viewOwner, view: "people" });
+          if (viewOwner) rememberEarthSection(viewOwner, false);
           void refreshPeople();
           void refreshGroups();
         }}

@@ -39,7 +39,12 @@
     "build:engine": "npm run build --workspace @zhiv/engine && npm run build --workspace @zhiv/engine-lab",
     "test:engine": "node --test --test-concurrency=1 tests/engine-*.test.mjs tests/procedural-forest*.test.mjs",
     "typecheck:engine": "npm run typecheck --workspace @zhiv/engine && npm run typecheck --workspace @zhiv/engine-lab",
-    "preview:engine": "npm run preview --workspace @zhiv/engine-lab --"
+    "preview:engine": "npm run preview --workspace @zhiv/engine-lab --",
+    "earth:prepare": "node scripts/prepare-earth-assets.mjs",
+    "earth:models:prepare": "node scripts/prepare-earth-model.mjs",
+    "earth:models:check": "node scripts/prepare-earth-model.mjs --check",
+    "predev": "npm run earth:prepare",
+    "test:earth": "node --test --test-concurrency=1 tests/earth-*.test.mjs"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
@@ -47,6 +52,7 @@
     "drizzle-orm": "0.45.2",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",
+    "maplibre-gl": "6.15.0",
     "next": "16.3.8",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.7",
@@ -72,6 +78,7 @@
     "eslint-config-next": "16.3.8",
     "fake-indexeddb": "6.2.5",
     "js-yaml": "4.3.2",
+    "meshoptimizer": "1.1.1",
     "react-server-dom-webpack": "19.2.8",
     "sharp": "0.35.5",
     "tailwindcss": "4.2.1",

@@ -1,0 +1,23 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.patch { animation: appear 180ms ease-out 300ms both; }
+.surface { fill-opacity: 1; }
+.cloud { fill-opacity: 0.90; stroke: #7796a166; stroke-width: .8; }
+.label { fill: #344f5a; font: 600 11px system-ui, sans-serif; paint-order: stroke; stroke: #f3f7f0; stroke-width: 3px; stroke-linejoin: round; }
+.patch[data-state="failed"] .surface,
+.patch[data-state="offline"] .surface { opacity: .65; }
+
+@keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .patch { animation: none; }
+}

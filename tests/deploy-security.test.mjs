@@ -13,6 +13,14 @@ const { forestMemoryCommandSchema, FOREST_MEMORY_BODY_BYTES, FOREST_MEMORY_SNAPS
 const caddy = await readFile(new URL("../deploy/Caddyfile", import.meta.url), "utf8");
 const forestRoute = await readFile(new URL("../apps/api/src/main/kotlin/ru/zhiv/forest/ForestMemoryRoutes.kt", import.meta.url), "utf8");
 
+test("the edge preserves first-party map geolocation while keeping camera and microphone disabled", async () => {
+  const nextConfig = await readFile(new URL("../next.config.ts", import.meta.url), "utf8");
+  const policy = "camera=(), microphone=(), geolocation=(self)";
+  assert.equal(caddy.match(/Permissions-Policy "([^"]+)"/)?.[1], policy);
+  assert.equal(nextConfig.match(/key: "Permissions-Policy",\s*value: "([^"]+)"/)?.[1], policy,
+    "the production proxy must not revoke the web runtime's first-party location policy");
+});
+
 test("a supported forest snapshot can exceed the ordinary edge limit while staying inside both API caps", () => {
   const snapshot = {
     version: 2, sceneId: "forest", fingerprint: "geometry-v2",

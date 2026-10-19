@@ -1,0 +1,64 @@
+# Земля малого масштаба
+
+`land-110m.json` — Natural Earth, слой `ne_110m_land`, масштаб 1:110 млн.
+Источник зафиксирован тегом `v5.1.2`:
+
+https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_110m_land.geojson
+
+SHA-256 исходного файла (138 160 байт):
+`9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9`.
+
+Natural Earth публикует географические данные в общественном достоянии:
+https://www.naturalearthdata.com/about/terms-of-use/
+
+Включённые 127 полигонов сохраняют исходную геометрию, включая Антарктиду и
+острова. Удалены служебные `name`, `crs`, `bbox` и свойства объектов; координаты
+округлены до четырёх знаков после запятой. Воспроизводимое преобразование:
+
+```python
+import json
+
+def coordinates(value):
+    if isinstance(value, (float, int)):
+        return round(value, 4)
+    return [coordinates(item) for item in value]
+
+source = json.load(open("ne_110m_land.geojson"))
+result = {
+    "type": "FeatureCollection",
+    "features": [{
+        "type": "Feature", "properties": {},
+        "geometry": {"type": feature["geometry"]["type"],
+                     "coordinates": coordinates(feature["geometry"]["coordinates"])},
+    } for feature in source["features"]],
+}
+with open("land-110m.json", "w") as output:
+    output.write(json.dumps(result, separators=(",", ":")) + "\n")
+```
+
+Файл входит в код лениво открываемой карты. Это опорный силуэт всей Земли,
+а не точная береговая линия для прогулки. Единственный GeoJSON-тайл `maxzoom: 0`
+остаётся доступным при вращении, временной потере сети и загрузке нового района.
+С масштаба 4 загруженные векторные тайлы OpenStreetMap накрывают его точной
+геометрией: локально добавленный MVT-слой подложки и вода рендерятся из одного
+тайла. Данные провайдера на диске сохраняются без изменения.
+
+## Ледники и крупные озёра
+
+`physical-110m.json` содержит 11 полигонов ледников и 24 крупных озера из того же
+Natural Earth `v5.1.2`; общий размер 27 958 байт. Исходные файлы:
+
+- [ne_110m_glaciated_areas.geojson](https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_110m_glaciated_areas.geojson), 21 720 байт; SHA-256 `e61e3f45e22f087f861ac2fda6258fc15c849a216d74c27ccf0164eeafbd950a`.
+- [ne_110m_lakes.geojson](https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_110m_lakes.geojson), 36 648 байт; SHA-256 `eb02ecc86c82004fccbf979058bfabbbd6c2d07968c7844d38eb1c9152d2ffc9`.
+
+Для воспроизведения примените функцию `coordinates` из примера выше к обоим
+файлам, в указанном порядке. В `properties` каждого ледника оставьте только
+`{"kind":"ice"}`, каждого озера — `{"kind":"lake"}`. Объедините массивы
+`features` и запишите `FeatureCollection` тем же компактным `json.dumps`.
+Лицензия этих данных также public domain.
+
+`globe-overview.ts` добавляет редкую сетку меридианов/параллелей и подписи частей
+света/океанов. Координаты подписей выбраны для размещения текста и не задают
+границы. Весь обзор хранится в одном локальном GeoJSON-тайле `maxzoom: 0`;
+сетка и подписи исчезают до масштаба улиц. Ледники и озёра лежат под точными
+тайлами OSM, поэтому локальный обзор не заменяет их при приближении.
