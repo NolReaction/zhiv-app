@@ -3,9 +3,9 @@
   "placements": [
     {
       "id": "eiffel-tower",
-      "longitude": 2.29444,
-      "latitude": 48.85826,
-      "heightMeters": 330,
+      "longitude": 2.2944802895794965,
+      "latitude": 48.85826544259692,
+      "heightMeters": 297,
       "headingDegrees": 45,
       "elevationMeters": 0,
       "exclusionRadiusMeters": 110,
