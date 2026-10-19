@@ -2,6 +2,7 @@ package ru.zhiv.economy
 
 import org.junit.jupiter.api.Test
 import ru.zhiv.auth.AuthFailure
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.*
 
@@ -36,11 +37,13 @@ class EconomyMarketRulesTest {
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, 1_000_000_000, Long.MAX_VALUE) }
     }
 
-    @Test fun `segments limits fee rounding and price ceiling bound premium trade`() {
-        assertTrue(EconomyMarketRules.sameHomeBand(2, 3))
-        assertTrue(EconomyMarketRules.sameHomeBand(4, 5))
-        for ((a,b) in listOf(1 to 1, 2 to 4, 3 to 5, 4 to 3, 5 to 2, 6 to 5))
-            assertFalse(EconomyMarketRules.sameHomeBand(a,b))
+    @Test fun `one coin market retains limits fee rounding and price ceiling while barter keeps its tiers`() {
+        for (buyerHome in 2..5) {
+            assertEquals(2..5, EconomyMarketRules.homeRange(buyerHome))
+            for (sellerHome in 2..5) assertTrue(EconomyMarketRules.canTrade(buyerHome, sellerHome))
+        }
+        for ((a,b) in listOf(1 to 1, 1 to 2, 2 to 1, 6 to 5, 5 to 6))
+            assertFalse(EconomyMarketRules.canTrade(a,b))
         assertEquals(listOf(0L,2400L,4800L,9600L,14400L), (1..5).map { EconomyMarketRules.dailyTradeLimit(it) })
         EconomyMarketRules.assertTradeBudget(2340,60,2400)
         assertEquals("ECONOMY_MARKET_DAILY_LIMIT", assertFailsWith<AuthFailure> { EconomyMarketRules.assertTradeBudget(2341,60,2400) }.code)
@@ -57,6 +60,17 @@ class EconomyMarketRulesTest {
         assertFalse(EconomyBarterRules.sameHomeBand(3,4))
         EconomyBarterRules.assertDailyLimit(0)
         assertEquals("ECONOMY_BARTER_DAILY_LIMIT", assertFailsWith<AuthFailure> { EconomyBarterRules.assertDailyLimit(1) }.code)
+    }
+
+    @Test fun `five minute showcases reject expired and legacy thirty minute leases`() {
+        val at = Instant.parse("2026-10-19T09:00:00Z")
+        assertEquals(300L, EconomyRules.catalog.market.showcaseRefreshSeconds)
+        assertTrue(EconomyMarketRules.showcaseCurrent(at.plusSeconds(300), at))
+        assertTrue(EconomyMarketRules.showcaseCurrent(at.plusSeconds(1), at))
+        assertFalse(EconomyMarketRules.showcaseCurrent(at, at))
+        assertFalse(EconomyMarketRules.showcaseCurrent(at.minusSeconds(1), at))
+        assertFalse(EconomyMarketRules.showcaseCurrent(at.plusSeconds(301), at))
+        assertFalse(EconomyMarketRules.showcaseCurrent(at.plusSeconds(1800), at))
     }
 
     @Test fun `home tiers include producer dependencies and fishing without requiring workshop ownership`() {

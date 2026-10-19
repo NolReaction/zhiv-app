@@ -150,12 +150,18 @@ test("privacy switches use real access checks and deletion removes the bot ident
   assert.equal(read(owner).bots[0].sharingMode, "OFF"); assert.equal(social.getDevGuestWorld(owner.token, bot.circleId).kind, "not-found");
   act(owner, { action: "set_sharing", botId: bot.id, sharingMode: "LATEST_ONLY" });
   assert.equal(read(owner).bots[0].sharingMode, "LATEST_ONLY"); assert.equal(social.getDevGuestWorld(owner.token, bot.circleId).kind, "ok");
+  const saved = globalThis.__zhivDevEconomyStore;
+  saved.turnover.set(bot.publicId, { day: "2026-10-19", buysUsed: 30, salesUsed: 60, barterUsed: 0 });
+  saved.turnover.set(owner.me.user.publicId, { day: "2026-10-19", buysUsed: 90, salesUsed: 0, barterUsed: 0 });
+  saved.promoClaims.set(bot.publicId, new Map()); saved.promoClaims.set(owner.me.user.publicId, new Map());
   const deletion = command(owner, { action: "delete", botId: bot.id }); bots.commandDevBots(owner.token, deletion, now);
   assert.equal(bots.commandDevBots(owner.token, deletion, now).replayed, true);
   assert.equal(social.getDevGuestWorld(owner.token, bot.circleId).kind, "not-found");
   assert.equal(social.lookupDevUser(owner.token, bot.publicId).kind, "not-found");
   assert.equal(globalThis.__zhivDevWorldStore.has(bot.publicId), false); assert.equal(globalThis.__zhivDevEconomyStore.profiles.has(bot.publicId), false);
   assert.equal([...globalThis.__zhivDevEconomyStore.listings.values()].some(item => item.sellerPublicId === bot.publicId), false);
+  assert.equal(saved.turnover.has(bot.publicId), false); assert.equal(saved.promoClaims.has(bot.publicId), false);
+  assert.equal(saved.turnover.get(owner.me.user.publicId).buysUsed, 90); assert.equal(saved.promoClaims.has(owner.me.user.publicId), true);
   assert.deepEqual(economy.getDevEconomy(owner.token, now), own);
   assert.deepEqual(ok(social.listDevPeople(owner.token)).people.map(item => item.user.publicId), [realFriend.me.user.publicId]);
 });

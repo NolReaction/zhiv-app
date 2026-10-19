@@ -16,7 +16,7 @@
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "33cc0627d5da76804dc160a730e10ffca7cb8418d00f7475baf70d842ada2986"
+      "sha256": "1cc5978394e78b350b80e8e58be882cd42f2fb23704c093bc2585ab824372af5"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -3165,6 +3165,33 @@
         "syllables": 2,
         "phrasePace": 0.96
       }
+    },
+    {
+      "id": "ui.market-open.01",
+      "kind": "effect",
+      "title": "The little trading counter 1",
+      "description": "An original soft cloth purse on wood and two damped coin contacts for entering the player market. No continuous loop, voices or external samples.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 39360,
+      "durationSeconds": 0.82,
+      "decodedBytes": 157440,
+      "masterSha256": "e9d51b2357d503378c6ff7d9d07c19c80fcdd75b71cfb89b37931741e675e2d6",
+      "measurements": {
+        "peakDb": -15.3565,
+        "rmsDb": -28.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.033171874
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.market-open.01.wav",
+          "bytes": 78764,
+          "sha256": "e9d51b2357d503378c6ff7d9d07c19c80fcdd75b71cfb89b37931741e675e2d6"
+        }
+      ],
+      "composition": {}
     }
   ],
   "updatedAt": "2026-10-16"

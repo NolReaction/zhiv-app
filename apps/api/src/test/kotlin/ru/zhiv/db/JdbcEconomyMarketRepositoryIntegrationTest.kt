@@ -20,6 +20,7 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.economy.*
 import ru.zhiv.installZhivApi
 import ru.zhiv.security.TokenCodec
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.*
 
@@ -548,6 +549,38 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertFailsWith<AuthFailure> { market.market(viewer.hash, limit=13) }
     }
 
+    @Test fun `legacy thirty minute showcase cannot authorize a buy and GET replaces it with a fixed five minute selection`() = runBlocking<Unit> {
+        val seller = player()
+        val buyer = player(berries = 0)
+        val selected = offer(seller)
+        val first = market.market(buyer.hash)
+        assertEquals(listOf(selected.id), first.listings.map { it.id })
+        assertEquals(300L, first.showcase.refreshSeconds)
+        assertEquals(300L, Instant.parse(first.showcase.refreshAt).epochSecond - Instant.parse(first.serverTime).epochSecond)
+        val request = command(buyer, "buy_listing", selected.id, selected.quantity, selected.totalPrice)
+        val later = offer(seller)
+        assertEquals(listOf(selected.id), market.market(buyer.hash).listings.map { it.id }, "new lots wait for the fixed selection to refresh")
+        execute("UPDATE economy_market_showcases SET refresh_at=clock_timestamp()+interval '30 minutes' WHERE user_id=?", buyer.id)
+        val before = economy.snapshot(buyer.hash)
+        assertEquals("ECONOMY_MARKET_SHOWCASE_CHANGED", assertFailsWith<AuthFailure> { market.command(buyer.hash, request) }.code)
+        val rejected = economy.snapshot(buyer.hash)
+        assertEquals(before.revision, rejected.revision)
+        assertEquals(before.wallet, rejected.wallet)
+        assertEquals(before.inventory, rejected.inventory)
+        assertEquals(1000L, economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(0L, scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?", buyer.id, UUID.fromString(request.requestId)))
+        val refreshed = market.market(buyer.hash)
+        assertEquals(setOf(selected.id, later.id), refreshed.listings.map { it.id }.toSet())
+        assertEquals(300L, refreshed.showcase.refreshSeconds)
+        assertEquals(300L, Instant.parse(refreshed.showcase.refreshAt).epochSecond - Instant.parse(refreshed.serverTime).epochSecond)
+        assertEquals(1L, scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=? AND refresh_at<=clock_timestamp()+interval '5 minutes'", buyer.id))
+        assertEquals(refreshed.showcase, market.market(buyer.hash).showcase, "GET keeps the new five minute lease fixed")
+        val purchased = market.command(buyer.hash, request)
+        assertEquals(980L, purchased.state.wallet.coins)
+        assertEquals(2L, purchased.state.inventory["berries"])
+        assertTrue(market.command(buyer.hash, request).replayed)
+    }
+
     @Test fun `hidden and expired lots cannot be bought by ID and an empty window cannot refresh early`() = runBlocking<Unit> {
         val seller = player()
         val buyer = player(berries = 0)
@@ -583,7 +616,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(12L, scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='market_buy'", buyer.id))
     }
 
-    @Test fun `known goods retain specialization while home bands and old prices still protect the showcase`() = runBlocking<Unit> {
+    @Test fun `known goods retain specialization and permanent discovery while old prices still protect the showcase`() = runBlocking<Unit> {
         val seller = player(berries = 0)
         editState(seller) { it.copy(inventory=mapOf("tools" to 3L), buildings=it.buildings + ("home" to 4),
             unlockedItems=(it.unlockedItems+"tools").distinct()) }
@@ -597,8 +630,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val buy = purchase(high, lot)
         assertEquals(lot.id, market.market(high.hash).listings.single().id)
         editState(high) { it.copy(buildings=it.buildings + ("home" to 3)) }
-        assertEquals("ECONOMY_MARKET_HOME_BAND", assertFailsWith<AuthFailure> { market.command(high.hash, buy) }.code)
-        editState(high) { it.copy(buildings=it.buildings + ("home" to 4)) }
+        assertTrue("tools" in economy.snapshot(high.hash).unlockedItems, "opened knowledge survives a changed home level")
         market.command(high.hash, buy)
         assertEquals(0, economy.snapshot(high.hash).buildings["workshop"], "specialization may replace owning a workshop")
         market.command(seller.hash, command(seller, "create_listing", "tools", 1, 1000))
@@ -612,7 +644,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(2L, economy.snapshot(seller.hash).inventory["tools"])
     }
 
-    @Test fun `known bait and fish survive source changes while unopened gifts and home bands remain guarded`() = runBlocking<Unit> {
+    @Test fun `known bait and fish survive source changes while unopened gifts remain guarded`() = runBlocking<Unit> {
         for ((itemId, home) in listOf("firefly_bait" to 3, "fish_legendary" to 4)) {
             val price = EconomyRules.catalog.items.single { it.id == itemId }.baseSellPrice
             val low = player(coins = 1000, berries = 0)
@@ -640,10 +672,6 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
             assertTrue(market.market(high.hash).listings.any { it.id == lot.id })
             editState(high) { it.copy(buildings=it.buildings + ("home" to home - 1)) }
             assertTrue(itemId in economy.snapshot(high.hash).unlockedItems,"Opened knowledge is permanent")
-            if (home == 4) {
-                assertEquals("ECONOMY_MARKET_HOME_BAND", assertFailsWith<AuthFailure> { market.command(high.hash, buy) }.code)
-                editState(high) { it.copy(buildings=it.buildings + ("home" to home)) }
-            }
             val result = market.command(high.hash, buy)
             assertEquals(1L, result.state.inventory[itemId])
             assertTrue(result.state.fishing.catches.isEmpty())
@@ -716,23 +744,30 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         } finally { source.connection.use { c -> c.autoCommit = true; c.economyUpdate("DROP DATABASE $database WITH (FORCE)") } }
     }
 
-    @Test fun `current seller and buyer home segments are checked again after selection`() = runBlocking<Unit> {
-        val seller=player(); val buyer=player(berries=0); val high=player(berries=0)
-        editState(high) { it.copy(buildings=it.buildings + ("home" to 4)) }
-        val lot=offer(seller); val buy=purchase(buyer,lot)
-        assertTrue(market.market(high.hash).listings.isEmpty())
-        val before=economy.snapshot(buyer.hash)
-        editState(seller) { it.copy(buildings=it.buildings + ("home" to 4)) }
-        assertTrue(market.market(buyer.hash).listings.isEmpty(), "cached IDs must be filtered against current seller home")
-        assertEquals("ECONOMY_MARKET_HOME_BAND", assertFailsWith<AuthFailure> { market.command(buyer.hash,buy) }.code)
-        assertEquals(before.wallet,economy.snapshot(buyer.hash).wallet)
-        assertEquals(before.inventory,economy.snapshot(buyer.hash).inventory)
-        assertEquals(0L,scalar("SELECT count(*) FROM economy_market_daily_turnover WHERE user_id=?",buyer.id))
-        editState(seller) { it.copy(buildings=it.buildings + ("home" to 2)) }
-        editState(buyer) { it.copy(buildings=it.buildings + ("home" to 4)) }
-        assertEquals("ECONOMY_MARKET_HOME_BAND", assertFailsWith<AuthFailure> { market.command(buyer.hash,buy) }.code)
-        market.command(seller.hash,command(seller,"cancel_listing",lot.id))
-        assertEquals(20L,economy.snapshot(seller.hash).inventory["berries"])
+    @Test fun `homes two and five buy base goods both ways and a seller upgrade keeps cached offers valid`() = runBlocking<Unit> {
+        val low=player(); val high=player()
+        val lowLot=offer(low); val highLot=offer(high)
+        expireShowcase(low); expireShowcase(high)
+        val lowBuy=purchase(low,highLot)
+        editState(high) { it.copy(buildings=it.buildings + ("home" to 5)) }
+        val lowView=market.market(low.hash); val highView=market.market(high.hash)
+        assertEquals(listOf(highLot.id),lowView.listings.map { it.id }, "upgrading the seller into the shared pool does not hide a cached lot")
+        assertEquals(listOf(lowLot.id),highView.listings.map { it.id })
+        for (view in listOf(lowView,highView)) {
+            assertEquals(2,view.tradeBudget?.homeBandMin)
+            assertEquals(5,view.tradeBudget?.homeBandMax)
+        }
+        market.command(low.hash,lowBuy)
+        market.command(high.hash,purchase(high,lowLot))
+        val settledLow=economy.snapshot(low.hash); val settledHigh=economy.snapshot(high.hash)
+        assertEquals(2,settledLow.buildings["home"]); assertEquals(5,settledHigh.buildings["home"])
+        assertEquals(999L,settledLow.wallet.coins); assertEquals(999L,settledHigh.wallet.coins)
+        assertEquals(20L,settledLow.inventory["berries"]); assertEquals(20L,settledHigh.inventory["berries"])
+        for (player in listOf(low,high)) {
+            assertEquals(20L,scalar("SELECT buys_value FROM economy_market_daily_turnover WHERE user_id=?",player.id))
+            assertEquals(20L,scalar("SELECT sales_value FROM economy_market_daily_turnover WHERE user_id=?",player.id))
+        }
+        assertEquals(2L,scalar("SELECT count(*) FROM economy_market_listings WHERE id IN (?,?) AND status='sold'",UUID.fromString(lowLot.id),UUID.fromString(highLot.id)))
     }
 
     @Test fun `base value cap is separate from gold paid and duplicate receipts never spend it twice`() = runBlocking<Unit> {

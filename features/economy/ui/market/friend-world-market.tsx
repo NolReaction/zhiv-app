@@ -15,7 +15,7 @@ const number = (amount: number) => amount.toLocaleString("ru-RU");
 const itemName = (economy: EconomyController, id: string) => economy.snapshot?.catalog.items.find(item => item.id === id)?.name ?? "Товар";
 const gateReason = (visit: GuestWorld) => visit.market.reason === "buyer_locked" ? "Сначала откройте рынок в своём мире."
   : visit.market.reason === "seller_locked" ? "Хозяин ещё не открыл свой рынок."
-    : visit.market.reason === "home_band" ? "Торговля доступна между домами 2-3 или 4-5 уровней." : null;
+    : visit.market.reason === "home_band" ? "Эта сделка пока недоступна. Обновите лавку." : null;
 
 export type FriendMarketQuote = {
   buyer: string; revision: number; circleId: string; seller: string;

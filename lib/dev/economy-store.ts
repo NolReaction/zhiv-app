@@ -4,7 +4,7 @@ import { wardrobeItems, wardrobeOwned } from "@/features/world/domain/wardrobe";
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
 import { createHash, randomInt } from "node:crypto";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, formatPearls, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/domain/money";
-import { marketBudgetReset, marketDailyLimit, marketDay, marketHomeBand, marketItemUnlocked, marketListingEligible, marketMinimumPrice, marketSaleFee, marketSameHomeBand, marketSlotCount } from "@/features/economy/domain/market-rules";
+import { marketBudgetReset, marketDailyLimit, marketDay, marketHomeRange, marketItemUnlocked, marketListingEligible, marketMinimumPrice, marketSaleFee, marketCanTrade, marketShowcaseCurrent, marketSlotCount } from "@/features/economy/domain/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, getDevGuestWorldAccess, lookupDevUser } from "@/lib/dev/api-store";
 import type { GuestWorld } from "@/features/people/guest-world-model";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney, getDevLegacyWardrobe, syncDevWorldWardrobe } from "@/lib/dev/world-store";
@@ -23,7 +23,7 @@ import { persistEconomyItemUnlocks, unlockedEconomyItems } from "@/features/econ
 import { foodState } from "@/features/economy/domain/food";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
-import { BARTER_DAILY_LIMIT, barterCommandSchema, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
+import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
 
 type Receipt = { signature: string; message: string; acceptedRevision: number };
 type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand;
@@ -291,8 +291,9 @@ export function creditDevLegacyJourney(token: string | undefined, journey: { id:
     .filter(([, quantity]) => quantity > 0).map(([item]) => item));
   bump(value); value.state = next; value.legacyJourneys.add(journey.id);
 }
-export function removeDevEconomyOwner(owner: string) {
-  store().turnover.delete(owner); store().promoClaims.delete(owner);
+/** A game reset preserves account-level limits; deleting a test identity also removes its history. */
+export function removeDevEconomyOwner(owner: string, options: { deleteHistory?: boolean } = {}) {
+  if (options.deleteHistory) { store().turnover.delete(owner); store().promoClaims.delete(owner); }
   store().profiles.delete(owner);
   store().showcases.delete(owner);
   store().barterShowcases.delete(owner); store().barterReceipts.delete(owner);
@@ -304,14 +305,15 @@ function tradeTurnover(owner: string, now: number): TradeTurnover {
   return current?.day === day ? current : { day, buysUsed: 0, salesUsed: 0, barterUsed: 0 };
 }
 function tradeBudget(owner: string, state: EconomyState, now: number): NonNullable<MarketView["tradeBudget"]> {
-  const used = tradeTurnover(owner, now), home = state.buildings.home ?? 1, band = marketHomeBand(home);
+  const used = tradeTurnover(owner, now), home = state.buildings.home ?? 1, band = marketHomeRange(home);
   return { buysUsed: used.buysUsed, salesUsed: used.salesUsed, limit: marketDailyLimit(home), resetsAt: marketBudgetReset(now),
     feeBps: economyCatalog.market.feeBps, homeBandMin: band.min, homeBandMax: band.max };
 }
 function compatibleMarketSeller(ownerHome: number, sellerId: string, minimumHome = 2): boolean {
   const seller = store().profiles.get(sellerId);
   return !!seller && marketUnlocked(seller.state) && (seller.state.buildings.home ?? 1) >= minimumHome
-    && marketSameHomeBand(ownerHome, seller.state.buildings.home ?? 1);
+    && (minimumHome === 3 ? barterSameHomeBand(ownerHome, seller.state.buildings.home ?? 1)
+      : marketCanTrade(ownerHome, seller.state.buildings.home ?? 1));
 }
 function publicListing(listing: Listing, owner: string, token: string | undefined): EconomyMarketListing {
   const seller = lookupDevUser(token, listing.sellerPublicId);
@@ -330,7 +332,7 @@ export function getDevGuestWorldEconomy(viewer: string, target: string, sellerNa
   const buildings = state ? { ...state.buildings } : Object.fromEntries(economyCatalog.buildings.map(building => [building.id,
     building.id === "home" ? legacy.homeLevel : building.id === "workshop" ? legacy.workshopLevel : ["garden", "warehouse"].includes(building.id) ? 1 : 0]));
   const reason = !buyer || !marketUnlocked(buyer) ? "buyer_locked" : !state || !marketUnlocked(state) ? "seller_locked"
-    : !marketSameHomeBand(buyer.buildings.home ?? 1, state.buildings.home ?? 1) ? "home_band" : null;
+    : !marketCanTrade(buyer.buildings.home ?? 1, state.buildings.home ?? 1) ? "home_band" : null;
   const listings = [...(saved?.listings.values() ?? [])].filter(listing => listing.sellerPublicId === target && listing.status === "active")
     .sort(compareListings).slice(0, 10).map(listing => ({ id: listing.id, sellerPublicId: listing.sellerPublicId, sellerName,
       itemId: listing.itemId, quantity: listing.quantity, totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1),
@@ -353,7 +355,7 @@ export function getDevEconomyMarket(token: string | undefined, options: { cursor
   const known = knownMarketState(owner, value.state);
   let selection = store().showcases.get(owner);
   const unlocked = marketUnlocked(value.state);
-  if (unlocked && (!selection || now >= selection.refreshAt)) {
+  if (unlocked && (!selection || !marketShowcaseCurrent(selection.refreshAt, now))) {
     const rank = (id: string) => createHash("md5").update(id + owner + now).digest("hex");
     const candidates = active.filter(item => item.sellerPublicId !== owner && compatibleMarketSeller(value.state.buildings.home ?? 1, item.sellerPublicId) && marketListingEligible(item, known)
       && lookupDevUser(token, item.sellerPublicId).kind === "ok").map(item => ({ item, rank: rank(item.id) }))
@@ -454,7 +456,7 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
   if (listing.sellerPublicId === owner) return fail("ECONOMY_MARKET_SELF_TRADE", "Нельзя купить собственный лот");
   if (command.quantity !== listing.quantity || command.totalPrice !== listing.totalPrice) return fail("ECONOMY_MARKET_QUOTE_CHANGED", "Проверьте количество и цену лота");
   const selection = store().showcases.get(owner);
-  if (!friendSellerId && (!selection || now >= selection.refreshAt || !selection.ids.includes(listing.id)))
+  if (!friendSellerId && (!selection || !marketShowcaseCurrent(selection.refreshAt, now) || !selection.ids.includes(listing.id)))
     return fail("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку");
   if (!marketListingEligible(listing, known))
     return fail("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока не открыт в хозяйстве или цена устарела");
@@ -462,7 +464,7 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
   if (!seller || lookupDevUser(token, listing.sellerPublicId).kind !== "ok") return fail("ECONOMY_MARKET_NOT_ACTIVE", "Продавец больше недоступен");
   normalizeCurrency(seller);
   if (!marketUnlocked(seller.state)) return fail("ECONOMY_MARKET_LOCKED", "Продавец ещё не восстановил мост");
-  if (!marketSameHomeBand(next.buildings.home ?? 1, seller.state.buildings.home ?? 1))
+  if (!marketCanTrade(next.buildings.home ?? 1, seller.state.buildings.home ?? 1))
     return fail("ECONOMY_MARKET_HOME_BAND", "Уровень поселения изменился. Обновите витрину");
   const valueTraded = marketMinimumPrice(listing.itemId, listing.quantity);
   const buyerTurnover = tradeTurnover(owner, now), sellerTurnover = tradeTurnover(listing.sellerPublicId, now);
@@ -589,7 +591,7 @@ export function commandDevEconomyBarter(token: string | undefined, input: Barter
       const seller = store().profiles.get(offer.sellerPublicId);
       if (!seller || lookupDevUser(token, offer.sellerPublicId).kind !== "ok") return fail("ECONOMY_BARTER_NOT_ACTIVE", "Автор предложения недоступен");
       if (!barterUnlocked(seller.state)) return fail("ECONOMY_BARTER_LOCKED", "Автор предложения ещё не открыл обмен");
-      if (!marketSameHomeBand(next.buildings.home ?? 1, seller.state.buildings.home ?? 1) || (seller.state.buildings.home ?? 1) < 3)
+      if (!barterSameHomeBand(next.buildings.home ?? 1, seller.state.buildings.home ?? 1))
         return fail("ECONOMY_BARTER_HOME_BAND", "Уровень поселения изменился. Обновите обмен");
       if (tradeTurnover(owner, now).barterUsed >= BARTER_DAILY_LIMIT || tradeTurnover(offer.sellerPublicId, now).barterUsed >= BARTER_DAILY_LIMIT)
         return fail("ECONOMY_BARTER_DAILY_LIMIT", "Один из участников уже обменялся сегодня. Новый обмен доступен после 00:00 UTC");

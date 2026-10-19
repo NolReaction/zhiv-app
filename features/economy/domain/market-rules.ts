@@ -71,14 +71,20 @@ export function marketSlotOffer(state: Pick<EconomyState, "marketSlots">, catalo
   return slots <= catalog.market.maxListings && pricePearls ? { slots, targetId: `market:${slots}`, pricePearls } : null;
 }
 
-/** Match current progression, never the level captured when a lot was posted. */
-export function marketHomeBand(home: number): { min: number; max: number } {
-  return home === 4 || home === 5 ? { min: 4, max: 5 } : home === 2 || home === 3 ? { min: 2, max: 3 } : { min: 1, max: 1 };
+/** One trading pool for every unlocked settlement; item discovery remains individual. */
+export function marketHomeRange(home: number): { min: number; max: number } {
+  return Number.isInteger(home) && home >= 2 && home <= 5 ? { min: 2, max: 5 } : { min: 1, max: 1 };
 }
-export function marketSameHomeBand(buyerHome: number, sellerHome: number): boolean {
-  const band = marketHomeBand(buyerHome);
+export function marketCanTrade(buyerHome: number, sellerHome: number): boolean {
+  const band = marketHomeRange(buyerHome);
   return Number.isInteger(buyerHome) && Number.isInteger(sellerHome) && buyerHome >= 2 && buyerHome <= 5
     && sellerHome >= band.min && sellerHome <= band.max;
+}
+
+/** Persisted selections from the old, longer refresh interval cannot extend today's lease. */
+export function marketShowcaseCurrent(refreshAt: number, now: number, catalog: EconomyCatalog = economyCatalog): boolean {
+  return Number.isFinite(refreshAt) && Number.isFinite(now) && refreshAt > now
+    && refreshAt <= now + catalog.market.showcaseRefreshSeconds * 1000;
 }
 export function marketDailyLimit(home: number, catalog: EconomyCatalog = economyCatalog): number {
   return catalog.market.dailyTradeValueByHome[home - 1] ?? 0;

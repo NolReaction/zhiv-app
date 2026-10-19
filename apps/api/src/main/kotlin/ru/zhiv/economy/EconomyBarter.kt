@@ -79,8 +79,14 @@ object EconomyBarterRules {
     fun unlocked(state: EconomyState): Boolean =
         (state.buildings["home"] ?: 1) >= REQUIRED_HOME_LEVEL && EconomyMarketRules.unlocked(state)
 
+    fun homeBand(homeLevel: Int): IntRange = when (homeLevel) {
+        3 -> 3..3
+        4, 5 -> 4..5
+        else -> 1..1
+    }
+
     fun sameHomeBand(buyerHome: Int, sellerHome: Int): Boolean =
-        buyerHome >= REQUIRED_HOME_LEVEL && sellerHome >= REQUIRED_HOME_LEVEL && EconomyMarketRules.sameHomeBand(buyerHome, sellerHome)
+        buyerHome in REQUIRED_HOME_LEVEL..5 && sellerHome in homeBand(buyerHome)
 
     fun assertDailyLimit(used: Long, seller: Boolean = false) {
         if (used !in 0L until DAILY_LIMIT.toLong()) throw AuthFailure("ECONOMY_BARTER_DAILY_LIMIT",

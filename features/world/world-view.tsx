@@ -17,6 +17,7 @@ import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-
 import styles from "./world.module.css";
 import { WorldJourneys } from "@/features/world/ui/journeys/world-journeys";
 import { WorldFeedback } from "@/features/world/ui/feedback/world-feedback";
+import { useMarketAudio } from "@/features/world/audio/use-market-audio";
 import { EconomyPanel, type EconomyTab } from "@/features/economy/ui/economy-panel";
 import { economyMarketUnlocked } from "@/features/economy/domain/market-rules";
 import { economyBuildingDestination, economySceneJourney, economySceneProduction, economySceneConstruction, economySceneResidents, economyWorldState } from "@/features/economy/integration/world-adapter";
@@ -82,6 +83,8 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const [panel, setPanel] = useState<Panel | null>(null);
   const [shopPage, setShopPage] = useState<CurrencyShopPage>("pearls");
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
+  const marketOpen = panel === "economy" && (economyTab === "market" || economyTab === "barter");
+  useMarketAudio({ active: open && marketOpen, suspended, ownerPublicId, now: economy.now, timeZone });
   const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
   const [selection, setSelection] = useState<MapObjectSelection | null>(null);
   const [selectionPosition] = useState(createMapSelectionStore);
@@ -540,7 +543,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? economyTab === "market" ? Store : Package : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} audioSuppressed={marketOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest} guidePlace={guidePlace}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}

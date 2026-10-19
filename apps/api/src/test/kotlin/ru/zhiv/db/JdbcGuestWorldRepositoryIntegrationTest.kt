@@ -139,12 +139,12 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure>{worlds.world(buyer.hash,circle)}.code)
     }
 
-    @Test fun `personal purchases retain warehouse home band and daily trade limits`() = runBlocking<Unit> {
+    @Test fun `personal purchases across home levels retain warehouse and daily trade limits`() = runBlocking<Unit> {
         val buyer=player();val seller=player();val circle=connect(buyer,seller);val lot=offer(seller)
         edit(seller){it.copy(buildings=it.buildings + ("home" to 4))}
-        assertEquals("home_band",worlds.world(buyer.hash,circle).market.reason)
-        assertEquals("ECONOMY_MARKET_HOME_BAND",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
-        edit(seller){it.copy(buildings=it.buildings + ("home" to 2))}
+        val storefront=worlds.world(buyer.hash,circle).market
+        assertTrue(storefront.available);assertNull(storefront.reason)
+        assertEquals(listOf(lot.id),storefront.listings.map { it.id })
         edit(buyer){it.copy(inventory=mapOf("berries" to 50L))}
         assertEquals("ECONOMY_STORAGE_FULL",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
         edit(buyer){it.copy(inventory=mapOf("berries" to 20L))}
@@ -152,6 +152,30 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         assertEquals("ECONOMY_MARKET_DAILY_LIMIT",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
         assertEquals(1000L,economy.snapshot(buyer.hash).wallet.coins)
         assertEquals(listOf(lot.id),worlds.world(buyer.hash,circle).market.listings.map { it.id })
+        execute("DELETE FROM economy_market_daily_turnover WHERE user_id=?",buyer.id)
+        val bought=worlds.purchase(buyer.hash,circle,buy(buyer,lot)).state
+        assertEquals(980L,bought.wallet.coins);assertEquals(22L,bought.inventory["berries"])
+        assertEquals(1019L,economy.snapshot(seller.hash).wallet.coins)
+        assertTrue(worlds.world(buyer.hash,circle).market.listings.isEmpty())
+    }
+
+    @Test fun `level two visitor sees a level five storefront but cannot buy an undiscovered late item`() = runBlocking<Unit> {
+        val buyer=player();val seller=player();val circle=connect(buyer,seller)
+        edit(seller){it.copy(buildings=it.buildings + ("home" to 5),inventory=mapOf("tools" to 1L),
+            unlockedItems=(it.unlockedItems+"tools").distinct())}
+        market.command(seller.hash,command(seller,"create_listing","tools",1,1000))
+        val lot=market.market(seller.hash).mine.single()
+        val storefront=worlds.world(buyer.hash,circle).market
+        assertTrue(storefront.available);assertNull(storefront.reason)
+        assertEquals(listOf(lot.id),storefront.listings.map { it.id })
+        val before=economy.snapshot(buyer.hash);val sellerBefore=economy.snapshot(seller.hash)
+        val purchase=buy(buyer,lot)
+        assertEquals("ECONOMY_MARKET_ITEM_LOCKED",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,purchase)}.code)
+        val after=economy.snapshot(buyer.hash);val sellerAfter=economy.snapshot(seller.hash)
+        assertEquals(before.revision,after.revision);assertEquals(before.wallet,after.wallet);assertEquals(before.inventory,after.inventory)
+        assertEquals(sellerBefore.revision,sellerAfter.revision);assertEquals(sellerBefore.wallet,sellerAfter.wallet);assertEquals(sellerBefore.inventory,sellerAfter.inventory)
+        assertEquals(listOf(lot.id),worlds.world(buyer.hash,circle).market.listings.map { it.id })
+        assertEquals(0L,scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?",buyer.id,UUID.fromString(purchase.requestId)))
     }
 
     @Test fun `two visiting buyers cannot purchase the same escrow twice`() = runBlocking<Unit> {

@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { economyCatalog, type EconomyCatalog } from "@/features/economy/domain/model";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, formatPearls, PEARL_DISPLAY_DIVISOR } from "@/features/economy/domain/money";
-import { economyMarketUnlocked, marketMinimumPrice, marketSameHomeBand } from "@/features/economy/domain/market-rules";
+import { economyMarketUnlocked, marketMinimumPrice, marketCanTrade } from "@/features/economy/domain/market-rules";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { GuestWorldTarget } from "@/features/people/guest-world-model";
@@ -41,8 +41,8 @@ export function devBotTradeHint(bot: DevBot, buyer: EconomyController | undefine
     return `Для покупок нужен ваш дом уровня ${catalog.market.requiredHomeLevel}. Откройте «Читы» и выберите готовое поселение.`;
   if (!economyMarketUnlocked(buyer.snapshot, catalog)) return "Откройте свой рынок: восстановите мост и выполните нужные вылазки. Это можно проверить во вкладке «Читы».";
   if ((bot.economy.buildings.home ?? 1) < catalog.market.requiredHomeLevel) return "У бота пока закрыт рынок. Выберите поселение с домом от уровня 2.";
-  if (!marketSameHomeBand(buyer.snapshot.buildings.home, bot.economy.buildings.home))
-    return "Для торговли выберите боту ту же группу домов, что у вас: 2–3 или 4–5.";
+  if (!marketCanTrade(buyer.snapshot.buildings.home, bot.economy.buildings.home))
+    return "Для торговли нужны открытые рынки и дома уровней 2–5 у обоих игроков.";
   return null;
 }
 

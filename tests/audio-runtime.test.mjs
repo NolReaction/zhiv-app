@@ -10,6 +10,7 @@ const { createAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime
 const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts");
 const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
 const { AUDIO_CATALOG } = await vite.ssrLoadModule("/features/audio/catalog/catalog.ts");
+const { createMarketAudioController } = await vite.ssrLoadModule("/features/audio/ui/market-audio.ts");
 
 class Param {
   value = 0; ramps = [];
@@ -70,6 +71,54 @@ function fixture(cueList = [cue("tap"), cue("river", "loop")], options = {}) {
   });
   return { runtime, context, requests, media, advance: amount => { time += amount; }, get contextCount() { return contextCount; } };
 }
+
+test("market signatures obey UI/master mute, owner leases and visibility without a delayed replay", async () => {
+  const opening = AUDIO_CATALOG.cues.find(item => item.id === "ui.market-open");
+  for (const transition of ["clear", "handoff", "return", "hidden", "ui-muted", "master-muted", "disabled", "expired"]) {
+    const f = fixture([opening]), gate = deferred(); f.context.decode = () => gate.promise;
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(frame([], { soundscape: false }));
+      f.runtime.play({ id: "counter-open", cueId: opening.id, ownerId: "user-a", maxAgeMs: 400 }); await flush();
+      if (transition === "clear") f.runtime.clearFrame("user-a");
+      else if (transition === "handoff" || transition === "return") f.runtime.updateFrame(frame([], { ownerId: "other-counter", soundscape: false }));
+      else if (transition === "hidden") f.runtime.setVisible(false);
+      else if (transition === "ui-muted") f.runtime.setSettings({ buses: { ui: 0 } });
+      else if (transition === "master-muted") f.runtime.setSettings({ master: 0 });
+      else if (transition === "disabled") f.runtime.setSettings({ enabled: false });
+      else f.advance(401);
+      if (transition === "return") f.runtime.updateFrame(frame([], { soundscape: false }));
+      gate.resolve({ length: 39360, numberOfChannels: 1, duration: .82 }); await flush();
+      assert.equal(f.context.started.length, 0, transition);
+      f.runtime.setSettings({ enabled: true, master: .65, buses: { ui: 1 } });
+      f.runtime.setVisible(true); await f.runtime.unlock(); await flush();
+      assert.equal(f.context.started.length, 0, `${transition}: no stale signature after recovery`);
+    } finally { f.runtime.dispose(); }
+  }
+});
+
+test("entering and leaving a trading counter ducks the existing music without a second deck or rewind", async () => {
+  const opening = AUDIO_CATALOG.cues.find(item => item.id === "ui.market-open");
+  const f = fixture([cue("music.day", "music"), opening], { now: () => Date.now() });
+  const counter = createMarketAudioController(f.runtime, "counter");
+  try {
+    await f.runtime.unlock();
+    const forest = frame([target("music-day:music.day", "music.day", 1)]);
+    f.runtime.updateFrame(forest); await flush();
+    assert.equal(f.media.length, 1); f.media[0].currentTime = 27;
+    await f.runtime.prepare([opening.id]);
+    counter.update({ active: true, sceneId: forest.sceneId, night: false }); await flush();
+    for (let tick = 0; tick < 50; tick++) counter.update({ active: true, sceneId: forest.sceneId, night: false });
+    await flush();
+    assert.equal(f.context.started.length, 1, "exactly one short coin signature");
+    assert.equal(f.media.length, 1); assert.equal(f.media[0].currentTime, 27);
+    assert.equal(f.runtime.getDiagnostics().playback.musicStarts, 1);
+    f.runtime.updateFrame(forest); counter.update({ active: false, sceneId: forest.sceneId, night: false });
+    await flush();
+    assert.equal(f.media.length, 1); assert.equal(f.media[0].currentTime, 27);
+    assert.equal(f.media[0].plays, 1, "the existing song never paused or restarted");
+    assert.equal(f.runtime.getDiagnostics().playback.activeOwnerId, "user-a");
+  } finally { counter.dispose(); f.runtime.dispose(); }
+});
 
 for (const cueId of ["action.water.touch", "action.tree.rustle"]) {
   const maxAgeMs = cueId === "action.tree.rustle" ? 200 : 180;

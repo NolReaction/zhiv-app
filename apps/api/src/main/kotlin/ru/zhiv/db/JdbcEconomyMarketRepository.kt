@@ -122,10 +122,10 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
 
     /** The account lock serializes first reads, refreshes and purchases across devices. */
     private fun showcase(c: Connection, user: UUID, state: EconomyState, at: Instant): Showcase {
-        readShowcase(c, user)?.takeIf { at.isBefore(it.refreshAt) }?.let { return it }
+        readShowcase(c, user)?.takeIf { EconomyMarketRules.showcaseCurrent(it.refreshAt, at) }?.let { return it }
         val config = EconomyRules.catalog.market
         val home = state.buildings["home"] ?: 1
-        val band = EconomyMarketRules.homeBand(home)
+        val band = EconomyMarketRules.homeRange(home)
         val (accessSql, accessParameters) = economyMarketAccessPredicate()
         val unlockedItems = EconomyItemUnlocks.project(state).toSet()
         val items = EconomyRules.catalog.items.filter { it.tradable && it.id in unlockedItems }
@@ -177,7 +177,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             val config = EconomyRules.catalog.market
             val at = now(c)
             val unlocked = EconomyMarketRules.unlocked(state)
-            val band = EconomyMarketRules.homeBand(state.buildings["home"] ?: 1)
+            val band = EconomyMarketRules.homeRange(state.buildings["home"] ?: 1)
             val (accessSql, accessParameters) = economyMarketAccessPredicate()
             val selection = if (unlocked) showcase(c, user.id, state, at) else Showcase(at.plusSeconds(config.showcaseRefreshSeconds), emptyList())
             val selected = if (selection.ids.isEmpty()) emptyList() else c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
@@ -313,7 +313,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         val at = now(c)
         if (!personalShowcase) {
             val selection = readShowcase(c, user)
-            if (selection == null || !at.isBefore(selection.refreshAt) || UUID.fromString(lot.id) !in selection.ids)
+            if (selection == null || !EconomyMarketRules.showcaseCurrent(selection.refreshAt, at) || UUID.fromString(lot.id) !in selection.ids)
                 throw AuthFailure("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку.", 409)
         }
         if (!EconomyMarketRules.eligible(lot.itemId, lot.quantity, lot.totalPrice, state))
@@ -323,8 +323,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         val seller = readEconomyProfile(c, row.seller).state
         if (!EconomyMarketRules.unlocked(seller))
             throw AuthFailure("ECONOMY_MARKET_LOCKED", "Продавцу нужно восстановить мост. Обновите лавку.", 409)
-        if (!EconomyMarketRules.sameHomeBand(state.buildings["home"] ?: 1, seller.buildings["home"] ?: 1))
-            throw AuthFailure("ECONOMY_MARKET_HOME_BAND", "Предложение доступно в другой группе уровней дома. Обновите лавку.", 409)
+        if (!EconomyMarketRules.canTrade(state.buildings["home"] ?: 1, seller.buildings["home"] ?: 1))
+            throw AuthFailure("ECONOMY_MARKET_HOME_BAND", "Для торговли обоим поселениям нужен дом уровня 2–5. Обновите лавку.", 409)
         val item = EconomyRules.catalog.items.single { it.id == lot.itemId }
         val tradeValue = item.baseSellPrice * lot.quantity
         EconomyMarketRules.assertTradeBudget(readEconomyTradeUsage(c, user, at).buys, tradeValue,

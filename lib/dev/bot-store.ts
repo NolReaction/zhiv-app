@@ -117,7 +117,7 @@ export function commandDevBots(token: string | undefined, input: DevBotCommand, 
       case "delete": {
         const removed = deleteDevOwnedBot(token, bot.id);
         if (!removed) return fail("DEV_BOT_NOT_FOUND", "Тестовый друг недоступен", 404);
-        removeDevEconomyOwner(removed); removeDevWorldOwner(removed);
+        removeDevEconomyOwner(removed, { deleteHistory: true }); removeDevWorldOwner(removed);
         message = "Тестовый друг и его лавка удалены"; break;
       }
     }

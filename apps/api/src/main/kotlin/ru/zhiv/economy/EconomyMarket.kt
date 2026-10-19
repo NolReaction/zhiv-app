@@ -58,14 +58,15 @@ object EconomyMarketRules {
             state.completedExplorations >= config.requiredExplorations &&
             config.requiredBuildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level }
 
-    fun homeBand(homeLevel: Int): IntRange = when (homeLevel) {
-        2, 3 -> 2..3
-        4, 5 -> 4..5
-        else -> 1..1
-    }
+    /** One pool; permanent discovery still guards each buyer's available goods. */
+    fun homeRange(homeLevel: Int): IntRange = if (homeLevel in 2..5) 2..5 else 1..1
 
-    fun sameHomeBand(buyerHome: Int, sellerHome: Int): Boolean =
-        buyerHome in 2..5 && sellerHome in homeBand(buyerHome)
+    fun canTrade(buyerHome: Int, sellerHome: Int): Boolean =
+        buyerHome in 2..5 && sellerHome in homeRange(buyerHome)
+
+    fun showcaseCurrent(refreshAt: java.time.Instant, at: java.time.Instant,
+        config: EconomyMarketConfig = EconomyRules.catalog.market): Boolean =
+        at.isBefore(refreshAt) && !refreshAt.isAfter(at.plusSeconds(config.showcaseRefreshSeconds))
 
     fun dailyTradeLimit(homeLevel: Int, config: EconomyMarketConfig = EconomyRules.catalog.market): Long =
         config.dailyTradeValueByHome.getOrNull(homeLevel - 1) ?: 0L

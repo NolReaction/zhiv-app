@@ -164,7 +164,7 @@ export const economyCatalogSchema = z.object({
     maxListings: z.literal(10), baseSlots: z.literal(5).default(5),
     slotPricesPearls: z.array(count.positive().max(ECONOMY_MAX_PEARLS)).length(5).default([100, 160, 240, 360, 500]),
     maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000), dailyTradeValueByHome: z.array(balance).length(5).default([0, 2400, 4800, 9600, 14400]),
-    showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(1800) }),
+    showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(300) }),
   items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance, tradable: z.boolean() })
     .refine(item => item.category === "special" ? item.baseSellPrice === 0 && !item.tradable : item.baseSellPrice > 0)).max(1000),
   buildings: z.array(z.object({ id, name: z.string(), description: z.string(), levels: z.array(z.object({

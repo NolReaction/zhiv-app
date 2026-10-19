@@ -90,7 +90,7 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
 
     private fun showcase(c: Connection, user: UUID, home: Int, at: Instant): Showcase {
         readShowcase(c, user)?.takeIf { at.isBefore(it.refreshAt) }?.let { return it }
-        val band = EconomyMarketRules.homeBand(home)
+        val band = EconomyBarterRules.homeBand(home)
         val (accessSql, accessParameters) = economyMarketAccessPredicate()
         val itemIds = EconomyRules.catalog.items.filter { EconomyBarterRules.eligibleItem(it.id) }.map { it.id }
         val ids = if (itemIds.isEmpty()) emptyList() else {
@@ -132,7 +132,7 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
         val state = readEconomyProfile(c, user.id).state
         val at = now(c)
         val home = state.buildings["home"] ?: 1
-        val band = EconomyMarketRules.homeBand(home)
+        val band = EconomyBarterRules.homeBand(home)
         val (accessSql, accessParameters) = economyMarketAccessPredicate()
         val selection = if (EconomyBarterRules.unlocked(state)) showcase(c, user.id, home, at)
             else Showcase(at.plusSeconds(EconomyBarterRules.SHOWCASE_SECONDS), emptyList())

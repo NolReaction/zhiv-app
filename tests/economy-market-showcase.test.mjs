@@ -107,6 +107,34 @@ test("persisted showcase limits diversity, blocks ID/cursor bypass and never ref
   assert.ok(market(buyer, now + windowMs).listings.length > 0);
 });
 
+test("the five-minute showcase expires exactly once and rejects legacy thirty-minute leases before buying", () => {
+  assert.equal(catalog.market.showcaseRefreshSeconds, 300);
+  const seller = player(), buyer = player(2, {}), lot = offer(seller), first = market(buyer);
+  assert.equal(first.showcase.refreshSeconds, 300);
+  assert.equal(Date.parse(first.showcase.refreshAt), now + 300_000);
+  assert.equal(market(buyer, now + 299_999).showcase.refreshAt, first.showcase.refreshAt);
+  assert.equal(Date.parse(market(buyer, now + 300_000).showcase.refreshAt), now + 600_000);
+  const lease = globalThis.__zhivDevEconomyStore.showcases.get(buyer.me.user.publicId);
+  lease.refreshAt = now + 1800_000; lease.ids = [lot.id];
+  const before = [read(buyer), read(seller)];
+  assert.throws(() => buy(buyer, lot), { code: "ECONOMY_MARKET_SHOWCASE_CHANGED" });
+  assert.deepEqual([read(buyer), read(seller)], before);
+  const refreshed = market(buyer);
+  assert.equal(Date.parse(refreshed.showcase.refreshAt), now + 300_000);
+  assert.equal(buy(buyer, lot).state.inventory.berries, 1);
+});
+
+test("the unified pool cannot expose or purchase a high seller's undiscovered tools at house 2", () => {
+  const seller = player(5, { tools: 2 }), buyer = player(2, {}), lot = offer(seller, "tools");
+  assert.deepEqual(market(buyer).listings, []);
+  // A known ID and a stale/injected selection cannot replace the buyer's own discovery.
+  globalThis.__zhivDevEconomyStore.showcases.get(buyer.me.user.publicId).ids = [lot.id];
+  const before = [read(buyer), read(seller)];
+  assert.throws(() => buy(buyer, lot), { code: "ECONOMY_MARKET_ITEM_LOCKED" });
+  assert.deepEqual([read(buyer), read(seller)], before);
+  assert.equal(read(buyer).unlockedItems.includes("tools"), false);
+});
+
 test("empty snapshot remains empty until refresh and a stale unopened quote cannot be bought", () => {
   const seller = player(), buyer = player(2, {}), empty = market(buyer);
   const lot = offer(seller);

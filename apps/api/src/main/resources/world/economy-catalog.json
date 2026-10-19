@@ -3198,7 +3198,7 @@
     ],
     "showcaseSlots": 12,
     "showcasePerSeller": 2,
-    "showcaseRefreshSeconds": 1800,
+    "showcaseRefreshSeconds": 300,
     "baseSlots": 5,
     "slotPricesPearls": [
       100,

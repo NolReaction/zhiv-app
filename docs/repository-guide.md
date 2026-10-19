@@ -25,6 +25,7 @@
 | Отдельный редактор Engine и его библиотека | [`apps/engine/`](../apps/engine/), [`packages/engine/`](../packages/engine/); [запуск](engine/README.md) |
 | Музыка, громкость, UI-звуки, загрузка записей | [`features/audio/`](../features/audio/README.md), [устройство системы](game/audio-system.md) |
 | Подготовка звука при запуске, заставка и ежедневный подарок | [`startup-audio.ts`](../features/startup/startup-audio.ts), [`use-menu-audio.ts`](../features/app/integration/use-menu-audio.ts), [`game-rewards-audio.ts`](../features/game/game-rewards-audio.ts) |
+| Приглушение музыки и звук открытия своего рынка / лавки друга | [`market-audio.ts`](../features/audio/ui/market-audio.ts), [`use-market-audio.ts`](../features/world/audio/use-market-audio.ts), [`audio-catalog.json`](../features/audio/catalog/audio-catalog.json) | [Микс рынка](game/audio-system.md): общие музыкальные дорожки, duck 0.3, короткая оригинальная запись без постоянной петли; возврат из фона не повторяет открытие |
 | Слышимость зданий, Tiled-зоны, звук шагов и занятий | [`features/world/audio/`](../features/world/audio/), [разметка звука](game/audio-system.md#разметка-в-tiled) |
 | Выбор действия Мохлика / конкретное занятие | [`world/simulation/`](../features/world/simulation/) / [`world/activities/`](../features/world/activities/) |
 | Сохранение полянки, чужое устройство, аренда | [`world/state/memory/`](../features/world/state/memory/), [`forest-session.ts`](../features/world/state/forest-session.ts) |

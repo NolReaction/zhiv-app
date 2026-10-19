@@ -102,7 +102,7 @@ test("trade guidance opens the existing cheats without upgrading or granting the
   assert.match(devBotTradeHint(f.bot, f.buyer), /ваш дом уровня 2/);
   button(view, "Открыть мои читы").props.onClick(); assert.deepEqual(opened, [true]); assert.deepEqual(e.calls, []);
   assert.equal(f.buyer.snapshot.buildings.home, 1);
-  f.buyer.snapshot.buildings = economyDevSettlement(4); assert.match(devBotTradeHint(f.bot, f.buyer), /2–3 или 4–5/);
+  f.buyer.snapshot.buildings = economyDevSettlement(4); assert.equal(devBotTradeHint(f.bot, f.buyer), null);
 });
 
 test("outfit controls save actual compatible slots including the legacy visible rod", () => {

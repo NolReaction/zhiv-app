@@ -62,7 +62,7 @@ class JdbcGuestWorldRepository(private val source: DataSource) : GuestWorldRepos
                 val reason = when {
                     !EconomyMarketRules.unlocked(buyer) -> "buyer_locked"
                     !EconomyMarketRules.unlocked(seller) -> "seller_locked"
-                    !EconomyMarketRules.sameHomeBand(buyer.buildings["home"] ?: 1, seller.buildings["home"] ?: 1) -> "home_band"
+                    !EconomyMarketRules.canTrade(buyer.buildings["home"] ?: 1, seller.buildings["home"] ?: 1) -> "home_band"
                     else -> null
                 }
                 val listings = c.economyRows("""SELECT * FROM economy_market_listings WHERE seller_id=? AND status='active'

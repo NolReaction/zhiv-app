@@ -125,14 +125,30 @@ test("personal storefront contains only real active host listings and normalizes
   assert.equal(visit(guest, circle).market.listings.length, 10);
 });
 
-test("availability reports buyer seller and house-band gates without hiding the actual storefront", () => {
+test("availability reports buyer and seller restoration gates while all houses 2 through 5 share one storefront pool", () => {
   const guest = player(), host = player(), circle = connect(guest, host), listing = offer(host);
   assert.deepEqual({ ...visit(guest, circle).market, listings: [] }, { listings: [], available: true, reason: null });
-  for (const [owner, buildings, reason] of [[guest, { home: 1 }, "buyer_locked"], [host, { bridge: 0 }, "seller_locked"], [host, { home: 4 }, "home_band"]]) {
+  for (const [owner, buildings, reason] of [[guest, { home: 1 }, "buyer_locked"], [host, { bridge: 0 }, "seller_locked"]]) {
     const previous = { ...row(owner).state.buildings }; Object.assign(row(owner).state.buildings, buildings);
     const market = visit(guest, circle).market;
     assert.equal(market.reason, reason); assert.equal(market.available, false); assert.equal(market.listings[0].id, listing.id);
     row(owner).state.buildings = previous;
+  }
+  row(host).state.buildings.home = 5;
+  assert.equal(visit(guest, circle).market.available, true);
+  assert.equal(visit(guest, circle).market.reason, null);
+});
+
+test("friend storefront purchases transfer common goods in both house 2 and house 5 directions", () => {
+  for (const [buyerHome, sellerHome] of [[2, 5], [5, 2]]) {
+    social.resetDevStoreForTests();
+    const buyer = player(buyerHome, {}), seller = player(sellerHome), circle = connect(buyer, seller), listing = offer(seller);
+    assert.equal(visit(buyer, circle).market.available, true);
+    const sellerCoins = read(seller).wallet.coins;
+    const result = economy.commandDevGuestWorldMarket(buyer.token, circle, buyCommand(buyer, listing), now);
+    assert.equal(result.state.inventory.wood, 1);
+    assert.equal(result.state.wallet.coins, 1000000 - listing.totalPrice);
+    assert.equal(read(seller).wallet.coins, sellerCoins + 28);
   }
 });
 
@@ -202,7 +218,6 @@ test("friend purchases preserve revision owner quote resources capacity and elig
     ["ECONOMY_STORAGE_FULL", buyer => { row(buyer).state.inventory = { wood: 300 }; }],
     ["ECONOMY_MARKET_LOCKED", buyer => { row(buyer).state.buildings.bridge = 0; }],
     ["ECONOMY_MARKET_LOCKED", (_, seller) => { row(seller).state.buildings.bridge = 0; }],
-    ["ECONOMY_MARKET_HOME_BAND", (_, seller) => { row(seller).state.buildings.home = 4; }],
     ["ECONOMY_MARKET_ITEM_LOCKED", () => { for (const listing of globalThis.__zhivDevEconomyStore.listings.values()) listing.totalPrice = 150; },
       request => ({ ...request, totalPrice: 150 })],
     ["ECONOMY_MARKET_DAILY_LIMIT", buyer => { globalThis.__zhivDevEconomyStore.turnover.set(buyer.me.user.publicId,
@@ -220,7 +235,7 @@ test("friend purchases preserve revision owner quote resources capacity and elig
 });
 
 test("visiting a higher-progress friend's storefront does not unlock undiscovered goods for the buyer", () => {
-  const buyer = player(4, {}), seller = player(4, { fish_legendary: 1 }), circle = connect(buyer, seller);
+  const buyer = player(2, {}), seller = player(5, { fish_legendary: 1 }), circle = connect(buyer, seller);
   row(seller).state.unlockedItems.push("fish_legendary");
   const listing = offer(seller, 1, "fish_legendary"), request = buyCommand(buyer, listing), before = snapshot();
   assert.equal(visit(buyer, circle).market.listings[0].itemId, "fish_legendary");

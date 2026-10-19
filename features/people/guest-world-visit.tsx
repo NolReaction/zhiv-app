@@ -6,6 +6,7 @@ import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { FriendWorldMarket } from "@/features/economy/ui/market/friend-world-market";
 import { FriendWorldView } from "@/features/world/ui/visits/friend-world-view";
 import type { GuestWorldTarget } from "./guest-world-model";
+import { useMarketAudio } from "@/features/world/audio/use-market-audio";
 import { useGuestWorld } from "./use-guest-world";
 import styles from "./guest-world-visit.module.css";
 
@@ -34,6 +35,7 @@ function LoadedGuestWorld({ ownerPublicId, target, economy, onSessionLost, timeZ
   const visit = useGuestWorld(ownerPublicId, target, onSessionLost);
   const refreshGuest = visit.refresh;
   const [shopOpen, setShopOpen] = useState(false);
+  useMarketAudio({ active: shopOpen && Boolean(visit.data), ownerPublicId: target.targetPublicId, now: visit.now, timeZone, readOnly: true });
   const root = useRef<HTMLDivElement>(null);
   const shopReturn = useRef<HTMLElement | null>(null);
   const focusedScene = useRef(false);

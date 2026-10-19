@@ -35,39 +35,32 @@ const barterOffer = (p, at = now) => barter(p, "create_offer", { offeredItemId: 
 test("invalid progression levels fail closed in the shared market helpers", () => {
   for (const home of [0, 1, 6, 2.5, NaN, Infinity]) {
     assert.equal(rules.marketDailyLimit(home), 0);
-    assert.deepEqual(rules.marketHomeBand(home), { min: 1, max: 1 });
-    assert.equal(rules.marketSameHomeBand(home, 2), false);
-    assert.equal(rules.marketSameHomeBand(2, home), false);
+    assert.deepEqual(rules.marketHomeRange(home), { min: 1, max: 1 });
+    assert.equal(rules.marketCanTrade(home, 2), false);
+    assert.equal(rules.marketCanTrade(2, home), false);
   }
 });
 
-test("current house bands allow 2–3 and 4–5 while blocking both cross-band directions", () => {
+test("all houses from 2 through 5 trade in one pool while retaining their own daily limits", () => {
   assert.deepEqual(catalog.market.dailyTradeValueByHome, [0, 2400, 4800, 9600, 14400]);
-  for (const [sellerHome, buyerHome, visible] of [[2, 3, true], [3, 2, true], [4, 5, true], [5, 4, true], [5, 2, false], [2, 5, false]]) {
+  for (const sellerHome of [2, 3, 4, 5]) for (const buyerHome of [2, 3, 4, 5]) {
     identities.resetDevStoreForTests();
     const seller = player(sellerHome), buyer = player(buyerHome, {}), lot = offer(seller);
-    assert.equal(shelf(buyer).listings.some(item => item.id === lot.id), visible);
-    if (visible) assert.equal(buy(buyer, lot).state.inventory.wood, 1);
-    else {
-      // Even an injected/old showcase cannot bypass the authoritative purchase check.
-      globalThis.__zhivDevEconomyStore.showcases.get(buyer.me.user.publicId).ids = [lot.id];
-      const before = [read(seller), read(buyer)];
-      assert.throws(() => buy(buyer, lot), { code: "ECONOMY_MARKET_HOME_BAND" });
-      assert.deepEqual([read(seller), read(buyer)], before);
-    }
+    const market = shelf(buyer);
+    assert.deepEqual(rules.marketHomeRange(buyerHome), { min: 2, max: 5 });
+    assert.equal(market.tradeBudget.homeBandMin, 2); assert.equal(market.tradeBudget.homeBandMax, 5);
+    assert.equal(market.listings.some(item => item.id === lot.id), true);
+    assert.equal(buy(buyer, lot).state.inventory.wood, 1);
   }
 });
 
-test("seller or buyer upgrading across a band cannot spend an already selected lot", () => {
+test("seller or buyer upgrading from house 3 to 4 keeps an already selected common-goods lot available", () => {
   for (const changing of ["seller", "buyer"]) {
     identities.resetDevStoreForTests();
     const seller = player(3), buyer = player(3, {}), lot = offer(seller); shelf(buyer);
     row(changing === "seller" ? seller : buyer).state.buildings.home = 4;
-    assert.equal(shelf(buyer).listings.length, 0);
-    const before = [read(seller), read(buyer)];
-    assert.throws(() => buy(buyer, lot), { code: "ECONOMY_MARKET_HOME_BAND" });
-    assert.deepEqual([read(seller), read(buyer)], before);
-    assert.equal(trade(seller, "cancel_listing", lot.id).state.inventory.wood, 100);
+    assert.equal(shelf(buyer).listings[0].id, lot.id);
+    assert.equal(buy(buyer, lot).state.inventory.wood, 1);
   }
 });
 

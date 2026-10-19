@@ -538,7 +538,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       cookingPreview: dev?.showHero !== false && !actorAway() && !forestJourneyFishingFrame(state, world)
         ? cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev)) : null,
       fires: state.life.campfires, showBuildings: dev?.showBuildings,
-    }, { scope: options.view === "world" ? "world" : "music", visible: active(), observationOwner: session.isObservationOwner(), emitEvents, cameraOnly,
+    }, { scope: options.view === "world" ? "world" : "music", visible: active() && !options.audioSuppressed, observationOwner: session.isObservationOwner(), emitEvents, cameraOnly,
       showHero: dev?.showHero !== false, actorAway: actorAway(), reducedMotion: reducedMotion(options, dev), waterFish: dev?.waterFish });
   }
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
