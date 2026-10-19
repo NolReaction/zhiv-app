@@ -72,6 +72,8 @@ export function earthModelEditorData(placement: EarthModelPlacement | null): Fea
 export function createEarthModelEditorMap(map: LibreMap, callbacks: {
   onMove: (longitude: number, latitude: number) => void;
   onPlace: (longitude: number, latitude: number) => void;
+  onMoveStart?: () => void;
+  onMoveEnd?: () => void;
 }) {
   let placement: EarthModelPlacement | null = null;
   let placing = false;
@@ -97,6 +99,7 @@ export function createEarthModelEditorMap(map: LibreMap, callbacks: {
     if (restorePan) map.dragPan.enable();
     restorePan = false;
     cursor();
+    callbacks.onMoveEnd?.();
   }
   function install() {
     // isStyleLoaded() also waits for every vector tile. During a camera flight
@@ -124,12 +127,13 @@ export function createEarthModelEditorMap(map: LibreMap, callbacks: {
     callbacks.onPlace(...coordinates(event));
   }
   function onDown(event: MapMouseEvent) {
-    if (placing || disposed || !placement || event.originalEvent.button !== 0) return;
+    if (placing || disposed || dragging || !placement || event.originalEvent.button !== 0) return;
     event.preventDefault();
     dragging = true;
     restorePan = map.dragPan.isEnabled();
     if (restorePan) map.dragPan.disable();
     cursor("grabbing");
+    callbacks.onMoveStart?.();
   }
   function onMove(event: MapMouseEvent) { if (dragging && !disposed) callbacks.onMove(...coordinates(event)); }
   function onEnter() { if (!placing && !dragging) cursor("grab"); }
@@ -145,6 +149,7 @@ export function createEarthModelEditorMap(map: LibreMap, callbacks: {
   ownerWindow?.addEventListener("blur", stopDragging);
   install();
   return {
+    finishDrag: stopDragging,
     update(value: EarthModelPlacement | null, placeOnClick = false) {
       if (disposed) return;
       if (placement?.id !== value?.id || placeOnClick) stopDragging();

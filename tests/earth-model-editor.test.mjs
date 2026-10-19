@@ -224,6 +224,90 @@ test("mouse drag changes the monument only and restores the prior pan state afte
   controller.dispose();
 });
 
+test("all drag moves share one undo transaction, including preview updates and repeated down/release events", () => {
+  const map = fakeMap();
+  let position = [placement.longitude, placement.latitude];
+  let before;
+  const history = [];
+  const calls = [];
+  const controller = createEarthModelEditorMap(map, {
+    onMoveStart() { calls.push("start"); before = [...position]; },
+    onMove(...point) { calls.push("move"); position = point; },
+    onMoveEnd() { calls.push("end"); history.push({ before, after: [...position] }); },
+    onPlace() {},
+  });
+  controller.update(placement);
+  map.emit("mousedown", event(0, 0), EARTH_MODEL_EDITOR_ANCHOR);
+  map.emit("mousemove", event(10, 20));
+  controller.update({ ...placement, longitude: 10, latitude: 20 });
+  map.emit("mousedown", event(10, 20), EARTH_MODEL_EDITOR_ANCHOR);
+  map.emit("mousemove", event(11, 21));
+  map.emit("mousemove", event(12, 22));
+  map.emit("mouseup");
+  map.windowListeners.get("mouseup")();
+  map.windowListeners.get("blur")();
+  map.emit("mousemove", event(13, 23));
+  assert.deepEqual(calls, ["start", "move", "move", "move", "end"]);
+  assert.deepEqual(history, [{ before: [placement.longitude, placement.latitude], after: [12, 22] }]);
+  assert.equal(map.dragPan.isEnabled(), true, "repeated mousedown must not lose the original pan state");
+  controller.dispose();
+  assert.equal(history.length, 1);
+});
+
+test("window release, blur, selection changes, place mode and disposal finish drag transactions exactly once", () => {
+  for (const finish of [
+    (map) => map.windowListeners.get("mouseup")(),
+    (map) => map.windowListeners.get("blur")(),
+    (_map, controller) => controller.update({ ...placement, id: "different-monument" }),
+    (_map, controller) => controller.update(null),
+    (_map, controller) => controller.update(placement, true),
+    (_map, controller) => controller.finishDrag(),
+    (_map, controller) => controller.dispose(),
+  ]) {
+    const map = fakeMap();
+    const calls = [];
+    const controller = createEarthModelEditorMap(map, {
+      onMoveStart() { calls.push("start"); }, onMove() { calls.push("move"); },
+      onMoveEnd() { calls.push("end"); }, onPlace() {},
+    });
+    controller.update(placement);
+    map.emit("mousedown", event(0, 0), EARTH_MODEL_EDITOR_ANCHOR);
+    map.emit("mousemove", event(10, 20));
+    finish(map, controller);
+    map.emit("mousemove", event(30, 40));
+    assert.deepEqual(calls, ["start", "move", "end"]);
+    assert.equal(map.dragPan.isEnabled(), true);
+    map.emit("mouseup");
+    map.windowListeners.get("mouseup")?.();
+    map.windowListeners.get("blur")?.();
+    controller.dispose(); controller.dispose();
+    assert.deepEqual(calls, ["start", "move", "end"]);
+  }
+});
+
+test("ignored presses do not begin undo transactions and a click without movement still closes its transaction", () => {
+  const map = fakeMap();
+  const calls = [];
+  const controller = createEarthModelEditorMap(map, {
+    onMoveStart() { calls.push("start"); }, onMove() { calls.push("move"); },
+    onMoveEnd() { calls.push("end"); }, onPlace() { calls.push("place"); },
+  });
+  map.emit("mousedown", event(0, 0), EARTH_MODEL_EDITOR_ANCHOR);
+  controller.update(placement);
+  map.emit("mousedown", event(0, 0, 2), EARTH_MODEL_EDITOR_ANCHOR);
+  controller.update(placement, true);
+  map.emit("mousedown", event(0, 0), EARTH_MODEL_EDITOR_ANCHOR);
+  map.emit("mouseup");
+  assert.deepEqual(calls, []);
+  controller.update(placement);
+  map.emit("mousedown", event(0, 0), EARTH_MODEL_EDITOR_ANCHOR);
+  map.emit("mouseup");
+  assert.deepEqual(calls, ["start", "end"]);
+  controller.dispose();
+  map.emit("mousedown", event(0, 0), EARTH_MODEL_EDITOR_ANCHOR);
+  assert.deepEqual(calls, ["start", "end"]);
+});
+
 test("style recreation restores current preview once and disposal removes all owned resources and handlers", () => {
   const map = fakeMap();
   const controller = createEarthModelEditorMap(map, { onMove() {}, onPlace() {} });
