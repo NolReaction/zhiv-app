@@ -60,7 +60,7 @@ const control = (view, label) => {
 const formFor = (view, label) => view.nodes.find(node => node.type === "form" && nodes(node).includes(button(view, label)));
 const formSubmit = (view, label) => formFor(view, label).props.onSubmit({ preventDefault() {} });
 function editor(f = fixtures(), extra = {}) {
-  const props = { bot: f.bot, buyer: f.buyer, catalog: economyCatalog, locked: false, async act(action) { f.calls.push(action); }, onVisitBot: f.props.onVisitBot, ...extra };
+  const props = { bot: f.bot, buyer: f.buyer, ownListings: [], catalog: economyCatalog, locked: false, async act(action) { f.calls.push(action); }, onVisitBot: f.props.onVisitBot, ...extra };
   return { ...f, props, h: harness(DevBotEditor, props) };
 }
 
@@ -139,6 +139,27 @@ test("only real active lots have seller-scoped cancellation", () => {
   const e = editor(); e.bot.listings = [{ id: "LOT1", itemId: "wood", quantity: 3, totalPrice: 30, status: "active" }, { id: "LOT2", itemId: "stone", quantity: 2, totalPrice: 60, status: "sold" }];
   const view = e.h.render(), buttons = view.nodes.filter(node => node.props["aria-label"]?.startsWith("Снять лот:"));
   assert.equal(buttons.length, 1); buttons[0].props.onClick(); assert.deepEqual(e.calls, [{ action: "cancel_listing", botId: e.bot.id, listingId: "LOT1" }]);
+});
+
+test("the bot can buy a selected real owner lot without granting itself currency or bypassing locks", () => {
+  const e = editor(), listing = { id: "OWN-LOT", sellerPublicId: "ME", owned: true, status: "active", itemId: "wood", quantity: 3, totalPrice: 90 };
+  assert.equal(button(e.h.render(), "Бот покупает мой товар").props.disabled, true);
+  e.props.ownListings = [listing, { ...listing, id: "OTHER", sellerPublicId: "FOREIGN" }];
+  let view = e.h.render(); assert.equal(button(view, "Бот покупает мой товар").props.disabled, false);
+  const options = Children.toArray(control(view, "Мой товар для бота").props.children).flat();
+  assert.equal(options.filter(option => option?.props?.value).length, 1);
+  formSubmit(view, "Бот покупает мой товар"); assert.deepEqual(e.calls, [{ action: "buy_listing", botId: e.bot.id, listingId: listing.id }]);
+  e.bot.economy.wallet.coins = 0; view = e.h.render(); assert.equal(button(view, "Бот покупает мой товар").props.disabled, true);
+  formSubmit(view, "Бот покупает мой товар"); assert.equal(e.calls.length, 1);
+  e.bot.economy.wallet.coins = 1000; e.props.locked = true; formSubmit(e.h.render(), "Бот покупает мой товар"); assert.equal(e.calls.length, 1);
+});
+
+test("sold bot lots expose their pending payout and collect explicitly without offering cancellation", () => {
+  const e = editor(); e.bot.listings = [{ id: "SOLD", itemId: "wood", quantity: 2, totalPrice: 60, status: "sold", sale: { buyerName: "Natasha", proceedsCoins: 57, claimedAt: null } }];
+  const view = e.h.render(); assert.ok(text(view.tree).includes("Natasha"));
+  assert.equal(view.nodes.filter(node => node.props["aria-label"]?.startsWith("Снять лот:")).length, 0);
+  button(view, "Собрать").props.onClick(); assert.deepEqual(e.calls, [{ action: "claim_sale", botId: e.bot.id, listingId: "SOLD" }]);
+  e.props.locked = true; button(e.h.render(), "Собрать").props.onClick(); assert.equal(e.calls.length, 1);
 });
 
 test("all destructive changes need a second explicit click and lock guards also protect callbacks", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { economyCatalog, type EconomyCatalog } from "@/features/economy/domain/model";
+import { economyCatalog, type EconomyCatalog, type EconomyMarketListing } from "@/features/economy/domain/model";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, formatPearls, PEARL_DISPLAY_DIVISOR } from "@/features/economy/domain/money";
 import { economyMarketUnlocked, marketMinimumPrice, marketCanTrade } from "@/features/economy/domain/market-rules";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -59,6 +59,8 @@ export function WorldDevBotsContent({ controller, permitted, buyer, onVisitBot, 
     if (!result) return;
     setSelectedId(result.botId);
     onBotsChanged?.();
+    void buyer?.refresh?.();
+    void buyer?.refreshMarket?.();
   }
   async function act(action: DevBotAction) {
     if (!locked) applied(await controller.command(action));
@@ -86,14 +88,15 @@ export function WorldDevBotsContent({ controller, permitted, buyer, onVisitBot, 
     {bots.length > 0 && <>
       <label><span>Управлять другом</span><select aria-label="Управлять другом" value={selected?.id ?? ""} disabled={controller.busy || controller.uncertain}
         onChange={event => setSelectedId(event.target.value)}>{bots.map(bot => <option key={bot.id} value={bot.id}>{bot.displayName} · дом {bot.economy.buildings.home ?? 1}</option>)}</select></label>
-      {selected && <DevBotEditor key={selected.id} bot={selected} catalog={buyer?.snapshot?.catalog ?? economyCatalog} buyer={buyer} locked={locked}
+      {selected && <DevBotEditor key={selected.id} bot={selected} ownListings={snapshot?.ownListings ?? []} catalog={buyer?.snapshot?.catalog ?? economyCatalog} buyer={buyer} locked={locked}
         act={act} onVisitBot={onVisitBot} onOpenCheats={onOpenCheats} />}
     </>}
   </div>;
 }
 
-function DevBotEditor({ bot, catalog, buyer, locked, act, onVisitBot, onOpenCheats }: {
+function DevBotEditor({ bot, ownListings = [], catalog, buyer, locked, act, onVisitBot, onOpenCheats }: {
   bot: DevBot; catalog: EconomyCatalog; buyer?: EconomyController; locked: boolean;
+  ownListings?: EconomyMarketListing[];
   act: (action: DevBotAction) => Promise<void>; onVisitBot?: Navigation["onVisitBot"]; onOpenCheats?: () => void;
 }) {
   const [name, setName] = useState(bot.displayName);
@@ -112,6 +115,7 @@ function DevBotEditor({ bot, catalog, buyer, locked, act, onVisitBot, onOpenChea
   const [deleting, setDeleting] = useState(false);
   const [jobKind, setJobKind] = useState<"construction" | "production" | "exploration">("production");
   const [jobTarget, setJobTarget] = useState("");
+  const [purchaseId, setPurchaseId] = useState("");
   const building = catalog.buildings.find(item => item.id === buildingId) ?? catalog.buildings[0];
   const currentLevel = bot.economy.buildings[building.id] ?? 0;
   const levels = [...(!["home", "warehouse"].includes(building.id) ? [0] : []), ...building.levels.map(level => level.level)];
@@ -136,6 +140,10 @@ function DevBotEditor({ bot, catalog, buyer, locked, act, onVisitBot, onOpenChea
   const marketOpen = (bot.economy.buildings.home ?? 1) >= catalog.market.requiredHomeLevel
     && Object.entries(catalog.market.requiredBuildings).every(([id, level]) => (bot.economy.buildings[id] ?? 0) >= level);
   const activeListings = bot.listings.filter(listing => listing.status === "active");
+  const pendingSales = bot.listings.filter(listing => listing.status === "sold" && listing.sale && !listing.sale.claimedAt);
+  const purchasable = ownListings.filter(listing => listing.status === "active" && listing.owned && listing.sellerPublicId === buyer?.snapshot?.ownerPublicId);
+  const purchase = purchasable.find(listing => listing.id === purchaseId) ?? purchasable[0];
+  const purchaseAffordable = !!purchase && bot.economy.wallet.coins >= purchase.totalPrice;
   const jobTargets = jobKind === "construction" ? catalog.buildings.filter(item => item.levels.some(level => level.level === (bot.economy.buildings[item.id] ?? 0) + 1))
     : jobKind === "production" ? catalog.recipes : catalog.explorations;
   const target = jobTargets.find(item => item.id === jobTarget) ?? jobTargets[0];
@@ -143,7 +151,7 @@ function DevBotEditor({ bot, catalog, buyer, locked, act, onVisitBot, onOpenChea
   return <div className={styles.editor}>
     <section className={styles.box} aria-label="Выбранный бот"><div className={styles.identity}><strong>{bot.displayName}</strong><span>Дом {bot.economy.buildings.home ?? 1}</span></div>
       <div className={styles.balance}><span>{format(bot.economy.wallet.coins)} монет</span><span>{formatPearls(bot.economy.wallet.pearls)} жемчуга</span></div>
-      <p className={styles.hint}>Кладовая: {format(bot.economy.storage.used)} / {format(bot.economy.storage.capacity)}. Лотов в продаже: {activeListings.length}.</p>
+      <p className={styles.hint}>Кладовая: {format(bot.economy.storage.used)} / {format(bot.economy.storage.capacity)}. Лотов в продаже: {activeListings.length}. Ждут сбора: {pendingSales.length}.</p>
       <button type="button" disabled={locked || !onVisitBot || bot.sharingMode === "OFF"} onClick={() => {
         if (!locked && bot.sharingMode !== "OFF") onVisitBot?.({ circleId: bot.circleId, targetPublicId: bot.publicId, displayName: bot.displayName });
       }}>В гости</button>
@@ -198,13 +206,32 @@ function DevBotEditor({ bot, catalog, buyer, locked, act, onVisitBot, onOpenChea
       </form>
     </div></details>
 
+    <details className={styles.section} open><summary>Покупки у меня</summary><form className={styles.tools} onSubmit={event => submit(event, () => {
+      if (purchase && purchaseAffordable && marketOpen && !tradeHint) command({ action: "buy_listing", botId: bot.id, listingId: purchase.id });
+    })}>
+      <p className={styles.hint}>Выставьте товар в своей лавке и поручите боту купить его. Бот заплатит своими монетами; вы увидите его имя и заберёте выручку в своей лавке.</p>
+      <label><span>Мой товар для бота</span><select value={purchase?.id ?? ""} disabled={locked || !purchase} onChange={event => setPurchaseId(event.target.value)}>
+        {!purchase && <option value="">Нет активных лотов</option>}{purchasable.map(listing => <option key={listing.id} value={listing.id}>
+          {items.find(item => item.id === listing.itemId)?.name ?? listing.itemId} ×{format(listing.quantity)} · {format(listing.totalPrice)} монет
+        </option>)}
+      </select></label>
+      {purchase && !purchaseAffordable && <p className={styles.warning}>У бота недостаточно монет. Выдайте валюту во вкладке ниже.</p>}
+      <button type="submit" disabled={locked || !purchase || !purchaseAffordable || !marketOpen || !!tradeHint}>Бот покупает мой товар</button>
+    </form></details>
+
     <details className={styles.section} open><summary>Личная лавка бота</summary><div className={styles.tools}>
-      <p className={styles.hint}>Настоящие лоты. Покупайте их в мире бота своим персонажем: предметы и деньги перейдут между профилями.</p>
+      <p className={styles.hint}>Настоящие лоты. Покупайте их в мире бота своим персонажем. Выручка останется на прилавке бота до ручного сбора.</p>
       {!marketOpen && <p className={styles.warning}>Рынок бота пока закрыт. Примените готовое поселение с домом от уровня 2.</p>}
       {activeListings.length === 0 && <p className={styles.hint}>Лавка пуста. Выдайте боту предметы и выставьте партию.</p>}
       <ul className={styles.lots}>{activeListings.map(listing => <li key={listing.id}><ItemIcon itemId={listing.itemId} size={30} />
         <div><strong>{items.find(item => item.id === listing.itemId)?.name ?? listing.itemId} ×{format(listing.quantity)}</strong><span>{format(listing.totalPrice)} монет за партию</span></div>
         <button type="button" disabled={locked} aria-label={`Снять лот: ${items.find(item => item.id === listing.itemId)?.name ?? listing.itemId}`} onClick={() => command({ action: "cancel_listing", botId: bot.id, listingId: listing.id })}>Снять</button>
+      </li>)}</ul>
+      {pendingSales.length > 0 && <h4>Выручка бота</h4>}
+      <ul className={styles.lots}>{pendingSales.map(listing => <li key={listing.id}><ItemIcon itemId={listing.itemId} size={30} />
+        <div><strong>{listing.sale!.buyerName} купил(а) {items.find(item => item.id === listing.itemId)?.name ?? listing.itemId} ×{format(listing.quantity)}</strong>
+          <span>К сбору: {format(listing.sale!.proceedsCoins)} монет</span></div>
+        <button type="button" disabled={locked} aria-label={`Собрать выручку бота: ${items.find(item => item.id === listing.itemId)?.name ?? listing.itemId}`} onClick={() => command({ action: "claim_sale", botId: bot.id, listingId: listing.id })}>Собрать</button>
       </li>)}</ul>
       <form onSubmit={event => submit(event, () => { if (validLot && marketOpen) command({ action: "create_listing", botId: bot.id, itemId: lotItem.id, quantity: lotCount, totalPrice: price }); })}>
         <label><span>Товар для продажи</span><select value={lotItem.id} disabled={locked} onChange={event => { setLotItemId(event.target.value); setLotPrice(""); }}>{items.filter(item => item.tradable).map(item => <option key={item.id} value={item.id}>{item.name} · в запасах {format(bot.economy.inventory[item.id] ?? 0)}</option>)}</select></label>
@@ -215,7 +242,7 @@ function DevBotEditor({ bot, catalog, buyer, locked, act, onVisitBot, onOpenChea
           const missing = lotCount - (bot.economy.inventory[lotItem.id] ?? 0);
           if (integer(lotQuantity, 1, catalog.market.maxLotQuantity) && missing > 0) command({ action: "grant_item", botId: bot.id, itemId: lotItem.id, quantity: missing });
         }}>Выдать недостающее для партии</button>}
-        <button type="submit" disabled={locked || !marketOpen || !validLot || activeListings.length >= catalog.market.baseSlots}>Выставить лот</button>
+        <button type="submit" disabled={locked || !marketOpen || !validLot || activeListings.length + pendingSales.length >= catalog.market.baseSlots}>Выставить лот</button>
       </form>
     </div></details>
 

@@ -121,9 +121,15 @@ test("the normal friend purchase moves actual bot stock and money with fees and 
     expectedRevision: buyerBefore.revision, action: "buy_listing", targetId: listing.id, quantity: listing.quantity, totalPrice: listing.totalPrice }, now);
   assert.equal(bought.state.inventory.wood, (buyerBefore.inventory.wood ?? 0) + 2);
   assert.equal(bought.state.wallet.coins, buyerBefore.wallet.coins - listing.totalPrice);
-  const current = read(owner).bots[0]; assert.equal(current.listings.length, 0);
-  assert.equal(current.economy.wallet.coins, posted.economy.wallet.coins + listing.totalPrice - marketSaleFee(listing.totalPrice, listing.feeBps)); assert.equal(current.economy.storage.reserved, 0);
-  assert.equal(bots.commandDevBots(owner.token, postCommand, now).snapshot.bots[0].listings.length, 0, "replay returns the current sold shelf");
+  const current = read(owner).bots[0]; assert.equal(current.listings.length, 1);
+  assert.equal(current.listings[0].sale.buyerPublicId, owner.me.user.publicId);
+  assert.equal(current.economy.wallet.coins, posted.economy.wallet.coins); assert.equal(current.economy.storage.reserved, 0);
+  assert.equal(bots.commandDevBots(owner.token, postCommand, now).snapshot.bots[0].listings[0].status, "sold", "replay returns the current pending shelf");
+  const claim = command(owner, { action: "claim_sale", botId: bot.id, listingId: listing.id });
+  const claimed = bots.commandDevBots(owner.token, claim, now).snapshot.bots[0];
+  assert.equal(claimed.economy.wallet.coins, posted.economy.wallet.coins + listing.totalPrice - marketSaleFee(listing.totalPrice, listing.feeBps));
+  assert.equal(claimed.listings.length, 0);
+  assert.equal(bots.commandDevBots(owner.token, claim, now).snapshot.bots[0].economy.wallet.coins, claimed.economy.wallet.coins);
 });
 
 test("posting and cancellation retain market locks prices stock ownership and exactly-once escrow", () => {
@@ -139,6 +145,46 @@ test("posting and cancellation retain market locks prices stock ownership and ex
   bots.commandDevBots(owner.token, cancel, now); bots.commandDevBots(owner.token, cancel, now);
   const restored = read(owner).bots.find(item => item.id === bot.id);
   assert.equal(restored.economy.inventory.wood, (bot.economy.inventory.wood ?? 0) + 4); assert.equal(restored.economy.storage.reserved, 0); assert.equal(restored.listings.length, 0);
+});
+
+test("a controlled bot buys only the managing player's active lot through the real friendship and waits for manual payout", () => {
+  const owner = player(), bot = create(owner), foreign = player();
+  ownCheat(owner, "apply_settlement", "home", 2); ownCheat(owner, "grant_item", "wood", 3);
+  const state = economy.getDevEconomy(owner.token, now);
+  const listing = economy.commandDevEconomyMarket(owner.token, { requestId: key(), ownerPublicId: owner.me.user.publicId,
+    expectedRevision: state.revision, action: "create_listing", targetId: "wood", quantity: 1, totalPrice: 30 }, now).listing;
+  assert.equal(read(owner).ownListings[0].id, listing.id);
+  const before = economy.getDevEconomy(owner.token, now), botBefore = read(owner).bots[0];
+  const cmd = command(owner, { action: "buy_listing", botId: bot.id, listingId: listing.id });
+  const result = bots.commandDevBots(owner.token, cmd, now), purchased = result.snapshot.bots[0];
+  assert.equal(purchased.economy.inventory.wood, (botBefore.economy.inventory.wood ?? 0) + 1);
+  assert.equal(purchased.economy.wallet.coins, botBefore.economy.wallet.coins - 30);
+  assert.deepEqual(result.snapshot.ownListings, []);
+  assert.equal(economy.getDevEconomy(owner.token, now).wallet.coins, before.wallet.coins);
+  const sale = economy.getDevEconomyMarket(owner.token, {}, now).mine[0];
+  assert.equal(sale.sale.buyerPublicId, bot.publicId); assert.equal(sale.sale.buyerName, bot.displayName); assert.equal(sale.sale.proceedsCoins, 28);
+  assert.equal(bots.commandDevBots(owner.token, cmd, now).snapshot.bots[0].economy.wallet.coins, purchased.economy.wallet.coins);
+  assert.throws(() => act(owner, { action: "buy_listing", botId: bot.id, listingId: listing.id }), { code: "DEV_BOT_LISTING_UNAVAILABLE" });
+  assert.throws(() => act(foreign, { action: "buy_listing", botId: bot.id, listingId: listing.id }), { code: "DEV_BOT_NOT_FOUND" });
+  const current = economy.getDevEconomy(owner.token, now);
+  const claim = economy.commandDevEconomyMarket(owner.token, { requestId: key(), ownerPublicId: owner.me.user.publicId,
+    expectedRevision: current.revision, action: "claim_sale", targetId: listing.id, quantity: 1, totalPrice: 0 }, now);
+  assert.equal(claim.state.wallet.coins, before.wallet.coins + 28);
+});
+
+test("bot purchases reject another seller's lot and revoked or private owner worlds without bypassing common market checks", () => {
+  const owner = player(), bot = create(owner), other = create(owner);
+  ownCheat(owner, "apply_settlement", "home", 2); ownCheat(owner, "grant_item", "wood", 1);
+  act(owner, { action: "grant_item", botId: other.id, itemId: "wood", quantity: 1 });
+  const foreign = act(owner, { action: "create_listing", botId: other.id, itemId: "wood", quantity: 1, totalPrice: 30 }).snapshot.bots.find(item => item.id === other.id).listings[0];
+  assert.throws(() => act(owner, { action: "buy_listing", botId: bot.id, listingId: foreign.id }), { code: "DEV_BOT_LISTING_UNAVAILABLE" });
+  const state = economy.getDevEconomy(owner.token, now);
+  const listing = economy.commandDevEconomyMarket(owner.token, { requestId: key(), ownerPublicId: owner.me.user.publicId,
+    expectedRevision: state.revision, action: "create_listing", targetId: "wood", quantity: 1, totalPrice: 30 }, now).listing;
+  const before = read(owner).bots[0].economy;
+  ok(social.updateDevSharing(owner.token, bot.circleId, "OFF"));
+  assert.throws(() => act(owner, { action: "buy_listing", botId: bot.id, listingId: listing.id }), { code: "GUEST_WORLD_UNAVAILABLE" });
+  assert.deepEqual(read(owner).bots[0].economy, before);
 });
 
 test("privacy switches use real access checks and deletion removes the bot identity world and lots only", () => {

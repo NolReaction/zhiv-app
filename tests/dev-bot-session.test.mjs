@@ -11,7 +11,7 @@ const { getDevBots, sendDevBotCommand } = await vite.ssrLoadModule("/features/wo
 const { setGamePresence } = await vite.ssrLoadModule("/features/activity/transport-state.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", botId = crypto.randomUUID();
-const snapshot = (ownerPublicId = owner) => ({ ownerPublicId, serverTime: "2026-10-19T00:00:00Z", maxBots: 5, bots: [] });
+const snapshot = (ownerPublicId = owner) => ({ ownerPublicId, serverTime: "2026-10-19T00:00:00Z", maxBots: 5, bots: [], ownListings: [] });
 const result = (ownerPublicId = owner) => ({ snapshot: snapshot(ownerPublicId), botId, message: "Бот изменён", replayed: false });
 const action = { action: "grant_item", botId, itemId: "wood", quantity: 2 };
 const fullCommand = () => ({ ...action, ownerPublicId: owner, requestId: crypto.randomUUID() });

@@ -214,33 +214,33 @@ test("an empty player market is honest and offers a next action without fictiona
   const html = render("market", controller({ snapshot: snapshot({ buildings: { home: 2, garden: 1, bridge: 1 }, completedExplorations: 0 }),
     market: { listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() } }));
   assert.match(html, /Прилавки пока свободны/);
-  assert.ok(button(html, "Выставить товар"));
+  assert.ok(button(html, "В свою лавку"));
   assert.doesNotMatch(html, /Продавец:/);
 });
 
 test("a personal showcase explains its fixed window and disables stale quotes until refresh", () => {
   const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 300,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString(),
-    showcase: { refreshAt: new Date(now + 1800_000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 1800 } };
+    showcase: { refreshAt: new Date(now + 300_000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 300 } };
   const economy = controller({ snapshot: snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2, bridge: 1 }, completedExplorations: 0 }), market });
   let html = render("market", economy);
-  assert.match(html, /Ваша витрина · 1 \/ 12/);
-  assert.match(html, /До 2 лотов от одной лавки/);
-  assert.match(html, /Купленные и снятые лоты до смены не заменяются/);
+  assert.match(html, /На прилавках · 1/);
+  assert.match(html, /В подборке до 2 лотов одной лавки/);
+  assert.match(html, /Купленные и снятые лоты заменяются в следующей подборке/);
   const refresh = (markup, label) => {
     const control = buttons(markup).find(entry => entry.attributes.includes(`aria-label="${label}"`));
     assert.ok(control, `Missing refresh control: ${label}`); return control;
   };
   assert.equal(disabled(refresh(html, "Проверить наличие")), false);
   assert.match(html, /data-market-refresh="waiting"/);
-  assert.match(html, /role="timer"[^>]*>30:00<\/strong>/);
+  assert.match(html, /role="timer"[^>]*>05:00<\/strong>/);
   assert.equal(disabled(button(html, "Купить весь лот")), false);
   assert.doesNotMatch(html, /Показать ещё/);
-  html = render("market", { ...economy, now: now + 900_000 });
-  assert.match(html, /role="timer"[^>]*>15:00<\/strong>/);
+  html = render("market", { ...economy, now: now + 150_000 });
+  assert.match(html, /role="timer"[^>]*>02:30<\/strong>/);
   assert.match(html, /data-market-refresh="waiting"[\s\S]*?<progress[^>]*value="0\.5"/);
   assert.equal(disabled(button(html, "Купить весь лот")), false);
-  html = render("market", { ...economy, now: now + 1800_000 });
+  html = render("market", { ...economy, now: now + 300_000 });
   assert.match(html, /data-market-refresh="ready"/);
   assert.match(html, /role="timer"[^>]*>00:00<\/strong>/);
   assert.match(html, /data-market-refresh="ready"[\s\S]*?<progress[^>]*value="0"/);

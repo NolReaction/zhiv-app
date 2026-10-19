@@ -35,7 +35,7 @@ const lesson = (section, id) => sectionGuideLessons[section].find(entry => entry
 test("all seven active sections target attributes still emitted by their current UI", async () => {
   const surfaces = {
     pantry: ["features/economy/ui/inventory/world-pantry-menu.tsx"],
-    market: ["features/economy/ui/economy-panel.tsx"],
+    market: ["features/economy/ui/market/player-market.tsx", "features/economy/ui/market/market-sale-card.tsx"],
     plesk: ["features/economy/ui/fishing/plesk-fishing-shop.tsx"],
     orders: ["features/economy/ui/orders/world-order-journal.tsx", "features/economy/ui/orders/world-resident-order-board.tsx"],
     expeditions: ["features/economy/ui/expeditions/world-expeditions-menu.tsx"],

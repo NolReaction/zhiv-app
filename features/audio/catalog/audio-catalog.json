@@ -1556,20 +1556,6 @@
         "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
-    },
-    {
-      "id": "ui.market-open.01",
-      "src": "/audio/originals-v1/effect/ui.market-open.01.wav",
-      "status": "ready",
-      "license": {
-        "name": "Project-original procedural audio; provenance recorded",
-        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8-unified/art/audio/originals-v1/PROVENANCE.md",
-        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
-        "sourceUrl": "art/audio/originals-v1/manifest.json",
-        "acquiredAt": "2026-10-19",
-        "changes": "Original soft wooden finishing taps and a warm felt major chord for building completion; deterministic synthesis, gentle edges, peak-safe level and TPDF PCM16.",
-        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
-      }
     }
   ],
   "cues": [
@@ -2363,20 +2349,6 @@
       "cooldownMs": 2500,
       "pitchVariation": 0.012,
       "fadeMs": 30
-    },
-    {
-      "id": "ui.market-open",
-      "bus": "ui",
-      "mode": "one-shot",
-      "assets": [
-        "ui.market-open.01"
-      ],
-      "gainDb": -4,
-      "priority": 62,
-      "maxInstances": 1,
-      "cooldownMs": 2000,
-      "pitchVariation": 0,
-      "fadeMs": 80
     }
   ],
   "profiles": [

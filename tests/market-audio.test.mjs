@@ -35,26 +35,23 @@ test("both trading counters retain the exact map music decks, with a softer mix 
   }
 });
 
-test("polls, rerenders and day/night changes never repeat the opening signature", async () => {
+test("market openings, polls and day/night changes never play an entrance sound", async () => {
   const f = fixture();
   f.controller.update({ active: false, sceneId, night: false });
   f.controller.update({ active: true, sceneId: null, night: false });
   assert.equal(f.updates.length, 0);
   for (let tick = 0; tick < 100; tick++) f.controller.update({ active: true, sceneId, night: false });
   await flush();
-  assert.equal(f.updates.length, 1); assert.equal(f.events.length, 1);
-  assert.equal(f.events[0].cueId, "ui.market-open");
-  assert.equal(f.events[0].ownerId, "counter"); assert.equal(f.events[0].maxAgeMs, 400);
+  assert.equal(f.updates.length, 1); assert.equal(f.events.length, 0);
   f.controller.update({ active: true, sceneId, night: true }); await flush();
-  assert.equal(f.updates.length, 2); assert.equal(f.events.length, 1);
+  assert.equal(f.updates.length, 2); assert.equal(f.events.length, 0);
   f.controller.update({ active: false, sceneId, night: true });
   f.controller.update({ active: true, sceneId, night: true }); await flush();
-  assert.equal(f.events.length, 2, "an actual second entrance has a fresh event ID");
-  assert.notEqual(f.events[0].id, f.events[1].id);
+  assert.equal(f.events.length, 0, "reopening remains silent");
   f.controller.dispose();
 });
 
-test("closing, account replacement and Strict Mode cleanup cancel uncommitted sounds without clearing a newer map", async () => {
+test("closing, account replacement and Strict Mode stay silent without clearing a newer map", async () => {
   const f = fixture();
   f.controller.update({ active: true, sceneId, night: false });
   f.controller.update({ active: false, sceneId, night: false }); await flush();
@@ -62,34 +59,33 @@ test("closing, account replacement and Strict Mode cleanup cancel uncommitted so
   f.controller.update({ active: true, sceneId, night: false }); f.controller.dispose();
   const next = createMarketAudioController(f.runtime, "counter");
   next.update({ active: true, sceneId, night: false }); await flush();
-  assert.equal(f.events.length, 1, "only the committed effect probe plays");
-  const firstCommittedId = f.events[0].id;
+  assert.equal(f.events.length, 0, "effect probes and committed openings remain silent");
   const forest = menuAudioFrame("forest-return", sceneId, false);
   f.runtime.updateFrame(forest); next.dispose();
   assert.equal(f.frame, forest);
   next.update({ active: true, sceneId, night: false }); await flush();
-  assert.equal(f.events.length, 1, "disposed controllers stay inert");
+  assert.equal(f.events.length, 0, "disposed controllers stay inert");
   const remounted = createMarketAudioController(f.runtime, "counter");
   remounted.update({ active: true, sceneId, night: false }); await flush();
-  assert.notEqual(f.events[1].id, firstCommittedId, "a remounted React tree cannot collide with the previous entrance receipt");
+  assert.equal(f.events.length, 0, "remounting never produces a coin sound");
   remounted.dispose();
   const changed = createMarketAudioController(f.runtime, "other-counter");
   changed.update({ active: true, sceneId, night: false });
   changed.update({ active: true, sceneId: "other-player", night: false }); await flush();
-  assert.equal(f.events.length, 3, "old host cannot finish its pending opening");
+  assert.equal(f.events.length, 0, "changing host remains silent");
   assert.equal(f.frame.sceneId, "other-player"); changed.dispose();
 });
 
-test("background suspension releases playback and resumes the same counter without another coin signature", async () => {
+test("background suspension releases playback and resumes the same quiet counter", async () => {
   const f = fixture();
   f.controller.update({ active: true, sceneId, night: false }); await flush();
-  assert.equal(f.events.length, 1);
+  assert.equal(f.events.length, 0);
   f.controller.update({ active: true, suspended: true, sceneId, night: false });
   assert.equal(f.frame, null);
   f.controller.update({ active: true, suspended: true, sceneId, night: true });
   f.controller.update({ active: true, suspended: false, sceneId, night: true }); await flush();
   assert.equal(f.frame.loops[0].cueId, "music.night");
-  assert.equal(f.events.length, 1, "returning to an existing counter is not an entrance");
+  assert.equal(f.events.length, 0, "returning to a counter stays silent");
   f.controller.dispose();
   const hiddenOpen = fixture();
   hiddenOpen.controller.update({ active: true, suspended: true, sceneId, night: false });

@@ -43,7 +43,7 @@ export const guestWorldSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["market", "available"], message: "Inconsistent storefront availability" });
   const ids = new Set<string>();
   for (const [index, listing] of visit.market.listings.entries()) {
-    if (listing.sellerPublicId !== visit.user.publicId || listing.owned || listing.status !== "active" || ids.has(listing.id))
+    if (listing.sellerPublicId !== visit.user.publicId || listing.owned || listing.status !== "active" || listing.sale != null || ids.has(listing.id))
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["market", "listings", index], message: "Invalid owner's listing" });
     ids.add(listing.id);
   }

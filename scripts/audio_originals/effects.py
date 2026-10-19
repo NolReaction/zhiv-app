@@ -190,20 +190,6 @@ def _ui(kind: str, variant: int, sample_rate: int,
         title = "A gift gathered"
         description = "A short original ascending felt arpeggio for collecting the daily gift, with a padded low note and a softly damped high finish."
         target = -23.5
-    elif kind == "market-open":
-        # A tiny cloth purse set on a wooden counter and two rounded coins.
-        # Sparse low metallic modes suggest trade without another reward jingle.
-        audio = np.zeros(round(.82 * sample_rate))
-        cloth = _air_swish(.20, sample_rate, rng) * .11
-        _add(audio, cloth, 0, sample_rate)
-        _add(audio, _modal(.16, 155, sample_rate, rng), .085, sample_rate, .20)
-        for when, pitch, strength in [(.22, 1050, .36), (.35, 1320, .25)]:
-            coin = _modal(.40, pitch, sample_rate, rng, "bell")
-            coin = signal.sosfilt(signal.butter(2, 3600, "lowpass", fs=sample_rate, output="sos"), coin)
-            _add(audio, coin, when, sample_rate, strength)
-        title = "The little trading counter"
-        description = "An original soft cloth purse on wood and two damped coin contacts for entering the player market. No continuous loop, voices or external samples."
-        target = -28
     elif kind == "construction-complete":
         # The last pair of padded wooden taps settles into a warm major chord.
         # Keep it distinct from treasure and daily gifts, without a harsh impact
@@ -529,7 +515,7 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     variant = int(parts[-1])
     rng = _rng(asset_id)
     if parts[0] == "ui" and len(parts) == 3:
-        if variant > {"click": 3, "slider": 1, "startup": 1, "daily-reward": 1, "construction-complete": 1, "market-open": 1}.get(parts[1], 2):
+        if variant > {"click": 3, "slider": 1, "startup": 1, "daily-reward": 1, "construction-complete": 1}.get(parts[1], 2):
             raise ValueError(f"Unknown UI variation: {asset_id}")
         return _ui(parts[1], variant, sample_rate, rng)
     if parts[0] == "actor" and len(parts) == 4 and variant <= 3:

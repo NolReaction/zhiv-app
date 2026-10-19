@@ -25,7 +25,7 @@ import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/econ
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
 
-type Receipt = { signature: string; message: string; acceptedRevision: number };
+type Receipt = { signature: string; message: string; acceptedRevision: number; action?: ReceiptCommand["action"] };
 type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand;
 type Profile = { revision: number; state: EconomyState; receipts: Map<string, Receipt>; legacyJourneys: Set<string> };
 type Listing = Omit<EconomyMarketListing, "owned" | "sellerName"> & { currencyScale?: 1 | 10 };
@@ -34,14 +34,16 @@ type BarterReceipt = { signature: string; message: string; acceptedRevision: num
 type TradeTurnover = { day: string; buysUsed: number; salesUsed: number; barterUsed: number };
 type PromoClaim = { requestId: string; title: string; reward: PromoResult["reward"]; acceptedRevision: number; signature: string };
 type Store = { promoClaims: Map<string, Map<string, PromoClaim>>; turnover: Map<string, TradeTurnover>; profiles: Map<string, Profile>; listings: Map<string, Listing>; showcases: Map<string, Showcase>;
+  resetMarketReceipts: Map<string, { revision: number; receipts: Map<string, Receipt> }>;
   barterOffers: Map<string, BarterOffer>; barterShowcases: Map<string, Showcase>; barterReceipts: Map<string, Map<string, BarterReceipt>> };
 const globalStore = globalThis as typeof globalThis & { __zhivDevEconomyStore?: Store };
 function store(): Store {
-  const value = globalStore.__zhivDevEconomyStore ??= { promoClaims: new Map(), turnover: new Map(), profiles: new Map(), listings: new Map(), showcases: new Map(),
+  const value = globalStore.__zhivDevEconomyStore ??= { promoClaims: new Map(), turnover: new Map(), profiles: new Map(), listings: new Map(), showcases: new Map(), resetMarketReceipts: new Map(),
     barterOffers: new Map(), barterShowcases: new Map(), barterReceipts: new Map() };
   // Next HMR may retain the pre-showcase store; preserve its profiles and paid listings.
   value.promoClaims ??= new Map(); value.showcases ??= new Map(); value.turnover ??= new Map();
   value.barterOffers ??= new Map(); value.barterShowcases ??= new Map(); value.barterReceipts ??= new Map();
+  value.resetMarketReceipts ??= new Map();
   for (const listing of value.listings.values()) {
     listing.currencyScale ??= 1; listing.feeBps ??= 0;
     if (listing.status === "active" && listing.currencyScale === 1) {
@@ -60,7 +62,9 @@ function profile(token: string | undefined, now: number) {
   let value = store().profiles.get(owner);
   if (!value) {
     const legacy = consumeDevLegacyEconomy(token, now);
-    value = { revision: 0, state: newEconomyState(legacy), receipts: new Map(), legacyJourneys: new Set() };
+    const retained = store().resetMarketReceipts.get(owner);
+    value = { revision: retained?.revision ?? 0, state: newEconomyState(legacy), receipts: new Map(retained?.receipts), legacyJourneys: new Set() };
+    store().resetMarketReceipts.delete(owner);
     if (economyCatalog.fishing) value.state.fishingShop = createFishingShop(value.state, now, randomInt);
     store().profiles.set(owner, value);
   }
@@ -163,7 +167,7 @@ function commit(owner: string, value: Profile, next: EconomyState, command: Rece
     awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
     signature: scope + commandSignature(command),
-    message, acceptedRevision: value.revision,
+    message, acceptedRevision: value.revision, action: command.action,
   });
   return { state: view(owner, value, now), message, acceptedRevision: value.revision, replayed: false };
 }
@@ -293,12 +297,18 @@ export function creditDevLegacyJourney(token: string | undefined, journey: { id:
 }
 /** A game reset preserves account-level limits; deleting a test identity also removes its history. */
 export function removeDevEconomyOwner(owner: string, options: { deleteHistory?: boolean } = {}) {
-  if (options.deleteHistory) { store().turnover.delete(owner); store().promoClaims.delete(owner); }
+  const saved = store().profiles.get(owner);
+  if (options.deleteHistory) { store().turnover.delete(owner); store().promoClaims.delete(owner); store().resetMarketReceipts.delete(owner); }
+  else if (saved) {
+    if (saved.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
+    store().resetMarketReceipts.set(owner, { revision: saved.revision + 1,
+      receipts: new Map([...saved.receipts].filter(([, receipt]) => receipt.action === "claim_sale")) });
+  }
   store().profiles.delete(owner);
   store().showcases.delete(owner);
   store().barterShowcases.delete(owner); store().barterReceipts.delete(owner);
   for (const [id, offer] of store().barterOffers) if (offer.sellerPublicId === owner) store().barterOffers.delete(id);
-  for (const [id, listing] of store().listings) if (listing.sellerPublicId === owner) store().listings.delete(id);
+  for (const [id, listing] of store().listings) if (listing.sellerPublicId === owner && (options.deleteHistory || !pendingSale(listing))) store().listings.delete(id);
 }
 function tradeTurnover(owner: string, now: number): TradeTurnover {
   const current = store().turnover.get(owner), day = marketDay(now);
@@ -317,8 +327,12 @@ function compatibleMarketSeller(ownerHome: number, sellerId: string, minimumHome
 }
 function publicListing(listing: Listing, owner: string, token: string | undefined): EconomyMarketListing {
   const seller = lookupDevUser(token, listing.sellerPublicId);
-  return { ...listing, totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1), sellerName: seller.kind === "ok" ? seller.value.user.displayName : "Житель леса", owned: listing.sellerPublicId === owner };
+  return { ...listing, sale: listing.sellerPublicId === owner ? structuredClone(listing.sale ?? null) : null,
+    totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1), sellerName: seller.kind === "ok" ? seller.value.user.displayName : "Житель леса", owned: listing.sellerPublicId === owner };
 }
+// Missing sale on a pre-upgrade DEV row means its money was already credited.
+const pendingSale = (listing: Listing) => listing.status === "sold" && listing.sale != null && listing.sale.claimedAt === null;
+const occupiedListing = (listing: Listing) => listing.status === "active" || pendingSale(listing);
 function requireMarket(state: EconomyState) {
   if (!marketUnlocked(state)) fail("ECONOMY_MARKET_LOCKED", "Рынок откроется с домом уровня 2 после восстановления моста");
 }
@@ -336,7 +350,7 @@ export function getDevGuestWorldEconomy(viewer: string, target: string, sellerNa
   const listings = [...(saved?.listings.values() ?? [])].filter(listing => listing.sellerPublicId === target && listing.status === "active")
     .sort(compareListings).slice(0, 10).map(listing => ({ id: listing.id, sellerPublicId: listing.sellerPublicId, sellerName,
       itemId: listing.itemId, quantity: listing.quantity, totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1),
-      feeBps: listing.feeBps ?? 0, status: listing.status, createdAt: listing.createdAt, closedAt: listing.closedAt, owned: false }));
+      feeBps: listing.feeBps ?? 0, status: listing.status, createdAt: listing.createdAt, closedAt: listing.closedAt, owned: false, sale: null }));
   const jobs = (state?.jobs ?? []).map(job => ({ id: job.id, kind: job.kind, targetId: job.targetId, recipeId: job.recipeId,
     targetLevel: job.targetLevel, startedAt: job.startedAt, finishesAt: job.finishesAt, actorId: job.actorId ?? null,
     collection: job.collection ? { kind: job.collection.kind, seconds: job.collection.seconds,
@@ -351,7 +365,8 @@ export function getDevEconomyMarket(token: string | undefined, options: { cursor
   if (!Number.isInteger(limit) || limit < 1 || limit > config.showcaseSlots || options.cursor != null)
     fail("INVALID_ECONOMY_QUERY", "Лавка содержит до 12 предложений без дополнительных страниц", 400);
   const active = [...store().listings.values()].filter(item => item.status === "active").sort(compareListings);
-  const mine = active.filter(item => item.sellerPublicId === owner).map(item => publicListing(item, owner, token));
+  const mine = [...store().listings.values()].filter(item => item.sellerPublicId === owner && occupiedListing(item))
+    .sort(compareListings).map(item => publicListing(item, owner, token));
   const known = knownMarketState(owner, value.state);
   let selection = store().showcases.get(owner);
   const unlocked = marketUnlocked(value.state);
@@ -403,7 +418,7 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
   const { owner, value } = profile(token, now);
   if (command.action !== "create_listing" && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(command.targetId))
     return fail("INVALID_ECONOMY_COMMAND", "Некорректное объявление", 400);
-  if (command.action === "cancel_listing") {
+  if (command.action === "cancel_listing" || command.action === "claim_sale") {
     if (command.quantity !== 1 || command.totalPrice !== 0) return fail("INVALID_ECONOMY_COMMAND", "Некорректный запрос отмены", 400);
   } else {
     if (command.quantity > economyCatalog.market.maxLotQuantity) return fail("ECONOMY_MARKET_QUANTITY", "В лоте может быть от 1 до 99 предметов", 400);
@@ -411,7 +426,7 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
   }
   const replay = receipt(value, owner, command, now, receiptScope);
   if (replay) return replay;
-  if (command.action !== "cancel_listing") requireMarket(value.state);
+  if (command.action !== "cancel_listing" && command.action !== "claim_sale") requireMarket(value.state);
   const next = structuredClone(value.state);
   const known = knownMarketState(owner, value.state);
   if (command.action === "create_listing") {
@@ -420,7 +435,7 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
     if (!marketItemUnlocked(known, item.id)) return fail("ECONOMY_MARKET_ITEM_LOCKED", "Сначала откройте этот предмет в хозяйстве");
     if (command.totalPrice % ECONOMY_CURRENCY_SCALE !== 0 || command.totalPrice < marketMinimumPrice(item.id, command.quantity) || command.totalPrice > item.baseSellPrice * economyCatalog.market.maxPriceMultiplier * command.quantity) return fail("ECONOMY_MARKET_PRICE", "Цена лота вне разрешённого диапазона", 400);
     const slots = marketSlotCount(next);
-    if ([...store().listings.values()].filter(item => item.sellerPublicId === owner && item.status === "active").length >= slots)
+    if ([...store().listings.values()].filter(item => item.sellerPublicId === owner && occupiedListing(item)).length >= slots)
       return fail("ECONOMY_MARKET_LIMIT", `На прилавке уже заняты все места: ${slots}`);
     if (marketMinimumPrice(item.id, command.quantity) > marketDailyLimit(next.buildings.home ?? 1))
       return fail("ECONOMY_MARKET_DAILY_LOT_LIMIT", "Разделите партию: её базовая стоимость превышает дневной объём продаж");
@@ -433,7 +448,7 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
     const reserved = escrowItems(owner);
     assertEconomyStorageTransition(value.state, next, reserved, { ...reserved, [item.id]: (reserved[item.id] ?? 0) + command.quantity });
     const listing: Listing = { id: crypto.randomUUID(), sellerPublicId: owner, itemId: item.id, quantity: command.quantity,
-      totalPrice: command.totalPrice, feeBps: economyCatalog.market.feeBps, currencyScale: ECONOMY_CURRENCY_SCALE, status: "active", createdAt: new Date(now).toISOString(), closedAt: null };
+      totalPrice: command.totalPrice, feeBps: economyCatalog.market.feeBps, currencyScale: ECONOMY_CURRENCY_SCALE, status: "active", createdAt: new Date(now).toISOString(), closedAt: null, sale: null };
     if (Object.keys(fishStockCost).length) {
       const current = fishingState(next);
       next.fishing = { ...current, escrow: { ...current.escrow, [listing.id]: fishStockCost } };
@@ -443,6 +458,15 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
   }
   const listing = store().listings.get(command.targetId.toLowerCase());
   if (!listing) return fail("ECONOMY_MARKET_NOT_FOUND", "Лот не найден", 404);
+  if (command.action === "claim_sale") {
+    if (listing.sellerPublicId !== owner) return fail("ECONOMY_MARKET_OWNER", "Это прилавок другого игрока", 403);
+    if (!pendingSale(listing) || !listing.sale) return fail("ECONOMY_MARKET_NOT_PENDING", "Выручка уже собрана или лот ещё не продан");
+    if (next.wallet.coins + listing.sale.proceedsCoins > ECONOMY_MAX_BALANCE)
+      return fail("ECONOMY_CAPACITY", "В кошельке недостаточно места для выручки");
+    next.wallet.coins += listing.sale.proceedsCoins;
+    listing.sale.claimedAt = new Date(now).toISOString();
+    return { ...commit(owner, value, next, command, "Выручка собрана", now), listing: publicListing(listing, owner, token) };
+  }
   if (listing.status !== "active") return fail("ECONOMY_MARKET_NOT_ACTIVE", "Лот уже куплен или снят с продажи");
   if (command.action === "cancel_listing") {
     if (listing.sellerPublicId !== owner) return fail("ECONOMY_MARKET_OWNER", "Это прилавок другого игрока", 403);
@@ -474,7 +498,7 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
     return fail("ECONOMY_MARKET_SELLER_DAILY_LIMIT", "Продавец достиг дневного объёма продаж");
   const proceeds = listing.totalPrice - marketSaleFee(listing.totalPrice, listing.feeBps ?? 0);
   if (next.wallet.coins < listing.totalPrice) return fail("ECONOMY_RESOURCES", "Не хватает монет");
-  if (seller.state.wallet.coins + proceeds > ECONOMY_MAX_BALANCE || seller.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Продавец пока не может принять оплату");
+  if (seller.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Состояние продавца требует обслуживания");
   creditEconomyItems(next, { [listing.itemId]: listing.quantity });
   assertEconomyStorageTransition(value.state, next, escrowItems(owner));
   creditFishStock(next, fishStockWithinItems(seller.state.fishing.escrow?.[listing.id] ?? { [listing.itemId]: listing.quantity }, { [listing.itemId]: listing.quantity }));
@@ -482,14 +506,16 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
   const sellerNext = structuredClone(seller.state);
   removeFishEscrow(sellerNext, listing.id);
   reconcileFishStock(sellerNext);
-  sellerNext.wallet.coins += proceeds;
   persistItemUnlocks(listing.sellerPublicId, seller.state, sellerNext);
   bump(seller); seller.state = sellerNext;
   store().turnover.set(owner, { ...buyerTurnover, buysUsed: buyerTurnover.buysUsed + valueTraded });
   store().turnover.set(listing.sellerPublicId, { ...sellerTurnover, salesUsed: sellerTurnover.salesUsed + valueTraded });
   listing.status = "sold"; listing.closedAt = new Date(now).toISOString();
+  const buyer = getDevIdentity(token)!;
+  listing.sale = { buyerPublicId: owner, buyerName: buyer.user.displayName, buyerAvatarUrl: buyer.profile.avatarUrl,
+    proceedsCoins: proceeds, claimedAt: null };
   awardDevMarketSale(listing.sellerPublicId, now);
-  return { ...commit(owner, value, next, command, "Покупка получена, монеты отправлены продавцу", now, receiptScope), listing: publicListing(listing, owner, token) };
+  return { ...commit(owner, value, next, command, "Покупка получена. Продавец сможет забрать выручку в своей лавке", now, receiptScope), listing: publicListing(listing, owner, token) };
 }
 
 /** Achievement reads must not initialize an economy, mint conversion grants or expose the private cast seed. */

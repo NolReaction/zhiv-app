@@ -148,7 +148,8 @@ test("friend storefront purchases transfer common goods in both house 2 and hous
     const result = economy.commandDevGuestWorldMarket(buyer.token, circle, buyCommand(buyer, listing), now);
     assert.equal(result.state.inventory.wood, 1);
     assert.equal(result.state.wallet.coins, 1000000 - listing.totalPrice);
-    assert.equal(read(seller).wallet.coins, sellerCoins + 28);
+    assert.equal(read(seller).wallet.coins, sellerCoins);
+    assert.equal(economy.getDevEconomyMarket(seller.token, {}, now).mine[0].sale.proceedsCoins, 28);
   }
 });
 
@@ -158,7 +159,8 @@ test("a friend buys outside the random showcase while the ordinary route still r
   const sellerCoins = read(seller).wallet.coins;
   const result = economy.commandDevGuestWorldMarket(buyer.token, circle, request, now);
   assert.equal(result.replayed, false); assert.equal(result.state.inventory.wood, 1);
-  assert.equal(result.state.wallet.coins, 1000000 - listing.totalPrice); assert.equal(read(seller).wallet.coins, sellerCoins + 28);
+  assert.equal(result.state.wallet.coins, 1000000 - listing.totalPrice); assert.equal(read(seller).wallet.coins, sellerCoins);
+  assert.equal(economy.getDevEconomyMarket(seller.token, {}, now).mine[0].sale.proceedsCoins, 28);
   assert.equal(visit(buyer, circle).market.listings.length, 0);
   assert.equal(globalThis.__zhivDevEconomyStore.showcases.has(buyer.me.user.publicId), false);
 });

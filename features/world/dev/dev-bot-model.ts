@@ -23,6 +23,8 @@ export const devBotCommandSchema = z.discriminatedUnion("action", [
   z.object({ ...base, ...botId, action: z.literal("grant_item"), itemId, quantity: z.number().int().min(1).max(1_000_000) }).strict(),
   z.object({ ...base, ...botId, action: z.literal("create_listing"), itemId, quantity: z.number().int().min(1).max(99), totalPrice: economyCommandSchema.shape.totalPrice }).strict(),
   z.object({ ...base, ...botId, action: z.literal("cancel_listing"), listingId: uuid }).strict(),
+  z.object({ ...base, ...botId, action: z.literal("buy_listing"), listingId: uuid }).strict(),
+  z.object({ ...base, ...botId, action: z.literal("claim_sale"), listingId: uuid }).strict(),
   z.object({ ...base, ...botId, action: z.literal("finish_jobs") }).strict(),
   z.object({ ...base, ...botId, action: z.literal("start_job"), kind: z.enum(["construction", "production", "exploration"]), targetId: itemId }).strict(),
   z.object({ ...base, ...botId, action: z.literal("claim_job"), jobId: uuid }).strict(),
@@ -49,6 +51,7 @@ export const devBotSchema = z.object({
 }).strict();
 export const devBotsSnapshotSchema = z.object({
   ownerPublicId: publicId, serverTime: z.string().datetime(), maxBots: z.literal(5), bots: z.array(devBotSchema).max(5),
+  ownListings: z.array(economyMarketListingSchema).max(10).default([]),
 }).strict();
 export const devBotResultSchema = z.object({ snapshot: devBotsSnapshotSchema, botId: uuid, message: z.string().max(500), replayed: z.boolean() }).strict();
 export type DevBot = z.infer<typeof devBotSchema>;

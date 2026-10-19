@@ -349,7 +349,7 @@ test("fish commerce answers require an explicit sale and keep market reservation
   assert.match(answer("resources"), /Escape или нажатие вне окна закроют его без продажи и вернут к карточке/);
   assert.match(answer("plesk"), /Цена едина внутри класса/);
   assert.match(answer("market"), /Для рыбы проверьте виды и нажмите «Выставить лот»/);
-  assert.match(answer("market"), /Монеты поступят, когда другой игрок купит ваш лот/);
+  assert.match(answer("market"), /Нажмите «Забрать монеты».*монеты поступят в кошелёк.*место прилавка освободится/);
   assert.match(answer("fish-selection"), /«Выставить лот» поместит их на рынок/);
   assert.match(answer("production"), /Таймер меняется по секундам: 4:30 или 1:02:03/);
   assert.match(answer("production"), /Одно место даёт один предмет/);

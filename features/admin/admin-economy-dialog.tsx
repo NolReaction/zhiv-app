@@ -26,7 +26,7 @@ const ledgerLabels: Record<string, string> = {
   sell: "Продажа припасов", buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы", equip_fishing_rod: "Выбор удочки",
   equip_fishing_bait: "Выбор наживки", equip_fishing_hook: "Выбор крючка", refresh_fishing_shop: "Обновление лавки Плёски",
   start_fishing: "Начало рыбалки", market_create: "Выставление на рынок",
-  market_buy: "Покупка на рынке", market_sell: "Продажа на рынке", market_cancel: "Возврат с рынка",
+  market_buy: "Покупка на рынке", market_sell: "Продажа на рынке", market_sold: "Партия продана", market_claim: "Сбор выручки", market_cancel: "Возврат с рынка",
   daily_reward: "Подарок за вход", achievement_reward: "Жемчуг за достижение",
   barter_create: "Предложение обмена", barter_accept: "Получение по обмену",
   barter_exchange: "Завершение своего обмена", barter_cancel: "Возврат реликвии",

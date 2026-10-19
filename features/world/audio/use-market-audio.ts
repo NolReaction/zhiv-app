@@ -19,13 +19,6 @@ export function useMarketAudio({ active, suspended = false, ownerPublicId, now, 
   const night = !readOnly && timeOfDay !== "auto" ? timeOfDay === "night" : habitatLighting(now, timeZone).dusk;
   const sceneId = `zhiv:mochlik:presence:${ownerPublicId}:${TILED_WORLD.id}`;
   useEffect(() => {
-    const preparation = new AbortController();
-    // Warm the compact signature before opening. Muted preparation does not
-    // unlock playback; late decoding still cannot outlive the counter lease.
-    if (!document.hidden) void getAudioRuntime().prepare(["ui.market-open"], { signal: preparation.signal }).catch(() => {});
-    return () => preparation.abort();
-  }, [ownerPublicId]);
-  useEffect(() => {
     const current = createMarketAudioController(getAudioRuntime(), ownerId);
     controller.current = current;
     return () => { current.dispose(); if (controller.current === current) controller.current = null; };

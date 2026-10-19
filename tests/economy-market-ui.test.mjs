@@ -24,11 +24,16 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
       export function useEffect(callback) { effects.push(callback); }
       export function useId() { return 'market-' + cursor++; }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/ui/economy-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace("function OfferCard(", "export function OfferCard(").replace("function Market(", "export function Market(").replace("function ListingForm(", "export function ListingForm(").replace("function ListingPriceForm(", "export function ListingPriceForm(").replace("function SellForm(", "export function SellForm("); },
+    transform(source, id) {
+      if (id.endsWith("/features/economy/ui/economy-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace("function SellForm(", "export function SellForm(");
+      if (id.endsWith("/features/economy/ui/market/player-market.tsx") || id.endsWith("/features/economy/ui/market/market-sale-card.tsx")) return source.replace('from "react";', `from "${hookModule}";`);
+    },
   }],
 });
 after(async () => { await vite.close(); await rm(cacheDir, { recursive: true, force: true }); });
-const { OfferCard, Market, ListingForm, ListingPriceForm, SellForm } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+const { OfferCard, Market, ListingForm, ListingPriceForm } = await vite.ssrLoadModule("/features/economy/ui/market/player-market.tsx");
+const { SellForm } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+const { MarketSaleCard, MarketBuyerAvatar } = await vite.ssrLoadModule("/features/economy/ui/market/market-sale-card.tsx");
 const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { marketMinimumPrice } = await vite.ssrLoadModule("/features/economy/domain/market-rules.ts");
 const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
@@ -39,7 +44,7 @@ const now = Date.parse("2026-10-05T14:00:00Z");
 function economy() {
   return { snapshot: { ownerPublicId: "ME", revision: 1, wallet: { coins: 10000, pearls: 0 }, inventory: { wood: 20 }, unlockedItems: ["wood"], buildings: { home: 5, warehouse: 5, bridge: 1 }, completedExplorations: 1,
     catalog: structuredClone(economyCatalog), storage: { capacity: 3000, used: 20, reserved: 12, available: 2968, overflow: 0 } },
-    market: { listings: [offer("a"), offer("b")], mine: [offer("mine-a"), offer("mine-b")], showcase: { refreshAt: new Date(now + 1000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 1800 } },
+    market: { ownerPublicId: "ME", listings: [offer("a"), offer("b")], mine: [offer("mine-a"), offer("mine-b")], showcase: { refreshAt: new Date(now + 1000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 1800 } },
     busy: false, uncertain: false, now, retryAt: 0, refreshMarket() {}, actMarket() { assert.fail("navigation must not trade"); },
   };
 }
@@ -68,7 +73,7 @@ test("buy and own offers share the compact merchandise list without a second mar
   let list = view.nodes.find(node => node.props["aria-label"] === "Предложения игроков");
   assert.equal(list.props.role, "list"); assert.equal(list.props.children.length, 2);
   const browseGrid = list.props.className;
-  view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes("Мои лоты")).props.onClick();
+  view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes("Моя лавка")).props.onClick();
   view = h.render(); list = view.nodes.find(node => node.props["aria-label"] === "Ваши предложения");
   assert.equal(list.props.className, browseGrid); assert.equal(list.props.children.length, 2);
   assert.ok(list.props.children.every(node => node.props.owned));
@@ -493,7 +498,7 @@ test("limits and reset countdown are available in collapsed market rules", () =>
   const view = harness(Market, { economy: e, navigate() {} }).render();
   const rules = view.nodes.find(node => node.type === "details" && renderToStaticMarkup(node).includes("Правила торговли"));
   assert.equal(rules.props.open, undefined);
-  assert.match(renderToStaticMarkup(rules), /домами 2–3 и 4–5/);
+  assert.match(renderToStaticMarkup(rules), /домов 2–5/);
   assert.match(renderToStaticMarkup(rules), /Покупки: 900/);
   assert.match(renderToStaticMarkup(rules), /Обновление через 1 ч/);
 });
@@ -525,7 +530,7 @@ test("a restored bridge opens trade at home two without an exploration and close
 });
 
 
-test("closed market distinguishes bridge work from unclaimed completion and never requests a trade showcase", () => {
+test("closed market distinguishes bridge work and still reads previous lots to recover uncollected sales", () => {
   for (const phase of ["ruins", "building", "ready"]) {
     const e = economy(), destinations = [], refreshes = [];
     e.snapshot.buildings.home = 2; e.snapshot.buildings.bridge = 0;
@@ -536,7 +541,7 @@ test("closed market distinguishes bridge work from unclaimed completion and neve
     const view = h.render();
     assert.match(view.html, /Рынок закрыт/);
     assert.doesNotMatch(view.html, /data-guide-market-tab|Выставить товар|Открываем прилавки|data-market-offer/);
-    assert.deepEqual(refreshes, []);
+    assert.deepEqual(refreshes, [true]);
     const action = view.nodes.find(node => node.type === "button");
     assert.match(renderToStaticMarkup(action), new RegExp(phase === "ruins" ? "Восстановить мост" : phase === "building" ? "К стройке моста" : "Получить мост"));
     action.props.onClick();
@@ -551,4 +556,135 @@ test("an initially hidden or offline market waits for availability before its fi
     harness(Market, { economy: e, navigate() {} }, availability).render();
     assert.deepEqual(reads, []);
   }
+});
+
+function sold(id = "sold-1", overrides = {}) {
+  return { ...offer(id), sellerPublicId: "ME", owned: true, status: "sold", sale: {
+    buyerPublicId: "NATASHA", buyerName: "Natasha <3", buyerAvatarUrl: null, proceedsCoins: 285, claimedAt: null,
+  }, ...overrides };
+}
+
+test("my storefront joins active goods and buyer receipts and keeps the new batch composer collapsed", () => {
+  const e = economy(), destinations = [], h = harness(Market, { economy: e, navigate: (...args) => destinations.push(args) });
+  e.market.mine.push(sold());
+  let view = h.render();
+  const sections = view.nodes.filter(node => node.type === "nav").flatMap(node => node.props.children);
+  assert.equal(sections.length, 3);
+  assert.match(renderToStaticMarkup(sections[1]), /Моя лавка/);
+  assert.match(renderToStaticMarkup(sections[1]), /Продажи к сбору: 1/);
+  assert.match(renderToStaticMarkup(sections[2]), /Обмен/);
+  sections[2].props.onClick(); assert.deepEqual(destinations, [["barter"]]);
+  sections[1].props.onClick(); view = h.render();
+  const list = view.nodes.find(node => node.props["aria-label"] === "Ваши предложения");
+  assert.equal(list.props.children.length, 3);
+  assert.equal(list.props.children[0].type, MarketSaleCard, "the ready sale appears before still-active lots");
+  assert.equal(view.nodes.some(node => node.props["aria-label"] === "Новая партия для продажи"), false);
+  view.nodes.find(node => node.props["data-guide-market-compose"] !== undefined).props.onClick();
+  view = h.render();
+  assert.ok(view.nodes.find(node => node.props["aria-label"] === "Новая партия для продажи"));
+  view.nodes.find(node => node.props["aria-label"] === "Свернуть новую партию").props.onClick();
+  assert.equal(h.render().nodes.some(node => node.props["aria-label"] === "Новая партия для продажи"), false);
+});
+
+test("sold receipts show the real buyer and exact net income without exposing public IDs", () => {
+  const e = economy(), lot = sold(); e.market.mine = [lot];
+  const view = harness(MarketSaleCard, { economy: e, offer: lot }).render();
+  assert.match(view.html, /Покупатель/);
+  assert.match(view.html, /Natasha &lt;3/);
+  assert.match(view.html, /285/);
+  assert.match(view.html, /Забрать монеты/);
+  assert.match(view.html, /Бревно × 6/);
+  assert.doesNotMatch(view.html, /NATASHA|После продажи|Продавец:/);
+  assert.deepEqual(e.snapshot.wallet, { coins: 10000, pearls: 0 });
+});
+
+test("collecting sends the exact receipt once and waits for the authoritative wallet", () => {
+  const e = economy(), lot = sold(), calls = []; e.market.mine = [lot];
+  e.actMarket = (...args) => { calls.push(args); return true; };
+  const before = structuredClone(e.snapshot), h = harness(MarketSaleCard, { economy: e, offer: lot });
+  let button = h.render().nodes.find(node => node.type === "button");
+  assert.equal(button.props.disabled, false);
+  button.props.onClick(); button.props.onClick();
+  h.render().nodes.find(node => node.type === "button").props.onClick();
+  assert.deepEqual(calls, [["claim_sale", lot.id, 1, 0]]);
+  assert.deepEqual(e.snapshot, before);
+});
+
+test("a captured sale claim refuses another owner, revision, gone receipt, changed amount and pending actions", () => {
+  for (const invalidate of [
+    e => { e.snapshot.ownerPublicId = "OTHER"; }, e => { e.snapshot.revision++; },
+    e => { e.market.mine = []; }, e => { e.market.mine[0].sale.proceedsCoins++; },
+    e => { e.market.mine[0].sale.claimedAt = new Date(now).toISOString(); },
+    e => { e.market.ownerPublicId = "OTHER"; }, e => { e.market.mine[0].owned = false; }, e => { e.market.mine[0].status = "active"; },
+    e => { e.busy = true; }, e => { e.uncertain = true; }, e => { e.retryAt = now + 100; },
+  ]) {
+    const e = economy(), lot = sold(), calls = []; e.market.mine = [lot]; e.actMarket = (...args) => calls.push(args);
+    const h = harness(MarketSaleCard, { economy: e, offer: lot });
+    const callback = h.render().nodes.find(node => node.type === "button").props.onClick;
+    invalidate(e); h.render(); callback();
+    assert.deepEqual(calls, []);
+  }
+});
+
+test("uncollected sales survive a closed bridge and occupy their market places until collected", () => {
+  const e = economy(); e.market.mine = Array.from({ length: 5 }, (_, i) => sold(`sold-${i}`));
+  const h = harness(Market, { economy: e, navigate() {} });
+  h.render().nodes.find(node => node.props["data-guide-market-tab"] === "mine").props.onClick();
+  let view = h.render();
+  assert.equal(view.nodes.find(node => node.props["data-guide-market-compose"] !== undefined).props.disabled, true);
+  assert.match(view.html, /Заберите монеты за проданное, чтобы выставить новую партию/);
+  const item = e.snapshot.catalog.items.find(item => item.id === "wood");
+  assert.equal(harness(ListingPriceForm, { economy: e, item }).render().nodes.find(node => node.type === "button").props.disabled, true);
+  e.snapshot.buildings.bridge = 0;
+  view = harness(Market, { economy: e, navigate() {} }).render();
+  assert.match(view.html, /Ваши продажи сохранены/);
+  const own = view.nodes.find(node => node.props["aria-label"] === "Ваши предложения");
+  assert.equal(own.props.children.length, 5);
+  assert.equal(harness(MarketSaleCard, own.props.children[0].props).render().nodes.find(node => node.type === "button").props.disabled, false);
+});
+
+test("a declined local claim may be pressed again while an uncertain request must use session retry", () => {
+  const e = economy(), lot = sold(), calls = []; e.market.mine = [lot];
+  e.actMarket = (...args) => { calls.push(args); return false; };
+  const h = harness(MarketSaleCard, { economy: e, offer: lot });
+  const callback = h.render().nodes.find(node => node.type === "button").props.onClick;
+  callback(); callback(); assert.equal(calls.length, 2);
+  e.uncertain = true;
+  const locked = h.render().nodes.find(node => node.type === "button");
+  assert.equal(locked.props.disabled, true); callback(); locked.props.onClick(); assert.equal(calls.length, 2);
+});
+
+test("sale collection protects a full wallet without hiding the earned receipt", () => {
+  const e = economy(), lot = sold(), calls = []; e.market.mine = [lot]; e.actMarket = (...args) => calls.push(args);
+  e.snapshot.wallet.coins = ECONOMY_MAX_BALANCE - 284;
+  const h = harness(MarketSaleCard, { economy: e, offer: lot });
+  let view = h.render(), button = view.nodes.find(node => node.type === "button");
+  assert.equal(button.props.disabled, true); assert.match(view.html, /Продажа сохранена/); button.props.onClick(); assert.deepEqual(calls, []);
+  e.snapshot.wallet.coins--;
+  button = h.render().nodes.find(node => node.type === "button"); assert.equal(button.props.disabled, false); button.props.onClick();
+  assert.deepEqual(calls, [["claim_sale", lot.id, 1, 0]]);
+});
+
+test("buyer avatars use a no-referrer real image or initials and recover from image failure", () => {
+  const h = harness(MarketBuyerAvatar, { name: "Natasha Лесная", url: "https://avatar.example/natasha.png" });
+  let view = h.render();
+  const image = view.nodes.find(node => node.type === "img");
+  assert.equal(image.props.src, "https://avatar.example/natasha.png");
+  assert.equal(image.props.referrerPolicy, "no-referrer");
+  assert.equal(image.props.alt, ""); image.props.onError();
+  view = h.render(); assert.equal(view.nodes.some(node => node.type === "img"), false); assert.match(view.html, /NЛ/);
+  for (const url of [null, "javascript:alert(1)", "http://avatar.example/a.png", "//avatar.example/a.png", "/\\avatar.example/a.png", "https://secret@avatar.example/a.png"]) {
+    view = harness(MarketBuyerAvatar, { name: "Дмитрий", url }).render();
+    assert.equal(view.nodes.some(node => node.type === "img"), false); assert.match(view.html, /Д/);
+  }
+});
+
+
+test("a sale transferred by account merge belongs to the current market owner even with its historical seller ID", () => {
+  const e = economy(), lot = sold("old-account-sale", { sellerPublicId: "HISTORICAL_ACCOUNT" }), calls = [];
+  e.market.mine = [lot]; e.actMarket = (...args) => { calls.push(args); return true; };
+  const view = harness(MarketSaleCard, { economy: e, offer: lot }).render();
+  const button = view.nodes.find(node => node.type === "button");
+  assert.equal(button.props.disabled, false); button.props.onClick();
+  assert.deepEqual(calls, [["claim_sale", lot.id, 1, 0]]);
 });

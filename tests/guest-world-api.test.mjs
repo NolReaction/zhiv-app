@@ -32,6 +32,7 @@ test("private state and unbound listings are rejected at the guest boundary", ()
     value => { value.world.equipment.seed = "private"; },
     value => { value.market.listings[0].sellerPublicId = owner; },
     value => { value.market.listings[0].owned = true; },
+    value => { value.market.listings[0].sale = { buyerPublicId: owner, buyerName: "Чужой покупатель", buyerAvatarUrl: null, proceedsCoins: 10, claimedAt: null }; },
     value => { value.market.listings[0].status = "sold"; },
     value => { value.market.listings.push(value.market.listings[0]); },
     value => { value.market.reason = "buyer_locked"; },

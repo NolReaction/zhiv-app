@@ -109,6 +109,9 @@ test("fee is charged once, rounded upward, and does not disappear through lot sp
   assert.equal(lot.feeBps, 500); shelf(buyer);
   const before = read(seller).wallet.coins + read(buyer).wallet.coins;
   buy(buyer, lot);
+  assert.equal(read(seller).wallet.coins, 1000000);
+  assert.equal(shelf(seller).mine[0].sale.proceedsCoins, 28);
+  trade(seller, "claim_sale", lot.id);
   assert.equal(read(seller).wallet.coins, 1000028);
   assert.equal(read(seller).wallet.coins + read(buyer).wallet.coins, before - 2);
   for (let quantity = 1; quantity <= 99; quantity++)
@@ -120,7 +123,7 @@ test("legacy zero-fee quotes survive, over-ceiling quotes are kept refundable bu
   const saved = globalThis.__zhivDevEconomyStore.listings;
   saved.get(fair.id).feeBps = 0; saved.get(overpriced.id).totalPrice = 150;
   assert.deepEqual(shelf(buyer).listings.map(item => item.id), [fair.id]);
-  buy(buyer, fair); assert.equal(read(seller).wallet.coins, 1000030);
+  buy(buyer, fair); trade(seller, "claim_sale", fair.id); assert.equal(read(seller).wallet.coins, 1000030);
   globalThis.__zhivDevEconomyStore.showcases.get(buyer.me.user.publicId).ids = [overpriced.id];
   assert.throws(() => buy(buyer, { ...overpriced, totalPrice: 150 }), { code: "ECONOMY_MARKET_ITEM_LOCKED" });
   assert.equal(shelf(seller).mine[0].totalPrice, 150);

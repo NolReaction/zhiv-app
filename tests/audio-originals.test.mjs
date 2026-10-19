@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 112);
+  assert.equal(manifest.assets.length, 111);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -156,18 +156,6 @@ test("ambient bank leaves mobile buffer headroom and music has a Safari fallback
     assert.match(item.files[0].src, /\.opus$/);
     assert.match(item.files[1].src, /\.m4a$/);
   }
-});
-
-test("the market entrance has one compact soft coin signature without a permanent ambience loop", () => {
-  const cue = catalog.cues.find(item => item.id === "ui.market-open");
-  const record = manifest.assets.find(item => item.id === "ui.market-open.01");
-  assert.equal(cue.bus, "ui"); assert.equal(cue.mode, "one-shot"); assert.equal(cue.maxInstances, 1);
-  assert.ok(cue.cooldownMs >= 2000 && cue.gainDb <= -4 && cue.pitchVariation === 0);
-  assert.deepEqual(cue.assets, [record.id]);
-  assert.equal(record.channels, 1); assert.ok(record.durationSeconds >= .7 && record.durationSeconds <= .9);
-  assert.ok(record.files[0].bytes < 90000, "short mobile-friendly WAV, with no additional compressed codec dependency");
-  assert.ok(record.measurements.rmsDb <= -28 && record.measurements.peakDb <= -12);
-  assert.match(record.description, /cloth purse.*coin contacts/i);
 });
 
 test("wildlife phrases are sparse and individual peaks remain quieter than the previous dense loops", () => {

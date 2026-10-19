@@ -3,7 +3,7 @@ import { devBotCommandSchema, devBotsSnapshotSchema, type DevBotCommand, type De
 import type { EconomyCommand } from "@/features/economy/domain/model";
 import type { EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { createDevOwnedBot, deleteDevOwnedBot, getDevIdentity, getDevOwnedBots, listDevPeople, renameDevOwnedBot, updateDevSharing } from "./api-store";
-import { commandDevEconomy, commandDevEconomyCheat, commandDevEconomyMarket, DevEconomyError, getDevEconomy, getDevGuestWorldEconomy, removeDevEconomyOwner } from "./economy-store";
+import { commandDevEconomy, commandDevEconomyCheat, commandDevEconomyMarket, commandDevGuestWorldMarket, DevEconomyError, getDevEconomy, getDevEconomyMarket, removeDevEconomyOwner } from "./economy-store";
 import { commandDevWorld, getDevGuestWorldAppearance, getDevWorld, removeDevWorldOwner, syncDevWorldWardrobe } from "./world-store";
 
 type Receipt = { signature: string; botId: string; message: string };
@@ -24,13 +24,13 @@ export function getDevBots(token: string | undefined, now = Date.now(), expected
     const identity = getDevIdentity(bot.token)!;
     const state = getDevEconomy(bot.token, now);
     const appearance = getDevGuestWorldAppearance(bot.publicId);
-    const projection = getDevGuestWorldEconomy(owner, bot.publicId, identity.user.displayName, appearance);
     return { id: bot.id, publicId: bot.publicId, displayName: identity.user.displayName, circleId: bot.circleId,
       sharingMode: getBotSharing(bot.token, bot.circleId), createdAt: bot.createdAt,
       economy: { revision: state.revision, buildings: state.buildings, wallet: state.wallet, inventory: state.inventory, jobs: state.jobs, storage: state.storage },
-      equipment: appearance.equipment, listings: projection.market.listings.map(listing => ({ ...listing, owned: true })) };
+      equipment: appearance.equipment, listings: getDevEconomyMarket(bot.token, {}, now).mine };
   });
-  return devBotsSnapshotSchema.parse({ ownerPublicId: owner, serverTime: new Date(now).toISOString(), maxBots: 5, bots });
+  return devBotsSnapshotSchema.parse({ ownerPublicId: owner, serverTime: new Date(now).toISOString(), maxBots: 5, bots,
+    ownListings: getDevEconomyMarket(token, {}, now).mine.filter(listing => listing.status === "active") });
 }
 
 // Read the accepted relationship from its normal projection, including effective sharing.
@@ -102,6 +102,15 @@ export function commandDevBots(token: string | undefined, input: DevBotCommand, 
           quantity: command.quantity, totalPrice: command.totalPrice }, now).message; break;
       case "cancel_listing":
         message = commandDevEconomyMarket(bot.token, { ...base(), action: "cancel_listing", targetId: command.listingId }, now).message; break;
+      case "claim_sale":
+        message = commandDevEconomyMarket(bot.token, { ...base(), action: "claim_sale", targetId: command.listingId }, now).message; break;
+      case "buy_listing": {
+        const listing = getDevEconomyMarket(token, {}, now).mine.find(listing => listing.id === command.listingId && listing.status === "active" && listing.sellerPublicId === owner);
+        if (!listing) return fail("DEV_BOT_LISTING_UNAVAILABLE", "Выберите свой активный лот", 404);
+        message = commandDevGuestWorldMarket(bot.token, bot.circleId, { ...base(), action: "buy_listing", targetId: listing.id,
+          quantity: listing.quantity, totalPrice: listing.totalPrice }, now).message;
+        break;
+      }
       case "finish_jobs": message = cheat("finish_jobs", "all"); break;
       case "start_job": message = regular(command.kind === "construction" ? "start_construction" : command.kind === "production" ? "start_production" : "start_exploration", command.targetId); break;
       case "claim_job": {
