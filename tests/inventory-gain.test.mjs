@@ -10,6 +10,10 @@ after(() => vite.close());
 const { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT } = await vite.ssrLoadModule("/features/economy/domain/inventory-gain.ts");
 const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const legacyTraderCatalog = structuredClone(economyCatalog);
+legacyTraderCatalog.version = 11;
+delete legacyTraderCatalog.leaftailShop.supplyOffers;
+delete legacyTraderCatalog.leaftailShop.pearlOffers;
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002";
 const job = (kind = "exploration", rewards = { fish: 3, stone: 2 }) => ({ id: crypto.randomUUID(), kind,
   targetId: kind === "production" ? "garden" : "shore", recipeId: null, targetLevel: null,
@@ -27,9 +31,9 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const storage = () => { const values = new Map(); return { getItem: key => values.get(key) ?? null,
   setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }; };
 
-test("travel bait reports only its accepted bundle and permanent purchases do not masquerade as pantry gains", () => {
-  const before = { ...state(), leaftailShop: { cycle: 100, purchased: {} } };
-  const after = { ...state(1, [], { spice_bait: 5 }), leaftailShop: { cycle: 100, purchased: { spice_bait: 1 } } };
+test("legacy v11 travel bait reports only its accepted bundle and permanent purchases do not masquerade as pantry gains", () => {
+  const before = { ...state(), catalog: legacyTraderCatalog, leaftailShop: { cycle: 100, purchased: {} } };
+  const after = { ...state(1, [], { spice_bait: 5 }), catalog: legacyTraderCatalog, leaftailShop: { cycle: 100, purchased: { spice_bait: 1 } } };
   const event = inventoryGainFromReceipt(before, result(after), command("buy_leaftail_item", "100:spice_bait"));
   assert.deepEqual(event.items, [{ itemId: "spice_bait", quantity: 5 }]);
   for (const item of ["trail_hat", "traveller_rod", "braided_hook"]) {

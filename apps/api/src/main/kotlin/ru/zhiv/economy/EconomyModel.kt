@@ -68,20 +68,35 @@ internal val economyBerryItemIds = setOf("berries", "strawberries", "blueberries
 @Serializable data class EconomyFishingOffer(val id: String, val kind: String, val itemId: String, val unitPrice: Long, val remaining: Long)
 @Serializable data class EconomyFishingShop(val id: String, val openedAt: String, val refreshAt: String, val refreshPricePearls: Long, val offers: List<EconomyFishingOffer>)
 @Serializable data class EconomyLeaftailShopState(val cycle: Long = -1, val purchased: Map<String, Int> = emptyMap()) {
-    init { require(cycle in -1L..ECONOMY_MAX_REVISION && purchased.all { (id, amount) -> id.length in 1..80 && amount in 0..1 }) }
+    init { require(cycle in -1L..ECONOMY_MAX_REVISION && purchased.all { (id, amount) -> id.length in 1..80 && amount in 0..100 }) }
 }
 @Serializable data class EconomyLeaftailOffer(val id: String, val itemId: String, val priceCoins: Long, val stock: Int = 1, val quantity: Long = 1,
     val kind: String = "item", val requiredHomeLevel: Int = 1) {
     init { require(kind in setOf("item", "wardrobe", "rod", "hook", "bait") && requiredHomeLevel in 1..5) }
     init { require(id.length in 1..60 && itemId.length in 1..80 && priceCoins in 1L..ECONOMY_MAX_BALANCE && stock == 1 && quantity in 1L..100L) }
 }
+@Serializable data class EconomyLeaftailSupplyOffer(val id: String, val itemId: String, val unitPriceCoins: Long,
+    val stock: Int, val requiredHomeLevel: Int = 1) {
+    init { require(id.length in 1..60 && itemId.length in 1..80 && unitPriceCoins in 1L..ECONOMY_MAX_BALANCE && stock in 1..100 && requiredHomeLevel in 1..5) }
+}
+@Serializable data class EconomyLeaftailPearlOffer(val id: String, val itemId: String, val pricePearls: Long,
+    val stock: Int = 1, val requiredHomeLevel: Int = 1) {
+    init { require(id.length in 1..60 && itemId.length in 1..80 && pricePearls in 1L..ECONOMY_MAX_BALANCE && stock == 1 && requiredHomeLevel in 1..5) }
+}
 @Serializable data class EconomyLeaftailShopConfig(val requiredHomeLevel: Int, val refreshSeconds: Long, val offers: List<EconomyLeaftailOffer>,
-    val travelOffers: List<EconomyLeaftailOffer> = emptyList()) {
+    val travelOffers: List<EconomyLeaftailOffer> = emptyList(),
+    val supplyOffers: List<EconomyLeaftailSupplyOffer> = emptyList(), val pearlOffers: List<EconomyLeaftailPearlOffer> = emptyList()) {
     init {
         require(requiredHomeLevel in 1..5 && refreshSeconds == 86400L && offers.size in 1..12 && offers.all { it.kind == "item" })
         val combined = offers + travelOffers
         require(combined.size <= 32 && combined.map { it.id }.distinct().size == combined.size &&
             combined.map { "${it.kind}:${it.itemId}" }.distinct().size == combined.size)
+        val allIds = combined.map { it.id } + supplyOffers.map { it.id } + pearlOffers.map { it.id }
+        require(supplyOffers.size <= 32 && pearlOffers.size <= 12 && allIds.size <= 64 && allIds.distinct().size == allIds.size)
+        require((supplyOffers.map { it.itemId } + pearlOffers.map { it.itemId }).distinct().size == supplyOffers.size + pearlOffers.size)
+        val effective = (if (supplyOffers.isNotEmpty()) supplyOffers.map { "item:${it.itemId}" } else offers.map { "${it.kind}:${it.itemId}" }) +
+            travelOffers.map { "${it.kind}:${it.itemId}" } + pearlOffers.map { "item:${it.itemId}" }
+        require(effective.size <= 48 && effective.distinct().size == effective.size)
     }
 }
 internal val fishingShopRarities = listOf("common", "uncommon", "rare", "epic", "legendary")

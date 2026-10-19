@@ -101,7 +101,7 @@ jobs:
         run: npm run test:engine
 
   market-sales:
-    name: Market sales and PostgreSQL claims
+    name: Markets, trader and collections
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -120,20 +120,26 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run market sale claims and command validation
+      - name: Run market, trader and collection regressions
         working-directory: apps/api
         run: |
           ./gradlew --no-daemon test \
             --tests ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest \
-            --tests ru.zhiv.economy.EconomyMarketRulesTest
+            --tests ru.zhiv.economy.EconomyMarketRulesTest \
+            --tests ru.zhiv.db.JdbcLeaftailV12IntegrationTest \
+            --tests ru.zhiv.db.JdbcCollectionV12IntegrationTest \
+            --tests ru.zhiv.economy.EconomyLeaftailShopTest \
+            --tests ru.zhiv.economy.EconomyLeaftailAssortmentTest \
+            --tests ru.zhiv.economy.EconomyBookProgressionTest \
+            --tests ru.zhiv.economy.EconomyFourthStageTest
 
-      - name: Require real PostgreSQL claims and passing market rules
+      - name: Require PostgreSQL and all focused suites
         if: always()
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.economy.EconomyMarketRulesTest'):
+          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest'):
               path = Path('apps/api/build/test-results/test') / f'TEST-{name}.xml'
               report = ET.parse(path).getroot()
               count = int(report.get('tests', '0'))
@@ -153,6 +159,12 @@ jobs:
           path: |
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyMarketRulesTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcLeaftailV12IntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcCollectionV12IntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailShopTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailAssortmentTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyBookProgressionTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyFourthStageTest.xml
           retention-days: 7
           if-no-files-found: error
 

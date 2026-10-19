@@ -39,3 +39,11 @@
 .loading { border: 1px dashed #acb58f; border-radius: 12px; padding: 18px; font-size: .85rem; line-height: 1.5; }
 @media (min-width: 560px) { .packages[data-gold="true"] { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 359px) { .intro { padding-left: 2px; padding-right: 2px; gap: 9px; }.seal { width: 42px; height: 48px; }.intro h2 { font-size: 1.12rem; }.packages { gap: 7px; }.package { padding-left: 5px; padding-right: 5px; }.amount { font-size: 1.14rem; }.bonus { font-size: .64rem; } }
+
+.benchmarks { border: 1px solid #c3bca0; border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; background: #f1ead3; }
+.benchmarks h4 { margin: 0 0 6px; color: #556044; font-size: .77rem; }
+.benchmarks ul { list-style: none; padding: 0; margin: 0; }
+.benchmarks li { display: flex; align-items: center; gap: 7px; min-height: 33px; font-size: .72rem; }
+.benchmarks li > svg { flex-shrink: 0; }
+.benchmarks li > span { flex: 1; min-width: 0; }
+.benchmarks strong { display: flex; align-items: center; gap: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }

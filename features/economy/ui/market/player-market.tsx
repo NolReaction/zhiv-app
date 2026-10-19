@@ -160,7 +160,7 @@ export function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; ite
 
 /** One storefront owns active lots, pending sales and a compact new-batch composer. */
 export function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Navigate }) {
-  const [section, setSection] = useState<"browse" | "mine">("browse");
+  const [section, setSection] = useState<"browse" | "mine">("mine");
   const [composing, setComposing] = useState(false);
   const composer = useRef<HTMLHeadingElement>(null), composeTrigger = useRef<HTMLButtonElement>(null), wasComposing = useRef(false);
   useEffect(() => {

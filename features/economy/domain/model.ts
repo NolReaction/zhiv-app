@@ -32,7 +32,7 @@ export const economyFishingShopSchema = z.object({
 });
 export type EconomyFishingShop = z.infer<typeof economyFishingShopSchema>;
 export const economyLeaftailShopSchema = z.object({
-  cycle: z.number().int().min(-1).safe().default(-1), purchased: z.record(id, count.max(1)).default({}),
+  cycle: z.number().int().min(-1).safe().default(-1), purchased: z.record(id, count.max(100)).default({}),
 }).default({ cycle: -1, purchased: {} });
 export type EconomyLeaftailShop = z.infer<typeof economyLeaftailShopSchema>;
 const rarityWeights = z.object({ common: count.positive().max(1000), uncommon: count.positive().max(1000),
@@ -132,6 +132,10 @@ export const economyFoodCatalogSchema = z.object({
 });
 const economyLeaftailOfferSchema = z.object({ id: id.max(60), itemId: id, priceCoins: balance.positive(), stock: z.literal(1), quantity: count.min(1).max(100).default(1),
   kind: z.enum(["item", "wardrobe", "rod", "hook", "bait"]).default("item"), requiredHomeLevel: count.min(1).max(5).default(1) });
+const economyLeaftailSupplySchema = z.object({ id: id.max(60), itemId: id, unitPriceCoins: balance.positive(),
+  stock: count.positive().max(100), requiredHomeLevel: count.min(1).max(5).default(1) });
+const economyLeaftailPearlSchema = z.object({ id: id.max(60), itemId: id, pricePearls: count.positive().max(ECONOMY_MAX_BALANCE),
+  stock: z.literal(1).default(1), requiredHomeLevel: count.min(1).max(5).default(1) });
 export const economyCatalogSchema = z.object({
   stageOrders: z.array(z.object({ homeLevel: count.min(1).max(4), orders: z.array(economyResidentOrderTermsSchema).min(1).max(100),
     intervalSeconds: count.max(31_536_000).default(0), completionRewards: quantities.default({}) }))
@@ -148,12 +152,14 @@ export const economyCatalogSchema = z.object({
   leaftailShop: z.object({ requiredHomeLevel: count.min(1).max(5), refreshSeconds: z.literal(86400),
     offers: z.array(economyLeaftailOfferSchema).min(1).max(12),
     travelOffers: z.array(economyLeaftailOfferSchema).max(32).default([]),
+    supplyOffers: z.array(economyLeaftailSupplySchema).max(32).optional(),
+    pearlOffers: z.array(economyLeaftailPearlSchema).max(12).optional(),
   }).optional(),
   rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
   food: economyFoodCatalogSchema.nullish(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000), unitPrices: z.record(id, balance.positive()).optional() }).optional(),
-  version: z.union([z.literal(10), z.literal(11)]), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
+  version: z.union([z.literal(10), z.literal(11), z.literal(12)]), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2),
     pricingPoints: z.array(z.object({ seconds: count.positive(), pearls: count.positive().max(ECONOMY_MAX_PEARLS) })).max(32).default([])
       .refine(points => points.length === 0 || points.length >= 2, "A pricing curve requires at least two points")
@@ -202,6 +208,23 @@ export const economyCatalogSchema = z.object({
       return !gear || offer.priceCoins !== gear.price * offer.quantity
         || offer.kind !== "bait" && offer.quantity !== 1;
     })) invalid("Leaftail offers require valid exclusive clothing, tackle or non-profitable material bundles");
+  const leaf = catalog.leaftailShop;
+  if (leaf) {
+    const supplies = leaf.supplyOffers ?? [], pearls = leaf.pearlOffers ?? [];
+    const all = [...leafOffers, ...supplies, ...pearls];
+    const effective = [...(supplies.length ? supplies : leaf.offers), ...leaf.travelOffers, ...pearls];
+    const v2 = supplies.length > 0 || pearls.length > 0;
+    if (all.length > 64 || new Set(all.map(offer => offer.id)).size !== all.length
+      || effective.length > 48 || new Set(effective.map(offer => `${"kind" in offer ? offer.kind : "item"}:${offer.itemId}`)).size !== effective.length
+      || supplies.some(offer => !catalog.items.some(item => item.id === offer.itemId && item.tradable
+        && ["material", "crafted", "provisions", "produce"].includes(item.category)
+        && offer.unitPriceCoins >= 2 * item.baseSellPrice))
+      || pearls.some(offer => !catalog.items.some(item => item.id === offer.itemId && item.category === "special" && !item.tradable))
+      || v2 && [...(supplies.length ? [] : leaf.offers), ...leaf.travelOffers].some(offer =>
+        offer.priceCoins % offer.quantity !== 0 || offer.quantity * offer.stock > 100
+        || offer.kind === "item" && catalog.items.some(item => item.id === offer.itemId && item.category === "special")))
+      invalid("Leaftail daily stock requires distinct safe supplies and pearl relics");
+  }
   if (catalog.fishing) {
     const fishing = catalog.fishing;
     if (fishing.classes.some(group => !itemIds.has(group.itemId) || fishIds.has(group.itemId)
@@ -277,7 +300,7 @@ export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGra
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
-  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11)]),
+  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12)]),
   actorId: z.enum(["mochlik", "miner"]).nullish(),
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.default("bare_hook"), baitId: id.nullable(), fishId: id,

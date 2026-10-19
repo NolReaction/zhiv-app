@@ -1,4 +1,6 @@
 import type { EconomyCatalog, EconomyView } from "./model";
+import { ECONOMY_PEARL_SCALE } from "./money";
+import { durationPearlPrice } from "./time-price";
 
 /** Preview terms only. A future purchase must receive a fresh server-authoritative quote. */
 export const PEARL_SHOP_PACKAGES = [
@@ -52,4 +54,18 @@ export function currencyShopGoldOffers(state: Development) {
     const bonusCoins = Math.floor(baseCoins * development.bonusPercent / 100);
     return { ...pack, baseCoins, bonusCoins, coins: baseCoins + bonusCoins };
   });
+}
+
+
+/** Current spending examples, not grants or a quote for a future cash purchase. */
+export function currencyShopPearlBenchmarks(catalog: EconomyCatalog) {
+  const examples: { id: string; label: string; itemId: string; pearls: number }[] = [];
+  const relic = catalog.leaftailShop?.pearlOffers?.[0];
+  if (relic) examples.push({ id: "relic", label: "Одна реликвия", itemId: relic.itemId, pearls: relic.pricePearls });
+  const slot = catalog.productionSlots?.upgrades.find(entry => entry.slots === 2);
+  if (slot) examples.push({ id: "slot", label: "Второе место производства", itemId: "pearls", pearls: slot.pricePearls });
+  const speed = catalog.constructionSpeedup;
+  examples.push({ id: "construction", label: "Завершить остаток в 1 час", itemId: "pearls",
+    pearls: durationPearlPrice(3_600_000, speed.secondsPerPearl, ECONOMY_PEARL_SCALE, speed.priceStepPearls, speed.pricingPoints) });
+  return examples;
 }

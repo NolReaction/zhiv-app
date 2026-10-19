@@ -8,6 +8,7 @@ const vite = await createServer({ appType: 'custom', configFile: false, root, re
 after(() => vite.close());
 const identities = await vite.ssrLoadModule('/lib/dev/api-store.ts');
 const economy = await vite.ssrLoadModule('/lib/dev/economy-store.ts');
+const commandDevEconomy = economy.commandDevEconomy;
 const model = await vite.ssrLoadModule('/features/economy/domain/model.ts');
 const shop = await vite.ssrLoadModule('/features/economy/domain/leaftail-shop.ts');
 const { inventoryGainFromReceipt } = await vite.ssrLoadModule('/features/economy/domain/inventory-gain.ts');
@@ -29,7 +30,7 @@ function request(p, itemId, at = now, extra = {}) {
   const state = read(p, at), offers = shop.leaftailShopView(state, at).offers;
   const offer = itemId ? offers.find(item => item.itemId === itemId) : offers.find(item => item.section === 'finds');
   return { requestId: crypto.randomUUID(), ownerPublicId: state.ownerPublicId, expectedRevision: state.revision,
-    action: 'buy_leaftail_item', targetId: offer.targetId, quantity: 1, totalPrice: offer.priceCoins, ...extra };
+    action: 'buy_leaftail_item', targetId: offer.targetId, quantity: 1, totalPrice: offer.unitPrice, ...extra };
 }
 const buy = (p, itemId, at = now) => economy.commandDevEconomy(p.token, request(p, itemId, at), at);
 const controller = (state, at = now) => ({ snapshot: state, snapshotConfirmed: true, now: at, retryAt: 0,
@@ -37,19 +38,21 @@ const controller = (state, at = now) => ({ snapshot: state, snapshotConfirmed: t
 function quote(state, itemId, at = now) {
   const offers = shop.leaftailShopView(state, at, state.catalog).offers;
   const offer = itemId ? offers.find(item => item.itemId === itemId) : offers.find(item => item.section === 'finds');
-  return { owner: state.ownerPublicId, revision: state.revision, targetId: offer.targetId, itemId: offer.itemId, price: offer.priceCoins, quantity: offer.quantity };
+  return { owner: state.ownerPublicId, revision: state.revision, targetId: offer.targetId, itemId: offer.itemId, kind: offer.kind, currency: offer.currency, unitPrice: offer.unitPrice, price: offer.unitPrice, quantity: 1, itemQuantity: offer.quantity };
 }
 
-test('one deterministic personal delivery selects one or two finds and retains limited supplies while reading legacy snapshots', () => {
+test('a personal delivery rotates every department and prices finds only in pearls', () => {
   const p = player(), before = read(p), initial = stock(p);
   assert.equal(initial.requiredHomeLevel, 3); assert.equal(initial.refreshAt, midnight);
   const finds = initial.offers.filter(item => item.section === 'finds');
   assert.ok(finds.length >= 1 && finds.length <= 2);
   assert.ok(finds.every(item => ['ancient_core', 'moon_crystal', 'living_resin'].includes(item.itemId)
-    && item.priceCoins === 2400 && item.stock === 1 && item.remaining === 1));
-  assert.deepEqual(initial.offers.filter(item => item.section === 'supplies').map(item => [item.id, item.itemId, item.quantity, item.priceCoins, item.stock]),
-    [['wood_bundle', 'wood', 10, 600, 1], ['stone_bundle', 'stone', 10, 800, 1], ['fiber_bundle', 'fiber', 5, 100, 1]]);
-  assert.ok(initial.offers.filter(item => item.section === 'finds').every(item => item.quantity === 1));
+    && item.currency === 'pearls' && item.unitPrice === 300 && item.priceCoins === 0 && item.pricePearls === 300
+    && item.stock === 1 && item.remaining === 1));
+  assert.equal(initial.offers.filter(item => item.section === 'supplies').length, 3);
+  assert.equal(initial.offers.filter(item => item.kind === 'wardrobe').length, 2);
+  for (const kind of ['rod', 'hook', 'bait']) assert.equal(initial.offers.filter(item => item.kind === kind).length, 1);
+  assert.ok(initial.offers.every(item => item.quantity === 1 && item.targetId === `v2:${initial.cycle}:${item.id}`));
   for (const at of [now, now + 1, midnight - 1]) assert.deepEqual(shop.leaftailShopView(before, at), initial);
   assert.deepEqual(stock(p), initial);
   assert.equal(read(p).revision, before.revision); assert.equal(saved(p).leaftailShop, undefined);
@@ -57,12 +60,14 @@ test('one deterministic personal delivery selects one or two finds and retains l
   const parsed = model.economyViewSchema.parse(legacy);
   assert.deepEqual(parsed.leaftailShop, { cycle: -1, purchased: {} });
   assert.equal(shop.leaftailShopView(parsed, now, parsed.catalog), null);
-  assert.equal(model.economyCatalogSchema.safeParse({ ...before.catalog, leaftailShop: { ...before.catalog.leaftailShop,
-    offers: [{ id: 'wood', itemId: 'wood', priceCoins: 1, stock: 1 }] } }).success, false);
 });
 
-test('personal findings match server vectors, vary across accounts and days, and never offer the full material set', () => {
-  const catalog = model.economyCatalog, special = new Set(catalog.items.filter(item => item.category === 'special').map(item => item.id));
+test('legacy v11 find vectors survive without exposing the old coin sale in v12', () => {
+  const catalog = structuredClone(model.economyCatalog);
+  catalog.version = 11; delete catalog.leaftailShop.supplyOffers; delete catalog.leaftailShop.pearlOffers;
+  catalog.leaftailShop.offers.unshift(...['ancient_core', 'moon_crystal', 'living_resin'].map(id =>
+    ({ id, itemId: id, kind: 'item', quantity: 1, priceCoins: 2400, stock: 1 })));
+  const special = new Set(catalog.items.filter(item => item.category === 'special').map(item => item.id));
   const ids = (owner, cycle) => shop.leaftailShopOffers(catalog, cycle, owner).filter(item => special.has(item.itemId)).map(item => item.id);
   for (const [owner, cycle, expected] of [
     ['AAAA-0000-0001', 20742, ['ancient_core', 'living_resin']],
@@ -72,116 +77,100 @@ test('personal findings match server vectors, vary across accounts and days, and
     ['ABCD-EFGH-JKMP', Number.MAX_SAFE_INTEGER, ['moon_crystal', 'living_resin']],
     ['Мохлик', 20743, ['ancient_core']],
   ]) assert.deepEqual(ids(owner, cycle), expected);
-  const seen = new Set(), sizes = new Set();
-  for (let index = 0; index < 256; index++) {
-    const selected = ids(`AAAA-0000-${String(index).padStart(4, '0')}`, 20742 + index % 8);
-    assert.ok(selected.length >= 1 && selected.length <= 2);
-    selected.forEach(id => seen.add(id)); sizes.add(selected.length);
-  }
-  assert.equal(seen.size, 3); assert.deepEqual([...sizes].sort(), [1, 2]);
-  assert.deepEqual(ids(undefined, 20742), [], 'an unknown owner has no selectable personal findings');
-  const reversed = structuredClone(catalog); reversed.leaftailShop.offers.reverse();
-  assert.deepEqual(shop.leaftailShopOffers(reversed, 20742, 'AAAA-0000-0001').filter(item => special.has(item.itemId)).map(item => item.id).sort(),
-    [...ids('AAAA-0000-0001', 20742)].sort(), 'catalog order is not random entropy');
+  assert.deepEqual(ids(undefined, 20742), []);
+  const current = stock(player());
+  assert.ok(current.offers.filter(item => special.has(item.itemId)).every(item => item.currency === 'pearls'));
+  assert.ok(!current.offers.some(item => item.priceCoins === 2400 && special.has(item.itemId)));
 });
 
-test('a forged direct request for a finding absent from this account delivery cannot spend or issue a purchase receipt', () => {
+test('a forged request for an absent finding cannot spend or manufacture a purchase receipt', () => {
   const p = player(), before = read(p), delivery = stock(p), selected = new Set(delivery.offers.map(item => item.id));
-  const absent = before.catalog.leaftailShop.offers.find(item => !selected.has(item.id));
+  const absent = before.catalog.leaftailShop.pearlOffers.find(item => !selected.has(item.id));
   assert.ok(absent);
-  const forged = { ...request(p), targetId: `${delivery.cycle}:${absent.id}`, totalPrice: absent.priceCoins };
+  const forged = { ...request(p), targetId: `v2:${delivery.cycle}:${absent.id}`, totalPrice: absent.pricePearls };
   for (let attempt = 0; attempt < 3; attempt++) {
     assert.throws(() => economy.commandDevEconomy(p.token, { ...forged, requestId: crypto.randomUUID() }, now), { code: 'ECONOMY_LEAFTAIL_SHOP_CHANGED' });
     assert.deepEqual(read(p), before);
   }
-  const fakeAfter = { ...before, revision: before.revision + 1, wallet: { ...before.wallet, coins: before.wallet.coins - absent.priceCoins },
+  const fakeAfter = { ...before, revision: before.revision + 1, wallet: { ...before.wallet, pearls: before.wallet.pearls - 300 },
     inventory: { [absent.itemId]: 1 }, leaftailShop: { cycle: delivery.cycle, purchased: { [absent.id]: 1 } } };
   assert.equal(localLeaftailPurchaseFromReceipt(before, { state: fakeAfter, acceptedRevision: fakeAfter.revision, replayed: false, message: '' }, forged), null);
-  const first = delivery.offers.find(item => item.section === 'finds');
-  buy(p, first.itemId);
-  assert.deepEqual(stock(p).offers.map(item => item.id), delivery.offers.map(item => item.id), 'purchasing does not reroll unbought findings');
+  const first = delivery.offers.find(item => item.section === 'finds'); buy(p, first.itemId);
+  assert.deepEqual(stock(p).offers.map(item => item.id), delivery.offers.map(item => item.id), 'purchasing never rerolls an unbought delivery');
 });
 
-test('a confirmed purchase spends coins, consumes personal stock and adds only its item without exploration discovery', () => {
-  const p = player(), q = player(), before = read(p), command = request(p);
-  const itemId = quote(before).itemId;
+test('a confirmed find purchase spends 300 pearls and delivers one relic without exploration discovery', () => {
+  const p = player(), before = read(p), command = request(p), itemId = quote(before).itemId;
   const first = economy.commandDevEconomy(p.token, command, now);
   assert.equal(model.economyResultSchema.safeParse(first).success, true);
-  assert.deepEqual(first.state.wallet, { coins: 7600, pearls: 1000 });
+  assert.deepEqual(first.state.wallet, { coins: 10000, pearls: 700 });
   assert.deepEqual(first.state.inventory, { [itemId]: 1 });
-  assert.deepEqual(first.state.progression, before.progression);
-  assert.deepEqual(first.state.fishing, before.fishing);
+  assert.deepEqual(first.state.progression, before.progression); assert.deepEqual(first.state.fishing, before.fishing);
   assert.equal(first.state.completedExplorations, before.completedExplorations);
   assert.equal(stock(p).offers.find(item => item.itemId === itemId).remaining, 0);
-  assert.ok(stock(q).offers.every(item => item.remaining === 1));
   const gain = inventoryGainFromReceipt(before, first, command);
   assert.deepEqual(gain.items, [{ itemId, quantity: 1 }]); assert.equal(gain.source, 'purchase');
-  for (const offer of stock(p).offers.filter(item => item.section === 'finds' && item.remaining > 0)) buy(p, offer.itemId);
-  assert.deepEqual(read(p).inventory, Object.fromEntries(stock(p).offers.filter(item => item.section === 'finds').map(item => [item.itemId, 1])));
-  assert.ok(stock(p).offers.filter(item => item.section === 'finds').every(item => item.remaining === 0));
+  const receipt = localLeaftailPurchaseFromReceipt(before, first, command);
+  assert.equal(receipt.currency, 'pearls'); assert.equal(receipt.pearls, 300); assert.equal(receipt.coins, 0);
 });
 
-test('one receipt survives replay and restart; new purchases, racing revisions and changed request bodies cannot double spend', async () => {
+test('one exact receipt survives replay/restart and cannot double debit after request races', async () => {
   const p = player(), command = request(p), first = economy.commandDevEconomy(p.token, command, now);
   const reopened = await vite.ssrLoadModule('/lib/dev/economy-store.ts');
   const replay = reopened.commandDevEconomy(p.token, command, now + 1);
   assert.equal(replay.replayed, true); assert.deepEqual(replay.state.wallet, first.state.wallet);
   assert.equal(inventoryGainFromReceipt(first.state, replay, command), null);
   assert.throws(() => economy.commandDevEconomy(p.token, { ...command, requestId: crypto.randomUUID() }, now), { code: 'ECONOMY_REVISION_CONFLICT' });
-  assert.throws(() => economy.commandDevEconomy(p.token, { ...command, totalPrice: 2399 }, now), { code: 'ECONOMY_REQUEST_CONFLICT' });
+  assert.throws(() => economy.commandDevEconomy(p.token, { ...command, totalPrice: 299 }, now), { code: 'ECONOMY_REQUEST_CONFLICT' });
   assert.throws(() => buy(p), { code: 'ECONOMY_LEAFTAIL_STOCK' });
-  assert.equal(read(p).wallet.coins, 7600); assert.equal(read(p).inventory[quote(read(p)).itemId], 1);
+  assert.deepEqual(read(p).wallet, { coins: 10000, pearls: 700 });
 });
 
-test('home, owner, exact price, quantity and malformed item quotes fail before balances or stock change', () => {
+test('owner, exact currency price, quantity, malformed quotes and home gates preserve balances', () => {
   const p = player(), stranger = player(), command = request(p), before = read(p);
   assert.throws(() => economy.commandDevEconomy(stranger.token, command, now), { code: 'ECONOMY_OWNER_CHANGED' });
-  for (const totalPrice of [0, 2399, 2401])
+  for (const totalPrice of [0, 299, 301, 2400])
     assert.throws(() => economy.commandDevEconomy(p.token, { ...command, totalPrice }, now), { code: 'ECONOMY_LEAFTAIL_PRICE_CHANGED' });
-  for (const targetId of ['living_resin', `${stock(p).cycle}:wood`, `${stock(p).cycle}:__proto__`])
+  for (const targetId of ['living_resin', `${stock(p).cycle}:ancient_core`, `v2:${stock(p).cycle}:__proto__`])
     assert.throws(() => economy.commandDevEconomy(p.token, { ...command, targetId }, now), { code: 'ECONOMY_LEAFTAIL_SHOP_CHANGED' });
-  assert.throws(() => economy.commandDevEconomy(p.token, { ...command, quantity: 2 }, now), { code: 'INVALID_ECONOMY_COMMAND' });
+  assert.throws(() => economy.commandDevEconomy(p.token, { ...command, quantity: 21, totalPrice: 6300 }, now), { code: 'INVALID_ECONOMY_COMMAND' });
   assert.throws(() => economy.commandDevEconomy(p.token, { ...command, fishSelection: {} }, now), { code: 'INVALID_ECONOMY_COMMAND' });
   assert.throws(() => economy.commandDevEconomy(p.token, { ...command, rewards: { living_resin: 100 } }, now), { code: 'INVALID_ECONOMY_COMMAND' });
   assert.deepEqual(read(p), before);
   saved(p).buildings.home = 2;
-  assert.throws(() => buy(p), { code: 'ECONOMY_HOME_REQUIRED' });
-  saved(p).buildings.home = 3; saved(p).wallet.coins = 2399;
-  assert.throws(() => buy(p), { code: 'ECONOMY_RESOURCES' });
+  assert.throws(() => economy.commandDevEconomy(p.token, { ...command, expectedRevision: read(p).revision }, now), { code: 'ECONOMY_HOME_REQUIRED' });
+  saved(p).buildings.home = 3; saved(p).wallet.pearls = 299; saved(p).wallet.coins = 100000;
+  const poor = read(p); assert.throws(() => buy(p), { code: 'ECONOMY_PEARLS' }); assert.deepEqual(read(p), poor);
   assert.equal(saved(p).leaftailShop, undefined);
 });
 
-test('full and overfull storage and market escrow preserve wallet and unconsumed stock', () => {
+test('full storage and market escrow preserve the pearl wallet and unconsumed finding', () => {
   const p = player(); saved(p).inventory = { wood: 50 };
   const before = read(p), command = request(p);
-  assert.throws(() => economy.commandDevEconomy(p.token, command, now), { code: 'ECONOMY_STORAGE_FULL' });
-  assert.deepEqual(read(p), before);
-  saved(p).inventory = { wood: 51 };
-  assert.throws(() => buy(p), { code: 'ECONOMY_STORAGE_FULL' });
+  assert.throws(() => economy.commandDevEconomy(p.token, command, now), { code: 'ECONOMY_STORAGE_FULL' }); assert.deepEqual(read(p), before);
+  saved(p).inventory = { wood: 51 }; assert.throws(() => buy(p), { code: 'ECONOMY_STORAGE_FULL' });
   saved(p).inventory = { wood: 49 };
-  const owner = p.me.user.publicId;
-  globalThis.__zhivDevEconomyStore.listings.set(crypto.randomUUID(), { id: crypto.randomUUID(), sellerPublicId: owner,
+  const owner = p.me.user.publicId, id = crypto.randomUUID();
+  globalThis.__zhivDevEconomyStore.listings.set(id, { id, sellerPublicId: owner,
     sellerName: 'Seller', itemId: 'stone', quantity: 1, totalPrice: 1, status: 'active', createdAt: new Date(now).toISOString(), closedAt: null });
-  assert.equal(read(p).storage.available, 0);
-  assert.throws(() => buy(p), { code: 'ECONOMY_STORAGE_FULL' });
-  assert.equal(read(p).wallet.coins, 10_000); assert.equal(saved(p).leaftailShop, undefined);
+  assert.equal(read(p).storage.available, 0); assert.throws(() => buy(p), { code: 'ECONOMY_STORAGE_FULL' });
+  assert.deepEqual(read(p).wallet, { coins: 10000, pearls: 1000 }); assert.equal(saved(p).leaftailShop, undefined);
 });
 
-test('UTC midnight resets once, rejects yesterday quote and replaying yesterday receipt does not consume today stock', () => {
+test('UTC midnight resets once; yesterday receipt replays without consuming a new delivery', () => {
   const p = player(), command = request(p), first = economy.commandDevEconomy(p.token, command, now);
   const before = read(p, midnight), yesterday = { ...command, expectedRevision: before.revision, requestId: crypto.randomUUID() };
-  assert.ok(stock(p, midnight).offers.every(item => item.remaining === 1));
+  assert.ok(stock(p, midnight).offers.every(item => item.remaining === item.stock));
   assert.throws(() => economy.commandDevEconomy(p.token, yesterday, midnight), { code: 'ECONOMY_LEAFTAIL_SHOP_CHANGED' });
   const replay = economy.commandDevEconomy(p.token, command, midnight);
-  assert.equal(replay.replayed, true); assert.equal(replay.state.wallet.coins, first.state.wallet.coins);
-  const itemId = quote(read(p, midnight), undefined, midnight).itemId;
-  const second = buy(p, itemId, midnight).state;
-  assert.equal(second.inventory[itemId], (first.state.inventory[itemId] ?? 0) + 1); assert.equal(second.wallet.coins, 5200);
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.state.wallet, first.state.wallet);
+  const itemId = quote(read(p, midnight), undefined, midnight).itemId, second = buy(p, itemId, midnight).state;
+  assert.equal(second.inventory[itemId], (first.state.inventory[itemId] ?? 0) + 1); assert.equal(second.wallet.pearls, 400);
   assert.equal(stock(p, midnight + 1).offers.find(item => item.itemId === itemId).remaining, 0);
-  assert.equal(shop.leaftailShopView({ ...saved(p), ownerPublicId: second.ownerPublicId }, now).offers.find(item => item.itemId === itemId).remaining, 0, 'server clock rewind cannot replenish stock');
+  assert.equal(shop.leaftailShopView({ ...saved(p), ownerPublicId: second.ownerPublicId }, now).offers.find(item => item.itemId === itemId).remaining, 0);
 });
 
-test('purchase UI revalidates the displayed account revision, cycle, funds, online state and capacity', () => {
+test('purchase UI revalidates the account, revision, cycle, selected currency and capacity', () => {
   const p = player(), state = read(p), q = quote(state), ready = controller(state);
   assert.equal(leaftailPurchaseReason(ready, q, true), null);
   assert.match(leaftailPurchaseReason(ready, q, false), /соединение/);
@@ -190,13 +179,14 @@ test('purchase UI revalidates the displayed account revision, cycle, funds, onli
   assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, ownerPublicId: 'OTHER' } }, q, true), /обновились/);
   assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, revision: state.revision + 1 } }, q, true), /обновились/);
   assert.match(leaftailPurchaseReason({ ...ready, now: midnight }, q, true), /Поставка изменилась/);
-  assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, wallet: { ...state.wallet, coins: 0 } } }, q, true), /Не хватает/);
+  assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, wallet: { ...state.wallet, pearls: 0 } } }, q, true), /Не хватает/);
+  assert.equal(leaftailPurchaseReason({ ...ready, snapshot: { ...state, wallet: { ...state.wallet, coins: 0 } } }, q, true), null);
+  assert.match(leaftailPurchaseReason(ready, { ...q, currency: 'coins' }, true), /Поставка изменилась/);
   assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, storage: { ...state.storage, available: 0 } } }, q, true), /мест[оа]/);
   const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: ready, isOnline: true, introduced: true }));
-  assert.equal((html.match(/data-leaftail-item=/g) ?? []).length, 6); assert.match(html, /03:00 МСК/);
-  assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>.*?Одежда/s);
-  assert.match(html, />Припасы<\/button>/);
-  assert.doesNotMatch(html, /жемчуг|Заказы жителей|Редкие товары появятся/);
+  assert.equal((html.match(/data-leaftail-item=/g) ?? []).length, 2); assert.match(html, /03:00 МСК/);
+  assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>.*?Одежда/s); assert.match(html, />Припасы<\/button>/);
+  assert.match(html, /жемчуг/i); assert.doesNotMatch(html, /Заказы жителей|Редкие товары появятся/);
 });
 
 test('the travelling merchant shows no stock, tabs, purchase copy or delivery before home 3', () => {
@@ -209,8 +199,10 @@ test('the travelling merchant shows no stock, tabs, purchase copy or delivery be
     assert.match(html, /Путник в дороге\. Он вернётся, когда дом достигнет 3-го уровня\./);
     assert.doesNotMatch(html, /Листохвост|data-leaftail-item|data-leaftail-purchase|role="tab|Купить|покупк|Собрал кое-что|Ваши монеты|поставка|поставку|Поставка|Припасы|Находки|2400/);
     assert.deepEqual(state, original);
-    assert.match(leaftailPurchaseReason(controller(state), quote(state), true), /Листохвост в путешествии/);
-    assert.throws(() => buy(p, "wood"), { code: "ECONOMY_HOME_REQUIRED" });
+    const eligible = { ...state, buildings: { ...state.buildings, home: 3 } };
+    const q = quote(eligible);
+    assert.match(leaftailPurchaseReason(controller(state), q, true), /Листохвост в путешествии/);
+    assert.throws(() => commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: state.ownerPublicId, expectedRevision: state.revision, action: 'buy_leaftail_item', targetId: q.targetId, quantity: 1, totalPrice: q.price }, now), { code: 'ECONOMY_HOME_REQUIRED' });
     assert.deepEqual(read(p), original, "the existing command fence also rejects supply bundles");
   }
 });
@@ -227,20 +219,19 @@ test('an eligible house does not expose the merchant identity, stock or actions 
 });
 
 
-test('a schema-valid cached far-future delivery cannot crash the merchant or replenish its stock', () => {
+test('a cached far-future delivery cannot crash the merchant or replenish unit stock', () => {
   const p = player(), state = structuredClone(read(p));
-  state.leaftailShop = { cycle: Number.MAX_SAFE_INTEGER, purchased: { wood_bundle: 1 } };
+  state.leaftailShop = { cycle: Number.MAX_SAFE_INTEGER, purchased: {} };
+  const supply = shop.leaftailShopView(state, now, state.catalog).offers.find(item => item.section === 'supplies');
+  state.leaftailShop.purchased[supply.id] = supply.stock;
   assert.equal(model.economyViewSchema.safeParse(state).success, true);
-  const savedStock = structuredClone(state.leaftailShop);
-  const unconfirmed = { ...controller(state), snapshotConfirmed: false };
+  const savedStock = structuredClone(state.leaftailShop), unconfirmed = { ...controller(state), snapshotConfirmed: false };
   const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: unconfirmed, isOnline: true, introduced: true }));
   assert.match(html, /Проверяем время новой поставки/);
-  assert.equal((html.match(/data-leaftail-purchase=/g) ?? []).length, 6, "cached clothing can be previewed without granting or buying it");
-  assert.doesNotMatch(html, /Подтвердить/);
+  assert.equal((html.match(/data-leaftail-purchase=/g) ?? []).length, 2); assert.doesNotMatch(html, /Подтвердить/);
   assert.equal(shop.leaftailShopView(state, now).cycle, Number.MAX_SAFE_INTEGER);
-  assert.equal(shop.leaftailShopView(state, now).offers.find(item => item.itemId === 'wood').remaining, 0);
-  assert.match(leaftailPurchaseReason(unconfirmed, quote(state), true), /подтверждения/);
-  assert.deepEqual(state.leaftailShop, savedStock);
+  assert.equal(shop.leaftailShopView(state, now).offers.find(item => item.id === supply.id).remaining, 0);
+  assert.match(leaftailPurchaseReason(unconfirmed, quote(state), true), /подтверждения/); assert.deepEqual(state.leaftailShop, savedStock);
 });
 
 test('retained stock and confirmation callbacks cannot buy after the current resident introduction is withdrawn', async () => {
@@ -269,7 +260,7 @@ test('retained stock and confirmation callbacks cannot buy after the current res
       const visit = element => { if (React.isValidElement(element)) { nodes.push(element); React.Children.forEach(element.props.children, visit); } };
       visit(tree); return { tree, nodes };
     };
-    render(true).nodes.find(element => element.props.role === 'tab' && React.Children.toArray(element.props.children).includes('Находки')).props.onClick();
+    render(true).nodes.find(element => element.props.role === 'tab' && React.Children.toArray(element.props.children).includes('Реликвии')).props.onClick();
     const purchase = render(true).nodes.find(element => element.props['data-leaftail-purchase'] === quote(economy.snapshot).itemId);
     purchase.props.onClick();
     const confirm = render(true).nodes.find(element => element.type === 'button' && element.props.children?.[0] === 'Подтвердить');
@@ -286,85 +277,70 @@ test('retained stock and confirmation callbacks cannot buy after the current res
 });
 
 
-test('base material bundles grant the catalog quantity exactly once and retain a single daily purchase fence', () => {
-  const p = player(), initial = read(p);
-  for (const itemId of ['wood', 'stone', 'fiber']) {
-    const before = read(p), offer = stock(p).offers.find(item => item.itemId === itemId), command = request(p, itemId);
-    assert.equal(command.quantity, 1, 'one command buys one bundle');
+test('supplies sell selected individual units across multiple exact transactions and retain stock counts', () => {
+  const p = player(), offer = stock(p).offers.find(item => item.section === 'supplies' && item.stock >= 5);
+  assert.ok(offer); const original = read(p), purchased = [];
+  for (const quantity of [2, 3]) {
+    const before = read(p), command = request(p, offer.itemId, now, { quantity, totalPrice: offer.unitPrice * quantity });
     const result = economy.commandDevEconomy(p.token, command, now);
-    assert.equal(result.state.inventory[itemId], offer.quantity);
-    assert.equal(result.state.wallet.coins, before.wallet.coins - offer.priceCoins);
-    assert.deepEqual(inventoryGainFromReceipt(before, result, command).items, [{ itemId, quantity: offer.quantity }]);
-    assert.equal(result.state.leaftailShop.purchased[offer.id], 1);
-    assert.equal(stock(p).offers.find(item => item.itemId === itemId).remaining, 0);
+    assert.equal(result.state.inventory[offer.itemId], (before.inventory[offer.itemId] ?? 0) + quantity);
+    assert.equal(result.state.wallet.coins, before.wallet.coins - offer.unitPrice * quantity);
+    assert.equal(result.state.wallet.pearls, before.wallet.pearls);
+    assert.deepEqual(inventoryGainFromReceipt(before, result, command).items, [{ itemId: offer.itemId, quantity }]);
+    assert.equal(result.state.leaftailShop.purchased[offer.id], purchased.reduce((sum, n) => sum + n, quantity));
     assert.equal(economy.commandDevEconomy(p.token, command, now).replayed, true);
-    assert.equal(read(p).inventory[itemId], offer.quantity);
-    assert.throws(() => buy(p, itemId), { code: 'ECONOMY_LEAFTAIL_STOCK' });
+    purchased.push(quantity);
   }
-  assert.deepEqual(read(p).inventory, { wood: 10, stone: 10, fiber: 5 });
-  assert.equal(read(p).wallet.coins, initial.wallet.coins - 1500);
-  assert.deepEqual(read(p).progression, initial.progression);
-  const reset = buy(p, 'fiber', midnight).state;
-  assert.equal(reset.inventory.fiber, 10);
-  assert.equal(stock(p, midnight).offers.find(item => item.itemId === 'wood').remaining, 1);
+  assert.equal(stock(p).offers.find(item => item.id === offer.id).remaining, offer.stock - 5);
+  assert.equal(read(p).inventory[offer.itemId], 5); assert.equal(read(p).wallet.coins, original.wallet.coins - offer.unitPrice * 5);
 });
 
-test('bundle pricing cannot mint gold through NPC resale and invalid catalog quantities or cheap bundles are rejected', () => {
-  const p = player(), original = read(p), spec = original.catalog.leaftailShop;
-  const supplies = spec.offers.filter(offer => ['wood', 'stone', 'fiber'].includes(offer.itemId));
-  for (const offer of supplies) {
+test('current supply unit prices cannot mint coins via NPC resale and every quoted unit needs space', () => {
+  const p = player(), original = read(p), offers = stock(p).offers.filter(item => item.section === 'supplies');
+  for (const offer of offers) {
     const item = original.catalog.items.find(item => item.id === offer.itemId);
-    assert.equal(offer.priceCoins, 2 * item.baseSellPrice * offer.quantity);
-    const oneCheap = { ...original.catalog, leaftailShop: { ...spec, offers: [{ ...offer, priceCoins: offer.priceCoins - 1 }] } };
-    assert.equal(model.economyCatalogSchema.safeParse(oneCheap).success, false);
+    assert.equal(offer.quantity, 1); assert.equal(offer.unitPrice, 2 * item.baseSellPrice);
   }
-  for (const quantity of [0, -1, 1.5, 101]) assert.equal(model.economyCatalogSchema.safeParse({ ...original.catalog,
-    leaftailShop: { ...spec, offers: [{ ...supplies[0], quantity }] } }).success, false);
-  const oldFind = { ...spec.offers[0] }; delete oldFind.quantity;
-  assert.equal(model.economyCatalogSchema.parse({ ...original.catalog, leaftailShop: { ...spec, offers: [oldFind] } }).leaftailShop.offers[0].quantity, 1);
-  assert.equal(model.economyCatalogSchema.safeParse({ ...original.catalog, leaftailShop: { ...spec,
-    offers: [{ ...oldFind, quantity: 2 }] } }).success, false);
-  const bought = buy(p, 'wood').state;
-  const sale = { requestId: crypto.randomUUID(), ownerPublicId: bought.ownerPublicId, expectedRevision: bought.revision,
-    action: 'sell', targetId: 'wood', quantity: 10, totalPrice: 0 };
-  const sold = economy.commandDevEconomy(p.token, sale, now).state;
-  assert.ok(sold.wallet.coins < original.wallet.coins);
-  assert.ok(sold.wallet.coins - bought.wallet.coins <= 300);
-});
-
-test('a bundle requires every storage place including escrow and its full quantity cannot exceed an item cap', () => {
-  const p = player(); saved(p).inventory = { wood: 41 };
-  let before = read(p);
-  assert.equal(before.storage.available, 9);
-  assert.throws(() => buy(p, 'stone'), { code: 'ECONOMY_STORAGE_FULL' });
-  assert.deepEqual(read(p), before);
-  const q = quote(before, 'stone');
+  const offer = offers.find(item => item.stock >= 10), itemId = offer.itemId;
+  saved(p).inventory = { wood: 41 };
+  let before = read(p), command = request(p, itemId, now, { quantity: 10, totalPrice: offer.unitPrice * 10 });
+  assert.throws(() => economy.commandDevEconomy(p.token, command, now), { code: 'ECONOMY_STORAGE_FULL' }); assert.deepEqual(read(p), before);
+  const q = quote(before, itemId); q.quantity = 10; q.itemQuantity = 10; q.price *= 10;
   assert.match(leaftailPurchaseReason(controller(before), q, true), /ещё 1/);
   saved(p).inventory = { wood: 40 };
-  const listingId = crypto.randomUUID();
-  globalThis.__zhivDevEconomyStore.listings.set(listingId, { id: listingId, sellerPublicId: p.me.user.publicId,
-    sellerName: 'Seller', itemId: 'fiber', quantity: 1, totalPrice: 1, status: 'active', createdAt: new Date(now).toISOString(), closedAt: null });
-  before = read(p);
-  assert.equal(before.storage.available, 9);
-  assert.throws(() => buy(p, 'stone'), { code: 'ECONOMY_STORAGE_FULL' });
-  assert.deepEqual(read(p), before);
-  globalThis.__zhivDevEconomyStore.listings.delete(listingId);
-  assert.equal(buy(p, 'stone').state.storage.available, 0);
-  const fresh = player(); saved(fresh).inventory = { wood: model.ECONOMY_MAX_ITEMS - 9 };
+  before = read(p); command = request(p, itemId, now, { quantity: 10, totalPrice: offer.unitPrice * 10 });
+  assert.equal(economy.commandDevEconomy(p.token, command, now).state.storage.available, 0);
+  const fresh = player(), freshOffer = stock(fresh).offers.find(item => item.section === 'supplies');
+  saved(fresh).inventory = { [freshOffer.itemId]: model.ECONOMY_MAX_ITEMS };
   const capped = read(fresh);
-  assert.throws(() => buy(fresh, 'wood'), { code: 'ECONOMY_CAPACITY' });
-  assert.deepEqual(read(fresh), capped);
+  assert.throws(() => buy(fresh, freshOffer.itemId), { code: 'ECONOMY_CAPACITY' }); assert.deepEqual(read(fresh), capped);
 });
 
-test('bundle confirmation quotes pin quantity as well as price before sending a single purchase', () => {
-  const p = player(), state = read(p), q = quote(state, 'wood'), ready = controller(state);
-  assert.equal(q.quantity, 10); assert.equal(q.price, 600);
+test('unit confirmation pins currency, unit price and total quantity before sending', () => {
+  const p = player(), state = read(p), offer = stock(p).offers.find(item => item.section === 'supplies'), q = quote(state, offer.itemId), ready = controller(state);
+  assert.equal(q.quantity, 1); assert.equal(q.itemQuantity, 1); assert.equal(q.unitPrice, offer.unitPrice);
   assert.equal(leaftailPurchaseReason(ready, q, true), null);
-  assert.match(leaftailPurchaseReason(ready, { ...q, quantity: 1 }, true), /Поставка изменилась/);
-  const changed = structuredClone(state);
-  const offer = changed.catalog.leaftailShop.offers.find(item => item.itemId === 'wood'); offer.quantity = 5;
-  assert.match(leaftailPurchaseReason({ ...ready, snapshot: changed }, q, true), /Поставка изменилась/);
-  const command = request(p, 'wood', now, { quantity: 10 });
-  assert.throws(() => economy.commandDevEconomy(p.token, command, now), { code: 'INVALID_ECONOMY_COMMAND' });
-  assert.deepEqual(read(p).inventory, {});
+  for (const changed of [{ ...q, itemQuantity: 10 }, { ...q, quantity: 2 }, { ...q, unitPrice: q.unitPrice + 1 }, { ...q, currency: 'pearls' }])
+    assert.match(leaftailPurchaseReason(ready, changed, true), /Поставка изменилась/);
+  const before = read(p);
+  assert.throws(() => economy.commandDevEconomy(p.token, request(p, offer.itemId, now, { quantity: 2 }), now), { code: 'ECONOMY_LEAFTAIL_PRICE_CHANGED' });
+  assert.deepEqual(read(p), before);
+});
+
+test('a known paid v11 bundle request replays after v12 without another debit or unit delivery', () => {
+  const p = player(), profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId), cycle = stock(p).cycle;
+  profile.state.inventory = { wood: 10 }; profile.state.wallet.coins = 9400; profile.revision = 1;
+  profile.state.leaftailShop = { cycle, purchased: { wood_bundle: 1 } };
+  const command = { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, expectedRevision: 0,
+    action: 'buy_leaftail_item', targetId: `${cycle}:wood_bundle`, quantity: 1, totalPrice: 600 };
+  const signature = JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice]);
+  profile.receipts.set(command.requestId, { signature, message: 'Покупка у Листохвоста отправлена в кладовую', acceptedRevision: 1 });
+  const before = read(p), replay = economy.commandDevEconomy(p.token, command, now);
+  assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, 1);
+  assert.deepEqual(replay.state.wallet, before.wallet); assert.deepEqual(replay.state.inventory, before.inventory);
+  assert.deepEqual(replay.state.leaftailShop, before.leaftailShop);
+  assert.equal(localLeaftailPurchaseFromReceipt(before, replay, command), null);
+  const stale = { ...command, requestId: crypto.randomUUID(), expectedRevision: before.revision };
+  assert.throws(() => economy.commandDevEconomy(p.token, stale, now), { code: 'ECONOMY_LEAFTAIL_SHOP_CHANGED' });
+  assert.deepEqual(read(p), before);
 });

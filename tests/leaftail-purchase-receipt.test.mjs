@@ -10,17 +10,29 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { leaftailShopView } = await vite.ssrLoadModule("/features/economy/domain/leaftail-shop.ts");
 const { localLeaftailPurchaseFromReceipt } = await vite.ssrLoadModule("/features/economy/domain/local-leaftail-purchase.ts");
 const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
 const { WorldLeaftailMarket } = await vite.ssrLoadModule("/features/economy/ui/market/world-leaftail-market.tsx");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", now = Date.parse("2026-10-18T12:00:00Z");
 const cycle = Math.floor(now / 86400000), message = "Покупка у Листохвоста отправлена в кладовую";
+// Explicit v11 snapshot: persisted pre-v12 bundle receipts must keep their paid
+// denomination and quantity even after the live catalog changes to unit sales.
+function legacyCatalog() {
+  const catalog = structuredClone(economyCatalog);
+  catalog.version = 11;
+  delete catalog.leaftailShop.supplyOffers; delete catalog.leaftailShop.pearlOffers;
+  for (const offer of catalog.leaftailShop.travelOffers) if (offer.kind === "bait" && offer.quantity === 1) {
+    offer.quantity = 5; offer.priceCoins *= 5;
+  }
+  return catalog;
+}
 function state(revision = 0, bought = false) {
   return { ownerPublicId: owner, revision, serverTime: new Date(now).toISOString(), wallet: { coins: bought ? 9200 : 10000, pearls: 10 },
     inventory: { stone: bought ? 14 : 4 }, buildings: { home: 3, warehouse: 1 },
     storage: { capacity: 50, used: bought ? 14 : 4, available: bought ? 36 : 46, reserved: 0, overflow: 0 },
-    jobs: [], completedExplorations: 0, catalog: structuredClone(economyCatalog),
+    jobs: [], completedExplorations: 0, catalog: legacyCatalog(),
     leaftailShop: { cycle, purchased: bought ? { stone_bundle: 1 } : {} } };
 }
 const command = () => ({ requestId: crypto.randomUUID(), ownerPublicId: owner, expectedRevision: 0,
@@ -38,7 +50,7 @@ test("a receipt freezes accepted item names, actual bundle delta and wallet debi
   // Even a changed response catalog cannot substitute its new quote for the paid amount.
   after.catalog.leaftailShop.offers.find(item => item.id === "stone_bundle").priceCoins = 12345;
   const receipt = localLeaftailPurchaseFromReceipt(before, result(after), sent);
-  assert.deepEqual(receipt, { id: sent.requestId, ownerPublicId: owner, revision: 1, coins: 800,
+  assert.deepEqual(receipt, { id: sent.requestId, ownerPublicId: owner, revision: 1, coins: 800, pearls: 0, currency: "coins", quantity: 1,
     kind: "item", destination: "pantry", items: [{ itemId: "stone", name: after.catalog.items.find(item => item.id === "stone").name, quantity: 10 }] });
   const name = receipt.items[0].name;
   after.catalog.items.find(item => item.id === "stone").name = "Новая цена и название";
@@ -232,7 +244,7 @@ test("quote guards allow full-pantry permanent goods, reject owned after deliver
     before.storage.available = 0;
     const economy = { snapshot: before, snapshotConfirmed: true, now, retryAt: 0, busy: false, uncertain: false,
       directActionsAvailable: true, pendingProductionCount: 0 };
-    const quote = { owner, revision: before.revision, targetId: `${cycle}:${offer.id}`, itemId, kind, price: offer.priceCoins, quantity: offer.quantity ?? 1 };
+    const quote = { owner, revision: before.revision, targetId: `${cycle}:${offer.id}`, itemId, kind, currency: "coins", unitPrice: offer.priceCoins, price: offer.priceCoins, quantity: 1, itemQuantity: offer.quantity ?? 1 };
     const reason = leaftailPurchaseReason(economy, quote, true);
     if (destination === "pantry") assert.match(reason, /Не хватает места/);
     else assert.equal(reason, null);
@@ -255,8 +267,62 @@ test("quote guards allow full-pantry permanent goods, reject owned after deliver
   const offer = [...shop.offers, ...(shop.travelOffers ?? [])].find(item => item.itemId === "dusk_rod");
   const economy = { snapshot: before, snapshotConfirmed: true, now, retryAt: 0, busy: false, uncertain: false,
     directActionsAvailable: true, pendingProductionCount: 0 };
-  const quote = { owner, revision: before.revision, targetId: `${cycle}:${offer.id}`, itemId: offer.itemId, kind: "rod", price: offer.priceCoins, quantity: 1 };
+  const quote = { owner, revision: before.revision, targetId: `${cycle}:${offer.id}`, itemId: offer.itemId, kind: "rod", currency: "coins", unitPrice: offer.priceCoins, price: offer.priceCoins, quantity: 1, itemQuantity: 1 };
   assert.match(leaftailPurchaseReason(economy, quote, true), /Нужен дом 4-го уровня/);
   before.buildings.home = 4;
   assert.equal(leaftailPurchaseReason(economy, quote, true), null);
+});
+
+function currentPurchase(section, units = 1) {
+  const before = state(); before.catalog = structuredClone(economyCatalog);
+  before.buildings.home = 5; before.wallet = { coins: 100000, pearls: 1000 };
+  before.wardrobe = []; before.fishing = { ownedRods: ['reed_rod'], ownedHooks: ['bare_hook'], catches: {} };
+  const offer = leaftailShopView(before, now, before.catalog).offers.find(item => item.section === section && item.stock >= units);
+  assert.ok(offer, `An actual selected ${section} offer must exist`);
+  const sent = { ...command(), targetId: offer.targetId, quantity: units, totalPrice: offer.unitPrice * units };
+  const after = structuredClone(before); after.revision++;
+  after.wallet[offer.currency] -= sent.totalPrice;
+  after.inventory[offer.itemId] = (after.inventory[offer.itemId] ?? 0) + offer.quantity * units;
+  after.leaftailShop = { cycle, purchased: { [offer.id]: units } };
+  return { before, after, sent, offer, accepted: result(after) };
+}
+
+test('a v12 relic receipt proves exactly one selected relic for 300 raw pearls and never labels it as coins', () => {
+  const { before, after, sent, offer, accepted } = currentPurchase('finds');
+  const receipt = localLeaftailPurchaseFromReceipt(before, accepted, sent);
+  assert.equal(receipt.currency, 'pearls'); assert.equal(receipt.pearls, 300); assert.equal(receipt.coins, 0); assert.equal(receipt.quantity, 1);
+  assert.deepEqual(receipt.items, [{ itemId: offer.itemId, name: after.catalog.items.find(item => item.id === offer.itemId).name, quantity: 1 }]);
+  assert.equal(before.wallet.pearls - after.wallet.pearls, 300); assert.equal(after.wallet.coins, before.wallet.coins);
+  const economy = { snapshot: after, snapshotConfirmed: true, now, retryAt: 0, busy: false, uncertain: false,
+    directActionsAvailable: true, pendingProductionCount: 0, notice: message, localLeaftailPurchase: receipt };
+  const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy, isOnline: true, introduced: true }));
+  assert.match(html, /Потрачено 150 жемчужин\./); assert.doesNotMatch(html, /Потрачено 300 монет|Потрачено 300 жемчужин/);
+});
+
+test('a v12 receipt cannot confuse currency, re-use an old target or accept an unrelated debit', () => {
+  const { before, after, sent, accepted } = currentPurchase('finds');
+  const coinDebit = structuredClone(after); coinDebit.wallet.pearls = before.wallet.pearls; coinDebit.wallet.coins -= 300;
+  const bothDebit = structuredClone(after); bothDebit.wallet.coins--;
+  const cases = [
+    [{ ...accepted, state: coinDebit }, sent],
+    [{ ...accepted, state: bothDebit }, sent],
+    [accepted, { ...sent, targetId: sent.targetId.replace(/^v2:/, '') }],
+    [accepted, { ...sent, totalPrice: 2400 }],
+    [accepted, { ...sent, quantity: 2 }],
+    [{ ...accepted, state: { ...after, leaftailShop: before.leaftailShop } }, sent],
+  ];
+  for (const [answer, command] of cases) assert.equal(localLeaftailPurchaseFromReceipt(before, answer, command), null);
+});
+
+test('a v12 supply receipt proves selected command units, exact stock consumption and total debit', () => {
+  const { before, after, sent, offer, accepted } = currentPurchase('supplies', 3);
+  const receipt = localLeaftailPurchaseFromReceipt(before, accepted, sent);
+  assert.equal(receipt.quantity, 3); assert.equal(receipt.currency, 'coins'); assert.equal(receipt.coins, offer.unitPrice * 3); assert.equal(receipt.pearls, 0);
+  assert.equal(receipt.items[0].quantity, 3); assert.equal(after.leaftailShop.purchased[offer.id], 3);
+  assert.equal(localLeaftailPurchaseFromReceipt(before, accepted, { ...sent, quantity: 1 }), null);
+  const tooMuch = structuredClone(after); tooMuch.inventory[offer.itemId]++;
+  assert.equal(localLeaftailPurchaseFromReceipt(before, { ...accepted, state: tooMuch }, sent), null);
+  const wrongStock = structuredClone(after); wrongStock.leaftailShop.purchased[offer.id] = 1;
+  assert.equal(localLeaftailPurchaseFromReceipt(before, { ...accepted, state: wrongStock }, sent), null);
+  assert.equal(localLeaftailPurchaseFromReceipt(after, { ...accepted, replayed: true }, sent), null);
 });

@@ -66,10 +66,14 @@ function harness(component, props, availability) {
   return { render, focused };
 }
 
-test("buy and own offers share the compact merchandise list without a second market heading", () => {
+test("the market opens my storefront by default and buying shares the compact merchandise list", () => {
   const props = { economy: economy(), navigate() {} }, h = harness(Market, props);
   let view = h.render();
   assert.equal(view.nodes.some(node => node.type === "h2"), false);
+  assert.equal(view.nodes.find(node => node.props["data-guide-market-tab"] === "mine").props["aria-pressed"], true);
+  assert.equal(view.nodes.some(node => node.props["aria-label"] === "Предложения игроков"), false);
+  view.nodes.find(node => node.props["data-guide-market-tab"] === "buy").props.onClick();
+  view = h.render();
   let list = view.nodes.find(node => node.props["aria-label"] === "Предложения игроков");
   assert.equal(list.props.role, "list"); assert.equal(list.props.children.length, 2);
   const browseGrid = list.props.className;
@@ -441,6 +445,7 @@ test("browse and seller selections use permanent known items rather than high ho
   e.snapshot.inventory.tools = 2;
   e.market.listings.push({ ...offer("unknown-tools"), itemId: tools.id, quantity: 1, totalPrice: tools.baseSellPrice });
   const before = structuredClone(e.snapshot), market = harness(Market, { economy: e, navigate() {} });
+  market.render().nodes.find(node => node.props["data-guide-market-tab"] === "buy").props.onClick();
   let list = market.render().nodes.find(node => node.props["aria-label"] === "Предложения игроков");
   assert.deepEqual(list.props.children.map(card => card.props.offer.id), ["a", "b"]);
   assert.equal(harness(OfferCard, { economy: e, offer: e.market.listings.at(-1), navigate() {} }).render().nodes.find(node => node.type === "button").props.disabled, true);
@@ -448,7 +453,9 @@ test("browse and seller selections use permanent known items rather than high ho
   assert.deepEqual(form.nodes.filter(node => node.type === "option").map(node => node.props.value), ["wood"]);
   assert.deepEqual(e.snapshot, before, "displaying unknown gifted goods cannot create permanent access");
   e.snapshot.unlockedItems.push("tools");
-  list = harness(Market, { economy: e, navigate() {} }).render().nodes.find(node => node.props["aria-label"] === "Предложения игроков");
+  const updated = harness(Market, { economy: e, navigate() {} });
+  updated.render().nodes.find(node => node.props["data-guide-market-tab"] === "buy").props.onClick();
+  list = updated.render().nodes.find(node => node.props["aria-label"] === "Предложения игроков");
   assert.deepEqual(list.props.children.map(card => card.props.offer.id), ["a", "b", "unknown-tools"]);
   form = harness(ListingForm, { economy: e }).render();
   assert.ok(form.nodes.filter(node => node.type === "option").some(node => node.props.value === "tools"));
@@ -509,7 +516,7 @@ test("a restored bridge opens trade at home two without an exploration and close
   e.snapshot.completedExplorations = 0;
   e.actMarket = (...args) => calls.push(args);
   let view = harness(Market, { economy: e, navigate: (...args) => destinations.push(args) }).render();
-  assert.ok(view.nodes.some(node => node.props["aria-label"] === "Предложения игроков"));
+  assert.ok(view.nodes.some(node => node.props["aria-label"] === "Ваши предложения"));
   e.snapshot.buildings.bridge = 0;
   const h = harness(Market, { economy: e, navigate: (...args) => destinations.push(args) });
   view = h.render();

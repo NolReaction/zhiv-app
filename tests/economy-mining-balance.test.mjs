@@ -137,7 +137,8 @@ test("all mining choices use one independent worker, retain food and claim their
     assert.throws(() => apply(state, "claim_job", job.id, deadline - 1), { code: "ECONOMY_JOB_NOT_READY" });
     apply(state, "claim_job", job.id, deadline);
     assert.deepEqual(state.inventory, job.rewards, entry.id); assert.equal(state.jobs.length, 0);
-    assert.equal(state.progression.routes[entry.id], 1); assert.equal(state.progression.collections.quarrySeconds, entry.seconds);
+    assert.equal(state.progression.routes[entry.id], 1);
+    assert.equal(state.progression.collections.quarrySeconds, Math.min(entry.seconds, book.quarry.secondsPerFind));
     assert.equal(state.completedExplorations, 0); assert.equal(state.food.heroMeal, "legendary_fish");
   }
 });

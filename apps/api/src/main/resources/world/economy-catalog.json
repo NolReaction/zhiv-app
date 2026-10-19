@@ -1,5 +1,5 @@
 {
-  "version": 11,
+  "version": 12,
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
@@ -19,24 +19,6 @@
     "requiredHomeLevel": 3,
     "refreshSeconds": 86400,
     "offers": [
-      {
-        "id": "ancient_core",
-        "itemId": "ancient_core",
-        "priceCoins": 2400,
-        "stock": 1
-      },
-      {
-        "id": "moon_crystal",
-        "itemId": "moon_crystal",
-        "priceCoins": 2400,
-        "stock": 1
-      },
-      {
-        "id": "living_resin",
-        "itemId": "living_resin",
-        "priceCoins": 2400,
-        "stock": 1
-      },
       {
         "id": "wood_bundle",
         "itemId": "wood",
@@ -242,6 +224,87 @@
         "priceCoins": 16000,
         "stock": 1,
         "quantity": 1
+      }
+    ],
+    "supplyOffers": [
+      {
+        "id": "wood_each",
+        "itemId": "wood",
+        "unitPriceCoins": 60,
+        "stock": 20,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "stone_each",
+        "itemId": "stone",
+        "unitPriceCoins": 80,
+        "stock": 20,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "fiber_each",
+        "itemId": "fiber",
+        "unitPriceCoins": 20,
+        "stock": 20,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "planks_each",
+        "itemId": "planks",
+        "unitPriceCoins": 80,
+        "stock": 10,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "rope_each",
+        "itemId": "rope",
+        "unitPriceCoins": 60,
+        "stock": 10,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "charcoal_each",
+        "itemId": "charcoal",
+        "unitPriceCoins": 100,
+        "stock": 10,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "dried_berries_each",
+        "itemId": "dried_berries",
+        "unitPriceCoins": 180,
+        "stock": 5,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "grilled_fish_each",
+        "itemId": "grilled_fish",
+        "unitPriceCoins": 110,
+        "stock": 5,
+        "requiredHomeLevel": 3
+      }
+    ],
+    "pearlOffers": [
+      {
+        "id": "ancient_core_pearl",
+        "itemId": "ancient_core",
+        "pricePearls": 300,
+        "stock": 1,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "moon_crystal_pearl",
+        "itemId": "moon_crystal",
+        "pricePearls": 300,
+        "stock": 1,
+        "requiredHomeLevel": 3
+      },
+      {
+        "id": "living_resin_pearl",
+        "itemId": "living_resin",
+        "pricePearls": 300,
+        "stock": 1,
+        "requiredHomeLevel": 3
       }
     ]
   },

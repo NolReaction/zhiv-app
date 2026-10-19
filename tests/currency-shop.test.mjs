@@ -24,6 +24,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const shop = await vite.ssrLoadModule("/features/economy/domain/currency-shop.ts");
+const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const { CurrencyShopPanel } = await vite.ssrLoadModule("/features/economy/ui/market/currency-shop-panel.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const state = buildings => ({ catalog: economyCatalog, buildings, jobs: [] });
@@ -197,11 +198,26 @@ test("a missing economy snapshot never invents a gold quote", () => {
 test("recalculated package prices display stored units as whole visible pearls", () => {
   const h = harness(state({ home: 1 })); let view = h.render();
   const amounts = () => [...view.html.matchAll(/<strong[^>]*>[\s\S]*?<\/strong>/g)].map(match => match[0].replace(/<[^>]*>/g, "").replace(/\s/g, ""));
-  assert.deepEqual(amounts(), ["500", "1200", "2500", "6500"]);
+  assert.deepEqual(amounts().slice(-4), ["500", "1200", "2500", "6500"]);
+  assert.deepEqual(amounts().slice(0, -4), ["150", "100", "20"]);
   tabs(view)[1].props.onClick(); view = h.render();
   assert.match(view.html, /<span>20<\/span>/);
   assert.match(view.html, /<span>50<\/span>/);
   assert.match(view.html, /<span>100<\/span>/);
   assert.deepEqual(shop.currencyShopGoldOffers(state({ home: 1 })).map(pack => [pack.pearls, pack.coins]), [[40, 400], [100, 1000], [200, 2000]]);
   assert.deepEqual(amounts().slice(1), ["400", "1000", "2000"]);
+});
+
+
+test("pearl spending examples use actual catalog prices and retain the visible/raw distinction", () => {
+  const examples = shop.currencyShopPearlBenchmarks(economyCatalog);
+  assert.equal(examples.find(item => item.id === "relic").pearls, 300);
+  assert.equal(examples.find(item => item.id === "slot").pearls, 200);
+  assert.equal(examples.find(item => item.id === "construction").pearls, 40);
+  assert.equal(formatPearls(examples.find(item => item.id === "relic").pearls), "150");
+  const changed = structuredClone(economyCatalog);
+  changed.leaftailShop.pearlOffers[0].pricePearls = 400;
+  assert.equal(shop.currencyShopPearlBenchmarks(changed).find(item => item.id === "relic").pearls, 400);
+  delete changed.leaftailShop.pearlOffers;
+  assert.equal(shop.currencyShopPearlBenchmarks(changed).some(item => item.id === "relic"), false);
 });

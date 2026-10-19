@@ -25,26 +25,38 @@ function player(home = 3) {
 function command(p, itemId, at = now, extra = {}) {
   const state = read(p, at), offer = shop.leaftailShopView(state, at).offers.find(item => item.itemId === itemId);
   return { requestId: crypto.randomUUID(), ownerPublicId: state.ownerPublicId, expectedRevision: state.revision,
-    action: 'buy_leaftail_item', targetId: offer.targetId, quantity: 1, totalPrice: offer.priceCoins, ...extra };
+    action: 'buy_leaftail_item', targetId: offer.targetId, quantity: 1, totalPrice: offer.unitPrice, ...extra };
 }
 const buy = (p, itemId, at = now, extra = {}) => economy.commandDevEconomy(p.token, command(p, itemId, at, extra), at);
+function nextDeliveryWith(p, itemId, start = tomorrow) {
+  const state = read(p);
+  for (let index = 0; index < 100; index++) {
+    const at = start + index * 86400000;
+    const preview = { ...state, leaftailShop: { cycle: -1, purchased: {} } };
+    if (shop.leaftailShopView(preview, at, state.catalog).offers.some(item => item.itemId === itemId)) return at;
+  }
+  throw Error(`No delivery selected ${itemId}`);
+}
 
-test('additive delivery preserves six legacy offers and projects permanent ownership and each gear home gate', () => {
+
+test('v12 delivery rotates all departments after applying home eligibility while legacy snapshots remain readable', () => {
   const p = player(), view = stock(p), catalog = read(p).catalog;
-  assert.equal(catalog.leaftailShop.offers.length, 6);
-  assert.ok(catalog.leaftailShop.offers.every(item => item.kind === 'item'));
+  assert.equal(catalog.version, 12);
+  assert.equal(catalog.leaftailShop.offers.length, 3);
+  assert.equal(catalog.leaftailShop.supplyOffers.length, 8);
+  assert.equal(catalog.leaftailShop.pearlOffers.length, 3);
   assert.equal(catalog.leaftailShop.travelOffers.length, 21);
   assert.deepEqual(Object.fromEntries(['wardrobe', 'rod', 'hook', 'bait'].map(kind => [kind, view.offers.filter(item => item.kind === kind).length])),
-    { wardrobe: 6, rod: 7, hook: 6, bait: 2 });
-  assert.ok(view.offers.filter(item => item.requiredHomeLevel === 4).every(item => !item.unlocked));
-  assert.ok(view.offers.filter(item => item.requiredHomeLevel === 3).every(item => item.unlocked));
-  const legacy = structuredClone(catalog); delete legacy.leaftailShop.travelOffers;
+    { wardrobe: 2, rod: 1, hook: 1, bait: 1 });
+  assert.ok(view.offers.every(item => item.requiredHomeLevel <= 3 && item.unlocked));
+  const legacy = structuredClone(catalog); legacy.version = 11;
+  delete legacy.leaftailShop.travelOffers; delete legacy.leaftailShop.supplyOffers; delete legacy.leaftailShop.pearlOffers;
   assert.deepEqual(model.economyCatalogSchema.parse(legacy).leaftailShop.travelOffers, []);
-  assert.equal(shop.leaftailShopView({ buildings: { home: 3 } }, now, legacy).offers.length, 3,
-    'an unknown owner can preview supplies but cannot quote another account\'s finds');
+  assert.equal(shop.leaftailShopView({ buildings: { home: 3 } }, now, legacy).offers.length, 3);
+  assert.deepEqual(shop.leaftailShopView({ buildings: { home: 3 } }, now, catalog).offers, [], 'personal v12 stock requires an owner');
 });
 
-test('all six clothes are permanent independent of full pantry, project into world immediately and do not equip themselves', () => {
+test('selected clothes are permanent independent of full pantry, project into world immediately and do not equip themselves', () => {
   const p = player(); world.getDevWorld(p.token, now);
   saved(p).inventory = { wood: read(p).storage.capacity };
   const original = read(p), worldBefore = structuredClone(globalThis.__zhivDevWorldStore.get(p.me.user.publicId).state);
@@ -64,7 +76,7 @@ test('all six clothes are permanent independent of full pantry, project into wor
   }
   assert.equal(read(p).wallet.coins, original.wallet.coins - spent);
   assert.equal(read(p).wallet.pearls, original.wallet.pearls);
-  assert.throws(() => buy(p, clothes[0].itemId, tomorrow), { code: 'ECONOMY_WARDROBE_OWNED' });
+  assert.throws(() => buy(p, clothes[0].itemId, nextDeliveryWith(p, clothes[0].itemId)), { code: 'ECONOMY_WARDROBE_OWNED' });
 });
 
 test('rods and hooks keep equipped tackle intact and cannot be bought again after a delivery reset', () => {
@@ -78,55 +90,59 @@ test('rods and hooks keep equipped tackle intact and cannot be bought again afte
     assert.equal(result.fishing.equippedHookId, initial.fishing.equippedHookId);
     assert.equal(result.fishing.equippedBaitId, initial.fishing.equippedBaitId);
     assert.deepEqual(result.inventory, initial.inventory);
-    assert.throws(() => buy(p, offer.itemId, tomorrow), { code: 'ECONOMY_FISHING_OWNED' });
+    assert.throws(() => buy(p, offer.itemId, nextDeliveryWith(p, offer.itemId)), { code: 'ECONOMY_FISHING_OWNED' });
   }
 });
 
-test('bait delivers exactly five consumables and validates full storage including escrow and item caps before spending', () => {
-  for (const itemId of ['spice_bait', 'dusk_bait']) {
-    const p = player(4), capacity = read(p).storage.capacity, offer = stock(p).offers.find(item => item.itemId === itemId);
-    saved(p).inventory = { wood: capacity - 4 };
-    let before = read(p);
-    assert.throws(() => buy(p, itemId), { code: 'ECONOMY_STORAGE_FULL' }); assert.deepEqual(read(p), before);
-    saved(p).inventory = { wood: capacity - 5 };
-    const listingId = crypto.randomUUID();
-    globalThis.__zhivDevEconomyStore.listings.set(listingId, { id: listingId, sellerPublicId: p.me.user.publicId,
-      sellerName: 'Путник', itemId: 'fiber', quantity: 1, totalPrice: 1, status: 'active', createdAt: new Date(now).toISOString(), closedAt: null });
-    before = read(p);
-    assert.throws(() => buy(p, itemId), { code: 'ECONOMY_STORAGE_FULL' }); assert.deepEqual(read(p), before);
-    globalThis.__zhivDevEconomyStore.listings.delete(listingId);
-    const result = buy(p, itemId).state;
-    assert.equal(result.inventory[itemId], 5); assert.equal(result.storage.available, 0);
-    assert.equal(result.wallet.coins, before.wallet.coins - offer.priceCoins);
-    assert.equal(result.fishing.equippedBaitId, null);
-    const capped = player(4); saved(capped).inventory = { [itemId]: model.ECONOMY_MAX_ITEMS - 4 };
-    const cappedBefore = read(capped);
-    assert.throws(() => buy(capped, itemId), { code: 'ECONOMY_CAPACITY' }); assert.deepEqual(read(capped), cappedBefore);
-  }
+test('the selected bait sells five individual units and validates storage, escrow and caps before spending', () => {
+  const p = player(4), capacity = read(p).storage.capacity, offer = stock(p).offers.find(item => item.kind === 'bait'), itemId = offer.itemId;
+  const purchase = () => buy(p, itemId, now, { quantity: 5, totalPrice: offer.unitPrice * 5 });
+  saved(p).inventory = { wood: capacity - 4 };
+  let before = read(p);
+  assert.throws(purchase, { code: 'ECONOMY_STORAGE_FULL' }); assert.deepEqual(read(p), before);
+  saved(p).inventory = { wood: capacity - 5 };
+  const listingId = crypto.randomUUID();
+  globalThis.__zhivDevEconomyStore.listings.set(listingId, { id: listingId, sellerPublicId: p.me.user.publicId,
+    sellerName: 'Путник', itemId: 'fiber', quantity: 1, totalPrice: 1, status: 'active', createdAt: new Date(now).toISOString(), closedAt: null });
+  before = read(p);
+  assert.throws(purchase, { code: 'ECONOMY_STORAGE_FULL' }); assert.deepEqual(read(p), before);
+  globalThis.__zhivDevEconomyStore.listings.delete(listingId);
+  const result = purchase().state;
+  assert.equal(result.inventory[itemId], 5); assert.equal(result.storage.available, 0);
+  assert.equal(result.wallet.coins, before.wallet.coins - offer.unitPrice * 5); assert.equal(result.wallet.pearls, before.wallet.pearls);
+  assert.equal(result.leaftailShop.purchased[offer.id], 5); assert.equal(result.fishing.equippedBaitId, null);
+  const capped = player(4), cappedOffer = stock(capped).offers.find(item => item.kind === 'bait');
+  saved(capped).inventory = { [cappedOffer.itemId]: model.ECONOMY_MAX_ITEMS - 4 };
+  const cappedBefore = read(capped);
+  assert.throws(() => buy(capped, cappedOffer.itemId, now, { quantity: 5, totalPrice: cappedOffer.unitPrice * 5 }), { code: 'ECONOMY_CAPACITY' });
+  assert.deepEqual(read(capped), cappedBefore);
 });
 
-test('new assortment obeys home, exact quote, wallet, quantity and owner checks without consuming daily stock', () => {
-  const p = player(), before = read(p), q = command(p, 'trail_hat');
-  assert.throws(() => buy(p, 'dusk_rod'), { code: 'ECONOMY_HOME_REQUIRED' });
-  assert.throws(() => buy(p, 'dusk_hook'), { code: 'ECONOMY_HOME_REQUIRED' });
-  assert.throws(() => buy(p, 'dusk_bait'), { code: 'ECONOMY_HOME_REQUIRED' });
+test('new assortment rejects locked/unselected goods and validates exact price, count and owner atomically', () => {
+  const p = player(), before = read(p), hat = stock(p).offers.find(item => item.kind === 'wardrobe'), q = command(p, hat.itemId);
+  const cycle = stock(p).cycle;
+  for (const itemId of ['dusk_rod', 'dusk_hook', 'dusk_bait']) {
+    assert.ok(!stock(p).offers.some(item => item.itemId === itemId));
+    assert.throws(() => economy.commandDevEconomy(p.token, { ...q, requestId: crypto.randomUUID(), targetId: `v2:${cycle}:${itemId}` }, now), { code: 'ECONOMY_LEAFTAIL_SHOP_CHANGED' });
+  }
   for (const totalPrice of [0, q.totalPrice - 1, q.totalPrice + 1]) assert.throws(() => economy.commandDevEconomy(p.token, { ...q, totalPrice }, now), { code: 'ECONOMY_LEAFTAIL_PRICE_CHANGED' });
-  assert.throws(() => economy.commandDevEconomy(p.token, { ...q, quantity: 2 }, now), { code: 'INVALID_ECONOMY_COMMAND' });
+  assert.throws(() => economy.commandDevEconomy(p.token, { ...q, quantity: 2, totalPrice: q.totalPrice * 2 }, now), { code: 'INVALID_ECONOMY_COMMAND' });
   const stranger = player(); assert.throws(() => economy.commandDevEconomy(stranger.token, q, now), { code: 'ECONOMY_OWNER_CHANGED' });
   assert.deepEqual(read(p), before);
-  saved(p).wallet.coins = 5999; const poor = read(p);
-  assert.throws(() => buy(p, 'trail_hat'), { code: 'ECONOMY_RESOURCES' }); assert.deepEqual(read(p), poor);
+  saved(p).wallet.coins = hat.unitPrice - 1; const poor = read(p);
+  assert.throws(() => buy(p, hat.itemId), { code: 'ECONOMY_RESOURCES' }); assert.deepEqual(read(p), poor);
 });
 
-test('clothing and rod receipts replay once, reject racing revisions and stale delivery while rollback never restocks', async () => {
-  for (const itemId of ['trail_hat', 'traveller_rod', 'spice_bait']) {
-    const p = player(), q = command(p, itemId), first = economy.commandDevEconomy(p.token, q, now);
+test('selected clothing, gear and bait receipts replay once while stale delivery and revisions cannot debit twice', async () => {
+  for (const kind of ['wardrobe', 'rod', 'bait']) {
+    const p = player(), offer = stock(p).offers.find(item => item.kind === kind), q = command(p, offer.itemId), first = economy.commandDevEconomy(p.token, q, now);
     const reopened = await vite.ssrLoadModule('/lib/dev/economy-store.ts');
     const replay = reopened.commandDevEconomy(p.token, q, now + 1);
     assert.equal(replay.replayed, true); assert.deepEqual({ ...replay.state, serverTime: first.state.serverTime }, first.state);
     assert.throws(() => economy.commandDevEconomy(p.token, { ...q, requestId: crypto.randomUUID() }, now), { code: 'ECONOMY_REVISION_CONFLICT' });
     assert.throws(() => economy.commandDevEconomy(p.token, { ...q, totalPrice: q.totalPrice - 1 }, now), { code: 'ECONOMY_REQUEST_CONFLICT' });
-    assert.throws(() => buy(p, itemId, now - 86400000), { code: 'ECONOMY_LEAFTAIL_STOCK' });
+    const back = { ...q, requestId: crypto.randomUUID(), expectedRevision: read(p).revision };
+    if (kind !== 'bait') assert.throws(() => economy.commandDevEconomy(p.token, back, now - 86400000), { code: 'ECONOMY_LEAFTAIL_STOCK' });
     const current = read(p, tomorrow);
     assert.throws(() => economy.commandDevEconomy(p.token, { ...q, requestId: crypto.randomUUID(), expectedRevision: current.revision }, tomorrow), { code: 'ECONOMY_LEAFTAIL_SHOP_CHANGED' });
   }
@@ -134,7 +150,7 @@ test('clothing and rod receipts replay once, reject racing revisions and stale d
 
 test('Pleska generation and injected persisted offers cannot sell Leaftail exclusive gear', () => {
   const p = player(5), state = read(p), fishing = state.catalog.fishing;
-  const exclusive = stock(p).offers.filter(item => (item.kind === 'rod' ? fishing.rods.find(gear => gear.id === item.itemId)
+  const exclusive = state.catalog.leaftailShop.travelOffers.filter(item => (item.kind === 'rod' ? fishing.rods.find(gear => gear.id === item.itemId)
     : item.kind === 'hook' ? fishing.hooks.find(gear => gear.id === item.itemId)
     : item.kind === 'bait' ? fishing.baits.find(gear => gear.itemId === item.itemId) : undefined)?.shop === 'leaftail');
   const ids = new Set(exclusive.map(item => item.itemId));
@@ -146,7 +162,7 @@ test('Pleska generation and injected persisted offers cannot sell Leaftail exclu
     const id = `${state.fishingShop.id}:${offer.itemId}`;
     saved(p).fishingShop.offers = [{ id, kind: offer.kind, itemId: offer.itemId, unitPrice: 1, remaining: 5 }];
     const before = read(p);
-    assert.throws(() => buy(p, offer.itemId, now, { action: 'buy_fishing_item', targetId: id, totalPrice: 1 }), { code: 'ECONOMY_FISHING_ITEM' });
+    assert.throws(() => economy.commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: state.ownerPublicId, expectedRevision: before.revision, action: 'buy_fishing_item', targetId: id, totalPrice: 1, quantity: 1 }, now), { code: 'ECONOMY_FISHING_ITEM' });
     assert.deepEqual(read(p), before);
   }
 });

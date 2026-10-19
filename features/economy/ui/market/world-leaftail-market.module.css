@@ -17,7 +17,7 @@
 .item small { font-size: 10px; color: #656c51; }
 .stock { flex-shrink: 0; color: #64724a; font-size: 10px; }
 .offerBottom { margin-top: 7px; }
-.shop.shop .buy { min-height: 40px; padding: 7px 9px; border: 1px solid #738561; background: #466347; color: #fff3cc; font-weight: 600; }
+.shop.shop .buy { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 40px; max-width: 100%; padding: 7px 9px; border: 1px solid #738561; border-radius: 9px; background: #466347; color: #fff3cc; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .shop.shop .buy:hover:not(:disabled) { background: #355439; }
 .shop.shop button { min-height: 40px; }
 .shop.shop button:focus-visible { outline: 2px solid #294f35; outline-offset: 2px; }
@@ -53,3 +53,17 @@
 .fitting > div { min-width: 0; }
 .fitting p { margin-top: 4px; font-size: 10px; }
 .fitting small { display: block; margin-top: 4px; color: #656c51; font-size: 9px; }
+.wallet { align-items: stretch; padding: 9px; border: 1px solid #c3bd98; border-radius: 9px; background: #e6dfbf; }
+.wallet > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wallet > span:last-child { text-align: right; }
+.wallet small { color: #656c51; font-size: 10px; }
+.wallet > span:last-child strong { color: #6a5b89; }
+.empty { padding: 18px 10px; border: 1px dashed #b8be98; border-radius: 10px; color: #656c51; text-align: center; font-size: 11px; }
+.quantityRow { display: flex; align-items: center; justify-content: space-between; gap: 7px; margin-top: 8px; }
+.quantityRow > span { color: #656c51; font-size: 10px; }
+.quantity { display: flex; align-items: center; flex-shrink: 0; border: 1px solid #b8be98; border-radius: 9px; overflow: hidden; background: #e4ddbc; }
+.shop.shop .quantity button { display: grid; place-items: center; min-width: 40px; min-height: 40px; padding: 3px; border: 0; border-radius: 0; background: transparent; color: #3e5c3f; }
+.quantity output { min-width: 28px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.quantity button:focus-visible { outline-offset: -3px !important; }
+.pearlPrice { display: block; margin-top: 6px; font-size: 10px; color: #6a5b89; }
+@media (max-width: 360px) { .quantityRow { flex-wrap: wrap; } .stock { max-width: 73px; text-align: right; } }

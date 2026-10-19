@@ -1,6 +1,7 @@
 import { fishClassForItem, fishClassInventory } from "./fishing";
 import { isMinerJob } from "./actor-availability";
 import { hasGardenBerryReward } from "./garden-berries";
+import { leaftailOfferTarget, leaftailShopOffers } from "./leaftail-shop";
 import type { EconomyCommand, EconomyJob, EconomyResult, EconomyView, MarketCommand } from "./model";
 
 export type InventoryGainItem = Readonly<{ itemId: string; quantity: number }>;
@@ -88,11 +89,11 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     if (!offer || !before.catalog.fishing || !before.catalog.fishing.baits.some(item => item.itemId === offer.itemId) && !fishClassForItem(offer.itemId, before.catalog.fishing)) return null;
     allowed = { [offer.itemId]: command.quantity }; source = "purchase";
   } else if (command.action === "buy_leaftail_item") {
-    const shop = before.catalog.leaftailShop;
-    const offer = [...(shop?.offers ?? []), ...(shop?.travelOffers ?? [])]
-      .find(item => command.targetId === `${after.leaftailShop.cycle}:${item.id}`);
-    if (!offer || command.quantity !== 1 || offer.kind && offer.kind !== "item" && offer.kind !== "bait") return null;
-    allowed = { [offer.itemId]: offer.quantity ?? 1 }; source = "purchase";
+    const offer = leaftailShopOffers(before.catalog, after.leaftailShop.cycle, before.ownerPublicId, before.buildings.home ?? 1)
+      .find(item => command.targetId === leaftailOfferTarget(before.catalog, after.leaftailShop.cycle, item.id));
+    if (!offer || !Number.isSafeInteger(command.quantity) || command.quantity < 1 || command.quantity > 20
+      || offer.kind !== "item" && offer.kind !== "bait") return null;
+    allowed = { [offer.itemId]: offer.quantity * command.quantity }; source = "purchase";
   } else if (command.action === "buy_listing") {
     const listing = result.listing;
     if (!listing || listing.id !== command.targetId || listing.status !== "sold") return null;

@@ -54,7 +54,7 @@ object EconomyRules {
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
         EconomyStageOrders.validateCatalog(catalog)
-        require(catalog.version == 11 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        require(catalog.version == 12 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.localBuyer.unitPrices.all { (id, amount) -> amount in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == id && it.tradable } })
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
@@ -74,7 +74,7 @@ object EconomyRules {
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
         require(catalog.items.all { if (it.category == "special") it.baseSellPrice == 0L && !it.tradable else it.baseSellPrice > 0L })
         catalog.leaftailShop?.let { shop ->
-            require((shop.offers + shop.travelOffers).all { EconomyLeaftailShops.validOffer(catalog, it) })
+            require(EconomyLeaftailShops.validCatalog(catalog, shop))
         }
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)
@@ -390,7 +390,7 @@ object EconomyRules {
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot") && command.totalPrice != 0L) invalidEconomy()
-        if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
+        if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)

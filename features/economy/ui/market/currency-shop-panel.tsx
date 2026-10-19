@@ -7,7 +7,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EconomyView } from "@/features/economy/domain/model";
-import { currencyShopDevelopment, currencyShopGoldOffers, HOME_BONUS_PERCENT, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
+import { currencyShopDevelopment, currencyShopGoldOffers, currencyShopPearlBenchmarks, HOME_BONUS_PERCENT, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { formatPearls } from "@/features/economy/domain/money";
 import styles from "./currency-shop-panel.module.css";
 
@@ -53,6 +53,7 @@ export function CurrencyShopPanel({ state, onRedeemed, initialPage = "pearls" }:
     <div className={styles.page} role="tabpanel" id={`${id}-page`} aria-labelledby={`${id}-${page}`} tabIndex={0}>
       {page === "pearls" ? <>
         <div className={styles.heading}><h3>Жемчуг</h3><p>Для ускорений, новых слотов и особенных вещей</p></div>
+        {state && <div className={styles.benchmarks} aria-label="На что потратить жемчуг"><h4>Цены на полянке</h4><ul>{currencyShopPearlBenchmarks(state.catalog).map(example => <li key={example.id}><ItemIcon itemId={example.itemId} size={19} /><span>{example.label}</span><strong><ItemIcon itemId="pearls" size={15} />{formatPearls(example.pearls)}</strong></li>)}</ul></div>}
         <div className={styles.packages}>{PEARL_SHOP_PACKAGES.map((pack, index) => <article className={styles.package} key={pack.id} data-shop-offer={`pearls-${pack.id}`}>
           <CurrencyPile kind="pearls" tier={index} /><h4>{pack.name}</h4>
           <strong className={styles.amount}><ItemIcon itemId="pearls" size={21} />{formatPearls(pack.pearls)}</strong>

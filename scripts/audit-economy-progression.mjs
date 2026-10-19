@@ -27,7 +27,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 11);
+  assert.equal(catalog.version, 12);
   assert.equal(catalog.currencyScale, 10);
   const projects = auditProjectCourses(catalog);
   const rare = catalog.rareDrops;

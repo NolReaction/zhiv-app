@@ -66,6 +66,7 @@ import { WorldOnboardingSession } from "@/features/world/ui/onboarding/world-onb
 import { WorldOnboardingReward } from "@/features/world/ui/onboarding/world-onboarding-reward";
 import { useMarketUnlockOnboarding } from "@/features/world/state/use-market-unlock-onboarding";
 import { MarketUnlockOnboarding } from "@/features/world/ui/onboarding/market-unlock-onboarding";
+import { useWorldMarketSales } from "@/features/world/state/use-world-market-sales";
 
 type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "help" | "shop" | "orders";
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
@@ -84,6 +85,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const [shopPage, setShopPage] = useState<CurrencyShopPage>("pearls");
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const marketOpen = panel === "economy" && (economyTab === "market" || economyTab === "barter");
+  const marketSales = useWorldMarketSales(economy, ownerPublicId, open && !suspended && !marketOpen);
   useMarketAudio({ active: open && marketOpen, suspended, ownerPublicId, now: economy.now, timeZone });
   const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
   const [selection, setSelection] = useState<MapObjectSelection | null>(null);
@@ -548,6 +550,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
       onOpenProduction={openStation}
+      marketSales={marketSales} onOpenMarket={() => { clearObject(); setQuickMenu(null); openEconomy("market"); }}
       bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && !selection && quickUpgrade === null && !residentOpen && !charactersOpen && !dailyOpen}
       onBotsChanged={onDevBotsChanged} onVisitBot={onDevVisitBot}

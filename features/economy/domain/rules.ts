@@ -16,7 +16,7 @@ import { canPrepareTutorialHarvest, isTutorialOrderId, newTutorialOrder, TUTORIA
 import { ensureStageOrders, isStageOrderId, stageCourseRequired, stageOrderProgress, stageOrdersProgress, stageResidentOrder } from "./stage-orders";
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "./item-unlocks";
 import { economyMarketUnlocked, marketSlotOffer } from "./market-rules";
-import { leaftailShopStock, leaftailShopView } from "./leaftail-shop";
+import { leaftailShopStock, leaftailShopUsesUnits, leaftailShopView } from "./leaftail-shop";
 import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock, type FishSelection } from "./fish-stock";
 import { canStartTutorialWorkshop } from "./workshop-starter";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
@@ -168,7 +168,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     const fishStockCost = cost === null ? {} : debit(state, cost, fishSelection);
     state.jobs.push({ ...job, ...(Object.keys(fishStockCost).length ? { fishStockCost } : {}), id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost: cost ?? { coins: 0, items: {} }, catalogVersion: economyCatalog.version });
   };
-  if (!["start_production", "sell", "sell_fish", "buy_fishing_item"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
+  if (!["start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
     case "buy_market_slot": {
       if (!marketUnlocked(state)) return fail("ECONOMY_MARKET_LOCKED", "Сначала откройте рынок");
@@ -584,6 +584,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       // transition; it is the same identity used by the displayed snapshot.
       const shop = leaftailShopView({ ...state, ownerPublicId: command.ownerPublicId }, now);
       if (!shop) return fail("ECONOMY_LEAFTAIL_UNAVAILABLE", "Листохвост пока не открыл лавку");
+      const unitSales = leaftailShopUsesUnits(economyCatalog);
+      if (command.quantity > (unitSales ? 20 : 1))
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Проверьте количество товара", 400);
       requireHome(state, shop.requiredHomeLevel);
       const offer = shop.offers.find(item => item.targetId === command.targetId);
       if (!offer) return fail("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Поставка Листохвоста изменилась. Проверьте прилавок");
@@ -594,26 +597,33 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const hook = offer.kind === "hook" && economyCatalog.fishing?.hooks.find(item => item.id === offer.itemId);
       const bait = offer.kind === "bait" && economyCatalog.fishing?.baits.find(item => item.itemId === offer.itemId);
       const gear = rod || hook || bait;
-      if (item ? (item.category === "special" ? item.tradable || offer.quantity !== 1 : !["wood", "stone", "fiber"].includes(item.id)
-        || !item.tradable || offer.priceCoins !== 2 * item.baseSellPrice * offer.quantity)
-        : clothing ? offer.quantity !== 1 : !gear || offer.priceCoins !== gear.price * offer.quantity || !bait && offer.quantity !== 1)
+      if (item ? (item.category === "special" ? item.tradable || offer.quantity !== 1
+        || unitSales && offer.currency !== "pearls" : offer.currency !== "coins" || !item.tradable
+        || !["material", "crafted", "provisions", "produce"].includes(item.category)
+        || offer.unitPrice < 2 * item.baseSellPrice * offer.quantity)
+        : clothing ? offer.quantity !== 1 || offer.currency !== "coins" : !gear || offer.currency !== "coins"
+          || offer.unitPrice !== gear.price * offer.quantity || !bait && offer.quantity !== 1)
         return fail("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Этот товар пока недоступен");
-      if (command.totalPrice !== offer.priceCoins)
+      if ((offer.currency === "pearls" || clothing || rod || hook) && command.quantity !== 1)
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Эту вещь можно купить только одну", 400);
+      const price = offer.unitPrice * command.quantity, quantity = offer.quantity * command.quantity;
+      if (command.totalPrice !== price)
         return fail("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Листохвоста");
-      if (offer.remaining < 1) return fail("ECONOMY_LEAFTAIL_STOCK", "Сегодня этот предмет уже куплен. Дождитесь новой поставки");
+      if (offer.remaining < command.quantity) return fail("ECONOMY_LEAFTAIL_STOCK", "В поставке осталось меньше товара. Проверьте количество");
       if (offer.owned) return fail(clothing ? "ECONOMY_WARDROBE_OWNED" : "ECONOMY_FISHING_OWNED",
         clothing ? "Эта вещь уже есть в гардеробе" : "Эта снасть уже есть в коллекции");
-      if (state.wallet.coins < offer.priceCoins) return fail("ECONOMY_RESOURCES", "Не хватает монет");
-      const inventory = item || bait ? { ...state.inventory, [offer.itemId]: (state.inventory[offer.itemId] ?? 0) + offer.quantity } : state.inventory;
+      if (state.wallet[offer.currency] < price) return fail(offer.currency === "pearls" ? "ECONOMY_PEARLS" : "ECONOMY_RESOURCES",
+        offer.currency === "pearls" ? "Не хватает жемчужин" : "Не хватает монет");
+      const inventory = item || bait ? { ...state.inventory, [offer.itemId]: (state.inventory[offer.itemId] ?? 0) + quantity } : state.inventory;
       if (item || bait) assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
       const stock = leaftailShopStock(state, now), current = fishingState(state);
       // Every validation precedes the debit; the caller commits state and its receipt atomically.
-      state.wallet.coins -= offer.priceCoins;
+      state.wallet[offer.currency] -= price;
       state.inventory = inventory;
       if (clothing) state.wardrobe = wardrobeOwned(state.wardrobe, [clothing.id]);
       if (rod) state.fishing = { ...current, ownedRods: [...current.ownedRods, rod.id] };
       if (hook) state.fishing = { ...current, ownedHooks: [...current.ownedHooks, hook.id] };
-      state.leaftailShop = { cycle: stock.cycle, purchased: { ...stock.purchased, [offer.id]: (stock.purchased[offer.id] ?? 0) + 1 } };
+      state.leaftailShop = { cycle: stock.cycle, purchased: { ...stock.purchased, [offer.id]: (stock.purchased[offer.id] ?? 0) + command.quantity } };
       return clothing ? "Покупка у Листохвоста добавлена в гардероб" : rod ? "Удочка у Листохвоста добавлена в коллекцию"
         : hook ? "Крючок у Листохвоста добавлен в коллекцию" : "Покупка у Листохвоста отправлена в кладовую";
     }

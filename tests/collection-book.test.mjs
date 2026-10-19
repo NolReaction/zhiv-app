@@ -54,7 +54,9 @@ test("book UI renders accessible chapter tabs, owned records and current acquisi
   assert.match(html, /aria-selected="true"/);
   assert.ok(html.includes(`1/${book.BOOK_COLLECTION_COUNT}`));
   assert.equal((html.match(/data-owned="true"/g) ?? []).length, 1);
-  assert.match(html, /за каждые 2 ч завершённых работ/);
+  assert.match(html, /До одной находки за работу/);
+  assert.match(html, /Короткие задания копят прогресс/);
+  assert.match(html, /За одну работу учитывается до 2 ч/);
   assert.match(html, /Продажа рыбы и материалов их не стирает/);
   assert.doesNotMatch(html, /Лесной альбом|прежних путешествий.<\/p><\/div>|Мохлику ·/);
 });
