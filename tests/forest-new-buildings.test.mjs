@@ -27,12 +27,12 @@ const expectedSites = {
   market: [1], "leaftail-caravan": [1], "bulletin-board": [1], "lopukh-home": [1, 2], "plesk-shop": [1], "builder-home": [1],
 };
 const authoredImages = [
-  { objectId: 485, siteId: "market", level: 1, file: "market.png" },
-  { objectId: 488, siteId: "leaftail-caravan", level: 1, file: "leaftail-caravan.png" },
+  { objectId: 485, siteId: "market", level: 1, file: "market-lvl-1.png" },
+  { objectId: 488, siteId: "leaftail-caravan", level: 1, file: "leaftail-caravan-lvl-1.png" },
   { objectId: 491, siteId: "bulletin-board", level: 1, file: "bulletin-board.png" },
   { objectId: 495, siteId: "lopukh-home", level: 1, file: "lopukh-house-lvl-1.png" },
   { objectId: 497, siteId: "lopukh-home", level: 2, file: "lopukh-house-lvl-2.png" },
-  { objectId: 422, siteId: "plesk-shop", level: 1, file: "pleska-market.png" },
+  { objectId: 422, siteId: "plesk-shop", level: 1, file: "pleska-market-lvl-1.png" },
   { objectId: 440, siteId: "builder-home", level: 1, file: "Shishkolap_House.png" },
 ];
 const objects = (layers, offset = { x: 0, y: 0 }) => layers.flatMap(layer => {

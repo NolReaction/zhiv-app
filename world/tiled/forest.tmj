@@ -2,355 +2,346 @@
  "height":1254,
  "infinite":false,
  "layers":[
-{
-    "id": 178,
-    "name": "ConstructionSites",
-    "type": "objectgroup",
-    "draworder": "index",
-    "opacity": 1,
-    "visible": true,
-    "x": 0,
-    "y": 0,
-    "color": "#ffcc9670",
-    "objects": [
         {
-            "id": 550,
-            "name": "home-building-work",
-            "type": "ConstructionSite",
-            "x": 594,
-            "y": 650,
-            "width": 0,
-            "height": 0,
-            "rotation": 0,
-            "visible": true,
-            "polyline": [
+         "color":"#cc9670",
+         "draworder":"index",
+         "id":178,
+         "name":"ConstructionSites",
+         "objects":[
                 {
-                    "x": 0,
-                    "y": 0
-                },
+                 "height":0,
+                 "id":550,
+                 "name":"home-building-work",
+                 "opacity":1,
+                 "polyline":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":6,
+                         "y":13
+                        }, 
+                        {
+                         "x":15,
+                         "y":16
+                        }],
+                 "properties":[
+                        {
+                         "name":"materials",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"construction-site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"home"
+                        }],
+                 "rotation":0,
+                 "type":"ConstructionSite",
+                 "visible":true,
+                 "width":0,
+                 "x":594,
+                 "y":650
+                }, 
                 {
-                    "x": 6,
-                    "y": 13
-                },
+                 "height":0,
+                 "id":551,
+                 "name":"workshop-building-work",
+                 "opacity":1,
+                 "polyline":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":10,
+                         "y":8
+                        }, 
+                        {
+                         "x":19,
+                         "y":9
+                        }],
+                 "properties":[
+                        {
+                         "name":"materials",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"construction-site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"workshop"
+                        }],
+                 "rotation":0,
+                 "type":"ConstructionSite",
+                 "visible":true,
+                 "width":0,
+                 "x":169,
+                 "y":578
+                }, 
                 {
-                    "x": 15,
-                    "y": 16
-                }
-            ],
-            "properties": [
+                 "height":0,
+                 "id":552,
+                 "name":"woodlot-building-work",
+                 "opacity":1,
+                 "polyline":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":8,
+                         "y":8
+                        }, 
+                        {
+                         "x":18,
+                         "y":10
+                        }],
+                 "properties":[
+                        {
+                         "name":"materials",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"construction-site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"lopukh-home"
+                        }],
+                 "rotation":0,
+                 "type":"ConstructionSite",
+                 "visible":true,
+                 "width":0,
+                 "x":961.174242424242,
+                 "y":197.901515151515
+                }, 
                 {
-                    "name": "role",
-                    "type": "string",
-                    "value": "construction-site"
-                },
+                 "height":0,
+                 "id":553,
+                 "name":"quarry-building-work",
+                 "opacity":1,
+                 "polyline":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":9,
+                         "y":6
+                        }, 
+                        {
+                         "x":19,
+                         "y":8
+                        }],
+                 "properties":[
+                        {
+                         "name":"materials",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"construction-site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"quarry"
+                        }],
+                 "rotation":0,
+                 "type":"ConstructionSite",
+                 "visible":true,
+                 "width":0,
+                 "x":590,
+                 "y":251
+                }, 
                 {
-                    "name": "siteId",
-                    "type": "string",
-                    "value": "home"
-                },
+                 "height":0,
+                 "id":554,
+                 "name":"garden-building-work",
+                 "opacity":1,
+                 "polyline":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":9,
+                         "y":6
+                        }, 
+                        {
+                         "x":17,
+                         "y":7
+                        }],
+                 "properties":[
+                        {
+                         "name":"materials",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"construction-site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"garden"
+                        }],
+                 "rotation":0,
+                 "type":"ConstructionSite",
+                 "visible":true,
+                 "width":0,
+                 "x":531,
+                 "y":614
+                }, 
                 {
-                    "name": "materials",
-                    "type": "bool",
-                    "value": true
-                }
-            ]
-        },
-        {
-            "id": 551,
-            "name": "workshop-building-work",
-            "type": "ConstructionSite",
-            "x": 169,
-            "y": 578,
-            "width": 0,
-            "height": 0,
-            "rotation": 0,
-            "visible": true,
-            "polyline": [
+                 "height":0,
+                 "id":555,
+                 "name":"campfire-building-work",
+                 "opacity":1,
+                 "polyline":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":9,
+                         "y":3
+                        }, 
+                        {
+                         "x":18,
+                         "y":1
+                        }],
+                 "properties":[
+                        {
+                         "name":"materials",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"construction-site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"campfire"
+                        }],
+                 "rotation":0,
+                 "type":"ConstructionSite",
+                 "visible":true,
+                 "width":0,
+                 "x":690,
+                 "y":699
+                }, 
                 {
-                    "x": 0,
-                    "y": 0
-                },
+                 "height":0,
+                 "id":556,
+                 "name":"bridge-building-work",
+                 "opacity":1,
+                 "polyline":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":1,
+                         "y":9
+                        }, 
+                        {
+                         "x":6,
+                         "y":16
+                        }],
+                 "properties":[
+                        {
+                         "name":"materials",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"construction-site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"bridge"
+                        }],
+                 "rotation":0,
+                 "type":"ConstructionSite",
+                 "visible":true,
+                 "width":0,
+                 "x":543,
+                 "y":1050
+                }, 
                 {
-                    "x": 10,
-                    "y": 8
-                },
-                {
-                    "x": 19,
-                    "y": 9
-                }
-            ],
-            "properties": [
-                {
-                    "name": "role",
-                    "type": "string",
-                    "value": "construction-site"
-                },
-                {
-                    "name": "siteId",
-                    "type": "string",
-                    "value": "workshop"
-                },
-                {
-                    "name": "materials",
-                    "type": "bool",
-                    "value": true
-                }
-            ]
-        },
-        {
-            "id": 552,
-            "name": "woodlot-building-work",
-            "type": "ConstructionSite",
-            "x": 941,
-            "y": 226,
-            "width": 0,
-            "height": 0,
-            "rotation": 0,
-            "visible": true,
-            "polyline": [
-                {
-                    "x": 0,
-                    "y": 0
-                },
-                {
-                    "x": 8,
-                    "y": 8
-                },
-                {
-                    "x": 18,
-                    "y": 10
-                }
-            ],
-            "properties": [
-                {
-                    "name": "role",
-                    "type": "string",
-                    "value": "construction-site"
-                },
-                {
-                    "name": "siteId",
-                    "type": "string",
-                    "value": "lopukh-home"
-                },
-                {
-                    "name": "materials",
-                    "type": "bool",
-                    "value": true
-                }
-            ]
-        },
-        {
-            "id": 553,
-            "name": "quarry-building-work",
-            "type": "ConstructionSite",
-            "x": 590,
-            "y": 251,
-            "width": 0,
-            "height": 0,
-            "rotation": 0,
-            "visible": true,
-            "polyline": [
-                {
-                    "x": 0,
-                    "y": 0
-                },
-                {
-                    "x": 9,
-                    "y": 6
-                },
-                {
-                    "x": 19,
-                    "y": 8
-                }
-            ],
-            "properties": [
-                {
-                    "name": "role",
-                    "type": "string",
-                    "value": "construction-site"
-                },
-                {
-                    "name": "siteId",
-                    "type": "string",
-                    "value": "quarry"
-                },
-                {
-                    "name": "materials",
-                    "type": "bool",
-                    "value": true
-                }
-            ]
-        },
-        {
-            "id": 554,
-            "name": "garden-building-work",
-            "type": "ConstructionSite",
-            "x": 531,
-            "y": 614,
-            "width": 0,
-            "height": 0,
-            "rotation": 0,
-            "visible": true,
-            "polyline": [
-                {
-                    "x": 0,
-                    "y": 0
-                },
-                {
-                    "x": 9,
-                    "y": 6
-                },
-                {
-                    "x": 17,
-                    "y": 7
-                }
-            ],
-            "properties": [
-                {
-                    "name": "role",
-                    "type": "string",
-                    "value": "construction-site"
-                },
-                {
-                    "name": "siteId",
-                    "type": "string",
-                    "value": "garden"
-                },
-                {
-                    "name": "materials",
-                    "type": "bool",
-                    "value": true
-                }
-            ]
-        },
-        {
-            "id": 555,
-            "name": "campfire-building-work",
-            "type": "ConstructionSite",
-            "x": 690,
-            "y": 699,
-            "width": 0,
-            "height": 0,
-            "rotation": 0,
-            "visible": true,
-            "polyline": [
-                {
-                    "x": 0,
-                    "y": 0
-                },
-                {
-                    "x": 9,
-                    "y": 3
-                },
-                {
-                    "x": 18,
-                    "y": 1
-                }
-            ],
-            "properties": [
-                {
-                    "name": "role",
-                    "type": "string",
-                    "value": "construction-site"
-                },
-                {
-                    "name": "siteId",
-                    "type": "string",
-                    "value": "campfire"
-                },
-                {
-                    "name": "materials",
-                    "type": "bool",
-                    "value": true
-                }
-            ]
-        },
-        {
-            "id": 556,
-            "name": "bridge-building-work",
-            "type": "ConstructionSite",
-            "x": 543,
-            "y": 1050,
-            "width": 0,
-            "height": 0,
-            "rotation": 0,
-            "visible": true,
-            "polyline": [
-                {
-                    "x": 0,
-                    "y": 0
-                },
-                {
-                    "x": 1,
-                    "y": 9
-                },
-                {
-                    "x": 6,
-                    "y": 16
-                }
-            ],
-            "properties": [
-                {
-                    "name": "role",
-                    "type": "string",
-                    "value": "construction-site"
-                },
-                {
-                    "name": "siteId",
-                    "type": "string",
-                    "value": "bridge"
-                },
-                {
-                    "name": "materials",
-                    "type": "bool",
-                    "value": true
-                }
-            ]
-        },
-        {
-            "id": 557,
-            "name": "lighthouse-building-work",
-            "type": "ConstructionSite",
-            "x": 1168,
-            "y": 1076,
-            "width": 0,
-            "height": 0,
-            "rotation": 0,
-            "visible": true,
-            "polyline": [
-                {
-                    "x": 0,
-                    "y": 0
-                },
-                {
-                    "x": 9,
-                    "y": -3
-                },
-                {
-                    "x": 16,
-                    "y": -9
-                }
-            ],
-            "properties": [
-                {
-                    "name": "role",
-                    "type": "string",
-                    "value": "construction-site"
-                },
-                {
-                    "name": "siteId",
-                    "type": "string",
-                    "value": "lighthouse"
-                },
-                {
-                    "name": "materials",
-                    "type": "bool",
-                    "value": true
-                }
-            ]
-        }
-    ]
-},
+                 "height":0,
+                 "id":557,
+                 "name":"lighthouse-building-work",
+                 "opacity":1,
+                 "polyline":[
+                        {
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "x":9,
+                         "y":-3
+                        }, 
+                        {
+                         "x":16,
+                         "y":-9
+                        }],
+                 "properties":[
+                        {
+                         "name":"materials",
+                         "type":"bool",
+                         "value":true
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"construction-site"
+                        }, 
+                        {
+                         "name":"siteId",
+                         "type":"string",
+                         "value":"lighthouse"
+                        }],
+                 "rotation":0,
+                 "type":"ConstructionSite",
+                 "visible":true,
+                 "width":0,
+                 "x":1168,
+                 "y":1076
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
         {
          "draworder":"index",
          "id":1,
@@ -9834,149 +9825,143 @@
                 {
                  "id":140,
                  "layers":[
-{
-    "id": 179,
-    "name": "LopukhWorkZone",
-    "opacity": 1,
-    "type": "group",
-    "visible": true,
-    "x": 0,
-    "y": 0,
-    "layers": [
-        {
-            "id": 180,
-            "name": "Destinations",
-            "opacity": 1,
-            "type": "objectgroup",
-            "visible": true,
-            "draworder": "index",
-            "x": 0,
-            "y": 0,
-            "objects": [
-                {
-                    "height": 0,
-                    "id": 558,
-                    "name": "lopukh-work-tree-1",
-                    "opacity": 1,
-                    "point": true,
-                    "properties": [
                         {
-                            "name": "role",
-                            "type": "string",
-                            "value": "destination"
-                        },
-                        {
-                            "name": "siteId",
-                            "type": "string",
-                            "value": "lopukh-home"
-                        },
-                        {
-                            "name": "pauseSeconds",
-                            "type": "float",
-                            "value": 8
-                        }
-                    ],
-                    "rotation": 0,
-                    "type": "",
-                    "visible": true,
-                    "width": 0,
-                    "x": 947,
-                    "y": 270
-                },
-                {
-                    "height": 0,
-                    "id": 559,
-                    "name": "lopukh-work-tree-2",
-                    "opacity": 1,
-                    "point": true,
-                    "properties": [
-                        {
-                            "name": "role",
-                            "type": "string",
-                            "value": "destination"
-                        },
-                        {
-                            "name": "siteId",
-                            "type": "string",
-                            "value": "lopukh-home"
-                        },
-                        {
-                            "name": "pauseSeconds",
-                            "type": "float",
-                            "value": 8
-                        }
-                    ],
-                    "rotation": 0,
-                    "type": "",
-                    "visible": true,
-                    "width": 0,
-                    "x": 953,
-                    "y": 277
-                },
-                {
-                    "height": 0,
-                    "id": 560,
-                    "name": "lopukh-delivery",
-                    "opacity": 1,
-                    "point": true,
-                    "properties": [
-                        {
-                            "name": "role",
-                            "type": "string",
-                            "value": "destination"
-                        },
-                        {
-                            "name": "siteId",
-                            "type": "string",
-                            "value": "lopukh-home"
-                        },
-                        {
-                            "name": "pauseSeconds",
-                            "type": "float",
-                            "value": 8
-                        }
-                    ],
-                    "rotation": 0,
-                    "type": "",
-                    "visible": true,
-                    "width": 0,
-                    "x": 930,
-                    "y": 303
-                },
-                {
-                    "height": 0,
-                    "id": 561,
-                    "name": "lopukh-rest",
-                    "opacity": 1,
-                    "point": true,
-                    "properties": [
-                        {
-                            "name": "role",
-                            "type": "string",
-                            "value": "destination"
-                        },
-                        {
-                            "name": "siteId",
-                            "type": "string",
-                            "value": "lopukh-home"
-                        },
-                        {
-                            "name": "pauseSeconds",
-                            "type": "float",
-                            "value": 8
-                        }
-                    ],
-                    "rotation": 0,
-                    "type": "",
-                    "visible": true,
-                    "width": 0,
-                    "x": 940,
-                    "y": 290
-                }
-            ]
-        }
-    ]
-},
+                         "id":179,
+                         "layers":[
+                                {
+                                 "draworder":"index",
+                                 "id":180,
+                                 "name":"Destinations",
+                                 "objects":[
+                                        {
+                                         "height":0,
+                                         "id":558,
+                                         "name":"lopukh-work-tree-1",
+                                         "opacity":1,
+                                         "point":true,
+                                         "properties":[
+                                                {
+                                                 "name":"pauseSeconds",
+                                                 "type":"float",
+                                                 "value":8
+                                                }, 
+                                                {
+                                                 "name":"role",
+                                                 "type":"string",
+                                                 "value":"destination"
+                                                }, 
+                                                {
+                                                 "name":"siteId",
+                                                 "type":"string",
+                                                 "value":"lopukh-home"
+                                                }],
+                                         "rotation":0,
+                                         "type":"",
+                                         "visible":true,
+                                         "width":0,
+                                         "x":835.75,
+                                         "y":217.25
+                                        }, 
+                                        {
+                                         "height":0,
+                                         "id":559,
+                                         "name":"lopukh-work-tree-2",
+                                         "opacity":1,
+                                         "point":true,
+                                         "properties":[
+                                                {
+                                                 "name":"pauseSeconds",
+                                                 "type":"float",
+                                                 "value":8
+                                                }, 
+                                                {
+                                                 "name":"role",
+                                                 "type":"string",
+                                                 "value":"destination"
+                                                }, 
+                                                {
+                                                 "name":"siteId",
+                                                 "type":"string",
+                                                 "value":"lopukh-home"
+                                                }],
+                                         "rotation":0,
+                                         "type":"",
+                                         "visible":true,
+                                         "width":0,
+                                         "x":954,
+                                         "y":173.75
+                                        }, 
+                                        {
+                                         "height":0,
+                                         "id":560,
+                                         "name":"lopukh-delivery",
+                                         "opacity":1,
+                                         "point":true,
+                                         "properties":[
+                                                {
+                                                 "name":"pauseSeconds",
+                                                 "type":"float",
+                                                 "value":8
+                                                }, 
+                                                {
+                                                 "name":"role",
+                                                 "type":"string",
+                                                 "value":"destination"
+                                                }, 
+                                                {
+                                                 "name":"siteId",
+                                                 "type":"string",
+                                                 "value":"lopukh-home"
+                                                }],
+                                         "rotation":0,
+                                         "type":"",
+                                         "visible":true,
+                                         "width":0,
+                                         "x":974,
+                                         "y":196
+                                        }, 
+                                        {
+                                         "height":0,
+                                         "id":561,
+                                         "name":"lopukh-rest",
+                                         "opacity":1,
+                                         "point":true,
+                                         "properties":[
+                                                {
+                                                 "name":"pauseSeconds",
+                                                 "type":"float",
+                                                 "value":8
+                                                }, 
+                                                {
+                                                 "name":"role",
+                                                 "type":"string",
+                                                 "value":"destination"
+                                                }, 
+                                                {
+                                                 "name":"siteId",
+                                                 "type":"string",
+                                                 "value":"lopukh-home"
+                                                }],
+                                         "rotation":0,
+                                         "type":"",
+                                         "visible":true,
+                                         "width":0,
+                                         "x":984.25,
+                                         "y":220.75
+                                        }],
+                                 "opacity":1,
+                                 "type":"objectgroup",
+                                 "visible":true,
+                                 "x":0,
+                                 "y":0
+                                }],
+                         "name":"LopukhWorkZone",
+                         "opacity":1,
+                         "type":"group",
+                         "visible":true,
+                         "x":0,
+                         "y":0
+                        }, 
                         {
                          "id":141,
                          "layers":[
@@ -12908,7 +12893,7 @@
                  "id":137,
                  "layers":[
                         {
-                         "id":143,
+                         "id":183,
                          "layers":[
                                 {
                                  "draworder":"index",
@@ -12916,9 +12901,43 @@
                                  "name":"Caravan-image",
                                  "objects":[
                                         {
+                                         "gid":38,
+                                         "height":89.312783907,
+                                         "id":564,
+                                         "name":"",
+                                         "opacity":1,
+                                         "rotation":0,
+                                         "type":"",
+                                         "visible":true,
+                                         "width":134.800195886,
+                                         "x":815.533137447,
+                                         "y":366.666666667
+                                        }],
+                                 "opacity":1,
+                                 "type":"objectgroup",
+                                 "visible":true,
+                                 "x":0,
+                                 "y":0
+                                }],
+                         "name":"Caravan-lvl-0",
+                         "opacity":1,
+                         "type":"group",
+                         "visible":true,
+                         "x":0,
+                         "y":0
+                        }, 
+                        {
+                         "id":143,
+                         "layers":[
+                                {
+                                 "draworder":"index",
+                                 "id":184,
+                                 "name":"Caravan-image",
+                                 "objects":[
+                                        {
                                          "gid":33,
                                          "height":89.3127839065542,
-                                         "id":488,
+                                         "id":563,
                                          "name":"leaftail-caravan-level-1",
                                          "opacity":1,
                                          "properties":[
@@ -12944,7 +12963,7 @@
                                                 }],
                                          "rotation":0,
                                          "type":"",
-                                         "visible":true,
+                                         "visible":false,
                                          "width":134.800195886386,
                                          "x":815.533137446947,
                                          "y":366.666666666667
@@ -17248,63 +17267,62 @@
                                  "visible":false,
                                  "x":0,
                                  "y":0
-                                },
-        {
-          "draworder": "index",
-          "id": 177,
-          "name": "EffectAnchors",
-          "objects": [
-            {
-              "id": 548,
-              "name": "plesk-home-fish",
-              "point": true,
-              "x": 1127,
-              "y": 529,
-              "width": 0,
-              "height": 0,
-              "rotation": 0,
-              "visible": true,
-              "class": "EffectAnchor",
-              "properties": [
-                {
-                  "name": "role",
-                  "type": "string",
-                  "value": "effect-anchor"
-                },
-                {
-                  "name": "effect",
-                  "type": "string",
-                  "value": "resident-home"
-                },
-                {
-                  "name": "residentId",
-                  "type": "string",
-                  "value": "plesk"
-                },
-                {
-                  "name": "siteId",
-                  "type": "string",
-                  "value": "plesk-shop"
-                },
-                {
-                  "name": "level",
-                  "type": "int",
-                  "value": 1
-                },
-                {
-                  "name": "size",
-                  "type": "float",
-                  "value": 44
-                }
-              ]
-            }
-          ],
-          "opacity": 1,
-          "type": "objectgroup",
-          "visible": true,
-          "x": 0,
-          "y": 0
-        }],
+                                }, 
+                                {
+                                 "draworder":"index",
+                                 "id":177,
+                                 "name":"EffectAnchors",
+                                 "objects":[
+                                        {
+                                         "height":0,
+                                         "id":548,
+                                         "name":"plesk-home-fish",
+                                         "opacity":1,
+                                         "point":true,
+                                         "properties":[
+                                                {
+                                                 "name":"effect",
+                                                 "type":"string",
+                                                 "value":"resident-home"
+                                                }, 
+                                                {
+                                                 "name":"level",
+                                                 "type":"int",
+                                                 "value":1
+                                                }, 
+                                                {
+                                                 "name":"residentId",
+                                                 "type":"string",
+                                                 "value":"plesk"
+                                                }, 
+                                                {
+                                                 "name":"role",
+                                                 "type":"string",
+                                                 "value":"effect-anchor"
+                                                }, 
+                                                {
+                                                 "name":"siteId",
+                                                 "type":"string",
+                                                 "value":"plesk-shop"
+                                                }, 
+                                                {
+                                                 "name":"size",
+                                                 "type":"float",
+                                                 "value":44
+                                                }],
+                                         "rotation":0,
+                                         "type":"EffectAnchor",
+                                         "visible":true,
+                                         "width":0,
+                                         "x":1127,
+                                         "y":529
+                                        }],
+                                 "opacity":1,
+                                 "type":"objectgroup",
+                                 "visible":true,
+                                 "x":0,
+                                 "y":0
+                                }],
                          "name":"Shop-lvl-1",
                          "opacity":1,
                          "type":"group",
@@ -17322,6 +17340,40 @@
                 {
                  "id":134,
                  "layers":[
+                        {
+                         "id":182,
+                         "layers":[
+                                {
+                                 "draworder":"topdown",
+                                 "id":181,
+                                 "name":"Market-image",
+                                 "objects":[
+                                        {
+                                         "gid":37,
+                                         "height":219.523146913,
+                                         "id":562,
+                                         "name":"",
+                                         "opacity":1,
+                                         "rotation":16.024064898,
+                                         "type":"",
+                                         "visible":true,
+                                         "width":274.306106927,
+                                         "x":200.720062606,
+                                         "y":776.685612578
+                                        }],
+                                 "opacity":1,
+                                 "type":"objectgroup",
+                                 "visible":true,
+                                 "x":0,
+                                 "y":0
+                                }],
+                         "name":"Market-lvl-0",
+                         "opacity":1,
+                         "type":"group",
+                         "visible":true,
+                         "x":0,
+                         "y":0
+                        }, 
                         {
                          "id":170,
                          "layers":[
@@ -32594,28 +32646,29 @@
          "name":"Destinations",
          "objects":[
                 {
-                  "id": 549,
-                  "name": "foraging",
-                  "point": true,
-                  "x": 680,
-                  "y": 715,
-                  "width": 0,
-                  "height": 0,
-                  "rotation": 0,
-                  "visible": true,
-                  "properties": [
-                    {
-                      "name": "role",
-                      "type": "string",
-                      "value": "destination"
-                    },
-                    {
-                      "name": "pauseSeconds",
-                      "type": "float",
-                      "value": 8
-                    }
-                  ]
-                },
+                 "height":0,
+                 "id":549,
+                 "name":"foraging",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"pauseSeconds",
+                         "type":"float",
+                         "value":8
+                        }, 
+                        {
+                         "name":"role",
+                         "type":"string",
+                         "value":"destination"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":680,
+                 "y":715
+                }, 
                 {
                  "height":0,
                  "id":384,
@@ -39788,7 +39841,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -47639,8 +47692,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":181,
- "nextobjectid":562,
+ "nextlayerid":185,
+ "nextobjectid":565,
  "orientation":"orthogonal",
  "properties":[
         {
@@ -47670,7 +47723,7 @@
          "name":"Forest image collection",
          "objectalignment":"topleft",
          "spacing":0,
-         "tilecount":29,
+         "tilecount":31,
          "tileheight":2560,
          "tiles":[
                 {
@@ -48148,8 +48201,14 @@
                         }]
                 }, 
                 {
+                 "id":36,
+                 "image":"..\/..\/public\/world\/prototype\/market-lvl-0.png",
+                 "imageheight":1122,
+                 "imagewidth":1402
+                }, 
+                {
                  "id":31,
-                 "image":"..\/..\/public\/world\/prototype\/market.png",
+                 "image":"..\/..\/public\/world\/prototype\/market-lvl-1.png",
                  "imageheight":1122,
                  "imagewidth":1402,
                  "properties":[
@@ -48229,8 +48288,14 @@
                         }]
                 }, 
                 {
+                 "id":37,
+                 "image":"..\/..\/public\/world\/prototype\/leaftail-caravan-lvl-0.png",
+                 "imageheight":1021,
+                 "imagewidth":1540
+                }, 
+                {
                  "id":32,
-                 "image":"..\/..\/public\/world\/prototype\/leaftail-caravan.png",
+                 "image":"..\/..\/public\/world\/prototype\/leaftail-caravan-lvl-1.png",
                  "imageheight":1021,
                  "imagewidth":1541,
                  "properties":[

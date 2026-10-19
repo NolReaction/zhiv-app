@@ -73,7 +73,7 @@ test("Tiled exports the rotated fishing shop as a clickable site with independen
     height: Math.max(...corners.map(point => point.y)) - y });
   assert.match(shop.states[0].image, /^\/world\/prototype\/pleska-market\.png\?v=/);
   assert.ok(TILED_WORLD.navigation.areas.some(area => area.id === "pleska-cleaning"));
-  assert.ok(!TILED_WORLD.terrain.some(image => image.image.includes("pleska-market.png")), "the shop keeps its own interaction and collision contract instead of becoming terrain-only artwork");
+  assert.ok(!TILED_WORLD.terrain.some(image => image.image.includes("pleska-market-lvl-1.png")), "the shop keeps its own interaction and collision contract instead of becoming terrain-only artwork");
   const center = centroid(shop.collision);
   assert.equal(previewSiteAt(TILED_WORLD, center)?.id, "plesk-shop");
   const navigation = createWorldNavigation(TILED_WORLD);
