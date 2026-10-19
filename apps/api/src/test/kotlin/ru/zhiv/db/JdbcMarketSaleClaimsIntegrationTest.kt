@@ -331,8 +331,12 @@ class JdbcMarketSaleClaimsIntegrationTest {
                     val claim=EconomyCommand(UUID.randomUUID().toString(),seller.publicId,view.revision,"claim_sale",id.toString(),1,0)
                     assertEquals("ECONOMY_MARKET_NOT_PENDING",assertFailsWith<AuthFailure> { migratedMarket.command(token.hash,claim) }.code)
                 }
+                // Ordinary snapshots may pin item knowledge, initialize the fishing
+                // shop and sort wardrobe data. Repeated migration preserves the state
+                // committed by those reads, separately from the initial V63 upgrade.
+                val afterReads=scalar(db,"SELECT state::text || ':' || revision FROM economy_profiles WHERE user_id=?",seller.id)
                 DatabaseFactory.migrate(db)
-                assertEquals(before,scalar(db,"SELECT state::text || ':' || revision FROM economy_profiles WHERE user_id=?",seller.id))
+                assertEquals(afterReads,scalar(db,"SELECT state::text || ':' || revision FROM economy_profiles WHERE user_id=?",seller.id))
                 assertEquals("2",scalar(db,"SELECT count(*) FROM economy_market_listings WHERE sale_claimed_at IS NOT NULL"))
             }
         } finally { source.connection.use { c -> c.autoCommit=true; c.economyUpdate("DROP DATABASE $database") } }

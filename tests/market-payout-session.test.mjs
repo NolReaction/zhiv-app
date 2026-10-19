@@ -70,3 +70,124 @@ test("a recovered payout request cannot run as another player", async () => {
   session.activate(); await session.refresh(); await session.retry();
   assert.equal(calls, 0); assert.equal(cache.getItem(key), null); assert.equal(session.getSnapshot().snapshot.wallet.coins, 100);
 });
+
+const sale = (id = lot) => ({ id, sellerPublicId: owner, sellerName: "Продавец", itemId: "wood", quantity: 1, totalPrice: 40,
+  status: "sold", owned: true, feeBps: 500, createdAt: new Date(now - 1000).toISOString(), closedAt: new Date(now).toISOString(),
+  sale: { buyerPublicId: other, buyerName: "Natasha", buyerAvatarUrl: null, proceedsCoins: 38, claimedAt: null } });
+const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+
+test("a newly sold lot refreshes its seller revision before the first collection command", async () => {
+  let current = state(), shelf = market(), profileReads = 0; const commands = [], observedRevisions = [];
+  const session = createEconomySession(owner, transport({ get: async () => { profileReads++; return current; },
+    market: async () => shelf, trade: async command => {
+      commands.push(command);
+      if (command.expectedRevision !== current.revision) throw new ApiError("Состояние изменилось", 409, { code: "ECONOMY_REVISION" });
+      current = state(current.revision + 1, current.wallet.coins + 38); shelf = market(); return result(current);
+    },
+  }), () => assert.fail());
+  const stop = session.activate(); await session.refresh(); await session.refreshMarket();
+  assert.equal(profileReads, 1, "an ordinary market read does not request another profile");
+  current = state(1); shelf = { ...market(), mine: [sale()] };
+  const unsubscribe = session.subscribe(() => { if (session.getSnapshot().market?.mine.length) observedRevisions.push(session.getSnapshot().snapshot.revision); });
+  await session.refreshMarket();
+  assert.equal(profileReads, 2);
+  assert.deepEqual(observedRevisions, [1], "the collection button never observes the pre-purchase seller revision");
+  assert.equal(session.getSnapshot().snapshot.wallet.coins, 100, "reading the receipt does not credit its coins");
+  assert.equal(session.actMarket("claim_sale", lot), true); await flush(); await flush();
+  assert.equal(commands.length, 1); assert.equal(commands[0].expectedRevision, 1);
+  assert.equal(session.getSnapshot().error, null); assert.equal(session.getSnapshot().snapshot.wallet.coins, 138);
+  unsubscribe(); stop();
+});
+
+test("a new pending receipt stays hidden while its authoritative profile read is in flight", async () => {
+  const profile = deferred(); let reads = 0;
+  const session = createEconomySession(owner, transport({ get: async () => ++reads === 1 ? state() : profile.promise,
+    market: async () => ({ ...market(), mine: [sale()] }),
+  }), () => assert.fail());
+  const stop = session.activate(); await session.refresh(); const loading = session.refreshMarket(); await flush();
+  assert.equal(reads, 2); assert.equal(session.getSnapshot().market, null);
+  assert.equal(session.getSnapshot().snapshot.revision, 0);
+  profile.resolve(state(7, 111)); await loading;
+  assert.equal(session.getSnapshot().market.mine[0].id, lot);
+  assert.equal(session.getSnapshot().snapshot.revision, 7); assert.equal(session.getSnapshot().snapshot.wallet.coins, 111);
+  assert.deepEqual(session.getSnapshot().inventoryGains, [], "polling creates no synthetic collection rewards");
+  stop();
+});
+
+test("known pending receipts do not cause extra profile reads until a different sale arrives", async () => {
+  let reads = 0, shelf = { ...market(), mine: [sale()] };
+  const session = createEconomySession(owner, transport({ get: async () => { reads++; return state(reads); }, market: async () => shelf }), () => assert.fail());
+  const stop = session.activate(); await session.refresh(); await session.refreshMarket();
+  assert.equal(reads, 2);
+  await session.refreshMarket(); assert.equal(reads, 2);
+  shelf = { ...market(), mine: [sale(), sale(crypto.randomUUID())] };
+  await session.refreshMarket(); assert.equal(reads, 3); assert.equal(session.getSnapshot().market.mine.length, 2);
+  stop();
+});
+
+test("a failed seller profile confirmation keeps the new collection button unavailable", async () => {
+  let reads = 0;
+  const session = createEconomySession(owner, transport({ get: async () => { if (++reads === 1) return state(); throw new ApiError("Сервер временно недоступен", 503); },
+    market: async () => ({ ...market(), mine: [sale()] }),
+  }), () => assert.fail());
+  const stop = session.activate(); await session.refresh(); await session.refreshMarket();
+  assert.equal(session.getSnapshot().market, null); assert.equal(session.getSnapshot().snapshot.revision, 0);
+  assert.equal(session.getSnapshot().marketError, "Сервер временно недоступен");
+  assert.equal(session.getSnapshot().marketSyncError, "Сервер временно недоступен");
+  assert.equal(session.getSnapshot().uncertain, false, "a failed read never manufactures a pending write receipt");
+  stop();
+});
+
+test("foreign market or profile owners never expose a pending receipt or replace the current snapshot", async () => {
+  for (const mismatch of ["market", "profile", "session"]) {
+    let reads = 0, lost = 0;
+    const session = createEconomySession(owner, transport({ get: async () => {
+      if (++reads === 1) return state();
+      if (mismatch === "session") throw new ApiError("Сессия закончилась", 401);
+      return state(2, 999, other);
+    }, market: async () => ({ ...market(), ownerPublicId: mismatch === "market" ? other : owner, mine: [sale()] }) }), () => { lost++; });
+    const stop = session.activate(); await session.refresh(); await session.refreshMarket();
+    assert.equal(lost, 1); assert.equal(session.getSnapshot().market, null);
+    assert.equal(session.getSnapshot().snapshot.ownerPublicId, owner); assert.equal(session.getSnapshot().snapshot.wallet.coins, 100);
+    assert.equal(reads, mismatch === "market" ? 1 : 2); stop();
+  }
+});
+
+test("offline suspension and deactivation discard a delayed sale profile confirmation", async () => {
+  for (const suspend of [session => session.setAvailable(false), (_session, stop) => stop()]) {
+    const profile = deferred(); let reads = 0, signal;
+    const session = createEconomySession(owner, transport({ get: async currentSignal => { if (++reads === 1) return state(); signal = currentSignal; return profile.promise; },
+      market: async () => ({ ...market(), mine: [sale()] }),
+    }), () => assert.fail());
+    const stop = session.activate(); await session.refresh(); const loading = session.refreshMarket(); await flush();
+    suspend(session, stop); assert.equal(signal.aborted, true);
+    profile.resolve(state(9, 900)); await loading;
+    assert.equal(session.getSnapshot().market, null); assert.equal(session.getSnapshot().snapshot.revision, 0);
+    assert.equal(session.getSnapshot().snapshot.wallet.coins, 100); stop();
+  }
+});
+
+test("a command supersedes a delayed sale profile confirmation and its old market response", async () => {
+  const profile = deferred(); let reads = 0, shelf = { ...market(), mine: [sale()] };
+  const session = createEconomySession(owner, transport({ get: async () => ++reads === 1 ? state() : profile.promise,
+    market: async () => shelf, send: async () => { shelf = market(); return result(state(3, 222)); },
+  }), () => assert.fail());
+  const stop = session.activate(); await session.refresh(); const loading = session.refreshMarket(); await flush();
+  assert.equal(session.act("start_exploration", "forest"), true); await flush();
+  profile.resolve(state(2, 111)); await loading;
+  assert.equal(session.getSnapshot().snapshot.revision, 3); assert.equal(session.getSnapshot().snapshot.wallet.coins, 222);
+  assert.equal(session.getSnapshot().market, null, "the invalidated pre-command shelf is not republished");
+  stop();
+});
+
+test("a concurrent newer profile cannot be rolled back by the market's sale confirmation read", async () => {
+  const profile = deferred(); let reads = 0;
+  const session = createEconomySession(owner, transport({ get: async () => { reads++; return reads === 1 ? state() : reads === 2 ? profile.promise : state(9, 900); },
+    market: async () => ({ ...market(), mine: [sale()] }),
+  }), () => assert.fail());
+  const stop = session.activate(); await session.refresh(); const loading = session.refreshMarket(); await flush();
+  await session.refresh(); assert.equal(session.getSnapshot().snapshot.revision, 9);
+  profile.resolve(state(7, 700)); await loading;
+  assert.equal(session.getSnapshot().snapshot.revision, 9); assert.equal(session.getSnapshot().snapshot.wallet.coins, 900);
+  assert.equal(session.getSnapshot().market.mine[0].id, lot); stop();
+});

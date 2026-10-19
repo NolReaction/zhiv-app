@@ -289,6 +289,15 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const result = await transport.market(request.signal);
       if (!valid(generation) || sequence !== marketSequence) return;
       if (result.ownerPublicId !== owner) { onSessionLost(); return; }
+      const knownSales = new Set(view.market?.mine.filter(lot => lot.status === "sold" && lot.sale?.claimedAt === null).map(lot => lot.id));
+      if (result.mine.some(lot => lot.owned && lot.status === "sold" && lot.sale?.claimedAt === null && !knownSales.has(lot.id))) {
+        // Another buyer also advances the seller's revision. Confirm that snapshot
+        // before exposing a new collection button; the market cannot invent it.
+        const snapshot = await transport.get(request.signal);
+        if (!valid(generation) || sequence !== marketSequence || !adopt(snapshot)) return;
+        // Adopting can notify a listener that starts a command and supersedes this read.
+        if (!valid(generation) || sequence !== marketSequence) return;
+      }
       publish({ market: result, marketError: null, marketSyncError: null });
     } catch (error) {
       if (!valid(generation) || sequence !== marketSequence) return;
