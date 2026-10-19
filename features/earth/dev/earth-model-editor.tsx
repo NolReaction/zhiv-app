@@ -9,11 +9,11 @@ import { exportEarthModelPlacements, getEarthModelPlacements, hydrateEarthModelP
 import { createEarthModelEditorMap, earthModelEditorCamera } from "./earth-model-editor-map";
 import { createEarthModelEditorHistory } from "./earth-model-editor-history";
 import { classifyEarthModelEditorShortcut, earthModelEditorShortcutPatch, isEarthModelEditorTextTarget } from "./earth-model-editor-shortcuts";
+import { persistEarthModelEditorOpen } from "./earth-model-editor-session";
 import styles from "./earth-model-editor.module.css";
 
 const API = "/api/dev/earth-models";
 const MAX_IMPORT_BYTES = 64 * 1024;
-const OPEN_KEY = "zhiv.earth.model-editor.open.v1";
 type NumericField = Exclude<keyof EarthModelPlacement, "id" | "excludeBuildings">;
 type Message = { error?: boolean; text: string } | null;
 
@@ -43,22 +43,32 @@ function NumberField({ label, value, min, max, step = 1, onChange, onEditStart, 
 
 function placementName(id: string) { return EARTH_LANDMARKS.find(item => item.id === id)?.nameRussian ?? id; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "Не удалось выполнить действие."; }
+async function projectResponse(response: Response) {
+  let result;
+  try { result = await response.json(); } catch { /* A stopped/restarting dev server can return HTML. */ }
+  if (!response.ok || !result || typeof result.revision !== "string") {
+    if (response.status === 403) throw new Error("Открой карту по localhost или локальному IP компьютера. Через публичный адрес запись в проект недоступна.");
+    throw new Error(typeof result?.message === "string" ? result.message : "Не удалось подключиться к сохранению проекта. Перезапусти dev-сервер и нажми сохранить снова.");
+  }
+  return result as { revision: string };
+}
 
 /** The parent imports and mounts this editor only in development. */
-export function EarthModelEditor({ map, visible }: { map: LibreMap; visible: boolean }) {
+export function EarthModelEditor({ map, visible, open, onOpenChange }: {
+  map: LibreMap; visible: boolean; open: boolean; onOpenChange: (open: boolean) => void;
+}) {
   const placements = useSyncExternalStore(subscribeEarthModelPlacements, getEarthModelPlacements, getEarthModelPlacements);
   const [history] = useState(createEarthModelEditorHistory);
   const historyState = useSyncExternalStore(history.subscribe, history.getSnapshot, history.getSnapshot);
   const [selectedId, setSelectedId] = useState(() => placements[0]?.id ?? "");
   const selected = placements.find(item => item.id === selectedId) ?? placements[0] ?? null;
-  const [open, setOpen] = useState(() => {
-    try { return typeof window !== "undefined" && window.sessionStorage.getItem(OPEN_KEY) === "1"; }
-    catch { return false; }
-  });
   const [placing, setPlacing] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const [revision, setRevision] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [conflicted, setConflicted] = useState(false);
+  const initialRequest = useRef<AbortController | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -76,6 +86,7 @@ export function EarthModelEditor({ map, visible }: { map: LibreMap; visible: boo
 
   useEffect(() => {
     const controller = new AbortController();
+    initialRequest.current = controller;
     let mounted = true;
     let disconnectHistory = () => {};
     async function initialize() {
@@ -84,11 +95,10 @@ export function EarthModelEditor({ map, visible }: { map: LibreMap; visible: boo
       disconnectHistory = history.connect();
       try {
         const response = await fetch(API, { cache: "no-store", signal: controller.signal });
-        const result = await response.json();
-        if (!response.ok || typeof result.revision !== "string") throw new Error();
-        if (mounted) setRevision(result.revision);
-      } catch {
-        if (mounted) setMessage({ error: true, text: "Запись в проект недоступна. Запусти npm run dev:local; черновик и экспорт JSON работают отдельно." });
+        const result = await projectResponse(response);
+        if (mounted && !controller.signal.aborted) { setRevision(result.revision); setProjectError(null); }
+      } catch (error) {
+        if (mounted && !controller.signal.aborted) setProjectError(errorMessage(error));
       }
     }
     void initialize();
@@ -96,7 +106,7 @@ export function EarthModelEditor({ map, visible }: { map: LibreMap; visible: boo
       try { persistEarthModelPlacementDraft(window.localStorage); }
       catch { setMessage({ error: true, text: "Браузер не сохранил черновик. Скачай JSON, чтобы сохранить правки." }); }
     });
-    return () => { mounted = false; controller.abort(); unsubscribe(); disconnectHistory(); };
+    return () => { mounted = false; controller.abort(); initialRequest.current = null; unsubscribe(); disconnectHistory(); };
   }, [history]);
 
   useEffect(() => {
@@ -122,12 +132,11 @@ export function EarthModelEditor({ map, visible }: { map: LibreMap; visible: boo
   }, [selected, placing, open, visible]);
 
   const setEditorOpen = useCallback((value: boolean) => {
-    setOpen(value);
+    onOpenChange(value);
     // Writing the source JSON can trigger a full development reload. Remember
     // only this panel preference within the tab so the workshop stays open.
-    try { window.sessionStorage.setItem(OPEN_KEY, value ? "1" : "0"); }
-    catch { /* The editor remains usable when browser storage is unavailable. */ }
-  }, []);
+    persistEarthModelEditorOpen(value);
+  }, [onOpenChange]);
   const close = useCallback(() => { history.endTransaction(); setEditorOpen(false); setPlacing(false); trigger.current?.focus({ preventScroll: true }); }, [setEditorOpen, history]);
   const undo = useCallback(() => {
     preview.current?.finishDrag();
@@ -250,24 +259,26 @@ export function EarthModelEditor({ map, visible }: { map: LibreMap; visible: boo
     } catch (error) { setMessage({ error: true, text: `Импорт не выполнен: ${errorMessage(error)}` }); }
   }
   async function saveProject() {
-    if (!revision || saving) return;
+    if (saving || conflicted) return;
+    initialRequest.current?.abort();
     const documentText = exportEarthModelPlacements();
     setSaving(true);
     setMessage(null);
     try {
+      // A failed initial GET must not permanently disable the only save action.
+      const currentRevision = revision ?? (await projectResponse(await fetch(API, { cache: "no-store" }))).revision;
       const response = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document: JSON.parse(documentText), revision }) });
-      const result = await response.json();
+        body: JSON.stringify({ document: JSON.parse(documentText), revision: currentRevision }) });
       if (response.status === 409) {
         setRevision(null);
+        setConflicted(true);
         throw new Error("Файл изменился в другом окне. Скачай свои правки в JSON и обнови страницу перед записью.");
       }
-      if (!result || typeof result !== "object") throw new Error("Не удалось прочитать ответ локального сервера.");
-      if (!response.ok || typeof result.revision !== "string") throw new Error(typeof result.message === "string" ? result.message
-        : typeof result.error === "string" ? result.error : "Не удалось записать файл проекта.");
+      const result = await projectResponse(response);
       setRevision(result.revision);
+      setProjectError(null);
       setMessage({ text: documentText === exportEarthModelPlacements() ? "Настройки записаны в проект. Их можно коммитить в earth." : "Проект сохранён. Более новые правки ещё в черновике: нажми сохранить снова." });
-    } catch (error) { setMessage({ error: true, text: errorMessage(error) }); }
+    } catch (error) { setProjectError(errorMessage(error)); }
     finally { setSaving(false); }
   }
 
@@ -322,9 +333,10 @@ export function EarthModelEditor({ map, visible }: { map: LibreMap; visible: boo
         </dl><p className={styles.hint}>Клавиши работают при открытой панели, когда фокус на карте или в редакторе. В числовых полях действует обычная отмена ввода.</p></details>
       </> : <p>В каталоге пока нет моделей.</p>}
       <footer>
-        <button className={styles.primary} type="button" disabled={!revision || saving} aria-busy={saving}
-          title={!revision ? "Запись недоступна. Проверь сообщение ниже; скачать JSON можно всегда." : "Записать настройки в features/earth/data/model-placements.json"}
+        <button className={styles.primary} type="button" disabled={conflicted || saving} aria-busy={saving}
+          title={conflicted ? "Скачай свои правки и обнови страницу: файл проекта изменился." : "Записать настройки в features/earth/data/model-placements.json"}
           onClick={() => void saveProject()}>{saving ? "Сохраняем…" : "Сохранить в проект"}</button>
+        {projectError && <p className={styles.message} data-error="true" role="alert">{projectError}</p>}
         <div className={styles.actions}><button type="button" onClick={exportJson}>Скачать JSON</button><button type="button" onClick={() => importInput.current?.click()}>Импорт JSON</button>
           <button type="button" onClick={() => { history.endTransaction(); resetEarthModelPlacements(); setPlacing(false); setMessage({ text: "Восстановлены настройки из проекта. Для записи сброса нажми «Сохранить в проект»." }); }}>Сбросить</button></div>
         <input ref={importInput} className={styles.srOnly} type="file" accept="application/json,.json" tabIndex={-1} aria-label="Импортировать настройки моделей" onChange={event => void importJson(event)} />

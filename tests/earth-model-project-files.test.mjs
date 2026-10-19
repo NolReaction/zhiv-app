@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { createServer, request as nodeRequest } from "node:http";
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createEarthModelProjectFiles, earthModelRequestAllowed, EARTH_MODEL_BODY_LIMIT,
   EARTH_MODEL_PENDING_LIMIT } from "../lib/dev/earth-model-project-files.mjs";
+import { earthModelProjectFilesDev } from "../build/earth-model-project-files-plugin.mjs";
 
 const baseURL = "http://localhost:3002/api/dev/earth-models";
 const document = { version: 1, placements: [{ id: "eiffel-tower", longitude: 2.2945, latitude: 48.8584,
@@ -31,13 +33,13 @@ async function fixture(t, options = {}) {
   return { root, file, files, initial, body };
 }
 
-test("placement file requests require development, a loopback target and matching Host and browser origin", () => {
+test("placement file requests require development, private Host and matching browser origin", () => {
   assert.equal(earthModelRequestAllowed(request(), "development"), true);
   assert.equal(earthModelRequestAllowed(request({}), "development"), true);
   for (const mode of ["production", "test", "preview", ""]) assert.equal(earthModelRequestAllowed(request({}), mode), false);
-  for (const host of ["127.0.0.1", "127.20.0.1", "[::1]"])
+  for (const host of ["127.0.0.1", "127.20.0.1", "[::1]", "192.168.1.20", "10.0.0.1", "172.16.0.1", "172.31.255.255", "[fd12::1]"])
     assert.equal(earthModelRequestAllowed(request({}, {}, `http://${host}:3002/api/dev/earth-models`), "development"), true);
-  for (const host of ["evil.example", "192.168.1.20", "10.0.0.1", "172.16.0.1", "0.0.0.0", "localhost.evil.example", "127.attacker.example"])
+  for (const host of ["evil.example", "192.169.1.20", "11.0.0.1", "172.15.0.1", "172.32.0.1", "8.8.8.8", "0.0.0.0", "localhost.evil.example", "127.attacker.example"])
     assert.equal(earthModelRequestAllowed(request({}, {}, `http://${host}:3002/api/dev/earth-models`), "development"), false);
   for (const extra of [{ host: "evil.example" }, { host: "localhost:3002@evil.example" }, { host: "localhost:3002/path" },
     { host: "localhost:3002?query" }, { host: "localhost:3003" }, { origin: "null" }, { origin: "https://evil.example" },
@@ -51,6 +53,14 @@ test("placement file requests require development, a loopback target and matchin
   assert.equal(earthModelRequestAllowed(request(undefined, { origin: "https://evil.example" }), "development"), false);
   assert.equal(earthModelRequestAllowed(request({}, { host: "localhost:3002", origin: "http://localhost:3002" }, "http://evil.example/api/dev/earth-models"), "development"), false);
   assert.equal(earthModelRequestAllowed(request({}, { "sec-fetch-site": "same-origin" }), "development"), true);
+});
+
+test("Next configured listening addresses do not replace actual local/LAN Host and Origin checks", () => {
+  for (const internal of ["http://localhost:3002", "http://0.0.0.0:3002", "http://[::]:3002"])
+    for (const host of ["127.0.0.1:3002", "localhost:3002", "192.168.1.20:3002", "10.0.0.1:3002", "172.20.1.2:3002"])
+      assert.equal(earthModelRequestAllowed(request({}, { host, origin: `http://${host}` }, `${internal}/api/dev/earth-models`), "development"), true);
+  for (const origin of ["http://localhost:3002", "http://192.168.1.20:3003", "https://evil.example", "null"])
+    assert.equal(earthModelRequestAllowed(request({}, { host: "192.168.1.20:3002", origin }, "http://0.0.0.0:3002/api/dev/earth-models"), "development"), false);
 });
 
 test("GET returns the current authored document and a raw-file SHA-256 revision; saves only the fixed path", async t => {
@@ -178,4 +188,93 @@ test("pending uploads are bounded and aborted upload slots are reusable", async 
   uploads.forEach(upload => upload.abort.abort());
   assert.deepEqual((await Promise.all(pending)).map(response => response.status), Array(EARTH_MODEL_PENDING_LIMIT).fill(408));
   assert.equal((await files.handle(request(), "development")).status, 503);
+});
+
+async function middlewareServer(t, root, environment = "development") {
+  const previousEnvironment = process.env.NODE_ENV;
+  process.env.NODE_ENV = environment;
+  t.after(() => { if (previousEnvironment === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previousEnvironment; });
+  const handlers = [];
+  const plugin = earthModelProjectFilesDev();
+  await plugin.configureServer({ config: { root }, middlewares: { use(handler) { handlers.push(handler); } } });
+  const server = createServer((request, response) => {
+    let index = 0;
+    const next = () => {
+      const handler = handlers[index++];
+      if (handler) handler(request, response, next);
+      else { response.writeHead(404); response.end("not a local project endpoint"); }
+    };
+    next();
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  return { plugin, handlers, origin: `http://127.0.0.1:${server.address().port}` };
+}
+
+test("Vite Node middleware reads and atomically saves the configured checkout outside the Cloudflare worker", async t => {
+  const { root, file } = await fixture(t);
+  const { origin, plugin } = await middlewareServer(t, root);
+  assert.equal(plugin.apply, "serve");
+  assert.equal("configurePreviewServer" in plugin, false);
+  const current = await fetch(`${origin}/api/dev/earth-models`);
+  assert.equal(current.status, 200);
+  const body = await current.json();
+  body.document.placements[0].headingDegrees += 15;
+  const response = await fetch(`${origin}/api/dev/earth-models`, { method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json", "Sec-Fetch-Site": "same-origin" }, body: JSON.stringify(body) });
+  assert.equal(response.status, 200);
+  const saved = await response.json();
+  assert.equal(await readFile(file, "utf8"), encode(saved.document));
+  assert.equal(saved.document.placements[0].headingDegrees, 60);
+  assert.notEqual(saved.revision, body.revision);
+  const conflict = await fetch(`${origin}/api/dev/earth-models`, { method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  assert.equal(conflict.status, 409);
+  assert.equal((await fetch(`${origin}/other-api`)).status, 404);
+});
+
+test("Vite middleware keeps origin, private peer, body size and production guards", async t => {
+  const { root, file } = await fixture(t);
+  const { origin, handlers } = await middlewareServer(t, root);
+  const before = await readFile(file, "utf8");
+  for (const headers of [{}, { Origin: "null" }, { Origin: "https://evil.example" },
+    { Origin: origin, "Sec-Fetch-Site": "cross-site" }]) {
+    const response = await fetch(`${origin}/api/dev/earth-models`, { method: "POST",
+      headers: { "Content-Type": "application/json", ...headers }, body: "{}" });
+    assert.equal(response.status, 403, JSON.stringify(headers));
+  }
+  // Node fetch replaces Host; raw HTTP is needed to exercise forged authorities.
+  const forgedHostStatus = await new Promise((resolve, reject) => {
+    const outgoing = nodeRequest(`${origin}/api/dev/earth-models`, { method: "POST",
+      headers: { Host: "evil.example", Origin: origin, "X-Forwarded-Host": new URL(origin).host, "Content-Type": "application/json" } }, response => {
+      response.resume(); response.on("end", () => resolve(response.statusCode));
+    });
+    outgoing.on("error", reject); outgoing.end("{}");
+  });
+  assert.equal(forgedHostStatus, 403);
+  const large = await fetch(`${origin}/api/dev/earth-models`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
+    body: " ".repeat(EARTH_MODEL_BODY_LIMIT + 1) });
+  assert.equal(large.status, 413);
+  const streamedStatus = await new Promise((resolve, reject) => {
+    const outgoing = nodeRequest(`${origin}/api/dev/earth-models`, { method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json", "Transfer-Encoding": "chunked" } }, response => {
+      response.resume(); response.on("end", () => resolve(response.statusCode));
+    });
+    outgoing.on("error", reject);
+    outgoing.write(" ".repeat(EARTH_MODEL_BODY_LIMIT + 1)); outgoing.end();
+  });
+  assert.equal(streamedStatus, 413, "bounded streaming errors must respond before closing the socket");
+  let deniedStatus;
+  handlers[0]({ url: "/api/dev/earth-models", socket: { remoteAddress: "8.8.8.8" } }, {
+    writeHead(status) { deniedStatus = status; }, end() {},
+  }, () => assert.fail("Public peers must not reach worker dispatch."));
+  assert.equal(deniedStatus, 403);
+  process.env.NODE_ENV = "production";
+  assert.equal((await fetch(`${origin}/api/dev/earth-models`)).status, 404);
+  assert.equal(await readFile(file, "utf8"), before);
+});
+
+test("Vite preview/production never installs the filesystem middleware", async t => {
+  const { handlers } = await middlewareServer(t, path.join(tmpdir(), "earth-production-must-not-read"), "production");
+  assert.equal(handlers.length, 0);
 });

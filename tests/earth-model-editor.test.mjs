@@ -78,13 +78,20 @@ function distance(a, b) {
 
 test("DEV entry starts collapsed and hidden maps expose no editor or focus targets", () => {
   const map = fakeMap();
-  assert.equal(renderToStaticMarkup(createElement(EarthModelEditor, { map, visible: false })), "");
-  const html = renderToStaticMarkup(createElement(EarthModelEditor, { map, visible: true }));
+  assert.equal(renderToStaticMarkup(createElement(EarthModelEditor, { map, visible: false, open: false, onOpenChange() {} })), "");
+  const html = renderToStaticMarkup(createElement(EarthModelEditor, { map, visible: true, open: false, onOpenChange() {} }));
   assert.match(html, /aria-expanded="false"/);
   assert.match(html, /DEV 3D/);
   assert.doesNotMatch(html, /<section|<input|<select/);
   assert.equal(map.listeners.size, 0);
   assert.equal(map.sources.size, 0);
+});
+
+test("the controlled editor exposes a retryable save action before its first project read", () => {
+  const html = renderToStaticMarkup(createElement(EarthModelEditor, { map: fakeMap(), visible: true, open: true, onOpenChange() {} }));
+  const button = html.match(/<button[^>]*>Сохранить в проект<\/button>/)?.[0];
+  assert.ok(button);
+  assert.doesNotMatch(button, /disabled/);
 });
 
 test("zone preview uses metres at different latitudes and heading points clockwise from north", () => {

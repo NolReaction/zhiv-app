@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Ghost, Globe2, Leaf, MapPin, RefreshCw, ShieldCheck, Users, X } from "lucide-react";
 import type { PeopleResponse } from "@/lib/check-in-contract";
 import { PlayerName } from "@/components/player-name";
@@ -10,7 +10,10 @@ import { useEarthLocation } from "./use-earth-location";
 import type { EarthLocationStatus, EarthPosition } from "./location";
 import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
 import { EarthSharingPanel, sharingSummary, type EarthSharingChoices, type EarthSharingHandle } from "./earth-sharing-panel";
+import { readEarthModelEditorOpen } from "./dev/earth-model-editor-session";
 import styles from "./earth-view.module.css";
+
+const NO_SHARED_PEOPLE: readonly EarthMapPerson[] = [];
 
 type Props = {
   ownerPublicId: string;
@@ -78,13 +81,21 @@ export function EarthFriends({ people, loading, error, online, onRefresh, onOpen
 
 export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, isOnline, people, peopleLoading, peopleError,
   onRefreshPeople, onOpenPeople, onOpenWorld }: Props) {
+  const [modelEditorOpen, setModelEditorOpen] = useState(readEarthModelEditorOpen);
+  const editingModel = process.env.NODE_ENV === "development" && modelEditorOpen;
+  const locationEnabled = active && visible && !editingModel;
   const autoLocate = sharing.pendingGhost ? false : sharing.settings ? sharing.settings.mode !== "GHOST" : null;
-  const location = useEarthLocation({ ownerPublicId, enabled: active && visible, autoStartWhenGranted: autoLocate });
+  const location = useEarthLocation({ ownerPublicId, enabled: locationEnabled, autoStartWhenGranted: autoLocate });
   const [focusRequest, setFocusRequest] = useState(0);
   const [panelSelection, setPanelSelection] = useState<{ visible: boolean; value: "friends" | "sharing" | "info" | null }>({ visible, value: null });
   if (panelSelection.visible !== visible) setPanelSelection({ visible, value: null });
   const panel = panelSelection.visible === visible ? panelSelection.value : null;
   const setPanel = (value: "friends" | "sharing" | "info" | null) => setPanelSelection({ visible, value });
+  const onModelEditorOpenChange = useCallback((open: boolean) => {
+    const editing = process.env.NODE_ENV === "development" && open;
+    setModelEditorOpen(editing);
+    if (editing) setPanelSelection(current => current.value === null ? current : { ...current, value: null });
+  }, []);
   const friendsOpen = panel === "friends";
   const sharingOpen = panel === "sharing";
   const [selectedCircleIds, setSelectedCircleIds] = useState<readonly string[]>([]);
@@ -96,35 +107,40 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const panelHeading = useRef<HTMLHeadingElement>(null);
   const stopLocation = location.stop;
   const { setPosition: setSharedPosition, stopPublishing, pendingGhost, publishing } = sharing;
-  const foreground = useRef(active && visible);
+  const foreground = useRef(locationEnabled);
   const wasPublishing = useRef(false);
   const sharedPeople = sharing.people.filter(person => !people || people.people.some(contact => contact.circleId === person.circleId));
-  useLayoutEffect(() => { foreground.current = active && visible; return () => { foreground.current = false; }; }, [active, visible]);
+  useLayoutEffect(() => { foreground.current = locationEnabled; return () => { foreground.current = false; }; }, [locationEnabled]);
   // A retained map is allowed to keep its tiles/camera, never a location watch.
   useLayoutEffect(() => { if (!visible) stopLocation(); }, [visible, stopLocation]);
   useEffect(() => { if (visible) heading.current?.focus({ preventScroll: true }); }, [visible]);
   useEffect(() => {
-    if (!active || !visible || !location.position && sharedPeople.length === 0) return;
+    if (!locationEnabled || !location.position && sharedPeople.length === 0) return;
     const interval = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(interval);
-  }, [active, visible, location.position, sharedPeople.length]);
+  }, [locationEnabled, location.position, sharedPeople.length]);
   useEffect(() => { if (friendsOpen || sharingOpen) panelHeading.current?.focus({ preventScroll: true }); }, [friendsOpen, sharingOpen]);
   useEffect(() => {
-    setSharedPosition(active && visible && location.status === "active" ? location.position : null);
-    if (["denied", "unavailable", "timeout", "unsupported", "insecure", "paused"].includes(location.status)) stopPublishing();
-  }, [active, visible, location.status, location.position, setSharedPosition, stopPublishing]);
+    setSharedPosition(locationEnabled && location.status === "active" ? location.position : null);
+    // Editing temporarily pauses the private watch. Keep that request resumable;
+    // do not treat its paused snapshot as a terminal publication/GPS failure.
+    // Closing can briefly retain "paused" until the hook starts its next watch.
+    if (!editingModel && (["denied", "unavailable", "timeout", "unsupported", "insecure"].includes(location.status)
+      || location.status === "paused" && (!active || !visible))) stopPublishing();
+  }, [active, visible, editingModel, locationEnabled, location.status, location.position, setSharedPosition, stopPublishing]);
   useEffect(() => {
     // A GPS failure already cleared its watch. Preserve the reason instead of
     // replacing denied/unavailable/timeout with an unexplained idle state.
-    if (pendingGhost || wasPublishing.current && !publishing && !location.error) stopLocation();
+    if (pendingGhost || !editingModel && wasPublishing.current && !publishing && !location.error) stopLocation();
     wasPublishing.current = publishing;
-  }, [pendingGhost, publishing, location.error, stopLocation]);
+  }, [pendingGhost, publishing, editingModel, location.error, stopLocation]);
   const closeFriends = () => { const privacy = sharingOpen; setPanel(null); (privacy ? sharingButton : friendsButton).current?.focus({ preventScroll: true }); };
   const locating = location.status === "requesting";
   const watching = locating || location.status === "active" || location.status === "paused";
   const age = location.position ? Math.max(0, Math.floor((now - location.position.timestamp) / 60_000)) : 0;
 
   const locate = () => {
+    if (!foreground.current) return;
     setFocusRequest(value => value + 1);
     if (!location.position || location.status !== "active") location.start();
   };
@@ -157,11 +173,12 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   return <section className={styles.view} aria-labelledby="earth-title" data-earth-world>
     <p id="earth-location-privacy" className={styles.srOnly}>«Найти себя» запускает GPS только для вас. Доступ выбранным близким включается отдельно. В фоне обновления остановлены.</p>
     <div className={styles.stage}>
-      <EarthMap position={visible ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange} cameraSession={cameraSession}
-        focusRequest={focusRequest} isOnline={isOnline} friends={sharedPeople} friendFocusRequest={friendFocusRequest}
-        onSelectFriends={ids => { setSelectedCircleIds(ids); setPanel("friends"); }}
-        onLocate={locate} locating={locating} locationActive={location.status === "active"}
-        locationDetails={locationDetails} infoOpen={panel === "info"} onInfoOpenChange={open => setPanel(open ? "info" : null)} />
+      <EarthMap position={visible && !editingModel ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange} cameraSession={cameraSession}
+        focusRequest={focusRequest} isOnline={isOnline} friends={editingModel ? NO_SHARED_PEOPLE : sharedPeople} friendFocusRequest={editingModel ? null : friendFocusRequest}
+        onSelectFriends={ids => { if (!editingModel) { setSelectedCircleIds(ids); setPanel("friends"); } }}
+        onLocate={locate} locating={locating} locationActive={location.status === "active"} showLocationControl={!editingModel}
+        locationDetails={editingModel ? null : locationDetails} onModelEditorOpenChange={onModelEditorOpenChange}
+        infoOpen={panel === "info"} onInfoOpenChange={open => setPanel(open ? "info" : null)} />
     </div>
     <header className={styles.header}>
       <h1 id="earth-title" ref={heading} tabIndex={-1} className={styles.brand}>
@@ -172,7 +189,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       </button>
     </header>
 
-    <div className={styles.bottomOverlay}>
+    {!editingModel && <div className={styles.bottomOverlay}>
       {(friendsOpen || sharingOpen) && <section id="earth-friends-panel" className={styles.friendsPanel} aria-labelledby="earth-friends-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
       }}>
@@ -194,8 +211,8 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       </button>
       {sharing.settings?.mode === "SHARING" && <button className={styles.quickGhost} type="button" title="Включить режим призрака" aria-label="Тихо скрыть геопозицию от всех" onClick={ghost}><Ghost size={18} aria-hidden="true" /></button>}
       </div>
-    </div>
-    {(!isOnline || location.error) && panel === null && <p className={styles.notice} role="status">
+    </div>}
+    {!editingModel && (!isOnline || location.error) && panel === null && <p className={styles.notice} role="status">
       {location.error || "Нет сети · новые участки пока недоступны"}
     </p>}
   </section>;

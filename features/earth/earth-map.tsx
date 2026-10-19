@@ -29,6 +29,7 @@ import { createEarthWeatherController, createEarthWeatherProvider, type EarthWea
 import { EARTH_WEATHER_ATTRIBUTION } from "@/lib/earth-weather-contract";
 import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
 import { createEarthFriendMarkers } from "./friend-markers";
+import { readEarthModelEditorOpen } from "./dev/earth-model-editor-session";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
@@ -56,6 +57,7 @@ type EarthMapProps = {
   friendFocusRequest?: EarthFriendFocusRequest | null;
   onSelectFriends?: (circleIds: string[]) => void;
   showLocationControl?: boolean;
+  onModelEditorOpenChange?: (open: boolean) => void;
 };
 
 function weatherConditionLabel(condition: string): string {
@@ -89,7 +91,8 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 }
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
-  locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true }: EarthMapProps) {
+  locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true,
+  onModelEditorOpenChange }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -100,6 +103,11 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LibreMap | null>(null);
   const [editorMap, setEditorMap] = useState<LibreMap | null>(null);
+  const [modelEditorOpen, setModelEditorOpen] = useState(readEarthModelEditorOpen);
+  const changeModelEditorOpen = useCallback((open: boolean) => {
+    setModelEditorOpen(open);
+    onModelEditorOpenChange?.(open);
+  }, [onModelEditorOpenChange]);
   const syncPositionRef = useRef<((value: EarthPosition | null) => void) | null>(null);
   const latestPosition = useRef(position);
   const savedCamera = useRef<EarthCameraSnapshot | null>(null);
@@ -656,7 +664,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       <button type="button" disabled={!ready} title="Приблизить" aria-label="Приблизить карту" onClick={() => mapRef.current?.zoomIn({ duration: reducedMotion() ? 0 : 250 })}><Plus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Отдалить" aria-label="Отдалить карту" onClick={() => mapRef.current?.zoomOut({ duration: reducedMotion() ? 0 : 250 })}><Minus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
-      {showLocationControl && <button type="button" className={styles.locateButton} disabled={!ready || locating} data-active={locationActive} aria-busy={locating}
+      {showLocationControl && !modelEditorOpen && <button type="button" className={styles.locateButton} disabled={!ready || locating} data-active={locationActive} aria-busy={locating}
         title={locating ? "Определяем местоположение…" : position ? "К моему местоположению" : "Найти себя на карте"}
         aria-label="Показать моё местоположение" aria-describedby="earth-location-privacy" onClick={onLocate}><LocateFixed size={21} aria-hidden="true" /></button>}
       <button type="button" disabled={!ready} data-active={weatherEnabled} aria-pressed={weatherEnabled}
@@ -682,7 +690,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             : weatherState.status === "error" ? "Прогноз пока недоступен" : "Узнаём погоду…"}
     </p>}
     {ready && <EarthAttribution />}
-    {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} /></Suspense>}
+    {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} open={modelEditorOpen} onOpenChange={changeModelEditorOpen} /></Suspense>}
     {ready && <button ref={infoButton} type="button" className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => onInfoOpenChange(!infoOpen)}><Info size={21} aria-hidden="true" /></button>}
     {ready && infoOpen && <section id="earth-info-panel" className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
