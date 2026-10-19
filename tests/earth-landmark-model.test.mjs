@@ -5,7 +5,7 @@ import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { decodeEarthModel, validateEarthModelAssets, createEarthModelLoader, EARTH_MODEL_MAX_BYTES } = await vite.ssrLoadModule("/features/earth/landmark-model.ts");
 const { isEarthEiffelNearBounds } = await vite.ssrLoadModule("/features/earth/landmark-model-view.ts");

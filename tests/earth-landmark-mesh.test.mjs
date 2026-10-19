@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import sharp from "sharp";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -11,7 +12,7 @@ after(() => vite.close());
 const { createEarthLandmarkMesh } = await vite.ssrLoadModule("/features/earth/landmark-mesh.ts");
 const { createEarthLandmarkMeshLayer } = await vite.ssrLoadModule("/features/earth/landmark-mesh-layer.ts");
 const { EARTH_LANDMARKS } = await vite.ssrLoadModule("/features/earth/landmark-catalog.ts");
-const { updateEarthModelPlacement, resetEarthModelPlacements } = await vite.ssrLoadModule("/features/earth/model-placement.ts");
+const { updateEarthModelPlacement, resetEarthModelPlacements, getEarthModelPlacements } = await vite.ssrLoadModule("/features/earth/model-placement.ts");
 const { isEarthEiffelNearBounds } = await vite.ssrLoadModule("/features/earth/landmark-model-view.ts");
 
 test("nine original models have bounded solid geometry grounded at z=0 and no external assets", () => {
@@ -216,12 +217,12 @@ test("hidden or retired scenes cannot upload a late body and context restore reu
   for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
 });
 
-test("street zoom draws only a ready imported Eiffel at 330 metres with precise native tile coordinates", async () => {
+test("street zoom draws only a ready imported Eiffel at its saved height with precise native tile coordinates", async () => {
   const f = importedFixture(); f.models.layer.onAdd(f.map, f.gl); f.zoom(17);
   f.models.setVisible(true, new Set(["eiffel-tower", "colosseum"])); f.render(); assert.equal(f.draws, 0, "OSM remains the street fallback while the model loads");
   f.response(0); await flushModel(); f.input.shaderData.variantName = "mercator"; f.input.shaderData.define = "";
   f.render(); assert.equal(f.draws, 1); assert.equal(f.drawKinds.at(-1), "uploaded");
-  assert.equal(f.uniforms.filter(([name]) => name === "u_height").at(-1)[1], 330);
+  assert.equal(f.uniforms.filter(([name]) => name === "u_height").at(-1)[1], getEarthModelPlacements().find(model => model.id === "eiffel-tower").heightMeters);
   const request = f.projectionRequests.at(-1);
   assert.equal(request.tileID.canonical.z, 14); assert.equal(request.applyGlobeMatrix, true);
   const anchor = f.uniforms.filter(([name]) => name === "u_anchor").at(-1)[1];
@@ -229,7 +230,7 @@ test("street zoom draws only a ready imported Eiffel at 330 metres with precise 
   f.zoom(10); f.render(); assert.equal(f.draws, 1, "the atlas/street gap never draws a giant model");
   f.zoom(15); f.render(); assert.equal(f.draws, 1, "street fade begins at zero opacity");
   f.zoom(15.6); f.render(); assert.equal(f.draws, 2);
-  assert.equal(f.uploads, 3); f.models.dispose();
+  assert.equal(f.uploads, 5, "returning from a hidden zoom recreates released GPU buffers from cached CPU data"); f.models.dispose();
 });
 
 test("silent WebGL allocation failure releases partial imports and leaves no street target or retry loop", async () => {
@@ -347,4 +348,144 @@ test("both dateline endpoints and extreme accepted latitudes retain valid canoni
     }
     assert.equal(f.requests.length, 1); assert.equal(f.uploads, 3);
   } finally { f.models.dispose(); resetEarthModelPlacements(); }
+});
+
+const textureFixtureImages = new Map(await Promise.all([1, 256, 512, 1024].map(async size => [size,
+  await sharp({ create: { width: size, height: size, channels: 3, background: "#80a0c0" } }).webp({ lossless: true }).toBuffer(),
+])));
+
+function texturedFixture(ids = ["christ-redeemer", "colosseum", "giza-pyramids"], dimensions = [1, 1, 1]) {
+  const images = dimensions.map(size => textureFixtureImages.get(size));
+  const buffer = new ArrayBuffer(232 + images.reduce((sum, image) => sum + image.byteLength, 0)), header = new DataView(buffer);
+  header.setUint32(0, 0x324d4c45, true); header.setUint32(4, 2, true);
+  header.setUint32(8, 3, true); header.setUint32(12, 3, true);
+  let textureOffset = 232;
+  const textures = ["baseColor", "normal", "metallicRoughness"].map((kind, slot) => {
+    const offset = 16 + slot * 20;
+    const image = images[slot];
+    [image.byteLength, dimensions[slot], dimensions[slot], 10497, 33071].forEach((value, index) => header.setUint32(offset + index * 4, value, true));
+    new Uint8Array(buffer, textureOffset, image.byteLength).set(image); textureOffset += image.byteLength;
+    return { kind, bytes: image.byteLength, width: dimensions[slot], height: dimensions[slot], wrapS: 10497, wrapT: 33071 };
+  });
+  header.setFloat32(76, .4, true); header.setFloat32(80, .7, true); header.setFloat32(84, 1, true);
+  new Float32Array(buffer, 88, 33).set([
+    -.2, -.2, 0, 1, 1, 1, 0, 0, 1, 0, 0,
+    .2, -.2, 0, 1, 1, 1, 0, 0, 1, 1, 0,
+    0, .2, 1, 1, 1, 1, 0, 0, 1, .5, 1,
+  ]);
+  new Uint32Array(buffer, 220, 3).set([0, 1, 2]);
+  const definitions = ids.map((id, index) => {
+    const asset = lod => ({ url: `/earth/models/${id}/${lod}.elm`, bytes: buffer.byteLength, sha256: "a".repeat(64),
+      vertexCount: 3, indexCount: 3, format: 2, textures });
+    return { id, heightMeters: 40 + index, assets: { version: 1, overview: asset("overview"), detail: asset("detail") } };
+  });
+  const requests = [], bitmaps = [], timers = new Set();
+  const f = fixture({ definitions, environment: {
+    fetch(url, init) { let resolve; const promise = new Promise(yes => { resolve = yes; }); requests.push({ url, init, resolve }); return promise; },
+    sha256: null, schedule(callback) { timers.add(callback); return callback; }, cancel(callback) { timers.delete(callback); },
+    async decodeTexture(texture) {
+      const image = { width: texture.width, height: texture.height, closed: false, close() { this.closed = true; } };
+      bitmaps.push(image); return image;
+    },
+  } });
+  const { gl, live } = f;
+  live.texture = new Set();
+  Object.assign(gl, { ACTIVE_TEXTURE: 100, TEXTURE0: 200, TEXTURE_BINDING_2D: 101, TEXTURE_2D: 102,
+    UNPACK_FLIP_Y_WEBGL: 103, UNPACK_PREMULTIPLY_ALPHA_WEBGL: 104, UNPACK_COLORSPACE_CONVERSION_WEBGL: 105,
+    UNPACK_ALIGNMENT: 106, NONE: 0, RGBA8: 107, RGBA: 108, UNSIGNED_BYTE: 109, TEXTURE_WRAP_S: 110,
+    TEXTURE_WRAP_T: 111, TEXTURE_MIN_FILTER: 112, TEXTURE_MAG_FILTER: 113, LINEAR_MIPMAP_LINEAR: 114,
+    LINEAR: 115, CLAMP_TO_EDGE: 33071, NO_ERROR: 0, SRGB8_ALPHA8: 116 });
+  let active = gl.TEXTURE0 + 5, failed = false, nextTexture = 0;
+  const bindings = new Map([0, 1, 2, 5].map(unit => [gl.TEXTURE0 + unit, { previous: unit }]));
+  const pixelStore = new Map([[103, true], [104, true], [105, 999], [106, 4]]);
+  const uploadedTextures = [], textureParameters = [], attributes = [], samplers = [];
+  gl.getParameter = name => name === gl.ACTIVE_TEXTURE ? active : name === gl.TEXTURE_BINDING_2D ? bindings.get(active) : pixelStore.get(name);
+  gl.activeTexture = value => { active = value; };
+  gl.bindTexture = (_, value) => { bindings.set(active, value); };
+  gl.pixelStorei = (name, value) => { pixelStore.set(name, value); };
+  gl.createTexture = () => { const texture = { id: ++nextTexture }; live.texture.add(texture); return texture; };
+  gl.deleteTexture = texture => live.texture.delete(texture);
+  gl.texImage2D = (...args) => uploadedTextures.push(args);
+  gl.texParameteri = (...args) => textureParameters.push(args);
+  gl.generateMipmap = () => {};
+  gl.getError = () => { if (!failed) return 0; failed = false; return 1285; };
+  gl.uniform1i = (name, value) => samplers.push([name, value]);
+  gl.vertexAttribPointer = (...args) => attributes.push(args);
+  const textureState = () => ({ active, bindings: [...bindings], pixelStore: [...pixelStore] });
+  return Object.assign(f, { requests, definitions, bitmaps, uploadedTextures, textureParameters, attributes, samplers, textureState,
+    failTexture() { failed = true; }, response(index) { requests[index].resolve(new Response(buffer.slice(0))); } });
+}
+
+test("different imported IDs use their own lazy LOD URLs, share two request permits and release hidden GPU textures", async () => {
+  const f = texturedFixture(); f.models.layer.onAdd(f.map, f.gl);
+  assert.equal(f.requests.length, 0);
+  f.models.setVisible(true, new Set(f.definitions.map(model => model.id))); await flushModel();
+  assert.equal(f.requests.length, 2, "only two bodies/image phases may run together");
+  assert.ok(f.requests.every(request => request.url.includes("/overview.elm?")), "miniatures do not request street detail");
+  f.response(0); await flushModel(); assert.equal(f.requests.length, 3, "finishing the image phase releases the next permit");
+  f.response(1); f.response(2); await flushModel(); f.render();
+  for (const definition of f.definitions) assert.equal(f.models.isImportedModelReady(definition.id, "overview"), true);
+  assert.equal(f.uploadedTextures.length, 9); assert.equal(f.live.texture.size, 9);
+  assert.equal(f.models.getModelSnapshot().fetchCount, 3);
+  assert.equal(JSON.parse(f.container.dataset.earthModelStatuses).colosseum.lod, "overview");
+  f.models.setVisible(false, new Set());
+  assert.equal(f.live.texture.size, 0, "all hidden textures are deleted immediately");
+  assert.equal(f.live.buffer.size, 1, "only the shared procedural atlas remains resident");
+  assert.ok(f.bitmaps.every(image => !image.closed), "small inactive bitmaps remain in the bounded CPU cache");
+  f.models.dispose(); assert.ok(f.bitmaps.every(image => image.closed));
+  for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
+});
+
+test("textured street draws preserve UV0 and MapLibre texture/pixel-store state, and publish replacement only after drawing", async () => {
+  const f = texturedFixture(["christ-redeemer"]); f.zoom(17); f.models.layer.onAdd(f.map, f.gl);
+  f.models.setVisible(true, new Set(["christ-redeemer"])); await flushModel();
+  assert.ok(f.requests[0].url.includes("/christ-redeemer/detail.elm?"));
+  f.response(0); await flushModel();
+  assert.equal(f.models.getActiveStreetModelIds().size, 0, "decoded textures cannot hide OSM");
+  const before = f.textureState(); f.render(); assert.deepEqual(f.textureState(), before);
+  assert.deepEqual([...f.models.getActiveStreetModelIds()], ["christ-redeemer"]);
+  assert.equal(f.uniforms.filter(([name]) => name === "u_height").at(-1)[1], getEarthModelPlacements().find(model => model.id === "christ-redeemer").heightMeters);
+  assert.ok(f.attributes.some(value => value[0] === 3 && value[1] === 2 && value[4] === 44 && value[5] === 36), "UV0 occupies the final two ELM2 floats");
+  assert.deepEqual(f.samplers.slice(-3), [["u_base_color", 0], ["u_normal", 1], ["u_metallic_roughness", 2]]);
+  assert.ok(f.textureParameters.some(value => value[1] === f.gl.TEXTURE_WRAP_S && value[2] === 10497));
+  assert.deepEqual(f.uploadedTextures.map(args => args[2]), [f.gl.SRGB8_ALPHA8, f.gl.RGBA8, f.gl.RGBA8], "base colour decodes before linear mip filtering; data textures stay linear");
+  const fragment = f.shaderSources.find(source => source.includes("linearToSrgb"));
+  assert.match(fragment, /texture\(u_base_color, v_uv\)\.rgb \* v_color/);
+  assert.match(fragment, /texture\(u_normal, v_uv\)/); assert.match(fragment, /material\.g \* u_roughness/);
+  assert.match(fragment, /material\.b \* u_metallic/);
+  f.models.layer.onRemove(f.map, f.gl); assert.equal(f.live.texture.size, 0);
+  f.models.dispose(); assert.ok(f.bitmaps.every(image => image.closed));
+});
+
+test("a silent texture upload failure frees partial textures, preserves shared state and retains native buildings", async () => {
+  const f = texturedFixture(["christ-redeemer"]); f.zoom(17); f.models.layer.onAdd(f.map, f.gl);
+  f.models.setVisible(true, new Set(["christ-redeemer"])); await flushModel(); f.response(0); await flushModel();
+  const before = f.textureState(); f.failTexture(); f.render();
+  assert.deepEqual(f.textureState(), before); assert.equal(f.live.texture.size, 0);
+  assert.equal(f.models.getActiveStreetModelIds().size, 0); assert.equal(f.models.isImportedModelReady("christ-redeemer"), false);
+  assert.equal(JSON.parse(f.container.dataset.earthModelStatuses)["christ-redeemer"].status, "error");
+  const uploads = f.uploadedTextures.length; f.render(); assert.equal(f.uploadedTextures.length, uploads);
+  f.models.dispose(); for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
+});
+
+test("street detail candidates remain local when horizon bounds include landmarks across the entire globe", async () => {
+  const f = texturedFixture(); f.map.getCenter = () => ({ lng: -43.21049, lat: -22.95192 });
+  f.zoom(17); f.models.layer.onAdd(f.map, f.gl); f.models.setVisible(true, new Set(f.definitions.map(model => model.id)));
+  await flushModel(); assert.equal(f.requests.length, 1); assert.match(f.requests[0].url, /christ-redeemer\/detail/);
+  f.models.dispose(); assert.ok(f.requests[0].init.signal.aborted);
+});
+
+test("visiting different textured street models evicts old CPU bitmaps before exceeding the 16 MiB cache budget", async () => {
+  const f = texturedFixture(["christ-redeemer", "colosseum", "giza-pyramids", "taj-mahal"], [1024, 512, 256]);
+  f.zoom(17); f.models.layer.onAdd(f.map, f.gl);
+  for (const [index, definition] of f.definitions.entries()) {
+    f.models.setVisible(true, new Set([definition.id])); await flushModel();
+    assert.equal(f.requests.length, index + 1); f.response(index); await flushModel(); f.render();
+    assert.equal(f.models.isImportedModelReady(definition.id), true);
+    assert.ok(f.models.getModelSnapshot().bytes <= 16 * 1024 * 1024);
+    assert.equal(f.live.texture.size, 3, "only the currently visible model occupies GPU texture memory");
+  }
+  assert.ok(f.bitmaps.slice(0, 3).every(image => image.closed), "the oldest set was closed before replacement allocations");
+  assert.ok(f.bitmaps.slice(-9).every(image => !image.closed));
+  f.models.dispose(); assert.ok(f.bitmaps.every(image => image.closed));
 });

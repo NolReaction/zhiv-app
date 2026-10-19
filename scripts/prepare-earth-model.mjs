@@ -3,6 +3,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { prepareEarthModelGeometry, EARTH_MODEL_SIMPLIFIER_VERSION } from "./lib/earth-model-prepare.mjs";
 
+export const EARTH_MODEL_CONFIG_PATHS = ["eiffel-tower", "christ-redeemer", "colosseum", "giza-pyramids", "great-wall-badaling",
+  "saint-basils", "statue-of-liberty", "sydney-opera", "taj-mahal"].map(id => `art/earth/models/${id}/model.json`);
+
 export async function readEarthModelSource(path) {
   const file = await open(path, "r");
   try {
@@ -49,15 +52,22 @@ export async function prepareEarthModel(configPath, { check = false } = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const args = process.argv.slice(2), check = args.includes("--check"), configIndex = args.indexOf("--config");
-  const valid = args.filter((arg, index) => arg !== "--check" && arg !== "--config" && !(configIndex >= 0 && index === configIndex + 1));
+  const args = process.argv.slice(2), check = args.includes("--check"), all = args.includes("--all"), configIndex = args.indexOf("--config");
+  const valid = args.filter((arg, index) => arg !== "--check" && arg !== "--all" && arg !== "--config" && !(configIndex >= 0 && index === configIndex + 1));
   if (valid.length || configIndex >= 0 && (!args[configIndex + 1] || args[configIndex + 1].startsWith("--"))
+    || all && configIndex >= 0 || args.filter(arg => arg === "--all").length > 1
     || args.filter(arg => arg === "--config").length > 1 || args.filter(arg => arg === "--check").length > 1) {
-    console.error("Usage: node scripts/prepare-earth-model.mjs [--config path/to/model.json] [--check]"); process.exitCode = 1;
+    console.error("Usage: node scripts/prepare-earth-model.mjs [--config path/to/model.json | --all] [--check]"); process.exitCode = 1;
   } else {
-    const config = configIndex >= 0 ? args[configIndex + 1] : "art/earth/models/eiffel-tower/model.json";
-    prepareEarthModel(config, { check }).then(manifest => console.log(`Earth model ${check ? "verified" : "prepared"}: ${manifest.id}; `
-      + `overview ${manifest.overview.triangles} triangles / ${manifest.overview.bytes} B; detail ${manifest.detail.triangles} triangles / ${manifest.detail.bytes} B`))
-      .catch(error => { console.error(error.message); process.exitCode = 1; });
+    const configs = all ? EARTH_MODEL_CONFIG_PATHS : [configIndex >= 0 ? args[configIndex + 1] : EARTH_MODEL_CONFIG_PATHS[0]];
+    try {
+      // Each model stays bounded; sequential decoding avoids nine simultaneous
+      // source geometry and image working sets during a complete rebuild.
+      for (const config of configs) {
+        const manifest = await prepareEarthModel(config, { check });
+        console.log(`Earth model ${check ? "verified" : "prepared"}: ${manifest.id}; `
+          + `overview ${manifest.overview.triangles} triangles / ${manifest.overview.bytes} B; detail ${manifest.detail.triangles} triangles / ${manifest.detail.bytes} B`);
+      }
+    } catch (error) { console.error(error.message); process.exitCode = 1; }
   }
 }

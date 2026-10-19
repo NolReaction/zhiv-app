@@ -1,57 +1,15 @@
-export type EarthModelLod = "overview" | "detail";
-export type EarthModelAsset = { url: string; bytes: number; sha256: string; vertexCount: number; indexCount: number };
-export type EarthModelAssets = { version: number; overview: EarthModelAsset; detail: EarthModelAsset };
-export type EarthIndexedModel = { vertices: Float32Array; indices: Uint32Array; bytes: number };
+import { decodeEarthModel, validateEarthModelAssets, EARTH_MODEL_MAX_BYTES, type EarthModelAssets, type EarthModelLod, type EarthIndexedModel, type EarthModelEncodedTexture } from "./landmark-model-format";
+export { decodeEarthModel, validateEarthModelAssets, EARTH_MODEL_MAX_BYTES, EARTH_MODEL_MAX_VERTICES, EARTH_MODEL_MAX_INDICES } from "./landmark-model-format";
+export type { EarthModelLod, EarthModelAsset, EarthModelAssets, EarthIndexedModel, EarthModelTexture, EarthModelTextureAsset, EarthModelEncodedTexture, EarthModelMaterial } from "./landmark-model-format";
 export type EarthModelStatus = "idle" | "loading" | "ready" | "error";
-export const EARTH_MODEL_MAX_BYTES = 4 * 1024 * 1024;
-export const EARTH_MODEL_MAX_VERTICES = 100_000;
-export const EARTH_MODEL_MAX_INDICES = 180_000;
-const HEADER_BYTES = 16;
 const DEADLINE_MS = 8_000;
 const LODS: readonly EarthModelLod[] = ["overview", "detail"];
-
-/** Only our two prepared, self-contained meshes are accepted; this is not a GLB loader. */
-export function validateEarthModelAssets(value: EarthModelAssets): EarthModelAssets {
-  if (value.version !== 1) throw new Error("Unsupported Earth model manifest");
-  for (const lod of LODS) {
-    const asset = value[lod];
-    if (!asset || asset.url !== `/earth/models/eiffel-tower/${lod}.elm` || !/^[a-f0-9]{64}$/.test(asset.sha256)
-      || !Number.isInteger(asset.vertexCount) || asset.vertexCount < 3 || asset.vertexCount > EARTH_MODEL_MAX_VERTICES
-      || !Number.isInteger(asset.indexCount) || asset.indexCount < 3 || asset.indexCount % 3 !== 0 || asset.indexCount > EARTH_MODEL_MAX_INDICES
-      || !Number.isInteger(asset.bytes) || asset.bytes !== HEADER_BYTES + asset.vertexCount * 24 + asset.indexCount * 4
-      || asset.bytes > EARTH_MODEL_MAX_BYTES) throw new Error("Invalid Earth model manifest");
-  }
-  return value;
-}
-
-/** Validated views share one bounded ArrayBuffer; decoding makes no geometry copy. */
-export function decodeEarthModel(buffer: ArrayBuffer, asset: EarthModelAsset): EarthIndexedModel {
-  if (buffer.byteLength !== asset.bytes || buffer.byteLength < HEADER_BYTES || buffer.byteLength > EARTH_MODEL_MAX_BYTES) throw new Error("Invalid Earth model size");
-  const header = new DataView(buffer);
-  if (header.getUint32(0, true) !== 0x314d4c45 || header.getUint32(4, true) !== 1
-    || header.getUint32(8, true) !== asset.vertexCount || header.getUint32(12, true) !== asset.indexCount
-    || asset.vertexCount < 3 || asset.vertexCount > EARTH_MODEL_MAX_VERTICES
-    || asset.indexCount < 3 || asset.indexCount % 3 !== 0 || asset.indexCount > EARTH_MODEL_MAX_INDICES
-    || HEADER_BYTES + asset.vertexCount * 24 + asset.indexCount * 4 !== buffer.byteLength) throw new Error("Invalid Earth model header");
-  const vertices = new Float32Array(buffer, HEADER_BYTES, asset.vertexCount * 6);
-  const indices = new Uint32Array(buffer, HEADER_BYTES + asset.vertexCount * 24, asset.indexCount);
-  let minimumZ = Infinity, maximumZ = -Infinity;
-  for (let offset = 0; offset < vertices.length; offset += 6) {
-    for (let component = 0; component < 6; component++) {
-      const value = vertices[offset + component];
-      if (!Number.isFinite(value) || component < 2 && Math.abs(value) > 1.5
-        || component === 2 && (value < -0.00001 || value > 1.00001)
-        || component >= 3 && (value < 0 || value > 1)) throw new Error("Invalid Earth model vertex");
-    }
-    minimumZ = Math.min(minimumZ, vertices[offset + 2]); maximumZ = Math.max(maximumZ, vertices[offset + 2]);
-  }
-  if (Math.abs(minimumZ) > 0.00001 || Math.abs(maximumZ - 1) > 0.00001 || indices.some(index => index >= asset.vertexCount)) throw new Error("Invalid Earth model bounds");
-  return { vertices, indices, bytes: buffer.byteLength };
-}
 
 export type EarthModelEnvironment = {
   fetch: typeof fetch;
   sha256: ((buffer: ArrayBuffer) => Promise<string>) | null;
+  decodeTexture?: (texture: EarthModelEncodedTexture) => Promise<ImageBitmap>;
+  acquire?: (signal: AbortSignal) => Promise<() => void>;
   schedule(callback: () => void, delay: number): unknown;
   cancel(handle: unknown): void;
 };
@@ -63,12 +21,21 @@ export function browserEarthModelEnvironment(view: Window | null = typeof window
       const digest = await view.crypto.subtle.digest("SHA-256", buffer);
       return Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
     } : null,
+    decodeTexture: typeof view.createImageBitmap === "function" ? texture => view.createImageBitmap(
+      new Blob([texture.bytes.slice().buffer as ArrayBuffer], { type: "image/webp" }),
+      { imageOrientation: "none", premultiplyAlpha: "none", colorSpaceConversion: "none" }) : undefined,
     schedule: (callback, delay) => view.setTimeout(callback, delay), cancel: handle => view.clearTimeout(handle as number),
   };
 }
-type Flight = { lod: EarthModelLod; abort: AbortController; timer: unknown; reader: ReadableStreamDefaultReader<Uint8Array> | null };
+type Flight = { lod: EarthModelLod; abort: AbortController; timer: unknown; reader: ReadableStreamDefaultReader<Uint8Array> | null;
+  images: ImageBitmap[]; permit: (() => void) | null };
+const closeImages = (images: ImageBitmap[]) => { for (const image of images.splice(0)) image.close(); };
+function releasePermit(work: Flight) { const permit = work.permit; work.permit = null; permit?.(); }
+function releaseModel(model: EarthIndexedModel | undefined) {
+  for (const texture of model?.textureMaterial?.textures ?? []) texture.image.close();
+}
 
-/** One Eiffel object, two fixed LODs, one foreground request and no retry/background loop. */
+/** Two fixed LODs of one registered model, one foreground request and no background retry loop. */
 export function createEarthModelLoader(assets: EarthModelAssets, onChange: () => void,
   environment: EarthModelEnvironment | null = browserEarthModelEnvironment()) {
   validateEarthModelAssets(assets);
@@ -81,13 +48,21 @@ export function createEarthModelLoader(assets: EarthModelAssets, onChange: () =>
     const previous = flight;
     if (!previous) return;
     flight = null; previous.abort.abort(); environment?.cancel(previous.timer);
+    closeImages(previous.images);
     void previous.reader?.cancel().catch(() => undefined);
     status[previous.lod] = models[previous.lod] ? "ready" : "idle";
   }
   async function load(work: Flight) {
     const asset = assets[work.lod];
     try {
+      if (environment?.acquire) work.permit = await environment.acquire(work.abort.signal);
       if (!current(work)) return;
+      // Queueing behind another visible model does not consume the HTTP/image
+      // deadline. A cancelled queue entry never starts a transfer.
+      work.timer = environment!.schedule(() => {
+        if (flight !== work) return;
+        cancelFlight(); status[work.lod] = "error"; failures[work.lod]++; onChange();
+      }, DEADLINE_MS);
       const response = await environment!.fetch(`${asset.url}?v=${asset.sha256}`, {
         signal: work.abort.signal, cache: "force-cache", credentials: "omit", redirect: "error",
       });
@@ -114,11 +89,31 @@ export function createEarthModelLoader(assets: EarthModelAssets, onChange: () =>
       // additionally verifies the versioned preparation digest before upload.
       if (environment!.sha256 && await environment!.sha256(bytes.buffer) !== asset.sha256) throw new Error("Earth model integrity mismatch");
       if (!current(work)) return;
-      models[work.lod] = decodeEarthModel(bytes.buffer, asset); status[work.lod] = "ready";
+      const model = decodeEarthModel(bytes.buffer, asset);
+      if (model.encodedMaterial) {
+        if (!environment!.decodeTexture) throw new Error("Earth texture decoding unavailable");
+        const textures = [];
+        for (const texture of model.encodedMaterial.textures) {
+          const image = await environment!.decodeTexture(texture);
+          if (!current(work)) { image.close(); return; }
+          work.images.push(image);
+          if (image.width !== texture.width || image.height !== texture.height) throw new Error("Earth texture dimensions mismatch");
+          textures.push({ kind: texture.kind, width: texture.width, height: texture.height, wrapS: texture.wrapS, wrapT: texture.wrapT, image });
+          model.bytes += texture.width * texture.height * 4;
+        }
+        const { metallicFactor, roughnessFactor, normalScale } = model.encodedMaterial;
+        model.textureMaterial = { metallicFactor, roughnessFactor, normalScale, textures };
+        delete model.encodedMaterial;
+      }
+      if (!current(work)) return;
+      releaseModel(models[work.lod]);
+      models[work.lod] = model; work.images.length = 0; status[work.lod] = "ready";
     } catch {
       if (current(work)) { status[work.lod] = "error"; failures[work.lod]++; work.abort.abort(); }
     } finally {
+      closeImages(work.images);
       environment?.cancel(work.timer); void work.reader?.cancel().catch(() => undefined);
+      releasePermit(work);
       if (flight === work) {
         flight = null;
         if (!disposed) { onChange(); pump(); }
@@ -127,12 +122,8 @@ export function createEarthModelLoader(assets: EarthModelAssets, onChange: () =>
   }
   function pump() {
     if (disposed || !environment || !desired || flight || models[desired] || status[desired] === "error" || failures[desired] >= 2) return;
-    const work: Flight = { lod: desired, abort: new AbortController(), timer: null, reader: null };
+    const work: Flight = { lod: desired, abort: new AbortController(), timer: null, reader: null, images: [], permit: null };
     flight = work; status[work.lod] = "loading"; fetchCount++;
-    work.timer = environment.schedule(() => {
-      if (flight !== work) return;
-      cancelFlight(); status[work.lod] = "error"; failures[work.lod]++; onChange();
-    }, DEADLINE_MS);
     onChange(); void load(work);
   }
   return {
@@ -146,8 +137,16 @@ export function createEarthModelLoader(assets: EarthModelAssets, onChange: () =>
       } else pump();
     },
     get(lod: EarthModelLod) { return models[lod] ?? null; },
+    release(lod?: EarthModelLod) {
+      for (const level of lod ? [lod] : LODS) {
+        if (flight?.lod === level) cancelFlight();
+        releaseModel(models[level]); delete models[level];
+        if (status[level] === "ready") status[level] = "idle";
+      }
+    },
     getSnapshot() { return { overview: status.overview, detail: status.detail, fetchCount,
       bytes: LODS.reduce((sum, lod) => sum + (models[lod]?.bytes ?? 0), 0) }; },
-    dispose() { if (disposed) return; disposed = true; desired = null; cancelFlight(); delete models.overview; delete models.detail; },
+    dispose() { if (disposed) return; disposed = true; desired = null; cancelFlight();
+      for (const lod of LODS) { releaseModel(models[lod]); delete models[lod]; } },
   };
 }

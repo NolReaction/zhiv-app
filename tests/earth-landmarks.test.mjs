@@ -11,7 +11,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { createEarthLandmarks } = await vite.ssrLoadModule("/features/earth/globe-landmarks.ts");
 const { EARTH_LANDMARKS } = await vite.ssrLoadModule("/features/earth/landmark-catalog.ts");
-const { updateEarthModelPlacement, resetEarthModelPlacements } = await vite.ssrLoadModule("/features/earth/model-placement.ts");
+const { getEarthModelPlacements, updateEarthModelPlacement, resetEarthModelPlacements } = await vite.ssrLoadModule("/features/earth/model-placement.ts");
 
 function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440, failAttachmentAt = -1,
   modelEnvironment = null, withGpu = false, geographicBounds = null, pitch = 0, withMask = false } = {}) {
@@ -72,6 +72,7 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
   const buffers = new Map(), boundBuffers = new Map();
   const gl = {
     ARRAY_BUFFER: 1, ELEMENT_ARRAY_BUFFER: 2, BUFFER_SIZE: 3,
+    NO_ERROR: 0, TEXTURE0: 33984,
     createBuffer: () => ({}), createVertexArray: () => ({}), bindVertexArray() {},
     bindBuffer(target, value) { boundBuffers.set(target, value); },
     bufferData(target, value) { buffers.set(boundBuffers.get(target), value.byteLength); },
@@ -79,7 +80,9 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
     createProgram: () => ({}), createShader: () => ({}), getShaderParameter: () => true, getProgramParameter: () => true,
     getUniformLocation: () => ({}), shaderSource() {}, compileShader() {}, attachShader() {}, linkProgram() {}, deleteShader() {},
     enableVertexAttribArray() {}, vertexAttribPointer() {}, useProgram() {}, disable() {}, enable() {}, depthMask() {}, blendFunc() {},
-    uniform1f() {}, uniform2fv() {}, uniform4fv() {}, uniformMatrix4fv() {}, drawElements() {}, drawArrays() {},
+    uniform1f() {}, uniform1i() {}, uniform2fv() {}, uniform4fv() {}, uniformMatrix4fv() {}, drawElements() {}, drawArrays() {},
+    createTexture: () => ({}), deleteTexture() {}, activeTexture() {}, bindTexture() {}, texImage2D() {}, texParameteri() {},
+    generateMipmap() {}, pixelStorei() {}, getParameter: () => 0, getError: () => 0,
     deleteBuffer() {}, deleteVertexArray() {}, deleteProgram() {},
   };
   const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -158,7 +161,9 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
     setZoom(value) { zoom = value; emit("move"); },
     setGroundOffset(value) { groundOffset = value; emit("move"); },
     setPoint(id, point) {
-      points.set(EARTH_LANDMARKS.find(landmark => landmark.id === id).location.join(","), point);
+      const placement = getEarthModelPlacements().find(row => row.id === id);
+      const location = placement ? [placement.longitude, placement.latitude] : EARTH_LANDMARKS.find(landmark => landmark.id === id).location;
+      points.set(location.join(","), point);
     },
     cover(id, covered) {
       const element = this.element(id);
@@ -186,14 +191,18 @@ function assertHidden(element) {
   assert.equal(label(element).hidden, true);
 }
 
-test("nine fixed catalog anchors are installed once and remain inaccessible until the scene is ready", () => {
+test("nine published placement anchors are installed once and remain inaccessible until the scene is ready", () => {
   const state = scene();
   const landmarks = state.create();
   const catalogLocations = EARTH_LANDMARKS.map(landmark => [...landmark.location]);
+  const publishedLocations = EARTH_LANDMARKS.map(landmark => {
+    const placement = getEarthModelPlacements().find(row => row.id === landmark.id);
+    return placement ? [placement.longitude, placement.latitude] : [...landmark.location];
+  });
   assert.equal(state.markers.length, 9);
   for (const [index, marker] of state.markers.entries()) {
     const element = marker.options.element;
-    assert.deepEqual(marker.positions, [catalogLocations[index]]);
+    assert.deepEqual(marker.positions, [publishedLocations[index]]);
     assert.equal(element.tag, "button");
     assert.equal(element.type, "button");
     assert.equal(element.dataset.earthLandmark, EARTH_LANDMARKS[index].id);
@@ -205,9 +214,9 @@ test("nine fixed catalog anchors are installed once and remain inaccessible unti
   for (const event of ["move", "resize", "idle"]) state.emit(event);
   landmarks.setVisible(false);
   landmarks.setVisible(true);
-  assert.deepEqual(state.markers.map(marker => marker.positions), catalogLocations.map(location => [location]));
+  assert.deepEqual(state.markers.map(marker => marker.positions), publishedLocations.map(location => [location]));
   assert.deepEqual(EARTH_LANDMARKS.map(landmark => landmark.location), catalogLocations);
-  assert.ok(state.projected.every(location => catalogLocations.some(anchor => anchor[0] === location[0] && anchor[1] === location[1])));
+  assert.ok(state.projected.every(location => publishedLocations.some(anchor => anchor[0] === location[0] && anchor[1] === location[1])));
   landmarks.dispose();
 });
 
@@ -418,11 +427,12 @@ function preparedEnvironment() {
   return { requests, signals, environment: {
     async fetch(input, init) {
       const path = String(input).split("?")[0];
-      assert.match(path, /^\/earth\/models\/eiffel-tower\/(overview|detail)\.elm$/);
+      assert.match(path, /^\/earth\/models\/[a-z0-9-]+\/(overview|detail)\.elm$/);
       requests.push(path);
       signals.push(init.signal);
       return new Response(readFileSync(new URL(`../public${path}`, import.meta.url)));
     },
+    decodeTexture: async texture => ({ width: texture.width, height: texture.height, close() {} }),
     sha256: null,
     schedule: () => 0,
     cancel() {},
@@ -455,11 +465,37 @@ test("street Eiffel loads only when nearby and becomes an accessible target afte
   state.setZoom(8);
   assertHidden(tower);
   state.setZoom(16);
+  state.render();
   assert.equal(tower.disabled, false);
   assert.equal(asset.requests.length, 1, "returning reuses the one decoded model");
   landmarks.setVisible(false);
   assertHidden(tower);
   landmarks.dispose();
+});
+
+test("each newly imported street model loads at its own anchor and its native building mask follows its placement", async () => {
+  for (const id of ["giza-pyramids", "colosseum", "saint-basils", "taj-mahal", "great-wall-badaling",
+    "statue-of-liberty", "christ-redeemer", "sydney-opera"]) {
+    const placement = getEarthModelPlacements().find(row => row.id === id), asset = preparedEnvironment();
+    const geographicBounds = { west: placement.longitude - .002, east: placement.longitude + .002,
+      south: placement.latitude - .002, north: placement.latitude + .002 };
+    const state = scene({ zoom: 17, width: 390, height: 844, geographicBounds, modelEnvironment: asset.environment, withGpu: true, withMask: true });
+    state.setPoint(id, { x: 195, y: 600 });
+    const landmarks = state.create();
+    try {
+      landmarks.setVisible(true);
+      assertHidden(state.element(id));
+      assert.deepEqual(state.buildingFilter, state.originalFilter);
+      await settleModel(); state.render();
+      assert.deepEqual(asset.requests, [`/earth/models/${id}/detail.elm`]);
+      assert.equal(state.element(id).disabled, false, `${id} exposes an accessible target only after upload/draw`);
+      assert.notDeepEqual(state.buildingFilter, state.originalFilter);
+      updateEarthModelPlacement(id, { longitude: placement.longitude + 1 });
+      assertHidden(state.element(id));
+      assert.deepEqual(state.buildingFilter, state.originalFilter, `${id} restores OSM buildings when moved away`);
+      assert.equal(asset.requests.length, 1);
+    } finally { landmarks.dispose(); resetEarthModelPlacements(); }
+  }
 });
 
 test("street culling rejects a distant or far-side ground anchor before fetching the model", async () => {
@@ -490,7 +526,7 @@ test("the buildings toggle cancels street loading and interaction while atlas mi
   const landmarks = state.create(), tower = state.element("eiffel-tower");
   landmarks.setBuildingsEnabled(false); landmarks.setVisible(true);
   await settleModel(); assert.deepEqual(asset.requests, []); assertHidden(tower);
-  landmarks.setBuildingsEnabled(true); assert.equal(asset.requests.length, 1);
+  landmarks.setBuildingsEnabled(true); await Promise.resolve(); assert.equal(asset.requests.length, 1);
   landmarks.setBuildingsEnabled(false);
   assert.equal(asset.signals[0].aborted, true, "disabling buildings immediately aborts the street request");
   await settleModel(); state.render(); assertHidden(tower);

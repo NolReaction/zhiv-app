@@ -104,7 +104,8 @@ test("reset and imported full documents are ordinary undoable actions", () => {
   assert.equal(document(), initial);
   assert.equal(history.undo(), true); assert.equal(document(), edited);
   assert.equal(history.redo(), true); assert.equal(document(), initial);
-  const imported = { version: 1, placements: [{ ...placement(), longitude: 100, latitude: -30, headingDegrees: -90 }] };
+  const imported = JSON.parse(document());
+  Object.assign(imported.placements[0], { longitude: 100, latitude: -30, headingDegrees: -90 });
   store.importEarthModelPlacements(JSON.stringify(imported));
   const importedState = document();
   assert.equal(history.undo(), true); assert.equal(document(), initial);
@@ -112,6 +113,26 @@ test("reset and imported full documents are ordinary undoable actions", () => {
   assert.equal(history.redo(), true); assert.equal(document(), initial);
   assert.equal(history.redo(), true); assert.equal(document(), importedState);
   assert.deepEqual(Object.keys(JSON.parse(importedState)).sort(), ["placements", "version"], "history metadata is never exported with models");
+});
+
+test("editing different models and migrating a historical import keep complete undoable snapshots", () => {
+  const history = createHistory(), initial = document();
+  store.updateEarthModelPlacement("statue-of-liberty", { heightMeters: 120, longitude: -74.045 });
+  const statueEdit = document();
+  store.updateEarthModelPlacement("sydney-opera", { heightMeters: 80, headingDegrees: 135 });
+  const bothEdited = document();
+  const old = { version: 1, placements: [{ ...placement(), heightMeters: 310 }] };
+  store.importEarthModelPlacements(old);
+  const migrated = document();
+  assert.equal(JSON.parse(migrated).placements.length, 9);
+  assert.equal(store.getEarthModelPlacements().find(row => row.id === "statue-of-liberty").heightMeters, 120);
+  assert.equal(store.getEarthModelPlacements().find(row => row.id === "sydney-opera").headingDegrees, 135);
+  assert.equal(history.undo(), true); assert.equal(document(), bothEdited);
+  assert.equal(history.undo(), true); assert.equal(document(), statueEdit);
+  assert.equal(history.undo(), true); assert.equal(document(), initial);
+  assert.equal(history.redo(), true); assert.equal(document(), statueEdit);
+  assert.equal(history.redo(), true); assert.equal(document(), bothEdited);
+  assert.equal(history.redo(), true); assert.equal(document(), migrated);
 });
 
 test("invalid updates and net no-op transactions preserve the redo branch", () => {

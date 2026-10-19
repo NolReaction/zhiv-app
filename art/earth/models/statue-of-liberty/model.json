@@ -1,0 +1,22 @@
+{
+  "id": "statue-of-liberty",
+  "source": "source.glb",
+  "outputDirectory": "../../../../public/earth/models/statue-of-liberty",
+  "runtimeManifest": "../../../../features/earth/data/statue-of-liberty-model.json",
+  "urlPrefix": "/earth/models/statue-of-liberty",
+  "heightMeters": 93,
+  "headingDegrees": 0,
+  "preserveTopFraction": 0,
+  "lods": [
+    {
+      "name": "overview",
+      "targetTriangles": 6000,
+      "error": 0.03
+    },
+    {
+      "name": "detail",
+      "targetTriangles": 24000,
+      "error": 0.01
+    }
+  ]
+}

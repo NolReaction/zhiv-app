@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": "taj-mahal",
+  "source": {
+    "sha256": "c83348b976e717129f18c919c5956349da22f2012911fb49e6fc3a0a6ffd51ec",
+    "bytes": 6315312,
+    "author": "",
+    "license": "",
+    "url": "",
+    "title": ""
+  },
+  "coordinates": {
+    "axes": "east,north,up",
+    "gltfConversion": "x,-z,y",
+    "normalizedHeight": 1,
+    "heightMeters": 73,
+    "headingDegrees": 0,
+    "bounds": {
+      "min": [
+        -0.590934157371521,
+        -0.5173583626747131,
+        0
+      ],
+      "max": [
+        0.590934157371521,
+        0.5173583626747131,
+        1
+      ]
+    }
+  },
+  "preparation": {
+    "version": 2,
+    "simplifier": "meshoptimizer@1.1.1",
+    "inputTriangles": 69410,
+    "discardedDegenerateTriangles": 0,
+    "preserveTopFraction": 0,
+    "sourceHeight": 0.83245849609375,
+    "sourceOrigin": [
+      0,
+      0,
+      0
+    ],
+    "colors": "linear baseColor + vertexColor; sRGB baseColor texture; runtime normal/metallic/roughness lighting"
+  },
+  "overview": {
+    "url": "/earth/models/taj-mahal/overview.elm",
+    "bytes": 443336,
+    "sha256": "211799c594f7123ad7191d961b33712918a6a8691cde2613fb7b0889c0ffa1d9",
+    "vertexCount": 7766,
+    "indexCount": 18000,
+    "triangles": 6000,
+    "targetTriangles": 6000,
+    "error": 0.018089264631271362,
+    "errorLimit": 0.03,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 13710,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 11188,
+        "width": 128,
+        "height": 128,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 4646,
+        "width": 64,
+        "height": 64,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  },
+  "detail": {
+    "url": "/earth/models/taj-mahal/detail.elm",
+    "bytes": 1543596,
+    "sha256": "3e4877a896905f6109060bb36632e9fa06a5eca001326df7853243b41f1da450",
+    "vertexCount": 20638,
+    "indexCount": 71784,
+    "triangles": 23928,
+    "targetTriangles": 24000,
+    "error": 0.002183558652177453,
+    "errorLimit": 0.01,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 119034,
+        "width": 1024,
+        "height": 1024,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 160738,
+        "width": 512,
+        "height": 512,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 68528,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  }
+}

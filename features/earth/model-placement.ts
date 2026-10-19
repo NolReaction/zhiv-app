@@ -1,5 +1,5 @@
 import defaultsDocument from "./data/model-placements.json";
-import { parseEarthModelPlacementDocument } from "@/lib/earth-model-placement-contract.mjs";
+import { normalizeEarthModelPlacementImport, parseEarthModelPlacementDocument } from "@/lib/earth-model-placement-contract.mjs";
 
 export { parseEarthModelPlacementDocument } from "@/lib/earth-model-placement-contract.mjs";
 export type EarthModelPlacementDocument = ReturnType<typeof parseEarthModelPlacementDocument>;
@@ -32,7 +32,7 @@ export function exportEarthModelPlacements(): string {
   return `${JSON.stringify({ version: 1, placements }, null, 2)}\n`;
 }
 export function importEarthModelPlacements(input: unknown): void {
-  replace(parseEarthModelPlacementDocument(typeof input === "string" ? JSON.parse(input) : input));
+  replace(normalizeEarthModelPlacementImport(typeof input === "string" ? JSON.parse(input) : input, { version: 1, placements: [...placements] }));
 }
 /** Only the explicitly mounted development editor calls the following helpers. */
 export function hydrateEarthModelPlacementDraft(storage: Pick<Storage, "getItem">): void {

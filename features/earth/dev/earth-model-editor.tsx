@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ChangeEvent } from "react";
 import type { Map as LibreMap } from "maplibre-gl";
 import { EARTH_LANDMARKS } from "../landmark-catalog";
-import { EARTH_EIFFEL_HEIGHT_METERS } from "../landmark-model-view";
+import { getEarthModelDefinition } from "../landmark-model-registry";
 import { exportEarthModelPlacements, getEarthModelPlacements, hydrateEarthModelPlacementDraft, importEarthModelPlacements,
   persistEarthModelPlacementDraft, resetEarthModelPlacements, subscribeEarthModelPlacements, updateEarthModelPlacement, type EarthModelPlacement } from "../model-placement";
 import { createEarthModelEditorMap, earthModelEditorCamera } from "./earth-model-editor-map";
@@ -62,6 +62,7 @@ export function EarthModelEditor({ map, visible, open, onOpenChange }: {
   const historyState = useSyncExternalStore(history.subscribe, history.getSnapshot, history.getSnapshot);
   const [selectedId, setSelectedId] = useState(() => placements[0]?.id ?? "");
   const selected = placements.find(item => item.id === selectedId) ?? placements[0] ?? null;
+  const baseHeightMeters = selected ? getEarthModelDefinition(selected.id)?.heightMeters ?? selected.heightMeters : 1;
   const [placing, setPlacing] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const [revision, setRevision] = useState<string | null>(null);
@@ -197,7 +198,7 @@ export function EarthModelEditor({ map, visible, open, onOpenChange }: {
       if (action.type === "focus") { finishGesture(); focusObject(); return; }
       const placement = getEarthModelPlacements().find(item => item.id === activeId.current);
       if (!placement) return;
-      const patch = earthModelEditorShortcutPatch(placement, action, EARTH_EIFFEL_HEIGHT_METERS);
+      const patch = earthModelEditorShortcutPatch(placement, action, getEarthModelDefinition(placement.id)?.heightMeters ?? placement.heightMeters);
       if (!patch) return;
       if (!event.repeat) finishGesture();
       gestureKey = event.code || event.key;
@@ -235,7 +236,7 @@ export function EarthModelEditor({ map, visible, open, onOpenChange }: {
   }
   function resize(percentDelta: number) {
     if (!selected) return;
-    const patch = earthModelEditorShortcutPatch(selected, { type: "resize", percentDelta }, EARTH_EIFFEL_HEIGHT_METERS);
+    const patch = earthModelEditorShortcutPatch(selected, { type: "resize", percentDelta }, baseHeightMeters);
     if (patch) { history.endTransaction(); applyPatch(selected.id, patch); }
   }
   function exportJson() {
@@ -303,17 +304,17 @@ export function EarthModelEditor({ map, visible, open, onOpenChange }: {
         <div className={styles.grid}>
           <NumberField {...editEvents} label="Долгота" value={selected.longitude} min={-180} max={180} step={.00001} onChange={value => update("longitude", value)} />
           <NumberField {...editEvents} label="Широта" value={selected.latitude} min={-85} max={85} step={.00001} onChange={value => update("latitude", value)} />
-          <NumberField {...editEvents} label="Высота модели, м" value={selected.heightMeters} min={1} max={1000} onChange={value => update("heightMeters", value)} />
+          <NumberField {...editEvents} label="Высота модели, м" value={selected.heightMeters} min={1} max={1000} step={.1} onChange={value => update("heightMeters", value)} />
           <NumberField {...editEvents} label="Над землёй, м" value={selected.elevationMeters} min={-100} max={1000} step={.5} onChange={value => update("elevationMeters", value)} />
         </div>
         <div className={styles.size}>
-          <label className={styles.rotationSlider}><span>Размер модели <output>{(selected.heightMeters / EARTH_EIFFEL_HEIGHT_METERS * 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%</output></span>
-            <input type="range" min="1" max="1000" step="1" aria-label="Размер модели" aria-valuetext={`${(selected.heightMeters / EARTH_EIFFEL_HEIGHT_METERS * 100).toFixed(1)}%`}
+          <label className={styles.rotationSlider}><span>Размер модели <output>{(selected.heightMeters / baseHeightMeters * 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%</output></span>
+            <input type="range" min="1" max="1000" step="0.1" aria-label="Размер модели" aria-valuetext={`${(selected.heightMeters / baseHeightMeters * 100).toFixed(1)}%`}
               {...rangeEvents} value={selected.heightMeters} onChange={event => updateRange("heightMeters", event, selected.heightMeters)} /></label>
           <div className={styles.actions}><button type="button" title="Уменьшить на 10% исходного размера" onClick={() => resize(-10)}>Меньше</button>
-            <button type="button" title={`Исходный размер: ${EARTH_EIFFEL_HEIGHT_METERS} м`} onClick={() => update("heightMeters", EARTH_EIFFEL_HEIGHT_METERS)}>100%</button>
+            <button type="button" title={`Исходный размер: ${baseHeightMeters} м`} onClick={() => update("heightMeters", baseHeightMeters)}>100%</button>
             <button type="button" title="Увеличить на 10% исходного размера" onClick={() => resize(10)}>Больше</button></div>
-          <p className={styles.hint}>Размер сохраняет пропорции башни. После увеличения проверь радиус исключения зданий.</p>
+          <p className={styles.hint}>Размер сохраняет пропорции модели. После увеличения проверь радиус исключения зданий.</p>
         </div>
         <div className={styles.rotation}><NumberField {...editEvents} label="Поворот, °" value={selected.headingDegrees} min={-360} max={360} onChange={value => update("headingDegrees", value)} />
           <button type="button" aria-label="Повернуть на 5 градусов против часовой стрелки" onClick={() => update("headingDegrees", (selected.headingDegrees - 5 + 360) % 360)}>−5°</button>

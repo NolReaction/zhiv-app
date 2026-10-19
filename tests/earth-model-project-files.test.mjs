@@ -9,8 +9,9 @@ import { createEarthModelProjectFiles, earthModelRequestAllowed, EARTH_MODEL_BOD
 import { earthModelProjectFilesDev } from "../build/earth-model-project-files-plugin.mjs";
 
 const baseURL = "http://localhost:3002/api/dev/earth-models";
-const document = { version: 1, placements: [{ id: "eiffel-tower", longitude: 2.2945, latitude: 48.8584,
-  heightMeters: 330, headingDegrees: 45, elevationMeters: 0, exclusionRadiusMeters: 45, excludeBuildings: true }] };
+const document = JSON.parse(await readFile(new URL("../features/earth/data/model-placements.json", import.meta.url), "utf8"));
+Object.assign(document.placements[0], { longitude: 2.2945, latitude: 48.8584,
+  heightMeters: 330, headingDegrees: 45, exclusionRadiusMeters: 45 });
 const encode = input => `${JSON.stringify(input, null, 2)}\n`;
 const request = (body, extra = {}, url = baseURL) => new Request(url, { method: body ? "POST" : "GET",
   headers: { host: new URL(url).host, ...(body ? { origin: new URL(url).origin, "content-type": "application/json" } : {}), ...extra },
@@ -74,10 +75,31 @@ test("GET returns the current authored document and a raw-file SHA-256 revision;
   assert.equal(saved.status, 200);
   const result = await saved.json();
   assert.notEqual(result.revision, initial.revision);
+  assert.equal(result.document.placements.length, 9);
   assert.equal(result.document.placements[0].headingDegrees, 50);
   assert.equal(await readFile(file, "utf8"), encode(result.document));
   assert.deepEqual(await files.read(), result);
   assert.deepEqual(await readdir(path.dirname(file)), ["model-placements.json"]);
+});
+
+test("the write API preserves independent edits for every registered model and rejects historical partial saves", async t => {
+  const { files, initial, file } = await fixture(t);
+  const edited = structuredClone(initial.document);
+  const statue = edited.placements.find(row => row.id === "statue-of-liberty");
+  statue.heightMeters = 101.5;
+  statue.longitude += .0001;
+  const wall = edited.placements.find(row => row.id === "great-wall-badaling");
+  wall.headingDegrees = 135;
+  wall.exclusionRadiusMeters = 120;
+  const saved = await files.handle(request({ revision: initial.revision, document: edited }), "development");
+  assert.equal(saved.status, 200);
+  const result = await saved.json();
+  assert.deepEqual(result.document, edited);
+  assert.equal(result.document.placements.length, 9);
+  const before = await readFile(file, "utf8");
+  const partial = { version: 1, placements: [edited.placements[0]] };
+  await assert.rejects(files.save({ revision: result.revision, document: partial }));
+  assert.equal(await readFile(file, "utf8"), before, "browser migration must finish before the full-catalogue API write");
 });
 
 test("stale saves and concurrent tabs receive 409 without overwriting newer data", async t => {

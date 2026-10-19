@@ -10,6 +10,86 @@
       "elevationMeters": 0,
       "exclusionRadiusMeters": 110,
       "excludeBuildings": true
+    },
+    {
+      "id": "giza-pyramids",
+      "longitude": 31.13041,
+      "latitude": 29.97604,
+      "heightMeters": 146.6,
+      "headingDegrees": 0,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 300,
+      "excludeBuildings": true
+    },
+    {
+      "id": "colosseum",
+      "longitude": 12.49222,
+      "latitude": 41.89028,
+      "heightMeters": 48,
+      "headingDegrees": 0,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 125,
+      "excludeBuildings": true
+    },
+    {
+      "id": "saint-basils",
+      "longitude": 37.62306,
+      "latitude": 55.7525,
+      "heightMeters": 65,
+      "headingDegrees": 0,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 90,
+      "excludeBuildings": true
+    },
+    {
+      "id": "taj-mahal",
+      "longitude": 78.04194,
+      "latitude": 27.175,
+      "heightMeters": 73,
+      "headingDegrees": 0,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 150,
+      "excludeBuildings": true
+    },
+    {
+      "id": "great-wall-badaling",
+      "longitude": 116.01667,
+      "latitude": 40.35,
+      "heightMeters": 20,
+      "headingDegrees": 90,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 70,
+      "excludeBuildings": true
+    },
+    {
+      "id": "statue-of-liberty",
+      "longitude": -74.04443,
+      "latitude": 40.68921,
+      "heightMeters": 93,
+      "headingDegrees": 0,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 60,
+      "excludeBuildings": true
+    },
+    {
+      "id": "christ-redeemer",
+      "longitude": -43.2105,
+      "latitude": -22.9519,
+      "heightMeters": 38,
+      "headingDegrees": 180,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 40,
+      "excludeBuildings": true
+    },
+    {
+      "id": "sydney-opera",
+      "longitude": 151.21528,
+      "latitude": -33.85667,
+      "heightMeters": 65,
+      "headingDegrees": 0,
+      "elevationMeters": 0,
+      "exclusionRadiusMeters": 170,
+      "excludeBuildings": true
     }
   ]
 }

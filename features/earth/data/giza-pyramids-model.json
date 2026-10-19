@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": "giza-pyramids",
+  "source": {
+    "sha256": "fc2b852196ff420b3369f0b3c2b28f0f495a092260e606f7d31cc1463ea11c48",
+    "bytes": 6002996,
+    "author": "",
+    "license": "",
+    "url": "",
+    "title": ""
+  },
+  "coordinates": {
+    "axes": "east,north,up",
+    "gltfConversion": "x,-z,y",
+    "normalizedHeight": 1,
+    "heightMeters": 146.6,
+    "headingDegrees": 0,
+    "bounds": {
+      "min": [
+        -0.7530109286308289,
+        -0.6618866920471191,
+        0
+      ],
+      "max": [
+        0.7530109286308289,
+        0.6618866920471191,
+        1
+      ]
+    }
+  },
+  "preparation": {
+    "version": 2,
+    "simplifier": "meshoptimizer@1.1.1",
+    "inputTriangles": 48489,
+    "discardedDegenerateTriangles": 0,
+    "preserveTopFraction": 0,
+    "sourceHeight": 0.651214599609375,
+    "sourceOrigin": [
+      0,
+      0,
+      0
+    ],
+    "colors": "linear baseColor + vertexColor; sRGB baseColor texture; runtime normal/metallic/roughness lighting"
+  },
+  "overview": {
+    "url": "/earth/models/giza-pyramids/overview.elm",
+    "bytes": 317718,
+    "sha256": "5817d57dc894de3c3b069aff0ac024039bcb40e1385a0fc2abd42018e52659b5",
+    "vertexCount": 5083,
+    "indexCount": 18000,
+    "triangles": 6000,
+    "targetTriangles": 6000,
+    "error": 0.004249991849064827,
+    "errorLimit": 0.03,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 4682,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 12900,
+        "width": 128,
+        "height": 128,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 4396,
+        "width": 64,
+        "height": 64,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  },
+  "detail": {
+    "url": "/earth/models/giza-pyramids/detail.elm",
+    "bytes": 1317120,
+    "sha256": "a1b2323dec9883cd9e96dcd87933505d76f735e87eccb497ca4ed3b85897da90",
+    "vertexCount": 15661,
+    "indexCount": 72000,
+    "triangles": 24000,
+    "targetTriangles": 24000,
+    "error": 0.0011185925686731935,
+    "errorLimit": 0.01,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 49680,
+        "width": 1024,
+        "height": 1024,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 222920,
+        "width": 512,
+        "height": 512,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 67348,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  }
+}

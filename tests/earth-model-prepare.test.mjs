@@ -4,9 +4,10 @@ import { mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import sharp from "sharp";
 import { readEarthModelGlb } from "../scripts/lib/earth-model-glb.mjs";
-import { encodeEarthModel, prepareEarthModelGeometry } from "../scripts/lib/earth-model-prepare.mjs";
-import { prepareEarthModel, readEarthModelSource } from "../scripts/prepare-earth-model.mjs";
+import { encodeEarthModel, encodeTexturedEarthModel, prepareEarthModelGeometry } from "../scripts/lib/earth-model-prepare.mjs";
+import { EARTH_MODEL_CONFIG_PATHS, prepareEarthModel, readEarthModelSource } from "../scripts/prepare-earth-model.mjs";
 
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
 const close = (actual, expected, epsilon = 1e-6) => assert.ok(Math.abs(actual - expected) < epsilon, `${actual} != ${expected}`);
@@ -55,6 +56,107 @@ function unpack(bytes) {
   return { vertices: new Float32Array(bytes.buffer, bytes.byteOffset + 16, vertexCount * 6),
     indices: new Uint32Array(bytes.buffer, bytes.byteOffset + 16 + vertexCount * 24, indexCount) };
 }
+
+async function texturedFixture(change = () => {}) {
+  const base = fixture({ normals: true, colors: true }), jsonSize = base.readUInt32LE(12);
+  const json = JSON.parse(base.subarray(20, 20 + jsonSize));
+  const image = await sharp(Buffer.from([128, 128, 255, 64, 128, 240, 128, 64, 240, 128, 128, 255]),
+    { raw: { width: 2, height: 2, channels: 3 } }).png().toBuffer();
+  const pieces = [base.subarray(28 + jsonSize, 28 + jsonSize + json.buffers[0].byteLength)];
+  const append = bytes => {
+    const offset = pieces.reduce((sum, value) => sum + value.length, 0);
+    json.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: bytes.length });
+    pieces.push(bytes, Buffer.alloc((4 - bytes.length % 4) % 4));
+    return json.bufferViews.length - 1;
+  };
+  const uvView = append(Buffer.from(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]).buffer));
+  json.accessors.push({ bufferView: uvView, componentType: 5126, type: "VEC2", count: 4 });
+  json.meshes[0].primitives[0].attributes.TEXCOORD_0 = json.accessors.length - 1;
+  json.images = Array.from({ length: 3 }, () => ({ bufferView: append(image), mimeType: "image/png" }));
+  json.textures = Array.from({ length: 3 }, (_, source) => ({ source, sampler: 0 }));
+  json.samplers = [{ wrapS: 33071, wrapT: 33648 }];
+  Object.assign(json.materials[0].pbrMetallicRoughness, { baseColorTexture: { index: 0 },
+    metallicRoughnessTexture: { index: 1 }, metallicFactor: .25, roughnessFactor: .75 });
+  json.materials[0].normalTexture = { index: 2, scale: .5 };
+  json.extensionsUsed = ["KHR_materials_volume", "FB_ngon_encoding"];
+  const binary = Buffer.concat(pieces); json.buffers[0].byteLength = binary.length;
+  change(json, binary);
+  return glb(json, binary);
+}
+
+test("ELM2 preserves UVs, linear color factors and normalized normals, with bounded WebP PBR slots", async () => {
+  const source = await texturedFixture(), raw = readEarthModelGlb(source);
+  const prepared = await prepareEarthModelGeometry(source, config());
+  assert.equal(prepared.manifest.preparation.version, 2);
+  assert.deepEqual(prepared.manifest.coordinates.bounds, { min: [-.25, -.25, 0], max: [.25, .25, 1] });
+  assert.deepEqual(raw.material, { metallicFactor: .25, roughnessFactor: .75, normalScale: .5 });
+  assert.deepEqual(raw.textures.map(texture => texture.kind), ["baseColor", "normal", "metallicRoughness"]);
+  for (const [index, file] of prepared.files.entries()) {
+    const bytes = file.bytes, meta = prepared.manifest[index ? "detail" : "overview"];
+    assert.equal(bytes.toString("ascii", 0, 4), "ELM2"); assert.equal(bytes.readUInt32LE(4), 2); assert.equal(meta.format, 2);
+    close(bytes.readFloatLE(76), .25); close(bytes.readFloatLE(80), .75); close(bytes.readFloatLE(84), .5);
+    assert.equal(bytes.length, 88 + meta.vertexCount * 44 + meta.indexCount * 4 + meta.textures.reduce((sum, texture) => sum + texture.bytes, 0));
+    for (let vertex = 0; vertex < meta.vertexCount; vertex++) {
+      const values = Array.from({ length: 11 }, (_, channel) => bytes.readFloatLE(88 + vertex * 44 + channel * 4));
+      const original = [...Array(raw.positions.length / 3).keys()].find(i => [0, 1, 2].every(axis => raw.positions[i * 3 + axis] === values[axis]));
+      assert.notEqual(original, undefined);
+      assert.deepEqual(values.slice(3, 6), [...raw.colors.subarray(original * 3, original * 3 + 3)]);
+      assert.deepEqual(values.slice(6, 9), [...raw.normals.subarray(original * 3, original * 3 + 3)]);
+      assert.deepEqual(values.slice(9), [...raw.uvs.subarray(original * 2, original * 2 + 2)]);
+    }
+    let offset = 88 + meta.vertexCount * 44 + meta.indexCount * 4;
+    const blobs = [];
+    for (const [slot, texture] of meta.textures.entries()) {
+      const header = 16 + slot * 20;
+      assert.deepEqual(Array.from({ length: 5 }, (_, i) => bytes.readUInt32LE(header + i * 4)),
+        [texture.bytes, 2, 2, 33071, 33648]);
+      const blob = bytes.subarray(offset, offset + texture.bytes), decoded = await sharp(blob).raw().toBuffer();
+      blobs.push({ ...texture, bytes: blob });
+      if (texture.kind !== "baseColor") assert.deepEqual(decoded, await sharp(raw.textures[slot].bytes).raw().toBuffer(), "PBR data maps use lossless WebP");
+      offset += texture.bytes;
+    }
+    const vertices = new Float32Array(Array.from({ length: meta.vertexCount * 11 }, (_, i) => bytes.readFloatLE(88 + i * 4)));
+    const indices = new Uint32Array(Array.from({ length: meta.indexCount }, (_, i) => bytes.readUInt32LE(88 + vertices.byteLength + i * 4)));
+    assert.deepEqual(encodeTexturedEarthModel(vertices, indices, blobs, raw.material), bytes);
+    assert.throws(() => encodeTexturedEarthModel(vertices, indices, blobs.slice(1), raw.material), /texture slots/);
+    const corrupt = Buffer.from(blobs[0].bytes); corrupt.writeUInt32LE(0, 4);
+    assert.throws(() => encodeTexturedEarthModel(vertices, indices, [{ ...blobs[0], bytes: corrupt }, ...blobs.slice(1)], raw.material), /prepared texture/);
+    const invalid = vertices.slice(); invalid[6] = 0; invalid[7] = 0; invalid[8] = 0;
+    assert.throws(() => encodeTexturedEarthModel(invalid, indices, blobs, raw.material), /normal/);
+  }
+  assert.deepEqual(prepared, await prepareEarthModelGeometry(source, config()), "preparation is deterministic");
+  const stretched = await texturedFixture(json => { json.nodes[1].scale = [2, 3, 4]; });
+  const rotated = await prepareEarthModelGeometry(stretched, { ...config(), headingDegrees: 90 });
+  close(rotated.manifest.coordinates.bounds.min[0], -1 / 3); close(rotated.manifest.coordinates.bounds.max[0], 1 / 3);
+  close(rotated.manifest.coordinates.bounds.min[1], -1 / 6); close(rotated.manifest.coordinates.bounds.max[1], 1 / 6);
+  assert.equal(rotated.manifest.coordinates.bounds.min[2], 0); assert.equal(rotated.manifest.coordinates.bounds.max[2], 1);
+});
+
+test("the textured profile rejects external images, unsupported material payloads and invalid image/UV budgets", async () => {
+  for (const change of [
+    json => json.images[0].uri = "https://example.invalid/image.png",
+    json => json.images[0].mimeType = "image/svg+xml",
+    json => json.images[0].bufferView = 999,
+    json => json.textures[0].source = 999,
+    json => json.materials[0].extensions = { KHR_materials_volume: {} },
+    json => json.extensions = { FB_ngon_encoding: {} },
+    json => json.extensionsRequired = ["KHR_materials_volume"],
+    json => json.materials[0].pbrMetallicRoughness.baseColorTexture.texCoord = 1,
+    json => json.materials[0].pbrMetallicRoughness.metallicFactor = 2,
+    json => json.materials[0].normalTexture.scale = 5,
+    json => json.samplers[0].wrapS = 0,
+    json => delete json.meshes[0].primitives[0].attributes.TEXCOORD_0,
+    json => delete json.meshes[0].primitives[0].attributes.NORMAL,
+    (json, bytes) => bytes.writeFloatLE(65, json.bufferViews[json.accessors[json.meshes[0].primitives[0].attributes.TEXCOORD_0].bufferView].byteOffset),
+    (json, bytes) => bytes.writeUInt32BE(4097, json.bufferViews[json.images[0].bufferView].byteOffset + 16),
+  ]) {
+    const source = await texturedFixture(change);
+    assert.throws(() => readEarthModelGlb(source), /Earth model GLB:/);
+  }
+  const corruptImage = await texturedFixture((json, bytes) => bytes[json.bufferViews[json.images[0].bufferView].byteOffset + 29] ^= 1);
+  await assert.rejects(prepareEarthModelGeometry(corruptImage, config()), /png|corrupt|header|libspng|CRC/i, "sharp decodes and validates complete image data");
+  await assert.rejects(prepareEarthModelGeometry(await texturedFixture(), { ...config(), lods: [{ ...config().lods[0], textureSizes: { baseColor: 512 } }, config().lods[1]] }), /texture size/);
+});
 
 test("GLB preparation applies nested transforms, ENU axes, height/base normalization and inverse-transpose normals", () => {
   const model = readEarthModelGlb(fixture({ transform: true, normals: true }));
@@ -176,6 +278,55 @@ test("shipped Eiffel LODs reproduce byte-for-byte, retain the ornamental top, an
     for (const position of protectedPositions) assert.ok(positions.has(position), `${lod} lost protected ornamental top geometry`);
   }
   assert.ok(shipped.overview.bytes + shipped.detail.bytes < 1024 * 1024, "both decoded LOD files together stay below 1 MiB");
+});
+
+test("all eight textured landmark sources reproduce shipped LODs, UV seams, height locks and texture budgets", async () => {
+  for (const configPath of EARTH_MODEL_CONFIG_PATHS.slice(1)) {
+    const settings = JSON.parse(await readFile(new URL(`../${configPath}`, import.meta.url), "utf8"));
+    const source = await readFile(new URL(`../${configPath.replace(/model\.json$/, "source.glb")}`, import.meta.url));
+    const raw = readEarthModelGlb(source), prepared = await prepareEarthModelGeometry(source, settings);
+    assert.equal(raw.textures.length, 3, settings.id); assert.equal(prepared.manifest.source.sha256, digest(source));
+    // Runtime manifest paths are relative to each source config, as in the CLI.
+    const runtimeManifest = JSON.parse(await readFile(new URL(settings.runtimeManifest, new URL(`../${configPath}`, import.meta.url)), "utf8"));
+    assert.deepEqual(prepared.manifest, runtimeManifest, settings.id);
+    assert.equal(settings.headingDegrees, 0, "the source UV/normal identity check assumes unrotated preparation");
+    const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+    for (let index = 0; index < raw.positions.length; index++) {
+      const axis = index % 3, value = raw.positions[index];
+      bounds.min[axis] = Math.min(bounds.min[axis], value); bounds.max[axis] = Math.max(bounds.max[axis], value);
+    }
+    assert.deepEqual(prepared.manifest.coordinates.bounds, bounds, `${settings.id} camera bounds cover full source geometry`);
+    assert.ok([...bounds.min, ...bounds.max].every(Number.isFinite));
+    assert.equal(bounds.min[2], 0); assert.equal(bounds.max[2], 1);
+    const originalVertices = new Set();
+    for (let vertex = 0; vertex < raw.positions.length / 3; vertex++) originalVertices.add([
+      ...raw.positions.subarray(vertex * 3, vertex * 3 + 3), ...raw.colors.subarray(vertex * 3, vertex * 3 + 3),
+      ...raw.normals.subarray(vertex * 3, vertex * 3 + 3), ...raw.uvs.subarray(vertex * 2, vertex * 2 + 2),
+    ].join(","));
+    for (const [index, lod] of ["overview", "detail"].entries()) {
+      const meta = runtimeManifest[lod], bytes = await readFile(new URL(`../public${meta.url}`, import.meta.url));
+      assert.deepEqual(prepared.files[index].bytes, bytes, `${settings.id}/${lod} is reproducible`);
+      assert.equal(digest(bytes), meta.sha256); assert.ok(meta.triangles <= settings.lods[index].targetTriangles);
+      assert.ok(meta.error <= meta.errorLimit); assert.equal(meta.format, 2);
+      assert.equal(meta.bytes, 88 + meta.vertexCount * 44 + meta.indexCount * 4 + meta.textures.reduce((sum, texture) => sum + texture.bytes, 0));
+      let minZ = Infinity, maxZ = -Infinity;
+      for (let vertex = 0; vertex < meta.vertexCount; vertex++) {
+        const values = Array.from({ length: 11 }, (_, channel) => bytes.readFloatLE(88 + vertex * 44 + channel * 4));
+        assert.ok(originalVertices.has(values.join(",")), `${settings.id}/${lod} retains coherent source UV/normal/color vertex`);
+        minZ = Math.min(minZ, values[2]); maxZ = Math.max(maxZ, values[2]);
+      }
+      assert.equal(minZ, 0); assert.equal(maxZ, 1);
+      let offset = 88 + meta.vertexCount * 44 + meta.indexCount * 4;
+      for (const texture of meta.textures) {
+        const maximum = lod === "overview" ? { baseColor: 256, normal: 128, metallicRoughness: 64 } : { baseColor: 1024, normal: 512, metallicRoughness: 256 };
+        assert.ok(texture.width <= maximum[texture.kind] && texture.height <= maximum[texture.kind]);
+        const decoded = await sharp(bytes.subarray(offset, offset + texture.bytes)).metadata();
+        assert.equal(decoded.format, "webp"); assert.equal(decoded.width, texture.width); assert.equal(decoded.height, texture.height);
+        offset += texture.bytes;
+      }
+    }
+    assert.ok(prepared.files.reduce((sum, file) => sum + file.bytes.length, 0) < 3 * 1024 * 1024, settings.id);
+  }
 });
 
 test("bounded file read rejects oversized GLB and --check detects stale output without modifying source or generated files", async () => {

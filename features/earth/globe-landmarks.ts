@@ -2,9 +2,10 @@ import type { Map as LibreMap, Marker } from "maplibre-gl";
 import { EARTH_LANDMARKS, type EarthLandmark } from "./landmark-catalog";
 import { EARTH_LANDMARK_HEIGHT, earthLandmarkView, layoutEarthLandmarks } from "./landmark-layout";
 import { createEarthLandmarkMeshLayer, EARTH_LANDMARK_MESH_LAYER } from "./landmark-mesh-layer";
-import { earthEiffelStreetOpacity, isEarthEiffelNearBounds, isEarthEiffelStreetZoom } from "./landmark-model-view";
+import { earthModelStreetOpacity, isEarthModelNearBounds, isEarthModelStreetZoom } from "./landmark-model-view";
 import type { EarthModelEnvironment } from "./landmark-model";
 import { getEarthModelPlacements, subscribeEarthModelPlacements } from "./model-placement";
+import { getEarthModelDefinition } from "./landmark-model-registry";
 import { createEarthBuildingModelMask } from "./building-model-mask";
 import styles from "./globe-landmarks.module.css";
 
@@ -63,8 +64,8 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
   function reconcile() {
     if (disposed) return;
     const zoom = map.getZoom();
-    const street = isEarthEiffelStreetZoom(zoom);
-    const view = street ? { ...earthLandmarkView(zoom), scale: 1, opacity: earthEiffelStreetOpacity(zoom) }
+    const street = isEarthModelStreetZoom(zoom);
+    const view = street ? { ...earthLandmarkView(zoom), scale: 1, opacity: earthModelStreetOpacity(zoom) }
       : earthLandmarkView(zoom);
     const container = map.getContainer();
     const placements = getEarthModelPlacements();
@@ -91,37 +92,37 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
       { width: container.clientWidth, height: container.clientHeight }, view) : new Set<string>();
     if (visible && street && buildingsEnabled) {
       for (const placement of placements) {
-        const tower = entries.find(entry => entry.landmark.id === placement.id);
-        if (!tower || tower.element.classList.contains("maplibregl-marker-covered")) continue;
-        const point = map.project([...tower.location]);
+        const entry = entries.find(entry => entry.landmark.id === placement.id);
+        if (!getEarthModelDefinition(placement.id) || !entry || entry.element.classList.contains("maplibregl-marker-covered")) continue;
+        const point = map.project([...entry.location]);
         let nearby = false;
         if (typeof map.getBounds === "function") {
           const bounds = map.getBounds();
-          nearby = isEarthEiffelNearBounds(tower.location, {
+          nearby = isEarthModelNearBounds(entry.location, {
             west: bounds.getWest(), east: bounds.getEast(), south: bounds.getSouth(), north: bounds.getNorth(),
           }, { width: container.clientWidth, height: container.clientHeight, pitch: map.getPitch(),
             verticalFieldOfView: map.getVerticalFieldOfView(), padding: map.getPadding() }, placement.heightMeters, placement.elevationMeters);
         } else {
           // Compatibility with minimal map adapters: require a near screen
           // point and an independent front-side ground intersection.
-          const radius = (placement.heightMeters + Math.abs(placement.elevationMeters)) * 512 * 2 ** zoom
-            / (40_030_228.884 * Math.cos(tower.location[1] * Math.PI / 180));
+          const radius = (placement.heightMeters * 1.5 + Math.abs(placement.elevationMeters)) * 512 * 2 ** zoom
+            / (40_030_228.884 * Math.cos(entry.location[1] * Math.PI / 180));
           nearby = Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(radius)
             && point.x >= -radius && point.x <= container.clientWidth + radius
             && point.y >= -radius && point.y <= container.clientHeight + radius;
           try {
             const ground = nearby ? map.unproject([point.x, point.y]) : null;
-            const longitudeError = ground ? Math.abs(((ground.lng - tower.location[0] + 180) % 360 + 360) % 360 - 180) : Infinity;
+            const longitudeError = ground ? Math.abs(((ground.lng - entry.location[0] + 180) % 360 + 360) % 360 - 180) : Infinity;
             nearby = !!ground && Number.isFinite(ground.lat) && longitudeError < .001
-              && Math.abs(ground.lat - tower.location[1]) < .001;
+              && Math.abs(ground.lat - entry.location[1]) < .001;
           } catch { nearby = false; }
         }
         if (nearby) {
-          desired.add(tower.landmark.id);
+          desired.add(entry.landmark.id);
           // Loading does not create an invisible keyboard target. Keep the
           // button near the actual base, even when the visible roof is off-axis.
-          if (models.isImportedModelReady(tower.landmark.id, "detail") && view.opacity > 0 && point.x >= 0
-            && point.x <= container.clientWidth && point.y >= 0 && point.y <= container.clientHeight) shown.add(tower.landmark.id);
+          if (models.isImportedModelReady(entry.landmark.id, "detail") && view.opacity > 0 && point.x >= 0
+            && point.x <= container.clientWidth && point.y >= 0 && point.y <= container.clientHeight) shown.add(entry.landmark.id);
         }
       }
     }

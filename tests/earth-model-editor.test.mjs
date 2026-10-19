@@ -92,6 +92,9 @@ test("the controlled editor exposes a retryable save action before its first pro
   const button = html.match(/<button[^>]*>Сохранить в проект<\/button>/)?.[0];
   assert.ok(button);
   assert.doesNotMatch(button, /disabled/);
+  assert.equal((html.match(/<option /g) ?? []).length, 9, "every registered model can be selected for placement");
+  for (const id of ["colosseum", "statue-of-liberty", "great-wall-badaling", "sydney-opera"])
+    assert.match(html, new RegExp(`<option value="${id}"`));
 });
 
 test("zone preview uses metres at different latitudes and heading points clockwise from north", () => {
