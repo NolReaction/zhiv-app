@@ -4,9 +4,11 @@ import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.*
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.Assumptions
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.PostgreSQLContainer
 import ru.zhiv.auth.*
 import ru.zhiv.config.AppConfig
@@ -16,8 +18,10 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.*
 
-/** Real PostgreSQL only. CI starts Testcontainers; an explicitly supplied isolated
- * local database can run this class without Docker. No silent test skips.
+/** Real PostgreSQL only. Main backend CI requires this suite with zero skips.
+ * BuildKit has no Docker daemon, so an unavailable Docker environment skips the
+ * class unless an explicit isolated EARTH_GEO_TEST_DATABASE_URL is supplied.
+ * Container startup, migration and SQL failures are never converted to skips.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JdbcEarthLocationIntegrationTest {
@@ -33,6 +37,8 @@ class JdbcEarthLocationIntegrationTest {
             require(url.startsWith("jdbc:postgresql://")) { "Explicit isolated PostgreSQL JDBC URL required" }
             AppConfig(url,System.getenv("EARTH_GEO_TEST_DATABASE_USER") ?: "postgres",System.getenv("EARTH_GEO_TEST_DATABASE_PASSWORD") ?: "",false,setOf("http://localhost"))
         } else {
+            Assumptions.assumeTrue(runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false),
+                "PostgreSQL integration requires Docker or EARTH_GEO_TEST_DATABASE_URL")
             val pg=Postgres().also { it.start();postgres=it }
             AppConfig(pg.jdbcUrl,pg.username,pg.password,false,setOf("http://localhost"))
         }
