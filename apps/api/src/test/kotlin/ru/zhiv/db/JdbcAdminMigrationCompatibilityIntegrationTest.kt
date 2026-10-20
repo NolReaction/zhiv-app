@@ -176,6 +176,25 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             assertEquals("66", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
             val after = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(after, history(source))
+            // Accept only the packaged V66 fingerprint. The immediately following
+            // unknown version remains fail-closed; no repair may mutate history.
+            val alteredTail = listOf(
+                "UPDATE flyway_schema_history SET version='67' WHERE version='66'" to
+                    "UPDATE flyway_schema_history SET version='66' WHERE version='67'",
+                "UPDATE flyway_schema_history SET script='V66__unknown.sql' WHERE version='66'" to
+                    "UPDATE flyway_schema_history SET script='V66__earth_last_known_location.sql' WHERE version='66'",
+                "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='66'" to
+                    "UPDATE flyway_schema_history SET checksum=checksum-1 WHERE version='66'",
+            )
+            alteredTail.forEach { (change, restore) ->
+                execute(source, change)
+                val altered = history(source)
+                assertFailsWith<IllegalStateException> { normalizeLegacyAdminMigrationHistory(source) }
+                assertEquals(altered, history(source), "Rejected current/future history remains untouched")
+                execute(source, restore)
+                assertFalse(normalizeLegacyAdminMigrationHistory(source))
+                assertEquals(after, history(source), "Restoring the exact V66 fingerprint returns to a no-op")
+            }
         }
     }
 
