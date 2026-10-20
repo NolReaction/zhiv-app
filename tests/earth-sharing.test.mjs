@@ -470,3 +470,21 @@ test("preference acknowledgements cannot add recipients or extend expiry and dis
   s.stop(); pendingChange.resolve({ ...old, revision: old.revision + 1, frozenCircleIds: [CIRCLE], publicationEpoch: null });
   assert.equal(await changing, false); assert.equal(s.controller.getSnapshot().settings, null);
 });
+
+test("a loaded global ghost can revoke one recipient without unghosting or restarting publication", async t => {
+  const second = id(504), until = new Date(BASE + 3_600_000).toISOString();
+  const s = fixture({ initial: { mode: "GHOST", revision: 12, recipientCircleIds: [CIRCLE, second], frozenCircleIds: [CIRCLE], sharingUntil: until } });
+  t.after(() => s.stop()); await s.start();
+  assert.equal(await s.controller.revokeRecipient(CIRCLE), true);
+  const settings = s.controller.getSnapshot().settings, write = s.calls.updates[0].write;
+  assert.equal(write.mode, "SHARING"); assert.equal(write.frozenOnly, true, "the narrow wire intent never enables sharing");
+  assert.deepEqual(write.recipientCircleIds, [second]); assert.deepEqual(write.frozenCircleIds, []);
+  assert.equal(settings.mode, "GHOST"); assert.equal(settings.publicationEpoch, null); assert.equal(settings.sharingUntil, until);
+  assert.deepEqual(settings.recipientCircleIds, [second]); assert.equal(s.controller.getSnapshot().publishing, false);
+  assert.equal(await s.controller.setFrozen(second, true), false, "individual live/frozen switches remain inherited from the global ghost");
+  s.controller.setPosition(s.fix()); await flush(); assert.equal(s.calls.positions.length, 0); assert.equal(s.calls.stops.length, 0);
+  assert.equal(await s.controller.revokeRecipient(second), true);
+  assert.equal(s.controller.getSnapshot().settings.mode, "OFF"); assert.equal(s.controller.getSnapshot().settings.sharingUntil, null);
+  assert.equal(s.controller.getSnapshot().publishing, false); assert.equal(s.calls.positions.length, 0);
+  assert.equal(s.calls.updates.every(call => call.write.frozenOnly === true), true);
+});

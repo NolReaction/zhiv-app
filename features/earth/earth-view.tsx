@@ -237,7 +237,9 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       {meetCircleId && panel === null && <EarthMeetCard person={meetPerson} name={meetContact?.nickname || meetPerson?.user.displayName}
         position={location.status === "active" ? location.position : null} now={now} monotonicNow={monotonicNow} locating={locating}
         onLocate={() => { location.locate(); setMeetFocusRequest(value => value + 1); }}
-        onShowBoth={() => setMeetFocusRequest(value => value + 1)} onClose={() => setMeetCircleId(null)} />}
+        onShowBoth={() => setMeetFocusRequest(value => value + 1)} onClose={() => {
+          setMeetCircleId(null); friendsButton.current?.focus({ preventScroll: true });
+        }} />}
       <div className={styles.bottomButtons}>
       <button ref={friendsButton} className={styles.friendsButton} type="button" aria-expanded={friendsOpen} aria-controls="earth-friends-panel" onClick={() => setPanel(friendsOpen ? null : "friends")}>
         <span className={styles.friendsIcon}><Users size={18} aria-hidden="true" /></span>Близкие{people ? <span className={styles.friendsCount}>{people.people.length}</span> : null}

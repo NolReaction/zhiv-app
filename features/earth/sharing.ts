@@ -286,9 +286,9 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   }
   async function updatePreferences(recipientCircleIds: string[], frozenCircleIds: string[]): Promise<boolean> {
     const settings = state.settings;
-    if (!foreground() || pending || enabling || preferences || !settings || settings.mode !== "SHARING" || !owner) return false;
+    if (!foreground() || pending || enabling || preferences || !settings || settings.mode === "OFF" || !owner) return false;
     const write = earthSharingWriteSchema.safeParse({ expectedOwnerPublicId: owner, expectedRevision: settings.revision,
-      mode: settings.mode, precision: settings.precision, recipientCircleIds, frozenCircleIds, frozenOnly: true, durationMinutes: null });
+      mode: "SHARING", precision: settings.precision, recipientCircleIds, frozenCircleIds, frozenOnly: true, durationMinutes: null });
     if (!write.success || recipientCircleIds.some(id => !settings.recipientCircleIds.includes(id))) return false;
     // Pause outbound samples while consent is changing without releasing the existing
     // lease. Success continues only an already running watch; failure stops it safely.

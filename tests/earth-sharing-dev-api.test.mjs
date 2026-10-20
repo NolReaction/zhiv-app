@@ -582,3 +582,25 @@ test("development HMR converts legacy awaiting flags into conservative capture-t
   t.mock.timers.tick(20_000); ok(store.putDevEarthPosition(a.token, position(a, grant, { sequence: 2 })));
   assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1);
 });
+
+test("HTTP narrow revocation during global GHOST preserves ghost, the remaining last point and its original deadline", async () => {
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+  const grant = enable(a, [ab, ac]); ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  preferences(a, [ab, ac], [ab]);
+  ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST" })));
+  const remaining = ok(store.getDevEarthPeople(c.token)).people;
+  globalThis.__earthCookieToken = a.token;
+  const revoke = await (await status(await sharing.PUT(send("PUT", "sharing", write(a, [ac], {
+    mode: "SHARING", frozenOnly: true, frozenCircleIds: [], durationMinutes: null,
+  }))), 200)).json();
+  assert.equal(revoke.mode, "GHOST"); assert.equal(revoke.publicationEpoch, null); assert.equal(revoke.sharingUntil, grant.sharingUntil);
+  assert.deepEqual(revoke.recipientCircleIds, [ac]); assert.deepEqual(revoke.frozenCircleIds, []);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, remaining);
+  error(store.putDevEarthPosition(a.token, position(a, grant, { sequence: 2 })), 409);
+  const off = await (await status(await sharing.PUT(send("PUT", "sharing", write(a, [], {
+    mode: "SHARING", frozenOnly: true, frozenCircleIds: [], durationMinutes: null,
+  }))), 200)).json();
+  assert.equal(off.mode, "OFF"); assert.equal(off.sharingUntil, null);
+  assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, []);
+});

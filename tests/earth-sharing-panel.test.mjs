@@ -118,6 +118,18 @@ test("a never-authorized friend gets consent only from their own explicit switch
     precision: "APPROXIMATE", durationMinutes: 60 }]]);
 });
 
+test("the first consent uses chosen precision and duration without applying an unsaved draft to existing recipients", async () => {
+  const draft = { revision: 0, precision: "PRECISE", durationMinutes: null };
+  const first = view({ draft });
+  await friendSwitch(first, "Новый друг").props.onClick();
+  assert.deepEqual(first.calls, [["share", { recipientCircleIds: ["new"], frozenCircleIds: [],
+    precision: "PRECISE", durationMinutes: null }]]);
+  const existing = view({ draft }, activeSettings);
+  await friendSwitch(existing, "Новый друг").props.onClick();
+  assert.deepEqual(existing.calls, [["share", { recipientCircleIds: ["one", "two", "new"], frozenCircleIds: ["two"],
+    precision: "APPROXIMATE", durationMinutes: 60 }]]);
+});
+
 test("revocation is separate from freezing and uses the narrow recipient action", async () => {
   const result = view({}, activeSettings);
   const controls = result.elements.filter(node => node.type === "button" && Children.toArray(node.props.children).includes("Убрать меня с карты друга"));
@@ -126,6 +138,15 @@ test("revocation is separate from freezing and uses the narrow recipient action"
   assert.deepEqual(result.calls, [["revoke", "one"]]);
   result.textButton("Убрать меня с карты у всех").props.onClick();
   assert.deepEqual(result.calls, [["revoke", "one"], ["off"]]);
+});
+
+test("Ghost allows revoking a friend's access without resuming sharing or enabling their live switch", async () => {
+  const result = view({}, { ...activeSettings, mode: "GHOST" });
+  const revoke = result.textButton("Убрать меня с карты друга");
+  assert.equal(revoke.props.disabled, false);
+  await revoke.props.onClick();
+  assert.equal(friendSwitch(result, "Лена").props.disabled, true);
+  assert.deepEqual(result.calls, [["revoke", "one"]]);
 });
 
 test("global Ghost disables friend updates and settings while preserving choices", () => {

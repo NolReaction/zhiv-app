@@ -115,14 +115,14 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
                 onChange={() => {
                   if (!settings || disabled) return;
                   if (hasAccess) void onSetFrozen(person.circleId, !isFrozen);
-                  else void onShare({ ...choicesFor(settings, draftFor(settings)),
+                  else void onShare({ ...choicesFor(settings, selected.size === 0 ? draft : draftFor(settings)),
                     recipientCircleIds: [...settings.recipientCircleIds, person.circleId] });
                 }} />
             </div>
             {hasAccess && <details className={styles.friendDetails}>
               <summary aria-label={"Настройки доступа: " + name}><MoreHorizontal size={20} aria-hidden="true" /></summary>
               <div><p>{isFrozen || ghost ? "Доступно только последнее место." : "Виден выбранный вами район или точная позиция."}</p>
-                <button type="button" disabled={!canChange || ghost} onClick={() => { if (canChange && !ghost) void onRevokeRecipient(person.circleId); }}>Убрать меня с карты друга</button></div>
+                <button type="button" disabled={!canChange} onClick={() => { if (canChange) void onRevokeRecipient(person.circleId); }}>Убрать меня с карты друга</button></div>
             </details>}
           </li>;
         })}
