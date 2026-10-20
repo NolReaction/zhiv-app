@@ -160,15 +160,34 @@ test("sandbox: competing buyers and late seller cancellation conserve an escrowe
   await rejected(await post(seller, "market", command(seller, { action: "cancel_listing", targetId: lot.id })), [409]);
   assert.equal(profile(seller).state.inventory.berries, 6);
   assert.equal(actors.reduce((sum, actor) => sum + profile(actor).state.inventory.berries, 0), 12);
-  const fee = marketSaleFee(price, lot.feeBps);
-  assert.equal(actors.reduce((sum, actor) => sum + profile(actor).state.wallet.coins, 0), totalBefore - fee);
-  assert.equal(profile(seller).state.wallet.coins, 20_000 + price - fee);
+  const fee = marketSaleFee(price, lot.feeBps), proceeds = price - fee;
+  const sold = economy.getDevEconomyMarket(seller.token).mine.find(listing => listing.id === lot.id);
+  assert.equal(sold.status, "sold"); assert.equal(sold.sale.claimedAt, null);
+  assert.equal(sold.sale.proceedsCoins, proceeds); assert.equal(sold.sale.buyerPublicId, winner.actor.me.user.publicId);
+  assert.equal(profile(seller).state.wallet.coins, 20_000, "a purchase reserves proceeds instead of crediting the seller immediately");
+  assert.equal(actors.reduce((sum, actor) => sum + profile(actor).state.wallet.coins, 0), totalBefore - price);
+  assert.equal(actors.reduce((sum, actor) => sum + profile(actor).state.wallet.coins, proceeds), totalBefore - fee,
+    "wallets plus the single pending payment conserve the sale's exact net value");
   assert.equal(profile(winner.actor).state.wallet.coins, 20_000 - price);
+  const pending = actors.map(saved);
+  for (const buyer of buyers) await rejected(await post(buyer, "market", command(buyer, { action: "claim_sale", targetId: lot.id })), [403]);
+  actors.forEach((actor, index) => assert.deepEqual(saved(actor), pending[index]));
+  const claims = Array.from({ length: 12 }, () => command(seller, { action: "claim_sale", targetId: lot.id }));
+  const claimResults = await Promise.all(claims.map(async body => ({ body, response: await post(seller, "market", body) })));
+  const successfulClaims = claimResults.filter(result => result.response.status === 200); assert.equal(successfulClaims.length, 1);
+  const successfulClaim = successfulClaims[0], claimed = await accepted(successfulClaim.response);
+  assert.notEqual(claimed.listing.sale.claimedAt, null); assert.equal(claimed.state.wallet.coins, 20_000 + proceeds);
+  for (const result of claimResults.filter(result => result !== successfulClaim)) await rejected(result.response, [409]);
+  assert.equal(actors.reduce((sum, actor) => sum + profile(actor).state.wallet.coins, 0), totalBefore - fee);
+  assert.equal(profile(seller).state.wallet.coins, 20_000 + proceeds);
   const after = actors.map(saved);
   assert.equal((await accepted(await post(winner.actor, "market", winner.body))).replayed, true);
+  assert.equal((await accepted(await post(seller, "market", successfulClaim.body))).replayed, true);
+  const duplicateClaim = await rejected(await post(seller, "market", command(seller, { action: "claim_sale", targetId: lot.id })), [409]);
+  assert.equal(duplicateClaim.code, "ECONOMY_MARKET_NOT_PENDING");
   actors.forEach((actor, index) => assert.deepEqual(saved(actor), after[index]));
   await accepted(await post(seller, "economy", command(seller, { action: "sell", targetId: "berries" })));
-  t.diagnostic("10 quote/ownership attacks, 24 overlapping buy handlers, late cancellation and receipt retry; lot and currency conserved");
+  t.diagnostic("quote/ownership attacks, 24 overlapping buy handlers, late cancellation, 12 competing proceeds claims and both receipt retries; lot and exact net payment conserved");
 });
 
 test("sandbox: barter guesses, cross-endpoint receipt reuse and competing acceptances cannot duplicate rare items", async t => {

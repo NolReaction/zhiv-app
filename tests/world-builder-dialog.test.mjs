@@ -36,8 +36,8 @@ test("a free builder is distinct from an unavailable account snapshot and ignore
     assert.match(html, /Свободен/);
     assert.match(html, /Выберите здание для улучшения/);
     assert.doesNotMatch(html, /Завершить улучшение|Нанять|Жемчуг/);
-    assert.doesNotMatch(html, /data-meal-boost="builder"/);
-    assert.equal([...html.matchAll(/<button\b/g)].length, 0, "unavailable food must not add a spoiler or a paid build/hire action");
+    assert.match(html, /data-meal-boost="builder"/);
+    assert.equal([...html.matchAll(/<button\b/g)].length, 1, "the base campfire exposes one optional food choice and no paid build/hire action");
   }
   const { html } = conversation(economy([], { snapshot: null }));
   assert.match(html, /role="status"/);
@@ -46,7 +46,7 @@ test("a free builder is distinct from an unavailable account snapshot and ignore
 
 test("a free builder still offers food already owned before its recipe unlocks", () => {
   const controller = economy();
-  controller.snapshot.inventory[economyCatalog.food.meals[0].itemId] = 1;
+  controller.snapshot.inventory.legendary_fish = 1;
   const before = structuredClone(controller.snapshot);
   const { html } = conversation(controller);
   assert.match(html, /data-builder-status="free"/);

@@ -369,7 +369,27 @@ function ledgerSourceCount(requestId) {
   return Number(sql(`SELECT count(*) FROM economy_ledger WHERE user_id=(SELECT id FROM app_users WHERE public_id='${mailTarget.publicId}') AND source_key='admin:${requestId}';`));
 }
 const initialMailEconomy = (await api("GET", "/api/v1/economy", { cookie: mailTarget.cookie })).data;
-assert.deepEqual((await fixtureInbox()).messages, []);
+// A first inbox read delivers the fixed welcome gift, but never collects it.
+// Read that one baseline letter so subsequent unread counts isolate admin mail.
+const welcomeInbox = await fixtureInbox();
+assert.equal(welcomeInbox.messages.length, 1);
+assert.equal(welcomeInbox.unreadCount, 1);
+const welcomeLetter = welcomeInbox.messages[0];
+assert.equal(welcomeLetter.type, "event");
+assert.equal(welcomeLetter.notify, false);
+assert.equal(welcomeLetter.attachments, null);
+assert.deepEqual(welcomeLetter.gift, { pearls: 100, claimedAt: null });
+const welcomeRead = await api("POST", `/api/v1/mail/${welcomeLetter.id}/read`, { cookie: mailTarget.cookie,
+  body: { expectedOwnerPublicId: mailTarget.publicId } });
+assert.equal(welcomeRead.data.unreadCount, 0);
+assert.ok(welcomeRead.data.readAt);
+const welcomeAfterRead = await fixtureInbox();
+assert.deepEqual(welcomeAfterRead.messages.map(message => message.id), [welcomeLetter.id]);
+assert.equal(welcomeAfterRead.messages[0].readAt, welcomeRead.data.readAt);
+assert.deepEqual(welcomeAfterRead.messages[0].gift, welcomeLetter.gift);
+const economyAfterWelcome = (await api("GET", "/api/v1/economy", { cookie: mailTarget.cookie })).data;
+assert.deepEqual(economyAfterWelcome.wallet, initialMailEconomy.wallet, "Welcome delivery and reading never collect the gift");
+assert.equal(economyAfterWelcome.revision, initialMailEconomy.revision);
 await api("GET", mailboxPath, { expected: 401 });
 await api("GET", mailboxPath, { cookie: ordinary.cookie, expected: 409 });
 
@@ -383,7 +403,7 @@ assert.equal(silentReceipt.headers["cache-control"], "no-store");
 const afterSilent = (await api("GET", "/api/v1/economy", { cookie: mailTarget.cookie })).data;
 assert.equal(afterSilent.wallet.coins, initialMailEconomy.wallet.coins + 11);
 assert.equal(afterSilent.wallet.pearls, initialMailEconomy.wallet.pearls);
-assert.deepEqual((await fixtureInbox()).messages, []);
+assert.deepEqual((await fixtureInbox()).messages.map(message => message.id), [welcomeLetter.id]);
 assert.equal(mailSourceCount(`admin:${silentGrant.requestId}`), 0);
 
 const privateGrantReason = "CI private notified grant audit reason";
@@ -397,9 +417,10 @@ assert.equal(afterNotified.wallet.coins, afterSilent.wallet.coins + 23);
 assert.equal(afterNotified.wallet.pearls, afterSilent.wallet.pearls + 6, "Three visible pearls store exactly six units once");
 assert.equal(afterNotified.revision, notifiedReceipt.data.acceptedRevision);
 const grantInbox = await fixtureInbox();
-assert.equal(grantInbox.messages.length, 1);
+assert.equal(grantInbox.messages.length, 2);
 assert.equal(grantInbox.unreadCount, 1);
-const grantLetter = grantInbox.messages[0];
+const grantLetter = grantInbox.messages.find(message => message.type === "admin_grant");
+assert.ok(grantLetter);
 assert.match(grantLetter.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 assert.equal(grantLetter.type, "admin_grant");
 assert.equal(grantLetter.notify, true);
@@ -439,7 +460,7 @@ assert.equal(afterAdjustment.wallet.coins, afterRead.wallet.coins - 7);
 assert.equal(afterAdjustment.wallet.pearls, afterRead.wallet.pearls - 2);
 assert.equal(afterAdjustment.revision, adjustedReceipt.data.acceptedRevision);
 const correctionInbox = await fixtureInbox();
-assert.equal(correctionInbox.messages.length, 2);
+assert.equal(correctionInbox.messages.length, 3);
 const correctionLetter = correctionInbox.messages.find(message => message.type === "balance_correction");
 assert.equal(correctionLetter.attachments.coins, -7);
 assert.equal(correctionLetter.attachments.pearls, -1);
@@ -463,8 +484,8 @@ assert.equal(broadcastReceipt.data.recipientCount, 1);
 assert.equal(broadcastReceipt.data.changed, true);
 assert.deepEqual((await api("POST", broadcastPath, { cookie: peer.cookie, body: broadcast })).data, broadcastReceipt.data);
 const finalInbox = await fixtureInbox();
-assert.equal(finalInbox.messages.length, 3);
-assert.equal(new Set(finalInbox.messages.map(message => message.id)).size, 3);
+assert.equal(finalInbox.messages.length, 4);
+assert.equal(new Set(finalInbox.messages.map(message => message.id)).size, 4);
 assert.equal(finalInbox.unreadCount, 2);
 const broadcastLetter = finalInbox.messages.find(message => message.title === broadcast.title);
 assert.equal(broadcastLetter.type, "admin_notice");

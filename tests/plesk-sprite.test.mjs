@@ -587,11 +587,13 @@ test("the live map gives Pleska real daytime and twilight visitors with exact pa
   const {createForestFauna,advanceForestFauna,residentFaunaEncounter}=await vite.ssrLoadModule('/features/world/environment/wildlife/forest-fauna.ts');
   const {createPleskMind,advancePleskMind,pleskMindFrame,pleskAvailableForLeisure}=await vite.ssrLoadModule('/features/world/characters/plesk/plesk-mind.ts');
   const {pleskWildlifeHand}=await vite.ssrLoadModule('/features/world/characters/plesk/plesk-painter.ts');
-  for(const dusk of [0,.65]){
+  // Twilight uses the profile's evening clock. Omitting it intentionally means
+  // full night in residentNightRest, when Pleska returns home instead of hosting.
+  for(const [dusk,localHour] of [[0,12],[.65,20]]){
     const fauna=createForestFauna(world),mind=createPleskMind(world),ids=fauna.entities.map(e=>e.id),contacts=new Set();
     for(let t=0;t<900;t+=.1){
       const active=residentFaunaEncounter(fauna,'plesk'),pause=!!active&&!['release','interrupt'].includes(active.phase);
-      const feet={...mind.position};advancePleskMind(mind,world,.1,{dusk,rain:0,wildlife:pause});
+      const feet={...mind.position};advancePleskMind(mind,world,.1,{dusk,rain:0,localHour,wildlife:pause});
       if(pause)assert.deepEqual(mind.position,feet);
       const r=pleskMindFrame(mind,world,false),hand=r?pleskWildlifeHand(r):null;
       advanceForestFauna(fauna,.1,{dusk,rain:0,visitors:r?[{...r,hand,

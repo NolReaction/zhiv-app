@@ -78,7 +78,7 @@ test("LeafTail is a separate shop without a resident-orders shortcut or future p
     act() { assert.fail("viewing a shop cannot change the economy"); } });
   const html = render("leaftail-caravan", economy, { leaftailAvailable: true });
   assert.match(html, /Лавка Листохвоста/);
-  assert.match(html, /Торговец находками/);
+  assert.match(html, /Путник и торговец/);
   assert.doesNotMatch(html, /Заказы жителей|появятся в одном из следующих обновлений|data-production-slot|data-guide-station-upgrade|Все уровни оборудования открыты|Будущая ветка/);
   assert.deepEqual(helpers.worldStations["leaftail-caravan"].stationIds, []);
   assert.equal(helpers.worldStations["leaftail-caravan"].future, undefined);
@@ -94,7 +94,7 @@ test("an unintroduced traveller keeps the caravan anonymous and empty before the
     const original = structuredClone(state), html = render("leaftail-caravan", economy);
     assert.match(html, /Домик путника/); assert.match(html, /Пока не знакомы/);
     assert.match(html, home < 3 ? /дом достигнет 3-го уровня/ : /Дождитесь прибытия/);
-    assert.doesNotMatch(html, /Листохвост|Торговец находками|<canvas|data-leaftail-item|data-leaftail-purchase|Купить|Ваши монеты|2400|role="tablist/);
+    assert.doesNotMatch(html, /Листохвост|Торговец находками|Путник и торговец|<canvas|data-leaftail-item|data-leaftail-purchase|Купить|Ваши монеты|2400|role="tablist/);
     assert.deepEqual(state, original);
   }
 });

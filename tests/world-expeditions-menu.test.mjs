@@ -288,7 +288,9 @@ test("legacy quarry work blocks Mochlik departures and leaves the independent mi
       const blocked = sectorView(sector, economy.snapshot, {}, { selectedRoute: id });
       assert.equal(blocked.depart(id), undefined);
       assert.match(blocked.html, /Завершите предыдущую работу Мохлика на карте/);
-      assert.doesNotMatch(blocked.html, /шахт|каменоломн/i);
+      assert.doesNotMatch(blocked.html, /data-sector="caves"|data-route="(?:cave|quarry_[^"]+)"/);
+      const foodReason = finished ? "Сначала заберите добычу из каменоломни" : "Мохлик работает в каменоломне. Дождитесь окончания добычи";
+      assert.equal(disabled(button(blocked.html, foodReason)), true, "the optional meal explains the legacy job without permitting another actor action");
       assert.deepEqual(blocked.calls, []);
     }
     const mine = sectorView("caves", { ...economy.snapshot, buildings: { ...economy.snapshot.buildings, quarry: 2 } }, {}, { selectedRoute: "quarry_clay" });

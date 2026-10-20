@@ -45,6 +45,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         return slots[index].value;
       }
       export function useCallback(callback) { return callback; }
+      export function useId() { return useRef("world-character-" + cursor).current; }
       export function useEffect(effect, dependencies) {
         const index = cursor++;
         if (!effectsEnabled) return;
@@ -66,7 +67,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       export function useForestObservation() { return guideContext.observation ?? null; }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/ui/hud/world-selected-object-menu.tsx") || id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-resident-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
+      if (id.endsWith("/features/world/state/use-world-market-sales.ts") || id.endsWith("/features/world/audio/use-market-audio.ts") || id.endsWith("/features/world/ui/hud/world-selected-object-menu.tsx") || id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-resident-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
         return source.replace('from "react";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-forest-observation";', `from "${hookModule}";`)
@@ -180,7 +181,7 @@ function navigation() {
   const world = { snapshot: { state, gifts: [] }, now: Date.parse("2026-10-05T12:00:00Z"), act() { assert.fail("navigation cannot mutate world"); } };
   let refreshes = 0;
   const economy = { snapshot: null, now: world.now, busy: false, uncertain: false, retryAt: 0,
-    act() { assert.fail("navigation cannot issue economy commands"); }, retry() {}, refresh() { refreshes++; return Promise.resolve(); } };
+    act() { assert.fail("navigation cannot issue economy commands"); }, retry() {}, refreshMarket() { return Promise.resolve(); }, refresh() { refreshes++; return Promise.resolve(); } };
   const props = { world, economy, ownerPublicId: "characters-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 };
   let view;
   const render = () => {
@@ -368,7 +369,7 @@ test("the absent-site fallback rejects a previous owner's snapshot without adopt
   } finally { nav.restore(); }
 });
 
-test("wallet shortcuts replace the More shop entry and open the intended preview even while offline", () => {
+test("wallet shortcuts select their currency while More opens the starter shop even while offline", () => {
   const nav = guideNavigation(); nav.props.isOnline = false;
   try {
     const wallet = nav.component("WorldWallet");
@@ -390,7 +391,11 @@ test("wallet shortcuts replace the More shop entry and open the intended preview
     nav.find(node => node.props["data-world-quick"] === "more").props.onClick();
     const menu = nav.find(node => node.props.id === "world-quick-menu");
     const labels = elements(menu).filter(node => node.type === "button").map(node => renderToStaticMarkup(node)).join(" ");
-    assert.doesNotMatch(labels, /Промокоды и витрина|>Магазин<|>Рынок<|>Объявления</);
+    assert.doesNotMatch(labels, /Промокоды и витрина|>Рынок<|>Объявления</);
+    assert.match(labels, /Магазин[\s\S]*Наборы и особые костюмы/);
+    elements(menu).find(node => node.type === "button" && renderToStaticMarkup(node).includes("Наборы и особые костюмы")).props.onClick();
+    assert.equal(nav.component("CurrencyShopPanel").props.initialPage, "starters");
+    nav.find(node => node.props["aria-label"] === "Закрыть панель").props.onClick();
     nav.component("WorldScene").props.onPlace("market");
     assert.equal(nav.component("EconomyPanel").props.initialTab, "market");
     assert.equal(nav.refreshes, 0, "opening preview never refreshes or issues an economic command");
@@ -645,7 +650,7 @@ test("pointerdown on a guide control preserves the live quick menu while a map c
     const listeners = new Map();
     try {
       Object.defineProperty(globalThis, "Element", { value: HTMLElement, configurable: true });
-      Object.defineProperty(globalThis, "window", { value: { addEventListener() {}, removeEventListener() {} }, configurable: true });
+      Object.defineProperty(globalThis, "window", { value: { addEventListener() {}, removeEventListener() {}, setInterval() { return 1; }, clearInterval() {} }, configurable: true });
       Object.defineProperty(globalThis, "ResizeObserver", { value: class { observe() {} disconnect() {} }, configurable: true });
       Object.defineProperty(globalThis, "requestAnimationFrame", { value: callback => { callback(); return 1; }, configurable: true });
       Object.defineProperty(globalThis, "cancelAnimationFrame", { value() {}, configurable: true });
@@ -965,6 +970,7 @@ test("an explicit mine notification activates quarry once while generic or forei
       let timerId = 0;
       Object.defineProperty(globalThis, "window", { value: {
         addEventListener() {}, removeEventListener() {},
+        setInterval() { return 1; }, clearInterval() {},
         setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
         clearTimeout(id) { timers.delete(id); },
       }, configurable: true });
@@ -1205,7 +1211,7 @@ function pointerNavigation(context = {}) {
   const saved = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   const listeners = new Map();
   Object.defineProperty(globalThis, "Element", { value: HTMLElement, configurable: true });
-  Object.defineProperty(globalThis, "window", { value: { addEventListener() {}, removeEventListener() {} }, configurable: true });
+  Object.defineProperty(globalThis, "window", { value: { addEventListener() {}, removeEventListener() {}, setInterval() { return 1; }, clearInterval() {} }, configurable: true });
   Object.defineProperty(globalThis, "ResizeObserver", { value: class { observe() {} disconnect() {} }, configurable: true });
   Object.defineProperty(globalThis, "requestAnimationFrame", { value: callback => { callback(); return 1; }, configurable: true });
   Object.defineProperty(globalThis, "cancelAnimationFrame", { value() {}, configurable: true });

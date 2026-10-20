@@ -32,6 +32,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 });
 after(() => vite.close());
 const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { canRefreshFishingShop } = await vite.ssrLoadModule("/features/economy/domain/fishing-shop.ts");
 const { PleskMerchantHeader } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
 const { ConstructionSpeedup } = await vite.ssrLoadModule("/features/economy/ui/construction/construction-speedup.tsx");
 const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-builder-dialog.tsx");
@@ -96,6 +97,9 @@ test("an open confirmation cannot spend after expiry, a revision change, or a pe
 
 test("lack of replacement and uncertain balances have distinct explanations", () => {
   let h = harness(); h.state.buildings.home = 1; h.state.fishing.ownedRods.push("brook_rod");
+  assert.equal(canRefreshFishingShop(h.state), true, "the unowned float rod still supplies a different eligible model");
+  h.state.fishing.ownedRods.push("float_rod");
+  assert.equal(canRefreshFishingShop(h.state), false, "owning both early rods exhausts replacements for the displayed rod slot");
   let view = h.render(); assert.match(view.html, /Пока не все товары можно заменить на другие/);
   assert.equal(view.button("Обновить предложения за 50 жемчужин").props.disabled, true);
   view.button("Обновить предложения за 50 жемчужин").props.onClick(); assert.deepEqual(h.calls, []);
