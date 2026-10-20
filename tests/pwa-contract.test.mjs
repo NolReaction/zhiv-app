@@ -1031,7 +1031,9 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(people, /aria-labelledby="people-title"/);
   assert.match(people, /Мои отметки «Я живой» и сообщение статуса видны этому человеку, включая общие группы/);
   assert.match(people, /Мои отметки «Я живой» и сообщение статуса скрыты от этого человека, включая общие группы/);
-  assert.match(people, /aria-describedby=\{sharingHintId\}/);
+  assert.match(people, /<FriendSharingButton[\s\S]*?description=\{sharingHintId\}/);
+  const friendSharing = await readFile(new URL("../features/earth/earth-friend-sharing.tsx", import.meta.url), "utf8");
+  assert.match(friendSharing, /aria-describedby=\{description\}/);
   assert.match(people, /useReducer\(\s*inviteDialogReducer,\s*initialInviteDialogState/);
   assert.match(people, /<Dialog open=\{inviteDialog\.open\}/);
   assert.match(people, /dispatchInviteDialog\(\{ type: "close" \}\)/);

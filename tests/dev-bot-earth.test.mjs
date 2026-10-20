@@ -71,6 +71,38 @@ test("synthetic drafts default private and explicit sharing reaches only the rea
   for (const secret of [privateBot.token, "publicationEpoch", "publisherSession", "sequence"]) assert.equal(serialized.includes(secret), false, secret);
 });
 
+test("explicit map placement shows a new bot at the exact chosen center only to its owner", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-20T12:00:00Z") });
+  const owner = player(), stranger = player(), bot = create(owner), privateBot = social.getDevOwnedBots(owner.token)[0];
+  connect({ token: privateBot.token, me: social.getDevIdentity(privateBot.token) }, stranger);
+  const cmd = command(owner, { action: "set_earth_position", botId: bot.id,
+    latitude: 55.752345, longitude: 37.623123, accuracyMeters: 20, showOnMap: true });
+  const result = bots.commandDevBots(owner.token, cmd), placed = result.snapshot.bots[0];
+  assert.equal(placed.earth.mode, "SHARING"); assert.equal(placed.earth.precision, "PRECISE");
+  assert.equal(feed(owner)[0].latitude, cmd.latitude); assert.equal(feed(owner)[0].longitude, cmd.longitude);
+  assert.deepEqual(feed(stranger), []);
+  assert.equal(ok(earth.getDevEarthSharing(owner.token)).mode, "OFF", "the actual viewer never grants their own location");
+  assert.deepEqual(ok(earth.getDevEarthSharing(privateBot.token)).recipientCircleIds, [bot.circleId]);
+  const first = feed(owner)[0];
+  t.mock.timers.tick(1000);
+  assert.equal(bots.commandDevBots(owner.token, cmd).replayed, true);
+  assert.deepEqual(feed(owner), [first], "an exact-command retry cannot heartbeat a point");
+  assert.throws(() => act(owner, { ...cmd, requestId: uuid(), longitude: 38 }), { code: "EARTH_RATE_LIMITED" });
+  assert.deepEqual(feed(owner), [first], "placing again cannot bypass the normal publication cadence");
+  assert.throws(() => act(stranger, { ...cmd, requestId: uuid(), ownerPublicId: stranger.me.user.publicId }), { code: "DEV_BOT_NOT_FOUND" });
+});
+
+test("placing a ghost again explicitly resumes only the synthetic bot; private moves still preserve ghost", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-20T12:00:00Z") });
+  const owner = player(), bot = create(owner); move(owner, bot); sharing(owner, bot); sharing(owner, bot, "GHOST");
+  const previous = feed(owner)[0]; move(owner, bot, 40.7, -74);
+  assert.deepEqual(feed(owner), [previous]);
+  const placed = act(owner, { action: "set_earth_position", botId: bot.id,
+    latitude: 48.85837, longitude: 2.294481, accuracyMeters: 20, showOnMap: true }).snapshot.bots[0];
+  assert.equal(placed.earth.mode, "SHARING"); assert.equal(feed(owner)[0].latitude, 48.85837);
+  assert.equal(feed(owner)[0].longitude, 2.294481);
+});
+
 test("normal publication cadence and exact replay prevent moves, reads or retries from heartbeating a point", t => {
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-20T12:00:00Z") });
   const owner = player(), bot = create(owner); move(owner, bot); sharing(owner, bot);

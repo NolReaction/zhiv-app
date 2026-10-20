@@ -43,11 +43,16 @@ test("reports project only fixed safe fields, never coordinates, URLs, identity,
   Object.assign(value, { latitude: 55.7522, longitude: 37.6156, user: "some-user", url: privateText,
     error: new Error(privateText), stack: privateText });
   Object.assign(value.cache, { quotaBytes: 987654321, usageBytes: 99999999, url: privateText });
+  value.location = { status: "unavailable", hasPosition: true, secure: true, supported: true,
+    latitude: 55.7522, longitude: 37.6156, error: privateText };
   diagnostics.record(privateText); diagnostics.resource(privateText);
   const report = diagnostics.report(value);
+  assert.deepEqual(JSON.parse(report).location, { status: "unavailable", hasPosition: true, secure: true, supported: true });
   for (const forbidden of ["latitude", "longitude", "some-user", "private.test", "55.7522", "37.6156", "quotaBytes", "usageBytes", "987654321", "99999999", "stack"])
     assert.equal(report.includes(forbidden), false, forbidden);
   value.phase = privateText; value.cache.storage = privateText; value.cache.pending = Infinity;
+  value.location.status = privateText;
   const invalid = JSON.parse(diagnostics.report(value));
   assert.equal(invalid.map.phase, null); assert.equal(invalid.cache.storage, null); assert.equal(invalid.cache.pending, 0);
+  assert.equal(invalid.location.status, null);
 });

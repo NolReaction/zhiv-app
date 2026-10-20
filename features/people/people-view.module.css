@@ -13,8 +13,7 @@
 .personBottom,
 .requestCard,
 .lookupCard,
-.searchRow,
-.sharingLabel {
+.searchRow {
   display: flex;
   align-items: center;
 }
@@ -248,39 +247,8 @@
   display: grid;
   gap: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 2px 14px;
+  padding: 12px 14px;
   background: rgba(0, 0, 0, 0.06);
-}
-
-.sharingLabel {
-  display: grid;
-  grid-template-columns: 35px minmax(0, 1fr) 48px;
-  align-items: center;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  min-height: 60px;
-  gap: 9px;
-  cursor: pointer;
-}
-
-.sharingLabel > span {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.sharingLabel > .controlIcon { display: grid; width: 35px; height: 35px; place-items: center; border: 1px solid #d5e7bf20; border-radius: 12px; background: #d0e6b40b; color: #c4d6b4; }
-.geoControl { border-top: 1px solid #d4e4c914; padding-block: 4px; min-width: 0; }
-
-.sharingLabel strong {
-  color: #d9ddd4;
-  font-size: 13px;
-}
-
-.sharingLabel small {
-  color: #a6b39d;
-  font-size: 11px;
 }
 
 .sharingNote { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; color: #a6b39d; font-size: 11px; line-height: 1.5; }
@@ -875,4 +843,3 @@
 .personIdentity .cardText strong { font-size: 16px; }
 .personIdentity .cardText > .personStatus { font-size: 13px; }
 .peopleSearch { margin-bottom: 0; }
-.sharingLabel [role="switch"] { width: 48px; }

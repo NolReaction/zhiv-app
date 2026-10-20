@@ -5,7 +5,7 @@ import { ClipboardCopy, CloudSun, Compass, Earth, HardDriveDownload, Info, Locat
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
-import type { EarthPosition } from "./location";
+import type { EarthLocationStatus, EarthPosition } from "./location";
 import type { EarthCameraSession, EarthCameraSnapshot } from "./camera-session";
 import { EARTH_ACCURACY_SOURCE, EARTH_CENTER, EARTH_SKY, EARTH_STYLE_URL, globeZoom, positionAccuracyData, positionZoom, prepareEarthStyle } from "./map-style";
 import { EarthLoading, formatEarthLoadingBytes, type EarthLoadingStage } from "./earth-loading";
@@ -57,6 +57,7 @@ type EarthMapProps = {
   onLocate: () => void;
   locating: boolean;
   locationActive: boolean;
+  locationStatus?: EarthLocationStatus;
   locationDetails: ReactNode;
   infoOpen: boolean;
   onInfoOpenChange: (open: boolean) => void;
@@ -99,7 +100,7 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
   locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true,
-  onModelEditorOpenChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0 }: EarthMapProps) {
+  onModelEditorOpenChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, locationStatus = "idle" }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -205,7 +206,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
 
   const retryMap = useCallback(async () => {
     if (retrying.current) return;
-    diagnostics?.record("manual-retry");
+    diagnostics?.record("retry");
     retrying.current = true;
     setPhase("loading");
     setFailure(null);
@@ -227,12 +228,13 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     } catch { /* A failed or removed SDK instance still has a useful event log. */ }
     const report = diagnostics.report({ phase, stage, recovery: tileStatus, visible, retained: active && !visible,
       documentHidden: document.hidden, online: isOnline,
+      location: { status: locationStatus, hasPosition: position !== null, secure: window.isSecureContext, supported: Boolean(navigator.geolocation) },
       loaded, tilesLoaded, cartographyReady, cache: earthResourceCache.getSnapshot() });
     try {
       await navigator.clipboard.writeText(report);
       setDiagnosticCopied(true); setDiagnosticReport(null);
     } catch { onInfoOpenChange(false); setDiagnosticCopied(false); setDiagnosticReport(report); }
-  }, [diagnostics, phase, stage, tileStatus, visible, active, isOnline, onInfoOpenChange]);
+  }, [diagnostics, phase, stage, tileStatus, visible, active, isOnline, locationStatus, position, onInfoOpenChange]);
   const closeDiagnostics = () => { setDiagnosticReport(null); diagnosticButton.current?.focus({ preventScroll: true }); };
 
   useEffect(() => {
@@ -323,6 +325,14 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       const next = activeRef.current && visibleRef.current && !document.hidden;
       const returning = next && !foreground;
       if (next !== foreground) diagnostics?.record(next ? "foreground" : "background");
+      // A failed attempt owns an aborted request scope. Resizing it cannot
+      // revive the globe. One explicit return starts a fresh attempt; a failure
+      // while staying on this screen still offers the ordinary retry button.
+      if (attemptFailed) {
+        foreground = next;
+        if (returning) void retryMap();
+        return;
+      }
       if (!next) {
         latestFriends.current = EMPTY_FRIENDS;
         latestFriendFocus.current = null;
@@ -386,6 +396,11 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     function contextLost() {
       diagnostics?.record("context-lost");
       fail("Браузер приостановил графику карты. Попробуйте открыть её снова; доступные сохранённые файлы будут использованы повторно.");
+    }
+    function contextRestored() {
+      // Recreate our custom layers and request lifetime together. The SDK's
+      // restored style alone cannot repair the already aborted installation.
+      if (!cancelled && attemptFailed && activeRef.current && visibleRef.current && !document.hidden) void retryMap();
     }
     function armDeadline() {
       window.clearTimeout(timeout);
@@ -562,6 +577,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         canvas = current.getCanvas();
         canvas.setAttribute("aria-label", "Карта Земли. Перетаскивайте глобус, приближайте двумя пальцами или колёсиком. Стрелки перемещают карту; плюс и минус меняют масштаб.");
         canvas.addEventListener("webglcontextlost", contextLost);
+        canvas.addEventListener("webglcontextrestored", contextRestored);
 
         const syncPosition = (value: EarthPosition | null) => {
           if (cancelled) return;
@@ -590,7 +606,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         meetMap = createEarthMeetMap(current);
 
         current.on("style.load", () => {
-          if (cancelled) return;
+          if (cancelled || attemptFailed) return;
           diagnostics?.record("style-ready");
           registerEarthMaterialImage(current);
           registerEarthOceanMaterialImage(current);
@@ -703,6 +719,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", visibilityChanged);
       canvas?.removeEventListener("webglcontextlost", contextLost);
+      canvas?.removeEventListener("webglcontextrestored", contextRestored);
       syncPositionRef.current = null;
       disposeMarkerMotion?.();
       marker?.remove();
@@ -714,7 +731,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (mapRef.current === map) mapRef.current = null;
       if (process.env.NODE_ENV === "development") setEditorMap(null);
     };
-  }, [active, retry, cameraSession, diagnostics]);
+  }, [active, retry, cameraSession, diagnostics, retryMap]);
 
   useEffect(() => {
     if (!active || !visible || !focusWhenReady || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;

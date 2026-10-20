@@ -30,9 +30,9 @@ export type EarthLocationEnvironment = {
 
 const IDLE: EarthLocationState = { position: null, status: "idle", error: null };
 const ERRORS = {
-  denied: "Разреши геопозицию в настройках браузера и нажми «Найти меня».",
-  unavailable: "Не удалось определить местоположение. Проверь геолокацию устройства и попробуй ещё раз.",
-  timeout: "Определение местоположения заняло слишком много времени. Попробуй ещё раз.",
+  denied: "Разреши геопозицию для этого сайта в браузере и доступ к местоположению в настройках устройства. Затем нажми «Найти меня».",
+  unavailable: "Браузер не смог получить геопозицию. Проверь доступ к местоположению в настройках устройства и браузера, затем нажми «Найти меня».",
+  timeout: "Не удалось дождаться геопозиции после повторного поиска. Проверь доступ к местоположению в настройках устройства и нажми «Найти меня».",
   unsupported: "Этот браузер не поддерживает определение местоположения.",
   insecure: "Геопозиция доступна по HTTPS или на localhost. Открой защищённую версию приложения.",
 } as const;
@@ -91,6 +91,7 @@ export function createEarthLocationController(
   let watchId: number | null = null;
   let watching = false;
   let watchEpoch = 0;
+  let highAccuracyAttempted = false;
   let permissionEpoch = 0;
   let removeVisibilityListener: (() => void) | undefined;
   let removePermissionListener: (() => void) | undefined;
@@ -118,7 +119,9 @@ export function createEarthLocationController(
     requested = false;
     clearWatch();
     clearPermission();
-    publish({ position: null, status, error: ERRORS[status] });
+    // A transient provider failure does not erase the last private fix. Keep its
+    // original timestamp: it must never look like a freshly acquired position.
+    publish({ position: status === "unavailable" || status === "timeout" ? state.position : null, status, error: ERRORS[status] });
   }
 
   function observePermission() {
@@ -173,8 +176,17 @@ export function createEarthLocationController(
         publish({ position, status: "active", error: null });
       }, error => {
         if (!canAccept()) return;
+        // Desktop network positioning and mobile low-power fixes can fail while
+        // another device source remains usable. Make one bounded foreground
+        // attempt; denial never retries or changes sharing consent.
+        if ((error.code === 2 || error.code === 3) && !highAccuracyAttempted) {
+          highAccuracyAttempted = true;
+          clearWatch();
+          reconcile();
+          return;
+        }
         fail(error.code === 1 ? "denied" : error.code === 3 ? "timeout" : "unavailable");
-      }, { enableHighAccuracy: false, maximumAge: 15_000, timeout: 20_000 });
+      }, { enableHighAccuracy: highAccuracyAttempted, maximumAge: 15_000, timeout: highAccuracyAttempted ? 30_000 : 20_000 });
       // Also handles implementations that invoke their callback synchronously.
       if (epoch !== watchEpoch || !mounted || !requested) geolocation.clearWatch(id);
       else watchId = id;
@@ -218,6 +230,7 @@ export function createEarthLocationController(
     if (!mounted || !ownerPublicId || requested) return;
     automaticAttempted = true;
     automaticEpoch += 1;
+    highAccuracyAttempted = false;
     requested = true;
     reconcile();
     if (requested) observePermission();
@@ -228,6 +241,7 @@ export function createEarthLocationController(
     if (!mounted || !ownerPublicId) return;
     if (!requested) { start(); return; }
     if (state.status === "requesting") return;
+    highAccuracyAttempted = false;
     clearWatch();
     reconcile();
   }

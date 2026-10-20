@@ -1,6 +1,6 @@
 import type { ExpressionSpecification, FillLayerSpecification, Map as LibreMap } from "maplibre-gl";
 
-export const EARTH_LAND_MATERIAL_IMAGE = "earth-matte-land-v1";
+export const EARTH_LAND_MATERIAL_IMAGE = "earth-matte-land-v2";
 export const EARTH_LAND_MATERIAL_SIZE = 128;
 export const EARTH_LAND_MATERIAL_MAX_ZOOM = 8;
 const pixelRatio = 2;
@@ -37,14 +37,14 @@ export function createEarthLandMaterialImage(): { width: number; height: number;
     materialPixels = new Uint8Array(EARTH_LAND_MATERIAL_SIZE ** 2 * 4);
     for (let y = 0; y < EARTH_LAND_MATERIAL_SIZE; y += 1) {
       for (let x = 0; x < EARTH_LAND_MATERIAL_SIZE; x += 1) {
-        const grain = softNoise(x, y, 4, 17) * 0.4 + softNoise(x, y, 16, 43) * 0.27
-          + softNoise(x, y, 32, 89) * 0.13 + noise(x, y, EARTH_LAND_MATERIAL_SIZE, 127) * 0.2;
+        const grain = softNoise(x, y, 4, 17) * 0.52 + softNoise(x, y, 12, 43) * 0.3
+          + softNoise(x, y, 24, 89) * 0.13 + noise(x, y, EARTH_LAND_MATERIAL_SIZE, 127) * 0.05;
         const highlight = grain >= 0;
         const index = (y * EARTH_LAND_MATERIAL_SIZE + x) * 4;
         materialPixels[index] = highlight ? 248 : 87;
         materialPixels[index + 1] = highlight ? 246 : 112;
         materialPixels[index + 2] = highlight ? 209 : 66;
-        materialPixels[index + 3] = Math.round(10 + Math.abs(grain) * 112);
+        materialPixels[index + 3] = Math.round(6 + Math.abs(grain) * 82);
       }
     }
   }

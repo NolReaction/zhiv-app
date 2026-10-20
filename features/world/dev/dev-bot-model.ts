@@ -35,7 +35,8 @@ export const devBotCommandSchema = z.discriminatedUnion("action", [
   z.object({ ...base, ...botId, action: z.literal("claim_job"), jobId: uuid }).strict(),
   z.object({ ...base, ...botId, action: z.literal("set_sharing"), sharingMode }).strict(),
   z.object({ ...base, ...botId, action: z.literal("set_earth_sharing"), mode: earthMode, precision: earthPrecision, durationMinutes: earthDuration }).strict(),
-  z.object({ ...base, ...botId, action: z.literal("set_earth_position"), ...earthPosition.shape }).strict(),
+  z.object({ ...base, ...botId, action: z.literal("set_earth_position"), ...earthPosition.shape,
+    showOnMap: z.literal(true).optional() }).strict(),
   z.object({ ...base, ...botId, action: z.literal("check_in") }).strict(),
   z.object({ ...base, ...botId, action: z.literal("delete") }).strict(),
 ]).superRefine((command, context) => {

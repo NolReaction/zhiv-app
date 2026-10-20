@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Bot, MapPin, RefreshCw, X } from "lucide-react";
 import { useDevBots, type DevBotsController } from "@/features/world/dev/use-dev-bots";
-import type { DevBot, DevBotAction } from "@/features/world/dev/dev-bot-model";
+import type { DevBot, DevBotAction, DevBotResult } from "@/features/world/dev/dev-bot-model";
 import type { EarthPosition } from "../location";
 import { moveBotPosition, nearbyBotPosition, parseBotPosition, type BotPosition } from "./bot-position";
 import styles from "./earth-dev-bots.module.css";
@@ -14,7 +14,7 @@ type Props = {
   onChanged: () => void; onFocus: (circleId: string) => void;
   otherPanelOpen?: boolean; onOpen?: () => void;
 };
-type Command = (action: DevBotAction) => Promise<void>;
+type Command = (action: DevBotAction) => Promise<DevBotResult | null>;
 const stamp = (value: string | null) => value ? new Date(value).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "ещё нет";
 
 export function EarthDevBotControls({ bot, disabled, now, position, readCenter, command, onFocus }: {
@@ -32,13 +32,14 @@ export function EarthDevBotControls({ bot, disabled, now, position, readCenter, 
   const wait = bot.earth.nextPublishAt ? Math.max(0, Math.ceil((Date.parse(bot.earth.nextPublishAt) - now) / 1000)) : 0;
   const movingDisabled = disabled || bot.earth.mode === "SHARING" && wait > 0;
   const nearby = nearbyBotPosition(position, now);
-  const put = (next: BotPosition | null) => {
+  const put = async (next: BotPosition | null, showOnMap = false) => {
     if (!next || movingDisabled) return;
     const valid = parseBotPosition(String(next.latitude), String(next.longitude), String(next.accuracyMeters));
     if (!valid) { setLocalError("Проверь координаты и погрешность."); return; }
     setLocalError(null);
     setDraft({ source: pointKey, latitude: String(Number(valid.latitude.toFixed(6))), longitude: String(Number(valid.longitude.toFixed(6))), accuracy: String(valid.accuracyMeters) });
-    void command({ action: "set_earth_position", botId: bot.id, ...valid });
+    const result = await command({ action: "set_earth_position", botId: bot.id, ...valid, ...(showOnMap ? { showOnMap: true as const } : {}) });
+    if (showOnMap && result?.snapshot.bots.some(item => item.id === bot.id && item.earth.sharedUpdatedAt)) onFocus(bot.circleId);
   };
   const setMode = (mode: "OFF" | "SHARING" | "GHOST") => {
     if (!disabled && (mode !== "SHARING" || point)) void command({ action: "set_earth_sharing", botId: bot.id, mode, precision: bot.earth.precision, durationMinutes: 60 });
@@ -55,16 +56,17 @@ export function EarthDevBotControls({ bot, disabled, now, position, readCenter, 
         onClick={() => setMode("OFF")}>Убрать</button>
     </div>
     <p className={styles.hint}>{bot.earth.mode === "GHOST" ? "Друг видит прежнее место. Передвижение ниже меняет только тестовый GPS."
-      : bot.earth.mode === "OFF" ? "Геопозиция закрыта. Поставь бота, затем нажми «Обновлять»."
+      : bot.earth.mode === "OFF" ? "Геопозиция закрыта. Кнопки ниже поставят тестового друга на карту и включат показ только вам."
         : wait > 0 ? `Следующее обновление через ${wait} с` : "Точка обновится после передвижения."}</p>
     <div className={styles.actions}>
       <button type="button" data-audio-cue="ui.click" disabled={movingDisabled} onClick={() => {
         if (movingDisabled) return;
-        const center = readCenter(); if (center) put({ ...center, accuracyMeters: 20 }); else setLocalError("Дождись загрузки карты и повтори.");
-      }}>В центре карты</button>
-      <button type="button" data-audio-cue="ui.click" disabled={movingDisabled || !nearby} onClick={() => put(nearbyBotPosition(position, Date.now()))}>Рядом со мной</button>
+        const center = readCenter(); if (center) void put({ ...center, accuracyMeters: 20 }, true); else setLocalError("Дождись загрузки карты и повтори.");
+      }}>Поставить в центр карты</button>
+      <button type="button" data-audio-cue="ui.click" disabled={movingDisabled || !nearby} onClick={() => { void put(nearbyBotPosition(position, Date.now()), true); }}>Поставить рядом со мной</button>
     </div>
-    {!nearby && <p className={styles.hint}>Для «Рядом со мной» сначала нажми «Найти меня».</p>}
+    {bot.earth.mode === "GHOST" && <p className={styles.hint}>«Поставить» снова покажет бота на карте. Стрелки и координаты сохраняют призрак.</p>}
+    {!nearby && <p className={styles.hint}>Для «Поставить рядом со мной» сначала нажми «Найти меня».</p>}
     <div className={styles.steps} role="group" aria-label="Передвинуть тестовый GPS на 100 метров">
       {([{ title: "На север", arrow: "↑", bearing: 0 }, { title: "На запад", arrow: "←", bearing: 270 },
         { title: "На юг", arrow: "↓", bearing: 180 }, { title: "На восток", arrow: "→", bearing: 90 }]).map(step =>
@@ -111,9 +113,10 @@ export function EarthDevBotsContent({ controller, online, commandsAvailable, pos
   const bots = controller.snapshot?.bots ?? [], bot = bots.find(item => item.id === selected) ?? bots[0];
   const disabled = !online || !commandsAvailable || controller.busy || controller.loading || controller.uncertain || !controller.snapshot;
   const command: Command = async action => {
-    if (disabled) return;
+    if (disabled) return null;
     const result = await controller.command(action);
     if (result) { if (action.action === "create") setSelected(result.botId); onChanged(); }
+    return result;
   };
   return <>
     <p className={styles.hint}>Тестовые друзья этого локального аккаунта.</p>

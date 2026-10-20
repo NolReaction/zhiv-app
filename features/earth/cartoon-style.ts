@@ -8,6 +8,7 @@ import { earthLandMaterialLayer } from "./land-material";
 import { EARTH_COAST_SOURCE, createEarthCoastlineData, earthCoastMaterialLayers } from "./coast-material";
 import { earthOceanBackgroundLayer, earthOceanWaterLayer } from "./globe-ocean";
 import { earthLightingSources, earthLightingLayers } from "./globe-lighting";
+import { EARTH_RELIEF_SOURCE, earthReliefData, earthReliefLayer } from "./globe-relief";
 
 export const EARTH_LAND_SOURCE = "earth-local-land";
 export const EARTH_VECTOR_SOURCE = "earth-streets";
@@ -39,6 +40,7 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
     { id: "earth-land", type: "fill", source: EARTH_LAND_SOURCE,
       paint: { "fill-color": p.land, "fill-antialias": false } },
     earthLandMaterialLayer("earth-land-material", EARTH_LAND_SOURCE),
+    earthReliefLayer(),
     coast.edge,
     { id: "earth-overview-ice", type: "fill", source: EARTH_OVERVIEW_SOURCE,
       filter: ["==", ["get", "kind"], "ice"], paint: { "fill-color": p.ice, "fill-antialias": false } },
@@ -132,6 +134,7 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       [EARTH_VECTOR_SOURCE]: { ...vector },
       [EARTH_OVERVIEW_SOURCE]: { type: "geojson", data: earthOverviewData, maxzoom: 0, tolerance: 0, buffer: 0 },
       [EARTH_COAST_SOURCE]: { type: "geojson", data: createEarthCoastlineData(land as FeatureCollection<Polygon>), maxzoom: 0, tolerance: 0, buffer: 0 },
+      [EARTH_RELIEF_SOURCE]: { type: "geojson", data: earthReliefData, maxzoom: 0, tolerance: 0, buffer: 0 },
       ...earthLightingSources(),
     }, layers,
   };

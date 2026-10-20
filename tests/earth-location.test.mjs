@@ -191,18 +191,26 @@ test("insecure contexts and unsupported devices fail without opening a watch", (
   }
 });
 
-test("denial timeout and unavailable errors terminate the watch and can be retried explicitly", () => {
+test("denial terminates immediately; provider errors retry once and keep the private fix", () => {
   for (const [code, expected] of [[1, "denied"], [2, "unavailable"], [3, "timeout"]]) {
     const s = session(); s.controller.start(); s.watches[0].success(fix());
+    const previous = s.controller.getSnapshot().position;
     s.watches[0].failure({ code });
+    const retries = code === 1 ? 0 : 1;
+    if (retries) {
+      assert.equal(s.controller.getSnapshot().status, "requesting");
+      assert.equal(s.watches[1].options.enableHighAccuracy, true);
+      s.watches[1].failure({ code });
+    }
     assert.equal(s.controller.getSnapshot().status, expected);
-    assert.equal(s.controller.getSnapshot().position, null);
-    assert.deepEqual(s.cleared, [0]);
+    assert.equal(s.controller.getSnapshot().position, code === 1 ? null : previous);
+    assert.deepEqual(s.cleared, retries ? [0, 1] : [0]);
     s.setVisible(false); s.setVisible(true);
-    assert.equal(s.watches.length, 1);
+    assert.equal(s.watches.length, 1 + retries);
     s.controller.start();
-    assert.equal(s.watches.length, 2);
-    s.watches[1].success(fix({ timestamp: 2_000 }));
+    assert.equal(s.watches.length, 2 + retries);
+    assert.equal(s.watches.at(-1).options.enableHighAccuracy, false);
+    s.watches.at(-1).success(fix({ timestamp: 2_000 }));
     assert.equal(s.controller.getSnapshot().status, "active");
     s.deactivate();
   }
@@ -223,7 +231,7 @@ test("coordinates are finite bounded and chronological", () => {
   assert.equal(s.controller.getSnapshot().position.timestamp, 2_000);
   s.watches[0].success(fix({ longitude: 181 }));
   assert.equal(s.controller.getSnapshot().status, "unavailable");
-  assert.equal(s.controller.getSnapshot().position, null);
+  assert.equal(s.controller.getSnapshot().position.timestamp, 2_000);
   s.deactivate();
 });
 
@@ -400,6 +408,58 @@ test("an explicit refresh keeps the private marker until a new fix and fences th
   s.watches[1].success(fix({ latitude: 56, timestamp: 2_000 }));
   assert.equal(s.controller.getSnapshot().position.latitude, 56);
   assert.equal(s.controller.getSnapshot().status, "active");
+  s.deactivate();
+});
+
+test("a provider failure uses one high-accuracy watch and fences the earlier callbacks", () => {
+  const s = session();
+  s.controller.locate(); s.watches[0].success(fix());
+  const previous = s.controller.getSnapshot().position;
+  s.watches[0].failure({ code: 2 });
+  assert.equal(s.watches.length, 2);
+  assert.deepEqual(s.watches[1].options, { enableHighAccuracy: true, maximumAge: 15_000, timeout: 30_000 });
+  assert.equal(s.controller.getSnapshot().position, previous);
+  s.watches[0].success(fix({ latitude: 10, timestamp: 999_000 })); s.watches[0].failure({ code: 1 });
+  assert.equal(s.controller.getSnapshot().position, previous);
+  assert.equal(s.controller.getSnapshot().status, "requesting");
+  s.watches[1].success(fix({ latitude: 56, timestamp: 2_000 }));
+  assert.equal(s.controller.getSnapshot().status, "active");
+  assert.equal(s.controller.getSnapshot().position.latitude, 56);
+  s.watches[1].failure({ code: 2 });
+  assert.equal(s.watches.length, 2, "a successful retry does not create an endless fallback budget");
+  assert.equal(s.controller.getSnapshot().position.timestamp, 2_000);
+  assert.match(s.controller.getSnapshot().error, /настройках устройства и браузера/);
+  s.deactivate();
+});
+
+test("visibility pauses the bounded fallback; stop and teardown retire it without reviving GPS", () => {
+  for (const end of [s => s.controller.stop(), s => s.controller.freeze(), s => s.deactivate()]) {
+    const s = session(); s.controller.locate(); s.watches[0].failure({ code: 3 });
+    s.setVisible(false); s.setVisible(true);
+    assert.equal(s.watches.length, 3);
+    assert.equal(s.watches[2].options.enableHighAccuracy, true, "visibility does not reset the retry budget");
+    s.watches[1].failure({ code: 2 });
+    assert.equal(s.controller.getSnapshot().status, "requesting");
+    end(s);
+    s.watches[2].success(fix()); s.watches[2].failure({ code: 2 });
+    s.setVisible(false); s.setVisible(true);
+    assert.equal(s.watches.length, 3);
+    assert.equal(s.controller.getSnapshot().position, null);
+    s.deactivate();
+  }
+});
+
+test("synchronous unavailable callbacks clear both watch handles and retry only once", () => {
+  const options = [], cleared = [];
+  const s = session({ geolocation: {
+    watchPosition(_success, failure, value) { const id = options.length; options.push(value); failure({ code: 2 }); return id; },
+    clearWatch(id) { cleared.push(id); },
+  } });
+  s.controller.locate();
+  assert.equal(options.length, 2);
+  assert.deepEqual(options.map(value => value.enableHighAccuracy), [false, true]);
+  assert.deepEqual(cleared.toSorted(), [0, 1]);
+  assert.equal(s.controller.getSnapshot().status, "unavailable");
   s.deactivate();
 });
 

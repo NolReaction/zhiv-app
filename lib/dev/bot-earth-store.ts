@@ -56,9 +56,23 @@ export function commandDevBotEarth(token: string | undefined, command: EarthComm
   const settings = value(projectDevEarthSharing(bot.token));
   if (command.action === "set_earth_position") {
     const position = { latitude: command.latitude, longitude: command.longitude, accuracyMeters: command.accuracyMeters };
-    if (settings.mode === "SHARING") publish(bot, state, position);
+    if (command.showOnMap) {
+      // One explicit DEV placement includes consent for this synthetic bot only.
+      // It cannot accidentally publish the real viewer's GPS, broaden recipients
+      // or bypass the normal cadence by starting another publication epoch.
+      if (settings.mode === "SHARING" && state.nextPublishAt !== null && Date.now() < state.nextPublishAt)
+        return fail("EARTH_RATE_LIMITED", `Следующая геопозиция доступна через ${Math.ceil((state.nextPublishAt - Date.now()) / 1_000)} с`, 429);
+      if (settings.mode !== "SHARING" || settings.precision !== "PRECISE" || !state.publicationEpoch
+        || settings.recipientCircleIds.length !== 1 || settings.recipientCircleIds[0] !== bot.circleId || settings.frozenCircleIds.length !== 0) {
+        const updated = value(putDevEarthSharing(bot.token, { expectedOwnerPublicId: bot.publicId, expectedRevision: settings.revision,
+          mode: "SHARING", precision: "PRECISE", durationMinutes: 60, recipientCircleIds: [bot.circleId], frozenCircleIds: [] }));
+        state.publicationEpoch = updated.publicationEpoch; state.sequence = 0; state.nextPublishAt = null;
+      }
+      publish(bot, state, position);
+    } else if (settings.mode === "SHARING") publish(bot, state, position);
     state.position = position;
-    return settings.mode === "SHARING" ? "Свежая геопозиция тестового друга опубликована" : "Синтетическая позиция изменена. Передача выключена";
+    return command.showOnMap ? "Тестовый друг поставлен на карту и виден только вам"
+      : settings.mode === "SHARING" ? "Свежая геопозиция тестового друга опубликована" : "Синтетическая позиция изменена. Передача выключена";
   }
   const updated = value(putDevEarthSharing(bot.token, { expectedOwnerPublicId: bot.publicId, expectedRevision: settings.revision,
     mode: command.mode, precision: command.precision, durationMinutes: command.durationMinutes,

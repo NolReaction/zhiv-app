@@ -103,7 +103,8 @@ test("opening DEV3D removes social/GPS overlays, pauses a live private watch and
     assert.equal(app.publications.at(-1), null);
     app.watches[0].failure({ code: 3 });
     view = app.render();
-    assert.doesNotMatch(view.text, /слишком много времени/);
+    assert.equal(view.map.locationStatus, "paused");
+    assert.equal(app.watches.length, 1, "a late hidden watch error cannot start a fallback");
     view.map.onModelEditorOpenChange(false); view = app.render();
     assert.equal(app.watches.length, 2);
     assert.match(view.text, /Близкие/);
@@ -113,7 +114,14 @@ test("opening DEV3D removes social/GPS overlays, pauses a live private watch and
     assert.equal(view.map.position.timestamp, 2000);
     assert.deepEqual(app.actions, []);
     app.watches[1].failure({ code: 3 }); view = app.render();
-    assert.match(view.text, /слишком много времени/);
+    assert.equal(app.watches.length, 3, "a foreground provider failure gets one high-accuracy retry");
+    assert.equal(view.map.locationStatus, "requesting");
+    assert.equal(app.publications.at(-1), null, "a retained old fix is never published while retrying");
+    assert.deepEqual(app.actions, [], "the bounded retry is still acquiring a private fix");
+    app.watches[2].failure({ code: 3 }); view = app.render();
+    assert.match(view.text, /Не удалось дождаться геопозиции после повторного поиска/);
+    assert.equal(view.map.position.timestamp, 2000, "a temporary failure retains the last private fix");
+    assert.equal(view.map.locationStatus, "timeout");
     assert.deepEqual(app.actions, ["stopPublishing"], "real GPS failures still stop publishing outside the editor");
   } finally { app.destroy(); }
 });

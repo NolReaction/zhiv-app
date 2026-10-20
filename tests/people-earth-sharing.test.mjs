@@ -14,7 +14,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
   optimizeDeps: { noDiscovery: true, include: [] }, resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(async () => { await vite.close(); await rm(cacheDir, { recursive: true, force: true }); });
-const { EarthFriendSharingControls, EarthSharingToggle, confirmedEarthChoices } =
+const { EarthFriendSharingControls, EarthSharingToggle, FriendSharingButton, confirmedEarthChoices } =
   await vite.ssrLoadModule("/features/earth/earth-friend-sharing.tsx");
 
 const person = { circleId: "friend-one", user: { publicId: "AAAA-0000-0002", displayName: "<script>Лена</script>" }, nickname: "Лена" };
@@ -38,11 +38,12 @@ function view(overrides = {}, choices = {}) {
   function walk(node) {
     if (!isValidElement(node)) return;
     if (node.type === EarthSharingToggle) { walk(EarthSharingToggle(node.props)); return; }
+    if (node.type === FriendSharingButton) { walk(FriendSharingButton(node.props)); return; }
     elements.push(node); Children.forEach(node.props.children, walk);
   }
   walk(tree);
   return { props, calls, tree, elements, markup: renderToStaticMarkup(tree),
-    toggle: elements.find(node => node.props.role === "switch"),
+    toggle: elements.find(node => node.props.role === "switch" || node.type === "button" && node.props["aria-label"] === "Обновлять геопозицию для " + (props.person.nickname ?? props.person.user.displayName)),
     button: label => elements.find(node => node.type === "button" && text(node) === label),
     status: elements.find(node => node.props.id === `${props.idPrefix ?? "earth-friend-access"}-${props.person.circleId}`) };
 }
@@ -219,4 +220,58 @@ test("People and map instances have independent accessible descriptions and esca
   assert.doesNotMatch(people.markup, /<script>/);
   assert.match(people.markup, /Моя геопозиция/);
   assert.deepEqual([...people.calls, ...map.calls], []);
+});
+
+
+test("paired buttons preserve the consent, pause and explicit revoke actions without starting GPS", async () => {
+  const companionControl = FriendSharingButton({ checked: false, disabled: false, label: "Делиться статусом", title: "Статус",
+    icon: null, status: "Не делюсь", onChange() {} });
+  const first = view({ presentation: "buttons", companionControl });
+  assert.equal(first.toggle.props.role, undefined);
+  assert.equal(first.toggle.props["aria-pressed"], false);
+  assert.equal(first.toggle.props["aria-describedby"], "earth-friend-access-friend-one");
+  assert.equal(first.elements.filter(node => node.type === "button" && typeof node.props["aria-pressed"] === "boolean").length, 2);
+  assert.doesNotMatch(first.markup, /role="switch"/);
+  await first.toggle.props.onClick();
+  assert.deepEqual(first.calls, [["share", { recipientCircleIds: [person.circleId], frozenCircleIds: [], precision: "APPROXIMATE", durationMinutes: 60 }]]);
+  const live = view({ presentation: "buttons", companionControl }, active);
+  assert.equal(live.toggle.props["aria-pressed"], true);
+  assert.equal(text(live.status), "Передача на паузе");
+  assert.equal(live.elements.find(node => node.type === "details").props.open, undefined);
+  await live.toggle.props.onClick();
+  await live.button("Убрать доступ").props.onClick();
+  assert.deepEqual(live.calls, [["frozen", person.circleId, true], ["revoke", person.circleId]]);
+});
+
+test("paired location button preserves disabled privacy and mutation states", async () => {
+  for (const [overrides, choices] of [
+    [{}, { ...active, mode: "GHOST" }], [{ online: false }, active], [{ working: true }, active],
+    [{ sharing: { saving: true } }, active], [{ sharing: { pendingGhost: true, pendingPrivacyMode: "OFF" } }, active],
+    [{ sharing: { settings: null, loading: true } }, active], [{ onSetFrozen: undefined }, active],
+    [{ onShare: undefined }, settings],
+  ]) {
+    const result = view({ presentation: "buttons", ...overrides }, choices);
+    assert.equal(result.toggle.props.disabled, true);
+    await result.toggle.props.onClick();
+    assert.deepEqual(result.calls, []);
+  }
+  const frozen = view({ presentation: "buttons" }, { ...active, frozenCircleIds: [person.circleId] });
+  assert.equal(frozen.toggle.props["aria-pressed"], false);
+  assert.equal(text(frozen.status), "Последнее место");
+  await frozen.toggle.props.onClick();
+  assert.deepEqual(frozen.calls, [["frozen", person.circleId, false]]);
+});
+
+test("the compact status control reports text and pressed state and honours native and handler disabling", () => {
+  for (const checked of [false, true]) for (const disabled of [false, true]) {
+    const calls = [];
+    const button = FriendSharingButton({ checked, disabled, label: "Делиться статусом", title: "Статус", icon: null,
+      status: checked ? "Делюсь" : "Не делюсь", description: "status-scope", onChange: () => calls.push("change") });
+    assert.equal(button.props["aria-pressed"], checked);
+    assert.equal(button.props["aria-describedby"], "status-scope");
+    assert.equal(button.props.disabled, disabled);
+    assert.equal(text(button), "Статус" + (checked ? "Делюсь" : "Не делюсь"));
+    button.props.onClick();
+    assert.deepEqual(calls, disabled ? [] : ["change"]);
+  }
 });

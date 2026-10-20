@@ -66,7 +66,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { UserStatusDisplay } from "@/components/user-status-display";
 import { matchesPersonSearch } from "@/lib/people-search";
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
@@ -76,7 +75,7 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { GroupsSection } from "./groups-section";
 import { PersonGameActions, type PersonVisitAction } from "./person-game-actions";
 import { currentPersonProfile, personProfileTarget, type PersonProfileTarget } from "./people-profile-navigation";
-import { EarthFriendSharingControls } from "@/features/earth/earth-friend-sharing";
+import { EarthFriendSharingControls, FriendSharingButton } from "@/features/earth/earth-friend-sharing";
 import type { EarthSharingChoices, EarthSharingHandle } from "@/features/earth/earth-sharing-panel";
 
 type PeopleViewProps = {
@@ -599,7 +598,7 @@ export function PeopleView({
               {peopleQuery && <button type="button" aria-label="Очистить поиск" onClick={() => setPeopleQuery("")}><X size={18} aria-hidden="true" /></button>}
             </div>}
             {data.people.length > 0 && <div className={styles.sharingNote}>
-              <p>Статус и геопозиция настраиваются отдельно.</p>
+              <p>Статус и геопозиция настраиваются отдельно. Подсвеченная кнопка включена.</p>
               {onOpenEarthPrivacy && <button type="button" onClick={onOpenEarthPrivacy}><MapPin size={14} aria-hidden="true" />Настройки карты</button>}
             </div>}
             {earthSharing?.pendingGhost ? <p role="status" className={styles.geoNotice}>Изменение геодоступа ещё не подтверждено.</p>
@@ -662,32 +661,21 @@ export function PeopleView({
                       <PersonGameActions className={styles.gameActions} person={person} online={isOnline}
                         onOpenProfile={openPerson} onVisitFriend={onVisitFriend} />
                       <div className={styles.personBottom}>
-                        <label className={styles.sharingLabel}>
-                          <span className={styles.controlIcon} aria-hidden="true"><MessageCircle size={17} /></span>
-                          <span>
-                            <strong>Статус</strong>
-                            <small>{isSharing ? "Делюсь" : "Не делюсь"}</small>
-                            <small id={sharingHintId} className={styles.srOnly}>
-                              {isSharing
-                                ? "Мои отметки «Я живой» и сообщение статуса видны этому человеку, включая общие группы"
-                                : "Мои отметки «Я живой» и сообщение статуса скрыты от этого человека, включая общие группы"}
-                            </small>
-                          </span>
-                          <Switch
-                            checked={isSharing}
-                            disabled={Boolean(pending) || !isOnline}
-                            onCheckedChange={(checked) => void handleSharing(person, checked)}
-                            aria-label={`Делиться моими отметками и статусом с ${displayName}`}
-                            aria-describedby={sharingHintId}
-                          />
-                        </label>
-                        <div className={styles.geoControl}>
-                          <EarthFriendSharingControls person={person} sharing={earthSharing} online={isOnline} working={Boolean(pending)}
-                            idPrefix="people-geo-access" onOpenMap={onOpenEarthPrivacy}
-                            onShare={onShareEarth ? choices => runEarthAction(() => onShareEarth(choices)) : undefined}
-                            onSetFrozen={earthSharing ? (id, frozen) => runEarthAction(() => earthSharing.setFrozen(id, frozen)) : undefined}
-                            onRevokeRecipient={earthSharing ? id => runEarthAction(() => earthSharing.revokeRecipient(id)) : undefined} />
-                        </div>
+                        <span id={sharingHintId} className={styles.srOnly}>
+                          {isSharing
+                            ? "Мои отметки «Я живой» и сообщение статуса видны этому человеку, включая общие группы"
+                            : "Мои отметки «Я живой» и сообщение статуса скрыты от этого человека, включая общие группы"}
+                        </span>
+                        <EarthFriendSharingControls person={person} sharing={earthSharing} online={isOnline} working={Boolean(pending)}
+                          presentation="buttons" companionControl={<FriendSharingButton checked={isSharing}
+                            disabled={Boolean(pending) || !isOnline} busy={pending === `sharing:${person.circleId}`}
+                            label={`Делиться моими отметками и статусом с ${displayName}`} description={sharingHintId}
+                            title="Статус" status={isSharing ? "Делюсь" : "Не делюсь"} icon={<MessageCircle size={20} />}
+                            onChange={() => { if (!pending && isOnline) void handleSharing(person, !isSharing); }} />}
+                          idPrefix="people-geo-access" onOpenMap={onOpenEarthPrivacy}
+                          onShare={onShareEarth ? choices => runEarthAction(() => onShareEarth(choices)) : undefined}
+                          onSetFrozen={earthSharing ? (id, frozen) => runEarthAction(() => earthSharing.setFrozen(id, frozen)) : undefined}
+                          onRevokeRecipient={earthSharing ? id => runEarthAction(() => earthSharing.revokeRecipient(id)) : undefined} />
                       </div>
                       <div className={styles.personActions}>
                         <button

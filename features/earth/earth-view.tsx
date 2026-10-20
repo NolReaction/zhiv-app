@@ -52,6 +52,7 @@ export function locationSummary(status: EarthLocationStatus, position: EarthPosi
       : `${(position.accuracy / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} км`;
     return `Вы на карте · точность ±${accuracy}`;
   }
+  if (position) return "Последняя геопозиция · свежая пока недоступна";
   return "Найдите себя на Земле";
 }
 
@@ -231,7 +232,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
         focusRequest={focusRequest} focusWhenReady={focusAfter === null || location.status === "active" && Boolean(location.position && location.position.timestamp >= focusAfter)}
         meetCircleId={!editingModel && panel === null ? meetPerson?.circleId : null} meetFocusRequest={meetFocusRequest} isOnline={isOnline} friends={editingModel ? NO_SHARED_PEOPLE : sharedPeople} friendFocusRequest={editingModel ? null : friendFocusRequest}
         onSelectFriends={ids => { if (!editingModel) { playUiCue(getAudioRuntime(), "ui.open"); setSelectedCircleIds(ids); setPanel("friends"); } }}
-        onLocate={() => { setMeetCircleId(null); locate(); }} locating={locating} locationActive={location.status === "active"} showLocationControl={!editingModel}
+        onLocate={() => { setMeetCircleId(null); locate(); }} locating={locating} locationActive={location.status === "active"} locationStatus={location.status} showLocationControl={!editingModel}
         locationDetails={editingModel ? null : locationDetails} onModelEditorOpenChange={onModelEditorOpenChange}
         infoOpen={panel === "info"} onInfoOpenChange={open => setPanel(open ? "info" : null)} />
     </div>

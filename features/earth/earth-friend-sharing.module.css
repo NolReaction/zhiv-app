@@ -25,3 +25,21 @@
 .options button:disabled { opacity: .45; cursor: default; }
 .openMap { display: inline-flex; align-items: center; min-height: 44px; margin-left: 44px; padding: 0 4px; border: 0; border-radius: 8px; background: none; color: #d1e1b4; font: inherit; font-size: 11px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .control *, .toggle * { transition: none !important; } }
+
+.buttonControl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+.accessButton { display: flex; width: 100%; min-width: 0; min-height: 64px; align-items: center; gap: 9px; padding: 11px 10px; border: 1px solid #d5e7bf24; border-radius: 14px; background: #d0e6b407; color: #9aa892; font: inherit; text-align: left; cursor: pointer; transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease; }
+.buttonIcon { display: grid; flex: 0 0 21px; place-items: center; }
+.buttonText { display: grid; min-width: 0; gap: 4px; }
+.buttonText strong { font-size: 12px; line-height: 1.3; font-weight: 750; overflow-wrap: anywhere; }
+.buttonText > span { font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.accessButton[aria-pressed="true"] { border-color: #b5df91a6; background: linear-gradient(135deg, #b8e39524, #a2cf7b10); color: #d6edc2; box-shadow: inset 0 1px 0 #d4f5b51a, 0 0 14px #a9d9830c; }
+.accessButton[aria-pressed="true"] .buttonIcon { color: #c6ed9f; filter: drop-shadow(0 0 5px #a4de7370); }
+.accessButton:not(:disabled):hover { border-color: #c5e4ab77; background-color: #c8e4b211; }
+.accessButton:disabled { opacity: .5; cursor: default; }
+.accessButton:focus-visible { outline: 2px solid #d9efab; outline-offset: 3px; }
+.buttonText > span[data-frozen] { color: #c8c2e8; }
+.buttonControl > :is(.details, .openMap) { grid-column: 1 / -1; margin-left: 0; }
+.buttonControl > .details { margin-top: -3px; }
+.buttonControl .details > summary { min-height: 40px; }
+@media (max-width: 360px) { .accessButton { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; } }
+@media (prefers-reduced-motion: reduce) { .accessButton { transition: none; } }

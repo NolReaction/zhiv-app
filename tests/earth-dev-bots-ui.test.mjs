@@ -112,13 +112,13 @@ function content() {
 const childControls = view => view.nodes.find(node => node.type === EarthDevBotControls);
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-test("opening controls never issues commands and only an explicit mode button grants geolocation", () => {
+test("opening controls stays private; explicit map placement requests synthetic bot visibility", () => {
   const f = controls(); let view = f.h.render();
   assert.deepEqual(f.calls, []);
   assert.equal(button(view, "Убрать").props["aria-pressed"], true);
-  button(view, "В центре карты").props.onClick();
-  assert.deepEqual(f.calls, [{ action: "set_earth_position", botId: f.bot.id, latitude: 40.7, longitude: -74, accuracyMeters: 20 }]);
-  assert.equal(f.bot.earth.mode, "OFF", "a draft move cannot grant geolocation consent");
+  button(view, "Поставить в центр карты").props.onClick();
+  assert.deepEqual(f.calls, [{ action: "set_earth_position", botId: f.bot.id, latitude: 40.7, longitude: -74, accuracyMeters: 20, showOnMap: true }]);
+  assert.equal(f.bot.earth.mode, "OFF", "the confirmed snapshot owns visibility, never a local optimistic toggle");
   for (const [label, mode] of [["Обновлять", "SHARING"], ["Призрак", "GHOST"], ["Убрать", "OFF"]]) {
     button(f.h.render(), label).props.onClick();
     assert.deepEqual(f.calls.at(-1), { action: "set_earth_sharing", botId: f.bot.id, mode, precision: "APPROXIMATE", durationMinutes: 60 });
@@ -142,26 +142,26 @@ test("manual coordinate submission validates decimal commas, zero and accuracy w
 test("nearby placement requires fresh private GPS again at the instant of the action", t => {
   t.mock.method(Date, "now", () => NOW);
   const f = controls();
-  let view = f.h.render(); assert.equal(button(view, "Рядом со мной").props.disabled, true);
-  button(view, "Рядом со мной").props.onClick(); assert.deepEqual(f.calls, []);
+  let view = f.h.render(); assert.equal(button(view, "Поставить рядом со мной").props.disabled, true);
+  button(view, "Поставить рядом со мной").props.onClick(); assert.deepEqual(f.calls, []);
   f.props.position = { latitude: 0, longitude: 0, accuracy: 130, timestamp: NOW - 1_000 };
-  view = f.h.render(); assert.equal(button(view, "Рядом со мной").props.disabled, false);
-  button(view, "Рядом со мной").props.onClick();
+  view = f.h.render(); assert.equal(button(view, "Поставить рядом со мной").props.disabled, false);
+  button(view, "Поставить рядом со мной").props.onClick();
   const command = f.calls[0]; assert.equal(command.action, "set_earth_position");
   assert.ok(command.longitude > 0.0017 && command.longitude < 0.0019, "the synthetic point is offset east, not the viewer's exact location");
   assert.equal(command.accuracyMeters, 20);
-  assert.deepEqual(Object.keys(command).sort(), ["accuracyMeters", "action", "botId", "latitude", "longitude"]);
+  assert.deepEqual(Object.keys(command).sort(), ["accuracyMeters", "action", "botId", "latitude", "longitude", "showOnMap"]);
   t.mock.method(Date, "now", () => NOW + 60_001);
-  button(view, "Рядом со мной").props.onClick();
+  button(view, "Поставить рядом со мной").props.onClick();
   assert.equal(f.calls.length, 1, "a point becoming stale after render cannot be sent");
 });
 
 test("publication cooldown blocks every movement path but Ghost permits private synthetic moves", () => {
   const f = controls(); f.bot.earth.mode = "SHARING"; f.bot.earth.nextPublishAt = iso(1_001);
   let view = f.h.render(); assert.match(text(view.tree), /через 2 с/);
-  for (const label of ["В центре карты", "Рядом со мной", "На север на 100 метров", "На запад на 100 метров", "На юг на 100 метров", "На восток на 100 метров", "Поставить по координатам"])
+  for (const label of ["Поставить в центр карты", "Поставить рядом со мной", "На север на 100 метров", "На запад на 100 метров", "На юг на 100 метров", "На восток на 100 метров", "Поставить по координатам"])
     assert.equal(button(view, label).props.disabled, true, label);
-  button(view, "В центре карты").props.onClick(); button(view, "На север на 100 метров").props.onClick(); submit(view, "Поставить по координатам");
+  button(view, "Поставить в центр карты").props.onClick(); button(view, "На север на 100 метров").props.onClick(); submit(view, "Поставить по координатам");
   assert.deepEqual(f.calls, [], "disabled callbacks also enforce the publication interval");
   f.bot.earth.mode = "GHOST"; view = f.h.render();
   assert.match(text(view.tree), /только тестовый GPS/); assert.equal(button(view, "На север на 100 метров").props.disabled, false);
@@ -195,7 +195,7 @@ test("offline and unresolved commands disable controls and guard actions includi
   const f = controls({ disabled: true }); f.bot.earth.mode = "SHARING"; f.bot.earth.sharedUpdatedAt = iso(-1_000);
   const view = f.h.render();
   for (const node of view.nodes.filter(node => ["button", "input"].includes(node.type))) assert.equal(node.props.disabled, true, text(node));
-  for (const label of ["Обновлять", "Призрак", "Убрать", "В центре карты", "На север на 100 метров", "Точно", "Отметиться", "Показать"])
+  for (const label of ["Обновлять", "Призрак", "Убрать", "Поставить в центр карты", "На север на 100 метров", "Точно", "Отметиться", "Показать"])
     button(view, label).props.onClick();
   submit(view, "Поставить по координатам"); assert.deepEqual(f.calls, []); assert.deepEqual(f.focused, []);
 });
@@ -213,11 +213,26 @@ test("confirmed synthetic point updates replace stale coordinate inputs while ti
 test("map-center placement validates the camera and never sends non-finite or out-of-range positions", () => {
   const f = controls();
   for (const center of [null, { latitude: NaN, longitude: 5 }, { latitude: 91, longitude: 5 }, { latitude: 5, longitude: Infinity }, { latitude: 5, longitude: -181 }]) {
-    f.props.readCenter = () => center; button(f.h.render(), "В центре карты").props.onClick();
+    f.props.readCenter = () => center; button(f.h.render(), "Поставить в центр карты").props.onClick();
   }
   assert.deepEqual(f.calls, []);
-  f.props.readCenter = () => ({ latitude: -90, longitude: 180 }); button(f.h.render(), "В центре карты").props.onClick();
-  assert.deepEqual(f.calls, [{ action: "set_earth_position", botId: f.bot.id, latitude: -90, longitude: 180, accuracyMeters: 20 }]);
+  f.props.readCenter = () => ({ latitude: -90, longitude: 180 }); button(f.h.render(), "Поставить в центр карты").props.onClick();
+  assert.deepEqual(f.calls, [{ action: "set_earth_position", botId: f.bot.id, latitude: -90, longitude: 180, accuracyMeters: 20, showOnMap: true }]);
+});
+
+test("map placement focuses only after a confirmed shared point; a rejected command stays open", async () => {
+  for (const confirmed of [false, true]) {
+    const f = controls();
+    f.props.command = async action => {
+      f.calls.push(action);
+      return confirmed ? { snapshot: { bots: [{ ...f.bot, earth: { ...f.bot.earth, sharedUpdatedAt: iso(0) } }] } } : null;
+    };
+    button(f.h.render(), "Поставить в центр карты").props.onClick();
+    assert.deepEqual(f.focused, [], "a pending command cannot focus an absent marker");
+    await settle();
+    assert.deepEqual(f.focused, confirmed ? [f.bot.circleId] : []);
+    assert.equal(f.calls[0].showOnMap, true);
+  }
 });
 
 test("creating and choosing test friends preserves the real selected bot identity and ordinary home level", async () => {

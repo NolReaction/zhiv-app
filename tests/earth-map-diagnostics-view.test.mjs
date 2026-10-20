@@ -34,7 +34,7 @@ function harness(writeText) {
     Object.defineProperty(globalThis, name, { value, configurable: true });
   const state = { slots: [], pending: [], dirty: false }, focused = [], selected = [], info = [];
   const props = { position: null, active: true, visible: true, focusRequest: 0, isOnline: true, onLocate() {},
-    locating: false, locationActive: false, locationDetails: null, infoOpen: true,
+    locating: false, locationActive: false, locationStatus: "unavailable", locationDetails: null, infoOpen: true,
     onInfoOpenChange(value) { info.push(value); props.infoOpen = value; } };
   function render() {
     for (let pass = 0; pass < 10; pass++) {
@@ -63,6 +63,7 @@ test("DEV copy exports a safe report without initiating map installation or geog
     const report = JSON.parse(copied[0]);
     assert.equal(report.map.phase, "ready"); assert.equal(report.counters.created, undefined);
     assert.equal(report.map.cartographyReady, false);
+    assert.equal(report.location.status, "unavailable"); assert.equal(report.location.hasPosition, false);
     assert.ok(button(app.render(), "Отчёт карты скопирован"));
     assert.equal(app.render().some(node => node.type === "textarea"), false);
     assert.deepEqual(app.info, []);

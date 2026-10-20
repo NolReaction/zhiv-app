@@ -20,6 +20,8 @@ test("Earth location summary shows measured precision and does not present pause
   assert.equal(locationSummary("paused", null), "Обновление на паузе");
   assert.equal(locationSummary("requesting", fix), "Определяем местоположение…");
   assert.equal(locationSummary("denied", null), "Найдите себя на Земле");
+  assert.equal(locationSummary("unavailable", fix), "Последняя геопозиция · свежая пока недоступна");
+  assert.equal(locationSummary("timeout", fix), "Последняя геопозиция · свежая пока недоступна");
 });
 
 test("Earth friends lists actual contacts without claiming their location is shared", () => {

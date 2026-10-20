@@ -317,6 +317,24 @@ test("opened app sections highlight their own content and every task has a conci
   }
 });
 
+test("People lesson explains independent illuminated controls and safe location pause without requiring consent", () => {
+  const lesson = view("people", { activeView: "people" }, ["people"]);
+  assert.match(lesson.props.summary, /две кнопки: «Статус» и «Геопозиция»/);
+  assert.match(lesson.props.summary, /Подсвеченная кнопка/);
+  assert.match(lesson.props.text, /отметок и сообщения/);
+  assert.match(lesson.props.text, /отдельно разрешает обновления/);
+  assert.match(lesson.props.text, /последнее место остаётся/);
+  assert.match(lesson.props.text, /«Убрать доступ»/);
+  assert.match(lesson.props.text, /Игровой профиль друга доступен и при скрытом статусе/);
+  assert.match(lesson.props.hint, /«Карта» те же настройки/);
+  assert.match(lesson.props.hint, /призрак останавливает обновления для всех/);
+  assert.match(lesson.props.hint, /менять доступ не нужно/);
+  assert.equal(lesson.props.target, '[data-app-onboarding="people-content"]');
+  assert.deepEqual(lesson.calls, [], "reading the lesson cannot grant location consent or navigate automatically");
+  lesson.props.primary.onClick();
+  assert.deepEqual(lesson.calls, ["next"], "continuing only advances the existing guide");
+});
+
 
 test("profile question entry resumes the saved app step and replays only a finished course", () => {
   const entryRef = { current: null };
