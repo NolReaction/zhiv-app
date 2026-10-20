@@ -52,9 +52,10 @@ export function createEarthMapRetention(clock: RetentionClock = {
       publish({ owner: context.owner, mounted: true, ready: currentOwner && snapshot.ready, expiresAt: null });
       return;
     }
-    // A hidden document can finish the current preparation on return. Ordinary
-    // section navigation only retains an already prepared map.
-    if (!currentOwner || !snapshot.mounted || (!snapshot.ready && !context.selected)) { release(); return; }
+    // Keep an already requested installation through a brief section switch as
+    // well as document backgrounding. Destroying a cold map here restarted its
+    // workers and tile preparation on every People/Profile round trip.
+    if (!currentOwner || !snapshot.mounted) { release(); return; }
     if (timer !== null) return; // Unrelated renders never extend the dormant budget.
     const expiresAt = clock.now() + EARTH_MAP_RETENTION_MS;
     const epoch = ++expiryEpoch;
@@ -73,6 +74,9 @@ export function createEarthMapRetention(clock: RetentionClock = {
     setContext(next: EarthMapRetentionContext) { context = next; reconcile(); },
     reportReady(owner: string, ready: boolean) {
       if (!snapshot.mounted || snapshot.owner !== owner || context.owner !== owner) return;
+      // A prepared map that actually failed while dormant is not reusable.
+      // Initial ready=false reports are ordinary installation, not failures.
+      if (snapshot.ready && !ready && (!context.selected || context.documentHidden)) { release(); return; }
       publish({ ...snapshot, ready });
       reconcile();
     },

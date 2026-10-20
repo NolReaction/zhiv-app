@@ -245,24 +245,22 @@
 }
 
 .personBottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  gap: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 5px 10px;
+  padding: 2px 14px;
   background: rgba(0, 0, 0, 0.06);
 }
 
 .sharingLabel {
   display: grid;
-  grid-template-columns: minmax(0, max-content) 48px;
+  grid-template-columns: 35px minmax(0, 1fr) 48px;
   align-items: center;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
-  min-height: 44px;
-  gap: 6px;
+  min-height: 60px;
+  gap: 9px;
   cursor: pointer;
 }
 
@@ -272,6 +270,9 @@
   gap: 2px;
 }
 
+.sharingLabel > .controlIcon { display: grid; width: 35px; height: 35px; place-items: center; border: 1px solid #d5e7bf20; border-radius: 12px; background: #d0e6b40b; color: #c4d6b4; }
+.geoControl { border-top: 1px solid #d4e4c914; padding-block: 4px; min-width: 0; }
+
 .sharingLabel strong {
   color: #d9ddd4;
   font-size: 13px;
@@ -279,10 +280,14 @@
 
 .sharingLabel small {
   color: #a6b39d;
-  font-size: 10px;
+  font-size: 11px;
 }
 
-.sharingNote { margin: -3px 0 0; color: #a6b39d; font-size: 11px; line-height: 1.5; }
+.sharingNote { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; color: #a6b39d; font-size: 11px; line-height: 1.5; }
+.sharingNote p { margin: 0; }
+.sharingNote button { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; border: 0; border-radius: 8px; padding: 0 3px; background: none; color: #c7d9b4; font: inherit; cursor: pointer; }
+.inlineError { color: #ebbaa4; font-size: 12px; line-height: 1.5; }
+.geoNotice { margin: 0; color: #cbc6e3; font-size: 11px; line-height: 1.5; }
 
 .inviteLoading {
   padding: 28px;
@@ -858,15 +863,16 @@
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .addPersonButton { grid-column: 1 / -1; margin-bottom: 8px; min-height: 48px; border-radius: 15px; }
 .freshnessRow { margin-bottom: 12px; }
-.personActions { gap: 2px; }
-.personActions .iconButton { width: 44px; height: 44px; border-radius: 12px; background: transparent; }
-.personActions .iconButton:hover { background: rgba(255,255,255,.06); }
-.personActions .favoriteButton[aria-pressed="true"] { color: #f5db7d; }
+.personActions { justify-content: space-between; flex-wrap: wrap; gap: 4px; border-top: 1px solid #d4e4c914; padding: 2px 14px; }
+.cardAction { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 0; border-radius: 9px; background: none; color: #aebba3; padding: 6px 3px; font: inherit; font-size: 11px; cursor: pointer; }
+.cardAction:hover { color: #d6e4c7; }
+.cardAction:disabled { opacity: .45; cursor: default; }
+.cardAction:focus-visible, .sharingNote button:focus-visible { outline: 2px solid #c7e7b5; outline-offset: 2px; }
+.personTop > .favoriteButton { width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; background: transparent; }
 .deleteButton { color: #c6a49f; }
-.personActions .deleteButton:hover { color: #ffaba3; background: rgba(201,87,80,.12); }
+.personActions .deleteButton:hover { color: #ffaba3; }
 .personIdentity .avatar { flex-basis: 40px; width: 40px; height: 40px; border-radius: 13px; }
 .personIdentity .cardText strong { font-size: 16px; }
 .personIdentity .cardText > .personStatus { font-size: 13px; }
 .peopleSearch { margin-bottom: 0; }
-.sharingLabel { flex: 0 1 auto; }
 .sharingLabel [role="switch"] { width: 48px; }

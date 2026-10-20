@@ -51,6 +51,7 @@ const MAX_RESOURCE_BYTES = 16 * 1024 * 1024;
 class StorageTimeoutError extends Error {}
 
 function abortError(): DOMException { return new DOMException("Map request cancelled", "AbortError"); }
+function timeoutError(): DOMException { return new DOMException("Map request timed out", "TimeoutError"); }
 function isAbort(error: unknown): boolean { return error instanceof Error && error.name === "AbortError"; }
 
 /** Public map data only: never account API calls, location fixes, or arbitrary URLs. */
@@ -503,14 +504,14 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
           if (!response.ok || response.type === "opaque" || response.type === "opaqueredirect") throw new Error(`Map resource HTTP ${response.status}`);
           if (response.url) originalUrl(response.url);
           const resource = { bytes: await boundedBody(response, controller.signal), contentType: response.headers.get("content-type") ?? "", cacheControl: response.headers.get("cache-control"), expires: response.headers.get("expires"), savedAt: Date.now() };
-          if (controller.signal.aborted) throw signal.aborted ? abortError() : new Error("Map request timed out");
+          if (controller.signal.aborted) throw signal.aborted ? abortError() : timeoutError();
           update({ networkBytes: snapshot.networkBytes + resource.bytes.byteLength });
           validate(resource, url, type);
           return resource;
         })(),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => { controller.abort(); reject(new Error("Map request timed out")); }, deadlineMs);
-          controller.signal.addEventListener("abort", () => reject(signal.aborted ? abortError() : new Error("Map request timed out")), { once: true });
+          timer = setTimeout(() => { controller.abort(); reject(timeoutError()); }, deadlineMs);
+          controller.signal.addEventListener("abort", () => reject(signal.aborted ? abortError() : timeoutError()), { once: true });
         }),
       ]);
     } finally { if (timer) clearTimeout(timer); signal.removeEventListener("abort", abort); }

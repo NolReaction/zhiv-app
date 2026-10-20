@@ -246,6 +246,38 @@ test("disposal cancels queued timers and fences a pending cache repair before it
   assert.deepEqual(s.statuses, previous);
 });
 
+test("pausing during asynchronous repair cancels that pass and its late completion cannot disturb the resumed pass", async t => {
+  for (const [property, blocked, permitted] of [["visible", false, true], ["enabled", false, true], ["online", false, true], ["moving", true, false]]) {
+    const gates = [deferred(), deferred()];
+    let started = 0, sourceMutations = 0;
+    const s = fixture({ async refresh({ signal, state }) {
+      await gates[started++].promise;
+      if (signal.aborted) return;
+      sourceMutations += 1;
+      state.ready = true; state.pending = 0; state.progress += 1;
+    } });
+    t.after(() => s.recovery.dispose());
+    s.recovery.reportFailure({ sourceId: "streets", tile: tile() });
+    await s.clock.advance(1_200);
+    assert.equal(s.calls.length, 1);
+    s.state[property] = blocked; s.recovery.check();
+    assert.equal(s.calls[0].signal.aborted, true, `${property} fences source writes after awaited cache repairs`);
+    s.state[property] = permitted; s.recovery.check();
+    await s.clock.advance(1_200);
+    assert.equal(s.calls.length, 2, "return is not blocked behind the obsolete asynchronous pass");
+    assert.notEqual(s.calls[0].signal, s.calls[1].signal);
+    gates[0].resolve(); await flush();
+    assert.equal(sourceMutations, 0);
+    assert.equal(s.calls[1].signal.aborted, false);
+    assert.equal(s.statuses.at(-1), "retrying", "old finally cannot finish the current pass");
+    gates[1].resolve(); await flush();
+    assert.equal(sourceMutations, 1);
+    assert.equal(s.statuses.at(-1), "idle");
+    await s.clock.advance(90_000);
+    assert.equal(s.calls.length, 2, "the completed resumed pass leaves no stray retry");
+  }
+});
+
 test("manual retry can recover an incomplete view even when the renderer emitted no error", async t => {
   const s = fixture({ state: { ready: false, pending: 0 } }); t.after(() => s.recovery.dispose());
   s.recovery.retry();

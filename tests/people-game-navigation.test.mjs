@@ -83,22 +83,53 @@ test("People cards expose separate explicit game-profile and guest-world buttons
   assert.match(html, /aria-label="Открыть профиль Мама"/);
 });
 
-test("the People switch describes my outgoing check-ins and profile independently of the friend's visibility", () => {
+test("the People status switch describes only my outgoing check-ins and message independently of profile and GPS", () => {
   for (const enabled of [false, true]) {
     const person = { ...friend, mySharingMode: enabled ? "LATEST_ONLY" : "OFF", theirSharingMode: enabled ? "OFF" : "LATEST_ONLY" };
     const html = renderToStaticMarkup(createElement(PeopleView, { ownerPublicId: "OWNER", data: { ...data, people: [person] }, groups: null,
       error: null, groupsError: null, loading: false, groupsLoading: false, nowMs: Date.now(),
       onRefresh: async () => {}, onGroupsRefresh: async () => {}, onSessionLost() {}, onVisitFriend() {} }));
-    const toggle = html.match(/<button(?=[^>]*role="switch")(?=[^>]*aria-label="Делиться моими отметками, статусом и игровым профилем с Мама")[^>]*>/)?.[0];
+    const toggle = html.match(/<button(?=[^>]*role="switch")(?=[^>]*aria-label="Делиться моими отметками и статусом с Мама")[^>]*>/)?.[0];
     assert.ok(toggle);
     assert.ok(toggle.includes('aria-checked="' + enabled + '"'));
     assert.match(toggle, /aria-describedby="sharing-state-connected"/);
-    assert.match(html, /<strong>Отметки и профиль<\/strong>/);
+    assert.match(html, /<strong>Статус<\/strong>/);
     assert.ok(html.includes('<small>' + (enabled ? "Делюсь" : "Не делюсь") + '</small>'));
-    assert.match(html, /Геопозиция настраивается на карте/);
-    assert.match(html, /Отметки, статус и игровой профиль/);
+    assert.match(html, /Статус и геопозиция настраиваются отдельно/);
+    assert.match(html, /Мои отметки «Я живой» и сообщение статуса/);
+    assert.match(html, /Обновлять геопозицию для Мама/);
+    assert.match(html, /Игровой профиль: Мама/);
+    assert.doesNotMatch(html, /Отметки и профиль|Делиться моими отметками, статусом и игровым профилем/);
     assert.doesNotMatch(html, />Видны<|>Скрыты</);
   }
+});
+
+test("People and map rows project one confirmed geolocation handle independently of status sharing", async () => {
+  const { EarthSharingPanel } = await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
+  const calls = [], sharing = { settings: { mode: "SHARING", revision: 1, precision: "PRECISE", recipientCircleIds: [friend.circleId],
+    frozenCircleIds: [], sharingUntil: null, serverTime: data.serverTime }, pendingGhost: false, pendingPrivacyMode: null,
+    publishing: false, lastPublishedAt: null, saving: false, loading: false, error: null,
+    refresh() { calls.push("refresh"); }, setFrozen() { calls.push("frozen"); }, revokeRecipient() { calls.push("revoke"); } };
+  const peopleProps = { ownerPublicId: "OWNER", data, groups: null, error: null, groupsError: null, loading: false, groupsLoading: false,
+    nowMs: Date.now(), onRefresh: async () => {}, onGroupsRefresh: async () => {}, onSessionLost() {}, earthSharing: sharing,
+    onShareEarth: async () => { calls.push("share"); }, onOpenEarthPrivacy: () => calls.push("map") };
+  const mapProps = { sharing, people: data, peopleLoading: false, online: true, onShare: peopleProps.onShareEarth,
+    onGhost() {}, onOff() {}, onSetFrozen: sharing.setFrozen, onRevokeRecipient: sharing.revokeRecipient };
+  for (const [mode, frozen, status, checked] of [["SHARING", [], "Передача на паузе", true],
+    ["SHARING", [friend.circleId], "Последнее место", false], ["GHOST", [], "Последнее место · призрак", false]]) {
+    sharing.settings = { ...sharing.settings, mode, frozenCircleIds: frozen };
+    const people = renderToStaticMarkup(createElement(PeopleView, peopleProps));
+    const map = renderToStaticMarkup(createElement(EarthSharingPanel, mapProps));
+    for (const html of [people, map]) {
+      const toggle = html.match(/<button(?=[^>]*role="switch")(?=[^>]*aria-label="Обновлять геопозицию для Мама")[^>]*>/)?.[0];
+      assert.ok(toggle.includes('aria-checked="' + checked + '"'));
+      assert.ok(html.includes(status));
+    }
+    assert.match(people, /people-geo-access-connected/);
+    assert.match(map, /earth-friend-access-connected/);
+    if (mode === "GHOST") assert.match(people, /Призрак включён для всех\. Обновления геопозиции выключены/);
+  }
+  assert.deepEqual(calls, [], "reading either screen never changes consent or starts publication");
 });
 
 test("Earth reuses game actions only for current contacts, independently of their GPS availability", () => {

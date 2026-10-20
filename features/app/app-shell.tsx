@@ -428,6 +428,12 @@ function CheckInContent() {
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
   const [friendSelection, setFriendSelection] = useState<ProfileFriendVisit | null>(null);
   const [peopleProfileTarget, setPeopleProfileTarget] = useState<PersonProfileTarget | null>(null);
+  const [earthPrivacyRequest, setEarthPrivacyRequest] = useState<{ owner: string; id: number } | null>(null);
+  if (earthPrivacyRequest && (screen !== "home" || earthPrivacyRequest.owner !== viewOwner)) setEarthPrivacyRequest(null);
+  const earthPrivacySequence = useRef(0);
+  const earthPrivacyHandled = useCallback((id: number) => {
+    setEarthPrivacyRequest(previous => previous?.id === id ? null : previous);
+  }, []);
   const worldPeopleReturn = useRef(false);
   const appNavigationRef = useRef<HTMLElement | null>(null);
   const notificationSettingsExit = useRef<NotificationSettingsExit | null>(null);
@@ -675,7 +681,9 @@ function CheckInContent() {
   const earthRetention = useEarthMapRetention({ owner: screen === "home" ? viewOwner : null,
     selected: earthSelected, available: earthAvailable, documentHidden: activity.mode === "hidden" });
   const earthSharing = useEarthSharing({ ownerPublicId: screen === "home" ? viewOwner : null,
-    visible: screen === "home" && earthSelected && earthAvailable, isOnline, onSessionLost: loseSession });
+    visible: screen === "home" && (earthSelected || activeView === "people") && earthAvailable,
+    publicationVisible: screen === "home" && earthSelected && earthAvailable,
+    isOnline, onSessionLost: loseSession });
   useEconomyAudioFeedback(economy, screen === "home" && activity.active);
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
@@ -1887,6 +1895,16 @@ function CheckInContent() {
           onSessionLost={loseSession}
           onVisitFriend={visitFriend}
           initialProfileTarget={peopleProfileTarget}
+          earthSharing={earthSharing}
+          onShareEarth={async choices => {
+            earthSharing.setPosition(null);
+            await earthSharing.share(choices);
+          }}
+          onOpenEarthPrivacy={() => {
+            if (!viewOwner) return;
+            setEarthPrivacyRequest({ owner: viewOwner, id: ++earthPrivacySequence.current });
+            selectView("earth");
+          }}
         />
       ) : activeView === "profile" && me ? (
         <ProfileView
@@ -1930,6 +1948,8 @@ function CheckInContent() {
         {earthRetention.mounted && me && <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
           devCommandsAvailable={activity.mode === "active"}
           active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange} cameraSession={earthRetention.cameraSession} sharing={earthSharing}
+          privacyRequest={earthPrivacyRequest?.owner === me.user.publicId ? earthPrivacyRequest.id : null}
+          onPrivacyRequestHandled={earthPrivacyHandled}
           isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
           onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
           onOpenProfile={openPeopleProfile} onVisitFriend={visitFriend}

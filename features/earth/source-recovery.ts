@@ -4,6 +4,17 @@ import type { EarthTileRecoveryTarget } from "./tile-recovery";
 type RecoveryMap = Pick<LibreMap, "getSource" | "getStyle" | "getLayer" | "refreshTiles"
   | "removeLayer" | "removeSource" | "addSource" | "addLayer">;
 
+/** Only downloaded map detail participates in tile recovery, never animated GeoJSON. */
+export function earthTileSourceIds(map: Pick<LibreMap, "getStyle">): string[] {
+  return Object.entries(map.getStyle()?.sources ?? {})
+    .filter(([, source]) => source.type === "vector" || source.type === "raster").map(([id]) => id);
+}
+
+/** Map.loaded also waits for style changes and unrelated local source work. */
+export function areEarthTileSourcesReady(map: Pick<LibreMap, "getStyle" | "isSourceLoaded">): boolean {
+  return earthTileSourceIds(map).every(id => map.isSourceLoaded(id));
+}
+
 /** Keep the camera, WebGL context and local land while resetting stalled source tile requests. */
 export function refreshEarthTileSource(map: RecoveryMap, target: EarthTileRecoveryTarget): boolean {
   if (!map.getSource(target.sourceId)) return false;

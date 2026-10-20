@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type MouseEvent } from "react";
-import { ChevronDown, Ghost, MapPin, MoreHorizontal, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Ghost, MapPin, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { PlayerName } from "@/components/player-name";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
@@ -9,7 +9,10 @@ import type { PeopleResponse } from "@/lib/check-in-contract";
 import { personDisplayName } from "@/lib/person-nickname";
 import type { EarthSharingDuration, EarthSharingPrecision, EarthSharingSettings } from "@/lib/earth-sharing-contract";
 import type { useEarthSharing } from "./use-earth-sharing";
+import { EarthFriendSharingControls, EarthSharingToggle } from "./earth-friend-sharing";
 import styles from "./earth-sharing-panel.module.css";
+
+export { EarthSharingToggle } from "./earth-friend-sharing";
 
 export type EarthSharingHandle = ReturnType<typeof useEarthSharing>;
 export type EarthSharingChoices = { recipientCircleIds: string[]; frozenCircleIds: string[];
@@ -45,14 +48,6 @@ export function sharingSummary(sharing: Pick<EarthSharingHandle, "settings" | "p
   const live = sharing.settings.recipientCircleIds.length - (sharing.settings.frozenCircleIds?.length ?? 0);
   if (live === 0) return "Все на паузе";
   return sharing.publishing ? sharing.lastPublishedAt ? "Делюсь гео · " + live : "Ищем местоположение…" : "Обновление на паузе";
-}
-
-export function EarthSharingToggle({ checked, disabled, label, description, onChange, ghost = false }: {
-  checked: boolean; disabled: boolean; label: string; description?: string; onChange: () => void; ghost?: boolean;
-}) {
-  return <button type="button" data-audio-cue="ui.click" role="switch" aria-checked={checked} disabled={disabled} aria-label={label}
-    aria-describedby={description} className={styles.toggle + (ghost ? " " + styles.ghostToggle : "")}
-    onClick={() => { if (!disabled) onChange(); }}><span className={styles.track}><span /></span></button>;
 }
 
 /** Confirmed sharing state controls every switch; rendering never grants access. */
@@ -110,28 +105,12 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
       {peopleLoading && !people && <p role="status">Загружаем близких…</p>}
       {displayed.length > 0 ? <ul className={styles.recipientList}>
         {displayed.map(person => {
-          const name = personDisplayName(person), hasAccess = selected.has(person.circleId), isFrozen = frozen.has(person.circleId);
-          const status = !hasAccess ? "Нет доступа" : ghost || isFrozen || !sharing.publishing ? "Последнее место" : "Обновляется";
-          const disabled = !canChange || ghost || !hasAccess && selected.size >= 100;
+          const name = personDisplayName(person);
           return <li key={person.circleId} className={styles.friend}>
-            <div className={styles.friendMain} data-has-access={hasAccess || undefined}>
-              <span className={styles.avatar} aria-hidden="true">{Array.from(name.trim())[0]?.toLocaleUpperCase("ru-RU") || "Ж"}</span>
-              <div className={styles.friendName}><strong><PlayerName name={name} tag={person.user.tag} /></strong>
-                <span id={"earth-friend-access-" + person.circleId} data-frozen={hasAccess && (ghost || isFrozen) || undefined}>{status}</span></div>
-              <EarthSharingToggle checked={hasAccess && !isFrozen && !ghost} disabled={disabled}
-                label={"Обновлять геопозицию для " + name} description={"earth-friend-access-" + person.circleId}
-                onChange={() => {
-                  if (!settings || disabled) return;
-                  if (hasAccess) void onSetFrozen(person.circleId, !isFrozen);
-                  else void onShare({ ...choicesFor(settings, selected.size === 0 ? draft : draftFor(settings)),
-                    recipientCircleIds: [...settings.recipientCircleIds, person.circleId] });
-                }} />
-            </div>
-            {hasAccess && <details className={styles.friendDetails}>
-              <summary aria-label={"Настройки доступа: " + name} onClick={playDisclosureCue}><MoreHorizontal size={20} aria-hidden="true" /></summary>
-              <div><p>{isFrozen || ghost ? "Доступно только последнее место." : "Виден выбранный вами район или точная позиция."}</p>
-                <button type="button" data-audio-cue="ui.click" disabled={!canChange} onClick={() => { if (canChange) void onRevokeRecipient(person.circleId); }}>Убрать меня с карты друга</button></div>
-            </details>}
+            <EarthFriendSharingControls person={person} sharing={sharing} online={online} working={working}
+              heading={<PlayerName name={name} tag={person.user.tag} />}
+              avatar={Array.from(name.trim())[0]?.toLocaleUpperCase("ru-RU") || "Ж"} firstChoices={draft}
+              onShare={onShare} onSetFrozen={onSetFrozen} onRevokeRecipient={onRevokeRecipient} />
           </li>;
         })}
       </ul> : !peopleLoading && <p className={styles.quiet}>{friends.length ? "Никого не нашли." : "Добавьте близких в разделе «Люди»."}</p>}

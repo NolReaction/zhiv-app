@@ -29,6 +29,8 @@ type Props = {
   onReadyChange?: (ready: boolean) => void;
   cameraSession?: EarthCameraSession;
   sharing: EarthSharingHandle;
+  privacyRequest?: number | null;
+  onPrivacyRequestHandled?: (id: number) => void;
   devCommandsAvailable?: boolean;
   isOnline: boolean;
   people: PeopleResponse | null;
@@ -98,7 +100,7 @@ export function EarthFriends({ people, loading, error, online, onRefresh, onOpen
   </div>;
 }
 
-export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, devCommandsAvailable = false, isOnline, people, peopleLoading, peopleError,
+export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, privacyRequest = null, onPrivacyRequestHandled, devCommandsAvailable = false, isOnline, people, peopleLoading, peopleError,
   onRefreshPeople, onOpenPeople, onOpenProfile, onVisitFriend, onOpenWorld }: Props) {
   const [modelEditorOpen, setModelEditorOpen] = useState(readEarthModelEditorOpen);
   const editingModel = process.env.NODE_ENV === "development" && modelEditorOpen;
@@ -109,10 +111,21 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const [focusAfter, setFocusAfter] = useState<number | null>(null);
   const [meetCircleId, setMeetCircleId] = useState<string | null>(null);
   const [meetFocusRequest, setMeetFocusRequest] = useState(0);
-  const [panelSelection, setPanelSelection] = useState<{ visible: boolean; value: "friends" | "sharing" | "info" | null }>({ visible, value: null });
-  if (panelSelection.visible !== visible) setPanelSelection({ visible, value: null });
+  const [panelSelection, setPanelSelection] = useState<{ visible: boolean; value: "friends" | "sharing" | "info" | null; privacyRequest: number | null }>({
+    visible, value: visible && privacyRequest !== null ? "sharing" : null, privacyRequest: visible ? privacyRequest : null,
+  });
+  const newPrivacyRequest = visible && privacyRequest !== null
+    && (panelSelection.privacyRequest !== privacyRequest || panelSelection.visible !== visible);
+  if (panelSelection.visible !== visible || newPrivacyRequest) {
+    setPanelSelection({ visible, value: newPrivacyRequest ? "sharing" : null,
+      privacyRequest: visible && privacyRequest !== null ? privacyRequest : panelSelection.privacyRequest });
+  }
   const panel = panelSelection.visible === visible ? panelSelection.value : null;
-  const setPanel = (value: "friends" | "sharing" | "info" | null) => setPanelSelection({ visible, value });
+  const setPanel = (value: "friends" | "sharing" | "info" | null) => setPanelSelection(current => ({ ...current, visible, value }));
+  useEffect(() => {
+    if (visible && !editingModel && panel === "sharing" && privacyRequest !== null
+      && panelSelection.privacyRequest === privacyRequest) onPrivacyRequestHandled?.(privacyRequest);
+  }, [visible, editingModel, panel, privacyRequest, panelSelection.privacyRequest, onPrivacyRequestHandled]);
   const onModelEditorOpenChange = useCallback((open: boolean) => {
     const editing = process.env.NODE_ENV === "development" && open;
     setModelEditorOpen(editing);
@@ -136,8 +149,9 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const pendingPrivacy = useRef<string | null>(null);
   const sharedPeople = sharing.people.filter(person => !people || people.people.some(contact => contact.circleId === person.circleId));
   useLayoutEffect(() => { foreground.current = locationEnabled; return () => { foreground.current = false; }; }, [locationEnabled]);
-  // A retained map is allowed to keep its tiles/camera, never a location watch.
-  useLayoutEffect(() => { if (!visible) stopLocation(); }, [visible, stopLocation]);
+  // The location hook pauses a hidden retained view's watch. Keep its private
+  // last fix in RAM until owner teardown/unmount; stop() would erase the marker
+  // and suppress even an already granted lookup when returning to this view.
   useEffect(() => { if (visible) heading.current?.focus({ preventScroll: true }); }, [visible]);
   useEffect(() => {
     if (!locationEnabled || !location.position && sharedPeople.length === 0 && !friendsOpen) return;
@@ -196,7 +210,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     setMonotonicNow(performance.now());
     setMeetCircleId(circleId);
     setMeetFocusRequest(value => value + 1);
-    setPanelSelection({ visible, value: null });
+    setPanelSelection(current => ({ ...current, visible, value: null }));
     if (!location.position || Date.now() - location.position.timestamp > 60_000 || location.status !== "active") location.locate();
   }, [sharedPeople, location, visible]);
   const meetPerson = sharedPeople.find(person => person.circleId === meetCircleId) ?? null;

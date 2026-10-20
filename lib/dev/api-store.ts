@@ -1077,7 +1077,7 @@ export function lookupDevUser(
 
 /** Read-only guest projection. No target profile initialization, award reconciliation, balances or private timestamps. */
 export function getDevGuestProfile(token: string | undefined, circleId: string): DevResult<GuestProfile> {
-  const access = getDevGuestWorldAccess(token, circleId);
+  const access = getDevDirectFriendAccess(token, circleId);
   if (access.kind !== "ok") return access;
   const { viewer, target } = access.value;
   const state = getDevEconomyAchievementState(target.publicId);
@@ -1096,15 +1096,23 @@ export function getDevGuestProfile(token: string | undefined, circleId: string):
     achievements, collections: guestCollections(finds, state?.fishing.catches ?? {}), serverTime: new Date().toISOString() } };
 }
 
-/** All guest reads and purchases use the same accepted direct friendship and effective privacy guard. */
-export function getDevGuestWorldAccess(token: string | undefined, circleId: string) {
+/** Safe game profiles require an accepted direct friendship, independently of status sharing. */
+function getDevDirectFriendAccess(token: string | undefined, circleId: string) {
   const viewer = sessionUser(token);
   if (!viewer) return { kind: "unauthorized" as const };
   const circle = store().circles.get(circleId);
   if (!circle || circle.archivedAt || ![circle.lowUserId, circle.highUserId].includes(viewer.id)) return { kind: "not-found" as const };
   const target = store().users.get(otherUserId(circle, viewer.id));
-  if (!target || effectiveRecipientSharing(target.id, viewer.id).mode === "OFF") return { kind: "not-found" as const };
+  if (!target) return { kind: "not-found" as const };
   return { kind: "ok" as const, value: { viewer, target } };
+}
+
+/** Visits and purchases retain the host's effective sharing guard. */
+export function getDevGuestWorldAccess(token: string | undefined, circleId: string) {
+  const access = getDevDirectFriendAccess(token, circleId);
+  if (access.kind !== "ok") return access;
+  if (effectiveRecipientSharing(access.value.target.id, access.value.viewer.id).mode === "OFF") return { kind: "not-found" as const };
+  return access;
 }
 
 export function getDevGuestWorld(token: string | undefined, circleId: string, now = Date.now()): DevResult<GuestWorld> {

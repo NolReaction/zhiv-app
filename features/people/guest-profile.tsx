@@ -90,9 +90,8 @@ function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSession
   </section>;
 }
 
-/** Changing owner/subject, going offline or denying sharing unmounts and cancels the previous read. */
-export function GuestProfileSection(props: Props & { sharingAllowed: boolean; isOnline: boolean }) {
-  if (!props.sharingAllowed) return <p className={styles.hint}>Игровой профиль скрыт настройками видимости этого человека.</p>;
+/** Profile access follows the current friendship; status and check-in sharing are independent. */
+export function GuestProfileSection(props: Props & { isOnline: boolean }) {
   if (!props.isOnline) return <p className={styles.hint}>Подключитесь к интернету, чтобы открыть игровой профиль.</p>;
   return <LoadedGuestProfile key={`${props.ownerPublicId}:${props.circleId}:${props.targetPublicId}`} {...props} />;
 }

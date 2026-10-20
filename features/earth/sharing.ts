@@ -83,7 +83,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   getEnvironment?: (owner: string) => EarthSharingEnvironment; onSessionLost?: () => void;
 }) {
   let state = EMPTY, environment: EarthSharingEnvironment | null = null;
-  let active = false, visible = false, online = false, authLost = false, generation = 0, visibilityGeneration = 0;
+  let active = false, visible = false, publicationVisible = false, online = false, authLost = false, generation = 0, visibilityGeneration = 0;
   let pending: EarthPendingPrivacy | null = null, privacyAttempts = 0;
   let metadata: Work | null = null, feed: Work | null = null, enabling: Work | null = null, upload: Work | null = null, privacy: Work | null = null, preferences: Work | null = null;
   const stops = new Set<AbortController>(), listeners = new Set<() => void>();
@@ -94,6 +94,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   let serverWall = -Infinity, serverMono = 0;
   const now = () => environment!.monotonicNow();
   const foreground = () => active && !authLost && !!owner && visible && online && !!environment?.visible();
+  const publicationForeground = () => foreground() && publicationVisible;
   function publish(patch: Partial<EarthSharingState>) { state = { ...state, ...patch }; for (const listener of listeners) listener(); }
   function cancelTimer(name: "poll" | "expiry" | "publish" | "privacy") {
     timerEpochs[name] += 1;
@@ -264,16 +265,24 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     if (!foreground() || pending || enabling || preferences || !state.settings || !owner) return false;
     const write = earthSharingWriteSchema.safeParse({ ...options, mode: "SHARING", expectedOwnerPublicId: owner, expectedRevision: state.settings.revision });
     if (!write.success) { publish({ error: "Выберите близких и допустимые настройки геопозиции" }); return false; }
+    // Consent entered in People cannot become a publisher merely because the
+    // map opens while its response is pending.
+    const requestedPublication = publicationForeground();
     stopPublishing();
     const request = work(); enabling = request; publish({ saving: true, error: null });
     try {
       const value = checkedSettings(await transport.updateEarthSharing(write.data, environment!.createId(), request.abort.signal));
-      if (!current(request) || enabling !== request || pending) return false;
+      if (!current(request) || enabling !== request || pending) {
+        // An aborted transport can still have committed on the server. Retire
+        // only its acknowledged epoch; this cannot stop a later explicit share.
+        if (value.mode === "SHARING" && value.publicationEpoch) sendStop(value.publicationEpoch);
+        return false;
+      }
       if (value.mode !== "SHARING" || !value.publicationEpoch) throw new Error("Сервер не выдал разрешение публикации");
       sharingDeadline = Infinity;
       applySettings(value, request.started);
       if (value.sharingUntil && deadline(value.sharingUntil) <= now()) throw new Error("Время обмена геопозицией истекло");
-      if (value.recipientCircleIds.every(id => value.frozenCircleIds.includes(id))) {
+      if (!requestedPublication || !publicationForeground() || value.recipientCircleIds.every(id => value.frozenCircleIds.includes(id))) {
         sendStop(value.publicationEpoch); return true;
       }
       publisher = value.publicationEpoch; sequence = 0; usedFixTime = -Infinity; minimumFixTime = environment!.now(); lastPublishAt = -Infinity;
@@ -337,7 +346,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     // An ACK owns the current request; retain only the latest new fix in RAM
     // until it settles, then apply the same freshness and 30-second budget.
     if (upload) return;
-    if (!foreground() || pending || preferences || !publisher || !queuedFix || !validFix(queuedFix)) { queuedFix = null; return; }
+    if (!publicationForeground() || pending || preferences || !publisher || !queuedFix || !validFix(queuedFix)) { queuedFix = null; return; }
     if (now() >= sharingDeadline) { stopPublishing(); return; }
     const remaining = lastPublishAt + EARTH_POSITION_PUBLISH_MS - now();
     if (remaining > 0) { schedule("publish", remaining, () => { void sendPosition(); }); return; }
@@ -363,7 +372,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   }
   function setPosition(position: EarthPosition | null) {
     queuedFix = null;
-    if (!position || !foreground() || !publisher || pending || preferences || !validFix(position)) return;
+    if (!position || !publicationForeground() || !publisher || pending || preferences || !validFix(position)) return;
     queuedFix = { ...position }; void sendPosition();
   }
   function synchronize() {
@@ -391,10 +400,12 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
         serverWall = -Infinity; sharingDeadline = publishedDeadline = Infinity; state = EMPTY;
       };
     },
-    setContext(context: { visible: boolean; isOnline: boolean }) {
-      const changed = visible !== context.visible || online !== context.isOnline;
-      visible = context.visible; online = context.isOnline;
+    setContext(context: { visible: boolean; isOnline: boolean; publicationVisible?: boolean }) {
+      const nextPublicationVisible = context.publicationVisible ?? context.visible;
+      const changed = visible !== context.visible || online !== context.isOnline || publicationVisible !== nextPublicationVisible;
+      visible = context.visible; online = context.isOnline; publicationVisible = nextPublicationVisible;
       if (!active || !changed) return;
+      if (!publicationVisible) stopPublishing();
       if (!online) cancelTimer("privacy");
       synchronize(); if (online && pending) void flushPrivacy();
     },

@@ -56,29 +56,38 @@ test("guest projection only contains known personal discoveries and safe earned 
   result.collections.travel.push("forged"); assert.deepEqual(read(a, circle).collections.travel, ["acorn"]);
 });
 
-test("unknown circles outsiders requests only removed friendships and subject OFF return the same not-found", () => {
+test("game profiles stay available across status sharing changes only within the accepted direct friendship", () => {
   const a = player(), b = player(), stranger = player(), circle = connect(a, b);
   assert.deepEqual(social.getDevGuestProfile(undefined, circle), { kind: "unauthorized" });
   for (const [token, id] of [[stranger.token, circle], [a.token, key()], [a.token, b.me.user.publicId]])
     assert.deepEqual(social.getDevGuestProfile(token, id), { kind: "not-found" });
+  ok(social.updateDevStatus(b.token, "В лесу", key()));
+  assert.equal(social.createDevCheckIn(b.token, key()).kind, "accepted");
+  const visible = ok(social.listDevPeople(a.token)).people.find(person => person.circleId === circle);
+  assert.equal(visible.status.text, "В лесу"); assert.ok(visible.lastCheckInAt);
   ok(social.updateDevSharing(a.token, circle, "OFF")); read(a, circle);
-  assert.deepEqual(social.getDevGuestProfile(b.token, circle), { kind: "not-found" });
+  assert.equal(read(b, circle).user.publicId, a.me.user.publicId);
   ok(social.updateDevSharing(b.token, circle, "OFF"));
-  assert.deepEqual(social.getDevGuestProfile(a.token, circle), { kind: "not-found" });
+  assert.equal(read(a, circle).user.publicId, b.me.user.publicId);
+  const person = ok(social.listDevPeople(a.token)).people.find(person => person.circleId === circle);
+  assert.equal(person.checkInState, "HIDDEN"); assert.equal(person.lastCheckInAt, null); assert.equal(person.status, null);
+  assert.deepEqual(social.getDevGuestWorld(a.token, circle), { kind: "not-found" });
   ok(social.updateDevSharing(b.token, circle, "LATEST_ONLY")); read(a, circle);
   ok(social.removeDevPerson(a.token, circle));
   assert.deepEqual(social.getDevGuestProfile(a.token, circle), { kind: "not-found" });
 });
 
-test("group privacy denial reaches direct friend profiles and removing the group cannot reopen it", () => {
+test("group status denial leaves the direct friend game profile readable while visits remain private", () => {
   const a = player(), b = player(), circle = connect(a, b);
   const groupId = ok(social.createDevGroup(b.token, "Круг", null, [circle], key())).groupId;
   const invite = ok(social.listDevGroups(a.token)).incomingInvites.find(item => item.groupId === groupId);
   ok(social.actOnDevGroupInvite(a.token, invite.inviteId, "ACCEPTED")); read(a, circle);
   ok(social.updateDevGroupSharing(b.token, groupId, "OFF"));
-  assert.deepEqual(social.getDevGuestProfile(a.token, circle), { kind: "not-found" });
+  assert.equal(read(a, circle).user.publicId, b.me.user.publicId);
+  assert.deepEqual(social.getDevGuestWorld(a.token, circle), { kind: "not-found" });
   ok(social.deleteDevGroup(b.token, groupId));
-  assert.deepEqual(social.getDevGuestProfile(a.token, circle), { kind: "not-found" });
+  assert.equal(read(a, circle).user.publicId, b.me.user.publicId);
+  assert.deepEqual(social.getDevGuestWorld(a.token, circle), { kind: "not-found" });
   ok(social.updateDevSharing(b.token, circle, "LATEST_ONLY")); read(a, circle);
 });
 
@@ -125,7 +134,9 @@ test("profile content renders labeled safe stats medals and collection chapters 
     assert.ok(html.includes(text), text);
   assert.ok(html.includes('<summary>Путешествия')); assert.ok(html.includes('data-collection-icon="acorn"'));
   for (const text of ["Жемчуг", "Монеты", "Получить награду", "fishingCastSeed"]) assert.equal(html.includes(text), false);
-  const props = { ownerPublicId: a.me.user.publicId, circleId: circle, targetPublicId: b.me.user.publicId, onSessionLost() {}, sharingAllowed: false, isOnline: true };
-  assert.ok(renderToStaticMarkup(createElement(ui.GuestProfileSection, props)).includes("скрыт настройками"));
-  assert.ok(renderToStaticMarkup(createElement(ui.GuestProfileSection, { ...props, sharingAllowed: true, isOnline: false })).includes("Подключитесь к интернету"));
+  const props = { ownerPublicId: a.me.user.publicId, circleId: circle, targetPublicId: b.me.user.publicId, onSessionLost() {}, isOnline: true };
+  const online = renderToStaticMarkup(createElement(ui.GuestProfileSection, props));
+  assert.ok(online.includes("Открываем профиль…"));
+  assert.equal(online.includes("скрыт настройками"), false, "status sharing cannot block the independent profile read");
+  assert.ok(renderToStaticMarkup(createElement(ui.GuestProfileSection, { ...props, isOnline: false })).includes("Подключитесь к интернету"));
 });

@@ -12,13 +12,6 @@
 .ghostTitle strong { font-size: 14px; font-weight: 700; }
 .ghostTitle > span { color: #bdc5c3; font-size: 10px; }
 .ghostCard > p { margin-top: 9px; color: #c6d1cd; font-size: 11px; }
-.toggle { display: grid; flex-shrink: 0; place-items: center; width: 48px; height: 44px; border: 0; background: none; padding: 0; border-radius: 12px; }
-.track { display: block; position: relative; width: 40px; height: 24px; border: 1px solid #d4dfd339; border-radius: 999px; background: #092a248a; transition: background 140ms ease, border-color 140ms ease; }
-.track > span { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #9faea8; transition: transform 140ms ease, background 140ms ease; }
-.toggle[aria-checked="true"] .track { background: #c9e8a8; border-color: #d7edbd; }
-.toggle[aria-checked="true"] .track > span { transform: translateX(16px); background: #214b35; }
-.ghostToggle[aria-checked="true"] .track { background: #d3cafa; border-color: #e0d9ff; }
-.ghostToggle[aria-checked="true"] .track > span { background: #4d426f; }
 .connection { display: flex; align-items: center; gap: 7px; min-height: 44px; color: #afc2b0; font-size: 11px; }
 .statusDot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: #7f9390; }
 .statusDot[data-live] { background: #c4e894; box-shadow: 0 0 8px #c4e832; }
@@ -32,19 +25,8 @@
 .friends header > span { flex-shrink: 0; color: #a4b8a4; font-size: 10px; }
 .quiet { color: #a9bda9; font-size: 11px; line-height: 1.5; }
 .recipientList { list-style: none; margin: 4px 0 0; padding: 0; }
-.friend { position: relative; padding: 8px 0; border-bottom: 1px solid #d4e4c91a; }
-.friendMain { display: grid; grid-template-columns: 35px minmax(0, 1fr) 48px; gap: 9px; align-items: center; min-width: 0; }
-.friendMain[data-has-access] { padding-right: 44px; }
-.avatar { display: grid; width: 35px; height: 35px; place-items: center; border: 1px solid #d5e7bf20; border-radius: 13px; background: #d0e6b412; color: #dce9c9; font-size: 13px; font-weight: 700; }
-.friendName { display: grid; gap: 3px; min-width: 0; }
-.friendName strong { overflow-wrap: anywhere; font-size: 12px; font-weight: 650; }
-.friendName > span { color: #a8bca9; font-size: 10px; }
-.friendName > span[data-frozen] { color: #c8c2e8; }
-.friendDetails > summary { position: absolute; top: 8px; right: 0; display: grid; width: 44px; min-height: 44px; place-items: center; border-radius: 12px; color: #b7cab1; cursor: pointer; list-style: none; }
-.friendDetails > summary::-webkit-details-marker, .options > summary::-webkit-details-marker { display: none; }
-.friendDetails[open] > summary { background: #d0e6b411; }
-.friendDetails > div { display: grid; gap: 9px; margin: 5px 0 2px 44px; border-radius: 13px; background: #08291f80; padding: 11px; color: #b8cbb1; font-size: 11px; }
-.friendDetails button { min-height: 44px; border: 1px solid #eac2a02b; border-radius: 10px; background: none; padding: 8px 9px; color: #e5c5a9; text-align: left; font-size: 11px; }
+.friend { padding: 8px 0; border-bottom: 1px solid #d4e4c91a; }
+.options > summary::-webkit-details-marker { display: none; }
 .search { display: block; margin: 10px 0; }
 .search input, .duration select { width: 100%; min-height: 44px; border: 1px solid #d2e4bb28; border-radius: 12px; background: #0e2b23; color: #dfebd2; padding: 9px 10px; }
 .search input::placeholder { color: #95aa96; }

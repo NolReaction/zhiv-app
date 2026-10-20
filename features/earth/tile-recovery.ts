@@ -20,7 +20,7 @@ type RecoveryClock = {
 type RecoveryOptions = {
   readState: () => EarthTileRecoveryState;
   sources: () => string[];
-  /** Await repairs, then check signal.aborted before calling Map.refreshTiles. */
+  /** Await repairs, then check signal.aborted before every source mutation. */
   refresh: (targets: EarthTileRecoveryTarget[], signal: AbortSignal) => Promise<void> | void;
   onChange: (status: EarthTileRecoveryStatus) => void;
   clock?: RecoveryClock;
@@ -63,7 +63,7 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
   let passProgress = 0;
   let settledRevision = 0;
   let passSettled = 0;
-  let busy = false;
+  let activeAttempt: AbortController | null = null;
   let retryTimer: unknown = null;
   let watchdogTimer: unknown = null;
   let watchdogActive = false;
@@ -85,6 +85,16 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     if (watchdogTimer !== null) clock.clearTimeout(watchdogTimer);
     watchdogTimer = null;
     watchdogActive = false;
+  }
+  function pauseAttempt() {
+    if (!activeAttempt) return;
+    activeAttempt.abort();
+    activeAttempt = null;
+    // Background/camera time cannot consume a visible retry budget. A resumed
+    // pass owns a new signal; the cancelled callback may still be awaiting I/O.
+    attempts = Math.max(0, attempts - 1);
+    passRevision = -1;
+    change("waiting");
   }
   function scheduleWatchdog() {
     if (watchdogTimer !== null || controller.signal.aborted) return;
@@ -117,7 +127,7 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     });
   }
   function scheduleRetry() {
-    if (retryTimer !== null || busy || controller.signal.aborted) return;
+    if (retryTimer !== null || activeAttempt || controller.signal.aborted) return;
     if (attempts >= MAX_ATTEMPTS) { change("failed"); return; }
     change("waiting");
     retryTimer = clock.setTimeout(() => {
@@ -126,11 +136,12 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     }, RETRY_DELAY);
   }
   async function runAttempt() {
-    if (controller.signal.aborted || busy || !incident) return;
+    if (controller.signal.aborted || activeAttempt || !incident) return;
     const state = options.readState();
     if (!allowed(state)) return;
     if (attempts >= MAX_ATTEMPTS) { change("failed"); return; }
-    busy = true;
+    const pass = new AbortController();
+    activeAttempt = pass;
     attempts += 1;
     passRevision = failureRevision;
     passProgress = state.progress;
@@ -138,12 +149,15 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     lastProgressAt = clock.now();
     change("retrying");
     try {
-      if (!controller.signal.aborted) await options.refresh(targets(), controller.signal);
+      if (!controller.signal.aborted && !pass.signal.aborted) await options.refresh(targets(), pass.signal);
     } catch {
-      if (!controller.signal.aborted) failureRevision += 1;
+      if (!controller.signal.aborted && !pass.signal.aborted) failureRevision += 1;
     } finally {
-      busy = false;
-      if (!controller.signal.aborted) check();
+      // A late cancelled pass cannot finish a newer one or start another retry.
+      if (activeAttempt === pass) {
+        activeAttempt = null;
+        if (!controller.signal.aborted) check();
+      }
     }
   }
 
@@ -157,6 +171,7 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
       lastProgressAt = now;
       cancelRetry();
       cancelWatchdog();
+      pauseAttempt();
       return;
     }
     if (!watchdogActive) {
@@ -172,9 +187,10 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     if (!allowed(state)) {
       lastProgressAt = now;
       cancelRetry();
+      pauseAttempt();
       return;
     }
-    if (busy) return;
+    if (activeAttempt) return;
     // Errored tiles count as "loaded" in MapLibre. Require a repair pass and
     // fresh success/idle evidence, with no new errors during that pass.
     if (incident && passRevision === failureRevision && state.ready && state.pending === 0
@@ -235,6 +251,8 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     },
     dispose() {
       controller.abort();
+      activeAttempt?.abort();
+      activeAttempt = null;
       cancelRetry();
       cancelWatchdog();
       failures.clear();

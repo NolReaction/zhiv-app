@@ -1,0 +1,27 @@
+.control { min-width: 0; color: #e4ecdc; }
+.main { display: grid; grid-template-columns: 35px minmax(0, 1fr) 48px; gap: 9px; align-items: center; min-width: 0; min-height: 52px; }
+.avatar { display: grid; width: 35px; height: 35px; place-items: center; border: 1px solid #d5e7bf20; border-radius: 12px; background: #d0e6b40b; color: #c4d6b4; font-size: 13px; font-weight: 700; }
+.name { display: grid; min-width: 0; gap: 3px; }
+.name strong { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+.name > span { color: #adbea7; font-size: 11px; line-height: 1.4; }
+.name > span[data-frozen] { color: #c8c2e8; }
+.toggle { display: grid; flex-shrink: 0; place-items: center; width: 48px; height: 44px; border: 0; background: none; padding: 0; border-radius: 12px; cursor: pointer; }
+.toggle:disabled { opacity: .45; cursor: default; }
+.track { display: block; position: relative; box-sizing: content-box; width: 40px; height: 24px; border: 1px solid #d4dfd339; border-radius: 999px; background: #092a248a; transition: background 140ms ease, border-color 140ms ease; }
+.track > span { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #9faea8; transition: transform 140ms ease, background 140ms ease; }
+.toggle[aria-checked="true"] .track { background: #c9e8a8; border-color: #d7edbd; }
+.toggle[aria-checked="true"] .track > span { transform: translateX(16px); background: #214b35; }
+.ghostToggle[aria-checked="true"] .track { background: #d3cafa; border-color: #e0d9ff; }
+.ghostToggle[aria-checked="true"] .track > span { background: #4d426f; }
+.control :is(button, summary):focus-visible, .toggle:focus-visible { outline: 2px solid #d9efab; outline-offset: 3px; }
+.details { min-width: 0; margin-left: 44px; }
+.details > summary { display: flex; min-height: 44px; align-items: center; gap: 6px; color: #aabc9e; font-size: 11px; cursor: pointer; list-style: none; border-radius: 8px; }
+.details > summary::-webkit-details-marker { display: none; }
+.details > summary > span { flex: 1; }
+.details[open] > summary > svg:last-child { transform: rotate(180deg); }
+.options { display: grid; gap: 10px; padding: 0 0 10px; }
+.options p { margin: 0; color: #b4c4aa; font-size: 11px; line-height: 1.5; }
+.options button { min-height: 44px; border: 1px solid #eac2a02b; border-radius: 10px; background: #c7946e08; padding: 9px 12px; color: #e5c5a9; text-align: left; font: inherit; font-size: 11px; cursor: pointer; }
+.options button:disabled { opacity: .45; cursor: default; }
+.openMap { display: inline-flex; align-items: center; min-height: 44px; margin-left: 44px; padding: 0 4px; border: 0; border-radius: 8px; background: none; color: #d1e1b4; font: inherit; font-size: 11px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .control *, .toggle * { transition: none !important; } }

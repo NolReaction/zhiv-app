@@ -11,6 +11,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, op
 after(() => vite.close());
 const { EarthSharingPanel, EarthSharingPanelContent, EarthSharingToggle, sharingSummary } =
   await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
+const { EarthFriendSharingControls } = await vite.ssrLoadModule("/features/earth/earth-friend-sharing.tsx");
 const settings = { ownerPublicId: "0000-0000-0001", mode: "OFF", revision: 0, precision: "APPROXIMATE",
   recipientCircleIds: [], frozenCircleIds: [], sharingUntil: null, publicationEpoch: null, serverTime: "2026-10-18T20:00:00Z" };
 const friends = [{ circleId: "one", user: { publicId: "0000-0000-0002", displayName: "<script>Лена</script>" }, nickname: "Лена" },
@@ -36,6 +37,7 @@ function view(overrides = {}, selection = {}) {
   function walk(node) {
     if (!isValidElement(node)) return;
     if (node.type === EarthSharingToggle) { walk(EarthSharingToggle(node.props)); return; }
+    if (node.type === EarthFriendSharingControls) { walk(EarthFriendSharingControls(node.props)); return; }
     elements.push(node); Children.forEach(node.props.children, walk);
   }
   walk(tree);
@@ -116,10 +118,10 @@ test("friend rows distinguish live updates, a permitted last point and no access
   assert.equal(status(live, "two"), "Последнее место");
   assert.equal(status(live, "new"), "Нет доступа");
   const paused = view({}, activeSettings);
-  assert.equal(status(paused, "one"), "Последнее место");
+  assert.equal(status(paused, "one"), "Передача на паузе");
   const ghost = view({}, { ...activeSettings, mode: "GHOST" });
   assert.equal(sharingSummary(ghost.props.sharing), "Призрак включён");
-  assert.equal(status(ghost, "one"), "Последнее место");
+  assert.equal(status(ghost, "one"), "Последнее место · призрак");
   assert.equal(status(ghost, "new"), "Нет доступа");
   assert.deepEqual([...live.calls, ...paused.calls, ...ghost.calls], []);
 });
@@ -149,7 +151,7 @@ test("the first consent uses chosen precision and duration without applying an u
 
 test("revocation is separate from freezing and uses the narrow recipient action", async () => {
   const result = view({}, activeSettings);
-  const controls = result.elements.filter(node => node.type === "button" && Children.toArray(node.props.children).includes("Убрать меня с карты друга"));
+  const controls = result.elements.filter(node => node.type === "button" && Children.toArray(node.props.children).includes("Убрать доступ"));
   assert.equal(controls.length, 2);
   await controls[0].props.onClick();
   assert.deepEqual(result.calls, [["revoke", "one"]]);
@@ -159,7 +161,7 @@ test("revocation is separate from freezing and uses the narrow recipient action"
 
 test("Ghost allows revoking a friend's access without resuming sharing or enabling their live switch", async () => {
   const result = view({}, { ...activeSettings, mode: "GHOST" });
-  const revoke = result.textButton("Убрать меня с карты друга");
+  const revoke = result.textButton("Убрать доступ");
   assert.equal(revoke.props.disabled, false);
   await revoke.props.onClick();
   assert.equal(friendSwitch(result, "Лена").props.disabled, true);

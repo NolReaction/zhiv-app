@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { CloudSun, Compass, Earth, HardDriveDownload, Info, LocateFixed, Minus, Plus, X } from "lucide-react";
+import { ClipboardCopy, CloudSun, Compass, Earth, HardDriveDownload, Info, LocateFixed, X } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
@@ -13,7 +13,8 @@ import { EARTH_CACHE_PROTOCOL, earthResourceCache } from "./resource-cache";
 import { EARTH_RUNTIME_DIRECTORY, loadEarthRuntime } from "./runtime-loader";
 import { getEarthErrorResourceUrls } from "./resource-recovery";
 import { createEarthRequestScope, createEarthResourceProtocol } from "./resource-protocol";
-import { refreshEarthTileSource } from "./source-recovery";
+import { areEarthTileSourcesReady, earthTileSourceIds, refreshEarthTileSource } from "./source-recovery";
+import { createEarthMapDiagnostics } from "./map-diagnostics";
 import { createEarthTileRecovery, type EarthTileRecoveryStatus } from "./tile-recovery";
 import { EARTH_BUILDINGS_3D_LAYER } from "./building-style";
 import { createEarthPositionMarker, updateEarthPositionMarkerLabel } from "./position-marker";
@@ -128,6 +129,11 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const [persisting, setPersisting] = useState(false);
   const [retry, setRetry] = useState(0);
   const [tileStatus, setTileStatus] = useState<EarthTileRecoveryStatus>("idle");
+  const [diagnostics] = useState(() => process.env.NODE_ENV === "development" ? createEarthMapDiagnostics() : null);
+  const [diagnosticReport, setDiagnosticReport] = useState<string | null>(null);
+  const [diagnosticCopied, setDiagnosticCopied] = useState(false);
+  const diagnosticButton = useRef<HTMLButtonElement>(null);
+  const diagnosticField = useRef<HTMLTextAreaElement>(null);
   const [buildings3d, setBuildings3d] = useState(() => cameraSession?.readPreferences().buildings3d ?? true);
   const buildings3dRef = useRef(buildings3d);
   const [lightingMode, setLightingMode] = useState<EarthLightingMode>(() => cameraSession?.readPreferences().lightingMode ?? "auto");
@@ -182,6 +188,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [lightingMode, eveningCenter]);
   useEffect(() => { if (infoOpen && visible) infoHeading.current?.focus({ preventScroll: true }); }, [infoOpen, visible]);
   useEffect(() => {
+    if (diagnosticReport) { diagnosticField.current?.focus({ preventScroll: true }); diagnosticField.current?.select(); }
+  }, [diagnosticReport]);
+  useEffect(() => {
     buildings3dRef.current = buildings3d;
     sceneRef.current?.setBuildingsEnabled(buildings3d);
     const current = mapRef.current;
@@ -196,6 +205,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
 
   const retryMap = useCallback(async () => {
     if (retrying.current) return;
+    diagnostics?.record("manual-retry");
     retrying.current = true;
     setPhase("loading");
     setFailure(null);
@@ -203,7 +213,27 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     setTileStatus("idle");
     try { await repairs.current; }
     finally { retrying.current = false; setRetry(value => value + 1); }
-  }, []);
+  }, [diagnostics]);
+
+  const copyDiagnostics = useCallback(async () => {
+    if (!diagnostics) return;
+    let loaded = false, tilesLoaded = false, cartographyReady = false;
+    try {
+      const current = mapRef.current;
+      if (current) {
+        loaded = current.loaded(); tilesLoaded = current.areTilesLoaded();
+        cartographyReady = areEarthTileSourcesReady(current);
+      }
+    } catch { /* A failed or removed SDK instance still has a useful event log. */ }
+    const report = diagnostics.report({ phase, stage, recovery: tileStatus, visible, retained: active && !visible,
+      documentHidden: document.hidden, online: isOnline,
+      loaded, tilesLoaded, cartographyReady, cache: earthResourceCache.getSnapshot() });
+    try {
+      await navigator.clipboard.writeText(report);
+      setDiagnosticCopied(true); setDiagnosticReport(null);
+    } catch { onInfoOpenChange(false); setDiagnosticCopied(false); setDiagnosticReport(report); }
+  }, [diagnostics, phase, stage, tileStatus, visible, active, isOnline, onInfoOpenChange]);
+  const closeDiagnostics = () => { setDiagnosticReport(null); diagnosticButton.current?.focus({ preventScroll: true }); };
 
   useEffect(() => {
     const reconnect = () => {
@@ -229,6 +259,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   useEffect(() => {
     const element = host.current;
     if (!element || !active) return;
+    diagnostics?.record("initializing");
     let cancelled = false;
     const controller = new AbortController();
     const requests = createEarthRequestScope(controller.signal);
@@ -291,6 +322,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (cancelled) return;
       const next = activeRef.current && visibleRef.current && !document.hidden;
       const returning = next && !foreground;
+      if (next !== foreground) diagnostics?.record(next ? "foreground" : "background");
       if (!next) {
         latestFriends.current = EMPTY_FRIENDS;
         latestFriendFocus.current = null;
@@ -314,7 +346,10 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           interruptedDownloads = false;
           // Fresh vector actors recover requests aborted while the section was
           // hidden. Keep this Map, the camera, terrain and decorative sources.
-          if (refreshEarthTileSource(map, { sourceId: "earth-streets" })) map.setSourceTileLodParams(4, 2, "earth-streets");
+          if (refreshEarthTileSource(map, { sourceId: "earth-streets" })) {
+            diagnostics?.record("source-refresh");
+            map.setSourceTileLodParams(4, 2, "earth-streets");
+          }
         }
         resize();
       }
@@ -334,6 +369,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (cancelled || attemptFailed) return;
       savePreparedCamera();
       attemptFailed = true;
+      diagnostics?.record("failed");
       controller.abort();
       window.clearTimeout(timeout);
       map?.stop();
@@ -348,6 +384,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       setPhase("failed");
     }
     function contextLost() {
+      diagnostics?.record("context-lost");
       fail("Браузер приостановил графику карты. Попробуйте открыть её снова; доступные сохранённые файлы будут использованы повторно.");
     }
     function armDeadline() {
@@ -369,6 +406,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (rendered && recoveryStatus === "idle" && progress.pending === 0
         && !map.isMoving() && map.loaded() && map.areTilesLoaded()) {
         initialReady = true;
+        diagnostics?.record("ready");
         window.clearTimeout(timeout);
         setPhase("ready");
         scene?.setReady(true);
@@ -397,12 +435,13 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         if (!canRenderGlobe()) {
           window.clearTimeout(timeout);
           attemptFailed = true;
+          diagnostics?.record("unsupported");
           setPhase("unsupported");
           return;
         }
         const sdk = await loadEarthRuntime({ signal: controller.signal });
         if (cancelled || attemptFailed) return;
-        sdk.addProtocol(EARTH_CACHE_PROTOCOL, createEarthResourceProtocol(earthResourceCache.protocol, requests.signal));
+        sdk.addProtocol(EARTH_CACHE_PROTOCOL, createEarthResourceProtocol(earthResourceCache.protocol, requests.signal, diagnostics?.resource));
         sdk.setMaxParallelImageRequests(4);
         setStage("resources");
         // Style data and every subsequent source/sprite/tile request use the same durable cache.
@@ -440,6 +479,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           },
         });
         const current = map;
+        diagnostics?.record("created");
         const updateCacheView = () => {
           if (cancelled || attemptFailed || !visibleRef.current || document.hidden) return;
           const center = current.getCenter();
@@ -475,21 +515,25 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           readState: () => {
             const progress = earthResourceCache.getSnapshot();
             return { enabled: styleReady && !attemptFailed && !cancelled, visible: !document.hidden && activeRef.current && visibleRef.current,
-              online: navigator.onLine, moving: current.isMoving(), ready: current.loaded() && current.areTilesLoaded(),
+              online: navigator.onLine, moving: current.isMoving(), ready: areEarthTileSourcesReady(current),
               pending: progress.pending, progress: progress.completed };
           },
-          sources: () => Object.entries(current.getStyle()?.sources ?? {})
-            .filter(([, source]) => source.type === "vector" || source.type === "raster").map(([id]) => id),
+          sources: () => earthTileSourceIds(current),
           refresh: async (targets, signal) => {
             await repairs.current;
-            if (signal.aborted || cancelled) return;
+            if (signal.aborted || cancelled || !foreground) return;
             for (const target of targets) {
-              if (refreshEarthTileSource(current, target) && !target.tiles) current.setSourceTileLodParams(4, 2, target.sourceId);
+              if (signal.aborted || cancelled || !foreground) return;
+              if (refreshEarthTileSource(current, target)) {
+                diagnostics?.record("source-refresh");
+                if (!target.tiles) current.setSourceTileLodParams(4, 2, target.sourceId);
+              }
             }
           },
           onChange: status => {
             if (cancelled) return;
             recoveryStatus = status;
+            diagnostics?.record(`recovery-${status}`);
             setTileStatus(status);
             tileOverlay?.setStatus(status, navigator.onLine);
             tileOverlay?.refresh();
@@ -547,6 +591,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
 
         current.on("style.load", () => {
           if (cancelled) return;
+          diagnostics?.record("style-ready");
           registerEarthMaterialImage(current);
           registerEarthOceanMaterialImage(current);
           styleReady = true;
@@ -601,6 +646,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         current.on("idle", () => { scheduleReadyCheck(); tileRecovery?.check(true); });
         current.on("error", event => {
           if (cancelled || attemptFailed || !foreground && initialReady) return;
+          diagnostics?.record("source-error");
           tileOverlay?.observe(event);
           tileOverlay?.refresh();
           const resources = getEarthErrorResourceUrls(event, current);
@@ -632,6 +678,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     void initialize();
 
     return () => {
+      diagnostics?.record("removed");
       savePreparedCamera();
       earthResourceCache.setView(null);
       cancelled = true;
@@ -667,7 +714,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (mapRef.current === map) mapRef.current = null;
       if (process.env.NODE_ENV === "development") setEditorMap(null);
     };
-  }, [active, retry, cameraSession]);
+  }, [active, retry, cameraSession, diagnostics]);
 
   useEffect(() => {
     if (!active || !visible || !focusWhenReady || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;
@@ -676,6 +723,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [active, visible, phase, position, focusRequest, focusWhenReady]);
 
   const ready = active && visible && phase === "ready";
+  const diagnosticStage = phase === "failed" ? "Ошибка карты" : phase === "unsupported" ? "WebGL недоступен"
+    : phase === "ready" ? tileStatus === "idle" ? "Карта готова" : tileStatus === "failed" ? "Детали недоступны" : "Восстановление деталей"
+      : stage === "engine" ? "Загрузка движка" : stage === "resources" ? "Загрузка карты" : "Первый кадр";
   return <div className={styles.root} data-earth-map data-map-status={phase} data-lighting={lightingMode} data-development={process.env.NODE_ENV === "development" || undefined}>
     <div ref={host} className={styles.canvas} data-visible={phase === "ready"} aria-hidden={phase !== "ready"} inert={phase !== "ready" || undefined} />
     <div className={styles.controls} role="group" aria-label="Управление картой">
@@ -684,8 +734,6 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         const element = host.current;
         if (current && element) current.flyTo({ center: EARTH_CENTER, zoom: globeZoom(element.clientWidth, element.clientHeight), bearing: 0, pitch: 0, duration: reducedMotion() ? 0 : 1200, essential: false });
       }}><Earth size={21} aria-hidden="true" /></button>
-      <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Приблизить" aria-label="Приблизить карту" onClick={() => mapRef.current?.zoomIn({ duration: reducedMotion() ? 0 : 250 })}><Plus size={21} aria-hidden="true" /></button>
-      <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Отдалить" aria-label="Отдалить карту" onClick={() => mapRef.current?.zoomOut({ duration: reducedMotion() ? 0 : 250 })}><Minus size={21} aria-hidden="true" /></button>
       <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
       {showLocationControl && !modelEditorOpen && <button type="button" data-audio-cue="ui.click" className={styles.locateButton} disabled={!ready} data-active={locationActive} aria-busy={locating}
         title={locating ? "Ищем тебя…" : "Найти меня"}
@@ -693,7 +741,18 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       <button type="button" data-audio-cue="ui.click" disabled={!ready} data-active={weatherEnabled} aria-pressed={weatherEnabled}
         title="Погода для центра карты" aria-label={weatherEnabled ? "Выключить погоду" : "Включить погоду"}
         onClick={() => setWeatherEnabled(value => !value)}><CloudSun size={21} aria-hidden="true" /></button>
+      {diagnostics && <button ref={diagnosticButton} type="button" data-audio-cue="ui.click" data-earth-diagnostics className={styles.diagnosticButton}
+        title={`${diagnosticStage} · DEV: ${diagnosticCopied ? "отчёт скопирован" : "скопировать диагностику"}`}
+        aria-label={diagnosticCopied ? "Отчёт карты скопирован" : "Скопировать диагностику карты"} onClick={copyDiagnostics}>
+        <ClipboardCopy size={18} aria-hidden="true" /><small>DEV</small></button>}
     </div>
+    {diagnostics && diagnosticReport && <section className={`${styles.infoPanel} ${styles.diagnosticPanel}`} role="dialog" aria-labelledby="earth-diagnostic-title"
+      onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); closeDiagnostics(); } }}>
+      <header><h2 id="earth-diagnostic-title">DEV · Диагностика карты</h2>
+        <button type="button" data-audio-cue="ui.close" aria-label="Закрыть диагностику" onClick={closeDiagnostics}><X size={18} aria-hidden="true" /></button></header>
+      <p>{diagnosticStage}. Автокопирование недоступно. Скопируйте отчёт из поля; координат и личных данных в нём нет.</p>
+      <textarea ref={diagnosticField} readOnly aria-label="Отчёт диагностики карты" value={diagnosticReport} onFocus={event => event.currentTarget.select()} />
+    </section>}
     {phase !== "ready" && <EarthLoading stage={stage} restoring={restoring} isOnline={isOnline}
       progress={{ completed: cache.completed, pending: cache.pending, failed: cache.failed, bytes: cache.networkBytes, cacheHits: cache.cacheHits }}
       error={phase === "unsupported" ? "Для глобуса нужен WebGL 2. Обновите браузер или включите аппаратное ускорение." : failure}
@@ -715,7 +774,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     {ready && <EarthAttribution />}
     {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} open={modelEditorOpen} onOpenChange={changeModelEditorOpen} /></Suspense>}
     {ready && <button ref={infoButton} type="button" data-audio-cue={infoOpen ? "ui.close" : "ui.open"} className={styles.infoButton} aria-label="О карте и её настройках"
-      aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => onInfoOpenChange(!infoOpen)}><Info size={21} aria-hidden="true" /></button>}
+      aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => { setDiagnosticReport(null); onInfoOpenChange(!infoOpen); }}><Info size={21} aria-hidden="true" /></button>}
     {ready && infoOpen && <section id="earth-info-panel" className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
       if (event.key === "Escape") { event.stopPropagation(); playUiCue(getAudioRuntime(), "ui.close"); onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }
     }}>
@@ -740,14 +799,6 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           <button type="button" data-audio-cue="ui.click" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
         <p>Появляются при приближении к улицам. Наклоните карту двумя пальцами или перетаскивайте её с зажатой правой кнопкой мыши.</p>
       </section>
-      <section className={styles.infoSection}><div className={styles.infoRow}><h3 id="earth-weather-label">Погода</h3>
-        <button type="button" data-audio-cue="ui.click" className={styles.infoToggle} role="switch" aria-checked={weatherEnabled} aria-labelledby="earth-weather-label" onClick={() => setWeatherEnabled(value => !value)}><span aria-hidden="true" /></button></div>
-        <p>Прогноз для района в центре карты: облака и осадки появляются там, где их ожидает прогноз. В ясную погоду дождя и снега нет. После перехода в другой район обновляем данные с короткой паузой.</p>
-        <p>При включении передаём только центр просмотра, округлённый до целых градусов. Доступ к геопозиции для этого не нужен.</p>
-        {weatherEnabled && weatherState.snapshot && <p>Прогноз на {new Date(weatherState.snapshot.forecastAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. {weatherState.status === "stale" ? "Данные сохранены ранее; свежий прогноз пока недоступен." : "Это прогноз для района, а не точное измерение на вашей улице."}</p>}
-        <p className={styles.attribution}>На основе прогноза <a href={EARTH_WEATHER_ATTRIBUTION.sourceUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.name}</a>{" · "}
-          <a href={EARTH_WEATHER_ATTRIBUTION.licenseUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.license}</a>. Упрощённая визуализация для «Я живой».</p>
-      </section>
       {locationDetails}
       <section className={styles.infoSection}><h3>На устройстве</h3><div className={styles.storageDetails}>
         <strong>{cache.storage === "device" ? `Сохранено ${formatEarthLoadingBytes(cache.storedBytes)} из ${formatEarthLoadingBytes(cache.diskLimitBytes)}` : "Доступно в этой сессии"}
@@ -762,6 +813,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         <a href="https://www.naturalearthdata.com" target="_blank" rel="noreferrer">Natural Earth</a>
       </p><p>Данные OpenStreetMap распространяются по <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">ODbL</a>, дизайн схемы OpenMapTiles · <a href="https://github.com/openmaptiles/openmaptiles/blob/master/LICENSE.md" target="_blank" rel="noreferrer">CC BY 4.0</a>. Natural Earth · общественное достояние. Оформление карты изменено для «Я живой».</p>
         <p>Движок: <a href={`${EARTH_RUNTIME_DIRECTORY}/LICENSE.txt`} target="_blank" rel="noreferrer">MapLibre GL JS и лицензии компонентов</a>.</p>
+        <p className={styles.attribution}>Погода: <a href={EARTH_WEATHER_ATTRIBUTION.sourceUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.name}</a>{" · "}
+          <a href={EARTH_WEATHER_ATTRIBUTION.licenseUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.license}</a>. Упрощённая визуализация для «Я живой».</p>
       </section>
       <section className={styles.infoSection}><h3>3D-модели</h3><EarthModelCredits /></section>
     </section>}

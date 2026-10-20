@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
-const { refreshEarthTileSource } = await vite.ssrLoadModule("/features/earth/source-recovery.ts");
+const { refreshEarthTileSource, earthTileSourceIds, areEarthTileSourcesReady } = await vite.ssrLoadModule("/features/earth/source-recovery.ts");
 after(() => vite.close());
 
 function fixture() {
@@ -40,6 +40,21 @@ function fixture() {
   };
   return { map, style, original, operations, sourceInstances, context, camera };
 }
+
+test("tile readiness ignores animated local sources and renderer dirty flags, but waits for every downloaded source", () => {
+  const s = fixture(), reads = [], loading = new Set(["land", "accuracy"]);
+  s.style.sources.satellite = { type: "raster", tiles: ["https://tiles.openfreemap.org/{z}/{x}/{y}.png"] };
+  const map = { ...s.map, loaded: () => false, areTilesLoaded: () => false,
+    isSourceLoaded(id) { reads.push(id); return !loading.has(id); } };
+  assert.deepEqual(earthTileSourceIds(map), ["streets", "satellite"]);
+  assert.equal(areEarthTileSourcesReady(map), true, "local lighting/GPS work cannot rebuild successfully loaded streets");
+  assert.deepEqual(reads, ["streets", "satellite"], "only public readiness for downloaded tile sources is inspected");
+  for (const source of ["streets", "satellite"]) {
+    loading.add(source);
+    assert.equal(areEarthTileSourcesReady(map), false, `${source} still needs its real network/worker recovery`);
+    loading.delete(source);
+  }
+});
 
 test("canonical tile repairs keep the source and forward only affected tile IDs", () => {
   const s = fixture(), source = s.map.getSource("streets");

@@ -25,7 +25,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       `;
     },
     transform(source, id) {
-      if (/\/features\/earth\/(earth-map|earth-sharing-panel|earth-meet-card)\.tsx$/.test(id)) {
+      if (/\/features\/earth\/(earth-map|earth-sharing-panel|earth-friend-sharing|earth-meet-card)\.tsx$/.test(id)) {
         source = source.replace('from "@/features/audio/runtime/audio-service";', `from "${runtimeId}";`);
         if (!id.endsWith("earth-sharing-panel.tsx")) source = source.replace('from "react";', `from "${hooksId}";`);
         return source;
@@ -38,12 +38,14 @@ const { events } = await vite.ssrLoadModule(runtimeId);
 const { setPhase } = await vite.ssrLoadModule(hooksId);
 const { EarthMap } = await vite.ssrLoadModule("/features/earth/earth-map.tsx");
 const { EarthSharingPanelContent, EarthSharingToggle } = await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
+const { EarthFriendSharingControls } = await vite.ssrLoadModule("/features/earth/earth-friend-sharing.tsx");
 const { EarthMeetCard } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
 function nodes(tree) {
   const result = [];
   const visit = node => {
     if (!isValidElement(node)) return;
     if (node.type === EarthSharingToggle) { visit(EarthSharingToggle(node.props)); return; }
+    if (node.type === EarthFriendSharingControls) { visit(EarthFriendSharingControls(node.props)); return; }
     result.push(node); Children.forEach(node.props.children, visit);
   };
   visit(tree); return result;
@@ -57,9 +59,11 @@ test("map controls opt into delegated UI audio while a repeated lighting choice 
     onLocate() {}, locating: false, locationActive: false, locationDetails: null, infoOpen: true, onInfoOpenChange() {} };
   setPhase("ready");
   const tree = EarthMap(mapProps), all = nodes(tree);
-  for (const label of ["Показать всю Землю", "Приблизить карту", "Отдалить карту", "Повернуть карту севером вверх", "Найти меня", "Выключить погоду", "earth-buildings-label", "earth-weather-label"]) {
+  for (const label of ["Показать всю Землю", "Повернуть карту севером вверх", "Найти меня", "Выключить погоду", "earth-buildings-label"]) {
     assert.equal(button(all, label).props["data-audio-cue"], "ui.click", label);
   }
+  for (const removed of ["Приблизить карту", "Отдалить карту", "earth-weather-label"]) assert.equal(button(all, removed), undefined);
+  assert.equal(all.filter(node => node.type === "a" && node.props.href === "https://api.met.no/").length, 1);
   assert.equal(button(all, "О карте и её настройках").props["data-audio-cue"], "ui.close");
   assert.equal(button(all, "Закрыть настройки карты").props["data-audio-cue"], "ui.close");
   assert.deepEqual(cueIds(), [], "rendering never emits a sound");
@@ -71,7 +75,10 @@ test("map controls opt into delegated UI audio while a repeated lighting choice 
   dialog.props.onKeyDown({ key: "Escape", stopPropagation() {} });
   assert.deepEqual(cueIds(), ["ui.tab", "ui.close"]);
   setPhase("loading");
-  for (const node of nodes(EarthMap(mapProps)).filter(node => node.type === "button" && node.props["data-audio-cue"])) assert.equal(node.props.disabled, true);
+  const loadingButtons = nodes(EarthMap(mapProps)).filter(node => node.type === "button" && node.props["data-audio-cue"]);
+  for (const node of loadingButtons.filter(node => !node.props["data-earth-diagnostics"])) assert.equal(node.props.disabled, true);
+  assert.notEqual(loadingButtons.find(node => node.props["data-earth-diagnostics"])?.props.disabled, true,
+    "DEV diagnostics remain usable while the map cannot load");
   setPhase("ready");
 });
 

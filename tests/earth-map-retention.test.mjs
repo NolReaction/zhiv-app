@@ -28,17 +28,34 @@ function fixture() {
   };
 }
 
-test("a map mounts only for its selected available owner, without retaining a cold navigation", () => {
+test("a map mounts only after selection and retains its first installation during a brief section switch", () => {
   const s = fixture();
   s.update({ selected: false });
   assert.equal(s.controller.getSnapshot().mounted, false);
   s.update({ selected: true });
   assert.deepEqual(s.controller.getSnapshot(), { owner: "owner-a", mounted: true, ready: false, expiresAt: null });
   s.update({ selected: false });
+  assert.equal(s.controller.getSnapshot().mounted, true);
+  assert.equal(s.controller.getSnapshot().expiresAt, EARTH_MAP_RETENTION_MS);
+  s.advance(30_000);
+  s.update({ selected: true });
+  assert.deepEqual(s.controller.getSnapshot(), { owner: "owner-a", mounted: true, ready: false, expiresAt: null });
+  s.controller.reportReady("owner-a", true);
+  assert.equal(s.controller.getSnapshot().ready, true);
+  assert.equal(s.timers.size, 0);
+});
+
+test("unfinished installations keep the original expiry and late completion cannot revive them", () => {
+  const s = fixture();
+  s.update(); s.update({ selected: false });
+  s.advance(60_000); s.controller.reportReady("owner-a", false);
+  assert.equal(s.controller.getSnapshot().expiresAt, EARTH_MAP_RETENTION_MS);
+  s.controller.reportReady("owner-a", true);
+  assert.equal(s.controller.getSnapshot().expiresAt, EARTH_MAP_RETENTION_MS);
+  s.advance(60_000);
   assert.equal(s.controller.getSnapshot().mounted, false);
   s.controller.reportReady("owner-a", true);
-  assert.equal(s.controller.getSnapshot().mounted, false, "a removed map's late completion cannot remount it");
-  assert.equal(s.timers.size, 0);
+  assert.equal(s.controller.getSnapshot().mounted, false);
 });
 
 test("ready Profile and People round trips preserve one mounted session and cancel expiry on return", () => {

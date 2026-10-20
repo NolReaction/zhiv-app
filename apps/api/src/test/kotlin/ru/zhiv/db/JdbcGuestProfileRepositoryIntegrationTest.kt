@@ -16,8 +16,10 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.checkins.CheckInResult
 import ru.zhiv.config.AppConfig
 import ru.zhiv.economy.*
+import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.installZhivApi
 import ru.zhiv.relationships.*
 import ru.zhiv.security.TokenCodec
@@ -93,22 +95,31 @@ class JdbcGuestProfileRepositoryIntegrationTest {
         assertEquals(before,source.connection.use { c -> c.economyRows("SELECT state::text FROM economy_profiles WHERE user_id=?",b.id){it.getString(1)}.single() })
     }
 
-    @Test fun `strangers deleted circles and outgoing denies have the same unavailable response`() = runBlocking<Unit> {
+    @Test fun `status sharing changes keep game profiles available only to active direct friends`() = runBlocking<Unit> {
         val a=player();val b=player();val stranger=player();val circle=connect(a,b)
         unavailable(stranger,circle);unavailable(a,UUID.randomUUID())
-        // Viewer's outgoing OFF is not the subject's consent; direction matters.
+        assertIs<DisplayNameUpdateResult.Success>(identities.updateStatus(b.hash,"В лесу",UUID.randomUUID(),null))
+        assertIs<CheckInResult.Accepted>(identities.record(b.hash,UUID.randomUUID()))
+        val visible=ok(relationships.listPeople(a.hash)).people.single { it.circleId==circle }
+        assertEquals("В лесу",visible.statusText);assertNotNull(visible.lastCheckInAt)
         ok(relationships.updateSharing(a.hash,circle,SharingMode.OFF))
         assertEquals(b.publicId,profiles.profile(a.hash,circle).user.publicId)
-        unavailable(b,circle)
-        ok(relationships.updateSharing(b.hash,circle,SharingMode.OFF));unavailable(a,circle)
+        assertEquals(a.publicId,profiles.profile(b.hash,circle).user.publicId)
+        ok(relationships.updateSharing(b.hash,circle,SharingMode.OFF))
+        assertEquals(b.publicId,profiles.profile(a.hash,circle).user.publicId)
+        val person=ok(relationships.listPeople(a.hash)).people.single { it.circleId==circle }
+        assertEquals(PersonCheckInState.HIDDEN,person.checkInState)
+        assertNull(person.lastCheckInAt);assertNull(person.statusText)
+        assertEquals("GUEST_WORLD_UNAVAILABLE",assertFailsWith<AuthFailure>{JdbcGuestWorldRepository(source).world(a.hash,circle)}.code)
         ok(relationships.updateSharing(b.hash,circle,SharingMode.LATEST_ONLY));profiles.profile(a.hash,circle)
         ok(relationships.removePerson(a.hash,circle));unavailable(a,circle)
     }
 
-    @Test fun `recipient privacy override bans and session revocation cannot be bypassed through profile`() = runBlocking<Unit> {
+    @Test fun `recipient status override keeps profiles open while bans and session revocation still deny access`() = runBlocking<Unit> {
         val a=player();val b=player();val circle=connect(a,b)
         execute("INSERT INTO recipient_sharing_preferences(actor_user_id,recipient_user_id,sharing_mode) VALUES (?,?,'OFF')",b.id,a.id)
-        unavailable(a,circle)
+        assertEquals(b.publicId,profiles.profile(a.hash,circle).user.publicId)
+        assertEquals("GUEST_WORLD_UNAVAILABLE",assertFailsWith<AuthFailure>{JdbcGuestWorldRepository(source).world(a.hash,circle)}.code)
         ok(relationships.updateSharing(b.hash,circle,SharingMode.LATEST_ONLY));profiles.profile(a.hash,circle)
         execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Integration test moderation ban' WHERE id=?",b.id);unavailable(a,circle)
         execute("UPDATE app_users SET banned_at=NULL,ban_reason=NULL WHERE id=?",b.id)
@@ -128,6 +139,12 @@ class JdbcGuestProfileRepositoryIntegrationTest {
             assertEquals(HttpStatusCode.BadRequest,client.get("$path?$query"){cookie(config.cookieName,a.raw)}.status)
         assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/people/not-a-uuid/game-profile"){cookie(config.cookieName,a.raw)}.status)
         ok(relationships.updateSharing(b.hash,circle,SharingMode.OFF))
+        val statusHidden=client.get(path){cookie(config.cookieName,a.raw)}
+        assertEquals(HttpStatusCode.OK,statusHidden.status);assertEquals("no-store",statusHidden.headers[HttpHeaders.CacheControl])
+        val profile=Json.parseToJsonElement(statusHidden.bodyAsText()).jsonObject
+        assertEquals(b.publicId,profile.getValue("user").jsonObject.getValue("publicId").jsonPrimitive.content)
+        assertFalse(profile.containsKey("status"));assertFalse(profile.containsKey("lastCheckInAt"))
+        ok(relationships.removePerson(a.hash,circle))
         val denied=client.get(path){cookie(config.cookieName,a.raw)}
         assertEquals(HttpStatusCode.NotFound,denied.status);assertEquals("no-store",denied.headers[HttpHeaders.CacheControl])
     }

@@ -16,7 +16,7 @@ const id = sequence => `00000000-0000-4000-8000-${String(sequence).padStart(12, 
 async function flush() { for (let index = 0; index < 30; index++) await Promise.resolve(); }
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function privacyBus() { return { values: new Map(), listeners: new Map() }; }
-function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = true, online = true } = {}) {
+function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = true, publicationVisible, online = true } = {}) {
   let mono = 0, wallOffset = 0, sequence = 0, timerSequence = 0, documentVisible = true;
   const timers = new Map(), visibilityListeners = new Set(), calls = { settings: [], people: [], updates: [], positions: [], stops: [], order: [] };
   const iso = offset => new Date(BASE + mono + offset).toISOString();
@@ -83,10 +83,11 @@ function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = tr
   let deactivate;
   return { controller, calls, transport, environment, timers, bus, clock,
     get lost() { return lost; },
-    async start() { deactivate = controller.activate(); controller.setContext({ visible, isOnline: online }); await flush(); },
+    async start() { deactivate = controller.activate(); controller.setContext({ visible, publicationVisible, isOnline: online }); await flush(); },
     stop() { deactivate?.(); },
-    context(next) { if ("visible" in next) visible = next.visible; if ("online" in next) online = next.online;
-      controller.setContext({ visible, isOnline: online }); },
+    context(next) { if ("visible" in next) visible = next.visible; if ("publicationVisible" in next) publicationVisible = next.publicationVisible;
+      if ("online" in next) online = next.online;
+      controller.setContext({ visible, publicationVisible, isOnline: online }); },
     hide(value) { documentVisible = !value; for (const callback of visibilityListeners) callback(); },
     fix(overrides = {}) { return { latitude: 55.7558123, longitude: 37.6178391, accuracy: 23, timestamp: clock.wall(), ...overrides }; },
     person(overrides = {}) { return { circleId: CIRCLE, user: { publicId: OTHER, displayName: "Друг" }, latitude: 55.75, longitude: 37.62,
@@ -117,6 +118,112 @@ test("explicit sharing requires selected direct friends and publishes only a new
     sequence: 1, latitude: 55.76, longitude: 37.62, accuracyMeters: 1_500, capturedAt: s.clock.iso(0) });
   assert.equal(s.controller.getSnapshot().settings.publicationEpoch, null, "publisher capability is not rendered or persisted");
   assert.equal(s.bus.values.size, 0, "GPS fixes never enter privacy-intent storage");
+});
+
+test("People consent and narrow preferences share metadata without acquiring a publisher, including when returning to Earth", async t => {
+  const s = fixture({ publicationVisible: false }); t.after(() => s.stop()); await s.start();
+  assert.equal(await s.controller.share(options), true);
+  const until = s.controller.getSnapshot().settings.sharingUntil;
+  assert.equal(s.controller.getSnapshot().settings.mode, "SHARING");
+  assert.equal(s.controller.getSnapshot().publishing, false);
+  assert.equal(s.controller.getSnapshot().settings.publicationEpoch, null);
+  assert.equal(s.calls.stops.length, 1);
+  assert.equal(s.calls.stops[0].write.publicationEpoch, id(2));
+  assert.equal(await s.controller.setFrozen(CIRCLE, true), true);
+  assert.equal(await s.controller.setFrozen(CIRCLE, false), true);
+  assert.equal(s.controller.getSnapshot().settings.sharingUntil, until);
+  assert.equal(s.calls.updates.filter(call => !call.write.frozenOnly).length, 1);
+  s.controller.setPosition(s.fix()); await s.clock.advance(30_000);
+  assert.equal(s.calls.positions.length, 0);
+  assert.ok(s.calls.settings.length > 1 && s.calls.people.length > 1, "People keeps metadata and feed polling");
+  s.context({ publicationVisible: true }); await flush();
+  s.controller.setPosition(s.fix()); await flush();
+  assert.equal(s.controller.getSnapshot().publishing, false, "navigation cannot resume consent");
+  assert.equal(s.calls.positions.length, 0);
+  assert.equal(await s.controller.share(options), true);
+  s.controller.setPosition(s.fix()); await flush();
+  assert.equal(s.calls.positions.length, 1, "only a new explicit Earth share accepts a fresh fix");
+  assert.equal(s.bus.values.size, 0);
+});
+
+test("Earth to People immediately aborts uploads and queued fixes while retaining foreground reads", async t => {
+  const s = fixture({ publicationVisible: true }); t.after(() => s.stop()); await s.start(); await s.controller.share(options);
+  const upload = deferred(), feed = deferred();
+  s.transport.publishEarthPosition = (write, key, signal) => { s.calls.positions.push({ write, key, signal }); return upload.promise; };
+  s.transport.getEarthPeople = signal => { s.calls.people.push(signal); return feed.promise; };
+  s.controller.setPosition(s.fix()); s.controller.refresh(); await flush();
+  await s.clock.advance(1_000); s.controller.setPosition(s.fix({ latitude: 55.79 }));
+  const feedSignal = s.calls.people.at(-1), uploadSignal = s.calls.positions[0].signal;
+  s.context({ publicationVisible: false });
+  assert.equal(uploadSignal.aborted, true);
+  assert.equal(feedSignal.aborted, false, "the common feed remains valid on People");
+  assert.equal(s.controller.getSnapshot().publishing, false);
+  assert.equal(s.calls.stops.length, 1);
+  feed.resolve({ ownerPublicId: OWNER, people: [s.person()], serverTime: s.clock.iso(0) });
+  upload.resolve({ ownerPublicId: OWNER, acceptedAt: s.clock.iso(0), expiresAt: s.clock.iso(120_000), serverTime: s.clock.iso(0) }); await flush();
+  assert.equal(s.controller.getSnapshot().people.length, 1);
+  assert.equal(s.controller.getSnapshot().lastPublishedAt, null);
+  await s.clock.advance(60_000);
+  assert.equal(s.calls.positions.length, 1, "the queued fix never catches up after the route change");
+  s.context({ publicationVisible: true }); await flush(); s.controller.setPosition(s.fix()); await flush();
+  assert.equal(s.controller.getSnapshot().publishing, false);
+  assert.equal(s.calls.positions.length, 1);
+});
+
+test("an Earth grant crossing People is aborted and its late epoch stop cannot retire a newer explicit grant", async t => {
+  const s = fixture({ publicationVisible: true }); t.after(() => s.stop()); await s.start();
+  const oldAck = deferred(), original = s.transport.updateEarthSharing;
+  let first = true, oldEpoch;
+  s.transport.updateEarthSharing = (...args) => {
+    const response = original(...args);
+    if (!first) return response;
+    first = false;
+    return response.then(value => { oldEpoch = value.publicationEpoch; return oldAck.promise.then(() => value); });
+  };
+  const previous = s.controller.share(options); await flush();
+  const signal = s.calls.updates[0].signal;
+  s.context({ publicationVisible: false }); await flush();
+  assert.equal(signal.aborted, true);
+  s.context({ publicationVisible: true }); await flush();
+  assert.equal(await s.controller.share(options), true);
+  s.controller.setPosition(s.fix()); await flush();
+  const newEpoch = s.calls.positions[0].write.publicationEpoch;
+  assert.notEqual(newEpoch, oldEpoch);
+  oldAck.resolve(); assert.equal(await previous, false); await flush();
+  assert.equal(s.calls.stops.at(-1).write.publicationEpoch, oldEpoch);
+  assert.ok(s.calls.stops.every(call => call.write.publicationEpoch !== newEpoch));
+  assert.equal(s.controller.getSnapshot().publishing, true);
+  await s.clock.advance(30_000); s.controller.setPosition(s.fix()); await flush();
+  assert.equal(s.calls.positions.at(-1).write.publicationEpoch, newEpoch);
+});
+
+test("a pending People grant cannot turn into publication when Earth becomes visible before its acknowledgement", async t => {
+  const s = fixture({ publicationVisible: false }); t.after(() => s.stop()); await s.start();
+  const ack = deferred(), original = s.transport.updateEarthSharing;
+  s.transport.updateEarthSharing = (...args) => original(...args).then(value => ack.promise.then(() => value));
+  const consent = s.controller.share(options); await flush();
+  s.context({ publicationVisible: true }); await flush();
+  ack.resolve(); assert.equal(await consent, true); await flush();
+  assert.equal(s.controller.getSnapshot().publishing, false);
+  assert.equal(s.calls.stops.length, 1);
+  s.controller.setPosition(s.fix()); await flush(); assert.equal(s.calls.positions.length, 0);
+});
+
+test("publication visibility never overrides all-frozen recipients or a pending global ghost", async t => {
+  const s = fixture({ publicationVisible: false }); t.after(() => s.stop()); await s.start();
+  assert.equal(await s.controller.share({ ...options, frozenCircleIds: [CIRCLE] }), true);
+  assert.equal(s.calls.stops.length, 1);
+  s.context({ publicationVisible: true }); await flush();
+  assert.equal(await s.controller.setFrozen(CIRCLE, false), true);
+  assert.equal(s.controller.getSnapshot().publishing, false);
+  s.context({ online: false }); s.controller.ghost();
+  assert.equal(await s.controller.share(options), false);
+  assert.equal(await s.controller.setFrozen(CIRCLE, false), false);
+  s.context({ publicationVisible: false, online: true }); await flush();
+  assert.equal(s.controller.getSnapshot().settings.mode, "GHOST");
+  s.context({ publicationVisible: true }); await flush();
+  s.controller.setPosition(s.fix()); await flush();
+  assert.equal(s.controller.getSnapshot().publishing, false); assert.equal(s.calls.positions.length, 0);
 });
 
 test("GPS fixes are single-use, updates have a 30-second budget, and offline fixes are discarded", async t => {

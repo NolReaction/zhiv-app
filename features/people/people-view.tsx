@@ -5,7 +5,7 @@ import { TransientNotice } from "@/components/app-notifications";
 import { DataFreshness } from "@/components/data-freshness";
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMemo, useReducer, useRef, useState } from "react";
-import { Check, ChevronRight, ClipboardPaste, Copy, Link2, Plus, QrCode, RefreshCw, Search, Share2, Star, Trash2, UserRound, X } from "lucide-react";
+import { Check, ChevronRight, ClipboardPaste, Copy, Link2, MapPin, MessageCircle, Plus, QrCode, RefreshCw, Search, Share2, Star, Trash2, UserRound, X } from "lucide-react";
 import QRCode from "react-qr-code";
 import type {
   DirectRequest,
@@ -76,6 +76,8 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { GroupsSection } from "./groups-section";
 import { PersonGameActions, type PersonVisitAction } from "./person-game-actions";
 import { currentPersonProfile, personProfileTarget, type PersonProfileTarget } from "./people-profile-navigation";
+import { EarthFriendSharingControls } from "@/features/earth/earth-friend-sharing";
+import type { EarthSharingChoices, EarthSharingHandle } from "@/features/earth/earth-sharing-panel";
 
 type PeopleViewProps = {
   ownerPublicId: string | null;
@@ -95,6 +97,9 @@ type PeopleViewProps = {
   onSessionLost: () => void;
   onVisitFriend?: PersonVisitAction;
   initialProfileTarget?: PersonProfileTarget | null;
+  earthSharing?: EarthSharingHandle;
+  onShareEarth?: (choices: EarthSharingChoices) => Promise<void>;
+  onOpenEarthPrivacy?: () => void;
 };
 
 type PeopleSection = "people" | "groups";
@@ -162,6 +167,9 @@ export function PeopleView({
   onSessionLost,
   onVisitFriend,
   initialProfileTarget,
+  earthSharing,
+  onShareEarth,
+  onOpenEarthPrivacy,
 }: PeopleViewProps) {
   const [peopleQuery, setPeopleQuery] = useState("");
   const filteredPeople = useMemo(() => data?.people.filter(person => matchesPersonSearch(person, peopleQuery)) ?? [], [data, peopleQuery]);
@@ -265,6 +273,15 @@ export function PeopleView({
     }
   }
 
+  async function runEarthAction(operation: () => Promise<unknown>) {
+    if (pending || !isOnline) return;
+    setPending("earth");
+    setDialogError(null);
+    try { await operation(); }
+    catch (cause) { handleApiError(cause, "Не удалось сохранить геопозицию"); }
+    finally { setPending(null); }
+  }
+
   function resetLookup() {
     setPublicId("");
     setLookup(null);
@@ -331,6 +348,7 @@ export function PeopleView({
   }
 
   async function handleSharing(person: Person, enabled: boolean) {
+    if (!isOnline) return;
     await runMutation(`sharing:${person.circleId}`, () =>
       updatePersonSharing(
         person.circleId,
@@ -580,7 +598,13 @@ export function PeopleView({
                 onChange={event => setPeopleQuery(event.target.value)} />
               {peopleQuery && <button type="button" aria-label="Очистить поиск" onClick={() => setPeopleQuery("")}><X size={18} aria-hidden="true" /></button>}
             </div>}
-            {data.people.length > 0 && <p className={styles.sharingNote}>Геопозиция настраивается на карте.</p>}
+            {data.people.length > 0 && <div className={styles.sharingNote}>
+              <p>Статус и геопозиция настраиваются отдельно.</p>
+              {onOpenEarthPrivacy && <button type="button" onClick={onOpenEarthPrivacy}><MapPin size={14} aria-hidden="true" />Настройки карты</button>}
+            </div>}
+            {earthSharing?.pendingGhost ? <p role="status" className={styles.geoNotice}>Изменение геодоступа ещё не подтверждено.</p>
+              : earthSharing?.settings?.mode === "GHOST" && <p role="status" className={styles.geoNotice}>Призрак включён для всех. Обновления геопозиции выключены.</p>}
+            {earthSharing?.error && <p role="alert" className={styles.inlineError}>{earthSharing.error}</p>}
             {data.people.length === 0 ? (
               <div className={styles.empty}>
                 <UserRound size={30} />
@@ -628,50 +652,56 @@ export function PeopleView({
                           </span>
                         </span>
                         </button>
-
+                        <button className={`${styles.iconButton} ${styles.favoriteButton}`} type="button"
+                          aria-label={person.isFavorite ? `Убрать ${person.user.displayName} из избранного` : `Добавить ${person.user.displayName} в избранное`}
+                          aria-pressed={Boolean(person.isFavorite)} disabled={Boolean(pending)}
+                          onClick={() => void runMutation(`favorite:${person.circleId}`, () => updatePersonFavorite(person.circleId, !person.isFavorite, createUuidV4()))}>
+                          <Star size={18} fill={person.isFavorite ? "currentColor" : "none"} aria-hidden="true" />
+                        </button>
                       </div>
                       <PersonGameActions className={styles.gameActions} person={person} online={isOnline}
                         onOpenProfile={openPerson} onVisitFriend={onVisitFriend} />
                       <div className={styles.personBottom}>
                         <label className={styles.sharingLabel}>
+                          <span className={styles.controlIcon} aria-hidden="true"><MessageCircle size={17} /></span>
                           <span>
-                            <strong>Отметки и профиль</strong>
+                            <strong>Статус</strong>
                             <small>{isSharing ? "Делюсь" : "Не делюсь"}</small>
                             <small id={sharingHintId} className={styles.srOnly}>
                               {isSharing
-                                ? "Отметки, статус и игровой профиль видны этому человеку; настройки отметок действуют и в общих группах"
-                                : "Отметки, статус и игровой профиль скрыты от этого человека, включая группы"}
+                                ? "Мои отметки «Я живой» и сообщение статуса видны этому человеку, включая общие группы"
+                                : "Мои отметки «Я живой» и сообщение статуса скрыты от этого человека, включая общие группы"}
                             </small>
                           </span>
                           <Switch
                             checked={isSharing}
-                            disabled={Boolean(pending)}
+                            disabled={Boolean(pending) || !isOnline}
                             onCheckedChange={(checked) => void handleSharing(person, checked)}
-                            aria-label={`Делиться моими отметками, статусом и игровым профилем с ${displayName}`}
+                            aria-label={`Делиться моими отметками и статусом с ${displayName}`}
                             aria-describedby={sharingHintId}
                           />
                         </label>
-                        <div className={styles.personActions}>
-                          <button className={`${styles.iconButton} ${styles.favoriteButton}`} type="button"
-                            aria-label={person.isFavorite ? `Убрать ${person.user.displayName} из избранного` : `Добавить ${person.user.displayName} в избранное`}
-                            aria-pressed={Boolean(person.isFavorite)} disabled={Boolean(pending)}
-                            onClick={() => void runMutation(`favorite:${person.circleId}`, () => updatePersonFavorite(person.circleId, !person.isFavorite, createUuidV4()))}>
-                            <Star size={18} fill={person.isFavorite ? "currentColor" : "none"} />
-                          </button>
-                          <button className={`${styles.iconButton} ${styles.deleteButton}`} type="button"
-                            aria-label={`Удалить связь с ${displayName}`} title="Удалить связь" disabled={Boolean(pending)}
-                            onClick={() => setRemoveCandidate(person)}>
-                            <Trash2 size={18} aria-hidden="true" />
-                          </button>
+                        <div className={styles.geoControl}>
+                          <EarthFriendSharingControls person={person} sharing={earthSharing} online={isOnline} working={Boolean(pending)}
+                            idPrefix="people-geo-access" onOpenMap={onOpenEarthPrivacy}
+                            onShare={onShareEarth ? choices => runEarthAction(() => onShareEarth(choices)) : undefined}
+                            onSetFrozen={earthSharing ? (id, frozen) => runEarthAction(() => earthSharing.setFrozen(id, frozen)) : undefined}
+                            onRevokeRecipient={earthSharing ? id => runEarthAction(() => earthSharing.revokeRecipient(id)) : undefined} />
+                        </div>
+                      </div>
+                      <div className={styles.personActions}>
                         <button
-                          className={styles.iconButton}
+                          className={styles.cardAction}
                           type="button"
                           aria-label={`Скопировать ID ${person.user.displayName}`}
                           onClick={() => copyId(person.user.publicId)}
                         >
-                          {copiedId === person.user.publicId ? <Check size={17} /> : <Copy size={17} />}
+                          {copiedId === person.user.publicId ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+                          {copiedId === person.user.publicId ? "ID скопирован" : "Скопировать ID"}
                         </button>
-                        </div>
+                        <button className={`${styles.cardAction} ${styles.deleteButton}`} type="button"
+                          aria-label={`Удалить связь с ${displayName}`} disabled={Boolean(pending)}
+                          onClick={() => setRemoveCandidate(person)}><Trash2 size={15} aria-hidden="true" />Удалить</button>
                       </div>
                     </article>
                   );
@@ -756,7 +786,7 @@ export function PeopleView({
           </DialogHeader>
           {selectedPerson && ownerPublicId && <GuestProfileSection ownerPublicId={ownerPublicId}
             circleId={selectedPerson.circleId} targetPublicId={selectedPerson.user.publicId}
-            sharingAllowed={selectedPerson.theirSharingMode !== "OFF"} isOnline={isOnline} onSessionLost={onSessionLost} />}
+            isOnline={isOnline} onSessionLost={onSessionLost} />}
           <form className={styles.nicknameForm} onSubmit={saveNickname}>
             <label htmlFor="person-nickname">Личная подпись</label>
             <input id="person-nickname" value={nicknameDraft} autoComplete="off" maxLength={100}
@@ -981,7 +1011,7 @@ export function PeopleView({
             <AlertDialogTitle>Удалить связь?</AlertDialogTitle>
             <AlertDialogDescription className={styles.dialogDescription}>
               Личная связь будет удалена. В общих группах отметки могут оставаться видны. Это зависит от настроек показа.
-              Чтобы скрыть свои отметки от этого человека во всех группах, сначала выключите «Отметки и профиль».
+              Чтобы скрыть свои отметки от этого человека во всех группах, сначала выключите «Статус».
               Позже можно будет добавиться заново.
             </AlertDialogDescription>
           </AlertDialogHeader>

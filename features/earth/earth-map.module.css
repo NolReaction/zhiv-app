@@ -42,6 +42,10 @@
 .controls button[aria-pressed="true"]:hover:not(:disabled) { background: #e1f5bf; }
 .controls button[data-active="true"] { box-shadow: 0 0 0 3px #d1edaa2b, 0 5px 20px #001e2430; }
 .controls button[aria-busy="true"] svg { animation: locate-search 1.4s ease-in-out infinite; }
+.controls .diagnosticButton { gap: 1px; padding: 4px; }
+.diagnosticButton small { font-size: 8px; line-height: 1; }
+.diagnosticPanel { z-index: 7; }
+.diagnosticPanel textarea { width: 100%; height: min(280px, 35cqh); padding: 9px; border: 1px solid #d9efcd30; border-radius: 10px; background: #0b2924; color: #e7f3da; font: 11px/1.5 monospace; resize: vertical; }
 .infoButton { position: absolute; z-index: 4; right: var(--earth-overlay-right, 16px); bottom: calc(var(--earth-navigation-clearance, 84px) + 30px); width: 48px; height: 48px; border-radius: 50%; }
 .infoButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
 .infoPanel {
@@ -92,7 +96,7 @@
 .networkNotice button { justify-self: start; min-height: 40px; padding: 0 4px; color: #e4efcf; text-decoration: underline; cursor: pointer; }
 .root[data-development="true"] :is(.networkNotice, .tileProgress) { top: calc(var(--earth-overlay-top, 16px) + 112px); }
 @media (max-height: 500px) {
-  .controls { grid-template-columns: repeat(6, 44px); gap: 4px; }
+  .controls { grid-auto-flow: column; grid-auto-columns: 44px; gap: 4px; }
   .controls .locateButton { margin: 0; }
   .infoPanel { max-height: calc(100% - var(--earth-overlay-top, 16px) - 143px - var(--earth-navigation-clearance, 84px)); padding: 12px; }
   .networkNotice, .tileProgress { top: calc(var(--earth-overlay-top, 16px) + 112px); }

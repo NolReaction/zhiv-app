@@ -366,7 +366,7 @@ export function GroupsSection({
                 <div className={styles.groupDetails}>
                   <label className={styles.sharingLabel}>
                     <span>
-                      <strong>Отметки и профиль</strong>
+                      <strong>Статус</strong>
                       <small id={`sharing-mixed-${group.groupId}`}>{group.sharingMixed ? "Делюсь с частью группы"
                         : group.mySharingMode === "OFF" ? "Не делюсь" : "Делюсь с группой"}. Выбор общий с личными связями.</small>
                     </span>
@@ -382,7 +382,7 @@ export function GroupsSection({
                           createUuidV4(),
                         ),
                       )}
-                      aria-label={`Делиться моими отметками, статусом и игровым профилем с группой ${group.title}`}
+                      aria-label={`Делиться моими отметками и статусом с группой ${group.title}`}
                     />
                   </label>
 

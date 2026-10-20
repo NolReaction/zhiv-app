@@ -295,3 +295,44 @@ test("SDK per-request cancellation does not pause the shared visible generation"
   scope.dispose();
   assertReleased(s.map, first, second);
 });
+
+test("the optional resource observer reports one finite outcome per read, including cache hits, without URL or error details", async () => {
+  const outcomes = [], observe = (...values) => outcomes.push(values);
+  let downloads = 0;
+  const s = fixture(async () => { downloads += 1; return new Response("valid"); });
+  const protocol = createEarthResourceProtocol(s.cache.protocol, s.map.signal, observe);
+  for (let index = 0; index < 2; index += 1) {
+    assert.equal((await protocol(request(`${base}/private-view`, "string"), new AbortController())).data, "valid");
+  }
+  assert.equal(downloads, 1);
+  const failing = createEarthResourceProtocol(async () => { throw new Error(`Timeout text is not a deadline: ${base}/private-view`); }, s.map.signal, observe);
+  await assert.rejects(failing(request(`${base}/private-view`), new AbortController()), /not a deadline/);
+  s.map.abort();
+  await cancelled(protocol(request(`${base}/private-view`), new AbortController()));
+  assert.deepEqual(outcomes, [["completed"], ["completed"], ["error"], ["aborted"]]);
+});
+
+test("real cache network deadlines are typed separately from cancellation, with no duplicate late outcome", async () => {
+  const outcomes = [];
+  const timed = fixture(() => new Promise(() => {}), { timeoutMs: 5 });
+  await assert.rejects(createEarthResourceProtocol(timed.cache.protocol, timed.map.signal, event => outcomes.push(event))(
+    request(`${base}/slow`, "string"), new AbortController()), { name: "TimeoutError" });
+  const cancelledMap = fixture(() => new Promise(() => {}), { timeoutMs: 50 });
+  const sdk = new AbortController();
+  const pending = cancelled(createEarthResourceProtocol(cancelledMap.cache.protocol, cancelledMap.map.signal, event => outcomes.push(event))(
+    request(`${base}/removed`, "string"), sdk));
+  await tick(); sdk.abort(); await pending;
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.deepEqual(outcomes, ["timeout", "aborted"]);
+  assert.equal(cancelledMap.cache.getSnapshot().failed, 0);
+  assertReleased(timed.map, cancelledMap.map, sdk);
+});
+
+test("a failing diagnostic observer cannot reject valid resources or replace the original resource failure", async () => {
+  const map = new AbortController(), original = new Error("resource failure");
+  const observe = () => { throw new Error("diagnostics failed"); };
+  const success = createEarthResourceProtocol(async () => ({ data: "valid" }), map.signal, observe);
+  assert.equal((await success(request(`${base}/valid`, "string"), new AbortController())).data, "valid");
+  const failure = createEarthResourceProtocol(async () => { throw original; }, map.signal, observe);
+  await assert.rejects(failure(request(`${base}/failed`, "string"), new AbortController()), error => error === original);
+});
