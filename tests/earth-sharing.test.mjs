@@ -199,6 +199,23 @@ test("feed expiry is monotonic, subtracts request elapsed, and repeated old snap
   assert.deepEqual(s.controller.getSnapshot().people, []);
 });
 
+test("a last-known friend remains visible beyond two minutes without renewing its original deadline", async t => {
+  const s = fixture(); t.after(() => s.stop());
+  const lifetime = 86_400_000;
+  const person = s.person({ expiresAt: s.clock.iso(lifetime) });
+  s.transport.getEarthPeople = async () => ({ ownerPublicId: OWNER, people: [person], serverTime: s.clock.iso(0) });
+  await s.start();
+  const expires = s.controller.getSnapshot().people[0].expiresAtMonotonic;
+  await s.clock.advance(180_000);
+  assert.equal(s.controller.getSnapshot().people.length, 1);
+  assert.equal(s.controller.getSnapshot().people[0].updatedAt, person.updatedAt);
+  assert.ok(s.controller.getSnapshot().people[0].expiresAtMonotonic <= expires);
+  s.context({ online: false });
+  await s.clock.advance(lifetime);
+  s.context({ online: true }); await flush();
+  assert.deepEqual(s.controller.getSnapshot().people, [], "a replay cannot resurrect the expired original fix");
+});
+
 test("409 and 401 retire publishers without adopting a GET epoch or repeatedly reauthenticating", async t => {
   for (const status of [409, 401]) {
     const s = fixture(); t.after(() => s.stop()); await s.start(); await s.controller.share(options);

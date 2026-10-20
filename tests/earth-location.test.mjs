@@ -55,6 +55,31 @@ function fix(values = {}) {
   return { coords: { latitude: 55.75, longitude: 37.61, accuracy: 30, ...values }, timestamp: values.timestamp ?? 1_000 };
 }
 
+test("freezing keeps only the last private marker, cancels late fixes and never resumes GPS implicitly", async () => {
+  const s = session();
+  s.controller.start();
+  s.watches[0].success(fix());
+  const position = s.controller.getSnapshot().position;
+  s.controller.freeze();
+  assert.deepEqual(s.cleared, [0]);
+  assert.equal(s.controller.getSnapshot().position, position);
+  assert.equal(s.controller.getSnapshot().status, "paused");
+  s.watches[0].success(fix({ latitude: 10, timestamp: 2_000 }));
+  s.setVisible(false); s.setVisible(true);
+  s.controller.setEnabled(false); s.controller.setEnabled(true);
+  s.permission.state = "granted";
+  s.controller.setAutomaticStartPolicy(true);
+  await Promise.resolve();
+  assert.equal(s.watches.length, 1);
+  assert.equal(s.controller.getSnapshot().position, position);
+  s.controller.start();
+  assert.equal(s.watches.length, 2, "an explicit private lookup remains possible");
+  s.watches[1].success(fix({ latitude: 11, timestamp: 3_000 }));
+  assert.equal(s.controller.getSnapshot().position.latitude, 11);
+  s.deactivate();
+  assert.equal(s.controller.getSnapshot().position, null, "account teardown clears frozen coordinates");
+});
+
 test("screen activation never requests coordinates; an explicit start opens only one foreground watch", () => {
   const s = session();
   assert.deepEqual(s.controller.getSnapshot(), { position: null, status: "idle", error: null });

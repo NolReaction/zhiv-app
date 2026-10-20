@@ -198,8 +198,7 @@ test("a missing economy snapshot never invents a gold quote", () => {
 test("recalculated package prices display stored units as whole visible pearls", () => {
   const h = harness(state({ home: 1 })); let view = h.render();
   const amounts = () => [...view.html.matchAll(/<strong[^>]*>[\s\S]*?<\/strong>/g)].map(match => match[0].replace(/<[^>]*>/g, "").replace(/\s/g, ""));
-  assert.deepEqual(amounts().slice(-3), ["100", "350", "800"]);
-  assert.deepEqual(amounts().slice(0, -3), ["150", "100", "20"]);
+  assert.deepEqual(amounts(), ["100", "350", "800"]);
   for (const price of [99, 299, 599]) assert.ok(view.html.includes(`${price} ₽`));
   tabs(view).find(node => node.props.id.endsWith("-gold")).props.onClick(); view = h.render();
   assert.match(view.html, /<span>20<\/span>/);

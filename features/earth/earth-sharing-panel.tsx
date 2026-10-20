@@ -12,7 +12,7 @@ export type EarthSharingHandle = ReturnType<typeof useEarthSharing>;
 export type EarthSharingChoices = { recipientCircleIds: string[]; precision: EarthSharingPrecision; durationMinutes: EarthSharingDuration };
 
 export function sharingSummary(sharing: Pick<EarthSharingHandle, "settings" | "pendingGhost" | "publishing" | "lastPublishedAt">) {
-  if (sharing.pendingGhost) return "Скрываем позицию…";
+  if (sharing.pendingGhost) return "Останавливаем передачу…";
   if (!sharing.settings) return "Доступ к геопозиции";
   if (sharing.settings.mode === "GHOST") return "Режим призрака";
   if (sharing.settings.mode === "OFF") return "Только я";
@@ -44,13 +44,15 @@ export function EarthSharingPanel({ sharing, people, peopleLoading, online, onSh
     <section className={styles.status} aria-labelledby="earth-sharing-status">
       <div><Ghost size={20} aria-hidden="true" /><strong id="earth-sharing-status">{sharingSummary(sharing)}</strong></div>
       <p>Разрешение браузера и доступ друзей — разные настройки. Кнопка «Найти себя» сама по себе не открывает друзьям вашу геопозицию.</p>
-      {sharing.pendingGhost && <p role="status" className={styles.pending}>Отправка на этом устройстве остановлена. Скрытие на сервере ещё не подтверждено. Без сети последняя точка исчезнет не позднее чем через 2 минуты после её обновления.</p>}
+      {sharing.pendingGhost && <p role="status" className={styles.pending}>{sharing.pendingPrivacyMode === "OFF"
+        ? "Отправка на этом устройстве остановлена. Удаление точки и доступа на сервере ещё не подтверждено. Без сети последняя точка может оставаться до 24 часов после обновления, в пределах выбранного срока доступа."
+        : "Отправка на этом устройстве остановлена. Режим призрака на сервере ещё не подтверждён. Последняя точка остаётся у ранее выбранных близких в пределах срока доступа, максимум на 24 часа после обновления."}</p>}
       {active && !sharing.pendingGhost && <>
         <p>{sharing.publishing ? "Позиция обновляется, пока открыта карта." : "Доступ настроен, но GPS сейчас не публикуется. Для возобновления подтвердите настройки ниже."}</p>
         {settings.sharingUntil && <p>Доступ до {new Date(settings.sharingUntil).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.</p>}
       </>}
       <button className={styles.ghostButton} type="button" onClick={onGhost}><Ghost size={17} aria-hidden="true" />Включить режим призрака</button>
-      <p className={styles.quiet}>Без уведомлений друзьям. Точка исчезнет с их карты; это можно заметить. Автоматически снова делиться не начнём.</p>
+      <p className={styles.quiet}>Без уведомлений и статуса призрака для друзей. Они видят последнюю геопозицию и время её обновления, как при отсутствии сети. Точка сохраняется до 24 часов после обновления, в пределах выбранного срока доступа. GPS и передача автоматически не возобновляются.</p>
     </section>
 
     {sharing.error && <p className={styles.error} role="status">{sharing.error}<button type="button" disabled={!online || busy} onClick={sharing.refresh}>Обновить настройки</button></p>}
@@ -98,7 +100,7 @@ export function EarthSharingPanel({ sharing, people, peopleLoading, online, onSh
           <option value="60">На 1 час</option><option value="480">На 8 часов</option><option value="forever">Пока не выключу</option>
         </select>
       </label>
-      <p className={styles.explanation}><ShieldCheck size={16} aria-hidden="true" />Храним только последнюю свежую точку, без маршрута и истории. В фоне GPS не работает; без обновлений точка исчезает через 2 минуты.</p>
+      <p className={styles.explanation}><ShieldCheck size={16} aria-hidden="true" />Храним только последнюю точку, без маршрута и истории. В фоне GPS не работает. Последняя геопозиция доступна до 24 часов после обновления, но не дольше выбранного срока. Полностью убрать её можно кнопкой выключения доступа.</p>
       <button className={styles.shareButton} type="submit" disabled={!settings || !online || busy || sharing.pendingGhost || chosen.length === 0}>
         <MapPin size={17} aria-hidden="true" />{busy ? "Сохраняем…" : active ? "Подтвердить и обновлять позицию" : "Разрешить выбранным и включить GPS"}
       </button>

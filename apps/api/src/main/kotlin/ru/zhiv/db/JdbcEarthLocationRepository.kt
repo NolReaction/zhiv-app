@@ -85,7 +85,7 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
             if(enabling && count>=10) throw EarthRateLimited(max(1,ceil((60_000-(time.toEpochMilli()-bucket.toEpochMilli()))/1000.0).toInt()))
             val epoch=if(enabling) UUID.randomUUID() else null
             val precision=if(enabling) request.precision else value.precision
-            val until=if(enabling) request.durationMinutes?.let { time.plusSeconds(it*60L) } else null
+            val until=if(enabling) request.durationMinutes?.let { time.plusSeconds(it*60L) } else if(request.mode=="GHOST") value.until else null
             c.economyUpdate("""UPDATE earth_sharing_settings SET mode=?,revision=least(revision+1,9007199254740990),precision=?,sharing_until=?,
                 publication_epoch=?,publisher_session_id=?,last_sequence=0,last_captured_at=NULL,last_accepted_at=NULL,
                 enable_bucket_at=?,enable_bucket_count=? WHERE user_id=?""",request.mode,precision,at(until),epoch,
@@ -113,16 +113,16 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
             if(captured.isBefore(time.minusSeconds(60)) || captured.isAfter(time.plusSeconds(10))) invalidEarthPosition()
             val elapsed=value.accepted?.let { time.toEpochMilli()-it.toEpochMilli() }
             if(elapsed!=null && elapsed<30_000) throw EarthRateLimited(max(1,ceil((30_000-elapsed)/1000.0).toInt()))
-            val updated=minOf(time,captured);val expiry=updated.plusSeconds(EARTH_POSITION_TTL_SECONDS)
+            val updated=minOf(time,captured);val expiry=minOf(updated.plusSeconds(EARTH_POSITION_TTL_SECONDS),value.until ?: Instant.MAX)
             val approximate=value.precision=="APPROXIMATE"
             val latitude=if(approximate) approximateEarthCoordinate(request.latitude) else request.latitude
             val longitude=if(approximate) approximateEarthCoordinate(request.longitude) else request.longitude
             val accuracy=if(approximate) max(1500.0,request.accuracyMeters) else request.accuracyMeters
-            c.economyUpdate("""INSERT INTO earth_latest_locations(user_id,publication_epoch,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
-                VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET publication_epoch=EXCLUDED.publication_epoch,
+            c.economyUpdate("""INSERT INTO earth_latest_locations(user_id,publication_epoch,publisher_session_id,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET publication_epoch=EXCLUDED.publication_epoch,publisher_session_id=EXCLUDED.publisher_session_id,
                 latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,accuracy_meters=EXCLUDED.accuracy_meters,precision=EXCLUDED.precision,
                 updated_at=EXCLUDED.updated_at,expires_at=EXCLUDED.expires_at,accepted_at=EXCLUDED.accepted_at""",
-                current.id,value.epoch,latitude,longitude,accuracy,value.precision,at(updated),at(expiry),at(time))
+                current.id,value.epoch,current.sessionId,latitude,longitude,accuracy,value.precision,at(updated),at(expiry),at(time))
             c.economyUpdate("UPDATE earth_sharing_settings SET last_sequence=?,last_captured_at=?,last_accepted_at=? WHERE user_id=?",request.sequence,at(captured),at(time),current.id)
             EarthPositionReceipt(current.publicId,time.toString(),expiry.toString(),time.toString())
         }
@@ -145,11 +145,11 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
             p.precision,p.updated_at,least(p.expires_at,coalesce(s.sharing_until,p.expires_at)) AS expires_at
             FROM earth_sharing_recipients g JOIN circles edge ON edge.id=g.circle_id
             JOIN app_users u ON u.id=g.owner_user_id JOIN earth_sharing_settings s ON s.user_id=u.id
-            JOIN earth_latest_locations p ON p.user_id=u.id AND p.publication_epoch=s.publication_epoch
-            JOIN app_sessions publisher ON publisher.id=s.publisher_session_id AND publisher.user_id=u.id
+            JOIN earth_latest_locations p ON p.user_id=u.id
+            JOIN app_sessions publisher ON publisher.id=p.publisher_session_id AND publisher.user_id=u.id
             WHERE g.recipient_user_id=? AND edge.kind='DIRECT' AND edge.archived_at IS NULL
             AND ((edge.direct_user_low_id=u.id AND edge.direct_user_high_id=?) OR (edge.direct_user_high_id=u.id AND edge.direct_user_low_id=?))
-            AND u.deleted_at IS NULL AND u.banned_at IS NULL AND s.mode='SHARING'
+            AND u.deleted_at IS NULL AND u.banned_at IS NULL AND s.mode IN ('SHARING','GHOST')
             AND (s.sharing_until IS NULL OR s.sharing_until>clock_timestamp()) AND p.expires_at>clock_timestamp()
             AND publisher.revoked_at IS NULL AND publisher.expires_at>clock_timestamp()
             ORDER BY u.public_id,g.circle_id LIMIT 100""",viewer.id,viewer.id,viewer.id) {

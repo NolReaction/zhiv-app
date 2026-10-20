@@ -21,6 +21,9 @@ object DatabaseFactory {
             maxLifetime = 1_800_000
             connectionInitSql = "SET statement_timeout = '8s'; SET lock_timeout = '3s'; SET idle_in_transaction_session_timeout = '10s'"
             isAutoCommit = false
+            // Commit pool initialization and isolate validation from application
+            // transactions, including freshly opened connections during pool growth.
+            isIsolateInternalQueries = true
             transactionIsolation = "TRANSACTION_READ_COMMITTED"
             addDataSourceProperty("ApplicationName", "zhiv-api")
             addDataSourceProperty("reWriteBatchedInserts", "true")

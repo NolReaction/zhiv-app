@@ -19,18 +19,30 @@ function ownerRecord(owner: string): DevEarthOwner {
   let record = state.owners.get(owner);
   if (!record) {
     record = { mode: "OFF", revision: 0, precision: "APPROXIMATE", recipientCircleIds: [], sharingUntil: null,
-      publicationEpoch: null, publisherSession: null, sequence: 0, capturedAt: null, position: null, nextPublishAt: 0 };
+      publicationEpoch: null, publisherSession: null, lastPublisherSession: null, sequence: 0, capturedAt: null, position: null, nextPublishAt: 0 };
     state.owners.set(owner, record);
   }
   return record;
 }
-function invalidate(record: DevEarthOwner) {
-  record.publicationEpoch = null; record.publisherSession = null; record.position = null;
+function pause(record: DevEarthOwner) {
+  record.publicationEpoch = null; record.publisherSession = null;
   record.sequence = 0; record.capturedAt = null; record.nextPublishAt = 0;
+}
+function invalidate(record: DevEarthOwner) {
+  pause(record); record.lastPublisherSession = null; record.position = null;
+}
+function expireConsent(record: DevEarthOwner, time: number) {
+  if (record.mode !== "OFF" && record.sharingUntil !== null && record.sharingUntil <= time) {
+    invalidate(record); record.mode = "OFF"; record.recipientCircleIds = []; record.sharingUntil = null; record.revision++;
+  }
 }
 function publisherActive(owner: string, record: DevEarthOwner, time: number) {
   return record.mode === "SHARING" && (record.sharingUntil === null || record.sharingUntil > time)
     && !!record.publicationEpoch && !!record.publisherSession && getDevIdentity(record.publisherSession)?.user.publicId === owner;
+}
+function pointActive(owner: string, record: DevEarthOwner, time: number) {
+  return record.mode !== "OFF" && (record.sharingUntil === null || record.sharingUntil > time)
+    && !!record.lastPublisherSession && getDevIdentity(record.lastPublisherSession)?.user.publicId === owner;
 }
 function armCleanup() {
   const state = devEarthSharingState();
@@ -41,7 +53,8 @@ function armCleanup() {
   state.cleanup = setTimeout(() => {
     state.cleanup = null;
     for (const [owner, record] of state.owners) {
-      if (!publisherActive(owner, record, Date.now())) invalidate(record);
+      expireConsent(record, Date.now());
+      if (record.position && !pointActive(owner, record, Date.now())) invalidate(record);
       else if (record.position && record.position.expiresAt <= Date.now()) record.position = null;
     }
     armCleanup();
@@ -72,13 +85,14 @@ export function getDevEarthSharing(token: string | undefined): DevEarthResult<Ea
   const actor = context(token); if (actor.error) return actor.error;
   const retry = budget(devEarthSharingState().reads, actor.owner, 600, 3_600_000);
   if (retry) return error(429, "EARTH_RATE_LIMITED", retry);
-  return { kind: "ok", value: settings(actor.owner, ownerRecord(actor.owner)) };
+  const record = ownerRecord(actor.owner); expireConsent(record, Date.now());
+  return { kind: "ok", value: settings(actor.owner, record) };
 }
 
 export function putDevEarthSharing(token: string | undefined, body: EarthSharingWrite): DevEarthResult<EarthSharingSettings> {
   if (!earthSharingWriteSchema.safeParse(body).success) return error(400, "INVALID_EARTH_SHARING");
   const actor = context(token, body.expectedOwnerPublicId); if (actor.error) return actor.error;
-  const record = ownerRecord(actor.owner);
+  const record = ownerRecord(actor.owner); expireConsent(record, Date.now());
   if (body.mode === "SHARING") {
     if (record.revision !== body.expectedRevision) return error(409, "EARTH_REVISION_CONFLICT");
     const people = listDevPeople(actor.token);
@@ -95,8 +109,9 @@ export function putDevEarthSharing(token: string | undefined, body: EarthSharing
     return { kind: "ok", value: settings(actor.owner, record, record.publicationEpoch) };
   }
   // Privacy changes have priority over CAS conflicts, enable and GPS quotas.
-  invalidate(record); record.mode = body.mode; record.revision++; record.sharingUntil = null;
-  if (body.mode === "OFF") record.recipientCircleIds = [];
+  if (body.mode === "OFF") { invalidate(record); record.recipientCircleIds = []; record.sharingUntil = null; }
+  else pause(record);
+  record.mode = body.mode; record.revision++;
   return { kind: "ok", value: settings(actor.owner, record) };
 }
 
@@ -104,6 +119,7 @@ export function putDevEarthPosition(token: string | undefined, body: EarthPositi
   if (!earthPositionWriteSchema.safeParse(body).success) return error(400, "INVALID_EARTH_POSITION");
   const actor = context(token, body.expectedOwnerPublicId); if (actor.error) return actor.error;
   const record = ownerRecord(actor.owner), time = Date.now(), capturedAt = Date.parse(body.capturedAt);
+  expireConsent(record, time);
   if (!publisherActive(actor.owner, record, time) || record.publisherSession !== actor.token || record.publicationEpoch !== body.publicationEpoch)
     return error(409, "EARTH_PUBLICATION_CONFLICT");
   if (body.sequence <= record.sequence || record.capturedAt !== null && capturedAt <= record.capturedAt)
@@ -111,10 +127,11 @@ export function putDevEarthPosition(token: string | undefined, body: EarthPositi
   if (capturedAt < time - EARTH_POSITION_MAX_AGE_MS || capturedAt > time + EARTH_POSITION_FUTURE_MS)
     return error(400, "INVALID_EARTH_POSITION");
   if (time < record.nextPublishAt) return error(429, "EARTH_RATE_LIMITED", Math.max(1, Math.ceil((record.nextPublishAt - time) / 1000)));
-  const updatedAt = Math.min(time, capturedAt), expiresAt = updatedAt + EARTH_POSITION_TTL_MS;
+  const updatedAt = Math.min(time, capturedAt), expiresAt = Math.min(updatedAt + EARTH_POSITION_TTL_MS, record.sharingUntil ?? Infinity);
   // Keep only the fix fields, never a request body, publisher token or receipt.
   record.position = { ...earthSharedCoordinates({ latitude: body.latitude, longitude: body.longitude,
     accuracyMeters: body.accuracyMeters }, record.precision), updatedAt, expiresAt };
+  record.lastPublisherSession = actor.token;
   record.sequence = body.sequence; record.capturedAt = capturedAt; record.nextPublishAt = time + EARTH_POSITION_PUBLISH_MS;
   armCleanup();
   return { kind: "ok", value: { ownerPublicId: actor.owner, acceptedAt: iso(time), expiresAt: iso(expiresAt), serverTime: iso(time) } };
@@ -123,8 +140,8 @@ export function putDevEarthPosition(token: string | undefined, body: EarthPositi
 export function stopDevEarthPosition(token: string | undefined, body: EarthPositionStop): DevEarthResult<EarthPositionStopped> {
   if (!earthPositionStopSchema.safeParse(body).success) return error(400, "INVALID_EARTH_POSITION");
   const actor = context(token, body.expectedOwnerPublicId); if (actor.error) return actor.error;
-  const record = ownerRecord(actor.owner);
-  if (record.publicationEpoch === body.publicationEpoch && record.publisherSession === actor.token) invalidate(record);
+  const record = ownerRecord(actor.owner); expireConsent(record, Date.now());
+  if (record.publicationEpoch === body.publicationEpoch && record.publisherSession === actor.token) pause(record);
   return { kind: "ok", value: { ownerPublicId: actor.owner, serverTime: iso(Date.now()) } };
 }
 
@@ -137,7 +154,8 @@ export function getDevEarthPeople(token: string | undefined): DevEarthResult<Ear
   const people = current.value.people.flatMap(person => {
     const owner = person.user.publicId, record = devEarthSharingState().owners.get(owner);
     if (!record || !record.recipientCircleIds.includes(person.circleId)) return [];
-    if (!publisherActive(owner, record, time)) { invalidate(record); return []; }
+    expireConsent(record, time);
+    if (record.position && !pointActive(owner, record, time)) { invalidate(record); return []; }
     if (!record.position || record.position.expiresAt <= time) { record.position = null; return []; }
     const point = record.position;
     return [{ circleId: person.circleId, user: { ...person.user }, latitude: point.latitude, longitude: point.longitude,

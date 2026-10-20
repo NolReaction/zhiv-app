@@ -37,15 +37,23 @@ test("saved access does not claim an active GPS or silently resume publication",
   assert.deepEqual(calls, []);
 });
 
-test("offline privacy remains actionable and does not promise that remote deletion already succeeded", () => {
-  const value = { ...sharing, pendingGhost: true, settings: { ...settings, mode: "GHOST" } };
+test("offline ghost preserves the last point and does not promise an acknowledged server freeze", () => {
+  const value = { ...sharing, pendingGhost: true, pendingPrivacyMode: "GHOST", settings: { ...settings, mode: "GHOST" } };
   const html = renderToStaticMarkup(createElement(EarthSharingPanel, { ...props, sharing: value, online: false }));
   const ghostButton = html.match(/<button[^>]*>[^<]*(?:<svg[\s\S]*?<\/svg>)?Включить режим призрака<\/button>/)?.[0];
   assert.ok(ghostButton);
   assert.doesNotMatch(ghostButton, /disabled/);
-  assert.match(html, /на сервере ещё не подтверждено/);
-  assert.match(html, /не позднее чем через 2 минуты/);
-  assert.match(html, /Без уведомлений друзьям/);
-  assert.match(html, /это можно заметить/);
-  assert.equal(sharingSummary(value), "Скрываем позицию…");
+  assert.match(html, /на сервере ещё не подтверждён/);
+  assert.match(html, /максимум на 24 часа/);
+  assert.match(html, /Без уведомлений и статуса призрака/);
+  assert.match(html, /время её обновления/);
+  assert.equal(sharingSummary(value), "Останавливаем передачу…");
+});
+
+test("offline OFF distinguishes unconfirmed deletion from freezing a marker", () => {
+  const value = { ...sharing, pendingGhost: true, pendingPrivacyMode: "OFF", settings: { ...settings, mode: "OFF" } };
+  const html = renderToStaticMarkup(createElement(EarthSharingPanel, { ...props, sharing: value, online: false }));
+  assert.match(html, /Удаление точки и доступа на сервере ещё не подтверждено/);
+  assert.match(html, /до 24 часов после обновления/);
+  assert.doesNotMatch(html, /Режим призрака на сервере ещё не подтверждён/);
 });

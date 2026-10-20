@@ -16,7 +16,8 @@ test("Earth location summary shows measured precision and does not present pause
   const fix = { latitude: 55, longitude: 37, accuracy: 42.2, timestamp: Date.now() };
   assert.equal(locationSummary("active", fix), "Вы на карте · точность ±42 м");
   assert.match(locationSummary("active", { ...fix, accuracy: 12_500 }), /12,5 км/);
-  assert.equal(locationSummary("paused", fix), "Обновление на паузе");
+  assert.equal(locationSummary("paused", fix), "Последняя геопозиция · обновление остановлено");
+  assert.equal(locationSummary("paused", null), "Обновление на паузе");
   assert.equal(locationSummary("requesting", fix), "Определяем местоположение…");
   assert.equal(locationSummary("denied", null), "Найдите себя на Земле");
 });

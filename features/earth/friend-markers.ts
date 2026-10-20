@@ -35,7 +35,8 @@ function initials(name: string): string {
 function friendLabel(person: EarthMapPerson): string {
   const precision = person.accuracyMeters < 1_000 ? `${Math.max(1, Math.round(person.accuracyMeters))} м`
     : `${(person.accuracyMeters / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} км`;
-  return `${person.user.displayName} · ${person.precision === "APPROXIMATE" ? "примерное местоположение" : "точность"} ±${precision}. Открыть друга`;
+  const updatedAt = new Date(person.updatedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return `${person.user.displayName} · ${person.precision === "APPROXIMATE" ? "примерное местоположение" : "точность"} ±${precision}. Последнее обновление: ${updatedAt}. Открыть друга`;
 }
 
 /** Current authorized feed only: no requests, storage, avatars or location history. */

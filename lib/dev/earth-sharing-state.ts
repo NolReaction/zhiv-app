@@ -7,7 +7,7 @@ type StoredPosition = {
 export type DevEarthOwner = {
   mode: EarthSharingMode; revision: number; precision: EarthSharingPrecision;
   recipientCircleIds: string[]; sharingUntil: number | null;
-  publicationEpoch: string | null; publisherSession: string | null;
+  publicationEpoch: string | null; publisherSession: string | null; lastPublisherSession: string | null;
   sequence: number; capturedAt: number | null; position: StoredPosition | null;
   nextPublishAt: number;
 };
@@ -33,7 +33,7 @@ export function revokeDevEarthCircle(circleId: string) {
     record.recipientCircleIds = record.recipientCircleIds.filter(id => id !== circleId);
     record.revision++;
     // Every audience change requires a new explicit publication and fresh fix.
-    record.publicationEpoch = null; record.publisherSession = null; record.position = null;
+    record.publicationEpoch = null; record.publisherSession = null; record.lastPublisherSession = null; record.position = null;
     record.sequence = 0; record.capturedAt = null; record.nextPublishAt = 0;
   }
 }

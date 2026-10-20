@@ -81,6 +81,7 @@ import {
 } from "@/features/game/tap-input";
 import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
 import { PeopleView } from "@/features/people/people-view";
+import { personProfileTarget, type PersonProfileTarget } from "@/features/people/people-profile-navigation";
 import { ProfileView } from "@/features/account/profile-view";
 import type { NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { CheckInCalendar } from "@/features/check-in/check-in-calendar";
@@ -426,6 +427,7 @@ function CheckInContent() {
   const mochlikVisible = appearanceReady && !simpleView;
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
   const [friendSelection, setFriendSelection] = useState<ProfileFriendVisit | null>(null);
+  const [peopleProfileTarget, setPeopleProfileTarget] = useState<PersonProfileTarget | null>(null);
   const worldPeopleReturn = useRef(false);
   const appNavigationRef = useRef<HTMLElement | null>(null);
   const notificationSettingsExit = useRef<NotificationSettingsExit | null>(null);
@@ -453,6 +455,7 @@ function CheckInContent() {
       const order = appViews;
       setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
       setViewSelection({ owner: viewOwner, view: next });
+      if (next !== "people") setPeopleProfileTarget(null);
       if (me) rememberEarthSection(me.user.publicId, next === "earth");
       if (next === "profile") void game.refresh();
     };
@@ -816,14 +819,25 @@ function CheckInContent() {
     }
   }, [loseSession]);
 
-  const visitFriend = (person: Person) => {
+  const visitFriend = (person: Person, trigger?: HTMLButtonElement) => {
     const selection = profileFriendVisit(screen === "home" ? me?.user.publicId : null, people?.people, person, isOnline);
-    if (!selection || !worldPortal.open) {
+    if (!selection || !worldPortal.open && !trigger) {
       notify(isOnline ? "Мир друга сейчас недоступен. Обновите список друзей." : "Для посещения друга нужен интернет.", "error");
       return;
     }
     setNotificationEntry(undefined);
     setFriendSelection(selection);
+    if (!worldPortal.open) {
+      setWorldMounted(true);
+      worldPortal.enter(trigger ?? null, null);
+      void economy.reconcile();
+    }
+  };
+  const openPeopleProfile = (person: Person) => {
+    const target = personProfileTarget(screen === "home" ? me?.user.publicId : null, people?.people, person);
+    if (!target) { notify("Обновите список друзей: связь с этим человеком изменилась.", "error"); return; }
+    setPeopleProfileTarget(target);
+    selectView("people");
   };
   const friendVisit = currentProfileFriendVisit(screen === "home" ? me?.user.publicId : null, friendSelection, people?.people, isOnline, worldPortal.open);
   const visitDevBot = async (target: GuestWorldTarget) => {
@@ -1855,6 +1869,7 @@ function CheckInContent() {
 
       ) : activeView === "people" ? (
         <PeopleView
+          key={`people:${me?.user.publicId ?? ""}:${peopleProfileTarget?.ownerPublicId === me?.user.publicId ? peopleProfileTarget?.circleId ?? "" : ""}`}
           ownerPublicId={me?.user.publicId ?? null}
           data={people}
           groups={groups}
@@ -1870,6 +1885,8 @@ function CheckInContent() {
           onRefresh={async () => { await refreshPeople(); }}
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
+          onVisitFriend={visitFriend}
+          initialProfileTarget={peopleProfileTarget}
         />
       ) : activeView === "profile" && me ? (
         <ProfileView
@@ -1914,7 +1931,8 @@ function CheckInContent() {
           active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange} cameraSession={earthRetention.cameraSession} sharing={earthSharing}
           isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
           onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
-          onOpenWorld={trigger => { setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />}
+          onOpenProfile={openPeopleProfile} onVisitFriend={visitFriend}
+          onOpenWorld={trigger => { setFriendSelection(null); setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />}
       </div>
       {me && streak ? <CheckInCalendar key={`calendar:${me.user.publicId}`} open={calendarOpen} onOpenChange={setCalendarOpen}
         streak={streak} items={game.progress?.items} lastCheckInAt={lastCheckInAt} timeZone={me.profile.timeZone} onSessionLost={loseSession}

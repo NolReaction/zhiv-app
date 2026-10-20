@@ -25,6 +25,7 @@ import ru.zhiv.installZhivApi
 import ru.zhiv.mail.*
 import ru.zhiv.notifications.*
 import ru.zhiv.security.TokenCodec
+import java.sql.Connection
 import java.time.OffsetDateTime
 import java.util.Base64
 import java.util.UUID
@@ -66,6 +67,33 @@ class JdbcMailRepositoryIntegrationTest {
         val enc=Base64.getUrlEncoder().withoutPadding()
         notifications.subscribe(p.hash,p.publicId,BrowserPushSubscription("https://fcm.googleapis.com/fcm/send/${UUID.randomUUID()}",PushKeys(
             enc.encodeToString(ByteArray(65).also { it[0]=4 }),enc.encodeToString(ByteArray(16)))))
+    }
+
+    @Test fun `new pool connections allow snapshot isolation without inheriting an initialization transaction`() {
+        DatabaseFactory.create(config).use { pool ->
+            val connections=mutableListOf<Connection>()
+            try {
+                // Holding each connection forces pool growth instead of repeatedly
+                // borrowing the same initialized physical connection.
+                repeat(pool.maximumPoolSize) {
+                    val c=pool.connection
+                    connections+=c
+                    c.transactionIsolation=Connection.TRANSACTION_REPEATABLE_READ
+                    c.isReadOnly=true
+                    val settings=c.economyRows("""SELECT current_setting('statement_timeout'),current_setting('lock_timeout'),
+                        current_setting('idle_in_transaction_session_timeout'),current_setting('transaction_read_only')""") {
+                        listOf(it.getString(1),it.getString(2),it.getString(3),it.getString(4))
+                    }.single()
+                    assertEquals(listOf("8s","3s","10s","on"),settings)
+                    c.commit()
+                }
+            } finally { connections.forEach { it.close() } }
+            pool.connection.use { c ->
+                assertEquals(Connection.TRANSACTION_READ_COMMITTED,c.transactionIsolation)
+                assertFalse(c.isReadOnly)
+                assertFalse(c.autoCommit)
+            }
+        }
     }
 
     @Test fun `inbox owner and read rights are checked on the server and duplicate read preserves the first time`()=runBlocking<Unit> {
@@ -121,8 +149,9 @@ class JdbcMailRepositoryIntegrationTest {
         val request=broadcast();val receipt=repository.broadcast(admin.hash,request)
         assertEquals(2L,receipt.recipientCount);assertTrue(receipt.changed)
         val later=player();assertEquals(receipt,repository.broadcast(admin.hash,request))
-        assertTrue(repository.inbox(later.hash,later.publicId,null,20).messages.isEmpty())
-        val message=repository.inbox(a.hash,a.publicId,null,20).messages.single()
+        val laterMail=repository.inbox(later.hash,later.publicId,null,20).messages
+        assertNotNull(laterMail.single().gift,"A later account receives only its own welcome, never the earlier broadcast")
+        val message=repository.inbox(a.hash,a.publicId,null,20).messages.single { it.gift==null }
         assertFalse(Json.encodeToString(message).contains(request.reason));assertEquals(request.body,message.body)
         assertFalse(message.notify);assertNull(message.attachments)
         assertEquals(1L,repository.broadcastHistory(admin.hash,0,20).total)
@@ -149,7 +178,7 @@ class JdbcMailRepositoryIntegrationTest {
         execute("REVOKE UPDATE,DELETE ON admin_actions,admin_mail_broadcasts FROM mail_runtime")
         HikariDataSource(HikariConfig().apply {
             jdbcUrl=postgres.jdbcUrl;username=postgres.username;password=postgres.password
-            maximumPoolSize=2;minimumIdle=0;isAutoCommit=false;connectionInitSql="SET ROLE mail_runtime"
+            maximumPoolSize=2;minimumIdle=0;isAutoCommit=false;isIsolateInternalQueries=true;connectionInitSql="SET ROLE mail_runtime"
         }).use { runtime ->
             runtime.connection.use { c ->
                 for(table in listOf("admin_actions","admin_mail_broadcasts")) {
@@ -307,7 +336,8 @@ class JdbcMailRepositoryIntegrationTest {
         for(state in listOf("expired","revoked","banned","deleted")) {
             val a=player();val welcome=repository.inbox(a.hash,a.publicId,null,20).messages.single()
             when(state) {
-                "expired" -> execute("UPDATE app_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE token_hash=?",a.hash)
+                "expired" -> execute("""UPDATE app_sessions SET created_at=statement_timestamp()-interval '2 seconds',
+                    expires_at=statement_timestamp()-interval '1 second' WHERE token_hash=?""",a.hash)
                 "revoked" -> execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",a.hash)
                 "banned" -> execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Проверка запрета' WHERE id=?",a.id)
                 else -> execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",a.id)

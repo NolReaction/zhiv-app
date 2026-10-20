@@ -62,11 +62,10 @@ const job = (overrides = {}) => ({ id: "construction-1", kind: "construction", t
 test("meal picker opens without spending and shows only opened or owned meals with actual stock and speed", () => {
   const economy = controller(), before = structuredClone(economy.snapshot), props = { economy, consumer: "hero", seconds: 7200, onNavigateStation() {} };
   const view = open(props);
-  const visible = economy.snapshot.catalog.food.meals.filter(meal => (economy.snapshot.inventory[meal.itemId] ?? 0) > 0
-    || economy.snapshot.catalog.recipes.some(recipe => recipe.rewards[meal.itemId] > 0 && recipe.buildingLevel <= (economy.snapshot.buildings[recipe.buildingId] ?? 0)
-      && recipe.requiredHomeLevel <= economy.snapshot.buildings.home && Object.entries(recipe.requiredBuildings).every(([id, level]) => (economy.snapshot.buildings[id] ?? 0) >= level)));
-  assert.equal(view.nodes.filter(node => node.props["data-boost-meal"]).length, visible.length);
-  assert.ok(visible.length < economy.snapshot.catalog.food.meals.length, "locked recipes are absent");
+  const visibleIds = view.nodes.filter(node => node.props["data-boost-meal"]).map(node => node.props["data-boost-meal"]);
+  assert.deepEqual(visibleIds, ["grilled_fish", "berry_fish", "hearty_fish", "legendary_fish"]);
+  assert.equal(row(view, "fish_soup"), undefined, "the first personally cooked grilled fish still needs collecting");
+  const visible = economy.snapshot.catalog.food.meals.filter(meal => visibleIds.includes(meal.itemId));
   for (const meal of visible) {
     const markup = renderToStaticMarkup(row(view, meal.itemId));
     assert.ok(markup.includes(`+${meal.heroSpeedBps / 100}%`));

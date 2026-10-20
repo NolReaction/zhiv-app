@@ -35,6 +35,7 @@ function isVersionedAsset(url) {
       || /^\/(?:icon-(?:32|192|512|maskable-512)\.png|apple-touch-icon\.png|favicon\.ico)$/.test(pathname)) && /^\?v=[a-f0-9]{12}$/.test(search)
     || /^\/world\/runtime\/[a-zA-Z]+(?:-[a-zA-Z]+)*-[a-f0-9]{12}\.webp$/.test(pathname)
     || (/^\/world\/prototype\/[a-zA-Z0-9]+(?:[-_][a-zA-Z0-9]+)*\.(?:webp|png)$/.test(pathname)
+      || /^\/world\/buildings\/[a-zA-Z0-9]+(?:[-_][a-zA-Z0-9]+)*\/[a-zA-Z0-9]+(?:[-_][a-zA-Z0-9]+)*\.(?:webp|png)$/.test(pathname)
       || pathname === "/world/runtime/boat-wreck-lowquality.webp") && /^\?v=[a-f0-9]{12}$/.test(search);
 }
 

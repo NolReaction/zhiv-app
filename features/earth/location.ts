@@ -183,14 +183,18 @@ export function createEarthLocationController(
     }
   }
 
-  function stop() {
+  function halt(keepPosition: boolean) {
     automaticAttempted = true;
     automaticEpoch += 1;
     requested = false;
     clearWatch();
     clearPermission();
-    publish(IDLE);
+    publish(keepPosition && state.position ? { ...state, status: "paused", error: null } : IDLE);
   }
+  function stop() { halt(false); }
+  // Freeze only this account's in-memory marker. No watch or automatic restart
+  // survives; an explicit private lookup is still available in ghost mode.
+  function freeze() { halt(true); }
 
   // Permissions.query is passive: an unknown/prompt permission never opens a
   // browser prompt. A delayed answer cannot revive a stopped/hidden session.
@@ -260,5 +264,6 @@ export function createEarthLocationController(
     },
     start,
     stop,
+    freeze,
   };
 }

@@ -584,11 +584,14 @@ test("all content-versioned Tiled PNG and WebP artwork survives an offline revis
     ...world.sites.flatMap(site => site.states.map(state => state.image)),
   ])];
   assert.ok(assets.some(asset => /_[^/]+\.png\?/.test(asset)), "the real authored PNG filenames include underscores");
+  assert.ok(assets.some(asset => asset.startsWith("/world/buildings/")), "exported levels also use per-building directories");
   for (const asset of assets) {
     harness.responses.set(origin + asset, new Response(asset, { headers: {
       "content-type": asset.includes(".png?") ? "image/png" : "image/webp",
     } }));
-    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), asset);
+    const response = await harness.dispatchFetch(asset, "cors");
+    assert.ok(response, `versioned Tiled artwork must be intercepted: ${asset}`);
+    assert.equal(await response.text(), asset);
     harness.responses.set(origin + asset, new Error("Offline"));
   }
   for (const asset of assets) assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), asset);
@@ -597,6 +600,11 @@ test("all content-versioned Tiled PNG and WebP artwork survives an offline revis
     "/world/prototype/Shishkolap_House.png?v=latest",
     "/world/prototype/Shishkolap_House.png?v=0123456789ab&preview=true",
     "/world/prototype/nested/house.png?v=0123456789ab",
+    "/world/buildings/quarry/quarry-lvl-0.png",
+    "/world/buildings/quarry/quarry-lvl-0.png?v=latest",
+    "/world/buildings/quarry/quarry-lvl-0.png?v=0123456789ab&preview=true",
+    "/world/buildings/quarry/nested/quarry-lvl-0.png?v=0123456789ab",
+    "/world/buildings/quarry/quarry-lvl-0.glb?v=0123456789ab",
   ]) assert.equal(await harness.dispatchFetch(asset, "cors"), null);
 });
 

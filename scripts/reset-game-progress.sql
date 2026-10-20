@@ -70,16 +70,17 @@ BEGIN
     -- V63 pending sale proceeds are game wealth, intentionally cleared by this full-world reset like wallets.
     -- V64 one-time daily gift state and receipts remain in the preserved tables.
     -- V65 location data is ephemeral; account sharing choices and recipients survive gameplay resets.
+    -- V66 changes retention and source-session fencing; points remain ephemeral and are cleared.
     -- Any later migration must be reviewed, including columns on retained tables.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 65
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 66
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,65) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,66) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V65. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V66. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

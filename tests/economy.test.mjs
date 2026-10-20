@@ -342,7 +342,7 @@ test("commands reject public minting, untrusted counts and unknown fields", () =
   assert.throws(() => economy.getDevEconomy(undefined, now), { code: "UNAUTHORIZED" });
 });
 
-test("market escrow conserves goods, quoted full-lot buy transfers coins once to seller", () => {
+test("market escrow conserves goods and full-lot proceeds reach the seller only after one claim", () => {
   const seller = player(), buyer = player(); fixture(seller); fixture(buyer, { coins: 1000, items: {} });
   const listed = trade(seller, "create_listing", "berries", 6, 10), lot = listed.listing;
   assert.equal(read(seller).inventory.berries, 24); assert.equal(read(seller).wallet.coins, 5000);
@@ -352,9 +352,19 @@ test("market escrow conserves goods, quoted full-lot buy transfers coins once to
   assert.throws(() => trade(buyer, "buy_listing", lot.id, 6, 9), { code: "ECONOMY_MARKET_QUOTE_CHANGED" });
   const buy = command(buyer, "buy_listing", lot.id, 6, 10), result = economy.commandDevEconomyMarket(buyer.token, buy, now);
   assert.equal(result.state.wallet.coins, 900); assert.equal(result.state.inventory.berries, 6);
-  assert.equal(read(seller).wallet.coins, 5095); assert.equal(read(seller).revision, 2);
+  assert.equal(read(seller).wallet.coins, 5000); assert.equal(read(seller).revision, 2);
+  const sold = economy.getDevEconomyMarket(seller.token, {}, now).mine.find(listing => listing.id === lot.id);
+  assert.equal(sold.status, "sold"); assert.equal(sold.sale.proceedsCoins, 95); assert.equal(sold.sale.claimedAt, null);
   assert.equal(economy.commandDevEconomyMarket(buyer.token, buy, now).replayed, true);
-  assert.equal(read(seller).wallet.coins, 5095); assert.equal(economy.getDevEconomyMarket(buyer.token, {}, now).listings.length, 0);
+  assert.equal(read(seller).wallet.coins, 5000); assert.equal(economy.getDevEconomyMarket(buyer.token, {}, now).listings.length, 0);
+  const claim = command(seller, "claim_sale", lot.id);
+  const claimed = economy.commandDevEconomyMarket(seller.token, claim, now);
+  assert.equal(claimed.state.wallet.coins, 5095); assert.equal(claimed.state.revision, 3);
+  assert.equal(claimed.listing.sale.claimedAt, new Date(now).toISOString());
+  assert.equal(economy.commandDevEconomyMarket(seller.token, claim, now).replayed, true);
+  assert.equal(read(seller).wallet.coins, 5095);
+  assert.throws(() => trade(seller, "claim_sale", lot.id), { code: "ECONOMY_MARKET_NOT_PENDING" });
+  assert.equal(read(seller).wallet.coins, 5095);
 });
 
 test("two buyers cannot acquire the same lot and failed purchase charges neither party", () => {
@@ -364,7 +374,10 @@ test("two buyers cannot acquire the same lot and failed purchase charges neither
   const first = command(buyer, "buy_listing", lot.id, 5, 20), second = command(rival, "buy_listing", lot.id, 5, 20);
   economy.commandDevEconomyMarket(buyer.token, first, now);
   assert.throws(() => economy.commandDevEconomyMarket(rival.token, second, now), { code: "ECONOMY_MARKET_NOT_ACTIVE" });
-  assert.equal(read(seller).wallet.coins, 5190); assert.equal(read(rival).wallet.coins, 5000); assert.equal(read(rival).inventory.wood, 30);
+  assert.equal(read(seller).wallet.coins, 5000); assert.equal(read(rival).wallet.coins, 5000); assert.equal(read(rival).inventory.wood, 30);
+  const sale = economy.getDevEconomyMarket(seller.token, {}, now).mine.find(listing => listing.id === lot.id).sale;
+  assert.equal(sale.proceedsCoins, 190); assert.equal(sale.buyerPublicId, buyer.me.user.publicId);
+  assert.equal(trade(seller, "claim_sale", lot.id).state.wallet.coins, 5190);
 });
 
 test("market cancel returns exactly escrow, self buying and foreign cancellation fail", () => {

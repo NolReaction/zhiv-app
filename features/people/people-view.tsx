@@ -74,6 +74,8 @@ import styles from "./people-view.module.css";
 import { GuestProfileSection } from "./guest-profile";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { GroupsSection } from "./groups-section";
+import { PersonGameActions, type PersonVisitAction } from "./person-game-actions";
+import { currentPersonProfile, personProfileTarget, type PersonProfileTarget } from "./people-profile-navigation";
 
 type PeopleViewProps = {
   ownerPublicId: string | null;
@@ -91,6 +93,8 @@ type PeopleViewProps = {
   onRefresh: () => Promise<void>;
   onGroupsRefresh: () => Promise<void>;
   onSessionLost: () => void;
+  onVisitFriend?: PersonVisitAction;
+  initialProfileTarget?: PersonProfileTarget | null;
 };
 
 type PeopleSection = "people" | "groups";
@@ -156,6 +160,8 @@ export function PeopleView({
   onRefresh,
   onGroupsRefresh,
   onSessionLost,
+  onVisitFriend,
+  initialProfileTarget,
 }: PeopleViewProps) {
   const [peopleQuery, setPeopleQuery] = useState("");
   const filteredPeople = useMemo(() => data?.people.filter(person => matchesPersonSearch(person, peopleQuery)) ?? [], [data, peopleQuery]);
@@ -171,10 +177,11 @@ export function PeopleView({
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<Person | null>(null);
-  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
-  const [nicknameDraft, setNicknameDraft] = useState("");
+  const [selectedProfile, setSelectedProfile] = useState<PersonProfileTarget | null>(initialProfileTarget ?? null);
+  const profileReturnCircle = useRef(initialProfileTarget?.circleId ?? null);
+  const [nicknameDraft, setNicknameDraft] = useState(() => currentPersonProfile(ownerPublicId, initialProfileTarget, data?.people)?.nickname ?? "");
   const [nicknameError, setNicknameError] = useState<string | null>(null);
-  const selectedPerson = data?.people.find(person => person.circleId === selectedPersonId) ?? null;
+  const selectedPerson = currentPersonProfile(ownerPublicId, selectedProfile, data?.people);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<PeopleSection>("people");
   const [inviteDialog, dispatchInviteDialog] = useReducer(
@@ -186,7 +193,8 @@ export function PeopleView({
   const inviteLinkField = useRef<HTMLTextAreaElement>(null);
 
   function openPerson(person: Person) {
-    setSelectedPersonId(person.circleId);
+    setSelectedProfile(personProfileTarget(ownerPublicId, data?.people, person));
+    profileReturnCircle.current = person.circleId;
     setNicknameDraft(person.nickname ?? "");
     setNicknameError(null);
   }
@@ -204,7 +212,7 @@ export function PeopleView({
     try {
       await updatePersonNickname(selectedPerson.circleId, nickname, createUuidV4());
       await onRefresh();
-      setSelectedPersonId(null);
+      setSelectedProfile(null);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) onSessionLost();
       else setNicknameError(cause instanceof Error ? cause.message : "Не удалось сохранить подпись. Попробуйте ещё раз.");
@@ -597,7 +605,7 @@ export function PeopleView({
                   return (
                     <article className={styles.personCard} key={person.circleId}>
                       <div className={styles.personTop}>
-                        <button type="button" className={styles.personIdentity}
+                        <button id={`people-profile-${person.circleId}`} type="button" className={styles.personIdentity}
                           aria-label={`Открыть профиль ${displayName}`}
                           aria-describedby={`person-status-${person.circleId} person-checkin-${person.circleId}`} onClick={() => openPerson(person)}>
                         <span
@@ -621,6 +629,8 @@ export function PeopleView({
                         </button>
 
                       </div>
+                      <PersonGameActions className={styles.gameActions} person={person} online={isOnline}
+                        onOpenProfile={openPerson} onVisitFriend={onVisitFriend} />
                       <div className={styles.personBottom}>
                         <label className={styles.sharingLabel}>
                           <span>
@@ -730,9 +740,12 @@ export function PeopleView({
       </Dialog>
 
       <Dialog open={Boolean(selectedPerson)} onOpenChange={(open) => {
-        if (!open && !pending) setSelectedPersonId(null);
+        if (!open && !pending) setSelectedProfile(null);
       }}>
-        <DialogContent className={styles.dialog}>
+        <DialogContent className={styles.dialog} onCloseAutoFocus={event => {
+          const trigger = document.getElementById(`people-profile-${profileReturnCircle.current}`);
+          if (trigger instanceof HTMLButtonElement) { event.preventDefault(); trigger.focus({ preventScroll: true }); }
+        }}>
           <DialogHeader>
             <DialogTitle className={styles.dialogTitle}>{selectedPerson ? personDisplayName(selectedPerson) : "Человек"}</DialogTitle>
             <DialogDescription className={styles.dialogDescription}>

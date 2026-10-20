@@ -36,7 +36,9 @@ jobs:
   web:
     name: Web checks
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The complete sequential browser suite plus both production builds exceeds
+    # the former 30-minute budget; keep every test enabled for release checks.
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

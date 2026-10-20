@@ -1555,8 +1555,12 @@ class JdbcEconomyRepositoryIntegrationTest {
         economy.snapshot(p.hash)
         val stored = source.connection.use { readEconomyProfile(it, p.id).state }
         val depleted = stored.copy(wallet = EconomyWallet(100_000, 1000), fishing = stored.fishing.copy(
-            ownedRods = stored.fishing.ownedRods + "brook_rod", ownedHooks = stored.fishing.ownedHooks + "round_hook"))
+            // Leave the original river/barbed pair as the only unowned gear:
+            // v12 also offers the float rod and spoon hook at house level one.
+            ownedRods = stored.fishing.ownedRods + listOf("brook_rod", "float_rod"),
+            ownedHooks = stored.fishing.ownedHooks + listOf("round_hook", "spoon_hook")))
         val stocked = depleted.copy(fishingShop = EconomyFishingShops.create(depleted, Instant.now(), { 0 }))
+        assertFalse(EconomyFishingShops.canRefresh(stocked), "No occupied gear slot has a replacement in this fixture")
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stocked), p.id)
         val before = economy.snapshot(p.hash)
         val shop = checkNotNull(before.fishingShop)

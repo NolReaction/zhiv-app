@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { PublicUser } from "./check-in-contract";
 import { playerTagSchema } from "./player-tag";
 
-export const EARTH_POSITION_TTL_MS = 120_000;
+export const EARTH_POSITION_TTL_MS = 24 * 60 * 60_000;
 export const EARTH_POSITION_MAX_AGE_MS = 60_000;
 export const EARTH_POSITION_FUTURE_MS = 10_000;
 export const EARTH_POSITION_PUBLISH_MS = 30_000;

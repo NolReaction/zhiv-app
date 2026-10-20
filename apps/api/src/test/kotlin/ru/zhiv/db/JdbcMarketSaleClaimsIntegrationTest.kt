@@ -90,7 +90,7 @@ class JdbcMarketSaleClaimsIntegrationTest {
 
     @Test fun `purchase delivers goods immediately but exposes real buyer and fixed net proceeds only to seller until collection`() = runBlocking<Unit> {
         val seller=player(); val buyer=player("Natasha",berries=0); val stranger=player(berries=0)
-        execute(source,"UPDATE app_users SET avatar_storage_key='private/never-public',avatar_updated_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=?",buyer.id)
+        execute(source,"UPDATE app_users SET avatar_storage_key='private/never-public',avatar_updated_at=statement_timestamp(),updated_at=statement_timestamp() WHERE id=?",buyer.id)
         val lot=offer(seller)
         assertNull(market.market(buyer.hash).listings.single().sale)
         val buy=purchase(buyer,lot)

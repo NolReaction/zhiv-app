@@ -85,8 +85,8 @@ class JdbcGameProgressResetIntegrationTest {
                   VALUES ('10000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000004',
                     '20000000-0000-4000-8000-000000000002');
                 WITH moment AS (SELECT clock_timestamp() AS now)
-                INSERT INTO earth_latest_locations(user_id,publication_epoch,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
-                  SELECT '10000000-0000-4000-8000-000000000001','e0000000-0000-4000-8000-00000000000e',55.75,37.62,1500,
+                INSERT INTO earth_latest_locations(user_id,publication_epoch,publisher_session_id,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
+                  SELECT '10000000-0000-4000-8000-000000000001','e0000000-0000-4000-8000-00000000000e','30000000-0000-4000-8000-000000000003',55.75,37.62,1500,
                     'APPROXIMATE',now,now+interval '120 seconds',now FROM moment;
                 INSERT INTO direct_requests(id,requester_user_id,recipient_user_id,idempotency_key)
                   VALUES ('80000000-0000-4000-8000-000000000008','10000000-0000-4000-8000-000000000001',
@@ -163,13 +163,13 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='66' WHERE version='65'")
+            execute(source, "UPDATE flyway_schema_history SET version='67' WHERE version='66'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V65"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V66"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='65' WHERE version='66'")
+            execute(source, "UPDATE flyway_schema_history SET version='66' WHERE version='67'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)

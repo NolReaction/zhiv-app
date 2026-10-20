@@ -223,6 +223,8 @@
   overflow: hidden;
 }
 
+.gameActions { margin: 0 12px 10px; }
+
 .personTop {
   gap: 10px;
   padding: 12px 14px;

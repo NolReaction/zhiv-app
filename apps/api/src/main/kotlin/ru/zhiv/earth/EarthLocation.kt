@@ -8,7 +8,7 @@ import ru.zhiv.http.parsePublicId
 import java.time.Instant
 import kotlin.math.floor
 
-const val EARTH_POSITION_TTL_SECONDS = 120L
+const val EARTH_POSITION_TTL_SECONDS = 86_400L
 const val EARTH_PUBLISH_INTERVAL_SECONDS = 30L
 private const val MAX_SAFE = 9_007_199_254_740_990L
 

@@ -21,7 +21,7 @@ internal fun purgeEarthLocations(source: DataSource): Int=source.connection.use 
         c.createStatement().use { it.execute("SET LOCAL statement_timeout='5s'") }
         val consent=c.economyUpdate("""UPDATE earth_sharing_settings SET mode='OFF',revision=least(revision+1,9007199254740990),
             sharing_until=NULL,publication_epoch=NULL,publisher_session_id=NULL,last_sequence=0,last_captured_at=NULL,last_accepted_at=NULL
-            WHERE user_id IN(SELECT user_id FROM earth_sharing_settings WHERE mode='SHARING' AND sharing_until<=clock_timestamp()
+            WHERE user_id IN(SELECT user_id FROM earth_sharing_settings WHERE mode IN ('SHARING','GHOST') AND sharing_until<=clock_timestamp()
                 ORDER BY sharing_until LIMIT 1000 FOR UPDATE SKIP LOCKED)""")
         val points=c.economyUpdate("""DELETE FROM earth_latest_locations WHERE user_id IN
             (SELECT user_id FROM earth_latest_locations WHERE expires_at<=clock_timestamp() ORDER BY expires_at LIMIT 1000 FOR UPDATE SKIP LOCKED)""")

@@ -98,7 +98,8 @@
 .friendsPanel header button { min-width: 44px; min-height: 44px; padding: 7px; background: #c5dfb910; }
 .friendsIntro, .hint { margin: 10px 0; color: #b8cdb1; font-size: 12px; line-height: 1.6; }
 .friendsList { list-style: none; margin: 13px 0; padding: 0; }
-.friendsList li { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #c5dfb91c; }
+.friendsList li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #c5dfb91c; }
+.friendsList .gameActions { flex-basis: 100%; }
 .avatar { display: grid; width: 36px; height: 36px; flex-shrink: 0; place-items: center; border-radius: 50%; background: #c5dfb915; color: #d4e5c7; font-size: 13px; font-weight: 700; }
 .friendsList li > div { min-width: 0; }
 .friendsList .friendLocate { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; margin-left: auto; border: 1px solid #c5dfb936; border-radius: 12px; background: #c5dfb913; color: #dcebc9; cursor: pointer; }

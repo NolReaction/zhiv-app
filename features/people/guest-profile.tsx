@@ -47,7 +47,7 @@ export function GuestProfileContents({ profile }: { profile: GuestProfile }) {
         </ul>}
       </details>)}
     </section>
-    <p className={styles.hint}>Полянку друга можно открыть через «Друзья» в игровом профиле.</p>
+    <p className={styles.hint}>Кнопка «В гости» в списке людей или близких на карте открывает полянку друга.</p>
   </div>;
 }
 

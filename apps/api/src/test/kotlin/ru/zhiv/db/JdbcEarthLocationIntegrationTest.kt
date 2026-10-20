@@ -37,13 +37,25 @@ class JdbcEarthLocationIntegrationTest {
             AppConfig(pg.jdbcUrl,pg.username,pg.password,false,setOf("http://localhost"))
         }
         source=DatabaseFactory.create(config)
-        // Exercise the combined V64 -> V65 upgrade before any Earth fixtures exist.
-        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("64").load().migrate()
+        // Exercise V65 -> V66 on an already published point; migration must not extend old retention.
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("65").load().migrate()
+        repo=JdbcEarthLocationRepository(source)
+        val legacy=runBlocking {
+            val a=account();val b=account();val shared=enable(a,direct(a,b))
+            execute("""WITH moment AS (SELECT clock_timestamp() AS now)
+                INSERT INTO earth_latest_locations(user_id,publication_epoch,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
+                SELECT ?,?::uuid,55.75,37.62,1500,'APPROXIMATE',now,now+interval '120 seconds',now FROM moment""",a.id,shared.publicationEpoch)
+            Triple(a,b,scalar("SELECT updated_at::text || '/' || expires_at::text FROM earth_latest_locations WHERE user_id=?",a.id))
+        }
         val before=scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h")
         DatabaseFactory.migrate(source)
-        assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=64"))
-        assertEquals("65",scalar("SELECT max(version::int) FROM flyway_schema_history"))
-        repo=JdbcEarthLocationRepository(source)
+        assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=65"))
+        assertEquals("66",scalar("SELECT max(version::int) FROM flyway_schema_history"))
+        runBlocking {
+            assertEquals(legacy.third,scalar("SELECT updated_at::text || '/' || expires_at::text FROM earth_latest_locations WHERE user_id=?",legacy.first.id),"upgrade preserves the original fix and deadline")
+            assertEquals(1,repo.people(legacy.second.hash).people.size)
+            assertEquals("1",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=? AND publisher_session_id IS NOT NULL",legacy.first.id))
+        }
     }
     @AfterAll fun close() { if(::source.isInitialized) source.close();postgres?.stop() }
     private fun execute(sql: String,vararg values: Any?)=source.connection.use { c ->
@@ -73,12 +85,12 @@ class JdbcEarthLocationIntegrationTest {
         val a=account();val b=account();val stranger=account();val circle=direct(a,b);direct(a,stranger)
         assertEquals("OFF",repo.settings(a.hash).mode);assertNull(repo.settings(a.hash).publicationEpoch)
         assertTrue(repo.people(b.hash).people.isEmpty())
-        val settings=enable(a,circle);assertNotNull(settings.publicationEpoch);assertNull(repo.settings(a.hash).publicationEpoch)
+        val settings=enable(a,circle,duration=null);assertNotNull(settings.publicationEpoch);assertNull(repo.settings(a.hash).publicationEpoch)
         val request=fix(a,settings);val receipt=repo.publish(a.hash,request)
         val person=repo.people(b.hash).people.single()
         assertEquals(55.76,person.latitude);assertEquals(37.62,person.longitude);assertEquals(1500.0,person.accuracyMeters)
         assertEquals(a.publicId,person.user.publicId);assertTrue(repo.people(stranger.hash).people.isEmpty())
-        assertEquals(120L,java.time.Duration.between(Instant.parse(person.updatedAt),Instant.parse(person.expiresAt)).seconds)
+        assertEquals(86_400L,java.time.Duration.between(Instant.parse(person.updatedAt),Instant.parse(person.expiresAt)).seconds)
         assertEquals(receipt.expiresAt,person.expiresAt)
         assertEquals("1",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))
         assertEquals("u",scalar("SELECT relpersistence FROM pg_class WHERE oid='earth_latest_locations'::regclass"))
@@ -86,17 +98,22 @@ class JdbcEarthLocationIntegrationTest {
     @Test fun `ghost and off ignore stale revision and old enable cannot resurrect a point`()=runBlocking {
         val a=account();val b=account();val circle=direct(a,b);val settings=enable(a,circle,"PRECISE")
         repo.publish(a.hash,fix(a,settings))
+        val before=repo.people(b.hash).people
         val mail=scalar("SELECT count(*) FROM player_mail_messages WHERE user_id=?",a.id)
         val notifications=scalar("SELECT count(*) FROM notification_events WHERE user_id=?",a.id)
         val ghost=hidden(a)
         assertEquals("GHOST",ghost.mode);assertEquals("PRECISE",ghost.precision);assertEquals(listOf(circle.toString()),ghost.recipientCircleIds)
-        assertNull(ghost.publicationEpoch);assertTrue(repo.people(b.hash).people.isEmpty())
-        assertEquals("0",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))
+        assertNull(ghost.publicationEpoch);assertEquals(before,repo.people(b.hash).people)
+        assertEquals(settings.sharingUntil,ghost.sharingUntil)
+        assertEquals("1",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))
         rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,settings,2)) }
         rejected("EARTH_REVISION_CONFLICT") { repo.share(a.hash,EarthSharingWrite(a.publicId,settings.revision,"SHARING","PRECISE",listOf(circle.toString()),60)) }
         assertEquals(mail,scalar("SELECT count(*) FROM player_mail_messages WHERE user_id=?",a.id))
         assertEquals(notifications,scalar("SELECT count(*) FROM notification_events WHERE user_id=?",a.id))
         assertTrue(hidden(a,"OFF").recipientCircleIds.isEmpty())
+        assertTrue(repo.people(b.hash).people.isEmpty())
+        hidden(a)
+        assertTrue(repo.people(b.hash).people.isEmpty(),"OFF to GHOST cannot restore a point or permission")
     }
     @Test fun `publisher session and scoped stop fence other browsers and delayed cleanup`()=runBlocking {
         val a=account();val b=account();val circle=direct(a,b);val first=enable(a,circle)
@@ -111,7 +128,7 @@ class JdbcEarthLocationIntegrationTest {
         repo.stop(a.hash,EarthPositionStop(a.publicId,first.publicationEpoch!!))
         assertEquals(1,repo.people(b.hash).people.size)
         repo.stop(a.hash,EarthPositionStop(a.publicId,second.publicationEpoch!!))
-        assertTrue(repo.people(b.hash).people.isEmpty());assertEquals("SHARING",repo.settings(a.hash).mode)
+        assertEquals(1,repo.people(b.hash).people.size);assertEquals("SHARING",repo.settings(a.hash).mode)
         assertEquals(second.revision,repo.settings(a.hash).revision)
         rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,second,2)) }
     }
@@ -132,7 +149,7 @@ class JdbcEarthLocationIntegrationTest {
     }
     @Test fun `expiry and duration hide synchronously and maintenance physically purges`()=runBlocking {
         val a=account();val b=account();val s=enable(a,direct(a,b));repo.publish(a.hash,fix(a,s))
-        execute("UPDATE earth_latest_locations SET updated_at=updated_at-interval '121 seconds',expires_at=expires_at-interval '121 seconds' WHERE user_id=?",a.id)
+        execute("UPDATE earth_latest_locations SET updated_at=updated_at-interval '86401 seconds',expires_at=expires_at-interval '86401 seconds' WHERE user_id=?",a.id)
         assertTrue(repo.people(b.hash).people.isEmpty());purgeEarthLocations(source)
         assertEquals("0",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))
         val s2=enable(a,UUID.fromString(s.recipientCircleIds.single()));repo.publish(a.hash,fix(a,s2))
@@ -155,8 +172,9 @@ class JdbcEarthLocationIntegrationTest {
         rejected("INVALID_EARTH_SHARING") { enable(a,circle) }
     }
     @Test fun `session revocation ban and soft deletion physically clear and deny late updates`()=runBlocking {
-        for(event in listOf("session","ban","delete")) {
+        for(mode in listOf("SHARING","GHOST")) for(event in listOf("session","ban","delete")) {
             val a=account();val b=account();val s=enable(a,direct(a,b));repo.publish(a.hash,fix(a,s))
+            if(mode=="GHOST") hidden(a)
             when(event) {
                 "session" -> execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",a.hash)
                 "ban" -> execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Earth privacy regression' WHERE id=?",a.id)
@@ -176,16 +194,24 @@ class JdbcEarthLocationIntegrationTest {
             rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,s,2)) }
         }
     }
-    @Test fun `concurrent publish and ghost or friend removal cannot reopen access`()=runBlocking {
+    @Test fun `concurrent publish and ghost or friend removal cannot resume live sharing`()=runBlocking {
         for(mode in listOf("ghost","remove")) repeat(5) {
             val a=account();val b=account();val circle=direct(a,b);val s=enable(a,circle)
-            val jobs=listOf(async(Dispatchers.Default) { runCatching { repo.publish(a.hash,fix(a,s)) } },async(Dispatchers.Default) {
+            val publication=async(Dispatchers.Default) { runCatching { repo.publish(a.hash,fix(a,s)) } }
+            val privacy=async(Dispatchers.Default) {
                 if(mode=="ghost") hidden(a) else JdbcRelationshipRepository(source).removePerson(a.hash,circle)
-            })
-            jobs.awaitAll()
-            assertTrue(repo.people(b.hash).people.isEmpty())
-            if(mode=="ghost") assertEquals("0",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))
-            else assertEquals("0",scalar("SELECT count(*) FROM earth_sharing_recipients WHERE circle_id=?",circle))
+            }
+            val published=publication.await().isSuccess
+            privacy.await()
+            if(mode=="ghost") {
+                assertEquals("GHOST",repo.settings(a.hash).mode)
+                assertNull(repo.settings(a.hash).publicationEpoch)
+                assertEquals(if(published) 1 else 0,repo.people(b.hash).people.size,"only a fix committed before GHOST can remain")
+                rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,s,2)) }
+            } else {
+                assertTrue(repo.people(b.hash).people.isEmpty())
+                assertEquals("0",scalar("SELECT count(*) FROM earth_sharing_recipients WHERE circle_id=?",circle))
+            }
         }
     }
     @Test fun `real account merge revokes both publishers including kept session without transferring consent`()=runBlocking {
@@ -205,4 +231,56 @@ class JdbcEarthLocationIntegrationTest {
         rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,sa,2)) }
         rejected("UNAUTHORIZED") { repo.publish(b.hash,fix(b,sb,2)) }
     }
+    @Test fun `ghost and scoped pause preserve the same point without adding recipients or renewing time`()=runBlocking {
+        val a=account();val b=account();val c=account();val ab=direct(a,b);val ac=direct(a,c)
+        val shared=enable(a,ab,"PRECISE",null)
+        assertTrue(repo.people(b.hash).people.isEmpty())
+        repo.publish(a.hash,fix(a,shared))
+        val point=repo.people(b.hash).people.single()
+        repo.stop(a.hash,EarthPositionStop(a.publicId,shared.publicationEpoch!!))
+        assertEquals(point,repo.people(b.hash).people.single())
+        val command=EarthSharingWrite(a.publicId,0,"GHOST","APPROXIMATE",listOf(ac.toString()),480)
+        repeat(2) {
+            val frozen=repo.share(a.hash,command)
+            assertNull(frozen.publicationEpoch);assertNull(frozen.sharingUntil)
+            assertEquals(listOf(ab.toString()),frozen.recipientCircleIds)
+            assertEquals(point,repo.people(b.hash).people.single())
+            assertTrue(repo.people(c.hash).people.isEmpty())
+        }
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,shared,2)) }
+        val resumed=enable(a,ab,"PRECISE",null)
+        assertTrue(repo.people(b.hash).people.isEmpty(),"new consent cannot reuse a pre-ghost fix")
+        repo.publish(a.hash,fix(a,resumed))
+        repo.stop(a.hash,EarthPositionStop(a.publicId,shared.publicationEpoch!!))
+        assertEquals(1,repo.people(b.hash).people.size,"late stop is limited to the revoked epoch")
+    }
+    @Test fun `ghost keeps original timed consent and expiry and maintenance removes an expired frozen point`()=runBlocking {
+        val a=account();val b=account();val shared=enable(a,direct(a,b),duration=60)
+        repo.publish(a.hash,fix(a,shared))
+        val point=repo.people(b.hash).people.single()
+        assertEquals(shared.sharingUntil,point.expiresAt)
+        val frozen=hidden(a)
+        assertEquals(shared.sharingUntil,frozen.sharingUntil)
+        assertEquals(point,repo.people(b.hash).people.single())
+        execute("UPDATE earth_sharing_settings SET sharing_until=clock_timestamp()-interval '1 second' WHERE user_id=?",a.id)
+        assertTrue(repo.people(b.hash).people.isEmpty())
+        purgeEarthLocations(source)
+        assertEquals("OFF",repo.settings(a.hash).mode)
+        assertTrue(repo.settings(a.hash).recipientCircleIds.isEmpty())
+        assertEquals("0",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))
+        hidden(a)
+        assertTrue(repo.people(b.hash).people.isEmpty())
+    }
+    @Test fun `friend removal revokes a frozen point and no repeated ghost request can restore it`()=runBlocking {
+        val a=account();val b=account();val circle=direct(a,b);val shared=enable(a,circle)
+        repo.publish(a.hash,fix(a,shared));hidden(a)
+        assertEquals(1,repo.people(b.hash).people.size)
+        JdbcRelationshipRepository(source).removePerson(a.hash,circle)
+        assertTrue(repo.people(b.hash).people.isEmpty())
+        assertEquals("0",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=?",a.id))
+        direct(a,b);hidden(a)
+        assertTrue(repo.people(b.hash).people.isEmpty())
+        assertTrue(repo.settings(a.hash).recipientCircleIds.isEmpty())
+    }
+
 }

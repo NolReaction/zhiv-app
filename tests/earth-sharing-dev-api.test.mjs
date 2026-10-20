@@ -105,12 +105,17 @@ test("owner fences, CAS and session-bound epochs stop cross-account writes and o
 test("GHOST ignores stale CAS, stops publishing and preserves choices; OFF clears choices without notifying anyone", () => {
   const a = player(), b = player(), circle = connect(a, b); const shared = enable(a, [circle], { precision: "PRECISE" });
   ok(store.putDevEarthPosition(a.token, position(a, shared)));
+  const before = ok(store.getDevEarthPeople(b.token)).people;
   const ghost = ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST", expectedRevision: 0, precision: "APPROXIMATE" })));
   assert.equal(ghost.mode, "GHOST"); assert.equal(ghost.precision, "PRECISE"); assert.deepEqual(ghost.recipientCircleIds, [circle]); assert.equal(ghost.publicationEpoch, null);
-  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  assert.equal(ghost.sharingUntil, shared.sharingUntil);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before);
   error(store.putDevEarthPosition(a.token, position(a, shared)), 409);
   const off = ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "OFF", expectedRevision: 0 })));
   assert.deepEqual(off.recipientCircleIds, []); assert.equal(off.mode, "OFF");
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  ok(store.putDevEarthSharing(a.token, write(a, [circle], { mode: "GHOST", durationMinutes: null })));
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "OFF to GHOST cannot restore removed access or coordinates");
   assert.deepEqual(Object.keys(ok(store.getDevEarthPeople(b.token))).sort(), ["ownerPublicId", "people", "serverTime"]);
 });
 
@@ -124,16 +129,16 @@ test("precision or audience edits rotate epochs and require a new fix; old scope
   ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: first.publicationEpoch }));
   assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1);
   ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: second.publicationEpoch }));
-  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1, "pause retains the last known point");
   assert.equal(ok(store.getDevEarthSharing(a.token)).mode, "SHARING", "scoped stop pauses publisher without erasing consent");
   t.mock.timers.tick(30_000); error(store.putDevEarthPosition(a.token, position(a, second, { sequence: 2 })), 409);
 });
 
 test("fixes are fresh, increasing and single-use; identical fixes cannot heartbeat or renew expiry", t => {
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
-  const a = player(), b = player(), circle = connect(a, b), shared = enable(a, [circle]);
+  const a = player(), b = player(), circle = connect(a, b), shared = enable(a, [circle], { durationMinutes: null });
   const first = position(a, shared), receipt = ok(store.putDevEarthPosition(a.token, first));
-  assert.equal(Date.parse(receipt.expiresAt) - Date.parse(receipt.acceptedAt), 120_000);
+  assert.equal(Date.parse(receipt.expiresAt) - Date.parse(receipt.acceptedAt), 86_400_000);
   error(store.putDevEarthPosition(a.token, first), 409);
   error(store.putDevEarthPosition(a.token, { ...first, sequence: 2 }), 409);
   t.mock.timers.tick(30_000);
@@ -142,8 +147,8 @@ test("fixes are fresh, increasing and single-use; identical fixes cannot heartbe
   }
   const old = position(a, shared, { sequence: 2, capturedAt: new Date(Date.now() - 10_000).toISOString() });
   const accepted = ok(store.putDevEarthPosition(a.token, old));
-  assert.equal(Date.parse(accepted.expiresAt), Date.parse(old.capturedAt) + 120_000);
-  t.mock.timers.tick(110_000); assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  assert.equal(Date.parse(accepted.expiresAt), Date.parse(old.capturedAt) + 86_400_000);
+  t.mock.timers.tick(86_390_000); assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
 });
 
 test("consent duration expires, ghost never resumes automatically, and revoked publisher sessions disappear immediately", t => {
@@ -158,7 +163,7 @@ test("consent duration expires, ghost never resumes automatically, and revoked p
   error(store.putDevEarthPosition(a.token, position(a, fresh, { sequence: 2 })), 401);
 });
 
-test("ghost stays paused after every duration and a different session cannot issue a scoped stop for the current publisher", t => {
+test("timed ghost consent expires and a different session cannot issue a scoped stop for the current publisher", t => {
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
   const bootstrap = uuid(), a = player("А", bootstrap), b = player("Б"), circle = connect(a, b);
   const shared = enable(a, [circle], { durationMinutes: 480 });
@@ -169,8 +174,8 @@ test("ghost stays paused after every duration and a different session cannot iss
   assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1);
   ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST" })));
   t.mock.timers.tick(24 * 3_600_000);
-  assert.equal(ok(store.getDevEarthSharing(otherSession.token)).mode, "GHOST");
-  assert.deepEqual(ok(store.getDevEarthSharing(otherSession.token)).recipientCircleIds, [circle]);
+  assert.equal(ok(store.getDevEarthSharing(otherSession.token)).mode, "OFF");
+  assert.deepEqual(ok(store.getDevEarthSharing(otherSession.token)).recipientCircleIds, []);
   assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
   error(store.putDevEarthPosition(a.token, position(a, shared, { sequence: 2 })), 409);
 });
@@ -218,7 +223,7 @@ test("privacy commands bypass exhausted enable, read and GPS budgets", () => {
   ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: shared.publicationEpoch }));
   ok(store.putDevEarthSharing(a.token, { expectedOwnerPublicId: a.me.user.publicId, expectedRevision: 0,
     mode: "GHOST", precision: "APPROXIMATE", recipientCircleIds: [], durationMinutes: null }));
-  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1, "privacy pause keeps last known coordinates");
 });
 
 test("latest positions are physically removed on the bounded cleanup timer and account reset removes all geo state", t => {
@@ -226,7 +231,7 @@ test("latest positions are physically removed on the bounded cleanup timer and a
   const a = player(), b = player(), circle = connect(a, b), shared = enable(a, [circle]);
   ok(store.putDevEarthPosition(a.token, position(a, shared)));
   const state = devEarthSharingState(); assert.ok(state.cleanup); assert.ok(state.owners.get(a.me.user.publicId).position);
-  t.mock.timers.tick(120_000); assert.equal(state.owners.get(a.me.user.publicId).position, null); assert.equal(state.cleanup, null);
+  t.mock.timers.tick(3_600_000); assert.equal(state.owners.get(a.me.user.publicId).position, null); assert.equal(state.cleanup, null);
   identity.resetDevStoreForTests(); assert.equal(devEarthSharingState().owners.size, 0);
 });
 
@@ -317,4 +322,58 @@ test("fresh publication epochs resume immediately after ghost and scoped stop wh
   error(store.putDevEarthPosition(a.token, position(a, restarted, { sequence: 2, capturedAt: new Date(Date.now() + 1).toISOString() })), 429);
   t.mock.timers.tick(30_000);
   ok(store.putDevEarthPosition(a.token, position(a, restarted, { sequence: 2 })));
+});
+
+test("last known points have one retention policy across GPS pause, offline and GHOST without a public mode flag", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+  const shared = enable(a, [ab], { durationMinutes: null, precision: "PRECISE" });
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "polling before the first fix cannot revoke its epoch");
+  ok(store.putDevEarthPosition(a.token, position(a, shared)));
+  const before = contract.earthPeopleResponseSchema.parse(ok(store.getDevEarthPeople(b.token))).people;
+  assert.equal(contract.earthSharedPersonSchema.safeParse({ ...before[0], expiresAt: new Date(Date.parse(before[0].updatedAt) + 86_400_001).toISOString() }).success, false);
+  assert.equal(Date.parse(before[0].expiresAt) - Date.parse(before[0].updatedAt), 86_400_000);
+  ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: shared.publicationEpoch }));
+  t.mock.timers.tick(5 * 60_000);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before);
+  const command = write(a, [ac], { mode: "GHOST", expectedRevision: 0, durationMinutes: 480 });
+  ok(store.putDevEarthSharing(a.token, command));
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before);
+  assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, [], "GHOST cannot add a recipient supplied in its body");
+  t.mock.timers.tick(30_000); ok(store.putDevEarthSharing(a.token, command));
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before, "replayed privacy writes do not extend retention or update fix time");
+  error(store.putDevEarthPosition(a.token, position(a, shared, { sequence: 2 })), 409);
+  t.mock.timers.tick(86_070_000);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "the original 24 hour deadline still expires");
+});
+
+test("GHOST preserves the original timed grant and never extends it with a requested duration", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const a = player(), b = player(), circle = connect(a, b), shared = enable(a, [circle]);
+  ok(store.putDevEarthPosition(a.token, position(a, shared)));
+  const before = ok(store.getDevEarthPeople(b.token)).people;
+  assert.equal(before[0].expiresAt, shared.sharingUntil);
+  t.mock.timers.tick(3_500_000);
+  const frozen = ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST", durationMinutes: null })));
+  assert.equal(frozen.sharingUntil, shared.sharingUntil);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before);
+  t.mock.timers.tick(100_000);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  ok(store.putDevEarthSharing(a.token, write(a, [circle], { mode: "GHOST", durationMinutes: 480 })));
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "expired access cannot be revived with GHOST");
+});
+
+test("a frozen point is revoked by friendship removal and by its original publisher session even when another session enables ghost", () => {
+  for (const revoke of ["friend", "session"]) {
+    identity.resetDevStoreForTests();
+    const bootstrap = uuid(), a = player("А", bootstrap), b = player(), circle = connect(a, b), shared = enable(a, [circle]);
+    ok(store.putDevEarthPosition(a.token, position(a, shared)));
+    const other = player("А", bootstrap);
+    ok(store.putDevEarthSharing(other.token, write(other, [], { mode: "GHOST" })));
+    assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1);
+    if (revoke === "friend") ok(identity.removeDevPerson(a.token, circle));
+    else globalThis.__zhivDevStore.sessions.delete(a.token);
+    assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+    assert.equal(devEarthSharingState().owners.get(a.me.user.publicId).position, null);
+  }
 });

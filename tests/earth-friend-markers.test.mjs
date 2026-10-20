@@ -9,6 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { createEarthFriendMarkers, earthFriendScreenPoint } = await vite.ssrLoadModule("/features/earth/friend-markers.ts");
 const { layoutEarthFriends } = await vite.ssrLoadModule("/features/earth/friend-marker-layout.ts");
+const { EARTH_POSITION_TTL_MS } = await vite.ssrLoadModule("/lib/earth-sharing-contract.ts");
 const person = (circleId, longitude = 0, latitude = 0, extra = {}) => ({ circleId,
   user: { publicId: `public-${circleId}`, displayName: `Друг ${circleId}` }, latitude, longitude,
   accuracyMeters: 1500, precision: "APPROXIMATE", updatedAt: "2026-10-18T18:30:00.000Z",
@@ -201,9 +202,21 @@ test("tiny globe and private GPS overlap remove only drawing, preserving a valid
 test("invalid, duplicate, expired and overlong deadlines are ignored before any projection", () => {
   const f = fixture();
   f.show([person("a"), person("a", 10), person("nan", NaN), person("latitude", 0, 91),
-    person("expiry", 35, 0, { expiresAtMonotonic: 999 }), person("future", 35, 0, { expiresAtMonotonic: 122_000 }),
+    person("expiry", 35, 0, { expiresAtMonotonic: 999 }), person("future", 35, 0, { expiresAtMonotonic: 1_001 + EARTH_POSITION_TTL_MS }),
     person("accuracy", 35, 0, { accuracyMeters: -1 }), person("false-precision", 35, 0, { accuracyMeters: 10 })]);
   assert.equal(f.current.length, 1); assert.deepEqual(f.current[0].positions.at(-1), [0, 0]);
+  f.dispose();
+});
+
+test("a last-known marker survives a normal pause and includes its actual update time without a ghost status", () => {
+  const f = fixture();
+  const row = person("a", 0, 0, { expiresAtMonotonic: 1_000 + EARTH_POSITION_TTL_MS });
+  f.show([row]);
+  assert.equal(f.current.length, 1);
+  assert.match(f.current[0].options.element.attributes["aria-label"], /Последнее обновление:/);
+  assert.doesNotMatch(f.current[0].options.element.attributes["aria-label"], /GHOST|призрак|выключил/);
+  f.renderer.setSnapshot([row]);
+  assert.equal(f.renderer.focusFriend("a"), true);
   f.dispose();
 });
 

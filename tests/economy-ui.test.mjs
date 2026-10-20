@@ -2,12 +2,29 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-import { createElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-simple-economy-ui-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const marketHooksId = "virtual:economy-ui-market-hooks";
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-simple-economy-ui-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+  plugins: [{ name: "economy-ui-market-handlers", enforce: "pre",
+    resolveId(id) { if (id === marketHooksId) return `\0${id}`; },
+    load(id) { if (id === `\0${marketHooksId}`) return `
+      let slots = [], cursor = 0;
+      export function reset() { slots = []; cursor = 0; }
+      export function render() { cursor = 0; }
+      export function useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }]; }
+      export function useRef(initial) { const index = cursor++; if (!(index in slots)) slots[index] = { current: initial }; return slots[index]; }
+      export function useEffect() {}
+      export function useId() { return 'economy-market-' + cursor++; }
+    `; },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/market/player-market.tsx")) return source.replace('from "react";', `from "${marketHooksId}";`); },
+  }],
+});
 const { EconomyPanel, EconomyBalances, economyDuration } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+const { Market } = await vite.ssrLoadModule("/features/economy/ui/market/player-market.tsx");
+const marketHooks = await vite.ssrLoadModule(marketHooksId);
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
@@ -26,7 +43,24 @@ function controller(overrides = {}) {
   return { snapshot: snapshot(), market: null, marketError: null, busy: false, uncertain: false, error: null, notice: "", now, retryAt: 0,
     act() {}, actMarket() {}, refresh() {}, refreshMarket() {}, retry() {}, ...overrides };
 }
-const render = (tab, economy = controller(), focusId) => renderToStaticMarkup(createElement(EconomyPanel, { initialTab: tab, initialFocusId: focusId, economy }));
+const render = (tab, economy = controller(), focusId) => {
+  marketHooks.reset(); marketHooks.render();
+  return renderToStaticMarkup(createElement(EconomyPanel, { initialTab: tab, initialFocusId: focusId, economy }));
+};
+function renderBrowse(economy) {
+  marketHooks.reset(); marketHooks.render();
+  const tree = Market({ economy, navigate() {} });
+  let buy;
+  function visit(element) {
+    if (!isValidElement(element)) return;
+    if (element.props["data-guide-market-tab"] === "buy") buy = element;
+    Children.forEach(element.props.children, visit);
+  }
+  visit(tree);
+  if (buy) buy.props.onClick();
+  marketHooks.render();
+  return renderToStaticMarkup(Market({ economy, navigate() {} }));
+}
 const buttons = html => [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: match[2].replace(/<[^>]*>/g, "") }));
 const button = (html, text) => {
   const found = buttons(html).find(entry => entry.text.includes(text));
@@ -194,16 +228,16 @@ test("market shows real full-lot quotes, escapes seller text and applies catalog
   const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "<script>seller</script>", itemId: "wood", quantity: 6, totalPrice: 300,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
   const state = snapshot({ wallet: { coins: 300, pearls: 0 }, buildings: { home: 2, garden: 1, bridge: 1 }, completedExplorations: 0 });
-  let html = render("market", controller({ snapshot: state, market }));
+  let html = renderBrowse(controller({ snapshot: state, market }));
   assert.match(html, /Бревно × 6/);
   assert.match(html, /за весь лот/);
   assert.match(html, /&lt;script&gt;seller&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
   assert.equal(disabled(button(html, "Купить весь лот")), false);
   state.wallet.coins = 290;
-  assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Не хватает монет")), true);
+  assert.equal(disabled(button(renderBrowse(controller({ snapshot: state, market })), "Не хватает монет")), true);
   state.catalog.market.requiredHomeLevel = 3;
-  html = render("market", controller({ snapshot: state, market }));
+  html = renderBrowse(controller({ snapshot: state, market }));
   assert.equal(buttons(html).some(entry => entry.text.includes("Купить весь лот")), false,
     "a locked market hides trade actions until the required home and bridge are ready");
   assert.ok(button(html, "Улучшить дом"));
@@ -211,7 +245,7 @@ test("market shows real full-lot quotes, escapes seller text and applies catalog
 });
 
 test("an empty player market is honest and offers a next action without fictional merchants", () => {
-  const html = render("market", controller({ snapshot: snapshot({ buildings: { home: 2, garden: 1, bridge: 1 }, completedExplorations: 0 }),
+  const html = renderBrowse(controller({ snapshot: snapshot({ buildings: { home: 2, garden: 1, bridge: 1 }, completedExplorations: 0 }),
     market: { listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() } }));
   assert.match(html, /Прилавки пока свободны/);
   assert.ok(button(html, "В свою лавку"));
@@ -223,7 +257,7 @@ test("a personal showcase explains its fixed window and disables stale quotes un
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString(),
     showcase: { refreshAt: new Date(now + 300_000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 300 } };
   const economy = controller({ snapshot: snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2, bridge: 1 }, completedExplorations: 0 }), market });
-  let html = render("market", economy);
+  let html = renderBrowse(economy);
   assert.match(html, /На прилавках · 1/);
   assert.match(html, /В подборке до 2 лотов одной лавки/);
   assert.match(html, /Купленные и снятые лоты заменяются в следующей подборке/);
@@ -236,11 +270,11 @@ test("a personal showcase explains its fixed window and disables stale quotes un
   assert.match(html, /role="timer"[^>]*>05:00<\/strong>/);
   assert.equal(disabled(button(html, "Купить весь лот")), false);
   assert.doesNotMatch(html, /Показать ещё/);
-  html = render("market", { ...economy, now: now + 150_000 });
+  html = renderBrowse({ ...economy, now: now + 150_000 });
   assert.match(html, /role="timer"[^>]*>02:30<\/strong>/);
   assert.match(html, /data-market-refresh="waiting"[\s\S]*?<progress[^>]*value="0\.5"/);
   assert.equal(disabled(button(html, "Купить весь лот")), false);
-  html = render("market", { ...economy, now: now + 300_000 });
+  html = renderBrowse({ ...economy, now: now + 300_000 });
   assert.match(html, /data-market-refresh="ready"/);
   assert.match(html, /role="timer"[^>]*>00:00<\/strong>/);
   assert.match(html, /data-market-refresh="ready"[\s\S]*?<progress[^>]*value="0"/);
@@ -252,14 +286,14 @@ test("stale offers stay hidden until personal discovery and cannot bypass the NP
   const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "tools", quantity: 1, totalPrice: 1000,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
   const state = snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2, bridge: 1 }, completedExplorations: 0 });
-  assert.equal(buttons(render("market", controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false);
+  assert.equal(buttons(renderBrowse(controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false);
   state.buildings.home = 4;
-  assert.equal(buttons(render("market", controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false,
+  assert.equal(buttons(renderBrowse(controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false,
     "The house alone cannot open an unavailable producer");
   state.unlockedItems = ["tools"];
-  assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Купить весь лот")), false);
+  assert.equal(disabled(button(renderBrowse(controller({ snapshot: state, market })), "Купить весь лот")), false);
   market.listings[0].totalPrice = 990;
-  assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Предложение недоступно")), true);
+  assert.equal(disabled(button(renderBrowse(controller({ snapshot: state, market })), "Предложение недоступно")), true);
 });
 
 test("conversion is disclosed once as history and premium balance never exposes a checkout", () => {
@@ -337,7 +371,7 @@ test("player market cannot buy an unaffordable storage lot and offers the wareho
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
   const state = snapshot({ wallet: { coins: 300, pearls: 0 }, buildings: { home: 2, garden: 1, warehouse: 1, bridge: 1 }, completedExplorations: 0,
     storage: { capacity: 50, used: 40, reserved: 5, available: 5, overflow: 0 } });
-  const html = render("market", controller({ snapshot: state, market }));
+  const html = renderBrowse(controller({ snapshot: state, market }));
   assert.equal(disabled(button(html, "Не хватает места на складе")), true);
   assert.match(html, /Лот занимает 6 мест, свободно 5/);
   assert.ok(button(html, "Освободить место"));
