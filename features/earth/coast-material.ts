@@ -33,14 +33,23 @@ export function createEarthCoastlineData(land: FeatureCollection<Polygon | Multi
 }
 
 /** Coarse coast treatment fades out before precise vector coastlines take over. */
-export function earthCoastMaterialLayers(): { shadow: LineLayerSpecification; edge: LineLayerSpecification } {
+export function earthCoastMaterialLayers(): { shelf: LineLayerSpecification; shadow: LineLayerSpecification; edge: LineLayerSpecification } {
   const shared = { type: "line" as const, source: EARTH_COAST_SOURCE, maxzoom: 4,
     layout: { "line-cap": "round" as const, "line-join": "round" as const } };
   return {
+    // Painted before land: the land silhouette masks the inner half, leaving a
+    // restrained turquoise fringe in the sea rather than an outline on land.
+    // This is illustrated shallow water, never measured bathymetry.
+    shelf: { ...shared, id: "earth-coast-shallows", paint: {
+      "line-color": "#9cd9cd",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 0, 6, 2, 10, 4, 14],
+      "line-blur": 3.5,
+      "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.28, 2, 0.4, 3, 0.34, 4, 0],
+    } },
     shadow: { ...shared, id: "earth-coast-soft-shadow", paint: {
-      "line-color": "#386d61", "line-width": 5, "line-blur": 2.5,
+      "line-color": "#386d61", "line-width": 4, "line-blur": 2,
       "line-translate": [0, 1], "line-translate-anchor": "viewport",
-      "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.3, 2.5, 0.3, 4, 0],
+      "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.22, 2.5, 0.24, 4, 0],
     } },
     edge: { ...shared, id: "earth-coast-soft-edge", paint: {
       "line-color": "#e9eec5", "line-width": 1.6, "line-blur": 0.7,

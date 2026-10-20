@@ -9,7 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, se
 after(() => vite.close());
 const { createEarthLandMaterialImage, registerEarthMaterialImage, installEarthMaterialImages,
   EARTH_LAND_MATERIAL_IMAGE, EARTH_LAND_MATERIAL_SIZE, EARTH_LAND_MATERIAL_MAX_ZOOM } = await vite.ssrLoadModule("/features/earth/land-material.ts");
-const { createEarthCoastlineData, EARTH_COAST_SOURCE } = await vite.ssrLoadModule("/features/earth/coast-material.ts");
+const { createEarthCoastlineData, earthCoastMaterialLayers, EARTH_COAST_SOURCE } = await vite.ssrLoadModule("/features/earth/coast-material.ts");
 const { createCartoonEarthStyle, EARTH_LAND_SOURCE } = await vite.ssrLoadModule("/features/earth/cartoon-style.ts");
 const style = createCartoonEarthStyle({ type: "vector", url: "https://tiles.openfreemap.org/planet" });
 
@@ -78,20 +78,40 @@ test("coarse and detailed land use identical material, then become undecorated b
   const detail = style.layers.find(layer => layer.id === "earth-detail-land-material");
   assert.deepEqual(coarse.paint, detail.paint);
   assert.equal(coarse.paint["fill-pattern"], EARTH_LAND_MATERIAL_IMAGE);
-  assert.equal(coarse.maxzoom, EARTH_LAND_MATERIAL_MAX_ZOOM);
-  assert.equal(detail.maxzoom, coarse.maxzoom);
+  assert.equal(coarse.maxzoom, 4);
+  assert.equal(detail.minzoom, coarse.maxzoom, "coarse and detailed grain hand off without double exposure");
+  assert.equal(detail.maxzoom, EARTH_LAND_MATERIAL_MAX_ZOOM);
   const opacity = createExpression(coarse.paint["fill-opacity"], "fill-opacity");
   assert.equal(opacity.result, "success");
   assert.ok(opacity.value.evaluate({ zoom: 0 }) > 0.5);
   assert.equal(opacity.value.evaluate({ zoom: 8 }), 0);
   const index = id => style.layers.findIndex(layer => layer.id === id);
-  assert.ok(index("earth-land") < index(coarse.id) && index(coarse.id) < index("earth-detail-land"));
+  assert.ok(index("earth-land") < index("earth-detail-land") && index("earth-detail-land") < index(coarse.id));
   assert.ok(index("earth-detail-land") < index(detail.id) && index(detail.id) < index("earth-water"));
   assert.equal(style.sources[EARTH_COAST_SOURCE].maxzoom, 0);
   assert.equal(typeof style.sources[EARTH_COAST_SOURCE].data, "object");
   const coast = style.layers.filter(layer => layer.source === EARTH_COAST_SOURCE);
-  assert.equal(coast.length, 2);
+  assert.equal(coast.length, 3);
   assert.ok(coast.every(layer => layer.maxzoom <= detail.minzoom), "coarse coast treatment ends before precise coastlines take over");
+});
+
+test("illustrated shallow water remains a restrained coast fringe beneath land and fades before streets", () => {
+  const { shelf } = earthCoastMaterialLayers();
+  assert.equal(shelf.source, EARTH_COAST_SOURCE);
+  assert.equal(shelf.type, "line");
+  assert.equal(shelf.maxzoom, 4);
+  const opacity = createExpression(shelf.paint["line-opacity"], "line-opacity");
+  const width = createExpression(shelf.paint["line-width"], "line-width");
+  assert.equal(opacity.result, "success");
+  assert.equal(width.result, "success");
+  for (const zoom of [0, 1, 2, 3, 4, 8]) {
+    assert.ok(opacity.value.evaluate({ zoom }) >= 0 && opacity.value.evaluate({ zoom }) <= 0.4);
+    assert.ok(width.value.evaluate({ zoom }) <= 14, "a blurred shelf must not become a wide neon halo");
+  }
+  assert.ok(opacity.value.evaluate({ zoom: 2 }) > 0);
+  assert.equal(opacity.value.evaluate({ zoom: 4 }), 0);
+  assert.ok(style.layers.findIndex(layer => layer.id === shelf.id) < style.layers.findIndex(layer => layer.id === "earth-land"));
+  assert.equal(style.sources[shelf.source].data, style.sources[EARTH_COAST_SOURCE].data, "no separate geometry or source is generated for the shelf");
 });
 
 test("coastline treatment excludes synthetic date-line and pole closures without changing real land geometry", () => {

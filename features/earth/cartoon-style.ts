@@ -9,6 +9,7 @@ import { EARTH_COAST_SOURCE, createEarthCoastlineData, earthCoastMaterialLayers 
 import { earthOceanBackgroundLayer, earthOceanWaterLayer } from "./globe-ocean";
 import { earthLightingSources, earthLightingLayers } from "./globe-lighting";
 import { EARTH_RELIEF_SOURCE, earthReliefData, earthReliefLayer } from "./globe-relief";
+import { EARTH_BIOME_SOURCE, earthBiomeData, earthBiomeLayer } from "./globe-biomes";
 
 export const EARTH_LAND_SOURCE = "earth-local-land";
 export const EARTH_VECTOR_SOURCE = "earth-streets";
@@ -22,6 +23,7 @@ export const EARTH_PALETTE = {
 const names: ExpressionSpecification = ["coalesce", ["get", "name:ru"], ["get", "name"], ["get", "name:latin"], ["get", "name_en"], ""];
 const zoomWidth = (low: number, high: number): ExpressionSpecification => ["interpolate", ["exponential", 1.4], ["zoom"], 5, low, 18, high];
 const textPaint = { "text-color": EARTH_PALETTE.ink, "text-halo-color": EARTH_PALETTE.halo, "text-halo-width": 1.5, "text-halo-blur": 0.3 };
+const landcoverOpacity = (value: number): ExpressionSpecification => ["match", ["get", "class"], "ice", 1, value];
 
 /** A compact, sprite-free OpenMapTiles style with a complete local low-zoom globe. */
 export function createCartoonEarthStyle(vector: VectorSourceSpecification): StyleSpecification {
@@ -36,23 +38,37 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       filter: ["==", ["get", "kind"], "grid"],
       paint: { "line-color": "#c4ece1", "line-width": 0.7,
         "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.26, 2, 0.18, 3, 0] } },
+    coast.shelf,
     coast.shadow,
     { id: "earth-land", type: "fill", source: EARTH_LAND_SOURCE,
       paint: { "fill-color": p.land, "fill-antialias": false } },
-    earthLandMaterialLayer("earth-land-material", EARTH_LAND_SOURCE),
-    earthReliefLayer(),
-    coast.edge,
-    { id: "earth-overview-ice", type: "fill", source: EARTH_OVERVIEW_SOURCE,
+    // Keep local water/ice when a street tile is missing or offline. A loaded
+    // tile base covers these coarse masks before its precise features are drawn.
+    { id: "earth-fallback-ice", type: "fill", source: EARTH_OVERVIEW_SOURCE,
       filter: ["==", ["get", "kind"], "ice"], paint: { "fill-color": p.ice, "fill-antialias": false } },
-    { id: "earth-overview-lakes", type: "fill", source: EARTH_OVERVIEW_SOURCE,
+    { id: "earth-fallback-lakes", type: "fill", source: EARTH_OVERVIEW_SOURCE,
       filter: ["==", ["get", "kind"], "lake"], paint: { "fill-color": p.ocean, "fill-antialias": false } },
-    earthOceanWaterLayer("earth-overview-lake-waves", EARTH_OVERVIEW_SOURCE, undefined, ["==", ["get", "kind"], "lake"]),
+    // Detailed tile backgrounds must stay beneath the illustrated geography:
+    // loading a tile at zoom 4 cannot erase a desert or recolour a whole region.
     { id: "earth-detail-land", type: "fill", ...details, "source-layer": EARTH_TILE_BASE_LAYER,
       paint: { "fill-color": p.land, "fill-antialias": false } },
+    earthBiomeLayer(),
+    { ...earthLandMaterialLayer("earth-land-material", EARTH_LAND_SOURCE), maxzoom: 4 },
     earthLandMaterialLayer("earth-detail-land-material", EARTH_VECTOR_SOURCE, EARTH_TILE_BASE_LAYER),
+    earthReliefLayer(),
+    coast.edge,
+    { id: "earth-overview-ice", type: "fill", source: EARTH_OVERVIEW_SOURCE, maxzoom: 6,
+      filter: ["==", ["get", "kind"], "ice"], paint: { "fill-color": p.ice, "fill-antialias": false,
+        "fill-opacity": ["interpolate", ["linear"], ["zoom"], 4, 1, 6, 0] } },
+    { id: "earth-overview-lakes", type: "fill", source: EARTH_OVERVIEW_SOURCE, maxzoom: 6,
+      filter: ["==", ["get", "kind"], "lake"], paint: { "fill-color": p.ocean, "fill-antialias": false,
+        "fill-opacity": ["interpolate", ["linear"], ["zoom"], 4, 1, 6, 0] } },
+    { ...earthOceanWaterLayer("earth-overview-lake-waves", EARTH_OVERVIEW_SOURCE, undefined, ["==", ["get", "kind"], "lake"]), maxzoom: 4 },
     { id: "earth-landcover", type: "fill", ...details, minzoom: 1.5, "source-layer": "landcover",
       paint: { "fill-antialias": false, "fill-color": ["match", ["get", "class"], "wood", p.forest,
-        ["grass", "farmland"], p.grass, "ice", p.ice, "sand", p.sand, p.land], "fill-opacity": 0.7 } },
+        ["grass", "farmland"], p.grass, "ice", p.ice, "sand", p.sand, p.land],
+        "fill-opacity": ["interpolate", ["linear"], ["zoom"], 1.5, landcoverOpacity(0.08), 3.5, landcoverOpacity(0.18),
+          5, landcoverOpacity(0.5), 6, landcoverOpacity(0.7)] } },
     { id: "earth-neighborhoods", type: "fill", ...details, minzoom: 9, "source-layer": "landuse",
       paint: { "fill-color": ["match", ["get", "class"], ["park", "cemetery", "pitch"], p.park,
         ["school", "hospital"], "#e3ddba", p.neighborhood], "fill-opacity": 0.55 } },
@@ -135,6 +151,7 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       [EARTH_OVERVIEW_SOURCE]: { type: "geojson", data: earthOverviewData, maxzoom: 0, tolerance: 0, buffer: 0 },
       [EARTH_COAST_SOURCE]: { type: "geojson", data: createEarthCoastlineData(land as FeatureCollection<Polygon>), maxzoom: 0, tolerance: 0, buffer: 0 },
       [EARTH_RELIEF_SOURCE]: { type: "geojson", data: earthReliefData, maxzoom: 0, tolerance: 0, buffer: 0 },
+      [EARTH_BIOME_SOURCE]: { type: "geojson", data: earthBiomeData, maxzoom: 0, tolerance: 0, buffer: 0 },
       ...earthLightingSources(),
     }, layers,
   };

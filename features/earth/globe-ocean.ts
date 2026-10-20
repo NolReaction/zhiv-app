@@ -45,7 +45,7 @@ export function registerEarthOceanMaterialImage(map: Pick<LibreMap, "hasImage" |
 }
 
 function oceanOpacity(): ExpressionSpecification {
-  return ["interpolate", ["linear"], ["zoom"], 0, 0.85, 3, 0.85, 5, 0.65, EARTH_OCEAN_MATERIAL_MAX_ZOOM, 0];
+  return ["interpolate", ["linear"], ["zoom"], 0, 0.68, 3, 0.68, 5, 0.5, EARTH_OCEAN_MATERIAL_MAX_ZOOM, 0];
 }
 
 /** Place after the ocean colour and before land, so the globe itself masks space. */
@@ -62,9 +62,9 @@ export function earthOceanWaterLayer(id: string, source: string, sourceLayer?: s
     paint: { "fill-pattern": EARTH_OCEAN_MATERIAL_IMAGE, "fill-opacity": oceanOpacity(), "fill-antialias": false } };
 }
 
-const surfaceLayers = ["earth-water", "earth-overview-lakes", "earth-land", "earth-overview-ice",
+const surfaceLayers = ["earth-water", "earth-overview-lakes", "earth-fallback-lakes", "earth-fallback-ice", "earth-land", "earth-overview-ice",
   "earth-detail-land", "earth-landcover", "earth-neighborhoods", "earth-parks", "earth-buildings"];
-const waterLayers = new Set(["earth-water", "earth-overview-lakes"]);
+const waterLayers = new Set(["earth-water", "earth-overview-lakes", "earth-fallback-lakes"]);
 type SurfaceMap = Pick<LibreMap, "project" | "unproject" | "getLayer" | "queryRenderedFeatures">;
 
 /** Background water has no feature; a visible land/ice fill always wins above it. */

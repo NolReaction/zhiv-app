@@ -19,7 +19,7 @@ test("cartoon style validates against installed MapLibre and owns no remote rast
   const style = createCartoonEarthStyle(source);
   assert.deepEqual(validateStyleMin(style).map(error => error.message), []);
   assert.deepEqual(style.projection, { type: "globe" }, "sources start with globe subdivision instead of rebuilding after a Mercator frame");
-  assert.ok(style.layers.length <= 40, "overview effects keep a bounded native layer budget");
+  assert.ok(style.layers.length <= 42, "biomes, coastal shallows and reused fallback masks keep a bounded native layer budget");
   assert.deepEqual(style.sources[EARTH_VECTOR_SOURCE], source);
   assert.equal(style.glyphs, undefined);
   assert.equal(style.sprite, undefined);
@@ -42,8 +42,18 @@ test("glacier/lake detail and world labels are local and bounded, and do not add
     assert.ok(layer.maxzoom <= 3.5);
   }
   const detailIndex = style.layers.findIndex(layer => layer["source-layer"] === EARTH_TILE_BASE_LAYER);
-  assert.ok(style.layers.findIndex(layer => layer.id === "earth-overview-lakes") < detailIndex);
-  assert.ok(style.layers.findIndex(layer => layer.id === "earth-overview-ice") < detailIndex);
+  assert.ok(detailIndex < style.layers.findIndex(layer => layer.id === "earth-overview-lakes"), "tile bases cannot cover the local lake fallback");
+  assert.ok(detailIndex < style.layers.findIndex(layer => layer.id === "earth-overview-ice"), "tile bases cannot erase the local glacier fallback");
+  for (const id of ["earth-overview-lakes", "earth-overview-ice"]) {
+    const layer = style.layers.find(item => item.id === id);
+    assert.equal(layer.maxzoom, 6, "coarse masks must not cover street-level water or ice geometry");
+    const expression = createExpression(layer.paint["fill-opacity"], "fill-opacity");
+    assert.equal(expression.result, "success");
+    assert.equal(expression.value.evaluate({ zoom: 4 }), 1);
+    assert.equal(expression.value.evaluate({ zoom: 6 }), 0);
+  }
+  assert.equal(style.layers.find(layer => layer.id === "earth-overview-lake-waves").maxzoom, 4,
+    "coarse lake waves hand off to the exact water source without spilling onto nearby streets");
 });
 
 test("3D uses one opaque building layer from the existing source and only at close zoom", () => {
@@ -163,6 +173,45 @@ test("coarse land remains beneath loaded detail tiles and water shares their sou
   assert.equal(layers[detailIndex].minzoom, layers[waterIndex].minzoom);
   assert.equal(layers[detailIndex].paint["fill-color"], EARTH_PALETTE.land);
   assert.equal(layers[waterIndex].paint["fill-color"], EARTH_PALETTE.ocean);
+});
+
+test("biome colours survive a newly loaded tile base and hand over smoothly to local landcover", () => {
+  const { layers } = createCartoonEarthStyle(source);
+  const index = id => layers.findIndex(layer => layer.id === id);
+  const biome = layers[index("earth-illustrated-biomes")];
+  assert.ok(index("earth-detail-land") < index(biome.id), "loading a tile cannot repaint a desert as plain green");
+  for (const id of ["earth-land-material", "earth-detail-land-material", "earth-overview-relief", "earth-overview-ice",
+    "earth-overview-lakes", "earth-water", "earth-city-lights-glow", "earth-country-names"]) {
+    assert.ok(index(biome.id) < index(id), `biomes remain below ${id}`);
+  }
+  const opacity = layer => {
+    const expression = createExpression(layer.paint["fill-opacity"], "fill-opacity");
+    assert.equal(expression.result, "success");
+    return zoom => expression.value.evaluate({ zoom }, { type: 3, properties: { opacity: 0.88 } });
+  };
+  const biomeOpacity = opacity(biome);
+  assert.ok(biomeOpacity(2) > 0.8);
+  assert.ok(Math.abs(biomeOpacity(3.9999) - biomeOpacity(4.0001)) < 0.001, "no fade discontinuity at the tile base handoff");
+  const cover = opacity(layers[index("earth-landcover")]);
+  assert.ok(cover(2) < 0.15 && cover(6) >= 0.7, "local cover gradually takes over instead of masking overview biomes");
+  const coverExpression = createExpression(layers[index("earth-landcover")].paint["fill-opacity"], "fill-opacity");
+  assert.equal(coverExpression.value.evaluate({ zoom: 5 }, { type: 3, properties: { class: "ice" } }), 1, "detailed glaciers stay white as coarse masks fade");
+  assert.ok(index("earth-coast-shallows") < index("earth-land"), "shallow water is masked by the real land silhouette");
+});
+
+test("missing detail tiles retain local lakes and ice beyond the overview mask fade", () => {
+  const { layers } = createCartoonEarthStyle(source);
+  const index = id => layers.findIndex(layer => layer.id === id);
+  for (const [fallbackId, overviewId] of [["earth-fallback-lakes", "earth-overview-lakes"], ["earth-fallback-ice", "earth-overview-ice"]]) {
+    const fallback = layers[index(fallbackId)], overview = layers[index(overviewId)];
+    assert.ok(index("earth-land") < index(fallbackId) && index(fallbackId) < index("earth-detail-land"), "only a loaded tile can hide a local fallback");
+    assert.equal(fallback.source, overview.source, "fallback reuses the existing physical geometry");
+    assert.deepEqual(fallback.filter, overview.filter);
+    assert.equal(fallback.paint["fill-color"], overview.paint["fill-color"]);
+    assert.equal(fallback.minzoom, undefined);
+    assert.equal(fallback.maxzoom, undefined, "offline ice and lakes cannot become green above zoom 6");
+    assert.equal(fallback.paint["fill-opacity"], undefined, "fallback does not fade with the above-tile overview mask");
+  }
 });
 
 function originalTile() {

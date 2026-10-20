@@ -18,7 +18,9 @@ export function earthReliefLayer(): FillLayerSpecification {
     paint: {
       "fill-color": ["match", ["get", "tone"],
         "light", "rgba(242, 235, 188, 0.8)", "shade", "rgba(70, 110, 76, 0.52)",
-        "valley", "rgba(91, 126, 79, 0.32)", "spur", "rgba(228, 226, 170, 0.42)", "rgba(118, 146, 90, 0.22)"],
+        "valley", "rgba(91, 126, 79, 0.32)", "spur", "rgba(228, 226, 170, 0.42)",
+        "snow", "rgba(244, 247, 225, 0.96)", "snow-shade", "rgba(179, 210, 202, 0.92)",
+        "rgba(118, 146, 90, 0.22)"],
       "fill-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.42, 2, 0.85, 3, 0.85, EARTH_RELIEF_MAX_ZOOM, 0],
       "fill-antialias": false,
     },

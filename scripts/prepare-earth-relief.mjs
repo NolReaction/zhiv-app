@@ -30,6 +30,7 @@ function onLand(point) {
 }
 
 function rounded([x, y]) { return [Math.round(x * 10000) / 10000, Math.round(y * 10000) / 10000]; }
+function mix(from, to, amount) { return [from[0] + (to[0] - from[0]) * amount, from[1] + (to[1] - from[1]) * amount]; }
 
 function createReliefData() {
   const features = [];
@@ -84,6 +85,23 @@ function createReliefData() {
       const darkEdge = northWestLit ? [a.right, b.right] : [a.left, b.left];
       add(range.id, "valley", [lightEdge[0], middle(lightEdge[0], lightEdge[1]), b.crest]);
       add(range.id, "spur", [a.crest, middle(darkEdge[0], darkEdge[1]), darkEdge[1]]);
+    }
+    // A few authored summit accents, not a continuous snow belt or an altitude
+    // model. Fractional positions stay attached to the same hand-drawn range as
+    // it is resampled, with asymmetric lit/cool faces over the existing ridge.
+    const snowIndices = new Set((range.snowPeaks ?? []).map(fraction => {
+      if (!Number.isFinite(fraction) || fraction <= 0 || fraction >= 1) throw new Error("Invalid illustrated snow peak");
+      return Math.max(1, Math.min(sections.length - 2, Math.round(fraction * (sections.length - 1))));
+    }));
+    for (const index of snowIndices) {
+      const before = sections[index - 1]; const peak = sections[index]; const after = sections[index + 1];
+      const left = mix(mix(before.crest, peak.crest, 0.66), peak.left, 0.34);
+      const right = mix(mix(peak.crest, after.crest, 0.32), peak.right, 0.26);
+      const tail = mix(peak.crest, after.crest, 0.56);
+      const northWestLit = (after.crest[0] - before.crest[0]) * Math.cos(peak.crest[1] * Math.PI / 180)
+        + after.crest[1] - before.crest[1] >= 0;
+      add(range.id, northWestLit ? "snow" : "snow-shade", [left, peak.crest, tail]);
+      add(range.id, northWestLit ? "snow-shade" : "snow", [peak.crest, right, tail]);
     }
   }
   return { type: "FeatureCollection", features };

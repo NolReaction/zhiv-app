@@ -70,9 +70,9 @@ export function installEarthMaterialImages(map: MaterialMap & Pick<LibreMap, "se
   });
 }
 
-/** Identical paint on coarse and detailed land keeps material phase/strength consistent. */
+/** Identical grain keeps the coarse/detail handoff consistent; callers set their zoom ranges. */
 export function earthLandMaterialLayer(id: string, source: string, sourceLayer?: string): FillLayerSpecification {
-  const opacity: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 0, 0.85, 4, 0.85, 6, 0.5, EARTH_LAND_MATERIAL_MAX_ZOOM, 0];
+  const opacity: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 0, 0.7, 4, 0.7, 6, 0.4, EARTH_LAND_MATERIAL_MAX_ZOOM, 0];
   return {
     id, type: "fill", source, ...(sourceLayer ? { "source-layer": sourceLayer, minzoom: 4 } : {}),
     maxzoom: EARTH_LAND_MATERIAL_MAX_ZOOM,

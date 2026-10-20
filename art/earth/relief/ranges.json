@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Hand-drawn approximate mountain-region guides for an illustrated globe; not measured ridgelines or elevation.",
+  "description": "Hand-drawn approximate mountain-region guides and sparse illustrative snow accents; not measured ridgelines, elevation or current snow cover.",
   "ranges": [
     {
       "id": "rockies",
@@ -30,6 +30,10 @@
           -106,
           33
         ]
+      ],
+      "snowPeaks": [
+        0.1,
+        0.27
       ]
     },
     {
@@ -116,6 +120,12 @@
           -72,
           -47
         ]
+      ],
+      "snowPeaks": [
+        0.29,
+        0.53,
+        0.7,
+        0.86
       ]
     },
     {
@@ -160,6 +170,9 @@
           22,
           69
         ]
+      ],
+      "snowPeaks": [
+        0.4
       ]
     },
     {
@@ -182,6 +195,10 @@
           15,
           47
         ]
+      ],
+      "snowPeaks": [
+        0.28,
+        0.55
       ]
     },
     {
@@ -222,6 +239,9 @@
           47,
           42
         ]
+      ],
+      "snowPeaks": [
+        0.47
       ]
     },
     {
@@ -288,6 +308,12 @@
           95,
           29
         ]
+      ],
+      "snowPeaks": [
+        0.2,
+        0.42,
+        0.64,
+        0.82
       ]
     },
     {
@@ -310,6 +336,9 @@
           88,
           43
         ]
+      ],
+      "snowPeaks": [
+        0.55
       ]
     },
     {

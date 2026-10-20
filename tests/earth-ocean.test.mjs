@@ -85,11 +85,12 @@ test("water taps respect topmost land, ice and detailed water instead of treatin
   const s = fixture();
   const feature = id => ({ layer: { id } });
   assert.deepEqual(earthOceanPoint(s.map, [20, 10]), { lng: 20, lat: 10 });
-  for (const land of ["earth-land", "earth-overview-ice", "earth-detail-land"]) {
+  s.state.layers.add("earth-fallback-ice"); s.state.layers.add("earth-fallback-lakes");
+  for (const land of ["earth-land", "earth-overview-ice", "earth-fallback-ice", "earth-detail-land"]) {
     s.state.features = [feature(land)];
     assert.equal(earthOceanPoint(s.map, [20, 10]), null);
   }
-  for (const water of ["earth-water", "earth-overview-lakes"]) {
+  for (const water of ["earth-water", "earth-overview-lakes", "earth-fallback-lakes"]) {
     s.state.features = [feature(water), feature("earth-land")];
     assert.ok(earthOceanPoint(s.map, [20, 10]));
     s.state.features.reverse();

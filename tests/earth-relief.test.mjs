@@ -62,11 +62,29 @@ test("relief faces remain closed, finite and inside the bundled land silhouette"
   }
 });
 
+test("snow stays a sparse set of authored small summit facets within the existing relief source", () => {
+  const snow = earthReliefData.features.filter(feature => ["snow", "snow-shade"].includes(feature.properties.tone));
+  assert.ok(snow.length >= 20 && snow.length <= 40, "a few summit accents cannot turn into a white mountain ribbon");
+  const snowRanges = new Set(snow.map(feature => feature.properties.range));
+  for (const range of ["rockies", "andes", "alps", "caucasus", "himalaya", "scandes", "tian-shan"]) assert.ok(snowRanges.has(range));
+  for (const feature of snow) {
+    assert.equal(feature.geometry.coordinates[0].length, 4, "snow reuses the existing tiny triangular facets");
+    assert.equal(feature.properties.snowDepth, undefined, "illustration does not claim live snow cover");
+    assert.equal(feature.properties.elevation, undefined);
+  }
+  const area = feature => Math.abs(feature.geometry.coordinates[0].reduce((sum, point, index, ring) => index
+    ? sum + ring[index - 1][0] * point[1] - point[0] * ring[index - 1][1] : sum, 0)) / 2;
+  assert.ok(snow.reduce((sum, feature) => sum + area(feature), 0)
+    < earthReliefData.features.reduce((sum, feature) => sum + area(feature), 0) * 0.02,
+  "summit snow remains a very small share of the illustrated mountain area");
+});
+
 test("overview relief fades before exact detail and remains under water, glaciers, names and night treatment", () => {
   const index = id => style.layers.findIndex(layer => layer.id === id);
   const relief = style.layers[index(EARTH_RELIEF_LAYER)];
   assert.ok(index("earth-land-material") < index(EARTH_RELIEF_LAYER));
-  for (const id of ["earth-overview-ice", "earth-overview-lakes", "earth-detail-land", "earth-water", "earth-country-names", "earth-city-lights-glow"]) {
+  assert.ok(index("earth-detail-land") < index(EARTH_RELIEF_LAYER), "coarse detail base must not cover the illustrated mountains");
+  for (const id of ["earth-overview-ice", "earth-overview-lakes", "earth-water", "earth-country-names", "earth-city-lights-glow"]) {
     assert.ok(index(EARTH_RELIEF_LAYER) < index(id), `relief must remain beneath ${id}`);
   }
   const opacity = createExpression(relief.paint["fill-opacity"], "fill-opacity");
