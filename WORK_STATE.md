@@ -1,6 +1,6 @@
 # 0.7.1v2 — возврат на карту и общие настройки друзей
 
-2026-10-20. Этап начат от `17fc97a18068809d0e681589431f18334ada83fc`. Пользователь разрешил коммиты и push в `0.7.1v2`; master и сервер не меняются.
+2026-10-20. Функциональный этап опубликован в `9c4a5e9870060916788ea7098ec86293fa1fe7b9` (от `17fc97a`). Текущий follow-up меняет только HTTP security regression и документацию. Пользователь разрешил коммиты и push в `0.7.1v2`; master и сервер не меняются.
 
 ## Что исправлено
 
@@ -20,7 +20,13 @@
 - VPS и Sites production-сборки прошли последовательно. Повреждённый локальный Turbopack cache отложен отдельно; чистая VPS-сборка успешна без изменения исходников. Kotlin/PostgreSQL и production Compose должны пройти в CI нового SHA.
 - Реальный WebGL, OS background, задержки картографического провайдера, Clipboard API и layout на Mac/телефоне локально не воспроизведены. Детерминированные controller/hook/SSR тесты не заменяют ручную приёмку.
 
-## Предыдущий подтверждённый CI
+## CI функционального коммита и исправление теста
+
+`9c4a5e9`, [run 39475997698](https://github.com/NolReaction/zhiv-app/actions/runs/39475997698): backend **1007/1007** и PostgreSQL gate успешны, включая изменённый `JdbcGuestProfileRepositoryIntegrationTest`. Все типы, lint и обе сборки на трёх web shards прошли. Web: 6737 passed / 1 failed / 1 optional skip (6739 total); Compose пропущен из-за web gate.
+
+Единственный отказ: `tests/auth-security.test.mjs` ещё ожидал 404 игрового профиля после status OFF. Тест приведён к согласованной политике: реальная отметка/статус сначала доступны, после OFF скрыты через HTTP; безопасный профиль остаётся 200, полянка остаётся 404. Неавторизованный запрос 401, посторонняя и удалённая связи имеют одинаковый 404, `no-store` и точный набор безопасных полей проверяются. Follow-up: **40/40 passed, 0 failures/skips/cancelled** (`auth-security`, `guest-profiles`, `guest-world-dev`, `status-privacy`), ESLint изменённого теста и diff-check чистые. Production-исходники и собранное дерево приложения не менялись; новый полный CI всё равно обязателен.
+
+## Предыдущий полностью зелёный CI
 
 `17fc97a`, [run 39462011188](https://github.com/NolReaction/zhiv-app/actions/runs/39462011188): **success, 10 jobs**. Web 6706 passed / 0 failed / 1 optional ffmpeg skip; backend 1007 passed / 0 skipped / 0 failures; production Compose (~6м10с), HTTPS/API/admin/monitoring/backup/reset/V67 зелёные. Этот CI относится к предыдущему этапу масштаба/DEV GPS, не к текущему diff.
 

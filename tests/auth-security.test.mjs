@@ -20,6 +20,8 @@ const { defaultNotificationPreferences } = await vite.ssrLoadModule("/features/n
 const { PeopleView } = await vite.ssrLoadModule("/features/people/people-view.tsx");
 const routes = Object.fromEntries(await Promise.all([
   ["guest", "/app/api/v1/people/[circleId]/game-profile/route.ts"],
+  ["people", "/app/api/v1/people/route.ts"],
+  ["world", "/app/api/v1/people/[circleId]/world/route.ts"],
   ["nickname", "/app/api/v1/people/[circleId]/nickname/route.ts"],
   ["group", "/app/api/v1/groups/[groupId]/route.ts"],
   ["member", "/app/api/v1/groups/[groupId]/members/[membershipId]/route.ts"],
@@ -129,9 +131,16 @@ test("cross-site requests cannot rename, archive, invite, remove members or acce
   assert.equal(ok(social.listDevGroups(f.pending.token)).incomingInvites.length, 1);
 });
 
-test("friend profile responses conceal stranger, removed and privacy-denied relationships identically", async () => {
+test("status OFF hides marks and visits while safe friend profiles retain friendship and session guards", async () => {
   const f = fixture(), path = `/api/v1/people/${f.circleId}/game-profile`;
+  await status(await routes.guest.GET(request(path), context(f)), 401);
   globalThis.__authSecurityToken = f.owner.token;
+  ok(social.updateDevStatus(f.member.token, "В лесу", key()));
+  assert.equal(social.createDevCheckIn(f.member.token, key()).kind, "accepted");
+  const visiblePeople = await (await status(await routes.people.GET(request("/api/v1/people")), 200)).json();
+  const visiblePerson = visiblePeople.people.find(person => person.circleId === f.circleId);
+  assert.equal(visiblePerson.status.text, "В лесу");
+  assert.ok(visiblePerson.lastCheckInAt);
   const visible = await status(await routes.guest.GET(request(path), context(f)), 200);
   const projection = await visible.json();
   assert.equal(projection.ownerPublicId, f.owner.me.user.publicId);
@@ -141,11 +150,22 @@ test("friend profile responses conceal stranger, removed and privacy-denied rela
   const outsider = await (await status(await routes.guest.GET(request(path), context(f)), 404)).json();
   globalThis.__authSecurityToken = f.owner.token;
   ok(social.updateDevSharing(f.member.token, f.circleId, "OFF"));
-  const denied = await (await status(await routes.guest.GET(request(path), context(f)), 404)).json();
+  const hiddenPeople = await (await status(await routes.people.GET(request("/api/v1/people")), 200)).json();
+  const hiddenPerson = hiddenPeople.people.find(person => person.circleId === f.circleId);
+  assert.equal(hiddenPerson.theirSharingMode, "OFF");
+  assert.equal(hiddenPerson.checkInState, "HIDDEN");
+  assert.equal(hiddenPerson.status, null);
+  assert.equal(hiddenPerson.lastCheckInAt, null);
+  const shared = await (await status(await routes.guest.GET(request(path), context(f)), 200)).json();
+  assert.equal(shared.ownerPublicId, f.owner.me.user.publicId);
+  assert.equal(shared.circleId, f.circleId);
+  assert.equal(shared.user.publicId, f.member.me.user.publicId);
+  assert.deepEqual(Object.keys(shared).sort(), Object.keys(projection).sort());
+  assert.deepEqual(Object.keys(shared.user).sort(), ["displayName", "publicId"]);
+  await status(await routes.world.GET(request(`/api/v1/people/${f.circleId}/world`), context(f)), 404);
   ok(social.removeDevPerson(f.owner.token, f.circleId));
   const removed = await (await status(await routes.guest.GET(request(path), context(f)), 404)).json();
-  assert.deepEqual(outsider, denied);
-  assert.deepEqual(denied, removed);
+  assert.deepEqual(outsider, removed);
 });
 
 test("a private nickname cannot be read or overwritten by another user through a known circle ID", async () => {
