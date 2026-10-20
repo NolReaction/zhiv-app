@@ -580,6 +580,7 @@ export function PeopleView({
                 onChange={event => setPeopleQuery(event.target.value)} />
               {peopleQuery && <button type="button" aria-label="Очистить поиск" onClick={() => setPeopleQuery("")}><X size={18} aria-hidden="true" /></button>}
             </div>}
+            {data.people.length > 0 && <p className={styles.sharingNote}>Геопозиция настраивается на карте.</p>}
             {data.people.length === 0 ? (
               <div className={styles.empty}>
                 <UserRound size={30} />
@@ -634,7 +635,8 @@ export function PeopleView({
                       <div className={styles.personBottom}>
                         <label className={styles.sharingLabel}>
                           <span>
-                            <strong>{isSharing ? "Видны" : "Скрыты"}</strong>
+                            <strong>Отметки и профиль</strong>
+                            <small>{isSharing ? "Делюсь" : "Не делюсь"}</small>
                             <small id={sharingHintId} className={styles.srOnly}>
                               {isSharing
                                 ? "Отметки, статус и игровой профиль видны этому человеку; настройки отметок действуют и в общих группах"
@@ -645,7 +647,7 @@ export function PeopleView({
                             checked={isSharing}
                             disabled={Boolean(pending)}
                             onCheckedChange={(checked) => void handleSharing(person, checked)}
-                            aria-label={`Показывать мои отметки и игровой профиль пользователю ${person.user.displayName}`}
+                            aria-label={`Делиться моими отметками, статусом и игровым профилем с ${displayName}`}
                             aria-describedby={sharingHintId}
                           />
                         </label>
@@ -979,7 +981,7 @@ export function PeopleView({
             <AlertDialogTitle>Удалить связь?</AlertDialogTitle>
             <AlertDialogDescription className={styles.dialogDescription}>
               Личная связь будет удалена. В общих группах отметки могут оставаться видны. Это зависит от настроек показа.
-              Чтобы скрыть свои отметки от этого человека во всех группах, сначала выключите «Показывать мои отметки».
+              Чтобы скрыть свои отметки от этого человека во всех группах, сначала выключите «Отметки и профиль».
               Позже можно будет добавиться заново.
             </AlertDialogDescription>
           </AlertDialogHeader>

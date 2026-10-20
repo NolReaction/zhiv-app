@@ -11,6 +11,11 @@ const itemId = z.string().min(1).max(80);
 const botId = { botId: uuid };
 const base = { ownerPublicId: publicId, requestId: uuid };
 const sharingMode = z.enum(["LATEST_ONLY", "OFF"]);
+const earthMode = z.enum(["OFF", "SHARING", "GHOST"]);
+const earthPrecision = z.enum(["APPROXIMATE", "PRECISE"]);
+const earthDuration = z.union([z.literal(60), z.literal(480)]).nullable();
+const earthPosition = z.object({ latitude: z.number().finite().min(-90).max(90), longitude: z.number().finite().min(-180).max(180),
+  accuracyMeters: z.number().finite().min(0).max(100_000) }).strict();
 
 /** Local DEV commands are never accepted by the production game API. Currency amounts use stored units. */
 export const devBotCommandSchema = z.discriminatedUnion("action", [
@@ -29,6 +34,9 @@ export const devBotCommandSchema = z.discriminatedUnion("action", [
   z.object({ ...base, ...botId, action: z.literal("start_job"), kind: z.enum(["construction", "production", "exploration"]), targetId: itemId }).strict(),
   z.object({ ...base, ...botId, action: z.literal("claim_job"), jobId: uuid }).strict(),
   z.object({ ...base, ...botId, action: z.literal("set_sharing"), sharingMode }).strict(),
+  z.object({ ...base, ...botId, action: z.literal("set_earth_sharing"), mode: earthMode, precision: earthPrecision, durationMinutes: earthDuration }).strict(),
+  z.object({ ...base, ...botId, action: z.literal("set_earth_position"), ...earthPosition.shape }).strict(),
+  z.object({ ...base, ...botId, action: z.literal("check_in") }).strict(),
   z.object({ ...base, ...botId, action: z.literal("delete") }).strict(),
 ]).superRefine((command, context) => {
   const invalid = (path: string) => context.addIssue({ code: "custom", path: [path], message: "Неизвестный предмет или уровень" });
@@ -45,6 +53,11 @@ export const devBotCommandSchema = z.discriminatedUnion("action", [
 
 export const devBotSchema = z.object({
   id: uuid, publicId, displayName: name, circleId: uuid, sharingMode, createdAt: z.string().datetime(),
+  lastCheckInAt: z.string().datetime().nullable().default(null),
+  earth: z.object({ mode: earthMode, precision: earthPrecision, sharingUntil: z.string().datetime().nullable(),
+    position: earthPosition.nullable(), sharedUpdatedAt: z.string().datetime().nullable(), sharedExpiresAt: z.string().datetime().nullable(),
+    nextPublishAt: z.string().datetime().nullable() }).strict().default({ mode: "OFF", precision: "APPROXIMATE", sharingUntil: null,
+    position: null, sharedUpdatedAt: null, sharedExpiresAt: null, nextPublishAt: null }),
   economy: economyViewSchema.pick({ revision: true, buildings: true, wallet: true, inventory: true, jobs: true, storage: true }).strict(),
   equipment: z.object({ palette: itemId, head: itemId.nullable(), neck: itemId.nullable(), rod: itemId.nullable() }).strict(),
   listings: z.array(economyMarketListingSchema).max(10),

@@ -106,9 +106,14 @@ test("equal priorities are stable, duplicate ids are harmless and invalid viewpo
   }
 });
 
-test("normal mobile globe keeps at most three compact models while regional views allow six", () => {
+test("all nine separated models remain visible across the former zoom count threshold", () => {
   const candidates = Array.from({ length: 9 }, (_, index) => candidate(String(index), 50 + index * 100, 100));
-  assert.equal(layoutEarthLandmarks(candidates, { width: 1000, height: 500 }, earthLandmarkView(0.5)).size, 3);
+  for (const zoom of [0.5, 1.499, 1.501, 2.5]) {
+    assert.deepEqual([...layoutEarthLandmarks(candidates, { width: 1000, height: 500 }, earthLandmarkView(zoom))],
+      candidates.map(point => point.id), `zoom ${zoom} cannot hide an unobstructed monument`);
+  }
   assert.ok(earthLandmarkView(0.5).height < 24);
-  assert.equal(layoutEarthLandmarks(candidates, { width: 1000, height: 500 }, earthLandmarkView(2.5)).size, 6);
+  const excess = [...candidates, candidate("outside-catalogue-budget", 950, 300)];
+  assert.equal(layoutEarthLandmarks(excess, { width: 1000, height: 500 }, earthLandmarkView(1.5)).size, 9,
+    "the maximum stays bounded even with an unexpected extra candidate");
 });

@@ -295,6 +295,8 @@ export function GroupsSection({
         </button>
       </div>
 
+      {(data?.groups.length ?? 0) > 0 && <p className={styles.sharingNote}>Геопозиция настраивается на карте.</p>}
+
       {data?.incomingInvites.map((invite) => (
         <article className={styles.inviteCard} key={invite.inviteId}>
           <div className={styles.groupIcon}>{invite.groupEmoji ?? "👥"}</div>
@@ -364,12 +366,13 @@ export function GroupsSection({
                 <div className={styles.groupDetails}>
                   <label className={styles.sharingLabel}>
                     <span>
-                      <strong>Показывать участникам группы</strong>
-                      <small id={`sharing-mixed-${group.groupId}`}>{group.sharingMixed ? "Часть участников · нажмите, чтобы включить всем" : "Синхронно с людьми и другими группами"}</small>
+                      <strong>Отметки и профиль</strong>
+                      <small id={`sharing-mixed-${group.groupId}`}>{group.sharingMixed ? "Делюсь с частью группы"
+                        : group.mySharingMode === "OFF" ? "Не делюсь" : "Делюсь с группой"}. Выбор общий с личными связями.</small>
                     </span>
                     <Switch
                       checked={group.mySharingMode !== "OFF"}
-                      aria-describedby={group.sharingMixed ? `sharing-mixed-${group.groupId}` : undefined}
+                      aria-describedby={`sharing-mixed-${group.groupId}`}
                       disabled={Boolean(pending)}
                       onCheckedChange={(checked) => void runMutation(
                         `sharing:${group.groupId}`,
@@ -379,7 +382,7 @@ export function GroupsSection({
                           createUuidV4(),
                         ),
                       )}
-                      aria-label={`Показывать мои отметки через группу ${group.title}`}
+                      aria-label={`Делиться моими отметками, статусом и игровым профилем с группой ${group.title}`}
                     />
                   </label>
 
@@ -401,7 +404,7 @@ export function GroupsSection({
                             <UserStatusDisplay status={member.status} nowMs={nowMs} />
                             <span>
                               {member.isMe
-                                ? (group.sharingMixed ? "Показ части участников" : group.mySharingMode === "OFF" ? "Ваши отметки скрыты" : "Ваши новые отметки видны")
+                                ? (group.sharingMixed ? "Делюсь с частью группы" : group.mySharingMode === "OFF" ? "Не делюсь отметками" : "Делюсь новыми отметками")
                                 : formatPersonCheckIn(member.lastCheckInAt, nowMs, sharing)}
                             </span>
                           </div>

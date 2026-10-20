@@ -90,6 +90,7 @@
 .tileProgress::before { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: #cbe99e; content: ""; }
 .networkNotice { position: absolute; z-index: 2; top: calc(var(--earth-overlay-top, 16px) + 60px); left: var(--earth-overlay-left, 16px); max-width: min(340px, calc(100% - 92px)); display: grid; gap: 4px; padding: 9px 11px; border: 1px solid #d6c38d45; border-radius: 15px; color: #f1dfb7; background: #263d30f5; font-size: 11px; line-height: 1.45; }
 .networkNotice button { justify-self: start; min-height: 40px; padding: 0 4px; color: #e4efcf; text-decoration: underline; cursor: pointer; }
+.root[data-development="true"] :is(.networkNotice, .tileProgress) { top: calc(var(--earth-overlay-top, 16px) + 112px); }
 @media (max-height: 500px) {
   .controls { grid-template-columns: repeat(6, 44px); gap: 4px; }
   .controls .locateButton { margin: 0; }

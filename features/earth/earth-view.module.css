@@ -135,4 +135,6 @@
 }
 
 .friendIdentity { flex: 1; }
+.friendsList .friendIdentity > .checkInStatus { display: flex; align-items: baseline; gap: 5px; color: #c9ddb7; }
+.checkInStatus svg { flex-shrink: 0; align-self: center; }
 .meetButton { display: flex; align-items: center; justify-content: center; gap: 7px; flex-basis: 100%; min-height: 44px; border: 1px solid #c5dfb936; border-radius: 13px; background: #cce5b414; color: #dcebc9; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }

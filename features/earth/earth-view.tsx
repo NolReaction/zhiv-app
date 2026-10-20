@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Footprints, Ghost, Globe2, Leaf, MapPin, RefreshCw, Users, X } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Footprints, Ghost, Globe2, HeartPulse, Leaf, MapPin, RefreshCw, Users, X } from "lucide-react";
 import type { PeopleResponse, Person } from "@/lib/check-in-contract";
+import { formatDirectPersonCheckIn } from "@/lib/check-in-presentation";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { PlayerName } from "@/components/player-name";
 import { PersonGameActions, type PersonVisitAction } from "@/features/people/person-game-actions";
 import { EarthMap } from "./earth-map";
@@ -16,6 +19,8 @@ import { readEarthModelEditorOpen } from "./dev/earth-model-editor-session";
 import styles from "./earth-view.module.css";
 
 const NO_SHARED_PEOPLE: readonly EarthMapPerson[] = [];
+const EarthDevBots = process.env.NODE_ENV === "development"
+  ? lazy(() => import("./dev/earth-dev-bots").then(module => ({ default: module.EarthDevBots }))) : null;
 
 type Props = {
   ownerPublicId: string;
@@ -24,6 +29,7 @@ type Props = {
   onReadyChange?: (ready: boolean) => void;
   cameraSession?: EarthCameraSession;
   sharing: EarthSharingHandle;
+  devCommandsAvailable?: boolean;
   isOnline: boolean;
   people: PeopleResponse | null;
   peopleLoading: boolean;
@@ -47,13 +53,14 @@ export function locationSummary(status: EarthLocationStatus, position: EarthPosi
   return "Найдите себя на Земле";
 }
 
-export function EarthFriends({ people, loading, error, online, onRefresh, onOpenPeople, onOpenProfile, onVisitFriend, locations = [], onFocusPerson, onMeetPerson, selectedCircleIds = [] }: {
+export function EarthFriends({ people, loading, error, online, onRefresh, onOpenPeople, onOpenProfile, onVisitFriend, locations = [], onFocusPerson, onMeetPerson, selectedCircleIds = [], now: currentTime }: {
   people: PeopleResponse | null; loading: boolean; error: string | null; online: boolean;
   onRefresh: () => void; onOpenPeople: () => void;
   onOpenProfile?: Props["onOpenProfile"]; onVisitFriend?: PersonVisitAction;
-  locations?: readonly EarthMapPerson[]; onFocusPerson?: (circleId: string) => void; onMeetPerson?: (circleId: string) => void; selectedCircleIds?: readonly string[];
+  locations?: readonly EarthMapPerson[]; onFocusPerson?: (circleId: string) => void; onMeetPerson?: (circleId: string) => void; selectedCircleIds?: readonly string[]; now?: number;
 }) {
   const contacts = people?.people ?? locations.map(person => ({ circleId: person.circleId, user: person.user, nickname: null }));
+  const now = currentTime ?? Date.parse(people?.serverTime ?? "1970-01-01T00:00:00Z");
   const displayed = selectedCircleIds.length ? contacts.filter(person => selectedCircleIds.includes(person.circleId)) : contacts;
   return <div className={styles.friendsContent}>
     <p className={styles.friendsIntro}>Геопозиция видна, когда друг ей делится.</p>
@@ -71,11 +78,14 @@ export function EarthFriends({ people, loading, error, online, onRefresh, onOpen
         return <li key={person.circleId}>
         <span className={styles.avatar} aria-hidden="true">{Array.from(displayName.trim())[0]?.toLocaleUpperCase("ru-RU") || "Ж"}</span>
         <div className={styles.friendIdentity}><strong><PlayerName name={displayName} tag={person.user.tag} /></strong>
+          {connected?.checkInState && <span className={styles.checkInStatus}><HeartPulse size={12} aria-hidden="true" />
+            <span>{connected.checkInState === "AVAILABLE" && connected.lastCheckInAt ? "«Я живой» · " : ""}
+              {formatDirectPersonCheckIn(connected.lastCheckInAt, now, connected.checkInState)}</span></span>}
           <span>{position ? `${position.precision === "APPROXIMATE" ? "Примерный район" : "Последняя геопозиция"} · ±${accuracy}` : "Нет доступной геопозиции"}</span>
           {position && <span>Обновлено {new Date(position.updatedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
         </div>
-        {position && onFocusPerson && <button className={styles.friendLocate} type="button" onClick={() => onFocusPerson(person.circleId)} aria-label={`Показать на карте: ${displayName}`}><MapPin size={18} aria-hidden="true" /></button>}
-        {position && onMeetPerson && <button className={styles.meetButton} type="button" onClick={() => onMeetPerson(person.circleId)}><Footprints size={17} aria-hidden="true" />Подойти к другу</button>}
+        {position && onFocusPerson && <button className={styles.friendLocate} type="button" data-audio-cue="ui.click" onClick={() => onFocusPerson(person.circleId)} aria-label={`Показать на карте: ${displayName}`}><MapPin size={18} aria-hidden="true" /></button>}
+        {position && onMeetPerson && <button className={styles.meetButton} type="button" data-audio-cue="ui.open" onClick={() => onMeetPerson(person.circleId)}><Footprints size={17} aria-hidden="true" />Подойти к другу</button>}
         {connected && (onOpenProfile || onVisitFriend) && <PersonGameActions className={styles.gameActions} person={connected}
           online={online} onOpenProfile={onOpenProfile} onVisitFriend={onVisitFriend} />}
       </li>;
@@ -83,12 +93,12 @@ export function EarthFriends({ people, loading, error, online, onRefresh, onOpen
     </ul> : !loading && <p className={styles.hint}>{people ? "Добавьте близких в разделе «Люди»." : "Обновите список, чтобы увидеть своих друзей."}</p>}
     <div className={styles.panelActions}>
       <button type="button" onClick={onOpenPeople}><Users size={16} aria-hidden="true" />Открыть «Люди»</button>
-      <button type="button" disabled={loading || !online} onClick={onRefresh} aria-label="Обновить список друзей"><RefreshCw size={16} aria-hidden="true" /></button>
+      <button type="button" data-audio-cue="ui.click" disabled={loading || !online} onClick={onRefresh} aria-label="Обновить список друзей"><RefreshCw size={16} aria-hidden="true" /></button>
     </div>
   </div>;
 }
 
-export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, isOnline, people, peopleLoading, peopleError,
+export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, devCommandsAvailable = false, isOnline, people, peopleLoading, peopleError,
   onRefreshPeople, onOpenPeople, onOpenProfile, onVisitFriend, onOpenWorld }: Props) {
   const [modelEditorOpen, setModelEditorOpen] = useState(readEarthModelEditorOpen);
   const editingModel = process.env.NODE_ENV === "development" && modelEditorOpen;
@@ -130,10 +140,10 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   useLayoutEffect(() => { if (!visible) stopLocation(); }, [visible, stopLocation]);
   useEffect(() => { if (visible) heading.current?.focus({ preventScroll: true }); }, [visible]);
   useEffect(() => {
-    if (!locationEnabled || !location.position && sharedPeople.length === 0) return;
+    if (!locationEnabled || !location.position && sharedPeople.length === 0 && !friendsOpen) return;
     const interval = setInterval(() => { setNow(Date.now()); setMonotonicNow(performance.now()); }, 15_000);
     return () => clearInterval(interval);
-  }, [locationEnabled, location.position, sharedPeople.length]);
+  }, [locationEnabled, location.position, sharedPeople.length, friendsOpen]);
   useEffect(() => { if (friendsOpen || sharingOpen) panelHeading.current?.focus({ preventScroll: true }); }, [friendsOpen, sharingOpen]);
   useEffect(() => {
     setSharedPosition(locationEnabled && location.status === "active" ? location.position : null);
@@ -196,8 +206,8 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     <strong role="status">{locationSummary(location.status, location.position)}</strong>
     {location.position && <p>{age > 0 ? `Обновлено ${age} мин. назад` : "Только что"}</p>}
     {location.error && <p className={styles.locationError}>{location.error}</p>}
-    <button className={styles.stopButton} type="button" onClick={locate}>Найти меня</button>
-    {watching && <button className={styles.stopButton} type="button" onClick={stopGps}>Приостановить GPS</button>}
+    <button className={styles.stopButton} type="button" data-audio-cue="ui.click" onClick={locate}>Найти меня</button>
+    {watching && <button className={styles.stopButton} type="button" data-audio-cue="ui.click" onClick={stopGps}>Приостановить GPS</button>}
   </section>;
 
   return <section className={styles.view} aria-labelledby="earth-title" data-earth-world>
@@ -206,7 +216,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       <EarthMap position={visible && !editingModel ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange} cameraSession={cameraSession}
         focusRequest={focusRequest} focusWhenReady={focusAfter === null || location.status === "active" && Boolean(location.position && location.position.timestamp >= focusAfter)}
         meetCircleId={!editingModel && panel === null ? meetPerson?.circleId : null} meetFocusRequest={meetFocusRequest} isOnline={isOnline} friends={editingModel ? NO_SHARED_PEOPLE : sharedPeople} friendFocusRequest={editingModel ? null : friendFocusRequest}
-        onSelectFriends={ids => { if (!editingModel) { setSelectedCircleIds(ids); setPanel("friends"); } }}
+        onSelectFriends={ids => { if (!editingModel) { playUiCue(getAudioRuntime(), "ui.open"); setSelectedCircleIds(ids); setPanel("friends"); } }}
         onLocate={() => { setMeetCircleId(null); locate(); }} locating={locating} locationActive={location.status === "active"} showLocationControl={!editingModel}
         locationDetails={editingModel ? null : locationDetails} onModelEditorOpenChange={onModelEditorOpenChange}
         infoOpen={panel === "info"} onInfoOpenChange={open => setPanel(open ? "info" : null)} />
@@ -215,22 +225,27 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       <h1 id="earth-title" ref={heading} tabIndex={-1} className={styles.brand}>
         <Globe2 size={21} aria-hidden="true" /><span>Я живой<span className={styles.brandDivider}>·</span><span className={styles.brandPlace}>Земля</span></span>
       </h1>
-      <button type="button" className={styles.worldButton} onClick={event => onOpenWorld(event.currentTarget)} aria-label="Войти в мир Мохлика" aria-haspopup="dialog">
+      <button type="button" className={styles.worldButton} data-audio-cue="ui.open" onClick={event => onOpenWorld(event.currentTarget)} aria-label="Войти в мир Мохлика" aria-haspopup="dialog">
         <Leaf size={18} aria-hidden="true" /><span>Моя полянка</span>
       </button>
     </header>
+    {EarthDevBots && active && visible && !editingModel && <Suspense fallback={null}><EarthDevBots
+      key={ownerPublicId} ownerPublicId={ownerPublicId} online={isOnline} commandsAvailable={devCommandsAvailable} position={location.status === "active" ? location.position : null}
+      otherPanelOpen={panel !== null || meetCircleId !== null} onOpen={() => { setPanel(null); setMeetCircleId(null); }}
+      readCenter={() => { const camera = cameraSession?.read(); return camera ? { latitude: camera.center[1], longitude: ((camera.center[0] + 540) % 360) - 180 } : null; }}
+      onChanged={() => { onRefreshPeople(); sharing.refresh(); }} onFocus={focusFriend} /></Suspense>}
 
     {!editingModel && <div className={styles.bottomOverlay}>
       {(friendsOpen || sharingOpen) && <section id="earth-friends-panel" className={styles.friendsPanel} aria-labelledby="earth-friends-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
       }}>
         <header><h2 id="earth-friends-title" ref={panelHeading} tabIndex={-1}>{sharingOpen ? "Моя геопозиция" : "Близкие на карте"}</h2>
-          <button type="button" onClick={closeFriends} aria-label={sharingOpen ? "Закрыть настройки геопозиции" : "Закрыть список друзей"}><X size={18} aria-hidden="true" /></button></header>
+          <button type="button" data-audio-cue="ui.close" onClick={closeFriends} aria-label={sharingOpen ? "Закрыть настройки геопозиции" : "Закрыть список друзей"}><X size={18} aria-hidden="true" /></button></header>
         {sharingOpen ? <EarthSharingPanel sharing={sharing} people={people} peopleLoading={peopleLoading} online={isOnline} onShare={share} onGhost={ghost} onOff={off}
           onSetFrozen={sharing.setFrozen} onRevokeRecipient={sharing.revokeRecipient} />
-          : <>{selectedCircleIds.length > 0 && <button className={styles.allFriends} type="button" onClick={() => setSelectedCircleIds([])}>Показать всех близких</button>}
+          : <>{selectedCircleIds.length > 0 && <button className={styles.allFriends} type="button" data-audio-cue="ui.click" onClick={() => setSelectedCircleIds([])}>Показать всех близких</button>}
             <EarthFriends people={people} loading={peopleLoading || sharing.loading} error={peopleError || sharing.error} online={isOnline}
-              locations={sharedPeople} selectedCircleIds={selectedCircleIds} onFocusPerson={focusFriend} onMeetPerson={meetFriend}
+              locations={sharedPeople} selectedCircleIds={selectedCircleIds} onFocusPerson={focusFriend} onMeetPerson={meetFriend} now={now}
               onOpenProfile={onOpenProfile} onVisitFriend={onVisitFriend}
               onRefresh={() => { onRefreshPeople(); sharing.refresh(); }} onOpenPeople={onOpenPeople} /></>}
       </section>}
@@ -241,10 +256,10 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
           setMeetCircleId(null); friendsButton.current?.focus({ preventScroll: true });
         }} />}
       <div className={styles.bottomButtons}>
-      <button ref={friendsButton} className={styles.friendsButton} type="button" aria-expanded={friendsOpen} aria-controls="earth-friends-panel" onClick={() => setPanel(friendsOpen ? null : "friends")}>
+      <button ref={friendsButton} className={styles.friendsButton} type="button" data-audio-cue={friendsOpen ? "ui.close" : "ui.open"} aria-expanded={friendsOpen} aria-controls="earth-friends-panel" onClick={() => setPanel(friendsOpen ? null : "friends")}>
         <span className={styles.friendsIcon}><Users size={18} aria-hidden="true" /></span>Близкие{people ? <span className={styles.friendsCount}>{people.people.length}</span> : null}
       </button>
-      <button ref={sharingButton} className={styles.sharingButton} type="button" aria-expanded={sharingOpen} aria-controls="earth-friends-panel"
+      <button ref={sharingButton} className={styles.sharingButton} type="button" data-audio-cue={sharingOpen ? "ui.close" : "ui.open"} aria-expanded={sharingOpen} aria-controls="earth-friends-panel"
         onClick={() => { setPanel(sharingOpen ? null : "sharing"); if (!sharingOpen) { onRefreshPeople(); sharing.refresh(); } }}>
         <Ghost size={17} aria-hidden="true" /><span>{sharingSummary(sharing)}</span>
       </button>

@@ -278,9 +278,11 @@
 }
 
 .sharingLabel small {
-  color: #7f8579;
+  color: #a6b39d;
   font-size: 10px;
 }
+
+.sharingNote { margin: -3px 0 0; color: #a6b39d; font-size: 11px; line-height: 1.5; }
 
 .inviteLoading {
   padding: 28px;

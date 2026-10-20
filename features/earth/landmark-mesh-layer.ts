@@ -6,12 +6,13 @@ import { browserEarthModelEnvironment, createEarthModelLoader, type EarthModelAs
 import { earthEiffelStreetOpacity, isEarthEiffelStreetZoom } from "./landmark-model-view";
 import { EARTH_MODEL_REGISTRY } from "./landmark-model-registry";
 import { getEarthModelPlacements, subscribeEarthModelPlacements } from "./model-placement";
+import { earthLandmarkOverviewScale, earthLandmarkVertexBounds, type EarthLandmarkBounds } from "./landmark-overview";
 
 export const EARTH_LANDMARK_MESH_LAYER = "earth-landmark-models";
 const EARTH_CIRCUMFERENCE = 40_030_228.884;
 type Program = { program: WebGLProgram; uniforms: Record<string, WebGLUniformLocation | null> };
 type ImportedGpuModel = { vertex: WebGLBuffer; index: WebGLBuffer; vao: WebGLVertexArrayObject; count: number; textures: WebGLTexture[] };
-type Definition = { id: string; assets: EarthModelAssets; heightMeters: number };
+type Definition = { id: string; assets: EarthModelAssets; heightMeters: number; normalizedBounds?: EarthLandmarkBounds };
 const LODS: readonly EarthModelLod[] = ["overview", "detail"];
 const CPU_CACHE_BYTES = 16 * 1024 * 1024;
 const keyOf = (id: string, lod: EarthModelLod) => `${id}:${lod}`;
@@ -47,7 +48,7 @@ function requestPermits(limit = 2) {
 export function createEarthLandmarkMeshLayer(map: LibreMap, options: {
   onModelChange?: () => void; assets?: EarthModelAssets; environment?: EarthModelEnvironment | null; definitions?: readonly Definition[];
 } = {}) {
-  const ranges = EARTH_LANDMARKS.map(landmark => ({ landmark, start: 0, count: 0, overviewCount: 0,
+  const ranges = EARTH_LANDMARKS.map(landmark => ({ landmark, start: 0, count: 0, overviewCount: 0, overviewScale: 1,
     anchor: [(landmark.location[0] + 180) / 360,
       (1 - Math.log(Math.tan(Math.PI / 4 + landmark.location[1] * Math.PI / 360)) / Math.PI) / 2] as const,
     meters: EARTH_CIRCUMFERENCE * Math.cos(landmark.location[1] * Math.PI / 180) }));
@@ -75,7 +76,10 @@ export function createEarthLandmarkMeshLayer(map: LibreMap, options: {
   // The single-asset override is deliberately Eiffel-only for existing embed/test consumers.
   const definitions = options.definitions ?? (options.assets
     ? [{ id: "eiffel-tower", assets: options.assets, heightMeters: 330 }] : EARTH_MODEL_REGISTRY);
-  const definitionById = new Map(definitions.map(definition => [definition.id, definition]));
+  const definitionById = new Map<string, Definition>(definitions.map(definition => [definition.id, definition]));
+  const overviewScales = new Map(definitions.flatMap(definition => "normalizedBounds" in definition && definition.normalizedBounds
+    ? [[definition.id, earthLandmarkOverviewScale(definition.normalizedBounds)] as const] : []));
+  const legacyOverviewScales = new WeakMap<EarthIndexedModel, number>();
   const imported = new Map(definitions.map(definition => [definition.id, createEarthModelLoader(definition.assets, () => {
     if (disposed) return;
     if (!reconciling) trimCache();
@@ -323,6 +327,7 @@ void main() {
     for (const range of ranges) {
       const mesh = createEarthLandmarkMesh(range.landmark.kind);
       range.start = geometry.length / 6; range.count = mesh.length / 6;
+      range.overviewScale = earthLandmarkOverviewScale(earthLandmarkVertexBounds(mesh, 6));
       for (const value of mesh) geometry.push(value);
       range.overviewCount = range.landmark.kind === "eiffel-tower"
         ? createEarthLandmarkMesh(range.landmark.kind, "overview").length / 6 : range.count;
@@ -463,7 +468,16 @@ void main() {
         // A failed/pending street import leaves the existing OSM view intact.
         if (street && !gpu) continue;
         let data = input.defaultProjectionData;
-        let scale = EARTH_LANDMARK_HEIGHT * view.scale / (512 * 2 ** zoom);
+        let overviewScale = range.overviewScale;
+        if (gpu && model) {
+          let importedScale = overviewScales.get(range.landmark.id) ?? legacyOverviewScales.get(model);
+          if (importedScale === undefined) {
+            importedScale = earthLandmarkOverviewScale(earthLandmarkVertexBounds(model.vertices, model.vertexStride ?? 6));
+            legacyOverviewScales.set(model, importedScale);
+          }
+          overviewScale = importedScale;
+        }
+        let scale = EARTH_LANDMARK_HEIGHT * view.scale * overviewScale / (512 * 2 ** zoom);
         let height = scale * (globe ? range.meters : 1);
         let anchor: readonly [number, number] = range.anchor;
         let meters = range.meters;

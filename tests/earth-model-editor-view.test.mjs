@@ -13,6 +13,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     resolveId(id) { if (id === hooksId) return `\0${id}`; },
     load(id) {
       if (id === `\0${hooksId}`) return `
+        export { lazy, Suspense } from "react";
         let current, cursor = 0;
         function slot(create) { const index = cursor++; if (!(index in current.slots)) current.slots[index] = create(); return current.slots[index]; }
         export function create() { return { slots: [], effects: new Set(), pending: new Map(), dirty: false }; }

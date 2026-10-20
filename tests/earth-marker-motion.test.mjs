@@ -4,8 +4,17 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const audioId = "virtual:earth-marker-audio";
 const vite = await createServer({ appType: "custom", configFile: false, root,
-  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+  plugins: [{ name: "earth-marker-audio", enforce: "pre",
+    resolveId(id) { if (id === audioId) return "\0" + audioId; },
+    load(id) { if (id === "\0" + audioId) return "export const events=[];const runtime={play:event=>events.push(event)};export const getAudioRuntime=()=>runtime;"; },
+    transform(source, id) {
+      if (id.endsWith("/features/earth/marker-motion.ts")) return source.replace('from "@/features/audio/runtime/audio-service";', `from "${audioId}";`);
+    },
+  }] });
+const { events: audioEvents } = await vite.ssrLoadModule(audioId);
 const { createEarthPositionMarker, updateEarthPositionMarkerLabel } = await vite.ssrLoadModule("/features/earth/position-marker.ts");
 const { earthMarkerMotion, bindEarthPositionMarkerMotion } = await vite.ssrLoadModule("/features/earth/marker-motion.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
@@ -146,6 +155,23 @@ test("a tap waves briefly, and a repeated tap replaces rather than adds timers",
   assert.equal(s.timers.size, 0);
   assert.match(s.marker.attributes["aria-label"], /точность ±25 м/);
   s.dispose();
+});
+
+test("self-marker clicks sound once only after visibility, distance and occlusion guards succeed", () => {
+  audioEvents.length = 0;
+  const s = fixture();
+  assert.deepEqual(audioEvents, [], "mount and camera motion are silent");
+  s.marker.emit("click");
+  assert.deepEqual(audioEvents.map(event => event.cueId), ["ui.click"]);
+  s.marker.className += " maplibregl-marker-covered";
+  s.marker.emit("click");
+  s.marker.className = s.marker.className.replace(" maplibregl-marker-covered", "");
+  s.move({ zoom: -1.5 }); s.marker.emit("click");
+  s.move({ zoom: 1 });
+  s.document.visibilityState = "hidden"; s.marker.emit("click");
+  s.document.visibilityState = "visible"; s.dispose(); s.marker.emit("click");
+  assert.equal(audioEvents.length, 1);
+  assert.equal(s.marker.dataset.audioCue, undefined, "there is no capture-phase duplicate before the click guard");
 });
 
 test("reduced motion uses a single static greeting and resets immediately when the preference changes", () => {

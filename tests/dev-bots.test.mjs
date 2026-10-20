@@ -71,6 +71,23 @@ test("lost creation and grant acknowledgements replay once and return current sn
   assert.deepEqual(bots.commandDevBots(owner.token, cmd, now).snapshot.bots, [], "an old create receipt cannot resurrect a deleted bot");
 });
 
+test("HMR legacy JSON receipts migrate to hashes without repeating a grant or returning an old snapshot", () => {
+  const owner = player(), bot = create(owner), grant = command(owner, { action: "grant_currency", botId: bot.id, currency: "coins", quantity: 1000 });
+  const first = bots.commandDevBots(owner.token, grant, now).snapshot.bots[0];
+  const receipt = globalThis.__zhivDevBotReceipts.get(owner.me.user.publicId).get(grant.requestId);
+  const legacy = JSON.stringify(model.devBotCommandSchema.parse(grant));
+  receipt.signature = legacy;
+  assert.throws(() => bots.commandDevBots(owner.token, { ...grant, quantity: 2000 }, now), { code: "DEV_BOT_REQUEST_CONFLICT" });
+  assert.equal(receipt.signature, legacy, "a mismatching request cannot migrate or consume the old receipt");
+  const current = act(owner, { action: "grant_currency", botId: bot.id, currency: "coins", quantity: 500 }).snapshot.bots[0];
+  const replay = bots.commandDevBots(owner.token, { ...grant, requestId: grant.requestId.toUpperCase(), botId: bot.id.toUpperCase() }, now);
+  assert.equal(replay.replayed, true); assert.equal(replay.botId, bot.id);
+  assert.deepEqual(replay.snapshot.bots[0], current, "the old mutation is not repeated and the response uses today's state");
+  assert.equal(current.economy.wallet.coins, first.economy.wallet.coins + 500);
+  assert.match(receipt.signature, /^[0-9a-f]{64}$/); assert.notEqual(receipt.signature, legacy);
+  assert.equal(bots.commandDevBots(owner.token, grant, now).snapshot.bots[0].economy.wallet.coins, current.economy.wallet.coins);
+});
+
 test("bot management is bound to the authenticated owner and cannot target a real account or another owner's bot", () => {
   const first = player(), second = player(), bot = create(first), otherBot = create(second), before = read(first), identities = identityState();
   for (const action of [{ action: "delete", botId: bot.id }, { action: "grant_item", botId: bot.id, itemId: "wood", quantity: 1 }, { action: "rename", botId: bot.id, displayName: "Чужой" }])

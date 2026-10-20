@@ -210,13 +210,38 @@ test("nine published placement anchors are installed once and remain inaccessibl
     assertHidden(element);
   }
   landmarks.setVisible(true);
-  assert.equal(state.markers.filter(marker => !marker.options.element.disabled).length, 6);
+  assert.equal(state.markers.filter(marker => !marker.options.element.disabled).length, 9);
   for (const event of ["move", "resize", "idle"]) state.emit(event);
   landmarks.setVisible(false);
   landmarks.setVisible(true);
   assert.deepEqual(state.markers.map(marker => marker.positions), publishedLocations.map(location => [location]));
   assert.deepEqual(EARTH_LANDMARKS.map(landmark => landmark.location), catalogLocations);
   assert.ok(state.projected.every(location => publishedLocations.some(anchor => anchor[0] === location[0] && anchor[1] === location[1])));
+  landmarks.dispose();
+});
+
+test("small zoom changes retain every separated landmark while real coverage still hides it", () => {
+  const state = scene({ zoom: 1.499, width: 1000, height: 700 });
+  for (const [index, landmark] of EARTH_LANDMARKS.entries()) {
+    state.setPoint(landmark.id, { x: 160 + index % 3 * 300, y: 140 + Math.floor(index / 3) * 220 });
+  }
+  const landmarks = state.create();
+  landmarks.setVisible(true);
+  const visibleIds = () => state.markers.filter(marker => !marker.options.element.disabled)
+    .map(marker => marker.options.element.dataset.earthLandmark);
+  for (const zoom of [1.499, 1.501, 0.5, 2.5, 1.499]) {
+    state.setZoom(zoom);
+    assert.deepEqual(visibleIds(), EARTH_LANDMARKS.map(landmark => landmark.id));
+  }
+  state.cover("saint-basils", true);
+  assertHidden(state.element("saint-basils"));
+  assert.equal(visibleIds().length, 8);
+  state.cover("saint-basils", false);
+  assert.equal(visibleIds().length, 9);
+  state.setPoint("sydney-opera", { x: -1000, y: 300 });
+  state.emit("move");
+  assertHidden(state.element("sydney-opera"));
+  assert.equal(visibleIds().length, 8);
   landmarks.dispose();
 });
 

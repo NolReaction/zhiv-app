@@ -1,5 +1,6 @@
 export const EARTH_LANDMARK_WIDTH = 48;
 export const EARTH_LANDMARK_HEIGHT = 48;
+export const EARTH_LANDMARK_MAX_VISIBLE = 9;
 export const EARTH_LANDMARK_MIN_ZOOM = -0.2;
 export const EARTH_LANDMARK_APPEAR_ZOOM = 0.6;
 export const EARTH_LANDMARK_FADE_START = 3.8;
@@ -40,7 +41,9 @@ export function earthLandmarkView(zoom: number): LandmarkView {
     opacity *= 1 - fade * fade * (3 - 2 * fade);
   }
   return { scale, opacity, width: EARTH_LANDMARK_WIDTH * scale, height: EARTH_LANDMARK_HEIGHT * scale,
-    limit: zoom < 1.5 ? 3 : 6 };
+    // The small catalogue has a fixed budget. Zoom-dependent count caps made
+    // unobstructed buildings disappear at an otherwise continuous camera step.
+    limit: EARTH_LANDMARK_MAX_VISIBLE };
 }
 
 /** Greedy, stable decluttering in screen pixels; no coordinate or DOM mutation. */

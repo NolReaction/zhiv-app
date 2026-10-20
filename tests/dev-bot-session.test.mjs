@@ -92,6 +92,24 @@ test("offline and invalid actions never create deferred writes", async () => {
   online = true; await session.command({ ...action, quantity: -1 }); assert.equal(sends, 0);
 });
 
+test("geo commands retry exactly in RAM while coordinates and consent never enter persisted pending storage", async () => {
+  for (const geo of [{ action: "set_earth_position", botId, latitude: 55.752345, longitude: 37.623123, accuracyMeters: 10 },
+    { action: "set_earth_sharing", botId, mode: "SHARING", precision: "PRECISE", durationMinutes: 60 }]) {
+    const cache = storage(), sent = [];
+    const session = createDevBotSession(owner, transport({ send: async command => {
+      sent.push(structuredClone(command)); if (sent.length === 1) throw Error("ACK lost"); return { ...result(), replayed: true };
+    } }), cache);
+    const stop = session.activate(); await session.refresh(); await session.command(geo);
+    assert.equal(session.getSnapshot().uncertain, true); assert.equal(cache.data.size, 0);
+    assert.equal((await session.retry()).replayed, true); assert.deepEqual(sent[0], sent[1]); stop();
+    const copied = { ...geo, ownerPublicId: owner, requestId: crypto.randomUUID() };
+    cache.setItem(receiptKey(owner), JSON.stringify(copied));
+    const restored = createDevBotSession(owner, transport(), cache); restored.activate(); await restored.refresh();
+    assert.equal(restored.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
+    assert.equal(await restored.retry(), null);
+  }
+});
+
 test("DEV transport binds responses and sends presence, cookies and an exact JSON command", async () => {
   const command = fullCommand(); let called;
   setGamePresence("presence-for-bot-test");

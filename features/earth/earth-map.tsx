@@ -3,6 +3,8 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CloudSun, Compass, Earth, HardDriveDownload, Info, LocateFixed, Minus, Plus, X } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EarthPosition } from "./location";
 import type { EarthCameraSession, EarthCameraSnapshot } from "./camera-session";
 import { EARTH_ACCURACY_SOURCE, EARTH_CENTER, EARTH_SKY, EARTH_STYLE_URL, globeZoom, positionAccuracyData, positionZoom, prepareEarthStyle } from "./map-style";
@@ -674,21 +676,21 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [active, visible, phase, position, focusRequest, focusWhenReady]);
 
   const ready = active && visible && phase === "ready";
-  return <div className={styles.root} data-earth-map data-map-status={phase} data-lighting={lightingMode}>
+  return <div className={styles.root} data-earth-map data-map-status={phase} data-lighting={lightingMode} data-development={process.env.NODE_ENV === "development" || undefined}>
     <div ref={host} className={styles.canvas} data-visible={phase === "ready"} aria-hidden={phase !== "ready"} inert={phase !== "ready" || undefined} />
     <div className={styles.controls} role="group" aria-label="Управление картой">
-      <button type="button" disabled={!ready} title="Показать всю Землю" aria-label="Показать всю Землю" onClick={() => {
+      <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Показать всю Землю" aria-label="Показать всю Землю" onClick={() => {
         const current = mapRef.current;
         const element = host.current;
         if (current && element) current.flyTo({ center: EARTH_CENTER, zoom: globeZoom(element.clientWidth, element.clientHeight), bearing: 0, pitch: 0, duration: reducedMotion() ? 0 : 1200, essential: false });
       }}><Earth size={21} aria-hidden="true" /></button>
-      <button type="button" disabled={!ready} title="Приблизить" aria-label="Приблизить карту" onClick={() => mapRef.current?.zoomIn({ duration: reducedMotion() ? 0 : 250 })}><Plus size={21} aria-hidden="true" /></button>
-      <button type="button" disabled={!ready} title="Отдалить" aria-label="Отдалить карту" onClick={() => mapRef.current?.zoomOut({ duration: reducedMotion() ? 0 : 250 })}><Minus size={21} aria-hidden="true" /></button>
-      <button type="button" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
-      {showLocationControl && !modelEditorOpen && <button type="button" className={styles.locateButton} disabled={!ready} data-active={locationActive} aria-busy={locating}
+      <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Приблизить" aria-label="Приблизить карту" onClick={() => mapRef.current?.zoomIn({ duration: reducedMotion() ? 0 : 250 })}><Plus size={21} aria-hidden="true" /></button>
+      <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Отдалить" aria-label="Отдалить карту" onClick={() => mapRef.current?.zoomOut({ duration: reducedMotion() ? 0 : 250 })}><Minus size={21} aria-hidden="true" /></button>
+      <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
+      {showLocationControl && !modelEditorOpen && <button type="button" data-audio-cue="ui.click" className={styles.locateButton} disabled={!ready} data-active={locationActive} aria-busy={locating}
         title={locating ? "Ищем тебя…" : "Найти меня"}
         aria-label="Найти меня" aria-describedby="earth-location-privacy" onClick={onLocate}><LocateFixed size={21} aria-hidden="true" /></button>}
-      <button type="button" disabled={!ready} data-active={weatherEnabled} aria-pressed={weatherEnabled}
+      <button type="button" data-audio-cue="ui.click" disabled={!ready} data-active={weatherEnabled} aria-pressed={weatherEnabled}
         title="Погода для центра карты" aria-label={weatherEnabled ? "Выключить погоду" : "Включить погоду"}
         onClick={() => setWeatherEnabled(value => !value)}><CloudSun size={21} aria-hidden="true" /></button>
     </div>
@@ -699,7 +701,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       onPersist={persistMap} onRetry={phase === "unsupported" ? undefined : retryMap} />}
     {ready && tileStatus !== "idle" && <div className={styles.networkNotice} role="status">
       <span>{!isOnline || tileStatus === "failed" ? "Часть деталей пока недоступна" : "Восстанавливаем детали карты…"}</span>
-      <button type="button" disabled={!isOnline || tileStatus === "retrying"} onClick={() => tileRecoveryRef.current?.retry()}>Повторить</button>
+      <button type="button" data-audio-cue="ui.click" disabled={!isOnline || tileStatus === "retrying"} onClick={() => tileRecoveryRef.current?.retry()}>Повторить</button>
     </div>}
     {ready && tileStatus === "idle" && cache.pending > 0 && <p className={styles.tileProgress} role="status">Загружаем окрестности…</p>}
     {ready && weatherEnabled && <p className={styles.weatherBadge} data-earth-weather-status={weatherState.status} role="status">
@@ -712,17 +714,19 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     </p>}
     {ready && <EarthAttribution />}
     {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} open={modelEditorOpen} onOpenChange={changeModelEditorOpen} /></Suspense>}
-    {ready && <button ref={infoButton} type="button" className={styles.infoButton} aria-label="О карте и её настройках"
+    {ready && <button ref={infoButton} type="button" data-audio-cue={infoOpen ? "ui.close" : "ui.open"} className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => onInfoOpenChange(!infoOpen)}><Info size={21} aria-hidden="true" /></button>}
     {ready && infoOpen && <section id="earth-info-panel" className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
-      if (event.key === "Escape") { event.stopPropagation(); onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }
+      if (event.key === "Escape") { event.stopPropagation(); playUiCue(getAudioRuntime(), "ui.close"); onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }
     }}>
       <header className={styles.infoHeader}><h2 ref={infoHeading} tabIndex={-1} id="earth-info-title">О карте</h2>
-        <button type="button" className={styles.infoClose} aria-label="Закрыть настройки карты" onClick={() => { onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }}><X size={18} aria-hidden="true" /></button></header>
+        <button type="button" data-audio-cue="ui.close" className={styles.infoClose} aria-label="Закрыть настройки карты" onClick={() => { onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }}><X size={18} aria-hidden="true" /></button></header>
       <section className={styles.infoSection}><h3>Вид карты</h3>
         <div className={styles.lightingModes} role="group" aria-label="Освещение глобуса">
           {([ ["auto", "Авто"], ["day", "День"], ["evening", "Вечер"] ] as const).map(([value, label]) =>
             <button key={value} type="button" aria-pressed={lightingMode === value} onClick={() => {
+              if (lightingMode === value) return;
+              playUiCue(getAudioRuntime(), "ui.tab");
               if (value === "evening" && lightingMode !== "evening") {
                 const center = mapRef.current?.getCenter();
                 if (center) setEveningCenter({ lng: center.lng, lat: center.lat });
@@ -733,11 +737,11 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         <p>{lightingMode === "auto" ? "Светлая и тёмная стороны следуют времени суток. Облачка и волны оживляют Землю при отдалении." : lightingMode === "evening" ? "Тёплый закат и огоньки городов. Вечер остаётся на выбранной стороне Земли." : "Светлый глобус, чтобы рассмотреть все детали."}</p>
         <p>Объёмные миниатюры достопримечательностей стоят на своих географических местах и поворачиваются вместе с Землёй. Нажмите на любую, чтобы узнать название. При сильном отдалении и перед масштабом улиц они скрываются.</p>
         <div className={styles.infoRow}><span id="earth-buildings-label">Объёмные здания</span>
-          <button type="button" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
+          <button type="button" data-audio-cue="ui.click" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
         <p>Появляются при приближении к улицам. Наклоните карту двумя пальцами или перетаскивайте её с зажатой правой кнопкой мыши.</p>
       </section>
       <section className={styles.infoSection}><div className={styles.infoRow}><h3 id="earth-weather-label">Погода</h3>
-        <button type="button" className={styles.infoToggle} role="switch" aria-checked={weatherEnabled} aria-labelledby="earth-weather-label" onClick={() => setWeatherEnabled(value => !value)}><span aria-hidden="true" /></button></div>
+        <button type="button" data-audio-cue="ui.click" className={styles.infoToggle} role="switch" aria-checked={weatherEnabled} aria-labelledby="earth-weather-label" onClick={() => setWeatherEnabled(value => !value)}><span aria-hidden="true" /></button></div>
         <p>Прогноз для района в центре карты: облака и осадки появляются там, где их ожидает прогноз. В ясную погоду дождя и снега нет. После перехода в другой район обновляем данные с короткой паузой.</p>
         <p>При включении передаём только центр просмотра, округлённый до целых градусов. Доступ к геопозиции для этого не нужен.</p>
         {weatherEnabled && weatherState.snapshot && <p>Прогноз на {new Date(weatherState.snapshot.forecastAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. {weatherState.status === "stale" ? "Данные сохранены ранее; свежий прогноз пока недоступен." : "Это прогноз для района, а не точное измерение на вашей улице."}</p>}
@@ -749,7 +753,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         <strong>{cache.storage === "device" ? `Сохранено ${formatEarthLoadingBytes(cache.storedBytes)} из ${formatEarthLoadingBytes(cache.diskLimitBytes)}` : "Доступно в этой сессии"}
           {cache.persistence === "granted" && cache.storage === "device" ? " · Закреплено" : ""}</strong>
         <p>{cache.storage === "device" ? "Кеш ограничен: текущий район и часто открываемые места сохраняются в первую очередь. Редко используемые подробные участки освобождают место новым. Новые районы загружаются по мере просмотра." : "Карта использует ограниченный кеш этой сессии. После закрытия страницы часть данных потребуется загрузить заново."}</p>
-        {cache.storage === "device" && cache.persistence !== "granted" && <button type="button" onClick={persistMap} disabled={persisting}><HardDriveDownload size={16} aria-hidden="true" />{persisting ? "Сохраняем…" : "Закрепить карту"}</button>}
+        {cache.storage === "device" && cache.persistence !== "granted" && <button type="button" data-audio-cue="ui.click" onClick={persistMap} disabled={persisting}><HardDriveDownload size={16} aria-hidden="true" />{persisting ? "Сохраняем…" : "Закрепить карту"}</button>}
       </div></section>
       <section className={styles.infoSection}><h3>Источники карты</h3><p className={styles.attribution}>
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>{" · "}

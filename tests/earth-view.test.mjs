@@ -99,3 +99,20 @@ test("meeting opens only the selected shared point and stays separate from map f
   buttons.find(button => button.props["aria-label"] === "Показать на карте: Лена").props.onClick();
   assert.deepEqual(calls, [["meet", "shared"], ["focus", "shared"]]);
 });
+
+test("check-in and location remain independently authorized in the Earth friend card", () => {
+  const now = Date.parse("2026-10-20T12:00:00Z");
+  const user = { publicId: "FRIEND", displayName: "Лена" };
+  const base = { circleId: "friend", user, nickname: null, lastCheckInAt: "2026-10-20T11:55:00Z", checkInState: "AVAILABLE" };
+  const marked = renderToStaticMarkup(EarthFriends({ ...defaults, now, people: { people: [base] }, onMeetPerson() {} }));
+  assert.match(marked, /«Я живой» · /);
+  assert.match(marked, /5 мин назад/);
+  assert.match(marked, /Нет доступной геопозиции/);
+  assert.doesNotMatch(marked, /Подойти к другу/);
+  const locations = [{ circleId: "friend", user, latitude: 55.75, longitude: 37.62, accuracyMeters: 20,
+    precision: "PRECISE", updatedAt: "2026-10-20T11:59:00Z", expiresAt: "2026-10-20T13:00:00Z", expiresAtMonotonic: 3_600_000 }];
+  const located = renderToStaticMarkup(EarthFriends({ ...defaults, now, people: { people: [{ ...base, checkInState: "HIDDEN" }] }, locations, onMeetPerson() {} }));
+  assert.match(located, /Отметки недоступны/);
+  assert.match(located, /Подойти к другу/);
+  assert.doesNotMatch(located, /5 мин назад|55\.75|37\.62|GHOST/);
+});

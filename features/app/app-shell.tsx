@@ -1928,6 +1928,7 @@ function CheckInContent() {
       <div key="earth-session" className={styles.viewTransition} hidden={!earthSelected} inert={!earthSelected || undefined}
         style={{ display: earthSelected ? undefined : "none" }} data-earth-session-visible={earthSelected}>
         {earthRetention.mounted && me && <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
+          devCommandsAvailable={activity.mode === "active"}
           active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange} cameraSession={earthRetention.cameraSession} sharing={earthSharing}
           isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
           onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}

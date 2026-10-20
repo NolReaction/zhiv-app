@@ -117,8 +117,16 @@ export function getDevEarthSharing(token: string | undefined): DevEarthResult<Ea
   const actor = context(token); if (actor.error) return actor.error;
   const retry = budget(devEarthSharingState().reads, actor.owner, 600, 3_600_000);
   if (retry) return error(429, "EARTH_RATE_LIMITED", retry);
-  const record = ownerRecord(actor.owner); expireConsent(record, Date.now());
-  return { kind: "ok", value: settings(actor.owner, record) };
+  return sharingProjection(actor.owner);
+}
+function sharingProjection(owner: string): DevEarthResult<EarthSharingSettings> {
+  const record = ownerRecord(owner); expireConsent(record, Date.now());
+  return { kind: "ok", value: settings(owner, record) };
+}
+/** Server-internal snapshot composition; never used by public read routes or to grant publication. */
+export function projectDevEarthSharing(token: string | undefined): DevEarthResult<EarthSharingSettings> {
+  const actor = context(token); if (actor.error) return actor.error;
+  return sharingProjection(actor.owner);
 }
 
 export function putDevEarthSharing(token: string | undefined, body: EarthSharingWrite): DevEarthResult<EarthSharingSettings> {
@@ -196,7 +204,15 @@ export function getDevEarthPeople(token: string | undefined): DevEarthResult<Ear
   const actor = context(token); if (actor.error) return actor.error;
   const retry = budget(devEarthSharingState().reads, actor.owner, 600, 3_600_000);
   if (retry) return error(429, "EARTH_RATE_LIMITED", retry);
-  const current = listDevPeople(actor.token); if (current.kind !== "ok") return error(401, "UNAUTHORIZED");
+  return peopleProjection(actor.owner, actor.token);
+}
+/** Reuses the exact authenticated feed projection without spending a second public-read quota on a DEV command result. */
+export function projectDevEarthPeople(token: string | undefined): DevEarthResult<EarthPeopleResponse> {
+  const actor = context(token); if (actor.error) return actor.error;
+  return peopleProjection(actor.owner, actor.token);
+}
+function peopleProjection(viewer: string, token: string): DevEarthResult<EarthPeopleResponse> {
+  const current = listDevPeople(token); if (current.kind !== "ok") return error(401, "UNAUTHORIZED");
   const time = Date.now();
   const people = current.value.people.flatMap(person => {
     const owner = person.user.publicId, record = devEarthSharingState().owners.get(owner);
@@ -218,5 +234,5 @@ export function getDevEarthPeople(token: string | undefined): DevEarthResult<Ear
       accuracyMeters: point.accuracyMeters, precision: frozen ? record.frozenPositions.get(person.circleId)!.precision : record.precision,
       updatedAt: iso(point.updatedAt), expiresAt: iso(Math.min(point.expiresAt, record.sharingUntil ?? Infinity)) }];
   }).sort((first, second) => first.circleId.localeCompare(second.circleId)).slice(0, EARTH_SHARING_MAX_PEOPLE);
-  return { kind: "ok", value: { ownerPublicId: actor.owner, people, serverTime: iso(time) } };
+  return { kind: "ok", value: { ownerPublicId: viewer, people, serverTime: iso(time) } };
 }

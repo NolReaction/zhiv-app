@@ -83,6 +83,24 @@ test("People cards expose separate explicit game-profile and guest-world buttons
   assert.match(html, /aria-label="Открыть профиль Мама"/);
 });
 
+test("the People switch describes my outgoing check-ins and profile independently of the friend's visibility", () => {
+  for (const enabled of [false, true]) {
+    const person = { ...friend, mySharingMode: enabled ? "LATEST_ONLY" : "OFF", theirSharingMode: enabled ? "OFF" : "LATEST_ONLY" };
+    const html = renderToStaticMarkup(createElement(PeopleView, { ownerPublicId: "OWNER", data: { ...data, people: [person] }, groups: null,
+      error: null, groupsError: null, loading: false, groupsLoading: false, nowMs: Date.now(),
+      onRefresh: async () => {}, onGroupsRefresh: async () => {}, onSessionLost() {}, onVisitFriend() {} }));
+    const toggle = html.match(/<button(?=[^>]*role="switch")(?=[^>]*aria-label="Делиться моими отметками, статусом и игровым профилем с Мама")[^>]*>/)?.[0];
+    assert.ok(toggle);
+    assert.ok(toggle.includes('aria-checked="' + enabled + '"'));
+    assert.match(toggle, /aria-describedby="sharing-state-connected"/);
+    assert.match(html, /<strong>Отметки и профиль<\/strong>/);
+    assert.ok(html.includes('<small>' + (enabled ? "Делюсь" : "Не делюсь") + '</small>'));
+    assert.match(html, /Геопозиция настраивается на карте/);
+    assert.match(html, /Отметки, статус и игровой профиль/);
+    assert.doesNotMatch(html, />Видны<|>Скрыты</);
+  }
+});
+
 test("Earth reuses game actions only for current contacts, independently of their GPS availability", () => {
   const calls = [];
   const props = { people: data, loading: false, error: null, online: true, onRefresh() {}, onOpenPeople() {},

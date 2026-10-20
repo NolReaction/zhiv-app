@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { ChevronDown, Ghost, MapPin, MoreHorizontal, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { PlayerName } from "@/components/player-name";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { PeopleResponse } from "@/lib/check-in-contract";
 import { personDisplayName } from "@/lib/person-nickname";
 import type { EarthSharingDuration, EarthSharingPrecision, EarthSharingSettings } from "@/lib/earth-sharing-contract";
@@ -29,20 +31,26 @@ function choicesFor(settings: EarthSharingSettings, draft: Draft): EarthSharingC
     precision: draft.precision, durationMinutes: draft.durationMinutes };
 }
 
+function playDisclosureCue(event: MouseEvent<HTMLElement>) {
+  if (event.defaultPrevented) return;
+  const details = event.currentTarget.closest("details");
+  if (details) playUiCue(getAudioRuntime(), details.open ? "ui.close" : "ui.open");
+}
+
 export function sharingSummary(sharing: Pick<EarthSharingHandle, "settings" | "pendingGhost" | "publishing" | "lastPublishedAt">) {
   if (sharing.pendingGhost) return "Сохраняем приватность…";
   if (!sharing.settings) return "Моя геопозиция";
-  if (sharing.settings.mode === "GHOST") return "Режим призрака";
-  if (sharing.settings.mode === "OFF") return "Только я";
+  if (sharing.settings.mode === "GHOST") return "Призрак включён";
+  if (sharing.settings.mode === "OFF") return "Геопозиция закрыта";
   const live = sharing.settings.recipientCircleIds.length - (sharing.settings.frozenCircleIds?.length ?? 0);
   if (live === 0) return "Все на паузе";
-  return sharing.publishing ? sharing.lastPublishedAt ? "Делюсь · " + live : "Ищем местоположение…" : "Обновление на паузе";
+  return sharing.publishing ? sharing.lastPublishedAt ? "Делюсь гео · " + live : "Ищем местоположение…" : "Обновление на паузе";
 }
 
 export function EarthSharingToggle({ checked, disabled, label, description, onChange, ghost = false }: {
   checked: boolean; disabled: boolean; label: string; description?: string; onChange: () => void; ghost?: boolean;
 }) {
-  return <button type="button" role="switch" aria-checked={checked} disabled={disabled} aria-label={label}
+  return <button type="button" data-audio-cue="ui.click" role="switch" aria-checked={checked} disabled={disabled} aria-label={label}
     aria-describedby={description} className={styles.toggle + (ghost ? " " + styles.ghostToggle : "")}
     onClick={() => { if (!disabled) onChange(); }}><span className={styles.track}><span /></span></button>;
 }
@@ -83,18 +91,18 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
       <span className={styles.statusDot} data-live={sharing.publishing && !ghost || undefined} />
       <span>{busy ? "Сохраняем…" : sharingSummary(sharing)}</span>
       {settings?.mode === "SHARING" && !sharing.publishing && !sharing.pendingGhost && liveCount > 0 &&
-        <button type="button" className={styles.resume} disabled={!canChange} onClick={resume}>Возобновить</button>}
+        <button type="button" data-audio-cue="ui.click" className={styles.resume} disabled={!canChange} onClick={resume}>Возобновить</button>}
     </div>
     {sharing.pendingGhost && <p className={styles.pending} role="status">{sharing.pendingPrivacyMode === "OFF"
       ? "Удаление доступа ещё не подтверждено сервером."
       : "Передача остановлена на устройстве. Ждём подтверждения сервера."}</p>}
     {!online && <p className={styles.pending} role="status">Нет сети. Включить обновление можно после подключения.</p>}
     {error && <div className={styles.error} role="alert"><span>{error}</span>
-      <button type="button" aria-label="Обновить настройки геопозиции" disabled={!online || busy} onClick={sharing.refresh}><RefreshCw size={16} aria-hidden="true" /></button></div>}
+      <button type="button" data-audio-cue="ui.click" aria-label="Обновить настройки геопозиции" disabled={!online || busy} onClick={sharing.refresh}><RefreshCw size={16} aria-hidden="true" /></button></div>}
     {sharing.loading && !settings && <p role="status">Загружаем настройки…</p>}
 
     <section className={styles.friends} aria-labelledby="earth-sharing-friends-title">
-      <header><h3 id="earth-sharing-friends-title">Кому видно меня</h3><span>{selected.size} из {friends.length}</span></header>
+      <header><h3 id="earth-sharing-friends-title">Геопозиция для друзей</h3><span>{selected.size} из {friends.length}</span></header>
       {ghost && friends.length > 0 && <p className={styles.quiet}>Выключи призрака, чтобы делиться.</p>}
       {friends.length > 8 && <label className={styles.search}><span className={styles.srOnly}>Найти близкого</span>
         <input type="search" aria-label="Найти близкого" placeholder="Найти близкого" value={query}
@@ -103,7 +111,7 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
       {displayed.length > 0 ? <ul className={styles.recipientList}>
         {displayed.map(person => {
           const name = personDisplayName(person), hasAccess = selected.has(person.circleId), isFrozen = frozen.has(person.circleId);
-          const status = !hasAccess ? "Не делитесь" : ghost || isFrozen ? "Место заморожено" : sharing.publishing ? "Обновляется" : "На паузе";
+          const status = !hasAccess ? "Нет доступа" : ghost || isFrozen || !sharing.publishing ? "Последнее место" : "Обновляется";
           const disabled = !canChange || ghost || !hasAccess && selected.size >= 100;
           return <li key={person.circleId} className={styles.friend}>
             <div className={styles.friendMain} data-has-access={hasAccess || undefined}>
@@ -120,9 +128,9 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
                 }} />
             </div>
             {hasAccess && <details className={styles.friendDetails}>
-              <summary aria-label={"Настройки доступа: " + name}><MoreHorizontal size={20} aria-hidden="true" /></summary>
+              <summary aria-label={"Настройки доступа: " + name} onClick={playDisclosureCue}><MoreHorizontal size={20} aria-hidden="true" /></summary>
               <div><p>{isFrozen || ghost ? "Доступно только последнее место." : "Виден выбранный вами район или точная позиция."}</p>
-                <button type="button" disabled={!canChange} onClick={() => { if (canChange) void onRevokeRecipient(person.circleId); }}>Убрать меня с карты друга</button></div>
+                <button type="button" data-audio-cue="ui.click" disabled={!canChange} onClick={() => { if (canChange) void onRevokeRecipient(person.circleId); }}>Убрать меня с карты друга</button></div>
             </details>}
           </li>;
         })}
@@ -131,24 +139,27 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
     </section>
 
     <details className={styles.options}>
-      <summary><SlidersHorizontal size={16} aria-hidden="true" /><span>Точность и срок</span><ChevronDown size={16} aria-hidden="true" /></summary>
+      <summary onClick={playDisclosureCue}><SlidersHorizontal size={16} aria-hidden="true" /><span>Точность и срок</span><ChevronDown size={16} aria-hidden="true" /></summary>
       <form onSubmit={event => { event.preventDefault(); if (settings && canChange && !ghost && selected.size > 0) void onShare(choicesFor(settings, draft)); }}>
         <fieldset disabled={!canChange || ghost} className={styles.precision}><legend>Точность</legend>
           <label><input type="radio" name="earth-sharing-precision" value="APPROXIMATE" checked={draft.precision === "APPROXIMATE"}
-            onChange={() => onPrecisionChange("APPROXIMATE")} /><span>Примерно</span></label>
+            onChange={() => { if (canChange && !ghost && draft.precision !== "APPROXIMATE") { onPrecisionChange("APPROXIMATE"); playUiCue(getAudioRuntime(), "ui.click"); } }} /><span>Примерно</span></label>
           <label><input type="radio" name="earth-sharing-precision" value="PRECISE" checked={draft.precision === "PRECISE"}
-            onChange={() => onPrecisionChange("PRECISE")} /><span>Точно</span></label>
+            onChange={() => { if (canChange && !ghost && draft.precision !== "PRECISE") { onPrecisionChange("PRECISE"); playUiCue(getAudioRuntime(), "ui.click"); } }} /><span>Точно</span></label>
         </fieldset>
         <label className={styles.duration}>Срок доступа<select value={draft.durationMinutes === null ? "forever" : String(draft.durationMinutes)} disabled={!canChange || ghost}
-          onChange={event => onDurationChange(event.target.value === "forever" ? null : Number(event.target.value) as 60 | 480)}>
+          onChange={event => {
+            const duration = event.target.value === "forever" ? null : Number(event.target.value) as 60 | 480;
+            if (canChange && !ghost && duration !== draft.durationMinutes) { onDurationChange(duration); playUiCue(getAudioRuntime(), "ui.click"); }
+          }}>
           <option value="60">На 1 час</option><option value="480">На 8 часов</option><option value="forever">Пока не выключу</option>
         </select></label>
         <p className={styles.quiet}>Примерно — район около 1,5 км. В фоне обновлений нет.</p>
         {settings?.sharingUntil && <p className={styles.quiet}>Текущий доступ до {new Date(settings.sharingUntil).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.</p>}
-        <button className={styles.applyButton} type="submit" disabled={!canChange || ghost || selected.size === 0}><MapPin size={16} aria-hidden="true" />Применить и обновлять</button>
+        <button className={styles.applyButton} type="submit" data-audio-cue="ui.click" disabled={!canChange || ghost || selected.size === 0}><MapPin size={16} aria-hidden="true" />Применить и обновлять</button>
       </form>
       <p className={styles.retention}><ShieldCheck size={15} aria-hidden="true" />Только последнее место, без истории. До 24 часов, в пределах срока доступа.</p>
-      {selected.size > 0 && <button className={styles.revokeAll} type="button" onClick={onOff}>Убрать меня с карты у всех</button>}
+      {selected.size > 0 && <button className={styles.revokeAll} type="button" data-audio-cue="ui.click" onClick={onOff}>Убрать меня с карты у всех</button>}
     </details>
   </div>;
 }

@@ -41,6 +41,7 @@ import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-reward
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
 import { resetDevMailState } from "@/lib/dev/mail-state";
 import { resetDevEarthSharingState, revokeDevEarthCircle } from "@/lib/dev/earth-sharing-state";
+import { removeDevBotEarthSimulation, resetDevBotEarthSimulation } from "@/lib/dev/bot-earth-state";
 import {
   calculateRollingStreak,
   formatLocalDate,
@@ -220,6 +221,7 @@ function store(): Store {
 export function resetDevStoreForTests() {
   delete globalStore.__zhivDevStore;
   resetDevEarthSharingState();
+  resetDevBotEarthSimulation();
   resetDevForestMemoryStoreForTests();
   resetDevMailState();
   resetDevWorldStoreForTests();
@@ -687,7 +689,8 @@ export function deleteDevOwnedBot(token: string | undefined, botId: string): str
   if (!bot || !user) return null;
   const data = store();
   const circleIds = [...data.circles.values()].filter(circle => circle.lowUserId === user.id || circle.highUserId === user.id).map(circle => circle.id);
-  for (const circleId of circleIds) data.circles.delete(circleId);
+  for (const circleId of circleIds) { revokeDevEarthCircle(circleId); data.circles.delete(circleId); }
+  removeDevBotEarthSimulation(bot);
   for (const [key] of data.sharing) if (circleIds.some(id => key.startsWith(`${id}:`)) || key.endsWith(`:${user.id}`)) data.sharing.delete(key);
   for (const [key] of data.personNicknames) if (key.startsWith(`${user.id}:`) || key.endsWith(`:${user.id}`)) data.personNicknames.delete(key);
   for (const [key] of data.recipientSharing) if (key.startsWith(`${user.id}:`) || key.endsWith(`:${user.id}`)) data.recipientSharing.delete(key);

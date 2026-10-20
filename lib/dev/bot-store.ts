@@ -1,8 +1,11 @@
 // Local memory adapter only. Bots are ordinary local users with private server credentials.
+import { createHash } from "node:crypto";
 import { devBotCommandSchema, devBotsSnapshotSchema, type DevBotCommand, type DevBotResult, type DevBotsSnapshot } from "@/features/world/dev/dev-bot-model";
 import type { EconomyCommand } from "@/features/economy/domain/model";
 import type { EconomyDevCommand } from "@/features/economy/dev/dev-model";
-import { createDevOwnedBot, deleteDevOwnedBot, getDevIdentity, getDevOwnedBots, listDevPeople, renameDevOwnedBot, updateDevSharing } from "./api-store";
+import { createDevCheckIn, createDevOwnedBot, deleteDevOwnedBot, getDevIdentity, getDevOwnedBots, listDevPeople, renameDevOwnedBot, updateDevSharing } from "./api-store";
+import { commandDevBotEarth, getDevBotEarth } from "./bot-earth-store";
+import { projectDevEarthPeople } from "./earth-sharing-store";
 import { commandDevEconomy, commandDevEconomyCheat, commandDevEconomyMarket, commandDevGuestWorldMarket, DevEconomyError, getDevEconomy, getDevEconomyMarket, removeDevEconomyOwner } from "./economy-store";
 import { commandDevWorld, getDevGuestWorldAppearance, getDevWorld, removeDevWorldOwner, syncDevWorldWardrobe } from "./world-store";
 
@@ -20,12 +23,15 @@ function ownerFor(token: string | undefined, expectedOwner?: string) {
 
 export function getDevBots(token: string | undefined, now = Date.now(), expectedOwner?: string): DevBotsSnapshot {
   const owner = ownerFor(token, expectedOwner);
+  const earth = projectDevEarthPeople(token);
+  if (earth.kind !== "ok") return fail(earth.code, "Не удалось прочитать геопозиции тестовых друзей", earth.status);
   const bots = getDevOwnedBots(token).map(bot => {
     const identity = getDevIdentity(bot.token)!;
     const state = getDevEconomy(bot.token, now);
     const appearance = getDevGuestWorldAppearance(bot.publicId);
     return { id: bot.id, publicId: bot.publicId, displayName: identity.user.displayName, circleId: bot.circleId,
       sharingMode: getBotSharing(bot.token, bot.circleId), createdAt: bot.createdAt,
+      lastCheckInAt: identity.lastCheckInAt, earth: getDevBotEarth(token, bot.id, earth.value.people.find(person => person.circleId === bot.circleId)),
       economy: { revision: state.revision, buildings: state.buildings, wallet: state.wallet, inventory: state.inventory, jobs: state.jobs, storage: state.storage },
       equipment: appearance.equipment, listings: getDevEconomyMarket(bot.token, {}, now).mine };
   });
@@ -51,12 +57,19 @@ export function commandDevBots(token: string | undefined, input: DevBotCommand, 
   if ("jobId" in command) command.jobId = command.jobId.toLowerCase();
   ownerFor(token, command.ownerPublicId);
   const requestId = command.requestId.toLowerCase();
-  const signature = JSON.stringify(command);
+  // Receipts retain a fingerprint, never a history of simulated GPS coordinates.
+  const signature = createHash("sha256").update(JSON.stringify(command)).digest("hex");
   let ownerReceipts = receipts().get(owner);
   if (!ownerReceipts) receipts().set(owner, ownerReceipts = new Map());
   const old = ownerReceipts.get(requestId);
   if (old) {
-    if (old.signature !== signature) return fail("DEV_BOT_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия");
+    if (old.signature !== signature) {
+      // HMR keeps receipts from the earlier JSON fingerprint format. Migrate a
+      // matching receipt in place without running its mutation again.
+      if (createHash("sha256").update(old.signature).digest("hex") !== signature)
+        return fail("DEV_BOT_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия");
+      old.signature = signature;
+    }
     return { snapshot: getDevBots(token, now, owner), botId: old.botId, message: old.message, replayed: true };
   }
   if (ownerReceipts.size >= 2048) return fail("DEV_BOT_REQUEST_LIMIT", "Лимит локального стенда исчерпан. Перезапустите сервер разработки");
@@ -122,6 +135,14 @@ export function commandDevBots(token: string | undefined, input: DevBotCommand, 
         const result = updateDevSharing(bot.token, bot.circleId, command.sharingMode);
         if (result.kind !== "ok") return fail("DEV_BOT_FRIENDSHIP_CHANGED", "Связь с тестовым другом удалена. Создайте нового друга");
         message = command.sharingMode === "OFF" ? "Тестовый друг закрыл доступ к своему миру" : "Мир тестового друга снова доступен"; break;
+      }
+      case "set_earth_sharing":
+      case "set_earth_position": message = commandDevBotEarth(token, command); break;
+      case "check_in": {
+        const result = createDevCheckIn(bot.token, command.requestId);
+        if (result.kind === "unauthorized") return fail("DEV_BOT_NOT_FOUND", "Тестовый друг недоступен", 404);
+        if (result.kind === "cooldown") return fail("CHECK_IN_COOLDOWN", "Тестовый друг сможет отметиться через 30 секунд", 429);
+        message = "Тестовый друг отметил, что жив"; break;
       }
       case "delete": {
         const removed = deleteDevOwnedBot(token, bot.id);

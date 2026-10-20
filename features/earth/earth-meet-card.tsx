@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import { ArrowUp, ExternalLink, Footprints, LocateFixed, MapPinned, X } from "lucide-react";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
 import { earthMeetDetails, walkingRouteUrl } from "./meet";
@@ -24,13 +26,18 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
   const route = available ? walkingRouteUrl(person, monotonicNow, now) : null;
   const minutes = person ? Math.max(0, Math.floor((now - Date.parse(person.updatedAt)) / 60_000)) : 0;
   const updated = minutes < 1 ? "Только что" : minutes < 60 ? `${minutes} мин. назад` : `${Math.floor(minutes / 60)} ч. назад`;
+  const openRoute = (event: MouseEvent<HTMLAnchorElement>) => {
+    // A tab may have slept since rendering; never open an expired destination.
+    if (event.defaultPrevented || !person || !walkingRouteUrl(person, performance.now(), Date.now())) { event.preventDefault(); return; }
+    playUiCue(getAudioRuntime(), "ui.open");
+  };
   return <section className={styles.card} aria-labelledby="earth-meet-heading" onKeyDown={event => {
-    if (event.key === "Escape") { event.stopPropagation(); onClose(); }
+    if (event.key === "Escape") { event.stopPropagation(); playUiCue(getAudioRuntime(), "ui.close"); onClose(); }
   }}>
     <header className={styles.header}>
       <span className={styles.avatar} aria-hidden="true">{Array.from(name?.trim() || "Ж")[0].toLocaleUpperCase("ru-RU")}</span>
       <div><span className={styles.eyebrow}>Навстречу другу</span><h2 id="earth-meet-heading" ref={heading} tabIndex={-1}>{name || "Друг"}</h2></div>
-      <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть встречу"><X size={18} aria-hidden="true" /></button>
+      <button type="button" data-audio-cue="ui.close" className={styles.close} onClick={onClose} aria-label="Закрыть встречу"><X size={18} aria-hidden="true" /></button>
     </header>
     {available ? <>
       <div className={styles.distance}>
@@ -41,12 +48,10 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
       </div>
       <p className={styles.updated}>{person.precision === "APPROXIMATE" ? "Примерный район" : "Последняя точка"} · {updated}</p>
       <div className={styles.actions}>
-        {details ? <button type="button" onClick={onShowBoth}><MapPinned size={18} aria-hidden="true" />Мы на карте</button>
-          : <button type="button" onClick={onLocate} disabled={locating}><LocateFixed size={18} aria-hidden="true" />Найти меня</button>}
-        {route && <a href={route} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={event => {
-          // A tab may have slept since rendering; never open an expired destination.
-          if (!walkingRouteUrl(person, performance.now(), Date.now())) event.preventDefault();
-        }}><Footprints size={18} aria-hidden="true" />Пешком<ExternalLink size={13} aria-hidden="true" /></a>}
+        {details ? <button type="button" data-audio-cue="ui.click" onClick={onShowBoth}><MapPinned size={18} aria-hidden="true" />Мы на карте</button>
+          : <button type="button" data-audio-cue="ui.click" onClick={onLocate} disabled={locating}><LocateFixed size={18} aria-hidden="true" />Найти меня</button>}
+        {route && <a href={route} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={openRoute}
+          onAuxClick={event => { if (event.button === 1) openRoute(event); }}><Footprints size={18} aria-hidden="true" />Пешком<ExternalLink size={13} aria-hidden="true" /></a>}
       </div>
       <p className={styles.footnote}>{route ? "Пеший маршрут откроется в Google Картах." : person.precision === "APPROXIMATE"
         ? "Для пешего маршрута нужна точная геопозиция друга." : "Пеший маршрут появится, когда точка будет свежей и точной."}</p>

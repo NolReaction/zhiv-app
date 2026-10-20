@@ -49,7 +49,8 @@ test("the compact panel starts private, approximate and one hour; rendering neve
   const result = view();
   assert.equal(result.elements.filter(node => node.props.role === "switch").length, 4);
   assert.ok(result.elements.filter(node => node.props.role === "switch").every(node => node.props["aria-checked"] === false));
-  assert.match(result.markup, /Только я/);
+  assert.match(result.markup, /Геопозиция закрыта/);
+  assert.match(result.markup, /Геопозиция для друзей/);
   assert.match(result.markup, /<input(?=[^>]*value="APPROXIMATE")(?=[^>]*checked)[^>]*>/);
   assert.match(result.markup, /value="60" selected/);
   assert.equal(result.elements.find(node => node.type === "button" && node.props.type === "submit").props.disabled, true);
@@ -103,8 +104,24 @@ test("an existing friend's switch freezes and unfreezes only that recipient with
   assert.deepEqual(result.calls, [["frozen", "one", true], ["frozen", "two", false]]);
   const frozen = view({}, { ...activeSettings, frozenCircleIds: ["one", "two"] });
   assert.equal(friendSwitch(frozen, "Лена").props["aria-checked"], false);
-  assert.match(frozen.markup, /Место заморожено/);
+  assert.match(frozen.markup, /Последнее место/);
   assert.equal(sharingSummary(frozen.props.sharing), "Все на паузе");
+});
+
+test("friend rows distinguish live updates, a permitted last point and no access", () => {
+  const status = (result, id) => result.elements.find(node => node.props.id === "earth-friend-access-" + id).props.children;
+  const live = view({ sharing: { publishing: true, lastPublishedAt: settings.serverTime } }, activeSettings);
+  assert.equal(sharingSummary(live.props.sharing), "Делюсь гео · 1");
+  assert.equal(status(live, "one"), "Обновляется");
+  assert.equal(status(live, "two"), "Последнее место");
+  assert.equal(status(live, "new"), "Нет доступа");
+  const paused = view({}, activeSettings);
+  assert.equal(status(paused, "one"), "Последнее место");
+  const ghost = view({}, { ...activeSettings, mode: "GHOST" });
+  assert.equal(sharingSummary(ghost.props.sharing), "Призрак включён");
+  assert.equal(status(ghost, "one"), "Последнее место");
+  assert.equal(status(ghost, "new"), "Нет доступа");
+  assert.deepEqual([...live.calls, ...paused.calls, ...ghost.calls], []);
 });
 
 test("a never-authorized friend gets consent only from their own explicit switch", async () => {

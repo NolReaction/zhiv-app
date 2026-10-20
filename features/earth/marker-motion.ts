@@ -1,4 +1,6 @@
 import type { Map as LibreMap } from "maplibre-gl";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { paintEarthPositionMarkerPose } from "./position-marker";
 import styles from "./position-marker.module.css";
 
@@ -98,6 +100,7 @@ export function bindEarthPositionMarkerMotion(map: MarkerMap, marker: HTMLElemen
   const greet = (event: Event) => {
     event.stopPropagation();
     if (disposed || !syncAvailability()) return;
+    playUiCue(getAudioRuntime(), "ui.click");
     stopGreeting();
     greeting = true;
     paintEarthPositionMarkerPose(marker, "greet", 0);

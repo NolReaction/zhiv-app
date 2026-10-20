@@ -354,7 +354,7 @@ const textureFixtureImages = new Map(await Promise.all([1, 256, 512, 1024].map(a
   await sharp({ create: { width: size, height: size, channels: 3, background: "#80a0c0" } }).webp({ lossless: true }).toBuffer(),
 ])));
 
-function texturedFixture(ids = ["christ-redeemer", "colosseum", "giza-pyramids"], dimensions = [1, 1, 1]) {
+function texturedFixture(ids = ["christ-redeemer", "colosseum", "giza-pyramids"], dimensions = [1, 1, 1], boundsById = {}) {
   const images = dimensions.map(size => textureFixtureImages.get(size));
   const buffer = new ArrayBuffer(232 + images.reduce((sum, image) => sum + image.byteLength, 0)), header = new DataView(buffer);
   header.setUint32(0, 0x324d4c45, true); header.setUint32(4, 2, true);
@@ -377,7 +377,8 @@ function texturedFixture(ids = ["christ-redeemer", "colosseum", "giza-pyramids"]
   const definitions = ids.map((id, index) => {
     const asset = lod => ({ url: `/earth/models/${id}/${lod}.elm`, bytes: buffer.byteLength, sha256: "a".repeat(64),
       vertexCount: 3, indexCount: 3, format: 2, textures });
-    return { id, heightMeters: 40 + index, assets: { version: 1, overview: asset("overview"), detail: asset("detail") } };
+    return { id, heightMeters: 40 + index, normalizedBounds: boundsById[id],
+      assets: { version: 1, overview: asset("overview"), detail: asset("detail") } };
   });
   const requests = [], bitmaps = [], timers = new Set();
   const f = fixture({ definitions, environment: {
@@ -415,6 +416,31 @@ function texturedFixture(ids = ["christ-redeemer", "colosseum", "giza-pyramids"]
   return Object.assign(f, { requests, definitions, bitmaps, uploadedTextures, textureParameters, attributes, samplers, textureState,
     failTexture() { failed = true; }, response(index) { requests[index].resolve(new Response(buffer.slice(0))); } });
 }
+
+test("overview draws fit wide source bounds uniformly across reloads while street height still follows the editor", async () => {
+  const f = texturedFixture(["eiffel-tower", "colosseum"], [1, 1, 1], {
+    "eiffel-tower": { min: [-.2, -.2, 0], max: [.2, .2, 1] },
+    colosseum: { min: [-1, -1, 0], max: [1, 1, 1] },
+  });
+  try {
+    f.zoom(1.499); f.models.layer.onAdd(f.map, f.gl);
+    f.models.setVisible(true, new Set(["eiffel-tower", "colosseum"]));
+    await flushModel(); f.response(0); f.response(1); await flushModel(); f.render();
+    const scales = () => f.uniforms.filter(([name]) => name === "u_scale").slice(-2).map(([, value]) => value);
+    const [tower, roof] = scales();
+    assert.ok(Math.abs(roof * Math.hypot(2, 2) - tower) < 1e-12,
+      "the whole broad footprint fits the same frame as the tall tower");
+    assert.deepEqual(f.drawKinds.slice(-2), ["uploaded", "uploaded"]);
+    f.models.layer.onRemove(f.map, f.gl); f.models.layer.onAdd(f.map, f.gl); f.render();
+    assert.deepEqual(scales(), [tower, roof], "style/context restoration retains overview dimensions");
+    updateEarthModelPlacement("colosseum", { heightMeters: 123, headingDegrees: 37 });
+    f.zoom(17); f.models.setVisible(true, new Set(["eiffel-tower", "colosseum"]));
+    await flushModel(); f.response(2); f.response(3); await flushModel(); f.render();
+    assert.deepEqual(f.uniforms.filter(([name]) => name === "u_height").slice(-2).map(([, value]) => value),
+      getEarthModelPlacements().filter(model => ["eiffel-tower", "colosseum"].includes(model.id)).map(model => model.heightMeters),
+      "overview fitting never rescales published or edited real-world metres");
+  } finally { f.models.dispose(); resetEarthModelPlacements(); }
+});
 
 test("different imported IDs use their own lazy LOD URLs, share two request permits and release hidden GPU textures", async () => {
   const f = texturedFixture(); f.models.layer.onAdd(f.map, f.gl);

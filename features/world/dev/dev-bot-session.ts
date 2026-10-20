@@ -8,6 +8,7 @@ type Transport = {
   send: (command: DevBotCommand, signal: AbortSignal) => Promise<DevBotResult>;
 };
 type View = { snapshot: DevBotsSnapshot | null; busy: boolean; loading: boolean; uncertain: boolean; error: string | null; notice: string };
+const ramOnly = (command: DevBotCommand) => command.action === "set_earth_position" || command.action === "set_earth_sharing";
 
 /** DEV grants and account creation still need exact-request recovery after a lost response. */
 export function createDevBotSession(owner: string | null, transport: Transport, storage?: Storage | null,
@@ -19,14 +20,14 @@ export function createDevBotSession(owner: string | null, transport: Transport, 
   const publish = (patch: Partial<View>) => { view = { ...view, ...patch }; for (const listener of listeners) listener(); };
   const save = (command: DevBotCommand | null) => {
     pending = command;
-    try { if (command) storage?.setItem(key, JSON.stringify(command)); else storage?.removeItem(key); } catch { /* Private browsing can disable storage. */ }
+    try { if (command && !ramOnly(command)) storage?.setItem(key, JSON.stringify(command)); else storage?.removeItem(key); } catch { /* Private browsing can disable storage. */ }
   };
   const restore = () => {
     try {
       const raw = storage?.getItem(key);
       if (!raw) return;
       const parsed = devBotCommandSchema.safeParse(JSON.parse(raw));
-      if (parsed.success && parsed.data.ownerPublicId === owner) pending = parsed.data;
+      if (parsed.success && parsed.data.ownerPublicId === owner && !ramOnly(parsed.data)) pending = parsed.data;
       else storage?.removeItem(key);
     } catch { try { storage?.removeItem(key); } catch { /* No writable session storage. */ } }
   };
