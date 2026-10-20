@@ -27,7 +27,7 @@ test("Earth friends lists actual contacts without claiming their location is sha
   const html = renderToStaticMarkup(EarthFriends({ ...defaults, people }));
   assert.match(html, /&lt;script&gt;friend&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
-  assert.match(html, /только близкие, которые разрешили/);
+  assert.match(html, /Геопозиция видна, когда друг ей делится/);
   assert.match(html, /Нет доступной геопозиции/);
   assert.doesNotMatch(html, /latitude|longitude|TEST-1/);
 });
@@ -72,4 +72,30 @@ test("empty, offline, stale and loading friends remain explicit and actionable",
   walk(tree);
   buttons.forEach(button => button.props.onClick());
   assert.deepEqual(calls, ["people", "refresh"]);
+});
+
+test("meeting opens only the selected shared point and stays separate from map focus and game actions", () => {
+  const people = { people: [{ circleId: "shared", user: { publicId: "SHARED", displayName: "Лена" }, nickname: null },
+    { circleId: "private", user: { publicId: "PRIVATE", displayName: "Дима" }, nickname: null }] };
+  const locations = [{ circleId: "shared", user: people.people[0].user, latitude: 55.751234, longitude: 37.621234,
+    accuracyMeters: 20, precision: "PRECISE", updatedAt: "2026-10-20T12:00:00Z", expiresAt: "2026-10-20T13:00:00Z", expiresAtMonotonic: 3_600_000 }];
+  const calls = [], buttons = [];
+  const tree = EarthFriends({ ...defaults, people, locations,
+    onFocusPerson: id => calls.push(["focus", id]), onMeetPerson: id => calls.push(["meet", id]) });
+  function walk(node) {
+    if (!isValidElement(node)) return;
+    if (node.type === "button") buttons.push(node);
+    Children.forEach(node.props.children, walk);
+  }
+  walk(tree);
+  const html = renderToStaticMarkup(tree);
+  assert.equal((html.match(/Подойти к другу/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /55\.751234|37\.621234|latitude|longitude|SHARED|PRIVATE/);
+  const meet = buttons.find(button => !button.props["aria-label"] && renderToStaticMarkup(button).includes("Подойти к другу"));
+  assert.ok(meet);
+  assert.deepEqual(calls, [], "Rendering never starts acquisition, navigation or a meeting");
+  meet.props.onClick();
+  assert.deepEqual(calls, [["meet", "shared"]]);
+  buttons.find(button => button.props["aria-label"] === "Показать на карте: Лена").props.onClick();
+  assert.deepEqual(calls, [["meet", "shared"], ["focus", "shared"]]);
 });

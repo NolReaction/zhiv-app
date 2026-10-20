@@ -371,3 +371,64 @@ test("automatic private coordinates do not publish even when saved server consen
   assert.deepEqual(writes, [], "the initial private marker never upgrades persisted consent into a live publisher");
   unsubscribe(); s.deactivate(); deactivateSharing();
 });
+
+test("Find me is idempotent while requesting and cannot turn an acquisition into a GPS stop", () => {
+  const s = session();
+  s.controller.locate(); s.controller.locate(); s.controller.locate();
+  assert.equal(s.watches.length, 1);
+  assert.deepEqual(s.cleared, []);
+  assert.equal(s.controller.getSnapshot().status, "requesting");
+  s.watches[0].success(fix());
+  assert.equal(s.controller.getSnapshot().status, "active");
+  assert.equal(s.controller.getSnapshot().position.latitude, 55.75);
+  s.deactivate();
+});
+
+test("an explicit refresh keeps the private marker until a new fix and fences the replaced watch's late callbacks", () => {
+  const s = session();
+  s.controller.start(); s.watches[0].success(fix());
+  const previous = s.controller.getSnapshot().position;
+  s.controller.locate();
+  assert.deepEqual(s.cleared, [0]); assert.equal(s.watches.length, 2);
+  assert.equal(s.controller.getSnapshot().status, "requesting");
+  assert.equal(s.controller.getSnapshot().position, previous);
+  s.controller.locate(); assert.equal(s.watches.length, 2);
+  s.watches[0].success(fix({ latitude: 12, timestamp: 999_000 }));
+  s.watches[0].failure({ code: 1 });
+  assert.equal(s.controller.getSnapshot().position, previous);
+  assert.equal(s.controller.getSnapshot().status, "requesting");
+  s.watches[1].success(fix({ latitude: 56, timestamp: 2_000 }));
+  assert.equal(s.controller.getSnapshot().position.latitude, 56);
+  assert.equal(s.controller.getSnapshot().status, "active");
+  s.deactivate();
+});
+
+test("Find me after a ghost freeze acquires private GPS without changing ghost consent or publishing coordinates", async () => {
+  const s = session(), writes = [], epoch = Date.parse("2026-10-20T12:00:00Z"), owner = "AAAA-BBBB-CCCC";
+  const circle = "11111111-1111-4111-8111-111111111111";
+  const sharing = createEarthSharingController({ ownerPublicId: owner, getEnvironment: () => ({
+    now: () => epoch, monotonicNow: () => 0, visible: () => true, schedule: () => 1, cancel() {},
+    onVisibilityChange: () => () => {}, loadPending: () => null, savePending() {}, clearPending() {},
+    onPendingChange: () => () => {}, createId: () => circle,
+  }), transport: {
+    getEarthSharing: async () => ({ ownerPublicId: owner, mode: "GHOST", revision: 2, precision: "APPROXIMATE",
+      recipientCircleIds: [circle], frozenCircleIds: [circle], sharingUntil: null, publicationEpoch: null, serverTime: new Date(epoch).toISOString() }),
+    getEarthPeople: async () => ({ ownerPublicId: owner, people: [], serverTime: new Date(epoch).toISOString() }),
+    updateEarthSharing: async write => { writes.push(write); }, publishEarthPosition: async write => { writes.push(write); },
+    stopEarthPublication: async write => { writes.push(write); },
+  } });
+  const deactivateSharing = sharing.activate(); sharing.setContext({ visible: true, isOnline: true }); await settlePermission();
+  const consent = structuredClone(sharing.getSnapshot().settings);
+  const unsubscribe = s.controller.subscribe(() => sharing.setPosition(s.controller.getSnapshot().position));
+  s.controller.start(); s.watches[0].success(fix({ timestamp: epoch - 1000 }));
+  s.controller.freeze(); s.controller.setAutomaticStartPolicy(false);
+  s.controller.locate(); s.controller.locate();
+  assert.equal(s.watches.length, 2);
+  s.watches[1].success(fix({ latitude: 56, timestamp: epoch })); await settlePermission();
+  assert.equal(s.controller.getSnapshot().position.latitude, 56);
+  assert.equal(s.controller.getSnapshot().status, "active");
+  assert.deepEqual(sharing.getSnapshot().settings, consent);
+  assert.equal(sharing.getSnapshot().publishing, false);
+  assert.deepEqual(writes, [], "A private lookup neither enables sharing nor sends coordinates, even in GHOST");
+  unsubscribe(); s.deactivate(); deactivateSharing();
+});

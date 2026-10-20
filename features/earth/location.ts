@@ -30,7 +30,7 @@ export type EarthLocationEnvironment = {
 
 const IDLE: EarthLocationState = { position: null, status: "idle", error: null };
 const ERRORS = {
-  denied: "Доступ к геопозиции отключён. Разреши его в настройках браузера и нажми «Где я» ещё раз.",
+  denied: "Разреши геопозицию в настройках браузера и нажми «Найти меня».",
   unavailable: "Не удалось определить местоположение. Проверь геолокацию устройства и попробуй ещё раз.",
   timeout: "Определение местоположения заняло слишком много времени. Попробуй ещё раз.",
   unsupported: "Этот браузер не поддерживает определение местоположения.",
@@ -222,6 +222,15 @@ export function createEarthLocationController(
     reconcile();
     if (requested) observePermission();
   }
+  // A deliberate lookup refreshes a stale watch without changing any sharing
+  // permission. Keep the old private marker until a fresh fix arrives.
+  function locate() {
+    if (!mounted || !ownerPublicId) return;
+    if (!requested) { start(); return; }
+    if (state.status === "requesting") return;
+    clearWatch();
+    reconcile();
+  }
   function visibilityChanged() {
     if (!environment?.visible()) automaticEpoch += 1;
     reconcile();
@@ -263,6 +272,7 @@ export function createEarthLocationController(
       maybeStartAutomatically();
     },
     start,
+    locate,
     stop,
     freeze,
   };

@@ -20,6 +20,8 @@ export type EarthSharingSettings = {
   revision: number;
   precision: EarthSharingPrecision;
   recipientCircleIds: string[];
+  /** Owner-only preferences; recipients never receive a freeze flag. */
+  frozenCircleIds: string[];
   sharingUntil: string | null;
   /** Only a successful explicit SHARING write grants a publisher epoch. GET returns null. */
   publicationEpoch: string | null;
@@ -32,6 +34,9 @@ export type EarthSharingWrite = {
   mode: EarthSharingMode;
   precision: EarthSharingPrecision;
   recipientCircleIds: string[];
+  frozenCircleIds?: string[];
+  /** Narrow privacy update: preserve the current lease, mode and deadline. */
+  frozenOnly?: boolean;
   durationMinutes: EarthSharingDuration;
 };
 
@@ -77,15 +82,17 @@ const precision = z.enum(["APPROXIMATE", "PRECISE"]);
 const circleIds = z.array(uuid).max(EARTH_SHARING_MAX_PEOPLE).refine(ids => new Set(ids).size === ids.length);
 const timestamp = z.string().datetime();
 
-export const earthSharingSettingsSchema: z.ZodType<EarthSharingSettings> = z.object({
+export const earthSharingSettingsSchema = z.object({
   ownerPublicId: owner, mode: z.enum(["OFF", "SHARING", "GHOST"]), revision, precision,
-  recipientCircleIds: circleIds, sharingUntil: timestamp.nullable(), publicationEpoch: uuid.nullable(), serverTime: timestamp,
-}).strict();
+  recipientCircleIds: circleIds, frozenCircleIds: circleIds.default([]), sharingUntil: timestamp.nullable(), publicationEpoch: uuid.nullable(), serverTime: timestamp,
+}).strict().refine(value => value.frozenCircleIds.every(id => value.recipientCircleIds.includes(id)));
 
-export const earthSharingWriteSchema: z.ZodType<EarthSharingWrite> = z.object({
+export const earthSharingWriteSchema = z.object({
   expectedOwnerPublicId: owner, expectedRevision: revision, mode: z.enum(["OFF", "SHARING", "GHOST"]), precision,
-  recipientCircleIds: circleIds, durationMinutes: z.union([z.literal(60), z.literal(480)]).nullable(),
-}).strict().refine(value => value.mode !== "SHARING" || value.recipientCircleIds.length > 0);
+  recipientCircleIds: circleIds, frozenCircleIds: circleIds.default([]), frozenOnly: z.boolean().default(false),
+  durationMinutes: z.union([z.literal(60), z.literal(480)]).nullable(),
+}).strict().refine(value => (value.mode !== "SHARING" || value.recipientCircleIds.length > 0 || value.frozenOnly)
+  && (value.mode !== "SHARING" || value.frozenCircleIds.every(id => value.recipientCircleIds.includes(id))));
 
 export const earthPositionWriteSchema: z.ZodType<EarthPositionWrite> = z.object({
   expectedOwnerPublicId: owner, publicationEpoch: uuid, sequence: z.number().int().positive().safe(),

@@ -29,6 +29,7 @@ import { createEarthWeatherController, createEarthWeatherProvider, type EarthWea
 import { EARTH_WEATHER_ATTRIBUTION } from "@/lib/earth-weather-contract";
 import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
 import { createEarthFriendMarkers } from "./friend-markers";
+import { createEarthMeetMap } from "./meet-map";
 import { readEarthModelEditorOpen } from "./dev/earth-model-editor-session";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
@@ -46,6 +47,9 @@ type EarthMapProps = {
   onReadyChange?: (ready: boolean) => void;
   cameraSession?: EarthCameraSession;
   focusRequest: number;
+  focusWhenReady?: boolean;
+  meetCircleId?: string | null;
+  meetFocusRequest?: number;
   isOnline: boolean;
   onLocate: () => void;
   locating: boolean;
@@ -92,7 +96,7 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
   locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true,
-  onModelEditorOpenChange }: EarthMapProps) {
+  onModelEditorOpenChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0 }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -139,6 +143,13 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const handledFriendFocus = useRef(0);
   const selectFriendsRef = useRef(onSelectFriends);
   const syncFriendsRef = useRef<(() => void) | null>(null);
+  const latestMeet = useRef({ circleId: meetCircleId, requestId: meetFocusRequest });
+  const editingRef = useRef(modelEditorOpen);
+  useLayoutEffect(() => {
+    latestMeet.current = { circleId: meetCircleId, requestId: meetFocusRequest };
+    editingRef.current = modelEditorOpen;
+    syncFriendsRef.current?.();
+  }, [meetCircleId, meetFocusRequest, modelEditorOpen]);
   useLayoutEffect(() => { selectFriendsRef.current = onSelectFriends; }, [onSelectFriends]);
   useLayoutEffect(() => {
     latestFriendFocus.current = friendFocusRequest;
@@ -210,6 +221,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   useEffect(() => {
     latestPosition.current = position;
     syncPositionRef.current?.(position);
+    syncFriendsRef.current?.();
   }, [position]);
 
   useEffect(() => {
@@ -229,6 +241,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     let disposeMarkerMotion: (() => void) | null = null;
     let scene: ReturnType<typeof createEarthGlobeScene> | null = null;
     let friendMarkers: ReturnType<typeof createEarthFriendMarkers> | null = null;
+    let meetMap: ReturnType<typeof createEarthMeetMap> | null = null;
     let initialReady = false;
     let attemptFailed = false;
     let styleReady = false;
@@ -246,11 +259,14 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
 
     function syncFriends() {
       if (cancelled || attemptFailed || !friendMarkers) return;
-      const available = foreground && initialReady;
+      const available = foreground && initialReady && !editingRef.current;
       friendMarkers.setVisible(available);
+      meetMap?.setVisible(available);
       if (!available) return;
       friendMarkers.setSelfPosition(latestPosition.current);
       friendMarkers.setSnapshot(latestFriends.current);
+      const meet = latestMeet.current;
+      meetMap?.setSnapshot(latestPosition.current, latestFriends.current.find(person => person.circleId === meet.circleId) ?? null, meet.requestId);
       const request = latestFriendFocus.current;
       if (request && request.requestId > handledFriendFocus.current && friendMarkers.focusFriend(request.circleId)) {
         handledFriendFocus.current = request.requestId;
@@ -324,6 +340,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       tileOverlay?.setVisible(false);
       weather?.setVisible(false);
       friendMarkers?.setVisible(false);
+      meetMap?.setVisible(false);
       latestFriends.current = EMPTY_FRIENDS;
       setFailure(message);
       setPhase("failed");
@@ -524,6 +541,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         };
         syncPositionRef.current = syncPosition;
         friendMarkers = createEarthFriendMarkers(current, sdk.Marker, ids => selectFriendsRef.current?.(ids));
+        meetMap = createEarthMeetMap(current);
 
         current.on("style.load", () => {
           if (cancelled) return;
@@ -545,7 +563,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             id: "earth-accuracy-line", type: "line", source: EARTH_ACCURACY_SOURCE,
             paint: { "line-color": "#166f70", "line-opacity": 0.75, "line-width": 1.5 },
           });
+          meetMap?.install();
           syncPosition(latestPosition.current);
+          syncFriends();
           scene?.dispose();
           scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current, eveningCenterRef.current ?? undefined);
           sceneRef.current = scene;
@@ -618,6 +638,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (foregroundRef.current === updateForeground) foregroundRef.current = null;
       if (syncFriendsRef.current === syncFriends) syncFriendsRef.current = null;
       friendMarkers?.dispose();
+      meetMap?.dispose();
       latestFriends.current = EMPTY_FRIENDS;
       weather?.dispose();
       if (weatherControllerRef.current === weather) weatherControllerRef.current = null;
@@ -647,10 +668,10 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [active, retry, cameraSession]);
 
   useEffect(() => {
-    if (!active || !visible || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;
+    if (!active || !visible || !focusWhenReady || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;
     handledFocus.current = focusRequest;
     flyToPosition(mapRef.current, position);
-  }, [active, visible, phase, position, focusRequest]);
+  }, [active, visible, phase, position, focusRequest, focusWhenReady]);
 
   const ready = active && visible && phase === "ready";
   return <div className={styles.root} data-earth-map data-map-status={phase} data-lighting={lightingMode}>
@@ -664,9 +685,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       <button type="button" disabled={!ready} title="Приблизить" aria-label="Приблизить карту" onClick={() => mapRef.current?.zoomIn({ duration: reducedMotion() ? 0 : 250 })}><Plus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Отдалить" aria-label="Отдалить карту" onClick={() => mapRef.current?.zoomOut({ duration: reducedMotion() ? 0 : 250 })}><Minus size={21} aria-hidden="true" /></button>
       <button type="button" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
-      {showLocationControl && !modelEditorOpen && <button type="button" className={styles.locateButton} disabled={!ready || locating} data-active={locationActive} aria-busy={locating}
-        title={locating ? "Определяем местоположение…" : position ? "К моему местоположению" : "Найти себя на карте"}
-        aria-label="Показать моё местоположение" aria-describedby="earth-location-privacy" onClick={onLocate}><LocateFixed size={21} aria-hidden="true" /></button>}
+      {showLocationControl && !modelEditorOpen && <button type="button" className={styles.locateButton} disabled={!ready} data-active={locationActive} aria-busy={locating}
+        title={locating ? "Ищем тебя…" : "Найти меня"}
+        aria-label="Найти меня" aria-describedby="earth-location-privacy" onClick={onLocate}><LocateFixed size={21} aria-hidden="true" /></button>}
       <button type="button" disabled={!ready} data-active={weatherEnabled} aria-pressed={weatherEnabled}
         title="Погода для центра карты" aria-label={weatherEnabled ? "Выключить погоду" : "Включить погоду"}
         onClick={() => setWeatherEnabled(value => !value)}><CloudSun size={21} aria-hidden="true" /></button>

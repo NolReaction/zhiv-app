@@ -88,6 +88,13 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO earth_latest_locations(user_id,publication_epoch,publisher_session_id,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
                   SELECT '10000000-0000-4000-8000-000000000001','e0000000-0000-4000-8000-00000000000e','30000000-0000-4000-8000-000000000003',55.75,37.62,1500,
                     'APPROXIMATE',now,now+interval '120 seconds',now FROM moment;
+                UPDATE earth_sharing_recipients SET frozen=true
+                  WHERE owner_user_id='10000000-0000-4000-8000-000000000001';
+                INSERT INTO earth_frozen_locations(owner_user_id,circle_id,publisher_session_id,latitude,longitude,
+                    accuracy_meters,precision,updated_at,expires_at,accepted_at)
+                  SELECT p.user_id,g.circle_id,p.publisher_session_id,p.latitude,p.longitude,p.accuracy_meters,
+                    p.precision,p.updated_at,p.expires_at,p.accepted_at
+                  FROM earth_latest_locations p JOIN earth_sharing_recipients g ON g.owner_user_id=p.user_id;
                 INSERT INTO direct_requests(id,requester_user_id,recipient_user_id,idempotency_key)
                   VALUES ('80000000-0000-4000-8000-000000000008','10000000-0000-4000-8000-000000000001',
                     '20000000-0000-4000-8000-000000000002','90000000-0000-4000-8000-000000000009');
@@ -159,17 +166,22 @@ class JdbcGameProgressResetIntegrationTest {
                   ('10000000-0000-4000-8000-000000000001','job:test','exploration',clock_timestamp(),clock_timestamp());
             """.trimIndent())
             val before = snapshot(source)
+            assertNotEquals("[]", before.getValue("earth_frozen_locations"), "The reset fixture includes a frozen recipient snapshot")
+            source.connection.use { connection ->
+                assertEquals(1L, connection.economyRows("SELECT count(*) FROM earth_sharing_recipients WHERE frozen") { it.getLong(1) }.single(),
+                    "Recipient freeze choice is preserved separately from GPS rows")
+            }
             val preview = reset()
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='67' WHERE version='66'")
+            execute(source, "UPDATE flyway_schema_history SET version='68' WHERE version='67'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V66"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V67"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='66' WHERE version='67'")
+            execute(source, "UPDATE flyway_schema_history SET version='67' WHERE version='68'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)

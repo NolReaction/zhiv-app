@@ -43,23 +43,28 @@ class JdbcEarthLocationIntegrationTest {
             AppConfig(pg.jdbcUrl,pg.username,pg.password,false,setOf("http://localhost"))
         }
         source=DatabaseFactory.create(config)
-        // Exercise V65 -> V66 on an already published point; migration must not extend old retention.
+        // Exercise V65 -> V67 on an already published point; migration must not extend old retention.
         Flyway.configure().dataSource(source).locations("classpath:db/migration").target("65").load().migrate()
         repo=JdbcEarthLocationRepository(source)
         val legacy=runBlocking {
-            val a=account();val b=account();val shared=enable(a,direct(a,b))
+            val a=account();val b=account();val circle=direct(a,b);val epoch=UUID.randomUUID()
+            execute("""INSERT INTO earth_sharing_settings(user_id,mode,revision,precision,sharing_until,publication_epoch,publisher_session_id)
+                SELECT ?,'SHARING',1,'APPROXIMATE',clock_timestamp()+interval '1 hour',?,id FROM app_sessions WHERE token_hash=?""",a.id,epoch,a.hash)
+            execute("INSERT INTO earth_sharing_recipients(owner_user_id,circle_id,recipient_user_id) VALUES (?,?,?)",a.id,circle,b.id)
             execute("""WITH moment AS (SELECT clock_timestamp() AS now)
                 INSERT INTO earth_latest_locations(user_id,publication_epoch,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
-                SELECT ?,?::uuid,55.75,37.62,1500,'APPROXIMATE',now,now+interval '120 seconds',now FROM moment""",a.id,shared.publicationEpoch)
+                SELECT ?,?::uuid,55.75,37.62,1500,'APPROXIMATE',now,now+interval '120 seconds',now FROM moment""",a.id,epoch)
             Triple(a,b,scalar("SELECT updated_at::text || '/' || expires_at::text FROM earth_latest_locations WHERE user_id=?",a.id))
         }
         val before=scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h")
         DatabaseFactory.migrate(source)
         assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=65"))
-        assertEquals("66",scalar("SELECT max(version::int) FROM flyway_schema_history"))
+        assertEquals("67",scalar("SELECT max(version::int) FROM flyway_schema_history"))
         runBlocking {
             assertEquals(legacy.third,scalar("SELECT updated_at::text || '/' || expires_at::text FROM earth_latest_locations WHERE user_id=?",legacy.first.id),"upgrade preserves the original fix and deadline")
             assertEquals(1,repo.people(legacy.second.hash).people.size)
+            assertTrue(repo.settings(legacy.first.hash).frozenCircleIds.isEmpty())
+            assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",legacy.first.id))
             assertEquals("1",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=? AND publisher_session_id IS NOT NULL",legacy.first.id))
         }
     }
@@ -87,6 +92,14 @@ class JdbcEarthLocationIntegrationTest {
         EarthPositionWrite(a.publicId,settings.publicationEpoch!!,sequence,55.75555,37.61739,8.0,captured.toString())
     private suspend fun hidden(a: Account,mode: String="GHOST")=repo.share(a.hash,EarthSharingWrite(a.publicId,0,mode,"APPROXIMATE",emptyList(),null))
     private suspend fun rejected(code: String,action: suspend ()->Any) { assertEquals(code,assertFailsWith<AuthFailure> { action() }.code) }
+    private suspend fun freeze(a: Account,frozen: List<UUID>,remaining: List<String>?=null): EarthSharingSettings {
+        val current=repo.settings(a.hash)
+        return repo.share(a.hash,EarthSharingWrite(a.publicId,current.revision,"SHARING",current.precision,
+            remaining ?: current.recipientCircleIds,null,frozen.map { it.toString() },true))
+    }
+    private fun allowNextFix(a: Account) = execute(
+        "UPDATE earth_sharing_settings SET last_accepted_at=clock_timestamp()-interval '31 seconds' WHERE user_id=?",a.id)
+
     @Test fun `default off explicit recipient approximate storage and private latest only`()=runBlocking {
         val a=account();val b=account();val stranger=account();val circle=direct(a,b);direct(a,stranger)
         assertEquals("OFF",repo.settings(a.hash).mode);assertNull(repo.settings(a.hash).publicationEpoch)
@@ -223,6 +236,9 @@ class JdbcEarthLocationIntegrationTest {
     @Test fun `real account merge revokes both publishers including kept session without transferring consent`()=runBlocking {
         val a=account();val b=account();val friend=account();val sa=enable(a,direct(a,friend));val sb=enable(b,direct(b,friend))
         repo.publish(a.hash,fix(a,sa));repo.publish(b.hash,fix(b,sb))
+        freeze(a,listOf(UUID.fromString(sa.recipientCircleIds.single())))
+        freeze(b,listOf(UUID.fromString(sb.recipientCircleIds.single())))
+        assertEquals("2",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id IN (?,?)",a.id,b.id))
         val auth=JdbcAuthRepository(source);val browser=tokens.issue().hash
         for((role,owner) in listOf("current" to a,"other" to b)) {
             val flow=LoginFlow(tokens.issue().hash,browser,"vk","account",a.hash,null,null,"pkce",null,null,"merge",role)
@@ -234,6 +250,7 @@ class JdbcEarthLocationIntegrationTest {
         assertTrue(repo.people(friend.hash).people.isEmpty());assertEquals("OFF",repo.settings(a.hash).mode)
         assertEquals("0",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id IN (?,?)",a.id,b.id))
         assertEquals("0",scalar("SELECT count(*) FROM earth_sharing_recipients WHERE owner_user_id IN (?,?)",a.id,b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id IN (?,?)",a.id,b.id))
         rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,sa,2)) }
         rejected("UNAUTHORIZED") { repo.publish(b.hash,fix(b,sb,2)) }
     }
@@ -287,6 +304,185 @@ class JdbcEarthLocationIntegrationTest {
         direct(a,b);hidden(a)
         assertTrue(repo.people(b.hash).people.isEmpty())
         assertTrue(repo.settings(a.hash).recipientCircleIds.isEmpty())
+    }
+
+    @Test fun `one friend freezes while other recipients keep the same live epoch and no recipient sees a privacy flag`()=runBlocking {
+        val a=account();val b=account();val c=account();val ab=direct(a,b);val ac=direct(a,c)
+        val sharing=repo.share(a.hash,EarthSharingWrite(a.publicId,0,"SHARING","PRECISE",listOf(ab.toString(),ac.toString()),60))
+        repo.publish(a.hash,fix(a,sharing))
+        val before=repo.people(b.hash).people.single()
+        val paused=freeze(a,listOf(ab))
+        assertEquals(listOf(ab.toString()),paused.frozenCircleIds)
+        assertNull(paused.publicationEpoch);assertEquals(sharing.sharingUntil,paused.sharingUntil)
+        assertEquals(sharing.publicationEpoch,scalar("SELECT publication_epoch::text FROM earth_sharing_settings WHERE user_id=?",a.id))
+        assertEquals(before,repo.people(b.hash).people.single())
+        allowNextFix(a)
+        repo.publish(a.hash,fix(a,sharing,2,Instant.now().plusSeconds(1)).copy(latitude=56.0,longitude=38.0))
+        assertEquals(before,repo.people(b.hash).people.single(),"frozen friend never gets the later common fix")
+        assertEquals(56.0,repo.people(c.hash).people.single().latitude)
+        assertEquals("1",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",a.id))
+        assertEquals("u",scalar("SELECT relpersistence FROM pg_class WHERE oid='earth_frozen_locations'::regclass"))
+        val publicJson=kotlinx.serialization.json.Json.encodeToString(EarthPeopleResponse.serializer(),repo.people(b.hash))
+        assertFalse(publicJson.contains("frozen"));assertFalse(publicJson.contains("GHOST"))
+        hidden(a)
+        assertEquals(listOf(ab.toString()),repo.settings(a.hash).frozenCircleIds)
+        assertEquals(before,repo.people(b.hash).people.single())
+        assertEquals(56.0,repo.people(c.hash).people.single().latitude)
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,sharing,3)) }
+    }
+    @Test fun `unfreeze waits for a fresh capture and immediate refreeze cannot copy the hidden common point`()=runBlocking {
+        val a=account();val b=account();val c=account();val ab=direct(a,b);val ac=direct(a,c)
+        val sharing=repo.share(a.hash,EarthSharingWrite(a.publicId,0,"SHARING","PRECISE",listOf(ab.toString(),ac.toString()),null))
+        repo.publish(a.hash,fix(a,sharing));freeze(a,listOf(ab))
+        allowNextFix(a);repo.publish(a.hash,fix(a,sharing,2,Instant.now().plusSeconds(1)).copy(latitude=56.0))
+        freeze(a,emptyList())
+        assertTrue(repo.people(b.hash).people.isEmpty(),"restoring live cannot reveal a fix sent while this friend was frozen")
+        freeze(a,listOf(ab))
+        assertTrue(repo.people(b.hash).people.isEmpty(),"freeze cannot bypass the fresh-upload boundary")
+        assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",a.id))
+        freeze(a,emptyList())
+        allowNextFix(a);repo.publish(a.hash,fix(a,sharing,3,Instant.now().plusSeconds(2)).copy(latitude=57.0))
+        assertEquals(57.0,repo.people(b.hash).people.single().latitude)
+        assertEquals(57.0,repo.people(c.hash).people.single().latitude)
+    }
+    @Test fun `a newly selected frozen friend never inherits a pre-consent point and existing frozen data survives a new epoch`()=runBlocking {
+        val a=account();val b=account();val c=account();val ab=direct(a,b);val ac=direct(a,c)
+        val initial=enable(a,ab,"PRECISE",60);repo.publish(a.hash,fix(a,initial))
+        freeze(a,listOf(ab));val before=repo.people(b.hash).people.single()
+        val current=repo.settings(a.hash)
+        val next=repo.share(a.hash,EarthSharingWrite(a.publicId,current.revision,"SHARING","APPROXIMATE",
+            listOf(ab.toString(),ac.toString()),480,listOf(ab.toString(),ac.toString())))
+        assertEquals(before,repo.people(b.hash).people.single())
+        assertTrue(repo.people(c.hash).people.isEmpty())
+        repo.publish(a.hash,fix(a,next))
+        assertEquals(before,repo.people(b.hash).people.single(),"original precision, timestamps and session stay on the snapshot")
+        assertTrue(repo.people(c.hash).people.isEmpty(),"a new frozen grant does not read subsequent common fixes")
+        freeze(a,listOf(ab))
+        assertTrue(repo.people(c.hash).people.isEmpty())
+        allowNextFix(a);repo.publish(a.hash,fix(a,next,2,Instant.now().plusSeconds(1)))
+        assertEquals(1500.0,repo.people(c.hash).people.single().accuracyMeters)
+    }
+    @Test fun `narrow privacy writes cannot add recipients renew timed access resume ghost or survive stale CAS`()=runBlocking {
+        val a=account();val b=account();val c=account();val ab=direct(a,b);val ac=direct(a,c)
+        val sharing=enable(a,ab);repo.publish(a.hash,fix(a,sharing));freeze(a,listOf(ab))
+        val current=repo.settings(a.hash)
+        rejected("INVALID_EARTH_SHARING") { repo.share(a.hash,EarthSharingWrite(a.publicId,current.revision,"SHARING","PRECISE",
+            listOf(ab.toString(),ac.toString()),null,listOf(ac.toString()),true)) }
+        rejected("EARTH_REVISION_CONFLICT") { repo.share(a.hash,EarthSharingWrite(a.publicId,sharing.revision,"SHARING","PRECISE",
+            listOf(ab.toString()),null,emptyList(),true)) }
+        hidden(a)
+        val ghost=freeze(a,listOf(ab))
+        assertEquals("GHOST",ghost.mode);assertEquals(sharing.sharingUntil,ghost.sharingUntil)
+        assertNull(ghost.publicationEpoch)
+        assertEquals("0",scalar("SELECT count(*) FROM earth_sharing_settings WHERE user_id=? AND publication_epoch IS NOT NULL",a.id))
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,sharing,2)) }
+        val off=freeze(a,emptyList(),emptyList())
+        assertEquals("OFF",off.mode);assertTrue(off.recipientCircleIds.isEmpty());assertTrue(off.frozenCircleIds.isEmpty())
+        assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",a.id))
+        hidden(a)
+        assertTrue(repo.people(b.hash).people.isEmpty())
+    }
+    @Test fun `removing one geo recipient preserves another live publisher and removing the final recipient revokes everything`()=runBlocking {
+        val a=account();val b=account();val c=account();val ab=direct(a,b);val ac=direct(a,c)
+        val sharing=repo.share(a.hash,EarthSharingWrite(a.publicId,0,"SHARING","PRECISE",listOf(ab.toString(),ac.toString()),60))
+        repo.publish(a.hash,fix(a,sharing));freeze(a,listOf(ab))
+        val removed=freeze(a,emptyList(),listOf(ac.toString()))
+        assertEquals("SHARING",removed.mode);assertEquals(sharing.sharingUntil,removed.sharingUntil)
+        assertEquals(listOf(ac.toString()),removed.recipientCircleIds)
+        assertTrue(repo.people(b.hash).people.isEmpty());assertEquals(1,repo.people(c.hash).people.size)
+        assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",a.id))
+        allowNextFix(a);repo.publish(a.hash,fix(a,sharing,2,Instant.now().plusSeconds(1)).copy(latitude=56.0))
+        assertEquals(56.0,repo.people(c.hash).people.single().latitude)
+        freeze(a,emptyList(),emptyList())
+        assertTrue(repo.people(c.hash).people.isEmpty())
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,sharing,3)) }
+    }
+    @Test fun `frozen snapshots expire at their own original deadline and are physically purged`()=runBlocking {
+        val a=account();val b=account();val ab=direct(a,b);val sharing=enable(a,ab,"PRECISE",null)
+        repo.publish(a.hash,fix(a,sharing));freeze(a,listOf(ab))
+        val before=repo.people(b.hash).people.single()
+        freeze(a,listOf(ab));assertEquals(before,repo.people(b.hash).people.single())
+        execute("UPDATE earth_frozen_locations SET updated_at=updated_at-interval '86401 seconds',expires_at=expires_at-interval '86401 seconds' WHERE owner_user_id=?",a.id)
+        assertTrue(repo.people(b.hash).people.isEmpty())
+        purgeEarthLocations(source)
+        assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",a.id))
+        assertEquals(listOf(ab.toString()),repo.settings(a.hash).frozenCircleIds)
+        assertTrue(repo.people(b.hash).people.isEmpty(),"expiration never falls back to a later common point")
+    }
+    @Test fun `frozen snapshots retain their originating session and lifecycle revocation removes them`()=runBlocking {
+        for(event in listOf("session","friend","owner-ban","recipient-ban","owner-delete")) {
+            val a=account();val b=account();val ab=direct(a,b);val sharing=enable(a,ab)
+            repo.publish(a.hash,fix(a,sharing));freeze(a,listOf(ab));hidden(a)
+            assertEquals(1,repo.people(b.hash).people.size)
+            when(event) {
+                "session" -> execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",a.hash)
+                "friend" -> JdbcRelationshipRepository(source).removePerson(a.hash,ab)
+                "owner-ban" -> execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Earth frozen regression' WHERE id=?",a.id)
+                "recipient-ban" -> execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Earth frozen regression' WHERE id=?",b.id)
+                else -> execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",a.id)
+            }
+            if(event!="recipient-ban") assertTrue(repo.people(b.hash).people.isEmpty())
+            assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",a.id))
+        }
+    }
+
+    @Test fun `global OFF and GHOST cannot be weakened by a stale narrow edit flag`()=runBlocking {
+        for(mode in listOf("OFF","GHOST")) {
+            val a=account();val b=account();val ab=direct(a,b);val sharing=enable(a,ab)
+            repo.publish(a.hash,fix(a,sharing));freeze(a,listOf(ab))
+            val result=repo.share(a.hash,EarthSharingWrite(a.publicId,0,mode,"PRECISE",emptyList(),null,listOf(ab.toString()),true))
+            assertEquals(mode,result.mode);assertNull(result.publicationEpoch)
+            rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,sharing,2)) }
+            if(mode=="OFF") {
+                assertTrue(result.recipientCircleIds.isEmpty());assertTrue(result.frozenCircleIds.isEmpty())
+                assertTrue(repo.people(b.hash).people.isEmpty())
+                assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",a.id))
+            } else {
+                assertEquals(listOf(ab.toString()),result.frozenCircleIds)
+                assertEquals(1,repo.people(b.hash).people.size)
+            }
+        }
+    }
+
+    @Test fun `shortened frozen consent is permanent and a later longer share cannot resurrect its previous deadline`()=runBlocking {
+        val a=account();val b=account();val ab=direct(a,b);val sharing=enable(a,ab,"PRECISE",null)
+        repo.publish(a.hash,fix(a,sharing));freeze(a,listOf(ab))
+        val original=repo.people(b.hash).people.single()
+        val current=repo.settings(a.hash)
+        val shortened=repo.share(a.hash,EarthSharingWrite(a.publicId,current.revision,"SHARING","PRECISE",
+            listOf(ab.toString()),60,listOf(ab.toString())))
+        val shortPoint=repo.people(b.hash).people.single()
+        assertEquals(original.updatedAt,shortPoint.updatedAt)
+        assertEquals(shortened.sharingUntil,shortPoint.expiresAt)
+        assertTrue(Instant.parse(shortPoint.expiresAt).isBefore(Instant.parse(original.expiresAt)))
+        val extended=repo.share(a.hash,EarthSharingWrite(a.publicId,shortened.revision,"SHARING","PRECISE",
+            listOf(ab.toString()),480,listOf(ab.toString())))
+        assertTrue(Instant.parse(checkNotNull(extended.sharingUntil)).isAfter(Instant.parse(shortPoint.expiresAt)))
+        assertEquals(shortPoint,repo.people(b.hash).people.single(),"later permission cannot widen an already tightened snapshot")
+        assertEquals("1",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=? AND expires_at=?::timestamptz",a.id,shortPoint.expiresAt))
+        execute("UPDATE earth_frozen_locations SET updated_at=updated_at-interval '3601 seconds',expires_at=expires_at-interval '3601 seconds' WHERE owner_user_id=?",a.id)
+        assertTrue(repo.people(b.hash).people.isEmpty(),"longer active consent cannot revive the expired old snapshot")
+    }
+
+    @Test fun `a fix captured before unfreeze stays hidden even when its new upload arrives after unfreeze`()=runBlocking {
+        val a=account();val b=account();val c=account();val ab=direct(a,b);val ac=direct(a,c)
+        val sharing=repo.share(a.hash,EarthSharingWrite(a.publicId,0,"SHARING","PRECISE",listOf(ab.toString(),ac.toString()),null))
+        repo.publish(a.hash,fix(a,sharing,captured=Instant.now().minusSeconds(20)))
+        freeze(a,listOf(ab))
+        val late=fix(a,sharing,2,Instant.now().minusSeconds(10)).copy(latitude=56.0)
+        val restored=freeze(a,emptyList())
+        assertTrue(Instant.parse(late.capturedAt).isBefore(Instant.parse(restored.serverTime)))
+        allowNextFix(a);repo.publish(a.hash,late)
+        assertEquals(56.0,repo.people(c.hash).people.single().latitude,"live recipients continue to receive the valid monotonic upload")
+        assertTrue(repo.people(b.hash).people.isEmpty(),"accepting an older capture after consent cannot satisfy a fresh-fix boundary")
+        assertEquals("1",scalar("""SELECT count(*) FROM earth_latest_locations p JOIN earth_sharing_recipients g ON g.owner_user_id=p.user_id
+            WHERE p.user_id=? AND g.circle_id=? AND p.updated_at<=g.live_after AND p.accepted_at>g.live_after""",a.id,ab))
+        freeze(a,listOf(ab))
+        assertTrue(repo.people(b.hash).people.isEmpty(),"refreeze cannot copy the delayed pre-consent capture")
+        assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",a.id))
+        freeze(a,emptyList())
+        allowNextFix(a);repo.publish(a.hash,fix(a,sharing,3,Instant.now().plusSeconds(1)).copy(latitude=57.0))
+        assertEquals(57.0,repo.people(b.hash).people.single().latitude)
     }
 
 }

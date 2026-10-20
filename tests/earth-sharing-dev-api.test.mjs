@@ -377,3 +377,208 @@ test("a frozen point is revoked by friendship removal and by its original publis
     assert.equal(devEarthSharingState().owners.get(a.me.user.publicId).position, null);
   }
 });
+
+function preferences(owner, recipients, frozen, changes = {}) {
+  return ok(store.putDevEarthSharing(owner.token, write(owner, recipients, {
+    frozenOnly: true, frozenCircleIds: frozen, durationMinutes: null, ...changes,
+  })));
+}
+
+test("freeze preferences normalize old wire payloads and reject duplicates or recipients outside consent", () => {
+  const a = player(), b = player(), circle = connect(a, b);
+  assert.deepEqual(contract.earthSharingSettingsSchema.parse(ok(store.getDevEarthSharing(a.token))).frozenCircleIds, []);
+  const legacy = ok(store.getDevEarthSharing(a.token)); delete legacy.frozenCircleIds;
+  assert.deepEqual(contract.earthSharingSettingsSchema.parse(legacy).frozenCircleIds, []);
+  for (const frozenCircleIds of [[circle, circle], [uuid()], ["invalid"]]) {
+    error(store.putDevEarthSharing(a.token, write(a, [circle], { frozenCircleIds })), 400);
+  }
+  const granted = enable(a, [circle]);
+  error(store.putDevEarthSharing(b.token, write(a, [circle], { frozenOnly: true, frozenCircleIds: [circle] })), 409, "EARTH_OWNER_MISMATCH");
+  error(store.putDevEarthSharing(a.token, write(a, [circle], { frozenOnly: true, frozenCircleIds: [circle], expectedRevision: granted.revision - 1 })), 409);
+});
+
+test("one frozen recipient keeps the exact earlier point while another receives fresh live fixes without renewed consent", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+  const grant = enable(a, [ab, ac], { precision: "PRECISE" });
+  ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  const before = ok(store.getDevEarthPeople(b.token)).people[0];
+  t.mock.timers.tick(30_000);
+  const frozen = preferences(a, [ab, ac], [ab], { precision: "APPROXIMATE", durationMinutes: null });
+  assert.equal(frozen.sharingUntil, grant.sharingUntil); assert.equal(frozen.precision, "PRECISE");
+  assert.equal(frozen.publicationEpoch, null); assert.deepEqual(frozen.frozenCircleIds, [ab]);
+  const record = devEarthSharingState().owners.get(a.me.user.publicId);
+  assert.equal(record.publicationEpoch, grant.publicationEpoch, "the active publisher lease and sequence survive a narrow change");
+  ok(store.putDevEarthPosition(a.token, position(a, grant, { sequence: 2, latitude: 56.123456 })));
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people[0], before);
+  const live = ok(store.getDevEarthPeople(c.token)).people[0];
+  assert.equal(live.latitude, 56.123456); assert.notEqual(live.updatedAt, before.updatedAt);
+  assert.equal(live.expiresAt, grant.sharingUntil, "live samples never extend the grant deadline");
+  assert.equal("frozenCircleIds" in live, false); assert.equal("frozen" in live, false);
+  t.mock.timers.tick(3_570_000);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []); assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, []);
+});
+
+test("freeze before a first fix and unfreeze then freeze without a new fix cannot reveal a later common point", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+  const grant = enable(a, [ab, ac], { frozenCircleIds: [ab] });
+  ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  assert.equal(ok(store.getDevEarthPeople(c.token)).people.length, 1);
+  preferences(a, [ab, ac], []);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "unfreezing waits for a new sample instead of disclosing the existing common fix");
+  preferences(a, [ab, ac], [ab]);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "refreezing cannot capture that prohibited common fix");
+  preferences(a, [ab, ac], []);
+  t.mock.timers.tick(30_000);
+  ok(store.putDevEarthPosition(a.token, position(a, grant, { sequence: 2, latitude: 56 })));
+  assert.equal(ok(store.getDevEarthPeople(b.token)).people[0].latitude, 56);
+});
+
+test("global ghost and explicit resume preserve individual snapshots, their original precision and their source session", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const bootstrap = uuid(), a = player("А", bootstrap), b = player(), c = player(), d = player();
+  const ab = connect(a, b), ac = connect(a, c), ad = connect(a, d);
+  const grant = enable(a, [ab, ac], { precision: "PRECISE", durationMinutes: null });
+  ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  const original = ok(store.getDevEarthPeople(b.token)).people[0]; preferences(a, [ab, ac], [ab]);
+  t.mock.timers.tick(30_000); ok(store.putDevEarthPosition(a.token, position(a, grant, { sequence: 2, latitude: 56 })));
+  const otherLast = ok(store.getDevEarthPeople(c.token)).people[0];
+  const ghost = ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST", frozenOnly: true })));
+  assert.deepEqual(ghost.frozenCircleIds, [ab]); assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people[0], original);
+  assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people[0], otherLast);
+  const secondSession = player("А", bootstrap);
+  const resumed = enable(secondSession, [ab, ac, ad], { frozenCircleIds: [ab, ad], precision: "APPROXIMATE", durationMinutes: null });
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people[0], original);
+  assert.deepEqual(ok(store.getDevEarthPeople(d.token)).people, [], "a newly selected frozen friend never inherits a point already shared with others");
+  t.mock.timers.tick(1); ok(store.putDevEarthPosition(secondSession.token, position(secondSession, resumed, { latitude: 57.123456 })));
+  assert.equal(ok(store.getDevEarthPeople(c.token)).people[0].precision, "APPROXIMATE");
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people[0], original);
+  globalThis.__zhivDevStore.sessions.delete(a.token);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "the original snapshot session still owns its revocation");
+  assert.equal(ok(store.getDevEarthPeople(c.token)).people.length, 1, "the independent new publisher session remains live");
+  assert.equal(devEarthSharingState().owners.get(a.me.user.publicId).frozenPositions.has(ab), false);
+});
+
+test("narrow audience revocation cannot add a friend, renew the deadline, restart a paused publisher or resurrect OFF", () => {
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+  const grant = enable(a, [ab, ac]); ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  preferences(a, [ab, ac], [ab]);
+  ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: grant.publicationEpoch }));
+  const changed = preferences(a, [ac], []);
+  assert.equal(changed.sharingUntil, grant.sharingUntil); assert.deepEqual(changed.recipientCircleIds, [ac]);
+  assert.equal(devEarthSharingState().owners.get(a.me.user.publicId).publicationEpoch, null);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  error(store.putDevEarthSharing(a.token, write(a, [ab, ac], { frozenOnly: true })), 400);
+  const off = preferences(a, [], []); assert.equal(off.mode, "OFF"); assert.equal(off.sharingUntil, null);
+  assert.deepEqual(off.frozenCircleIds, []); assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, []);
+  error(store.putDevEarthSharing(a.token, write(a, [ac], { frozenOnly: true })), 400);
+  ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST" })));
+  assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, []);
+});
+
+test("real HTTP preference writes are owner-only and keep public feed shape and the old deadline", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+  globalThis.__earthCookieToken = a.token;
+  const grant = await (await status(await sharing.PUT(send("PUT", "sharing", write(a, [ab, ac]))), 200)).json();
+  await status(await location.PUT(send("PUT", "location", position(a, grant))), 200);
+  const original = ok(store.getDevEarthPeople(b.token)).people[0];
+  const update = write(a, [ab, ac], { frozenOnly: true, frozenCircleIds: [ab], durationMinutes: null });
+  const ack = await (await status(await sharing.PUT(send("PUT", "sharing", update)), 200)).json();
+  assert.equal(ack.sharingUntil, grant.sharingUntil); assert.equal(ack.publicationEpoch, null); assert.deepEqual(ack.frozenCircleIds, [ab]);
+  t.mock.timers.tick(30_000); await status(await location.PUT(send("PUT", "location", position(a, grant, { sequence: 2, latitude: 56 }))), 200);
+  globalThis.__earthCookieToken = b.token;
+  const publicFeed = await (await status(await people.GET(send("GET", "people")), 200)).json();
+  assert.deepEqual(publicFeed.people[0], original); assert.equal("frozenCircleIds" in publicFeed.people[0], false);
+  await status(await sharing.PUT(send("PUT", "sharing", write(a, [ab, ac], { frozenOnly: true, frozenCircleIds: [ab] }))), 409);
+  globalThis.__earthCookieToken = a.token;
+  await status(await sharing.PUT(send("PUT", "sharing", write(a, [ab, ac], { frozenOnly: true, frozenCircleIds: [ab, ab] }))), 400);
+  const off = await (await status(await sharing.PUT(send("PUT", "sharing", write(a, [], { mode: "OFF", frozenOnly: true, expectedRevision: 0 }))), 200)).json();
+  assert.equal(off.mode, "OFF"); assert.deepEqual(off.frozenCircleIds, []);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+});
+
+test("frozen snapshots expire physically and friendship revocation clears stale cached snapshots without retaining a route", t => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+  const grant = enable(a, [ab, ac]); ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  preferences(a, [ab, ac], [ab, ac]);
+  const record = devEarthSharingState().owners.get(a.me.user.publicId);
+  assert.equal(record.frozenPositions.size, 2);
+  ok(identity.removeDevPerson(a.token, ab));
+  assert.equal(record.frozenPositions.size, 0); assert.deepEqual(record.frozenCircleIds, [ac]);
+  const renewed = enable(a, [ac], { frozenCircleIds: [] });
+  t.mock.timers.tick(1); ok(store.putDevEarthPosition(a.token, position(a, renewed)));
+  preferences(a, [ac], [ac]); assert.equal(record.frozenPositions.size, 1);
+  t.mock.timers.tick(3_600_000);
+  assert.equal(record.position, null); assert.equal(record.frozenPositions.size, 0); assert.equal(devEarthSharingState().cleanup, null);
+});
+
+test("development HMR initializes missing preference containers without inventing frozen points", () => {
+  const a = player(), b = player(), ab = connect(a, b), grant = enable(a, [ab]);
+  ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  const old = devEarthSharingState(), record = old.owners.get(a.me.user.publicId);
+  delete old.version; delete record.frozenCircleIds; delete record.frozenPositions; delete record.awaitingFreshSince;
+  const migrated = devEarthSharingState().owners.get(a.me.user.publicId);
+  assert.deepEqual(ok(store.getDevEarthSharing(a.token)).frozenCircleIds, []);
+  assert.equal(migrated.frozenPositions.size, 0); assert.equal(migrated.awaitingFreshSince.size, 0);
+  assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1);
+});
+
+test("global OFF and GHOST outrank a stale frozenOnly flag and ignored frozen preferences through HTTP", async () => {
+  for (const mode of ["GHOST", "OFF"]) {
+    identity.resetDevStoreForTests();
+    const a = player(), b = player(), circle = connect(a, b), grant = enable(a, [circle]);
+    ok(store.putDevEarthPosition(a.token, position(a, grant)));
+    const before = ok(store.getDevEarthPeople(b.token)).people;
+    globalThis.__earthCookieToken = a.token;
+    const ack = await (await status(await sharing.PUT(send("PUT", "sharing", write(a, [], {
+      mode, frozenOnly: true, expectedRevision: 0, frozenCircleIds: [circle],
+    }))), 200)).json();
+    assert.equal(ack.mode, mode); assert.equal(ack.publicationEpoch, null);
+    assert.deepEqual(ack.frozenCircleIds, [], "global GHOST does not adopt the ignored incoming individual preferences");
+    assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, mode === "GHOST" ? before : []);
+    error(store.putDevEarthPosition(a.token, position(a, grant, { sequence: 2 })), 409);
+  }
+});
+
+test("a late fix captured before or exactly at unfreeze stays hidden and cannot be captured by refreeze", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  for (const offset of [-5_000, 0]) {
+    identity.resetDevStoreForTests();
+    const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+    const grant = enable(a, [ab, ac]); ok(store.putDevEarthPosition(a.token, position(a, grant)));
+    t.mock.timers.tick(10_000); preferences(a, [ab, ac], [ab]);
+    t.mock.timers.tick(10_000); preferences(a, [ab, ac], []);
+    const unfreezeAt = Date.now();
+    t.mock.timers.tick(10_000);
+    ok(store.putDevEarthPosition(a.token, position(a, grant, {
+      sequence: 2, latitude: 56, capturedAt: new Date(unfreezeAt + offset).toISOString(),
+    })));
+    assert.equal(ok(store.getDevEarthPeople(c.token)).people[0].latitude, 56, "the still-live recipient can receive an otherwise valid delayed fix");
+    assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "server acceptance after unfreeze cannot promote an earlier GPS capture");
+    preferences(a, [ab, ac], [ab]);
+    assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, [], "refreeze cannot capture the prohibited delayed common point");
+    preferences(a, [ab, ac], []);
+    t.mock.timers.tick(30_000);
+    ok(store.putDevEarthPosition(a.token, position(a, grant, { sequence: 3, latitude: 57 })));
+    assert.equal(ok(store.getDevEarthPeople(b.token)).people[0].latitude, 57);
+  }
+});
+
+test("development HMR converts legacy awaiting flags into conservative capture-time fences", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00Z") });
+  const a = player(), b = player(), ab = connect(a, b), grant = enable(a, [ab]);
+  ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  const state = devEarthSharingState(), record = state.owners.get(a.me.user.publicId);
+  t.mock.timers.tick(10_000);
+  state.version = 2; delete record.awaitingFreshSince; record.awaitingFreshCircleIds = new Set([ab]);
+  const migrated = devEarthSharingState().owners.get(a.me.user.publicId);
+  assert.equal(migrated.awaitingFreshSince.get(ab), Date.now());
+  assert.equal("awaitingFreshCircleIds" in migrated, false);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, []);
+  t.mock.timers.tick(20_000); ok(store.putDevEarthPosition(a.token, position(a, grant, { sequence: 2 })));
+  assert.equal(ok(store.getDevEarthPeople(b.token)).people.length, 1);
+});

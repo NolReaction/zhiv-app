@@ -17,8 +17,10 @@ test("all deployment and reset backups exclude ephemeral GPS rows while retainin
     const dumps = source.split("\n").filter(line => /\bpg_dump\b/.test(line));
     assert.ok(dumps.length > 0, `${scripts[index]}: backup entrypoint is checked`);
     for (const dump of dumps) {
-      assert.match(dump, /--exclude-table-data=public\.earth_latest_locations(?:\s|$)/, scripts[index]);
-      assert.doesNotMatch(dump, /--exclude-table(?:=|\s)public\.earth_latest_locations/, "restore still needs the empty location table");
+      for (const table of ["earth_latest_locations", "earth_frozen_locations"]) {
+        assert.match(dump, new RegExp(`--exclude-table-data=public\\.${table}(?:\\s|$)`), `${scripts[index]}: ${table}`);
+        assert.doesNotMatch(dump, new RegExp(`--exclude-table(?:=|\\s)public\\.${table}(?:\\s|$)`), "restore still needs the empty location table");
+      }
     }
   }
 });

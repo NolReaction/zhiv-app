@@ -49,11 +49,11 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
     }.firstOrNull()
     private fun settings(c: Connection,actor: Actor,publishedEpoch: UUID?=null): EarthSharingSettings {
         val value=state(c,actor.id)
-        val circles=c.economyRows("""SELECT g.circle_id FROM earth_sharing_recipients g JOIN circles c ON c.id=g.circle_id
+        val circles=c.economyRows("""SELECT g.circle_id,g.frozen FROM earth_sharing_recipients g JOIN circles c ON c.id=g.circle_id
             JOIN app_users u ON u.id=g.recipient_user_id WHERE g.owner_user_id=? AND c.kind='DIRECT' AND c.archived_at IS NULL
-            AND u.deleted_at IS NULL AND u.banned_at IS NULL ORDER BY g.circle_id""",actor.id) { it.getObject(1).toString() }
+            AND u.deleted_at IS NULL AND u.banned_at IS NULL ORDER BY g.circle_id""",actor.id) { it.getObject(1).toString() to it.getBoolean(2) }
         return EarthSharingSettings(actor.publicId,value?.mode ?: "OFF",value?.revision ?: 0,value?.precision ?: "APPROXIMATE",
-            circles,value?.until?.toString(),publishedEpoch?.toString(),now(c).toString())
+            circles.map { it.first },value?.until?.toString(),publishedEpoch?.toString(),now(c).toString(),circles.filter { it.second }.map { it.first })
     }
     override suspend fun settings(sessionHash: ByteArray)=tx { c -> settings(c,actor(c,sessionHash)) }
     private fun recipients(c: Connection,actor: UUID,circles: List<String>): Map<UUID,UUID> {
@@ -65,24 +65,74 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
             AND l.deleted_at IS NULL AND l.banned_at IS NULL AND h.deleted_at IS NULL AND h.banned_at IS NULL""",
             actor,*ids.toTypedArray(),actor) { it.getObject("id",UUID::class.java) to it.getObject("peer",UUID::class.java) }.toMap()
     }
+    /** A snapshot may only come from the point this exact grant could read before
+     * the change. New recipients and an unfreeze awaiting a fresh capture cannot
+     * acquire an older common point by immediately freezing again. */
+    private fun recipientChoices(c: Connection,actor: Actor,selected: Map<UUID,UUID>,frozen: Set<UUID>,time: Instant) {
+        val previous=c.economyRows("SELECT circle_id,frozen FROM earth_sharing_recipients WHERE owner_user_id=?",actor.id) {
+            it.getObject(1,UUID::class.java) to it.getBoolean(2)
+        }.toMap()
+        for(circle in previous.keys-selected.keys) c.economyUpdate(
+            "DELETE FROM earth_sharing_recipients WHERE owner_user_id=? AND circle_id=?",actor.id,circle)
+        for((circle,recipient) in selected) {
+            val wasFrozen=previous[circle]
+            val freeze=circle in frozen
+            if(wasFrozen==null) {
+                c.economyUpdate("INSERT INTO earth_sharing_recipients(owner_user_id,circle_id,recipient_user_id,frozen) VALUES (?,?,?,?)",actor.id,circle,recipient,freeze)
+                continue
+            }
+            if(freeze && !wasFrozen) c.economyUpdate("""INSERT INTO earth_frozen_locations
+                (owner_user_id,circle_id,publisher_session_id,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
+                SELECT g.owner_user_id,g.circle_id,p.publisher_session_id,p.latitude,p.longitude,p.accuracy_meters,p.precision,p.updated_at,
+                    least(p.expires_at,coalesce(s.sharing_until,p.expires_at)),p.accepted_at
+                FROM earth_sharing_recipients g JOIN earth_sharing_settings s ON s.user_id=g.owner_user_id
+                JOIN earth_latest_locations p ON p.user_id=g.owner_user_id
+                JOIN app_sessions publisher ON publisher.id=p.publisher_session_id AND publisher.user_id=g.owner_user_id
+                WHERE g.owner_user_id=? AND g.circle_id=? AND NOT g.frozen AND s.mode IN ('SHARING','GHOST')
+                    AND (g.live_after IS NULL OR p.updated_at>g.live_after)
+                    AND (s.sharing_until IS NULL OR s.sharing_until>?) AND p.expires_at>?
+                    AND publisher.revoked_at IS NULL AND publisher.expires_at>?
+                ON CONFLICT(owner_user_id,circle_id) DO NOTHING""",actor.id,circle,at(time),at(time),at(time))
+            if(!freeze) c.economyUpdate("DELETE FROM earth_frozen_locations WHERE owner_user_id=? AND circle_id=?",actor.id,circle)
+            c.economyUpdate("""UPDATE earth_sharing_recipients SET frozen=?,
+                live_after=CASE WHEN frozen AND NOT ? THEN ? ELSE live_after END WHERE owner_user_id=? AND circle_id=?""",
+                freeze,freeze,at(time),actor.id,circle)
+        }
+    }
     override suspend fun share(sessionHash: ByteArray,request: EarthSharingWrite): EarthSharingSettings {
         validateEarthSharing(request)
         return tx { c ->
             val initial=actor(c,sessionHash);owner(initial,request.expectedOwnerPublicId)
-            budgets.take(initial.id,if(request.mode=="SHARING") "enable" else "privacy")
-            val candidates=if(request.mode=="SHARING") recipients(c,initial.id,request.recipientCircleIds) else emptyMap()
+            // OFF/GHOST always retain their global privacy semantics, even if
+            // an outdated client leaves the narrow-edit flag on its request.
+            val narrowing=request.mode=="SHARING" && request.frozenOnly
+            val enabling=request.mode=="SHARING" && !narrowing
+            val editing=enabling || narrowing
+            budgets.take(initial.id,if(enabling) "enable" else "privacy")
+            val candidates=if(editing) recipients(c,initial.id,request.recipientCircleIds) else emptyMap()
             lockUsers(c,candidates.values.toSet()+initial.id)
             val current=actor(c,sessionHash,true);owner(current,request.expectedOwnerPublicId)
             c.economyUpdate("INSERT INTO earth_sharing_settings(user_id) VALUES (?) ON CONFLICT DO NOTHING",current.id)
             val value=state(c,current.id,true)!!
             val time=now(c)
-            val enabling=request.mode=="SHARING"
-            val selected=if(enabling) recipients(c,current.id,request.recipientCircleIds) else emptyMap()
-            if(enabling && selected.size!=request.recipientCircleIds.size) invalidEarthSharing()
-            if(enabling && (value.revision!=request.expectedRevision || value.revision>=9_007_199_254_740_990L)) earthFailure("EARTH_REVISION_CONFLICT")
+            val selected=if(editing) recipients(c,current.id,request.recipientCircleIds) else emptyMap()
+            if(editing && selected.size!=request.recipientCircleIds.size) invalidEarthSharing()
+            if(editing && (value.revision!=request.expectedRevision || value.revision>=9_007_199_254_740_990L)) earthFailure("EARTH_REVISION_CONFLICT")
+            if(narrowing) {
+                val existing=c.economyRows("SELECT circle_id FROM earth_sharing_recipients WHERE owner_user_id=?",current.id) { it.getObject(1,UUID::class.java) }.toSet()
+                if(selected.keys.any { it !in existing } || value.mode=="OFF" && selected.isNotEmpty()) invalidEarthSharing()
+                if(selected.isEmpty()) c.economyUpdate("""UPDATE earth_sharing_settings SET mode='OFF',revision=revision+1,sharing_until=NULL,
+                    publication_epoch=NULL,publisher_session_id=NULL,last_sequence=0,last_captured_at=NULL,last_accepted_at=NULL WHERE user_id=?""",current.id)
+                else {
+                    recipientChoices(c,current,selected,request.frozenCircleIds.map(UUID::fromString).toSet(),time)
+                    c.economyUpdate("UPDATE earth_sharing_settings SET revision=revision+1 WHERE user_id=?",current.id)
+                }
+                return@tx settings(c,current)
+            }
             val bucket=if(value.bucket==null || !time.isBefore(value.bucket.plusSeconds(60))) time else value.bucket
             val count=if(bucket==time) 0 else value.count
             if(enabling && count>=10) throw EarthRateLimited(max(1,ceil((60_000-(time.toEpochMilli()-bucket.toEpochMilli()))/1000.0).toInt()))
+            if(enabling) recipientChoices(c,current,selected,request.frozenCircleIds.map(UUID::fromString).toSet(),time)
             val epoch=if(enabling) UUID.randomUUID() else null
             val precision=if(enabling) request.precision else value.precision
             val until=if(enabling) request.durationMinutes?.let { time.plusSeconds(it*60L) } else if(request.mode=="GHOST") value.until else null
@@ -90,9 +140,11 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
                 publication_epoch=?,publisher_session_id=?,last_sequence=0,last_captured_at=NULL,last_accepted_at=NULL,
                 enable_bucket_at=?,enable_bucket_count=? WHERE user_id=?""",request.mode,precision,at(until),epoch,
                 if(enabling) current.sessionId else null,at(if(enabling) bucket else value.bucket),if(enabling) count+1 else value.count,current.id)
-            if(enabling) {
-                c.economyUpdate("DELETE FROM earth_sharing_recipients WHERE owner_user_id=?",current.id)
-                for((circle,recipient) in selected) c.economyUpdate("INSERT INTO earth_sharing_recipients(owner_user_id,circle_id,recipient_user_id) VALUES (?,?,?)",current.id,circle,recipient)
+            if(enabling && until!=null) {
+                // A shorter renewed consent permanently tightens old snapshots;
+                // a later longer consent must not reopen their previous lifetime.
+                c.economyUpdate("DELETE FROM earth_frozen_locations WHERE owner_user_id=? AND least(expires_at,?)<=updated_at",current.id,at(until))
+                c.economyUpdate("UPDATE earth_frozen_locations SET expires_at=least(expires_at,?) WHERE owner_user_id=?",at(until),current.id)
             }
             settings(c,current,epoch)
         }
@@ -145,7 +197,14 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
             p.precision,p.updated_at,least(p.expires_at,coalesce(s.sharing_until,p.expires_at)) AS expires_at
             FROM earth_sharing_recipients g JOIN circles edge ON edge.id=g.circle_id
             JOIN app_users u ON u.id=g.owner_user_id JOIN earth_sharing_settings s ON s.user_id=u.id
-            JOIN earth_latest_locations p ON p.user_id=u.id
+            JOIN LATERAL (
+                SELECT f.publisher_session_id,f.latitude,f.longitude,f.accuracy_meters,f.precision,f.updated_at,f.expires_at
+                    FROM earth_frozen_locations f WHERE g.frozen AND f.owner_user_id=g.owner_user_id AND f.circle_id=g.circle_id
+                UNION ALL
+                SELECT p.publisher_session_id,p.latitude,p.longitude,p.accuracy_meters,p.precision,p.updated_at,p.expires_at
+                    FROM earth_latest_locations p WHERE NOT g.frozen AND p.user_id=g.owner_user_id
+                        AND (g.live_after IS NULL OR p.updated_at>g.live_after)
+            ) p ON true
             JOIN app_sessions publisher ON publisher.id=p.publisher_session_id AND publisher.user_id=u.id
             WHERE g.recipient_user_id=? AND edge.kind='DIRECT' AND edge.archived_at IS NULL
             AND ((edge.direct_user_low_id=u.id AND edge.direct_user_high_id=?) OR (edge.direct_user_high_id=u.id AND edge.direct_user_low_id=?))

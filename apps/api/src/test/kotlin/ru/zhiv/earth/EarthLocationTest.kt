@@ -23,6 +23,18 @@ class EarthLocationTest {
         validateEarthSharing(sharing.copy(mode="GHOST",recipientCircleIds=emptyList(),durationMinutes=null))
         validateEarthSharing(sharing.copy(mode="OFF",recipientCircleIds=emptyList(),durationMinutes=null))
     }
+    @Test fun `frozen preferences are an owner audience subset and legacy requests default to live`() {
+        assertTrue(sharing.frozenCircleIds.isEmpty());assertFalse(sharing.frozenOnly)
+        validateEarthSharing(sharing.copy(frozenCircleIds=listOf(circle)))
+        validateEarthSharing(sharing.copy(recipientCircleIds=emptyList(),frozenOnly=true))
+        for(mode in listOf("OFF","GHOST")) validateEarthSharing(sharing.copy(mode=mode,
+            recipientCircleIds=emptyList(),frozenCircleIds=listOf(circle),frozenOnly=true))
+        for(bad in listOf(sharing.copy(frozenCircleIds=listOf(UUID.randomUUID().toString())),
+            sharing.copy(frozenCircleIds=listOf(circle,circle)),sharing.copy(frozenCircleIds=listOf("invalid")),
+            sharing.copy(frozenCircleIds=List(101) { circle }))) {
+            assertEquals("INVALID_EARTH_SHARING",assertFailsWith<AuthFailure> { validateEarthSharing(bad) }.code)
+        }
+    }
     @Test fun `positions reject nonfinite ranges epochs sequences and timestamps`() {
         validateEarthPosition(position)
         for(bad in listOf(position.copy(latitude=Double.NaN),position.copy(longitude=Double.POSITIVE_INFINITY),

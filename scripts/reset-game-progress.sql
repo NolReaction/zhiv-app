@@ -17,7 +17,7 @@ SET LOCAL statement_timeout = '3min';
 DO $$
 DECLARE
     cleared_tables text[] := ARRAY[
-        'earth_latest_locations',
+        'earth_latest_locations', 'earth_frozen_locations',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
         'economy_commands',
         'economy_market_daily_turnover', 'economy_market_listings', 'economy_market_receipts',
@@ -71,16 +71,17 @@ BEGIN
     -- V64 one-time daily gift state and receipts remain in the preserved tables.
     -- V65 location data is ephemeral; account sharing choices and recipients survive gameplay resets.
     -- V66 changes retention and source-session fencing; points remain ephemeral and are cleared.
+    -- V67 frozen recipient snapshots are cleared; recipient freeze choices remain preserved.
     -- Any later migration must be reviewed, including columns on retained tables.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 66
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 67
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,66) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,67) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V66. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V67. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

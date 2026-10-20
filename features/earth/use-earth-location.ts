@@ -13,5 +13,5 @@ export function useEarthLocation({ ownerPublicId, enabled, autoStartWhenGranted 
   useLayoutEffect(() => { controller.setEnabled(enabled); }, [controller, enabled]);
   useLayoutEffect(() => { controller.setAutomaticStartPolicy(autoStartWhenGranted); }, [controller, autoStartWhenGranted]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getServerSnapshot);
-  return { ...state, start: controller.start, stop: controller.stop, freeze: controller.freeze };
+  return { ...state, start: controller.start, locate: controller.locate, stop: controller.stop, freeze: controller.freeze };
 }

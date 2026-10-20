@@ -59,7 +59,7 @@ trap cleanup EXIT
 echo 'Stopping traffic and application writers; PostgreSQL stays running.'
 services_stopped=true
 "${compose[@]}" stop caddy web api provision migrate
-"${compose[@]}" exec -T db pg_dump -U zhiv -d zhiv --format=custom --exclude-table-data=public.earth_latest_locations > "$backup_file"
+"${compose[@]}" exec -T db pg_dump -U zhiv -d zhiv --format=custom --exclude-table-data=public.earth_latest_locations --exclude-table-data=public.earth_frozen_locations > "$backup_file"
 test -s "$backup_file"
 "${compose[@]}" exec -T db pg_restore --list < "$backup_file" > /dev/null
 
@@ -111,7 +111,7 @@ BEGIN
                 -- baseline plus later migrations, not an arbitrary history.
                 (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
                     FROM public.flyway_schema_history h ORDER BY h.installed_rank)
-                    = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true']
+                    = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true','67:SQL:true']
                     AND m.started_at BETWEEN migration_started_at AND clock_timestamp())
             )
         ) THEN

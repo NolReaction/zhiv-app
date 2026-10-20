@@ -13,12 +13,14 @@ const val EARTH_PUBLISH_INTERVAL_SECONDS = 30L
 private const val MAX_SAFE = 9_007_199_254_740_990L
 
 @Serializable data class EarthSharingWrite(val expectedOwnerPublicId: String, val expectedRevision: Long,
-    val mode: String, val precision: String, val recipientCircleIds: List<String>, val durationMinutes: Int?)
+    val mode: String, val precision: String, val recipientCircleIds: List<String>, val durationMinutes: Int?,
+    val frozenCircleIds: List<String> = emptyList(), val frozenOnly: Boolean = false)
 @Serializable data class EarthPositionWrite(val expectedOwnerPublicId: String, val publicationEpoch: String,
     val sequence: Long, val latitude: Double, val longitude: Double, val accuracyMeters: Double, val capturedAt: String)
 @Serializable data class EarthPositionStop(val expectedOwnerPublicId: String, val publicationEpoch: String)
 @Serializable data class EarthSharingSettings(val ownerPublicId: String, val mode: String, val revision: Long,
-    val precision: String, val recipientCircleIds: List<String>, val sharingUntil: String?, val publicationEpoch: String?, val serverTime: String)
+    val precision: String, val recipientCircleIds: List<String>, val sharingUntil: String?, val publicationEpoch: String?, val serverTime: String,
+    val frozenCircleIds: List<String> = emptyList())
 @Serializable data class EarthPositionReceipt(val ownerPublicId: String, val acceptedAt: String, val expiresAt: String, val serverTime: String)
 @Serializable data class EarthPositionStopped(val ownerPublicId: String, val serverTime: String)
 @Serializable data class EarthSharedPerson(val circleId: String, val user: PublicUserDto, val latitude: Double,
@@ -47,7 +49,9 @@ fun validateEarthSharing(value: EarthSharingWrite) {
         value.mode !in setOf("OFF","SHARING","GHOST") || value.precision !in setOf("APPROXIMATE","PRECISE") ||
         value.durationMinutes !in listOf(null,60,480) || value.recipientCircleIds.size>100 ||
         value.recipientCircleIds.distinct().size!=value.recipientCircleIds.size || value.recipientCircleIds.any { parseCanonicalUuid(it)==null } ||
-        (value.mode=="SHARING" && value.recipientCircleIds.isEmpty())) invalidEarthSharing()
+        value.frozenCircleIds.size>100 || value.frozenCircleIds.distinct().size!=value.frozenCircleIds.size ||
+        value.frozenCircleIds.any { parseCanonicalUuid(it)==null || (value.mode=="SHARING" && it !in value.recipientCircleIds) } ||
+        (value.mode=="SHARING" && value.recipientCircleIds.isEmpty() && !value.frozenOnly)) invalidEarthSharing()
 }
 fun validateEarthPosition(value: EarthPositionWrite): Instant {
     if(parsePublicId(value.expectedOwnerPublicId)!=value.expectedOwnerPublicId || parseCanonicalUuid(value.publicationEpoch)==null ||

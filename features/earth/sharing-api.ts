@@ -8,7 +8,7 @@ import {
 
 const apiErrorSchema = z.object({ code: z.string(), message: z.string() });
 
-async function request<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, init: RequestInit = {}): Promise<T> {
   return withRequestDeadline(8_000, init.signal, async signal => {
     const response = await fetch(path, {
       ...init, signal, cache: "no-store", credentials: "same-origin",
@@ -34,7 +34,7 @@ export function getEarthSharing(signal?: AbortSignal) {
 
 export function updateEarthSharing(write: EarthSharingWrite, key: string, signal?: AbortSignal) {
   return request("/api/v1/earth/sharing", earthSharingSettingsSchema, {
-    method: "PUT", body: JSON.stringify(write), headers: { "Idempotency-Key": key }, signal, keepalive: write.mode !== "SHARING",
+    method: "PUT", body: JSON.stringify(write), headers: { "Idempotency-Key": key }, signal, keepalive: write.mode !== "SHARING" || write.frozenOnly === true,
   });
 }
 

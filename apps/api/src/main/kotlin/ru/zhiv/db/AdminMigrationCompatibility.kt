@@ -30,6 +30,7 @@ private val canonicalTailScripts = mapOf(
     64 to "V64__one_time_seven_day_gifts.sql",
     65 to "V65__earth_location_sharing.sql",
     66 to "V66__earth_last_known_location.sql",
+    67 to "V67__earth_recipient_freeze.sql",
 )
 
 private data class AdminMigrationHistoryRow(

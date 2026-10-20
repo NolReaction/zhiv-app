@@ -25,6 +25,9 @@ internal fun purgeEarthLocations(source: DataSource): Int=source.connection.use 
                 ORDER BY sharing_until LIMIT 1000 FOR UPDATE SKIP LOCKED)""")
         val points=c.economyUpdate("""DELETE FROM earth_latest_locations WHERE user_id IN
             (SELECT user_id FROM earth_latest_locations WHERE expires_at<=clock_timestamp() ORDER BY expires_at LIMIT 1000 FOR UPDATE SKIP LOCKED)""")
-        c.commit();maxOf(consent,points)
+        val frozen=c.economyUpdate("""DELETE FROM earth_frozen_locations WHERE (owner_user_id,circle_id) IN
+            (SELECT owner_user_id,circle_id FROM earth_frozen_locations WHERE expires_at<=clock_timestamp()
+                ORDER BY expires_at LIMIT 1000 FOR UPDATE SKIP LOCKED)""")
+        c.commit();maxOf(consent,points,frozen)
     } catch(error: Exception) { c.rollback();throw error }
 }

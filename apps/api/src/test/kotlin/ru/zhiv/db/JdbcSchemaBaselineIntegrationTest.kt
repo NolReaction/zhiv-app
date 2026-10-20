@@ -119,7 +119,7 @@ class JdbcSchemaBaselineIntegrationTest {
         }
     }
 
-    @Test fun `fresh database executes baseline and V50 through V66 equivalent to the upgraded historical chain`() {
+    @Test fun `fresh database executes baseline and V50 through V67 equivalent to the upgraded historical chain`() {
         DatabaseFactory.create(config()).use { legacy ->
             // Deliberately excludes the parent location: Flyway 12.8 applies the newest B
             // even when target is lower, so historical builds must resolve only V files.
@@ -129,7 +129,7 @@ class JdbcSchemaBaselineIntegrationTest {
             assertEquals("49", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(legacy, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             DatabaseFactory.migrate(legacy)
-            assertEquals("66", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("67", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
 
             val database = "baseline_${UUID.randomUUID().toString().replace("-", "")}"
             legacy.connection.use { c ->
@@ -141,7 +141,7 @@ class JdbcSchemaBaselineIntegrationTest {
                     val started = databaseTime(fresh)
                     DatabaseFactory.migrate(fresh)
                     val finished = databaseTime(fresh)
-                    assertEquals("18", scalar(fresh, "SELECT count(*) FROM flyway_schema_history"))
+                    assertEquals("19", scalar(fresh, "SELECT count(*) FROM flyway_schema_history"))
                     assertEquals("49:SQL_BASELINE:true", scalar(fresh,
                         "SELECT version || ':' || type || ':' || success::text FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
                     val metadata = fresh.connection.use { c -> c.createStatement().use { statement ->
@@ -159,7 +159,7 @@ class JdbcSchemaBaselineIntegrationTest {
                     for ((category, definitions) in expected) {
                         assertEquals(definitions.keys, actual.getValue(category).keys, "$category object names differ")
                         for ((name, definition) in definitions)
-                            assertEquals(definition, actual.getValue(category).getValue(name), "$category: $name differs from V1–V66")
+                            assertEquals(definition, actual.getValue(category).getValue(name), "$category: $name differs from V1–V67")
                     }
                     val freshHistory = history(fresh)
                     val freshMetadata = scalar(fresh, "SELECT row_to_json(m)::text FROM game_tap_collection_metadata m")
@@ -207,11 +207,11 @@ class JdbcSchemaBaselineIntegrationTest {
             assertEquals(data, tableData(source).filterKeys { it in data }, "Adding a baseline must not rewrite existing records")
             assertEquals(mapOf("managed_promo_codes" to "[]", "player_security_observations" to "[]",
                 "player_mail_messages" to "[]", "admin_mail_broadcasts" to "[]",
-                "earth_sharing_settings" to "[]", "earth_sharing_recipients" to "[]", "earth_latest_locations" to "[]"), tableData(source).filterKeys { it !in data },
+                "earth_sharing_settings" to "[]", "earth_sharing_recipients" to "[]", "earth_latest_locations" to "[]", "earth_frozen_locations" to "[]"), tableData(source).filterKeys { it !in data },
                 "New campaign configuration, security observations and mail start empty on the historical schema")
             assertEquals(earlierHistory, scalar(source,
                 "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=48"))
-            assertEquals("66", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
+            assertEquals("67", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             assertEquals(first.id, identities.findBySession(firstSession)?.id)
             assertEquals(second.id, identities.findBySession(secondSession)?.id)

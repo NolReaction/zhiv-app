@@ -44,7 +44,8 @@ test("game reset reviews every table and the latest migration without clearing i
     "notification_subscriptions", "notification_preferences", "game_presence_daily", "player_mail_messages", "admin_mail_broadcasts", "player_security_observations",
     "game_daily_rewards", "game_reward_claims", "game_achievement_reward_claims",
     "earth_sharing_settings", "earth_sharing_recipients"]) assert.ok(preserved.includes(name), name);
-  assert.ok(cleared.includes("earth_latest_locations"), "a gameplay reset discards ephemeral points without changing account consent");
+  for (const table of ["earth_latest_locations", "earth_frozen_locations"])
+    assert.ok(cleared.includes(table), `${table}: gameplay reset discards ephemeral points without changing account consent`);
   assert.deepEqual(partial, ["notification_events"]);
   for (const name of ["economy_profiles", "world_profiles", "forest_memory", "game_profiles"])
     assert.ok(reinitialized.includes(name), `${name}: preserve a monotonic revision fence`);

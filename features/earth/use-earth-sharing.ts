@@ -14,5 +14,6 @@ export function useEarthSharing({ ownerPublicId, visible, isOnline, onSessionLos
   useLayoutEffect(() => { controller.setContext({ visible, isOnline }); }, [controller, visible, isOnline]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getServerSnapshot);
   return { ...state, share: controller.share, ghost: controller.ghost, off: controller.off,
+    setFrozen: controller.setFrozen, revokeRecipient: controller.revokeRecipient,
     stopPublishing: controller.stopPublishing, refresh: controller.refresh, setPosition: controller.setPosition };
 }

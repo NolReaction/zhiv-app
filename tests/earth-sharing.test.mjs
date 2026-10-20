@@ -21,7 +21,7 @@ function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = tr
   const timers = new Map(), visibilityListeners = new Set(), calls = { settings: [], people: [], updates: [], positions: [], stops: [], order: [] };
   const iso = offset => new Date(BASE + mono + offset).toISOString();
   let server = { ownerPublicId: owner, mode: "OFF", revision: 0, precision: "APPROXIMATE", recipientCircleIds: [],
-    sharingUntil: null, publicationEpoch: null, serverTime: iso(0), ...initial };
+    frozenCircleIds: [], sharingUntil: null, publicationEpoch: null, serverTime: iso(0), ...initial };
   const clock = {
     mono: () => mono, wall: () => BASE + mono + wallOffset, iso,
     rollback: amount => { wallOffset -= amount; },
@@ -57,8 +57,15 @@ function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = tr
     async getEarthSharing(signal) { calls.settings.push(signal); calls.order.push("get"); return { ...server, publicationEpoch: null, serverTime: iso(0) }; },
     async updateEarthSharing(write, key, signal) {
       calls.updates.push({ write, key, signal }); calls.order.push(`update:${write.mode}`);
+      if (write.frozenOnly && write.mode === "SHARING") {
+        server = { ...server, revision: server.revision + 1, recipientCircleIds: [...write.recipientCircleIds],
+          frozenCircleIds: [...(write.frozenCircleIds ?? [])],
+          ...(write.recipientCircleIds.length ? {} : { mode: "OFF", sharingUntil: null }), publicationEpoch: null, serverTime: iso(0) };
+        return { ...server };
+      }
       server = { ...server, mode: write.mode, revision: server.revision + 1,
         recipientCircleIds: write.mode === "GHOST" ? server.recipientCircleIds : write.mode === "OFF" ? [] : write.recipientCircleIds,
+        frozenCircleIds: write.mode === "GHOST" ? server.frozenCircleIds : write.mode === "OFF" ? [] : write.frozenCircleIds ?? [],
         precision: write.mode === "GHOST" ? server.precision : write.precision,
         sharingUntil: write.mode === "SHARING" && write.durationMinutes !== null ? iso(write.durationMinutes * 60_000) : null,
         publicationEpoch: write.mode === "SHARING" ? id(++sequence) : null, serverTime: iso(0) };
@@ -366,4 +373,100 @@ test("a new fix during upload retains only the latest foreground sample and flus
   assert.equal(s.calls.positions[1].write.capturedAt, new Date(latest.timestamp).toISOString());
   assert.equal(s.calls.positions[1].write.sequence, 2);
   await s.clock.advance(120_000); assert.equal(s.calls.positions.length, 2, "neither sample is retried as a heartbeat");
+});
+
+test("individual freeze preserves an existing publisher and deadline without a new enable or a GPS heartbeat", async t => {
+  const second = id(501), s = fixture(); t.after(() => s.stop()); await s.start();
+  await s.controller.share({ ...options, recipientCircleIds: [CIRCLE, second] });
+  s.controller.setPosition(s.fix()); await flush();
+  const originalEpoch = s.calls.positions[0].write.publicationEpoch, until = s.controller.getSnapshot().settings.sharingUntil;
+  await s.clock.advance(30_000);
+  assert.equal(await s.controller.setFrozen(CIRCLE, true), true);
+  assert.equal(s.calls.updates.at(-1).write.frozenOnly, true);
+  assert.deepEqual(s.calls.updates.at(-1).write.frozenCircleIds, [CIRCLE]);
+  assert.equal(s.controller.getSnapshot().settings.sharingUntil, until);
+  assert.equal(s.controller.getSnapshot().publishing, true); assert.equal(s.calls.stops.length, 0);
+  assert.equal(s.calls.positions.length, 1, "changing preferences never publishes or reuses a fix");
+  s.controller.setPosition(s.fix()); await flush();
+  assert.equal(s.calls.positions.length, 2); assert.equal(s.calls.positions[1].write.publicationEpoch, originalEpoch);
+  assert.equal(s.calls.positions[1].write.sequence, 2);
+});
+
+test("freeze and unfreeze on a paused session save preferences without acquiring a publisher or extending consent", async t => {
+  const until = new Date(BASE + 3_600_000).toISOString();
+  const s = fixture({ initial: { mode: "SHARING", revision: 8, recipientCircleIds: [CIRCLE], sharingUntil: until } });
+  t.after(() => s.stop()); await s.start();
+  assert.equal(await s.controller.setFrozen(CIRCLE, true), true);
+  assert.deepEqual(s.controller.getSnapshot().settings.frozenCircleIds, [CIRCLE]);
+  assert.equal(await s.controller.setFrozen(CIRCLE, false), true);
+  assert.equal(s.controller.getSnapshot().publishing, false); assert.equal(s.controller.getSnapshot().settings.sharingUntil, until);
+  s.controller.setPosition(s.fix()); await flush(); assert.equal(s.calls.positions.length, 0);
+  assert.equal(s.calls.updates.length, 2); assert.equal(s.calls.stops.length, 0);
+});
+
+test("freezing every recipient stops the current publisher and unfreezing cannot restart it", async t => {
+  const s = fixture(); t.after(() => s.stop()); await s.start(); await s.controller.share(options);
+  assert.equal(await s.controller.setFrozen(CIRCLE, true), true);
+  assert.equal(s.controller.getSnapshot().publishing, false); assert.equal(s.calls.stops.length, 1);
+  assert.equal(await s.controller.setFrozen(CIRCLE, false), true);
+  assert.equal(s.controller.getSnapshot().publishing, false);
+  s.controller.setPosition(s.fix()); await flush(); assert.equal(s.calls.positions.length, 0);
+  assert.equal(await s.controller.share({ ...options, frozenCircleIds: [CIRCLE] }), true);
+  assert.equal(s.controller.getSnapshot().publishing, false, "a fully frozen explicit selection also has no reason to start GPS");
+});
+
+test("narrow revocation keeps other recipients live and removing the final recipient turns access OFF", async t => {
+  const second = id(502), s = fixture(); t.after(() => s.stop()); await s.start();
+  await s.controller.share({ ...options, recipientCircleIds: [CIRCLE, second] });
+  assert.equal(await s.controller.revokeRecipient(CIRCLE), true);
+  assert.deepEqual(s.controller.getSnapshot().settings.recipientCircleIds, [second]);
+  assert.equal(s.controller.getSnapshot().publishing, true); assert.equal(s.calls.stops.length, 0);
+  assert.equal(await s.controller.setFrozen(CIRCLE, true), false);
+  assert.equal(await s.controller.revokeRecipient(second), true);
+  assert.equal(s.controller.getSnapshot().settings.mode, "OFF"); assert.equal(s.controller.getSnapshot().publishing, false);
+  assert.deepEqual(s.controller.getSnapshot().settings.frozenCircleIds, []); assert.equal(s.calls.stops.length, 1);
+});
+
+test("an uncertain preference change suppresses outbound samples and fails closed without an automatic restart", async t => {
+  const s = fixture(); t.after(() => s.stop()); await s.start(); await s.controller.share(options);
+  const deferredChange = deferred(); s.transport.updateEarthSharing = () => deferredChange.promise;
+  const changing = s.controller.setFrozen(CIRCLE, true);
+  assert.equal(s.controller.getSnapshot().saving, true);
+  s.controller.setPosition(s.fix()); await flush(); assert.equal(s.calls.positions.length, 0);
+  deferredChange.reject(new Error("network uncertain")); assert.equal(await changing, false);
+  assert.equal(s.controller.getSnapshot().publishing, false); assert.equal(s.controller.getSnapshot().saving, false);
+  s.controller.setPosition(s.fix()); await flush(); assert.equal(s.calls.positions.length, 0);
+  assert.match(s.controller.getSnapshot().error, /network uncertain/);
+});
+
+test("global privacy intent fences a late preference reply and survives its aborted transport", async t => {
+  const s = fixture(); t.after(() => s.stop()); await s.start(); await s.controller.share(options);
+  const pendingChange = deferred(), original = s.transport.updateEarthSharing; let signal;
+  s.transport.updateEarthSharing = (write, key, requestSignal) => {
+    if (write.frozenOnly) { signal = requestSignal; return pendingChange.promise; }
+    return original(write, key, requestSignal);
+  };
+  const changing = s.controller.setFrozen(CIRCLE, true);
+  s.controller.ghost(); await flush(); assert.equal(signal.aborted, true);
+  pendingChange.resolve({ ...s.controller.getSnapshot().settings, mode: "SHARING", revision: 99, publicationEpoch: null,
+    recipientCircleIds: [CIRCLE], frozenCircleIds: [CIRCLE] });
+  assert.equal(await changing, false);
+  assert.equal(s.controller.getSnapshot().settings.mode, "GHOST"); assert.equal(s.controller.getSnapshot().publishing, false);
+  assert.equal(await s.controller.setFrozen(CIRCLE, false), false);
+});
+
+test("preference acknowledgements cannot add recipients or extend expiry and disposal rejects late replies", async t => {
+  for (const change of [settings => ({ ...settings, sharingUntil: new Date(BASE + 9_000_000).toISOString() }),
+    settings => ({ ...settings, recipientCircleIds: [...settings.recipientCircleIds, id(503)] })]) {
+    const s = fixture(); t.after(() => s.stop()); await s.start(); await s.controller.share(options);
+    const original = s.transport.updateEarthSharing;
+    s.transport.updateEarthSharing = async (...args) => change(await original(...args));
+    assert.equal(await s.controller.setFrozen(CIRCLE, true), false);
+    assert.equal(s.controller.getSnapshot().publishing, false); assert.match(s.controller.getSnapshot().error, /не подтвердил/);
+  }
+  const s = fixture(); await s.start(); await s.controller.share(options);
+  const pendingChange = deferred(); s.transport.updateEarthSharing = () => pendingChange.promise;
+  const changing = s.controller.setFrozen(CIRCLE, true), old = s.controller.getSnapshot().settings;
+  s.stop(); pendingChange.resolve({ ...old, revision: old.revision + 1, frozenCircleIds: [CIRCLE], publicationEpoch: null });
+  assert.equal(await changing, false); assert.equal(s.controller.getSnapshot().settings, null);
 });
