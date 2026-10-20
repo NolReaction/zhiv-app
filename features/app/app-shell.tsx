@@ -17,6 +17,7 @@ import { rememberEarthSection, restoreEarthSection } from "./earth-navigation-st
 import { earthMapAvailable } from "./earth-map-availability";
 import { useEarthMapRetention } from "./use-earth-map-retention";
 import { useEarthSharing } from "@/features/earth/use-earth-sharing";
+import { useEarthLocationPreference } from "@/features/earth/use-location-preferences";
 import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
@@ -81,7 +82,6 @@ import {
 } from "@/features/game/tap-input";
 import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
 import { PeopleView } from "@/features/people/people-view";
-import { personProfileTarget, type PersonProfileTarget } from "@/features/people/people-profile-navigation";
 import { ProfileView } from "@/features/account/profile-view";
 import type { NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { CheckInCalendar } from "@/features/check-in/check-in-calendar";
@@ -427,7 +427,6 @@ function CheckInContent() {
   const mochlikVisible = appearanceReady && !simpleView;
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
   const [friendSelection, setFriendSelection] = useState<ProfileFriendVisit | null>(null);
-  const [peopleProfileTarget, setPeopleProfileTarget] = useState<PersonProfileTarget | null>(null);
   const [earthPrivacyRequest, setEarthPrivacyRequest] = useState<{ owner: string; id: number } | null>(null);
   if (earthPrivacyRequest && (screen !== "home" || earthPrivacyRequest.owner !== viewOwner)) setEarthPrivacyRequest(null);
   const earthPrivacySequence = useRef(0);
@@ -461,7 +460,6 @@ function CheckInContent() {
       const order = appViews;
       setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
       setViewSelection({ owner: viewOwner, view: next });
-      if (next !== "people") setPeopleProfileTarget(null);
       if (me) rememberEarthSection(me.user.publicId, next === "earth");
       if (next === "profile") void game.refresh();
     };
@@ -680,9 +678,11 @@ function CheckInContent() {
     covered: worldPortal.open || calendarOpen || gameOpen || statusOpen });
   const earthRetention = useEarthMapRetention({ owner: screen === "home" ? viewOwner : null,
     selected: earthSelected, available: earthAvailable, documentHidden: activity.mode === "hidden" });
+  const locationOwner = screen === "home" ? viewOwner : null;
+  const locationPreference = useEarthLocationPreference(locationOwner);
   const earthSharing = useEarthSharing({ ownerPublicId: screen === "home" ? viewOwner : null,
     visible: screen === "home" && (earthSelected || activeView === "people") && earthAvailable,
-    publicationVisible: screen === "home" && earthSelected && earthAvailable,
+    publicationVisible: screen === "home" && earthSelected && earthAvailable && locationPreference.enabled,
     isOnline, onSessionLost: loseSession });
   useEconomyAudioFeedback(economy, screen === "home" && activity.active);
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
@@ -840,12 +840,6 @@ function CheckInContent() {
       worldPortal.enter(trigger ?? null, null);
       void economy.reconcile();
     }
-  };
-  const openPeopleProfile = (person: Person) => {
-    const target = personProfileTarget(screen === "home" ? me?.user.publicId : null, people?.people, person);
-    if (!target) { notify("Обновите список друзей: связь с этим человеком изменилась.", "error"); return; }
-    setPeopleProfileTarget(target);
-    selectView("people");
   };
   const friendVisit = currentProfileFriendVisit(screen === "home" ? me?.user.publicId : null, friendSelection, people?.people, isOnline, worldPortal.open);
   const visitDevBot = async (target: GuestWorldTarget) => {
@@ -1877,7 +1871,7 @@ function CheckInContent() {
 
       ) : activeView === "people" ? (
         <PeopleView
-          key={`people:${me?.user.publicId ?? ""}:${peopleProfileTarget?.ownerPublicId === me?.user.publicId ? peopleProfileTarget?.circleId ?? "" : ""}`}
+          key={`people:${me?.user.publicId ?? ""}`}
           ownerPublicId={me?.user.publicId ?? null}
           data={people}
           groups={groups}
@@ -1894,9 +1888,9 @@ function CheckInContent() {
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
           onVisitFriend={visitFriend}
-          initialProfileTarget={peopleProfileTarget}
           earthSharing={earthSharing}
           onShareEarth={async choices => {
+            if (!locationPreference.enabled) return;
             earthSharing.setPosition(null);
             await earthSharing.share(choices);
           }}
@@ -1909,6 +1903,7 @@ function CheckInContent() {
       ) : activeView === "profile" && me ? (
         <ProfileView
           simpleView={simpleView} onSimpleViewChange={setSimpleView}
+          locationPrivacy={earthSharing}
           notificationSettingsExit={notificationSettingsExit}
           onOpenOnboarding={() => appOnboardingEntry.current?.open()}
           getOnboardingActionLabel={() => appOnboardingEntry.current?.getActionLabel() ?? "Начать обучение"}
@@ -1952,7 +1947,6 @@ function CheckInContent() {
           onPrivacyRequestHandled={earthPrivacyHandled}
           isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}
           onRefreshPeople={() => { void refreshPeople(); }} onOpenPeople={() => selectView("people")}
-          onOpenProfile={openPeopleProfile} onVisitFriend={visitFriend}
           onOpenWorld={trigger => { setFriendSelection(null); setWorldMounted(true); worldPortal.enter(trigger, null); void world.refresh(); }} />}
       </div>
       {me && streak ? <CheckInCalendar key={`calendar:${me.user.publicId}`} open={calendarOpen} onOpenChange={setCalendarOpen}

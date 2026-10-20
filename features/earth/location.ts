@@ -84,6 +84,7 @@ export function createEarthLocationController(
   let environment: EarthLocationEnvironment | null = null;
   let mounted = false;
   let enabled = false;
+  let allowed = true;
   let requested = false;
   let automaticPolicy: boolean | null = false;
   let automaticAttempted = false;
@@ -148,7 +149,7 @@ export function createEarthLocationController(
   }
 
   function reconcile() {
-    if (!mounted || !requested || !environment) return;
+    if (!mounted || !allowed || !requested || !environment) return;
     if (!enabled || !environment.visible()) {
       clearWatch();
       if (state.status !== "paused") publish({ ...state, status: "paused", error: null });
@@ -162,7 +163,7 @@ export function createEarthLocationController(
     watching = true;
     const epoch = ++watchEpoch;
     const canAccept = () => {
-      if (!mounted || !requested || epoch !== watchEpoch) return false;
+      if (!mounted || !allowed || !requested || epoch !== watchEpoch) return false;
       if (!enabled || !environment?.visible()) { reconcile(); return false; }
       return true;
     };
@@ -211,14 +212,14 @@ export function createEarthLocationController(
   // Permissions.query is passive: an unknown/prompt permission never opens a
   // browser prompt. A delayed answer cannot revive a stopped/hidden session.
   function maybeStartAutomatically() {
-    if (automaticPolicy !== true || automaticAttempted || !mounted || !enabled || requested
+    if (automaticPolicy !== true || automaticAttempted || !mounted || !allowed || !enabled || requested
       || !ownerPublicId || !environment?.visible()) return;
     automaticAttempted = true;
     if (!environment.secure || !environment.geolocation || !environment.queryPermission) return;
     const epoch = ++automaticEpoch;
     const currentEnvironment = environment;
     void environment.queryPermission().then(permission => {
-      if (!mounted || !enabled || requested || epoch !== automaticEpoch || automaticPolicy !== true
+      if (!mounted || !allowed || !enabled || requested || epoch !== automaticEpoch || automaticPolicy !== true
         || environment !== currentEnvironment || !environment.visible() || permission.state !== "granted") return;
       start();
     }).catch(() => {
@@ -227,7 +228,7 @@ export function createEarthLocationController(
     });
   }
   function start() {
-    if (!mounted || !ownerPublicId || requested) return;
+    if (!mounted || !allowed || !ownerPublicId || requested) return;
     automaticAttempted = true;
     automaticEpoch += 1;
     highAccuracyAttempted = false;
@@ -238,7 +239,7 @@ export function createEarthLocationController(
   // A deliberate lookup refreshes a stale watch without changing any sharing
   // permission. Keep the old private marker until a fresh fix arrives.
   function locate() {
-    if (!mounted || !ownerPublicId) return;
+    if (!mounted || !allowed || !ownerPublicId) return;
     if (!requested) { start(); return; }
     if (state.status === "requesting") return;
     highAccuracyAttempted = false;
@@ -278,6 +279,15 @@ export function createEarthLocationController(
       if (!enabled) automaticEpoch += 1;
       reconcile();
       maybeStartAutomatically();
+    },
+    /** Device-wide OFF is stronger than hiding/pausing: forget the private fix. */
+    setAllowed(value: boolean) {
+      if (allowed === value) return;
+      allowed = value;
+      if (!allowed) stop();
+      // An ON transition only unlocks explicit actions. Never revive the watch
+      // or a pending granted-permission query from before the user's OFF.
+      else { automaticAttempted = true; automaticEpoch += 1; }
     },
     /** null waits for privacy metadata; false permanently suppresses this mount's auto attempt. */
     setAutomaticStartPolicy(value: boolean | null) {

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, type MouseEvent } from "react";
-import { ArrowUp, ExternalLink, Footprints, LocateFixed, MapPinned, X } from "lucide-react";
+import { ArrowUp, ChevronDown, ExternalLink, Footprints, LocateFixed, MapPinned, X } from "lucide-react";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
-import { earthMeetDetails, walkingRouteUrl } from "./meet";
+import { earthMeetDetails, walkingRouteUrl, WALKING_MAP_SERVICES, type WalkingMapService } from "./meet";
 import styles from "./earth-meet-card.module.css";
 
 export function formatMeetDistance(meters: number): string {
@@ -14,25 +14,33 @@ export function formatMeetDistance(meters: number): string {
     : `${(meters / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: meters < 10_000 ? 1 : 0 })} км`;
 }
 
-export function EarthMeetCard({ person, name, position, now, monotonicNow, locating, onLocate, onShowBoth, onClose }: {
+function openWalkingRoute(event: MouseEvent<HTMLAnchorElement>, person: EarthMapPerson | null, service: WalkingMapService) {
+  // A tab may have slept since rendering; never open an expired destination.
+  if (event.defaultPrevented || !person || !walkingRouteUrl(person, performance.now(), Date.now(), service)) { event.preventDefault(); return; }
+  playUiCue(getAudioRuntime(), "ui.open");
+}
+
+export function EarthMeetCard({ person, name, position, now, monotonicNow, locating, locationAllowed = true, onLocate, onShowBoth, onClose }: {
   person: EarthMapPerson | null; name?: string; position: EarthPosition | null;
-  now: number; monotonicNow: number; locating: boolean;
+  now: number; monotonicNow: number; locating: boolean; locationAllowed?: boolean;
   onLocate: () => void; onShowBoth: () => void; onClose: () => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
+  const routePicker = useRef<HTMLDetailsElement>(null);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [person?.circleId]);
   const available = person && person.expiresAtMonotonic > monotonicNow && Date.parse(person.expiresAt) > now;
-  const details = available ? earthMeetDetails(position, person, monotonicNow, now) : null;
+  const details = available && locationAllowed ? earthMeetDetails(position, person, monotonicNow, now) : null;
   const route = available ? walkingRouteUrl(person, monotonicNow, now) : null;
   const minutes = person ? Math.max(0, Math.floor((now - Date.parse(person.updatedAt)) / 60_000)) : 0;
   const updated = minutes < 1 ? "Только что" : minutes < 60 ? `${minutes} мин. назад` : `${Math.floor(minutes / 60)} ч. назад`;
-  const openRoute = (event: MouseEvent<HTMLAnchorElement>) => {
-    // A tab may have slept since rendering; never open an expired destination.
-    if (event.defaultPrevented || !person || !walkingRouteUrl(person, performance.now(), Date.now())) { event.preventDefault(); return; }
-    playUiCue(getAudioRuntime(), "ui.open");
-  };
+
   return <section className={styles.card} aria-labelledby="earth-meet-heading" onKeyDown={event => {
-    if (event.key === "Escape") { event.stopPropagation(); playUiCue(getAudioRuntime(), "ui.close"); onClose(); }
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      playUiCue(getAudioRuntime(), "ui.close");
+      if (routePicker.current?.open) { routePicker.current.open = false; routePicker.current.querySelector("summary")?.focus(); }
+      else onClose();
+    }
   }}>
     <header className={styles.header}>
       <span className={styles.avatar} aria-hidden="true">{Array.from(name?.trim() || "Ж")[0].toLocaleUpperCase("ru-RU")}</span>
@@ -44,16 +52,26 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
         <span className={styles.compass} aria-hidden="true">{details?.bearingDegrees !== null && details?.bearingDegrees !== undefined
           ? <ArrowUp size={28} style={{ transform: `rotate(${details.bearingDegrees}deg)` }} /> : <Footprints size={26} />}</span>
         <div>{details ? <><strong>≈ {formatMeetDistance(details.distanceMeters)}</strong><span>по прямой{details.direction ? ` · ${details.direction}` : details.distanceMeters <= details.accuracyMeters ? " · в пределах точности GPS" : " · направление не определено"}</span></>
-          : <><strong>{locating ? "Ищем тебя…" : "Где ты сейчас?"}</strong><span>Найди себя, чтобы увидеть расстояние</span></>}</div>
+          : <><strong>{locating ? "Ищем тебя…" : locationAllowed ? "Где ты сейчас?" : "Геопозиция отключена"}</strong><span>{locationAllowed ? "Найди себя, чтобы увидеть расстояние" : "Включи её в настройках профиля"}</span></>}</div>
       </div>
       <p className={styles.updated}>{person.precision === "APPROXIMATE" ? "Примерный район" : "Последняя точка"} · {updated}</p>
       <div className={styles.actions}>
         {details ? <button type="button" data-audio-cue="ui.click" onClick={onShowBoth}><MapPinned size={18} aria-hidden="true" />Мы на карте</button>
-          : <button type="button" data-audio-cue="ui.click" onClick={onLocate} disabled={locating}><LocateFixed size={18} aria-hidden="true" />Найти меня</button>}
-        {route && <a href={route} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={openRoute}
-          onAuxClick={event => { if (event.button === 1) openRoute(event); }}><Footprints size={18} aria-hidden="true" />Пешком<ExternalLink size={13} aria-hidden="true" /></a>}
+          : <button type="button" data-audio-cue="ui.click" onClick={() => { if (locationAllowed) onLocate(); }} disabled={locating || !locationAllowed}><LocateFixed size={18} aria-hidden="true" />Найти меня</button>}
+        {route && <details ref={routePicker} key={person.circleId} className={styles.routePicker}>
+          <summary data-audio-cue="ui.open"><Footprints size={18} aria-hidden="true" />Пешком<ChevronDown size={14} aria-hidden="true" /></summary>
+          <nav className={styles.routeOptions} aria-label="Выбрать карты для пешего маршрута">
+            {WALKING_MAP_SERVICES.map(service => {
+              const href = walkingRouteUrl(person, monotonicNow, now, service.id);
+              return href && <a key={service.id} href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"
+                onClick={event => openWalkingRoute(event, person, service.id)} onAuxClick={event => { if (event.button === 1) openWalkingRoute(event, person, service.id); }}>
+                {service.name}<ExternalLink size={13} aria-hidden="true" />
+              </a>;
+            })}
+          </nav>
+        </details>}
       </div>
-      <p className={styles.footnote}>{route ? "Пеший маршрут откроется в Google Картах." : person.precision === "APPROXIMATE"
+      <p className={styles.footnote}>{route ? "Выбери карты — откроется приложение или сайт." : person.precision === "APPROXIMATE"
         ? "Для пешего маршрута нужна точная геопозиция друга." : "Пеший маршрут появится, когда точка будет свежей и точной."}</p>
     </> : <p className={styles.unavailable} role="status">Геопозиция больше недоступна.</p>}
   </section>;

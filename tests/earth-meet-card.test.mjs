@@ -34,12 +34,17 @@ function render(extra = {}) {
 }
 const control = (view, label) => view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes(label));
 
-test("fresh meeting card describes straight-line distance, exposes an explicit Google link and keeps private coordinates out of text", () => {
+test("fresh meeting card describes straight-line distance and offers a closed map chooser before external navigation", () => {
   const view = render({ name: "<script>Лена</script>" });
   assert.match(view.html, /по прямой/); assert.match(view.html, /Только что/);
-  assert.match(view.html, /Google Картах/); assert.match(view.html, /&lt;script&gt;Лена&lt;\/script&gt;/);
+  assert.match(view.html, /Выбери карты/); assert.match(view.html, /&lt;script&gt;Лена&lt;\/script&gt;/);
   assert.doesNotMatch(view.html, /<script>|PRIVATE-FRIEND-ID|55\.751234|37\.621234|origin=/);
-  const anchor = view.nodes.find(node => node.type === "a"); assert.ok(anchor);
+  const chooser = view.nodes.find(node => node.type === "details");
+  assert.ok(chooser); assert.equal(chooser.props.open, undefined);
+  assert.equal(view.nodes.find(node => node.type === "summary").props.href, undefined);
+  const anchors = view.nodes.filter(node => node.type === "a");
+  assert.deepEqual(anchors.map(node => node.props.children[0]), ["Яндекс Карты", "2ГИС", "Google Карты", "Apple Карты"]);
+  const anchor = anchors.find(node => node.props.children[0] === "Google Карты"); assert.ok(anchor);
   const url = new URL(anchor.props.href);
   assert.equal(url.origin, "https://www.google.com"); assert.equal(url.searchParams.get("destination"), "55.761234,37.631234");
   assert.equal(url.searchParams.get("travelmode"), "walking"); assert.equal(url.searchParams.has("origin"), false);
@@ -77,7 +82,7 @@ test("missing or stale own GPS requests a private lookup while valid friend rout
     assert.match(view.html, /Где ты сейчас/); assert.doesNotMatch(view.html, /по прямой/);
     assert.ok(control(view, "Найти меня")); assert.deepEqual(view.calls, []);
     control(view, "Найти меня").props.onClick(); assert.deepEqual(view.calls, ["locate"]);
-    assert.equal(new URL(view.nodes.find(node => node.type === "a").props.href).searchParams.has("origin"), false);
+    assert.equal(new URL(view.nodes.find(node => node.type === "a" && node.props.children[0] === "Google Карты").props.href).searchParams.has("origin"), false);
   }
   const requesting = render({ position: null, locating: true });
   assert.match(requesting.html, /Ищем тебя/); assert.equal(control(requesting, "Найти меня").props.disabled, true);
@@ -85,15 +90,15 @@ test("missing or stale own GPS requests a private lookup while valid friend rout
 
 test("sleeping-tab route clicks revalidate wall and monotonic deadlines before exporting a destination", t => {
   const view = render();
-  const anchor = view.nodes.find(node => node.type === "a"); assert.ok(anchor);
+  const anchors = view.nodes.filter(node => node.type === "a"); assert.equal(anchors.length, 4);
   let now = wall, clock = mono;
   t.mock.method(Date, "now", () => now); t.mock.method(performance, "now", () => clock);
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
-  const fresh = event(); anchor.props.onClick(fresh); assert.equal(fresh.prevented, false);
+  for (const anchor of anchors) { const fresh = event(); anchor.props.onClick(fresh); assert.equal(fresh.prevented, false); }
   now = wall + 300_001;
-  const stale = event(); anchor.props.onClick(stale); assert.equal(stale.prevented, true);
+  for (const anchor of anchors) { const stale = event(); anchor.props.onClick(stale); assert.equal(stale.prevented, true); }
   now = wall; clock = mono + 3_600_000;
-  const expired = event(); anchor.props.onClick(expired); assert.equal(expired.prevented, true);
+  for (const anchor of anchors) { const expired = event(); anchor.props.onClick(expired); assert.equal(expired.prevented, true); }
   assert.deepEqual(view.calls, [], "Opening the external provider never starts our GPS or publication");
 });
 
@@ -111,4 +116,27 @@ test("close and Escape are explicit, and uncertain or degenerate bearings never 
 test("distance formatting uses coarse meters or kilometers without inventing travel time", () => {
   assert.equal(formatMeetDistance(127), "130 м"); assert.equal(formatMeetDistance(2350), "2,4 км");
   assert.equal(formatMeetDistance(12_300), "12 км");
+});
+
+
+test("global location disable blocks private lookup while leaving explicitly selected destination-only routes available", () => {
+  const view = render({ locationAllowed: false, position: null });
+  assert.match(view.html, /Геопозиция отключена/);
+  assert.equal(control(view, "Найти меня").props.disabled, true);
+  control(view, "Найти меня").props.onClick();
+  assert.deepEqual(view.calls, []);
+  assert.equal(view.nodes.filter(node => node.type === "a").length, 4);
+});
+
+
+test("Escape first closes the map chooser and returns focus, then closes the meeting card", () => {
+  const view = render();
+  const chooser = view.nodes.find(node => node.type === "details");
+  let focused = false;
+  chooser.props.ref.current = { open: true, querySelector: () => ({ focus() { focused = true; } }) };
+  const event = { key: "Escape", stopped: false, stopPropagation() { this.stopped = true; } };
+  view.tree.props.onKeyDown(event);
+  assert.equal(event.stopped, true); assert.equal(chooser.props.ref.current.open, false); assert.equal(focused, true);
+  assert.deepEqual(view.calls, []);
+  view.tree.props.onKeyDown(event); assert.deepEqual(view.calls, ["close"]);
 });

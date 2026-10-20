@@ -28,6 +28,7 @@ import { TransientNotice } from "@/components/app-notifications";
 import { AccountAccess } from "./account-access";
 import { TimeZoneSetting } from "./time-zone-setting";
 import { ProfileSettings } from "./profile-settings";
+import type { LocationPrivacyState } from "./profile-location-settings";
 import type { NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { GameAchievementsButton } from "@/features/game/game-achievements";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -37,6 +38,7 @@ type ProfileViewProps = {
   simpleView: boolean;
   onSimpleViewChange: (value: boolean) => void;
   notificationSettingsExit: RefObject<NotificationSettingsExit | null>;
+  locationPrivacy?: LocationPrivacyState;
   me: MeResponse;
   nowMs: number;
   isOnline: boolean;
@@ -89,6 +91,7 @@ export function ProfileView({
   simpleView,
   onSimpleViewChange,
   notificationSettingsExit,
+  locationPrivacy,
   me,
   nowMs,
   isOnline,
@@ -361,6 +364,7 @@ export function ProfileView({
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="settings" forceMount className={styles.tabPanel}>
           <ProfileSettings key={me.user.publicId} ownerPublicId={me.user.publicId}
+            active={activeTab === "settings"} locationPrivacy={locationPrivacy}
             isOnline={isOnline} onSessionLost={onSessionLost} simpleView={simpleView} onSimpleViewChange={onSimpleViewChange}
             notificationSettingsExit={notificationSettingsExit} />
         </TabsPrimitive.Content>

@@ -12,6 +12,7 @@ after(() => vite.close());
 const { PersonGameActions } = await vite.ssrLoadModule("/features/people/person-game-actions.tsx");
 const { personProfileTarget, currentPersonProfile } = await vite.ssrLoadModule("/features/people/people-profile-navigation.ts");
 const { PeopleView } = await vite.ssrLoadModule("/features/people/people-view.tsx");
+const { PersonProfileTabs } = await vite.ssrLoadModule("/features/people/person-profile-tabs.tsx");
 const { EarthFriends } = await vite.ssrLoadModule("/features/earth/earth-view.tsx");
 const friend = { circleId: "connected", user: { publicId: "FRIEND", displayName: "Алёна" }, nickname: "Мама",
   connectedAt: "2026-10-01T00:00:00.000Z", theirSharingMode: "LATEST_ONLY", mySharingMode: "OFF",
@@ -74,12 +75,11 @@ test("profile navigation revalidates both account and exact current relationship
   assert.equal(currentPersonProfile("OWNER", target, [hidden]), hidden);
 });
 
-test("People cards expose separate explicit game-profile and guest-world buttons", () => {
+test("People cards open the profile from the person and keep secondary actions inside it", () => {
   const html = renderToStaticMarkup(createElement(PeopleView, { ownerPublicId: "OWNER", data, groups: null,
     error: null, groupsError: null, loading: false, groupsLoading: false, nowMs: Date.now(),
     onRefresh: async () => {}, onGroupsRefresh: async () => {}, onSessionLost() {}, onVisitFriend() {} }));
-  assert.match(html, /aria-label="Игровой профиль: Мама"/);
-  assert.match(html, /aria-label="В гости к Мама"/);
+  assert.doesNotMatch(html, /aria-label="Игровой профиль: Мама"|aria-label="В гости к Мама"|Скопировать ID|Удалить связь/);
   assert.match(html, /aria-label="Открыть профиль Мама"/);
 });
 
@@ -98,7 +98,7 @@ test("the People status button describes only my outgoing check-ins and message 
     assert.match(html, /Статус и геопозиция настраиваются отдельно/);
     assert.match(html, /Мои отметки «Я живой» и сообщение статуса/);
     assert.match(html, /Обновлять геопозицию для Мама/);
-    assert.match(html, /Игровой профиль: Мама/);
+    assert.match(html, /Открыть профиль Мама/);
     assert.doesNotMatch(html, /Отметки и профиль|Делиться моими отметками, статусом и игровым профилем/);
     assert.doesNotMatch(html, />Видны<|>Скрыты</);
   }
@@ -133,18 +133,29 @@ test("People and map rows project one confirmed geolocation handle independently
   assert.deepEqual(calls, [], "reading either screen never changes consent or starts publication");
 });
 
-test("Earth reuses game actions only for current contacts, independently of their GPS availability", () => {
-  const calls = [];
-  const props = { people: data, loading: false, error: null, online: true, onRefresh() {}, onOpenPeople() {},
-    onOpenProfile: person => calls.push(["profile", person]), onVisitFriend: (person, trigger) => calls.push(["visit", person, trigger]) };
+test("Earth keeps a compact roster without profile or visit actions", () => {
+  const props = { people: data, loading: false, error: null, online: true, onRefresh() {}, onOpenPeople() {} };
   const tree = EarthFriends(props);
-  const actions = elements(tree).find(element => element.type === PersonGameActions);
-  assert.ok(actions);
-  assert.equal(actions.props.person, friend);
-  const profile = elements(PersonGameActions(actions.props)).find(element => element.props["aria-label"] === "Игровой профиль: Мама");
-  profile.props.onClick();
-  assert.deepEqual(calls, [["profile", friend]]);
-  const locationOnly = EarthFriends({ ...props, people: null, locations: [{ ...friend, latitude: 55, longitude: 37,
-    precision: "PRECISE", accuracyMeters: 20, updatedAt: "2026-10-20T12:00:00.000Z" }] });
-  assert.equal(elements(locationOnly).filter(element => element.type === PersonGameActions).length, 0);
+  assert.equal(elements(tree).filter(element => element.type === PersonGameActions).length, 0);
+  const html = renderToStaticMarkup(tree);
+  assert.match(html, /Мама/);
+  assert.doesNotMatch(html, /Игровой профиль|В гости|Подойти к другу/);
+});
+
+test("profile tabs support one keyboard stop, arrow wrapping and Home/End without leaving the dialog", () => {
+  const selected = [], focus = [], tree = PersonProfileTabs({ active: "overview", onChange: value => selected.push(value) });
+  const tabs = elements(tree).filter(element => element.props.role === "tab");
+  assert.equal(tabs.length, 3);
+  assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1, -1]);
+  assert.ok(tabs.every(tab => tab.props["aria-controls"] === "person-profile-panel"));
+  const currentTarget = { parentElement: { querySelector(selector) { return { focus() { focus.push(selector); } }; } } };
+  for (const key of ["ArrowLeft", "ArrowRight", "End", "Home"]) {
+    let prevented = false;
+    tabs[0].props.onKeyDown({ key, currentTarget, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+  }
+  assert.deepEqual(selected, ["settings", "collections", "settings", "overview"]);
+  assert.deepEqual(focus, selected.map(id => "#person-profile-tab-" + id));
+  tabs[1].props.onClick();
+  assert.equal(selected.at(-1), "collections");
 });

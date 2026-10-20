@@ -71,12 +71,14 @@ import { matchesPersonSearch } from "@/lib/people-search";
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import styles from "./people-view.module.css";
 import { GuestProfileSection } from "./guest-profile";
+import { PersonProfileTabs, type PersonProfileSection } from "./person-profile-tabs";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { GroupsSection } from "./groups-section";
 import { PersonGameActions, type PersonVisitAction } from "./person-game-actions";
 import { currentPersonProfile, personProfileTarget, type PersonProfileTarget } from "./people-profile-navigation";
 import { EarthFriendSharingControls, FriendSharingButton } from "@/features/earth/earth-friend-sharing";
 import type { EarthSharingChoices, EarthSharingHandle } from "@/features/earth/earth-sharing-panel";
+import { useEarthLocationPreference } from "@/features/earth/use-location-preferences";
 
 type PeopleViewProps = {
   ownerPublicId: string | null;
@@ -170,6 +172,7 @@ export function PeopleView({
   onShareEarth,
   onOpenEarthPrivacy,
 }: PeopleViewProps) {
+  const { enabled: locationEnabled } = useEarthLocationPreference(ownerPublicId);
   const [peopleQuery, setPeopleQuery] = useState("");
   const filteredPeople = useMemo(() => data?.people.filter(person => matchesPersonSearch(person, peopleQuery)) ?? [], [data, peopleQuery]);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -184,7 +187,9 @@ export function PeopleView({
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<Person | null>(null);
+  const [profileSection, setProfileSection] = useState<PersonProfileSection>("overview");
   const [selectedProfile, setSelectedProfile] = useState<PersonProfileTarget | null>(initialProfileTarget ?? null);
+  const profileForward = useRef(false);
   const profileReturnCircle = useRef(initialProfileTarget?.circleId ?? null);
   const [nicknameDraft, setNicknameDraft] = useState(() => currentPersonProfile(ownerPublicId, initialProfileTarget, data?.people)?.nickname ?? "");
   const [nicknameError, setNicknameError] = useState<string | null>(null);
@@ -200,6 +205,8 @@ export function PeopleView({
   const inviteLinkField = useRef<HTMLTextAreaElement>(null);
 
   function openPerson(person: Person) {
+    profileForward.current = false;
+    setProfileSection("overview");
     setSelectedProfile(personProfileTarget(ownerPublicId, data?.people, person));
     profileReturnCircle.current = person.circleId;
     setNicknameDraft(person.nickname ?? "");
@@ -601,6 +608,7 @@ export function PeopleView({
               <p>Статус и геопозиция настраиваются отдельно. Подсвеченная кнопка включена.</p>
               {onOpenEarthPrivacy && <button type="button" onClick={onOpenEarthPrivacy}><MapPin size={14} aria-hidden="true" />Настройки карты</button>}
             </div>}
+            {!locationEnabled && <p role="status" className={styles.geoNotice}>Геопозиция выключена в настройках профиля.</p>}
             {earthSharing?.pendingGhost ? <p role="status" className={styles.geoNotice}>Изменение геодоступа ещё не подтверждено.</p>
               : earthSharing?.settings?.mode === "GHOST" && <p role="status" className={styles.geoNotice}>Призрак включён для всех. Обновления геопозиции выключены.</p>}
             {earthSharing?.error && <p role="alert" className={styles.inlineError}>{earthSharing.error}</p>}
@@ -630,7 +638,7 @@ export function PeopleView({
                     <article className={styles.personCard} key={person.circleId}>
                       <div className={styles.personTop}>
                         <button id={`people-profile-${person.circleId}`} type="button" className={styles.personIdentity}
-                          aria-label={`Открыть профиль ${displayName}`}
+                          aria-label={`Открыть профиль ${displayName}`} aria-haspopup="dialog"
                           aria-describedby={`person-status-${person.circleId} person-checkin-${person.circleId}`} onClick={() => openPerson(person)}>
                         <span
                           className={styles.avatar}
@@ -658,38 +666,22 @@ export function PeopleView({
                           <Star size={18} fill={person.isFavorite ? "currentColor" : "none"} aria-hidden="true" />
                         </button>
                       </div>
-                      <PersonGameActions className={styles.gameActions} person={person} online={isOnline}
-                        onOpenProfile={openPerson} onVisitFriend={onVisitFriend} />
                       <div className={styles.personBottom}>
                         <span id={sharingHintId} className={styles.srOnly}>
                           {isSharing
                             ? "Мои отметки «Я живой» и сообщение статуса видны этому человеку, включая общие группы"
                             : "Мои отметки «Я живой» и сообщение статуса скрыты от этого человека, включая общие группы"}
                         </span>
-                        <EarthFriendSharingControls person={person} sharing={earthSharing} online={isOnline} working={Boolean(pending)}
-                          presentation="buttons" companionControl={<FriendSharingButton checked={isSharing}
+                        <EarthFriendSharingControls person={person} sharing={earthSharing} online={isOnline} locationEnabled={locationEnabled} working={Boolean(pending)}
+                          presentation="buttons" showDetails={false} showResume={false} companionControl={<FriendSharingButton checked={isSharing}
                             disabled={Boolean(pending) || !isOnline} busy={pending === `sharing:${person.circleId}`}
                             label={`Делиться моими отметками и статусом с ${displayName}`} description={sharingHintId}
                             title="Статус" status={isSharing ? "Делюсь" : "Не делюсь"} icon={<MessageCircle size={20} />}
                             onChange={() => { if (!pending && isOnline) void handleSharing(person, !isSharing); }} />}
                           idPrefix="people-geo-access" onOpenMap={onOpenEarthPrivacy}
-                          onShare={onShareEarth ? choices => runEarthAction(() => onShareEarth(choices)) : undefined}
+                          onShare={onShareEarth ? choices => locationEnabled ? runEarthAction(() => onShareEarth(choices)) : Promise.resolve() : undefined}
                           onSetFrozen={earthSharing ? (id, frozen) => runEarthAction(() => earthSharing.setFrozen(id, frozen)) : undefined}
                           onRevokeRecipient={earthSharing ? id => runEarthAction(() => earthSharing.revokeRecipient(id)) : undefined} />
-                      </div>
-                      <div className={styles.personActions}>
-                        <button
-                          className={styles.cardAction}
-                          type="button"
-                          aria-label={`Скопировать ID ${person.user.displayName}`}
-                          onClick={() => copyId(person.user.publicId)}
-                        >
-                          {copiedId === person.user.publicId ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
-                          {copiedId === person.user.publicId ? "ID скопирован" : "Скопировать ID"}
-                        </button>
-                        <button className={`${styles.cardAction} ${styles.deleteButton}`} type="button"
-                          aria-label={`Удалить связь с ${displayName}`} disabled={Boolean(pending)}
-                          onClick={() => setRemoveCandidate(person)}><Trash2 size={15} aria-hidden="true" />Удалить</button>
                       </div>
                     </article>
                   );
@@ -759,38 +751,69 @@ export function PeopleView({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(selectedPerson)} onOpenChange={(open) => {
+      {selectedPerson && <Dialog open onOpenChange={(open) => {
         if (!open && !pending) setSelectedProfile(null);
       }}>
         <DialogContent className={styles.dialog} onCloseAutoFocus={event => {
+          if (profileForward.current) { event.preventDefault(); return; }
           const trigger = document.getElementById(`people-profile-${profileReturnCircle.current}`);
           if (trigger instanceof HTMLButtonElement) { event.preventDefault(); trigger.focus({ preventScroll: true }); }
         }}>
           <DialogHeader>
-            <DialogTitle className={styles.dialogTitle}>{selectedPerson ? personDisplayName(selectedPerson) : "Человек"}</DialogTitle>
+            <DialogTitle className={`${styles.dialogTitle} ${styles.profileTitle}`} title={personDisplayName(selectedPerson)}>{personDisplayName(selectedPerson)}</DialogTitle>
             <DialogDescription className={styles.dialogDescription}>
-              {selectedPerson?.user.displayName} · {selectedPerson?.user.publicId}
+              {selectedPerson.nickname ? `${selectedPerson.user.displayName} · ` : ""}{selectedPerson.user.publicId}
             </DialogDescription>
           </DialogHeader>
-          {selectedPerson && ownerPublicId && <GuestProfileSection ownerPublicId={ownerPublicId}
-            circleId={selectedPerson.circleId} targetPublicId={selectedPerson.user.publicId}
-            isOnline={isOnline} onSessionLost={onSessionLost} />}
-          <form className={styles.nicknameForm} onSubmit={saveNickname}>
-            <label htmlFor="person-nickname">Личная подпись</label>
-            <input id="person-nickname" value={nicknameDraft} autoComplete="off" maxLength={100}
-              placeholder={selectedPerson?.user.displayName} disabled={Boolean(pending)}
-              aria-describedby="person-nickname-hint" aria-invalid={Boolean(nicknameError)}
-              onChange={event => { setNicknameDraft(event.target.value); setNicknameError(null); }} />
-            <p id="person-nickname-hint" className={styles.searchHint}>
-              Видна только вам. До 50 символов. Оставьте поле пустым, чтобы вернуть имя из профиля.
-            </p>
-
-            <button type="submit" className={styles.sendButton} disabled={Boolean(pending)}>
-              {pending?.startsWith("nickname:") ? "Сохраняем…" : "Сохранить"}
-            </button>
-          </form>
+          <PersonProfileTabs active={profileSection} onChange={setProfileSection} />
+          <div id="person-profile-panel" role="tabpanel" aria-labelledby={`person-profile-tab-${profileSection}`}>
+            {selectedPerson && ownerPublicId && <div hidden={profileSection === "settings"}>
+              {profileSection === "overview" && onVisitFriend && <PersonGameActions className={styles.profileVisit}
+                person={selectedPerson} online={isOnline} onVisitFriend={(person, trigger) => {
+                  const identityTrigger = document.getElementById(`people-profile-${person.circleId}`);
+                  profileForward.current = true;
+                  setSelectedProfile(null);
+                  onVisitFriend(person, identityTrigger instanceof HTMLButtonElement ? identityTrigger : trigger);
+                }} />}
+              <GuestProfileSection ownerPublicId={ownerPublicId} circleId={selectedPerson.circleId}
+                targetPublicId={selectedPerson.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost}
+                section={profileSection === "collections" ? "collections" : "overview"} />
+            </div>}
+            {profileSection === "settings" && selectedPerson && <div className={styles.profileSettings}>
+              <form className={styles.nicknameForm} onSubmit={saveNickname}>
+                <label htmlFor="person-nickname">Личная подпись</label>
+                <div className={styles.nicknameRow}>
+                  <input id="person-nickname" value={nicknameDraft} autoComplete="off" maxLength={100}
+                    placeholder={selectedPerson.user.displayName} disabled={Boolean(pending)}
+                    aria-describedby="person-nickname-hint" aria-invalid={Boolean(nicknameError)}
+                    onChange={event => { setNicknameDraft(event.target.value); setNicknameError(null); }} />
+                  <button type="submit" className={styles.sendButton} disabled={Boolean(pending)}>
+                    {pending?.startsWith("nickname:") ? "Сохраняем…" : "Сохранить"}
+                  </button>
+                </div>
+                <p id="person-nickname-hint" className={styles.searchHint}>Только для вас, до 50 символов. Пустая подпись вернёт имя друга.</p>
+              </form>
+              <EarthFriendSharingControls person={selectedPerson} sharing={earthSharing} online={isOnline} locationEnabled={locationEnabled}
+                working={Boolean(pending)} idPrefix="profile-geo-access" onOpenMap={onOpenEarthPrivacy}
+                onShare={onShareEarth ? choices => locationEnabled ? runEarthAction(() => onShareEarth(choices)) : Promise.resolve() : undefined}
+                onSetFrozen={earthSharing ? (id, frozen) => runEarthAction(() => earthSharing.setFrozen(id, frozen)) : undefined}
+                onRevokeRecipient={earthSharing ? id => runEarthAction(() => earthSharing.revokeRecipient(id)) : undefined} />
+              <div className={styles.profileActions}>
+                <button className={styles.cardAction} type="button" aria-label={`Скопировать ID ${selectedPerson.user.displayName}`}
+                  onClick={() => copyId(selectedPerson.user.publicId)}>
+                  {copiedId === selectedPerson.user.publicId ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+                  {copiedId === selectedPerson.user.publicId ? "ID скопирован" : "Скопировать ID"}
+                </button>
+                <button className={`${styles.cardAction} ${styles.deleteButton}`} type="button"
+                  aria-label={`Удалить связь с ${personDisplayName(selectedPerson)}`} disabled={Boolean(pending)}
+                  onClick={() => { profileForward.current = true; setSelectedProfile(null); setRemoveCandidate(selectedPerson); }}>
+                  <Trash2 size={15} aria-hidden="true" />Удалить связь
+                </button>
+              </div>
+            </div>}
+          </div>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       <Dialog open={addOpen} onOpenChange={(open) => {
         setAddOpen(open);

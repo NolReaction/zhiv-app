@@ -15,9 +15,10 @@ import styles from "./guest-profile.module.css";
 
 const names = new Map([...worldCatalog.finds, ...collectionCatalog.quarry.finds, ...economyCatalog.items].map(item => [item.id, item.name]));
 
-export function GuestProfileContents({ profile }: { profile: GuestProfile }) {
+export function GuestProfileContents({ profile, section = "overview" }: { profile: GuestProfile; section?: "overview" | "collections" }) {
   const collectionCount = Object.values(profile.collections).reduce((sum, ids) => sum + ids.length, 0);
   return <div className={styles.contents}>
+    {section === "overview" && <>
     <dl className={styles.stats}>
       <div><dt>Уровень дома</dt><dd>{profile.homeLevel}</dd></div>
       <div><dt>Завершено вылазок</dt><dd>{profile.completedExplorations.toLocaleString("ru-RU")}</dd></div>
@@ -35,7 +36,8 @@ export function GuestProfileContents({ profile }: { profile: GuestProfile }) {
         })}
       </ul>}
     </section>
-    <section aria-label="Коллекции друга">
+    </>}
+    {section === "collections" && <section aria-label="Коллекции друга">
       <h4>Книга находок</h4>
       {COLLECTION_CHAPTERS.map(chapter => <details className={styles.chapter} key={chapter.id}>
         <summary>{chapter.title}<span>{profile.collections[chapter.id].length} / {GUEST_COLLECTION_IDS[chapter.id].length}</span></summary>
@@ -46,13 +48,12 @@ export function GuestProfileContents({ profile }: { profile: GuestProfile }) {
           </li>)}
         </ul>}
       </details>)}
-    </section>
-    <p className={styles.hint}>Кнопка «В гости» в списке людей или близких на карте открывает полянку друга.</p>
+    </section>}
   </div>;
 }
 
-type Props = { ownerPublicId: string; circleId: string; targetPublicId: string; onSessionLost: () => void };
-function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSessionLost }: Props) {
+type Props = { ownerPublicId: string; circleId: string; targetPublicId: string; onSessionLost: () => void; section?: "overview" | "collections" };
+function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSessionLost, section = "overview" }: Props) {
   const [view, setView] = useState<{ data: GuestProfile | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: true });
   const [refresh, setRefresh] = useState(0);
   const onLost = useRef(onSessionLost);
@@ -86,7 +87,7 @@ function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSession
   }, [ownerPublicId, circleId, targetPublicId, refresh]);
   return <section className={styles.profile} aria-label="Игровой профиль" aria-busy={view.loading}>
     <header><h3>Игровой профиль</h3><button type="button" aria-label="Обновить игровой профиль" disabled={view.loading} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16} aria-hidden="true" /></button></header>
-    {view.loading ? <p role="status">Открываем профиль…</p> : view.error ? <p role="status">{view.error}</p> : view.data && <GuestProfileContents profile={view.data} />}
+    {view.loading ? <p role="status">Открываем профиль…</p> : view.error ? <p role="status">{view.error}</p> : view.data && <GuestProfileContents profile={view.data} section={section} />}
   </section>;
 }
 

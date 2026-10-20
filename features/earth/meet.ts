@@ -62,16 +62,46 @@ export function earthMeetDetails(position: EarthPosition | null, friend: EarthMa
     direction: bearingDegrees === null ? null : DIRECTIONS[Math.round(bearingDegrees / 45) % 8] };
 }
 
-/** Google Maps receives only a destination, and only when the user opens this URL.
- * Its route is separate from our straight-line estimate. Never append our private origin.
- * https://developers.google.com/maps/documentation/urls/guide#directions
+export const WALKING_MAP_SERVICES = [
+  { id: "yandex", name: "Яндекс Карты" },
+  { id: "2gis", name: "2ГИС" },
+  { id: "google", name: "Google Карты" },
+  { id: "apple", name: "Apple Карты" },
+] as const;
+export type WalkingMapService = typeof WALKING_MAP_SERVICES[number]["id"];
+
+/** Destination-only links. The chosen map service requests/chooses its own origin.
+ * No private origin, contact identity or access state is exported.
+ * Google: https://developers.google.com/maps/documentation/urls/get-started
+ * Yandex: https://yandex.com/dev/yandex-apps-launch-maps/doc/en/concepts/yandexmaps-web
+ * 2GIS: https://help.2gis.ru/question/razrabotchikam-zapusk-ideystviya-vmobilnom-prilozhenii-cherez-deeplink
+ * Apple: https://developer.apple.com/library/archive/featuredarticles/iPhoneURLScheme_Reference/MapLinks/MapLinks.html
  */
-export function walkingRouteUrl(friend: EarthMapPerson, monotonicNow: number, wallNow = Date.now()): string | null {
+export function walkingRouteUrl(friend: EarthMapPerson, monotonicNow: number, wallNow = Date.now(), service: WalkingMapService = "google"): string | null {
   if (!validFriend(friend, monotonicNow, wallNow) || friend.precision !== "PRECISE"
     || friend.accuracyMeters > ROUTE_MAX_ACCURACY_METERS || wallNow - Date.parse(friend.updatedAt) > ROUTE_MAX_AGE_MS) return null;
-  const url = new URL("https://www.google.com/maps/dir/");
-  url.searchParams.set("api", "1");
-  url.searchParams.set("destination", `${friend.latitude},${friend.longitude}`);
-  url.searchParams.set("travelmode", "walking");
-  return url.toString();
+  const destination = `${friend.latitude},${friend.longitude}`;
+  if (service === "google") {
+    const url = new URL("https://www.google.com/maps/dir/");
+    url.searchParams.set("api", "1");
+    url.searchParams.set("destination", destination);
+    url.searchParams.set("travelmode", "walking");
+    return url.toString();
+  }
+  if (service === "yandex") {
+    const url = new URL("https://yandex.ru/maps/");
+    url.searchParams.set("rtext", `~${destination}`);
+    url.searchParams.set("rtt", "pd");
+    return url.toString();
+  }
+  if (service === "2gis") {
+    return `https://2gis.ru/directions/tab/pedestrian/points/|${friend.longitude},${friend.latitude}`;
+  }
+  if (service === "apple") {
+    const url = new URL("https://maps.apple.com/");
+    url.searchParams.set("daddr", destination);
+    url.searchParams.set("dirflg", "w");
+    return url.toString();
+  }
+  return null;
 }

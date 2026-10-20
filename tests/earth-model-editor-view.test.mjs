@@ -37,7 +37,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId);
-const { EarthView } = await vite.ssrLoadModule("/features/earth/earth-view.tsx");
+const { EarthView, EarthFriends } = await vite.ssrLoadModule("/features/earth/earth-view.tsx");
+const { EarthMeetCard } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
 const { EarthMap } = await vite.ssrLoadModule("/features/earth/earth-map.tsx");
 const { EarthSharingPanel } = await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
 const nodes = tree => {
@@ -237,5 +238,54 @@ test("a People privacy request waits for an open DEV3D editor to close before sh
     assert.ok(sharingPanel(view)); assert.deepEqual(acknowledged, [4]);
     app.props.privacyRequest = null; view = app.render(); assert.ok(sharingPanel(view));
     assert.equal(app.watches.length, 0);
+  } finally { app.destroy(); }
+});
+
+
+test("a single friend marker opens the meeting card, while a grouped marker opens the compact roster without GPS acquisition", () => {
+  const app = setup();
+  try {
+    let view = app.render();
+    view.map.onSelectFriends(["friend-one", "friend-two"]); view = app.render();
+    assert.ok(view.all.some(node => node.type === EarthFriends));
+    assert.equal(view.all.some(node => node.type === EarthMeetCard), false);
+    assert.equal(app.watches.length, 0, "opening a group does not ask for own location");
+    view.map.onSelectFriends(["friend-one"]); view = app.render();
+    assert.equal(view.all.some(node => node.type === EarthFriends), false);
+    const meeting = view.all.find(node => node.type === EarthMeetCard);
+    assert.ok(meeting); assert.equal(meeting.props.person.circleId, "friend-one");
+    assert.equal(view.map.meetCircleId, "friend-one");
+    assert.equal(app.watches.length, 1, "the explicit friend-marker action starts the private meeting lookup");
+    assert.doesNotMatch(view.text, /Игровой профиль|В гости|Подойти к другу/);
+  } finally { app.destroy(); }
+});
+
+
+test("selecting a member of a co-located map group opens that meeting without waiting for the marker to split", () => {
+  const app = setup();
+  const point = { latitude: 55.75, longitude: 37.62, accuracyMeters: 20, precision: "PRECISE",
+    updatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), expiresAtMonotonic: performance.now() + 60_000 };
+  app.props.sharing.people = [
+    { ...point, circleId: "friend-one", user: { publicId: "ONE", displayName: "Лена" } },
+    { ...point, circleId: "friend-two", user: { publicId: "TWO", displayName: "Дима" } },
+  ];
+  try {
+    let view = app.render(); view.map.onSelectFriends(["friend-one", "friend-two"]); view = app.render();
+    const roster = view.all.find(node => node.type === EarthFriends);
+    assert.ok(roster); assert.equal(app.watches.length, 0);
+    const member = nodes(EarthFriends(roster.props)).find(node => node.type === "button" && node.props["aria-label"] === "Открыть встречу: Дима");
+    assert.ok(member); member.props.onClick(); view = app.render();
+    assert.equal(view.all.find(node => node.type === EarthMeetCard).props.person.circleId, "friend-two");
+    assert.equal(view.map.meetCircleId, "friend-two");
+    assert.equal(view.map.friendFocusRequest, null, "member selection does not wait for geographic separation");
+    assert.equal(app.watches.length, 1, "own lookup starts only after selecting the member");
+    view.all.find(node => node.type === EarthMeetCard).props.onClose(); view = app.render();
+    view.all.find(node => node.type === "button" && text(node).startsWith("Близкие")).props.onClick(); view = app.render();
+    const fullRoster = view.all.find(node => node.type === EarthFriends);
+    const focus = nodes(EarthFriends(fullRoster.props)).find(node => node.type === "button" && node.props["aria-label"] === "Показать на карте: Лена");
+    assert.ok(focus, "the bottom roster returns to focus-only selection"); focus.props.onClick(); view = app.render();
+    assert.equal(view.map.friendFocusRequest.circleId, "friend-one");
+    assert.equal(view.all.some(node => node.type === EarthMeetCard), false);
+    assert.equal(app.watches.length, 1);
   } finally { app.destroy(); }
 });

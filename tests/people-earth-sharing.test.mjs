@@ -275,3 +275,33 @@ test("the compact status control reports text and pressed state and honours nati
     assert.deepEqual(calls, disabled ? [] : ["change"]);
   }
 });
+
+
+test("the People card never adds access disclosures or resume actions when geolocation changes", () => {
+  for (const choices of [settings, active, { ...active, mode: "GHOST" }, { ...active, frozenCircleIds: [person.circleId] }]) {
+    const compact = view({ presentation: "buttons", showDetails: false, showResume: false }, choices);
+    assert.equal(compact.elements.filter(node => node.type === "details").length, 0);
+    assert.equal(compact.button("Возобновить на карте"), undefined);
+    assert.equal(compact.button("Убрать доступ"), undefined, "revocation lives in the person's Connection tab");
+    assert.ok(compact.toggle);
+  }
+  const profile = view({ idPrefix: "profile-geo-access" }, active);
+  assert.ok(profile.button("Убрать доступ"), "the profile keeps explicit revocation");
+});
+
+test("global location disable blocks recipient updates but preserves explicit revocation", async () => {
+  const stopped = view({ locationEnabled: false }, active);
+  assert.equal(stopped.toggle.props.disabled, true);
+  assert.equal(stopped.toggle.props["aria-checked"], false);
+  assert.equal(text(stopped.status), "Выключена в настройках");
+  assert.equal(stopped.button("Возобновить на карте"), undefined);
+  await stopped.toggle.props.onClick();
+  assert.deepEqual(stopped.calls, []);
+  assert.equal(stopped.button("Убрать доступ").props.disabled, false);
+  await stopped.button("Убрать доступ").props.onClick();
+  assert.deepEqual(stopped.calls, [["revoke", person.circleId]]);
+  const first = view({ presentation: "buttons", locationEnabled: false });
+  assert.equal(first.toggle.props.disabled, true);
+  await first.toggle.props.onClick();
+  assert.deepEqual(first.calls, []);
+});

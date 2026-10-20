@@ -103,3 +103,25 @@ test("walking directions require precise location within five minutes and 200 me
     assert.ok(details(self(), to)); assert.equal(route(to), null);
   }
 });
+
+
+test("all map choices encode only a fresh destination with each provider's coordinate order and pedestrian mode", () => {
+  const to = friend({ latitude: 55.751234, longitude: -37.621234 });
+  const routes = Object.fromEntries(["yandex", "2gis", "google", "apple"].map(service => [service, new URL(walkingRouteUrl(to, mono, wall, service))]));
+  assert.equal(routes.yandex.origin, "https://yandex.ru");
+  assert.equal(routes.yandex.searchParams.get("rtext"), "~55.751234,-37.621234");
+  assert.equal(routes.yandex.searchParams.get("rtt"), "pd");
+  assert.equal(routes["2gis"].origin, "https://2gis.ru");
+  assert.equal(routes["2gis"].pathname, "/directions/tab/pedestrian/points/|-37.621234,55.751234");
+  assert.equal(routes.google.searchParams.get("destination"), "55.751234,-37.621234");
+  assert.equal(routes.google.searchParams.get("travelmode"), "walking");
+  assert.equal(routes.apple.origin, "https://maps.apple.com");
+  assert.equal(routes.apple.searchParams.get("daddr"), "55.751234,-37.621234");
+  assert.equal(routes.apple.searchParams.get("dirflg"), "w");
+  for (const [service, url] of Object.entries(routes)) {
+    assert.doesNotMatch(url.toString(), /friend|circle|publicId|origin|saddr|rstart|source|55,37/);
+    for (const patch of [{ precision: "APPROXIMATE" }, { accuracyMeters: 201 }, { updatedAt: new Date(wall - 300_001).toISOString() },
+      { expiresAtMonotonic: mono }]) assert.equal(walkingRouteUrl(friend(patch), mono, wall, service), null);
+  }
+  assert.equal(walkingRouteUrl(to, mono, wall, "untrusted"), null);
+});

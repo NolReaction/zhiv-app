@@ -130,9 +130,13 @@ test("profile content renders labeled safe stats medals and collection chapters 
   const a = player(), b = player(), circle = connect(a, b), value = read(a, circle);
   value.achievements = [{ id: "home_builder", level: 2 }]; value.collections.travel = ["acorn"];
   const html = renderToStaticMarkup(createElement(ui.GuestProfileContents, { profile: value }));
-  for (const text of ["Уровень дома", "Завершено вылазок", "Страниц коллекции", "Достижения друга", "Книга находок", "Ступень 2 из 4", "Кнопка «В гости» в списке людей или близких на карте открывает полянку друга."])
+  for (const text of ["Уровень дома", "Завершено вылазок", "Страниц коллекции", "Достижения друга", "Ступень 2 из 4"])
     assert.ok(html.includes(text), text);
-  assert.ok(html.includes('<summary>Путешествия')); assert.ok(html.includes('data-collection-icon="acorn"'));
+  assert.doesNotMatch(html, /Книга находок|<summary>/, "overview does not stack the full book below stats");
+  const collections = renderToStaticMarkup(createElement(ui.GuestProfileContents, { profile: value, section: "collections" }));
+  assert.match(collections, /Книга находок/);
+  assert.ok(collections.includes('<summary>Путешествия')); assert.ok(collections.includes('data-collection-icon="acorn"'));
+  assert.doesNotMatch(collections, /Уровень дома|Достижения мира|В гости/, "collections are a separate compact view");
   for (const text of ["Жемчуг", "Монеты", "Получить награду", "fishingCastSeed"]) assert.equal(html.includes(text), false);
   const props = { ownerPublicId: a.me.user.publicId, circleId: circle, targetPublicId: b.me.user.publicId, onSessionLost() {}, isOnline: true };
   const online = renderToStaticMarkup(createElement(ui.GuestProfileSection, props));

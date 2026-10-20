@@ -36,7 +36,7 @@ export function FriendSharingButton({ checked, disabled, label, description, onC
   icon: ReactNode; title: ReactNode; status: string; statusId?: string; frozen?: boolean; busy?: boolean;
 }) {
   return <button type="button" data-audio-cue="ui.click" aria-pressed={checked} disabled={disabled}
-    aria-label={label} aria-describedby={description} aria-busy={busy || undefined} className={styles.accessButton}
+    aria-label={label} aria-describedby={description} title={status} aria-busy={busy || undefined} className={styles.accessButton}
     onClick={() => { if (!disabled) onChange(); }}>
     <span className={styles.buttonIcon} aria-hidden="true">{icon}</span>
     <span className={styles.buttonText}><strong>{title}</strong><span id={statusId} data-frozen={frozen || undefined}>{status}</span></span>
@@ -51,23 +51,23 @@ function playDisclosureCue(event: MouseEvent<HTMLElement>) {
 
 /** One consent action with row and paired-button presentations. No local sharing state. */
 export function EarthFriendSharingControls({ person, sharing, online, working = false, heading = "Геопозиция", avatar,
-  idPrefix = "earth-friend-access", firstChoices, onShare, onSetFrozen, onRevokeRecipient, onOpenMap, presentation = "row", companionControl }: {
+  idPrefix = "earth-friend-access", firstChoices, onShare, onSetFrozen, onRevokeRecipient, onOpenMap, presentation = "row", companionControl, showDetails = true, showResume = true, locationEnabled = true }: {
   person: Friend; sharing?: EarthSharingHandle; online: boolean; working?: boolean; heading?: ReactNode; avatar?: ReactNode;
   idPrefix?: string; firstChoices?: Options; onShare?: (choices: EarthSharingChoices) => Promise<void>;
   onSetFrozen?: (circleId: string, frozen: boolean) => Promise<boolean | void>;
   onRevokeRecipient?: (circleId: string) => Promise<boolean | void>; onOpenMap?: () => void;
-  presentation?: "row" | "buttons"; companionControl?: ReactNode;
+  presentation?: "row" | "buttons"; companionControl?: ReactNode; showDetails?: boolean; showResume?: boolean; locationEnabled?: boolean;
 }) {
   const settings = sharing?.settings, name = personDisplayName(person);
   const ghost = sharing?.pendingGhost ? sharing.pendingPrivacyMode !== "OFF" : settings?.mode === "GHOST";
   const hasAccess = !!settings?.recipientCircleIds.includes(person.circleId), frozen = !!settings?.frozenCircleIds?.includes(person.circleId);
   const canChange = !!settings && online && !sharing?.saving && !working && !sharing?.pendingGhost;
-  const disabled = !canChange || ghost || (hasAccess ? !onSetFrozen : !onShare || (settings?.recipientCircleIds.length ?? 0) >= 100);
-  const status = !settings ? "Загружаем…" : !hasAccess ? "Нет доступа" : sharing?.pendingGhost ? "Ждём подтверждения…"
+  const disabled = !locationEnabled || !canChange || ghost || (hasAccess ? !onSetFrozen : !onShare || (settings?.recipientCircleIds.length ?? 0) >= 100);
+  const status = !locationEnabled ? "Выключена в настройках" : !settings ? "Загружаем…" : !hasAccess ? "Нет доступа" : sharing?.pendingGhost ? "Ждём подтверждения…"
     : ghost ? "Последнее место · призрак" : frozen ? "Последнее место" : !sharing?.publishing ? "Передача на паузе"
       : !sharing.lastPublishedAt ? "Ищем местоположение…" : "Обновляется";
   const id = `${idPrefix}-${person.circleId}`;
-  const checked = hasAccess && !frozen && !ghost;
+  const checked = locationEnabled && hasAccess && !frozen && !ghost;
   const change = () => {
     if (!settings || disabled) return;
     if (hasAccess) { void onSetFrozen?.(person.circleId, !frozen); return; }
@@ -89,7 +89,7 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
       <EarthSharingToggle checked={checked} disabled={disabled}
         label={"Обновлять геопозицию для " + name} description={id} onChange={change} />
     </div>}
-    {hasAccess && <details className={styles.details}>
+    {showDetails && hasAccess && <details className={styles.details}>
       <summary aria-label={"Настройки доступа: " + name} onClick={playDisclosureCue}>
         <ShieldCheck size={14} aria-hidden="true" /><span>Доступ к геопозиции</span><ChevronDown size={15} aria-hidden="true" />
       </summary>
@@ -100,7 +100,7 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
           onClick={() => { if (canChange) void onRevokeRecipient?.(person.circleId); }}>Убрать доступ</button>
       </div>
     </details>}
-    {onOpenMap && hasAccess && !ghost && !frozen && !sharing?.publishing && <button type="button"
+    {locationEnabled && showResume && onOpenMap && hasAccess && !ghost && !frozen && !sharing?.publishing && <button type="button"
       className={styles.openMap} onClick={onOpenMap}>Возобновить на карте</button>}
   </div>;
 }

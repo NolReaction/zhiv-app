@@ -492,3 +492,48 @@ test("Find me after a ghost freeze acquires private GPS without changing ghost c
   assert.deepEqual(writes, [], "A private lookup neither enables sharing nor sends coordinates, even in GHOST");
   unsubscribe(); s.deactivate(); deactivateSharing();
 });
+
+test("device-wide OFF clears coordinates, retires late callbacks and blocks explicit and passive GPS until ON", async () => {
+  const s = session();
+  s.permission.state = "granted";
+  s.controller.start(); s.watches[0].success(fix());
+  s.controller.setAllowed(false);
+  assert.deepEqual(s.controller.getSnapshot(), { position: null, status: "idle", error: null });
+  assert.deepEqual(s.cleared, [0]);
+  s.watches[0].success(fix({ latitude: 10, timestamp: 2_000 }));
+  s.watches[0].failure({ code: 2 });
+  s.controller.start(); s.controller.locate();
+  s.setVisible(false); s.setVisible(true);
+  s.controller.setEnabled(false); s.controller.setEnabled(true);
+  s.controller.setAutomaticStartPolicy(true);
+  await settlePermission();
+  assert.equal(s.watches.length, 1);
+  assert.equal(s.controller.getSnapshot().position, null);
+  s.controller.setAllowed(true);
+  await settlePermission();
+  assert.equal(s.watches.length, 1, "ON only unlocks a new explicit lookup");
+  s.controller.locate();
+  assert.equal(s.watches.length, 2);
+  s.watches[1].success(fix({ timestamp: 3_000 }));
+  assert.equal(s.controller.getSnapshot().position.timestamp, 3_000);
+  s.deactivate();
+});
+
+test("OFF fences a delayed granted-permission probe and an unmounted disabled controller never starts", async () => {
+  const probes = [];
+  const s = session({ queryPermission: () => new Promise(resolve => probes.push(resolve)) });
+  s.permission.state = "granted";
+  s.controller.setAutomaticStartPolicy(true);
+  assert.equal(probes.length, 1);
+  s.controller.setAllowed(false);
+  probes[0](s.permission); await settlePermission();
+  assert.equal(s.watches.length, 0);
+  s.deactivate();
+  const cleanup = s.controller.activate();
+  s.controller.setEnabled(true); s.controller.setAutomaticStartPolicy(true);
+  s.controller.start(); s.controller.locate();
+  await settlePermission();
+  assert.equal(s.watches.length, 0);
+  assert.equal(probes.length, 1);
+  cleanup();
+});
