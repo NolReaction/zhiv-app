@@ -103,7 +103,6 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   const collection = useGardenCollection();
   const current = progress?.status === "started" ? progress.stepId : null;
   const [visited, setVisited] = useState<string | null>(null);
-  const [harvestOwner, setHarvestOwner] = useState<string | null>(null);
   const [saleOwner, setSaleOwner] = useState<string | null>(null);
   const previousSale = useRef({ owner: economy.snapshot?.ownerPublicId, step: current,
     id: economy.localSale?.id, revision: economy.snapshot?.revision ?? -1 });
@@ -112,7 +111,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   const previousDeparture = useRef({ owner: economy.snapshot?.ownerPublicId, step: current,
     id: economy.localExploration?.id, revision: economy.snapshot?.revision ?? -1 });
   const snapshot = economy.snapshot;
-  const harvested = progress?.status === "started" && progress.harvested === true || Boolean(harvestOwner && harvestOwner === snapshot?.ownerPublicId);
+  const harvested = progress?.status === "started" && progress.harvested === true;
   const order = snapshot ? tutorialResidentOrder(snapshot) : null;
   const practice = snapshot ? tutorialOrderProgress(snapshot) : null;
   const lessonDone = Boolean(practice && (practice.completed || practice.step > 0));
@@ -125,11 +124,11 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   const recipe = snapshot ? worldRecipeGroups(snapshot, snapshot.catalog.recipes.filter(item => item.buildingId === "garden"))
     .find(group => (group.recipe.rewards.berries ?? 0) > 0)?.recipe : undefined;
   const reason = recipe && snapshot ? worldProductionReason(snapshot, recipe, 1) : null;
-  const firstHarvest = Boolean(recipe && snapshot && canPrepareTutorialHarvest(snapshot, recipe.id));
+  const firstHarvest = Boolean(props.open && recipe && snapshot && canPrepareTutorialHarvest(snapshot, recipe.id));
   const cropReady = Boolean(tracked && economy.now >= Date.parse(tracked.finishesAt));
-  const reminder = progress?.status === "completed" && (cropReady || Boolean(harvestOwner && harvestOwner === snapshot?.ownerPublicId));
+  const reminder = progress?.status === "completed" && !progress.harvested && cropReady;
   const advance = (next: WorldOnboardingStepId, completeCurrent = true) => { onCloseSurface(); setVisited(null); setSaleOwner(null); props.onStep(next, completeCurrent); };
-  const finish = () => { setHarvestOwner(null); onCloseSurface(); props.onComplete(); };
+  const finish = () => { onCloseSurface(); props.onComplete(); };
   const pinOrder = () => {
     if (orderPinSent.current) return;
     orderPinSent.current = true;
@@ -158,7 +157,6 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   if (current && visited !== current && (props.quickMenu === current || current === "help" && props.helpOpen
     || current === "orders" && props.ordersOpen || current === "workshop" && props.workshopOpen
     || current === "neighbors" && (props.charactersOpen || props.residentOpen))) setVisited(current);
-  if (current === "profile" && harvestOwner) setHarvestOwner(null);
   useEffect(() => {
     if (props.open && current === "garden" && surface.recipe) onStep("grow", true);
     if ((current === "grow" || harvestForOrder) && crop && crop.id !== progress?.cropJobId) onCrop(crop.id);
@@ -173,7 +171,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       const accepted = before.owner === snapshot.ownerPublicId && before.jobId === jobId && (economy.inventoryGains ?? []).some(gain =>
         !before.gainIds.has(gain.id) && gain.ownerPublicId === snapshot.ownerPublicId && gain.revision > before.revision && gain.revision <= snapshot.revision
         && gain.source === "claim" && gain.stationId === "garden" && gain.items.some(item => item.itemId === "berries" && item.quantity > 0));
-      if (accepted) { setHarvestOwner(snapshot.ownerPublicId); onHarvest(jobId); }
+      if (accepted) onHarvest(jobId);
       else onCrop(undefined);
     }
     previous.current = { owner: snapshot.ownerPublicId, jobId: tracked?.id, revision: snapshot.revision, gainIds: new Set((economy.inventoryGains ?? []).map(gain => gain.id)) };
@@ -297,7 +295,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     if (harvested) {
       base.target = '[data-world-quick="pantry"]';
       base.summary = "Ягоды получены! Их можно посмотреть, нажав «Кладовая» внизу, или продолжить знакомство.";
-      base.primary = { advance: true, label: reminder ? "Готово" : "Продолжить знакомство", onClick: () => { if (reminder) setHarvestOwner(null); else advance("neighbors"); } };
+      base.primary = { advance: true, label: "Продолжить знакомство", onClick: () => advance("neighbors") };
     } else if (crop && berry?.growing) {
       base.primary = harvestForOrder ? undefined : { advance: true, label: "Продолжить знакомство", onClick: () => advance("neighbors") };
     } else if (crop) {
@@ -330,7 +328,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     if (reminder) {
       base.progress = undefined; base.onBack = undefined;
       base.secondary = undefined;
-      base.onSkip = () => { setHarvestOwner(null); props.onCrop(undefined); };
+      base.onSkip = () => props.onCrop(undefined);
     }
   }
   if (current === "neighbors") {

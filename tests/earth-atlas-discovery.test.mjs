@@ -14,6 +14,7 @@ const { createEarthAtlasDiscoveryFeedback, EARTH_ATLAS_DISCOVERY_DURATION_MS } =
 const { EarthAtlasDiscovery } = await vite.ssrLoadModule("/features/earth/earth-atlas-discovery.tsx");
 const { createEarthAtlasStore } = await vite.ssrLoadModule("/features/earth/earth-atlas-storage.ts");
 const { useEarthAtlas } = await vite.ssrLoadModule("/features/earth/use-earth-atlas.ts");
+const { earthAtlasPlaceProgress, EARTH_ATLAS_PLACES } = await vite.ssrLoadModule("/features/earth/earth-atlas-visible.ts");
 const sahara = earthAtlasEntry("region:sahara"), eiffel = earthAtlasEntry("landmark:eiffel-tower");
 
 function clock() {
@@ -53,6 +54,17 @@ test("feedback accepts only bounded catalogue progress and uses canonical public
   assert.equal(feedback.show({ ...sahara, title: "untrusted" }, 1), true);
   assert.equal(feedback.getSnapshot().entry.title, "Сахара");
   assert.equal(feedback.getSnapshot().total, EARTH_ATLAS_ENTRIES.length);
+});
+
+test("landmark feedback uses the visible nine-place total and bounds progress before deduplication", () => {
+  const timer = clock(), feedback = createEarthAtlasDiscoveryFeedback("owner", timer.scheduler); feedback.activate();
+  assert.equal(feedback.show(eiffel, EARTH_ATLAS_ENTRIES.length), true);
+  assert.equal(feedback.getSnapshot().total, 9);
+  assert.equal(feedback.getSnapshot().openedCount, 9);
+  assert.equal(feedback.show(eiffel, 10), false, "a clamped duplicate cannot restart the notice");
+  const html = renderToStaticMarkup(createElement(EarthAtlasDiscovery, { discovery: feedback.getSnapshot() }));
+  assert.match(html, /9 из 9\./);
+  assert.match(html, /--atlas-progress-to:100%/);
 });
 
 test("duplicate callbacks do not repeat the announcement or extend its lifetime", () => {
@@ -131,8 +143,8 @@ test("the permanent polite status has one clear sentence, no dialog or focus tar
   assert.match(empty, /role="status" aria-live="polite" aria-atomic="true"/);
   feedback.show(eiffel, 2);
   const html = renderToStaticMarkup(createElement(EarthAtlasDiscovery, { discovery: feedback.getSnapshot() }));
-  assert.match(html, /Открыто в атласе: Эйфелева башня\. 2 из 50\./);
-  assert.match(html, /--atlas-progress-from:2%;--atlas-progress-to:4%/);
+  assert.match(html, /Открыто в атласе: Эйфелева башня\. 2 из 9\./);
+  assert.match(html, /--atlas-progress-from:11\.111\d*%;--atlas-progress-to:22\.222\d*%/);
   assert.doesNotMatch(html, /<(?:button|input|a)[ >]|tabindex|role="dialog"/);
 });
 
@@ -149,8 +161,29 @@ test("post-discovery progress includes discoveries merged from another tab befor
   assert.equal(renderedSnapshot.ids.length, 1, "a render can still hold the old count");
   assert.equal(feedback.getSnapshot().openedCount, 3, "the live reader includes the merged opening and this click");
   const html = renderToStaticMarkup(createElement(EarthAtlasDiscovery, { discovery: feedback.getSnapshot() }));
-  assert.match(html, /Встреча с близким\. 3 из 50\./);
-  assert.match(html, /--atlas-progress-from:4%;--atlas-progress-to:6%/);
+  assert.match(html, /Встреча отмечена в атласе\./);
+  assert.doesNotMatch(html, /\d+ (?:из|\/) \d+|--atlas-progress-/);
+});
+
+test("saving a new place counts places after cross-tab merging without erasing historical regions or meetings", () => {
+  const values = new Map(), storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const tab = createEarthAtlasStore("owner", () => storage), otherTab = createEarthAtlasStore("owner", () => storage);
+  tab.activate(); otherTab.activate();
+  const legacy = EARTH_ATLAS_ENTRIES.filter(entry => entry.kind !== "landmark");
+  for (const entry of legacy) tab.discover(entry.id);
+  const oldSnapshot = tab.getSnapshot();
+  const otherPlace = EARTH_ATLAS_PLACES.find(entry => entry.id !== eiffel.id);
+  otherTab.discover(otherPlace.id);
+  const feedback = createEarthAtlasDiscoveryFeedback("owner", clock().scheduler); feedback.activate();
+  if (tab.discover(eiffel.id)) feedback.show(eiffel, earthAtlasPlaceProgress(tab.getSnapshot().ids).opened);
+  assert.equal(oldSnapshot.ids.length, legacy.length);
+  assert.equal(tab.getSnapshot().ids.length, legacy.length + 2, "both places and every legacy ID survive the write");
+  assert.ok(legacy.every(entry => tab.getSnapshot().ids.includes(entry.id)));
+  assert.equal(feedback.getSnapshot().openedCount, 2);
+  assert.equal(feedback.getSnapshot().total, 9);
+  const html = renderToStaticMarkup(createElement(EarthAtlasDiscovery, { discovery: feedback.getSnapshot(), inline: true }));
+  assert.match(html, /2 из 9\./);
+  assert.doesNotMatch(html, /из 50|\/ 50/);
 });
 
 test("the hook exposes a synchronous reader without activating storage during SSR", () => {

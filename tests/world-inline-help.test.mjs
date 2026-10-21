@@ -23,6 +23,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
         const previous = useRef(null);
         if (!previous.current || dependencies.some((value, index) => !Object.is(value, previous.current[index]))) { previous.current = dependencies; effects.push(effect); }
       }
+      export const useLayoutEffect = useEffect;
     `; },
     transform(source, id) {
       if (id.endsWith("/features/economy/ui/production/world-production-card.tsx") || id.endsWith("/features/economy/ui/construction/world-upgrade-dialog.tsx")) return source.replace('from "react";', `from "${hookModule}";`);

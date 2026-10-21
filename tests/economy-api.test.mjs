@@ -49,6 +49,27 @@ test("local economy routes require account cookies and never cache private state
   assert.equal((await GET(read("?ownerPublicId=someone"))).status, 400);
 });
 
+test("authenticated production distinguishes an explicit one-time teaching request from an ordinary crop", async () => {
+  const ordinaryPlayer = player();
+  const ordinary = await (await POST(post(command(ordinaryPlayer)))).json();
+  const recipe = ordinary.state.catalog.recipes.find(entry => entry.id === "grow_berries");
+  const crop = ordinary.state.jobs[0];
+  assert.equal(Date.parse(crop.finishesAt) - Date.parse(crop.startedAt), recipe.seconds * 1000);
+  assert.equal(ordinary.state.tutorialOrder.firstHarvestPrepared, false);
+  const p = player(), assistance = { ...command(p), action: "start_tutorial_harvest" };
+  const response = await POST(post(assistance));
+  assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
+  const accepted = await response.json(), job = accepted.state.jobs[0];
+  assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 1);
+  assert.equal(accepted.state.tutorialOrder.firstHarvestPrepared, true);
+  const replay = await (await POST(post(assistance))).json();
+  assert.equal(replay.replayed, true); assert.equal(replay.state.jobs.length, 1);
+  const duplicate = await POST(post({ ...command(p), action: "start_tutorial_harvest" }));
+  assert.equal(duplicate.status, 409);
+  assert.equal((await duplicate.json()).code, "ECONOMY_TUTORIAL_HARVEST_UNAVAILABLE");
+  assert.equal(economy.getDevEconomy(p.token).jobs.length, 1);
+});
+
 test("a stale tab cannot publish the new cookie owner's private market after another tab switches accounts", async () => {
   const first = player(), observed = []; let lost = 0;
   const session = createEconomySession(first.me.user.publicId, {

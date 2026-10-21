@@ -11,6 +11,7 @@ const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/au
 const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
 const { AUDIO_CATALOG } = await vite.ssrLoadModule("/features/audio/catalog/catalog.ts");
 const { createMarketAudioController } = await vite.ssrLoadModule("/features/audio/ui/market-audio.ts");
+const { AUDIO_VISIBILITY_RELEASE_SECONDS: RELEASE_SECONDS, AUDIO_VISIBILITY_CLEANUP_MS: CLEANUP_MS } = await vite.ssrLoadModule("/features/audio/runtime/audio-release-clock.ts");
 
 class Param {
   value = 0; ramps = [];
@@ -34,14 +35,22 @@ class Source extends Node {
   stop(time) { this.stops.push(time); }
   end() { this.onended?.(); }
 }
+class Constant extends Node {
+  offset = new Param(); stops = []; onended = null; started = 0;
+  start() { this.started++; }
+  stop(time) { this.stops.push(time); }
+  end() { this.onended?.(); }
+}
 class Context {
-  currentTime = 0; state = "suspended"; destination = new Node(); sources = []; started = []; decoded = 0; mediaSources = []; gains = [];
+  clocks = [];
+  createConstantSource() { const node = new Constant(); this.clocks.push(node); return node; }
+  currentTime = 0; state = "suspended"; destination = new Node(); sources = []; started = []; decoded = 0; mediaSources = []; gains = []; resumes = 0;
   createGain() { const node = new Gain(); this.gains.push(node); return node; }
   createStereoPanner() { return new Panner(); }
   createBufferSource() { const node = new Source(this); this.sources.push(node); return node; }
   createOscillator() { const source = new Source(this); source.frequency = new Param(); return source; }
   createMediaElementSource(media) { const node = new Node(); node.media = media; this.mediaSources.push(node); return node; }
-  async resume() { this.state = "running"; this.onstatechange?.(); }
+  async resume() { this.resumes++; this.state = "running"; this.onstatechange?.(); }
   async suspend() { this.state = "suspended"; this.onstatechange?.(); }
   async close() { this.state = "closed"; }
   async decodeAudioData(data) { this.decoded++; return this.decode ? this.decode(data) : { length: 44100, numberOfChannels: 1, duration: 1 }; }
@@ -149,6 +158,8 @@ for (const cueId of ["action.water.touch", "action.tree.rustle"]) {
       }
       f.runtime.setVisible(false); tap(); await flush();
       assert.equal(f.context.started.length, 0, "hidden view is silent");
+      f.context.currentTime += RELEASE_SECONDS;
+      f.context.clocks.at(-1).end();
       f.runtime.setVisible(true); await f.runtime.unlock();
       f.runtime.play({ id: "expired-tap", cueId: touch.id, ownerId: "user-a", occurredAt: 1, maxAgeMs });
       await flush(); assert.equal(f.context.started.length, 0);
@@ -804,7 +815,7 @@ test("hide stops voices, foreground restores loops once and never replays earlie
   assert.equal(f.runtime.getDiagnostics().activeVoices, 2);
   f.runtime.setVisible(false); assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
   f.runtime.play({ id: "hidden", cueId: "tap" }); f.runtime.setVisible(true);
-  f.context.currentTime += .04; t.mock.timers.tick(40); await flush();
+  f.context.currentTime += CLEANUP_MS / 1000; t.mock.timers.tick(CLEANUP_MS); await flush();
   assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
   assert.equal(f.context.started.filter(source => !source.loop).length, 1); assert.equal(f.contextCount, 1); f.runtime.dispose();
 });
@@ -885,21 +896,21 @@ test("hiding releases the mixed waveform before pausing media, stopping effects 
     const player = f.media[0], sources = [...f.context.started, ...f.context.mediaSources];
     const master = f.context.gains[0].gain;
     const suspend = f.context.suspend.bind(f.context); let suspensions = 0;
-    f.context.suspend = () => { suspensions++; assert.ok(f.context.currentTime >= 2.02); return suspend(); };
+    f.context.suspend = () => { suspensions++; assert.ok(f.context.currentTime >= 2 + RELEASE_SECONDS); return suspend(); };
     f.context.currentTime = 2;
     f.runtime.setVisible(false);
     assert.equal(f.runtime.getDiagnostics().activeVoices, 0, "logical playback is revoked synchronously");
     assert.equal(f.runtime.getDiagnostics().state, "suspended");
-    assert.deepEqual(master.ramps.at(-1), { value: 0, time: 2.02 });
+    assert.deepEqual(master.ramps.at(-1), { value: 0, time: 2 + RELEASE_SECONDS });
     assert.equal(player.pauses, 0); assert.equal(player.loads, 0);
     assert.ok(sources.every(source => !source.disconnected), "a running nonzero signal is never physically severed");
     assert.ok(f.context.started.every(source => source.stops.length === 0));
     assert.equal(suspensions, 0);
     assert.equal(player.onpause, null); assert.equal(player.ontimeupdate, null);
     f.runtime.play({ id: "hidden-tap", cueId: "tap" });
-    f.context.currentTime = 2.02; t.mock.timers.tick(20);
+    f.context.currentTime = 2 + RELEASE_SECONDS / 2; t.mock.timers.tick(RELEASE_SECONDS * 500);
     assert.equal(player.pauses, 0, "the native ramp owns the release, not a per-voice pause");
-    f.context.currentTime = 2.04; t.mock.timers.tick(20); await flush();
+    f.context.currentTime = 2 + CLEANUP_MS / 1000; t.mock.timers.tick(CLEANUP_MS - RELEASE_SECONDS * 500); await flush();
     assert.ok(sources.every(source => source.disconnected));
     assert.equal(player.pauses, 1); assert.equal(player.loads, 1); assert.equal(player.src, "");
     assert.equal(suspensions, 1); assert.equal(f.context.state, "suspended");
@@ -907,7 +918,7 @@ test("hiding releases the mixed waveform before pausing media, stopping effects 
   } finally { f.runtime.dispose(); }
 });
 
-test("visibility release shortens an existing mute ramp instead of cutting its still-audible tail", async t => {
+test("visibility release preserves an earlier mute deadline instead of extending or cutting its still-audible tail", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture();
   try {
@@ -918,10 +929,35 @@ test("visibility release shortens an existing mute ramp instead of cutting its s
     assert.equal(master.ramps.at(-1).time, 2.12);
     f.context.currentTime = 2.005;
     f.runtime.setVisible(false);
-    assert.ok(Math.abs(master.ramps.at(-1).time - 2.025) < 1e-10);
+    assert.ok(Math.abs(master.ramps.at(-1).time - 2.12) < 1e-10);
     assert.equal(master.ramps.at(-1).value, 0);
-    f.context.currentTime = 2.045; t.mock.timers.tick(40); await flush();
+    f.context.currentTime = 2.005 + CLEANUP_MS / 1000; t.mock.timers.tick(CLEANUP_MS); await flush();
     assert.equal(f.context.started[0].disconnected, true);
+  } finally { f.runtime.dispose(); }
+});
+
+test("hiding halfway through the initial attack keeps the waveform continuous in older browsers", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("song", "music")]), anchors = [];
+  const createGain = f.context.createGain.bind(f.context);
+  f.context.createGain = () => {
+    const gain = createGain();
+    if (f.context.gains.length === 1) {
+      gain.gain.cancelAndHoldAtTime = undefined;
+      gain.gain.setValueAtTime = (value, time) => { gain.gain.value = value; anchors.push({ value, time }); };
+    }
+    return gain;
+  };
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")])); await flush();
+    f.context.currentTime = .06; f.runtime.setVisible(false);
+    assert.deepEqual(anchors.at(-1), { value: DEFAULT_AUDIO_SETTINGS.master / 2, time: .06 },
+      "release begins at the interpolated attack value instead of jumping to full volume or zero");
+    assert.deepEqual(f.context.gains[0].gain.ramps.at(-2), anchors.at(-1));
+    assert.deepEqual(f.context.gains[0].gain.ramps.at(-1), { value: 0, time: .06 + RELEASE_SECONDS });
+    assert.equal(f.media[0].pauses, 0);
+    f.context.currentTime = .06 + RELEASE_SECONDS; f.context.clocks[0].end();
+    assert.equal(f.media[0].pauses, 1); assert.deepEqual(anchors.at(-1), { value: 0, time: .24 });
   } finally { f.runtime.dispose(); }
 });
 
@@ -937,13 +973,96 @@ test("foreground during the short release waits for silence and never revives ol
     f.runtime.setVisible(false); f.runtime.setVisible(true); await flush();
     assert.equal(f.media.length, 1); assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
     assert.equal(f.context.gains[0].gain.ramps.at(-1).value, 0, "foreground cannot reopen the old mix mid-release");
-    f.context.currentTime = 1.04; t.mock.timers.tick(40); await flush();
+    f.context.currentTime = 1 + CLEANUP_MS / 1000; t.mock.timers.tick(CLEANUP_MS); await flush();
     assert.equal(suspensions, 0, "returning before cleanup does not issue an obsolete suspend request");
     assert.equal(oldEffect.disconnected, true); assert.equal(oldPlayer.src, "");
     assert.equal(f.context.started.length, 1, "the old one-shot never starts a second time");
     assert.equal(f.media.length, 2); assert.equal(f.media[1].currentTime, 43);
     assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
     assert.equal(f.context.gains[0].gain.ramps.at(-1).value, DEFAULT_AUDIO_SETTINGS.master);
+  } finally { f.runtime.dispose(); }
+});
+
+test("rapid Home and tab returns cannot cut a stalled native waveform or accumulate audio work", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("song", "music"), cue("tap")]);
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")]));
+    f.runtime.play({ id: "before-home", cueId: "tap" }); await flush();
+    const player = f.media[0], effect = f.context.started[0], master = f.context.gains[0].gain;
+    player.currentTime = 29; f.context.currentTime = 10;
+    const suspend = f.context.suspend.bind(f.context); let suspensions = 0;
+    f.context.suspend = () => { suspensions++; return suspend(); };
+    const timer = t.mock.method(globalThis, "setTimeout");
+    f.runtime.setVisible(false);
+    const nativeClock = f.context.clocks[0], queuedEnd = nativeClock.onended;
+    f.context.currentTime = 10.005;
+    for (let index = 0; index < 100; index++) {
+      f.runtime.setVisible(true); f.runtime.setVisible(false);
+    }
+    assert.equal(f.context.clocks.length, 1); assert.equal(timer.mock.callCount(), 2,
+      "one fallback and one shared bounded foreground wait, with no polling per event");
+    t.mock.timers.tick(60_000); await flush();
+    assert.equal(player.pauses, 0); assert.equal(effect.disconnected, false);
+    assert.equal(suspensions, 0); assert.equal(f.contextCount, 1); assert.equal(f.context.resumes, 1);
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+    assert.equal(master.ramps.at(-1).value, 0);
+    f.runtime.setVisible(true);
+    assert.equal(await f.runtime.unlock(), false, "a stuck clock returns without hanging the gesture");
+    assert.equal(f.media.length, 1); assert.equal(timer.mock.callCount(), 2);
+    f.context.currentTime = 10 + RELEASE_SECONDS; queuedEnd(); await flush();
+    assert.equal(player.pauses, 1); assert.equal(effect.disconnected, true);
+    assert.equal(f.media.length, 2); assert.equal(f.media[1].currentTime, 29);
+    assert.equal(f.context.started.length, 1, "old effects are not replayed");
+    assert.equal(f.context.resumes, 1, "repeated tab events do not flood native resume");
+    assert.equal(suspensions, 0, "the current foreground supersedes an obsolete hidden suspension");
+    queuedEnd(); await flush(); assert.equal(f.media.length, 2, "late native end is fenced");
+  } finally { f.runtime.dispose(); }
+});
+
+test("mute and account changes during a frozen release never reopen retired or hidden sound", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const action of ["mute", "account"]) {
+    const f = fixture([cue("song", "music"), cue("tap")]);
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")]));
+      f.runtime.play({ id: "old-contact", cueId: "tap" }); await flush();
+      const oldPlayer = f.media[0]; oldPlayer.currentTime = 48;
+      f.context.currentTime = 1; f.runtime.setVisible(false);
+      if (action === "mute") f.runtime.setSettings({ enabled: false });
+      else f.runtime.updateFrame(frame([target("song", "song")], { ownerId: "user-b", sceneId: "new-account" }));
+      t.mock.timers.tick(5000); await flush();
+      assert.equal(f.media.length, 1); assert.equal(oldPlayer.pauses, 0);
+      f.context.currentTime = 1 + RELEASE_SECONDS; f.context.clocks.at(-1).end(); await flush();
+      assert.equal(oldPlayer.pauses, 1); assert.equal(oldPlayer.src, "");
+      assert.equal(f.runtime.getDiagnostics().activeVoices, 0, `${action}: background remains silent`);
+      f.runtime.setVisible(true); await flush();
+      assert.equal(f.context.started.length, 1, `${action}: no old one-shot tail`);
+      if (action === "mute") {
+        assert.equal(f.media.length, 1); assert.equal(await f.runtime.unlock(), false);
+      } else {
+        assert.equal(f.media.length, 2); assert.equal(f.media[1].currentTime, undefined,
+          "another account never inherits the old music playhead");
+        assert.equal(f.runtime.getDiagnostics().playback.activeOwnerId, "user-b");
+      }
+    } finally { f.runtime.dispose(); }
+  }
+});
+
+test("a missed native end callback is recovered from actual audio time before the foreground attack", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("song", "music")]);
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")])); await flush();
+    f.context.currentTime = 4; f.runtime.setVisible(false);
+    t.mock.timers.tick(CLEANUP_MS); await flush();
+    assert.equal(f.media[0].pauses, 0);
+    // Browsers may throttle the ended task as well as the fallback timer. The
+    // audio deadline itself is sufficient when the user returns.
+    f.context.currentTime = 4 + RELEASE_SECONDS;
+    f.runtime.setVisible(true); await flush();
+    assert.equal(f.media[0].pauses, 1); assert.equal(f.media.length, 2);
+    assert.equal(f.runtime.getDiagnostics().state, "running");
   } finally { f.runtime.dispose(); }
 });
 
@@ -957,7 +1076,7 @@ test("pending native suspend cannot cut a new foreground song, and a stalled pro
     f.context.suspend = () => pending.promise;
     f.context.currentTime = 1;
     f.runtime.setVisible(false);
-    f.context.currentTime = 1.04; t.mock.timers.tick(40); await flush();
+    f.context.currentTime = 1 + CLEANUP_MS / 1000; t.mock.timers.tick(CLEANUP_MS); await flush();
     f.runtime.setVisible(true);
     const unlocking = f.runtime.unlock();
     t.mock.timers.tick(250);
@@ -983,7 +1102,7 @@ test("a rejected native suspension leaves the hidden graph silent and permits a 
     await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")])); await flush();
     f.context.suspend = async () => { throw new Error("Device interruption"); };
     f.context.currentTime = 1; f.runtime.setVisible(false);
-    f.context.currentTime = 1.04; t.mock.timers.tick(40); await flush();
+    f.context.currentTime = 1 + CLEANUP_MS / 1000; t.mock.timers.tick(CLEANUP_MS); await flush();
     assert.equal(f.context.gains[0].gain.value, 0);
     assert.equal(f.media[0].src, ""); assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
     f.runtime.setVisible(true); await flush();
@@ -1002,7 +1121,7 @@ test("a pending media play result loses ownership as soon as the page hides", as
     assert.deepEqual(f.runtime.getDiagnostics().failedAssets, []);
     assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
     assert.equal(player.onpause, null); assert.equal(player.ontimeupdate, null);
-    f.context.currentTime = 1.04; t.mock.timers.tick(40); await flush();
+    f.context.currentTime = 1 + CLEANUP_MS / 1000; t.mock.timers.tick(CLEANUP_MS); await flush();
     assert.equal(player.src, "");
   } finally { f.runtime.dispose(); }
 });
@@ -1028,7 +1147,7 @@ test("foreground music resumes its playhead while account changes discard old po
   f.runtime.updateFrame(frame([target("theme", "theme")], { sceneId: "account-a:forest" })); await flush();
   f.media[0].currentTime = 43;
   f.runtime.setVisible(false); f.runtime.setVisible(true);
-  f.context.currentTime += .04; t.mock.timers.tick(40); await flush();
+  f.context.currentTime += CLEANUP_MS / 1000; t.mock.timers.tick(CLEANUP_MS); await flush();
   assert.equal(f.media[1].currentTime, 43);
   f.runtime.updateFrame(frame([target("theme", "theme")], { sceneId: "account-b:forest" })); await flush();
   assert.equal(f.media[2].currentTime ?? 0, 0); f.runtime.dispose();
@@ -1110,7 +1229,8 @@ test("DEV audition shares a pending scene decode and never leaks after hiding", 
   gate.resolve({ length: 44100, numberOfChannels: 1, duration: 1 }); await flush();
   assert.equal(f.requests.length, 1); assert.equal(f.context.started.length, 1);
   assert.equal(f.context.started[0].connected[0].gain.value, 10 ** (-10 / 20));
-  f.runtime.setVisible(false); t.mock.timers.tick(5000); await flush();
+  f.runtime.setVisible(false); f.context.currentTime += CLEANUP_MS / 1000;
+  t.mock.timers.tick(5000); await flush();
   assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
   f.runtime.setVisible(true); await flush();
   assert.equal(f.context.started[1].connected[0].gain.value, 10 ** (-10 / 20) * .2);

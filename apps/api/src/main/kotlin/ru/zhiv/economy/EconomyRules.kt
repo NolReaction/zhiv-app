@@ -400,7 +400,11 @@ object EconomyRules {
                 EconomyStageOrders.isStageId(command.targetId) -> EconomyStageOrders.complete(state, command, now, reservedItems)
                 else -> EconomyFood.order(state, command.targetId, command.action == "replace_resident_order", now, command.totalPrice, fishSelection = command.fishSelection)
             }
-            "start_production" -> {
+            "start_production", "start_tutorial_harvest" -> {
+                val tutorialHarvest = command.action == "start_tutorial_harvest"
+                if (tutorialHarvest && (command.targetId != "grow_berries" || command.quantity != 1L)) invalidEconomy()
+                if (tutorialHarvest && !EconomyTutorialOrders.canPrepareFirstHarvest(state, command.targetId, command.quantity))
+                    economyFailure("ECONOMY_TUTORIAL_HARVEST_UNAVAILABLE", "Помощь с первым урожаем уже использована или сейчас недоступна")
                 if (command.targetId.startsWith("quarry_")) economyFailure("ECONOMY_MINING_ACTIVITY", "Выберите участок добычи для шахтёра")
                 if (command.quantity > catalog.maxBatch) invalidEconomy()
                 val parts = command.targetId.split('@')
@@ -419,7 +423,7 @@ object EconomyRules {
                 if (state.jobs.count { it.targetId == recipe.buildingId && it.kind == "production" } >= productionSlotCount(state, recipe.buildingId))
                     economyFailure("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат")
                 requireJobCapacity(state)
-                val firstHarvest = EconomyTutorialOrders.canPrepareFirstHarvest(state, recipe.id, command.quantity)
+                val firstHarvest = tutorialHarvest
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
                 val spent = spend(state, cost, command.fishSelection)
                 val beforeStock = EconomyFishStock.normalized(state).orEmpty()

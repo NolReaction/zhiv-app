@@ -28,6 +28,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId), { EarthMap } = await vite.ssrLoadModule("/features/earth/earth-map.tsx");
+const { EarthMapInfo } = await vite.ssrLoadModule("/features/earth/earth-map-info.tsx");
 function harness(writeText) {
   const globals = new Map(["window", "document", "navigator"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   for (const [name, value] of Object.entries({ window: new EventTarget(), document: { hidden: false }, navigator: { clipboard: { writeText } } }))
@@ -39,7 +40,7 @@ function harness(writeText) {
   function render() {
     for (let pass = 0; pass < 10; pass++) {
       hooks.begin(state); const tree = EarthMap(props), nodes = [];
-      const visit = node => { if (isValidElement(node)) { nodes.push(node); Children.forEach(node.props.children, visit); } };
+      const visit = node => { if (isValidElement(node)) { nodes.push(node); if (node.type === EarthMapInfo) visit(EarthMapInfo(node.props)); else Children.forEach(node.props.children, visit); } };
       visit(tree);
       for (const node of nodes) if (["button", "textarea", "h2"].includes(node.type) && node.props.ref)
         node.props.ref.current = { focus() { focused.push(node.props["aria-label"] ?? node.type); }, select() { selected.push(node.type); } };

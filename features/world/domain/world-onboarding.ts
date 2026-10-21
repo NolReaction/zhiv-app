@@ -53,7 +53,7 @@ export function parseWorldOnboarding(raw: string | null): WorldOnboardingProgres
       ? WORLD_ONBOARDING_STEPS.map(step => step.id).filter(id => (record.completedSteps as unknown[]).includes(id)) : [];
     const course = completedSteps.length ? { completedSteps } : {};
     const jobId = cropId(record.cropJobId);
-    const crop = { ...(jobId ? { cropJobId: jobId } : {}), ...(record.harvested === true ? { harvested: true as const } : {}) };
+    const crop = { ...(jobId && record.harvested !== true ? { cropJobId: jobId } : {}), ...(record.harvested === true ? { harvested: true as const } : {}) };
     if (record.status === "skipped" || record.status === "completed") {
       const finishedAt = finishTime(record.finishedAt);
       return { version: 2, status: record.status, ...crop, ...course, ...(finishedAt === undefined ? {} : { finishedAt }),
@@ -114,6 +114,9 @@ export function transitionWorldOnboarding(progress: WorldOnboardingProgress | nu
       if (!progress) return null;
       const { cropJobId: previous, ...rest } = progress;
       const jobId = cropId(event.jobId);
+      // An old crop observation must not resurrect a received harvest after
+      // its receipt or completion. Explicit replay starts a fresh local run.
+      if (jobId && progress.harvested) return progress;
       return jobId ? { ...rest, cropJobId: jobId } : previous ? rest : progress;
     }
   }

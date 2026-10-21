@@ -194,7 +194,13 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (command.targetId !== "workshop") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Этот подарок предназначен для первой мастерской", 400);
       return fail("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", "Материалы для мастерской теперь получают из производства и заказов");
     }
+    case "start_tutorial_harvest":
     case "start_production": {
+      const tutorialHarvest = command.action === "start_tutorial_harvest";
+      if (tutorialHarvest && (command.targetId !== "grow_berries" || command.quantity !== 1))
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Некорректный запрос учебного урожая", 400);
+      if (tutorialHarvest && !canPrepareTutorialHarvest(state, command.targetId, command.quantity))
+        return fail("ECONOMY_TUTORIAL_HARVEST_UNAVAILABLE", "Помощь с первым урожаем уже использована или сейчас недоступна");
       if (command.targetId.startsWith("quarry_")) return fail("ECONOMY_MINING_ACTIVITY", "Выберите участок добычи для шахтёра");
       if (command.quantity > economyCatalog.maxBatch) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Слишком большая партия", 400);
       const [recipeId, fishItemId, extra] = command.targetId.split("@");
@@ -215,7 +221,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
         fail("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат");
       if (state.jobs.filter(job => job.targetId === recipe.buildingId && job.kind === "production").length >= productionSlotCount(state, recipe.buildingId))
         fail("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат");
-      const firstHarvest = canPrepareTutorialHarvest(state, recipe.id, command.quantity);
+      const firstHarvest = tutorialHarvest;
       createJob({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
         ...(recipe.collection ? { collection: { ...recipe.collection, startedAt: null, finishesAt: null } } : {}),
         rewards: Object.fromEntries(Object.entries(recipe.rewards).map(([item, amount]) => [item, amount * command.quantity])) },

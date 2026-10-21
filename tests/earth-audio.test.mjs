@@ -37,13 +37,16 @@ after(() => vite.close());
 const { events } = await vite.ssrLoadModule(runtimeId);
 const { setPhase } = await vite.ssrLoadModule(hooksId);
 const { EarthMap } = await vite.ssrLoadModule("/features/earth/earth-map.tsx");
+const { EarthMapInfo } = await vite.ssrLoadModule("/features/earth/earth-map-info.tsx");
 const { EarthSharingPanelContent, EarthSharingToggle } = await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
 const { EarthFriendSharingControls } = await vite.ssrLoadModule("/features/earth/earth-friend-sharing.tsx");
-const { EarthMeetCard } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
+const { EarthMeetCard, EarthWalkingRouteOptions } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
 function nodes(tree) {
   const result = [];
   const visit = node => {
     if (!isValidElement(node)) return;
+    if (node.type === EarthMapInfo) { visit(EarthMapInfo(node.props)); return; }
+    if (node.type === EarthWalkingRouteOptions) { visit(EarthWalkingRouteOptions(node.props)); return; }
     if (node.type === EarthSharingToggle) { visit(EarthSharingToggle(node.props)); return; }
     if (node.type === EarthFriendSharingControls) { visit(EarthFriendSharingControls(node.props)); return; }
     result.push(node); Children.forEach(node.props.children, visit);
@@ -96,7 +99,7 @@ function sharingView(extra = {}) {
 test("the explicit sharing action uses one delegated click; radio/select sound only for an enabled change", () => {
   events.length = 0;
   const view = sharingView();
-  const action = view.all.find(node => node.type === "button" && node.props["aria-label"] === "Включить обновления геопозиции");
+  const action = view.all.find(node => node.type === "button" && node.props["aria-label"] === "Режим призрака");
   assert.ok(action);
   assert.equal(action.props["data-audio-cue"], "ui.click");
   action.props.onClick(); assert.deepEqual(cueIds(), [], "the action handler does not duplicate delegated clicks");

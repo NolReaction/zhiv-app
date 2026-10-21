@@ -15,9 +15,9 @@ class EconomyFirstHarvestTest {
         EconomyRules.apply(state, command(action, target), at).first
     private fun fails(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
-    @Test fun `first raspberry is ripe without visible delay but needs ordinary collection and delivery`() {
+    @Test fun `explicit tutorial raspberry is ripe without visible delay but needs ordinary collection and delivery`() {
         val before = EconomyRules.initial()
-        val started = apply(before, "start_production", "grow_berries")
+        val started = apply(before, "start_tutorial_harvest", "grow_berries")
         val job = started.jobs.single()
         assertEquals(now.plusMillis(1), Instant.parse(job.finishesAt)); assertEquals(now, Instant.parse(job.startedAt))
         assertTrue(started.tutorialOrder.firstHarvestPrepared); assertFalse(before.tutorialOrder.firstHarvestPrepared)
@@ -33,7 +33,7 @@ class EconomyFirstHarvestTest {
     }
 
     @Test fun `reload removal cancellation and a new request cannot renew consumed help`() {
-        val started = apply(EconomyRules.initial(), "start_production", "grow_berries")
+        val started = apply(EconomyRules.initial(), "start_tutorial_harvest", "grow_berries")
         val restored = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(started))
         assertTrue(restored.tutorialOrder.firstHarvestPrepared)
         fails("ECONOMY_CANCEL_READY") { apply(restored, "cancel_production", restored.jobs.single().id, now.plusMillis(1)) }

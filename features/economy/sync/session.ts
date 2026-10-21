@@ -474,7 +474,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (action === "start_exploration" || action === "start_fishing")
         localExplorationIntent = { requestId: command.requestId, before: view.snapshot };
       if (action === "buy_leaftail_item") localLeaftailPurchaseIntent = { requestId: command.requestId, before: view.snapshot };
-      void execute({ kind: "economy", command }, action === "start_production");
+      void execute({ kind: "economy", command }, action === "start_production" || action === "start_tutorial_harvest");
       return true;
     },
     actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>) {

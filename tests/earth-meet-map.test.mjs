@@ -154,3 +154,86 @@ test("unchanged and empty meeting snapshots avoid worker writes while focus, coo
   assert.equal(h.data().features.length, 0, "hiding still clears a new live line immediately");
   h.overlay.dispose();
 });
+
+const road = (values = {}) => ({ ownerPublicId: "SELF", circleId: "friend", friendPublicId: "FRIEND",
+  origin: [37.61, 55.75], destination: [37.63, 55.76], createdAt: WALL, createdAtMonotonic: 0,
+  expiresAt: WALL + 30_000, expiresAtMonotonic: 30_000, distanceMeters: 1800, durationSeconds: 1400,
+  geometry: { type: "LineString", coordinates: [[37.61, 55.75], [37.60, 55.77], [37.63, 55.76]] }, ...values });
+
+test("a requested road path keeps its bends, frames the detour, and never repeats worker uploads", () => {
+  const h = harness(), route = road();
+  h.overlay.setSnapshot(self(), friend(), 1, route);
+  assert.deepEqual(h.data().features[0].geometry.coordinates, [route.geometry.coordinates]);
+  assert.deepEqual(h.data().features[0].properties, {}, "the worker receives geometry without account identifiers");
+  assert.ok(Math.abs(h.fits[0].bounds[0][0] - 37.60) < 1e-9);
+  assert.equal(h.fits[0].bounds[1][1], 55.77, "camera includes the walking detour rather than just the endpoints");
+  const writes = h.writes.length;
+  for (let i = 0; i < 40; i++) h.overlay.setSnapshot(self(), friend(), 1, structuredClone(route));
+  assert.equal(h.writes.length, writes);
+  h.tick(30_001);
+  assert.deepEqual(h.data().features[0].geometry.coordinates, earthMeetLine(self(), friend()).features[0].geometry.coordinates,
+    "an expired road path falls back to the explicitly labelled direct connection");
+  assert.equal(h.fits.length, 1, "expiry never moves the camera");
+  h.overlay.dispose();
+});
+
+test("a route for an old friend, expired access or moved endpoint cannot reach the map worker", () => {
+  for (const route of [road({ friendPublicId: "OTHER" }), road({ circleId: "OLD" }),
+    road({ expiresAtMonotonic: 0 }), road({ expiresAt: WALL }), road({ origin: [37, 55] }), road({ destination: [38, 56] })]) {
+    const h = harness(); h.overlay.setSnapshot(self(), friend(), 0, route);
+    assert.deepEqual(h.data().features[0].geometry, earthMeetLine(self(), friend()).features[0].geometry);
+    h.overlay.dispose();
+  }
+  const h = harness(); h.overlay.setSnapshot(self(), friend(), 0, road());
+  h.overlay.setSnapshot(self(), null, 0, road());
+  assert.equal(h.data().features.length, 0);
+  h.overlay.setVisible(false); h.overlay.setVisible(true);
+  assert.equal(h.data().features.length, 0, "retained background data cannot restore a route");
+  h.overlay.dispose();
+});
+
+test("a road path crossing the date line is split and framed in the short interval", () => {
+  const h = harness();
+  const position = self({ longitude: 179.99, latitude: 10 });
+  const person = friend({ longitude: -179.99, latitude: 10 });
+  const route = road({ origin: [179.99, 10], destination: [-179.99, 10],
+    geometry: { type: "LineString", coordinates: [[179.99, 10], [179.999, 10.001], [-179.999, 10.001], [-179.99, 10]] } });
+  h.overlay.setSnapshot(position, person, 1, route);
+  const segments = h.data().features[0].geometry.coordinates;
+  assert.equal(segments.length, 2);
+  assert.ok(segments.flat().every(([longitude]) => Math.abs(longitude) <= 180));
+  assert.equal(segments[0].at(-1)[1], segments[1][0][1]);
+  assert.ok(h.fits[0].bounds[1][0] - h.fits[0].bounds[0][0] < .1);
+  h.overlay.dispose();
+});
+
+
+test("a manual build frames the whole arriving path once after its initial point view", () => {
+  const h = harness();
+  h.overlay.setSnapshot(self(), friend(), 1);
+  assert.equal(h.fits.length, 1);
+  h.overlay.setSnapshot(self(), friend(), 1, road());
+  assert.equal(h.fits.length, 2);
+  assert.equal(h.fits[1].bounds[1][1], 55.77);
+  h.overlay.setSnapshot(self(), friend(), 1, structuredClone(road()));
+  assert.equal(h.fits.length, 2);
+  h.tick(30_001);
+  assert.equal(h.fits.length, 2);
+  h.overlay.dispose();
+});
+
+test("road points exactly on either date-line boundary never form a world-spanning segment", () => {
+  for (const direction of [1, -1]) {
+    const h = harness();
+    const origin = [direction * 179.99, 10], destination = [direction * -179.99, 10];
+    const coordinates = [origin, [direction * -180, 10.001], [direction * 180, 10.002], destination];
+    h.overlay.setSnapshot(self({ longitude: origin[0], latitude: 10 }), friend({ longitude: destination[0], latitude: 10 }), 1,
+      road({ origin, destination, geometry: { type: "LineString", coordinates } }));
+    for (const segment of h.data().features[0].geometry.coordinates) {
+      assert.ok(segment.length >= 2);
+      for (let i = 1; i < segment.length; i++) assert.ok(Math.abs(segment[i][0] - segment[i - 1][0]) <= 180);
+      assert.ok(segment.flat().every(Number.isFinite));
+    }
+    h.overlay.dispose();
+  }
+});

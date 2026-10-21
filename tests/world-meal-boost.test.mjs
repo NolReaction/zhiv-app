@@ -57,6 +57,8 @@ function render(props) { hooks.render(); const tree = WorldMealBoost(props); hoo
 function open(props) { hooks.reset(); let view = render(props); assert.equal(view.tree.props.open, false); view.tree.props.onOpenChange(true); view = render(props); assert.equal(view.tree.props.open, true); return view; }
 const row = (view, id) => view.nodes.find(node => node.props["data-boost-meal"] === id);
 const action = (view, id) => elements(row(view, id)).find(node => node.type === "button");
+const confirmation = view => view.nodes.find(node => node.props["data-meal-confirm"] !== undefined);
+function choose(props, view, itemId = "grilled_fish") { action(view, itemId).props.onClick(); return render(props); }
 const job = (overrides = {}) => ({ id: "construction-1", kind: "construction", targetId: "home", targetLevel: 4, startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 66_000).toISOString(), cost: { coins: 0, items: {} }, rewards: {}, ...overrides });
 
 test("meal picker opens without spending and shows only opened or owned meals with actual stock and speed", () => {
@@ -69,22 +71,70 @@ test("meal picker opens without spending and shows only opened or owned meals wi
   for (const meal of visible) {
     const markup = renderToStaticMarkup(row(view, meal.itemId));
     assert.ok(markup.includes(`+${meal.heroSpeedBps / 100}%`));
-    assert.ok(markup.includes(`есть ${economy.snapshot.inventory[meal.itemId] ?? 0}`));
+    assert.ok(markup.includes(economy.snapshot.inventory[meal.itemId] ? `В запасе ${economy.snapshot.inventory[meal.itemId]}` : "Нет в запасе"));
   }
   assert.deepEqual(economy.calls, []); assert.deepEqual(economy.snapshot, before);
+  assert.equal(confirmation(view).props.disabled, true);
   const close = view.nodes.find(node => node.props["data-meal-picker-close"]);
   assert.equal(close.props["aria-label"], "Закрыть выбор еды");
 });
 
 test("only the explicit dish is eaten once, never raw fish or a second meal from a double click", () => {
   for (const consumer of ["hero", "builder"]) {
-    const economy = controller(), props = { economy, consumer, seconds: 3600 }, view = open(props);
-    const control = action(view, "grilled_fish");
+    const economy = controller(), props = { economy, consumer, seconds: 3600 }, view = choose(props, open(props));
+    assert.deepEqual(economy.calls, [], "choosing and previewing do not spend");
+    const control = confirmation(view);
     assert.equal(control.props.disabled, false);
     control.props.onClick(); control.props.onClick();
     assert.deepEqual(economy.calls, [[consumer === "hero" ? "eat_food" : "feed_builder", "grilled_fish", 1, 0]]);
     assert.equal(economy.snapshot.inventory.fish, 99);
   }
+});
+
+test("changing the selected dish invalidates an old confirmation before rerender and previews only the chosen bonus", () => {
+  const economy = controller(), props = { economy, consumer: "builder", seconds: 7200 };
+  let view = choose(props, open(props));
+  const previousConfirm = confirmation(view).props.onClick;
+  assert.equal(action(view, "grilled_fish").props["aria-pressed"], true);
+  assert.equal(view.nodes.filter(node => node.props["data-meal-preview"]).length, 1);
+  const preview = view.nodes.find(node => node.props["data-meal-preview"] === "grilled_fish");
+  assert.match(renderToStaticMarkup(preview), /\+10% скорости/);
+  action(view, "legendary_fish").props.onClick();
+  previousConfirm();
+  assert.deepEqual(economy.calls, [], "a retained handler cannot spend the previously selected dish");
+  view = render(props);
+  assert.equal(action(view, "grilled_fish").props["aria-pressed"], false);
+  assert.equal(action(view, "legendary_fish").props["aria-pressed"], true);
+  confirmation(view).props.onClick();
+  assert.deepEqual(economy.calls, [["feed_builder", "legendary_fish", 1, 0]]);
+});
+
+test("an accepted confirmation stays pending, locks other choices and cannot be reopened for another debit", () => {
+  const economy = controller(), props = { economy, consumer: "builder", seconds: 7200 };
+  let view = choose(props, open(props));
+  confirmation(view).props.onClick(); view = render(props);
+  assert.equal(confirmation(view).props.disabled, true);
+  assert.match(renderToStaticMarkup(confirmation(view)), /Подтверждаем/);
+  assert.equal(action(view, "legendary_fish").props.disabled, true);
+  action(view, "legendary_fish").props.onClick(); confirmation(view).props.onClick();
+  view.tree.props.onOpenChange(false); view = render(props);
+  view.tree.props.onOpenChange(true); view = render(props);
+  assert.equal(view.tree.props.open, false);
+  assert.equal(economy.calls.length, 1);
+  assert.equal(economy.snapshot.inventory.grilled_fish, 2);
+});
+
+test("a server rejection is shown beside the confirmation and keeps the selected dish retryable", () => {
+  const economy = controller(), props = { economy, consumer: "builder", jobId: "construction-1" };
+  economy.snapshot.jobs = [job()];
+  let view = choose(props, open(props)); confirmation(view).props.onClick();
+  economy.busy = true; render(props);
+  economy.busy = false; economy.error = "Не удалось выдать обед."; render(props); view = render(props);
+  assert.equal(confirmation(view).props.disabled, false);
+  assert.equal(action(view, "grilled_fish").props["aria-pressed"], true);
+  assert.ok(view.nodes.some(node => node.props.role === "status" && renderToStaticMarkup(node).includes(economy.error)));
+  confirmation(view).props.onClick();
+  assert.equal(economy.calls.length, 2);
 });
 
 test("missing meals open their exact recipe without feeding or departing", () => {
@@ -127,8 +177,8 @@ test("open picker rechecks current inventory, revision, owner and actor before s
     economy => { economy.retryAt = now + 1000; },
     economy => { economy.snapshot = null; },
   ]) {
-    const economy = controller(), props = { economy, consumer: "hero", seconds: 3600 }, view = open(props);
-    const control = action(view, "grilled_fish"); mutate(economy); control.props.onClick(); assert.deepEqual(economy.calls, []);
+    const economy = controller(), props = { economy, consumer: "hero", seconds: 3600 }, view = choose(props, open(props));
+    const control = confirmation(view); mutate(economy); control.props.onClick(); assert.deepEqual(economy.calls, []);
   }
 });
 
@@ -137,8 +187,8 @@ test("builder boost belongs to the exact active job and cannot feed a different 
     const economy = controller({ jobs: [construction] }), props = { economy, consumer: "builder", stationId: "workshop", jobId };
     assert.equal(Boolean(mealBoostReason(props)), expected);
     if (!expected) {
-      const view = open(props); economy.snapshot.jobs = [job({ id: "replacement-job" })];
-      action(view, "grilled_fish").props.onClick(); assert.deepEqual(economy.calls, []);
+      const view = choose(props, open(props)); economy.snapshot.jobs = [job({ id: "replacement-job" })];
+      confirmation(view).props.onClick(); assert.deepEqual(economy.calls, []);
     }
   }
 });
@@ -158,7 +208,7 @@ test("speed previews divide duration, preserve remaining millisecond precision a
 
 test("confirmed feeding closes the picker and exposes the saved bonus without auto-starting a job", () => {
   const economy = controller(), props = { economy, consumer: "hero", seconds: 7200 };
-  const view = open(props); action(view, "grilled_fish").props.onClick();
+  const view = choose(props, open(props)); confirmation(view).props.onClick();
   economy.busy = true; render(props);
   economy.busy = false; economy.snapshot = { ...economy.snapshot, revision: 2, food: { heroMeal: "grilled_fish", builderMeal: null } };
   const confirmed = render(props);
@@ -235,13 +285,13 @@ test("applied builder meal shows its saved speed and remaining timer without spe
 test("rejected meal action keeps the picker retryable and an accepted retry is sent only once", () => {
   const attempts = [];
   const economy = controller({}, { act: (...args) => { attempts.push(args); return attempts.length > 1; } });
-  const props = { economy, consumer: "hero", seconds: 7200 }, view = open(props);
-  action(view, "grilled_fish").props.onClick();
+  const props = { economy, consumer: "hero", seconds: 7200 }, view = choose(props, open(props));
+  confirmation(view).props.onClick();
   const refused = render(props);
   assert.equal(refused.tree.props.open, true);
   assert.equal(refused.nodes.some(node => node.props.role === "status" && renderToStaticMarkup(node).includes("Обед не отправлен")), true);
-  action(refused, "grilled_fish").props.onClick();
-  action(refused, "grilled_fish").props.onClick();
+  confirmation(refused).props.onClick();
+  confirmation(refused).props.onClick();
   assert.deepEqual(attempts, [["eat_food", "grilled_fish", 1, 0], ["eat_food", "grilled_fish", 1, 0]]);
   assert.equal(economy.snapshot.inventory.grilled_fish, 2, "the client never deducts stock optimistically");
 });

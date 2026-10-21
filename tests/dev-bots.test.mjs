@@ -234,11 +234,20 @@ test("bot harvest timers use real growth collection and delivery without silentl
   const recipe = economyCatalog.recipes.find(recipe => recipe.id === "grow_berries"); assert.ok(recipe);
   const started = act(owner, { action: "start_job", botId: bot.id, kind: "production", targetId: recipe.id }).snapshot.bots[0];
   assert.equal(started.economy.jobs.length, 1); assert.equal(ok(social.getDevGuestWorld(owner.token, bot.circleId, now)).world.jobs[0].id, started.economy.jobs[0].id);
+  const growing = started.economy.jobs[0];
+  assert.equal(Date.parse(growing.finishesAt) - Date.parse(growing.startedAt), recipe.seconds * 1000,
+    "ordinary bot production never opts into one-time teaching assistance");
+  assert.throws(() => act(owner, { action: "claim_job", botId: bot.id, jobId: growing.id }, now + 1000), { code: "ECONOMY_JOB_NOT_READY" });
+  const pending = bots.getDevBots(owner.token, now + 1000).bots[0].economy;
+  assert.equal(pending.jobs[0].collection.startedAt, null);
+  assert.equal(pending.inventory.berries ?? 0, 0, "an early attempt cannot collect or credit an ordinary crop");
   assert.throws(() => act(owner, { action: "set_home", botId: bot.id, homeLevel: 2 }), { code: "ECONOMY_BUILDING_BUSY" });
-  const later = now + 1000;
+  const later = Date.parse(growing.finishesAt);
   act(owner, { action: "claim_job", botId: bot.id, jobId: started.economy.jobs[0].id }, later);
   const collecting = bots.getDevBots(owner.token, later).bots[0].economy.jobs[0];
   assert.ok(collecting.collection.startedAt);
+  assert.equal(Date.parse(collecting.collection.finishesAt) - Date.parse(collecting.collection.startedAt), 8000);
+  assert.throws(() => act(owner, { action: "claim_job", botId: bot.id, jobId: collecting.id }, later + 7999), { code: "ECONOMY_COLLECTION_NOT_READY" });
   act(owner, { action: "claim_job", botId: bot.id, jobId: collecting.id }, Date.parse(collecting.collection.finishesAt));
   assert.equal(read(owner).bots[0].economy.jobs.length, 0); assert.ok(read(owner).bots[0].economy.inventory.berries > 0);
 });

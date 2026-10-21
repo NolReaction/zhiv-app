@@ -51,20 +51,20 @@ private fun periodEvents(materialize: Boolean = false, cohort: Boolean = false) 
     ), attributed AS (
         SELECT l.*,
           coalesce(nullif(l.context->>'targetId',''),
-            CASE WHEN l.kind IN ($jobKinds) THEN CASE WHEN original->>'action' IN ($constructionStartKinds,'start_production','start_exploration','start_fishing')
+            CASE WHEN l.kind IN ($jobKinds) THEN CASE WHEN original->>'action' IN ($constructionStartKinds,'start_production','start_tutorial_harvest','start_exploration','start_fishing')
               THEN nullif(original->>'targetId','') END ELSE nullif(command->>'targetId','') END) AS raw_target,
           CASE WHEN l.kind IN ($escrowKinds) THEN 'escrow'
                WHEN l.kind IN ('market_buy','market_sell','market_sold','market_claim','barter_accept','barter_exchange') THEN 'trade' ELSE 'gameplay' END AS category,
           (l.kind='speedup_construction' OR (l.kind='claim_job' AND coalesce(l.context->>'originAction',original->>'action') IN ($constructionStartKinds))) IS TRUE AS construction_claim,
           l.kind NOT IN ($passiveKinds) AS active,
-          left(l.source_key,8)='command:' OR l.kind IN ($jobKinds,$constructionStartKinds,'start_production','start_exploration','start_fishing') AS needs_context
+          left(l.source_key,8)='command:' OR l.kind IN ($jobKinds,$constructionStartKinds,'start_production','start_tutorial_harvest','start_exploration','start_fishing') AS needs_context
         FROM job_context l
     ), events AS ${if (materialize) "MATERIALIZED " else ""}(
         SELECT user_id,public_id,display_name,source_key,kind,created_at,items,category,construction_claim,active,needs_context,
           coalesce(context->>'originAction',original->>'action') AS origin_action,
           coins*(10/currency_scale) AS coins,pearls*(50/pearl_scale) AS pearls,
           CASE WHEN kind IN ('buy_fishing_item','buy_wardrobe_item') THEN regexp_replace(raw_target,'^.*:','')
-               WHEN kind='start_production' THEN split_part(raw_target,'@',1)
+               WHEN kind IN ('start_production','start_tutorial_harvest') THEN split_part(raw_target,'@',1)
                WHEN kind IN ('complete_resident_order','replace_resident_order') AND raw_target ~ '^order[0-9]*_' THEN NULL
                WHEN kind='refresh_fishing_shop' AND raw_target IS NOT NULL THEN 'fishing_shop' ELSE raw_target END AS target_id,
           CASE WHEN (command->>'quantity') ~ '^[0-9]{1,9}$' THEN (command->>'quantity')::bigint END AS quantity

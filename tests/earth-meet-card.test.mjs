@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import { Children, isValidElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -10,11 +10,11 @@ const hooks = "virtual:earth-meet-card-hooks";
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
   plugins: [{ name: "earth-meet-card-scoped-hooks", enforce: "pre",
     resolveId(id) { if (id === hooks) return "\0" + hooks; },
-    load(id) { if (id === "\0" + hooks) return "export const useRef=value=>({current:value});export const useEffect=()=>{};"; },
+    load(id) { if (id === "\0" + hooks) return "export const useRef=value=>({current:value});export const useEffect=()=>{};export const useState=value=>[value,()=>{}];"; },
     transform(source, id) { if (id.endsWith("/features/earth/earth-meet-card.tsx")) return source.replace('from "react";', `from "${hooks}";`); },
   }], server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { EarthMeetCard, formatMeetDistance } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
+const { EarthMeetCard, EarthWalkingRouteOptions, formatMeetDistance } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
 const wall = Date.parse("2026-10-20T12:00:00Z"), mono = 10_000;
 const from = { latitude: 55.751234, longitude: 37.621234, accuracy: 15, timestamp: wall };
 const friend = (extra = {}) => ({ circleId: "shared-friend", user: { publicId: "PRIVATE-FRIEND-ID", displayName: "Друг" },
@@ -23,7 +23,7 @@ const friend = (extra = {}) => ({ circleId: "shared-friend", user: { publicId: "
   expiresAtMonotonic: mono + 3_600_000, ...extra });
 function elements(tree) {
   const result = [];
-  const walk = node => { if (!isValidElement(node)) return; result.push(node); Children.forEach(node.props.children, walk); };
+  const walk = node => { if (!isValidElement(node)) return; if (node.type === EarthWalkingRouteOptions) { walk(EarthWalkingRouteOptions(node.props)); return; } result.push(node); Children.forEach(node.props.children, walk); };
   walk(tree); return result;
 }
 function render(extra = {}) {
@@ -55,9 +55,9 @@ test("fresh meeting card describes straight-line distance and offers a closed ma
   assert.match(view.html, /по прямой/); assert.match(view.html, /Только что/);
   assert.match(view.html, /Выбери карты/); assert.match(view.html, /&lt;script&gt;Лена&lt;\/script&gt;/);
   assert.doesNotMatch(view.html, /<script>|PRIVATE-FRIEND-ID|55\.751234|37\.621234|origin=/);
-  const chooser = view.nodes.find(node => node.type === "details");
-  assert.ok(chooser); assert.equal(chooser.props.open, undefined);
-  assert.equal(view.nodes.find(node => node.type === "summary").props.href, undefined);
+  assert.equal(view.nodes.some(node => node.type === "details"), false);
+  assert.match(view.html, /aria-haspopup="dialog"/); assert.match(view.html, /aria-expanded="false"/);
+  assert.doesNotMatch(view.html, /www.google.com|maps.apple.com|yandex.ru/);
   const anchors = view.nodes.filter(node => node.type === "a");
   assert.deepEqual(anchors.map(node => node.props.children[0]), ["Яндекс Карты", "2ГИС", "Google Карты", "Apple Карты"]);
   const anchor = anchors.find(node => node.props.children[0] === "Google Карты"); assert.ok(anchor);
@@ -145,14 +145,44 @@ test("global location disable blocks private lookup while leaving explicitly sel
 });
 
 
-test("Escape first closes the map chooser and returns focus, then closes the meeting card", () => {
+test("the separate chooser handles Escape without forwarding it to the meeting card", () => {
   const view = render();
-  const chooser = view.nodes.find(node => node.type === "details");
-  let focused = false;
-  chooser.props.ref.current = { open: true, querySelector: () => ({ focus() { focused = true; } }) };
-  const event = { key: "Escape", stopped: false, stopPropagation() { this.stopped = true; } };
-  view.tree.props.onKeyDown(event);
-  assert.equal(event.stopped, true); assert.equal(chooser.props.ref.current.open, false); assert.equal(focused, true);
-  assert.deepEqual(view.calls, []);
-  view.tree.props.onKeyDown(event); assert.deepEqual(view.calls, ["close"]);
+  const chooser = view.nodes.find(node => typeof node.props.onEscapeKeyDown === "function");
+  assert.ok(chooser); assert.equal(chooser.props.side, "top"); assert.equal(chooser.props.collisionPadding, 12);
+  let stopped = false; chooser.props.onEscapeKeyDown({ stopPropagation() { stopped = true; } });
+  assert.equal(stopped, true); assert.deepEqual(view.calls, []);
+  view.tree.props.onKeyDown({ key: "Escape", stopPropagation() {} }); assert.deepEqual(view.calls, ["close"]);
+});
+
+test("a walking route is built only explicitly from the chooser and uses the returned distance and duration", () => {
+  let built = 0, cleared = 0;
+  const props = { onBuildWalkingRoute: () => { built++; }, onClearWalkingRoute: () => { cleared++; } };
+  const idle = render({ ...props, walkingRoute: { status: "idle", route: null, error: null, canRequest: true } });
+  assert.equal(built, 0); assert.match(idle.html, /по прямой/);
+  const build = control(idle, "Пешком на этой карте"); assert.ok(build); assert.equal(build.props.disabled, false);
+  build.props.onClick(); assert.equal(built, 1);
+  const route = { distanceMeters: 2_350, durationSeconds: 1060 };
+  const ready = render({ ...props, walkingRoute: { status: "ready", route, error: null, canRequest: true } });
+  assert.match(ready.html, /2,4 км/); assert.match(ready.html, /Пешком · ≈18 мин/); assert.doesNotMatch(ready.html, /по прямой/);
+  assert.ok(control(ready, "Обновить на карте"));
+  ready.nodes.find(node => node.type === "button" && node.props["aria-label"] === "Убрать пеший маршрут с карты").props.onClick();
+  assert.equal(cleared, 1); assert.equal(built, 1);
+});
+
+test("walking-route loading, no self fix and failures stay secondary while external destination maps remain available", () => {
+  let built = 0;
+  for (const status of ["idle", "loading", "error"]) {
+    const result = render({ position: status === "idle" ? null : from, onBuildWalkingRoute: () => { built++; },
+      walkingRoute: { status, route: null, canRequest: false, error: status === "error" ? "Сервис маршрутов недоступен" : null } });
+    const build = control(result, status === "loading" ? "Строим маршрут…" : "Пешком на этой карте");
+    assert.equal(build.props.disabled, true); build.props.onClick();
+    assert.equal(result.nodes.filter(node => node.type === "a").length, 4);
+    const popup = result.nodes.find(node => typeof node.props.onEscapeKeyDown === "function");
+    const content = renderToStaticMarkup(createElement("div", null, popup.props.children));
+    assert.match(content, /Две точки отправятся OSRM\/FOSSGIS/);
+    if (status === "idle") assert.match(content, /Сначала найди себя/);
+    if (status === "loading") assert.match(result.html, /Строим пеший маршрут/);
+    if (status === "error") assert.match(content, /Сервис маршрутов недоступен/);
+  }
+  assert.equal(built, 0);
 });

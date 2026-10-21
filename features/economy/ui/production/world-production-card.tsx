@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Clock3, LockKeyhole } from "lucide-react";
 import { locked, productionLocked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
@@ -12,10 +12,11 @@ import { canPrepareTutorialHarvest } from "@/features/economy/domain/tutorial-or
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import styles from "./world-production-card.module.css";
 
-export function WorldProductionCard({ economy, recipe, focused = false, onHelpContextChange }: {
+export function WorldProductionCard({ economy, recipe, focused = false, tutorialHarvestActive = false, onHelpContextChange }: {
   economy: ReadyEconomy;
   recipe: WorldRecipe;
   focused?: boolean;
+  tutorialHarvestActive?: boolean;
   onHelpContextChange?: (context: WorldHelpContext) => void;
 }) {
   const state = economy.productionSnapshot ?? economy.snapshot;
@@ -23,7 +24,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
   const button = useRef<HTMLButtonElement>(null);
   const fishFocusOrigin = useRef<{ element: HTMLButtonElement | null; owner: string; recipeId: string } | null>(null);
   const pending = useRef<{ owner: string; revision: number; busySeen: boolean; previousError: string | null } | null>(null);
-  const latest = useRef({ economy, recipe });
+  const latest = useRef({ economy, recipe, tutorialHarvestActive });
   const [choosingFish, setChoosingFish] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; owner: string; revision: number; recipeId: string } | null>(null);
   const notice = feedback?.owner === state.ownerPublicId && feedback.revision === state.revision && feedback.recipeId === recipe.id ? feedback.text : "";
@@ -32,12 +33,12 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
   const detailId = useId();
   const results = Object.entries(recipe.rewards);
   const title = results.length === 1 ? itemName(state, results[0][0]) : recipe.name.split(" · ")[0];
-  const firstHarvest = canPrepareTutorialHarvest(state, recipe.id);
+  const firstHarvest = tutorialHarvestActive && canPrepareTutorialHarvest(state, recipe.id);
   const duration = firstHarvest ? "Сразу · первый урожай" : worldRecipeDuration(recipe.seconds);
   const reason = worldProductionReason(state, recipe, 1);
   const costs = [...(recipe.cost.coins > 0 ? [["coins", recipe.cost.coins] as const] : []), ...Object.entries(recipe.cost.items)];
   const hasFish = Object.keys(fishStockRequirements(recipe.cost.items, state.catalog.fishing)).length > 0;
-  const durableProduction = economy.productionQueueAvailable && !hasFish && !recipe.fishInput;
+  const durableProduction = !firstHarvest && economy.productionQueueAvailable && !hasFish && !recipe.fishInput;
   const meal = state.catalog.food?.meals.find(entry => (recipe.rewards[entry.itemId] ?? 0) > 0);
   const restriction = reason && reason !== "Не хватает материалов или монет" ? reason : null;
   const description = [
@@ -49,7 +50,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
     meal ? `Скорость вылазки +${number(meal.heroSpeedBps / 100)}%, стройки +${number(meal.builderSpeedBps / 100)}%.` : "",
   ].filter(Boolean).join(" ");
   const context = () => onHelpContextChange?.({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, quantity: 1 });
-  useEffect(() => { latest.current = { economy, recipe }; }, [economy, recipe]);
+  useLayoutEffect(() => { latest.current = { economy, recipe, tutorialHarvestActive }; }, [economy, recipe, tutorialHarvestActive]);
   useEffect(() => {
     if (focused) {
       button.current?.focus({ preventScroll: true });
@@ -74,7 +75,8 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
   function start(selection?: FishSelection): boolean {
     context();
     const current = latest.current, snapshot = current.economy.productionSnapshot ?? current.economy.snapshot;
-    if (snapshot.ownerPublicId !== owner || snapshot.revision !== revision || current.recipe.id !== recipe.id) return false;
+    if (snapshot.ownerPublicId !== owner || snapshot.revision !== revision || current.recipe.id !== recipe.id
+      || current.tutorialHarvestActive !== tutorialHarvestActive) return false;
     const currentReason = worldProductionReason(snapshot, current.recipe, 1);
     const wait = !durableProduction && current.economy.directActionsAvailable === false ? "Восстанавливаем соединение. Дождитесь подтверждения."
       : current.economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения."
@@ -89,8 +91,10 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
       setChoosingFish(true); return false;
     }
     if (selection && !fishSelectionMatches(snapshot, current.recipe.cost.items, selection)) return false;
-    const accepted = selection ? current.economy.act("start_production", current.recipe.id, 1, 0, selection)
-      : current.economy.act("start_production", current.recipe.id, 1);
+    const action = current.tutorialHarvestActive && canPrepareTutorialHarvest(snapshot, current.recipe.id)
+      ? "start_tutorial_harvest" : "start_production";
+    const accepted = selection ? current.economy.act(action, current.recipe.id, 1, 0, selection)
+      : current.economy.act(action, current.recipe.id, 1);
     if (!accepted) {
       setNotice("Не удалось начать. Проверьте соединение и попробуйте ещё раз.");
       return false;

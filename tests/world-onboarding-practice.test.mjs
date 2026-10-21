@@ -432,7 +432,21 @@ test("completed introductions retain a ready-crop reminder until harvesting or a
   assert.equal(h.render(), null);
 });
 
-test("a saved completed harvest never resurrects the coach but a fresh late receipt can celebrate once", () => {
+test("a claim accepted while the lesson is paused survives resume and completion without a second ripe reminder", () => {
+  const h = harness(started("grow", "crop-1"), [crop("crop-1", now)]);
+  h.props.open = false; h.render();
+  h.patchSnapshot({ revision: 2, jobs: [], inventory: { berries: 1 } });
+  h.patchEconomy({ inventoryGains: [gain({ items: [{ itemId: "berries", quantity: 1 }] })] });
+  assert.equal(h.render().open, false);
+  assert.equal(h.props.progress.harvested, true); assert.equal(h.props.progress.cropJobId, undefined);
+  h.props.open = true; assert.equal(h.render().title, "Урожай в кладовой!");
+  h.props.progress = transitionWorldOnboarding(h.props.progress, { type: "step", stepId: "help" });
+  h.props.progress = transitionWorldOnboarding(h.props.progress, { type: "complete", now });
+  assert.equal(h.render(), null);
+  assert.equal(harness(structuredClone(h.props.progress)).render(), null, "reload cannot recreate a completed ripe-harvest prompt");
+});
+
+test("completed teaching never resurrects a harvested-crop coach even when its receipt arrives late", () => {
   const saved = { version: 2, status: "completed", harvested: true };
   const restored = harness(saved);
   assert.equal(restored.render(), null);
@@ -444,18 +458,16 @@ test("a saved completed harvest never resurrects the coach but a fresh late rece
   assert.equal(late.render(), null);
   late.patchSnapshot({ revision: 2, jobs: [], inventory: { berries: 6 } });
   late.patchEconomy({ now: now + 1000, inventoryGains: [gain()] });
-  const coach = late.render();
-  assert.equal(coach.stepId, "harvest");
-  assert.equal(coach.title, "Урожай в кладовой!");
+  assert.equal(late.render(), null, "only a still-pending ripe job may reopen the completed guide");
   assert.equal(late.props.progress.status, "completed");
   assert.equal(late.props.progress.harvested, true);
   assert.equal(late.props.progress.cropJobId, undefined);
-  assert.equal(coach.primary.label, "Готово");
-  coach.primary.onClick();
-  assert.equal(late.render(), null, "dismissing the transient celebration does not retrigger from its saved harvested flag");
+  assert.equal(late.render(), null);
   assert.deepEqual(late.calls, [["harvest", "crop-1"]]);
   const remounted = harness(structuredClone(late.props.progress));
   assert.equal(remounted.render(), null, "a later mount cannot recreate the already dismissed celebration");
+  late.props.progress = transitionWorldOnboarding(late.props.progress, { type: "crop", jobId: "crop-1" });
+  assert.equal(late.props.progress.cropJobId, undefined, "a late crop observation cannot resurrect the received job");
 });
 
 test("the final action completes the lesson without opening help or sending an economy command", () => {

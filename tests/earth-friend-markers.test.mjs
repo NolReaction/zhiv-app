@@ -18,17 +18,18 @@ const person = (circleId, longitude = 0, latitude = 0, extra = {}) => ({ circleI
 function fixture({ zoom = 3, width = 1000, height = 600, reduced = false, failMarker = false } = {}) {
   const markers = [], selected = [], flights = [], observers = [], elements = [];
   const listeners = new Map(), timers = new Map();
-  let now = 1_000, sequence = 0, disposed = false;
+  let now = 1_000, sequence = 0, disposed = false, offsetX = 0, projectCalls = 0;
   const ownerDocument = {
     defaultView: { MutationObserver: class {
-      constructor(callback) { this.callback = callback; this.targets = new Set(); observers.push(this); }
-      observe(element) { this.targets.add(element); }
-      disconnect() { this.targets.clear(); }
+      constructor(callback) { this.callback = callback; this.targets = new Set(); this.binds = 0; this.disconnects = 0; observers.push(this); }
+      observe(element) { this.binds++; this.targets.add(element); }
+      disconnect() { this.disconnects++; this.targets.clear(); }
     } },
     createElement(tag) {
-      const handlers = new Map(), classes = new Set();
-      const element = { tag, attributes: {}, dataset: {}, children: [], handlers, classes,
-        setAttribute(key, value) { this.attributes[key] = value; }, append(...children) { this.children.push(...children); },
+      const handlers = new Map(), classes = new Set(), writes = [];
+      const element = { tag, attributes: {}, dataset: new Proxy({}, { set(target, key, value) { writes.push(`data:${key}`); target[key] = value; return true; } }), children: [], handlers, classes, writes,
+        setAttribute(key, value) { writes.push(`attribute:${key}`); this.attributes[key] = value; },
+        getAttribute(key) { return this.attributes[key] ?? null; }, append(...children) { this.children.push(...children); },
         classList: { contains: name => classes.has(name) },
         addEventListener(type, callback) {
           if (!handlers.has(type)) handlers.set(type, new Set()); handlers.get(type).add(callback);
@@ -40,14 +41,18 @@ function fixture({ zoom = 3, width = 1000, height = 600, reduced = false, failMa
           for (const callback of handlers.get(type) ?? []) callback(event);
           return event;
         } };
+      for (const [key, initial] of Object.entries({ disabled: false, tabIndex: tag === "button" ? 0 : -1, title: "", textContent: "" })) {
+        let current = initial;
+        Object.defineProperty(element, key, { get: () => current, set(value) { writes.push(key); current = value; } });
+      }
       elements.push(element); return element;
     },
   };
   const container = { ownerDocument, clientWidth: width, clientHeight: height };
   const map = {
     getContainer: () => container, getZoom: () => zoom, getProjection: () => ({ type: "globe" }),
-    project: ([longitude, latitude]) => ({ x: width / 2 + longitude * 5, y: height / 2 - latitude * 5 }),
-    unproject: ({ x, y }) => ({ lng: (x - width / 2) / 5, lat: (height / 2 - y) / 5 }),
+    project: ([longitude, latitude]) => { projectCalls++; return { x: width / 2 + longitude * 5 + offsetX, y: height / 2 - latitude * 5 }; },
+    unproject: ({ x, y }) => ({ lng: (x - width / 2 - offsetX) / 5, lat: (height / 2 - y) / 5 }),
     flyTo(options) { flights.push(options); },
     on(type, callback) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(callback); },
     off(type, callback) { listeners.get(type)?.delete(callback); },
@@ -65,7 +70,10 @@ function fixture({ zoom = 3, width = 1000, height = 600, reduced = false, failMa
   const emit = type => { for (const callback of listeners.get(type) ?? []) callback(); };
   return { renderer, map, markers, selected, flights, observers, elements, listeners, timers, emit,
     get current() { return markers.filter(marker => !marker.removed); },
+    get projectCalls() { return projectCalls; },
+    get writes() { return elements.reduce((total, element) => total + element.writes.length, 0); },
     show(rows) { renderer.setVisible(true); renderer.setSnapshot(rows); },
+    pan(value) { offsetX = value; emit("move"); },
     zoom(value) { zoom = value; emit("move"); },
     cover(marker, covered) {
       if (covered) marker.options.element.classes.add("maplibregl-marker-covered");
@@ -242,5 +250,69 @@ test("a failed native marker attachment releases its handlers and leaves the map
   assert.doesNotThrow(() => f.show([person("a")]));
   assert.equal(f.current.length, 0); assert.ok(f.markers.every(marker => marker.removed === 1));
   assert.ok(f.elements.every(element => [...element.handlers.values()].every(set => set.size === 0)));
+  f.dispose();
+});
+
+test("stationary points keep projection current without repeating SDK, DOM, observers or date formatting", () => {
+  const f = fixture(), rows = [person("a", -35), person("b", 35)];
+  f.show(rows);
+  const writes = f.writes, projected = f.projectCalls;
+  const observer = f.observers[0], binds = observer.binds, disconnects = observer.disconnects;
+  const positions = f.current.map(marker => marker.positions.length);
+  const format = Date.prototype.toLocaleString;
+  let formats = 0;
+  Date.prototype.toLocaleString = function (...args) { formats++; return format.apply(this, args); };
+  try {
+    for (const event of ["move", "resize", "idle", "move"]) f.emit(event);
+    f.renderer.setSnapshot(rows.map(row => ({ ...row, user: { ...row.user } })));
+    assert.equal(formats, 0, "fresh object identity cannot trigger the same Intl label");
+  } finally { Date.prototype.toLocaleString = format; }
+  assert.ok(f.projectCalls > projected, "visibility and clustering still project on every camera event");
+  assert.equal(f.writes, writes);
+  assert.deepEqual(f.current.map(marker => marker.positions.length), positions);
+  assert.equal(observer.binds, binds); assert.equal(observer.disconnects, disconnects);
+  f.dispose();
+});
+
+test("new point metadata and cluster membership update the existing pin without stale selection", () => {
+  const f = fixture(); f.show([person("a")]);
+  const marker = f.current[0], element = marker.options.element, observer = f.observers[0];
+  const binds = observer.binds;
+  assert.equal(marker.positions.length, 1, "new pins receive one initial position");
+  f.renderer.setSnapshot([person("a", 0, 0, { user: { publicId: "public-a", displayName: "Мария Р." },
+    precision: "PRECISE", accuracyMeters: 20, updatedAt: "2026-10-18T18:31:00.000Z" })]);
+  assert.equal(element.children[0].textContent, "МР");
+  assert.match(element.attributes["aria-label"], /Мария Р\. · точность ±20 м/);
+  assert.equal(marker.positions.length, 1);
+  f.renderer.setSnapshot([person("a", 20)]);
+  assert.equal(f.current[0], marker); assert.deepEqual(marker.positions.at(-1), [20, 0]);
+  assert.equal(marker.positions.length, 2); assert.equal(observer.binds, binds);
+  f.renderer.setSnapshot([person("a", 20), person("b", 21)]);
+  assert.equal(element.children[0].textContent, "2");
+  const writes = f.writes;
+  f.renderer.setSnapshot([person("a", 20), person("c", 21)]);
+  assert.equal(f.writes, writes, "same-size groups retain their presentation");
+  element.dispatch("click"); assert.deepEqual(f.selected, [["a", "c"]]);
+  assert.equal(marker.positions.length, 2); assert.equal(observer.binds, binds);
+  f.dispose();
+});
+
+test("occlusion and panning still revoke hit targets while observers retain only live elements", () => {
+  const f = fixture(); f.show([person("a")]);
+  const marker = f.current[0], element = marker.options.element, observer = f.observers[0];
+  f.cover(marker, true);
+  const coveredWrites = f.writes;
+  f.cover(marker, true); f.emit("idle");
+  assert.equal(f.writes, coveredWrites); assert.equal(element.disabled, true); assert.equal(element.tabIndex, -1);
+  assert.equal(element.attributes["aria-hidden"], "true");
+  f.cover(marker, false); assert.equal(element.disabled, false); assert.equal(element.attributes["aria-hidden"], "false");
+  const disconnects = observer.disconnects;
+  f.pan(100); assert.equal(f.current[0], marker); assert.equal(observer.disconnects, disconnects);
+  f.pan(1000); assert.equal(f.current.length, 0); assert.equal(observer.targets.size, 0);
+  assert.equal(observer.disconnects, disconnects + 1);
+  element.dispatch("click"); assert.deepEqual(f.selected, []);
+  f.pan(0); assert.equal(f.current.length, 1); assert.notEqual(f.current[0], marker);
+  assert.deepEqual([...observer.targets], [f.current[0].options.element]);
+  assert.equal(observer.disconnects, disconnects + 2);
   f.dispose();
 });

@@ -100,3 +100,13 @@ test("metadata parsing has bounded work and does not resolve arbitrary entities 
   assert.equal(parts.map(part => part.text).join("").length, EARTH_ATTRIBUTION_LIMIT);
   assert.deepEqual(earthSatelliteAttribution('&bogus; &#0; &#xD800; &#1114112; &copy; &nbsp; plain'), [{ text: '&bogus; © plain' }]);
 });
+
+test("visible walking routes credit their operator and offer the required map correction link in either map mode", () => {
+  for (const satelliteAttribution of [null, satellite]) {
+    const html = renderToStaticMarkup(EarthAttribution({ satelliteAttribution, walkingRoute: true }));
+    assert.equal((html.match(/href="https:\/\/routing.openstreetmap.de\/about.html"/g) || []).length, 1);
+    assert.equal((html.match(/href="https:\/\/www.openstreetmap.org\/fixthemap"/g) || []).length, 1);
+    assert.match(html, /FOSSGIS \/ OSRM/);
+    assert.doesNotMatch(renderToStaticMarkup(EarthAttribution({ satelliteAttribution })), /FOSSGIS|fixthemap/);
+  }
+});

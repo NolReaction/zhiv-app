@@ -1,4 +1,5 @@
 import { EARTH_ATLAS_ENTRIES, earthAtlasEntry, type EarthAtlasEntry } from "./earth-atlas";
+import { EARTH_ATLAS_PLACES } from "./earth-atlas-visible";
 
 export const EARTH_ATLAS_DISCOVERY_DURATION_MS = 3200;
 
@@ -48,12 +49,14 @@ export function createEarthAtlasDiscoveryFeedback(owner: string | null, schedule
     const canonical = earthAtlasEntry(entry.id);
     if (!active || !owner || !canonical || !Number.isInteger(openedCount)
       || openedCount < 1 || openedCount > EARTH_ATLAS_ENTRIES.length) return false;
-    const key = `${canonical.id}:${openedCount}`;
+    const total = canonical.kind === "landmark" ? EARTH_ATLAS_PLACES.length : EARTH_ATLAS_ENTRIES.length;
+    const count = Math.min(openedCount, total);
+    const key = `${canonical.id}:${count}`;
     // A duplicate callback must not restart animation or extend the announcement.
     if (key === lastKey) return false;
     cancelTimer();
     lastKey = key;
-    const next = Object.freeze({ sequence: ++sequence, entry: canonical, openedCount, total: EARTH_ATLAS_ENTRIES.length });
+    const next = Object.freeze({ sequence: ++sequence, entry: canonical, openedCount: count, total });
     timer = scheduler.schedule(() => {
       // A canceled browser callback can still be queued when a newer event arrives.
       if (!active || snapshot?.sequence !== next.sequence) return;

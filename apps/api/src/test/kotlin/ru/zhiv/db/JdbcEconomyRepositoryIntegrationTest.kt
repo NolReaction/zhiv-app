@@ -198,6 +198,42 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_production'", p.id))
     }
 
+    @Test fun `concurrent explicit teaching harvest persists one aid fence and never replays its delivered crop`() = runBlocking<Unit> {
+        val p = player(); val before = economy.snapshot(p.hash)
+        val requests = List(2) { command(p, before, "start_tutorial_harvest", "grow_berries") }
+        val attempts = coroutineScope { requests.map { request -> async(Dispatchers.IO) {
+            runCatching { JdbcEconomyRepository(source).command(p.hash, request) }
+        } }.awaitAll() }
+        assertEquals(1, attempts.count { it.isSuccess })
+        assertEquals("ECONOMY_REVISION_CONFLICT", (attempts.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
+        val accepted = requests[attempts.indexOfFirst { it.isSuccess }]
+        val started = JdbcEconomyRepository(source).snapshot(p.hash)
+        assertTrue(started.tutorialOrder.firstHarvestPrepared); assertEquals(1, started.jobs.size)
+        assertEquals(java.time.Duration.ofMillis(1), java.time.Duration.between(
+            Instant.parse(started.jobs.single().startedAt), Instant.parse(started.jobs.single().finishesAt)))
+        assertEquals(before.wallet, started.wallet); assertEquals(before.inventory, started.inventory)
+        assertTrue(economy.command(p.hash, accepted).replayed)
+        assertEquals("ECONOMY_TUTORIAL_HARVEST_UNAVAILABLE", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, started, "start_tutorial_harvest", "grow_berries")) }.code)
+        finish(p, started)
+        val startCollection = command(p, started, "start_collection", started.jobs.single().id)
+        val collecting = economy.command(p.hash, startCollection).state
+        assertEquals("ECONOMY_COLLECTION_NOT_READY", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, collecting, "claim_job", started.jobs.single().id)) }.code)
+        finish(p, collecting)
+        val claim = command(p, collecting, "claim_job", started.jobs.single().id)
+        val claimed = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, claim) } }.awaitAll() }
+        assertEquals(1, claimed.count { it.replayed })
+        val delivered = JdbcEconomyRepository(source).snapshot(p.hash)
+        assertEquals(1L, delivered.inventory["berries"]); assertTrue(delivered.jobs.isEmpty())
+        assertTrue(delivered.tutorialOrder.firstHarvestPrepared)
+        assertTrue(economy.command(p.hash, accepted).state.jobs.isEmpty(), "an old teaching receipt cannot recreate the crop")
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='start_tutorial_harvest'", p.id))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_job'", p.id))
+        val ordinary = economy.command(p.hash, command(p, delivered, "start_production", "grow_berries")).state.jobs.single()
+        assertEquals(java.time.Duration.ofSeconds(60), java.time.Duration.between(Instant.parse(ordinary.startedAt), Instant.parse(ordinary.finishesAt)))
+    }
+
     @Test fun `concurrent tutorial workshop starts persist one job one marker and one receipt without personal debit`() = runBlocking<Unit> {
         val p = player(); economy.snapshot(p.hash)
         val initial = source.connection.use { readEconomyProfile(it, p.id).state }

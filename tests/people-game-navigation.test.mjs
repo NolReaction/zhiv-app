@@ -104,7 +104,7 @@ test("the People status button describes only my outgoing check-ins and message 
   }
 });
 
-test("People owns recipient controls while the map shows one global state from the same handle", async () => {
+test("People owns recipient controls while the map shows a single canonical Ghost switch from the same handle", async () => {
   const { EarthSharingPanel } = await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
   const calls = [], sharing = { settings: { mode: "SHARING", revision: 1, precision: "PRECISE", recipientCircleIds: [friend.circleId],
     frozenCircleIds: [], sharingUntil: null, serverTime: data.serverTime }, pendingGhost: false, pendingPrivacyMode: null,
@@ -123,8 +123,11 @@ test("People owns recipient controls while the map shows one global state from t
     const peopleButton = people.match(/<button(?=[^>]*aria-pressed=)(?=[^>]*aria-label="Обновлять геопозицию для Мама")[^>]*>/)?.[0];
     assert.ok(peopleButton.includes('aria-pressed="' + checked + '"'));
     assert.ok(people.includes(status));
-    assert.doesNotMatch(map, /Обновлять геопозицию для Мама|earth-friend-access-connected|role="switch"/);
-    assert.match(map, /Обновления для друзей/);
+    assert.doesNotMatch(map, /Обновлять геопозицию для Мама|earth-friend-access-connected|Кому доступно|Выбрать получателей|Настроить в Людях/);
+    assert.equal(map.match(/role="switch"/g)?.length, 1, "the map has one global switch instead of duplicating per-friend controls");
+    const ghostSwitch = map.match(/<button(?=[^>]*role="switch")(?=[^>]*aria-label="Режим призрака")[^>]*>/)?.[0];
+    assert.ok(ghostSwitch?.includes('aria-checked="' + (mode === "GHOST") + '"'));
+    assert.match(map, /<strong id="earth-sharing-heading">Призрак<\/strong>/);
     assert.match(map, /Доступ у 1/);
     if (mode === "GHOST") assert.match(map, /На паузе · последнее место/);
     else if (frozen.length) assert.match(map, /Все на паузе/);
@@ -135,6 +138,38 @@ test("People owns recipient controls while the map shows one global state from t
     if (mode === "GHOST") assert.match(people, /Призрак включён для всех\. Обновления геопозиции выключены/);
   }
   assert.deepEqual(calls, [], "reading either screen never changes consent or starts publication");
+});
+
+test("the map resumes Ghost with the same confirmed recipients and individual pauses without a People detour", async () => {
+  const { EarthSharingPanelContent } = await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
+  const calls = [], paused = { ...friend, circleId: "paused", nickname: null,
+    user: { publicId: "PAUSED", displayName: "Борис" } };
+  const newcomer = { ...friend, circleId: "new", nickname: null,
+    user: { publicId: "NEW", displayName: "Новый друг" } };
+  const sharing = { settings: { mode: "GHOST", revision: 7, precision: "PRECISE",
+    recipientCircleIds: [friend.circleId, paused.circleId], frozenCircleIds: [paused.circleId],
+    sharingUntil: null, serverTime: data.serverTime }, pendingGhost: false, pendingPrivacyMode: null,
+    publishing: false, lastPublishedAt: null, saving: false, loading: false, error: null,
+    refresh() { calls.push("refresh"); }, setFrozen() { calls.push("frozen"); }, revokeRecipient() { calls.push("revoke"); } };
+  const onShare = async choices => { calls.push(["share", choices]); };
+  const props = { sharing, people: { ...data, people: [friend, paused, newcomer] }, peopleLoading: false, online: true,
+    onShare, onGhost() { calls.push("ghost"); }, onOff() { calls.push("off"); },
+    onOpenPeople() { calls.push("people"); }, onSetFrozen: sharing.setFrozen, onRevokeRecipient: sharing.revokeRecipient,
+    draft: { revision: 7, precision: "APPROXIMATE", durationMinutes: 480 },
+    onPrecisionChange() { calls.push("precision"); }, onDurationChange() { calls.push("duration"); } };
+  const tree = EarthSharingPanelContent(props);
+  const html = renderToStaticMarkup(tree);
+  assert.doesNotMatch(html, /Мама|Борис|Новый друг|Кому доступно|Выбрать|Настроить в Людях/);
+  assert.match(html, /Доступ у 2 · обновления разрешены для 1/);
+  assert.deepEqual(calls, [], "rendering the map cannot resume sharing or request GPS");
+  const toggle = elements(tree).find(element => element.props["aria-label"] === "Режим призрака");
+  assert.equal(toggle.props["aria-checked"], true);
+  assert.equal(toggle.props.disabled, false);
+  await toggle.props.onClick();
+  assert.deepEqual(calls, [["share", { recipientCircleIds: [friend.circleId, paused.circleId],
+    frozenCircleIds: [paused.circleId], precision: "PRECISE", durationMinutes: null }]],
+  "resume preserves confirmed settings instead of applying a draft or granting a new contact access");
+  assert.equal(sharing.settings.mode, "GHOST", "the callback cannot optimistically change confirmed privacy state");
 });
 
 test("Earth keeps only current map participants in a horizontal picker without profile or visit actions", () => {

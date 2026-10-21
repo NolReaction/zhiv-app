@@ -489,6 +489,9 @@ test("only an actual tracked crop receipt persists harvest proof across steps an
   const harvested = transitionWorldOnboarding(before, { type: "harvest", jobId: cropJobId });
   assert.deepEqual(harvested, { ...started("orders"), harvested: true });
   assert.deepEqual(parse(harvested), harvested);
+  assert.deepEqual(parse({ ...harvested, cropJobId }), harvested, "an old saved crop cannot override a confirmed harvest");
+  assert.deepEqual(transitionWorldOnboarding(harvested, { type: "crop", jobId: cropJobId }), harvested,
+    "a late observer cannot reattach the already received crop");
   for (const stepId of stepIds) {
     assert.deepEqual(transitionWorldOnboarding(harvested, { type: "step", stepId }), { ...started(stepId), harvested: true });
   }

@@ -13,11 +13,15 @@
 .sharingTitle > span { display: flex; align-items: center; gap: 5px; min-width: 0; color: #bdc5c3; font-size: 10px; }
 .statusDot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: #7f9390; }
 .statusDot[data-live] { background: #c4e894; box-shadow: 0 0 8px #c4e832; }
-.panel .sharingAction { display: inline-flex; flex-shrink: 0; justify-content: center; align-items: center; gap: 4px; max-width: 50%; min-height: 44px; border: 1px solid #c8e2a94a; border-radius: 10px; background: #d0e9b2; color: #203f2d; padding: 7px 9px; font-size: 11px; font-weight: 700; }
-.sharingAction[aria-pressed="true"] { background: #c9e5a40d; color: #d6e8c7; }
+.ghostSwitch { display: grid; flex-shrink: 0; justify-items: center; gap: 2px; min-width: 56px; min-height: 44px; padding: 3px; border: 0; border-radius: 10px; color: #b8cdb0; background: transparent; font-size: 9px !important; }
+.switchTrack { display: flex; align-items: center; width: 38px; height: 23px; padding: 3px; border: 1px solid #c8e2a949; border-radius: 20px; background: #c9e5a40b; }
+.switchTrack > span { width: 15px; height: 15px; border-radius: 50%; background: #91aa86; }
+.ghostSwitch[aria-checked="true"] .switchTrack { background: #d0e9b2; border-color: #d0e9b2; }
+.ghostSwitch[aria-checked="true"] .switchTrack > span { margin-left: auto; background: #25422d; }
+.hintRow { display: flex; align-items: center; gap: 7px; }
+.hintRow > p { flex: 1; }
+.resumeButton { flex-shrink: 0; min-height: 44px; padding: 4px 6px; border: 0; border-radius: 8px; color: #d3e9b9; background: transparent; font-size: 10px !important; }
 .sharingHint { margin-top: 4px !important; color: #a9bda9; font-size: 10px; line-height: 1.5; }
-.peopleLink { display: flex; align-items: center; gap: 7px; min-height: 44px; width: 100%; border: 0; border-radius: 10px; background: none; padding: 4px 2px; color: #c7dbb8; text-align: left; }
-.peopleLink svg { flex-shrink: 0; }
 .pending { margin-bottom: 10px !important; color: #e8cfa7; font-size: 11px; }
 .error { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: #efcca9; font-size: 11px; }
 .error > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }

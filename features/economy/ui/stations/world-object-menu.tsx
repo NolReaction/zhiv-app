@@ -35,6 +35,8 @@ export type WorldObjectMenuProps = {
   guide?: ReactNode;
   /** The active main workshop lesson supplies the first construction button. */
   tutorialWorkshop?: boolean;
+  /** Only the currently visible first-harvest lesson may request its one-time aid. */
+  tutorialHarvestActive?: boolean;
   /** Confirmed house access and the completed introduction of this account. */
   leaftailAvailable?: boolean;
   appearance?: WorldState["equipment"];
@@ -60,11 +62,11 @@ export type WorldObjectMenuProps = {
 const placeIcons: Partial<Record<WorldPlace, LucideIcon>> = { house: House, garden: Sprout, campfire: Flame, workshop: Hammer, quarry: Pickaxe, woodlot: Trees, bridge: Fence, lighthouse: TowerControl,
   "leaftail-caravan": Leaf, "lopukh-home": House };
 
-function RecipeCatalog({ economy, recipes, focusedRecipeId, onHelpContextChange }: { economy: ReadyEconomy; recipes: WorldRecipe[]; focusedRecipeId: string | null; onHelpContextChange?: (context: WorldHelpContext) => void }) {
+function RecipeCatalog({ economy, recipes, focusedRecipeId, tutorialHarvestActive = false, onHelpContextChange }: { economy: ReadyEconomy; recipes: WorldRecipe[]; focusedRecipeId: string | null; tutorialHarvestActive?: boolean; onHelpContextChange?: (context: WorldHelpContext) => void }) {
   const available = worldRecipeGroups(economy.snapshot, recipes);
   return available.length ? <section className={styles.recipeGroup} aria-label="Доступные рецепты">
     <h3>Что произвести?</h3>
-    <div className={styles.recipeGrid}>{available.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipeId)} onHelpContextChange={onHelpContextChange} />)}</div>
+    <div className={styles.recipeGrid}>{available.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} tutorialHarvestActive={tutorialHarvestActive} focused={group.methods.some(recipe => recipe.id === focusedRecipeId)} onHelpContextChange={onHelpContextChange} />)}</div>
   </section> : <p className={styles.empty}>Сначала обустройте это место.</p>;
 }
 
@@ -119,7 +121,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, leaftailAvailable = false, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onBack, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
+function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialHarvestActive = false, leaftailAvailable = false, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onBack, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -280,7 +282,7 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, leaftailA
             {onExplore && <button type="button" className={styles.primary} onClick={() => { navigating.current = true; onExplore(); }}><Compass size={15} aria-hidden="true" />Выбрать экспедицию<ArrowRight size={13} aria-hidden="true" /></button>}
           </>}
         </section> : stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon state={state} itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : stationId !== "quarry" ? <>
-          <div className={styles.recipeCatalog} data-section-guide-target="workshop-recipes" aria-label={`Продукция: ${building?.name ?? definition.label}`}>{stationId === "dryer" ? <CampfireRecipeCatalog economy={readyEconomy!} recipes={recipes} focusedRecipeId={recipeId} onHelpContextChange={productContext} /> : <RecipeCatalog economy={readyEconomy!} recipes={recipes} focusedRecipeId={recipeId} onHelpContextChange={productContext} />}</div>
+          <div className={styles.recipeCatalog} data-section-guide-target="workshop-recipes" aria-label={`Продукция: ${building?.name ?? definition.label}`}>{stationId === "dryer" ? <CampfireRecipeCatalog economy={readyEconomy!} recipes={recipes} focusedRecipeId={recipeId} onHelpContextChange={productContext} /> : <RecipeCatalog economy={readyEconomy!} recipes={recipes} focusedRecipeId={recipeId} tutorialHarvestActive={tutorialHarvestActive} onHelpContextChange={productContext} />}</div>
         </> : null}
         </>}
       </>}

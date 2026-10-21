@@ -51,6 +51,34 @@ test("a lost fish order receipt keeps the exact chosen species across session re
   deactivate();
 });
 
+test("explicit teaching harvest bypasses the offline journal and recovers only its original confirmed command", async () => {
+  const cache = storage(), journal = storage(), sent = [];
+  let authoritative = state();
+  const t = transport({ get: async () => authoritative, send: async command => {
+    sent.push(structuredClone(command));
+    if (sent.length === 1) { authoritative = { ...state(1), tutorialOrder: { version: 3, step: 0, completed: false,
+      ingredientsClaimed: true, firstHarvestPrepared: true, terms: economyCatalog.onboarding.residentOrder } }; throw Error("Committed teaching response lost"); }
+    return { ...result(authoritative), replayed: true };
+  } });
+  const options = { storage: journal, coordinate: async () => () => {} };
+  const original = createEconomySession(owner, t, () => assert.fail(), cache, options), stop = original.activate();
+  await original.refresh();
+  assert.equal(original.getSnapshot().productionQueueAvailable, true);
+  original.setDirectActionsAvailable(false);
+  assert.equal(original.act("start_tutorial_harvest", "grow_berries"), false, "offline teaching cannot reserve a crop or consume aid");
+  original.setDirectActionsAvailable(true);
+  assert.equal(original.act("start_tutorial_harvest", "grow_berries"), true);
+  assert.equal(original.getSnapshot().pendingProductionCount, 0);
+  await flush(); assert.equal(original.getSnapshot().uncertain, true); stop();
+  const restored = createEconomySession(owner, t, () => assert.fail(), cache, options), deactivate = restored.activate();
+  await restored.refresh(); await restored.retry();
+  assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0], "reload resends the same UUID, revision and explicit action, never an ordinary start");
+  assert.equal(restored.getSnapshot().pendingProductionCount, 0);
+  assert.equal(restored.getSnapshot().snapshot.tutorialOrder.firstHarvestPrepared, true);
+  assert.equal(restored.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
+  deactivate();
+});
+
 test("fish listings copy their selection, reject double submission and preserve old commands without a selection", async () => {
   const pending = deferred(), sent = [];
   const session = createEconomySession(owner, transport({ trade: command => { sent.push(command); return pending.promise; } }), () => assert.fail());

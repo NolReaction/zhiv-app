@@ -200,7 +200,8 @@ test("order instructions point to the standalone journal and meal help stays bes
 
 test("beginner answers explain costs, receipt of results, blocked work and recovery without destructive advice", () => {
   assert.match(answer("start"), /урожай бесплатный/);
-  assert.match(answer("start"), /одна малина в новом хозяйстве созревает сразу один раз/);
+  assert.match(answer("start"), /Только в открытом уроке первый учебный урожай помечен «Сразу» и доступен один раз/);
+  assert.match(answer("start"), /После сворачивания или завершения урока действуют обычные сроки/);
   assert.match(answer("start"), /Повтор обучения помощь не возвращает/);
   assert.match(answer("start"), /улучшите уже горящий костёр/);
   assert.match(answer("production"), /монеты и материалы зарезервируются/);
@@ -241,8 +242,8 @@ test("food guidance names the choice tile and makes spending an explicit second 
     assert.match(answer(id), /«Выбрать блюдо» в блоке «Ускорение едой»/);
     assert.doesNotMatch(answer(id), /нажмите «Еда» рядом/i);
   }
-  assert.match(answer("food"), /Только «Съесть 1» потратит порцию/);
-  assert.match(answer("builder-food"), /Только «Угостить 1» потратит порцию/);
+  assert.match(answer("food"), /Выберите блюдо.*новым временем.*Затем подтвердите «Съесть 1 порцию»: только эта кнопка потратит еду/);
+  assert.match(answer("builder-food"), /Выбор блюда покажет бонус и новое время.*Подтвердите «Угостить · 1 порция»: только эта кнопка потратит еду/);
   assert.match(answer("journeys"), /«Ускорение едой» под таймером/);
   assert.match(answer("journeys"), /открытие ничего не тратит/);
   assert.match(answer("journeys"), /У начатой работы показаны оставшееся время и находки/);

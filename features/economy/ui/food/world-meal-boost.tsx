@@ -55,8 +55,10 @@ const duration = (seconds: number) => seconds < 60 ? `${seconds} с` : worldDura
 export function WorldMealBoost(props: WorldMealBoostProps) {
   const { economy, consumer, jobId, stationId, onNavigateStation } = props;
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<{ quote: Quote; observed: boolean; error: string | null } | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const sent = useRef<Quote | null>(null), navigating = useRef(false);
+  const sent = useRef<Quote | null>(null), selection = useRef<string | null>(null), navigating = useRef(false);
   const latest = useRef({ props, quote });
   const trigger = useRef<HTMLButtonElement>(null), heading = useRef<HTMLHeadingElement>(null), savedBadge = useRef<HTMLSpanElement>(null);
   const headingId = useId();
@@ -65,6 +67,9 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
     if (!economy.busy && !economy.uncertain) sent.current = null;
   }, [economy.busy, economy.uncertain, economy.error, economy.snapshot?.ownerPublicId, economy.snapshot?.revision]);
   const state = economy.snapshot;
+  if (submitted && (!state || submitted.quote.owner !== state.ownerPublicId || submitted.quote.revision !== state.revision
+    || !economy.busy && !economy.uncertain && (submitted.observed || submitted.error !== economy.error))) setSubmitted(null);
+  else if (submitted && !submitted.observed && (economy.busy || economy.uncertain)) setSubmitted({ ...submitted, observed: true });
   if (!state || !state.catalog.food?.meals.length) return null;
   const meals = visibleMeals(state);
   const active = jobId ? state.jobs.find(job => job.kind === "construction" && job.id === jobId) : null;
@@ -75,41 +80,55 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
   const reason = mealBoostReason(props);
   const open = Boolean(quote && quote.owner === state.ownerPublicId && quote.revision === state.revision && quote.consumer === consumer && quote.jobId === jobId && quote.stationId === stationId);
   const baseSeconds = mealBoostSeconds(props, 0);
+  const selected = meals.find(meal => meal.itemId === selectedItemId && (state.inventory[meal.itemId] ?? 0) > 0);
+  const selectedSpeed = selected ? consumer === "hero" ? selected.heroSpeedBps : selected.builderSpeedBps : 0;
+  const selectedSeconds = selected ? mealBoostSeconds(props, selectedSpeed) : null;
+  const sending = submitted !== null;
+  const feedback = reason ?? submissionError ?? economy.error;
+  function choose(itemId: string) {
+    const current = latest.current;
+    if (!quote || current.quote !== quote || sent.current || mealBoostReason(current.props) || (current.props.economy.snapshot?.inventory[itemId] ?? 0) < 1) return;
+    selection.current = itemId;
+    setSelectedItemId(itemId);
+    setSubmissionError(null);
+  }
   function consume(itemId: string) {
     const current = latest.current;
-    if (!quote || current.quote !== quote || sent.current === quote || mealBoostReason(current.props)) return;
+    if (!quote || current.quote !== quote || selection.current !== itemId || sent.current || mealBoostReason(current.props)) return;
     const snapshot = current.props.economy.snapshot;
     if (!snapshot || snapshot.ownerPublicId !== quote.owner || snapshot.revision !== quote.revision || current.props.consumer !== quote.consumer
       || current.props.jobId !== quote.jobId || current.props.stationId !== quote.stationId || (snapshot.inventory[itemId] ?? 0) < 1
       || !snapshot.catalog.food?.meals.some(meal => meal.itemId === itemId)) return;
     sent.current = quote;
+    setSubmitted({ quote, observed: false, error: current.props.economy.error });
     const accepted = current.props.economy.act(consumer === "hero" ? "eat_food" : "feed_builder", itemId, 1, 0);
     if (accepted === false) {
       sent.current = null;
+      setSubmitted(null);
       setSubmissionError("Обед не отправлен. Попробуйте ещё раз.");
     } else setSubmissionError(null);
   }
   if (saved) return <span ref={savedBadge} tabIndex={-1} className={styles.saved} data-meal-boost={consumer} data-meal-applied={saved.itemId}
     title={`${itemName(state, saved.itemId)} · ${applied ? "текущая" : "следующая"} ${consumer === "hero" ? "вылазка" : "стройка"}`} aria-label={`${itemName(state, saved.itemId)}: скорость +${saved.speedBps / 100}%`}>
     <span className={styles.tileIcon}><ProductIcon state={state} itemId={saved.itemId} size={30} /></span>
-    <span className={styles.tileDescription}><span className={styles.tileLabel}>Ускорение едой</span><strong>{itemName(state, saved.itemId)}</strong>
-      <small>+{saved.speedBps / 100}% скорости</small>
+    <span className={styles.tileDescription}><span className={styles.tileLabel}>{applied ? "Обед учтён" : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</span><strong>{itemName(state, saved.itemId)}<small>+{saved.speedBps / 100}% скорости</small></strong>
       {baseSeconds !== null && <span className={styles.tileDuration} data-meal-duration><Clock3 size={11} aria-hidden="true" />
         {applied ? duration(baseSeconds) : <>{duration(baseSeconds)}<ArrowRight size={10} aria-hidden="true" /><b>{duration(mealBoostSeconds(props, saved.speedBps) ?? baseSeconds)}</b></>}
       </span>}
-      <small>{applied ? "Обед учтён" : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</small>
     </span><Check className={styles.tileControl} size={17} aria-hidden="true" />
   </span>;
   return <Popover.Root open={open} onOpenChange={value => {
-    if (!value) setQuote(null);
-    else if (!mealBoostReason(latest.current.props) && latest.current.props.economy.snapshot) {
+    if (!value) { selection.current = null; setSelectedItemId(null); setQuote(null); }
+    else if (!sent.current && !mealBoostReason(latest.current.props) && latest.current.props.economy.snapshot) {
       const current = latest.current.props.economy.snapshot;
       navigating.current = false;
+      selection.current = null;
+      setSelectedItemId(null);
       setSubmissionError(null);
       setQuote({ owner: current.ownerPublicId, revision: current.revision, consumer, jobId, stationId });
     }
   }}>
-    <Popover.Trigger asChild><button ref={trigger} type="button" className={styles.trigger} data-meal-boost={consumer} disabled={Boolean(reason)}
+    <Popover.Trigger asChild><button ref={trigger} type="button" className={styles.trigger} data-meal-boost={consumer} disabled={Boolean(reason) || sending}
       aria-label={reason ?? (consumer === "hero" ? "Еда: ускорить вылазку" : "Еда: ускорить стройку")} title={reason ?? "Ускорить едой"}>
       <span className={styles.tileIcon}><Soup size={24} aria-hidden="true" /></span>
       <span className={styles.tileDescription}><span className={styles.tileLabel}>Ускорение едой</span><strong>Выбрать блюдо</strong><small>{reason ?? "1 порция ускорит работу"}</small></span>
@@ -120,23 +139,33 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
       onEscapeKeyDown={event => event.stopPropagation()} onCloseAutoFocus={event => {
         event.preventDefault(); if (navigating.current) return; const target = trigger.current?.isConnected ? trigger.current : savedBadge.current; target?.focus({ preventScroll: true });
       }} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}>
-      <header className={styles.heading}><div><h3 ref={heading} tabIndex={-1} id={headingId}>{consumer === "hero" ? "Обед перед вылазкой" : jobId ? "Обед для строителя" : "Обед перед стройкой"}</h3><p>Выберите блюдо, затем отдайте 1 порцию</p></div><Popover.Close asChild><button type="button" data-meal-picker-close aria-label="Закрыть выбор еды"><X size={17} aria-hidden="true" /></button></Popover.Close></header>
-      {reason && <p className={styles.reason} role="status">{reason}</p>}
-      {submissionError && <p className={styles.reason} role="status">{submissionError}</p>}
+      <header className={styles.heading}><div><h3 ref={heading} tabIndex={-1} id={headingId}>{consumer === "hero" ? "Обед перед вылазкой" : jobId ? "Обед для строителя" : "Обед перед стройкой"}</h3><p>{jobId ? "Ускорит оставшееся время" : "Бонус на одну работу"}</p></div><Popover.Close asChild><button type="button" data-meal-picker-close aria-label="Закрыть выбор еды"><X size={17} aria-hidden="true" /></button></Popover.Close></header>
       <div className={styles.meals} aria-label="Готовые блюда">{meals.map(meal => {
         const stock = state.inventory[meal.itemId] ?? 0;
         const speed = consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps;
-        const result = mealBoostSeconds(props, speed);
         const recipe = availableMealRecipe(state, meal.itemId);
         const cook = recipe && onNavigateStation ? () => onNavigateStation(recipe.buildingId, recipe.id) : null;
-        return <article key={meal.itemId} className={styles.meal} data-boost-meal={meal.itemId}>
-          <ProductIcon state={state} itemId={meal.itemId} size={28} />
-          <div className={styles.description}><strong>{itemName(state, meal.itemId)}</strong><span>Скорость +{speed / 100}% · есть {stock}</span>{result !== null && baseSeconds !== null && <small><Clock3 size={11} aria-hidden="true" />{duration(baseSeconds)}<ArrowRight size={10} aria-hidden="true" /><b>{duration(result)}</b></small>}</div>
-          {stock > 0 ? <button type="button" className={styles.consume} disabled={locked(economy) || Boolean(reason)} aria-label={`${consumer === "hero" ? "Съесть" : "Угостить строителя"}: ${itemName(state, meal.itemId)}, 1 порция`} onClick={() => consume(meal.itemId)}>{consumer === "hero" ? "Съесть 1" : "Угостить 1"}</button>
-            : cook ? <button type="button" className={styles.cook} aria-label={`Приготовить: ${itemName(state, meal.itemId)}`} onClick={() => { navigating.current = true; setQuote(null); cook(); }}>Готовить</button> : <span className={styles.empty}>Нет</span>}
+        const chosen = selected?.itemId === meal.itemId;
+        const content = <><span className={styles.mealIcon}><ProductIcon state={state} itemId={meal.itemId} size={28} /></span>
+          <span className={styles.description}><strong>{itemName(state, meal.itemId)}</strong><small>{stock > 0 ? `В запасе ${stock}` : "Нет в запасе"}</small></span>
+          <span className={styles.speed}>+{speed / 100}%</span></>;
+        return <article key={meal.itemId} data-boost-meal={meal.itemId}>
+          {stock > 0 ? <button type="button" className={styles.meal} data-selected={chosen || undefined} aria-pressed={chosen} disabled={locked(economy) || Boolean(reason) || sending}
+            aria-label={`Выбрать: ${itemName(state, meal.itemId)}, в запасе ${stock}, скорость +${speed / 100}%`} onClick={() => choose(meal.itemId)}>{content}<span className={styles.selection} aria-hidden="true">{chosen && <Check size={13} />}</span></button>
+            : cook ? <button type="button" className={`${styles.meal} ${styles.cook}`} disabled={sending} aria-label={`Приготовить: ${itemName(state, meal.itemId)}`} onClick={() => { if (sent.current) return; navigating.current = true; selection.current = null; setSelectedItemId(null); setQuote(null); cook(); }}>{content}<ChevronRight size={16} aria-hidden="true" /></button>
+              : <span className={`${styles.meal} ${styles.unavailable}`}>{content}<span className={styles.empty}>Нет</span></span>}
         </article>;
       })}</div>
-      <p className={styles.note}>{jobId ? "Ускорит оставшееся время этой стройки." : `Бонус останется до следующей ${consumer === "hero" ? "вылазки" : "стройки"}.`} Повторный обед не усилит бонус.</p>
+      <div className={styles.confirmation} aria-busy={sending}>
+        {selected ? <div className={styles.preview} data-meal-preview={selected.itemId}>
+          <span>{selectedSeconds !== null && baseSeconds !== null ? <>{jobId ? "Останется" : "Время"}<strong><s>{duration(baseSeconds)}</s><ArrowRight size={12} aria-hidden="true" /><b>{duration(selectedSeconds)}</b></strong></> : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</span>
+          <span className={styles.bonus}>+{selectedSpeed / 100}% скорости</span>
+        </div> : <p className={styles.hint}>Выберите блюдо · спишется 1 порция</p>}
+        {feedback && <p className={styles.reason} role="status">{feedback}</p>}
+        <button type="button" className={styles.consume} data-meal-confirm disabled={!selected || locked(economy) || Boolean(reason) || sending}
+          aria-label={selected ? `${consumer === "hero" ? "Съесть" : "Угостить строителя"}: ${itemName(state, selected.itemId)}, 1 порция` : "Сначала выберите блюдо"}
+          onClick={() => { if (selected) consume(selected.itemId); }}><Soup size={15} aria-hidden="true" />{sending ? "Подтверждаем…" : selected ? consumer === "hero" ? "Съесть 1 порцию" : "Угостить · 1 порция" : "Выберите блюдо"}</button>
+      </div>
     </Popover.Content></Popover.Portal>}
   </Popover.Root>;
 }

@@ -1,10 +1,15 @@
 import styles from "./earth-attribution.module.css";
 import { earthSatelliteAttribution, isCanonicalEarthAttribution } from "./satellite-attribution";
 
-type Props = { satelliteAttribution?: string | null };
+type Props = { satelliteAttribution?: string | null; walkingRoute?: boolean };
+
+const walkingCredits = <>
+  <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener noreferrer">Пешком: FOSSGIS / OSRM</a>
+  <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener noreferrer">Исправить карту</a>
+</>;
 
 /** Required data credits stay visible; the About panel contains licence details. */
-export function EarthAttribution({ satelliteAttribution = null }: Props = {}) {
+export function EarthAttribution({ satelliteAttribution = null, walkingRoute = false }: Props = {}) {
   if (satelliteAttribution?.trim()) {
     const providers = earthSatelliteAttribution(satelliteAttribution).filter(part => !isCanonicalEarthAttribution(part));
     return <p className={`${styles.credits} ${styles.satellite}`} data-earth-attribution data-satellite>
@@ -20,6 +25,7 @@ export function EarthAttribution({ satelliteAttribution = null }: Props = {}) {
       {providers.map((part, index) => part.href
         ? <a key={index} href={part.href} target="_blank" rel="noopener noreferrer">{part.text}</a>
         : <span key={index}>{part.text}</span>)}
+      {walkingRoute && walkingCredits}
     </p>;
   }
   return <p className={styles.credits} data-earth-attribution>
@@ -28,5 +34,6 @@ export function EarthAttribution({ satelliteAttribution = null }: Props = {}) {
     <a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>
     <span aria-hidden="true">·</span>
     <a href="/earth/models/CREDITS.txt" target="_blank" rel="noopener noreferrer">3D-модели</a>
+    {walkingRoute && walkingCredits}
   </p>;
 }

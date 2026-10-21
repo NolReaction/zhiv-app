@@ -7,7 +7,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hooksId = "virtual:earth-lifecycle-hooks", platformId = "virtual:earth-lifecycle-platform";
 const platformCode = `
-  export const maps=[],scenes=[];
+  export const maps=[],scenes=[],meetMaps=[];
   export const cache={snapshot:{pending:0,completed:0,failed:0,storedEntries:0,persistence:'granted',storage:'session'},
     getSnapshot(){return cache.snapshot;},subscribe(){return ()=>{};},resetProgress(){},async initialize(){},
     async requestPersistence(){},getBudgets(){return {tileEntries:32};},async readResource(){return {data:{}};},
@@ -51,7 +51,8 @@ const platformCode = `
   export const createEarthWeatherProvider=noop;
   export const createEarthWeatherController=()=>({setEnabled:noop,setVisible:noop,setView:noop,dispose:noop});
   export const createEarthFriendMarkers=()=>({setVisible:noop,setSnapshot:noop,setSelfPosition:noop,focusFriend:()=>false,dispose:noop});
-  export const createEarthMeetMap=()=>({setCameraPadding:noop,setVisible:noop,setSnapshot:noop,install:noop,dispose:noop});
+  export const createEarthMeetMap=()=>{const meet={snapshots:[],setCameraPadding:noop,setVisible:noop,
+    setSnapshot(...args){meet.snapshots.push(args);},install:noop,dispose:noop};meetMaps.push(meet);return meet;};
 `;
 const hooksCode = `
   export {lazy,Suspense} from 'react';let current,cursor;
@@ -83,6 +84,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId), platform = await vite.ssrLoadModule(platformId);
 const { EarthMap } = await vite.ssrLoadModule("/features/earth/earth-map.tsx");
+const { EarthMapInfo } = await vite.ssrLoadModule("/features/earth/earth-map-info.tsx");
 
 function harness() {
   const globals = new Map(["window", "document", "navigator", "ResizeObserver", "IntersectionObserver"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
@@ -97,7 +99,7 @@ function harness() {
   for (const [name, value] of Object.entries({ window, document, navigator: { onLine: true }, ResizeObserver: undefined, IntersectionObserver: undefined }))
     Object.defineProperty(globalThis, name, { value, configurable: true });
   platform.maps.length = 0;
-  platform.scenes.length = 0;
+  platform.scenes.length = platform.meetMaps.length = 0;
   const state = { slots: [], pending: [], dirty: false }, ready = [];
   const props = { position: null, active: true, visible: true, onReadyChange: value => ready.push(value),
     focusRequest: 0, isOnline: true, onLocate() {}, locating: false, locationActive: false, locationDetails: null,
@@ -108,7 +110,7 @@ function harness() {
   function render() {
     for (let pass = 0; pass < 20; pass++) {
       hooks.begin(state); const tree = EarthMap(props); nodes = [];
-      const walk = node => { if (isValidElement(node)) { nodes.push(node); Children.forEach(node.props.children, walk); } };
+      const walk = node => { if (isValidElement(node)) { nodes.push(node); if (node.type === EarthMapInfo) walk(EarthMapInfo(node.props)); else Children.forEach(node.props.children, walk); } };
       walk(tree);
       // Only the map host is mounted. Native layout and WebGL are outside this test.
       const container = nodes.find(node => node.type === "div" && node.props.ref);
@@ -240,5 +242,25 @@ test("atlas temporarily enables only its model preference, restores it on close 
     app.props.cameraFocusRequest = null; app.render();
     assert.equal(platform.scenes.at(-1).preview, null); assert.equal(platform.scenes.at(-1).enabled, false);
     assert.ok(preferences.every(value => value.buildings3d === false), "inspection never rewrites the player's preference");
+  } finally { app.dispose(); }
+});
+
+
+test("a selected walking path reaches the meet renderer and an explicit clear removes it without another SDK", async () => {
+  const app = harness();
+  try {
+    const map = await app.mount(); await app.prepare(map);
+    const friend = { circleId: "walking-friend", user: { publicId: "ONE", displayName: "Друг" },
+      latitude: 48.851, longitude: 2.291, precision: "PRECISE", accuracyMeters: 15,
+      updatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), expiresAtMonotonic: performance.now() + 60_000 };
+    const route = { ownerPublicId: "owner", circleId: friend.circleId, friendPublicId: "ONE", origin: [2.29, 48.85], destination: [2.291, 48.851],
+      createdAt: Date.now(), createdAtMonotonic: performance.now(), expiresAt: Date.now() + 30_000, expiresAtMonotonic: performance.now() + 30_000,
+      geometry: { type: "LineString", coordinates: [[2.29, 48.85], [2.291, 48.851]] }, distanceMeters: 135, durationSeconds: 120 };
+    app.props.friends = [friend]; app.props.meetCircleId = friend.circleId; app.props.walkingRoute = route;
+    app.render(); await app.settle();
+    const renderer = platform.meetMaps.at(-1), update = renderer.snapshots.at(-1);
+    assert.equal(update[1], friend); assert.equal(update[3], route, "the real map bridge passes the ready path, not only the direct friend line");
+    app.props.walkingRoute = null; app.render(); await app.settle();
+    assert.equal(renderer.snapshots.at(-1)[3], null); assert.equal(platform.maps.length, 1);
   } finally { app.dispose(); }
 });

@@ -59,6 +59,8 @@ test("durable journal rejects foreign owner, malformed commands, duplicate ids, 
   const command = { ...head, ownerPublicId: owner, expectedRevision: 8, action: "start_production", quantity: 1, totalPrice: 0 };
   assert.ok(parseProductionJournal(raw([{ ...head, command }]), owner));
   assert.equal(parseProductionJournal(raw([{ ...head, command: { ...command, action: "claim_job" } }]), owner), null);
+  assert.equal(parseProductionJournal(raw([{ ...head, command: { ...command, action: "start_tutorial_harvest" } }]), owner), null,
+    "one-time teaching assistance is a confirmed direct command, never deferred production");
   assert.equal(parseProductionJournal(raw([{ ...head, command: { ...command, fishSelection: { fish_epic: 1 } } }]), owner), null);
   assert.equal(parseProductionJournal(raw([head, { ...intent("grow_berries"), command }]), owner), null);
   assert.equal(parseProductionJournal(raw(Array.from({ length: 13 }, () => intent("grow_berries"))), owner), null);

@@ -38,7 +38,7 @@ class JdbcFirstHarvestIntegrationTest {
             val repository = JdbcEconomyRepository(source)
             val before = repository.snapshot(token.hash)
             assertFalse(before.tutorialOrder.firstHarvestPrepared)
-            val request = EconomyCommand(UUID.randomUUID().toString(), player.publicId, before.revision, "start_production", "grow_berries")
+            val request = EconomyCommand(UUID.randomUUID().toString(), player.publicId, before.revision, "start_tutorial_harvest", "grow_berries")
             val results = coroutineScope {
                 List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(token.hash, request) } }.awaitAll()
             }
@@ -53,7 +53,7 @@ class JdbcFirstHarvestIntegrationTest {
             source.connection.use { connection ->
                 assertTrue(readEconomyProfile(connection, player.id).state.tutorialOrder.firstHarvestPrepared)
                 assertEquals(1L, connection.economyRows(
-                    "SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='start_production'", player.id,
+                    "SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='start_tutorial_harvest'", player.id,
                 ) { it.getLong(1) }.single())
             }
             val replay = repository.command(token.hash, request)
@@ -72,7 +72,7 @@ class JdbcFirstHarvestIntegrationTest {
             val repository = JdbcEconomyRepository(source)
             val before = repository.snapshot(token.hash)
             val requests = List(2) { EconomyCommand(UUID.randomUUID().toString(), player.publicId, before.revision,
-                "start_production", "grow_berries") }
+                "start_tutorial_harvest", "grow_berries") }
             val results = coroutineScope {
                 requests.map { request -> async(Dispatchers.IO) {
                     runCatching { JdbcEconomyRepository(source).command(token.hash, request) }
@@ -92,8 +92,12 @@ class JdbcFirstHarvestIntegrationTest {
             }
             val recovered = repository.snapshot(token.hash)
             assertTrue(recovered.tutorialOrder.firstHarvestPrepared)
+            val denied = runCatching { repository.command(token.hash, requests.first().copy(requestId = UUID.randomUUID().toString(),
+                expectedRevision = recovered.revision)) }
+            assertEquals("ECONOMY_TUTORIAL_HARVEST_UNAVAILABLE", assertIs<AuthFailure>(denied.exceptionOrNull()).code)
+            assertEquals(recovered.revision, repository.snapshot(token.hash).revision)
             val next = repository.command(token.hash, requests.first().copy(requestId = UUID.randomUUID().toString(),
-                expectedRevision = recovered.revision)).state
+                expectedRevision = recovered.revision, action = "start_production")).state
             assertEquals(Duration.ofSeconds(60), duration(next.jobs.single()))
             assertTrue(next.tutorialOrder.firstHarvestPrepared)
             assertEquals(before.wallet, next.wallet); assertEquals(before.inventory, next.inventory)

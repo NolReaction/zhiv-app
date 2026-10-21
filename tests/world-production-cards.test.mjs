@@ -37,14 +37,17 @@ function cardBlocked(html) {
   return /data-blocked="true"/.test(match[1]);
 }
 
-test("first raspberry card explains instant aid once and reverts to the catalog duration after it is used", () => {
+test("first raspberry aid is visible only in the active lesson and reverts to the catalog duration when paused or used", () => {
   const economy = controller({ buildings: { home: 1, garden: 1, warehouse: 1 }, tutorialOrder: newTutorialOrder(),
     progression: { recipes: {}, routes: {}, buildings: {} } });
-  const fresh = renderCard("grow_berries", economy);
+  const ordinary = renderCard("grow_berries", economy);
+  assert.doesNotMatch(ordinary, /Сразу · первый урожай/);
+  assert.match(ordinary, /aria-label="Произвести: Малина, 1 мин"/);
+  const fresh = renderCard("grow_berries", economy, { tutorialHarvestActive: true });
   assert.match(fresh, /Сразу · первый урожай/);
   assert.match(fresh, /Сбор Мохликом остаётся обычным; помощь доступна один раз/);
   economy.snapshot.tutorialOrder.firstHarvestPrepared = true;
-  const replay = renderCard("grow_berries", economy);
+  const replay = renderCard("grow_berries", economy, { tutorialHarvestActive: true });
   assert.doesNotMatch(replay, /Сразу · первый урожай/);
   assert.match(replay, /aria-label="Произвести: Малина, 1 мин"/);
 });
@@ -240,6 +243,7 @@ test("one tap dispatches a single unit, reports shortages and refuses repeated s
         export function useId() { return useRef('card-status').current; }
         export function useState(initial) { const slot = useRef(typeof initial === 'function' ? initial() : initial); return [slot.current, value => { slot.current = typeof value === 'function' ? value(slot.current) : value; }]; }
         export function useEffect(effect, dependencies) { const previous = useRef(null); if (!previous.current || dependencies.some((value, index) => !Object.is(value, previous.current[index]))) { previous.current = dependencies; effects.push(effect); } }
+        export const useLayoutEffect = useEffect;
       `; },
       transform(source, id) { if (id.endsWith("/features/economy/ui/production/world-production-card.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
     }],
@@ -290,6 +294,24 @@ test("one tap dispatches a single unit, reports shortages and refuses repeated s
     economy.busy = true; render(); economy.busy = false; economy.error = "Материалы уже использованы"; render();
     action(render()).props.onClick();
     assert.equal(calls.length, before + 2, "a definitive old error cannot block an otherwise valid new order");
+
+    hooks.reset();
+    const aidCalls = [], aid = controller({ buildings: { home: 1, garden: 1, warehouse: 1 }, tutorialOrder: newTutorialOrder(),
+      progression: { recipes: {}, routes: {}, buildings: {} } }, { productionQueueAvailable: true,
+      act(...args) { aidCalls.push(args); return true; } });
+    const berry = aid.snapshot.catalog.recipes.find(recipe => recipe.id === "grow_berries");
+    let activeLesson = true;
+    const renderAid = () => { hooks.render(); const tree = Card({ economy: aid, recipe: berry, tutorialHarvestActive: activeLesson }); hooks.flush(); return tree; };
+    const oldAidButton = action(renderAid());
+    activeLesson = false; const ordinaryButton = action(renderAid());
+    oldAidButton.props.onClick(); assert.deepEqual(aidCalls, [], "a pre-pause callback cannot issue assistance after the lesson closes");
+    ordinaryButton.props.onClick(); assert.deepEqual(aidCalls, [["start_production", "grow_berries", 1]]);
+    hooks.reset(); aidCalls.length = 0; activeLesson = true;
+    const assistance = action(renderAid()); assistance.props.onClick(); assistance.props.onClick();
+    assert.deepEqual(aidCalls, [["start_tutorial_harvest", "grow_berries", 1]], "the aid uses one confirmed direct action even with the ordinary durable queue enabled");
+    hooks.reset(); aidCalls.length = 0; aid.directActionsAvailable = false;
+    action(renderAid()).props.onClick(); assert.deepEqual(aidCalls, [], "teaching aid is never accepted into the offline production queue");
+    assert.match(renderToStaticMarkup(renderAid()), /Восстанавливаем соединение/);
   } finally { await runtime.close(); }
 });
 

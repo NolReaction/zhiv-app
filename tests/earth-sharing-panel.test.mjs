@@ -51,18 +51,15 @@ function view(overrides = {}, selection = {}, individual = false) {
 const friendView = (overrides, selection) => view(overrides, selection, true);
 const friendSwitch = (result, name) => result.button("Обновлять геопозицию для " + name);
 
-test("the global panel starts private with no recipient list and never grants access on render", () => {
-  const result = view();
-  assert.equal(result.elements.filter(node => node.props.role === "switch").length, 0);
+test("the global panel starts private with a canonical Ghost switch and no People detour", () => {
+  const result = view(), toggle = result.button("Режим призрака");
+  assert.equal(toggle.props.role, "switch"); assert.equal(toggle.props["aria-checked"], false);
   assert.equal(result.elements.filter(node => node.type === "li").length, 0);
-  assert.match(result.markup, /Геопозиция закрыта/);
-  assert.match(result.markup, /Обновления для друзей/);
-  assert.match(result.markup, /Получатели выбираются в «Людях»/);
+  assert.match(result.markup, /Геопозиция закрыта|Доступ закрыт/); assert.match(result.markup, /Призрак/);
+  assert.doesNotMatch(result.markup, /Кому доступно|Выбрать|<script>|Новый друг|Обновлять геопозицию для/);
   assert.match(result.markup, /<input(?=[^>]*value="APPROXIMATE")(?=[^>]*checked)[^>]*>/);
-  assert.match(result.markup, /value="60" selected/);
   assert.equal(result.elements.find(node => node.type === "button" && node.props.type === "submit").props.disabled, true);
   assert.ok(result.elements.filter(node => node.type === "details").every(node => !node.props.open));
-  assert.doesNotMatch(result.markup, /<script>|Новый друг|Найти близкого|Обновлять геопозицию для/);
   assert.deepEqual(result.calls, []);
 });
 
@@ -75,51 +72,37 @@ test("the stateful entry point omits private names and preserves saved precise a
   assert.deepEqual(result.calls, []);
 });
 
-test("a saved paused session resumes only explicitly, preserving the exact audience and frozen preferences", async () => {
+test("a saved paused session resumes only explicitly with the saved audience and frozen preferences", async () => {
   const result = view({}, activeSettings);
-  assert.match(result.markup, /Обновление на паузе/);
-  assert.match(result.markup, /Доступ у 2 · обновления разрешены для 1/);
+  assert.match(result.markup, /Обновление на паузе/); assert.match(result.markup, /Доступ у 2 · обновления разрешены для 1/);
   assert.deepEqual(result.calls, []);
-  const button = result.button("Включить обновления геопозиции");
-  assert.equal(button.props["aria-pressed"], false);
-  await button.props.onClick();
-  assert.deepEqual(result.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["two"],
-    precision: "APPROXIMATE", durationMinutes: 60 }]]);
+  await result.textButton("Возобновить").props.onClick();
+  assert.deepEqual(result.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["two"], precision: "APPROXIMATE", durationMinutes: 60 }]]);
 });
 
-test("one named button pauses and resumes existing updates without adding an unselected friend", async () => {
+test("the Ghost switch hides immediately and explicitly resumes only previously selected friends", async () => {
   const live = view({ sharing: { publishing: true, lastPublishedAt: settings.serverTime } }, activeSettings);
-  const pause = live.button("Приостановить обновления геопозиции");
-  assert.equal(pause.props["aria-pressed"], true);
-  pause.props.onClick(); assert.deepEqual(live.calls, [["ghost"]]);
+  const toggle = live.button("Режим призрака"); assert.equal(toggle.props["aria-checked"], false);
+  toggle.props.onClick(); assert.deepEqual(live.calls, [["ghost"]]);
   const ghost = view({}, { ...activeSettings, mode: "GHOST" });
-  assert.match(ghost.markup, /На паузе · последнее место/);
-  const resume = ghost.button("Включить обновления геопозиции");
-  assert.equal(resume.props["aria-pressed"], false);
-  await resume.props.onClick();
-  assert.deepEqual(ghost.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["two"],
-    precision: "APPROXIMATE", durationMinutes: 60 }]]);
+  assert.equal(ghost.button("Режим призрака").props["aria-checked"], true);
+  await ghost.button("Режим призрака").props.onClick();
+  assert.deepEqual(ghost.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["two"], precision: "APPROXIMATE", durationMinutes: 60 }]]);
 });
 
-test("empty or fully frozen audiences lead to People without inventing consent or requesting GPS", () => {
+test("empty and fully frozen audiences never invent recipients or jump to People", () => {
   for (const choices of [{ mode: "OFF" }, { ...activeSettings, frozenCircleIds: ["one", "two"] }]) {
     const result = view({}, choices);
-    result.button("Выбрать получателей в Людях").props.onClick();
-    assert.deepEqual(result.calls, [["people"]]);
+    assert.doesNotMatch(result.markup, /Выбрать|Кому доступно/); assert.deepEqual(result.calls, []);
+    result.button("Режим призрака").props.onClick(); assert.deepEqual(result.calls, [["ghost"]]);
   }
-  const unavailable = view({ onOpenPeople: undefined });
-  const action = unavailable.button("Выбрать получателей в Людях");
-  assert.equal(action.props.disabled, true); action.props.onClick();
-  assert.deepEqual(unavailable.calls, []);
 });
 
-test("leaving Ghost retains individual pauses and an empty Ghost account can explicitly revoke the mode", async () => {
+test("leaving Ghost preserves individual pauses and an empty Ghost account goes OFF without sharing", async () => {
   const result = view({}, { ...activeSettings, mode: "GHOST", frozenCircleIds: ["one", "two"] });
-  await result.button("Выключить режим призрака").props.onClick();
-  assert.deepEqual(result.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["one", "two"],
-    precision: "APPROXIMATE", durationMinutes: 60 }]], "a global resume cannot unfreeze an individual");
-  const empty = view({}, { mode: "GHOST" });
-  empty.button("Выключить режим призрака").props.onClick();
+  await result.button("Режим призрака").props.onClick();
+  assert.deepEqual(result.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["one", "two"], precision: "APPROXIMATE", durationMinutes: 60 }]]);
+  const empty = view({}, { mode: "GHOST" }); empty.button("Режим призрака").props.onClick();
   assert.deepEqual(empty.calls, [["off"]]);
 });
 
@@ -206,32 +189,24 @@ test("global Ghost keeps individual choices and secondary settings inactive unti
   assert.deepEqual([...result.calls, ...individual.calls], []);
 });
 
-test("offline still allows immediate pause but cannot resume or misreport pending confirmation", () => {
-  const offline = view({ online: false, sharing: { publishing: true, lastPublishedAt: settings.serverTime } }, activeSettings);
-  const pause = offline.button("Приостановить обновления геопозиции");
-  assert.equal(pause.props.disabled, false); pause.props.onClick();
+test("offline allows immediate Ghost and empty-Ghost OFF while keeping resume disabled and pending honest", () => {
+  const offline = view({ online: false, sharing: { publishing: true } }, activeSettings);
+  const toggle = offline.button("Режим призрака"); assert.equal(toggle.props.disabled, false); toggle.props.onClick();
   assert.deepEqual(offline.calls, [["ghost"]]);
-  const paused = view({ online: false }, activeSettings);
-  const resume = paused.button("Включить обновления геопозиции");
-  assert.equal(resume.props.disabled, true); resume.props.onClick(); assert.deepEqual(paused.calls, []);
-  const pending = view({ online: false, sharing: { pendingGhost: true, pendingPrivacyMode: "GHOST" } }, { ...activeSettings, mode: "GHOST" });
-  const action = pending.button("Включить обновления геопозиции");
-  assert.equal(action.props["aria-pressed"], false);
-  assert.equal(action.props.disabled, true); action.props.onClick();
-  assert.match(pending.markup, /остановлена на устройстве/);
-  assert.match(pending.markup, /Ждём подтверждения сервера/);
-  assert.match(pending.markup, /Сохраняем приватность…/);
-  assert.doesNotMatch(pending.markup, /На паузе · последнее место|на сервере включён|успешно/);
-  assert.deepEqual(pending.calls, []);
+  const paused = view({ online: false }, { ...activeSettings, mode: "GHOST" });
+  assert.equal(paused.button("Режим призрака").props.disabled, true); paused.button("Режим призрака").props.onClick(); assert.deepEqual(paused.calls, []);
+  const empty = view({ online: false }, { mode: "GHOST" }); empty.button("Режим призрака").props.onClick(); assert.deepEqual(empty.calls, [["off"]]);
+  const pending = view({ online: false, sharing: { pendingGhost: true, pendingPrivacyMode: "GHOST" } }, activeSettings);
+  const action = pending.button("Режим призрака"); assert.equal(action.props["aria-checked"], true); assert.equal(action.props.disabled, true);
+  action.props.onClick(); assert.deepEqual(pending.calls, []);
+  assert.match(pending.markup, /остановлена на устройстве/); assert.match(pending.markup, /Ждём подтверждения сервера/);
 });
 
-test("pending OFF does not present deletion as a confirmed server freeze or enable updates", () => {
+test("pending OFF is not a confirmed Ghost freeze and cannot enable updates", () => {
   const result = view({ online: false, sharing: { pendingGhost: true, pendingPrivacyMode: "OFF" } });
   assert.match(result.markup, /Удаление доступа ещё не подтверждено сервером/);
-  const button = result.button("Выбрать получателей в Людях");
-  assert.equal(button.props["aria-pressed"], false); assert.equal(button.props.disabled, true); button.props.onClick();
-  assert.doesNotMatch(result.markup, /Ждём подтверждения сервера/);
-  assert.deepEqual(result.calls, []);
+  const button = result.button("Режим призрака"); assert.equal(button.props["aria-checked"], false); assert.equal(button.props.disabled, true);
+  button.props.onClick(); assert.deepEqual(result.calls, []);
 });
 
 test("secondary accuracy and duration only apply on submit and keep frozen recipients", async () => {
@@ -242,18 +217,20 @@ test("secondary accuracy and duration only apply on submit and keep frozen recip
     precision: "PRECISE", durationMinutes: 480 }]]);
 });
 
-test("busy and unavailable metadata keep enabling disabled, with actionable network and local errors", () => {
-  for (const overrides of [{ sharing: { saving: true } }, { working: true }, { sharing: { settings: null, loading: true } }]) {
-    const result = view(overrides, activeSettings);
-    const button = result.button("Включить обновления геопозиции");
-    assert.equal(button.props.disabled, true); button.props.onClick();
-    assert.deepEqual(result.calls, []);
+test("pending changes cannot block a privacy stop, while missing settings and global GPS off block resume", () => {
+  for (const overrides of [{ sharing: { saving: true } }, { working: true }]) {
+    const result = view(overrides, activeSettings), button = result.button("Режим призрака");
+    assert.equal(button.props.disabled, false); button.props.onClick(); assert.deepEqual(result.calls, [["ghost"]]);
   }
+  for (const overrides of [{ sharing: { settings: null, loading: true } }, { locationAllowed: false }]) {
+    const result = view(overrides, { ...activeSettings, mode: "GHOST" }), button = result.button("Режим призрака");
+    assert.equal(button.props.disabled, true); button.props.onClick(); assert.deepEqual(result.calls, []);
+  }
+  const blocked = view({ locationAllowed: false }, activeSettings);
+  assert.match(blocked.markup, /Геопозиция отключена в профиле/); blocked.textButton("Возобновить").props.onClick(); assert.deepEqual(blocked.calls, []);
   for (const overrides of [{ sharing: { error: "Сеть недоступна" } }, { localError: "Не удалось сохранить" }]) {
-    const failed = view(overrides);
-    assert.match(failed.markup, /role="alert"/);
-    failed.button("Обновить настройки геопозиции").props.onClick();
-    assert.deepEqual(failed.calls, [["refresh"]]);
+    const failed = view(overrides); assert.match(failed.markup, /role="alert"/);
+    failed.button("Обновить настройки геопозиции").props.onClick(); assert.deepEqual(failed.calls, [["refresh"]]);
   }
 });
 
@@ -265,8 +242,8 @@ test("many friends do not turn the map settings into a second scrolling roster",
   assert.equal(result.elements.filter(node => node.type === "input" && node.props.type === "search").length, 0);
   assert.doesNotMatch(result.markup, /Друг 109|Друг 0/);
   assert.equal(result.elements.filter(node => node.type === "button").length, view().elements.filter(node => node.type === "button").length);
-  result.elements.find(node => node.type === "button" && Children.toArray(node.props.children).some(child => isValidElement(child) && child.type === "span")).props.onClick();
-  assert.deepEqual(result.calls, [["people"]]);
+  assert.doesNotMatch(result.markup, /Кому доступно|Выбрать получателей/);
+  assert.deepEqual(result.calls, []);
 });
 
 test("a full audience cannot accidentally authorize a 101st recipient", () => {
@@ -274,4 +251,51 @@ test("a full audience cannot accidentally authorize a 101st recipient", () => {
   const toggle = friendSwitch(full, "Новый друг");
   assert.equal(toggle.props.disabled, true); toggle.props.onClick();
   assert.deepEqual(full.calls, []);
+});
+
+test("a privacy command interrupts an unresolved resume synchronously and failed operations remain actionable", async () => {
+  const runtimeId = "virtual:sharing-command-hooks";
+  const scoped = await createServer({ appType: "custom", configFile: false, root, optimizeDeps: { noDiscovery: true, include: [] },
+    resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+    plugins: [{ name: "sharing-command-runtime", enforce: "pre",
+      resolveId(id) { if (id === runtimeId) return "\0" + runtimeId; },
+      load(id) { if (id === "\0" + runtimeId) return `
+        let slots=[], cursor=0, pending=[];
+        export const begin=()=>{cursor=0;pending=[]};
+        export function useState(initial){const i=cursor++;if(!(i in slots))slots[i]={value:typeof initial==='function'?initial():initial};return[slots[i].value,v=>{slots[i].value=typeof v==='function'?v(slots[i].value):v}];}
+        export function useRef(value){const i=cursor++;if(!(i in slots))slots[i]={ref:{current:value}};return slots[i].ref;}
+        export function useEffect(callback){const i=cursor++;if(!(i in slots))pending.push(()=>{slots[i]={cleanup:callback()}});}
+        export const commit=()=>pending.forEach(fn=>fn());
+        export const dispose=()=>slots.forEach(slot=>slot?.cleanup?.());
+      `; },
+      transform(source, id) { if (id.endsWith("/features/earth/earth-sharing-panel.tsx")) return source.replace('from "react";', `from "${runtimeId}";`); },
+    }] });
+  try {
+    const runtime = await scoped.ssrLoadModule(runtimeId), { EarthSharingPanel: Panel } = await scoped.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
+    const base = view({}, activeSettings), calls = [];
+    let failResume;
+    const props = { ...base.props, sharing: { ...base.props.sharing, stopPublishing: () => calls.push("stop") },
+      onShare: () => new Promise((resolve, reject) => { failResume = reject; }),
+      onGhost: () => { calls.push("ghost"); throw new Error("offline"); }, onOff: async () => { calls.push("off"); throw new Error("retry"); } };
+    const render = () => { runtime.begin(); const content = Panel(props); runtime.commit(); return content.props; };
+    assert.deepEqual(calls, [], "rendering does not start location or sharing");
+    const resume = render().onShare({ recipientCircleIds: ["one"], frozenCircleIds: [], precision: "APPROXIMATE", durationMinutes: 60 });
+    assert.equal(render().working, true);
+    const stop = render().onGhost();
+    assert.deepEqual(calls, ["stop", "ghost"], "publishing stops before a failed privacy transport can complete");
+    await stop;
+    assert.equal(render().working, false); assert.match(render().localError, /Не удалось сохранить/);
+    failResume(new Error("late resume response")); await resume;
+    assert.equal(render().working, false); assert.match(render().localError, /Не удалось сохранить/);
+    await render().onOff(); assert.deepEqual(calls, ["stop", "ghost", "stop", "off"]);
+    assert.match(render().localError, /Не удалось сохранить/);
+    let finishGhost;
+    props.onGhost = () => { calls.push("pending ghost"); return new Promise(resolve => { finishGhost = resolve; }); };
+    const pendingGhost = render().onGhost();
+    await render().onOff();
+    assert.deepEqual(calls.slice(-4), ["stop", "pending ghost", "stop", "off"], "revoke-all remains available while a weaker Ghost command is unresolved");
+    finishGhost(); await pendingGhost;
+    assert.equal(render().working, false); assert.match(render().localError, /Не удалось сохранить/);
+    runtime.dispose();
+  } finally { await scoped.close(); }
 });

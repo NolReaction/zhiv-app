@@ -17,7 +17,7 @@ object EconomyTutorialOrders {
     const val ID = "tutorial_first_order"
     val legacyStageIds = setOf("tutorial_wood_order", "tutorial_compote_order", "tutorial_planks_order")
 
-    /** Server-owned aid, consumed by the first successful start, never by local replay. */
+    /** Eligibility for the explicit teaching command; ordinary production never consumes this aid. */
     fun canPrepareFirstHarvest(state: EconomyState, recipeId: String, quantity: Long): Boolean {
         val progress = normalize(state).tutorialOrder
         return recipeId == "grow_berries" && quantity == 1L && progress.version == 3 && progress.ingredientsClaimed &&

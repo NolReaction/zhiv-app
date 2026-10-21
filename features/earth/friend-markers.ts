@@ -7,7 +7,11 @@ import styles from "./friend-markers.module.css";
 
 type Environment = { now: () => number; schedule: (callback: () => void, delay: number) => unknown;
   cancel: (handle: unknown) => void; reducedMotion: () => boolean };
+type Presentation = Pick<EarthMapPerson, "precision" | "accuracyMeters" | "updatedAt"> & {
+  displayName: string; count: number;
+};
 type Entry = { marker: Marker; element: HTMLButtonElement; portrait: HTMLSpanElement;
+  longitude: number; latitude: number; presentation: Presentation | null;
   circleIds: string[]; removeListeners: () => void };
 
 /** Public round-trip projection rejects the far hemisphere before creating DOM. */
@@ -56,6 +60,7 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
   let timerGeneration = 0;
   const Observer = owner.defaultView?.MutationObserver;
   const observer = Observer ? new Observer(() => synchronizeAccessibility()) : null;
+  const observed = new Set<HTMLButtonElement>();
 
   function cancelExpiry() {
     timerGeneration++;
@@ -69,7 +74,7 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
   }
   function clear() {
     cancelExpiry(); people.clear(); selfPosition = null;
-    observer?.disconnect();
+    observer?.disconnect(); observed.clear();
     for (const id of [...entries.keys()]) removeEntry(id);
   }
   function purgeExpired() {
@@ -90,10 +95,38 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
     for (const entry of entries.values()) {
       const available = visible && !disposed && !entry.element.classList.contains("maplibregl-marker-covered")
         && entry.circleIds.some(id => (people.get(id)?.expiresAtMonotonic ?? -Infinity) > environment.now());
-      entry.element.disabled = !available;
-      entry.element.tabIndex = available ? 0 : -1;
-      entry.element.setAttribute("aria-hidden", String(!available));
+      if (entry.element.disabled !== !available) entry.element.disabled = !available;
+      const tabIndex = available ? 0 : -1;
+      if (entry.element.tabIndex !== tabIndex) entry.element.tabIndex = tabIndex;
+      const hidden = String(!available);
+      if (entry.element.getAttribute("aria-hidden") !== hidden) entry.element.setAttribute("aria-hidden", hidden);
     }
+  }
+  function observeEntries() {
+    if (!observer || observed.size === entries.size && [...entries.values()].every(entry => observed.has(entry.element))) return;
+    // MutationObserver cannot unobserve a removed node. Rebind only when the
+    // live elements change, so camera motion neither retains old pins nor
+    // repeatedly disconnects the same bounded set.
+    observer.disconnect(); observed.clear();
+    for (const entry of entries.values()) {
+      observed.add(entry.element);
+      observer.observe(entry.element, { attributes: true, attributeFilter: ["class"] });
+    }
+  }
+  function synchronizePresentation(entry: Entry, person: EarthMapPerson, count: number) {
+    const previous = entry.presentation;
+    if (previous?.count === count && previous.displayName === person.user.displayName
+      && previous.precision === person.precision && previous.accuracyMeters === person.accuracyMeters
+      && previous.updatedAt === person.updatedAt) return;
+    entry.presentation = { count, displayName: person.user.displayName, precision: person.precision,
+      accuracyMeters: person.accuracyMeters, updatedAt: person.updatedAt };
+    const cluster = count > 1, clustered = String(cluster);
+    if (entry.element.dataset.cluster !== clustered) entry.element.dataset.cluster = clustered;
+    const text = cluster ? String(count) : initials(person.user.displayName);
+    if (entry.portrait.textContent !== text) entry.portrait.textContent = text;
+    const label = cluster ? `Близкие рядом: ${count}. Открыть список` : friendLabel(person);
+    if (entry.element.getAttribute("aria-label") !== label) entry.element.setAttribute("aria-label", label);
+    if (entry.element.title !== label) entry.element.title = label;
   }
   function createEntry(group: EarthFriendGroup, person: EarthMapPerson): Entry {
     const element = owner.createElement("button");
@@ -106,7 +139,8 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
     element.append(portrait);
     const marker = new MarkerConstructor({ element, anchor: "bottom", pitchAlignment: "viewport",
       rotationAlignment: "viewport", subpixelPositioning: true, opacityWhenCovered: 0 });
-    const entry: Entry = { marker, element, portrait, circleIds: [...group.circleIds], removeListeners: () => undefined };
+    const entry: Entry = { marker, element, portrait, longitude: person.longitude, latitude: person.latitude,
+      presentation: null, circleIds: [...group.circleIds], removeListeners: () => undefined };
     const stopPointer = (event: Event) => event.stopPropagation();
     const onClick = (event: Event) => {
       event.stopPropagation();
@@ -154,18 +188,17 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
         try { entry = createEntry(group, person); entries.set(group.anchorId, entry); }
         catch { continue; }
       }
-      entry.circleIds = [...group.circleIds];
-      entry.marker.setLngLat([person.longitude, person.latitude]);
-      const cluster = group.circleIds.length > 1;
-      entry.element.dataset.cluster = String(cluster);
-      entry.portrait.textContent = cluster ? String(group.circleIds.length) : initials(person.user.displayName);
-      const label = cluster ? `Близкие рядом: ${group.circleIds.length}. Открыть список` : friendLabel(person);
-      entry.element.setAttribute("aria-label", label); entry.element.title = label;
+      if (entry.circleIds.length !== group.circleIds.length || entry.circleIds.some((id, index) => id !== group.circleIds[index]))
+        entry.circleIds = [...group.circleIds];
+      // Native Marker already projects itself on camera events. Only a new
+      // authorized location needs another setLngLat and its DOM update.
+      if (entry.longitude !== person.longitude || entry.latitude !== person.latitude) {
+        entry.marker.setLngLat([person.longitude, person.latitude]);
+        entry.longitude = person.longitude; entry.latitude = person.latitude;
+      }
+      synchronizePresentation(entry, person, group.circleIds.length);
     }
-    // MutationObserver has no unobserve(node). Rebind only the current bounded
-    // set so panning never retains detached markers from previous viewports.
-    observer?.disconnect();
-    for (const entry of entries.values()) observer?.observe(entry.element, { attributes: true, attributeFilter: ["class"] });
+    observeEntries();
     synchronizeAccessibility();
   }
   const onCamera = () => { if (visible) reconcile(); };

@@ -1,16 +1,16 @@
 "use client";
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ClipboardCopy, CloudSun, Compass, Earth, HardDriveDownload, Info, LocateFixed, Map, Satellite, X } from "lucide-react";
+import { ClipboardCopy, CloudSun, Compass, Earth, Info, LocateFixed, X } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EarthLocationStatus, EarthPosition } from "./location";
 import type { EarthCameraSession, EarthCameraSnapshot } from "./camera-session";
 import { EARTH_ACCURACY_SOURCE, EARTH_CENTER, EARTH_SKY, EARTH_STYLE_URL, globeZoom, positionAccuracyData, positionZoom, prepareEarthStyle } from "./map-style";
-import { EarthLoading, formatEarthLoadingBytes, type EarthLoadingStage } from "./earth-loading";
+import { EarthLoading, type EarthLoadingStage } from "./earth-loading";
 import { EARTH_CACHE_PROTOCOL, earthResourceCache } from "./resource-cache";
-import { EARTH_RUNTIME_DIRECTORY, loadEarthRuntime } from "./runtime-loader";
+import { loadEarthRuntime } from "./runtime-loader";
 import { getEarthErrorResourceUrls } from "./resource-recovery";
 import { createEarthRequestScope, createEarthResourceProtocol } from "./resource-protocol";
 import { areEarthTileSourcesReady, earthTileSourceIds, refreshEarthTileSource } from "./source-recovery";
@@ -20,7 +20,7 @@ import { EARTH_BUILDINGS_3D_LAYER } from "./building-style";
 import { createEarthPositionMarker, updateEarthPositionMarkerLabel } from "./position-marker";
 import { installEarthMaterialImages, registerEarthMaterialImage } from "./land-material";
 import { EarthAttribution } from "./earth-attribution";
-import { EarthModelCredits } from "./earth-model-credits";
+import { EarthMapInfo } from "./earth-map-info";
 import { installEarthGlobeCamera } from "./globe-camera";
 import { createEarthCameraViewport } from "./camera-viewport";
 import { earthAtlasCameraFocus } from "./atlas-camera-focus";
@@ -36,7 +36,7 @@ import type { EarthLightingCenter, EarthLightingMode } from "./globe-lighting";
 import { createEarthTileLoadingOverlay } from "./tile-loading-overlay";
 import { createEarthStars } from "./earth-stars";
 import { createEarthWeatherController, createEarthWeatherProvider, type EarthWeatherSnapshot, type EarthWeatherState } from "./weather";
-import { EARTH_WEATHER_ATTRIBUTION } from "@/lib/earth-weather-contract";
+import type { EarthWalkingRoute } from "./walking-route";
 import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
 import { createEarthFriendMarkers } from "./friend-markers";
 import { createEarthMeetMap } from "./meet-map";
@@ -63,6 +63,7 @@ type EarthMapProps = {
   focusWhenReady?: boolean;
   meetCircleId?: string | null;
   meetFocusRequest?: number;
+  walkingRoute?: EarthWalkingRoute | null;
   isOnline: boolean;
   onLocate: () => void;
   locating: boolean;
@@ -113,7 +114,7 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
   locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true,
-  onModelEditorOpenChange, onViewChange, cameraFocusRequest = null, onAtlasPreviewChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, locationStatus = "idle" }: EarthMapProps) {
+  onModelEditorOpenChange, onViewChange, cameraFocusRequest = null, onAtlasPreviewChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, walkingRoute = null, locationStatus = "idle" }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -186,7 +187,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const viewChangeRef = useRef(onViewChange);
   const selectFriendsRef = useRef(onSelectFriends);
   const syncFriendsRef = useRef<(() => void) | null>(null);
-  const latestMeet = useRef({ circleId: meetCircleId, requestId: meetFocusRequest });
+  const latestMeet = useRef({ circleId: meetCircleId, requestId: meetFocusRequest, walkingRoute });
   const editingRef = useRef(modelEditorOpen);
   useLayoutEffect(() => { atlasPreviewCallback.current = onAtlasPreviewChange; }, [onAtlasPreviewChange]);
   useLayoutEffect(() => {
@@ -200,14 +201,14 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     else syncAtlasPreviewRef.current?.();
   }, [cameraFocusRequest, publishAtlasPreview]);
   useLayoutEffect(() => {
-    latestMeet.current = { circleId: meetCircleId, requestId: meetFocusRequest };
+    latestMeet.current = { circleId: meetCircleId, requestId: meetFocusRequest, walkingRoute };
     editingRef.current = modelEditorOpen;
     cameraViewportRef.current?.setEnabled(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen);
     touchPitchRef.current?.setEnabled(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen);
     satelliteRef.current?.setVisible(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen && !document.hidden);
     syncFriendsRef.current?.();
     syncAtlasPreviewRef.current?.();
-  }, [meetCircleId, meetFocusRequest, modelEditorOpen]);
+  }, [meetCircleId, meetFocusRequest, walkingRoute, modelEditorOpen]);
   useLayoutEffect(() => { selectFriendsRef.current = onSelectFriends; }, [onSelectFriends]);
   useLayoutEffect(() => { viewChangeRef.current = onViewChange; }, [onViewChange]);
   useEffect(() => {
@@ -438,7 +439,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       friendMarkers.setSelfPosition(latestPosition.current);
       friendMarkers.setSnapshot(latestFriends.current);
       const meet = latestMeet.current;
-      meetMap?.setSnapshot(latestPosition.current, latestFriends.current.find(person => person.circleId === meet.circleId) ?? null, meet.requestId);
+      meetMap?.setSnapshot(latestPosition.current, latestFriends.current.find(person => person.circleId === meet.circleId) ?? null, meet.requestId, meet.walkingRoute);
       const request = latestFriendFocus.current;
       if (request && request.requestId > handledFriendFocus.current) {
         cameraViewport?.refresh(false);
@@ -987,7 +988,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             : weatherState.status === "error" ? "Прогноз пока недоступен" : "Узнаём погоду…"}
     </p>}
     {ready && !infoOpen && tileStatus === "idle" && cache.pending === 0 && (satelliteState.error || satelliteState.enabled && ["zoom-required", "loading", "offline"].includes(satelliteState.status)) && <p className={styles.satelliteNotice} role="status">{satelliteMessage}</p>}
-    {ready && <EarthAttribution satelliteAttribution={satelliteAttribution} />}
+    {ready && <EarthAttribution satelliteAttribution={satelliteAttribution} walkingRoute={Boolean(active && visible && !modelEditorOpen && walkingRoute && walkingRoute.circleId === meetCircleId)} />}
     {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} open={modelEditorOpen} onOpenChange={changeModelEditorOpen} /></Suspense>}
     {ready && <button ref={infoButton} data-earth-camera-blocker type="button" data-audio-cue={infoOpen ? "ui.close" : "ui.open"} className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => { setDiagnosticReport(null); onInfoOpenChange(!infoOpen); }}><Info size={21} aria-hidden="true" /></button>}
@@ -996,49 +997,18 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     }}>
       <header className={styles.infoHeader}><h2 ref={infoHeading} tabIndex={-1} id="earth-info-title">О карте</h2>
         <button type="button" data-audio-cue="ui.close" className={styles.infoClose} aria-label="Закрыть настройки карты" onClick={() => { onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }}><X size={18} aria-hidden="true" /></button></header>
-      <section className={styles.infoSection}><h3>Вид карты</h3>
-        <div className={styles.mapModes} role="group" aria-label="Подложка карты">
-          <button type="button" aria-pressed={!satelliteState.enabled} onClick={() => selectMapMode(false)}><Map size={16} aria-hidden="true" />Карта</button>
-          <button type="button" aria-pressed={satelliteState.enabled} disabled={!MAPTILER_KEY.trim() || !isOnline && !satelliteState.enabled}
-            onClick={() => selectMapMode(true)}><Satellite size={16} aria-hidden="true" />Спутник</button>
-        </div>
-        <p role="status">{satelliteMessage}</p>
-        <div className={styles.lightingModes} role="group" aria-label="Освещение глобуса">
-          {([ ["auto", "Авто"], ["day", "День"], ["evening", "Вечер"] ] as const).map(([value, label]) =>
-            <button key={value} type="button" aria-pressed={lightingMode === value} onClick={() => {
-              if (lightingMode === value) return;
-              playUiCue(getAudioRuntime(), "ui.tab");
-              if (value === "evening" && lightingMode !== "evening") {
-                const center = mapRef.current?.getCenter();
-                if (center) setEveningCenter({ lng: center.lng, lat: center.lat });
-              }
-              setLightingMode(value);
-            }}>{label}</button>)}
-        </div>
-        <p>{lightingMode === "auto" ? "Светлая и тёмная стороны следуют времени суток. Облачка и волны оживляют Землю при отдалении." : lightingMode === "evening" ? "Тёплый закат и огоньки городов. Вечер остаётся на выбранной стороне Земли." : "Светлый глобус, чтобы рассмотреть все детали."}</p>
-        <p>{satelliteState.imageryVisible ? "На спутнике здания и объёмные миниатюры скрыты, чтобы не закрывать снимок. Настройка ниже сохраняется для обычной карты." : "Объёмные миниатюры достопримечательностей стоят на своих географических местах и поворачиваются вместе с Землёй. Нажмите на любую, чтобы узнать название. При сильном отдалении и перед масштабом улиц они скрываются."}</p>
-        <div className={styles.infoRow}><span id="earth-buildings-label">Объёмные здания</span>
-          <button type="button" data-audio-cue="ui.click" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
-        <p>В обычном режиме здания появляются при приближении к улицам. Два пальца вверх или вниз — наклон; сведение и разведение — масштаб. Мышью наклоняйте с зажатой правой кнопкой.</p>
-      </section>
-      {locationDetails}
-      <section className={styles.infoSection}><h3>На устройстве</h3><div className={styles.storageDetails}>
-        <strong>{cache.storage === "device" ? `Сохранено ${formatEarthLoadingBytes(cache.storedBytes)} из ${formatEarthLoadingBytes(cache.diskLimitBytes)}` : "Доступно в этой сессии"}
-          {cache.persistence === "granted" && cache.storage === "device" ? " · Закреплено" : ""}</strong>
-        <p>{cache.storage === "device" ? "Кеш ограничен: текущий район и часто открываемые места сохраняются в первую очередь. Редко используемые подробные участки освобождают место новым. Новые районы загружаются по мере просмотра." : "Карта использует ограниченный кеш этой сессии. После закрытия страницы часть данных потребуется загрузить заново."}</p>
-        {cache.storage === "device" && cache.persistence !== "granted" && <button type="button" data-audio-cue="ui.click" onClick={persistMap} disabled={persisting}><HardDriveDownload size={16} aria-hidden="true" />{persisting ? "Сохраняем…" : "Закрепить карту"}</button>}
-      </div></section>
-      <section className={styles.infoSection}><h3>Источники карты</h3><p className={styles.attribution}>
-        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>{" · "}
-        <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>{" · "}
-        <a href="https://openmaptiles.org" target="_blank" rel="noreferrer">OpenMapTiles</a>{" · "}
-        <a href="https://www.naturalearthdata.com" target="_blank" rel="noreferrer">Natural Earth</a>
-      </p><p>Данные OpenStreetMap распространяются по <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">ODbL</a>, дизайн схемы OpenMapTiles · <a href="https://github.com/openmaptiles/openmaptiles/blob/master/LICENSE.md" target="_blank" rel="noreferrer">CC BY 4.0</a>. Natural Earth · общественное достояние. Оформление карты изменено для «Я живой».</p>
-        <p>Движок: <a href={`${EARTH_RUNTIME_DIRECTORY}/LICENSE.txt`} target="_blank" rel="noreferrer">MapLibre GL JS и лицензии компонентов</a>.</p>
-        <p className={styles.attribution}>Погода: <a href={EARTH_WEATHER_ATTRIBUTION.sourceUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.name}</a>{" · "}
-          <a href={EARTH_WEATHER_ATTRIBUTION.licenseUrl} target="_blank" rel="noreferrer">{EARTH_WEATHER_ATTRIBUTION.license}</a>. Упрощённая визуализация для «Я живой».</p>
-      </section>
-      <section className={styles.infoSection}><h3>3D-модели</h3><EarthModelCredits /></section>
+      <EarthMapInfo satelliteState={satelliteState} satelliteAvailable={!!MAPTILER_KEY.trim()} isOnline={isOnline}
+        satelliteMessage={satelliteMessage} onMapModeChange={selectMapMode} lightingMode={lightingMode}
+        onLightingModeChange={value => {
+          if (lightingMode === value) return;
+          playUiCue(getAudioRuntime(), "ui.tab");
+          if (value === "evening") {
+            const center = mapRef.current?.getCenter();
+            if (center) setEveningCenter({ lng: center.lng, lat: center.lat });
+          }
+          setLightingMode(value);
+        }} buildings3d={buildings3d} onToggleBuildings={() => setBuildings3d(value => !value)} cache={cache}
+        persisting={persisting} onPersist={persistMap} locationDetails={locationDetails} />
     </section>}
   </div>;
 }

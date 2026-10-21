@@ -57,8 +57,8 @@ export function newTutorialOrder(catalog = economyCatalog): EconomyTutorialOrder
     firstHarvestPrepared: false,
     terms: terms ? copyTerms(terms) : null };
 }
-/** Account-owned first harvest aid, independent of the local lesson or its replay.
- * The start command consumes it before cancellation or another request can reuse it.
+/** Account-owned eligibility, not permission to accelerate ordinary production.
+ * Only the explicit teaching command consumes it before another request can reuse it.
  * Old profiles with harvested berries or an existing crop keep their ordinary jobs. */
 export function canPrepareTutorialHarvest(state: Pick<EconomyState, "tutorialOrder" | "buildings" | "inventory" | "jobs" | "progression">,
   recipeId: string, quantity = 1): boolean {

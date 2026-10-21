@@ -98,6 +98,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId), platform = await vite.ssrLoadModule(platformId);
 const { EarthMap } = await vite.ssrLoadModule("/features/earth/earth-map.tsx");
+const { EarthMapInfo } = await vite.ssrLoadModule("/features/earth/earth-map-info.tsx");
 
 function harness(initialPreference = true) {
   const globals = new Map(["window", "document", "navigator", "ResizeObserver", "IntersectionObserver"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
@@ -124,7 +125,7 @@ function harness(initialPreference = true) {
   function render() {
     for (let pass = 0; pass < 20; pass++) {
       hooks.begin(state); const tree = EarthMap(props); nodes = [];
-      const walk = node => { if (isValidElement(node)) { nodes.push(node); Children.forEach(node.props.children, walk); } };
+      const walk = node => { if (isValidElement(node)) { nodes.push(node); if (node.type === EarthMapInfo) walk(EarthMapInfo(node.props)); else Children.forEach(node.props.children, walk); } };
       walk(tree);
       const container = nodes.find(node => node.type === "div" && node.props.ref);
       if (container) container.props.ref.current = host;

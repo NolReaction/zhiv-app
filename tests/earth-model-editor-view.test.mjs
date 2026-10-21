@@ -5,13 +5,21 @@ import { Children, isValidElement } from "react";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const hooksId = "virtual:earth-editor-view-hooks";
+const hooksId = "virtual:earth-editor-view-hooks", walkingId = "virtual:earth-editor-view-walking";
 // Exercise the real view, hook and GPS controller; adapt only React scheduling.
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "earth-editor-view-hooks", enforce: "pre",
-    resolveId(id) { if (id === hooksId) return `\0${id}`; },
+    resolveId(id) { if (id === hooksId || id === walkingId) return `\0${id}`; },
     load(id) {
+      if (id === `\0${walkingId}`) return `
+        const empty=()=>({status:'idle',route:null,error:null,canRequest:false});
+        export const walking={snapshot:empty(),contexts:[],requests:[],clears:0,current:null,accept:true};
+        export function reset(){walking.snapshot=empty();walking.contexts.length=0;walking.requests.length=0;walking.clears=0;walking.current=null;walking.accept=true;}
+        const request=()=>{walking.requests.push(walking.current);return walking.accept;};
+        const clear=()=>{walking.clears++;walking.snapshot=empty();};
+        export function useEarthWalkingRoute(context){walking.current=context;walking.contexts.push(context);return{snapshot:walking.snapshot,request,clear};}
+      `;
       if (id === `\0${hooksId}`) return `
         export { lazy, Suspense } from "react";
         let current, cursor = 0;
@@ -30,6 +38,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       `;
     },
     transform(source, id) {
+      if (id.endsWith("/features/earth/earth-view.tsx")) source = source.replace('from "./use-earth-walking-route";', `from "${walkingId}";`);
       if (id.endsWith("/features/earth/earth-view.tsx") || id.endsWith("/features/earth/use-earth-location.ts")
         || id.endsWith("/features/earth/use-earth-atlas.ts") || id.endsWith("/features/earth/use-earth-atlas-discovery.ts")
         || id.endsWith("/features/earth/use-earth-atlas-explorer.ts"))
@@ -46,7 +55,9 @@ const { EarthSharingPanel } = await vite.ssrLoadModule("/features/earth/earth-sh
 const { EarthAtlasPanel } = await vite.ssrLoadModule("/features/earth/earth-atlas-panel.tsx");
 const { EarthAtlasExplorer } = await vite.ssrLoadModule("/features/earth/earth-atlas-explorer.tsx");
 const { earthAtlasEntry, EARTH_ATLAS_MEETING_ID } = await vite.ssrLoadModule("/features/earth/earth-atlas.ts");
-const { EARTH_ATLAS_JOURNEYS } = await vite.ssrLoadModule("/features/earth/earth-atlas-journeys.ts");
+const { walking, reset: resetWalking } = await vite.ssrLoadModule(walkingId);
+const { createEarthWalkingRouteBinding } = await vite.ssrLoadModule("/features/earth/walking-route.ts");
+const { getEarthLocationPreferenceStore } = await vite.ssrLoadModule("/features/earth/location-preferences.ts");
 const nodes = tree => {
   const result = [];
   const visit = node => { if (isValidElement(node)) { result.push(node); Children.forEach(node.props.children, visit); } };
@@ -54,6 +65,7 @@ const nodes = tree => {
 };
 const text = node => typeof node === "string" ? node : Array.isArray(node) ? node.map(text).join("") : isValidElement(node) ? text(node.props.children) : "";
 function setup({ rememberedOpen = false, environment = "development", online = true, permissionState = "prompt" } = {}) {
+  resetWalking();
   const originalEnv = process.env.NODE_ENV;
   process.env.NODE_ENV = environment;
   const globals = new Map(["window", "document", "navigator"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
@@ -351,44 +363,44 @@ test("atlas catalogue choices close the sheet and only an explicitly ready curre
   } finally { app.destroy(); }
 });
 
-test("catalogue reopen preserves the route, direct stop jump creates a new request, and covered stale saves are blocked", () => {
+test("catalogue reopen preserves the selected place and invalidates covered or superseded Save callbacks", () => {
   const app = setup();
   try {
     let view = app.render(); book(view).props.onClick(); view = app.render();
-    const atlas = atlasPanel(view).props.atlas, route = EARTH_ATLAS_JOURNEYS[0];
-    atlasPanel(view).props.onStartJourney(route.id); view = app.render();
+    const atlas = atlasPanel(view).props.atlas, eiffel = earthAtlasEntry("landmark:eiffel-tower"), giza = earthAtlasEntry("landmark:giza-pyramids");
+    assert.equal(atlasPanel(view).props.onStartJourney, undefined, "the visible catalogue has no route commands");
+    atlasPanel(view).props.onFocus(eiffel); view = app.render();
     const first = view.map.cameraFocusRequest;
-    assert.equal(explorerCard(view).props.journey.journey.id, route.id);
     view.map.onAtlasPreviewChange(preview(view)); view = app.render();
     const oldSave = explorerCard(view).props.onDiscover;
-    explorerCard(view).props.onBrowseStops();
-    oldSave(); assert.deepEqual(atlas.readSnapshot().ids, [], "the panel guard changes synchronously");
+    book(view).props.onClick(); oldSave();
+    assert.deepEqual(atlas.readSnapshot().ids, [], "opening the catalogue closes the Save guard synchronously");
     view = app.render(); assert.equal(explorerCard(view), undefined);
-    assert.equal(atlasPanel(view).props.initialSection, "journeys");
-    assert.deepEqual(atlasPanel(view).props.journeyState, { journeyId: route.id, stopIndex: 0 });
-    // Even a later map-ready callback cannot make the hidden old Save valid.
+    assert.equal(atlasPanel(view).props.onSelectStop, undefined);
     view.map.onAtlasPreviewChange(preview(view)); oldSave(); assert.deepEqual(atlas.readSnapshot().ids, []);
-    atlasPanel(view).props.onSelectStop(route.stops.length - 1); view = app.render();
-    assert.equal(atlasPanel(view), undefined); assert.equal(explorerCard(view).props.entry.id, route.stops.at(-1).entryId);
-    assert.ok(view.map.cameraFocusRequest.requestId > first.requestId);
-    assert.deepEqual(atlas.readSnapshot().ids, []);
-    book(view).props.onClick(); view = app.render();
-    const state = atlasPanel(view).props.journeyState;
     view.all.find(node => node.type === "button" && node.props["aria-label"] === "Закрыть атлас").props.onClick(); view = app.render();
-    assert.equal(explorerCard(view).props.journey.stopIndex, state.stopIndex);
+    assert.equal(explorerCard(view).props.entry.id, eiffel.id);
+    assert.equal(view.map.cameraFocusRequest.requestId, first.requestId, "closing the catalogue cannot restart the camera");
+    book(view).props.onClick(); view = app.render(); atlasPanel(view).props.onFocus(giza); view = app.render();
+    assert.equal(atlasPanel(view), undefined); assert.equal(explorerCard(view).props.entry.id, giza.id);
+    assert.ok(view.map.cameraFocusRequest.requestId > first.requestId);
+    oldSave(); assert.deepEqual(atlas.readSnapshot().ids, [], "the previous place cannot be saved through an old callback");
+    view.map.onAtlasPreviewChange(preview(view)); view = app.render(); explorerCard(view).props.onDiscover();
+    assert.deepEqual(atlas.readSnapshot().ids, [giza.id]);
   } finally { app.destroy(); }
 });
 
-test("Explorer Escape ends the route, clears camera intent and returns keyboard focus to the book", () => {
+test("Explorer Escape closes the place, clears camera intent and returns keyboard focus to the book", () => {
   const app = setup();
   try {
     let view = app.render(); book(view).props.onClick(); view = app.render();
-    atlasPanel(view).props.onStartJourney(EARTH_ATLAS_JOURNEYS[0].id); view = app.render();
+    atlasPanel(view).props.onFocus(earthAtlasEntry("landmark:eiffel-tower")); view = app.render();
     let focused = 0, stopped = 0; book(view).props.ref.current = { focus() { focused++; } };
     view.tree.props.onKeyDown({ key: "Escape", stopPropagation() { stopped++; } }); view = app.render();
     assert.equal(explorerCard(view), undefined); assert.equal(view.map.cameraFocusRequest, null);
     assert.equal(focused, 1); assert.equal(stopped, 1);
-    book(view).props.onClick(); view = app.render(); assert.equal(atlasPanel(view).props.journeyState, null);
+    book(view).props.onClick(); view = app.render(); assert.equal(atlasPanel(view).props.journeyState, undefined);
+    assert.equal(app.watches.length, 0, "browsing places never starts GPS");
   } finally { app.destroy(); }
 });
 
@@ -427,5 +439,70 @@ test("an explicit fresh friend meeting keeps its GPS guard and saves without any
     assert.ok(meeting); assert.deepEqual(atlas.readSnapshot().ids, []);
     meeting.props.onRecordMeeting();
     assert.deepEqual(atlas.readSnapshot().ids, [EARTH_ATLAS_MEETING_ID]);
+  } finally { app.destroy(); }
+});
+
+
+function freshWalkingFriend() {
+  const now = Date.now();
+  return { circleId: "friend-one", user: { publicId: "ONE", displayName: "Лена" }, latitude: 48.851, longitude: 2.291,
+    accuracyMeters: 15, precision: "PRECISE", updatedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 60_000).toISOString(), expiresAtMonotonic: performance.now() + 60_000 };
+}
+
+test("meeting routes are requested explicitly, frame only accepted builds and forward the actual ready path", () => {
+  const app = setup(); app.props.sharing.people = [freshWalkingFriend()];
+  try {
+    let view = app.render(); assert.equal(walking.requests.length, 0); assert.equal(view.map.walkingRoute, null);
+    view.map.onSelectFriends(["friend-one"]); view = app.render();
+    assert.equal(walking.requests.length, 0, "opening a friend never requests the routing provider");
+    assert.equal(walking.current.owner, app.props.ownerPublicId); assert.equal(walking.current.person.circleId, "friend-one");
+    assert.equal(walking.current.position, null, "a private GPS request is not already a fresh routing endpoint");
+    app.watches[0].success(fix(Date.now())); view = app.render();
+    assert.equal(walking.current.position, view.map.position); assert.equal(walking.current.allowed, true); assert.equal(walking.current.foreground, true);
+    let meeting = view.all.find(node => node.type === EarthMeetCard);
+    walking.accept = false; meeting.props.onBuildWalkingRoute(); view = app.render();
+    assert.equal(walking.requests.length, 1); assert.equal(view.map.meetFocusRequest, 0, "a refused build cannot pan the camera");
+    walking.accept = true; meeting = view.all.find(node => node.type === EarthMeetCard); meeting.props.onBuildWalkingRoute(); view = app.render();
+    assert.equal(walking.requests.length, 2); assert.equal(view.map.meetFocusRequest, 1);
+    const binding = createEarthWalkingRouteBinding(app.props.ownerPublicId, view.map.position, walking.current.person, performance.now(), Date.now());
+    assert.ok(binding);
+    const route = { ...binding, geometry: { type: "LineString", coordinates: [binding.origin, binding.destination] }, distanceMeters: 2350, durationSeconds: 1060 };
+    walking.snapshot = { status: "ready", route, error: null, canRequest: false }; view = app.render();
+    meeting = view.all.find(node => node.type === EarthMeetCard);
+    assert.equal(meeting.props.walkingRoute, walking.snapshot); assert.equal(view.map.walkingRoute, route);
+    assert.equal(walking.requests.length, 2, "a ready snapshot or rerender does not refresh the route");
+    meeting.props.onClearWalkingRoute(); view = app.render();
+    assert.equal(walking.clears, 1); assert.equal(view.map.walkingRoute, null);
+    assert.equal(view.all.find(node => node.type === EarthMeetCard).props.walkingRoute.route, null);
+  } finally { app.destroy(); }
+});
+
+test("hidden views, editor and another panel disable routing context and immediately hide any retained route prop", () => {
+  for (const cover of ["hidden", "editor", "privacy"]) {
+    const app = setup(); app.props.sharing.people = [freshWalkingFriend()];
+    try {
+      let view = app.render(); view.map.onSelectFriends(["friend-one"]); app.render(); app.watches[0].success(fix(Date.now())); view = app.render();
+      walking.snapshot = { status: "ready", route: { geometry: { type: "LineString", coordinates: [[2.29, 48.85], [2.291, 48.851]] } }, error: null, canRequest: false };
+      view = app.render(); assert.ok(view.map.walkingRoute);
+      if (cover === "hidden") app.props.visible = false;
+      if (cover === "editor") view.map.onModelEditorOpenChange(true);
+      if (cover === "privacy") app.props.privacyRequest = 170;
+      view = app.render();
+      assert.equal(view.map.walkingRoute, null, cover); assert.equal(walking.current.foreground, false, cover);
+      assert.equal(walking.requests.length, 0, "availability changes cannot create provider requests");
+    } finally { app.destroy(); }
+  }
+});
+
+test("global GPS off retains the Ghost settings panel and passes an ineligible routing context without a lookup", () => {
+  const app = setup(); app.props.ownerPublicId = "gps-off-settings-owner";
+  const preference = getEarthLocationPreferenceStore(app.props.ownerPublicId); preference.setEnabled(false);
+  app.props.privacyRequest = 171;
+  try {
+    const view = app.render(), panel = sharingPanel(view);
+    assert.ok(panel, "the global off state must not replace or hide the Ghost controls");
+    assert.equal(panel.props.locationAllowed, false); assert.equal(walking.current.allowed, false); assert.equal(walking.current.position, null);
+    assert.equal(view.map.walkingRoute, null); assert.equal(app.watches.length, 0); assert.equal(walking.requests.length, 0);
   } finally { app.destroy(); }
 });

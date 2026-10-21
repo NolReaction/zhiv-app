@@ -35,10 +35,15 @@ export function uiCueFromTarget(target: EventTarget | null): string | null {
 /** Only gestures can unlock the first time; the runtime may resume an already
  * authorized context when visibility returns. Missed events are never replayed. */
 export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surface: Window) {
-  const visible = () => runtime.setVisible(!page.hidden);
-  const hide = () => runtime.setVisible(false);
+  let frozen = false, parked = false;
+  const available = () => !page.hidden && !frozen && !parked;
+  const visible = () => runtime.setVisible(available());
+  const hide = () => { parked = true; visible(); };
+  const show = () => { parked = false; visible(); };
+  const freeze = () => { frozen = true; visible(); };
+  const resume = () => { frozen = false; visible(); };
   const resumeFromGesture = (event: Event) => {
-    if (!event.isTrusted || page.hidden || !runtime.getSettings().enabled) return;
+    if (!event.isTrusted || !available() || !runtime.getSettings().enabled) return;
     // Touch and pen acquire browser activation on release. Their pointerdown
     // fires too early for Safari; mouse activation is available on press.
     if (event.type === "pointerdown" && (event as PointerEvent).pointerType !== "mouse") return;
@@ -47,14 +52,16 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
     if (runtime.getDiagnostics().state !== "running") void runtime.unlock();
   };
   const click = (event: MouseEvent) => {
-    if (!event.isTrusted || page.hidden) return;
+    if (!event.isTrusted || !available()) return;
     const cue = uiCueFromTarget(event.target);
     if (cue) playUiCue(runtime, cue);
   };
   visible();
   page.addEventListener("visibilitychange", visible);
   surface.addEventListener("pagehide", hide);
-  surface.addEventListener("pageshow", visible);
+  surface.addEventListener("pageshow", show);
+  page.addEventListener("freeze", freeze);
+  page.addEventListener("resume", resume);
   page.addEventListener("pointerdown", resumeFromGesture, { capture: true, passive: true });
   page.addEventListener("pointerup", resumeFromGesture, { capture: true, passive: true });
   page.addEventListener("touchend", resumeFromGesture, { capture: true, passive: true });
@@ -63,7 +70,9 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
   return () => {
     page.removeEventListener("visibilitychange", visible);
     surface.removeEventListener("pagehide", hide);
-    surface.removeEventListener("pageshow", visible);
+    surface.removeEventListener("pageshow", show);
+    page.removeEventListener("freeze", freeze);
+    page.removeEventListener("resume", resume);
     page.removeEventListener("pointerdown", resumeFromGesture, true);
     page.removeEventListener("pointerup", resumeFromGesture, true);
     page.removeEventListener("touchend", resumeFromGesture, true);

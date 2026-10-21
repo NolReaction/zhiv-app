@@ -23,8 +23,8 @@ const send = (p, action, targetId, at = now) => economy.commandDevEconomy(p.toke
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 after(() => vite.close());
 
-test("first raspberry is immediately ripe on the map but needs real collection and an accepted delivery", () => {
-  const p = player(), before = read(p), started = send(p, "start_production", "grow_berries");
+test("explicit tutorial raspberry is immediately ripe on the map but needs real collection and an accepted delivery", () => {
+  const p = player(), before = read(p), started = send(p, "start_tutorial_harvest", "grow_berries");
   const job = started.jobs[0], ripeAt = now + 1;
   assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 1);
   assert.equal(started.tutorialOrder.firstHarvestPrepared, true);
@@ -42,7 +42,7 @@ test("first raspberry is immediately ripe on the map but needs real collection a
 });
 
 test("same UUID replays and different UUIDs cannot renew the first aid or cancel it for another grant", () => {
-  const p = player(), cmd = request(p), result = economy.commandDevEconomy(p.token, cmd, now), job = result.state.jobs[0];
+  const p = player(), cmd = request(p, "start_tutorial_harvest"), result = economy.commandDevEconomy(p.token, cmd, now), job = result.state.jobs[0];
   assert.equal(economy.commandDevEconomy(p.token, cmd, now + 1).replayed, true);
   assert.throws(() => economy.commandDevEconomy(p.token, { ...cmd, requestId: crypto.randomUUID() }, now + 1), { code: "ECONOMY_REVISION_CONFLICT" });
   assert.throws(() => send(p, "cancel_production", job.id, now + 1), { code: "ECONOMY_CANCEL_READY" });

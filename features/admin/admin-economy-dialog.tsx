@@ -17,6 +17,7 @@ const ledgerLabels: Record<string, string> = {
   starting_pack: "Стартовый набор новичка", claim_tutorial_order: "Ингредиенты учебного заказа",
   claim_workshop_starter: "Подарок для первой мастерской",
   start_tutorial_workshop: "Учебная стройка мастерской",
+  start_tutorial_harvest: "Первый учебный урожай",
   onboarding_reward: "Награда за основное обучение",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",

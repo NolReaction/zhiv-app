@@ -127,7 +127,8 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
  * particular, fishing IDs do not equal command IDs. Private rolls and future
  * rewards must never become analytics metadata. */
 internal fun economyLedgerContext(before: EconomyState, command: EconomyCommand, now: Instant? = null, after: EconomyState? = null): Map<String, String> {
-    if (command.action == "start_production") return mapOf("targetId" to command.targetId.substringBefore('@'))
+    if (command.action == "start_production" || command.action == "start_tutorial_harvest")
+        return mapOf("targetId" to command.targetId.substringBefore('@'))
     if (command.action == "start_garden_collection" || command.action == "claim_garden_collection") {
         val batchId = if (command.action == "start_garden_collection") command.requestId else command.targetId
         val jobs = (if (command.action == "start_garden_collection") after ?: before else before).jobs.filter { it.collection?.batchId == batchId }
