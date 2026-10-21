@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import { createElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -9,7 +9,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const book = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
-const { WorldCollections } = await vite.ssrLoadModule("/features/world/ui/collections/world-collections.tsx");
+const { WorldCollections, CollectionBookFinds } = await vite.ssrLoadModule("/features/world/ui/collections/world-collections.tsx");
+const { collectionBookPage, COLLECTION_PAGE_SIZE } = await vite.ssrLoadModule("/features/world/ui/collections/collection-book-page.ts");
 const { newWorldState } = await vite.ssrLoadModule("/features/world/domain/model.ts");
 const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -58,5 +59,60 @@ test("book UI renders accessible chapter tabs, owned records and current acquisi
   assert.match(html, /Короткие задания копят прогресс/);
   assert.match(html, /За одну работу учитывается до 2 ч/);
   assert.match(html, /Продажа рыбы и материалов их не стирает/);
+  assert.match(html, /Страница 1 из 2/);
+  assert.equal((html.match(/role="listitem"/g) ?? []).length, COLLECTION_PAGE_SIZE);
+  assert.doesNotMatch(html, /листайте влево и вправо/);
   assert.doesNotMatch(html, /Лесной альбом|прежних путешествий.<\/p><\/div>|Мохлику ·/);
+});
+
+test("book pages filter permanent ownership without mutating the catalogue or leaving an invalid page", () => {
+  const entries = Object.freeze(Array.from({ length: 11 }, (_, id) => Object.freeze({ id, owned: id % 2 === 0 })));
+  const all = collectionBookPage(entries, "all", 1);
+  assert.deepEqual(all.entries.map(entry => entry.id), [4, 5, 6, 7]);
+  assert.equal(all.pages, 3);
+  const owned = collectionBookPage(entries, "owned", 99);
+  assert.deepEqual(owned.entries.map(entry => entry.id), [8, 10]);
+  assert.equal(owned.page, 1); assert.equal(owned.count, 6);
+  assert.deepEqual(collectionBookPage(entries, "missing", -3).entries.map(entry => entry.id), [1, 3, 5, 7]);
+  assert.equal(collectionBookPage(entries, "all", NaN).page, 0);
+  assert.deepEqual(collectionBookPage([], "owned", 8), { entries: [], page: 0, pages: 1, count: 0 });
+  assert.deepEqual(entries.map(entry => entry.id), Array.from({ length: 11 }, (_, id) => id));
+});
+
+test("fish pages have explicit bounded navigation and keep unearned names and illustrations hidden", () => {
+  const economy = fresh(); economy.fishing.catches = { fish: 1, fish_mooncarp: 1 };
+  const entries = book.collectionBookEntries("fishing", [], economy), calls = [];
+  const render = (filter = "all", page = 0, rows = entries) => CollectionBookFinds({ entries: rows, filter, page,
+    onFilterChange: value => calls.push(["filter", value]), onPageChange: value => calls.push(["page", value]) });
+  const elements = tree => {
+    const result = [];
+    function visit(node) { if (!isValidElement(node)) return; result.push(node); Children.forEach(node.props.children, visit); }
+    visit(tree); return result;
+  };
+  const first = render(), html = renderToStaticMarkup(first);
+  assert.equal((html.match(/role="listitem"/g) ?? []).length, COLLECTION_PAGE_SIZE);
+  assert.match(html, /Неизвестная рыба/);
+  for (const entry of entries.filter(entry => !entry.owned)) assert.ok(!html.includes(entry.name));
+  assert.deepEqual(calls, [], "rendering never changes ownership or chooses a page");
+  const previous = elements(first).find(node => node.props["aria-label"] === "Предыдущая страница находок");
+  assert.equal(previous.props.disabled, true); previous.props.onClick(); assert.deepEqual(calls, []);
+  elements(first).find(node => node.props["aria-label"] === "Следующая страница находок").props.onClick();
+  assert.deepEqual(calls, [["page", 1]]);
+  const last = render("all", 99);
+  const next = elements(last).find(node => node.props["aria-label"] === "Следующая страница находок");
+  assert.equal(next.props.disabled, true); next.props.onClick(); assert.equal(calls.length, 1);
+  elements(last).find(node => node.props["aria-label"] === "Показать находки").props.onChange({ target: { value: "owned" } });
+  assert.deepEqual(calls.at(-1), ["filter", "owned"]);
+  const pages = elements(first).find(node => node.props["aria-label"] === "Выбрать страницу находок");
+  pages.props.onChange({ target: { value: "2" } });
+  assert.deepEqual(calls.at(-1), ["page", 2], "a page can be selected directly without stepping through the book");
+  const count = calls.length;
+  for (const value of ["-1", "100", "1.5", "oops"]) pages.props.onChange({ target: { value } });
+  assert.equal(calls.length, count);
+  const owned = renderToStaticMarkup(render("owned", 99));
+  assert.match(owned, /Страница 1 из 1/); assert.equal((owned.match(/data-owned="true"/g) ?? []).length, 2);
+  assert.doesNotMatch(owned, /Неизвестная рыба/);
+  const empty = render("owned", 9, entries.map(entry => ({ ...entry, owned: false })));
+  assert.match(renderToStaticMarkup(empty), /пока нет открытых находок/);
+  assert.ok(elements(empty).filter(node => node.type === "button").every(node => node.props.disabled));
 });

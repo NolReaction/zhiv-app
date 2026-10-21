@@ -116,7 +116,7 @@ test("settings and help describe explicit lesson entry without changing the paus
   assert.match(settings, /checked=\{showSectionGuideLauncher\} onCheckedChange=\{setShowSectionGuideLauncher\}/);
   assert.doesNotMatch(settings, /Новые знакомства.*останутся доступны/);
   const topics = worldHelpTopics(), start = topics.find(entry => entry.id === "start"), plesk = topics.find(entry => entry.id === "plesk");
-  assert.match(start.steps[0], /запускает подсказку вручную; при входе она не открывается/);
+  assert.match(start.steps[0], /включает подсказки вручную; при входе они не открываются/);
   assert.match(plesk.steps[2], /в запущенной вами подсказке таблица открывается сама/);
   assert.match(plesk.steps[2], /Открытие не покупает снасть/);
 });
