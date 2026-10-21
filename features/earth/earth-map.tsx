@@ -230,7 +230,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [diagnosticReport]);
   useEffect(() => {
     buildings3dRef.current = buildings3d;
-    sceneRef.current?.setBuildingsEnabled(buildings3d);
+    sceneRef.current?.setBuildingsEnabled(buildings3d && !satelliteRef.current?.getSnapshot().imageryVisible);
     const current = mapRef.current;
     if (current?.getLayer(EARTH_BUILDINGS_3D_LAYER)) current.setLayoutProperty(EARTH_BUILDINGS_3D_LAYER, "visibility", buildings3d ? "visible" : "none");
   }, [buildings3d]);
@@ -557,6 +557,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         satellite = createEarthSatellite(current, { apiKey: MAPTILER_KEY, onChange: value => {
           if (cancelled || attemptFailed) return;
           if (value.status === "error") satelliteEnabledRef.current = false;
+          scene?.setBuildingsEnabled(buildings3dRef.current && !value.imageryVisible);
           setSatelliteState(value);
         } });
         satelliteRef.current = satellite;
@@ -705,7 +706,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           scene?.dispose();
           scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current, eveningCenterRef.current ?? undefined);
           sceneRef.current = scene;
-          scene.setBuildingsEnabled(buildings3dRef.current);
+          scene.setBuildingsEnabled(buildings3dRef.current && !satellite?.getSnapshot().imageryVisible);
           scene.setWeather(weatherSnapshot);
           scene.setReady(initialReady);
           scene.setVisible(foreground);
@@ -915,10 +916,10 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             }}>{label}</button>)}
         </div>
         <p>{lightingMode === "auto" ? "Светлая и тёмная стороны следуют времени суток. Облачка и волны оживляют Землю при отдалении." : lightingMode === "evening" ? "Тёплый закат и огоньки городов. Вечер остаётся на выбранной стороне Земли." : "Светлый глобус, чтобы рассмотреть все детали."}</p>
-        <p>Объёмные миниатюры достопримечательностей стоят на своих географических местах и поворачиваются вместе с Землёй. Нажмите на любую, чтобы узнать название. При сильном отдалении и перед масштабом улиц они скрываются.</p>
+        <p>{satelliteState.imageryVisible ? "На спутнике здания и объёмные миниатюры скрыты, чтобы не закрывать снимок. Настройка ниже сохраняется для обычной карты." : "Объёмные миниатюры достопримечательностей стоят на своих географических местах и поворачиваются вместе с Землёй. Нажмите на любую, чтобы узнать название. При сильном отдалении и перед масштабом улиц они скрываются."}</p>
         <div className={styles.infoRow}><span id="earth-buildings-label">Объёмные здания</span>
           <button type="button" data-audio-cue="ui.click" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
-        <p>Появляются при приближении к улицам. Два пальца вверх или вниз — наклон; сведение и разведение — масштаб. Мышью наклоняйте с зажатой правой кнопкой.</p>
+        <p>В обычном режиме здания появляются при приближении к улицам. Два пальца вверх или вниз — наклон; сведение и разведение — масштаб. Мышью наклоняйте с зажатой правой кнопкой.</p>
       </section>
       {locationDetails}
       <section className={styles.infoSection}><h3>На устройстве</h3><div className={styles.storageDetails}>

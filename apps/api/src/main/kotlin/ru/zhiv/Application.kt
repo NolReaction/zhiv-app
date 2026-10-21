@@ -80,6 +80,8 @@ import ru.zhiv.observability.RequestDiagnostics
 import ru.zhiv.observability.RequestTraffic
 import ru.zhiv.observability.RequestTrafficObservation
 import ru.zhiv.observability.RequestTrafficSnapshot
+import ru.zhiv.observability.MapTilerUsageService
+import ru.zhiv.observability.apiUsageRoutes
 import ru.zhiv.observability.trafficUserId
 import ru.zhiv.observability.recordApiFailure
 import ru.zhiv.observability.recordAuthFailure
@@ -228,6 +230,7 @@ fun Application.installZhivApi(
     val metrics = RuntimeMetrics.shared
     val traffic = RequestTraffic()
     val monitoring = MonitoringService(config.monitoringUrl)
+    val maptilerUsage = MapTilerUsageService(config.maptilerServiceToken)
     install(RequestMetrics) { this.metrics = metrics }
     install(RequestTrafficObservation) { this.traffic = traffic }
     install(RequestDiagnostics) {
@@ -399,6 +402,7 @@ fun Application.installZhivApi(
         adminPromo?.let { adminPromoRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
+            apiUsageRoutes(repository, tokenCodec, config, metrics, maptilerUsage)
             rateLimit(RateLimitName("admin-read")) {
                 get("/api/v1/admin/request-traffic") {
                     call.response.header(HttpHeaders.CacheControl, "no-store")

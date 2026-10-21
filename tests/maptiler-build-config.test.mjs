@@ -12,6 +12,18 @@ const repository = fileURLToPath(new URL("../", import.meta.url));
 const keyName = "NEXT_PUBLIC_MAPTILER_KEY";
 const reference = `process.env.${keyName}`;
 
+test("private MapTiler analytics credentials reach only the API through the existing read-only secret mount", async () => {
+  const compose = yaml.load(await readFile(join(repository, "deploy/compose.yml"), "utf8"));
+  const variable = "MAPTILER_SERVICE_TOKEN_FILE";
+  assert.equal(compose.services.api.environment[variable], `\${${variable}:-}`);
+  assert.ok(compose.services.api.volumes.includes("./.secrets/auth:/run/auth-secrets:ro"));
+  assert.ok(!JSON.stringify(compose.services.web).includes(variable), "a private service token must never reach the web or its build arguments");
+  assert.equal(parseEnv(await readFile(join(repository, "deploy/.env.example"), "utf8"))[variable], "");
+  for (const path of ["vite.config.ts", "next.config.ts", "deploy/web.Dockerfile"]) {
+    assert.ok(!(await readFile(join(repository, path), "utf8")).includes("MAPTILER_SERVICE_TOKEN"), `${path} must not embed the private credential`);
+  }
+});
+
 test("optional MapTiler configuration reaches the Docker build rather than runtime-only environment", async () => {
   const compose = yaml.load(await readFile(join(repository, "deploy/compose.yml"), "utf8"));
   assert.equal(compose.services.web.build.args[keyName], `\${${keyName}:-}`,

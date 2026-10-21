@@ -1,0 +1,27 @@
+.toolbar { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.period { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--admin-muted); font-size: 14px; }
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.metric { min-width: 0; padding: 15px; border: 1px solid var(--admin-border); border-radius: 12px; background: var(--admin-panel-raised); }
+.metric dt { color: var(--admin-muted); font-size: 14px; }
+.metric dd { margin: 7px 0 0; color: var(--admin-text); font-size: clamp(24px, 2.5vw, 32px); font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.metric small { display: block; margin-top: 8px; color: var(--admin-muted); font-size: 13px; line-height: 1.5; }
+.status { padding: 16px; border: 1px solid var(--admin-border); border-radius: 12px; background: var(--admin-panel-raised); }
+.status strong { font-size: 15px; }
+.status p { margin: 8px 0 0; color: var(--admin-muted); font-size: 14px; line-height: 1.6; }
+.help { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 8px; color: var(--admin-green); font-size: 14px; text-underline-offset: 3px; }
+.daily { margin-top: 18px; }
+.daily summary { width: fit-content; min-height: 44px; padding-block: 10px; color: var(--admin-green); cursor: pointer; font-size: 14px; }
+.table { max-height: 360px; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; }
+.table table { min-width: 380px; }
+.table caption { padding-bottom: 10px; text-align: left; color: var(--admin-muted); font-size: 13px; }
+.table th { position: sticky; top: 0; background: var(--admin-panel); }
+.table td:not(:first-child), .table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.estimated { color: var(--admin-amber); }
+@media (max-width: 600px) {
+  .metrics { grid-template-columns: 1fr; gap: 8px; }
+  .metric { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 12px; padding: 13px; }
+  .metric dd { margin: 0; text-align: right; font-size: 26px; }
+  .metric small { grid-column: 1 / -1; margin: 0; }
+  .period { width: 100%; }
+  .toolbar > button { width: 100%; justify-content: center; }
+}

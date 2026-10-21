@@ -1,4 +1,5 @@
 import type { Map as LibreMap, RasterSourceSpecification } from "maplibre-gl";
+import { createEarthSatelliteVisuals } from "./satellite-visuals";
 
 export const EARTH_SATELLITE_SOURCE = "earth-satellite";
 export const EARTH_SATELLITE_LAYER = "earth-satellite-imagery";
@@ -15,6 +16,7 @@ const TIMEOUT_ERROR = "Спутниковая карта загружается 
 type SatelliteStatus = "off" | "unavailable" | "zoom-required" | "paused" | "offline" | "loading" | "ready" | "error";
 export type EarthSatelliteState = Readonly<{
   enabled: boolean;
+  imageryVisible: boolean;
   status: SatelliteStatus;
   error: string | null;
   /** Bounded provider text; render as text or safe React links, never raw HTML. */
@@ -22,12 +24,13 @@ export type EarthSatelliteState = Readonly<{
   minZoom: number;
 }>;
 export const DEFAULT_EARTH_SATELLITE_STATE: EarthSatelliteState = Object.freeze({
-  enabled: false, status: "off", error: null, attribution: null, minZoom: EARTH_SATELLITE_MIN_ZOOM,
+  enabled: false, imageryVisible: false, status: "off", error: null, attribution: null, minZoom: EARTH_SATELLITE_MIN_ZOOM,
 });
 export const EARTH_SATELLITE_INITIAL_STATE = DEFAULT_EARTH_SATELLITE_STATE;
 
 type SatelliteMap = Pick<LibreMap, "on" | "off" | "getZoom" | "isMoving" | "getLayer" | "getSource"
-  | "addSource" | "removeSource" | "addLayer" | "removeLayer" | "isSourceLoaded">;
+  | "addSource" | "removeSource" | "addLayer" | "removeLayer" | "isSourceLoaded"
+  | "getPaintProperty" | "setPaintProperty" | "getLayoutProperty" | "setLayoutProperty">;
 type SatelliteOptions = {
   apiKey: string | undefined;
   onChange: (state: EarthSatelliteState) => void;
@@ -129,10 +132,12 @@ export function createEarthSatellite(map: SatelliteMap, options: SatelliteOption
   let enabled = false, visible = false, online = true, disposed = false, generation = 0;
   let metadata: Metadata | null = null, pending: AbortController | null = null;
   let metadataTimer: unknown = null, tileTimer: unknown = null;
+  const visuals = createEarthSatelliteVisuals(map, EARTH_SATELLITE_LAYER);
 
   function publish(status: SatelliteStatus, error: string | null = null, attribution: string | null = null) {
-    if (disposed || (state.enabled === enabled && state.status === status && state.error === error && state.attribution === attribution)) return;
-    state = Object.freeze({ enabled, status, error, attribution, minZoom: Math.max(EARTH_SATELLITE_MIN_ZOOM, metadata?.minzoom ?? 0) });
+    const imageryVisible = enabled && visible && online && !!map.getLayer(EARTH_SATELLITE_LAYER);
+    if (disposed || (state.enabled === enabled && state.imageryVisible === imageryVisible && state.status === status && state.error === error && state.attribution === attribution)) return;
+    state = Object.freeze({ enabled, imageryVisible, status, error, attribution, minZoom: Math.max(EARTH_SATELLITE_MIN_ZOOM, metadata?.minzoom ?? 0) });
     options.onChange(state);
   }
   function clearTileTimer() {
@@ -152,6 +157,7 @@ export function createEarthSatellite(map: SatelliteMap, options: SatelliteOption
       if (map.getLayer(EARTH_SATELLITE_LAYER)) map.removeLayer(EARTH_SATELLITE_LAYER);
       if (map.getSource(EARTH_SATELLITE_SOURCE)) map.removeSource(EARTH_SATELLITE_SOURCE);
     } catch { /* Cleanup must never make the base map fail. */ }
+    visuals.setActive(false);
   }
   function fail(message: string) {
     if (disposed || !enabled) return;
@@ -183,6 +189,7 @@ export function createEarthSatellite(map: SatelliteMap, options: SatelliteOption
           minzoom: Math.max(EARTH_SATELLITE_MIN_ZOOM, metadata.minzoom),
           paint: { "raster-opacity": 1, "raster-fade-duration": 200 } }, before);
       }
+      visuals.setActive(true);
       sourceReady();
     } catch { fail(FALLBACK_ERROR); }
   }
@@ -232,6 +239,7 @@ export function createEarthSatellite(map: SatelliteMap, options: SatelliteOption
     if (disposed) return;
     disposed = true; enabled = false; abortMetadata(); removeImagery(); metadata = null;
     state = DEFAULT_EARTH_SATELLITE_STATE;
+    visuals.dispose();
     map.off("zoomend", moved); map.off("moveend", moved); map.off("movestart", moving);
     map.off("style.load", moved); map.off("sourcedata", sourceEvent); map.off("sourcedataloading", sourceEvent);
     map.off("render", sourceReady); map.off("error", errorEvent); map.off("remove", dispose);

@@ -15,16 +15,25 @@ const providerMetadata = (values = {}) => ({ tilejson: "2.0.0", tiles: ["https:/
   minzoom: 0, maxzoom: 20, tileSize: 512, bounds: [-180, -85, 180, 85], attribution, ...values });
 const json = (value, init) => new Response(JSON.stringify(value), { headers: { "content-type": "application/json" }, ...init });
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
-function harness({ fetch: fetcher = async () => json(providerMetadata()), apiKey = TEST_KEY, zoom = 12, beforeLayerId } = {}) {
+function harness({ fetch: fetcher = async () => json(providerMetadata()), apiKey = TEST_KEY, zoom = 12, beforeLayerId, decorations = false } = {}) {
   let now = 0, nextTimer = 0, loaded = false, moving = false;
   const listeners = new Map(), sources = new Map(), layers = new Map([["earth-land", { id: "earth-land" }],
     ["earth-roads-edge", { id: "earth-roads-edge" }], ["earth-labels", { id: "earth-labels" }]]);
+  if (decorations) {
+    layers.set("earth-buildings", { id: "earth-buildings", paint: {}, layout: {} });
+    layers.set("earth-buildings-3d", { id: "earth-buildings-3d", paint: { "fill-extrusion-opacity": 1 }, layout: { visibility: "visible" } });
+    layers.set("earth-evening-shade", { id: "earth-evening-shade", layout: {} });
+  }
   const timers = new Map(), calls = [], changes = [], removals = [], insertions = [];
   const map = {
     on(type, callback) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(callback); return this; },
     off(type, callback) { listeners.get(type)?.delete(callback); return this; },
     getZoom: () => zoom, isMoving: () => moving, isSourceLoaded: () => loaded,
     getSource: key => sources.get(key), getLayer: key => layers.get(key),
+    getPaintProperty: (id, name) => layers.get(id).paint[name],
+    setPaintProperty(id, name, value) { if (value === undefined) delete layers.get(id).paint[name]; else layers.get(id).paint[name] = value; },
+    getLayoutProperty: (id, name) => layers.get(id).layout[name],
+    setLayoutProperty(id, name, value) { if (value === undefined) delete layers.get(id).layout[name]; else layers.get(id).layout[name] = value; },
     addSource(key, definition) { sources.set(key, structuredClone(definition)); },
     removeSource(key) { removals.push(["source", key]); sources.delete(key); },
     addLayer(definition, before) { insertions.push({ definition, before }); layers.set(definition.id, structuredClone(definition)); },
@@ -219,4 +228,44 @@ test("style recreation reinstalls only the optional layer and dispose is termina
 test("an absent insertion point fails safely before making any SDK tile requests", async () => {
   const h = harness({ beforeLayerId: () => "missing-base-layer" }); h.enable(); await settle();
   assert.equal(h.state().status, "error"); assert.equal(h.sources.size, 0); assert.equal(h.insertions.length, 0); h.controller.dispose();
+});
+
+
+test("installed imagery suppresses decorations and every ordinary fallback restores them", async () => {
+  const h = harness({ zoom: 5, decorations: true });
+  const original = () => {
+    assert.equal(h.layers.get("earth-buildings").paint["fill-opacity"], undefined);
+    assert.equal(h.layers.get("earth-buildings-3d").paint["fill-extrusion-opacity"], 1);
+    assert.equal(h.layers.get("earth-evening-shade").layout.visibility, undefined);
+    assert.equal(h.state().imageryVisible, false);
+  };
+  h.enable(); original(); h.zoom(16); await settle();
+  const suppressed = () => {
+    assert.equal(h.layers.get("earth-buildings").paint["fill-opacity"], 0);
+    assert.equal(h.layers.get("earth-buildings-3d").paint["fill-extrusion-opacity"], 0);
+    assert.equal(h.layers.get("earth-evening-shade").layout.visibility, "none");
+    assert.equal(h.state().imageryVisible, true);
+  };
+  suppressed();
+  for (const [stop, resume] of [
+    [() => h.controller.setEnabled(false), () => h.controller.setEnabled(true)],
+    [() => h.controller.setVisible(false), () => h.controller.setVisible(true)],
+    [() => h.controller.setOnline(false), () => h.controller.setOnline(true)],
+    [() => h.zoom(9), () => h.zoom(16)],
+    [() => h.emit("error", { sourceId: SOURCE, error: { status: 403 } }), () => h.controller.setEnabled(true)],
+    [() => h.tick(20_000), () => h.controller.setEnabled(true)],
+  ]) { stop(); original(); resume(); await settle(); suppressed(); }
+  h.controller.dispose(); original();
+});
+
+test("pending TileJSON leaves all ordinary decorations until the raster is actually installed", async () => {
+  let resolve;
+  const h = harness({ decorations: true, fetch: () => new Promise(done => { resolve = done; }) });
+  h.enable();
+  assert.equal(h.state().status, "loading"); assert.equal(h.state().imageryVisible, false);
+  assert.equal(h.layers.get("earth-buildings").paint["fill-opacity"], undefined);
+  assert.equal(h.layers.get("earth-buildings-3d").paint["fill-extrusion-opacity"], 1);
+  resolve(json(providerMetadata())); await settle();
+  assert.equal(h.state().imageryVisible, true); assert.equal(h.layers.get("earth-buildings").paint["fill-opacity"], 0);
+  h.controller.dispose();
 });
