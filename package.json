@@ -35,6 +35,7 @@
     "architecture:check": "node scripts/check-architecture.mjs",
     "security:check": "node scripts/check-secrets.mjs",
     "security:history": "node scripts/check-secrets.mjs --history",
+    "doctor:maptiler": "node scripts/maptiler-doctor.mjs",
     "dev:engine": "npm run dev --workspace @zhiv/engine-lab --",
     "build:engine": "npm run build --workspace @zhiv/engine && npm run build --workspace @zhiv/engine-lab",
     "test:engine": "node --test --test-concurrency=1 tests/engine-*.test.mjs tests/procedural-forest*.test.mjs",
