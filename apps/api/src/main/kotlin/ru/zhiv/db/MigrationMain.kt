@@ -6,7 +6,7 @@ import ru.zhiv.config.AppConfig
 fun main() {
     val config = AppConfig.fromEnvironment()
     require(config.databaseUser != "zhiv_app") { "Runtime role must not execute migrations" }
-    DatabaseFactory.create(config).use { source ->
+    DatabaseFactory.createForMigrations(config).use { source ->
         migrateWithLegacyAdminHistory(source)
         source.connection.use { connection ->
             connection.createStatement().use {

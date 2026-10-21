@@ -11,7 +11,7 @@ after(() => vite.close());
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
 const { requestForestDirective, requestForestGardenHarvest, advanceForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
 const { syncForestGardenProduction } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden.ts");
-const { clearingActivityFrame } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { clearingActivityFrame, isWithinHomeClearing } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const { forestGardenVisualFrame } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
@@ -51,10 +51,13 @@ test("a real harvest preserves basket position through pickup, walking, collecti
   }
 });
 
-test("a long active lesson keeps the real hero awake for the first authorized berry collection", () => {
+test("a long active lesson keeps the nearby hero awake for the first authorized berry collection", () => {
   const scene = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: 1 }));
   const session = connectForestSession(undefined, scene, "world", 0, 0, () => {}), state = session.state;
   session.release();
+  // Exercise a repeatable nearby walk. A randomly distant hero intentionally
+  // skips this cosmetic trip; economy-garden-scene tests that server-timer path.
+  state.clearing.seed = 17;
   const options = { ...calm, autoLife: true, tutorialActive: true }, garden = state.life.garden;
   const crop = { jobId: "intro-raspberries", itemId: "berries", startedAt: new Date(0).toISOString(),
     finishesAt: new Date(600_000).toISOString() };
@@ -66,6 +69,7 @@ test("a long active lesson keeps the real hero awake for the first authorized be
     assert.equal(["sleep", "drowsy", "yawn"].includes(motion.pose), false);
   }
   assert.ok(state.clearing.idleSeconds >= 180, "reading a lesson does not simulate user movement or refresh inactivity");
+  assert.equal(isWithinHomeClearing(state.clearing), true, "this sequence exercises the nearby animation path");
   syncForestGardenProduction(garden, { ...crop, collection: { batchId: "intro-batch",
     startedAt: new Date(600_000).toISOString(), finishesAt: new Date(608_000).toISOString() } }, 600_000);
   const request = { requestId: 1, jobId: crop.jobId };

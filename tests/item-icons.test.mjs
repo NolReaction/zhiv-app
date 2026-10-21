@@ -11,8 +11,9 @@ after(() => vite.close());
 const { ItemIcon, CollectionIcon, itemIconIds, collectionIconIds } = await vite.ssrLoadModule("/features/items/item-icon.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { worldCatalog } = await vite.ssrLoadModule("/features/world/domain/model.ts");
-const { quarryCollectionFinds } = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
-const { WorldCollections } = await vite.ssrLoadModule("/features/world/ui/collections/world-collections.tsx");
+const { quarryCollectionFinds, collectionBookEntries } = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
+const { WorldCollections, CollectionBookFinds } = await vite.ssrLoadModule("/features/world/ui/collections/world-collections.tsx");
+const { COLLECTION_PAGE_SIZE } = await vite.ssrLoadModule("/features/world/ui/collections/collection-book-page.ts");
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
 
 test("every economic item, currency and wardrobe item has artwork", () => {
@@ -50,13 +51,18 @@ test("standalone labels are accessible and unknown ids have a safe fallback", ()
 test("book keeps illustrated forest finds and saved ownership without the retired album", () => {
   const state = { collection: ["acorn", "old_float"], inventory: ["explorer_cap"], completedJourneys: 7 };
   const html = render(WorldCollections, { state, gifts: [] });
-  assert.equal((html.match(/data-collection-icon=/g) ?? []).length, 6);
+  assert.equal((html.match(/data-collection-icon=/g) ?? []).length, COLLECTION_PAGE_SIZE);
   assert.equal((html.match(/data-owned="true"/g) ?? []).length, 1);
   assert.match(html, /Книга коллекций/);
   assert.match(html, /Путешествия/); assert.match(html, /Рыбалка/); assert.match(html, /Каменоломня/);
   assert.match(html, /Полученную раньше одежду можно надеть/);
   assert.doesNotMatch(html, /Лесной альбом|В альбоме/);
-  for (const find of worldCatalog.finds.filter(find => find.group === "forest")) assert.ok(html.includes(find.name));
+  const entries = collectionBookEntries("travel", state.collection);
+  const pages = Array.from({ length: Math.ceil(entries.length / COLLECTION_PAGE_SIZE) }, (_, page) => render(CollectionBookFinds, {
+    entries, filter: "all", page, onFilterChange() {}, onPageChange() {},
+  })).join("");
+  assert.equal((pages.match(/data-collection-icon=/g) ?? []).length, entries.length, "pagination preserves every illustrated forest find");
+  for (const find of worldCatalog.finds.filter(find => find.group === "forest")) assert.ok(pages.includes(find.name));
 });
 
 test("round hook has its own smooth curling silhouette instead of the barbed hook or unknown item", () => {

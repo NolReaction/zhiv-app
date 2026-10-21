@@ -118,7 +118,9 @@ services:
     environment:
       NODE_ENV: production
     init: true
-    networks: [backend]
+    # The bounded public weather proxy fetches MET Norway from the web runtime.
+    # Keep the database network private and allow only outbound connectivity here.
+    networks: [backend, outbound]
     read_only: true
     tmpfs: [/tmp, /app/.next/cache]
     cap_drop: [ALL]

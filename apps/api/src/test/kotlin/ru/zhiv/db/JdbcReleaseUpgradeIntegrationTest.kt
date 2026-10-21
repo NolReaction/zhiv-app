@@ -67,6 +67,74 @@ class JdbcReleaseUpgradeIntegrationTest {
         c.commit()
     }
 
+    @Test fun `populated master V52 upgrades once to V67 retaining progress and already paid rewards`() = runBlocking<Unit> {
+        val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
+        DatabaseFactory.createForMigrations(config).use { source ->
+            // Match deployed master's full V1-V52 history, not the new empty-DB B49 path.
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("52").load().migrate()
+            val tokens = TokenCodec(); val token = tokens.issue(); val buyerToken = tokens.issue()
+            val identities = JdbcZhivRepository(source)
+            val player = identities.bootstrap("Игрок master", tokens.issue().hash, token.hash, 365)
+            val buyer = identities.bootstrap("Друг master", tokens.issue().hash, buyerToken.hash, 365)
+            val oldJob = EconomyJob(UUID.randomUUID().toString(), "production", "workshop", "make_planks",
+                startedAt = "2026-10-20T01:00:00Z", finishesAt = "2026-10-30T01:00:00Z",
+                rewards = mapOf("planks" to 7L), cost = EconomyCost(30, mapOf("wood" to 9L)), catalogVersion = 6)
+            val soldId = UUID.randomUUID(); val activeId = UUID.randomUUID(); val paidRequest = UUID.randomUUID()
+            source.connection.use { c ->
+                c.economyUpdate("INSERT INTO account_login_identities(provider,subject,user_id) VALUES ('email','master-upgrade@example.invalid',?)", player.id)
+                c.economyUpdate("""INSERT INTO economy_profiles(user_id,revision,state) VALUES (?,41,
+                    jsonb_set(jsonb_set(economy_v4_initial_state('{}',true),'{buildings,home}','3'),'{buildings,workshop}','2') || jsonb_build_object(
+                        'wallet',jsonb_build_object('coins',3450,'pearls',820),
+                        'inventory',jsonb_build_object('wood',27,'stone',13,'berries',9),
+                        'jobs',?::jsonb))""", player.id, economyJson.encodeToString(listOf(oldJob)))
+                c.economyUpdate("""INSERT INTO economy_market_listings(id,seller_id,buyer_id,item_id,quantity,total_price,status,closed_at,currency_scale)
+                    VALUES (?, ?, ?, 'wood', 2, 40, 'sold', '2026-10-19T12:00:00Z', 10)""", soldId, player.id, buyer.id)
+                c.economyUpdate("""INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price,currency_scale)
+                    VALUES (?, ?, 'stone', 3, 60, 10)""", activeId, player.id)
+                c.economyUpdate("""INSERT INTO game_daily_rewards(user_id,next_step,last_claim_at,last_claim_date)
+                    VALUES (?,1,'2026-10-19T00:00:00Z','2026-10-19')""", player.id)
+                c.economyUpdate("""INSERT INTO game_reward_claims(user_id,origin_user_id,request_id,signature,kind,daily_date,claim,accepted_revision,claimed_at)
+                    VALUES (?,?,?,'master-paid-seventh-gift','daily','2026-10-19',
+                        '{"kind":"daily","step":7,"reward":{"coins":30,"pearls":80,"items":{}},"claimedAt":"2026-10-19T00:00:00Z"}',40,'2026-10-19T00:00:00Z')""",
+                    player.id, player.id, paidRequest)
+                c.economyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items)
+                    VALUES (?,?,'daily_reward',30,80,'{}'::jsonb)""", player.id, "reward:$paidRequest")
+                c.commit()
+            }
+            val retainedTables = listOf("app_users", "app_sessions", "account_login_identities", "economy_profiles",
+                "economy_ledger", "economy_commands", "game_reward_claims", "admin_actions", "managed_promo_codes")
+            val before = legacyData(source, retainedTables)
+            val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=52"
+            val oldHistory = scalar(source, historySql)
+            val listingsSql = """SELECT jsonb_agg(to_jsonb(l)-'sale_owner_id'-'sale_proceeds_coins'-'sale_buyer_public_id'-'sale_buyer_name'-'sale_claimed_at' ORDER BY id)::text
+                FROM economy_market_listings l"""
+            val listingsBefore = scalar(source, listingsSql)
+            migrateWithLegacyAdminHistory(source)
+            assertEquals("67", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL' AND success"))
+            assertEquals("0", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
+            assertEquals(oldHistory, scalar(source, historySql), "Published master migration metadata remains exact")
+            assertEquals(before, legacyData(source, retainedTables), "Accounts, wallets, inventory, jobs and paid receipts survive")
+            assertEquals(listingsBefore, scalar(source, listingsSql), "Old market lots keep their price, stock and ownership")
+            assertEquals("42", scalar(source, "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'"))
+            assertEquals("true", scalar(source, "SELECT (sale_claimed_at=closed_at AND sale_proceeds_coins IS NULL)::text FROM economy_market_listings WHERE id='$soldId'"))
+            assertEquals("true", scalar(source, "SELECT (status='active' AND sale_claimed_at IS NULL)::text FROM economy_market_listings WHERE id='$activeId'"))
+            assertEquals("7:true", scalar(source, "SELECT next_step::text||':'||completed::text FROM game_daily_rewards WHERE user_id='${player.id}'"))
+            val afterHistory = scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h")
+            migrateWithLegacyAdminHistory(source)
+            assertEquals(afterHistory, scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h"))
+            assertEquals(before, legacyData(source, retainedTables), "Restart never reapplies rewards or resets progress")
+            assertEquals("42", scalar(source, "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'"))
+            assertEquals(player.publicId, identities.findBySession(token.hash)?.publicId)
+            val snapshot = JdbcEconomyRepository(source).snapshot(token.hash)
+            assertEquals(EconomyWallet(3450, 820), snapshot.wallet)
+            assertEquals(mapOf("wood" to 27L, "stone" to 13L, "berries" to 9L), snapshot.inventory)
+            assertEquals(3, snapshot.buildings["home"])
+            assertEquals(2, snapshot.buildings["workshop"])
+            assertEquals(listOf(oldJob), snapshot.jobs)
+        }
+    }
+
     @Test fun `upgrade from populated V50 preserves immutable audit and reward receipts and permits economy grants`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->

@@ -39,6 +39,15 @@ async function simulateDeploy(failCommand = "", { alerts = false, webhook = "htt
   await mkdir(join(project, "deploy/runtime"), { recursive: true });
   await mkdir(join(directory, "bin"));
   await copyFile(join(repository, "scripts/deploy-update.sh"), join(project, "scripts/deploy-update.sh"));
+  await writeFile(join(project, "scripts/restore-backup-drill.py"), `import json, os, pathlib, sys
+root = pathlib.Path.cwd() / 'deploy/runtime'
+args = sys.argv[1:]
+assert args[-1] == '--execute'
+assert pathlib.Path(args[0]).read_text() == 'verified-backup'
+with open(os.environ['DEPLOY_TEST_LOG'], 'a') as log:
+    log.write(json.dumps({'command': 'restore-drill --execute', 'options': [], 'gated': (root / 'maintenance').exists(), 'status': json.loads((root / 'app-status.json').read_text())}) + '\\n')
+if os.environ.get('DEPLOY_TEST_FAIL') == 'restore-drill': sys.exit(42)
+`);
   if (alerts) {
     await copyFile(join(repository, "scripts/check-alert-delivery.py"), join(project, "scripts/check-alert-delivery.py"));
     await mkdir(join(project, "deploy/.secrets"), { mode: 0o700 });
@@ -96,16 +105,18 @@ if (command === "ps --services --status running" && process.env.DEPLOY_TEST_ALER
   return { directory, project, result, events };
 }
 
-test("deployment builds and backs up live, gates before stopping API, then reopens only after health and build checks", async () => {
+test("deployment stops writers before backup, verifies restoration, then migrates and reopens only after health checks", async () => {
   const run = await simulateDeploy();
   try {
     assert.equal(run.result.status, 0, run.result.stderr);
     const index = text => run.events.findIndex(event => event.command.includes(text));
     assert.ok(index("build") < index("pg_dump"));
-    assert.ok(index("pg_restore") < index("force-recreate"));
     assert.ok(index("force-recreate") < index("stop --timeout 30 web api"));
-    assert.ok(index("stop --timeout 30 web api") < index("240 db provision migrate api web"));
-    assert.equal(run.events[index("pg_dump")].gated, false);
+    assert.ok(index("stop --timeout 30 web api") < index("pg_dump"));
+    assert.ok(index("pg_dump") < index("pg_restore"));
+    assert.ok(index("pg_restore") < index("restore-drill --execute"));
+    assert.ok(index("restore-drill --execute") < index("600 db provision migrate api web"));
+    assert.equal(run.events[index("pg_dump")].gated, true);
     const gated = run.events.filter(event => event.gated);
     assert.ok(gated.length > 4);
     assert.ok(gated.every(event => event.status.maintenance === true));
@@ -130,7 +141,7 @@ test("optional alert delivery survives deploy recreation and notifier failure do
     try {
       assert.equal(run.result.status, 0, run.result.stderr);
       assert.ok(run.events.length > 10);
-      assert.ok(run.events.every(event => event.options.includes("deploy/monitoring/alerting.compose.yml")));
+      assert.ok(run.events.filter(event => !event.command.startsWith("restore-drill")).every(event => event.options.includes("deploy/monitoring/alerting.compose.yml")));
       const validation = run.events.find(event => event.command.includes("amtool"));
       assert.equal(validation.gated, false, "receiver validation must precede maintenance");
       assert.ok(run.events.some(event => event.command.includes("90 prometheus node-exporter alertmanager")));
@@ -175,7 +186,7 @@ test("bad optional notification secrets fail before Docker or maintenance withou
 });
 
 test("failed replacement or mismatched web health never announces ready or removes the gate", async () => {
-  for (const failCommand of ["240 db provision migrate api web", "EXPECTED_BUILD_ID="]) {
+  for (const failCommand of ["pg_dump", "pg_restore", "restore-drill", "600 db provision migrate api web", "EXPECTED_BUILD_ID="]) {
     const run = await simulateDeploy(failCommand);
     try {
       assert.equal(run.result.status, 42);
@@ -184,12 +195,15 @@ test("failed replacement or mismatched web health never announces ready or remov
       assert.match(status.message, /задержалось/);
       await access(join(run.project, "deploy/runtime/maintenance"));
       assert.match(run.result.stderr, /maintenance remains enabled/);
+      if (["pg_dump", "pg_restore", "restore-drill"].includes(failCommand)) {
+        assert.ok(!run.events.some(event => event.command.includes("db provision migrate api web")), "a bad backup must never allow migrations");
+      }
     } finally { await rm(run.directory, { recursive: true, force: true }); }
   }
 });
 
-test("build or backup failure leaves the running application untouched", async () => {
-  for (const failCommand of ["build", "pg_restore"]) {
+test("build or edge validation failure leaves the running application untouched", async () => {
+  for (const failCommand of ["build", "caddy validate"]) {
     const run = await simulateDeploy(failCommand);
     try {
       assert.equal(run.result.status, 42);

@@ -62,18 +62,6 @@ dc build --build-arg "APP_BUILD_ID=$APP_BUILD_ID"
 # Validate the edge configuration before stopping any healthy application service.
 dc run --rm --no-deps --entrypoint caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
-backup_dir="$project_dir/../zhiv-backups"
-(
-  umask 077
-  mkdir -p "$backup_dir"
-  chmod 700 "$backup_dir"
-  backup_file="$(mktemp "$backup_dir/before-update-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
-  dc exec -T db pg_dump -U zhiv -d zhiv --format=custom --exclude-table-data=public.earth_latest_locations --exclude-table-data=public.earth_frozen_locations --no-owner --no-acl > "$backup_file"
-  test -s "$backup_file"
-  dc exec -T db pg_restore --list < "$backup_file" > /dev/null
-  echo "Backup archive is readable: $backup_file"
-)
-
 maintenance_started=1
 publish_status true 'Устанавливаем обновление. Приложение скоро продолжит работу.'
 touch "$runtime_dir/maintenance"
@@ -83,7 +71,26 @@ dc up -d --no-deps --no-build --force-recreate --wait --wait-timeout 60 caddy
 # Prevent the previous API from writing while the next schema is being installed.
 # Docker waits for in-flight requests to finish within the graceful-stop period.
 dc stop --timeout 30 web api
-dc up -d --no-build --wait --wait-timeout 240 db provision migrate api web
+# The rollback snapshot must include every accepted write, including requests
+# drained during graceful shutdown. Do not migrate unless it restores cleanly.
+backup_dir="$project_dir/../zhiv-backups"
+(
+  umask 077
+  mkdir -p "$backup_dir"
+  chmod 700 "$backup_dir"
+  backup_file="$(mktemp "$backup_dir/before-update-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
+  dc exec -T db pg_dump -U zhiv -d zhiv --format=custom --exclude-table-data=public.earth_latest_locations --exclude-table-data=public.earth_frozen_locations --no-owner --no-acl > "$backup_file"
+  test -s "$backup_file"
+  dc exec -T db pg_restore --list < "$backup_file" > /dev/null
+  # Restoring into a disposable PostgreSQL instance also verifies archive data,
+  # constraints and functions; listing its table of contents is not enough.
+  python_command=(python3)
+  if (( EUID != 0 )); then python_command=(sudo python3); fi
+  "${python_command[@]}" scripts/restore-backup-drill.py "$backup_file" --execute
+  echo "Backup restored and verified: $backup_file"
+)
+
+dc up -d --no-build --wait --wait-timeout 600 db provision migrate api web
 dc exec -T caddy wget --quiet --output-document=- http://api:8080/readyz > /dev/null
 dc exec -T caddy wget --quiet --output-document=- http://web:3000/app-status.json > /dev/null
 dc exec -T -e "EXPECTED_BUILD_ID=$APP_BUILD_ID" web node -e '
