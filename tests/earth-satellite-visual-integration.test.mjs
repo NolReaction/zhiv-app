@@ -52,7 +52,7 @@ const platformCode = `
   export const installEarthMaterialImages=noop,registerEarthMaterialImage=noop,installEarthGlobeCamera=()=>noop;
   export const EARTH_OCEAN_MATERIAL_IMAGE='ocean',registerEarthOceanMaterialImage=noop;
   export const createEarthGlobeScene=()=>{
-    const scene={buildings:null,history:[],setVisible:noop,setReady:noop,setWeather:noop,
+    const scene={buildings:null,history:[],setVisible:noop,setReady:noop,setWeather:noop,setLandmarkPreview:noop,
       setBuildingsEnabled(value){scene.buildings=value;scene.history.push(value);},dispose(){scene.disposed=true;}};
     scenes.push(scene);return scene;
   };

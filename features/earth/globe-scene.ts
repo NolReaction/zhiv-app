@@ -70,7 +70,10 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
   motionPreference?.addEventListener("change", synchronize);
 
   return {
+    isLandmarkDrawn(id: string) { return !disposed && ready && foreground && !document.hidden && landmarks.isLandmarkDrawn(id); },
+    isLandmarkFailed(id: string) { return !disposed && ready && foreground && !document.hidden && landmarks.isLandmarkFailed(id); },
     setBuildingsEnabled(value: boolean) { if (disposed) return; landmarks.setBuildingsEnabled(value); },
+    setLandmarkPreview(id: string | null) { if (!disposed) landmarks.setLandmarkPreview(id); },
     setVisible(value: boolean) { if (disposed) return; foreground = value; synchronize(); },
     setWeather(value: EarthWeatherSnapshot | null) { if (disposed) return; weather.setWeather(value); synchronize(); },
     setReady(value: boolean) { if (disposed) return; ready = value; synchronize(); },

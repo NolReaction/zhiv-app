@@ -24,11 +24,11 @@ export const EARTH_ATLAS_JOURNEYS: readonly EarthAtlasJourney[] = [
     { entryId: "region:chukotka-tundra", note: "Закончи на приглушённых оттенках тундры. Оставь этот спокойный ракурс или выбери новый маршрут." },
   ] },
   { id: "five-silhouettes", title: "Пять силуэтов", description: "Небольшая коллекция знакомых форм на поверхности Земли.", accent: "landmark", stops: [
-    { entryId: "landmark:eiffel-tower", note: "Первая остановка — тонкий силуэт башни. Рассмотри миниатюру на фоне большого глобуса." },
-    { entryId: "landmark:colosseum", note: "От вертикали — к округлой форме. Сравни, как по-разному эти миниатюры выглядят с высоты." },
-    { entryId: "landmark:giza-pyramids", note: "Здесь взгляд собирают простые грани. Поверни глобус, чтобы рассмотреть их с другого угла." },
+    { entryId: "landmark:eiffel-tower", note: "Начни с башни: приблизь её ажурные опоры и поверни карту, чтобы рассмотреть силуэт с разных сторон." },
+    { entryId: "landmark:colosseum", note: "От вертикали — к округлой форме. Рассмотри открытые ярусы и сравни их с силуэтом предыдущей остановки." },
+    { entryId: "landmark:giza-pyramids", note: "Здесь взгляд собирают простые грани. Поверни карту и сравни очертания пирамид с другого угла." },
     { entryId: "landmark:taj-mahal", note: "Следующий силуэт складывается из светлых объёмов. Дай себе время рассмотреть детали." },
-    { entryId: "landmark:sydney-opera", note: "Финальный акцент — ритм светлых оболочек. Останься у этой миниатюры или продолжи исследование самостоятельно." },
+    { entryId: "landmark:sydney-opera", note: "Финальный акцент — ритм светлых оболочек. Рассмотри их сбоку или продолжи исследовать карту самостоятельно." },
   ] },
 ];
 
@@ -44,13 +44,13 @@ export function earthAtlasJourney(id: string): EarthAtlasJourney | null {
 }
 
 export function earthAtlasJourneyStop(state: EarthAtlasJourneyState): {
-  journey: EarthAtlasJourney; stop: EarthAtlasJourneyStop; entry: EarthAtlasEntry;
+  journey: EarthAtlasJourney; stop: EarthAtlasJourneyStop; entry: EarthAtlasEntry; stopIndex: number;
 } | null {
   if (!state || !Number.isInteger(state.stopIndex)) return null;
   const journey = earthAtlasJourney(state.journeyId), stop = journey?.stops[state.stopIndex];
   if (!journey || !stop) return null;
   const entry = earthAtlasEntry(stop.entryId);
-  return entry?.center && entry.zoom !== null ? { journey, stop, entry } : null;
+  return entry?.center && entry.zoom !== null ? { journey, stop, entry, stopIndex: state.stopIndex } : null;
 }
 
 /** Pure, bounded navigation. It never discovers entries, persists data or starts timers. */

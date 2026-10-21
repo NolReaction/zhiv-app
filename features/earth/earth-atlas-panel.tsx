@@ -1,97 +1,67 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { BookOpen, Check, ChevronLeft, ChevronRight, Compass, Handshake, Landmark, Trees } from "lucide-react";
-import { EARTH_ATLAS_ENTRIES, earthAtlasCandidate, type EarthAtlasEntry, type EarthAtlasView } from "./earth-atlas";
+import { useState } from "react";
+import { Check, ChevronRight, Landmark, Search, Trees, X } from "lucide-react";
+import { EARTH_ATLAS_ENTRIES, type EarthAtlasEntry } from "./earth-atlas";
 import { EarthAtlasJourneys } from "./earth-atlas-journey-panel";
-import { EarthAtlasDiscovery } from "./earth-atlas-discovery";
-import type { EarthAtlasDiscoveryFeedback } from "./earth-atlas-discovery-feedback";
+import type { EarthAtlasJourneyState } from "./earth-atlas-journeys";
 import type { useEarthAtlas } from "./use-earth-atlas";
 import styles from "./earth-atlas-panel.module.css";
 
-type Filter = "all" | "landmark" | "region";
+type Filter = "landmark" | "region" | "journeys";
 type Props = {
   atlas: ReturnType<typeof useEarthAtlas>;
-  view: EarthAtlasView | null;
   onFocus: (entry: EarthAtlasEntry) => void;
-  onDiscover?: (entry: EarthAtlasEntry) => void;
+  onStartJourney: (journeyId: string) => void;
+  journeyState?: EarthAtlasJourneyState;
+  onSelectStop?: (index: number) => void;
   recentDiscoveryId?: string | null;
-  discoveryFeedback?: EarthAtlasDiscoveryFeedback | null;
+  initialSection?: "discoveries" | "journeys";
 };
-const FILTERS = [{ id: "all", title: "Все" }, { id: "landmark", title: "Места" }, { id: "region", title: "Биомы" }] as const;
+const FILTERS = [{ id: "landmark", title: "Места" }, { id: "region", title: "Биомы" }, { id: "journeys", title: "Маршруты" }] as const;
+const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("ru-RU").replaceAll("ё", "е").trim();
 
-function EntryIcon({ entry, size = 20 }: { entry: EarthAtlasEntry; size?: number }) {
-  const Icon = entry.kind === "landmark" ? Landmark : entry.kind === "meeting" ? Handshake : Trees;
-  return <Icon size={size} aria-hidden="true" />;
-}
+/** A catalogue chooses a view. Only the separate explorer can save a discovery. */
+export function EarthAtlasPanel({ atlas, onFocus, onStartJourney, journeyState = null, onSelectStop,
+  recentDiscoveryId, initialSection = "discoveries" }: Props) {
+  const [filter, setFilter] = useState<Filter>(initialSection === "journeys" ? "journeys" : "landmark");
+  const [query, setQuery] = useState("");
+  const opened = new Set(atlas.snapshot.ids), search = normalize(query);
+  const entries = EARTH_ATLAS_ENTRIES.filter(entry => entry.kind === filter
+    && (!search || normalize(`${entry.title} ${entry.subtitle}`).includes(search)));
 
-export function EarthAtlasPanel({ atlas, view, onFocus, onDiscover, recentDiscoveryId, discoveryFeedback = null }: Props) {
-  const [filter, setFilter] = useState<Filter>("all");
-  const [section, setSection] = useState<"discoveries" | "journeys">("discoveries");
-  const rail = useRef<HTMLUListElement>(null);
-  const opened = new Set(atlas.snapshot.ids);
-  const candidate = earthAtlasCandidate(view);
-  const discover = onDiscover ?? ((entry: EarthAtlasEntry) => { atlas.discover(entry.id); });
-  // Keep card positions stable when a discovery is recorded mid-swipe.
-  const entries = EARTH_ATLAS_ENTRIES.filter(entry => filter === "all" || entry.kind === filter);
-  const scroll = (direction: number) => {
-    const target = rail.current;
-    if (!target) return;
-    const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    target.scrollBy({ left: direction * Math.max(180, target.clientWidth * 0.85), behavior: reduced ? "instant" : "smooth" });
-  };
-
-  return <section className={styles.atlas} aria-label="Личный атлас">
-    <div className={styles.intro}><BookOpen size={19} aria-hidden="true" /><strong>Твой атлас</strong>
-      <span key={recentDiscoveryId ?? "progress"} data-recent={recentDiscoveryId ? true : undefined}
-        aria-label={`Открыто ${opened.size} из ${EARTH_ATLAS_ENTRIES.length}`}>{opened.size} / {EARTH_ATLAS_ENTRIES.length}</span></div>
-    <div className={styles.explanation}>
-      <p data-covered={Boolean(discoveryFeedback)} aria-hidden={Boolean(discoveryFeedback)}>Исследуй глобус и отмечай открытия. Это просмотр карты, а не отметки о поездках.</p>
-      <EarthAtlasDiscovery discovery={discoveryFeedback} inline />
+  return <section className={styles.atlas} aria-label="Каталог атласа" data-earth-atlas-catalog>
+    <label className={styles.search}><Search size={17} aria-hidden="true" /><span className={styles.srOnly}>Поиск по атласу</span>
+      <input type="search" value={query} maxLength={100} autoComplete="off" placeholder={filter === "journeys" ? "Маршрут или остановка" : "Название места или биома"}
+        onChange={event => setQuery(event.target.value)} />
+      {query && <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")}><X size={16} aria-hidden="true" /></button>}
+    </label>
+    <div className={styles.filters} role="group" aria-label="Что показать в атласе">
+      {FILTERS.map(item => <button type="button" key={item.id} data-audio-cue="ui.click" aria-pressed={filter === item.id}
+        onClick={() => setFilter(item.id)}>{item.title}</button>)}
     </div>
-    <div className={styles.sections} role="group" aria-label="Раздел атласа">
-      <button type="button" data-audio-cue="ui.click" aria-pressed={section === "discoveries"} onClick={() => setSection("discoveries")}>Открытия</button>
-      <button type="button" data-audio-cue="ui.click" aria-pressed={section === "journeys"} onClick={() => setSection("journeys")}>Маршруты</button>
+    <div className={styles.results} key={filter}>
+      {filter === "journeys" ? <EarthAtlasJourneys query={query} openedIds={atlas.snapshot.ids} journeyState={journeyState}
+        onStartJourney={onStartJourney} onSelectStop={onSelectStop} /> : <>
+        <ul className={styles.entries} aria-label={filter === "landmark" ? "Места на глобусе" : "Биомы на глобусе"}>
+          {entries.map(entry => {
+            const Icon = entry.kind === "landmark" ? Landmark : Trees;
+            return <li key={entry.id} data-recent={recentDiscoveryId === entry.id || undefined}>
+              <button type="button" data-audio-cue="ui.click" onClick={() => onFocus(entry)}
+                aria-label={`${entry.title}: ${opened.has(entry.id) ? "сохранено в атласе" : "показать на карте"}`}>
+                <span className={styles.icon} data-biome={entry.biome}><Icon size={20} aria-hidden="true" /></span>
+                <span className={styles.identity}><strong>{entry.title}</strong><small>{entry.subtitle}</small></span>
+                {opened.has(entry.id) ? <Check size={17} className={styles.opened} aria-hidden="true" /> : <ChevronRight size={17} aria-hidden="true" />}
+              </button>
+            </li>;
+          })}
+        </ul>
+        {entries.length === 0 && <p className={styles.empty} role="status">Ничего не найдено. Попробуй другое название.</p>}
+        <p className={styles.hint}>Выбери место, чтобы рассмотреть его на карте. Встреча с близким отмечается через значок друга.</p>
+      </>}
+      <p className={styles.storage} role="status">{!atlas.snapshot.loaded ? "Загружаем сохранённые открытия…" : atlas.snapshot.persistent
+        ? "Сохраняется на этом устройстве. Это не отметки о поездках."
+        : "Хранилище недоступно. Открытия останутся до закрытия карты."}</p>
     </div>
-    {section === "journeys" ? <EarthAtlasJourneys view={view} openedIds={atlas.snapshot.ids} loaded={atlas.snapshot.loaded}
-      onFocus={onFocus} onDiscover={discover} /> : <>
-    <div className={styles.candidate} aria-live="polite" aria-atomic="true">
-      {candidate ? <>
-        <span className={styles.candidateIcon}><EntryIcon entry={candidate} /></span>
-        <div><strong>{candidate.title}</strong><span>{candidate.subtitle} · в центре карты</span></div>
-        <button type="button" data-audio-cue="ui.click" disabled={!atlas.snapshot.loaded || opened.has(candidate.id)}
-          aria-label={opened.has(candidate.id) ? `${candidate.title}: уже в атласе` : `Открыть в атласе: ${candidate.title}`}
-          onClick={() => discover(candidate)}>
-          {opened.has(candidate.id) ? <Check size={18} aria-hidden="true" /> : <BookOpen size={18} aria-hidden="true" />}
-          <span>{opened.has(candidate.id) ? "Открыто" : "Открыть"}</span>
-        </button>
-      </> : <><Compass size={22} aria-hidden="true" /><p>Выбери место в ленте или приблизь регион в центре карты, чтобы открыть его.</p></>}
-    </div>
-    <div className={styles.toolbar}>
-      <div className={styles.filters} role="group" aria-label="Что показать в атласе">
-        {FILTERS.map(item => <button type="button" key={item.id} data-audio-cue="ui.click" aria-pressed={filter === item.id}
-          onClick={() => { setFilter(item.id); rail.current?.scrollTo({ left: 0, behavior: "instant" }); }}>{item.title}</button>)}
-      </div>
-      <div className={styles.arrows}>
-        <button type="button" aria-label="Предыдущие открытия" data-audio-cue="ui.click" onClick={() => scroll(-1)}><ChevronLeft size={18} aria-hidden="true" /></button>
-        <button type="button" aria-label="Следующие открытия" data-audio-cue="ui.click" onClick={() => scroll(1)}><ChevronRight size={18} aria-hidden="true" /></button>
-      </div>
-    </div>
-    <ul ref={rail} className={styles.rail} aria-label="Открытия на глобусе" tabIndex={0}>
-      {entries.map(entry => <li key={entry.id} className={styles.card} data-opened={opened.has(entry.id) || undefined}
-        data-recent={recentDiscoveryId === entry.id || undefined} data-kind={entry.kind}>
-        <button type="button" disabled={!entry.center} data-audio-cue="ui.click" onClick={() => { if (entry.center) onFocus(entry); }}
-          aria-label={`${entry.title}: ${opened.has(entry.id) ? "открыто" : "ещё не открыто"}${entry.center ? ", показать на карте" : ""}`}>
-          <span className={styles.art} data-biome={entry.biome}><EntryIcon entry={entry} size={26} />
-            {opened.has(entry.id) && <span className={styles.badge}><Check size={13} aria-hidden="true" /></span>}</span>
-          <strong>{entry.title}</strong><span className={styles.subtitle}>{entry.subtitle}</span>
-          <span className={styles.cardAction}>{entry.kind === "meeting" ? opened.has(entry.id) ? "Встреча отмечена" : "Отметь через значок друга" : "Показать на карте"}</span>
-        </button>
-      </li>)}
-    </ul>
-    </>}
-    <p className={styles.storage} role="status">{!atlas.snapshot.loaded ? "Загружаем атлас…" : atlas.snapshot.persistent
-      ? "Атлас сохраняется на этом устройстве."
-      : "Хранилище недоступно. Открытия останутся до закрытия этой карты."}</p>
   </section>;
 }

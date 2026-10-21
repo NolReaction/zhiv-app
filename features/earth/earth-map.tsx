@@ -23,6 +23,10 @@ import { EarthAttribution } from "./earth-attribution";
 import { EarthModelCredits } from "./earth-model-credits";
 import { installEarthGlobeCamera } from "./globe-camera";
 import { createEarthCameraViewport } from "./camera-viewport";
+import { earthAtlasCameraFocus } from "./atlas-camera-focus";
+import { earthAtlasEntry } from "./earth-atlas";
+import { evaluateEarthAtlasPreview, type EarthAtlasPreview } from "./earth-atlas-preview";
+import { EARTH_MODEL_PREVIEW_MIN_ZOOM } from "./landmark-model-view";
 import { createEarthTouchPitch } from "./touch-pitch";
 import { createEarthSatellite, EARTH_SATELLITE_INITIAL_STATE, type EarthSatelliteState } from "./satellite";
 import { EARTH_OCEAN_MATERIAL_IMAGE, registerEarthOceanMaterialImage } from "./globe-ocean";
@@ -47,7 +51,7 @@ const EMPTY_FRIENDS: readonly EarthMapPerson[] = [];
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY ?? "";
 export type EarthFriendFocusRequest = { circleId: string; requestId: number };
 export type EarthMapView = Pick<EarthCameraSnapshot, "center" | "zoom">;
-export type EarthCameraFocusRequest = EarthMapView & { requestId: number };
+export type EarthCameraFocusRequest = EarthMapView & { requestId: number; entryId?: string };
 
 type EarthMapProps = {
   position: EarthPosition | null;
@@ -74,6 +78,7 @@ type EarthMapProps = {
   onModelEditorOpenChange?: (open: boolean) => void;
   onViewChange?: (view: EarthMapView | null) => void;
   cameraFocusRequest?: EarthCameraFocusRequest | null;
+  onAtlasPreviewChange?: (preview: EarthAtlasPreview | null) => void;
 };
 
 function weatherConditionLabel(condition: string): string {
@@ -108,7 +113,7 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
   locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true,
-  onModelEditorOpenChange, onViewChange, cameraFocusRequest = null, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, locationStatus = "idle" }: EarthMapProps) {
+  onModelEditorOpenChange, onViewChange, cameraFocusRequest = null, onAtlasPreviewChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, locationStatus = "idle" }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -165,11 +170,35 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const latestFriendFocus = useRef(friendFocusRequest);
   const handledFriendFocus = useRef(0);
   const handledCameraFocus = useRef(0);
+  const latestAtlasFocus = useRef(cameraFocusRequest);
+  const unavailableAtlasFocus = useRef(0);
+  const atlasModelPreview = useRef<string | null>(null);
+  const atlasMinimumZoom = useRef({ requestId: 0, zoom: 15.6 });
+  const atlasPreviewCallback = useRef(onAtlasPreviewChange);
+  const lastAtlasPreview = useRef<EarthAtlasPreview | null>(null);
+  const syncAtlasPreviewRef = useRef<((moving?: boolean) => void) | null>(null);
+  const publishAtlasPreview = useCallback((preview: EarthAtlasPreview | null) => {
+    const previous = lastAtlasPreview.current;
+    if (previous?.entryId === preview?.entryId && previous?.requestId === preview?.requestId && previous?.status === preview?.status) return;
+    lastAtlasPreview.current = preview;
+    atlasPreviewCallback.current?.(preview);
+  }, []);
   const viewChangeRef = useRef(onViewChange);
   const selectFriendsRef = useRef(onSelectFriends);
   const syncFriendsRef = useRef<(() => void) | null>(null);
   const latestMeet = useRef({ circleId: meetCircleId, requestId: meetFocusRequest });
   const editingRef = useRef(modelEditorOpen);
+  useLayoutEffect(() => { atlasPreviewCallback.current = onAtlasPreviewChange; }, [onAtlasPreviewChange]);
+  useLayoutEffect(() => {
+    latestAtlasFocus.current = cameraFocusRequest;
+    const entry = cameraFocusRequest?.entryId ? earthAtlasEntry(cameraFocusRequest.entryId) : null;
+    atlasModelPreview.current = entry?.focus?.kind === "model" ? entry.focus.modelId : null;
+    sceneRef.current?.setLandmarkPreview(atlasModelPreview.current);
+    sceneRef.current?.setBuildingsEnabled((buildings3dRef.current || !!atlasModelPreview.current)
+      && !satelliteRef.current?.getSnapshot().imageryVisible);
+    if (!cameraFocusRequest?.entryId) publishAtlasPreview(null);
+    else syncAtlasPreviewRef.current?.();
+  }, [cameraFocusRequest, publishAtlasPreview]);
   useLayoutEffect(() => {
     latestMeet.current = { circleId: meetCircleId, requestId: meetFocusRequest };
     editingRef.current = modelEditorOpen;
@@ -177,6 +206,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     touchPitchRef.current?.setEnabled(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen);
     satelliteRef.current?.setVisible(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen && !document.hidden);
     syncFriendsRef.current?.();
+    syncAtlasPreviewRef.current?.();
   }, [meetCircleId, meetFocusRequest, modelEditorOpen]);
   useLayoutEffect(() => { selectFriendsRef.current = onSelectFriends; }, [onSelectFriends]);
   useLayoutEffect(() => { viewChangeRef.current = onViewChange; }, [onViewChange]);
@@ -187,12 +217,35 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     onViewChange?.({ center: [center.lng, center.lat], zoom: current.getZoom() });
     if (!cameraFocusRequest || cameraFocusRequest.requestId <= handledCameraFocus.current || document.hidden) return;
     const { center: target, zoom } = cameraFocusRequest;
-    if (!target.every(Number.isFinite) || Math.abs(target[1]) > 85 || !Number.isFinite(zoom)) return;
-    handledCameraFocus.current = cameraFocusRequest.requestId;
+    if (!cameraFocusRequest.entryId && (!target.every(Number.isFinite) || Math.abs(target[1]) > 85 || !Number.isFinite(zoom))) return;
     cameraViewportRef.current?.refresh(false);
-    current.flyTo({ center: target, zoom: Math.max(0, Math.min(17, zoom)), bearing: 0, pitch: 0,
+    const container = current.getContainer();
+    const available = cameraViewportRef.current?.getViewport()
+      ?? { left: 12, top: 12, right: container.clientWidth - 12, bottom: container.clientHeight - 12 };
+    const camera = cameraFocusRequest.entryId ? earthAtlasCameraFocus(cameraFocusRequest.entryId, {
+      width: container.clientWidth, height: container.clientHeight, available,
+      padding: current.getPadding(), verticalFieldOfView: current.getVerticalFieldOfView(),
+    }) : { center: target, zoom: Math.max(0, Math.min(18, zoom)), bearing: 0, pitch: 0, offset: [0, 0] as [number, number] };
+    if (!camera) {
+      handledCameraFocus.current = cameraFocusRequest.requestId;
+      unavailableAtlasFocus.current = cameraFocusRequest.requestId;
+      publishAtlasPreview({ entryId: cameraFocusRequest.entryId!, requestId: cameraFocusRequest.requestId, status: "unavailable" });
+      return;
+    }
+    if (atlasModelPreview.current) {
+      // Explicit inspection chooses the illustrated model view. This changes
+      // neither the saved 3D preference nor the extrusion layer's visibility.
+      satelliteEnabledRef.current = false;
+      satelliteRef.current?.setEnabled(false);
+      sceneRef.current?.setBuildingsEnabled(true);
+    }
+    handledCameraFocus.current = cameraFocusRequest.requestId;
+    atlasMinimumZoom.current = { requestId: cameraFocusRequest.requestId,
+      zoom: Math.max(EARTH_MODEL_PREVIEW_MIN_ZOOM, Math.min(15.6, camera.zoom - .25)) };
+    current.flyTo({ ...camera,
       duration: reducedMotion() ? 0 : 1200, essential: false });
-  }, [active, visible, modelEditorOpen, phase, cameraFocusRequest, onViewChange]);
+    syncAtlasPreviewRef.current?.();
+  }, [active, visible, modelEditorOpen, phase, cameraFocusRequest, onViewChange, publishAtlasPreview]);
   useLayoutEffect(() => {
     latestFriendFocus.current = friendFocusRequest;
     syncFriendsRef.current?.();
@@ -200,7 +253,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   useEffect(() => {
     cameraSession?.savePreferences({ weatherEnabled, lightingMode, eveningCenter, buildings3d });
   }, [cameraSession, weatherEnabled, lightingMode, eveningCenter, buildings3d]);
-  useEffect(() => { phaseRef.current = phase; onReadyChange?.(phase === "ready"); }, [phase, onReadyChange]);
+  useEffect(() => { phaseRef.current = phase; onReadyChange?.(phase === "ready"); syncAtlasPreviewRef.current?.(); }, [phase, onReadyChange]);
   useEffect(() => {
     onlineRef.current = isOnline;
     satelliteRef.current?.setOnline(isOnline);
@@ -230,9 +283,10 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [diagnosticReport]);
   useEffect(() => {
     buildings3dRef.current = buildings3d;
-    sceneRef.current?.setBuildingsEnabled(buildings3d && !satelliteRef.current?.getSnapshot().imageryVisible);
+    sceneRef.current?.setBuildingsEnabled((buildings3d || !!atlasModelPreview.current) && !satelliteRef.current?.getSnapshot().imageryVisible);
     const current = mapRef.current;
     if (current?.getLayer(EARTH_BUILDINGS_3D_LAYER)) current.setLayoutProperty(EARTH_BUILDINGS_3D_LAYER, "visibility", buildings3d ? "visible" : "none");
+    syncAtlasPreviewRef.current?.();
   }, [buildings3d]);
 
   const persistMap = useCallback(async () => {
@@ -339,6 +393,42 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     let touchPitch: ReturnType<typeof createEarthTouchPitch> | null = null;
     let satellite: ReturnType<typeof createEarthSatellite> | null = null;
 
+    function updateAtlasPreview(forceMoving = false) {
+      const request = latestAtlasFocus.current;
+      if (!request?.entryId || cancelled || attemptFailed || !foreground || editingRef.current || !map) {
+        publishAtlasPreview(null);
+        return;
+      }
+      if (unavailableAtlasFocus.current === request.requestId) {
+        publishAtlasPreview({ entryId: request.entryId, requestId: request.requestId, status: "unavailable" });
+        return;
+      }
+      if (recoveryStatus === "failed") {
+        publishAtlasPreview({ entryId: request.entryId, requestId: request.requestId, status: "unavailable" });
+        return;
+      }
+      const entry = earthAtlasEntry(request.entryId);
+      const area = cameraViewport?.getViewport() ?? { left: 12, top: 12,
+        right: element!.clientWidth - 12, bottom: element!.clientHeight - 12 };
+      const point = entry?.center ? map.project([...entry.center]) : null;
+      const targetVisible = !!point && Number.isFinite(point.x) && Number.isFinite(point.y)
+        && point.x >= area.left && point.x <= area.right && point.y >= area.top && point.y <= area.bottom;
+      const center = map.getCenter();
+      const modelId = entry?.focus?.kind === "model" ? entry.focus.modelId : null;
+      publishAtlasPreview(evaluateEarthAtlasPreview({ entryId: request.entryId, requestId: request.requestId,
+        view: { center: [center.lng, center.lat], zoom: map.getZoom() },
+        moving: forceMoving || map.isMoving() || handledCameraFocus.current !== request.requestId,
+        // Local lighting, accuracy and meeting overlays may still have worker
+        // updates. Wait for the current downloaded cartography, not every
+        // unrelated GeoJSON source covered by Map.areTilesLoaded().
+        mapReady: initialReady && phaseRef.current === "ready" && recoveryStatus === "idle"
+          && areEarthTileSourcesReady(map), targetVisible,
+        modelDrawn: !modelId || scene?.isLandmarkDrawn(modelId) === true,
+        modelFailed: !!modelId && scene?.isLandmarkFailed(modelId) === true,
+        minimumZoom: atlasMinimumZoom.current.requestId === request.requestId ? atlasMinimumZoom.current.zoom : undefined }));
+    }
+    syncAtlasPreviewRef.current = updateAtlasPreview;
+
     function syncFriends() {
       if (cancelled || attemptFailed || !friendMarkers) return;
       const available = foreground && initialReady && !editingRef.current;
@@ -428,6 +518,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       tileOverlay?.refresh();
       weather?.setVisible(next && initialReady);
       tileRecovery?.check();
+      updateAtlasPreview();
     }
     foregroundRef.current = updateForeground;
     function visibilityChanged() { updateForeground(); }
@@ -449,6 +540,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       friendMarkers?.setVisible(false);
       meetMap?.setVisible(false);
       latestFriends.current = EMPTY_FRIENDS;
+      publishAtlasPreview(null);
       setFailure(message);
       setPhase("failed");
     }
@@ -557,8 +649,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         satellite = createEarthSatellite(current, { apiKey: MAPTILER_KEY, onChange: value => {
           if (cancelled || attemptFailed) return;
           if (value.status === "error") satelliteEnabledRef.current = false;
-          scene?.setBuildingsEnabled(buildings3dRef.current && !value.imageryVisible);
+          scene?.setBuildingsEnabled((buildings3dRef.current || !!atlasModelPreview.current) && !value.imageryVisible);
           setSatelliteState(value);
+          updateAtlasPreview();
         } });
         satelliteRef.current = satellite;
         satellite.setOnline(onlineRef.current);
@@ -625,6 +718,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             setTileStatus(status);
             tileOverlay?.setStatus(status, navigator.onLine);
             tileOverlay?.refresh();
+            updateAtlasPreview();
             if (!initialReady && status === "failed") fail("Не удалось завершить отрисовку карты. Попробуйте открыть её снова: сохранённые данные будут использованы повторно.");
             else scheduleReadyCheck();
           },
@@ -706,10 +800,12 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           scene?.dispose();
           scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current, eveningCenterRef.current ?? undefined);
           sceneRef.current = scene;
-          scene.setBuildingsEnabled(buildings3dRef.current && !satellite?.getSnapshot().imageryVisible);
+          scene.setLandmarkPreview(atlasModelPreview.current);
+          scene.setBuildingsEnabled((buildings3dRef.current || !!atlasModelPreview.current) && !satellite?.getSnapshot().imageryVisible);
           scene.setWeather(weatherSnapshot);
           scene.setReady(initialReady);
           scene.setVisible(foreground);
+          updateAtlasPreview();
         });
         for (const eventName of ["sourcedataloading", "sourcedata", "sourcedataabort"] as const) current.on(eventName, event => {
           if (cancelled || attemptFailed) return;
@@ -719,6 +815,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             && (!activeRef.current || !visibleRef.current || document.hidden)) interruptedDownloads = true;
           tileOverlay?.observe(event);
           if (foreground) tileOverlay?.refresh();
+          updateAtlasPreview();
         });
         current.on("dataloading", scheduleReadyCheck);
         current.on("dataabort", () => {
@@ -731,12 +828,13 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         });
         current.on("movestart", () => {
           if (initialReady && foreground) viewChangeRef.current?.(null);
+          updateAtlasPreview(true);
           tileRecovery?.check();
         });
-        current.on("moveend", () => { savePreparedCamera(); notifyView(); scheduleReadyCheck(); tileRecovery?.check(); });
-        current.on("render", () => { rendered = true; scheduleReadyCheck(); if (foreground) tileOverlay?.refresh(); });
+        current.on("moveend", () => { savePreparedCamera(); notifyView(); updateAtlasPreview(); scheduleReadyCheck(); tileRecovery?.check(); });
+        current.on("render", () => { rendered = true; updateAtlasPreview(); scheduleReadyCheck(); if (foreground) tileOverlay?.refresh(); });
         current.on("load", scheduleReadyCheck);
-        current.on("idle", () => { scheduleReadyCheck(); tileRecovery?.check(true); });
+        current.on("idle", () => { scheduleReadyCheck(); tileRecovery?.check(true); updateAtlasPreview(); });
         current.on("error", event => {
           // Optional imagery has its own fallback and must never repair/fail the base map.
           if (satellite?.ownsError(event)) return;
@@ -777,10 +875,12 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       savePreparedCamera();
       earthResourceCache.setView(null);
       cancelled = true;
+      publishAtlasPreview(null);
       controller.abort();
       requests.dispose();
       if (foregroundRef.current === updateForeground) foregroundRef.current = null;
       if (syncFriendsRef.current === syncFriends) syncFriendsRef.current = null;
+      if (syncAtlasPreviewRef.current === updateAtlasPreview) syncAtlasPreviewRef.current = null;
       friendMarkers?.dispose();
       meetMap?.dispose();
       latestFriends.current = EMPTY_FRIENDS;
@@ -816,7 +916,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (mapRef.current === map) mapRef.current = null;
       if (process.env.NODE_ENV === "development") setEditorMap(null);
     };
-  }, [active, retry, cameraSession, diagnostics, retryMap]);
+  }, [active, retry, cameraSession, diagnostics, retryMap, publishAtlasPreview]);
 
   useEffect(() => {
     if (!active || !visible || !focusWhenReady || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;

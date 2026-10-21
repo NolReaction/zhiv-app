@@ -31,7 +31,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     },
     transform(source, id) {
       if (id.endsWith("/features/earth/earth-view.tsx") || id.endsWith("/features/earth/use-earth-location.ts")
-        || id.endsWith("/features/earth/use-earth-atlas.ts") || id.endsWith("/features/earth/use-earth-atlas-discovery.ts"))
+        || id.endsWith("/features/earth/use-earth-atlas.ts") || id.endsWith("/features/earth/use-earth-atlas-discovery.ts")
+        || id.endsWith("/features/earth/use-earth-atlas-explorer.ts"))
         return source.replace('from "react";', `from "${hooksId}";`);
     },
   }],
@@ -42,6 +43,10 @@ const { EarthView, EarthFriends } = await vite.ssrLoadModule("/features/earth/ea
 const { EarthMeetCard } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
 const { EarthMap } = await vite.ssrLoadModule("/features/earth/earth-map.tsx");
 const { EarthSharingPanel } = await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
+const { EarthAtlasPanel } = await vite.ssrLoadModule("/features/earth/earth-atlas-panel.tsx");
+const { EarthAtlasExplorer } = await vite.ssrLoadModule("/features/earth/earth-atlas-explorer.tsx");
+const { earthAtlasEntry, EARTH_ATLAS_MEETING_ID } = await vite.ssrLoadModule("/features/earth/earth-atlas.ts");
+const { EARTH_ATLAS_JOURNEYS } = await vite.ssrLoadModule("/features/earth/earth-atlas-journeys.ts");
 const nodes = tree => {
   const result = [];
   const visit = node => { if (isValidElement(node)) { result.push(node); Children.forEach(node.props.children, visit); } };
@@ -55,7 +60,7 @@ function setup({ rememberedOpen = false, environment = "development", online = t
   const window = new EventTarget(), document = new EventTarget(), permission = new EventTarget();
   window.isSecureContext = true;
   window.sessionStorage = { getItem: () => rememberedOpen ? "1" : "0" };
-  document.visibilityState = "visible"; permission.state = permissionState;
+  document.visibilityState = "visible"; document.hidden = false; permission.state = permissionState;
   const watches = [], cleared = [], publications = [], actions = [];
   const navigator = { permissions: { query: async () => permission }, geolocation: {
     watchPosition(success, failure) { watches.push({ success, failure }); return watches.length - 1; },
@@ -68,14 +73,15 @@ function setup({ rememberedOpen = false, environment = "development", online = t
     ghost: () => actions.push("ghost"), off: () => actions.push("off"), refresh() {}, share: async () => true };
   const props = { ownerPublicId: "owner-test", active: true, visible: true, sharing, isOnline: online,
     people: null, peopleLoading: false, peopleError: null, onRefreshPeople() {}, onOpenPeople() {}, onOpenWorld() {} };
-  const state = hooks.create();
+  let state = hooks.create(), owner = props.ownerPublicId;
   function render() {
+    if (owner !== props.ownerPublicId) { hooks.destroy(state); state = hooks.create(); owner = props.ownerPublicId; }
     let tree, passes = 0;
-    do { hooks.begin(state); tree = EarthView(props); hooks.flush(state); assert.ok(++passes < 15, "view settles"); } while (state.dirty);
+    do { hooks.begin(state); const session = EarthView(props); tree = session.type(session.props); hooks.flush(state); assert.ok(++passes < 15, "view settles"); } while (state.dirty);
     const all = nodes(tree);
     return { tree, all, map: all.find(node => node.type === EarthMap).props, text: text(tree) };
   }
-  return { render, props, watches, cleared, publications, actions,
+  return { render, props, watches, cleared, publications, actions, document,
     destroy() {
       hooks.destroy(state);
       process.env.NODE_ENV = originalEnv;
@@ -294,5 +300,132 @@ test("selecting a member of a co-located map group opens that meeting without wa
     assert.equal(app.watches.length, 1);
     view.all.find(node => node.type === EarthMeetCard).props.onClose();
     assert.equal(originFocus, 1, "a new meeting from the general picker never focuses the previous marker");
+  } finally { app.destroy(); }
+});
+
+const atlasPanel = view => view.all.find(node => node.type === EarthAtlasPanel);
+const explorerCard = view => view.all.find(node => node.type === EarthAtlasExplorer);
+const book = view => view.all.find(node => node.type === "button" && node.props["aria-label"] === "Личный атлас");
+const preview = (view, status = "ready") => ({ entryId: view.map.cameraFocusRequest.entryId,
+  requestId: view.map.cameraFocusRequest.requestId, status });
+
+test("catalogue Close and Escape restore book focus only after commit, without stealing focus from another panel", () => {
+  for (const action of ["close", "escape", "replaced", "hidden"]) {
+    const app = setup();
+    try {
+      let view = app.render(); book(view).props.onClick(); view = app.render();
+      let focused = 0;
+      book(view).props.ref.current = { focus() { focused++; } };
+      if (action === "escape") view.all.find(node => node.props.id === "earth-atlas-panel").props.onKeyDown({ key: "Escape", stopPropagation() {} });
+      else view.all.find(node => node.type === "button" && node.props["aria-label"] === "Закрыть атлас").props.onClick();
+      assert.equal(focused, 0, "the trigger is still hidden until the catalogue closes in short landscape");
+      if (action === "replaced") app.props.privacyRequest = 31;
+      if (action === "hidden") app.props.visible = false;
+      app.render();
+      assert.equal(focused, action === "close" || action === "escape" ? 1 : 0, action);
+      app.render();
+      assert.equal(focused, action === "close" || action === "escape" ? 1 : 0, "no delayed second focus");
+    } finally { app.destroy(); }
+  }
+});
+
+test("atlas catalogue choices close the sheet and only an explicitly ready current frame can be saved", () => {
+  const app = setup();
+  try {
+    let view = app.render(); book(view).props.onClick(); view = app.render();
+    const atlas = atlasPanel(view).props.atlas, eiffel = earthAtlasEntry("landmark:eiffel-tower");
+    atlasPanel(view).props.onFocus(eiffel); view = app.render();
+    assert.equal(atlasPanel(view), undefined); assert.equal(explorerCard(view).props.entry, eiffel);
+    assert.equal(view.map.cameraFocusRequest.entryId, eiffel.id);
+    assert.deepEqual(atlas.readSnapshot().ids, [], "selection and focus never save");
+    explorerCard(view).props.onDiscover(); assert.deepEqual(atlas.readSnapshot().ids, []);
+    view.map.onAtlasPreviewChange(preview(view)); view = app.render();
+    const staleSave = explorerCard(view).props.onDiscover;
+    view.map.onAtlasPreviewChange(preview(view, "moving"));
+    staleSave(); assert.deepEqual(atlas.readSnapshot().ids, [], "movement closes the guard before a React update");
+    view.map.onAtlasPreviewChange(preview(view)); view = app.render();
+    app.document.hidden = true; explorerCard(view).props.onDiscover(); assert.deepEqual(atlas.readSnapshot().ids, []);
+    app.document.hidden = false; explorerCard(view).props.onDiscover(); view = app.render();
+    assert.deepEqual(atlas.readSnapshot().ids, [eiffel.id]); assert.equal(explorerCard(view).props.opened, true);
+    assert.equal(view.all.some(node => node.props.discovery?.entry.id === eiffel.id), false, "there is no second floating discovery panel");
+  } finally { app.destroy(); }
+});
+
+test("catalogue reopen preserves the route, direct stop jump creates a new request, and covered stale saves are blocked", () => {
+  const app = setup();
+  try {
+    let view = app.render(); book(view).props.onClick(); view = app.render();
+    const atlas = atlasPanel(view).props.atlas, route = EARTH_ATLAS_JOURNEYS[0];
+    atlasPanel(view).props.onStartJourney(route.id); view = app.render();
+    const first = view.map.cameraFocusRequest;
+    assert.equal(explorerCard(view).props.journey.journey.id, route.id);
+    view.map.onAtlasPreviewChange(preview(view)); view = app.render();
+    const oldSave = explorerCard(view).props.onDiscover;
+    explorerCard(view).props.onBrowseStops();
+    oldSave(); assert.deepEqual(atlas.readSnapshot().ids, [], "the panel guard changes synchronously");
+    view = app.render(); assert.equal(explorerCard(view), undefined);
+    assert.equal(atlasPanel(view).props.initialSection, "journeys");
+    assert.deepEqual(atlasPanel(view).props.journeyState, { journeyId: route.id, stopIndex: 0 });
+    // Even a later map-ready callback cannot make the hidden old Save valid.
+    view.map.onAtlasPreviewChange(preview(view)); oldSave(); assert.deepEqual(atlas.readSnapshot().ids, []);
+    atlasPanel(view).props.onSelectStop(route.stops.length - 1); view = app.render();
+    assert.equal(atlasPanel(view), undefined); assert.equal(explorerCard(view).props.entry.id, route.stops.at(-1).entryId);
+    assert.ok(view.map.cameraFocusRequest.requestId > first.requestId);
+    assert.deepEqual(atlas.readSnapshot().ids, []);
+    book(view).props.onClick(); view = app.render();
+    const state = atlasPanel(view).props.journeyState;
+    view.all.find(node => node.type === "button" && node.props["aria-label"] === "Закрыть атлас").props.onClick(); view = app.render();
+    assert.equal(explorerCard(view).props.journey.stopIndex, state.stopIndex);
+  } finally { app.destroy(); }
+});
+
+test("Explorer Escape ends the route, clears camera intent and returns keyboard focus to the book", () => {
+  const app = setup();
+  try {
+    let view = app.render(); book(view).props.onClick(); view = app.render();
+    atlasPanel(view).props.onStartJourney(EARTH_ATLAS_JOURNEYS[0].id); view = app.render();
+    let focused = 0, stopped = 0; book(view).props.ref.current = { focus() { focused++; } };
+    view.tree.props.onKeyDown({ key: "Escape", stopPropagation() { stopped++; } }); view = app.render();
+    assert.equal(explorerCard(view), undefined); assert.equal(view.map.cameraFocusRequest, null);
+    assert.equal(focused, 1); assert.equal(stopped, 1);
+    book(view).props.onClick(); view = app.render(); assert.equal(atlasPanel(view).props.journeyState, null);
+  } finally { app.destroy(); }
+});
+
+test("privacy, editor, hidden view and owner replacement invalidate the explorer without resuming stale camera intent", () => {
+  for (const cover of ["privacy", "editor", "hidden", "owner"]) {
+    const app = setup();
+    try {
+      let view = app.render(); book(view).props.onClick(); view = app.render();
+      const atlas = atlasPanel(view).props.atlas, entry = earthAtlasEntry("landmark:eiffel-tower");
+      atlasPanel(view).props.onFocus(entry); view = app.render(); view.map.onAtlasPreviewChange(preview(view)); view = app.render();
+      const oldSave = explorerCard(view).props.onDiscover, oldPreview = preview(view), report = view.map.onAtlasPreviewChange;
+      if (cover === "privacy") app.props.privacyRequest = 91;
+      if (cover === "editor") view.map.onModelEditorOpenChange(true);
+      if (cover === "hidden") app.props.visible = false;
+      if (cover === "owner") app.props.ownerPublicId = "replacement-owner";
+      view = app.render(); report(oldPreview); oldSave();
+      assert.deepEqual(atlas.readSnapshot().ids, [], cover);
+      assert.equal(view.map.cameraFocusRequest, null, cover);
+      assert.equal(explorerCard(view), undefined, cover);
+    } finally { app.destroy(); }
+  }
+});
+
+test("an explicit fresh friend meeting keeps its GPS guard and saves without any atlas preview", () => {
+  const app = setup();
+  const now = Date.now();
+  app.props.sharing.people = [{ circleId: "friend-one", user: { publicId: "ONE", displayName: "Лена" },
+    latitude: 48.85, longitude: 2.29, accuracyMeters: 15, precision: "PRECISE", updatedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 60_000).toISOString(), expiresAtMonotonic: performance.now() + 60_000 }];
+  try {
+    let view = app.render(); book(view).props.onClick(); view = app.render(); const atlas = atlasPanel(view).props.atlas;
+    view.all.find(node => node.type === "button" && node.props["aria-label"] === "Закрыть атлас").props.onClick(); view = app.render();
+    view.map.onSelectFriends(["friend-one"]); app.render(); app.watches[0].success(fix(Date.now())); view = app.render();
+    assert.equal(view.map.cameraFocusRequest, null); assert.equal(explorerCard(view), undefined);
+    const meeting = view.all.find(node => node.type === EarthMeetCard);
+    assert.ok(meeting); assert.deepEqual(atlas.readSnapshot().ids, []);
+    meeting.props.onRecordMeeting();
+    assert.deepEqual(atlas.readSnapshot().ids, [EARTH_ATLAS_MEETING_ID]);
   } finally { app.destroy(); }
 });

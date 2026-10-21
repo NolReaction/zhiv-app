@@ -2,6 +2,8 @@ import eiffelModel from "./data/eiffel-model.json";
 
 /** Imported buildings use real metres only at street zoom; atlas miniatures keep their own scale. */
 export const EARTH_MODEL_STREET_MIN_ZOOM = 15;
+/** Only an explicitly selected atlas model can use detailed physical geometry below street zoom. */
+export const EARTH_MODEL_PREVIEW_MIN_ZOOM = 12;
 export const EARTH_EIFFEL_HEIGHT_METERS = eiffelModel.coordinates.heightMeters;
 const EARTH_CIRCUMFERENCE = 40_030_228.884;
 

@@ -6,10 +6,13 @@ import type { PeopleResponse } from "@/lib/check-in-contract";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { PlayerName } from "@/components/player-name";
-import { EarthMap, type EarthCameraFocusRequest, type EarthMapView } from "./earth-map";
+import { EarthMap } from "./earth-map";
 import { EarthAtlasPanel } from "./earth-atlas-panel";
-import { EARTH_ATLAS_MEETING_ID, earthAtlasEntry, type EarthAtlasEntry } from "./earth-atlas";
+import { EarthAtlasExplorer } from "./earth-atlas-explorer";
+import { EARTH_ATLAS_ENTRIES, EARTH_ATLAS_MEETING_ID, earthAtlasEntry, type EarthAtlasEntry } from "./earth-atlas";
+import type { EarthAtlasJourneyAction } from "./earth-atlas-journeys";
 import { useEarthAtlas } from "./use-earth-atlas";
+import { useEarthAtlasExplorer } from "./use-earth-atlas-explorer";
 import { useEarthAtlasDiscovery } from "./use-earth-atlas-discovery";
 import { EarthAtlasDiscovery } from "./earth-atlas-discovery";
 import { canRecordEarthMeeting } from "./meet";
@@ -83,7 +86,11 @@ export function EarthFriends({ people, locations = [], onFocusPerson, onMeetPers
   </ul>;
 }
 
-export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, privacyRequest = null, onPrivacyRequestHandled, devCommandsAvailable = false, isOnline, people, peopleLoading, peopleError,
+export function EarthView(props: Props) {
+  return <EarthViewSession key={props.ownerPublicId} {...props} />;
+}
+
+function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, privacyRequest = null, onPrivacyRequestHandled, devCommandsAvailable = false, isOnline, people, peopleLoading, peopleError,
   onRefreshPeople, onOpenPeople, onOpenWorld }: Props) {
   const [modelEditorOpen, setModelEditorOpen] = useState(readEarthModelEditorOpen);
   const editingModel = process.env.NODE_ENV === "development" && modelEditorOpen;
@@ -97,8 +104,11 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const [meetFocusTarget, setMeetFocusTarget] = useState<string | null>(null);
   const atlas = useEarthAtlas(ownerPublicId);
   const atlasFeedback = useEarthAtlasDiscovery(ownerPublicId, active && visible && !editingModel);
-  const [atlasView, setAtlasView] = useState<EarthMapView | null>(null);
-  const [atlasFocusRequest, setAtlasFocusRequest] = useState<EarthCameraFocusRequest | null>(null);
+  const explorer = useEarthAtlasExplorer(ownerPublicId);
+  const closeExplorer = explorer.close;
+  const explorerForeground = useRef(false);
+  const restoreAtlasFocus = useRef(false);
+  const [atlasSection, setAtlasSection] = useState<"discoveries" | "journeys">("discoveries");
   const [panelSelection, setPanelSelection] = useState<{ visible: boolean; value: "friends" | "sharing" | "info" | "atlas" | null; privacyRequest: number | null }>({
     visible, value: visible && privacyRequest !== null ? "sharing" : null, privacyRequest: visible ? privacyRequest : null,
   });
@@ -109,7 +119,11 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       privacyRequest: visible && privacyRequest !== null ? privacyRequest : panelSelection.privacyRequest });
   }
   const panel = panelSelection.visible === visible ? panelSelection.value : null;
-  const setPanel = (value: "friends" | "sharing" | "info" | "atlas" | null) => setPanelSelection(current => ({ ...current, visible, value }));
+  const setPanel = (value: "friends" | "sharing" | "info" | "atlas" | null) => {
+    if (value) { explorerForeground.current = false; restoreAtlasFocus.current = false; }
+    if (value && value !== "atlas") explorer.close();
+    setPanelSelection(current => ({ ...current, visible, value }));
+  };
   useEffect(() => {
     if (visible && !editingModel && panel === "sharing" && privacyRequest !== null
       && panelSelection.privacyRequest === privacyRequest) onPrivacyRequestHandled?.(privacyRequest);
@@ -117,11 +131,20 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const onModelEditorOpenChange = useCallback((open: boolean) => {
     const editing = process.env.NODE_ENV === "development" && open;
     setModelEditorOpen(editing);
-    if (editing) setPanelSelection(current => current.value === null ? current : { ...current, value: null });
-  }, []);
+    if (editing) {
+      explorerForeground.current = false;
+      closeExplorer();
+      setPanelSelection(current => current.value === null ? current : { ...current, value: null });
+    }
+  }, [closeExplorer]);
   const friendsOpen = panel === "friends";
   const sharingOpen = panel === "sharing";
   const atlasOpen = panel === "atlas";
+  useLayoutEffect(() => {
+    explorerForeground.current = active && visible && !editingModel && panel === null && meetCircleId === null;
+    if (!active || !visible || editingModel || panel && panel !== "atlas" || meetCircleId) closeExplorer();
+    return () => { explorerForeground.current = false; };
+  }, [active, visible, editingModel, panel, meetCircleId, closeExplorer]);
   const [selectedCircleIds, setSelectedCircleIds] = useState<readonly string[]>([]);
   const [friendFocusRequest, setFriendFocusRequest] = useState<{ circleId: string; requestId: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -139,6 +162,11 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const wasPublishing = useRef(false);
   const pendingPrivacy = useRef<string | null>(null);
   const sharedPeople = sharing.people.filter(person => !people || people.people.some(contact => contact.circleId === person.circleId && contact.user.publicId === person.user.publicId));
+  useLayoutEffect(() => {
+    if (!restoreAtlasFocus.current) return;
+    restoreAtlasFocus.current = false;
+    if (panel === null && !newPrivacyRequest && locationEnabled && !document.hidden) atlasButton.current?.focus({ preventScroll: true });
+  }, [panel, newPrivacyRequest, locationEnabled]);
   useLayoutEffect(() => { foreground.current = locationEnabled; return () => { foreground.current = false; }; }, [locationEnabled]);
   // The location hook pauses a hidden retained view's watch. Keep its private
   // last fix in RAM until owner teardown/unmount; stop() would erase the marker
@@ -169,7 +197,11 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     pendingPrivacy.current = privacy;
     wasPublishing.current = publishing;
   }, [pendingGhost, pendingPrivacyMode, publishing, editingModel, location.error, stopLocation, freezeLocation]);
-  const closeFriends = () => { const trigger = atlasOpen ? atlasButton : sharingOpen ? sharingButton : friendsButton; setPanel(null); trigger.current?.focus({ preventScroll: true }); };
+  const closeFriends = () => {
+    if (atlasOpen) restoreAtlasFocus.current = true;
+    setPanel(null);
+    if (!atlasOpen) (sharingOpen ? sharingButton : friendsButton).current?.focus({ preventScroll: true });
+  };
   const locating = location.status === "requesting";
   const watching = locating || location.status === "active";
   const age = location.position ? Math.max(0, Math.floor((now - location.position.timestamp) / 60_000)) : 0;
@@ -192,12 +224,14 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     if (accepted && foreground.current && choices.recipientCircleIds.some(id => !choices.frozenCircleIds.includes(id))) location.start();
   };
   const focusFriend = (circleId: string) => {
+    explorer.close();
     setMeetCircleId(null);
     setFriendFocusRequest(previous => ({ circleId, requestId: (previous?.requestId ?? 0) + 1 }));
     setPanel(null);
   };
   const meetFriend = useCallback((circleId: string) => {
     if (!sharedPeople.some(person => person.circleId === circleId)) return;
+    closeExplorer();
     setNow(Date.now());
     setMonotonicNow(performance.now());
     setMeetCircleId(circleId);
@@ -205,7 +239,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     setFriendFocusRequest(previous => ({ circleId, requestId: (previous?.requestId ?? 0) + 1 }));
     setPanelSelection(current => ({ ...current, visible, value: null }));
     if (location.allowed && (!location.position || Date.now() - location.position.timestamp > 60_000 || location.status !== "active")) location.locate();
-  }, [sharedPeople, location, visible]);
+  }, [sharedPeople, location, visible, closeExplorer]);
   const frameMeeting = () => { setMeetFocusTarget(meetCircleId); setMeetFocusRequest(value => value + 1); };
   const closeMeeting = () => {
     setMeetCircleId(null);
@@ -214,13 +248,35 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     else (friendsButton.current ?? sharingButton.current)?.focus({ preventScroll: true });
   };
   const meetPerson = sharedPeople.find(person => person.circleId === meetCircleId) ?? null;
-  const focusAtlasEntry = (entry: EarthAtlasEntry) => {
-    if (!entry.center || entry.zoom === null) return;
+  const prepareAtlasSelection = () => {
     setMeetCircleId(null);
-    setAtlasFocusRequest(previous => ({ center: [...entry.center!], zoom: entry.zoom!, requestId: (previous?.requestId ?? 0) + 1 }));
+    setMeetFocusTarget(null);
+    meetingTrigger.current = null;
+    setSelectedCircleIds([]);
+    setPanel(null);
+  };
+  const focusAtlasEntry = (entry: EarthAtlasEntry) => {
+    if (explorer.selectEntry(entry)) prepareAtlasSelection();
+  };
+  const navigateAtlas = (action: EarthAtlasJourneyAction) => {
+    if (explorer.navigate(action)) prepareAtlasSelection();
+  };
+  const persistAtlasEntry = (entry: EarthAtlasEntry) => {
+    const canonical = earthAtlasEntry(entry.id);
+    if (!canonical || !foreground.current || document.hidden || !atlas.readSnapshot().loaded) return;
+    if (atlas.discover(canonical.id)) atlasFeedback.show(canonical, atlas.readSnapshot().ids.length);
   };
   const discoverAtlasEntry = (entry: EarthAtlasEntry) => {
-    if (foreground.current && !document.hidden && atlas.discover(entry.id)) atlasFeedback.show(entry, atlas.readSnapshot().ids.length);
+    if (explorer.canDiscover(entry, { foreground: foreground.current && explorerForeground.current,
+      hidden: document.hidden, loaded: atlas.readSnapshot().loaded })) persistAtlasEntry(entry);
+  };
+  const dismissExplorer = () => {
+    explorer.close(true);
+    atlasButton.current?.focus({ preventScroll: true });
+  };
+  const browseAtlasStops = () => {
+    setAtlasSection("journeys");
+    setPanel("atlas");
   };
   const meetContact = people?.people.find(person => person.circleId === meetCircleId && person.user.publicId === meetPerson?.user.publicId);
   const locationDetails = <section className={styles.locationDetails} aria-labelledby="earth-location-heading">
@@ -233,22 +289,25 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     {watching && <button className={styles.stopButton} type="button" data-audio-cue="ui.click" onClick={stopGps}>Приостановить GPS</button>}
   </section>;
 
-  return <section className={styles.view} aria-labelledby="earth-title" data-earth-world onContextMenu={event => {
+  return <section className={styles.view} aria-labelledby="earth-title" data-earth-world onKeyDown={event => {
+    if (event.key === "Escape" && panel === null && explorer.snapshot.entry) { event.stopPropagation(); dismissExplorer(); }
+  }} onContextMenu={event => {
     if (!(event.target instanceof Element) || !event.target.closest("input, textarea, [contenteditable='true'], a[href]")) event.preventDefault();
   }}>
     <p id="earth-location-privacy" className={styles.srOnly}>«Найти меня» центрирует карту. Доступ друзей к геопозиции не меняется.</p>
     <div className={styles.stage}>
       <EarthMap position={visible && !editingModel && location.allowed ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange} cameraSession={cameraSession}
-        onViewChange={setAtlasView} cameraFocusRequest={atlasFocusRequest}
+        cameraFocusRequest={explorer.snapshot.request} onAtlasPreviewChange={explorer.setPreview}
         focusRequest={focusRequest} focusWhenReady={focusAfter === null || location.status === "active" && Boolean(location.position && location.position.timestamp >= focusAfter)}
         meetCircleId={!editingModel && panel === null ? meetPerson?.circleId : null} meetFocusRequest={meetFocusTarget === meetCircleId ? meetFocusRequest : 0} isOnline={isOnline} friends={editingModel ? NO_SHARED_PEOPLE : sharedPeople} friendFocusRequest={editingModel ? null : friendFocusRequest}
         onSelectFriends={(ids, trigger) => { if (!editingModel) {
           meetingTrigger.current = trigger ?? null;
+          explorer.close();
           playUiCue(getAudioRuntime(), "ui.open");
           if (ids.length === 1) meetFriend(ids[0]);
           else { setMeetCircleId(null); setSelectedCircleIds(ids); setPanel("friends"); }
         } }}
-        onLocate={() => { setMeetCircleId(null); locate(); }} locating={locating} locationActive={location.status === "active"} locationStatus={location.status} showLocationControl={!editingModel && location.allowed}
+        onLocate={() => { explorer.close(); setMeetCircleId(null); locate(); }} locating={locating} locationActive={location.status === "active"} locationStatus={location.status} showLocationControl={!editingModel && location.allowed}
         locationDetails={editingModel ? null : locationDetails} onModelEditorOpenChange={onModelEditorOpenChange}
         infoOpen={panel === "info"} onInfoOpenChange={open => setPanel(open ? "info" : null)} />
     </div>
@@ -260,22 +319,29 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
         <Leaf size={18} aria-hidden="true" /><span>Моя полянка</span>
       </button>
     </header>
-    <EarthAtlasDiscovery discovery={atlasOpen ? null : atlasFeedback.discovery} />
+    <EarthAtlasDiscovery discovery={atlasOpen || explorer.snapshot.entry || atlasFeedback.discovery?.entry.kind !== "meeting" ? null : atlasFeedback.discovery} />
     {EarthDevBots && active && visible && !editingModel && <Suspense fallback={null}><EarthDevBots
       key={ownerPublicId} ownerPublicId={ownerPublicId} online={isOnline} commandsAvailable={devCommandsAvailable} position={location.status === "active" ? location.position : null}
-      otherPanelOpen={panel !== null || meetCircleId !== null} onOpen={() => { setPanel(null); setMeetCircleId(null); }}
+      otherPanelOpen={panel !== null || meetCircleId !== null || explorer.snapshot.entry !== null} onOpen={() => { explorer.close(); setPanel(null); setMeetCircleId(null); }}
       readCenter={() => { const camera = cameraSession?.read(); return camera ? { latitude: camera.center[1], longitude: ((camera.center[0] + 540) % 360) - 180 } : null; }}
       onChanged={() => { onRefreshPeople(); sharing.refresh(); }} onFocus={focusFriend} /></Suspense>}
 
-    {!editingModel && <div className={styles.bottomOverlay} data-panel-open={panel !== null || meetCircleId !== null}>
-      {atlasOpen && <section id="earth-atlas-panel" data-earth-camera-panel className={styles.friendsPanel} aria-labelledby="earth-atlas-title" onKeyDown={event => {
+    {!editingModel && <div className={styles.bottomOverlay} data-atlas-open={atlasOpen} data-panel-open={panel !== null || meetCircleId !== null || explorer.snapshot.entry !== null}>
+      {atlasOpen && <section id="earth-atlas-panel" data-earth-camera-panel className={`${styles.friendsPanel} ${styles.atlasPanel}`} aria-labelledby="earth-atlas-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
       }}>
-        <header><h2 id="earth-atlas-title" ref={panelHeading} tabIndex={-1}>Личный атлас</h2>
+        <header><h2 id="earth-atlas-title" ref={panelHeading} tabIndex={-1}>Личный атлас <span className={styles.atlasProgress}
+          aria-label={`Открыто ${atlas.snapshot.ids.length} из ${EARTH_ATLAS_ENTRIES.length}`}>{atlas.snapshot.ids.length}/{EARTH_ATLAS_ENTRIES.length}</span></h2>
           <button type="button" data-audio-cue="ui.close" onClick={closeFriends} aria-label="Закрыть атлас"><X size={18} aria-hidden="true" /></button></header>
-        <EarthAtlasPanel atlas={atlas} view={atlasView} onFocus={focusAtlasEntry} onDiscover={discoverAtlasEntry}
-          recentDiscoveryId={atlasFeedback.discovery?.entry.id} discoveryFeedback={atlasFeedback.discovery} />
+        <EarthAtlasPanel atlas={atlas} onFocus={focusAtlasEntry} onStartJourney={journeyId => navigateAtlas({ type: "start", journeyId })}
+          initialSection={atlasSection} journeyState={explorer.snapshot.journeyState} onSelectStop={stopIndex => navigateAtlas({ type: "select", stopIndex })}
+          recentDiscoveryId={atlasFeedback.discovery?.entry.id} />
       </section>}
+      {panel === null && !meetCircleId && explorer.snapshot.entry && <EarthAtlasExplorer entry={explorer.snapshot.entry}
+        journey={explorer.journey} opened={atlas.snapshot.ids.includes(explorer.snapshot.entry.id)} loaded={atlas.snapshot.loaded} persistent={atlas.snapshot.persistent}
+        preview={explorer.snapshot.preview} onDiscover={() => discoverAtlasEntry(explorer.snapshot.entry!)}
+        onFocus={() => { if (explorer.snapshot.entry && explorer.focusEntry(explorer.snapshot.entry)) prepareAtlasSelection(); }}
+        onClose={dismissExplorer} onNavigate={navigateAtlas} onBrowseStops={browseAtlasStops} />}
       {(friendsOpen || sharingOpen) && <section id="earth-friends-panel" data-earth-camera-panel className={styles.friendsPanel} aria-labelledby="earth-friends-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
       }}>
@@ -295,7 +361,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
           if (foreground.current && location.allowed && location.status === "active" && meetPerson
             && canRecordEarthMeeting(location.position, meetPerson, performance.now(), Date.now())) {
             const entry = earthAtlasEntry(EARTH_ATLAS_MEETING_ID);
-            if (entry) discoverAtlasEntry(entry);
+            if (entry?.kind === "meeting" && entry.id === EARTH_ATLAS_MEETING_ID) persistAtlasEntry(entry);
           }
         }}
         position={location.status === "active" ? location.position : null} now={now} monotonicNow={monotonicNow} locating={locating} locationAllowed={location.allowed}
@@ -312,10 +378,10 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       </button>
       <button ref={atlasButton} className={`${styles.sharingButton} ${styles.atlasButton}`} type="button" title="Личный атлас" aria-label="Личный атлас"
         data-audio-cue={atlasOpen ? "ui.close" : "ui.open"} aria-expanded={atlasOpen} aria-controls="earth-atlas-panel"
-        onClick={() => setPanel(atlasOpen ? null : "atlas")}><BookOpen size={18} aria-hidden="true" /></button>
+        onClick={() => { setAtlasSection("discoveries"); setPanel(atlasOpen ? null : "atlas"); }}><BookOpen size={18} aria-hidden="true" /></button>
       </div>
     </div>}
-    {!editingModel && (!isOnline || location.error) && panel === null && <p className={styles.notice} role="status">
+    {!editingModel && (!isOnline || location.error) && panel === null && !explorer.snapshot.entry && <p className={styles.notice} role="status">
       {location.error || "Нет сети · новые участки пока недоступны"}
     </p>}
   </section>;

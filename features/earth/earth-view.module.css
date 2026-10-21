@@ -101,6 +101,11 @@
 .bottomButtons .atlasButton { width: 44px; min-width: 44px; min-height: 46px; flex-shrink: 0; padding: 8px; }
 .notice { position: absolute; z-index: 4; bottom: calc(var(--earth-navigation-clearance, 84px) + 90px); left: var(--earth-overlay-left); max-width: min(340px, calc(100% - var(--earth-overlay-left) - 76px)); margin: 0; border: 1px solid #f1d3a230; border-radius: 15px; background: #263d30f5; color: #f3d9b1; padding: 10px 12px; font-size: 11px; line-height: 1.55; }
 .friendsPanel { width: min(360px, 100%); min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 22px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 12px; }
+.atlasPanel { display: flex; flex-direction: column; gap: 6px; max-height: min(45svh, 420px); overflow: hidden; padding: 10px; }
+.atlasPanel > header { flex-shrink: 0; }
+.atlasPanel > section { flex: 1; min-height: 0; }
+.atlasPanel h2 { font-size: 14px; }
+.atlasProgress { margin-left: 5px; color: #b7cdaf; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .participants { display: flex; gap: 8px; width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; list-style: none; margin: 6px 0 0; padding: 4px 2px 8px; scrollbar-width: thin; }
 .participants > li { flex: 0 0 76px; scroll-snap-align: start; min-width: 0; }
 .participants button { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; min-height: 68px; padding: 5px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
@@ -147,9 +152,19 @@
     max-height: min(55%, calc(100% - var(--earth-overlay-top) - 196px - var(--earth-navigation-clearance, 84px) - 30px));
   }
 }
+.bottomOverlay[data-atlas-open="true"] {
+  max-height: min(calc(45svh + 56px), calc(100% - var(--earth-overlay-top) - 76px - var(--earth-navigation-clearance, 84px) - 48px));
+}
 @media (max-height: 500px) and (min-width: 501px) {
   .view { --earth-overlay-top: max(10px, env(safe-area-inset-top)); }
   .bottomOverlay { max-height: calc(100% - var(--earth-overlay-top) - 78px - var(--earth-navigation-clearance, 84px)); }
   .friendsPanel { padding: 12px; }
   .friendsIntro, .hint { font-size: 11px; }
+}
+@media (max-height: 500px) and (min-width: 601px) {
+  .bottomOverlay[data-atlas-open="true"] {
+    max-height: min(45svh, calc(100% - var(--earth-overlay-top) - 54px - var(--earth-navigation-clearance, 84px) - 48px));
+  }
+  .bottomOverlay[data-atlas-open="true"] > .bottomButtons { display: none; }
+  .atlasPanel { width: min(640px, 100%); padding: 8px; gap: 4px; }
 }

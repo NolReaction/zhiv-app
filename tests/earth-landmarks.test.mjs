@@ -647,3 +647,36 @@ test("placement markers and geographic culling preserve both dateline coordinate
     assert.equal(asset.requests.length, 1);
   } finally { landmarks.dispose(); resetEarthModelPlacements(); }
 });
+
+test("landmark controller exposes actual draw evidence and clears it for hidden or covered targets", () => {
+  const state = scene({ withGpu: true });
+  const landmarks = state.create();
+  assert.equal(landmarks.isLandmarkDrawn("eiffel-tower"), false);
+  landmarks.setVisible(true); assert.equal(landmarks.isLandmarkDrawn("eiffel-tower"), false);
+  state.render(); assert.equal(landmarks.isLandmarkDrawn("eiffel-tower"), true);
+  state.cover("eiffel-tower", true); assert.equal(landmarks.isLandmarkDrawn("eiffel-tower"), false);
+  state.cover("eiffel-tower", false); assert.equal(landmarks.isLandmarkDrawn("eiffel-tower"), false);
+  state.render(); assert.equal(landmarks.isLandmarkDrawn("eiffel-tower"), true);
+  landmarks.setVisible(false); assert.equal(landmarks.isLandmarkDrawn("eiffel-tower"), false);
+  landmarks.dispose(); assert.equal(landmarks.isLandmarkDrawn("eiffel-tower"), false);
+});
+
+test("a selected wide atlas model can be inspected below street zoom without changing the buildings preference", async () => {
+  for (const id of ["giza-pyramids", "great-wall-badaling"]) {
+    const placement = getEarthModelPlacements().find(value => value.id === id), asset = preparedEnvironment();
+    const geographicBounds = { west: placement.longitude - .02, east: placement.longitude + .02,
+      south: placement.latitude - .02, north: placement.latitude + .02 };
+    const state = scene({ zoom: 13, width: 320, height: 600, geographicBounds, modelEnvironment: asset.environment, withGpu: true });
+    state.setPoint(id, { x: 160, y: 300 });
+    const landmarks = state.create(); landmarks.setBuildingsEnabled(false); landmarks.setVisible(true);
+    await settleModel(); assert.deepEqual(asset.requests, []); assertHidden(state.element(id));
+    landmarks.setLandmarkPreview(id); await settleModel(); state.render();
+    assert.deepEqual(asset.requests, [`/earth/models/${id}/detail.elm`]);
+    assert.equal(landmarks.isLandmarkDrawn(id), true); assert.equal(state.element(id).disabled, false);
+    landmarks.setLandmarkPreview(null); assertHidden(state.element(id)); assert.equal(landmarks.isLandmarkDrawn(id), false);
+    state.setZoom(17); await settleModel(); assert.equal(asset.requests.length, 1, "closing inspection preserves the user's OFF preference");
+    assertHidden(state.element(id));
+    landmarks.setLandmarkPreview(id); await settleModel(); state.render(); assert.equal(landmarks.isLandmarkDrawn(id), true);
+    landmarks.setVisible(false); assert.equal(landmarks.isLandmarkDrawn(id), false); assertHidden(state.element(id)); landmarks.dispose();
+  }
+});

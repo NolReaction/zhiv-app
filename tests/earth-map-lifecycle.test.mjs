@@ -7,7 +7,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hooksId = "virtual:earth-lifecycle-hooks", platformId = "virtual:earth-lifecycle-platform";
 const platformCode = `
-  export const maps=[];
+  export const maps=[],scenes=[];
   export const cache={snapshot:{pending:0,completed:0,failed:0,storedEntries:0,persistence:'granted',storage:'session'},
     getSnapshot(){return cache.snapshot;},subscribe(){return ()=>{};},resetProgress(){},async initialize(){},
     async requestPersistence(){},getBudgets(){return {tileEntries:32};},async readResource(){return {data:{}};},
@@ -20,15 +20,17 @@ const platformCode = `
     on(name,callback){const callbacks=this.listeners.get(name)??[];callbacks.push(callback);this.listeners.set(name,callbacks);return this;}
     off(name,callback){this.listeners.set(name,(this.listeners.get(name)??[]).filter(item=>item!==callback));return this;}
     emit(name,event={}){for(const callback of [...this.listeners.get(name)??[]])callback(event);}
-    getCenter(){return {lng:35,lat:27};}getZoom(){return 1;}getBearing(){return 0;}getPitch(){return 0;}
+    getCenter(){return {lng:this.center?.[0]??35,lat:this.center?.[1]??27};}getZoom(){return this.zoom??1;}getBearing(){return 0;}getPitch(){return 0;}
+    getVerticalFieldOfView(){return 36.87;}project(){return this.point??{x:400,y:250};}
+    flyTo(options){this.emit('movestart');this.moving=true;this.flights=(this.flights??0)+1;this.center=options.center;this.zoom=options.zoom;return this;}
     getContainer(){return this.container;}getPadding(){return this.padding;}easeTo(options){this.padding=options.padding??this.padding;return this;}
     getCanvasContainer(){return this.canvas;}getMinPitch(){return 0;}getMaxPitch(){return 60;}setPitch(){return this;}
     getCanvas(){return this.canvas;}getStyle(){return this.style;}getSource(id){return this.sources.get(id);}
     addSource(id,source){this.sourceChanges++;this.style.sources[id]=source;this.sources.set(id,{...source,setData(){}});}
     getLayer(){return undefined;}addLayer(){}removeLayer(){}removeSource(id){this.sources.delete(id);}
     setProjection(){}setSky(){}setLayoutProperty(){}setSourceTileLodParams(){}refreshTiles(){}
-    loaded(){return this.complete;}areTilesLoaded(){return this.tilesComplete;}isSourceLoaded(){return this.tilesComplete;}
-    isMoving(){return false;}stop(){}resize(){this.sizeChanges++;}triggerRepaint(){}remove(){this.removed=true;this.emit('remove');}
+    loaded(){return this.complete;}areTilesLoaded(){return this.tilesComplete&&!this.localPending;}isSourceLoaded(){return this.tilesComplete;}
+    isMoving(){return this.moving??false;}stop(){this.moving=false;}resize(){this.sizeChanges++;}triggerRepaint(){}remove(){this.removed=true;this.emit('remove');}
   }
   export const sdk={Map:MapMock,Marker:class{},addProtocol:noop,setMaxParallelImageRequests:noop};
   export const loadEarthRuntime=async()=>sdk, EARTH_RUNTIME_DIRECTORY='/mock', EARTH_RUNTIME_VERSION='mock';
@@ -38,7 +40,12 @@ const platformCode = `
   export const globeZoom=()=>1,positionZoom=()=>10,positionAccuracyData=()=>({type:'FeatureCollection',features:[]});
   export const installEarthMaterialImages=noop,registerEarthMaterialImage=noop,installEarthGlobeCamera=()=>noop;
   export const EARTH_OCEAN_MATERIAL_IMAGE='ocean',registerEarthOceanMaterialImage=noop;
-  export const createEarthGlobeScene=()=>({setVisible:noop,setReady:noop,setWeather:noop,setBuildingsEnabled:noop,dispose:noop});
+  export const createEarthGlobeScene=()=>{
+    const scene={enabled:true,drawn:false,failed:false,preview:null,setVisible:noop,setReady:noop,setWeather:noop,
+      setBuildingsEnabled(value){scene.enabled=value;},setLandmarkPreview(value){scene.preview=value;},
+      isLandmarkDrawn(){return scene.enabled&&scene.drawn;},isLandmarkFailed(){return scene.failed;},dispose:noop};
+    scenes.push(scene);return scene;
+  };
   export const createEarthTileLoadingOverlay=()=>({setVisible:noop,setStatus:noop,refresh:noop,observe:noop,dispose:noop});
   export const createEarthStars=()=>({setMode:noop,setVisible:noop,dispose:noop});
   export const createEarthWeatherProvider=noop;
@@ -90,6 +97,7 @@ function harness() {
   for (const [name, value] of Object.entries({ window, document, navigator: { onLine: true }, ResizeObserver: undefined, IntersectionObserver: undefined }))
     Object.defineProperty(globalThis, name, { value, configurable: true });
   platform.maps.length = 0;
+  platform.scenes.length = 0;
   const state = { slots: [], pending: [], dirty: false }, ready = [];
   const props = { position: null, active: true, visible: true, onReadyChange: value => ready.push(value),
     focusRequest: 0, isOnline: true, onLocate() {}, locating: false, locationActive: false, locationDetails: null,
@@ -172,5 +180,65 @@ test("WebGL restoration only restarts a visible failed map and ignores late old 
     replacement.canvas.dispatchEvent(new Event("webglcontextlost")); await app.settle();
     replacement.canvas.dispatchEvent(new Event("webglcontextrestored")); await app.settle();
     assert.equal(platform.maps.length, 3); assert.equal(app.phase(), "loading");
+  } finally { app.dispose(); }
+});
+
+test("atlas inspection waits for its current camera, cartography and model draw, then invalidates on movement or hiding", async () => {
+  const app = harness(), previews = [];
+  app.props.onAtlasPreviewChange = value => previews.push(value);
+  try {
+    const map = await app.mount(); await app.prepare(map);
+    app.props.cameraFocusRequest = { entryId: "landmark:eiffel-tower", requestId: 1, center: [2.2945, 48.8584], zoom: 15.6 };
+    app.render();
+    assert.equal(previews.at(-1).status, "moving");
+    assert.equal(map.flights, 1);
+    map.moving = false; map.tilesComplete = false; map.emit("moveend");
+    platform.scenes.at(-1).drawn = true; map.emit("render");
+    assert.equal(previews.at(-1).status, "loading", "a local model alone never makes unloaded cartography ready");
+    map.tilesComplete = true; map.emit("sourcedata"); map.emit("render");
+    assert.equal(previews.at(-1).status, "ready");
+    map.localPending = true; map.emit("sourcedataloading", { sourceId: "earth-meet-line" }); map.emit("render");
+    assert.equal(map.areTilesLoaded(), false);
+    assert.equal(previews.at(-1).status, "ready", "local overlay worker updates cannot disable a loaded atlas view");
+    map.tilesComplete = false; map.emit("sourcedataloading", { sourceId: "earth-streets" });
+    assert.equal(previews.at(-1).status, "loading", "new required cartography still invalidates a formerly ready view");
+    map.tilesComplete = true; map.emit("sourcedata", { sourceId: "earth-streets" }); map.emit("render");
+    assert.equal(previews.at(-1).status, "ready");
+    const count = previews.length; map.emit("render"); map.emit("render");
+    assert.equal(previews.length, count, "unchanged per-frame readiness never rerenders React");
+    app.props.cameraFocusRequest = { ...app.props.cameraFocusRequest, requestId: 2 };
+    app.render();
+    assert.equal(previews.at(-1).requestId, 2); assert.equal(previews.at(-1).status, "moving", "an old draw cannot satisfy a fresh request before its flight");
+    map.moving = false; map.emit("moveend"); map.emit("render");
+    assert.equal(previews.at(-1).status, "ready");
+    map.emit("movestart"); assert.equal(previews.at(-1).status, "moving");
+    map.point = { x: -40, y: 250 }; map.emit("moveend");
+    assert.equal(previews.at(-1).status, "away");
+    app.props.visible = false; app.render(); assert.equal(previews.at(-1), null);
+    app.props.visible = true; app.render();
+    app.props.cameraFocusRequest = null; app.render(); assert.equal(previews.at(-1), null);
+  } finally { app.dispose(); }
+});
+
+test("atlas temporarily enables only its model preference, restores it on close and fails cleanly after an asset failure", async () => {
+  const app = harness(), previews = [], preferences = [];
+  app.props.cameraSession = { read: () => null, save() {}, readPreferences: () => ({ buildings3d: false }), savePreferences: value => preferences.push(value) };
+  app.props.onAtlasPreviewChange = value => previews.push(value);
+  try {
+    const map = await app.mount(); await app.prepare(map);
+    assert.equal(platform.scenes.at(-1).enabled, false);
+    app.props.cameraFocusRequest = { entryId: "landmark:giza-pyramids", requestId: 1, center: [31.1342, 29.9792], zoom: 15.6 };
+    app.render();
+    assert.equal(platform.scenes.at(-1).preview, "giza-pyramids");
+    assert.equal(platform.scenes.at(-1).enabled, true);
+    map.emit("style.load");
+    assert.equal(platform.scenes.at(-1).preview, "giza-pyramids");
+    assert.equal(platform.scenes.at(-1).enabled, true, "a new style preserves the active inspection override");
+    map.moving = false; platform.scenes.at(-1).failed = true; map.emit("moveend"); map.emit("render");
+    assert.equal(previews.at(-1).status, "unavailable");
+    platform.scenes.at(-1).drawn = true; map.emit("render"); assert.equal(previews.at(-1).status, "ready", "a real procedural fallback may recover an optional imported-asset failure");
+    app.props.cameraFocusRequest = null; app.render();
+    assert.equal(platform.scenes.at(-1).preview, null); assert.equal(platform.scenes.at(-1).enabled, false);
+    assert.ok(preferences.every(value => value.buildings3d === false), "inspection never rewrites the player's preference");
   } finally { app.dispose(); }
 });

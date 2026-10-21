@@ -15,11 +15,11 @@ const friend = (values = {}) => ({ circleId: "friend", user: { publicId: "FRIEND
   updatedAt: new Date(WALL).toISOString(), expiresAt: new Date(WALL + 120_000).toISOString(), expiresAtMonotonic: 120_000, ...values });
 function harness(reduced = false) {
   let now = 0, wall = WALL;
-  const sources = new Map(), layers = new Map(), timers = new Map(), fits = [];
+  const sources = new Map(), layers = new Map(), timers = new Map(), fits = [], writes = [];
   let id = 0;
   const map = {
     getSource: key => sources.get(key),
-    addSource(key, definition) { sources.set(key, { ...definition, setData(data) { this.data = structuredClone(data); } }); },
+    addSource(key, definition) { sources.set(key, { ...definition, setData(data) { this.data = structuredClone(data); writes.push({ source: this, data: this.data }); } }); },
     removeSource(key) { sources.delete(key); },
     getLayer: key => layers.get(key), addLayer(value) { layers.set(value.id, value); }, removeLayer(key) { layers.delete(key); },
     fitBounds(bounds, options) { fits.push({ bounds, options }); },
@@ -28,7 +28,7 @@ function harness(reduced = false) {
   const overlay = createEarthMeetMap(map, { now: () => now, wallNow: () => wall, reducedMotion: () => reduced,
     setTimeout(callback, delay) { timers.set(++id, { callback, at: now + delay }); return id; }, clearTimeout(id) { timers.delete(id); } });
   overlay.install(); overlay.setVisible(true);
-  return { overlay, sources, layers, timers, fits, data: () => sources.get(EARTH_MEET_SOURCE)?.data,
+  return { overlay, sources, layers, timers, fits, writes, data: () => sources.get(EARTH_MEET_SOURCE)?.data,
     tick(ms) { now += ms; wall += ms; for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); } },
     rollback(ms) { wall -= ms; },
   };
@@ -125,4 +125,32 @@ test("style replacement recreates the empty layers without duplicating a camera 
   h.sources.clear(); h.layers.clear(); h.overlay.install();
   assert.equal(h.sources.size, 1); assert.equal(h.layers.size, 2); assert.equal(h.data().features.length, 1);
   assert.equal(h.fits.length, 1); h.overlay.dispose();
+});
+
+test("unchanged and empty meeting snapshots avoid worker writes while focus, coordinates and source replacement remain live", () => {
+  const h = harness();
+  const emptyWrites = h.writes.length;
+  for (let index = 0; index < 50; index++) h.overlay.setSnapshot(null, null, 0);
+  assert.equal(h.writes.length, emptyWrites, "an unselected meeting never resubmits the same empty GeoJSON");
+  h.overlay.setSnapshot(self(), friend(), 1);
+  const firstLineWrites = h.writes.length;
+  for (let index = 0; index < 50; index++) h.overlay.setSnapshot(self(), friend(), 1);
+  assert.equal(h.writes.length, firstLineWrites);
+  h.overlay.setSnapshot(self(), friend(), 2);
+  assert.equal(h.writes.length, firstLineWrites, "an explicit refocus needs no identical line upload");
+  assert.equal(h.fits.length, 2, "the write guard never swallows an explicit camera request");
+  h.overlay.setSnapshot(self(), friend({ longitude: 37.64 }), 2);
+  assert.equal(h.writes.length, firstLineWrites + 1);
+  h.sources.clear(); h.layers.clear(); h.overlay.install();
+  assert.equal(h.writes.length, firstLineWrites + 2, "the same geometry is republished to a new style's source");
+  h.tick(60_001);
+  assert.equal(h.writes.length, firstLineWrites + 3);
+  assert.equal(h.data().features.length, 0, "private GPS expiry clears the last uploaded coordinates");
+  h.overlay.setSnapshot(null, null, 2);
+  h.overlay.setVisible(false); h.overlay.setVisible(true);
+  assert.equal(h.writes.length, firstLineWrites + 3, "repeated revocation and hiding do not repeat an already empty upload");
+  h.overlay.setSnapshot(self({ timestamp: WALL + 60_001 }), friend(), 3);
+  h.overlay.setVisible(false);
+  assert.equal(h.data().features.length, 0, "hiding still clears a new live line immediately");
+  h.overlay.dispose();
 });

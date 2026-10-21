@@ -23,10 +23,12 @@ test("atlas has unique existing landmarks, all authored regions and a non-geogra
   assert.equal(new Set(EARTH_ATLAS_ENTRIES.map(entry => entry.id)).size, 50);
   assert.equal(EARTH_ATLAS_ENTRIES.filter(entry => entry.kind === "region").length, 40);
   assert.equal(EARTH_ATLAS_ENTRIES.filter(entry => entry.kind === "landmark").length, 9);
-  // Overview miniatures fade out at 5.2; street-sized models start much later.
-  // A catalogue focus must both offer the candidate and still show its model.
+  // A catalogue target now requests its real street model, after full opacity.
+  // Actual fit is viewport-aware, using the published model placement/bounds.
   for (const entry of EARTH_ATLAS_ENTRIES.filter(entry => entry.kind === "landmark")) {
-    assert.ok(entry.zoom >= 4.5 && entry.zoom < 5.2, `${entry.id}: focus keeps the overview model visible`);
+    assert.ok(entry.zoom >= 15.6 && entry.zoom <= 18, `${entry.id}: focus keeps the detail model visible`);
+    assert.equal(entry.focus.kind, "model");
+    assert.equal(entry.focus.modelId, entry.id.slice("landmark:".length));
   }
   assert.equal(earthAtlasEntry(EARTH_ATLAS_MEETING_ID).center, null);
   for (const entry of EARTH_ATLAS_ENTRIES.filter(entry => entry.center)) {
@@ -109,18 +111,18 @@ test("denied storage keeps a bounded session fallback and reports it; reset stil
   assert.equal(earthAtlasStorageKey("owner"), a.storageKey);
 });
 
-test("panel rendering never records an opening, is horizontally navigable and explains device-only map exploration", () => {
+test("the searchable catalogue selects views without saving or rendering exploration controls", () => {
   const calls = [], atlas = { snapshot: { loaded: true, ids: [], persistent: true }, discover: value => calls.push(value), reset: () => calls.push("reset") };
-  const html = renderToStaticMarkup(createElement(EarthAtlasPanel, { atlas, view: { center: [12, 24], zoom: 3 }, onFocus: () => {} }));
+  const html = renderToStaticMarkup(createElement(EarthAtlasPanel, { atlas, onFocus: entry => calls.push(["focus", entry.id]), onStartJourney: id => calls.push(["journey", id]) }));
   assert.deepEqual(calls, []);
-  assert.match(html, /Открыть в атласе: Сахара/);
-  assert.match(html, /Предыдущие открытия/);
-  assert.match(html, /Следующие открытия/);
-  assert.match(html, /aria-label="Открытия на глобусе" tabindex="0"/);
+  assert.match(html, /Каталог атласа/);
+  assert.match(html, /Поиск по атласу/);
+  assert.match(html, /Места на глобусе/);
+  assert.match(html, /Эйфелева башня: показать на карте/);
   assert.match(html, /не отметки о поездках/);
-  assert.match(html, /Атлас сохраняется на этом устройстве/);
-  assert.match(html, /Отметь через значок друга/);
-  const fallback = renderToStaticMarkup(createElement(EarthAtlasPanel, { atlas: { ...atlas, snapshot: { loaded: true, ids: [sahara], persistent: false } }, view: { center: [12, 24], zoom: 3 }, onFocus: () => {} }));
-  assert.match(fallback, /Сахара: уже в атласе/);
+  assert.match(html, /Встреча с близким отмечается через значок друга/);
+  assert.doesNotMatch(html, /Предыдущие открытия|Следующие открытия|Открыть в атласе|Сохранить в атлас/);
+  const fallback = renderToStaticMarkup(createElement(EarthAtlasPanel, { atlas: { ...atlas, snapshot: { loaded: true, ids: [sahara], persistent: false } }, onFocus: () => {}, onStartJourney: () => {} }));
   assert.match(fallback, /Хранилище недоступно/);
+  assert.match(fallback, /Открытия останутся до закрытия карты/);
 });

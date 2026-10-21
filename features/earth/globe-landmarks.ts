@@ -2,7 +2,7 @@ import type { Map as LibreMap, Marker } from "maplibre-gl";
 import { EARTH_LANDMARKS, type EarthLandmark } from "./landmark-catalog";
 import { EARTH_LANDMARK_HEIGHT, earthLandmarkView, layoutEarthLandmarks } from "./landmark-layout";
 import { createEarthLandmarkMeshLayer, EARTH_LANDMARK_MESH_LAYER } from "./landmark-mesh-layer";
-import { earthModelStreetOpacity, isEarthModelNearBounds, isEarthModelStreetZoom } from "./landmark-model-view";
+import { EARTH_MODEL_PREVIEW_MIN_ZOOM, earthModelStreetOpacity, isEarthModelNearBounds, isEarthModelStreetZoom } from "./landmark-model-view";
 import type { EarthModelEnvironment } from "./landmark-model";
 import { getEarthModelPlacements, subscribeEarthModelPlacements } from "./model-placement";
 import { getEarthModelDefinition } from "./landmark-model-registry";
@@ -29,6 +29,8 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
   const models = createEarthLandmarkMeshLayer(map, { onModelChange: () => reconcile(), environment: options.modelEnvironment });
   let visible = false;
   let buildingsEnabled = true;
+  let previewLandmark: string | null = null;
+  let lastPreviewLandmark: string | null = null;
   let disposed = false;
   let selectedId: string | null = null;
   let focusedId: string | null = null;
@@ -65,7 +67,9 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
     if (disposed) return;
     const zoom = map.getZoom();
     const street = isEarthModelStreetZoom(zoom);
-    const view = street ? { ...earthLandmarkView(zoom), scale: 1, opacity: earthModelStreetOpacity(zoom) }
+    const activePreview = zoom >= EARTH_MODEL_PREVIEW_MIN_ZOOM ? previewLandmark : null;
+    const physical = street || activePreview !== null;
+    const view = physical ? { ...earthLandmarkView(zoom), scale: 1, opacity: earthModelStreetOpacity(zoom) }
       : earthLandmarkView(zoom);
     const container = map.getContainer();
     const placements = getEarthModelPlacements();
@@ -88,10 +92,12 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
         covered: element.classList.contains("maplibregl-marker-covered") };
     });
     const desired = new Set<string>();
-    const shown = visible && !street ? layoutEarthLandmarks(candidates,
+    const shown = visible && !physical ? layoutEarthLandmarks(candidates,
       { width: container.clientWidth, height: container.clientHeight }, view) : new Set<string>();
-    if (visible && street && buildingsEnabled) {
+    if (visible && physical && (buildingsEnabled || activePreview !== null)) {
       for (const placement of placements) {
+        const inspecting = placement.id === activePreview;
+        if (!inspecting && !(street && buildingsEnabled)) continue;
         const entry = entries.find(entry => entry.landmark.id === placement.id);
         if (!getEarthModelDefinition(placement.id) || !entry || entry.element.classList.contains("maplibregl-marker-covered")) continue;
         const point = map.project([...entry.location]);
@@ -121,12 +127,12 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
           desired.add(entry.landmark.id);
           // Loading does not create an invisible keyboard target. Keep the
           // button near the actual base, even when the visible roof is off-axis.
-          if (models.isImportedModelReady(entry.landmark.id, "detail") && view.opacity > 0 && point.x >= 0
+          if (models.isImportedModelReady(entry.landmark.id, "detail") && (inspecting || view.opacity > 0) && point.x >= 0
             && point.x <= container.clientWidth && point.y >= 0 && point.y <= container.clientHeight) shown.add(entry.landmark.id);
         }
       }
     }
-    models.setVisible(visible, street ? desired : shown);
+    models.setVisible(visible, physical ? desired : shown);
     buildingMask.setPlacements(placements, models.getActiveStreetModelIds());
     for (const { landmark, element, visual } of entries) {
       const display = shown.has(landmark.id);
@@ -138,7 +144,9 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
         element.style.setProperty("--landmark-scale", String(view.scale));
         element.style.setProperty("--landmark-label-height", `${view.scale * EARTH_LANDMARK_HEIGHT / 2}px`);
       }
-      if (view.opacity !== lastOpacity) visual.style.opacity = String(view.opacity);
+      if (view.opacity !== lastOpacity || activePreview !== lastPreviewLandmark) {
+        visual.style.opacity = String(landmark.id === activePreview ? 1 : view.opacity);
+      }
       if (!display) {
         if (selectedId === landmark.id) selectedId = null;
         if (focusedId === landmark.id) focusedId = null;
@@ -146,6 +154,7 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
     }
     lastScale = view.scale;
     lastOpacity = view.opacity;
+    lastPreviewLandmark = activePreview;
     updateLabels();
   }
   function dispose() {
@@ -242,6 +251,16 @@ export function createEarthLandmarks(map: LibreMap, MarkerConstructor: typeof Ma
   }
 
   return {
+    isLandmarkDrawn(id: string) { return !disposed && visible && models.isLandmarkDrawn(id); },
+    isLandmarkFailed(id: string) { return !disposed && visible && models.isLandmarkFailed(id); },
+    setLandmarkPreview(id: string | null) {
+      if (disposed) return;
+      const next = id && getEarthModelDefinition(id) ? id : null;
+      if (previewLandmark === next) return;
+      previewLandmark = next;
+      models.setLandmarkPreview(next);
+      reconcile();
+    },
     setVisible(value: boolean) {
       if (disposed || visible === value) return;
       visible = value;

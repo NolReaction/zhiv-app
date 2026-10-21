@@ -515,3 +515,92 @@ test("visiting different textured street models evicts old CPU bitmaps before ex
   assert.ok(f.bitmaps.slice(-9).every(image => !image.closed));
   f.models.dispose(); assert.ok(f.bitmaps.every(image => image.closed));
 });
+
+test("atlas draw evidence belongs to the current rendered camera, visibility and placement", () => {
+  const f = fixture();
+  let center = { lng: 2.29444, lat: 48.85826 }, pitch = 0, bearing = 0;
+  const padding = { top: 0, right: 0, bottom: 0, left: 0 };
+  Object.assign(f.map, { getCenter: () => center, getPitch: () => pitch, getBearing: () => bearing, getPadding: () => padding });
+  f.container.clientWidth = 640; f.container.clientHeight = 480;
+  f.models.layer.onAdd(f.map, f.gl); f.models.setVisible(true, new Set(["eiffel-tower"]));
+  assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false, "a ready GPU context has not drawn this view");
+  f.render(); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), true, "valid procedural artwork is real renderer evidence");
+  assert.equal(f.models.isLandmarkDrawn("landmark:eiffel-tower"), false); assert.equal(f.models.isLandmarkDrawn("unknown"), false);
+  for (const change of [() => f.zoom(2.6), () => { center = { ...center, lng: center.lng + .01 }; },
+    () => { pitch = 20; }, () => { bearing = 30; }, () => { padding.bottom = 100; }, () => { f.container.clientWidth = 700; }]) {
+    change(); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false, "old drawn data cannot certify a new camera");
+    f.render(); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), true);
+  }
+  const placement = getEarthModelPlacements().find(value => value.id === "eiffel-tower");
+  try {
+    updateEarthModelPlacement(placement.id, { headingDegrees: placement.headingDegrees + 1 });
+    assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false, "a transform edit needs another actual draw");
+    f.render(); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), true);
+  } finally { resetEarthModelPlacements(placement.id); }
+  f.models.setVisible(true, new Set()); f.models.setVisible(true, new Set(["eiffel-tower"]));
+  assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false, "a newly revealed target cannot reuse an earlier hidden frame");
+  f.render(); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), true);
+  f.models.setVisible(false, new Set()); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false);
+  f.models.dispose(); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false);
+});
+
+test("decoded or resident imported models become atlas evidence only after a successful indexed draw", async () => {
+  const f = importedFixture(); f.models.layer.onAdd(f.map, f.gl); f.zoom(16);
+  f.models.setVisible(true, new Set(["eiffel-tower"]));
+  assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false);
+  f.response(0); await flushModel();
+  assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false, "network/decode completion alone is not an inspected object");
+  f.render(); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), true);
+  f.models.layer.onRemove(f.map, f.gl); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false);
+  f.models.layer.onAdd(f.map, f.gl); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false, "retained decoded RAM does not certify a recreated context");
+  f.render(); assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), true); f.models.dispose();
+});
+
+test("atlas failure evidence follows actual loader or GPU errors and yields to valid drawn fallback artwork", async () => {
+  const network = importedFixture(); network.models.layer.onAdd(network.map, network.gl); network.zoom(16);
+  network.models.setVisible(true, new Set(["eiffel-tower"]));
+  assert.equal(network.models.isLandmarkFailed("eiffel-tower"), false);
+  network.requests[0].resolve(new Response("unavailable", { status: 503 })); await flushModel();
+  assert.equal(network.models.isLandmarkDrawn("eiffel-tower"), false);
+  assert.equal(network.models.isLandmarkFailed("eiffel-tower"), true, "a completed network failure must not remain pending forever");
+  assert.equal(network.models.isLandmarkFailed("unknown"), false);
+  network.models.setVisible(false, new Set()); assert.equal(network.models.isLandmarkFailed("eiffel-tower"), false); network.models.dispose();
+
+  const gpu = importedFixture(); gpu.models.layer.onAdd(gpu.map, gpu.gl); gpu.zoom(16);
+  gpu.models.setVisible(true, new Set(["eiffel-tower"])); gpu.response(0); await flushModel(); gpu.failUpload(); gpu.render();
+  assert.equal(gpu.models.isLandmarkDrawn("eiffel-tower"), false);
+  assert.equal(gpu.models.isLandmarkFailed("eiffel-tower"), true, "failed buffers are unavailable even when decoded CPU data is ready"); gpu.models.dispose();
+
+  const fallback = importedFixture(); fallback.models.layer.onAdd(fallback.map, fallback.gl);
+  fallback.models.setVisible(true, new Set(["eiffel-tower"]));
+  fallback.requests[0].resolve(new Response("unavailable", { status: 503 })); await flushModel(); fallback.render();
+  assert.equal(fallback.models.getModelSnapshot().detail, "error");
+  assert.equal(fallback.models.isLandmarkDrawn("eiffel-tower"), true);
+  assert.equal(fallback.models.isLandmarkFailed("eiffel-tower"), false, "a valid procedural draw remains meaningful despite an optional asset error"); fallback.models.dispose();
+});
+
+test("only an explicitly selected landmark uses full-quality physical detail below ordinary street zoom", async () => {
+  const ids = ["giza-pyramids", "great-wall-badaling"], f = texturedFixture(ids);
+  f.zoom(13); f.models.layer.onAdd(f.map, f.gl); f.models.setVisible(true, new Set(ids)); await flushModel();
+  assert.equal(f.requests.length, 0, "ordinary atlas/street gap remains dormant");
+  f.render(); assert.equal(f.draws, 0);
+  for (const [index, id] of ids.entries()) {
+    f.models.setLandmarkPreview(id); await flushModel();
+    assert.equal(f.requests.length, index + 1); assert.ok(f.requests[index].url.includes(`/${id}/detail.elm`));
+    f.response(index); await flushModel(); f.render();
+    assert.equal(f.models.isLandmarkDrawn(id), true); assert.equal(f.models.isLandmarkDrawn(ids[1 - index]), false);
+    const placement = getEarthModelPlacements().find(value => value.id === id);
+    const uniform = name => f.uniforms.filter(([key]) => key === name).at(-1)[1];
+    assert.equal(uniform("u_opacity"), 1, "a fitted inspection does not use the fading overview miniature");
+    assert.equal(uniform("u_height"), placement.heightMeters, "published real-world metres are never reduced to fit the phone");
+    assert.equal(uniform("u_scale"), placement.heightMeters / (40_030_228.884 * Math.cos(placement.latitude * Math.PI / 180)) * 2 ** 14 * 8192);
+    assert.equal(f.drawKinds.at(-1), "uploaded"); assert.equal(f.draws, index + 1, "unselected models remain hidden at the lower zoom");
+  }
+  f.models.setLandmarkPreview(null); f.render(); assert.equal(f.draws, 2);
+  assert.equal(f.models.isLandmarkDrawn(ids[1]), false);
+  f.models.setLandmarkPreview("unknown"); f.render(); assert.equal(f.draws, 2); assert.equal(f.requests.length, 2);
+  f.models.setLandmarkPreview(ids[0]); f.zoom(11.9); f.render(); assert.equal(f.draws, 2, "explicit override has a bounded minimum");
+  f.models.setLandmarkPreview(null); f.zoom(17); f.render();
+  assert.equal(f.draws, 4, "ordinary street models resume their unchanged rules after closing inspection");
+  assert.equal(f.requests.length, 2, "decoded detail data is reused without prefetching other catalogue entries"); f.models.dispose();
+});

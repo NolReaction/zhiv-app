@@ -13,6 +13,7 @@ const { EARTH_ATLAS_JOURNEYS, earthAtlasJourney, earthAtlasJourneyStop, transiti
 const { earthAtlasEntry, earthAtlasCandidate } = await vite.ssrLoadModule("/features/earth/earth-atlas.ts");
 const { createEarthAtlasStore } = await vite.ssrLoadModule("/features/earth/earth-atlas-storage.ts");
 const { EarthAtlasJourneys } = await vite.ssrLoadModule("/features/earth/earth-atlas-journey-panel.tsx");
+const { EarthAtlasExplorer } = await vite.ssrLoadModule("/features/earth/earth-atlas-explorer.tsx");
 
 test("short authored journeys resolve only existing geographic catalog entries and canonical focus views", () => {
   assert.equal(EARTH_ATLAS_JOURNEYS.length, 3);
@@ -83,14 +84,59 @@ test("navigating an entire route creates no discoveries; a separate explicit dis
   deactivate();
 });
 
-test("initial journey UI offers explicit starts and never focuses, discovers or persists on render", () => {
+test("the stateless journey chooser offers explicit starts and searchable direct stop selection", () => {
   const calls = [];
   const html = renderToStaticMarkup(createElement(EarthAtlasJourneys, {
-    view: null, openedIds: [], loaded: true, onFocus: entry => calls.push(["focus", entry.id]), onDiscover: entry => calls.push(["discover", entry.id]),
+    openedIds: [], onStartJourney: id => calls.push(["start", id]),
   }));
   assert.deepEqual(calls, []);
   for (const journey of EARTH_ATLAS_JOURNEYS) assert.ok(html.includes(`Начать маршрут: ${journey.title}`));
   assert.match(html, /Мини-путешествия по атласу/);
-  assert.match(html, /Открытия отмечаются отдельной кнопкой/);
-  assert.doesNotMatch(html, /Текущая остановка/);
+  assert.match(html, /Сохранение каждого открытия — отдельной кнопкой на карте/);
+  assert.doesNotMatch(html, /Открыть в атласе|Текущий маршрут/);
+  const route = EARTH_ATLAS_JOURNEYS.find(item => item.id === "five-silhouettes");
+  const active = renderToStaticMarkup(createElement(EarthAtlasJourneys, {
+    openedIds: [], journeyState: { journeyId: route.id, stopIndex: 0 }, query: "Эйфел", onStartJourney: id => calls.push(id), onSelectStop: index => calls.push(index),
+  }));
+  assert.match(active, /Остановки текущего маршрута/);
+  assert.match(active, /Остановка 1: Эйфелева башня/);
+  assert.match(active, /aria-current="step"/);
+  assert.match(active, /Заметка об остановке: Эйфелева башня/);
+  assert.doesNotMatch(active, /<details[^>]*\sopen(?:[=>\s])/);
+  assert.doesNotMatch(active, /Остановка 2: Колизей/);
+  assert.deepEqual(calls, []);
+});
+
+test("repeated places keep the selected stop index and final navigation in the explorer", () => {
+  const journey = EARTH_ATLAS_JOURNEYS.find(item => item.id === "five-silhouettes");
+  const index = journey.stops.length;
+  journey.stops.push({ ...journey.stops[0], note: "Снова посмотрим на это место с последней остановки маршрута." });
+  try {
+    const current = earthAtlasJourneyStop({ journeyId: journey.id, stopIndex: index });
+    assert.equal(current.stopIndex, index);
+    const html = renderToStaticMarkup(createElement(EarthAtlasExplorer, {
+      entry: current.entry, journey: current, opened: false, loaded: true,
+      preview: { entryId: current.entry.id, requestId: 1, status: "ready" },
+      onDiscover() {}, onFocus() {}, onClose() {}, onNavigate() {}, onBrowseStops() {},
+    }));
+    assert.match(html, new RegExp(`Все остановки маршрута: ${index + 1} из ${index + 1}`));
+    assert.match(html, /aria-label="Завершить маршрут"/);
+    const previous = [...html.matchAll(/<button\b[^>]*>/g)].find(([tag]) => tag.includes('aria-label="Предыдущая остановка"'))?.[0];
+    assert.ok(previous); assert.doesNotMatch(previous, /\sdisabled[=>\s]/);
+  } finally { journey.stops.pop(); }
+});
+
+test("saved session fallbacks remain visible in both place and route explorers", () => {
+  const journey = EARTH_ATLAS_JOURNEYS[0], current = earthAtlasJourneyStop({ journeyId: journey.id, stopIndex: 0 });
+  for (const activeJourney of [null, current]) {
+    const html = renderToStaticMarkup(createElement(EarthAtlasExplorer, {
+      entry: current.entry, journey: activeJourney, opened: true, loaded: true, persistent: false,
+      preview: { entryId: current.entry.id, requestId: 1, status: "ready" },
+      onDiscover() {}, onFocus() {}, onClose() {}, onNavigate() {}, onBrowseStops() {},
+    }));
+    assert.match(html, /До закрытия карты · хранилище недоступно/);
+    assert.doesNotMatch(html, /Сохранено в атласе/);
+    const visibleStatus = html.match(/<span[^>]*(?:class="[^"]*(?:meta|status)[^"]*")[^>]*>([^<]*)<\/span>/g) ?? [];
+    assert.ok(visibleStatus.some(span => span.includes("До закрытия карты · хранилище недоступно")), "fallback must be visible, not only in the route screen-reader status");
+  }
 });

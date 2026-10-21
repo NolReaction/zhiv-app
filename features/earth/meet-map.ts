@@ -48,12 +48,24 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let cameraPadding: PaddingOptions | null = null;
   let prepareCamera: (() => void) | undefined;
+  let writtenSource: GeoJSONSource | null = null;
+  let writtenGeometry: string | null = null;
 
   function cancelTimer() {
     if (timer !== null) environment.clearTimeout(timer);
     timer = null;
   }
-  function clearLine() { map.getSource<GeoJSONSource>(EARTH_MEET_SOURCE)?.setData(EMPTY); }
+  function writeLine(data: FeatureCollection<MultiLineString>, geometry: string | null) {
+    const source = map.getSource<GeoJSONSource>(EARTH_MEET_SOURCE);
+    if (!source) { writtenSource = null; writtenGeometry = null; return; }
+    // Repeated UI snapshots do not change this geometry. Avoid restarting a
+    // GeoJSON worker job until the line changes or a new style owns the source.
+    if (source === writtenSource && geometry === writtenGeometry) return;
+    source.setData(data);
+    writtenSource = source;
+    writtenGeometry = geometry;
+  }
+  function clearLine() { writeLine(EMPTY, null); }
   function reconcile() {
     cancelTimer();
     const now = environment.now();
@@ -62,7 +74,8 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
       || !earthMeetDetails(position, friend, now, wall)) { clearLine(); return; }
     const source = map.getSource<GeoJSONSource>(EARTH_MEET_SOURCE);
     if (!source) return;
-    source.setData(earthMeetLine(position, friend));
+    const line = earthMeetLine(position, friend);
+    writeLine(line, JSON.stringify(line.features[0].geometry.coordinates));
     if (focusRequest > handledFocus) {
       const delta = ((friend.longitude - position.longitude + 540) % 360) - 180;
       const longitude = position.longitude + delta;
@@ -119,6 +132,7 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
       if (map.getLayer(LINE)) map.removeLayer(LINE);
       if (map.getLayer(HALO)) map.removeLayer(HALO);
       if (map.getSource(EARTH_MEET_SOURCE)) map.removeSource(EARTH_MEET_SOURCE);
+      writtenSource = null; writtenGeometry = null;
     },
   };
 }
