@@ -22,7 +22,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
  const pixels=(w,h)=>{const data=new Uint8ClampedArray(w*h*4).fill(255);data[0]=data[1]=data[2]=0;return {data}};
  const translations=[];
  const ctx=new Proxy({translate:(x,y)=>translations.push({x,y}),getImageData:(_x,_y,w,h)=>pixels(w,h),createImageData:pixels,createRadialGradient:()=>({addColorStop(){}}),createLinearGradient:()=>({addColorStop(){}})}, {get:(object,key)=>key in object?object[key]:()=>{}});
- const canvas=()=>({width:256,height:256,clientWidth:393,clientHeight:740,getContext:()=>ctx,addEventListener(){},removeEventListener(){},hasPointerCapture(){return false}});
+ const canvas=()=>({width:256,height:256,clientWidth:393,clientHeight:740,style:{},getContext:()=>ctx,addEventListener(){},removeEventListener(){},hasPointerCapture(){return false}});
  install('Image',class {naturalWidth=1254;naturalHeight=1254;set src(path){if(!path)return;this.naturalWidth=this.naturalHeight=path===WORLD_ART.homePreview?256:path===WORLD_ART.mapPreview?384:1254;pending.push({path,image:this})}});
  install('document',{hidden:false,createElement:canvas,addEventListener(){},removeEventListener(){}});install('window',{});
  install('setTimeout',(fn,ms)=>{timers.set(++id,{fn,ms});return id});install('clearTimeout',key=>timers.delete(key));

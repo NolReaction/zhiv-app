@@ -13,6 +13,8 @@ const waterTrackers = new WeakMap<ForestSessionState, ReturnType<typeof createWo
 export type WorldAudioControl = {
   scope: "music" | "world";
   visible: boolean; observationOwner: boolean; emitEvents?: boolean;
+  /** A camera repaint changes the mix, never the already observed action tick. */
+  cameraOnly?: boolean;
   showHero: boolean; actorAway: boolean; reducedMotion: boolean;
   waterFish?: "auto" | "on" | "off";
 };
@@ -43,6 +45,7 @@ export function createWorldAudioController(runtime: AudioRuntime) {
   let disposed = false, hadFrame = false, lastState: ForestSessionState | undefined;
   let current: AudioFrame | null = null;
   let lastScope: WorldAudioControl["scope"] | undefined;
+  let observedElapsed = NaN, observedEpoch: object | undefined;
   let lastPublishedAt = -Infinity;
   let lastTouchAt = -Infinity, touchSequence = 0;
   let lastTreeTouchAt = -Infinity;
@@ -71,7 +74,8 @@ export function createWorldAudioController(runtime: AudioRuntime) {
         preparation = new AbortController();
         // Short contact files cover fishing, the mine and tree taps. Warm them before
         // contact; a slow first decode must never queue an out-of-time impact.
-        void runtime.prepare?.(["action.fish.bobber", "action.mine.strike", "action.tree.rustle"], { signal: preparation.signal }).catch(() => {});
+        void runtime.prepare?.(["action.fish.bobber", "action.mine.strike", "action.tree.rustle",
+          "actor.lopukh.greeting", "actor.kamneshmyg.greeting", "actor.leaftail.greeting"], { signal: preparation.signal }).catch(() => {});
       }
       // The circle renders the live forest but is still a menu surface. Only
       // the full map requests spatial layers; both reuse the same music keys.
@@ -87,6 +91,13 @@ export function createWorldAudioController(runtime: AudioRuntime) {
         lastPublishedAt = timestamp;
       }
       current = frame;
+      // Panning can repaint at 60/120 Hz while the simulation advances at 30 Hz.
+      // Keep the exact spatial mix above, but do not rebuild every character's
+      // contact frame or consume its shared event observer for an unchanged tick.
+      // First use, state replacement, hidden/resume and actual actions still
+      // establish/advance the normal baseline, including reduced-motion taps.
+      if (control.cameraOnly && !control.emitEvents && control.scope === "world" && lastScope === "world"
+        && hadFrame && lastState === state && observedElapsed === state.elapsed && observedEpoch === state.clearing) return;
       let tracker = trackers.get(state);
       if (!tracker) { tracker = createWorldAudioMarkerTracker(); trackers.set(state, tracker); }
       const markers = worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false,
@@ -101,6 +112,7 @@ export function createWorldAudioController(runtime: AudioRuntime) {
         frame.listener, input.camera, input.sceneId, timestamp, emit));
       } else waterTrackers.get(state)?.reset();
       hadFrame = true; lastState = state; lastScope = control.scope;
+      observedElapsed = state.elapsed; observedEpoch = state.clearing;
       for (const event of events) runtime.play(event);
     },
     /** Call only after a visible water tap was accepted by the scene. Explicit

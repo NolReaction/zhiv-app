@@ -51,7 +51,22 @@ test("defaults select useful game events without check-in nagging or device cons
   assert.equal(prefs.constructionCompleted, true); assert.equal(prefs.explorationCompleted, true); assert.equal(prefs.productionCompleted, true); assert.equal(prefs.checkinReminder, false);
   assert.equal(prefs.maxPerDay, 2); assert.equal(prefs.minIntervalMinutes, 120); assert.equal(prefs.quietStart, "23:00"); assert.equal(prefs.quietEnd, "10:00");
   assert.equal(prefs.rateLimitsEnabled, false);
+  assert.equal(prefs.administrationMessages, true);
   assert.equal(prefs.quietHoursEnabled, true);
+});
+
+test("mail defaults on for saved legacy preferences and respects an explicit opt out without device consent", () => {
+  const preferences = contract.defaultNotificationPreferences(), legacy = { ...preferences };
+  delete legacy.administrationMessages;
+  assert.equal(contract.notificationPreferencesSchema.parse(legacy).administrationMessages, true);
+  assert.equal(contract.notificationPreferencesSchema.parse({ ...preferences, administrationMessages: false }).administrationMessages, false);
+  assert.equal(contract.notificationPreferencesSchema.safeParse({ ...preferences, administrationMessages: "true" }).success, false);
+  const p = identity.createDevIdentity("Тест", crypto.randomUUID());
+  store.saveDevNotificationPreferences(p.token, p.me.user.publicId, { ...preferences, administrationMessages: false });
+  const saved = store.getDevNotifications(p.token, p.me.user.publicId).value;
+  assert.equal(saved.preferences.administrationMessages, false);
+  assert.equal(saved.delivery.configured, false);
+  assert.equal(saved.subscription.subscribed, false);
 });
 
 test("missing frequency preference defaults off while quiet hours and explicit choices remain independent", () => {
@@ -112,8 +127,13 @@ test("DEV preference persistence is authenticated, owner-bound, isolated and hon
 test("notification links permit only read-only app views and require an owner", () => {
   const origin = "https://zhiv.example";
   assert.deepEqual(browser.parseNotificationLink(`/?notification=world&section=activities&owner=${owner}`, origin), { ownerPublicId: owner, target: "activities" });
+  assert.deepEqual(browser.parseNotificationLink(`/?notification=world&section=mine&owner=${owner}`, origin), { ownerPublicId: owner, target: "mine" });
   assert.deepEqual(browser.parseNotificationLink(`/?notification=checkin&owner=${owner}`, origin), { ownerPublicId: owner, target: "checkin" });
-  for (const value of ["https://evil.example/?notification=checkin&owner=a", "/api/v1/check-ins?notification=checkin&owner=a", "/?notification=world&section=sell&owner=a", "/?notification=checkin", "javascript:alert(1)"]) assert.equal(browser.parseNotificationLink(value, origin), null, value);
+  assert.deepEqual(browser.parseNotificationLink(`/?notification=mailbox&owner=${owner}`, origin), { ownerPublicId: owner, target: "mailbox" });
+  assert.deepEqual(browser.parseNotificationLink(`/?notification=mailbox&owner=${owner}&redirect=https://evil.example&claim=all`, origin), { ownerPublicId: owner, target: "mailbox" });
+  for (const value of [`https://evil.example/?notification=mailbox&owner=${owner}`, "/api/v1/mail?notification=mailbox&owner=a", "/?notification=mailbox", "/?notification=world&section=mailbox&owner=a"])
+    assert.equal(browser.parseNotificationLink(value, origin), null, value);
+  for (const value of ["https://evil.example/?notification=checkin&owner=a", "/api/v1/check-ins?notification=checkin&owner=a", "/?notification=world&section=sell&owner=a", "/?notification=world&section=mine", "/?notification=checkin", "javascript:alert(1)"]) assert.equal(browser.parseNotificationLink(value, origin), null, value);
 });
 
 test("opening support detection never prompts; iOS installation and insecure context are explained", () => {

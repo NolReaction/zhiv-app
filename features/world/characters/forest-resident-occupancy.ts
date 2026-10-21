@@ -3,16 +3,20 @@ import { clearingActivityFrame, clearingResidentIntent } from "@/features/world/
 import type { ForestCookingFrame } from "@/features/world/activities/cooking/forest-cooking";
 import type { ForestFishingFrame } from "@/features/world/activities/fishing/forest-fishing";
 import type { ForestMiningFrame } from "@/features/world/activities/mining/forest-mining";
+import { forestGardenGroundBasket, forestGardenVisualFrame } from "@/features/world/activities/garden/forest-garden-painter";
+import { basketGroundFootprint } from "@/features/world/navigation/ground-props";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 import { pleskMindFrame } from "@/features/world/characters/plesk/plesk-mind";
 import { residentRouteIntent, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import { pleskTrailDistance } from "@/features/world/characters/plesk/plesk-resident";
 import { residentFaunaEncounter } from "@/features/world/environment/wildlife/forest-fauna";
 import type { FixedWorldScene } from "@/features/world/tiled/types";
+import { forestVillagerOccupants } from "@/features/world/characters/villagers/villager-mind";
 
 type OccupancyOptions = {
   heroVisible: boolean; heroScale?: number; heroManual?: boolean;
   fishing?: ForestFishingFrame | null; mining?: ForestMiningFrame | null; cooking?: ForestCookingFrame | null;
+  gathering?: { held: boolean; basket: { x: number; y: number; size: number } } | null;
 };
 const walking = new Set(["free-walk", "outbound", "return", "homebound", "home-return"]);
 
@@ -32,7 +36,7 @@ export function forestResidentOccupants(state: ForestSessionState, scene: FixedW
       moving, intent: moving ? clearingResidentIntent(state.clearing, state.clearing.size * (options.heroScale ?? 1)) : undefined });
   }
   const plesk = pleskMindFrame(state.pleskMind, scene, false);
-  if (plesk) {
+  if (plesk && (plesk.opacity ?? 1) > .05) {
     const mind = state.pleskMind!, trail = mind.stage.trail, encounter = state.fauna && residentFaunaEncounter(state.fauna, "plesk");
     const wildlife = encounter && !["interrupt", "release"].includes(encounter.phase) && !mind.noticePending && !mind.tradePending;
     const moving = mind.stage.action === "walk" && !wildlife;
@@ -46,6 +50,14 @@ export function forestResidentOccupants(state: ForestSessionState, scene: FixedW
     occupants.push({ id: "builder", position: { x: builder.x, y: builder.y }, size: builder.size, moving,
       intent: moving && mind.route ? residentRouteIntent(mind.route, mind.position, mind.distance, builder.size,
         mind.job || mind.socialVisit ? 2 : mind.target?.id === "builder-yield" ? 0 : 1) : undefined });
+  }
+  if (state.villagers) occupants.push(...forestVillagerOccupants(state.villagers));
+  const size = state.clearing.size * (options.heroScale ?? 1), garden = state.life?.garden;
+  const gardenFrame = forestGardenVisualFrame(garden, { x: hero.x, y: hero.y, size }, body);
+  const gardenBasket = forestGardenGroundBasket(garden, size, gardenFrame);
+  for (const [id, basket] of [["garden-basket", gardenBasket], ["supply-basket", options.gathering?.held ? null : options.gathering?.basket]] as const) {
+    if (basket) occupants.push({ id, position: { x: basket.x, y: basket.y }, size: basket.size,
+      groundFootprint: basketGroundFootprint(basket, basket.size) });
   }
   return occupants;
 }

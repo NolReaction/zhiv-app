@@ -41,11 +41,11 @@ type Preview = Pick<WorldDevState, "levels" | "previewBuildings">;
 
 /** Read-only account/DEV geometry selection; these hypothetical jobs never enter the simulation. */
 export function builderWorkDiagnosticContext(source: FixedWorldScene, preview: Preview, houseLevel: number | undefined,
-  economy: EconomyView | null | undefined, now: number) {
-  const levels = accountSceneLevels(source, houseLevel, preview, economy?.buildings);
+  economy: EconomyView | null | undefined, now: number, merchantArrived = false) {
+  const levels = accountSceneLevels(source, houseLevel, preview, economy?.buildings, { merchantArrived });
   const scene = previewWorldScene(source, levels), authored = initialPreviewLevels(source);
   const previewing = preview.previewBuildings || Object.entries(preview.levels).some(([id, level]) => level !== authored[id]);
-  const active = forestConstructionJob(economySceneConstruction(economy), now);
+  const active = forestConstructionJob(economySceneConstruction(economy, true), now);
   const stations = (economy?.catalog ?? economyCatalog).buildings.filter(station => constructionMapPlace(station.id)).map(station => {
     const currentLevel = (previewing ? levels[station.id] ?? economy?.buildings[station.id] : economy?.buildings[station.id])
       ?? (station.id === "home" ? houseLevel : undefined) ?? levels[station.id] ?? 0;
@@ -93,11 +93,11 @@ export function BuilderWorkPointReport({ scene, station }: {
   </>;
 }
 
-export function WorldDevBuilderPoints({ source, preview, houseLevel, economy, now }: {
-  source: FixedWorldScene; preview: Preview; houseLevel?: number; economy?: EconomyView | null; now: number;
+export function WorldDevBuilderPoints({ source, preview, houseLevel, economy, now, merchantArrived = false }: {
+  source: FixedWorldScene; preview: Preview; houseLevel?: number; economy?: EconomyView | null; now: number; merchantArrived?: boolean;
 }) {
   const [selected, select] = useState<string | null>(null);
-  const context = builderWorkDiagnosticContext(source, preview, houseLevel, economy, now);
+  const context = builderWorkDiagnosticContext(source, preview, houseLevel, economy, now, merchantArrived);
   const station = context.stations.find(item => item.id === (selected ?? context.activeStationId ?? "home")) ?? context.stations[0];
   return <details className={styles.section}>
     <summary>Рабочие точки Tiled<ChevronDown size={16} aria-hidden /></summary>

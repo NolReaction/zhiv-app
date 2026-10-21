@@ -1,5 +1,9 @@
 import type { FixedWorldScene, PreviewLevels, WorldLight, WorldPoint } from "@/features/world/tiled/types";
-import { forestBuildingLights, type ForestLightSource } from "./forest-building-lights";
+import { forestLightSources } from "./forest-light-sources";
+import { TORCH_FIXTURE } from "./forest-torch-fixture";
+export { forestLightSources } from "./forest-light-sources";
+import { drawLighthouseBeams, drawLighthouseLens } from "./forest-lighthouse";
+export { forestLighthouseAngle } from "./forest-lighthouse";
 
 export type ForestLightingOptions = {
   night: number;
@@ -7,38 +11,14 @@ export type ForestLightingOptions = {
   reducedMotion: boolean;
   showBuildings?: boolean;
   levels?: PreviewLevels;
+  quality?: "low" | "high";
 };
 const TAU = Math.PI * 2;
 const TEXTURE_SIZE = 768;
 const clamp = (value: number, max = 1) => Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : 0;
 const textures = new WeakMap<FixedWorldScene, Map<string, HTMLCanvasElement>>();
-let beamTexture: HTMLCanvasElement | undefined;
 const colorParts = (color: string) => [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16));
 const rgba = (color: string, alpha: number) => `rgba(${colorParts(color).join(",")},${clamp(alpha)})`;
-
-/** Authored positions are shared by every camera. Legacy site markers remain valid. */
-export function forestLightSources(scene: FixedWorldScene, options: Pick<ForestLightingOptions, "showBuildings" | "levels"> = {}): ForestLightSource[] {
-  const buildingLights = forestBuildingLights(scene, options.levels);
-  const sources: ForestLightSource[] = [...(scene.lights ?? [])];
-  for (const light of buildingLights) {
-    const index = sources.findIndex(source => source.id === light.id);
-    // Keep authored colour/intensity/radius controls (including intensity=0),
-    // while the glass position always follows its active building image.
-    if (index >= 0) sources[index] = { ...light, ...sources[index], position: light.position };
-    else sources.push(light);
-  }
-  for (const site of scene.sites) {
-    if (buildingLights.some(light => light.siteId === site.id)) continue;
-    if (!site.light || (options.levels?.[site.id] ?? site.initialLevel) < 1) continue;
-    if (sources.some(light => Math.hypot(light.position.x - site.light!.x, light.position.y - site.light!.y) < 2)) continue;
-    sources.push({ id: `site:${site.id}`, position: site.light, kind: "lantern", radius: 70,
-      intensity: 1, color: "#ffd28a", flicker: .04 });
-  }
-  return sources.filter(light => options.showBuildings !== false || !light.siteId && !scene.sites.some(site => {
-    const p = light.position, b = site.bounds;
-    return p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
-  }));
-}
 
 function seed(id: string) {
   let result = 0;
@@ -108,46 +88,17 @@ function visible(ctx: CanvasRenderingContext2D, point: WorldPoint, radius: numbe
     && (point.y + radius) * t.d + t.f >= 0 && (point.y - radius) * t.d + t.f <= ctx.canvas.height;
 }
 
-function lighthouseBeamTexture() {
-  if (beamTexture || typeof document === "undefined") return beamTexture;
-  const canvas = document.createElement("canvas"); canvas.width = 384; canvas.height = 144;
-  const ctx = canvas.getContext("2d"); if (!ctx) return undefined;
-  // Bake a smooth density field once: no layered triangle stripes or per-frame blur.
-  const pixels = ctx.createImageData(canvas.width, canvas.height);
-  for (let x = 0; x < canvas.width; x++) {
-    const progress = x / (canvas.width - 1), spread = 1.5 + progress * 68;
-    const fade = .24 * Math.min(1, progress / .025) * (1 - progress) ** 1.7;
-    for (let y = 0; y < canvas.height; y++) {
-      const across = (y - (canvas.height - 1) / 2) / spread;
-      if (Math.abs(across) >= 1) continue;
-      const offset = (y * canvas.width + x) * 4;
-      pixels.data[offset] = 255; pixels.data[offset + 1] = 235; pixels.data[offset + 2] = 176;
-      pixels.data[offset + 3] = Math.round(255 * fade * (1 - across * across) ** 2);
-    }
-  }
-  ctx.putImageData(pixels, 0, 0);
-  beamTexture = canvas; return canvas;
-}
-
-/** Twin optics make one quiet revolution per 36 seconds; shared clock/pause apply. */
-export function forestLighthouseAngle(elapsed: number, reducedMotion: boolean) {
-  return -.32 + (reducedMotion || !Number.isFinite(elapsed) ? 0 : elapsed % 36 / 36 * TAU);
-}
-
-/** Atmospheric rays use two tiny cached sprites, in world coordinates in both views. */
+/** Finite atmospheric volume and optional ground spill share world coordinates. */
 export function drawForestLighthouseBeams(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, options: ForestLightingOptions) {
   const night = clamp(options.night); if (!night) return;
   for (const light of forestLightSources(scene, options)) {
-    if (!light.beamLength || light.intensity <= 0 || !visible(ctx, light.position, light.beamLength)) continue;
-    const texture = lighthouseBeamTexture(); if (!texture) continue;
-    ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = night * clamp(light.intensity);
-    ctx.translate(light.position.x, light.position.y);
-    // The sweep follows the horizontal plane of this oblique map, not the screen circle.
-    ctx.scale(1, .48); ctx.rotate(forestLighthouseAngle(options.elapsed, options.reducedMotion));
-    const height = light.beamLength * texture.height / texture.width;
-    ctx.drawImage(texture, 0, -height / 2, light.beamLength, height);
-    ctx.rotate(Math.PI);
-    ctx.drawImage(texture, 0, -height / 2, light.beamLength, height);
+    if (!light.beamLength || light.intensity <= 0) continue;
+    const spillOffset = light.beamGround ? Math.hypot(light.beamGround.x - light.position.x, light.beamGround.y - light.position.y) : 0;
+    if (!visible(ctx, light.position, light.beamLength + spillOffset)) continue;
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(scene.width, 0); ctx.lineTo(scene.width, scene.height);
+    ctx.lineTo(0, scene.height); ctx.closePath(); ctx.clip();
+    drawLighthouseBeams(ctx, light, { ...options, night });
     ctx.restore();
   }
 }
@@ -159,8 +110,8 @@ export function drawForestLightFixtures(ctx: CanvasRenderingContext2D, scene: Fi
     const { x, y } = light.position;
     ctx.save(); ctx.translate(x, y);
     ctx.fillStyle = "rgba(16,22,12,.25)";
-    ctx.beginPath(); ctx.ellipse(3, 16.5, 7, 2.2, -.14, 0, TAU); ctx.fill();
-    ctx.fillStyle = "#382d20"; ctx.fillRect(-1.8, 1.5, 3.6, 15);
+    ctx.beginPath(); ctx.ellipse(3, TORCH_FIXTURE.footOffsetY, 7, 2.2, -.14, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#382d20"; ctx.fillRect(-1.8, 1.5, 3.6, TORCH_FIXTURE.footOffsetY - 1.5);
     ctx.fillStyle = "#8b6940"; ctx.fillRect(-1.2, 2, 1.1, 13.8);
     ctx.fillStyle = "#a18a59"; ctx.fillRect(-2.1, 6.8, 4.2, 1.2); ctx.fillRect(-2.1, 9, 4.2, 1.2);
     ctx.fillStyle = "#303b35"; ctx.beginPath(); ctx.moveTo(-4, -.4); ctx.lineTo(4, -.4);
@@ -177,7 +128,9 @@ export function drawForestLightEmitters(ctx: CanvasRenderingContext2D, scene: Fi
     if (light.intensity <= 0) continue;
     const { x, y } = light.position, pulse = forestLightPulse(light, options.elapsed, options.reducedMotion);
     const glowRadius = Math.min(20, light.radius * .25) * pulse;
-    if (!visible(ctx, light.position, Math.max(glowRadius, 9 * pulse))) continue;
+    const lensRadius = light.beamLength && light.glass ? Math.max(light.glass.width, light.glass.height) * 2.6 : 0;
+    if (!visible(ctx, light.position, Math.max(glowRadius, 9 * pulse, lensRadius))) continue;
+    if (light.beamLength && light.glass) { drawLighthouseLens(ctx, light, { ...options, night }); continue; }
     ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = night;
     const glow = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
     glow.addColorStop(0, rgba(light.color, .33 * light.intensity * pulse));

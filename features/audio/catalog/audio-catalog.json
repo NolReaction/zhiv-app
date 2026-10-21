@@ -1430,6 +1430,132 @@
         "changes": "Original small bobber plop and short fading ripple for the cast contact; no full fish splash, peak ceiling -14 dBFS and TPDF PCM16.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "actor.lopukh.greeting.01",
+      "src": "/audio/originals-v1/effect/actor.lopukh.greeting.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "actor.lopukh.greeting.02",
+      "src": "/audio/originals-v1/effect/actor.lopukh.greeting.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "actor.lopukh.greeting.03",
+      "src": "/audio/originals-v1/effect/actor.lopukh.greeting.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "actor.kamneshmyg.greeting.01",
+      "src": "/audio/originals-v1/effect/actor.kamneshmyg.greeting.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "actor.kamneshmyg.greeting.02",
+      "src": "/audio/originals-v1/effect/actor.kamneshmyg.greeting.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "actor.kamneshmyg.greeting.03",
+      "src": "/audio/originals-v1/effect/actor.kamneshmyg.greeting.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "actor.leaftail.greeting.01",
+      "src": "/audio/originals-v1/effect/actor.leaftail.greeting.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "actor.leaftail.greeting.02",
+      "src": "/audio/originals-v1/effect/actor.leaftail.greeting.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "actor.leaftail.greeting.03",
+      "src": "/audio/originals-v1/effect/actor.leaftail.greeting.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.1/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-16",
+        "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -2175,6 +2301,54 @@
       "cooldownMs": 350,
       "pitchVariation": 0.025,
       "fadeMs": 18
+    },
+    {
+      "id": "actor.lopukh.greeting",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.lopukh.greeting.01",
+        "actor.lopukh.greeting.02",
+        "actor.lopukh.greeting.03"
+      ],
+      "gainDb": -3,
+      "priority": 70,
+      "maxInstances": 1,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.012,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.kamneshmyg.greeting",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.kamneshmyg.greeting.01",
+        "actor.kamneshmyg.greeting.02",
+        "actor.kamneshmyg.greeting.03"
+      ],
+      "gainDb": -3,
+      "priority": 70,
+      "maxInstances": 1,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.012,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.leaftail.greeting",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.leaftail.greeting.01",
+        "actor.leaftail.greeting.02",
+        "actor.leaftail.greeting.03"
+      ],
+      "gainDb": -3,
+      "priority": 70,
+      "maxInstances": 1,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.012,
+      "fadeMs": 30
     }
   ],
   "profiles": [

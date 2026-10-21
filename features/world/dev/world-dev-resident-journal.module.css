@@ -1,0 +1,16 @@
+.journal { display: grid; gap: 10px; min-width: 0; padding-top: 12px; border-top: 1px solid #485c46; }
+.journal h4, .journal p { margin: 0; }
+.hint { color: #a8b5a5; font-size: 11px; line-height: 1.5; }
+.actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.actions button { min-height: 40px; }
+.actions button[aria-pressed="true"] { border-color: #d2bb75; background: #514929; }
+.status { min-height: 1.5em; color: #d8e4b2; font-size: 12px; }
+.events { display: grid; gap: 8px; margin: 0; padding-left: 20px; max-height: 360px; overflow: auto; }
+.events li { padding: 6px 8px; border-left: 2px solid #668659; background: #172b1e; font-size: 11px; overflow-wrap: anywhere; }
+.events li[data-journal-kind="interruption"] { border-color: #d2bb75; }
+.events strong, .events span { display: block; line-height: 1.5; }
+.events time { font-variant-numeric: tabular-nums; color: #c2d29e; }
+.manual { display: grid; gap: 6px; font-size: 11px; }
+.manual textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; padding: 8px; border: 1px solid #668659; border-radius: 8px; color: #e1e8cc; background: #14231a; font: 11px/1.5 monospace; }
+.journal :is(button, textarea):focus-visible { outline: 2px solid #dceaa5; outline-offset: 3px; }
+@media (max-width: 600px) { .manual textarea { font-size: 16px; } }

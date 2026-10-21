@@ -9,6 +9,7 @@ import { forestJourneyFishingFrame } from "@/features/world/activities/journeys/
 import type { FishingPropFrame } from "@/features/world/activities/fishing/fishing-props";
 import { forestJourneyMiningFrame, miningWorkRhythm } from "@/features/world/activities/mining/forest-mining";
 import { worldAudioEventPosition } from "./world-audio-frame";
+import { forestLeaftailWindow } from "@/features/world/characters/social/forest-leaftail-window";
 
 export type WorldAudioMarker = { key: string; token: string | number | null; cueId: string; position: AudioPoint; active?: boolean;
   /** A cast is audible only when this observer sees its float reach the water. */
@@ -28,8 +29,10 @@ export function worldAudioMarkers(scene: FixedWorldScene, state: ForestSessionSt
   };
   const speech = state.social.current;
   if (speech) {
-    const speaker = speech.speaker, position = speaker === "builder" ? state.builderMind?.position
-      : speaker === "plesk" ? state.pleskMind?.position : heroVisible ? actor.position : undefined;
+    const speaker = speech.speaker, position = speaker === "leaftail" && state.villagers?.residents.leaftail.doorPhase === "inside"
+      ? forestLeaftailWindow(scene)?.position ?? state.villagers.residents.leaftail.position : speaker === "builder" ? state.builderMind?.position
+      : speaker === "plesk" ? state.pleskMind?.position : speaker === "mochlik" ? heroVisible ? actor.position : undefined
+        : state.villagers?.residents[speaker]?.available ? state.villagers.residents[speaker].position : undefined;
     if (position && (speaker === "mochlik" || options.showBuildings)) {
       add("speech", speech.id, `actor.${speaker}.greeting`, position, true, speech.origin === "interaction");
     }

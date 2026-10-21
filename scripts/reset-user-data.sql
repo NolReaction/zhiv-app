@@ -10,9 +10,10 @@ DECLARE
         'account_login_flows', 'account_login_identities', 'account_merge_previews',
         'account_merge_sources', 'account_operation_receipts', 'account_recovery_attempts',
         'account_recovery_codes', 'account_recovery_contact_removals', 'account_recovery_contacts',
-        'account_registration_tickets', 'admin_actions', 'app_sessions', 'app_users', 'check_in_audiences',
+        'account_registration_tickets', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions', 'app_users', 'check_in_audiences',
         'check_ins', 'circle_invites', 'circle_memberships', 'circle_sharing_preferences',
         'circles', 'direct_invite_links', 'direct_invite_redemptions', 'direct_person_favorites', 'direct_requests',
+        'earth_sharing_settings', 'earth_sharing_recipients', 'earth_latest_locations', 'earth_frozen_locations',
         'economy_profiles', 'economy_commands', 'economy_ledger', 'economy_conversion_audit',
         'economy_market_listings', 'economy_market_receipts', 'economy_market_showcases', 'economy_market_daily_turnover',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
@@ -22,7 +23,7 @@ DECLARE
         'notification_preferences', 'notification_subscriptions', 'notification_events', 'notification_batches',
         'promo_redemptions',
         'game_achievements', 'game_achievement_tiers', 'game_items', 'game_monthly_scores', 'game_profiles', 'game_sessions', 'game_tap_activity_minutes', 'game_tap_activity_seconds',
-        'identity_bootstrap_keys', 'player_feedback', 'player_feedback_actions', 'private_person_nicknames', 'recipient_sharing_preferences',
+        'identity_bootstrap_keys', 'player_mail_messages', 'player_feedback', 'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'recipient_sharing_preferences',
         'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys', 'world_commands', 'world_ledger', 'world_profiles'
     ];
     expected_tables text[];
@@ -40,13 +41,23 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
+    -- V62 welcome claim timestamps are cleared with their account mail and admin data.
+    -- V64 adds the one-time gift completion column; no user-data tables were added.
+    -- V65 sharing choices and ephemeral locations are cleared with account data.
+    -- V66 retains last-known points; they remain account data cleared by this reset.
+    -- V67 frozen recipient snapshots are ephemeral account data and are cleared too.
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
-    -- A known admin-history upgrade can apply notification V50 after V51/V52;
-    -- installed_rank therefore does not identify the highest schema version.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 52
-        OR (SELECT count(DISTINCT version::integer) FROM public.flyway_schema_history) <> 52
+    -- A known admin-history upgrade can install V50 after V51/V52.
+    -- Verify either complete history by version, independently of install order.
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 67
+        OR NOT (
+            ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,67) AS expected(version))
+            OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL']
+        )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V52. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V67. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

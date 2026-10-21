@@ -218,9 +218,11 @@
 }
 
 .sharingLabel small {
-  color: #7f8579;
+  color: #a6b39d;
   font-size: 10px;
 }
+
+.sharingNote { margin: 0; color: #a6b39d; font-size: 11px; line-height: 1.5; }
 
 .members {
   display: grid;

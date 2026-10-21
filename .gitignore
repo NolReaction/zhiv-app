@@ -39,6 +39,11 @@ yarn-error.log*
 next-env.d.ts
 *.tsbuildinfo
 /dist/
+/apps/engine/dist/
+/apps/engine/.cache/
+/apps/engine/node_modules/
+/packages/engine/dist/
+/packages/engine/node_modules/
 /.wrangler/
 /.sites-runtime/
 /outputs/
@@ -55,6 +60,7 @@ deploy/runtime/*
 !deploy/runtime/.gitkeep
 /public/app-status.json
 /public/app-status.json.*.tmp
+/public/vendor/maplibre-gl-*/
 
 # Tiled editor session (local view state)
 *.tiled-session

@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, Ellipsis, Minus, MousePointer2 } from "lucide-re
 import { createPortal } from "react-dom";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { GuideCharacter } from "./guide-character";
-import { measureGuideSpotlight } from "./guide-spotlight";
+import { guideSpotlightBounds, guideSpotlightTargets, measureGuideSpotlight } from "./guide-spotlight";
 import { worldCoachLayout } from "./guide-coach-layout";
 import styles from "./guide-coach.module.css";
 
@@ -28,7 +28,7 @@ export type GuideCoachProps = {
   dock?: string;
   welcome?: boolean;
   status?: string;
-  primary?: { label: string; onClick: () => void; disabled?: boolean; advance?: boolean };
+  primary?: { label: string; shortLabel?: string; onClick: () => void; disabled?: boolean; advance?: boolean };
   secondary?: { label: string; onClick: () => void };
   /** Keep essential read-only navigation outside the details disclosure. */
   secondaryVisible?: boolean;
@@ -68,6 +68,7 @@ export function GuideCoach(props: GuideCoachProps) {
     if (!open) return;
     const root = targetRoot?.current ?? document;
     let frame = 0, observedTarget: HTMLElement | null = null;
+    let observedSpotlights: HTMLElement[] = [];
     let observedHud: HTMLElement[] = [];
     let settleUntil = performance.now() + 400;
     const measure = () => {
@@ -84,7 +85,6 @@ export function GuideCoach(props: GuideCoachProps) {
         settleUntil = performance.now() + 400;
         if (observedTarget) {
           resize.unobserve(observedTarget);
-          observedTarget.classList.remove(styles.spotlight);
         }
         if (element) resize.observe(element);
         observedTarget = element;
@@ -92,8 +92,20 @@ export function GuideCoach(props: GuideCoachProps) {
       // Paint on the actual control: native scrolling, clipping and transforms
       // carry the ring with it even between animation frames. React may replace
       // className, so restore it idempotently when the mutation observer fires.
-      const highlight = measureGuideSpotlight(element, { left: viewportLeft, top: viewportTop, width, height });
-      element?.classList.toggle(styles.spotlight, Boolean(highlight));
+      const targets = guideSpotlightTargets(element);
+      for (const previous of observedSpotlights) if (!targets.includes(previous)) {
+        previous.classList.remove(styles.spotlight);
+        if (previous !== observedTarget) resize.unobserve(previous);
+      }
+      const highlights: Bounds[] = [];
+      for (const target of targets) {
+        if (target !== observedTarget) resize.observe(target);
+        const bounds = measureGuideSpotlight(target, { left: viewportLeft, top: viewportTop, width, height });
+        target.classList.toggle(styles.spotlight, Boolean(bounds));
+        if (bounds) highlights.push(bounds);
+      }
+      observedSpotlights = targets;
+      const highlight = guideSpotlightBounds(highlights);
       // Panel lessons reserve their own space. Viewport coordinates cannot be
       // applied inside a transformed dialog's fixed-position containing block.
       if (inline || slot) return;
@@ -153,7 +165,7 @@ export function GuideCoach(props: GuideCoachProps) {
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect(); mutation.disconnect();
-      observedTarget?.classList.remove(styles.spotlight);
+      for (const element of observedSpotlights) element.classList.remove(styles.spotlight);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule, true);
       window.removeEventListener("transitionend", schedule, true);
@@ -177,6 +189,7 @@ export function GuideCoach(props: GuideCoachProps) {
   const position: CSSProperties | undefined = placement ? { left: placement.left, top: placement.top, width: placement.width, maxHeight: placement.maxHeight, right: "auto", bottom: "auto" } : undefined;
   const current = progress ? Math.min(progress.total, Math.max(1, progress.current)) : 0;
   const next = canAdvance ? primary!.onClick : undefined;
+  const nextLabel = primary?.shortLabel ?? "Дальше";
   const message = <span className={styles.text}>{reply}</span>;
   const coach = <section ref={card} className={styles.coach} style={position} role="region" aria-labelledby={headingId} aria-describedby={textId}
     data-guide-coach={flow} data-guide-step={stepId} data-compact={Boolean(compact)} data-welcome={Boolean(welcome)} data-inline={embedded} data-expanded={expanded}
@@ -211,7 +224,7 @@ export function GuideCoach(props: GuideCoachProps) {
         {progress && <span className={styles.counter} aria-label={`Шаг ${current} из ${progress.total}`}>{current}<span> / {progress.total}</span></span>}
         <button type="button" className={styles.pause} data-guide-pause onClick={onPause} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>
         <button type="button" className={styles.more} aria-label="Подробнее и действия обучения" title="Подробнее и действия" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpandedStep(expanded ? null : replyKey)}><Ellipsis size={19} aria-hidden="true" /></button>
-        {canAdvance && <button type="button" className={styles.continue} data-guide-next onClick={next} aria-label={primary!.label.startsWith("Дальше") ? primary!.label : `Дальше: ${primary!.label}`} title={primary!.label}>Дальше<ArrowRight size={18} aria-hidden="true" /></button>}
+        {canAdvance && <button type="button" className={styles.continue} data-guide-next onClick={next} aria-label={primary!.shortLabel || primary!.label.startsWith("Дальше") ? primary!.label : `Дальше: ${primary!.label}`} title={primary!.label}>{nextLabel}<ArrowRight size={18} aria-hidden="true" /></button>}
       </div>}
       {(welcome || primary && !canAdvance) && <div className={styles.actions}>
         {primary && <button type="button" className={styles.primary} onClick={primary.onClick} disabled={primary.disabled}>{primary.label}<ArrowRight size={17} aria-hidden="true" /></button>}

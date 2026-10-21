@@ -15,9 +15,9 @@ internal fun readAdminProgression(reads: AnalyticsReads, now: Instant): AdminAna
         , first_events AS (
             SELECT u.id,u.created_at,
               min(e.created_at) FILTER (WHERE e.active) AS first_action,
-              min(e.created_at) FILTER (WHERE e.kind IN ('start_production','start_exploration','start_fishing')) AS first_work_started,
-              min(e.created_at) FILTER (WHERE e.kind='claim_job' AND e.origin_action IN ('start_production','start_exploration','start_fishing')) AS first_work_claimed,
-              min(e.created_at) FILTER (WHERE e.kind='start_construction') AS first_construction_started,
+              min(e.created_at) FILTER (WHERE e.kind IN ('start_production','start_tutorial_harvest','start_exploration','start_fishing')) AS first_work_started,
+              min(e.created_at) FILTER (WHERE e.kind IN ('claim_job','claim_garden_collection') AND e.origin_action IN ('start_production','start_exploration','start_fishing')) AS first_work_claimed,
+              min(e.created_at) FILTER (WHERE e.kind IN ('start_construction','start_tutorial_workshop')) AS first_construction_started,
               min(e.created_at) FILTER (WHERE e.construction_claim) AS first_construction_claimed
             FROM cohort_users u LEFT JOIN events e ON e.user_id=u.id GROUP BY u.id,u.created_at
         ), milestones AS (
@@ -58,7 +58,7 @@ internal fun readAdminProgression(reads: AnalyticsReads, now: Instant): AdminAna
                 SELECT max(l.created_at) AS last_action_at FROM economy_ledger l
                 WHERE l.user_id=u.id AND l.created_at>=u.created_at AND l.created_at<moment.at
                   AND l.kind NOT IN ('legacy_conversion','starting_pack','account_merge','merged_receipt','dev_grant_currency',
-                    'dev_grant_item','dev_set_building_level','grant_economy','market_sell','barter_exchange')
+                    'dev_grant_item','dev_set_building_level','grant_economy','market_sell','market_sold','barter_exchange')
             ) history ON true
             LEFT JOIN LATERAL (
                 SELECT min(ready_at) FILTER (WHERE ready_at<moment.at-interval '24 hours') AS ready_since,

@@ -1,0 +1,6 @@
+.actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.actions button { display: inline-flex; align-items: center; justify-content: center; flex: 1 1 120px; gap: 6px; min-width: 0; min-height: 44px; border: 1px solid #c5dfb926; border-radius: 12px; background: #c5dfb90a; color: #d3e4c9; padding: 8px; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
+.actions button svg { flex-shrink: 0; }
+.actions button:hover { background: #c5dfb919; }
+.actions button:disabled { opacity: .55; cursor: default; }
+.actions button:focus-visible { outline: 2px solid #f5e85b; outline-offset: 2px; }

@@ -1,0 +1,28 @@
+.journeys { min-width: 0; }
+.heading { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.heading span { color: #aac2a0; font-size: 10px; }
+.heading strong { color: #e1ecd4; font-size: 12px; line-height: 1.4; }
+.note { margin: 0 0 7px; }
+.note summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 3px; border-radius: 8px; list-style: none; color: #bbd4a8; cursor: pointer; }
+.note summary::-webkit-details-marker { display: none; }
+.note summary > svg { flex: 0 0 18px; margin-inline: 10px; }
+.note p { display: grid; gap: 5px; margin: 5px 3px 10px; color: #b7cdaf; font-size: 11px; line-height: 1.5; }
+.note p strong { color: #deead0; font-size: 11px; }
+.note summary:focus-visible { outline: 2px solid #e3f7ac; outline-offset: 2px; }
+.active { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #d4e7ad22; }
+.routes, .stops { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.routes button, .stops button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 60px; padding: 9px; border: 1px solid #d4e7ad25; border-radius: 11px; color: #bcd3af; background: #c9e5a40a; text-align: left; font-family: inherit; cursor: pointer; }
+.routes button > svg { flex-shrink: 0; }
+.routes li[data-accent="sand"] button { background: #d4b97b12; }
+.routes li[data-accent="north"] button { background: #a4d2cc10; }
+.routeIcon, .index { display: grid; flex: 0 0 30px; width: 30px; height: 30px; place-items: center; border-radius: 9px; color: #cee3b0; background: #a2c58115; }
+.index { border: 1px solid #d4e7ad35; border-radius: 50%; font-size: 11px; }
+.identity { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.identity strong { color: #e1ecd4; font-size: 12px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.identity small { color: #aac2a1; font-size: 10px; line-height: 1.45; }
+.current { flex-shrink: 0; color: #cde6a5; font-size: 10px; }
+.stops button[aria-current="step"] { border-color: #d4e7ad70; background: #c9e5a41a; }
+.stops button[aria-current="step"] .index { color: #234632; background: #cde6a5; border-color: transparent; }
+.hint { margin: 9px 3px 2px; color: #b7cdaf; font-size: 11px; line-height: 1.5; }
+.journeys button:focus-visible { outline: 2px solid #e3f7ac; outline-offset: 2px; }
+.journeys button:hover { border-color: #d4e7ad70; }

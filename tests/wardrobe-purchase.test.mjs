@@ -12,6 +12,8 @@ const world = await vite.ssrLoadModule("/lib/dev/world-store.ts");
 const { economyResultSchema, economyCommandSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { wardrobeItems, wardrobePurchaseTarget } = await vite.ssrLoadModule("/features/world/domain/wardrobe.ts");
 const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev/dev-model.ts");
+const { premiumCostumes, premiumCostumeAppearance } = await vite.ssrLoadModule("/features/world/domain/premium-costumes.ts");
+const { economyCatalog, economyCatalogSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.parse("2026-10-05T20:00:00Z"), originalMode = process.env.NODE_ENV;
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); world.resetDevWorldStoreForTests(); });
 after(async () => { if (originalMode == null) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalMode; await vite.close(); });
@@ -68,7 +70,8 @@ test("old clothes cannot be repurchased and unknown, free, reward and fishing it
   assert.throws(() => issue(p, command(p, "fern")), { code: "ECONOMY_WARDROBE_OWNED" });
   const before = economy.getDevEconomy(p.token, now);
   assert.ok(before.wardrobe.includes("explorer_cap")); assert.ok(!before.wardrobe.includes("willow_rod"));
-  for (const targetId of ["coins:moss", "coins:explorer_cap", "coins:willow_rod", "coins:fish", "coins:__proto__", "pearls:fern", "fern"])
+  for (const targetId of ["coins:moss", "coins:explorer_cap", "coins:willow_rod", "coins:fish", "coins:__proto__", "pearls:fern", "fern",
+    ...["trail_hat", "rain_hood", "sea_neckerchief", "sunset_scarf", "dune_moss", "storm_moss"].flatMap(id => [`coins:${id}`, `pearls:${id}`, id])])
     assert.throws(() => issue(p, command(p, "heather", { targetId })), { code: "ECONOMY_WARDROBE_ITEM" });
   assert.deepEqual(economy.getDevEconomy(p.token, now), before);
 });
@@ -92,8 +95,13 @@ test("price, quantity, funds, owner and racing revisions fail before any debit o
 test("clothes cannot be sold or listed and full storage does not prevent a cosmetic purchase", () => {
   const p = player();
   globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory = { wood: 1000 };
+  const before = economy.getDevEconomy(p.token, now);
+  assert.equal(before.storage.capacity, 50);
+  assert.equal(before.storage.overflow, 950);
   const bought = issue(p, command(p, "fern"));
-  assert.equal(bought.state.storage.overflow, 700); assert.equal(bought.state.inventory.fern, undefined);
+  assert.deepEqual(bought.state.storage, before.storage);
+  assert.deepEqual(bought.state.inventory, before.inventory);
+  assert.equal(bought.state.inventory.fern, undefined);
   assert.throws(() => issue(p, command(p, "heather", { action: "sell", targetId: "fern", totalPrice: 0 })), { code: "ECONOMY_ITEM" });
   assert.ok(economy.getDevEconomy(p.token, now).wardrobe.includes("fern"));
 });
@@ -113,4 +121,56 @@ test("DEV clothing grants are deduplicated, do not charge or discover fish, and 
   assert.ok(world.getDevWorld(p.token, now).state.inventory.includes("moon_crown"));
   process.env.NODE_ENV = "production";
   assert.throws(() => economy.commandDevEconomyCheat(p.token, cmd, now), { code: "DEV_TOOLS_DISABLED" });
+});
+
+test("cash costumes are preview-only and cannot be bought crafted or smuggled into a coin merchant", () => {
+  const p = player(), before = economy.getDevEconomy(p.token, now);
+  const special = wardrobeItems.filter(item => item.premium);
+  assert.equal(special.length, 9);
+  assert.equal(premiumCostumes.length, 3);
+  assert.equal(new Set(premiumCostumes.flatMap(costume => costume.itemIds)).size, 9);
+  for (const costume of premiumCostumes) {
+    assert.deepEqual(premiumCostumeAppearance(costume.id), costume.appearance);
+    const preview = premiumCostumeAppearance(costume.id); preview.head = "moss";
+    assert.notEqual(premiumCostumeAppearance(costume.id).head, "moss", "preview edits cannot change the stored outfit");
+    for (const id of costume.itemIds) {
+      const item = special.find(item => item.id === id);
+      assert.ok(item); assert.equal(item.starter, false); assert.equal(item.sparks, 0); assert.equal(item.purchase, undefined);
+      assert.equal(before.wardrobe.includes(id), false);
+      for (const targetId of [id, `coins:${id}`, `pearls:${id}`])
+        assert.throws(() => issue(p, command(p, "heather", { targetId, totalPrice: 0 })), { code: "ECONOMY_WARDROBE_ITEM" });
+      // Even an accidentally attached ordinary price must not change this acquisition source.
+      try {
+        item.purchase = { currency: "coins", amount: 10 };
+        assert.throws(() => issue(p, command(p, "heather", { targetId: `coins:${id}`, totalPrice: 10 })), { code: "ECONOMY_WARDROBE_ITEM" });
+      } finally { delete item.purchase; }
+      const snapshot = world.getDevWorld(p.token, now);
+      const worldCommand = { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, expectedRevision: snapshot.revision, action: "craft", target: id };
+      assert.throws(() => world.commandDevWorld(p.token, worldCommand, now), { code: "WORLD_ECONOMY_MOVED" });
+      assert.throws(() => world.commandDevWorld(p.token, { ...worldCommand, action: "equip" }, now), { code: "WORLD_ITEM_NOT_OWNED" });
+      const tampered = structuredClone(economyCatalog);
+      tampered.leaftailShop.travelOffers[0] = { ...tampered.leaftailShop.travelOffers[0], kind: "wardrobe", itemId: id, quantity: 1 };
+      assert.equal(economyCatalogSchema.safeParse(tampered).success, false, "cash pieces are not Leaftail's free currency stock");
+    }
+  }
+  for (const id of ["unknown", "__proto__", "constructor"]) assert.equal(premiumCostumeAppearance(id), undefined);
+  assert.deepEqual(economy.getDevEconomy(p.token, now), before, "browsing or rejected commands grant and charge nothing");
+});
+
+test("authoritatively owned special clothes equip and persist without an extra payment", () => {
+  process.env.NODE_ENV = "development";
+  const p = player(), before = economy.getDevEconomy(p.token, now);
+  for (const costume of premiumCostumes) for (const id of costume.itemIds) {
+    const grant = command(p, "fern", { action: "grant_wardrobe", targetId: id, totalPrice: 0 });
+    economy.commandDevEconomyCheat(p.token, grant, now);
+    const snapshot = world.getDevWorld(p.token, now);
+    const worn = world.commandDevWorld(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
+      expectedRevision: snapshot.revision, action: "equip", target: id }, now);
+    const slot = wardrobeItems.find(item => item.id === id).slot;
+    assert.equal(worn.snapshot.state.equipment[slot], id);
+    assert.equal(world.getDevWorld(p.token, now).state.equipment[slot], id);
+  }
+  const after = economy.getDevEconomy(p.token, now);
+  assert.deepEqual(after.wallet, before.wallet); assert.deepEqual(after.inventory, before.inventory);
+  assert.deepEqual(after.jobs, before.jobs); assert.deepEqual(after.fishing, before.fishing);
 });

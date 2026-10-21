@@ -75,6 +75,20 @@ test("clean or reverted preferences leave immediately without warning", () => {
   assert.equal(left, 2); assert.equal(app.render().dialog.props.open, false); assert.equal(app.listeners.size, 0);
 });
 
+test("administration category is independently editable and saved without connecting the device", async () => {
+  const app = setup();
+  assert.equal(app.render().toggle("administrationMessages").props.checked, true);
+  app.render().toggle("administrationMessages").props.onCheckedChange(false);
+  app.render().save.props.onClick();
+  await tick();
+  assert.equal(hooks.saves.length, 1);
+  assert.equal(hooks.saves[0].preferences.administrationMessages, false);
+  assert.equal(hooks.saves[0].preferences.productionCompleted, true);
+  hooks.saves[0].resolve({ ...app.initial, preferences: hooks.saves[0].preferences });
+  await tick();
+  assert.equal(app.render().toggle("administrationMessages").props.checked, false);
+});
+
 test("cancel button and dialog dismissal preserve draft and return focus without leaving", () => {
   const app = setup(); app.edit(); let left = 0;
   for (const dismiss of [view => view.button("Вернуться к настройкам").props.onClick(), view => view.dialog.props.onOpenChange(false)]) {

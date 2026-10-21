@@ -357,6 +357,8 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM game_presence_clients WHERE user_id=?",id)
         c.update("DELETE FROM game_presence_daily WHERE user_id=?",id)
         c.update("DELETE FROM game_presence_accounts WHERE user_id=?",id)
+        c.update("DELETE FROM player_mail_messages WHERE user_id=?",id)
+        c.update("DELETE FROM player_security_observations WHERE user_id=?",id)
         c.update("DELETE FROM game_tap_activity_minutes WHERE user_id=?",id)
         c.update("DELETE FROM game_tap_activity_seconds WHERE user_id=?",id)
         c.update("DELETE FROM game_items WHERE user_id=?",id)
@@ -365,7 +367,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM game_monthly_scores WHERE user_id=?",id)
         c.update("DELETE FROM game_profiles WHERE user_id=?",id)
         c.update("DELETE FROM account_login_identities WHERE user_id=?",id)
-        c.update("UPDATE app_users SET tag_text=NULL,tag_color=NULL,tap_watchlisted=false,tap_signal_at=NULL,tap_analyzed_at=NULL,display_name='Удалённый профиль',status_text=NULL,status_updated_at=NULL,status_expires_at=NULL,last_check_in_at=NULL,avatar_storage_key=NULL,avatar_updated_at=NULL,display_name_changed_at=NULL,display_name_change_key=NULL,updated_at=clock_timestamp(),deleted_at=clock_timestamp() WHERE id=?",id)
+        c.update("UPDATE app_users SET tag_text=NULL,tag_color=NULL,tap_watchlisted=false,tap_signal_at=NULL,security_signal_at=NULL,tap_analyzed_at=NULL,display_name='Удалённый профиль',status_text=NULL,status_updated_at=NULL,status_expires_at=NULL,last_check_in_at=NULL,avatar_storage_key=NULL,avatar_updated_at=NULL,display_name_changed_at=NULL,display_name_change_key=NULL,updated_at=clock_timestamp(),deleted_at=clock_timestamp() WHERE id=?",id)
     }
     override suspend fun confirmMerge(sessionHash: ByteArray,browserHash: ByteArray,previewHash: ByteArray): Unit = tx { c ->
         if (receipt(c,"merge",previewHash,sessionHash,browserHash)) return@tx
@@ -386,6 +388,11 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             val fresh=c.one("SELECT account_transfer_group_owner(?,?,?,?,?,?)",group,s.other,id,previewHash,sessionHash,browserHash){it.getBoolean(1)} ?: false
             group.takeIf{fresh}
         }.toSet()
+        // A merge changes account identity even when the surviving browser session
+        // is retained. Neither account's location consent or publisher survives it.
+        c.update("""UPDATE earth_sharing_settings SET mode='OFF',revision=least(revision+1,9007199254740990),
+            sharing_until=NULL,publication_epoch=NULL,publisher_session_id=NULL,
+            last_sequence=0,last_captured_at=NULL,last_accepted_at=NULL WHERE user_id IN (?,?)""",id,s.other)
         clearCapabilities(c,id,sessionHash);clearCapabilities(c,s.other)
         closeSocial(c,s.other,false)
         peers.forEach { peer ->
@@ -436,6 +443,8 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM game_tap_activity_minutes WHERE user_id IN (?,?)",id,s.other)
         c.update("DELETE FROM game_tap_activity_seconds WHERE user_id IN (?,?)",id,s.other)
         c.update("UPDATE app_users SET tap_signal_at=GREATEST(tap_signal_at,(SELECT tap_signal_at FROM app_users WHERE id=?)) WHERE id=?",s.other,id)
+        mergePlayerMail(c,id,s.other)
+        mergeSecurityObservations(c,id,s.other)
         c.update("UPDATE player_feedback SET user_id=? WHERE user_id=?",id,s.other)
         // Convert separately before merging old worlds, otherwise conversion caps could drop wealth.
         ensureEconomyProfile(c, id)

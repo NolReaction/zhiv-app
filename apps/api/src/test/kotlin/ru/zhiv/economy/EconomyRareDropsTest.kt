@@ -66,16 +66,16 @@ class EconomyRareDropsTest {
     }
 
     @Test fun `rare catch is fixed at start failure leaves state intact and never counts as a fish`() {
-        val started = apply(ready().copy(rareDropState = clock(900, "ancient_core")), "start_fishing", "shore")
+        val started = apply(ready().copy(rareDropState = clock(90, "ancient_core")), "start_fishing", "shore")
         val job = started.jobs.single()
         assertEquals("ancient_core", job.rareDrop?.itemId); assertEquals(1L, job.rewards["ancient_core"])
         val full = started.copy(inventory = mapOf("wood" to EconomyRules.storage(started).capacity))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { apply(full, "claim_job", job.id, Instant.parse(job.finishesAt)) }.code)
-        assertEquals(clock(900, "ancient_core"), full.rareDropState)
+        assertEquals(clock(90, "ancient_core"), full.rareDropState)
         val claimed = apply(started, "claim_job", job.id, Instant.parse(job.finishesAt).plusSeconds(7 * 86400))
         assertEquals(1L, claimed.inventory["ancient_core"])
         assertFalse(claimed.fishing.catches.containsKey("ancient_core"))
-        assertTrue(checkNotNull(claimed.rareDropState).remainingSeconds in (spec.minSeconds - 900)..(spec.maxSeconds - 900))
+        assertTrue(checkNotNull(claimed.rareDropState).remainingSeconds in (spec.minSeconds - 90)..(spec.maxSeconds - 90))
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { apply(claimed, "claim_job", job.id, Instant.parse(job.finishesAt)) }.code)
     }
 

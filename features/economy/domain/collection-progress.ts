@@ -30,7 +30,10 @@ export function advanceEconomyProgression(value: EconomyProgression | undefined,
     [quarry, "quarrySeconds", quarryFinds, collectionCatalog.quarry.secondsPerFind],
   ] as const) {
     if (!eligible) continue;
-    const previous = next.collections[field], total = add(previous, seconds);
+    // Already-paid work keeps its original promise. New work can close at most
+    // one interval; excess duration must not become deferred finds on later claims.
+    const credited = job.catalogVersion >= 12 ? Math.min(seconds, interval) : seconds;
+    const previous = next.collections[field], total = add(previous, credited);
     next.collections[field] = total;
     const count = Math.min(ids.length, Math.floor(total / interval) - Math.floor(previous / interval));
     for (let index = 0; index < count; index++) {

@@ -1,10 +1,10 @@
 import type { FixedWorldScene, WorldBounds, WorldImage } from "@/features/world/tiled/types";
 import type { ForestWaterDynamics } from "./forest-water-dynamics";
-import { sampleForestWater } from "./forest-water-dynamics";
+import { createForestWaterPointSampler } from "./forest-water-dynamics";
 import { dynamicsFootprintFits, type WaterDynamicsGeometry } from "./water-dynamics-geometry";
-import { clipForestWaterRenderMask, getForestWaterRenderMask, isWaterBoundsVisible } from "./forest-water-render-mask";
+import { clipForestWaterRenderMask, createForestWaterBoundsVisibility, getForestWaterRenderMask } from "./forest-water-render-mask";
 
-type Patch = WorldBounds & { centerX: number; centerY: number };
+type Patch = WorldBounds & { centerX: number; centerY: number; sample: ReturnType<typeof createForestWaterPointSampler> };
 const patches = new WeakMap<WaterDynamicsGeometry, Patch[]>();
 
 function waterPatches(state: ForestWaterDynamics) {
@@ -18,7 +18,8 @@ function waterPatches(state: ForestWaterDynamics) {
     const x = state.origin.x + column * state.cellSize, y = state.origin.y + row * state.cellSize;
     const centerX = x + size / 2, centerY = y + size / 2;
     if (dynamicsFootprintFits(state.geometry, { x: centerX, y: centerY }, radius)) {
-      result.push({ x, y, width: size, height: size, centerX, centerY });
+      result.push({ x, y, width: size, height: size, centerX, centerY,
+        sample: createForestWaterPointSampler(state.geometry, { x: centerX, y: centerY }) });
     }
   }
   patches.set(state.geometry, result); return result;
@@ -34,16 +35,27 @@ export function drawForestWaterRefraction(ctx: CanvasRenderingContext2D, scene: 
   const imageHeight = "naturalHeight" in image ? image.naturalHeight : image.height;
   if (!state?.active.length || options.reducedMotion || !imageWidth || !imageHeight
     || terrain.imagePlacement && terrain.imagePlacement.rotation % 360 !== 0) return;
-  const mask = getForestWaterRenderMask(scene); if (!mask || !isWaterBoundsVisible(ctx, mask.bounds)) return;
+  const mask = getForestWaterRenderMask(scene); if (!mask) return;
+  const visible = createForestWaterBoundsVisibility(ctx); if (!visible(mask.bounds)) return;
   const source = terrain.imagePlacement ?? terrain.bounds;
   if (source.width <= 0 || source.height <= 0) return;
   const sx = imageWidth / source.width, sy = imageHeight / source.height;
-  ctx.save(); clipForestWaterRenderMask(ctx, mask);
+  // The cached patches already certify their entire enclosing circle against
+  // exact shoreline/exclusion edges. Reapplying a complex water clip to every
+  // image patch forces unnecessary raster work while panning. A changed scene
+  // using an older solver still needs its own exact clip until synchronized.
+  const water = scene.water;
+  const certified = water && state.geometry.surfaces.length === water.surfaces.length
+    && state.geometry.exclusions.length === water.exclusions.length
+    && state.geometry.surfaces.every((polygon, index) => polygon.points === water.surfaces[index].points)
+    && state.geometry.exclusions.every((polygon, index) => polygon.points === water.exclusions[index].points);
+  ctx.save();
+  if (!certified) clipForestWaterRenderMask(ctx, mask, visible);
   ctx.imageSmoothingEnabled = true; ctx.globalAlpha *= .72;
   for (const patch of waterPatches(state)) {
-    if (!isWaterBoundsVisible(ctx, patch)) continue;
+    if (!visible(patch)) continue;
     const x = patch.centerX / state.scale, y = patch.centerY / state.scale;
-    const wave = sampleForestWater(state, { x: patch.centerX, y: patch.centerY });
+    const wave = patch.sample(state);
     const dx = Math.max(-1.2, Math.min(1.2, Math.sin(x * .026 + y * .035 - state.elapsed * .72) * .42
       + wave.slopeX * state.scale * 8)) * state.scale;
     const dy = Math.max(-.7, Math.min(.7, Math.sin(x * .041 - y * .021 + state.elapsed * .48) * .22

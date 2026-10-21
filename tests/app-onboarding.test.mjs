@@ -89,6 +89,28 @@ test("calendar opening is remembered across closure and reload", () => {
   assert.equal(result.stepId, "calendar");
 });
 
+test("the first calendar opening after a confirmed check-in needs no intermediate Next", () => {
+  let state = observeAppOnboarding(started(), evidence({ lastCheckInAt: newCheckIn }));
+  assert.equal(state.stepId, "check-in", "keep the confirmation visible while already pointing at the flame");
+  assert.equal(observeAppOnboarding(state, evidence()), state, "showing the explanation does not claim a calendar visit");
+  state = observeAppOnboarding(state, evidence({ calendarOpen: true }));
+  assert.equal(state.stepId, "calendar");
+  assert.deepEqual(state.completedSteps, ["check-in", "calendar"]);
+  state = parseAppOnboarding(JSON.stringify(state));
+  assert.equal(observeAppOnboarding(state, evidence()), state, "closing or reloading preserves the actual visit");
+  assert.equal(advanceAppOnboarding(state).stepId, "people", "one Next after the visit moves on to people");
+  const pending = started();
+  assert.equal(observeAppOnboarding(pending, evidence({ calendarOpen: true })), pending,
+    "opening a calendar before a confirmed mark cannot skip the first exercise");
+});
+
+test("returning to a completed check-in does not duplicate the remembered calendar visit", () => {
+  const state = { ...started(), completedSteps: ["check-in", "calendar"] };
+  const result = observeAppOnboarding(state, evidence({ calendarOpen: true }));
+  assert.equal(result.stepId, "calendar");
+  assert.deepEqual(result.completedSteps, state.completedSteps);
+});
+
 test("visiting the requested app section satisfies only the active exercise", () => {
   for (const step of ["people", "profile"]) {
     assert.deepEqual(observeAppOnboarding(started(step), evidence()).completedSteps, []);
@@ -236,6 +258,19 @@ test("calendar and world lessons wait for the real highlighted controls", () => 
   }
 });
 
+test("the first calendar explanation immediately highlights the real flame without a Next action", () => {
+  const lesson = view("check-in", {}, ["check-in"]);
+  assert.equal(lesson.props.target, '[data-app-onboarding="calendar"]');
+  assert.equal(lesson.props.primary, undefined);
+  assert.match(lesson.props.summary, /Нажми подсвеченный огонёк/);
+  assert.match(lesson.props.text, /закрой его/);
+  assert.deepEqual(lesson.calls, [], "describing the calendar must never open it for the user");
+  const away = view("check-in", { activeView: "people" }, ["check-in"]);
+  assert.equal(away.props.target, '[data-app-onboarding="nav-check-in"]');
+  assert.match(away.props.summary, /«Я живой» внизу/);
+  assert.equal(away.props.primary, undefined);
+});
+
 test("wrong-screen lessons highlight real navigation without switching tabs for the user", () => {
   for (const step of ["check-in", "calendar", "world"]) {
     const lesson = view(step, { activeView: "people" });
@@ -273,13 +308,32 @@ test("opened app sections highlight their own content and every task has a conci
   for (const step of ["people", "profile"]) {
     assert.equal(view(step).props.target, `[data-app-onboarding="nav-${step}"]`);
     const result = view(step, { activeView: step }, [step]);
-    assert.equal(result.props.target, `[data-app-onboarding="${step}-content"]`);
+    assert.equal(result.props.target, `[data-app-onboarding="${step === "profile" ? "profile-settings" : "people-content"}"]`);
     assert.ok(result.props.summary.length > 0 && result.props.summary.length < 160);
     assert.deepEqual(result.calls, []);
   }
   for (const step of APP_ONBOARDING_STEPS) {
     assert.ok(view(step).props.summary.length > 0 && view(step).props.summary.length < 160);
   }
+});
+
+test("People lesson explains independent illuminated controls and safe location pause without requiring consent", () => {
+  const lesson = view("people", { activeView: "people" }, ["people"]);
+  assert.match(lesson.props.summary, /две кнопки: «Статус» и «Геопозиция»/);
+  assert.match(lesson.props.summary, /Подсвеченная кнопка/);
+  assert.match(lesson.props.text, /отдельно разрешают обновления отметок и места/);
+  assert.match(lesson.props.text, /Нажми имя или аватар друга/);
+  assert.match(lesson.props.text, /«Обзоре» можно пойти в гости/);
+  assert.match(lesson.props.text, /сохраняет последнее место/);
+  assert.match(lesson.props.text, /«Убрать доступ»/);
+  assert.match(lesson.props.text, /«Связи» изменить подпись/);
+  assert.match(lesson.props.hint, /значок друга на карте/);
+  assert.match(lesson.props.hint, /выбрать приложение для маршрута/);
+  assert.match(lesson.props.hint, /менять доступ не нужно/);
+  assert.equal(lesson.props.target, '[data-app-onboarding="people-content"]');
+  assert.deepEqual(lesson.calls, [], "reading the lesson cannot grant location consent or navigate automatically");
+  lesson.props.primary.onClick();
+  assert.deepEqual(lesson.calls, ["next"], "continuing only advances the existing guide");
 });
 
 
@@ -298,11 +352,13 @@ test("profile question entry resumes the saved app step and replays only a finis
 });
 
 test("only completed-step advancement can run from the small speech and character", () => {
-  for (const step of ["check-in", "calendar", "people", "profile"]) {
+  for (const step of ["calendar", "people", "profile"]) {
     const currentView = ["people", "profile"].includes(step) ? step : "check-in";
     assert.equal(view(step, { activeView: currentView }, [step]).props.primary.advance, true);
     assert.notEqual(view(step).props.primary?.advance, true);
   }
+  assert.equal(view("check-in", {}, ["check-in"]).props.primary, undefined,
+    "the completed mark points directly at the real calendar instead of advancing the speech");
   assert.equal(view("world").props.primary, undefined);
   assert.notEqual(view(null).props.primary.advance, true);
 });
@@ -322,4 +378,12 @@ test("finished app courses expose a replay label without resetting until the exp
     entryRef.current.open();
     assert.deepEqual(calls, ["replay"]);
   }
+});
+
+test("the profile lesson points at settings and introduces the gear without requiring personal data", () => {
+  const lesson = view("profile", { activeView: "profile" }, ["profile"]);
+  assert.equal(lesson.props.target, '[data-app-onboarding="profile-settings"]');
+  assert.match(lesson.props.summary, /Нажми шестерёнку/);
+  assert.doesNotMatch(lesson.props.summary, /Нажми «Личные данные»/);
+  assert.deepEqual(lesson.calls, [], "the real tab remains a user action");
 });

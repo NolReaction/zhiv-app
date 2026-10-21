@@ -7,7 +7,7 @@ import { drawForestWaterTouches } from "./forest-water-touch-painter";
 type WaterDynamicsOptions = { dusk: number; reducedMotion?: boolean };
 type Texture = { canvas: HTMLCanvasElement | OffscreenCanvas;
   context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
-  pixels: ImageData; revision: number; dusk: number };
+  pixels: ImageData; phases: Float64Array; revision: number; dusk: number };
 const textures = new WeakMap<ForestWaterDynamics, Texture>();
 const clamp = (value: number, low: number, high: number) => Number.isFinite(value) ? Math.max(low, Math.min(high, value)) : low;
 
@@ -21,7 +21,18 @@ function createTexture(state: ForestWaterDynamics): Texture | undefined {
   } else return undefined;
   const context = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
   if (!context?.createImageData || !context.putImageData) return undefined;
-  const texture = { canvas, context, pixels: context.createImageData(state.columns, state.rows), revision: -1, dusk: -1 };
+  // Grid coordinates are immutable for this solver's lifetime. Keep their two
+  // spatial phases at full JS precision; only the live clock and normals change
+  // during a paint. This remains bounded by two doubles per active grid cell.
+  const phases = new Float64Array(state.active.length * 2);
+  for (let cell = 0; cell < state.active.length; cell++) {
+    const index = state.active[cell];
+    const x = state.origin.x + (index % state.columns + .5) * state.cellSize;
+    const y = state.origin.y + (Math.floor(index / state.columns) + .5) * state.cellSize;
+    phases[cell * 2] = (x * .047 + y * .094) / state.scale;
+    phases[cell * 2 + 1] = (x * .081 - y * .037) / state.scale;
+  }
+  const texture = { canvas, context, pixels: context.createImageData(state.columns, state.rows), phases, revision: -1, dusk: -1 };
   textures.set(state, texture); return texture;
 }
 
@@ -31,17 +42,16 @@ function createTexture(state: ForestWaterDynamics): Texture | undefined {
 function surfaceTexture(state: ForestWaterDynamics, dusk: number) {
   const texture = textures.get(state) ?? createTexture(state); if (!texture) return undefined;
   if (texture.revision === state.revision && texture.dusk === dusk) return texture.canvas;
-  const { data } = texture.pixels, { heights, neighbours, columns, cellSize, origin } = state;
+  const { data } = texture.pixels, { phases } = texture, { heights, neighbours, active } = state;
   const light = [Math.round(233 - dusk * 71), Math.round(244 - dusk * 42), Math.round(214 + dusk * 18)];
   const dark = [15, Math.round(92 - dusk * 47), Math.round(113 - dusk * 36)];
-  for (const index of state.active) {
+  for (let cell = 0; cell < active.length; cell++) {
+    const index = active[cell];
     const offset = index * 4, edge = index * 4;
     const slopeX = (heights[neighbours[edge + 1]] - heights[neighbours[edge]]) * .5;
     const slopeY = (heights[neighbours[edge + 3]] - heights[neighbours[edge + 2]]) * .5;
-    const x = origin.x + (index % columns + .5) * cellSize;
-    const y = origin.y + (Math.floor(index / columns) + .5) * cellSize;
-    const along = (x * .047 + y * .094) / state.scale - state.elapsed * .63;
-    const across = (x * .081 - y * .037) / state.scale + state.elapsed * .22;
+    const along = phases[cell * 2] - state.elapsed * .63;
+    const across = phases[cell * 2 + 1] + state.elapsed * .22;
     const shimmer = Math.sin(along) * Math.sin(across) * .008;
     const normal = slopeX * .55 - slopeY * .95;
     const reflection = normal * .52 + shimmer;
@@ -55,8 +65,8 @@ function surfaceTexture(state: ForestWaterDynamics, dusk: number) {
 
 /** Drawing never advances the shared solver. Exact vector clipping is deliberately
  * applied after texture upscaling, so even sub-grid WaterExclusions remain dry.
- * Separate outside clips subtract the UNION of exclusions; one evenodd compound
- * path would wrongly paint their overlaps back in. */
+ * The compiled wet boundary subtracts the UNION of exclusions; unsupported
+ * geometry retains separate complement clips so overlapping holes stay dry. */
 export function drawForestWaterDynamics(ctx: CanvasRenderingContext2D, scene: FixedWorldScene,
   state: ForestWaterDynamics | null | undefined, options: WaterDynamicsOptions) {
   if (!state || options.reducedMotion || !state.active.length) return;

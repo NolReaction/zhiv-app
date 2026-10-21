@@ -176,3 +176,17 @@ test("Pleska odds navigation stays outside collapsed guide details", () => {
     assert.equal((html.match(/Показать шансы/g) ?? []).length, 1);
   } finally { env.restore(); }
 });
+
+test("final lesson exposes an explicit Open button outside details with the same native action", () => {
+  const env = environment();
+  try {
+    const html = renderToStaticMarkup(createElement(GuideCoach, {
+      open: true, flow: "world", stepId: "help", pose: "present", title: "Справка", text: "Открой справку.",
+      onPause() {}, onSkip() {}, primary: { label: "Открыть справку", shortLabel: "Открыть", advance: true, onClick() {} },
+    }));
+    assert.match(html, /<button[^>]+data-guide-next="true"[^>]+aria-label="Открыть справку"[^>]*>Открыть<svg/);
+    assert.doesNotMatch(html, />Дальше</);
+    assert.match(html, /<button[^>]+data-guide-advance="true"/);
+    assert.ok(html.indexOf('data-guide-next="true"') > html.indexOf("<footer"), "Open stays in the visible footer");
+  } finally { env.restore(); }
+});

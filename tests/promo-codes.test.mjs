@@ -40,6 +40,28 @@ test("redemption normalizes code and credits exact visible currencies once with 
   assert.equal(replay.replayed, true); assert.deepEqual(replay.reward, first.reward); assert.deepEqual(replay.state.wallet, first.state.wallet);
   assert.throws(() => redeem(p, command(p)), { code: "PROMO_ALREADY_USED" });
 });
+test("specific fish gifts keep their species once without opening catches or item knowledge", () => {
+  const p = player(); snapshot(p);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  row.state.inventory = { fish_epic: 1 };
+  row.state.fishing.stock = { fish_mirror_koi: 1 };
+  row.state.marketSlots = 8;
+  row.state.stageOrders = { stages: { "2": { step: 1, completed: false, terms: null } } };
+  const before = snapshot(p), request = command(p);
+  const first = redeem(p, request, catalog({ ...entry, reward: { coins: 0, pearls: 0, items: { fish_sturgeon: 2, fish_epic: 3 } } }));
+  assert.equal(first.state.inventory.fish_epic, 6);
+  assert.equal(first.state.inventory.fish_sturgeon, undefined);
+  assert.deepEqual(first.state.fishing.stock, { fish_mirror_koi: 1, fish_sturgeon: 2 });
+  assert.deepEqual(first.state.fishing.catches, before.fishing.catches);
+  assert.deepEqual(first.state.progression, before.progression);
+  assert.deepEqual(first.state.unlockedItems, before.unlockedItems);
+  assert.equal(first.state.marketSlots, 8);
+  assert.deepEqual(first.state.stageOrders, before.stageOrders);
+  const replay = redeem(p, request, { version: 1, codes: [] });
+  assert.equal(replay.replayed, true);
+  assert.deepEqual(replay.state.inventory, first.state.inventory);
+  assert.deepEqual(replay.state.fishing.stock, first.state.fishing.stock);
+});
 test("unknown disabled future and expired codes never mutate state", () => {
   for (const [code, override] of [["PROMO_NOT_FOUND", { enabled: false }], ["PROMO_NOT_STARTED", { startsAt: "2026-10-13T00:00:00Z" }], ["PROMO_EXPIRED", { endsAt: "2026-10-12T08:00:00Z" }]]) {
     const p = player(), before = snapshot(p);

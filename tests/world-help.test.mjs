@@ -8,6 +8,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:world-help-ui-hooks";
 const vite = await createServer({ appType: "custom", configFile: false, root,
+  cacheDir: "/tmp/zhiv-compact-guides-help-ui-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "world-help-ui-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
@@ -159,18 +160,44 @@ test("a direct topic opens exactly one answer and its related questions without 
 
 test("context advice explains the actual selected recipe and quantity, and only delegates an explicit navigation click", () => {
   hooks.reset(); const economy = controller({ inventory: { iron_ingot: 1 } }), opened = [], before = structuredClone(economy.snapshot);
-  const props = { economy, context: { intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 3 }, onNavigate: target => opened.push(target) };
+  const props = { economy, context: { intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 }, onNavigate: target => opened.push(target) };
   const view = help(props);
   assert.match(view.html, /data-help-advice="missing:wood"/);
-  assert.match(view.html, /Есть 0, нужно 6/);
+  assert.match(view.html, /Есть 0, нужно 1/);
   assert.doesNotMatch(view.html, /missing:fiber|missing:iron_ingot/);
   assert.deepEqual(opened, []);
-  const action = view.nodes.find(node => node.props.action?.target.kind === "expeditions");
+  const action = view.nodes.find(node => node.props.action?.target.kind === "station");
   assert.ok(action);
   const control = action.type(action.props); assert.equal(control.props.disabled, false);
   control.props.onClick();
-  assert.deepEqual(opened, [{ kind: "expeditions", sector: "forest" }]);
+  assert.deepEqual(opened, [{ kind: "station", stationId: "woodlot", recipeId: "gather_wood" }]);
   assert.deepEqual(economy.snapshot, before);
+});
+
+test("mine material help preserves the exact source route and only opens its review after an explicit click", () => {
+  hooks.reset();
+  const economy = controller({ buildings: { home: 3, warehouse: 1, workshop: 2, kiln: 1, quarry: 2 }, inventory: { charcoal: 1 } });
+  const opened = [], before = structuredClone(economy.snapshot);
+  const props = { economy, context: { intent: "production", stationId: "kiln", recipeId: "fire_bricks", quantity: 1 }, onNavigate: target => opened.push(target) };
+  const view = help(props);
+  assert.match(view.html, /data-help-advice="missing:clay"/);
+  assert.deepEqual(opened, [], "mounting the help must not select or start a mining route");
+  const action = view.nodes.find(node => node.props.action?.target.stationId === "quarry");
+  assert.ok(action);
+  const control = action.type(action.props);
+  control.props.onClick();
+  assert.deepEqual(opened, [{ kind: "station", stationId: "quarry", recipeId: "quarry_clay" }]);
+  assert.deepEqual(economy.snapshot, before, "source navigation never changes the paid queue or inventory");
+
+  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 1000 }]) {
+    hooks.reset();
+    const blocked = help({ ...props, economy: { ...economy, ...flags } });
+    assert.equal(blocked.nodes.some(node => node.props.action?.target.stationId === "quarry"), false,
+      "unknown or pending state must not invent a source from stale supplies");
+  }
+  hooks.reset();
+  assert.equal(help({ ...props, isOnline: false }).nodes.some(node => node.props.action?.target.stationId === "quarry"), false);
+  assert.equal(opened.length, 1);
 });
 
 test("retry is explicit and its control blocks busy, cooldown, offline and missing-controller calls", () => {
@@ -198,9 +225,16 @@ test("retry is explicit and its control blocks busy, cooldown, offline and missi
 test("world HUD keeps help visible and moves secondary actions under More", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
   const world = { snapshot: { state: newWorldState(), gifts: [] }, now: Date.parse("2026-09-23T12:00:00Z"), act() {} };
-  const markup = renderToStaticMarkup(createElement(WorldView, { world, economy: { snapshot: null, now: world.now }, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
+  const renderWorld = mailbox => renderToStaticMarkup(createElement(WorldView, { world, economy: { snapshot: null, now: world.now }, mailbox, ownerPublicId: "help-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 }));
+  const markup = renderWorld();
+  const moreButton = html => /<button\b[^>]*\bdata-world-quick="more"[^>]*>/.exec(html)?.[0];
   assert.match(markup, /aria-label="Справка по игре"/);
-  assert.match(markup, /data-world-quick="more" aria-haspopup="dialog" aria-expanded="false"/);
+  const more = moreButton(markup);
+  assert.ok(more, "More remains a native keyboard-activatable button");
+  assert.match(more, /aria-label="Ещё"/);
+  assert.match(more, /aria-haspopup="dialog"/);
+  assert.match(more, /aria-expanded="false"/);
+  assert.doesNotMatch(more, /data-mail-unread|aria-controls=|tabindex="-1"/);
   assert.match(markup, /aria-label="Открыть кладовую"/);
   assert.doesNotMatch(markup, /aria-label="Открыть коллекции"/);
   assert.match(markup, /aria-label="Профиль Мохлика\. Мохлик, уровень 1"/);
@@ -209,6 +243,13 @@ test("world HUD keeps help visible and moves secondary actions under More", asyn
   assert.deepEqual([...dock.matchAll(/data-world-quick="([^"]+)"/g)].map(match => match[1]), ["pantry", "expeditions", "more"]);
   assert.doesNotMatch(markup, /Как Мохлик\?|Хозяйство/);
   assert.match(markup, /lucide-info/);
+  const unread = renderWorld({ ownerPublicId: "help-test", unreadCount: 125, open() { assert.fail("Rendering cannot open mail"); } });
+  assert.match(moreButton(unread), /aria-label="Ещё\. Непрочитанных писем: 125"/);
+  assert.match(moreButton(unread), /data-mail-unread="true"/);
+  assert.match(unread, /aria-hidden="true">99\+<\/span>/, "the compact visual badge never truncates the accessible unread count");
+  const foreign = moreButton(renderWorld({ ownerPublicId: "another-player", unreadCount: 125 }));
+  assert.match(foreign, /aria-label="Ещё"/);
+  assert.doesNotMatch(foreign, /data-mail-unread|Непрочитанных/);
 });
 
 

@@ -36,7 +36,7 @@ test("saved construction shows its target level and server-clock countdown and o
   assert.match(html, /data-map-object="home"/);
   assert.match(html, /left:190px;top:240px/);
   assert.match(html, /<strong>30:00<\/strong>/);
-  assert.match(html, /aria-label="Дом Мохлика: идёт строительство\. Открыть улучшение"/);
+  assert.match(html, /aria-label="Дом Мохлика: идёт строительство, 30:00\. Открыть улучшение"/);
   assert.doesNotMatch(html, /data-ready|Готово/);
   button.props.onClick();
   assert.deepEqual(calls, ["home"]);
@@ -54,9 +54,9 @@ test("a hidden or offscreen host cannot leave a floating construction marker beh
 });
 
 test("every economy construction maps to its existing map host including interior stations", () => {
-  const places = { home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop", garden: "garden", woodlot: "woodlot", quarry: "quarry", dryer: "campfire" };
+  const places = { home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop", garden: "garden", woodlot: "lopukh-home", quarry: "quarry", dryer: "campfire", bridge: "bridge", lighthouse: "lighthouse" };
   for (const station of economyCatalog.buildings) assert.equal(constructionMapPlace(station.id), places[station.id]);
-  for (const unknown of ["bridge", "lighthouse", "constructor", "unknown"]) assert.equal(constructionMapPlace(unknown), null);
+  for (const unknown of ["constructor", "unknown"]) assert.equal(constructionMapPlace(unknown), null);
 });
 
 test("construction marker follows roof geometry through pan zoom resize and authored visual levels", () => {
@@ -87,8 +87,27 @@ test("construction marker clears measured HUD bounds and disappears when its roo
   assert.equal(projectConstructionAnchor(object, { ...camera, y: 500 }, view), null);
   assert.equal(projectConstructionAnchor(object, { ...camera, y: -300 }, view), null);
   const nearEdge = projectConstructionAnchor(object, { ...camera, x: 300 }, view);
-  assert.equal(nearEdge.x, 70, "keep the fixed-size button fully inside the viewport");
+  assert.equal(nearEdge.x, 57, "keep the fixed-size button fully inside the viewport");
   assert.equal(nearEdge.x + nearEdge.pointerOffset, 20, "its pointer still identifies the visible roof");
+});
+
+test("camera movement reuses immutable roof geometry while a replacement contour takes effect immediately", () => {
+  let reads = 0;
+  const points = [[100, 200], [220, 230], [180, 280]].map(([x, y]) => ({
+    get x() { reads++; return x; }, get y() { reads++; return y; },
+  }));
+  const object = { id: "home", place: "house", hitArea: points };
+  const view = { width: 400, height: 600 }, camera = { x: 200, y: 300, zoom: 1 };
+  assert.equal(projectConstructionAnchor(object, camera, view).y, 190);
+  const preparedReads = reads;
+  for (let step = 1; step <= 120; step++) {
+    const anchor = projectConstructionAnchor(object, { ...camera, x: camera.x + step / 4 }, view);
+    assert.equal(anchor.x, Math.round(160 - step / 4));
+  }
+  assert.equal(reads, preparedReads, "120 camera positions do not rescan the immutable contour");
+  const next = { ...object, hitArea: [{ x: 100, y: 160 }, { x: 220, y: 280 }] };
+  assert.equal(projectConstructionAnchor(next, camera, view).y, 150, "new artwork immediately supplies its own roof");
+  assert.equal(projectConstructionAnchor({ ...object, hitArea: [] }, camera, view), null);
 });
 
 test("finished construction remains visible and ready without applying its level", () => {
@@ -103,7 +122,7 @@ test("finished construction remains visible and ready without applying its level
 });
 
 test("construction countdown preserves seconds and long build durations without negative output", () => {
-  for (const [seconds, expected] of [[-2, "0:00"], [.1, "0:01"], [59, "0:59"], [60, "1:00"], [3600, "1:00:00"], [90061, "1 д 1:01:01"], [604800, "7 д 0:00:00"]]) {
+  for (const [seconds, expected] of [[-2, "0:00"], [.1, "0:01"], [59, "0:59"], [60, "1:00"], [3600, "1:00:00"], [90061, "25:01:01"], [604800, "168:00:00"], [NaN, "0:00"], [Infinity, "0:00"]]) {
     assert.equal(constructionCountdown(seconds), expected);
   }
 });

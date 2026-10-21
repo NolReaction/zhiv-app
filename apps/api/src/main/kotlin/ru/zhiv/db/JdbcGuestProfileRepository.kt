@@ -9,7 +9,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 import javax.sql.DataSource
 
-/** One SQL snapshot checks authorization and projects only the public game fields. Reads never create profiles or grant awards. */
+/** Active direct friends can read safe game fields independently of status sharing. Reads never create profiles or grant awards. */
 class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileRepository {
     override suspend fun profile(sessionHash: ByteArray, circleId: UUID): GuestProfile = withContext(Dispatchers.IO) {
         source.connection.use { c ->
@@ -32,18 +32,20 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                            WHERE t.user_id=a.user_id AND t.achievement_id=a.achievement_id),1))
                            FROM game_achievements a WHERE a.user_id=other.id AND a.achievement_id=ANY(?::text[])),
                            '{}'::jsonb) AS achievements,
+                       CASE WHEN gp.leaderboard_opt_in THEN gp.lifetime_taps END AS lifetime_taps,
+                       CASE WHEN gp.leaderboard_opt_in THEN gp.best_series END AS best_series,
                        statement_timestamp() AS server_time
                 FROM app_sessions s JOIN app_users viewer ON viewer.id=s.user_id
                 JOIN circles circle ON circle.id=? AND circle.kind='DIRECT' AND circle.archived_at IS NULL
                     AND viewer.id IN(circle.direct_user_low_id,circle.direct_user_high_id)
                 JOIN app_users other ON other.id=CASE WHEN viewer.id=circle.direct_user_low_id
                     THEN circle.direct_user_high_id ELSE circle.direct_user_low_id END
-                CROSS JOIN LATERAL effective_recipient_sharing(other.id,viewer.id) privacy
                 LEFT JOIN economy_profiles ep ON ep.user_id=other.id
                 LEFT JOIN world_profiles wp ON wp.user_id=other.id
+                LEFT JOIN game_profiles gp ON gp.user_id=other.id
                 WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>statement_timestamp()
                     AND viewer.deleted_at IS NULL AND viewer.banned_at IS NULL
-                    AND other.deleted_at IS NULL AND other.banned_at IS NULL AND privacy.sharing_mode<>'OFF'
+                    AND other.deleted_at IS NULL AND other.banned_at IS NULL
             """.trimIndent()).use { s ->
                 val ids = c.createArrayOf("text",GuestProfileRules.achievementIds.toTypedArray())
                 try {
@@ -56,7 +58,8 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                             GuestProfileRules.achievements(Json.decodeFromString<Map<String,Int>>(r.getString("achievements"))),
                             GuestProfileRules.collections(Json.decodeFromString<List<String>>(r.getString("finds")),
                                 Json.decodeFromString<Map<String,Long>>(r.getString("catches"))),
-                            r.getObject("server_time",OffsetDateTime::class.java).toInstant().toString())
+                            r.getObject("server_time",OffsetDateTime::class.java).toInstant().toString(),
+                            r.getObject("lifetime_taps")?.let { GuestTapStats(r.getLong("lifetime_taps"), r.getLong("best_series")) })
                     }
                 } finally { ids.free() }
             }

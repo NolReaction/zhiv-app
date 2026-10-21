@@ -5,6 +5,15 @@ import ru.zhiv.auth.AuthFailure
 import ru.zhiv.http.parseCanonicalUuidV4
 
 @Serializable
+data class EconomyMarketSale(
+    val buyerPublicId: String?,
+    val buyerName: String,
+    val buyerAvatarUrl: String? = null,
+    val proceedsCoins: Long,
+    val claimedAt: String? = null,
+)
+
+@Serializable
 data class EconomyMarketListing(
     val id: String,
     val sellerPublicId: String,
@@ -17,10 +26,13 @@ data class EconomyMarketListing(
     val closedAt: String? = null,
     val owned: Boolean,
     val feeBps: Int = 0,
+    val sale: EconomyMarketSale? = null,
 )
 
 @Serializable
 data class EconomyMarketShowcase(val refreshAt: String, val slots: Int, val maxPerSeller: Int, val refreshSeconds: Long)
+
+data class EconomyMarketSlotOffer(val targetId: String, val slots: Int, val pricePearls: Long)
 
 @Serializable
 data class EconomyMarketTradeBudget(
@@ -30,6 +42,7 @@ data class EconomyMarketTradeBudget(
 
 @Serializable
 data class EconomyMarketView(
+    val ownerPublicId: String,
     val listings: List<EconomyMarketListing>,
     val mine: List<EconomyMarketListing>,
     val nextCursor: String? = null,
@@ -50,14 +63,20 @@ object EconomyMarketRules {
     const val MAX_PRICE_MULTIPLIER = 2L
     const val MAX_PAGE_SIZE = 12
 
-    fun homeBand(homeLevel: Int): IntRange = when (homeLevel) {
-        2, 3 -> 2..3
-        4, 5 -> 4..5
-        else -> 1..1
-    }
+    fun unlocked(state: EconomyState, config: EconomyMarketConfig = EconomyRules.catalog.market): Boolean =
+        (state.buildings["home"] ?: 1) >= config.requiredHomeLevel &&
+            state.completedExplorations >= config.requiredExplorations &&
+            config.requiredBuildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level }
 
-    fun sameHomeBand(buyerHome: Int, sellerHome: Int): Boolean =
-        buyerHome in 2..5 && sellerHome in homeBand(buyerHome)
+    /** One pool; permanent discovery still guards each buyer's available goods. */
+    fun homeRange(homeLevel: Int): IntRange = if (homeLevel in 2..5) 2..5 else 1..1
+
+    fun canTrade(buyerHome: Int, sellerHome: Int): Boolean =
+        buyerHome in 2..5 && sellerHome in homeRange(buyerHome)
+
+    fun showcaseCurrent(refreshAt: java.time.Instant, at: java.time.Instant,
+        config: EconomyMarketConfig = EconomyRules.catalog.market): Boolean =
+        at.isBefore(refreshAt) && !refreshAt.isAfter(at.plusSeconds(config.showcaseRefreshSeconds))
 
     fun dailyTradeLimit(homeLevel: Int, config: EconomyMarketConfig = EconomyRules.catalog.market): Long =
         config.dailyTradeValueByHome.getOrNull(homeLevel - 1) ?: 0L
@@ -79,14 +98,14 @@ object EconomyMarketRules {
         if (parseCanonicalUuidV4(command.requestId) == null || command.ownerPublicId.isBlank() ||
             command.ownerPublicId.length > 80 || command.expectedRevision !in 0L until 9_007_199_254_740_991L ||
             command.targetId.isBlank() || command.targetId.length > 80 ||
-            command.action !in setOf("create_listing", "buy_listing", "cancel_listing")) {
+            command.action !in setOf("create_listing", "buy_listing", "cancel_listing", "claim_sale")) {
             throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректный запрос рынка", 400)
         }
         if (command.action != "create_listing" && parseCanonicalUuidV4(command.targetId) == null)
             throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректное объявление", 400)
-        if (command.action == "cancel_listing") {
+        if (command.action in setOf("cancel_listing", "claim_sale")) {
             if (command.quantity != 1L || command.totalPrice != 0L)
-                throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректный запрос отмены", 400)
+                throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректный запрос лавки", 400)
         } else {
             if (command.quantity !in 1L..EconomyRules.catalog.market.maxLotQuantity)
                 throw AuthFailure("ECONOMY_MARKET_QUANTITY", "В объявлении может быть от 1 до 99 предметов", 400)
@@ -105,6 +124,7 @@ object EconomyMarketRules {
 
     fun requiredHomeLevel(itemId: String, catalog: EconomyCatalog = EconomyRules.catalog): Int {
         fun buildingHome(id: String, level: Int, seen: Set<String> = emptySet()): Int {
+            if (id == "dryer" && level == 0) return 1
             if (id == "home") return level
             val key = "$id:$level"
             if (key in seen) return Int.MAX_VALUE
@@ -118,17 +138,19 @@ object EconomyMarketRules {
             buildings.maxOfOrNull { (id, level) -> buildingHome(id, level) } ?: 1)
         val sources = (catalog.recipes.filter { (it.rewards[itemId] ?: 0L) > 0L }.map { recipe ->
             requirements(recipe.requiredHomeLevel, recipe.requiredBuildings + (recipe.buildingId to
-                maxOf(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?: 0)))
+                maxOf(recipe.effectiveBuildingLevel, recipe.requiredBuildings[recipe.buildingId] ?: 0)))
         } + catalog.explorations.filter { (it.rewards[itemId] ?: 0L) > 0L }
             .map { requirements(it.requiredHomeLevel, it.requiredBuildings) }).toMutableList()
         catalog.fishing?.let { fishing ->
             fishing.baits.find { it.itemId == itemId }?.let { sources += it.requiredHomeLevel }
-            fishing.fish.find { it.itemId == itemId }?.let { fish ->
-                val hookHome = fish.requiredHookId?.let { id ->
-                    fishing.hooks.find { it.id == id }?.requiredHomeLevel ?: Int.MAX_VALUE
-                } ?: 1
+            val tier = fishing.classes.find { it.itemId == EconomyFishInventory.itemId(itemId, catalog) }
+            if (tier != null) {
+                val hookHome = fishing.hooks.minOfOrNull { it.requiredHomeLevel } ?: Int.MAX_VALUE
+                val rodHome = fishing.rods.filter { rod -> EconomyRules.fishingClassWeights(rod.id, null, spec = fishing)
+                    .any { it.first.rarity == tier.rarity && it.second > 0 } }
+                    .minOfOrNull { it.requiredHomeLevel } ?: Int.MAX_VALUE
                 sources += catalog.explorations.filter { it.id in fishing.routeIds }.map {
-                    maxOf(hookHome, requirements(it.requiredHomeLevel, it.requiredBuildings))
+                    maxOf(hookHome, rodHome, requirements(it.requiredHomeLevel, it.requiredBuildings))
                 }
             }
         }
@@ -141,4 +163,14 @@ object EconomyMarketRules {
             totalPrice <= item.baseSellPrice * quantity * EconomyRules.catalog.market.maxPriceMultiplier &&
             homeLevel >= requiredHomeLevel(itemId)
     }
+
+    fun eligible(itemId: String, quantity: Long, totalPrice: Long, state: EconomyState): Boolean {
+        val item = EconomyRules.catalog.items.firstOrNull { it.id == itemId && it.tradable } ?: return false
+        return quantity in 1L..MAX_QUANTITY && totalPrice / quantity >= item.baseSellPrice &&
+            totalPrice <= item.baseSellPrice * quantity * EconomyRules.catalog.market.maxPriceMultiplier &&
+            itemUnlocked(state, itemId)
+    }
+
+    fun itemUnlocked(state: EconomyState, itemId: String): Boolean =
+        EconomyFishInventory.itemId(itemId) in EconomyItemUnlocks.project(state)
 }

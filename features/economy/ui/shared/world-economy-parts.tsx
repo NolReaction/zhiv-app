@@ -1,19 +1,22 @@
 "use client";
 
-import { ArrowRight, Check, Clock3, CookingPot, Flame, Hammer, House, LockKeyhole, Package, Pickaxe, Sprout, Trees, type LucideIcon } from "lucide-react";
+import { ArrowRight, Check, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Package, Pickaxe, Sprout, TowerControl, Trees, type LucideProps } from "lucide-react";
+import type { ComponentType } from "react";
+import { CampfireIcon } from "@/features/economy/ui/construction/campfire-icon";
 import { ItemIcon } from "@/features/items/item-icon";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import type { EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
-import { worldDuration, worldJobProgress, worldMaterialSource, worldMissingRequirements } from "./world-stations";
+import { worldCountdown, worldJobProgress, worldMaterialSource, worldMissingRequirements } from "./world-stations";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { berryCollectionStatus } from "@/features/economy/integration/garden-collection";
-import { ProductionActivity, productionIsActive } from "@/features/economy/ui/production/production-activity";
+import { explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
+import { ProductionWork } from "@/features/economy/ui/production/production-work";
 import styles from "@/features/economy/ui/stations/world-object-menu.module.css";
 
 export type StationNavigation = { open: (id: string, recipeId?: string) => void; canOpen: (id: string) => boolean; explore?: () => void };
 export const number = (value: number) => value.toLocaleString("ru-RU");
-export const stationIcons: Record<string, LucideIcon> = { home: House, warehouse: Package, garden: Sprout, dryer: CookingPot, workshop: Hammer, kiln: Flame, quarry: Pickaxe, woodlot: Trees };
+export const stationIcons: Record<string, ComponentType<LucideProps>> = { home: House, warehouse: Package, garden: Sprout, dryer: CampfireIcon, workshop: Hammer, kiln: Flame, quarry: Pickaxe, woodlot: Trees, bridge: Fence, lighthouse: TowerControl };
 export const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? id;
 export const stationName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? id;
 
@@ -28,8 +31,10 @@ export function Cost({ state, cost, quantity = 1, navigation }: { state: Economy
   return <ul className={styles.cost} aria-label="Стоимость">{cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins * quantity || undefined}><ItemIcon itemId="coins" size={18} /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(cost.coins * quantity)}</strong></li>}{Object.entries(cost.items).map(([id, amount]) => {
     const missing = (state.inventory[id] ?? 0) < amount * quantity;
     const source = missing ? worldMaterialSource(state, id) : null;
-    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId) : source?.kind === "exploration" ? navigation?.explore : undefined;
-    return <li key={id} data-missing={missing || undefined}><ProductIcon state={state} itemId={id} size={18} /><span>{openSource ? <button type="button" className={styles.textButton} aria-label={`Где получить: ${itemName(state, id)}${source?.kind === "exploration" ? ", В путь" : ""}`} onClick={openSource}>{itemName(state, id)}<ArrowRight size={11} aria-hidden="true" /></button> : itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(amount * quantity)}</strong></li>;
+    const mining = source?.kind === "exploration" && state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
+    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId, source.targetId)
+      : mining && navigation?.canOpen("quarry") ? () => navigation.open("quarry") : source?.kind === "exploration" ? navigation?.explore : undefined;
+    return <li key={id} data-missing={missing || undefined}><ProductIcon state={state} itemId={id} size={18} /><span>{openSource ? <button type="button" className={styles.textButton} aria-label={`Где получить: ${itemName(state, id)}${source?.kind === "exploration" ? mining ? ", Шахта" : ", В путь" : ""}`} onClick={openSource}>{itemName(state, id)}<ArrowRight size={11} aria-hidden="true" /></button> : itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(amount * quantity)}</strong></li>;
   })}</ul>;
 }
 export function Requirements({ state, required, navigation }: { state: EconomyView; required: Record<string, number>; navigation?: StationNavigation }) {
@@ -42,19 +47,21 @@ export function Work({ economy, job, openPantry, compact = false }: { economy: R
   const collection = useGardenCollection();
   const berry = berryCollectionStatus(job, economy.snapshot, economy.now, collection);
   const status = worldJobProgress(economy.snapshot, job, economy.now);
+  const storageShortfall = Math.max(status.storageShortfall, berry?.storageShortfall ?? 0);
   const outputs = Object.entries(job.rewards);
-  const title = compact && job.kind === "production" && outputs.length === 1 ? `${itemName(economy.snapshot, outputs[0][0])} ×${number(outputs[0][1])}` : job.kind === "construction" ? `Обустройство · ур. ${job.targetLevel}` : economy.snapshot.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Производство";
+  const title = isMinerJob(job) ? economy.snapshot.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Добыча в шахте"
+    : job.kind === "construction" ? `Обустройство · ур. ${job.targetLevel}` : economy.snapshot.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Производство";
   const itemId = Object.keys(job.rewards)[0];
-  const working = productionIsActive(job, economy.now);
+  if (job.kind === "production") return <ProductionWork economy={economy} job={job} openPantry={openPantry} compact={compact} />;
   return <div className={`${styles.work} ${compact ? styles.compactWork : ""}`} data-job-id={job.id} data-ready={status.ready || undefined}>
-    <div className={styles.workTop}><span className={styles.workIcon} data-working={working || undefined}>{working ? <ProductionActivity job={job} now={economy.now} /> : job.kind === "construction" ? <Hammer size={21} aria-hidden="true" /> : <ProductIcon state={economy.snapshot} itemId={itemId ?? ""} size={22} />}</span><div><strong>{title}</strong><span>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : `Осталось ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span></div>{(!compact || status.ready || berry && !berry.growing) && <button type="button" className={styles.claim} disabled={locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled} onClick={() => {
-      if (locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled) return;
+    <div className={styles.workTop}><span className={styles.workIcon}>{job.kind === "construction" ? <Hammer size={21} aria-hidden="true" /> : <ProductIcon state={economy.snapshot} itemId={itemId ?? ""} size={22} />}</span><div><strong>{title}</strong><span>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : worldCountdown(status.seconds)}</span></div>{(!compact || status.ready || berry && !berry.growing) && <button type="button" className={styles.claim} disabled={locked(economy) || !status.ready || storageShortfall > 0 || berry?.disabled} onClick={() => {
+      if (locked(economy) || !status.ready || storageShortfall > 0 || berry?.disabled) return;
       if (berry && collection) collection.start(job.id);
-      else economy.act(berry && !berry.started ? "start_collection" : "claim_job", job.id);
+      else economy.act(berry && !berry.started ? "start_garden_collection" : job.collection?.batchId ? "claim_garden_collection" : "claim_job", job.collection?.batchId ?? job.id);
     }} aria-label={`${berry?.button ?? (job.kind === "construction" ? "Завершить" : "Забрать")}: ${title}`}>{status.ready && !berry?.collecting ? <Check size={15} aria-hidden="true" /> : <Clock3 size={15} aria-hidden="true" />}{berry?.button ?? (status.ready ? job.kind === "construction" ? "Завершить" : "Забрать" : "В работе")}</button>}</div>
     {compact && outputs.length > 1 && <Rewards state={economy.snapshot} rewards={job.rewards} />}
     <progress className={styles.progress} value={berry?.collecting ? undefined : status.progress} max={1} aria-label={berry?.collecting ? "Сбор урожая" : `Готовность: ${title}`} />
     {berry?.away && status.ready && <p className={styles.hint}>{berry.awayReason}</p>}
-    {status.storageShortfall > 0 && status.ready && <p className={styles.hint}>Нужно освободить {number(status.storageShortfall)} мест.{openPantry && <button type="button" className={styles.textButton} onClick={openPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button>}</p>}
+    {storageShortfall > 0 && status.ready && <p className={styles.hint}>Нужно освободить {number(storageShortfall)} мест.{openPantry && <button type="button" className={styles.textButton} onClick={openPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button>}</p>}
   </div>;
 }

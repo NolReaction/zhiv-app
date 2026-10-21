@@ -35,7 +35,16 @@ test("travel progress derives from absolute journey time and remains bounded aft
   assert.equal(journeyFraction(journey, start + 86400000), 1);
 });
 
-test("the fullscreen forest mounts raw modal content without centered-dialog geometry", () => {
+test("the fullscreen forest mounts raw modal content without centered-dialog geometry", t => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  let activityGate = null;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: {
+    querySelector(selector) { assert.equal(selector, "[data-activity-gate]"); return activityGate; },
+  } });
+  t.after(() => {
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else delete globalThis.document;
+  });
   const origin = { "--portal-x": "180px", "--portal-y": "350px", "--portal-radius": "150px" };
   let dialog;
   function PortalProbe() { dialog = WorldPortal({ open: true, origin }); return null; }
@@ -59,6 +68,11 @@ test("the fullscreen forest mounts raw modal content without centered-dialog geo
   view.props.escapeHandlerRef.current = () => true;
   content.props.onEscapeKeyDown(event);
   assert.ok(prevented && stopped, "closing a local menu must not also dismiss the world");
+  prevented = false; stopped = false;
+  view.props.escapeHandlerRef.current = () => false;
+  activityGate = {};
+  content.props.onEscapeKeyDown(event);
+  assert.ok(prevented && stopped, "the activity gate owns Escape while the retained world is paused");
 });
 
 test("account-owned sibling dialogs have distinct keys and remount on account changes", async () => {
@@ -197,12 +211,19 @@ test("map keeps focused actions and retains collection of saved legacy journeys"
   const economy = { snapshot: null, market: null, now: world.now, busy: false, uncertain: false, error: null, notice: "", retryAt: 0, act() {}, actMarket() {}, retry() {}, refresh() {}, refreshMarket() {} };
   const props = { world, economy, ownerPublicId: "test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 30 };
   const markup = renderToStaticMarkup(createElement(WorldView, props));
-  assert.match(markup, /data-world-quick="more" aria-haspopup="dialog" aria-expanded="false"/);
+  const more = /<button\b[^>]*\bdata-world-quick="more"[^>]*>/.exec(markup)?.[0];
+  assert.ok(more, "secondary actions keep a native accessible More button");
+  assert.match(more, /aria-label="Ещё"/);
+  assert.match(more, /aria-haspopup="dialog"/);
+  assert.match(more, /aria-expanded="false"/);
+  assert.doesNotMatch(more, /aria-controls=|tabindex="-1"/);
   assert.match(markup, /В путь/); assert.match(markup, /Кладовая/);
   assert.doesNotMatch(markup, /Хозяйство|Как Мохлик\?/);
-  for (const place of ["house", "garden", "campfire", "workshop", "quarry", "woodlot", "bridge", "lighthouse"]) {
+  for (const place of ["house", "garden", "campfire", "workshop", "quarry", "bridge", "lighthouse",
+    "plesk-shop", "builder-home", "market", "leaftail-caravan", "bulletin-board", "lopukh-home"]) {
     assert.match(markup, new RegExp(`data-kind="${place}"`), "production and upgrades are reached through map objects");
   }
+  assert.doesNotMatch(markup, /data-(?:kind|object-id)="woodlot"/, "woodlot uses the rabbit home's actual target instead of a phantom old workbench");
   assert.doesNotMatch(markup, /Строить|Первая прогулка|Обустроить дом/);
   state.journeys = [{ id: "saved", routeId: "first_path", startedAt: "2026-09-20T12:00:00Z", finishesAt: "2026-09-20T12:01:00Z" }];
   const pending = renderToStaticMarkup(createElement(WorldJourneys, { world, destination: "trail" }));

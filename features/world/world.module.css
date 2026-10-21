@@ -15,6 +15,8 @@
   --forest-focus: #355e48;
 }
 .world { position: relative; width: 100%; height: 100%; overflow: hidden; color: #eef2dc; }
+.world:has([data-world-studio-mode]) > [data-world-hud] { visibility: hidden; pointer-events: none; }
+.world:has([data-world-studio-mode]) > :is(.goalHud, .feedback) { visibility: hidden; pointer-events: none; }
 .world *, .sheet * { box-sizing: border-box; }
 :where(.world, .sheet, .loading) button { min-height: 44px; border: 1px solid var(--sheet-button-border, #d8e6b643); border-radius: 14px; background: var(--sheet-button-bg, #19271cec); color: var(--sheet-button-ink, #e0e9ce); font: inherit; font-size: .875rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 13px; transition: background .18s, border-color .18s; }
 :where(.world, .sheet) button:where(:hover:not(:disabled)) { background: var(--sheet-button-hover, #33452bee); border-color: var(--sheet-button-hover-border, #d4e8a78c); }
@@ -33,12 +35,17 @@
 .mapAnchors { position: absolute; inset: 0; pointer-events: none; }
 /* A small landmark hint inside a full touch target; buildings stay visible. */
 .mapAnchors button { --place-color: #d2e695; position: absolute; top: 0; left: 0; pointer-events: auto; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; box-shadow: none; }
-.mapAnchors button::after { content: ''; width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid #142317; border-radius: 1px; background: var(--place-color); box-shadow: 0 0 0 2px #14231780, 0 1px 5px #0a170999; transition: transform .18s, box-shadow .18s; }
+.mapAnchors button::after { --tap-hint-scale: 1; content: ''; width: 6px; height: 6px; transform: rotate(45deg) scale(var(--tap-hint-scale)); border: 1px solid #142317; border-radius: 1px; background: var(--place-color); box-shadow: 0 0 0 1px #14231780, 0 1px 4px #0a170977; transition: transform .18s, box-shadow .18s, opacity .18s; }
+.mapAnchors button[data-tap-hint-detail='distant']::after { --tap-hint-scale: .65; opacity: .7; }
+.mapAnchors button[data-tap-hint-detail='far']::after { --tap-hint-scale: .5; opacity: 0; }
+.mapAnchors[data-tap-hints='false'] button::after { content: none; }
 .mapAnchors button[data-kind='house'] { --place-color: #efc97a; }
 .mapAnchors button[data-kind='river'] { --place-color: #8fd5db; }
 .mapAnchors button[data-kind='workshop'] { --place-color: #ddad7a; }
 .world .mapAnchors button:hover { background: transparent; border: 0; }
-.mapAnchors button:hover::after, .mapAnchors button:focus-visible::after { transform: rotate(45deg) scale(1.25); box-shadow: 0 0 0 3px #14231799, 0 0 10px var(--place-color); }
+.mapAnchors button:hover::after, .mapAnchors button:focus-visible::after { transform: rotate(45deg) scale(calc(var(--tap-hint-scale) * 1.2)); box-shadow: 0 0 0 2px #14231799, 0 0 6px var(--place-color); }
+.mapAnchors button:focus-visible::after { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .mapAnchors button::after { transition: none; } }
 .away { position: absolute; top: calc(120px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 90px); font-size: .875rem; }
 .objectLayer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 .mapAnchors button { touch-action: none; }
@@ -47,14 +54,18 @@
 .feedback button { pointer-events: auto; }
 .sheet[data-slot='dialog-content'] { --dialog-padding: 0; --sheet-button-bg: var(--forest-paper-light); --sheet-button-ink: var(--forest-ink); --sheet-button-border: var(--forest-border); --sheet-button-hover: #e3dcc2; --sheet-button-hover-border: #97a076; translate: none; z-index: 100; position: fixed; top: 50%; right: 20px; left: auto; transform: translateY(-50%); width: min(460px, calc(100vw - 40px)); max-width: none; height: min(780px, calc(100dvh - 40px)); max-height: calc(100dvh - 40px); border: 1px solid #9aab7b; border-radius: 24px; padding: 0; gap: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--forest-paper); color: var(--forest-ink); box-shadow: 0 20px 70px #07100688, inset 0 0 0 1px #fff3; animation: sheet-enter 220ms ease-out; }
 .sheet[data-slot='dialog-content'][data-book='true'] { --sheet-button-bg: #19271cec; --sheet-button-ink: #e0e9ce; --sheet-button-border: #d8e6b643; --sheet-button-hover: #33452bee; --sheet-button-hover-border: #d4e8a78c; background: #162016fa; color: #eef2dc; }
+.sheet[data-slot='dialog-content'][data-orders='true'] { top: 50%; right: auto; bottom: auto; left: 50%; transform: translate(-50%, -50%); width: min(900px, calc(100vw - 40px)); height: min(840px, calc(100dvh - 40px)); max-height: calc(100dvh - 40px); border: 1px solid #958361; border-radius: 20px; background: #ece3c9; box-shadow: 0 24px 80px #07100699, inset 0 0 0 3px #7d725744; }
 .sheetHeader { --sheet-button-bg: #e5eaca0b; --sheet-button-ink: #f0e6ca; --sheet-button-border: #e5eaca30; --sheet-button-hover: #e5eaca20; --sheet-button-hover-border: #d4e8a78c; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; flex-shrink: 0; border-bottom: 1px solid #9caf7760; background: linear-gradient(125deg, #2d4632, #213629); color: #f0e6ca; }
 .sheetHeader h2 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 1.125rem; line-height: 1.4; }
 .sheetHeader h2 > svg { flex: 0 0 auto; color: #d9c591; }
+.sheet[data-orders='true'] .sheetHeader { border-bottom: 1px solid #b7a06a; background: linear-gradient(120deg, #3b4b37, #2c382c); box-shadow: inset 0 -3px #b9a47318; }
+.sheet[data-orders='true'] .sheetHeader h2 { font-size: 17px; letter-spacing: .02em; }
 .sheet .sheetHeader button:hover:not(:disabled) { background: #e5eaca20; }
 @media (min-width: 601px) { .sheet[data-slot='dialog-content'][data-market='true'], .sheet[data-slot='dialog-content'][data-book='true'], .sheet[data-slot='dialog-content'][data-shop='true'] { width: min(640px, calc(100vw - 40px)); } }
 .sheetHeader button { flex: 0 0 44px; width: 44px; padding: 8px; background: #e5eaca0b; color: #f0e6ca; border-color: #e5eaca30; }
 .sheetBody { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 12px 16px 20px; scrollbar-width: thin; scrollbar-color: #788260 transparent; background: var(--forest-paper); }
 .sheet[data-book='true'] .sheetBody { background: transparent; }
+.sheet[data-orders='true'] .sheetBody { padding: 18px 20px 24px; background: #ece3c9; }
 .sheet:not([data-book='true']) :is(button, summary):focus-visible { outline-color: var(--forest-focus); }
 .sheet .sheetHeader button:focus-visible { outline-color: #e1eeb6; }
 .panel, .panelHeading, .card, .find { min-width: 0; overflow-wrap: anywhere; }
@@ -118,6 +129,10 @@
 @keyframes sheet-enter { from { opacity: 0; margin-top: 14px; } to { opacity: 1; margin-top: 0; } }
 @media (max-width: 640px) {
   .sheet[data-slot='dialog-content'] { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; height: min(76dvh, 780px); max-height: calc(100dvh - 60px - env(safe-area-inset-top)); border-radius: 24px 24px 0 0; border-bottom: 0; }
+  .sheet[data-slot='dialog-content'][data-orders='true'] { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); left: max(8px, env(safe-area-inset-left)); width: auto; height: auto; max-height: none; transform: none; border: 1px solid #958361; border-radius: 16px; }
+  .sheet[data-orders='true'] .sheetHeader { padding: 9px 12px; }
+  .sheet[data-orders='true'] .sheetHeader h2 { font-size: 15px; }
+  .sheet[data-orders='true'] .sheetBody { padding: 12px 10px 18px; }
   .sheetBody { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
   .balances > span { padding: 0 6px; }
 }
@@ -129,8 +144,10 @@
 
 /* World-only motion; never inherit the centered modal transform utilities. */
 .portalScrim[data-slot='dialog-overlay'] { animation-duration: 650ms; background: #0610095c; }
-.portal[data-state='open'] .scene { animation: terrain-arrive 950ms cubic-bezier(.22,.65,.25,1) both; transform-origin: var(--portal-x, 50%) var(--portal-y, 50%); }
-@keyframes terrain-arrive { from { transform: scale(1.055); } to { transform: scale(1); } }
+/* Release the fullscreen transform after entry, so panning does not keep an
+   additional transformed scene around the canvases and map controls. */
+.portal[data-state='open'] .scene { animation: terrain-arrive 950ms cubic-bezier(.22,.65,.25,1) backwards; transform-origin: var(--portal-x, 50%) var(--portal-y, 50%); }
+@keyframes terrain-arrive { from { transform: scale(1.055); } to { transform: none; } }
 .scene .away { border: 0; padding: 0; background: none; min-height: 46px; top: calc(112px + env(safe-area-inset-top)); }
 .routeChooser { overflow: hidden; margin: 8px 0 14px; border-radius: 16px; border: 1px solid #c9dca438; background: var(--forest-paper-light); }
 .routeChooser > img { display: block; width: 100%; height: clamp(115px, 20dvh, 190px); object-fit: cover; image-rendering: pixelated; }

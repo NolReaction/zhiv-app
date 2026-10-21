@@ -1,31 +1,38 @@
 "use client";
 
+import { fishClassForItem } from "@/features/economy/domain/fishing";
+
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeftRight, ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, ShoppingBasket, Sprout, Store, Trees } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fence, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, Sprout, Store, TowerControl, Trees } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import { ItemIcon } from "@/features/items/item-icon";
-import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from "@/features/economy/domain/model";
+import { recipeBuildingLevel, type EconomyCost, type EconomyJob, type EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { formatPearls } from "@/features/economy/domain/money";
 import { canAffordEconomy } from "@/features/economy/domain/rules";
-import { economyActorConflict } from "@/features/economy/domain/actor-availability";
+import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
 import { fishingTripCost } from "@/features/economy/domain/fishing";
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
 import { ConstructionSpeedup } from "@/features/economy/ui/construction/construction-speedup";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { berryCollectionStatus } from "@/features/economy/integration/garden-collection";
-import { ProductionActivity, productionIsActive } from "@/features/economy/ui/production/production-activity";
+import { ProductionWork } from "@/features/economy/ui/production/production-work";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
-import { productionSlotCount } from "@/features/economy/domain/production-slots";
-import { marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketRequiredHomeLevel, marketSaleFee } from "@/features/economy/domain/market-rules";
+import { WorldStationSetup } from "@/features/economy/ui/construction/world-station-setup";
+import { productionStationSupported } from "@/features/economy/domain/production-slots";
+import { worldConstructionReason, worldCountdown } from "@/features/economy/ui/shared/world-stations";
+import { Market } from "@/features/economy/ui/market/player-market";
 import { BarterMarket } from "@/features/economy/ui/market/barter-market";
+import { worldRecipeGroups } from "@/features/economy/ui/stations/world-recipe-groups";
+import { WorldProductionCard } from "@/features/economy/ui/production/world-production-card";
+import { fishSelectionMatches, type FishSelection } from "@/features/economy/domain/fish-stock";
+import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import styles from "./economy-panel.module.css";
 
 export type EconomyTab = "overview" | "buildings" | "production" | "exploration" | "market" | "barter" | "inventory";
-type Recipe = EconomyView["catalog"]["recipes"][number];
 type Item = EconomyView["catalog"]["items"][number];
 type Building = EconomyView["catalog"]["buildings"][number];
 type Navigate = (tab: EconomyTab, focusId?: string) => void;
@@ -39,12 +46,11 @@ const tabs: { id: EconomyTab; label: string; Icon: LucideIcon }[] = [
   { id: "barter", label: "Обмен", Icon: ArrowLeftRight },
   { id: "inventory", label: "Склад", Icon: Package },
 ];
-const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame };
-const categoryNames: Record<string, string> = { produce: "Урожай и рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы", fishing: "Рыболовные товары", special: "Особые материалы" };
+const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame, bridge: Fence, lighthouse: TowerControl };
+const categoryNames: Record<string, string> = { produce: "Урожай", raw: "Рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы", fishing: "Рыболовные товары", special: "Особые материалы" };
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Предмет";
 const buildingName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const number = (value: number) => value.toLocaleString("ru-RU");
-const canTrade = (state: EconomyView) => (state.buildings.home ?? 1) >= state.catalog.market.requiredHomeLevel && state.completedExplorations >= state.catalog.market.requiredExplorations;
 
 export function economyDuration(seconds: number) {
   const minutes = Math.max(1, Math.ceil(seconds / 60));
@@ -54,9 +60,9 @@ export function economyDuration(seconds: number) {
   return `${hours} ч${rest ? ` ${rest} мин` : ""}`;
 }
 
-function requirements(value: Requirements, station?: { buildingId: string; buildingLevel: number }) {
+function requirements(value: Requirements, station?: Parameters<typeof recipeBuildingLevel>[0]) {
   const result: Record<string, number> = { ...value.requiredBuildings, home: Math.max(value.requiredHomeLevel, value.requiredBuildings?.home ?? 0) };
-  if (station) result[station.buildingId] = Math.max(result[station.buildingId] ?? 0, station.buildingLevel);
+  if (station) result[station.buildingId] = Math.max(result[station.buildingId] ?? 0, recipeBuildingLevel(station));
   return result;
 }
 
@@ -95,7 +101,7 @@ function integer(value: string, maximum: number) {
 export function EconomyBalances({ wallet }: { wallet: EconomyView["wallet"] }) {
   return <div className={styles.wallet} aria-label="Кошелёк">
     <span><ItemIcon itemId="coins" size={18} /><strong>{number(wallet.coins)}</strong><span className={styles.walletLabel}>монет</span><span className={styles.sr}>Монеты: {number(wallet.coins)}</span></span>
-    <span title="Жемчуг открывает места производства, ускоряет стройку и обновляет лавку Плёски."><ItemIcon itemId="pearls" size={18} /><strong>{formatPearls(wallet.pearls)}</strong><span className={styles.walletLabel}>жемчуг</span><span className={styles.sr}>Жемчуг: {formatPearls(wallet.pearls)}. Можно открыть места производства и ускорить строительство. Покупка жемчуга пока недоступна.</span></span>
+    <span title="Жемчуг открывает места производства и рынка, ускоряет стройку и обновляет лавку Плёски."><ItemIcon itemId="pearls" size={18} /><strong>{formatPearls(wallet.pearls)}</strong><span className={styles.walletLabel}>жемчуг</span><span className={styles.sr}>Жемчуг: {formatPearls(wallet.pearls)}. Можно открыть места производства и рынка, ускорить строительство. Покупка жемчуга пока недоступна.</span></span>
   </div>;
 }
 
@@ -119,7 +125,7 @@ function Rewards({ state, value, quantity = 1 }: { state: EconomyView; value: Re
 
 function jobTitle(state: EconomyView, job: EconomyJob) {
   if (job.kind === "construction") return `${buildingName(state, job.targetId)} · уровень ${job.targetLevel}`;
-  if (job.kind === "exploration") return state.catalog.explorations.find(entry => entry.id === job.targetId)?.name ?? "Вылазка Мохлика";
+  if (job.kind === "exploration") return state.catalog.explorations.find(entry => entry.id === job.targetId)?.name ?? (isMinerJob(job) ? "Добыча в шахте" : "Вылазка Мохлика");
   return state.catalog.recipes.find(entry => entry.id === job.recipeId)?.name ?? "Производство";
 }
 
@@ -129,20 +135,21 @@ function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: Econo
   const berry = berryCollectionStatus(job, state, now, collection);
   const start = Date.parse(job.startedAt), end = Date.parse(job.finishesAt), ready = now >= end;
   const progress = Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)));
-  const Icon = job.kind === "construction" ? Hammer : job.kind === "exploration" ? Compass : Sprout;
-  const caption = job.kind === "construction" ? "Строительство" : job.kind === "exploration" ? "Мохлик в пути" : buildingName(state, job.targetId);
-  const rewardCount = Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0);
+  const Icon = job.kind === "construction" ? Hammer : isMinerJob(job) ? Mountain : job.kind === "exploration" ? Compass : Sprout;
+  const caption = job.kind === "construction" ? "Строительство" : isMinerJob(job) ? "Шахта работает" : job.kind === "exploration" ? "Мохлик в пути" : buildingName(state, job.targetId);
+  const rewardCount = berry?.rewardCount ?? Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0);
   const storageBlocked = job.kind !== "construction" && rewardCount > state.storage.available;
-  const working = productionIsActive(job, now);
+  if (job.kind === "production") return <ProductionWork economy={economy} job={job} openPantry={() => navigate("inventory")} />;
   return <article className={styles.card} data-ready={ready}>
-    <div className={styles.cardHeader}><span className={styles.iconTile} data-working={working || undefined}>{working ? <ProductionActivity job={job} now={now} /> : <Icon size={21} aria-hidden />}</span><div><span className={styles.eyebrow}>{ready ? "Готово" : caption}</span><h3>{jobTitle(state, job)}</h3></div></div>
+    <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={21} aria-hidden /></span><div><span className={styles.eyebrow}>{ready ? "Готово" : caption}</span><h3>{jobTitle(state, job)}</h3></div></div>
     {Object.keys(job.rewards).length > 0 && <Rewards state={state} value={job.rewards} />}
     {!ready && <progress className={styles.progress} value={progress} max={1} aria-label={`${jobTitle(state, job)}: выполнено ${Math.floor(progress * 100)}%`} />}
     <div className={styles.jobFooter}>
-      <span className={styles.duration}>{ready && !berry?.collecting ? <Check size={15} aria-hidden /> : <Clock3 size={15} aria-hidden />}{ready ? berry?.label ?? "Можно забрать" : `Ещё ${economyDuration((end - now) / 1000)}`}</span>
+      <span className={styles.duration}>{ready && !berry?.collecting ? <Check size={15} aria-hidden /> : <Clock3 size={15} aria-hidden />}{ready ? berry?.label ?? "Можно забрать" : worldCountdown((end - now) / 1000)}</span>
       <button className={ready ? styles.primary : undefined} disabled={!ready || storageBlocked || busy || uncertain || berry?.disabled} onClick={() => {
+        if (!ready || storageBlocked || busy || uncertain || economy.retryAt > now || berry?.disabled) return;
         if (berry && collection) collection.start(job.id);
-        else economy.act(berry && !berry.started ? "start_collection" : "claim_job", job.id);
+        else economy.act(berry && !berry.started ? "start_garden_collection" : job.collection?.batchId ? "claim_garden_collection" : "claim_job", job.collection?.batchId ?? job.id);
       }}>
         {berry?.button ?? (job.kind === "construction" ? "Завершить" : "Забрать")}<span className={styles.sr}>: {jobTitle(state, job)}</span>
       </button>
@@ -161,10 +168,10 @@ function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: Navi
   const owned = Object.values(state.buildings).filter(level => level > 0).length;
   const migration = state.migration;
   return <div className={styles.stack}>
-    <div className={styles.heading}><div><span className={styles.eyebrow}>Своя жизнь в лесу</span><h2>{ready ? "Пора забрать результаты" : "Хозяйство Мохлика"}</h2><p className={styles.muted}>Постройки работают параллельно. Мохлик отправляется в одну вылазку за раз.</p></div></div>
+    <div className={styles.heading}><div><span className={styles.eyebrow}>Своя жизнь в лесу</span><h2>{ready ? "Пора забрать результаты" : "Хозяйство Мохлика"}</h2><p className={styles.muted}>Постройки и шахта работают параллельно. Мохлик отправляется в одну вылазку за раз.</p></div></div>
     <div className={styles.shortcuts}>
       <button onClick={() => navigate("production")}><Sprout size={22} aria-hidden /><span><strong>Производство</strong><small>Урожай и материалы</small></span><ChevronRight size={14} aria-hidden /></button>
-      <button onClick={() => navigate("exploration")}><Compass size={22} aria-hidden /><span><strong>Вылазки</strong><small>{state.jobs.some(job => job.kind === "exploration" || job.collection?.startedAt) ? "Мохлик занят" : "Можно отправляться"}</small></span><ChevronRight size={14} aria-hidden /></button>
+      <button onClick={() => navigate("exploration")}><Compass size={22} aria-hidden /><span><strong>Вылазки</strong><small>{state.jobs.some(job => job.kind === "exploration" && !isMinerJob(job) || job.collection?.startedAt) ? "Мохлик занят" : "Можно отправляться"}</small></span><ChevronRight size={14} aria-hidden /></button>
       <button onClick={() => navigate("buildings")}><House size={22} aria-hidden /><span><strong>Постройки</strong><small>Обустроено: {owned}</small></span><ChevronRight size={14} aria-hidden /></button>
       <button onClick={() => navigate("inventory")}><Package size={22} aria-hidden /><span><strong>Склад</strong><small>Свободно: {number(state.storage.available)}</small></span><ChevronRight size={14} aria-hidden /></button>
     </div>
@@ -178,7 +185,7 @@ function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: Navi
 }
 
 function Unlocks({ state, building, level, navigate }: { state: EconomyView; building: Building; level: Building["levels"][number]; navigate: Navigate }) {
-  const usesLevel = (value: Requirements, station?: { buildingId: string; buildingLevel: number }) => requirements(value, station)[building.id] === level.level;
+  const usesLevel = (value: Requirements, station?: Parameters<typeof recipeBuildingLevel>[0]) => requirements(value, station)[building.id] === level.level;
   const recipes = state.catalog.recipes.filter(recipe => usesLevel(recipe, recipe));
   const routes = state.catalog.explorations.filter(route => usesLevel(route));
   const upgrades = state.catalog.buildings.flatMap(other => other.id === building.id ? [] : other.levels.filter(target => usesLevel(target)).map(target => ({ building: other, level: target.level })));
@@ -189,7 +196,7 @@ function Unlocks({ state, building, level, navigate }: { state: EconomyView; bui
       {recipes.map(recipe => <li key={`recipe:${recipe.id}`}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {routes.map(route => <li key={`route:${route.id}`}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />{route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {upgrades.map(target => <li key={`building:${target.building.id}:${target.level}`}><button className={styles.textButton} onClick={() => navigate("buildings", target.building.id)}><House size={15} aria-hidden />{target.building.name} · ур. {target.level}<ChevronRight size={14} aria-hidden /></button></li>)}
-      {building.id === "home" && level.level === state.catalog.market.requiredHomeLevel && <li><button className={styles.textButton} onClick={() => navigate("market")}><Store size={15} aria-hidden />Торговля с игроками<ChevronRight size={14} aria-hidden /></button></li>}
+      {(building.id === "home" && level.level === state.catalog.market.requiredHomeLevel || state.catalog.market.requiredBuildings[building.id] === level.level) && <li><Store size={15} aria-hidden />Торговля с игроками на рынке на карте</li>}
     </ul>
     {(recipes.length + routes.length + upgrades.length > 0) && <p className={styles.muted}>Откроется, когда выполнены и остальные условия. Нажмите на цель, чтобы посмотреть их.</p>}
     {building.id === "home" && <p className={styles.muted}>Обновляет облик дома на поляне.</p>}
@@ -202,31 +209,28 @@ function BuildingCard({ economy, building, navigate }: { economy: ReadyEconomy; 
   const [preview, setPreview] = useState<number | null>(null);
   const target = building.levels.find(entry => entry.level === preview) ?? next ?? building.levels.at(-1);
   const ownJob = state.jobs.find(job => job.kind === "construction" && job.targetId === building.id);
-  const construction = state.jobs.some(job => job.kind === "construction");
   const production = state.jobs.some(job => job.kind === "production" && job.targetId === building.id);
-  const mining = building.id === "quarry" && state.jobs.some(job => job.kind === "exploration"
-    && !!state.catalog.explorations.find(route => route.id === job.targetId)?.requiredBuildings.quarry);
   const required = target ? requirements(target) : {};
   const reason = !target || target.level <= level ? "Этот уровень уже получен" : target.level !== level + 1 ? `Сначала получите уровень ${target.level - 1}`
-    : unmetRequirement(state, required) ?? (construction ? "Сначала завершите текущую стройку" : production ? "Сначала заберите готовую продукцию" : mining ? "Дождитесь Мохлика и заберите добычу" : !canAffordEconomy(state, target.cost) ? "Не хватает монет или материалов" : null);
+    : worldConstructionReason(state, building.id, target);
   const Icon = buildingIcons[building.id] ?? House;
   return <div className={styles.stack}>
     {ownJob && <JobCard economy={economy} job={ownJob} navigate={navigate} />}
     <article className={styles.card}>
-      <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{building.name}</h3><p className={styles.muted}>{building.description}</p></div><span className={styles.level}>{level ? `Ур. ${level}` : "Проект"}</span></div>
+      <div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{building.name}</h3><p className={styles.muted}>{building.description}</p></div><span className={styles.level}>{level || building.id === "dryer" ? `Ур. ${level}` : "Проект"}</span></div>
       <nav className={styles.tiers} aria-label={`Уровни: ${building.name}`}>{building.levels.map(tier => <button key={tier.level} aria-pressed={target?.level === tier.level} onClick={() => setPreview(tier.level)}>{tier.level <= level && <Check size={12} aria-hidden />}Ур. {tier.level}</button>)}</nav>
       {target && <>
         <h3>{target.level <= level ? "Уже обустроено" : target.level === level + 1 ? "Следующий шаг" : "Будущий уровень"} · ур. {target.level}</h3>
         {target.level > level && <><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={target.cost} /></>}
         <Unlocks state={state} building={building} level={target} navigate={navigate} />
         {target.level > level && <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(target.seconds)}</span>
-          <button className={styles.primary} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_construction", building.id)}>{level ? `Улучшить до ур. ${target.level}` : "Построить"}<span className={styles.sr}>: {building.name}</span></button>
+          <button className={styles.primary} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_construction", building.id)}>{level || building.id === "dryer" ? `Улучшить до ур. ${target.level}` : "Построить"}<span className={styles.sr}>: {building.name}</span></button>
         </div>}
       </>}
       {reason && <p className={styles.hint}>{target && target.level <= level ? <Check size={14} aria-hidden /> : <LockKeyhole size={14} aria-hidden />}{reason}</p>}
       {target && target.level > level + 1 && <button className={styles.textButton} onClick={() => setPreview(null)}>К ближайшему улучшению<ArrowRight size={15} aria-hidden /></button>}
       {level > 0 && building.id === "quarry" && <button className={styles.textButton} onClick={() => navigate("exploration", "quarry_stone")}>Выбрать участок для добычи<ArrowRight size={15} aria-hidden /></button>}
-      {level > 0 && state.catalog.recipes.some(recipe => recipe.buildingId === building.id) && <button className={styles.textButton} onClick={() => navigate("production", building.id)}>{production ? "К текущему заказу" : "Открыть производство"}<ArrowRight size={15} aria-hidden /></button>}
+      {(level > 0 || building.id === "dryer") && state.catalog.recipes.some(recipe => recipe.buildingId === building.id) && <button className={styles.textButton} onClick={() => navigate("production", building.id)}>{production ? "К текущему заказу" : "Открыть производство"}<ArrowRight size={15} aria-hidden /></button>}
       {target && target.level > level && Object.entries(target.cost.items).some(([id, amount]) => (state.inventory[id] ?? 0) < amount) && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(target.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount)?.[0])}>Где взять недостающие материалы?<ArrowRight size={15} aria-hidden /></button>}
     </article>
   </div>;
@@ -238,54 +242,36 @@ function Buildings({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Развитие хозяйства</h2><p className={styles.muted}>Выберите постройку и посмотрите её следующий шаг. Одна стройка за раз; остальные здания продолжают работать.</p></div></div>
     <div className={styles.buildingGrid} aria-label="Выбрать постройку">{state.catalog.buildings.map(entry => {
       const Icon = buildingIcons[entry.id] ?? House, level = state.buildings[entry.id] ?? 0;
-      return <button key={entry.id} aria-pressed={entry.id === building?.id} onClick={() => navigate("buildings", entry.id)}><Icon size={19} aria-hidden /><span><strong>{entry.name}</strong><small>{level ? `Ур. ${level} / ${entry.levels.length}` : "Не построено"}</small></span></button>;
+      return <button key={entry.id} aria-pressed={entry.id === building?.id} onClick={() => navigate("buildings", entry.id)}><Icon size={19} aria-hidden /><span><strong>{entry.name}</strong><small>{level || entry.id === "dryer" ? `Ур. ${level} / ${entry.levels.length}` : "Не построено"}</small></span></button>;
     })}</div>
     {building && <BuildingCard key={building.id} economy={economy} building={building} navigate={navigate} />}
   </div>;
 }
 
-function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; recipe: Recipe; navigate: Navigate }) {
-  const { snapshot: state, busy, uncertain } = economy;
-  const [requestedQuantity, setQuantity] = useState(1);
-  const inputId = useId();
-  const rewardCount = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0);
-  const maximum = Math.min(recipe.maxBatch ?? state.catalog.maxBatch, state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, rewardCount)));
-  const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
-  const required = requirements(recipe, recipe);
-  const occupied = state.jobs.some(job => job.kind === "construction" && job.targetId === recipe.buildingId)
-    || state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId).length >= productionSlotCount(state, recipe.buildingId);
-  const reason = unmetRequirement(state, required) ?? (maximum < 1 ? "Для этого заказа нужно расширить склад" : occupied ? "Все места заняты или идёт улучшение" : !canAffordEconomy(state, recipe.cost, quantity) ? "Не хватает ингредиентов" : null);
-  const choices = Array.from({ length: maximum }, (_, index) => index + 1);
-  return <article className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><PlayerItemIcon state={state} itemId={Object.keys(recipe.rewards)[0] ?? ""} size={28} /></span><div><span className={styles.eyebrow}>{buildingName(state, recipe.buildingId)}</span><h3>{recipe.name}</h3></div></div>
-    <Rewards state={state} value={recipe.rewards} quantity={quantity} />
-    <RequirementList state={state} required={required} navigate={navigate} />
-    <Cost state={state} cost={recipe.cost} quantity={quantity} />
-    <label className={styles.field} htmlFor={inputId}>Размер заказа<select id={inputId} value={quantity} disabled={busy || uncertain || maximum < 1} onChange={event => setQuantity(Number(event.target.value))}>{choices.map(count => <option key={count} value={count}>{count} {count === 1 ? "партия" : count < 5 ? "партии" : "партий"} · {economyDuration(recipe.seconds * count)}</option>)}</select></label>
-    <p className={styles.muted}>Результат займёт {number(rewardCount * quantity)} мест. Сейчас свободно {number(state.storage.available)}; место понадобится при получении.</p>
-    <button className={`${styles.primary} ${styles.wide}`} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_production", recipe.id, quantity)}>Начать · {economyDuration(recipe.seconds * quantity)}<span className={styles.sr}>: {recipe.name}</span></button>
-    {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
-    {maximum < 1 && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
-    {Object.keys(recipe.cost.items).length > 0 && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(recipe.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount * quantity)?.[0] ?? Object.keys(recipe.cost.items)[0])}>Откуда брать ингредиенты?<ChevronRight size={14} aria-hidden /></button>}
-  </article>;
-}
-
 function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; navigate: Navigate; focusId?: string }) {
   const { snapshot: state } = economy;
   const stations = state.catalog.buildings.filter(building => state.catalog.recipes.some(recipe => recipe.buildingId === building.id));
-  const station = stations.find(building => building.id === focusId)?.id ?? stations.find(building => (state.buildings[building.id] ?? 0) > 0)?.id ?? stations[0]?.id ?? "";
+  const focusedRecipe = state.catalog.recipes.find(recipe => recipe.id === focusId);
+  const station = focusedRecipe?.buildingId ?? stations.find(building => building.id === focusId)?.id ?? stations.find(building => (state.buildings[building.id] ?? 0) > 0)?.id ?? stations[0]?.id ?? "";
   const selectId = useId();
   const jobs = state.jobs.filter(entry => entry.kind === "production" && entry.targetId === station);
-  const recipes = state.catalog.recipes.filter(recipe => recipe.buildingId === station);
-  const open = recipes.filter(recipe => !unmetRequirement(state, requirements(recipe, recipe)));
-  const locked = recipes.filter(recipe => unmetRequirement(state, requirements(recipe, recipe)));
+  const construction = state.jobs.find(job => job.kind === "construction" && job.targetId === station);
+  const basicCampfire = station === "dryer" && !(state.buildings[station] > 0);
+  const needsSetup = station !== "dryer" && (!(state.buildings[station] > 0) || Boolean(construction));
+  const recipes = state.catalog.recipes.filter(recipe => recipe.buildingId === station && (!basicCampfire || recipeBuildingLevel(recipe) === 0));
+  const groups = worldRecipeGroups(state, recipes, { includeFuture: true });
+  const open = groups.filter(group => group.methods.some(recipe => !unmetRequirement(state, requirements(recipe, recipe))));
+  const locked = groups.filter(group => group.methods.every(recipe => unmetRequirement(state, requirements(recipe, recipe))));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесное хозяйство</h2><p className={styles.muted}>До трёх заказов на каждом производстве. Каждый занимает своё место до получения результата.</p></div></div>
-    <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 ? `ур. ${state.buildings[building.id]}` : "не построено"}</option>)}</select></label>
-    {state.buildings[station] > 0 && <button className={styles.textButton} onClick={() => navigate("buildings", station)}><House size={16} aria-hidden />Развитие: {buildingName(state, station)}<ArrowRight size={15} aria-hidden /></button>}
-    {state.buildings[station] > 0 && <WorldProductionSlots economy={economy} stationId={station} />}
-    {jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
-    {!(state.buildings[station] > 0) && <div className={styles.notice}><House size={18} aria-hidden /><div><p>Сначала обустройте это место.</p><button onClick={() => navigate("buildings", station)}>К постройке<ArrowRight size={15} aria-hidden /></button></div></div>}
-    {open.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}
-    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.stack}>{locked.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}</div></details>}
+    <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 || building.id === "dryer" ? `ур. ${state.buildings[building.id] ?? 0}` : "не построено"}</option>)}</select></label>
+    {(state.buildings[station] > 0 || station === "dryer") && <button className={styles.textButton} onClick={() => navigate("buildings", station)}><House size={16} aria-hidden />Развитие: {buildingName(state, station)}<ArrowRight size={15} aria-hidden /></button>}
+    {needsSetup ? <WorldStationSetup economy={economy} stationId={station} onOpenConstruction={() => navigate("buildings", station)} onOpenPantry={() => navigate("inventory")} /> : <>
+    {construction && <JobCard economy={economy} job={construction} navigate={navigate} />}
+    <WorldProductionSlots key={`${state.ownerPublicId}:${station}`} economy={economy} stationId={station} openPantry={() => navigate("inventory")} />
+    {!productionStationSupported(station) && jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
+    {!construction && <><div className={styles.productionGrid}>{open.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div>
+    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.productionGrid}>{locked.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div></details>}</>}
+    </>}
   </div>;
 }
 
@@ -293,23 +279,26 @@ function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; na
   const { snapshot: state } = economy;
   const { blocked, send } = useFishingCommand({ economy, state });
   const conflict = economyActorConflict(state.jobs, "departure", economy.now);
-  const job = state.jobs.find(entry => entry.kind === "exploration");
+  const jobs = state.jobs.filter(entry => entry.kind === "exploration");
   const routes = [...state.catalog.explorations].sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId));
-  return <div className={styles.stack}><div className={styles.heading}><div><h2>Мохлик-исследователь</h2><p className={styles.muted}>Выберите цель вылазки. Производство продолжится, пока Мохлик в пути.</p></div></div>
-    {job && <JobCard economy={economy} job={job} navigate={navigate} />}
+  return <div className={styles.stack}><div className={styles.heading}><div><h2>Вылазки и добыча</h2><p className={styles.muted}>Выберите вылазку для Мохлика или независимую работу шахты. Производство продолжается в фоне.</p></div></div>
+    {jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
     {routes.map(exploration => {
       const required = requirements(exploration), rewardCount = Object.values(exploration.rewards).reduce((sum, amount) => sum + amount, 0);
       const tooLarge = rewardCount > state.storage.capacity;
       const fishing = !!state.catalog.fishing?.routeIds.includes(exploration.id);
       const cost = fishing ? fishingTripCost(exploration.cost, state) : exploration.cost;
       const mineConstruction = exploration.requiredBuildings.quarry && state.jobs.some(entry => entry.kind === "construction" && entry.targetId === "quarry");
+      const mining = explorationActorId(exploration) === "miner";
+      const routeConflict = mining ? economyMinerConflict(state.jobs, economy.now) : conflict;
       const reason = unmetRequirement(state, required) ?? (tooLarge ? "Для этих находок нужно расширить склад"
-        : conflict?.message ?? (mineConstruction ? "Дождитесь улучшения шахты и заберите результат" : !canAffordEconomy(state, cost) ? "Не хватает припасов" : null));
-      const Icon = exploration.id.includes("cave") ? Mountain : exploration.id === "shore" ? Fish : Compass;
+        : routeConflict?.message ?? (mineConstruction ? "Дождитесь улучшения шахты и заберите результат" : !canAffordEconomy(state, cost) ? "Не хватает припасов" : null));
+      const Icon = mining || exploration.id.includes("cave") ? Mountain : exploration.id === "shore" ? Fish : Compass;
       return <article key={exploration.id} className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{exploration.name}</h3><p className={styles.muted}>{exploration.description}</p></div></div>
         <Rewards state={state} value={exploration.rewards} /><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={cost} />
         <p className={styles.muted}>Находки займут {number(rewardCount)} мест на складе.</p>
-        <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(exploration.seconds)}</span><button className={styles.primary} disabled={Boolean(reason) || blocked} onClick={() => send(fishing ? "start_fishing" : "start_exploration", exploration.id, 1, 0, !reason)}>Отправиться<span className={styles.sr}>: {exploration.name}</span></button></div>
+        {mining && <p className={styles.muted}>Мохлик может гулять, рыбачить и собирать урожай, пока работает шахта.</p>}
+        <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(exploration.seconds)}</span><button className={styles.primary} disabled={Boolean(reason) || blocked} onClick={() => send(fishing ? "start_fishing" : "start_exploration", exploration.id, 1, 0, !reason)}>{mining ? "Начать добычу" : "Отправиться"}<span className={styles.sr}>: {exploration.name}</span></button></div>
         {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
         {tooLarge && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
       </article>;
@@ -319,19 +308,68 @@ function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; na
 
 function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const { snapshot: state } = economy;
-  const buyer = state.catalog.localBuyer, minimum = economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer);
+  const buyer = state.catalog.localBuyer, minimum = economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer, item.id);
   const [value, setValue] = useState(() => String(minimum));
+  const [choosingFish, setChoosingFish] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const focusOrigin = useRef<{ element: HTMLButtonElement | null; owner: string; itemId: string } | null>(null);
+  const pending = useRef<{ owner: string; revision: number; busySeen: boolean; previousError: string | null } | null>(null);
   const inputId = useId(), stock = state.inventory[item.id] ?? 0;
-  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
+  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer, item.id);
   const parsed = integer(value, maximum), quantity = parsed && parsed >= minimum ? parsed : null;
-  const total = quantity ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
-  const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
+  const total = quantity ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer, item.id) : 0;
+  const fixedPrice = buyer?.unitPrices?.[item.id];
+  const discount = fixedPrice !== undefined ? 0 : (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
   const unavailable = economy.busy || economy.uncertain || economy.retryAt > economy.now;
+  const fishClass = fishClassForItem(item.id, state.catalog.fishing);
+  const latest = useRef({ economy, item, quantity, total });
+  useEffect(() => {
+    latest.current = { economy, item, quantity, total };
+    const request = pending.current;
+    if (!request) return;
+    if (request.owner !== state.ownerPublicId || request.revision !== state.revision || request.busySeen && !economy.busy && !economy.uncertain
+      || economy.error && economy.error !== request.previousError) pending.current = null;
+    else if (economy.busy || economy.uncertain) request.busySeen = true;
+  }, [economy, item, quantity, total, state.ownerPublicId, state.revision]);
+  const acceptedOwner = state.ownerPublicId, acceptedRevision = state.revision;
+  function sell(selection?: FishSelection): boolean {
+    const current = latest.current, snapshot = current.economy.snapshot;
+    const currentItem = snapshot.catalog.items.find(entry => entry.id === item.id), localBuyer = snapshot.catalog.localBuyer;
+    if (current.economy !== economy || current.item.id !== item.id || current.quantity !== quantity || current.total !== total
+      || snapshot.ownerPublicId !== acceptedOwner || snapshot.revision !== acceptedRevision || pending.current
+      || current.economy.busy || current.economy.uncertain || current.economy.retryAt > current.economy.now || !quantity || !currentItem?.tradable
+      || quantity < economyLocalSaleMinimumQuantity(currentItem.baseSellPrice, localBuyer, item.id)
+      || quantity > economyLocalSaleLimit(currentItem.baseSellPrice, snapshot.inventory[item.id] ?? 0, snapshot.wallet.coins, localBuyer, item.id)
+      || economyLocalSellPrice(currentItem.baseSellPrice, quantity, localBuyer, item.id) !== total) return false;
+    if (fishClass && (!selection || !fishSelectionMatches(snapshot, { [fishClass.itemId]: quantity }, selection))) return false;
+    const accepted = selection ? current.economy.act("sell", item.id, quantity, localBuyer ? total : 0, selection)
+      : current.economy.act("sell", item.id, quantity, localBuyer ? total : 0);
+    if (accepted === false) return false;
+    pending.current = { owner: snapshot.ownerPublicId, revision: snapshot.revision, busySeen: false, previousError: current.economy.error };
+    setChoosingFish(false);
+    return true;
+  }
   return <div className={styles.card}><h3>Продать торговцу: {item.name.toLocaleLowerCase("ru-RU")}</h3>
-    <p className={styles.muted}>{discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%. Итог за всё количество округляется вниз до целой монеты.` : `Торговец покупает сразу по ${number(item.baseSellPrice)} монет за штуку.`} На прилавке можно предложить свою цену другим игрокам.</p>
-    {discount > 0 && state.catalog.fishing?.fish.some(fish => fish.itemId === item.id) && <p className={styles.muted}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
-    <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={value} disabled={unavailable || maximum < minimum} onChange={event => setValue(event.target.value)} /></label>
-    <button className={styles.primary} disabled={!quantity || unavailable} onClick={() => { if (quantity && !unavailable) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "-"} шт. за {quantity ? number(total) : "-"} монет</button>
+    <p className={styles.muted}>{discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%. Итог за всё количество округляется вниз до целой монеты.` : `Торговец покупает сразу по ${number(fixedPrice ?? item.baseSellPrice)} монет за штуку.`} На прилавке можно предложить свою цену другим игрокам.</p>
+    {discount > 0 && fishClassForItem(item.id, state.catalog.fishing) && <p className={styles.muted}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
+    <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={value} disabled={unavailable || choosingFish || maximum < minimum} onChange={event => setValue(event.target.value)} /></label>
+    <button ref={trigger} className={styles.primary} disabled={!quantity || unavailable || !item.tradable} onClick={() => {
+      if (!quantity || unavailable || pending.current || !item.tradable) return;
+      if (fishClass) {
+        focusOrigin.current = { element: trigger.current, owner: state.ownerPublicId, itemId: item.id };
+        setChoosingFish(true);
+      } else sell();
+    }}><ItemIcon itemId="coins" size={16} />{fishClass ? "Выбрать рыбу" : "Продать"} {quantity ?? "-"} шт. за {quantity ? number(total) : "-"} монет</button>
+    {choosingFish && fishClass && quantity && <WorldFishSelection economy={economy} requiredItems={{ [fishClass.itemId]: quantity }}
+      contextId={`local-sale:${item.id}:${quantity}:${total}`} confirmLabel="Продать" summary={`${number(quantity)} шт. · ${number(total)} монет`}
+      onClose={() => setChoosingFish(false)} onConfirm={sell}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        const origin = focusOrigin.current, current = latest.current;
+        focusOrigin.current = null;
+        if (origin?.element && origin.element === trigger.current && origin.element.isConnected && !origin.element.disabled
+          && origin.owner === current.economy.snapshot.ownerPublicId && origin.itemId === current.item.id) origin.element.focus({ preventScroll: true });
+      }} />}
     {maximum < minimum ? <p className={styles.hint}>{stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>
       : !quantity && <p className={styles.hint}>Укажите целое количество от {number(minimum)} до {number(maximum)}.</p>}
   </div>;
@@ -340,7 +378,8 @@ function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
 function ItemGuide({ economy, item, navigate }: { economy: ReadyEconomy; item: Item; navigate: Navigate }) {
   const { snapshot: state } = economy;
   const recipes = state.catalog.recipes.filter(recipe => recipe.rewards[item.id] > 0);
-  const routes = state.catalog.explorations.filter(route => route.rewards[item.id] > 0);
+  const fish = state.catalog.fishing && fishClassForItem(item.id, state.catalog.fishing);
+  const routes = state.catalog.explorations.filter(route => route.rewards[item.id] > 0 || fish && state.catalog.fishing?.routeIds.includes(route.id));
   const ingredients = state.catalog.recipes.filter(recipe => recipe.cost.items[item.id] > 0);
   const buildings = state.catalog.buildings.filter(building => building.levels.some(level => level.level > (state.buildings[building.id] ?? 0) && level.cost.items[item.id] > 0));
   const provisions = state.catalog.explorations.filter(route => route.cost.items[item.id] > 0);
@@ -354,7 +393,9 @@ function ItemGuide({ economy, item, navigate }: { economy: ReadyEconomy; item: I
       {ingredients.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name} · нужно {number(recipe.cost.items[item.id])}<ChevronRight size={14} aria-hidden /></button></li>)}
       {buildings.map(building => <li key={building.id}><button className={styles.textButton} onClick={() => navigate("buildings", building.id)}><House size={15} aria-hidden />Стройка: {building.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {provisions.map(route => <li key={route.id}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />Припасы: {route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
-    </ul>{item.tradable && <p className={styles.muted}>{state.catalog.localBuyer && state.catalog.localBuyer.payoutBps < 10_000
+    </ul>{item.tradable && <p className={styles.muted}>{state.catalog.localBuyer?.unitPrices?.[item.id] !== undefined
+      ? `Можно продать торговцу по ${number(state.catalog.localBuyer.unitPrices[item.id])} монет за штуку.`
+      : state.catalog.localBuyer && state.catalog.localBuyer.payoutBps < 10_000
       ? `Быстрая продажа торговцу: ${number(state.catalog.localBuyer.payoutBps / 100)}% базовой цены, с округлением итоговой суммы вниз.`
       : `Можно продать торговцу по ${number(item.baseSellPrice)} монет за штуку.`} На рынке игроков вы назначаете цену сами.</p>}</div>
   </div>;
@@ -366,13 +407,14 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
   const [all, setAll] = useState(Boolean(focusId));
   const [category, setCategory] = useState("all");
   const categoryId = useId();
-  const categories = [...new Set(state.catalog.items.map(item => item.category))];
-  const owned = state.catalog.items.filter(item => (state.inventory[item.id] ?? 0) > 0);
-  const items = (all ? state.catalog.items : owned).filter(item => category === "all" || category === item.category);
+  const stockItems = state.catalog.items.filter(item => !state.catalog.fishing?.fish.some(species => species.itemId === item.id));
+  const categories = [...new Set(stockItems.map(item => item.category))];
+  const owned = stockItems.filter(item => (state.inventory[item.id] ?? 0) > 0);
+  const items = (all ? stockItems : owned).filter(item => category === "all" || category === item.category);
   const item = state.catalog.items.find(entry => entry.id === selected);
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Ваши запасы</h2><p className={styles.muted}>Материалы пригодятся для строительства и производства. Выберите товар, чтобы увидеть, где его добывать и использовать.</p></div></div>
     <StorageStatus state={state} navigate={navigate} />
-    <div className={styles.subnav} aria-label="Товары на складе"><button aria-pressed={!all} onClick={() => setAll(false)}>В наличии · {owned.length}</button><button aria-pressed={all} onClick={() => setAll(true)}>Все товары · {state.catalog.items.length}</button></div>
+    <div className={styles.subnav} aria-label="Товары на складе"><button aria-pressed={!all} onClick={() => setAll(false)}>В наличии · {owned.length}</button><button aria-pressed={all} onClick={() => setAll(true)}>Все товары · {stockItems.length}</button></div>
     <label className={styles.field} htmlFor={categoryId}>Категория<select id={categoryId} value={category} onChange={event => setCategory(event.target.value)}><option value="all">Все категории</option>{categories.map(value => <option key={value} value={value}>{categoryNames[value] ?? value}</option>)}</select></label>
     {items.length ? <div className={styles.stockGrid}>{items.map(entry => {
       return <button key={entry.id} aria-pressed={selected === entry.id} onClick={() => setSelected(entry.id)}><PlayerItemIcon state={state} itemId={entry.id} size={23} /><span><strong>{entry.name}</strong><small>× {number(state.inventory[entry.id] ?? 0)}</small></span></button>;
@@ -384,112 +426,6 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
   </div>;
 }
 
-function OfferCard({ economy, offer, owned, navigate }: { economy: ReadyEconomy; offer: EconomyMarketListing; owned?: boolean; navigate: Navigate }) {
-  const { snapshot: state, busy, uncertain } = economy;
-  const [confirm, setConfirm] = useState(false);
-  const confirmation = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), wasConfirming = useRef(false);
-  useEffect(() => {
-    if (confirm) confirmation.current?.focus({ preventScroll: true });
-    else if (wasConfirming.current) trigger.current?.focus({ preventScroll: true });
-    wasConfirming.current = confirm;
-  }, [confirm]);
-  const enough = state.wallet.coins >= offer.totalPrice, unlocked = canTrade(state), room = offer.quantity <= state.storage.available;
-  const requiredHome = marketRequiredHomeLevel(offer.itemId, state.catalog);
-  const itemUnlocked = marketItemUnlocked(state, offer.itemId, state.catalog);
-  const minimum = marketMinimumPrice(offer.itemId, offer.quantity, state.catalog);
-  const oldPrice = offer.totalPrice < minimum || offer.totalPrice > minimum * state.catalog.market.maxPriceMultiplier;
-  const budget = economy.market?.tradeBudget;
-  const dailyBlocked = !!budget && (economy.now >= Date.parse(budget.resetsAt) || budget.buysUsed + minimum > budget.limit);
-  const expired = Boolean(economy.market?.showcase && economy.now >= Date.parse(economy.market.showcase.refreshAt));
-  const disabled = busy || uncertain || (!owned && (!enough || !unlocked || !room || !itemUnlocked || oldPrice || expired || dailyBlocked));
-  const label = `${itemName(state, offer.itemId)} × ${number(offer.quantity)}`;
-  const actionLabel = owned ? "Вернуть на склад" : !unlocked ? "Рынок пока закрыт" : expired ? "Обновите витрину" : dailyBlocked ? "Дневной объём покупок" : !itemUnlocked ? (Number.isFinite(requiredHome) ? `Нужен дом ${requiredHome} ур.` : "Товар пока недоступен") : oldPrice ? "Предложение недоступно" : !room ? "Не хватает места на складе" : enough ? "Купить весь лот" : "Не хватает монет";
-  return <article className={`${styles.card} ${styles.offerCard}`} role="listitem" aria-label={label} data-market-offer={offer.id}>
-    <div className={styles.cardHeader}><span className={styles.iconTile}><ItemIcon itemId={offer.itemId} size={22} /></span><div><h3>{label}</h3><p className={styles.offerSeller}>{owned ? "Ваш прилавок" : `Продавец: ${offer.sellerName}`}</p></div></div>
-    <div className={styles.offerMeta}><span className={styles.offerPrice}><ItemIcon itemId="coins" size={16} />{number(offer.totalPrice)}<span className={styles.sr}> монет</span></span><span className={styles.offerPriceLabel}>за весь лот</span></div>
-    <p className={styles.offerUnit}>{(offer.totalPrice / offer.quantity).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} за шт. · {Number.isFinite(requiredHome) ? `Дом ${requiredHome}+` : "Пока недоступен"}</p>
-    {owned && <p className={styles.offerUnit}>После продажи: {number(offer.totalPrice - marketSaleFee(offer.totalPrice, offer.feeBps ?? 0))} монет{offer.feeBps ? ` · сбор ${offer.feeBps / 100}%` : " · без сбора"}</p>}
-    {owned && minimum > marketDailyLimit(state.buildings.home ?? 1, state.catalog) && <p className={styles.hint}>Партия превышает дневной объём. Верните товар на склад и разделите на меньшие лоты.</p>}
-    {owned && oldPrice && <p className={styles.hint}>Цена вне новых границ. Этот лот скрыт от покупателей: верните товар на склад и выставьте заново.</p>}
-    {confirm ? <div ref={confirmation} className={styles.confirmation} role="group" tabIndex={-1} aria-label={`${owned ? "Возврат на склад" : "Подтверждение покупки"}: ${label}`}><p>{owned ? "Снять предложение и вернуть все предметы на склад?" : `Получите ${number(offer.quantity)} шт. за ${number(offer.totalPrice)} монет. Покупается весь лот.`}</p><div className={styles.actions}><button disabled={busy || uncertain} onClick={() => setConfirm(false)}>Назад</button><button className={styles.primary} disabled={disabled} aria-label={`${owned ? "Снять с продажи" : "Подтвердить покупку"}: ${label}${owned ? "" : ` за ${number(offer.totalPrice)} монет`}`} onClick={() => { if (disabled) return; if (owned) void economy.actMarket("cancel_listing", offer.id); else void economy.actMarket("buy_listing", offer.id, offer.quantity, offer.totalPrice); }}>{owned ? "Снять с продажи" : "Подтвердить покупку"}</button></div></div>
-      : <button ref={trigger} disabled={disabled} aria-label={`${actionLabel}: ${label}${owned ? "" : ` за ${number(offer.totalPrice)} монет`}`} onClick={() => { if (!disabled) setConfirm(true); }}>{actionLabel}</button>}
-    {!owned && !room && <div className={styles.hint}><Package size={15} aria-hidden /><div>Лот занимает {number(offer.quantity)} мест, свободно {number(state.storage.available)}.<br /><button className={styles.textButton} onClick={() => navigate("inventory")}>Освободить место<ArrowRight size={15} aria-hidden /></button></div></div>}
-  </article>;
-}
-
-function ListingForm({ economy }: { economy: ReadyEconomy }) {
-  const { snapshot: state, busy, uncertain } = economy;
-  const items = state.catalog.items.filter(item => item.tradable && (state.inventory[item.id] ?? 0) > 0 && marketItemUnlocked(state, item.id, state.catalog));
-  const [selected, setSelected] = useState(items[0]?.id ?? "");
-  const item = items.find(entry => entry.id === selected) ?? items[0];
-  const itemId = useId();
-  if (!item) return <div className={styles.empty}><ShoppingBasket size={32} aria-hidden /><h3>Пока нечего выставить</h3><p className={styles.muted}>Сначала заберите урожай или материалы. На прилавок попадут только выбранные вами товары.</p></div>;
-  return <div className={styles.stack} data-guide-market-create><label className={styles.field} htmlFor={itemId}>Товар<select id={itemId} value={item.id} disabled={busy || uncertain} onChange={event => setSelected(event.target.value)}>{items.map(entry => <option key={entry.id} value={entry.id}>{entry.name} · есть {number(state.inventory[entry.id])}</option>)}</select></label>
-    <ListingPriceForm key={item.id} economy={economy} item={item} />
-  </div>;
-}
-
-function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
-  const { snapshot: state, busy, uncertain } = economy;
-  const [amount, setAmount] = useState("1"), [price, setPrice] = useState(String(item.baseSellPrice * 2));
-  const quantityId = useId(), priceId = useId();
-  const limits = state.catalog.market;
-  const quantityMax = Math.min(limits.maxLotQuantity, state.inventory[item.id] ?? 0, Math.floor(marketDailyLimit(state.buildings.home ?? 1, state.catalog) / item.baseSellPrice));
-  const quantity = integer(amount, quantityMax);
-  const maximum = quantity ? item.baseSellPrice * limits.maxPriceMultiplier * quantity : 0;
-  const totalPrice = integer(price, maximum);
-  const minimum = quantity ? marketMinimumPrice(item.id, quantity, state.catalog) : item.baseSellPrice;
-  const valid = Boolean(quantity && totalPrice && totalPrice >= minimum && totalPrice % state.catalog.currencyScale === 0);
-  const full = (economy.market?.mine.length ?? 0) >= limits.maxListings;
-  const disabled = !valid || full || busy || uncertain || !canTrade(state) || !marketItemUnlocked(state, item.id, state.catalog);
-  return <div className={styles.card}>
-    <div className={styles.fields}>
-      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain} onChange={event => setAmount(event.target.value)} /></label>
-      <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={state.catalog.currencyScale} value={price} disabled={busy || uncertain} onChange={event => setPrice(event.target.value)} /></label>
-    </div>
-    <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
-    {valid && <p className={styles.muted}>Получите {number(totalPrice! - marketSaleFee(totalPrice!, limits.feeBps))} монет после сбора {limits.feeBps / 100}%.</p>}
-    <p className={styles.hint}><Package size={15} aria-hidden />Выставленные предметы сохраняют место на складе до продажи. Отмена вернёт их; выставление лота само по себе не освобождает склад.</p>
-    <button className={styles.primary} disabled={disabled} onClick={() => { if (!disabled && quantity && totalPrice) void economy.actMarket("create_listing", item.id, quantity, totalPrice); }}><Store size={17} aria-hidden />{full ? `Все ${limits.maxListings} мест заняты` : `Выставить за ${valid ? number(totalPrice!) : "-"} монет`}</button>
-  </div>;
-}
-
-function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Navigate }) {
-  const [section, setSection] = useState<"browse" | "sell" | "mine">("browse");
-  const { snapshot: state, market, marketError, busy, uncertain } = economy;
-  const unlocked = canTrade(state), limits = state.catalog.market;
-  const showcase = market?.showcase, budget = market?.tradeBudget;
-  const refreshIn = showcase ? Math.max(0, Math.ceil((Date.parse(showcase.refreshAt) - economy.now) / 1000)) : null;
-  const refreshLabel = refreshIn === 0 ? "Обновить витрину" : "Проверить наличие";
-  const refreshMarket = economy.refreshMarket;
-  useEffect(() => { void refreshMarket(); }, [refreshMarket]);
-  return <div className={`${styles.stack} ${styles.market}`} aria-label="Лесной рынок">
-    <p className={styles.muted}>На рынке торгуют игроки. Здесь покупают чужие товары и выставляют свои; монеты придут после покупки лота. Быстрая продажа торговцу доступна в кладовой.</p>
-    <StorageStatus state={state} navigate={navigate} compact condensed />
-    <button type="button" className={styles.textButton} onClick={() => navigate("barter")}><ArrowLeftRight size={16} aria-hidden />Обмен особыми материалами<ArrowRight size={15} aria-hidden /></button>
-    <nav className={styles.subnav} aria-label="Раздел рынка"><button data-guide-market-tab="buy" aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button data-guide-market-tab="sell" aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button data-guide-market-tab="mine" aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
-    {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Торговля с игроками откроется после обустройства дома и первой разведки.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур. · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</p><button onClick={() => navigate((state.buildings.home ?? 1) < limits.requiredHomeLevel ? "buildings" : "exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Для быстрой продажи открой кладовую и нажми на предмет.</p></div></div>}
-    {marketError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
-    {market && unlocked && <details className={styles.marketRules}><summary>Правила торговли и дневной объём</summary>
-      <p>Поселения с домами 2–3 и 4–5 торгуют в своих кругах. Цена партии: 1–{limits.maxPriceMultiplier} базовых стоимости. Сбор с новых продаж: {limits.feeBps / 100}%.</p>
-      {budget && <><p>Покупки: {number(budget.buysUsed)} / {number(budget.limit)}. Продажи: {number(budget.salesUsed)} / {number(budget.limit)}.</p>
-        <p>Объём считается по базовой стоимости предметов, независимо от цены лота. Обновление через {economyDuration(Math.max(0, Math.ceil((Date.parse(budget.resetsAt) - economy.now) / 1000)))}.</p></>}
-    </details>}
-    {!market && !marketError && <p className={styles.muted} role="status">Открываем прилавки…</p>}
-    {market && section === "browse" && <>
-      <div className={styles.showcaseInfo}><div><strong>Ваша витрина · {market.listings.length} / {showcase?.slots ?? limits.showcaseSlots}</strong>
-        {unlocked && refreshIn !== null && <p className={styles.muted}>{refreshIn > 0 ? `Смена через ${economyDuration(refreshIn)}` : "Доступна новая витрина"}</p>}
-      </div><button disabled={busy || uncertain} onClick={() => void refreshMarket()}><RefreshCw size={14} aria-hidden />{refreshLabel}</button></div>
-      <details className={styles.marketRules}><summary>Как обновляются предложения</summary><p>До {showcase?.maxPerSeller ?? limits.showcasePerSeller} лотов от одной лавки. Новая подборка раз в {economyDuration(showcase?.refreshSeconds ?? limits.showcaseRefreshSeconds)}. Купленные и снятые лоты до смены не заменяются.</p></details>
-      {market.listings.length ? <div className={styles.shopGrid} role="list" aria-label="Предложения игроков">{market.listings.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} />)}</div>
-        : <div className={styles.empty}><Store size={32} aria-hidden /><h3>Прилавки пока свободны</h3><p className={styles.muted}>В вашей подборке нет доступных лотов. Предложения могли закончиться или пока не появиться. Новые товары попадут в следующую витрину.</p><button disabled={!unlocked} onClick={() => setSection("sell")}>Выставить товар</button></div>}
-    </>}
-    {market && (section === "sell" || section === "mine") && <p className={styles.marketNote}><strong>Ваша лавка · {market.mine.length} / {limits.maxListings}</strong><span>Новые лоты появятся у покупателей при смене витрины.</span></p>}
-    {market && section === "sell" && unlocked && <ListingForm economy={economy} />}
-    {market && section === "mine" && (market.mine.length ? <div className={styles.shopGrid} role="list" aria-label="Ваши предложения">{market.mine.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} owned />)}</div>
-      : <div className={styles.empty}><ShoppingBasket size={32} aria-hidden /><h3>У вас ещё нет предложений</h3><p className={styles.muted}>Выберите товар и цену. После покупки монеты поступят в кошелёк.</p><button onClick={() => setSection("sell")}>Выставить товар</button></div>)}
-  </div>;
-}
 
 /** Account-owned controller survives closing this body; the caller owns the accessible dialog. */
 export function EconomyPanel({ economy, initialTab = "overview", initialFocusId, standalone = false, onNavigate }: { economy: EconomyController; initialTab?: EconomyTab; initialFocusId?: string; standalone?: boolean; onNavigate?: Navigate }) {
@@ -510,7 +446,7 @@ export function EconomyPanel({ economy, initialTab = "overview", initialFocusId,
   return <section ref={panel} className={styles.panel} aria-label={standalone && initialTab === "market" ? "Рынок между игроками" : "Хозяйство Мохлика"} aria-busy={busy}>
     {snapshot && !standalone && <EconomyBalances wallet={snapshot.wallet} />}
     {!standalone && <nav className={styles.navigation} aria-label="Разделы хозяйства">{tabs.map(({ id, label, Icon }) => <button key={id} aria-current={tab === id ? "page" : undefined} onClick={() => navigate(id)}><Icon size={16} aria-hidden />{label}</button>)}</nav>}
-    {(error || uncertain) && <div className={styles.notice} data-kind={uncertain ? "pending" : "error"} role="alert"><CircleHelp size={18} aria-hidden /><div><p>{uncertain ? "Проверяем последнее действие. Новые операции станут доступны после подтверждения." : error}</p><button disabled={busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button></div></div>}
+    {!economy.syncError && (error || uncertain) && <div className={styles.notice} data-kind={uncertain ? "pending" : "error"} role="alert"><CircleHelp size={18} aria-hidden /><div><p>{uncertain ? "Проверяем последнее действие. Новые операции станут доступны после подтверждения." : error}</p><button disabled={busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button></div></div>}
     {!standalone && notice && !error && !uncertain && <p role="status" className={styles.notice}><Check size={18} aria-hidden />{notice}</p>}
     {!controller ? !error && <div className={styles.stack} role="status"><p className={styles.muted}>Открываем ваше хозяйство…</p><div className={styles.skeleton} aria-hidden /><div className={styles.skeleton} aria-hidden /></div>
       : <div className={styles.stack} key={tab}>

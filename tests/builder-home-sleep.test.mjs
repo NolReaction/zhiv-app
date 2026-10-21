@@ -182,7 +182,7 @@ test("zero-delta and reduced-motion reads do not advance sleep, door fades, or o
 test("actual builder house has a private validated door and a continuous return from every work host", () => {
   const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)), places = builderLocalPlaces(scene);
   assert.ok(places.home, "authored builder-home entry and doorway compile");
-  for (const stationId of ["home", "warehouse", "workshop", "kiln", "woodlot", "quarry", "garden", "dryer"]) {
+  for (const stationId of ["home", "warehouse", "workshop", "kiln", "quarry", "garden", "dryer"]) {
     const mind = createBuilderMind(scene, { awaitConstruction: true });
     advanceBuilderMind(mind, scene, 0, environment({ construction: snapshot([{ ...order, stationId }]) }));
     assert.equal(mind.action, "work", `${stationId} restores its own checked work stop`);

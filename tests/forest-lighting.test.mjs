@@ -3,6 +3,7 @@ import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { createServer } from "vite";
+import sharp from "sharp";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -51,16 +52,53 @@ test("building glass follows active artwork and its rotation; unlit ruins never 
   const geometry = { bounds: { x: 80, y: 100, width: 100, height: 150 },
     imagePlacement: { x: 80, y: 100, width: 150, height: 100, rotation: 90 } };
   const map = { ...scene(), sites: [{ id: "quarry", initialLevel: 0, bounds: geometry.bounds,
-    states: [{ level: 0, image: "/world/prototype/quarry-lvl-0.png" },
-      { level: 1, image: "/world/prototype/quarry-lvl-1.png?v=changed", geometry }] }], lights: [] };
+    states: [{ level: 0, image: "/world/buildings/quarry/quarry-lvl-0.png" },
+      { level: 1, image: "/world/buildings/quarry/quarry-lvl-1.png?v=changed", geometry }] }], lights: [] };
   assert.deepEqual(forestLightSources(map), []);
   const [light] = forestLightSources(map, { levels: { quarry: 1 } });
   assert.equal(light.id, "quarry-lantern");
-  assert.ok(Math.abs(light.position.x - (80 - .69 * 100)) < 1e-8);
-  assert.ok(Math.abs(light.position.y - (100 + .617 * 150)) < 1e-8);
+  assert.ok(Math.abs(light.position.x - (80 - .549 * 100)) < 1e-8);
+  assert.ok(Math.abs(light.position.y - (100 + .895 * 150)) < 1e-8);
   assert.equal(light.glass.rotation, Math.PI / 2);
   assert.deepEqual(forestLightSources(map, { levels: { quarry: 1 }, showBuildings: false }), []);
   assert.deepEqual(forestLightSources({ ...map, sites: [{ ...map.sites[0], states: [{ level: 0, image: "/unknown.png" }] }] }), []);
+});
+
+test("every new mine illustration lights its painted lantern while level zero stays dark", async () => {
+  const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const quarry = map.sites.find(site => site.id === "quarry");
+  const { siteImagePoint } = await vite.ssrLoadModule("/features/world/tiled/site-image.ts");
+  assert.deepEqual(forestLightSources(map, { levels: { quarry: 0 } }).filter(light => light.siteId === "quarry"), []);
+  for (let level = 1; level <= 5; level++) {
+    const visual = quarry.states.find(state => state.level === level);
+    assert.ok(visual, `mine level ${level} has its own scene visual`);
+    const file = new URL(`../public${visual.image}`, import.meta.url);
+    const { width, height } = await sharp(fileURLToPath(file)).metadata();
+    // Resolve in image pixel coordinates, independently of the map's scale and rotation.
+    const geometry = { bounds: { x: 0, y: 0, width, height } };
+    const pixelMap = { ...map, lights: [], sites: [{ ...quarry, ...geometry,
+      states: [{ ...visual, geometry }] }] };
+    const lamps = forestLightSources(pixelMap, { levels: { quarry: level } });
+    assert.equal(lamps.length, 1, `mine level ${level} has exactly one fixture`);
+    const [lamp] = lamps;
+    assert.equal(lamp.id, "quarry-lantern");
+    assert.ok(lamp.position.x > width * .88 && lamp.position.x < width * .91);
+    assert.ok(lamp.position.y > height * .53 && lamp.position.y < height * .56);
+    const { data, info } = await sharp(fileURLToPath(file)).ensureAlpha().extract({
+      left: Math.round(lamp.position.x - lamp.glass.width / 2),
+      top: Math.round(lamp.position.y - lamp.glass.height / 2),
+      width: Math.round(lamp.glass.width), height: Math.round(lamp.glass.height),
+    }).raw().toBuffer({ resolveWithObject: true });
+    let litPixels = 0;
+    for (let pixel = 0; pixel < data.length; pixel += 4) {
+      if (data[pixel] >= 240 && data[pixel + 1] >= 200 && data[pixel + 3] >= 240) litPixels++;
+    }
+    assert.ok(litPixels > info.width * info.height * .1, `level ${level} glow covers the drawn lantern glass`);
+    const actual = forestLightSources(map, { levels: { quarry: level } }).find(light => light.siteId === "quarry");
+    const target = visual.geometry ?? quarry;
+    const expected = siteImagePoint(target, lamp.position.x / width, lamp.position.y / height);
+    assert.ok(Math.hypot(actual.position.x - expected.x, actual.position.y - expected.y) < 1e-8);
+  }
 });
 
 test("actual map uses one aligned home lamp at every level plus the working mine/workshop/lighthouse", async () => {
@@ -84,7 +122,32 @@ test("actual map uses one aligned home lamp at every level plus the working mine
     "Tiled intensity=0 still disables a lamp that follows its building");
 });
 
-test("lighthouse casts two soft beams only at night; shared clock, reduced motion, hiding and camera culling apply", () => {
+test("disabled authored lamps suppress their automatic building source without hiding other lights", async () => {
+  const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const authored = map.lights.find(light => light.id === "home-lantern");
+  authored.enabled = false;
+  const sources = forestLightSources(map, { levels: { home: 1, workshop: 2 } });
+  assert.equal(sources.some(light => light.id === "home-lantern"), false);
+  assert.ok(sources.some(light => light.id === "workshop-lantern"));
+  assert.equal(authored.enabled, false, "source resolution never mutates the authored draft");
+});
+
+test("explicitly moved building lamps use authored coordinates and leave the artwork glass behind", async () => {
+  const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const authored = map.lights.find(light => light.id === "home-lantern");
+  const bound = forestLightSources(map, { levels: { home: 1 } }).find(light => light.id === authored.id);
+  authored.position = { x: 300, y: 320 }; authored.height = 42;
+  assert.deepEqual(forestLightSources(map, { levels: { home: 1 } }).find(light => light.id === authored.id).position,
+    bound.position, "an untouched binding still follows the building");
+  authored.manualPosition = true;
+  const moved = forestLightSources(map, { levels: { home: 1 } }).find(light => light.id === authored.id);
+  assert.deepEqual(moved.position, authored.position); assert.equal(moved.height, 42);
+  assert.equal(moved.glass, undefined); assert.equal(moved.siteId, undefined);
+  assert.ok(forestLightSources(map, { showBuildings: false, levels: { home: 1 } }).some(light => light.id === authored.id),
+    "a detached source remains independent when building previews are hidden");
+});
+
+test("lighthouse casts twin volumes and optional surface spill only at night; clock, hiding and culling apply", () => {
   const beforeDocument = globalThis.document, canvases = [];
   globalThis.document = { createElement() {
     const paint = context(), canvas = { width: 0, height: 0, getContext: () => paint.ctx };
@@ -98,14 +161,17 @@ test("lighthouse casts two soft beams only at night; shared clock, reduced motio
     assert.equal(day.calls.length, 0); assert.equal(canvases.length, 0);
     const night = context(), original = night.state();
     drawForestLighthouseBeams(night.ctx, map, options);
-    assert.equal(night.calls.filter(call => call.method === "drawImage").length, 2);
-    assert.equal(canvases.length, 1);
+    assert.equal(night.calls.filter(call => call.method === "drawImage").length, 4);
+    assert.equal(canvases.length, 2);
     drawForestLighthouseBeams(night.ctx, map, { ...options, elapsed: 21 });
-    assert.equal(canvases.length, 1, "sweeping never rebuilds the sprite");
+    assert.equal(canvases.length, 2, "sweeping never rebuilds the sprites");
+    const low = context(); drawForestLighthouseBeams(low.ctx, map, { ...options, quality: "low" });
+    assert.equal(low.calls.filter(call => call.method === "drawImage").length, 2, "low retains the main optics without the optional ground spill");
     assert.deepEqual(night.state(), original); assert.equal(night.stack.length, 0);
     assert.notEqual(forestLighthouseAngle(12, false), forestLighthouseAngle(21, false));
-    assert.equal(forestLighthouseAngle(12, false), forestLighthouseAngle(48, false));
+    assert.equal(forestLighthouseAngle(12, false), forestLighthouseAngle(96, false));
     assert.equal(forestLighthouseAngle(12, true), forestLighthouseAngle(21, true));
+    assert.equal(forestLighthouseAngle(Infinity, false), forestLighthouseAngle(0, true));
     const hidden = context(); drawForestLighthouseBeams(hidden.ctx, map, { ...options, showBuildings: false });
     assert.equal(hidden.calls.length, 0);
     const off = context(); off.ctx.getTransform = () => ({ a: 1, b: 0, c: 0, d: 1, e: 10000, f: 10000 });
@@ -116,6 +182,110 @@ test("lighthouse casts two soft beams only at night; shared clock, reduced motio
   } finally {
     if (beforeDocument === undefined) delete globalThis.document; else globalThis.document = beforeDocument;
   }
+});
+
+test("lighthouse optics follow anisotropic rotated artwork, and manual detachment removes every beam binding", async () => {
+  const geometry = { bounds: { x: -20, y: 100, width: 100, height: 150 },
+    imagePlacement: { x: 80, y: 100, width: 150, height: 100, rotation: 90 } };
+  const map = { ...scene(), lights: [], sites: [{ id: "lighthouse", initialLevel: 1,
+    bounds: geometry.bounds, states: [{ level: 1, image: "/world/prototype/lighthouse-level-1.png?v=current", geometry }] }] };
+  const [bound] = forestLightSources(map);
+  assert.deepEqual(bound.position, { x: 47.4, y: 176.5 });
+  assert.ok(Math.abs(bound.beamGround.x - -11) < 1e-10);
+  assert.equal(bound.beamGround.y, 176.5);
+  assert.equal(bound.beamLength, 615);
+  assert.equal(bound.glass.width, 8.25); assert.equal(bound.glass.height, 6.5);
+  assert.equal(bound.glass.rotation, Math.PI / 2);
+  map.lights.push({ ...source("lighthouse-lens"), manualPosition: true });
+  const [detached] = forestLightSources(map);
+  for (const field of ["siteId", "glass", "beamLength", "beamGround"]) assert.equal(detached[field], undefined, field);
+  const paint = context(); drawForestLighthouseBeams(paint.ctx, map, options);
+  assert.equal(paint.calls.length, 0);
+
+  const actual = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const lens = forestLightSources(actual, { levels: { lighthouse: 1 } }).find(light => light.id === "lighthouse-lens");
+  const site = actual.sites.find(site => site.id === "lighthouse"), active = site.states.find(state => state.level === 1);
+  const bounds = active.geometry.bounds;
+  assert.ok(Math.abs(lens.position.x - (bounds.x + bounds.width * .51)) < 1e-8, "glass remains on the painted lens");
+  assert.ok(Math.abs(lens.position.y - (bounds.y + bounds.height * .326)) < 1e-8);
+});
+
+test("finite coloured beam textures retain a bright axis, feathered boundaries and a distant soft surface footprint", () => {
+  const beforeDocument = globalThis.document, canvases = [];
+  globalThis.document = { createElement() {
+    const paint = context(), canvas = { width: 0, height: 0, getContext: () => paint.ctx, paint };
+    canvases.push(canvas); return canvas;
+  } };
+  try {
+    const map = { ...scene(), lights: [{ ...source("lighthouse-lens"), color: "#fdcf72" }], sites: [{ id: "lighthouse", initialLevel: 1,
+      bounds: { x: 100, y: 100, width: 100, height: 100 }, states: [{ level: 1, image: "/world/prototype/lighthouse-level-1.png" }] }] };
+    drawForestLighthouseBeams(context().ctx, map, options);
+    assert.equal(canvases.length, 2);
+    const [volume, surface] = canvases.map(canvas => canvas.paint.calls.find(call => call.method === "putImageData").args[0]);
+    const pixel = (texture, x, y = 95) => Array.from(texture.data.slice((y * texture.width + x) * 4, (y * texture.width + x) * 4 + 4));
+    assert.deepEqual(pixel(volume, 256).slice(0, 3), [253, 207, 114], "Tiled colour reaches the actual beam sprite");
+    assert.ok(pixel(volume, 256)[3] > pixel(volume, 256, 119)[3] * 2, "concentrated axis and broad penumbra differ");
+    assert.ok(pixel(volume, 256, 119)[3] > 0, "soft penumbra remains visible");
+    for (const texture of [volume, surface]) {
+      assert.equal(pixel(texture, 0)[3], 0); assert.equal(pixel(texture, 511)[3], 0);
+      for (let x = 0; x < texture.width; x++) {
+        assert.equal(pixel(texture, x, 0)[3], 0); assert.equal(pixel(texture, x, 191)[3], 0);
+      }
+      let maximum = 0;
+      for (let at = 3; at < texture.data.length; at += 4) maximum = Math.max(maximum, texture.data[at]);
+      assert.ok(maximum > 0 && maximum < 128, "screen compositing cannot become an opaque fog sheet");
+    }
+    assert.equal(pixel(surface, 100)[3], 0, "ground spill has no second emitter at the tower base");
+    assert.ok(pixel(surface, 280)[3] > 0, "the rotating surface footprint reaches distant terrain/water");
+    for (const color of ["#fdcf73", "#fdcf74", "#fdcf75", "#fdcf76"]) {
+      map.lights[0].color = color; drawForestLighthouseBeams(context().ctx, map, options);
+    }
+    assert.equal(canvases.length, 10);
+    drawForestLighthouseBeams(context().ctx, map, { ...options, elapsed: 111 });
+    assert.equal(canvases.length, 10, "animation reuses the retained colour pair");
+    map.lights[0].color = "#fdcf72"; drawForestLighthouseBeams(context().ctx, map, options);
+    assert.equal(canvases.length, 12, "oldest colour is evicted after four colour pairs");
+  } finally {
+    if (beforeDocument === undefined) delete globalThis.document; else globalThis.document = beforeDocument;
+  }
+});
+
+test("offscreen lighthouse tips remain visible, and world boundaries clip the beam without changing canvas state", () => {
+  const map = { ...scene(), lights: [], sites: [{ id: "lighthouse", initialLevel: 1,
+    bounds: { x: -300, y: 100, width: 100, height: 100 }, states: [{ level: 1, image: "/world/prototype/lighthouse-level-1.png" }] }] };
+  const beforeDocument = globalThis.document;
+  globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => context().ctx }) };
+  try {
+    const paint = context(), original = paint.state();
+    drawForestLighthouseBeams(paint.ctx, map, options);
+    assert.equal(paint.calls.filter(call => call.method === "drawImage").length, 4);
+    assert.ok(paint.calls.some(call => call.method === "lineTo" && call.args[0] === map.width && call.args[1] === map.height));
+    assert.ok(paint.calls.findIndex(call => call.method === "clip") < paint.calls.findIndex(call => call.method === "drawImage"));
+    assert.deepEqual(paint.state(), original); assert.equal(paint.stack.length, 0);
+  } finally {
+    if (beforeDocument === undefined) delete globalThis.document; else globalThis.document = beforeDocument;
+  }
+});
+
+test("Fresnel lens clips to transformed glass, keeps authored warm halo and bounded intensity in both qualities", () => {
+  const map = { ...scene(), lights: [{ ...source("lighthouse-lens"), intensity: 1.4, color: "#ffcc88" }],
+    sites: [{ id: "lighthouse", initialLevel: 1, bounds: { x: 100, y: 100, width: 100, height: 100 },
+      states: [{ level: 1, image: "/world/prototype/lighthouse-level-1.png" }] }] };
+  const glass = forestLightSources(map)[0].glass;
+  for (const quality of ["high", "low"]) {
+    const paint = context(), original = paint.state();
+    drawForestLightEmitters(paint.ctx, map, { ...options, quality });
+    const ellipse = paint.calls.find(call => call.method === "ellipse");
+    assert.deepEqual(ellipse.args.slice(0, 4), [0, 0, glass.width / 2, glass.height / 2]);
+    assert.ok(paint.calls.some(call => call.method === "rotate" && call.args[0] === glass.rotation));
+    assert.equal(paint.calls.filter(call => call.method === "fillRect").length, quality === "high" ? 6 : 3);
+    assert.ok(paint.calls.find(call => call.method === "gradient").gradient.stops[0][1].includes("255,204,136"));
+    assert.ok(paint.calls.every(call => call.globalAlpha === undefined || call.globalAlpha >= 0 && call.globalAlpha <= 1));
+    assert.deepEqual(paint.state(), original); assert.equal(paint.stack.length, 0);
+  }
+  map.sites[0].bounds = { x: -76, y: 100, width: 100, height: 200 };
+  const edge = context(); drawForestLightEmitters(edge.ctx, map, options);
+  assert.ok(edge.calls.some(call => call.method === "ellipse"), "scaled lens halo enters the camera before its offscreen center");
 });
 
 test("flames have bounded independent motion and are static with the shared clock paused or reduced", () => {

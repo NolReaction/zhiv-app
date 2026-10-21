@@ -16,7 +16,7 @@
 | Авторизация, HTTP-параметры и лимит тела | [FeedbackRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/feedback/FeedbackRoutes.kt) |
 | DTO, категории, статусы и правила текста | [FeedbackRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/feedback/FeedbackRepository.kt) |
 | Транзакции, квитанции и лимит отправки | [JdbcFeedbackRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcFeedbackRepository.kt) |
-| Схема PostgreSQL | [V29](../../apps/api/src/main/resources/db/migration/V29__player_feedback.sql) |
+| Схема PostgreSQL | [V29](../../apps/api/src/main/resources/db/migration/history/V29__player_feedback.sql) |
 
 ## Правила
 

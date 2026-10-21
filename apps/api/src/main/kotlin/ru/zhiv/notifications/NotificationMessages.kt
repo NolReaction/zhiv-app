@@ -2,6 +2,7 @@ package ru.zhiv.notifications
 
 import ru.zhiv.economy.EconomyJob
 import ru.zhiv.economy.EconomyRules
+import ru.zhiv.economy.economyBerryItemIds
 import java.util.Locale
 
 internal data class NotificationMessage(val title: String, val body: String)
@@ -13,6 +14,13 @@ private data class CountedResource(val one: String, val few: String, val many: S
 /** Names describe inventory units; food/provisions are portions, mass resources use explicit units. */
 private val resourceWords = mapOf(
     "berries" to CountedResource("ягода", "ягоды", "ягод"),
+    "strawberries" to CountedResource("ягода клубники", "ягоды клубники", "ягод клубники"),
+    "blueberries" to CountedResource("ягода черники", "ягоды черники", "ягод черники"),
+    "currants" to CountedResource("ягода смородины", "ягоды смородины", "ягод смородины"),
+    "blackberries" to CountedResource("ягода ежевики", "ягоды ежевики", "ягод ежевики"),
+    "cranberries" to CountedResource("ягода клюквы", "ягоды клюквы", "ягод клюквы"),
+    "trail_ration" to CountedResource("походный паёк", "походных пайка", "походных пайков"),
+    "research_gear" to CountedResource("комплект снаряжения исследователя", "комплекта снаряжения исследователя", "комплектов снаряжения исследователя"),
     "wood" to CountedResource("ед. древесины", "ед. древесины", "ед. древесины"),
     "stone" to CountedResource("камень", "камня", "камней"),
     "ore" to CountedResource("ед. железной руды", "ед. железной руды", "ед. железной руды"),
@@ -36,6 +44,9 @@ private val resourceWords = mapOf(
     "cut_stone" to CountedResource("тёсаный камень", "тёсаных камня", "тёсаных камней"),
 ) + mapOf(
     "dried_berries" to "сушёных ягод", "smoked_fish" to "копчёной рыбы",
+    "berry_compote" to "малинового компота", "strawberry_compote" to "клубничного компота",
+    "blueberry_compote" to "черничного компота", "currant_jelly" to "смородинового желе",
+    "blackberry_preserve" to "ежевичного варенья", "cranberry_glaze" to "клюквенного десерта",
     "grilled_fish" to "жареной рыбы", "fish_soup" to "ухи", "berry_fish" to "рыбы с ягодным соусом",
     "hearty_fish" to "сытного рыбного ужина", "epic_fish" to "праздничной рыбы", "legendary_fish" to "акульего жаркого",
 ).mapValues { (_, food) -> CountedResource("порция $food", "порции $food", "порций $food") }
@@ -77,7 +88,8 @@ private fun totalRewards(events: List<NotificationMessageEvent>): Map<String, Lo
 }
 
 private fun explorationSection(events: List<NotificationMessageEvent>): NotificationSection {
-    val routes = events.map { it.job?.takeIf { job -> job.kind == "exploration" }?.targetId }.distinct().sortedWith(nullsLast())
+    val (minerEvents, heroEvents) = events.partition { it.job?.let(EconomyRules::isMinerJob) == true }
+    val routes = heroEvents.map { it.job?.takeIf { job -> job.kind == "exploration" }?.targetId }.distinct().sortedWith(nullsLast())
     val descriptions = routes.map { id ->
         val route = EconomyRules.catalog.explorations.firstOrNull { it.id == id }
         when {
@@ -93,7 +105,13 @@ private fun explorationSection(events: List<NotificationMessageEvent>): Notifica
         }
     }.distinct()
     // Never read exploration rewards/fishing/rareDrop: the unrevealed outcome is intentionally private.
-    return NotificationSection(descriptions.joinToString(" "), "Мохлик вернулся. Можно разобрать находки.")
+    val miner = "Работа в шахте завершена. Можно забрать добычу."
+    val full = descriptions + if (minerEvents.isNotEmpty()) listOf(miner) else emptyList()
+    val short = buildList {
+        if (heroEvents.isNotEmpty()) add("Мохлик вернулся. Можно разобрать находки.")
+        if (minerEvents.isNotEmpty()) add(miner)
+    }.joinToString(" ")
+    return NotificationSection(full.joinToString(" "), short)
 }
 
 private fun constructionSection(events: List<NotificationMessageEvent>): NotificationSection {
@@ -119,11 +137,11 @@ private fun productionSection(events: List<NotificationMessageEvent>): Notificat
     val sentences = buildList {
         if (harvest.isNotEmpty()) {
             val rewards = totalRewards(harvest)
-            val berries = rewards["berries"] ?: 0L
-            if (berries > 0) {
-                val predicate = if (quantityForm(berries) == 0) "готова" else "готовы"
-                add("${countedResource("berries", berries)} $predicate к сбору.")
-                val extra = joinedResources(rewards - "berries")
+            val berries = rewards.filter { (id, quantity) -> id in economyBerryItemIds && quantity > 0 }
+            if (berries.isNotEmpty()) {
+                val predicate = if (berries.size == 1 && quantityForm(berries.values.single()) == 0) "готова" else "готовы"
+                add("${joinedResources(berries)} $predicate к сбору.")
+                val extra = joinedResources(rewards - economyBerryItemIds)
                 if (extra.isNotEmpty()) add("Вместе с урожаем: $extra.")
                 add(startHarvest)
             }
@@ -154,16 +172,18 @@ internal fun notificationMessage(events: List<NotificationMessageEvent>): Notifi
     val current = unique.filterNot { it.category == "production" && it.phase == "harvest" && it.job?.id in collectedIds }
     val grouped = current.groupBy { it.category }
     val sections = buildList {
+        if ("mail" in grouped) add(NotificationSection("Новое письмо от администрации. Откройте почту.", "Новое письмо от администрации. Откройте почту."))
         grouped["exploration"]?.let { add(explorationSection(it)) }
         grouped["construction"]?.let { add(constructionSection(it)) }
         grouped["production"]?.let { add(productionSection(it)) }
         if ("checkin" in grouped) add(NotificationSection("С последней отметки прошло больше суток. Дайте близким знать, что вы в порядке.", "Пора отметиться: дайте близким знать, что вы в порядке."))
     }.ifEmpty { listOf(NotificationSection("На полянке есть новости. Загляните к Мохлику.", "На полянке есть новости. Загляните к Мохлику.")) }
     val title = when (grouped.keys.singleOrNull()) {
-        "exploration" -> "Мохлик вернулся"
+        "exploration" -> if (current.all { it.job?.let(EconomyRules::isMinerJob) == true }) "Шахтёр завершил смену" else "Мохлик вернулся"
         "construction" -> "Стройка завершена"
         "production" -> "Ресурсы готовы"
         "checkin" -> "Пора отметиться"
+        "mail" -> "Письмо от администрации"
         else -> "Новости полянки"
     }
     val bodies = sections.map { it.full }.toMutableList()

@@ -168,6 +168,44 @@ test("touch and pen unlock synchronously on trusted release, with touchend fallb
   } finally { if (saved) Object.defineProperty(globalThis, "KeyboardEvent", saved); else delete globalThis.KeyboardEvent; }
 });
 
+test("freeze and pagehide fence stale visibility and gestures until both lifecycle states permit audio", () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "KeyboardEvent");
+  Object.defineProperty(globalThis, "KeyboardEvent", { value: class KeyboardEvent {}, configurable: true });
+  try {
+    const page = eventSurface(), surface = eventSurface(), visibility = [];
+    let unlocked = 0;
+    const cleanup = attachAudioLifecycle({
+      setVisible: value => visibility.push(value), getSettings: () => ({ enabled: true }),
+      getDiagnostics: () => ({ state: "suspended" }), unlock: () => { unlocked++; return Promise.resolve(true); },
+    }, page, surface);
+    const gesture = () => page.emit("pointerup", { isTrusted: true, pointerType: "touch" });
+    page.emit("freeze"); assert.equal(visibility.at(-1), false);
+    // Some browsers deliver pageshow or visibilitychange before resume, with
+    // document.hidden already false. None can reopen a frozen device.
+    surface.emit("pageshow"); page.emit("visibilitychange"); gesture();
+    assert.equal(visibility.at(-1), false); assert.equal(unlocked, 0);
+    surface.emit("pagehide"); page.emit("resume"); gesture();
+    assert.equal(visibility.at(-1), false); assert.equal(unlocked, 0,
+      "a resumed but BFCache-parked page is still not interactive");
+    page.hidden = true; surface.emit("pageshow"); page.emit("resume"); gesture();
+    assert.equal(visibility.at(-1), false); assert.equal(unlocked, 0);
+    page.hidden = false; page.emit("visibilitychange");
+    assert.equal(visibility.at(-1), true); assert.equal(unlocked, 0);
+    gesture(); assert.equal(unlocked, 1);
+    for (let cycle = 0; cycle < 20; cycle++) {
+      surface.emit("pagehide"); page.emit("freeze"); page.emit("visibilitychange"); gesture();
+      assert.equal(visibility.at(-1), false);
+      page.emit("resume"); surface.emit("pageshow");
+      assert.equal(visibility.at(-1), true);
+    }
+    assert.equal(unlocked, 1, "lifecycle events never create gesture attempts");
+    cleanup(); assert.equal(visibility.at(-1), false);
+    const count = visibility.length;
+    page.emit("resume"); surface.emit("pageshow"); gesture();
+    assert.equal(visibility.length, count); assert.equal(page.count() + surface.count(), 0);
+  } finally { if (saved) Object.defineProperty(globalThis, "KeyboardEvent", saved); else delete globalThis.KeyboardEvent; }
+});
+
 test("delegation only accepts opted-in enabled buttons, not inputs, invalid cues or disabled controls", () => {
   const saved = Object.getOwnPropertyDescriptor(globalThis, "Element");
   class Element {

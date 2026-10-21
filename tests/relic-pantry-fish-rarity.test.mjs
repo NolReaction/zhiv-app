@@ -26,7 +26,7 @@ const fresh = (inventory = {}) => {
 };
 const controller = state => ({ snapshot: state, market: null, marketError: null, busy: false, uncertain: false, error: null,
   notice: "", now: Date.now(), retryAt: 0, act() {}, actMarket() {}, refresh() {}, refreshMarket() {}, retry() {} });
-const pantry = (state, initialTab = "supplies") => render(WorldPantryMenu, { economy: controller(state), initialTab, onUpgrade() {}, onExplore() {}, onOpenMarket() {} });
+const pantry = (state, initialTab = "supplies") => render(WorldPantryMenu, { economy: controller(state), initialTab, onUpgrade() {}, onExplore() {} });
 
 test("relic masters are distinct native illustrations without external artwork or shared SVG IDs", () => {
   const drawings = ["ancient_core", "moon_crystal", "living_resin"].map(itemId => render(ItemIcon, { itemId, size: 48 }));
@@ -40,7 +40,7 @@ test("relic masters are distinct native illustrations without external artwork o
 test("supplies omit relic sale cards while their separate tab reports the actual units", () => {
   const state = fresh({ wood: 5, ancient_core: 2, moon_crystal: 1 });
   const supplies = pantry(state);
-  assert.match(supplies, /aria-label="Древесина: 5"/);
+  assert.match(supplies, /aria-label="Бревно: 5"/);
   assert.doesNotMatch(supplies, /aria-label="Древнее ядро: 2"|aria-label="Лунный кристалл: 1"|data-relic=/);
   assert.match(supplies, /role="tab"[^>]*aria-selected="false"[^>]*>[\s\S]*?<small>3<\/small><span>Реликвии<\/span>/);
   const relics = pantry(state, "relics");
@@ -79,11 +79,9 @@ test("all five fish grades have shared readable labels and are accepted by the c
   assert.equal((legend.match(/data-fish-rarity=/g) ?? []).length, 5);
 });
 
-test("existing species remain in the expanded grades across shop book and inventory", () => {
-  assert.deepEqual(economyCatalog.fishing.fish.filter(fish => ["fish", "fish_silverfin", "fish_reedperch", "fish_mooncarp"].includes(fish.itemId)).map(fish => [fish.itemId, fish.rarity, fish.buyPrice]), [
-    ["fish", "common", 160], ["fish_silverfin", "common", 240], ["fish_reedperch", "uncommon", 360], ["fish_mooncarp", "rare", 640],
-  ]);
-  const state = fresh({ fish_mooncarp: 2 });
+test("class stocks carry rarity while species remain independently discoverable", () => {
+  assert.deepEqual(economyCatalog.fishing.classes.map(entry => entry.itemId), ["fish_common", "fish_uncommon", "fish_rare", "fish_epic", "fish_legendary"]);
+  const state = fresh({ fish_rare: 2 });
   const shop = render(PleskFishingShop, { economy: controller(state), onFishing() {}, onOpenPantry() {} });
   assert.doesNotMatch(shop, /Мои снасти|Ваши снасти/);
   const book = fishPages(state);
@@ -97,4 +95,19 @@ test("existing species remain in the expanded grades across shop book and invent
   const collection = fishPages(state);
   assert.match(collection, /data-fish-rarity="rare"/); assert.match(collection, /Поймано: 1/);
   assert.equal(collectionBookEntries("fishing", [], state).filter(entry => entry.owned).length, 1);
+});
+
+
+test("fridge merges legacy species into five class stocks and keeps collection entries sealed", () => {
+  const state = fresh({ fish_common: 2, fish_silverfin: 3, fish_uncommon: 1, fish_rare: 2, fish_epic: 3, fish_legendary: 1 });
+  const before = structuredClone(state.inventory);
+  const html = pantry(state, "fridge");
+  assert.match(html, /aria-label="Обычная рыба: 5"/);
+  for (const group of state.catalog.fishing.classes) {
+    assert.ok(html.includes(`data-item-icon="${group.itemId}"`));
+    assert.ok(html.includes(`data-fish-rarity="${group.rarity}"`));
+  }
+  assert.doesNotMatch(html, /Серебринка|data-item-icon="fish_silverfin"/);
+  assert.deepEqual(state.inventory, before, "display cannot mutate account stock");
+  assert.equal(collectionBookEntries("fishing", [], state).filter(entry => entry.owned).length, 0);
 });

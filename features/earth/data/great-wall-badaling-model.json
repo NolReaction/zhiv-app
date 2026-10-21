@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": "great-wall-badaling",
+  "source": {
+    "sha256": "9f1b1fbfcbf8305949118be45a53b9c028a4c4c7a0a440ce93cd65129c3fe457",
+    "bytes": 5904744,
+    "author": "",
+    "license": "",
+    "url": "",
+    "title": ""
+  },
+  "coordinates": {
+    "axes": "east,north,up",
+    "gltfConversion": "x,-z,y",
+    "normalizedHeight": 1,
+    "heightMeters": 20,
+    "headingDegrees": 0,
+    "bounds": {
+      "min": [
+        -0.393798828125,
+        -0.6370484828948975,
+        0
+      ],
+      "max": [
+        0.393798828125,
+        0.6370484828948975,
+        1
+      ]
+    }
+  },
+  "preparation": {
+    "version": 2,
+    "simplifier": "meshoptimizer@1.1.1",
+    "inputTriangles": 48896,
+    "discardedDegenerateTriangles": 0,
+    "preserveTopFraction": 0,
+    "sourceHeight": 0.769683837890625,
+    "sourceOrigin": [
+      0,
+      0,
+      0
+    ],
+    "colors": "linear baseColor + vertexColor; sRGB baseColor texture; runtime normal/metallic/roughness lighting"
+  },
+  "overview": {
+    "url": "/earth/models/great-wall-badaling/overview.elm",
+    "bytes": 341996,
+    "sha256": "f5b7e045f9ab2f13ec5a94e96a3d86b3109fef902838f01ed13992ae88005499",
+    "vertexCount": 5450,
+    "indexCount": 17994,
+    "triangles": 5998,
+    "targetTriangles": 6000,
+    "error": 0.006328476592898369,
+    "errorLimit": 0.03,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 10804,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 15730,
+        "width": 128,
+        "height": 128,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 3598,
+        "width": 64,
+        "height": 64,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  },
+  "detail": {
+    "url": "/earth/models/great-wall-badaling/detail.elm",
+    "bytes": 1400072,
+    "sha256": "7c3589002f34930778db54af85b614d9a405f0f310f8b7e135a8bb35b182729e",
+    "vertexCount": 16637,
+    "indexCount": 72000,
+    "triangles": 24000,
+    "targetTriangles": 24000,
+    "error": 0.0015046049375087023,
+    "errorLimit": 0.01,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 94716,
+        "width": 1024,
+        "height": 1024,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 230036,
+        "width": 512,
+        "height": 512,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 55204,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  }
+}

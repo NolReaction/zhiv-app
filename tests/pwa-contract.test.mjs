@@ -299,6 +299,24 @@ test("keeps identity and check-ins out of the offline cache", async () => {
   assert.match(serviceWorker, /key\.startsWith\(CACHE_PREFIX\)/);
 });
 
+test("private API requests bypass both poisoned offline caches in every fetch mode", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "private-boundaries");
+  await prepareOfflineShell(harness);
+  const shell = await harness.caches.open(await harness.currentCacheName());
+  const assets = await harness.caches.open("zhiv-assets-v1");
+  const paths = ["/api/v1/me", "/api/v1/economy", "/api/v1/economy/market", "/api/v1/economy/barter",
+    "/api/v1/world", "/api/v1/world/forest-memory", "/api/v1/game/progress", "/api/v1/game/rewards",
+    "/api/v1/presence", "/api/v1/check-ins", "/api/v1/admin/users", "/api/v1/auth/account"];
+  for (const path of paths) {
+    for (const cache of [shell, assets]) await cache.put(path, new Response("previous account's private data"));
+    for (const mode of ["navigate", "cors", "same-origin"])
+      assert.equal(await harness.dispatchFetch(path, mode), null, `${path} must go straight to the authenticated network`);
+  }
+  assert.equal(harness.calls.fetch.some(url => new URL(url).pathname.startsWith("/api/")), false,
+    "the worker neither fetches nor replays private data; the browser handles the request normally");
+});
+
 test("offline product and other pages never receive the cached game at the wrong URL", async () => {
   const harness = await createServiceWorkerHarness();
   const shell = setShellResponses(harness, "public-site");
@@ -566,11 +584,14 @@ test("all content-versioned Tiled PNG and WebP artwork survives an offline revis
     ...world.sites.flatMap(site => site.states.map(state => state.image)),
   ])];
   assert.ok(assets.some(asset => /_[^/]+\.png\?/.test(asset)), "the real authored PNG filenames include underscores");
+  assert.ok(assets.some(asset => asset.startsWith("/world/buildings/")), "exported levels also use per-building directories");
   for (const asset of assets) {
     harness.responses.set(origin + asset, new Response(asset, { headers: {
       "content-type": asset.includes(".png?") ? "image/png" : "image/webp",
     } }));
-    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), asset);
+    const response = await harness.dispatchFetch(asset, "cors");
+    assert.ok(response, `versioned Tiled artwork must be intercepted: ${asset}`);
+    assert.equal(await response.text(), asset);
     harness.responses.set(origin + asset, new Error("Offline"));
   }
   for (const asset of assets) assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), asset);
@@ -579,6 +600,11 @@ test("all content-versioned Tiled PNG and WebP artwork survives an offline revis
     "/world/prototype/Shishkolap_House.png?v=latest",
     "/world/prototype/Shishkolap_House.png?v=0123456789ab&preview=true",
     "/world/prototype/nested/house.png?v=0123456789ab",
+    "/world/buildings/quarry/quarry-lvl-0.png",
+    "/world/buildings/quarry/quarry-lvl-0.png?v=latest",
+    "/world/buildings/quarry/quarry-lvl-0.png?v=0123456789ab&preview=true",
+    "/world/buildings/quarry/nested/quarry-lvl-0.png?v=0123456789ab",
+    "/world/buildings/quarry/quarry-lvl-0.glb?v=0123456789ab",
   ]) assert.equal(await harness.dispatchFetch(asset, "cors"), null);
 });
 
@@ -782,7 +808,7 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   assert.match(app, /<AppNavigation active=\{activeView\}/);
   assert.match(navigation, /className=\{styles\.navLens\}/);
   assert.match(navigation, /aria-current=\{active === id \? "page" : undefined\}/);
-  assert.equal((navigation.match(/name: "/g) ?? []).length, 3);
+  assert.equal((navigation.match(/name: "/g) ?? []).length, 4);
 
   assert.match(appStyles, /\.shell\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*overflow-y:\s*auto;/s);
@@ -792,13 +818,13 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   assert.match(mobileShell, /position:\s*relative;/);
   assert.match(mobileShell, /grid-template-rows:\s*auto minmax\(0, 1fr\);/);
 
-  assert.match(mobileFooter, /position:\s*absolute;/);
-  assert.match(mobileFooter, /right:\s*0;/);
-  assert.match(mobileFooter, /left:\s*0;/);
+  assert.match(mobileFooter, /position:\s*fixed;/);
+  assert.match(mobileFooter, /right:\s*env\(safe-area-inset-right,\s*0px\);/);
+  assert.match(mobileFooter, /left:\s*env\(safe-area-inset-left,\s*0px\);/);
   assert.match(mobileFooter, /width:\s*min\(/);
   assert.match(mobileFooter, /safe-area-inset-left/);
   assert.match(mobileFooter, /safe-area-inset-right/);
-  assert.match(mobileFooter, /316px/);
+  assert.match(mobileFooter, /360px/);
   assert.match(mobileFooter, /margin-inline:\s*auto;/);
   assert.match(mobileFooter, /bottom:[^;]*safe-area-inset-bottom[^;]*;/);
   assert.match(mobileFooter, /background:\s*transparent;/);
@@ -821,11 +847,15 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   );
   assert.match(mobileBottomNav, /pointer-events:\s*auto;/);
   assert.match(mobileAppStyles, /\.bottomNav\[data-active-view="people"\] \.navLens/);
-  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/);
-  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 3\);/);
+  assert.match(mobileAppStyles, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
+  assert.match(mobileAppStyles, /width:\s*calc\(\(100% - 10px\) \/ 4\);/);
   assert.match(
     mobileAppStyles,
-    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(200%, 0, 0\)/s,
+    /\.bottomNav\[data-active-view="earth"\] \.navLens\s*\{[^}]*translate3d\(200%, 0, 0\)/s,
+  );
+  assert.match(
+    mobileAppStyles,
+    /\.bottomNav\[data-active-view="profile"\] \.navLens\s*\{[^}]*translate3d\(300%, 0, 0\)/s,
   );
   assert.match(appStyles, /@supports not \(\(-webkit-backdrop-filter:/);
 
@@ -943,6 +973,8 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(globals, /button\s*\{[^}]*touch-action:\s*pan-y;/s);
   assert.match(appStyles, /\.shell\s*\{[^}]*touch-action:\s*pan-y;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(appStyles, /\.shell\[data-active-view="earth"\]\s*\{[^}]*touch-action:\s*manipulation;/s,
+    "Earth overlays allow horizontal native rails while the map canvas owns its gestures");
   assert.match(
     appStyles,
     /\.shell\[data-active-view="check-in"\]\s*\{(?=[^}]*position:\s*fixed;)(?=[^}]*height:\s*100svh;)(?=[^}]*overflow:\s*hidden;)(?=[^}]*overscroll-behavior:\s*none;)(?=[^}]*touch-action:\s*none;)[^}]*\}/s,
@@ -999,9 +1031,11 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.doesNotMatch(app, /<span>Свои<\/span>/);
   assert.match(people, /<h1 id="people-title">Личные связи<\/h1>/);
   assert.match(people, /aria-labelledby="people-title"/);
-  assert.match(people, /Отметки, статус и игровой профиль видны этому человеку; настройки отметок действуют и в общих группах/);
-  assert.match(people, /Отметки, статус и игровой профиль скрыты от этого человека, включая группы/);
-  assert.match(people, /aria-describedby=\{sharingHintId\}/);
+  assert.match(people, /Мои отметки «Я живой» и сообщение статуса видны этому человеку, включая общие группы/);
+  assert.match(people, /Мои отметки «Я живой» и сообщение статуса скрыты от этого человека, включая общие группы/);
+  assert.match(people, /<FriendSharingButton[\s\S]*?description=\{sharingHintId\}/);
+  const friendSharing = await readFile(new URL("../features/earth/earth-friend-sharing.tsx", import.meta.url), "utf8");
+  assert.match(friendSharing, /aria-describedby=\{description\}/);
   assert.match(people, /useReducer\(\s*inviteDialogReducer,\s*initialInviteDialogState/);
   assert.match(people, /<Dialog open=\{inviteDialog\.open\}/);
   assert.match(people, /dispatchInviteDialog\(\{ type: "close" \}\)/);
@@ -1048,7 +1082,9 @@ test("uses a wide desktop dashboard without changing the mobile navigation contr
   assert.match(desktopPeople, /\.tabPanel, \.freshnessRow\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
   assert.match(desktopPeople, /\.tabPanel:not\(\.sections\) > \.sections\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
   assert.match(desktopProfile, /grid-template-columns:\s*minmax\(280px, 0\.8fr\) minmax\(0, 1\.2fr\);/);
-  assert.doesNotMatch(profileStyles, /grid-row:/);
+  // Dashboard panels follow document order. Local icon/label rows inside a
+  // button do not pin a dashboard panel or change mobile navigation.
+  assert.doesNotMatch(profileStyles, /[^{}]*\.(?:columns|overviewColumn|settingsList)[^{}]*\{[^}]*\bgrid-row(?:-[a-z]+)?:/);
 
   const narrowQuery = "@media (max-width: 360px)";
   const narrowPeople = peopleStyles.slice(peopleStyles.indexOf(narrowQuery));

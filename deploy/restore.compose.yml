@@ -8,8 +8,10 @@ services:
       POSTGRES_DB: zhiv_restore
       POSTGRES_USER: zhiv_restore
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-    tmpfs:
-      - /var/lib/postgresql
+    # A fresh project-scoped disk volume avoids filling host RAM with a real dump.
+    volumes:
+      - restore_data:/var/lib/postgresql
+    networks: [restore]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zhiv_restore -d zhiv_restore"]
       interval: 2s
@@ -20,3 +22,10 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+volumes:
+  restore_data:
+
+networks:
+  restore:
+    internal: true

@@ -17,7 +17,7 @@ import { advanceForestFauna, cancelFaunaInteraction, canRequestFaunaInteraction,
   interruptFaunaInteraction, requestFaunaInteraction, type FaunaVisitor } from "@/features/world/environment/wildlife/forest-fauna";
 import { findWorldPath } from "@/features/world/navigation/navigation";
 import { advanceForestGarden, cancelForestGarden, gardenActionAvailable, gardenEligibleBushes,
-  gardenRoutineStationary, gardenRoutineTarget, gardenWorkReachable, gardenBasketApproach, gardenBasketFootprint,
+  gardenRoutineStationary, gardenRoutineTarget, gardenWorkReachable, gardenBasketApproach, gardenBasketFootprint, gardenHarvestOrders,
   growForestBerries, parkForestGardenBasket, FOREST_GARDEN_LIMITS,
   type ForestGardenAction, type ForestGardenPhase } from "@/features/world/activities/garden/forest-garden";
 import { advanceForestMind, beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates,
@@ -26,6 +26,8 @@ import { advanceForestMind, beginForestIntention, finishForestIntention, noticeF
 export type ForestDirective = ForestLifeAction | ForestGardenAction | "grow-berries" | "bush" | "home-sleep" | "wake" | "watch-birds" | "campfire";
 export type ForestDirectorOptions = {
   autoLife: boolean; blocked: boolean; dusk: number; rain: number; homeAvailable: boolean; actorAway?: boolean;
+  /** Transient owner option, never persisted across cameras/accounts. */
+  tutorialActive?: boolean;
   /** Server-confirmed departure owns only the existing clearing walk, not life decisions. */
   explicitTravel?: boolean;
   butterflies?: "auto" | "on" | "off"; fireflies?: "auto" | "on" | "off";
@@ -94,21 +96,37 @@ export function cancelForestDirector(state: ForestSessionState, reason = "Зан
   state.director.nextDecisionAt = state.director.elapsed + 10;
   releaseClearingPoint(state.clearing);
 }
-export function noticeForestDirector(state: ForestSessionState, still = false) {
+/** A body tap can acknowledge the player without transferring route ownership.
+ * Explicit DEV wake/cancel controls keep their separate interruption behavior. */
+export function noticeForestDirector(state: ForestSessionState, still = false, options: { preserveActivity?: boolean } = {}): boolean {
+  const { clearing, director, life } = state;
+  const sleeping = ["sleep", "drowsy", "yawn"].includes(clearingActivityFrame(clearing).pose);
+  const walking = ["free-walk", "outbound", "return", "homebound", "home-return", "entering", "exiting"].includes(clearing.stage);
+  const meeting = state.social.meeting;
+  const social = meeting && (meeting.guest === "mochlik" || meeting.host === "mochlik");
+  if (options.preserveActivity && !sleeping && (social || walking || clearing.requestedPoint || clearing.activeInteraction
+    || state.pendingLife || state.pendingAttention || director.activeKey || director.tradeVisit || director.birdwatch
+    || director.campfireVisit || life.routine || life.garden.routine || life.garden.harvest || life.garden.basket?.held || state.fauna.encounter)) {
+    // The scene owns the finite speech bubble. Do not insert an attention stage:
+    // garden/trade owners require their real path and must keep their own clocks.
+    noticeForestMind(clearing.behavior.mind, { preserveIntention: true });
+    return true;
+  }
   cancelForestTradeVisit(state, "Мохлика позвали");
   noticeForestMind(state.clearing.behavior.mind, { rested: state.clearing.stage === "home-sleep" && state.clearing.stageElapsed >= 5 });
   state.director.birdwatch = null; state.director.campfireVisit = null;
   clearRequest(state); state.director.nextDecisionAt = state.director.elapsed + 12;
   if (still) {
-    cancelForestDirector(state); noticeClearingActivity(state.clearing, { still: true, mindNoticed: true }); return;
+    cancelForestDirector(state); noticeClearingActivity(state.clearing, { still: true, mindNoticed: true }); return false;
   }
-  if (state.pendingAttention) return;
+  if (state.pendingAttention) return false;
   cancelGarden(state);
   const prop = interruptForestLife(state.life), insect = interruptFaunaInteraction(state.fauna);
   state.pendingAttention = prop || insect;
   if (!state.pendingAttention) {
     releaseClearingPoint(state.clearing); noticeClearingActivity(state.clearing, { mindNoticed: true });
   }
+  return false;
 }
 
 /** Requests use the same physical participants and paths as autonomous actions. */
@@ -135,7 +153,7 @@ export function requestForestDirective(state: ForestSessionState, kind: ForestDi
     reason: "Завершает текущее действие перед новой встречей" });
 }
 
-/** Starts a cosmetic delivery for one already-authorized economic collection.
+/** Starts one cosmetic delivery for an already-authorized economic collection batch.
  * Only the caller can claim the server job after the eventual completion event. */
 export function requestForestGardenHarvest(state: ForestSessionState, request: GardenHarvestRequest,
   options: ForestDirectorOptions) {
@@ -145,7 +163,7 @@ export function requestForestGardenHarvest(state: ForestSessionState, request: G
     garden.harvest = null;
   };
   if (!Number.isSafeInteger(request.requestId) || request.requestId <= 0 || !request.jobId) return;
-  if (!garden.production || garden.production.jobId !== request.jobId || !garden.bushes.some(bush => bush.growth >= .98)) {
+  if (!gardenHarvestOrders(garden, request).length || !garden.bushes.some(bush => bush.growth >= .98)) {
     unavailable("Этот урожай пока недоступен для сбора"); return;
   }
   if (!isWithinHomeClearing(state.clearing)) {
@@ -155,9 +173,10 @@ export function requestForestGardenHarvest(state: ForestSessionState, request: G
     unavailable(options.reducedMotion ? "Сбор продолжается без анимации" : "Мохлик сейчас не может подойти к кусту"); return;
   }
   requestForestDirective(state, "harvest-berries", options);
-  garden.harvest = { request: { ...request }, phase: "pending" };
-  garden.harvestEvent = { ...request, status: "started" };
-  state.director.reason = "Идёт собрать выбранный урожай";
+  const accepted = { ...request, ...(request.jobIds ? { jobIds: [...request.jobIds] } : {}) };
+  garden.harvest = { request: accepted, phase: "pending" };
+  garden.harvestEvent = { ...accepted, status: "started" };
+  state.director.reason = "Идёт собрать спелый урожай";
 }
 
 function failRequest(state: ForestSessionState, reason: string) {
@@ -296,7 +315,7 @@ function advanceGardenRoutine(state: ForestSessionState, delta: number, options:
   } else if (routine.phase === "deposit" && routine.elapsed >= 1.5) {
     const basket = garden.basket;
     if (!basket || bush.growth < .98 || (economicHarvest
-      ? !garden.production || !garden.harvest || garden.harvest.request.jobId !== garden.production.jobId
+      ? !garden.harvest || !gardenHarvestOrders(garden).length
       : basket.berries + FOREST_GARDEN_LIMITS.harvest > basket.capacity)) {
       failGarden(state, "Урожай больше недоступен, корзинка не изменена"); return;
     }
@@ -508,7 +527,7 @@ function chooseAction(state: ForestSessionState, options: ForestDirectorOptions)
     "Кусту пока не нужен полив, погода не подходит или Мохлик устал");
   candidate("harvest-berries", canGarden && gardenActionAvailable(state.life.garden, "harvest-berries") && gardenWithinReach("harvest-berries"),
     "Ягоды ещё растут, корзинка полна или сейчас лучше отдохнуть");
-  candidate("home-sleep", options.homeAvailable && Boolean(clearing.navigationEnabled ? clearing.interactions.home : clearing.homeRoute)
+  candidate("home-sleep", !options.tutorialActive && options.homeAvailable && Boolean(clearing.navigationEnabled ? clearing.interactions.home : clearing.homeRoute)
     && clearing.elapsed >= clearing.awakeUntil && (mind.needs.energy < .32 || options.rain > .55 && mind.needs.comfort < .45),
     clearing.elapsed < clearing.awakeUntil ? "Недавно проснулся, остаётся с игроком" : "Пока достаточно сил для жизни на полянке");
   const selected = candidates.filter(item => item.available).sort((a, b) => b.score! - a.score!)[0];
@@ -553,6 +572,10 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
   if (options.reducedMotion) { cancelForestTradeVisit(state); return; }
   syncGardenObstacle(state);
   const director = state.director; director.elapsed += Math.min(dt, .1);
+  if (options.tutorialActive && !options.blocked && state.pendingLife === "home-sleep") {
+    clearRequest(state);
+    finishForestIntention(state.clearing.behavior.mind, "interrupted", "Остаётся рядом на время обучения");
+  }
   if (options.autoLife && !options.blocked) {
     const frame = clearingActivityFrame(state.clearing), pose = frame.pose;
     advanceForestMind(state.clearing.behavior.mind, dt, {
@@ -618,6 +641,7 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     blocked: options.blocked && !options.explicitTravel || Boolean(director.tradeVisit && ["waiting", "visiting"].includes(director.tradeVisit.phase) || director.birdwatch || director.campfireVisit || state.life.routine || state.fauna.encounter) || gardenRoutineStationary(state.life.garden.routine),
     idleEligible: !options.blocked && !director.tradeVisit && !director.birdwatch && !director.campfireVisit && !state.pendingLife && !state.pendingAttention && !state.life.garden.routine && !state.life.garden.basket?.held,
     homeAvailable: options.homeAvailable && !state.life.garden.basket?.held, dusk: options.dusk, rain: options.rain,
+    keepAwake: options.tutorialActive,
     navigationMode: state.life.garden.basket?.held ? "auto" : options.navigationMode,
     occupants: options.occupants,
     residentSize: state.clearing.size * (options.heroScale ?? 1),

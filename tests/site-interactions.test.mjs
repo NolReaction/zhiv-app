@@ -22,12 +22,30 @@ const issue = (state, action, targetId, now) => applyEconomyCommand(state, {
 }, now, () => crypto.randomUUID());
 const clickDestination = (id, state) => economyBuildingDestination(sitePlace(id), { ...state, catalog: economyCatalog });
 
-test("only implemented economic sites receive map shortcuts, including the forest shelter", () => {
+test("only implemented economic sites receive map shortcuts, including restored landmarks", () => {
   const sites = ["home", "woodlot", "workshop", "quarry", "bridge", "lighthouse", "plesk-shop"].map(id => ({ id }));
   assert.deepEqual(interactiveSites({ sites }).map(({ site, place }) => [site.id, place]), [
     ["home", "house"], ["woodlot", "woodlot"], ["workshop", "workshop"], ["quarry", "quarry"],
+    ["bridge", "bridge"], ["lighthouse", "lighthouse"],
   ]);
-  for (const id of ["bridge", "lighthouse", "plesk-shop", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
+  for (const id of ["plesk-shop", "market", "leaftail-caravan", "bulletin-board", "lopukh-home", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
+});
+
+test("placed markets, LeafTail shop, order board and Lopukh home expose their own authored map targets", () => {
+  const hitArea = [{ x: 20, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 40 }, { x: 20, y: 40 }];
+  const ids = ["market", "leaftail-caravan", "bulletin-board", "lopukh-home"];
+  const sites = ids.map(id => ({ id, label: id, anchor: { x: 30, y: 40 }, hitArea }));
+  const objects = interactiveMapObjects({ sites, terrain: [] });
+  assert.deepEqual(objects.map(object => [object.id, object.place]), ids.map(id => [id, id]));
+  assert.equal(objects.find(object => object.id === "leaftail-caravan").label, "Лавка Листохвоста");
+  assert.equal(objects.find(object => object.id === "bulletin-board").label, "Доска заказов");
+  assert.deepEqual(sites.map(site => site.label), ids, "visible role labels do not rename or modify the authoring source");
+  for (const [index, object] of objects.entries()) {
+    assert.equal(object.hitArea, sites[index].hitArea);
+    assert.equal(object.anchor, sites[index].anchor);
+    assert.equal(mapObjectAt([object], { x: 30, y: 30 }), object);
+  }
+  assert.deepEqual(interactiveMapObjects({ sites, terrain: [] }, { showBuildings: false }), []);
 });
 
 test("object menus use the existing authored polygons and anchors for every map station", () => {
@@ -63,7 +81,7 @@ test("hidden buildings remove their menus while garden and campfire remain on th
   assert.deepEqual(interactiveMapObjects(world, { showBuildings: false }).map(object => object.place), ["garden", "campfire"]);
   assert.equal(interactiveMapObjects(world), objects, "DEV visibility cannot mutate the saved registry");
   for (const place of ["bridge", "lighthouse", "quarry"]) assert.ok(objects.some(object => object.place === place),
-    "planned and locked objects stay visible and can explain their requirements");
+    "locked objects stay visible and can explain their requirements");
 });
 
 test("pending or misplaced explicit bush artwork cannot create a garden on empty ground", () => {

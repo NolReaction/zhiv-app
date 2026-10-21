@@ -8,7 +8,7 @@ import { constructionSpeedupPrice } from "@/features/economy/domain/rules";
 import { formatPearls, pearlDisplayAmount } from "@/features/economy/domain/money";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { stationName } from "@/features/economy/ui/shared/world-economy-parts";
-import { worldDuration } from "@/features/economy/ui/shared/world-stations";
+import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import styles from "./construction-speedup.module.css";
 
 function pearlCost(price: number) {
@@ -69,7 +69,7 @@ export function ConstructionSpeedup({ economy, job }: { economy: ReadyEconomy; j
   return <div className={styles.speedup} data-construction-speedup={job.id}>
     {confirming ? <section className={styles.confirmation} id={detailId} aria-labelledby={headingId}>
       <div className={styles.heading}><span className={styles.pearl}><ItemIcon itemId="pearls" size={29} /></span><div><h3 id={headingId} tabIndex={-1} ref={heading}>Завершить сейчас?</h3><p>{stationName(economy.snapshot, job.targetId)} · ур. {job.targetLevel}</p></div></div>
-      <dl className={styles.details}><div><dt>Осталось</dt><dd><Clock3 size={14} aria-hidden="true" />{seconds < 60 ? `${seconds} с` : worldDuration(seconds)}</dd></div><div><dt>Стоимость</dt><dd><ItemIcon itemId="pearls" size={18} />{formatPearls(price)}</dd></div></dl>
+      <dl className={styles.details}><div><dt>Время</dt><dd><Clock3 size={14} aria-hidden="true" />{worldCountdown(seconds)}</dd></div><div><dt>Стоимость</dt><dd><ItemIcon itemId="pearls" size={18} />{formatPearls(price)}</dd></div></dl>
       <p className={styles.balance}>Жемчужины<span>{formatPearls(pearls)}<span aria-label="останется">→</span><strong>{formatPearls(Math.max(0, pearls - price))}</strong></span></p>
       {reason && <p className={styles.reason} id={reasonId} role="status">{reason}</p>}
       <div className={styles.actions}><button type="button" className={styles.cancel} onClick={() => setQuote(null)}>Подождать</button><button type="button" className={styles.confirm} disabled={disabled} aria-describedby={reason ? reasonId : undefined} aria-label={`Подтвердить завершение за ${pearlCost(price)}`} onClick={confirm}><Zap size={14} aria-hidden="true" />{economy.busy ? "Подтверждаем…" : "Завершить"}<span><ItemIcon itemId="pearls" size={17} />{formatPearls(price)}</span></button></div>

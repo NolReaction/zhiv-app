@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -9,6 +10,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { drawForestDirectionalShadows, drawForestOccludedLighting, drawForestShadowDebug }
   = await vite.ssrLoadModule("/features/world/environment/lighting/forest-shadow-painter.ts");
+const { createForestActorShadow, projectForestShadow } = await vite.ssrLoadModule("/features/world/environment/lighting/forest-shadow-geometry.ts");
+const { createForestShadowFrame } = await vite.ssrLoadModule("/features/world/environment/lighting/forest-shadow-scene.ts");
+const { forestLightSources } = await vite.ssrLoadModule("/features/world/environment/lighting/forest-lighting.ts");
+const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+const authoredForest = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
 const square = (x, y, size) => [{ x, y }, { x: x + size, y }, { x: x + size, y: y + size }, { x, y: y + size }];
 const caster = (id = "oak", x = 80) => ({ id, points: square(x, 80, 15), height: 45, baseHeight: 0, opacity: .6, softness: 3 });
 const scene = () => ({ schemaVersion: 1, id: "shadow-test", width: 1254, height: 1254, terrain: [], sites: [], paths: [],
@@ -84,7 +90,7 @@ test("each lamp erases only its own contribution and the field screens both cont
 test("camera, intensity, night transition and actor movement reuse static geometry and lamp textures", () => withCanvas(surfaces => {
   const map = scene(), options = frame(), paint = context(); drawForestOccludedLighting(paint.ctx, map, options);
   const count = surfaces.length, mask = pools(surfaces)[0], staticFills = fills(mask).length;
-  paint.ctx.setTransform(3, 0, 0, 3, -900, -700);
+  paint.ctx.setTransform(3, 0, 0, 3, -300, -180);
   drawForestOccludedLighting(paint.ctx, map, { ...options, night: .5,
     sources: [{ ...lamp(), intensity: .35 }], actors: [caster("mochlik", 110)] });
   drawForestOccludedLighting(paint.ctx, map, { ...options, actors: [caster("mochlik", 115)] });
@@ -109,10 +115,12 @@ test("bright flame pulses add light energy without rebuilding their shadow textu
 test("moving a source rebuilds its projection while unchanged sources remain cached", () => withCanvas(surfaces => {
   const map = scene(), options = { ...frame(), sources: [lamp("left"), lamp("right", 150)] }, paint = context();
   drawForestOccludedLighting(paint.ctx, map, options); const count = surfaces.length;
-  const before = pools(surfaces)[0].calls.filter(call => call.method === "lineTo").map(call => call.args);
+  const [left, right] = pools(surfaces), previousCalls = left.calls.length, rightCalls = right.calls.length;
+  const before = left.calls.filter(call => call.method === "lineTo").map(call => call.args);
   drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [{ ...lamp("left"), position: { x: 55, y: 60 } }, lamp("right", 150)] });
-  assert.equal(surfaces.length, count + 1);
-  const after = pools(surfaces).at(-1).calls.filter(call => call.method === "lineTo").map(call => call.args);
+  assert.equal(surfaces.length, count, "moving a source repaints the existing buffer");
+  assert.equal(right.calls.length, rightCalls, "the other source stays cached");
+  const after = left.calls.slice(previousCalls).filter(call => call.method === "lineTo").map(call => call.args);
   assert.notDeepEqual(after, before);
 }));
 
@@ -246,23 +254,127 @@ test("runtime geometry revisions avoid serialization and invalidate every edited
   assert.ok(surfaces.length > count, "visibility flags participate in the revision cache");
 }));
 
-test("small lamp masks only clear their cropped work area after a larger lamp grows the shared scratch", () => withCanvas(surfaces => {
+test("each cached actor mask clears only its own cropped lamp area", () => withCanvas(surfaces => {
   const map = scene(), paint = context(), body = caster("near", 90);
   const small = { ...lamp("small", 70), radius: 50 }, large = { ...lamp("large", 100), radius: 160 };
   const options = { ...frame(), geometryRevision: 0, sources: [large, small], actors: [body] };
   drawForestOccludedLighting(paint.ctx, map, options);
-  const scratch = surfaces[2], clears = scratch.calls.filter(call => call.method === "clearRect");
-  const largePool = pools(surfaces).find(surface => surface !== scratch && surface.canvas.width > 100);
-  const smallPool = pools(surfaces).find(surface => surface !== scratch && surface.canvas.width < 100);
-  assert.ok(scratch.canvas.width < 768 && scratch.canvas.height < 768);
-  assert.deepEqual(clears[0].args, [0, 0, largePool.canvas.width, largePool.canvas.height]);
-  assert.deepEqual(clears[1].args, [0, 0, smallPool.canvas.width, smallPool.canvas.height]);
+  const actorMasks = surfaces.filter(surface => surface.calls.some(call => call.method === "drawImage")
+    && fills(surface).some(call => call.globalCompositeOperation === "destination-out"));
+  assert.equal(actorMasks.length, 2);
+  for (const mask of actorMasks) {
+    assert.ok(mask.canvas.width < 768 && mask.canvas.height < 768);
+    assert.deepEqual(mask.calls.find(call => call.method === "clearRect").args, [0, 0, mask.canvas.width, mask.canvas.height]);
+  }
   const count = surfaces.length;
   drawForestOccludedLighting(paint.ctx, map, options);
-  assert.equal(surfaces.length, count, "alternating pool sizes reuse a single backing canvas");
-  assert.deepEqual(scratch.calls.filter(call => call.method === "clearRect").at(-1).args, clears[1].args);
+  assert.equal(surfaces.length, count, "unchanged actor masks allocate no new buffers");
+  assert.ok(actorMasks.every(mask => mask.calls.filter(call => call.method === "clearRect").length === 1));
   const contributions = surfaces[1].calls.filter(call => call.method === "drawImage" && call.globalCompositeOperation === "screen");
+  const smallPool = actorMasks.find(surface => surface.canvas.width < 100);
   assert.deepEqual(contributions.at(-1).args.slice(1, 5), [0, 0, smallPool.canvas.width, smallPool.canvas.height]);
+}));
+
+test("exact brightness and night changes reuse actor masks while paused frames reuse both completed fields", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(), options = { ...frame(), geometryRevision: 0, actors: [caster("body", 110)] };
+  drawForestDirectionalShadows(paint.ctx, map, options);
+  drawForestOccludedLighting(paint.ctx, map, options);
+  const directionalClears = surfaces[3].calls.filter(call => call.method === "clearRect").length;
+  const actorClears = surfaces[2].calls.filter(call => call.method === "clearRect").length;
+  const fieldClears = surfaces[1].calls.filter(call => call.method === "clearRect").length;
+  drawForestDirectionalShadows(paint.ctx, map, { ...options, actors: structuredClone(options.actors), night: .4 });
+  drawForestOccludedLighting(paint.ctx, map, { ...options, actors: structuredClone(options.actors), night: .4 });
+  assert.equal(surfaces[3].calls.filter(call => call.method === "clearRect").length, directionalClears);
+  assert.equal(surfaces[1].calls.filter(call => call.method === "clearRect").length, fieldClears);
+  drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [{ ...lamp(), intensity: .800123 }] });
+  assert.equal(surfaces[2].calls.filter(call => call.method === "clearRect").length, actorClears, "flicker never recalculates an unchanged body mask");
+  assert.equal(surfaces[1].calls.filter(call => call.method === "clearRect").length, fieldClears + 1);
+  assert.equal(surfaces[1].calls.filter(call => call.method === "drawImage" && call.globalCompositeOperation === "screen").at(-1).globalAlpha, .800123);
+}));
+
+test("actor opacity, body height, jump lift and contour edits invalidate cached moving shadows", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(), body = createForestActorShadow({ x: 110, y: 90 }, 7, "body"),
+    options = { ...frame(), geometryRevision: 0, actors: [body] };
+  drawForestDirectionalShadows(paint.ctx, map, options); drawForestOccludedLighting(paint.ctx, map, options);
+  let clears = surfaces[2].calls.filter(call => call.method === "clearRect").length;
+  for (const mutate of [() => body.opacity -= .1, () => body.height += 4, () => body.baseHeight += 2,
+    () => { body.points[0].x -= 2; }]) {
+    mutate(); drawForestDirectionalShadows(paint.ctx, map, options); drawForestOccludedLighting(paint.ctx, map, options);
+    assert.equal(surfaces[2].calls.filter(call => call.method === "clearRect").length, ++clears);
+  }
+}));
+
+test("lamp-only scene clones share geometry caches and source edits repaint their own reusable pools", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(), options = { ...frame(), geometryRevision: 0 };
+  drawForestDirectionalShadows(paint.ctx, map, options); drawForestOccludedLighting(paint.ctx, map, options);
+  const count = surfaces.length;
+  const cloned = { ...map, lights: [] };
+  drawForestDirectionalShadows(paint.ctx, cloned, options); drawForestOccludedLighting(paint.ctx, cloned, options);
+  assert.equal(surfaces.length, count, "unchanged immutable geometry shares masks through a lamp draft scene clone");
+  const poolCanvas = surfaces.at(-1).canvas;
+  for (const change of [{ height: 35 }, { radius: 180 }, { color: "#ffaa22" }, { ownerSiteId: "home" },
+    { position: { x: 50, y: 70 } }]) {
+    drawForestOccludedLighting(paint.ctx, cloned, { ...options, sources: [{ ...lamp(), ...change }] });
+    assert.equal(surfaces.length, count, "editing a source reuses its canvas rather than retaining previous positions");
+    assert.equal(surfaces.at(-1).canvas, poolCanvas);
+  }
+}));
+
+test("a dragged lamp reuses static and actor buffers while invalidating both masks for every new position", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(), body = caster("near-light", 110),
+    options = { ...frame(), geometryRevision: 0, actors: [body] };
+  drawForestOccludedLighting(paint.ctx, map, options);
+  const count = surfaces.length, light = surfaces.at(-1), moving = surfaces[2];
+  const staticFills = fills(light).length, dynamicFills = fills(moving).length;
+  for (let step = 1; step <= 120; step++) {
+    const source = { ...lamp(), position: { x: 40 + step / 2, y: 90 + step / 4 } };
+    drawForestOccludedLighting(paint.ctx, { ...map, lights: [] }, { ...options, sources: [source] });
+  }
+  assert.equal(surfaces.length, count, "120 drag frames allocate no additional canvas, including moving actor masks");
+  assert.equal(fills(light).length, staticFills + 120, "static occlusion follows every accepted source position");
+  assert.equal(fills(moving).length, dynamicFills + 120, "an unchanged actor still needs a new projection from the moving light");
+  const clears = moving.calls.filter(call => call.method === "clearRect").length;
+  drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [{ ...lamp(), position: { x: 100, y: 120 } }] });
+  assert.equal(moving.calls.filter(call => call.method === "clearRect").length, clears, "the final unchanged frame remains cached");
+}));
+
+test("geometry sharing retains only two recent contour variants instead of every editor undo state", () => withCanvas(surfaces => {
+  const base = scene(), paint = context(), options = { ...frame(), geometryRevision: 0 };
+  const variants = [80, 90, 100].map(x => ({ ...base, shadowCasters: [caster(`shape-${x}`, x)] }));
+  for (const variant of variants) drawForestOccludedLighting(paint.ctx, variant, options);
+  let count = surfaces.length;
+  drawForestOccludedLighting(paint.ctx, { ...variants[2], lights: [] }, options);
+  assert.equal(surfaces.length, count, "the current contour variant shares its existing buffers");
+  drawForestOccludedLighting(paint.ctx, { ...variants[0], lights: [] }, options);
+  assert.ok(surfaces.length > count, "a new clone of the oldest contour must rebuild evicted shared buffers");
+  count = surfaces.length;
+  drawForestOccludedLighting(paint.ctx, { ...variants[2], lights: [] }, options);
+  assert.equal(surfaces.length, count, "the two most recent variants remain reusable");
+}));
+
+test("offscreen point sources are omitted until camera movement exposes their complete footprint", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(), options = { ...frame(), geometryRevision: 0, sources: [lamp("outside", 700)] };
+  paint.ctx.canvas.width = paint.ctx.canvas.height = 200;
+  paint.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawForestOccludedLighting(paint.ctx, map, options);
+  assert.equal(pools(surfaces).length, 0, "offscreen lamp creates no gradient or shadow mask");
+  paint.ctx.setTransform(1, 0, 0, 1, -600, 0);
+  drawForestOccludedLighting(paint.ctx, map, options);
+  assert.equal(surfaces.filter(surface => surface.calls.some(call => call.method === "gradient")).length, 2,
+    "ambient and newly visible lamp gradients are created");
+  assert.equal(surfaces[1].calls.filter(call => call.method === "drawImage" && call.globalCompositeOperation === "screen").length, 1);
+}));
+
+test("directional culling keeps an offscreen body whose long shadow enters the viewport", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(); paint.ctx.canvas.width = paint.ctx.canvas.height = 100;
+  paint.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const entering = { ...caster("outside-but-casting", 110), height: 100 };
+  drawForestDirectionalShadows(paint.ctx, map, { ...frame(), geometryRevision: 0, azimuth: 0, elevation: 45,
+    actors: [entering, caster("too-far", 800)] });
+  assert.equal(fills(surfaces[3]).length, 1, "only the swept shadow intersecting the viewport is rendered");
+  drawForestDirectionalShadows(paint.ctx, map, { ...frame(), geometryRevision: 0, azimuth: 180, elevation: 45,
+    actors: [entering, caster("too-far", 800)] });
+  assert.equal(fills(surfaces[3]).length, 1, "changing the sun to point away from the viewport culls both bodies");
 }));
 
 test("directional shadows use the static mask directly when no moving actor contributes", () => withCanvas(surfaces => {
@@ -294,3 +406,160 @@ test("native receiver paths are prepared once and reused by independent lamps", 
     if (previous === undefined) delete globalThis.Path2D; else globalThis.Path2D = previous;
   }
 }));
+
+function receiverContours(surface) {
+  const clipIndex = surface.calls.findIndex(call => call.method === "clip");
+  assert.ok(clipIndex >= 0);
+  const nativePath = surface.calls[clipIndex].args[0];
+  const calls = nativePath?.calls ?? surface.calls.slice(0, clipIndex).map(call => [call.method, ...call.args ?? []]);
+  let contours = [], current = [];
+  for (const [method, x, y] of calls) {
+    if (method === "beginPath") { contours = []; current = []; }
+    if (method === "moveTo") current = [{ x, y }];
+    if (method === "lineTo") current.push({ x, y });
+    if (method === "closePath") { contours.push(current); current = []; }
+  }
+  return contours;
+}
+// Independent nonzero winding evaluation of the actual paths sent to Canvas.
+function windingAt(point, contours) {
+  let winding = 0;
+  for (const contour of contours) for (let index = 0; index < contour.length; index++) {
+    const a = contour[index], b = contour[(index + 1) % contour.length];
+    const side = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+    if (a.y <= point.y && b.y > point.y && side > 0) winding++;
+    if (a.y > point.y && b.y <= point.y && side < 0) winding--;
+  }
+  return winding;
+}
+
+for (const native of [false, true]) test(`receiver holes clip lamp/sun/body shadows with scoped surface union (${native ? "Path2D" : "immediate"})`, () => withCanvas(surfaces => {
+  const previous = globalThis.Path2D;
+  if (native) globalThis.Path2D = class {
+    constructor() { this.calls = []; }
+    moveTo(...args) { this.calls.push(["moveTo", ...args]); }
+    lineTo(...args) { this.calls.push(["lineTo", ...args]); }
+    closePath() { this.calls.push(["closePath"]); }
+  }; else delete globalThis.Path2D;
+  try {
+    const map = scene(), options = { ...frame(), actors: [caster("moving", 110)] };
+    map.shadowReceivers = [{ id: "ground", points: square(0, 0, 400).reverse(), holes: [square(60, 60, 100)], height: 0 },
+      { id: "island-in-hole", points: square(100, 100, 20).reverse(), height: 0 },
+      { id: "overlapping-ground", points: square(180, 180, 100).reverse(), height: 0 }];
+    drawForestOccludedLighting(context().ctx, map, options);
+    drawForestDirectionalShadows(context().ctx, map, options);
+    const masks = surfaces.filter(surface => surface.calls.some(call => call.method === "clip"));
+    assert.ok(masks.length >= 4, "static lamps, sun and both moving masks are clipped");
+    for (const mask of masks) {
+      const contours = receiverContours(mask);
+      assert.equal(contours.length, 4, "three outer contours and one hole");
+      assert.equal(windingAt({ x: 90, y: 90 }, contours), 0, "hole in its receiver excludes shadows");
+      assert.equal(windingAt({ x: 110, y: 110 }, contours), 1, "another independent receiver can receive inside the first one's hole");
+      assert.equal(windingAt({ x: 200, y: 200 }, contours), 2, "overlap remains in nonzero union instead of cancelling as evenodd would");
+      assert.equal(windingAt({ x: 500, y: 500 }, contours), 0, "outside receiving surfaces remains excluded");
+      assert.equal(mask.calls.filter(call => call.method === "clip").length, 1, "one same-height union avoids repeated shadow alpha");
+    }
+    const paint = context(); drawForestShadowDebug(paint.ctx, map, options);
+    assert.ok(paint.calls.some(call => call.method === "moveTo" && call.args[0] === 60 && call.args[1] === 60), "debug shows the inner contour");
+  } finally {
+    if (previous === undefined) delete globalThis.Path2D; else globalThis.Path2D = previous;
+  }
+}));
+
+// Sample the actual commands sent to Canvas rather than a second lighting
+// implementation: recorded gradient stops, screen strengths, projected paths
+// and receiver clips all come from the production painter.
+function erasedAt(surface, point) {
+  const receiver = receiverContours(surface);
+  if (!windingAt(point, receiver)) return 1;
+  let contours = [], current = [], transmission = 1;
+  for (const call of surface.calls) {
+    if (call.method === "beginPath") { contours = []; current = []; }
+    if (call.method === "moveTo") current = [{ x: call.args[0], y: call.args[1] }];
+    if (call.method === "lineTo") current.push({ x: call.args[0], y: call.args[1] });
+    if (call.method === "closePath") { contours.push(current); current = []; }
+    if (call.method === "fill" && call.globalCompositeOperation === "destination-out" && windingAt(point, contours)) {
+      transmission *= 1 - call.globalAlpha;
+    }
+  }
+  return transmission;
+}
+function sampledPoolRed(surfaces, surface, point) {
+  const gradient = surface.calls.find(call => call.method === "gradient");
+  let red;
+  if (gradient) {
+    const [x, y, , , , radius] = gradient.args, distance = Math.hypot(point.x - x, point.y - y) / radius;
+    if (distance >= 1) return 0;
+    const stops = gradient.gradient.stops.map(([at, color]) => ({ at, channels: color.match(/[\d.]+/g).map(Number) }));
+    const upper = stops.findIndex(stop => stop.at >= distance), before = stops[Math.max(0, upper - 1)], after = stops[upper];
+    const ratio = after.at === before.at ? 0 : (distance - before.at) / (after.at - before.at);
+    const alpha = before.channels[3] + (after.channels[3] - before.channels[3]) * ratio;
+    red = before.channels[0] / 255 * alpha;
+  } else {
+    const copy = surface.calls.find(call => call.method === "drawImage");
+    assert.ok(copy, "dynamic actor mask starts from its source's static pool");
+    red = sampledPoolRed(surfaces, surfaces.find(value => value.canvas === copy.args[0]), point);
+  }
+  return surface.calls.some(call => call.method === "clip") ? red * erasedAt(surface, point) : red;
+}
+function sampledFieldRed(surfaces, field, point) {
+  let remaining = 1;
+  for (const call of field.calls) if (call.method === "drawImage" && call.globalCompositeOperation === "screen") {
+    const source = surfaces.find(value => value.canvas === call.args[0]);
+    remaining *= 1 - sampledPoolRed(surfaces, source, point) * call.globalAlpha;
+  }
+  return 1 - remaining;
+}
+for (const quality of ["low", "high"]) test(`the real clearing's open fire casts the leading shadow away from the hearth (${quality})`, () => withCanvas(surfaces => {
+  const levels = Object.fromEntries(authoredForest.sites.map(site => [site.id, 1]));
+  const map = previewWorldScene(structuredClone(authoredForest), levels), fire = map.campfires[0];
+  const actor = { ...fire.seat, id: "mochlik", size: 36 }, original = structuredClone(map);
+  const options = { night: 1, elapsed: 0, reducedMotion: true, quality,
+    lights: forestLightSources(map, { levels, night: 1, elapsed: 0, reducedMotion: true }),
+    fires: [{ ...fire, flame: 1, embers: 1 }], actors: [actor] };
+  const active = createForestShadowFrame(map, options);
+  drawForestOccludedLighting(context().ctx, map, active);
+  const actorField = surfaces[1], controlIndex = surfaces.length;
+  drawForestOccludedLighting(context().ctx, { ...map }, { ...active, actors: [] });
+  const controlField = surfaces[controlIndex + 1];
+  function loss(angle, bodyField = actorField, baseField = controlField) {
+    let difference = 0;
+    for (let distance = 9; distance <= 24; distance++) {
+      const point = { x: actor.x + Math.cos(angle * Math.PI / 180) * distance,
+        y: actor.y + Math.sin(angle * Math.PI / 180) * distance };
+      difference += sampledFieldRed(surfaces, baseField, point) - sampledFieldRed(surfaces, bodyField, point);
+    }
+    return difference;
+  }
+  assert.ok(loss(150) > loss(90), "fire on the right produces a stronger leftward shadow than the house lantern's downward shadow");
+  assert.ok(loss(150) > .25, "the local shadow has visible contrast, rather than merely rotating a negligible mask");
+  const embers = createForestShadowFrame(map, { ...options, fires: [{ ...fire, flame: 0, embers: .4 }] });
+  const emberIndex = surfaces.length;
+  drawForestOccludedLighting(context().ctx, { ...map }, embers);
+  const emberControlIndex = surfaces.length;
+  drawForestOccludedLighting(context().ctx, { ...map }, { ...embers, actors: [] });
+  assert.ok(loss(90, surfaces[emberIndex + 1], surfaces[emberControlIndex + 1])
+    > loss(150, surfaces[emberIndex + 1], surfaces[emberControlIndex + 1]), "after the flame goes out the house lantern naturally becomes the leading source");
+  const day = context();
+  drawForestOccludedLighting(day.ctx, map, { ...active, night: 0 });
+  assert.equal(day.calls.length, 0, "daylight retains its existing lighting path without an extra night overlay");
+  assert.deepEqual(map, original, "drawing and frame construction do not mutate authored geometry or advance campfires");
+  assert.ok(surfaces.every(surface => surface.canvas.width <= (quality === "low" ? 512 : 768)
+    && surface.canvas.height <= (quality === "low" ? 512 : 768)), "larger fire pool stays in the existing bounded allocation budget");
+}));
+
+test("the real hearth's shadow follows actors around the flame without reversing or moving their feet", () => {
+  const map = previewWorldScene(structuredClone(authoredForest), { home: 1 }), fire = map.campfires[0];
+  for (const offset of [{ x: -32, y: 10 }, { x: 32, y: 10 }, { x: 0, y: -32 }, { x: 0, y: 32 }]) {
+    const actor = { x: fire.position.x + offset.x, y: fire.position.y + offset.y, size: 36, id: "mochlik" };
+    const lightFrame = createForestShadowFrame(map, { night: 1, elapsed: 12, reducedMotion: false,
+      lights: [], fires: [{ ...fire, flame: 1, embers: 1 }], actors: [actor] });
+    const source = lightFrame.sources[0], caster = lightFrame.actors[0];
+    const pieces = projectForestShadow(caster, { kind: "point", ...source });
+    const length = Math.hypot(offset.x, offset.y), ray = { x: offset.x / length * 16, y: offset.y / length * 16 };
+    assert.ok(windingAt({ x: actor.x + ray.x, y: actor.y + ray.y }, pieces) > 0, "shadow continues away from the ground anchor of the flame");
+    assert.equal(windingAt({ x: actor.x - ray.x, y: actor.y - ray.y }, pieces), 0, "the lit space between actor and fire stays outside the shadow");
+    assert.ok(Math.abs(caster.points.reduce((sum, point) => sum + point.x, 0) / caster.points.length - actor.x) < 1e-9);
+    assert.ok(Math.abs(caster.points.reduce((sum, point) => sum + point.y, 0) / caster.points.length - actor.y) < 1e-9);
+  }
+});

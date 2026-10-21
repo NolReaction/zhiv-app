@@ -4,6 +4,15 @@ import { economyCommandSchema, economyViewSchema, type EconomyView } from "./mod
 export const BARTER_HOME_LEVEL = 3;
 export const BARTER_MAX_OFFERS = 3;
 export const BARTER_DAILY_LIMIT = 1;
+/** Relic exchanges retain their own progression groups, independently of coin trading. */
+export function barterHomeBand(home: number): { min: number; max: number } {
+  return home === 4 || home === 5 ? { min: 4, max: 5 } : home === 3 ? { min: 3, max: 3 } : { min: 1, max: 1 };
+}
+export function barterSameHomeBand(buyerHome: number, sellerHome: number): boolean {
+  const band = barterHomeBand(buyerHome);
+  return Number.isInteger(buyerHome) && Number.isInteger(sellerHome) && buyerHome >= BARTER_HOME_LEVEL && buyerHome <= 5
+    && sellerHome >= band.min && sellerHome <= band.max;
+}
 const base = {
   requestId: economyCommandSchema.shape.requestId,
   ownerPublicId: economyCommandSchema.shape.ownerPublicId,

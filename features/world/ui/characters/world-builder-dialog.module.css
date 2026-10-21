@@ -33,6 +33,10 @@
 
 .timerRow { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; }
 .timerRow .timer { flex: 1; min-width: 0; font-size: 12px; }
+@media (max-width: 430px) {
+  .timerRow { flex-wrap: wrap; }
+  .timerRow > [data-meal-boost] { flex: 1 1 100%; }
+}
 
 .dialog > .header, .dialog > .back { flex-shrink: 0; }
 .body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #9f9775 transparent; padding: 4px; margin: 0 -4px; }

@@ -9,7 +9,7 @@ import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "@/
 import { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS, type WorldInteraction } from "@/features/world/navigation/interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
 import { beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates, scoreForestAction } from "./forest-mind";
-import { canTraverseResidents, residentRouteIntent, residentTrafficDetour, residentRequestingPassage, residentYieldPoint,
+import { canTraverseResidents, residentRouteIntent, residentWalkingStep, residentRequestingPassage, residentYieldPoint,
   RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
@@ -50,6 +50,8 @@ export type ClearingActivityState = {
 };
 export type ClearingActivityOptions = {
   enabled: boolean; blocked: boolean; dusk: number; rain: number;
+  /** The active lesson defers voluntary naps without changing saved needs/clocks. */
+  keepAwake?: boolean;
   /** Set only while the target home visual is available. Missing routes remain harmless. */
   homeAvailable?: boolean;
   idleEligible?: boolean;
@@ -69,6 +71,23 @@ export type ClearingActivityFrame = WorldPoint & {
 const temporaryNavigation = new WeakMap<ClearingActivityState, { base: WorldNavigation; key: string; current: WorldNavigation }>();
 const parkedPropWait = new WeakMap<ClearingActivityState, { navigation: WorldNavigation; route: ClearingRoute; stage: ClearingStage }>();
 const passageYieldAfter = new WeakMap<ClearingActivityState, number>();
+const roamingWait = new WeakMap<ClearingActivityState, { id: string; waited: number }>();
+const roamingTrafficStall = new WeakMap<ClearingActivityState, { id: string; waited: number; position: WorldPoint }>();
+const roamingDeferred = new WeakMap<ClearingActivityState, { id: string; until: number }[]>();
+export const CLEARING_ROAM_LIMITS = { occupiedWait: 6, passageWait: 12, deferred: 24, memories: 8 } as const;
+
+function deferredRoamingGoals(state: ClearingActivityState) {
+  const recent = (roamingDeferred.get(state) ?? []).filter(item => item.until > state.elapsed);
+  roamingDeferred.set(state, recent);
+  return new Set(recent.map(item => item.id));
+}
+function deferRoamingGoal(state: ClearingActivityState, id: string) {
+  const recent = (roamingDeferred.get(state) ?? []).filter(item => item.id !== id && item.until > state.elapsed);
+  recent.push({ id, until: state.elapsed + CLEARING_ROAM_LIMITS.deferred });
+  roamingDeferred.set(state, recent.slice(-CLEARING_ROAM_LIMITS.memories));
+  roamingWait.delete(state);
+  roamingTrafficStall.delete(state);
+}
 
 export function baseClearingNavigation(state: ClearingActivityState): WorldNavigation | null {
   const previous = temporaryNavigation.get(state);
@@ -298,14 +317,14 @@ function startActivity(state: ClearingActivityState, options: ClearingActivityOp
   if (!activity) {
     const candidates = (["look", "sniff", "groom", "rest"] as const).map(action =>
       scoreForestAction(state.behavior.mind, action, `nearby-${action}`, { rain: wet, dusk: night, noise: random(state) * .6 }));
-    for (const candidate of candidates) if (candidate.action === "rest" && (wet > .35 || state.elapsed < state.awakeUntil)) {
+    for (const candidate of candidates) if (candidate.action === "rest" && (options.keepAwake || wet > .35 || state.elapsed < state.awakeUntil)) {
       candidate.available = false; candidate.score = null; candidate.reasons = ["Сейчас лучше оставаться бодрым"];
     }
     const selected = candidates.filter(item => item.available).sort((a, b) => b.score! - a.score!)[0];
     activity = (selected?.action ?? "look") as ClearingAction;
     recordForestCandidates(state.behavior.mind, candidates, selected?.key ?? null);
   }
-  if (activity === "rest" && state.elapsed < state.awakeUntil) activity = "look";
+  if (activity === "rest" && (options.keepAwake || state.elapsed < state.awakeUntil)) activity = "look";
   if (activity === "rest" && wet > .35) activity = "groom";
   if (!state.behavior.mind.intention || state.behavior.mind.intention.action !== activity)
     beginForestIntention(state.behavior.mind, activity, route?.id ?? `nearby-${activity}`,
@@ -384,12 +403,16 @@ function navigatedRoute(state: ClearingActivityState, input: WorldPoint[], id: s
 }
 function beginFreeWalk(state: ClearingActivityState, points: WorldPoint[], purpose: NonNullable<ClearingActivityState["freePurpose"]>,
   activity: ForestInterest["activity"] = "look", id: string = purpose) {
+  roamingWait.delete(state);
+  roamingTrafficStall.delete(state);
   state.freeRoute = navigatedRoute(state, points, id, activity, false, purpose !== "interaction-exit");
   state.freePurpose = purpose; state.stage = "free-walk"; state.stageElapsed = 0; state.distance = 0;
   state.navigationRetryAt = 0;
   state.speed = 0; state.routeIndex = -1; state.routeKind = "clearing"; state.steps = []; state.attentionResume = null;
 }
 function settleClearing(state: ClearingActivityState) {
+  roamingWait.delete(state);
+  roamingTrafficStall.delete(state);
   state.stage = "clearing"; state.stageElapsed = 0; state.speed = 0; state.distance = 0;
   state.freeRoute = null; state.freePurpose = null; state.routeIndex = -1; state.steps = [];
   state.waitSeconds = 2.8 + random(state) * 3;
@@ -710,15 +733,13 @@ export function noticeClearingActivity(state: ClearingActivityState, options: { 
 }
 /** Replan only ordinary ground. The final home threshold and the departure
  * corridor keep their authored geometry; held goals and action clocks survive. */
-function detourResidents(state: ClearingActivityState, route: ClearingRoute, options: ClearingActivityOptions) {
+function detourResidents(state: ClearingActivityState, route: ClearingRoute, options: ClearingActivityOptions, points?: WorldPoint[]) {
   if (!state.navigation || !state.navigationEnabled || options.navigationMode === "routes") return false;
   const free = state.stage === "free-walk" && state.freePurpose !== "interaction-exit";
   const approach = Boolean(state.activeInteraction && ["homebound", "outbound"].includes(state.stage));
   const groundEnd = route.navigationLength;
   if ((!free && !approach) || groundEnd === undefined || state.distance >= groundEnd - .001) return false;
   const target = sampleWalk(route, groundEnd).position;
-  const points = residentTrafficDetour({ owner: state, navigation: state.navigation, from: state.position,
-    target, size: options.residentSize ?? state.size, occupants: options.occupants, selfId: "mochlik", time: state.elapsed });
   if (!points) return false;
   // Steering against the static map could round a safe detour through a
   // resident. Keep these short chords exact and check them on every step.
@@ -748,11 +769,10 @@ export function clearingResidentIntent(state: ClearingActivityState, size = stat
 function yieldClearingPassage(state: ClearingActivityState, options: ClearingActivityOptions) {
   if (!state.navigation || !state.navigationEnabled || options.idleEligible === false || state.requestedPoint || state.retiring
     || state.activeInteraction || state.routeIndex >= 0 || state.pendingBush !== null || state.pendingInteractionBush !== null
-    || !["home", "clearing", "free-walk"].includes(state.stage)
-    || state.stage === "free-walk" && (state.freePurpose !== "roam" || state.freeRoute?.id === "resident-yield")
+    || !["home", "clearing"].includes(state.stage)
     || state.elapsed < (passageYieldAfter.get(state) ?? 0)) return;
   const size = options.residentSize ?? state.size;
-  const requester = residentRequestingPassage(state.position, size, options.occupants, "mochlik", state.stage === "free-walk" ? 1 : 0);
+  const requester = residentRequestingPassage(state.position, size, options.occupants, "mochlik", 0);
   if (!requester) return;
   passageYieldAfter.set(state, state.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   const point = residentYieldPoint(state.navigation, state.position, size, options.occupants, "mochlik", requester);
@@ -770,8 +790,23 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   if (free && state.freePurpose === "roam" && route.activity !== "bush" && !state.requestedPoint && !state.activeInteraction) {
     const target = route.points.at(-1)!;
     if (!canTraverseResidents(target, target, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+      // A neighbour can occupy an already chosen destination for a moment.
+      // Keep this exact intention before deferring it; no path search or reward
+      // runs while waiting, and player/work reservations use their own owner.
+      let waiting = roamingWait.get(state);
+      if (!waiting || waiting.id !== route.id) {
+        waiting = { id: route.id, waited: 0 }; roamingWait.set(state, waiting);
+      }
+      // Greetings and other temporary owners pause the attempt itself, even
+      // while the actor's general active clock continues advancing.
+      waiting.waited += dt;
+      if (waiting.waited < CLEARING_ROAM_LIMITS.occupiedWait) {
+        state.speed = 0; state.behavior.reason = "roaming-place-waiting"; return;
+      }
+      deferRoamingGoal(state, route.id);
       releaseOccupiedRoamingGoal(state, route.id); return;
     }
+    roamingWait.delete(state);
   }
   const waiting = parkedPropWait.get(state);
   if (waiting?.navigation === state.navigation && waiting.route === route && waiting.stage === state.stage) {
@@ -816,13 +851,33 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
       state.speed = 0; state.behavior.reason = "steering-blocked"; return;
     }
   }
-  if (!canTraverseResidents(state.position, sample.position, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+  const traffic = state.navigation && navigationLength !== undefined && nextDistance <= navigationLength && !returning
+    ? residentWalkingStep({ owner: state, navigation: state.navigation, from: state.position,
+      target: sampleWalk(route, navigationLength).position, size: options.residentSize ?? state.size,
+      occupants: options.occupants, selfId: "mochlik", time: state.elapsed }, sample.position)
+    : { clear: canTraverseResidents(state.position, sample.position, options.residentSize ?? state.size, options.occupants, "mochlik"), path: undefined };
+  if (!traffic.clear) {
     state.speed = 0;
-    if (!detourResidents(state, route, options)) state.behavior.reason = "waiting-for-resident";
+    if (free && state.freePurpose === "roam" && route.id !== "resident-yield" && route.activity !== "bush"
+      && !state.requestedPoint && !state.activeInteraction) {
+      let stalled = roamingTrafficStall.get(state);
+      if (!stalled || stalled.id !== route.id || distance(stalled.position, state.position) > state.size * .1) {
+        stalled = { id: route.id, waited: 0, position: { ...state.position } };
+        roamingTrafficStall.set(state, stalled);
+      }
+      stalled.waited += dt;
+      if (stalled.waited >= CLEARING_ROAM_LIMITS.passageWait) {
+        deferRoamingGoal(state, route.id); releaseOccupiedRoamingGoal(state, route.id);
+        state.behavior.reason = "roaming-passage-deferred"; return;
+      }
+    }
+    if (!detourResidents(state, route, options, traffic.path)) state.behavior.reason = "waiting-for-resident";
     return;
   }
   const step = Math.abs(nextDistance - state.distance);
   state.distance = nextDistance; state.walked += step; state.position = sample.position;
+  const stalled = roamingTrafficStall.get(state);
+  if (stalled && distance(stalled.position, state.position) > state.size * .1) roamingTrafficStall.delete(state);
   const { a, b } = sample;
   const dx = (b.x - a.x) * (returning ? -1 : 1), dy = (b.y - a.y) * (returning ? -1 : 1);
   state.direction = route.steering ? walkDirection(state.direction, dx, dy)
@@ -870,6 +925,18 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   state.homeEnabled = Boolean(options.homeAvailable && (state.navigationEnabled ? state.interactions.home : state.homeRoute));
   if (!state.homeEnabled) state.retiring = false;
   if (state.frozen) return;
+  if (options.keepAwake) {
+    state.retiring = false;
+    const sleepy = state.stage === "activity" && state.lastActivity === "rest"
+      && ["yawn", "drowsy", "sleep"].includes(clearingActivityFrame(state).pose);
+    if (sleepy || ["homebound", "entering", "home-sleep"].includes(state.stage)) {
+      if (["home-sleep", "rest"].includes(state.behavior.mind.intention?.action ?? ""))
+        finishForestIntention(state.behavior.mind, "interrupted", "Остаётся рядом на время обучения");
+      // Keep the authored doorway and normal walking clock, including when the
+      // course resumes indoors. Awake work/routes never enter this branch.
+      noticeClearingActivity(state, { mindNoticed: true });
+    }
+  }
   state.elapsed += dt; state.stageElapsed += dt;
   if (state.bushEffect) {
     state.bushEffect.elapsed += dt;
@@ -886,7 +953,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     if (state.behavior.mind.intention?.action === "home-sleep") finishForestIntention(state.behavior.mind, "interrupted", "Домик недоступен, выходит на полянку");
     state.retiring = false; retrace(state);
   }
-  if (state.homeEnabled && !state.retiring && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS
+  if (!options.keepAwake && state.homeEnabled && !state.retiring && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS
     && state.stage !== "attention" && state.routeKind !== "home" && state.elapsed >= state.navigationRetryAt) {
     state.retiring = true;
     if (!state.navigationEnabled || state.activeInteraction || state.routeIndex >= 0) retrace(state);
@@ -941,11 +1008,14 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     if (state.stageElapsed < state.waitSeconds) return;
     if (state.navigationEnabled && state.navigation) {
       const goal = chooseForestGoal(state.navigation, state.interests, state.behavior, {
-        position: state.position, size: state.size, elapsed: state.elapsed, awakeUntil: state.awakeUntil,
+        position: state.position, size: state.size, elapsed: state.elapsed, awakeUntil: options.keepAwake ? Infinity : state.awakeUntil,
         dusk: options.dusk, rain: options.rain, random: () => random(state),
+        avoidIds: deferredRoamingGoals(state),
       });
-      if (goal && !canTraverseResidents(goal.position, goal.position, options.residentSize ?? state.size, options.occupants, "mochlik"))
+      if (goal && !canTraverseResidents(goal.position, goal.position, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+        deferRoamingGoal(state, goal.id);
         releaseOccupiedRoamingGoal(state, goal.id);
+      }
       else if (goal) beginFreeWalk(state, goal.path, "roam", goal.activity, goal.id);
       else startActivity(state, options);
       return;

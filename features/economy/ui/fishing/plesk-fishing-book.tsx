@@ -10,6 +10,7 @@ import type { EconomyView } from "@/features/economy/domain/model";
 import { fishingState } from "@/features/economy/domain/fishing";
 import { HiddenFishIcon, PlayerItemIcon } from "./fish-discovery";
 import { FishRarityBadge } from "./fish-rarity";
+import { FishingSpeciesFocus } from "./fishing-species-odds";
 import { itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import styles from "./plesk-fishing-book.module.css";
 
@@ -19,7 +20,7 @@ export type FishingBookChapter = "fish" | "rods" | "hooks" | "baits";
 type BookEntry = { id: string; name: string; known: boolean; rarity: FishingCatalog["fish"][number]["rarity"]; status: string; description?: string };
 export const FISHING_BOOK_PAGE_SIZE = 6;
 const chapters = [
-  { id: "fish", name: "Рыбы", icon: Fish, title: "Рыбацкая коллекция", progress: "Виды рыб", note: "Забирайте улов, чтобы открывать виды. Проданная рыба остаётся в коллекции." },
+  { id: "fish", name: "Рыбы", icon: Fish, title: "Рыбацкая коллекция", progress: "Виды рыб", note: "Забирайте улов, чтобы открывать виды. В запасах рыба объединена по классам; продажа и готовка не стирают коллекцию." },
   { id: "rods", name: "Удочки", icon: FishingRod, title: "Мои удочки", progress: "Собрано удочек", note: "У каждой удочки свой характер. Выбирайте снасти перед рыбалкой." },
   { id: "hooks", name: "Снасти", icon: Anchor, title: "Мои крючки", progress: "Собрано крючков", note: "Небольшая деталь для большого улова. Крючки остаются с вами навсегда." },
   { id: "baits", name: "Наживки", icon: Bug, title: "Запас наживок", progress: "Видов в запасе", note: "Здесь ваш текущий запас. На одну рыбалку расходуется одна наживка." },
@@ -67,6 +68,8 @@ export function PleskFishingBookPage({ state, catalog, chapter, page = 0 }: Book
         {entry.known && chapter !== "fish" && chapter !== "baits" && <Check size={13} className={styles.collected} aria-hidden="true" />}
       </div>
       <h3>{entry.name}</h3><FishRarityBadge rarity={entry.rarity} /><p>{entry.status}</p>
+      {entry.known && (chapter === "rods" || chapter === "hooks") && <FishingSpeciesFocus state={state}
+        override={chapter === "rods" ? { rodId: entry.id, hookId: "bare_hook", baitId: null } : { hookId: entry.id }} />}
       {entry.description && <details className={styles.notes}><summary>Особенности</summary><p>{entry.description}</p></details>}
     </article>)}
     {visible.entries.length === 0 && <p className={styles.empty}>Эта глава пока пуста.</p>}

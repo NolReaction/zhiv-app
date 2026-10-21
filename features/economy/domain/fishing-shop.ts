@@ -16,16 +16,15 @@ function candidates(state: ShopState): Candidate[] {
   const catalog = economyCatalog.fishing!;
   const home = state.buildings.home ?? 1, current = fishingState(state);
   return [
-    ...catalog.rods.filter(item => item.price > 0 && item.requiredHomeLevel <= home && !current.ownedRods.includes(item.id))
+    ...catalog.rods.filter(item => item.shop !== "leaftail" && item.price > 0 && item.requiredHomeLevel <= home && !current.ownedRods.includes(item.id))
       .map(item => ({ kind: "rod" as const, itemId: item.id, unitPrice: item.price, remaining: 1, rarity: item.rarity, weight: 1 })),
-    ...catalog.hooks.filter(item => item.price > 0 && item.requiredHomeLevel <= home && !current.ownedHooks.includes(item.id))
+    ...catalog.hooks.filter(item => item.shop !== "leaftail" && item.price > 0 && item.requiredHomeLevel <= home && !current.ownedHooks.includes(item.id))
       .map(item => ({ kind: "hook" as const, itemId: item.id, unitPrice: item.price, remaining: 1, rarity: item.rarity, weight: 1 })),
-    ...catalog.baits.filter(item => item.requiredHomeLevel <= home)
+    ...catalog.baits.filter(item => item.shop !== "leaftail" && item.requiredHomeLevel <= home)
       .map(item => ({ kind: "bait" as const, itemId: item.itemId, unitPrice: item.price, remaining: catalog.shop.baitStock,
         rarity: item.rarity, weight: rarityWeight[item.rarity] })),
-    // Only common species are sold here. Kitchen recipes accept their ingredient groups;
-    // purchases of any species never unlock personal catches in the book.
-    ...catalog.fish.filter(item => item.rarity === "common")
+    // Ordinary fish is a stable kitchen staple; purchases never open collection species.
+    ...catalog.classes.filter(item => item.rarity === "common")
       .map(item => ({ kind: "fish" as const, itemId: item.itemId,
         unitPrice: Math.ceil(item.buyPrice * catalog.shop.fishPriceBps / 10000), remaining: catalog.shop.fishStock,
         rarity: item.rarity, weight: 1 })),
@@ -77,14 +76,14 @@ export function createFishingShop(state: ShopState, now: number,
 function replacementPool(state: ShopState) {
   const previous = new Set(state.fishingShop?.offers.map(offer => offer.itemId));
   // Sold-out entries count too: paying cannot merely restock the same item.
-  return candidates(state).filter(item => !previous.has(item.itemId));
+  return candidates(state).filter(item => item.kind === "fish" || !previous.has(item.itemId));
 }
 export function canRefreshFishingShop(state: ShopState): boolean {
   const previous = state.fishingShop?.offers;
   if (!previous?.length) return false;
   const pool = replacementPool(state), odds = levelOdds(state);
   const lowestTier = rarities.findIndex(rarity => odds[rarity] > 0);
-  // Before charging, guarantee a different item for every previous category.
+  // Before charging, guarantee different gear/bait. The common fish staple restocks.
   // A small catalogue can legitimately disable refresh; it cannot inflate rare odds
   // or charge the player for losing a gear slot. Natural restock remains free.
   return categories.filter(kind => kind === "bait" || kind === "fish" || previous.some(item => item.kind === kind))

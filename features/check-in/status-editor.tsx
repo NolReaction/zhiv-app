@@ -17,12 +17,11 @@ const STATUS_PRESETS = ["Дома", "Гуляю", "Учусь", "На работ
 
 const DURATION_OPTIONS = [[60, "1 час"], [120, "2 часа"], [240, "4 часа"], [480, "8 часов"], [1440, "24 часа"]] as const;
 
-export function StatusEditor({ me, nowMs, isOnline, onUpdated, onSessionLost, onOpenChange }: {
+export function StatusEditor({ me, nowMs, isOnline, onUpdated, onSessionLost, open, onOpenChange }: {
   me: MeResponse; nowMs: number; isOnline: boolean; onUpdated: (me: MeResponse) => void; onSessionLost: () => void;
-  onOpenChange?: (open: boolean) => void;
+  open: boolean; onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  function changeOpen(value: boolean) { setOpen(value); onOpenChange?.(value); }
+  const changeOpen = onOpenChange;
   const [draft, setDraft] = useState("");
   const [duration, setDuration] = useState<number | null>(null);
   const currentStatus = activeUserStatus(me.status, nowMs);

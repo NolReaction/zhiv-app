@@ -69,6 +69,8 @@ test("new outfits preserve the face, planted feet and individual front/back deta
     { palette: "ember", head: "acorn_cap", neck: "forest_bandana" },
     { palette: "heather", head: "knitted_cap", neck: "river_scarf" },
     { palette: "frost", head: "moon_crown", neck: "moon_scarf" },
+    { palette: "dune_moss", head: "trail_hat", neck: "sea_neckerchief" },
+    { palette: "storm_moss", head: "rain_hood", neck: "sunset_scarf" },
   ];
   for (const outfit of outfits) for (const direction of ["front", "back", "left", "right"]) {
     for (const pose of ["idle", "walk", "stretch", "reach", "hold", "chew", "fish", "sleep"]) for (let frame = 0; frame < 4; frame++) {
@@ -89,12 +91,53 @@ test("new outfits preserve the face, planted feet and individual front/back deta
 
 test("body and interaction painters share a safe palette for every new moss colour", async () => {
   const { mossPalette } = await vite.ssrLoadModule("/features/mochlik/appearance-palette.ts");
-  for (const id of ["moss", "fern", "autumn", "heather", "frost", "ember"]) {
+  for (const id of ["moss", "fern", "autumn", "heather", "frost", "ember", "dune_moss", "storm_moss", "premium_stargazer_moss", "premium_ember_moss", "premium_explorer_moss"]) {
     const palette = mossPalette(id);
     const sprite = pixelSprite("idle", "back", 0, { palette: id, head: null, neck: null });
     for (const color of Object.values(palette)) assert.ok([...sprite.pixels.values()].includes(color));
   }
   for (const id of [undefined, "unknown", "constructor", "__proto__"]) assert.equal(mossPalette(id), mossPalette("moss"));
+});
+
+test("special outfits have distinct visible drawings while work and sleep keep eyes and grounded soles", async () => {
+  const { premiumCostumes } = await vite.ssrLoadModule("/features/world/domain/premium-costumes.ts");
+  const signatures = [];
+  for (const { appearance } of premiumCostumes) {
+    signatures.push(JSON.stringify([...pixelSprite("idle", "front", 0, appearance).pixels]));
+    for (const direction of ["front", "back", "left", "right"]) for (const pose of ["idle", "walk", "stretch", "reach", "hold", "chew", "fish", "sleep", "drowsy"])
+      for (let frame = 0; frame < 4; frame++) {
+        const plain = pixelSprite(pose, direction, frame, { palette: appearance.palette, head: null, neck: null });
+        const dressed = pixelSprite(pose, direction, frame, appearance);
+        const eyes = sprite => [...sprite.pixels].filter(([, color]) => color === "#30291d");
+        assert.deepEqual(eyes(dressed), eyes(plain), "premium details do not hide a working face");
+        assert.deepEqual(pixelSpriteContact(dressed), pixelSpriteContact(plain), "new clothes cannot lift the feet");
+        if (pose === "sleep" || pose === "drowsy") assert.deepEqual(dressed.pixels, plain.pixels);
+        else assert.notDeepEqual(dressed.pixels, plain.pixels, `${appearance.head} has visible wearables from ${direction}`);
+      }
+  }
+  assert.equal(new Set(signatures).size, 3);
+});
+
+test("travel wearables keep their own visible colours and never cover fishing eyes or planted feet", () => {
+  const pieces = [
+    { slot: "head", id: "trail_hat", color: "#a98a56" },
+    { slot: "head", id: "rain_hood", color: "#55788b" },
+    { slot: "neck", id: "sea_neckerchief", color: "#4d91a4" },
+    { slot: "neck", id: "sunset_scarf", color: "#cd7652" },
+  ];
+  for (const piece of pieces) for (const direction of ["front", "back", "left", "right"]) {
+    const appearance = { palette: "moss", head: null, neck: null, [piece.slot]: piece.id };
+    const still = pixelSprite("idle", direction, 0, appearance);
+    assert.ok([...still.pixels.values()].includes(piece.color), `${piece.id} has its own visible drawing from ${direction}`);
+    for (const pose of ["fish", "fishing-walk", "reach", "present"]) for (const crouch of [0, 3, 6]) {
+      const rig = { gardening: true, crouch, lean: direction === "left" ? -2 : 2, fishingStance: true };
+      const plain = pixelSprite(pose, direction, 0, { palette: "moss", head: null, neck: null }, rig);
+      const dressed = pixelSprite(pose, direction, 0, appearance, rig);
+      const eyes = sprite => [...sprite.pixels].filter(([, color]) => color === "#30291d");
+      assert.deepEqual(eyes(dressed), eyes(plain), `${piece.id} leaves the fishing gaze clear`);
+      assert.deepEqual(pixelSpriteContact(dressed), pixelSpriteContact(plain), `${piece.id} keeps the same grounded feet`);
+    }
+  }
 });
 
 test("sprite cache is bounded, reuses hot frames and normalizes frame input", () => {
@@ -158,18 +201,24 @@ test("a fishing lean turns the gaze and torso while both planted paws retain the
   }
 });
 
-test("shore fishing eyes use equal compact rounded glyphs with two-pixel caps instead of isolated cross tips", () => {
-  for (const direction of ["front", "left", "right"]) for (const pose of ["fish", "wonder", "present"]) {
-    const sprite = pixelSprite(pose, direction, 0, undefined, { gardening: true, crouch: 1, fishingStance: true });
+test("ordinary and fishing eyes share equal compact glyphs without isolated tips at camera zoom", () => {
+  const rigs = [undefined, { gardening: true, crouch: 1, lean: -2 }, { gardening: true, crouch: 1, fishingStance: true }];
+  for (const rig of rigs) for (const direction of ["front", "left", "right"]) for (const pose of ["idle", "walk", "reach", "wonder", "fish", ...(rig?.gardening ? ["present"] : [])]) for (let frame = 0; frame < 4; frame++) {
+    const sprite = pixelSprite(pose, direction, frame, undefined, rig);
     const eyes = [...sprite.pixels].filter(([, color]) => color === "#30291d").map(([key]) => key.split(":").map(Number));
     const columns = [...new Set(eyes.map(([x]) => x))].sort((a, b) => a - b);
     const groups = [columns.filter(x => x < columns[0] + 4), columns.filter(x => x >= columns[0] + 4)];
+    const glyphs = [];
     for (const group of groups) {
       assert.equal(group.length, 3, "each open eye remains three source pixels wide");
+      const points = eyes.filter(([x]) => group.includes(x));
+      const left = Math.min(...points.map(([x]) => x)), top = Math.min(...points.map(([, y]) => y));
+      glyphs.push(points.map(([x, y]) => [x - left, y - top]).sort(([ax, ay], [bx, by]) => ay - by || ax - bx));
       const rows = new Map();
-      for (const [, y] of eyes.filter(([x]) => group.includes(x))) rows.set(y, (rows.get(y) ?? 0) + 1);
+      for (const [, y] of points) rows.set(y, (rows.get(y) ?? 0) + 1);
       assert.equal(rows.size, pose === "wonder" ? 6 : 5);
       assert.ok([...rows.values()].every(count => count >= 2), "neither cap nor a highlighted interior row has a lone protruding pixel");
     }
+    assert.deepEqual(glyphs[0], glyphs[1], "the two eyes keep the same cap and highlight placement in every frame and rig");
   }
 });

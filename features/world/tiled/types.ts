@@ -74,6 +74,16 @@ export type WorldHabitat = {
   anchors: { id: string; position: WorldPoint; kind: "rest" | "shelter" }[];
 };
 export type WorldMushroom = { id: string; position: WorldPoint };
+/** A movable animation origin. It never creates an activity, clock or reward. */
+export type WorldEffectAnchor = {
+  id: string;
+  effect: "resident-home";
+  residentId: "plesk" | "lopukh" | "kamneshmyg" | "leaftail";
+  /** Centre of the visible motif, in world coordinates (not an actor's feet). */
+  position: WorldPoint;
+  size: number;
+  when: WorldVisibilityCondition;
+};
 export type WorldBush = {
   id: string;
   /** Optional terrain-object ID; absent means foliage baked into the background. */
@@ -89,8 +99,18 @@ export type WorldWater = {
   surfaces: WorldWaterPolygon[];
   exclusions: WorldWaterPolygon[];
 };
-export type WorldLight = {
+/** Studio-only organization; identity, geometry and visibility are independent. */
+export type WorldStudioElementMetadata = {
+  studioName?: string;
+  /** Built-in folder ID or a nested custom:Name/Child path. */
+  studioFolder?: string;
+};
+export type WorldLight = WorldStudioElementMetadata & {
   id: string;
+  /** Optional authoring switch; absent keeps the source enabled. */
+  enabled?: boolean;
+  /** Use the authored bulb position instead of its building artwork anchor. */
+  manualPosition?: boolean;
   /** Position of the flame or bulb, in logical world coordinates. */
   position: WorldPoint;
   kind: "lantern" | "torch" | "glow";
@@ -103,7 +123,7 @@ export type WorldLight = {
   flicker: number;
 };
 /** An independent ground-projected footprint extruded vertically for light blocking. */
-export type WorldShadowCaster = {
+export type WorldShadowCaster = WorldStudioElementMetadata & {
   id: string;
   points: WorldPoint[];
   /** Thickness above baseHeight, in vertical world units. */
@@ -115,15 +135,26 @@ export type WorldShadowCaster = {
   when?: WorldVisibilityCondition;
 };
 /** Receiver contour follows the painted surface at its authored vertical height. */
-export type WorldShadowReceiver = {
+export type WorldShadowReceiver = WorldStudioElementMetadata & {
   id: string;
   points: WorldPoint[];
+  /** Interior exclusions in painted world coordinates; subtract only from this surface. */
+  holes?: WorldPoint[][];
   height: number;
   when?: WorldVisibilityCondition;
 };
 export type WorldCampfire = { id: string; position: WorldPoint; seat: WorldPoint; radius: number };
 /** Ground contact at the bottom center of the parked berry basket. */
 export type WorldBasket = { id: string; position: WorldPoint };
+/** Decorative, editable building-site boundary. Never navigation or hit geometry. */
+export type WorldConstructionSite = {
+  id: string;
+  /** Physical host, including the image-free garden and campfire. */
+  siteId: string;
+  points: WorldPoint[];
+  /** A small board stack beside the first stake. */
+  materials?: boolean;
+};
 export type WorldAudioActivation = "always" | "production-working" | "construction-working" | "campfire-lit";
 /** Authored spatial sound source. Station IDs reference economy equipment, while
  * site IDs reference its physical Tiled host (e.g. kiln belongs to workshop). */
@@ -161,9 +192,13 @@ export type FixedWorldScene = {
   sites: FixedSite[];
   paths: WorldPath[];
   mushrooms?: WorldMushroom[];
+  /** Authored effect positions; no anchors means doorway-based compatibility. */
+  effectAnchors?: WorldEffectAnchor[];
   campfires?: WorldCampfire[];
   /** Absent retains automatic placement for older maps. */
   basket?: WorldBasket;
+  /** Only confirmed account construction can reveal these temporary props. */
+  constructionSites?: WorldConstructionSite[];
   bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];

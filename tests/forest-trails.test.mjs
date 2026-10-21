@@ -16,6 +16,29 @@ const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/fe
 const world = (level = 1) => previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD),
   home: Math.max(1, level), workshop: level, quarry: level });
 
+test("the authored foraging stop preserves every previous destination and leaves the real basket on safe ground at every home tier", () => {
+  assert.ok(TILED_WORLD.destinations.length <= 32, "the authored registry stays inside its supported bound");
+  for (let level = 0; level <= 5; level++) {
+    const scene = world(level), without = { ...scene, destinations: scene.destinations.filter(target => target.id !== "foraging") };
+    const previous = [...forestDestinations(without).keys()], current = forestDestinations(scene);
+    assert.deepEqual([...current.keys()].filter(id => id !== "foraging"), previous, "adding the foraging marker must not discard the existing route registry");
+    assert.deepEqual(forestTrailDestination(scene, "foraging"), { x: 680, y: 715 });
+    const nav = createWorldNavigation(scene, 8);
+    assert.ok(isWalkable(nav, { x: 680, y: 715 })); assert.ok(isWalkable(nav, { x: 698.5, y: 715 }));
+    assert.ok(findForestTrailPath(scene, scene.actor.spawn, "foraging"));
+  }
+});
+
+test("runtime destination bounds accept all 32 markers and reject 33 without a partial registry", () => {
+  const scene = legacyWorld();
+  for (const count of [17, 32, 33]) {
+    const destinations = [destination("workshop", 80, 80), ...Array.from({ length: count - 1 }, (_, index) => destination(`stop-${index}`, 80, 80))];
+    const current = { ...scene, destinations };
+    assert.equal(forestDestinations(current).size, count <= 32 ? count : 0);
+    assert.deepEqual(forestTrailDestination(current, "workshop"), count <= 32 ? { x: 80, y: 80 } : null);
+  }
+});
+
 test("all authored travel destinations connect through WalkAreas at every building level", () => {
   for (let level = 0; level <= 5; level++) {
     const scene = world(level), nav = createWorldNavigation(scene), destinations = forestDestinations(scene);
@@ -156,7 +179,7 @@ test("explicit empty, ambiguous or malformed destinations never fall back to leg
     [{ ...destination("workshop", 80, 80), pauseSeconds: 0 }],
     [{ ...destination("workshop", 80, 80), pauseSeconds: 61 }],
     [null],
-    Array.from({ length: 17 }, (_, index) => destination(`stop-${index}`, 30 + index * 3, 80)),
+    Array.from({ length: 33 }, (_, index) => destination(`stop-${index}`, 30, 80)),
   ]) {
     const scene = { ...legacy, destinations: invalid };
     assert.equal(forestTrailDestination(scene, "workshop"), null);

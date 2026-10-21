@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": "colosseum",
+  "source": {
+    "sha256": "3d88af058aaff16803878e421ad141357006473b9c2e720c38d522a7bfcf81bf",
+    "bytes": 5351492,
+    "author": "",
+    "license": "",
+    "url": "",
+    "title": ""
+  },
+  "coordinates": {
+    "axes": "east,north,up",
+    "gltfConversion": "x,-z,y",
+    "normalizedHeight": 1,
+    "heightMeters": 48,
+    "headingDegrees": 0,
+    "bounds": {
+      "min": [
+        -0.6209740042686462,
+        -0.6236127018928528,
+        0
+      ],
+      "max": [
+        0.6209740042686462,
+        0.6236127018928528,
+        1
+      ]
+    }
+  },
+  "preparation": {
+    "version": 2,
+    "simplifier": "meshoptimizer@1.1.1",
+    "inputTriangles": 47412,
+    "discardedDegenerateTriangles": 0,
+    "preserveTopFraction": 0,
+    "sourceHeight": 0.78643798828125,
+    "sourceOrigin": [
+      0,
+      0,
+      0
+    ],
+    "colors": "linear baseColor + vertexColor; sRGB baseColor texture; runtime normal/metallic/roughness lighting"
+  },
+  "overview": {
+    "url": "/earth/models/colosseum/overview.elm",
+    "bytes": 396120,
+    "sha256": "5024fef63cfd19329ae75728816d9440a79ea67cc44e0820c1ff009b15c2eaf6",
+    "vertexCount": 6793,
+    "indexCount": 17997,
+    "triangles": 5999,
+    "targetTriangles": 6000,
+    "error": 0.014083684422075748,
+    "errorLimit": 0.03,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 10324,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 9876,
+        "width": 128,
+        "height": 128,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 4952,
+        "width": 64,
+        "height": 64,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  },
+  "detail": {
+    "url": "/earth/models/colosseum/detail.elm",
+    "bytes": 1408234,
+    "sha256": "746136f35b90fcafd2f94f02940993be2a89add1c23a85d4556cc94534906355",
+    "vertexCount": 18893,
+    "indexCount": 71985,
+    "triangles": 23995,
+    "targetTriangles": 24000,
+    "error": 0.0024568280205130577,
+    "errorLimit": 0.01,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 74176,
+        "width": 1024,
+        "height": 1024,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 140898,
+        "width": 512,
+        "height": 512,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 73840,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  }
+}

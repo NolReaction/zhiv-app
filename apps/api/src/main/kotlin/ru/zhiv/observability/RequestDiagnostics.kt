@@ -139,12 +139,17 @@ private val diagnosticErrorCodes = actionableAuthFailures + setOf(
     "GAME_ACTIVE_ELSEWHERE", "GAME_SESSION_EXPIRED", "GAME_SESSION_GONE", "GAME_SESSION_CONFLICT", "GAME_SESSION_LIMIT",
     "GAME_SEQUENCE_CONFLICT", "GAME_OWNER_CHANGED", "GAME_PERMIT_CLOSED", "GAME_PACING", "GAME_QUEUE_EXPIRED",
     "ADMIN_PROTECTED_ACCOUNT", "ADMIN_REQUEST_CONFLICT", "ADMIN_USER_NOT_FOUND",
+    "GUEST_WORLD_UNAVAILABLE", "INVALID_GUEST_WORLD_QUERY",
 )
 
 private fun safeErrorCode(code: String): String = code.takeIf { it in diagnosticErrorCodes } ?: "UNKNOWN_ERROR"
 
 // Only these fixed templates can reach the log. Unknown paths and path parameters are never recorded.
 private val operationTemplates = listOf(
+    "/api/v1/game/rewards", "/api/v1/game/rewards/claims", "/api/v1/economy", "/api/v1/economy/commands",
+    "/api/v1/economy/market", "/api/v1/economy/market/commands", "/api/v1/economy/barter", "/api/v1/economy/barter/commands",
+    "/api/v1/mail", "/api/v1/mail/{id}/read", "/api/v1/admin/request-traffic", "/api/v1/admin/mail/broadcast",
+    "/api/v1/admin/users/{publicId}/security", "/api/v1/admin/users/{publicId}/adjust-economy",
     "/api/v1/client-incidents", "/api/v1/admin/incidents", "/api/v1/world", "/api/v1/world/commands",
     "/api/v1/admin/access", "/api/v1/admin/overview", "/api/v1/admin/users",
     "/api/v1/admin/audit", "/api/v1/admin/monitoring", "/api/v1/admin/users/{publicId}/revoke-sessions",
@@ -159,6 +164,7 @@ private val operationTemplates = listOf(
     "/api/v1/auth/account/lifecycle", "/api/v1/auth/account/email", "/api/v1/auth/account/merge/preview",
     "/api/v1/auth/account/merge/confirm", "/api/v1/auth/account/profile",
     "/api/v1/users/{publicId}", "/api/v1/people", "/api/v1/people/{circleId}",
+    "/api/v1/people/{circleId}/world", "/api/v1/people/{circleId}/world/market/commands",
     "/api/v1/people/{circleId}/nickname", "/api/v1/people/{circleId}/favorite", "/api/v1/people/{circleId}/sharing",
     "/api/v1/direct-requests", "/api/v1/direct-requests/{requestId}/accept",
     "/api/v1/direct-requests/{requestId}/reject", "/api/v1/direct-requests/{requestId}/cancel",

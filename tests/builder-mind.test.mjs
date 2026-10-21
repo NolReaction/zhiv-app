@@ -288,7 +288,7 @@ test("actual Tiled hosts and all authored building levels have safe work routes 
     const scene = previewWorldScene(TILED_WORLD, levels), places = builderLocalPlaces(scene);
     assert.ok(places, `rest exists at ${JSON.stringify(levels)}`);
     assert.ok(Math.hypot(places.rest.position.x - scene.actor.spawn.x, places.rest.position.y - scene.actor.spawn.y) >= 45);
-    for (const stationId of ["home", "warehouse", "workshop", "kiln", "garden", "woodlot", "quarry", "dryer"]) {
+    for (const stationId of ["home", "warehouse", "workshop", "kiln", "garden", "quarry", "dryer"]) {
       const active = { ...job(stationId), targetLevel: Math.min(5, (levels[stationId] ?? 1) + 1) };
       const stops = builderWorkStops(scene, active), route = builderRoute(places, places.rest.position, stops);
       assert.ok(route, `${stationId} is reachable at ${JSON.stringify(levels)}`);
@@ -303,7 +303,7 @@ test("actual Tiled hosts and all authored building levels have safe work routes 
 
 test("actual map worker completes each host approach and remains continuous when claimed artwork changes", () => {
   const initial = initialPreviewLevels(TILED_WORLD), scene = previewWorldScene(TILED_WORLD, initial);
-  for (const stationId of ["home", "warehouse", "workshop", "kiln", "garden", "woodlot", "quarry", "dryer"]) {
+  for (const stationId of ["home", "warehouse", "workshop", "kiln", "garden", "quarry", "dryer"]) {
     const mind = createBuilderMind(scene), construction = snapshot([job(stationId)]);
     for (let elapsed = 0; elapsed < 180 && mind.action !== "work"; elapsed += .25)
       advance(mind, scene, construction, .25, start, .25);
@@ -316,4 +316,70 @@ test("actual map worker completes each host approach and remains continuous when
       assert.ok(mind.available); assert.notDeepEqual(mind.position, position);
     }
   }
+});
+
+test("a confirmed woodlot job works beside the rabbit home without changing its saved authority", () => {
+  const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)), mind = createBuilderMind(scene);
+  assert.equal(scene.sites.some(site => site.id === "woodlot"), false);
+  const construction = snapshot([job("woodlot")]), original = structuredClone(construction), position = { ...mind.position };
+  advance(mind, scene, construction, 50);
+  assert.equal(mind.blocked, false);
+  assert.equal(mind.action, "work");
+  assert.notDeepEqual(mind.position, position);
+  const home = scene.sites.find(site => site.id === "lopukh-home");
+  assert.deepEqual(mind.target.lookAt, home.anchor);
+  assert.ok(builderWorkStops(scene, construction.jobs[0]).some(stop => Math.hypot(stop.position.x - mind.position.x, stop.position.y - mind.position.y) < .01));
+  assert.deepEqual(mind.job, construction.jobs[0], "the display does not cancel the server's construction job");
+  assert.deepEqual(construction, original);
+});
+
+test("a host waits for his neighbour but a real construction or player greeting interrupts the wait", () => {
+  const scene = fixture(), mind = createBuilderMind(scene), empty = snapshot([], 1);
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: empty });
+  mind.wait = 0;
+  const feet = { ...mind.position }, decisions = mind.decisions;
+  for (let tick = 0; tick < 120; tick++) advanceBuilderMind(mind, scene, .1,
+    { now: start, construction: empty, socialHold: true });
+  assert.deepEqual(mind.position, feet); assert.equal(mind.route, null); assert.equal(mind.decisions, decisions);
+  noticeBuilderMind(mind);
+  advanceBuilderMind(mind, scene, .1, { now: start, construction: empty, socialHold: true });
+  assert.equal(mind.action, "greet", "an intentional greeting outranks the optional social wait");
+  const active = snapshot([job()], 2);
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: active, socialHold: true });
+  assert.equal(mind.job.id, "home"); assert.equal(mind.action, "walk");
+  assert.ok(mind.route, "confirmed construction takes its ordinary checked path");
+});
+
+test("visible taps keep a builder's checked destination and walking progress until real arrival", () => {
+  const scene = fixture(), mind = createBuilderMind(scene), empty = snapshot([], 1);
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: empty });
+  mind.wait = 0;
+  advanceBuilderMind(mind, scene, .1, { now: start, construction: empty });
+  assert.ok(mind.route);
+  const route = mind.route, target = mind.target;
+  let ticks = 0;
+  while (mind.route && ticks++ < 600) {
+    const feet = { ...mind.position }, progress = mind.distance;
+    for (let tap = 0; tap < 5; tap++) noticeBuilderMind(mind, { preserveActivity: true });
+    assert.equal(mind.noticePending, false); assert.equal(mind.route, route); assert.equal(mind.target, target);
+    assert.deepEqual(mind.position, feet); assert.equal(mind.distance, progress);
+    advance(mind, scene, empty, .1);
+    if (mind.route) assert.ok(mind.distance > progress, "a tap never pauses or restarts walking");
+  }
+  assert.equal(mind.route, null); assert.ok(ticks < 600);
+  assert.deepEqual(mind.position, target.position); assert.equal(mind.job, null);
+});
+
+test("repeated visible taps give an idle builder one finite greeting and no delayed greeting queue", () => {
+  const scene = fixture(), mind = createBuilderMind(scene), empty = snapshot([], 1);
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: empty });
+  mind.wait = 100;
+  noticeBuilderMind(mind, { preserveActivity: true }); advance(mind, scene, empty, .1);
+  assert.equal(mind.action, "greet");
+  const deadline = mind.greetAfter, feet = { ...mind.position };
+  for (let tick = 0; tick < 40; tick++) {
+    noticeBuilderMind(mind, { preserveActivity: true }); advance(mind, scene, empty, .1);
+    assert.equal(mind.greetAfter, deadline); assert.equal(mind.noticePending, false);
+  }
+  assert.equal(mind.action, "idle"); assert.equal(mind.route, null); assert.deepEqual(mind.position, feet);
 });

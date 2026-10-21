@@ -37,7 +37,8 @@ export function forestProductionFrames(snapshot: EconomySceneProduction | null |
     || Date.parse(a.finishesAt) - Date.parse(b.finishesAt) || a.id.localeCompare(b.id));
   for (const job of jobs) {
     const start = Date.parse(job.startedAt), finish = Date.parse(job.finishesAt);
-    if (used.has(job.stationId) || !Number.isInteger(job.stationLevel) || job.stationLevel <= 0
+    const basicFire = job.stationId === "dryer" && job.recipeId === "cook_grilled_fish" && job.stationLevel === 0;
+    if (used.has(job.stationId) || !Number.isInteger(job.stationLevel) || job.stationLevel <= 0 && !basicFire
       || !Number.isFinite(start) || !Number.isFinite(finish) || finish <= start || now < start) continue;
     const frame = { jobId: job.id, recipeId: job.recipeId, phase: now < finish ? "working" as const : "ready" as const, elapsed: time };
     if (job.stationId === "dryer") {
@@ -45,7 +46,8 @@ export function forestProductionFrames(snapshot: EconomySceneProduction | null |
       if (!fire || ![fire.position.x, fire.position.y, fire.radius].every(Number.isFinite) || fire.radius <= 0) continue;
       result.push({ ...frame, stationId: "dryer", ...fire.position, size: fire.radius * 4, fireId: fire.id });
     } else if (job.stationId === "workshop" || job.stationId === "woodlot" || job.stationId === "quarry") {
-      const site = scene.sites.find(site => site.id === job.stationId);
+      const site = scene.sites.find(site => site.id === job.stationId)
+        ?? (job.stationId === "woodlot" ? scene.sites.find(site => site.id === "lopukh-home") : undefined);
       if (!site || (visuals[site.id]?.level ?? 0) <= 0
         || ![site.entry.x, site.entry.y, site.bounds.width].every(Number.isFinite) || site.bounds.width <= 0) continue;
       result.push({ ...frame, stationId: job.stationId, ...site.entry, size: Math.max(18, Math.min(32, site.bounds.width * .12)) });

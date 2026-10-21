@@ -3,18 +3,22 @@ import { formatPearls } from "@/features/economy/domain/money";
 import { worldCatalog } from "@/features/world/domain/model";
 
 export const analyticsActions: Record<string, string> = {
-  grant_economy: "Выдача администратором", promo_code: "Подарок по промокоду",
+  grant_economy: "Выдача администратором", admin_adjustment: "Корректировка администратором", promo_code: "Подарок по промокоду",
   claim_tutorial_order: "Ингредиенты учебного заказа",
   claim_workshop_starter: "Подарок для первой мастерской",
+  start_tutorial_workshop: "Учебная стройка мастерской",
+  start_tutorial_harvest: "Первый учебный урожай",
+  onboarding_reward: "Награда за основное обучение",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
-  start_production: "Начало производства", buy_production_slot: "Место производства", start_collection: "Начало сбора",
+  start_production: "Начало производства", cancel_production: "Отмена производства", buy_production_slot: "Место производства", buy_market_slot: "Место прилавка", start_collection: "Начало сбора",
+  start_garden_collection: "Сбор всех созревших ягод", claim_garden_collection: "Получение корзины урожая",
   start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки", start_construction: "Начало стройки",
   speedup_construction: "Ускорение стройки", claim_job: "Получение результата", sell: "Продажа припасов",
   buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы",
   equip_fishing_rod: "Выбор удочки", equip_fishing_bait: "Выбор наживки", equip_fishing_hook: "Выбор крючка",
   refresh_fishing_shop: "Обновление лавки Плёски", start_fishing: "Начало рыбалки",
-  market_create: "Выставление на рынок", market_buy: "Покупка на рынке", market_sell: "Продажа на рынке",
+  market_create: "Выставление на рынок", market_buy: "Покупка на рынке", market_sell: "Продажа на рынке", market_sold: "Партия продана", market_claim: "Сбор выручки",
   market_cancel: "Возврат с рынка", daily_reward: "Подарок за вход", achievement_reward: "Награда за достижение",
   barter_create: "Предложение обмена", barter_accept: "Получение по обмену", barter_exchange: "Завершение обмена", barter_cancel: "Возврат реликвии",
 };

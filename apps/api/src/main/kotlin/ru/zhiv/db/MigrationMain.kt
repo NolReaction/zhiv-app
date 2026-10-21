@@ -6,7 +6,7 @@ import ru.zhiv.config.AppConfig
 fun main() {
     val config = AppConfig.fromEnvironment()
     require(config.databaseUser != "zhiv_app") { "Runtime role must not execute migrations" }
-    DatabaseFactory.create(config).use { source ->
+    DatabaseFactory.createForMigrations(config).use { source ->
         migrateWithLegacyAdminHistory(source)
         source.connection.use { connection ->
             connection.createStatement().use {
@@ -19,6 +19,7 @@ fun main() {
                 it.execute("GRANT SELECT, UPDATE (status, terminal_at) ON account_recovery_attempts TO zhiv_app")
                 it.execute("REVOKE UPDATE, DELETE ON direct_invite_redemptions FROM zhiv_app")
                 it.execute("REVOKE UPDATE, DELETE ON admin_actions FROM zhiv_app")
+                it.execute("REVOKE UPDATE, DELETE ON admin_mail_broadcasts FROM zhiv_app")
                 it.execute("REVOKE UPDATE ON world_ledger, world_commands FROM zhiv_app")
                 it.execute("REVOKE UPDATE ON economy_commands, economy_ledger, economy_conversion_audit, economy_market_receipts, economy_barter_receipts, game_reward_claims FROM zhiv_app")
                 it.execute("REVOKE ALL ON account_group_owner_transfers FROM zhiv_app")

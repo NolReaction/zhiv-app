@@ -23,8 +23,8 @@ afterEach(() => { globalThis.fetch = fetchOriginal; });
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", at = "2026-10-05T12:00:00.000Z", clock = Date.parse(at);
 const reward = { coins: 10, pearls: 0, items: {} };
 function view(step = 1, claimable = true, ownerPublicId = owner) {
-  return { ownerPublicId, serverTime: at, catalogVersion: 1,
-    daily: { step, claimable, nextClaimAt: new Date(clock + (claimable ? 0 : 86_400_000)).toISOString(), lastClaimAt: null, lastClaimDate: null,
+  return { ownerPublicId, serverTime: at, catalogVersion: 4,
+    daily: { step, completed: false, claimable, nextClaimAt: new Date(clock + (claimable ? 0 : 86_400_000)).toISOString(), lastClaimAt: null, lastClaimDate: null,
       reward, cycle: Array.from({ length: 7 }, (_, index) => ({ step: index + 1, reward: index === 6 ? { ...reward, pearls: 2 } : reward })) },
     achievementRewards: Object.entries(GAME_ACHIEVEMENT_TARGETS).flatMap(([achievementId, targets]) => targets.map((target, index) => ({
       achievementId, level: index + 1, target, pearls: achievementId === "full_collection" ? 0 : index + 1, earnedAt: achievementId === "explorer" ? at : null,
@@ -245,6 +245,36 @@ test("the daily panel contains seven steps, a real manual claim, and an explicit
   const offline = render(DailyRewardsPanel, { controller: controller(), isOnline: false });
   assert.match(offline, /Для получения нужен интернет/); assert.match(offline, /<button[^>]*disabled=""[^>]*>.*?Забрать подарок/);
 });
+test("a completed gift chain shows seven received steps without a timer, claim, or newly priced previews", () => {
+  const data = view(7, false);
+  data.daily = { ...data.daily, completed: true, nextClaimAt: null, lastClaimAt: at, lastClaimDate: "2026-10-05", homeLevel: 5 };
+  const props = { controller: controller(data), isOnline: true, storageAvailable: 0 };
+  const html = render(DailyRewardsPanel, props);
+  assert.match(html, /Семь подарков за знакомство с миром\. Доступны один раз/);
+  assert.match(html, /Все подарки получены/);
+  assert.equal([...html.matchAll(/data-completed="true"/g)].length, 7);
+  assert.equal([...html.matchAll(/>Получено<\/span>/g)].length, 7);
+  assert.doesNotMatch(html, /aria-current="step"|data-current|Забрать подарок|Следующий подарок|Проверяем доступность|Освободите|Дом 5 уровня|data-item-icon/);
+  assert.doesNotMatch(html, /Следующий круг|начнётся с первого/);
+  assert.match(html, /один раз на аккаунт/);
+  const offline = render(DailyRewardsPanel, { ...props, isOnline: false });
+  assert.match(offline, /Нет соединения\. Показаны последние данные/);
+  assert.doesNotMatch(offline, /Для получения нужен интернет/);
+  const stale = { ...data, daily: { ...data.daily, claimable: true, nextClaimAt: at } };
+  assert.doesNotMatch(render(DailyRewardsPanel, { ...props, controller: controller(stale) }), /Забрать подарок|Следующий подарок/);
+});
+test("the last manual receipt keeps its exact bundle and confirms that the gift chain is finished", () => {
+  const data = view(7, false);
+  data.daily = { ...data.daily, completed: true, nextClaimAt: null, lastClaimAt: at, lastClaimDate: "2026-10-05" };
+  const result = receipt({ requestId: crypto.randomUUID(), kind: "daily" }, data);
+  result.claim = { kind: "daily", step: 7, claimedAt: at, reward: { coins: 25, pearls: 220, items: { ancient_core: 1 } } };
+  const html = render(DailyRewardsPanel, { controller: controller(data, { result }), isOnline: true });
+  assert.match(html, /Подарок дня 7 получен/);
+  assert.match(html, /Все семь подарков получены/);
+  assert.match(html, /data-item-icon="ancient_core"/);
+  assert.match(html, />110<\/strong>/);
+  assert.doesNotMatch(html, /Следующий круг|Следующий подарок|Забрать подарок/);
+});
 test("client countdown cannot turn an unready server gift into an enabled claim", () => {
   const data = view(3, false); data.daily.nextClaimAt = at;
   const html = render(DailyRewardsPanel, { controller: controller(data, { now: clock + 60_000 }), isOnline: true });
@@ -295,6 +325,20 @@ test("client API uses private no-store reads and validates receipt echo payload"
   assert.equal(calls[1].path, "/api/v1/game/rewards/claims"); assert.deepEqual(JSON.parse(calls[1].options.body), command);
 });
 
+test("the client accepts frozen v2 and v3 responses alongside current v4 previews without repricing their bundles", () => {
+  const current = view();
+  const historical = [2, 3].map(catalogVersion => ({ ...structuredClone(current), catalogVersion,
+    daily: { ...structuredClone(current.daily), reward: { coins: 80, pearls: catalogVersion === 2 ? 8 : 20,
+      items: { ancient_core: 1 } } } }));
+  for (const snapshot of [...historical, current]) {
+    const parsed = api.gameRewardsSchema.parse(snapshot);
+    assert.equal(parsed.catalogVersion, snapshot.catalogVersion);
+    assert.deepEqual(parsed.daily.reward, snapshot.daily.reward);
+  }
+  assert.equal(api.gameRewardsSchema.safeParse({ ...current, catalogVersion: 1 }).success, false);
+  assert.equal(api.gameRewardsSchema.safeParse({ ...current, catalogVersion: 5 }).success, false);
+});
+
 
 test("unclaimed daily gift prompts on each world entry after a fresh read, never on each poll", async () => {
   let data = view(), reads = 0, writes = 0;
@@ -325,6 +369,26 @@ test("entry prompt waits online for its owner and respects a manually opened gif
   assert.equal(recovery.shouldOpen({ ...state, data: view(2, false), pending, uncertain: true }, true), true, "a committed but unconfirmed daily gift opens recovery");
   const achievement = createDailyRewardEntryPrompt(owner, 1);
   assert.equal(achievement.shouldOpen({ ...state, pending: { ...pending, kind: "achievement" }, uncertain: true }, true), false, "daily prompt does not hijack an achievement receipt");
+});
+test("completed gifts never reopen on later visits; only an unconfirmed final receipt may open recovery", async () => {
+  const data = view(7, false);
+  data.daily = { ...data.daily, completed: true, nextClaimAt: null, lastClaimAt: at, lastClaimDate: "2026-10-05" };
+  let writes = 0;
+  const session = createGameRewardsSession(owner, transport({ get: async () => data, send: async command => { writes++; return receipt(command, data); } }));
+  const stop = session.activate();
+  for (let visit = 0; visit < 3; visit++) {
+    const prompt = createDailyRewardEntryPrompt(owner, session.getSnapshot().readVersion);
+    await session.refresh();
+    assert.equal(prompt.shouldOpen(session.getSnapshot(), true), false);
+    assert.equal(await session.claimDaily(), undefined);
+  }
+  assert.equal(writes, 0);
+  const pending = { requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "daily" };
+  const prompt = createDailyRewardEntryPrompt(owner, 0);
+  assert.equal(prompt.shouldOpen({ ...session.getSnapshot(), pending, uncertain: true }, true), true);
+  const stale = { ...data, daily: { ...data.daily, claimable: true } };
+  assert.equal(createDailyRewardEntryPrompt(owner, 0).shouldOpen({ ...session.getSnapshot(), data: stale }, true), false);
+  stop();
 });
 
 test("daily gifts and achievement claims display half pearl units without rounding odd balances", () => {

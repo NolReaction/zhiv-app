@@ -11,6 +11,27 @@ private const val legacyPromoChecksum = 1403371834
 private const val grantScript = "V51__admin_economy_grants.sql"
 private const val promoScript = "V52__managed_promo_codes.sql"
 private const val notificationScript = "V50__actionable_notification_sources.sql"
+private const val baselineScript = "B49__current_schema.sql"
+private val canonicalTailScripts = mapOf(
+    50 to notificationScript,
+    51 to grantScript,
+    52 to promoScript,
+    53 to "V53__first_stage_economy.sql",
+    54 to "V54__independent_mining_jobs.sql",
+    55 to "V55__market_capacity_and_item_knowledge.sql",
+    56 to "V56__independent_miner_notification_readiness.sql",
+    57 to "V57__garden_collection_ledger_context.sql",
+    58 to "V58__single_intro_order_initial_state.sql",
+    59 to "V59__onboarding_completion_reward.sql",
+    60 to "V60__bounded_player_security_observations.sql",
+    61 to "V61__player_mail_and_admin_deliveries.sql",
+    62 to "V62__welcome_mail_gift.sql",
+    63 to "V63__manual_market_sale_claims.sql",
+    64 to "V64__one_time_seven_day_gifts.sql",
+    65 to "V65__earth_location_sharing.sql",
+    66 to "V66__earth_last_known_location.sql",
+    67 to "V67__earth_recipient_freeze.sql",
+)
 
 private data class AdminMigrationHistoryRow(
     val rank: Int, val version: String?, val script: String, val checksum: Int?, val type: String, val success: Boolean,
@@ -20,7 +41,8 @@ private data class AdminMigrationHistoryRow(
  * Check both the packaged bytes and the recorded checksum; never repair an
  * unknown script, failed installation or unrelated future schema. */
 private fun migrationChecksum(script: String): Int {
-    val stream = checkNotNull(DatabaseFactory::class.java.getResourceAsStream("/db/migration/$script")) {
+    val stream = checkNotNull(DatabaseFactory::class.java.getResourceAsStream("/db/migration/$script")
+        ?: DatabaseFactory::class.java.getResourceAsStream("/db/migration/history/$script")) {
         "Unknown migration script in admin compatibility history"
     }
     val crc = CRC32()
@@ -67,12 +89,20 @@ internal fun normalizeLegacyAdminMigrationHistory(source: DataSource): Boolean =
             AdminMigrationHistoryRow(it.getInt(1), it.getString(2), it.getString(3),
                 it.getObject(4)?.let { value -> (value as Number).toInt() }, it.getString(5), it.getBoolean(6))
         }
-        check(rows.all { it.success && it.type == "SQL" && it.version?.matches(Regex("[1-9][0-9]*")) == true }) {
+        check(rows.all { it.success && it.type in setOf("SQL", "SQL_BASELINE") && it.version?.matches(Regex("[1-9][0-9]*")) == true }) {
             "Admin compatibility refuses failed, non-SQL or unknown migration history"
         }
         val versions = rows.map { checkNotNull(it.version).toIntOrNull() ?: error("Unknown migration version") }
-        check(versions.distinct().size == versions.size && versions.all { it in 1..52 }) {
+        check(versions.distinct().size == versions.size && versions.all { it in 1..canonicalTailScripts.keys.max() }) {
             "Admin compatibility refuses duplicate or future migration versions"
+        }
+        val baselines = rows.filter { it.type == "SQL_BASELINE" }
+        if (baselines.isNotEmpty()) {
+            val baseline = baselines.singleOrNull()
+            check(baseline != null && baseline.version == "49" && baseline.script == baselineScript &&
+                baseline.checksum == migrationChecksum(baselineScript) && versions.none { it < 49 }) {
+                "Admin compatibility refuses unknown or mixed baseline history"
+            }
         }
         // Ordinary canonical history is validated normally by Flyway. Only the
         // two known legacy fingerprints may reach the metadata rewrite below.
@@ -86,8 +116,11 @@ internal fun normalizeLegacyAdminMigrationHistory(source: DataSource): Boolean =
             validRow(it, "50", notificationScript, migrationChecksum(notificationScript))
         }
         if (canonicalNotification != null) {
-            check(tail.all { it == canonicalNotification || it == resumedGrant || it == resumedPromo } &&
-                (resumedPromo == null || resumedGrant != null)) {
+            check(tail.all { row ->
+                val version = checkNotNull(row.version).toInt()
+                val script = canonicalTailScripts[version]
+                script != null && validRow(row, version.toString(), script, migrationChecksum(script))
+            } && tail.map { checkNotNull(it.version).toInt() }.sorted() == (50..tail.maxOf { checkNotNull(it.version).toInt() }).toList()) {
                 "Admin compatibility refuses unknown canonical migration history"
             }
             c.commit(); return@use false
@@ -95,6 +128,7 @@ internal fun normalizeLegacyAdminMigrationHistory(source: DataSource): Boolean =
         val legacy = legacyGrant != null && tail.all { it == legacyGrant || it == legacyPromo }
         val resumed = resumedGrant != null && tail.all { it == resumedGrant || it == resumedPromo }
         check(legacy || resumed) { "Admin compatibility refuses unknown legacy scripts or checksums" }
+        check(baselines.isEmpty()) { "Legacy admin compatibility cannot rewrite baseline history" }
         check(versions.filter { it < 50 }.sorted() == (1..49).toList()) {
             "Legacy admin compatibility requires the complete original V1–V49 history"
         }

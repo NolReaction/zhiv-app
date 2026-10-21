@@ -5,24 +5,29 @@ import { RefreshCw } from "lucide-react";
 import { ApiError } from "@/lib/check-in-api";
 import { AchievementMedal } from "@/features/game/achievement-medal";
 import { GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
-import { CollectionIcon, ItemIcon } from "@/features/items/item-icon";
-import { collectionCatalog, COLLECTION_CHAPTERS } from "@/features/world/domain/collection-book";
-import { worldCatalog } from "@/features/world/domain/model";
-import { economyCatalog } from "@/features/economy/domain/model";
+import { GameLevelIcon } from "@/features/game/game-level-icon";
+import { getClickerLevel } from "@/features/game/clicker-story";
+import { ProfileFindings } from "./profile-findings";
 import { getGuestProfile } from "./guest-profile-api";
-import { GUEST_COLLECTION_IDS, type GuestProfile } from "./guest-profile-model";
+import type { GuestProfile } from "./guest-profile-model";
 import styles from "./guest-profile.module.css";
 
-const names = new Map([...worldCatalog.finds, ...collectionCatalog.quarry.finds, ...economyCatalog.items].map(item => [item.id, item.name]));
 
-export function GuestProfileContents({ profile }: { profile: GuestProfile }) {
+export function GuestProfileContents({ profile, section = "overview" }: { profile: GuestProfile; section?: "overview" | "collections" }) {
   const collectionCount = Object.values(profile.collections).reduce((sum, ids) => sum + ids.length, 0);
+  const level = profile.tapStats ? getClickerLevel(profile.tapStats.lifetimeTaps) : null;
   return <div className={styles.contents}>
+    {section === "overview" && <>
+    {level && <div className={styles.playerLevel}><GameLevelIcon level={level.level} size={25} /><strong>Уровень {level.level}</strong><span>{level.title}</span></div>}
     <dl className={styles.stats}>
       <div><dt>Уровень дома</dt><dd>{profile.homeLevel}</dd></div>
       <div><dt>Завершено вылазок</dt><dd>{profile.completedExplorations.toLocaleString("ru-RU")}</dd></div>
       <div><dt>Страниц коллекции</dt><dd>{collectionCount}</dd></div>
     </dl>
+    {profile.tapStats ? <dl className={styles.tapStats} aria-label="Рекорды по тапам">
+      <div><dt>Всего тапов</dt><dd>{profile.tapStats.lifetimeTaps.toLocaleString("ru-RU")}</dd></div>
+      <div><dt>Лучшая серия</dt><dd>×{profile.tapStats.bestSeries.toLocaleString("ru-RU")}</dd></div>
+    </dl> : <p className={styles.privateStats}>Уровень и рекорды по тапам скрыты настройкой рейтинга игрока.</p>}
     <section aria-label="Достижения друга">
       <h4>Достижения мира · {profile.achievements.length}</h4>
       {profile.achievements.length === 0 ? <p>Первые игровые медали ещё впереди.</p> : <ul className={styles.awards}>
@@ -35,24 +40,13 @@ export function GuestProfileContents({ profile }: { profile: GuestProfile }) {
         })}
       </ul>}
     </section>
-    <section aria-label="Коллекции друга">
-      <h4>Книга находок</h4>
-      {COLLECTION_CHAPTERS.map(chapter => <details className={styles.chapter} key={chapter.id}>
-        <summary>{chapter.title}<span>{profile.collections[chapter.id].length} / {GUEST_COLLECTION_IDS[chapter.id].length}</span></summary>
-        {profile.collections[chapter.id].length === 0 ? <p>Пока нет открытых страниц.</p> : <ul className={styles.finds}>
-          {profile.collections[chapter.id].map(id => <li key={id}>
-            {chapter.id === "fishing" ? <ItemIcon itemId={id} size={28} /> : <CollectionIcon findId={id} size={28} />}
-            <span>{names.get(id) ?? id}</span>
-          </li>)}
-        </ul>}
-      </details>)}
-    </section>
-    <p className={styles.hint}>Посещение самой поляны появится позже.</p>
+    </>}
+    {section === "collections" && <ProfileFindings collections={profile.collections} />}
   </div>;
 }
 
-type Props = { ownerPublicId: string; circleId: string; targetPublicId: string; onSessionLost: () => void };
-function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSessionLost }: Props) {
+type Props = { ownerPublicId: string; circleId: string; targetPublicId: string; onSessionLost: () => void; section?: "overview" | "collections" };
+function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSessionLost, section = "overview" }: Props) {
   const [view, setView] = useState<{ data: GuestProfile | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: true });
   const [refresh, setRefresh] = useState(0);
   const onLost = useRef(onSessionLost);
@@ -65,7 +59,7 @@ function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSession
       controller = new AbortController();
       const request = ++sequence;
       // Hidden/offline views discard the snapshot; visible refreshes preserve
-      // the open book chapters and keyboard focus until authorization responds.
+      // the selected chapter, scroll position and keyboard focus until authorization responds.
       if (document.visibilityState === "hidden") {
         setView({ data: null, error: null, loading: true });
         return;
@@ -86,13 +80,12 @@ function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSession
   }, [ownerPublicId, circleId, targetPublicId, refresh]);
   return <section className={styles.profile} aria-label="Игровой профиль" aria-busy={view.loading}>
     <header><h3>Игровой профиль</h3><button type="button" aria-label="Обновить игровой профиль" disabled={view.loading} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16} aria-hidden="true" /></button></header>
-    {view.loading ? <p role="status">Открываем профиль…</p> : view.error ? <p role="status">{view.error}</p> : view.data && <GuestProfileContents profile={view.data} />}
+    {view.loading ? <p role="status">Открываем профиль…</p> : view.error ? <p role="status">{view.error}</p> : view.data && <GuestProfileContents profile={view.data} section={section} />}
   </section>;
 }
 
-/** Changing owner/subject, going offline or denying sharing unmounts and cancels the previous read. */
-export function GuestProfileSection(props: Props & { sharingAllowed: boolean; isOnline: boolean }) {
-  if (!props.sharingAllowed) return <p className={styles.hint}>Игровой профиль скрыт настройками видимости этого человека.</p>;
+/** Profile access follows the current friendship; status and check-in sharing are independent. */
+export function GuestProfileSection(props: Props & { isOnline: boolean }) {
   if (!props.isOnline) return <p className={styles.hint}>Подключитесь к интернету, чтобы открыть игровой профиль.</p>;
   return <LoadedGuestProfile key={`${props.ownerPublicId}:${props.circleId}:${props.targetPublicId}`} {...props} />;
 }

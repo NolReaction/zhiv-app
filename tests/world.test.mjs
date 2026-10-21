@@ -104,6 +104,10 @@ test("accepted game batches preserve tap records without minting retired currenc
 });
 test("both albums unlock their own equipment and all twelve finds award the collection medal", () => {
   const p = player(); let time = now;
+  // This test inspects album ownership over many saved trips. Give their cargo
+  // enough real pantry capacity without changing the legacy trip rewards.
+  economy.getDevEconomy(p.token, time);
+  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.buildings.warehouse = 2;
   function travel(route) {
     const trip = savedTrip(p, route, time);
     time = Date.parse(trip.finishesAt); return issue(p, "claim_journey", trip.id, time).snapshot.state;
@@ -159,13 +163,16 @@ test("legacy savings convert once and all five homes plus workshops remain reada
     assert.equal(migrated.state.workshopLevel, 3);
     assert.deepEqual(migrated.state.resources, { sparks: 0, wood: 0, stone: 0 });
     const converted = economy.getDevEconomy(p.token, now);
-    assert.deepEqual(converted.wallet, { coins: 7500, pearls: 1000 });
+    assert.deepEqual(converted.wallet, { coins: 5100, pearls: 0 });
+    assert.deepEqual(converted.migration, { version: 1, coinsGranted: 5000, woodGranted: 30, stoneGranted: 30 });
     assert.equal(converted.currencyScale, 10);
-    assert.deepEqual(converted.inventory, { fish: 10, wood: 40, stone: 40 });
+    assert.deepEqual(converted.inventory, { wood: 33, stone: 35 });
+    assert.equal(converted.storage.overflow, 18, "the smaller starting pantry preserves every converted material");
     assert.equal(converted.buildings.home, level);
     assert.equal(converted.buildings.workshop, 3);
     world.getDevWorld(p.token, now + 1);
     assert.deepEqual(economy.getDevEconomy(p.token, now + 1).wallet, converted.wallet);
+    assert.deepEqual(economy.getDevEconomy(p.token, now + 1).inventory, converted.inventory);
     assert.equal(model.worldStateSchema.parse(migrated.state).houseLevel, level);
   }
   assert.equal(model.workshopLevel({ workshop: true }), 1);

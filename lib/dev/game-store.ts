@@ -1,3 +1,5 @@
+import { devGameStore as store, type GameProfileRecord } from "./game-state";
+export { resetDevGameStoreForTests } from "./game-state";
 import { creditDevWorldTaps, getDevCollectionCount } from "@/lib/dev/world-store";
 import { naturalItems } from "@/features/game/game-rewards";
 import { getDevItemStreak, getDevIdentity, lookupDevUser, getDevFriendPublicIds, getDevAchievements, awardDevGameTaps } from "@/lib/dev/api-store";
@@ -8,55 +10,6 @@ const TAP_BUCKET_CAPACITY = 60;
 const TAP_RATE_PER_SECOND = 30;
 const RUN_IDLE_MS = 12_000;
 
-type Receipt = {
-  sequence: number;
-  tapTimes?: number[];
-  rejectionCode?: string | null;
-  tapCount: number;
-  runId: string;
-  acceptedTaps: number;
-  rejectedTaps: number;
-};
-type GameSessionRecord = {
-  id: string;
-  ownerPublicId: string;
-  authToken: string;
-  month: string;
-  createdAt: number;
-  closedAt: number | null;
-  eventTokens: number;
-  eventAt: number;
-  expiresAt: number;
-  nextSequence: number;
-  lastReceipt: Receipt | null;
-  continuationClaimed: boolean;
-  currentRun: { id: string; taps: number; lastAcceptedAt: number } | null;
-};
-type GameProfileRecord = {
-  ownerPublicId: string;
-  lifetimeTaps: number;
-  bestSeries: number;
-  leaderboardOptIn: boolean;
-  visibilityVersion: number;
-  monthlyTaps: Map<string, { taps: number; updatedAt: number }>;
-  tokens: number;
-  refilledAt: number;
-  writerId?: string;
-  writerUntil?: number;
-};
-type GameStore = {
-  profiles: Map<string, GameProfileRecord>;
-  sessions: Map<string, GameSessionRecord>;
-  requests: Map<string, string>;
-};
-
-const state = globalThis as typeof globalThis & { __zhivDevGameStore?: GameStore };
-function store(): GameStore {
-  return state.__zhivDevGameStore ??= { profiles: new Map(), sessions: new Map(), requests: new Map() };
-}
-export function resetDevGameStoreForTests() {
-  delete state.__zhivDevGameStore;
-}
 
 function profile(ownerPublicId: string, now: number): GameProfileRecord {
   let value = store().profiles.get(ownerPublicId);

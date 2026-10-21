@@ -4,10 +4,10 @@ import { getDevGameAchievements } from "./game-store";
 import { creditDevProgressionReward, getDevEconomy, DevEconomyError } from "./economy-store";
 import { gameRewardClaimSchema, type GameRewardClaim, type GameRewardResult, type GameRewards } from "@/features/game/game-rewards-api";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, nominalEconomyMoney, nominalEconomyPearls } from "@/features/economy/domain/money";
-import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, type DailyRewardState } from "@/features/game/progression-rewards";
+import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, normalizeDailyRewardState, onboardingRewardEligible, progressionRewardsCatalog, type DailyRewardState } from "@/features/game/progression-rewards";
 
 type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRevision: number; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50 };
-type Profile = { daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt> };
+type Profile = { daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt>; onboardingClaimedAt?: string | null };
 const globalStore = globalThis as typeof globalThis & { __zhivDevProgressionRewards?: Map<string, Profile> };
 const store = () => globalStore.__zhivDevProgressionRewards ??= new Map();
 export const resetDevProgressionRewardsForTests = () => { delete globalStore.__zhivDevProgressionRewards; };
@@ -19,6 +19,7 @@ function profile(token: string | undefined, expectedOwner?: string) {
   if (expectedOwner && owner !== expectedOwner) fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите награды");
   let value = store().get(owner);
   if (!value) store().set(owner, value = { daily: initialDailyRewardState(), claims: new Map(), receipts: new Map() });
+  value.daily = normalizeDailyRewardState(value.daily, [...value.receipts.values()].flatMap(({ claim }) => claim.kind === "daily" ? [claim.step] : []));
   return { owner, value };
 }
 function view(token: string | undefined, owner: string, value: Profile, now: number): GameRewards {
@@ -26,7 +27,8 @@ function view(token: string | undefined, owner: string, value: Profile, now: num
   const economy = getDevEconomy(token, now, owner);
   const result = getDevGameAchievements(token, now, 5);
   if (result.kind !== "ok") fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401);
-  return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: 1,
+  return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: progressionRewardsCatalog.version,
+    onboarding: { claimedAt: value.onboardingClaimedAt ?? null },
     daily: dailyRewardView(value.daily, now, economy.buildings.home ?? 1),
     achievementRewards: achievementRewardRows((id, level) => ({
       at: result.value.achievements.find(row => row.id === id)?.tiers?.find(tier => tier.level === level)?.unlockedAt ?? null,
@@ -53,8 +55,14 @@ export function claimDevProgressionReward(token: string | undefined, input: unkn
   const current = getDevProgressionRewards(token, now), claimedAt = new Date(now).toISOString();
   let claim: GameRewardResult["claim"];
   if (command.kind === "daily") {
+    if (current.daily.completed) fail("DAILY_REWARD_COMPLETED", "Все семь подарков уже получены");
     if (!current.daily.claimable) fail("DAILY_REWARD_COOLDOWN", "Следующая награда пока недоступна");
     claim = { kind: "daily", step: current.daily.step, reward: current.daily.reward, claimedAt };
+  } else if (command.kind === "onboarding") {
+    if (current.onboarding?.claimedAt) fail("ONBOARDING_REWARD_CLAIMED", "Награда за обучение уже получена");
+    if (!onboardingRewardEligible(getDevEconomy(token, now, owner)))
+      fail("ONBOARDING_REWARD_UNAVAILABLE", "Сначала выполни учебный заказ. Награда останется доступна после него");
+    claim = { kind: "onboarding", reward: structuredClone(progressionRewardsCatalog.onboarding), claimedAt };
   } else {
     const row = current.achievementRewards.find(row => row.achievementId === command.achievementId && row.level === command.level);
     if (!row) fail("INVALID_REWARD_CLAIM", "Такой ступени достижения нет", 400);
@@ -65,6 +73,7 @@ export function claimDevProgressionReward(token: string | undefined, input: unkn
   // Capacity failure leaves daily sequence, stage payout and receipt untouched.
   const economy = creditDevProgressionReward(token, owner, key, claim.reward, signature, now);
   if (claim.kind === "daily") value.daily = afterDailyClaim(value.daily, now);
+  else if (claim.kind === "onboarding") value.onboardingClaimedAt = claimedAt;
   else value.claims.set(`${claim.achievementId}:${claim.level}`, claimedAt);
   value.receipts.set(key, { signature, claim: structuredClone(claim), acceptedRevision: economy.revision, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE });
   return { requestId: command.requestId, rewards: view(token, owner, value, now), economy, acceptedRevision: economy.revision,

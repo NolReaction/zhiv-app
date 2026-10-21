@@ -28,6 +28,28 @@ test("rotated and mirrored camera envelopes remain conservative; unsupported tra
   assert.ok(boundsInCanvas(null, { x: 900, y: 900, width: 1, height: 1 }));
 });
 
+test("affine viewport envelope retains all corners through shear, rotation, reflection and nonsquare DPR", () => {
+  for (let index = 0; index < 120; index++) {
+    const angle = index * .37, sx = index % 2 ? -1.75 : 2.5, sy = .4 + index / 50, shear = .35;
+    const t = { a: Math.cos(angle) * sx, b: Math.sin(angle) * sx,
+      c: (shear * Math.cos(angle) - Math.sin(angle)) * sy,
+      d: (shear * Math.sin(angle) + Math.cos(angle)) * sy, e: -120.3 + index * 7, f: 480.7 - index * 3 };
+    const ctx = { canvas: { width: 1170, height: 2532 }, getTransform: () => t };
+    const view = canvasWorldViewport(ctx), determinant = t.a * t.d - t.b * t.c;
+    const corners = [[0, 0], [1170, 0], [0, 2532], [1170, 2532]].map(([x, y]) => ({
+      x: (t.d * (x - t.e) - t.c * (y - t.f)) / determinant,
+      y: (-t.b * (x - t.e) + t.a * (y - t.f)) / determinant,
+    }));
+    const expected = { x: Math.min(...corners.map(point => point.x)), y: Math.min(...corners.map(point => point.y)) };
+    expected.width = Math.max(...corners.map(point => point.x)) - expected.x;
+    expected.height = Math.max(...corners.map(point => point.y)) - expected.y;
+    for (const axis of ["x", "y", "width", "height"]) assert.ok(Math.abs(view[axis] - expected[axis]) < 1e-8,
+      `${axis} preserves the inverse-corner envelope for transform ${index}`);
+  }
+  const ctx = { canvas: { width: 100, height: 200 }, getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: Infinity, f: 0 }) };
+  assert.equal(canvasWorldViewport(ctx), null, "invalid transforms keep conservative no-culling fallback");
+});
+
 test("offscreen artwork is skipped before image preparation, but border shadows and Tiled draw order survive", () => {
   const bounds = x => ({ x, y: 20, width: 40, height: 40 });
   const site = (id, x) => ({ id, bounds: bounds(x), anchor: { x, y: 50 }, initialLevel: 1 });

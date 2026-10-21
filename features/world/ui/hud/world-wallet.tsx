@@ -1,11 +1,15 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
+import { Plus } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { walletAmountLabel, walletDeltaLabel, walletTween } from "./wallet-animation";
 import styles from "./world-wallet.module.css";
 
-function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }) {
+type WalletCurrency = "coins" | "pearls";
+type OpenCurrencyShop = (kind: WalletCurrency, trigger: HTMLButtonElement) => void;
+
+function Currency({ kind, amount, onOpenShop }: { kind: WalletCurrency; amount: number; onOpenShop?: OpenCurrencyShop }) {
   const label = kind === "coins" ? "Монеты" : "Жемчуг";
   const number = useRef<HTMLSpanElement>(null);
   const effect = useRef<HTMLSpanElement>(null);
@@ -53,7 +57,7 @@ function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }
     const tick = (time: number) => {
       if (finished) return;
       const progress = Math.min(1, (time - start) / 650);
-      displayed.current = walletTween(from, amount, progress);
+      displayed.current = walletTween(from, amount, progress, kind);
       count.textContent = walletAmountLabel(displayed.current, kind);
       if (progress < 1) frame = requestAnimationFrame(tick);
     };
@@ -78,13 +82,20 @@ function Currency({ kind, amount }: { kind: "coins" | "pearls"; amount: number }
       <span ref={effect} className={styles.change} hidden aria-hidden="true" data-wallet-change>
         <ItemIcon itemId={kind} size={18} /><span ref={deltaText} />
       </span>
+      {onOpenShop && <button type="button" className={styles.add} data-world-currency-shop={kind}
+      aria-label={kind === "coins" ? "Магазин монет" : "Магазин жемчуга"}
+      title={kind === "coins" ? "Магазин монет" : "Магазин жемчуга"} aria-haspopup="dialog" data-audio-cue="ui.open"
+      onPointerDown={event => event.stopPropagation()}
+      onClick={event => { event.stopPropagation(); onOpenShop(kind, event.currentTarget); }}>
+      <Plus size={13} strokeWidth={2.5} aria-hidden="true" />
+      </button>}
     </dd>
   </div>;
 }
 
-export function WorldWallet({ coins, pearls }: { coins: number; pearls: number }) {
-  return <dl className={styles.wallet} aria-label="Ваши валюты">
-    <Currency kind="coins" amount={coins} />
-    <Currency kind="pearls" amount={pearls} />
+export function WorldWallet({ coins, pearls, onOpenShop }: { coins: number; pearls: number; onOpenShop?: OpenCurrencyShop }) {
+  return <dl className={styles.wallet} aria-label="Ваши валюты" data-shop-entry={Boolean(onOpenShop) || undefined}>
+    <Currency kind="coins" amount={coins} onOpenShop={onOpenShop} />
+    <Currency kind="pearls" amount={pearls} onOpenShop={onOpenShop} />
   </dl>;
 }

@@ -1,0 +1,74 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  padding: clamp(14px, 4cqw, 32px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  container: earth-loading / size;
+  background: #0c211f;
+  color: #e3f0dc;
+  text-align: center;
+}
+
+.content { display: grid; justify-items: center; align-content: center; gap: 13px; width: min(100%, 400px); min-width: 0; margin: auto; }
+.emblem { display: grid; place-items: center; width: 74px; height: 74px; border: 1px solid #bdd5a83b; border-radius: 26px; background: radial-gradient(circle at 35% 20%, #527c5142, #2a50301c); color: #cce8b7; box-shadow: 0 0 46px #8fc76e10; animation: breathe 2.5s ease-in-out infinite; }
+.content[data-interrupted="true"] .emblem { animation: none; color: #ead5a8; border-color: #dbc08d33; }
+.heading { min-width: 0; }
+.eyebrow { display: block; margin-bottom: 7px; color: #96ad8c; font-size: 9px; font-weight: 750; letter-spacing: .17em; }
+.heading h2 { margin: 0; font-size: clamp(17px, 4.8cqw, 22px); font-weight: 650; line-height: 1.25; letter-spacing: -.025em; text-wrap: balance; }
+.message { min-height: 1.5em; max-width: 330px; margin: 0; color: #b8cbb0; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.content[data-interrupted="true"] .message { color: #e6cfaa; }
+.steps { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px 14px; margin: 1px 0; padding: 0; list-style: none; }
+.steps li { display: flex; align-items: center; gap: 5px; color: #8ba283; font-size: 10px; line-height: 1.4; }
+.steps li[data-state="current"] { color: #e0edce; font-weight: 650; }
+.steps li[data-state="complete"] { color: #b4d79c; }
+.stepIcon { display: grid; place-items: center; width: 19px; height: 19px; flex: 0 0 19px; border: 1px solid #a8c39b35; border-radius: 50%; font-size: 9px; font-variant-numeric: tabular-nums; }
+.steps li[data-state="current"] .stepIcon { border-color: #b3d29999; background: #c6e5a81a; }
+.progress { width: min(100%, 345px); padding: 11px 12px; border: 1px solid #b7d0a326; border-radius: 13px; background: #a7ce7d08; }
+.counts, .transfer { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 5px 14px; margin: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+.counts { color: #b4c9a9; }
+.counts strong { margin-left: 3px; color: #e0eed4; font-weight: 650; }
+.counts .failed, .counts .failed strong { color: #e6cfaa; }
+.transfer { gap: 4px 7px; margin-top: 6px; color: #93ad88; font-size: 10px; line-height: 1.5; }
+.transfer > span:last-child:not(:first-of-type) { flex-basis: 100%; }
+.storage { max-width: 330px; color: #9eb595; font-size: 10px; line-height: 1.5; }
+.storage p { margin: 0; }
+.storage .storageDetail { margin-top: 4px; color: #869f7e; font-size: 9px; }
+.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; width: 100%; }
+.actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 40px; max-width: 100%; padding: 9px 12px; border: 1px solid #b5d29b40; border-radius: 12px; background: #a6c38b0c; color: #d6e7c7; font: inherit; font-size: 11px; line-height: 1.4; font-weight: 650; cursor: pointer; }
+.actions .retry { background: #c9e1ac; border-color: #c9e1ac; color: #233b22; }
+.actions button:focus-visible { outline: 3px solid #d9ee94; outline-offset: 3px; }
+.actions button:disabled { opacity: .65; cursor: default; }
+
+@keyframes breathe { 50% { box-shadow: 0 0 46px #8fc76e20; } }
+@container earth-loading (max-width: 330px) {
+  .content { gap: 10px; }
+  .steps { gap: 7px; }
+  .steps li { gap: 4px; font-size: 9px; }
+  .heading h2 { font-size: 18px; }
+}
+@container earth-loading (max-height: 380px) {
+  .content { gap: 7px; }
+  .emblem, .eyebrow { display: none; }
+  .heading h2 { font-size: 17px; }
+  .message { font-size: 10px; }
+  .progress { padding: 7px 9px; }
+  .storage .storageDetail { font-size: 8px; margin-top: 2px; }
+  .actions button { min-height: 34px; padding: 7px 10px; font-size: 10px; }
+}
+@container earth-loading (max-height: 240px) {
+  .content { gap: 7px; }
+  .emblem, .steps { display: none; }
+  .heading h2 { font-size: 15px; }
+  .message { font-size: 10px; }
+  .progress { border: 0; background: none; padding: 0; }
+  .counts { font-size: 10px; }
+  .transfer { margin-top: 3px; font-size: 9px; }
+  .transfer > span:last-child:not(:first-of-type) { flex-basis: auto; }
+  .storage { font-size: 9px; }
+  .storage .storageDetail { font-size: 8px; margin-top: 2px; }
+  .actions button { min-height: 32px; padding: 6px 8px; font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .emblem { animation: none; } }

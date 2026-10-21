@@ -9,6 +9,7 @@ type Profile = { state: WorldState; revision: number; day: string; earned: numbe
 const globalStore = globalThis as typeof globalThis & { __zhivDevWorldStore?: Map<string, Profile> };
 const store = () => globalStore.__zhivDevWorldStore ??= new Map();
 export const resetDevWorldStoreForTests = () => { delete globalStore.__zhivDevWorldStore; };
+export const removeDevWorldOwner = (owner: string) => { store().delete(owner); };
 export class DevWorldError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }
 }
@@ -124,6 +125,14 @@ export function getDevCollectionFinds(owner: string): readonly string[] { return
 
 /** Legacy ownership projection has no initialization or currency side effect. */
 export function getDevLegacyWardrobe(owner: string): readonly string[] { return store().get(owner)?.state.inventory ?? []; }
+
+/** A visit reads saved presentation and legacy progress without creating or syncing the host's world. */
+export function getDevGuestWorldAppearance(owner: string) {
+  const state = globalStore.__zhivDevWorldStore?.get(owner)?.state;
+  return { equipment: { palette: state?.equipment.palette ?? "moss", head: state?.equipment.head ?? null,
+    neck: state?.equipment.neck ?? null, rod: state?.equipment.rod ?? null }, hiddenGifts: [...(state?.hiddenGifts ?? [])],
+    homeLevel: state?.houseLevel ?? 1, workshopLevel: state ? workshopLevel(state) : 0 };
+}
 export function syncDevWorldWardrobe(token: string | undefined, owned: readonly string[], now = Date.now()): void {
   const { value } = profile(token, now);
   const inventory = [...new Set([...value.state.inventory, ...owned])];

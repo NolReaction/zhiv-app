@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "assetSha256": "fa4ea16d1385c7e6ae351e878b0eeeb97e1885d753a9f2ef3bee10a7287d9c48",
+  "framingBands": [
+    {
+      "minZ": 0,
+      "maxZ": 0.125,
+      "radius": 0.319584844
+    },
+    {
+      "minZ": 0.125,
+      "maxZ": 0.25,
+      "radius": 0.302887063
+    },
+    {
+      "minZ": 0.25,
+      "maxZ": 0.375,
+      "radius": 0.156044787
+    },
+    {
+      "minZ": 0.375,
+      "maxZ": 0.5,
+      "radius": 0.156044787
+    },
+    {
+      "minZ": 0.5,
+      "maxZ": 0.625,
+      "radius": 0.077209724
+    },
+    {
+      "minZ": 0.625,
+      "maxZ": 0.75,
+      "radius": 0.05239691
+    },
+    {
+      "minZ": 0.75,
+      "maxZ": 0.875,
+      "radius": 0.035371717
+    },
+    {
+      "minZ": 0.875,
+      "maxZ": 1,
+      "radius": 0.038740665
+    }
+  ]
+}

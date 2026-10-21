@@ -78,6 +78,70 @@ test("closing the map keeps an uncertain receipt and retry uses the identical co
   assert.equal(session.getSnapshot().uncertain, false); assert.equal(session.getSnapshot().snapshot.state.equipment.neck, "amber_scarf");
 });
 
+test("world direct-action availability rejects new writes until explicitly enabled", async () => {
+  const commands = [];
+  const session = createWorldSession("OWNER", {
+    get: async () => snapshot(),
+    send: async command => { commands.push(structuredClone(command)); return { snapshot: snapshot("OWNER", commands.length), message: "Done" }; },
+  }, () => assert.fail());
+  const stop = session.activate(); await session.refresh();
+  session.setDirectActionsAvailable(false);
+  assert.equal(session.getSnapshot().directActionsAvailable, false);
+  session.act("equip", "amber_scarf"); await flush(); assert.equal(commands.length, 0);
+  assert.equal(session.getSnapshot().busy, false);
+  session.setDirectActionsAvailable(true);
+  session.act("equip", "amber_scarf"); await flush(); assert.equal(commands.length, 1);
+  assert.equal(session.getSnapshot().directActionsAvailable, true);
+  session.setDirectActionsAvailable(false);
+  session.act("craft", "berry_scarf"); await flush(); assert.equal(commands.length, 1);
+  stop();
+});
+
+test("world receipt retry recovers a lost acknowledgement with direct actions disabled", async () => {
+  const commands = []; let server = snapshot(), commits = 0;
+  const session = createWorldSession("OWNER", {
+    get: async () => structuredClone(server),
+    send: async command => {
+      commands.push(structuredClone(command));
+      if (commands.length === 1) { commits++; server = snapshot("OWNER", 1); throw Error("acknowledgement lost after commit"); }
+      return { snapshot: structuredClone(server), message: "Done" };
+    },
+  }, () => assert.fail());
+  const stop = session.activate(); await session.refresh(); session.act("equip", "amber_scarf"); await flush();
+  assert.equal(session.getSnapshot().uncertain, true);
+  session.setDirectActionsAvailable(false);
+  await session.retry();
+  assert.deepEqual(commands[1], commands[0]); assert.equal(commits, 1);
+  assert.equal(session.getSnapshot().uncertain, false); assert.equal(session.getSnapshot().directActionsAvailable, false);
+  session.act("craft", "berry_scarf"); await flush(); assert.equal(commands.length, 2);
+  stop();
+});
+
+test("world reconciliation replays its receipt but keeps new writes gated during and after the final read", async () => {
+  const freshRead = deferred(), commands = []; let reads = 0, server = snapshot();
+  const session = createWorldSession("OWNER", {
+    get: async () => ++reads === 1 ? structuredClone(server) : freshRead.promise,
+    send: async command => {
+      commands.push(structuredClone(command));
+      if (commands.length === 1) { server = snapshot("OWNER", 1); throw Error("acknowledgement lost after commit"); }
+      return { snapshot: structuredClone(server), message: "Done" };
+    },
+  }, () => assert.fail());
+  const stop = session.activate(); await session.refresh(); session.act("equip", "amber_scarf"); await flush();
+  session.setAvailable(false); session.setDirectActionsAvailable(false);
+  const reconciliation = session.reconcile(); await flush();
+  assert.deepEqual(commands[1], commands[0]); assert.equal(reads, 2);
+  assert.equal(session.getSnapshot().uncertain, false);
+  session.act("craft", "berry_scarf"); await flush(); assert.equal(commands.length, 2);
+  freshRead.resolve(structuredClone(server)); assert.equal(await reconciliation, true);
+  assert.equal(session.getSnapshot().directActionsAvailable, false);
+  session.act("craft", "berry_scarf"); await flush(); assert.equal(commands.length, 2);
+  session.setDirectActionsAvailable(true);
+  session.act("craft", "berry_scarf"); await flush(); assert.equal(commands.length, 3);
+  assert.equal(commands[2].expectedRevision, 1);
+  stop();
+});
+
 test("background GET started before a command cannot overwrite its result", async () => {
   const read = deferred(); let count = 0;
   const session = createWorldSession("OWNER", { get: async () => ++count === 1 ? snapshot() : read.promise,

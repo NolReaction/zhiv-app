@@ -1,0 +1,66 @@
+.region {
+  position: absolute;
+  z-index: 6;
+  top: var(--earth-atlas-discovery-top, calc(var(--earth-overlay-top, 16px) + 60px));
+  left: var(--earth-overlay-left, 16px);
+  width: min(360px, calc(100% - var(--earth-overlay-left, 16px) - var(--earth-overlay-right, 16px) - 56px));
+  pointer-events: none;
+}
+.discovery {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d6efb45c;
+  border-radius: 19px;
+  color: #f0f7df;
+  background: linear-gradient(115deg, #274b35fa, #173a32fa 65%, #1f4438fa);
+  box-shadow: 0 8px 26px #05252038, inset 0 1px #f4ffdd12;
+  animation: atlas-arrival 240ms ease-out both, atlas-departure 180ms ease-in calc(var(--atlas-feedback-duration) - 180ms) forwards;
+}
+.icon {
+  position: relative;
+  display: grid;
+  flex: 0 0 38px;
+  height: 38px;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid #e8f5c36b;
+  border-radius: 13px;
+  color: #234a36;
+  background: linear-gradient(145deg, #eff9c7, #b6d992);
+  box-shadow: 0 0 18px #d2efac1a;
+}
+.icon::after {
+  position: absolute;
+  inset: -10px;
+  content: "";
+  background: linear-gradient(115deg, transparent 35%, #ffffffa6 50%, transparent 65%);
+  transform: translateX(-130%);
+  animation: atlas-glimpse 720ms ease-out 90ms both;
+}
+.content { display: grid; flex: 1; gap: 5px; min-width: 0; }
+.meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: #c5d9b4; font-size: 10px; line-height: 1.25; }
+.meta > :last-child { flex-shrink: 0; font-variant-numeric: tabular-nums; color: #e6efc9; }
+.content strong { overflow: hidden; color: #f0f7df; font-size: 13px; font-weight: 650; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.progress { display: block; height: 3px; overflow: hidden; border-radius: 999px; background: #d4e7b421; }
+.progress > span { display: block; width: var(--atlas-progress-to); height: 100%; border-radius: inherit; background: linear-gradient(90deg, #a8cb8f, #e5f7b0); animation: atlas-progress 620ms ease-out 100ms backwards; }
+.announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.region.inlineRegion { inset: 0; width: 100%; }
+.inlineRegion .discovery { height: 52px; gap: 8px; padding: 7px 9px; border-radius: 12px; box-shadow: inset 0 1px #f4ffdd12; }
+.inlineRegion .icon { flex-basis: 28px; height: 28px; border-radius: 9px; }
+.inlineRegion .icon svg { width: 19px; height: 19px; }
+.inlineRegion .content { gap: 3px; }
+.inlineRegion .content strong { font-size: 11px; }
+@keyframes atlas-arrival { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes atlas-departure { to { opacity: 0; } }
+@keyframes atlas-glimpse { from { transform: translateX(-130%); } to { transform: translateX(130%); } }
+@keyframes atlas-progress { from { width: var(--atlas-progress-from); } to { width: var(--atlas-progress-to); } }
+@media (max-height: 500px) {
+  .region { top: var(--earth-atlas-discovery-top, calc(var(--earth-overlay-top, 16px) + 112px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .discovery, .icon::after, .progress > span { animation: none; }
+  .icon::after { display: none; }
+}

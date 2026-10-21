@@ -1,6 +1,6 @@
 {
   "name": "zhiv-app",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -19,6 +19,9 @@
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "test:web": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:construction-layout": "node scripts/check-construction-layout.mjs",
+    "test:mail": "node --test --test-concurrency=1 tests/mail*.test.mjs tests/admin-mail*.test.mjs tests/admin-grants.test.mjs tests/admin-audit-details.test.mjs tests/world-characters.test.mjs tests/world-help.test.mjs tests/world-ui.test.mjs tests/notifications.test.mjs tests/notification-settings.test.mjs tests/notification-push.test.mjs tests/notification-destination.test.mjs",
+    "test:security": "node --test --test-concurrency=1 tests/auth-security.test.mjs tests/user-text-security.test.mjs tests/production-dev-gates.test.mjs tests/deploy-security.test.mjs tests/economy-api.test.mjs tests/economy-offline-protocol.test.mjs tests/economy-production-journal.test.mjs tests/economy-session.test.mjs tests/economy-market-protection.test.mjs tests/admin-security.test.mjs tests/admin-security-state.test.mjs tests/world-studio-project-files.test.mjs tests/world-studio-project-save.test.mjs tests/pwa-contract.test.mjs tests/reset-user-data.test.mjs tests/reset-game-progress.test.mjs tests/security-sandbox-http.test.mjs tests/admin-request-traffic.test.mjs tests/operations-resilience.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
     "world:export": "node scripts/tiled-world.mjs",
@@ -31,7 +34,26 @@
     "economy:check": "node scripts/audit-economy-progression.mjs",
     "architecture:check": "node scripts/check-architecture.mjs",
     "security:check": "node scripts/check-secrets.mjs",
-    "security:history": "node scripts/check-secrets.mjs --history"
+    "security:history": "node scripts/check-secrets.mjs --history",
+    "doctor:maptiler": "node scripts/maptiler-doctor.mjs",
+    "dev:engine": "npm run dev --workspace @zhiv/engine-lab --",
+    "build:engine": "npm run build --workspace @zhiv/engine && npm run build --workspace @zhiv/engine-lab",
+    "test:engine": "node --test --test-concurrency=1 tests/engine-*.test.mjs tests/procedural-forest*.test.mjs",
+    "typecheck:engine": "npm run typecheck --workspace @zhiv/engine && npm run typecheck --workspace @zhiv/engine-lab",
+    "preview:engine": "npm run preview --workspace @zhiv/engine-lab --",
+    "earth:prepare": "node scripts/prepare-earth-assets.mjs",
+    "earth:biomes:prepare": "node scripts/prepare-earth-biomes.mjs",
+    "earth:biomes:check": "node scripts/prepare-earth-biomes.mjs --check",
+    "earth:vegetation:prepare": "node scripts/prepare-earth-vegetation.mjs",
+    "earth:vegetation:check": "node scripts/prepare-earth-vegetation.mjs --check",
+    "earth:relief:prepare": "node scripts/prepare-earth-relief.mjs",
+    "earth:relief:check": "node scripts/prepare-earth-relief.mjs --check",
+    "earth:rivers:prepare": "node scripts/prepare-earth-rivers.mjs",
+    "earth:rivers:check": "node scripts/prepare-earth-rivers.mjs --check",
+    "earth:models:prepare": "node scripts/prepare-earth-model.mjs",
+    "earth:models:check": "node scripts/prepare-earth-model.mjs --check",
+    "predev": "npm run earth:prepare",
+    "test:earth": "node --test --test-concurrency=1 tests/earth-*.test.mjs"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
@@ -39,6 +61,7 @@
     "drizzle-orm": "0.45.2",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",
+    "maplibre-gl": "6.15.0",
     "next": "16.3.8",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.7",
@@ -62,6 +85,10 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.8",
+    "fake-indexeddb": "6.2.5",
+    "js-yaml": "4.3.2",
+    "meshoptimizer": "1.1.1",
+    "polygon-clipping": "0.15.7",
     "react-server-dom-webpack": "19.2.8",
     "sharp": "0.35.5",
     "tailwindcss": "4.2.1",
@@ -72,5 +99,9 @@
     "wrangler": "4.92.0"
   },
   "type": "module",
-  "displayName": "Я живой"
+  "displayName": "Я живой",
+  "workspaces": [
+    "packages/engine",
+    "apps/engine"
+  ]
 }

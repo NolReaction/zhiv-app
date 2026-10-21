@@ -5,6 +5,8 @@ import sharp from "sharp";
 import interactionLimits from "../../features/world/interaction-limits.json" with { type: "json" };
 import audioCatalog from "../../features/audio/catalog/audio-catalog.json" with { type: "json" };
 import economyCatalog from "../../apps/api/src/main/resources/world/economy-catalog.json" with { type: "json" };
+import { validateForestReceiverHoles, FOREST_RECEIVER_MAX_HOLES, FOREST_RECEIVER_MAX_VERTICES }
+  from "../../features/world/environment/lighting/forest-receiver-geometry.mjs";
 
 const audioProfiles = new Set(audioCatalog.profiles.map(profile => profile.id));
 const spatialAudioProfiles = new Set(audioCatalog.profiles.filter(profile => profile.cues.length > 0
@@ -12,6 +14,8 @@ const spatialAudioProfiles = new Set(audioCatalog.profiles.filter(profile => pro
 const audioStations = new Set(economyCatalog.buildings.map(building => building.id));
 // Interior equipment uses its real Tiled host, matching construction-map-anchor.
 const audioStationSites = { kiln: "workshop", warehouse: "home", dryer: "campfire" };
+const constructionHosts = new Set(economyCatalog.buildings.map(building =>
+  ({ ...audioStationSites, woodlot: "lopukh-home" })[building.id] ?? building.id));
 const audioActivations = ["always", "production-working", "construction-working", "campfire-lit"];
 
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -70,6 +74,7 @@ function properties(object, at, allowed) {
     else exact(type, allowed[name], `${where}.type`);
     if (type === "int") integer(value.value, `${where}.value`, allowed[name] === "float" ? -Infinity : 0);
     else if (type === "float") number(value.value, `${where}.value`);
+    else if (type === "bool") requireThat(typeof value.value === "boolean", `${where}.value`, "expected a boolean");
     else string(value.value, `${where}.value`);
     result[name] = value.value;
   }
@@ -81,6 +86,23 @@ function siteLevelCondition(props, at) {
   requireThat(hasSite === hasLevel, at, "conditional visibility requires siteId and level together");
   if (!hasSite) return undefined;
   return { siteId: identifier(props.siteId, `${at}.properties.siteId`), level: integer(props.level, `${at}.properties.level`) };
+}
+
+function studioMetadata(props, at) {
+  const result = {};
+  for (const [key, limit] of [["studioName", 128], ["studioFolder", 256]]) {
+    if (!own(props, key)) continue;
+    const text = props[key];
+    requireThat(text === text.trim() && text.length <= limit && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(text), `${at}.properties.${key}`,
+      `expected 1 to ${limit} characters without surrounding whitespace or control characters`);
+    if (key === "studioFolder" && text.startsWith("custom:")) {
+      const parts = text.slice(7).split("/");
+      requireThat(parts.length <= 8 && parts.every(part => part.length > 0 && part === part.trim() && part.length <= 64 && part !== "." && part !== ".."),
+        `${at}.properties.${key}`, "expected at most 8 non-empty folder names of at most 64 characters separated by /");
+    }
+    result[key] = text;
+  }
+  return result;
 }
 
 function transforms(object, at, allowOffset = false) {
@@ -251,8 +273,8 @@ function aspect(image, rect, at) {
 
 function compileShadowGeometry(object, shape, kind, at, world) {
   const isCaster = kind === "shadow-caster", className = isCaster ? "ShadowCaster" : "ShadowReceiver";
-  const props = properties(object, at, { height: "float", siteId: "string", level: "int",
-    ...(isCaster ? { baseHeight: "float", opacity: "float", softness: "float" } : {}) });
+  const props = properties(object, at, { height: "float", siteId: "string", level: "int", studioName: "string", studioFolder: "string",
+    ...(isCaster ? { baseHeight: "float", opacity: "float", softness: "float" } : { shadowHoles: "string" }) });
   for (const key of ["class", "type"]) {
     if (own(object, key) && object[key] !== "") exact(object[key], className, `${at}.${key}`);
   }
@@ -264,8 +286,29 @@ function compileShadowGeometry(object, shape, kind, at, world) {
   const height = number(isCaster ? props.height : (props.height ?? 0), `${at}.properties.height`, 0);
   requireThat(height <= 300 && (!isCaster || height > 0), `${at}.properties.height`,
     isCaster ? "expected height > 0 and <= 300" : "expected height between 0 and 300");
-  const when = siteLevelCondition(props, at), common = { id, points, height, ...(when ? { when } : {}) };
-  if (!isCaster) return common;
+  const when = siteLevelCondition(props, at), common = { id, points, height, ...(when ? { when } : {}), ...studioMetadata(props, at) };
+  if (!isCaster) {
+    if (!own(props, "shadowHoles")) return common;
+    requireThat(props.shadowHoles.length <= 128 * 1024, `${at}.properties.shadowHoles`, "exclusions JSON exceeds 128 KiB");
+    let localHoles;
+    try { localHoles = JSON.parse(props.shadowHoles); }
+    catch { fail(`${at}.properties.shadowHoles`, "expected a JSON array of object-local polygon arrays"); }
+    requireThat(Array.isArray(localHoles) && localHoles.length <= FOREST_RECEIVER_MAX_HOLES, `${at}.properties.shadowHoles`,
+      `expected at most ${FOREST_RECEIVER_MAX_HOLES} exclusion polygons`);
+    const holes = localHoles.map((polygon, index) => {
+      const where = `${at}.properties.shadowHoles[${index}]`;
+      requireThat(Array.isArray(polygon) && polygon.length <= FOREST_RECEIVER_MAX_VERTICES, where,
+        `expected 3 to ${FOREST_RECEIVER_MAX_VERTICES} vertices`);
+      for (const value of polygon) requireThat(value && typeof value === "object" && !Array.isArray(value)
+        && Object.keys(value).every(key => key === "x" || key === "y"), where, "expected vertices with only x and y coordinates");
+      // Same object-local origin/rotation as its outer contour; inherited group
+      // offsets have already been applied to object.x/y by the compiler.
+      return vertices({ ...object, polygon }, "polygon", where, world);
+    });
+    const error = validateForestReceiverHoles(points, holes);
+    requireThat(!error, `${at}.properties.shadowHoles`, error);
+    return { ...common, ...(holes.length ? { holes } : {}) };
+  }
   const baseHeight = number(props.baseHeight ?? 0, `${at}.properties.baseHeight`, 0);
   requireThat(baseHeight + height <= 400, `${at}.properties.baseHeight`, "baseHeight + height must not exceed 400");
   const opacity = number(props.opacity ?? 1, `${at}.properties.opacity`, 0);
@@ -280,7 +323,8 @@ function compileLight(object, shape, at, world) {
   exact(object.point, true, `${at}.point`);
   defaultValue(object, "width", 0, at);
   defaultValue(object, "height", 0, at);
-  const props = properties(object, at, { kind: "string", radius: "float", intensity: "float", color: "color", flicker: "float", height: "float" });
+  const props = properties(object, at, { kind: "string", radius: "float", intensity: "float", color: "color", flicker: "float", height: "float",
+    enabled: "bool", manualPosition: "bool", studioName: "string", studioFolder: "string" });
   const kind = props.kind ?? "lantern";
   requireThat(["lantern", "torch", "glow"].includes(kind), `${at}.properties.kind`, "expected lantern, torch or glow");
   const defaults = {
@@ -297,8 +341,10 @@ function compileLight(object, shape, at, world) {
   requireThat(/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(authoredColor), `${at}.properties.color`, "expected #RRGGBB or opaque #FFRRGGBB");
   requireThat(authoredColor.length === 7 || authoredColor.slice(1, 3).toLowerCase() === "ff", `${at}.properties.color`, "light color must be opaque; use intensity to change brightness");
   const color = `#${authoredColor.slice(-6).toLowerCase()}`;
-  return { id: string(object.name, `${at}.name`), position: point(object, at, world), kind, radius, intensity, color, flicker,
-    ...(own(props, "height") ? { height: props.height } : {}) };
+  return { id: string(object.name, `${at}.name`), position: point(object, at, world), kind, radius, intensity, color, flicker, ...studioMetadata(props, at),
+    ...(own(props, "height") ? { height: props.height } : {}),
+    ...(own(props, "enabled") ? { enabled: props.enabled } : {}),
+    ...(own(props, "manualPosition") ? { manualPosition: props.manualPosition } : {}) };
 }
 
 async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetadata = false }) {
@@ -392,6 +438,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const navigationIds = new Set(), habitats = new Map(), habitatExclusions = [], habitatAnchors = [], anchorIds = new Set();
   const destinationIds = new Set(), occluderIds = new Set();
   const treeInteractionIds = new Set();
+  const effectAnchorIds = new Set(), effectAnchorOwners = new Set();
+  const constructionSiteIds = new Set();
   const shadowIds = { "shadow-caster": new Set(), "shadow-receiver": new Set() };
   const audioIds = new Set(), audioReferences = [];
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Destinations: "destination", Occluders: "occluder", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
@@ -406,6 +454,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       record(layer, layerAt);
       const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights"
         : layer.name === "TreeInteractions" ? "tree-interaction"
+        : layer.name === "EffectAnchors" ? "effect-anchor"
+        : layer.name === "ConstructionSites" ? "construction-site"
         : layer.name === "ShadowCasters" ? "shadow-caster" : layer.name === "ShadowReceivers" ? "shadow-receiver"
         : layer.name === "AudioEmitters" ? "audio-emitter" : layer.name === "AudioZones" ? "audio-zone"
           : own(livingKinds, layer.name) ? livingKinds[layer.name] : undefined;
@@ -432,6 +482,8 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       if (livingKind === "destination") world.destinations ??= [];
       if (livingKind === "occluder") world.occluders ??= [];
       if (metadataKind === "tree-interaction") world.treeInteractions ??= [];
+      if (metadataKind === "effect-anchor") world.effectAnchors ??= [];
+      if (metadataKind === "construction-site") world.constructionSites ??= [];
       if (shadowKind === "shadow-caster") world.shadowCasters ??= [];
       if (shadowKind === "shadow-receiver") world.shadowReceivers ??= [];
       if (["wildlife-habitat", "wildlife-anchor"].includes(livingKind)) world.habitats ??= [];
@@ -443,7 +495,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const terrainOnly = Array.isArray(layer.objects) && layer.objects.every(object => tiles.get(object.gid)?.role === "terrain");
         if (metadataKind || isLifeLayer || terrainOnly) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata/terrain");
         else exact(layer.draworder, "index", `${layerAt}.draworder`);
-        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", isTreeLayer: metadataKind === "tree-interaction", livingKind, audioKind, shadowKind, groups, offset: layerOffset };
+        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", isTreeLayer: metadataKind === "tree-interaction", isEffectLayer: metadataKind === "effect-anchor", isConstructionLayer: metadataKind === "construction-site", livingKind, audioKind, shadowKind, groups, offset: layerOffset };
       }
     }
   }
@@ -462,9 +514,9 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     }
   }
   const routeOwners = [], visibilityReferences = [];
-  for (const { layer, layerAt, waterKind, isLightLayer, isTreeLayer, livingKind, audioKind, shadowKind, groups, offset } of leaves) {
+  for (const { layer, layerAt, waterKind, isLightLayer, isTreeLayer, isEffectLayer, isConstructionLayer, livingKind, audioKind, shadowKind, groups, offset } of leaves) {
     const entries = [...array(layer.objects, `${layerAt}.objects`).entries()];
-    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !isTreeLayer && !livingKind && !audioKind && !shadowKind) entries.sort((a, b) => a[1].y - b[1].y);
+    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !isTreeLayer && !isEffectLayer && !isConstructionLayer && !livingKind && !audioKind && !shadowKind) entries.sort((a, b) => a[1].y - b[1].y);
     for (const [objectIndex, authoredObject] of entries) {
       const at = `${layerAt}.objects[${objectIndex}]`;
       record(authoredObject, at);
@@ -473,7 +525,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         y: number(authoredObject.y, `${at}.y`) + offset.y } : authoredObject;
       absent(object, ["template", "text", "ellipse", "capsule", "offsetx", "offsety"], at);
       const rotation = own(object, "rotation") ? number(object.rotation, `${at}.rotation`) : 0;
-      const isImage = !waterKind && !isLightLayer && !isTreeLayer && !livingKind && !audioKind && !shadowKind && own(object, "gid");
+      const isImage = !waterKind && !isLightLayer && !isTreeLayer && !isEffectLayer && !isConstructionLayer && !livingKind && !audioKind && !shadowKind && own(object, "gid");
       defaultValue(object, "opacity", 1, at);
       editorVisibility(object, at);
       const objectId = integer(object.id, `${at}.id`, 1);
@@ -483,6 +535,49 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       requireThat(shapes.length <= 1, at, "object must have exactly one shape");
       const shape = shapes[0] ?? "rectangle";
       if (!isImage && shape === "rectangle") exact(rotation, 0, `${at}.rotation`);
+      if (isConstructionLayer) {
+        const where = `${at} (${object.name || `object ${objectId}`})`;
+        const props = properties(object, where, { role: "string", siteId: "string", materials: "bool" });
+        exact(props.role, "construction-site", `${where}.properties.role`);
+        exact(shape, "polyline", `${where} shape`);
+        defaultValue(object, "width", 0, where); defaultValue(object, "height", 0, where);
+        const id = identifier(object.name, `${where}.name`), siteId = identifier(props.siteId, `${where}.properties.siteId`);
+        requireThat(constructionHosts.has(siteId), where, `unknown construction host ${siteId}`);
+        requireThat(!constructionSiteIds.has(id), where, `duplicate construction site ID ${id}`);
+        constructionSiteIds.add(id);
+        const points = vertices(object, "polyline", where, world);
+        requireThat(points.length <= 12, where, "at most 12 fence vertices are supported");
+        const length = points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0);
+        requireThat(length <= 180, where, "construction fence length must not exceed 180 world units");
+        requireThat(world.constructionSites.length < 32, where, "at most 32 construction fence lines are supported");
+        world.constructionSites.push({ id, siteId, points, ...(props.materials ? { materials: true } : {}) });
+        continue;
+      }
+      if (isEffectLayer) {
+        const effectAt = `${at} (${object.name || `object ${objectId}`})`;
+        const props = properties(object, effectAt, { role: "string", effect: "string", residentId: "string", siteId: "string", level: "int", size: "float" });
+        exact(props.role, "effect-anchor", `${effectAt}.properties.role`);
+        exact(props.effect, "resident-home", `${effectAt}.properties.effect`);
+        exact(shape, "point", `${effectAt} shape`);
+        exact(object.point, true, `${effectAt}.point`);
+        defaultValue(object, "width", 0, effectAt); defaultValue(object, "height", 0, effectAt);
+        for (const key of ["class", "type"]) if (own(object, key) && object[key] !== "") exact(object[key], "EffectAnchor", `${effectAt}.${key}`);
+        const id = identifier(object.name, `${effectAt}.name`);
+        const residents = { plesk: "plesk-shop", lopukh: "lopukh-home", kamneshmyg: "quarry", leaftail: "leaftail-caravan" };
+        requireThat(own(residents, props.residentId), effectAt, "unknown residentId for resident-home effect");
+        const when = siteLevelCondition(props, effectAt);
+        requireThat(when && when.siteId === residents[props.residentId], effectAt, "resident-home effect must reference the resident's own site and visual level");
+        const size = number(props.size ?? 44, `${effectAt}.properties.size`, 12);
+        requireThat(size <= 80, effectAt, "effect size must be from 12 to 80 world units");
+        requireThat(!effectAnchorIds.has(id), effectAt, `duplicate effect anchor ID ${id}`);
+        const owner = `${props.effect}:${props.residentId}:${when.siteId}:${when.level}`;
+        requireThat(!effectAnchorOwners.has(owner), effectAt, "duplicate resident-home anchor for the same resident and visual level");
+        effectAnchorIds.add(id); effectAnchorOwners.add(owner);
+        requireThat(world.effectAnchors.length < 32, effectAt, "at most 32 effect anchors are supported");
+        visibilityReferences.push({ when, at: effectAt });
+        world.effectAnchors.push({ id, effect: props.effect, residentId: props.residentId, position: point(object, effectAt, world), size, when });
+        continue;
+      }
       if (isLightLayer) {
         const light = compileLight(object, shape, at, world);
         requireThat(!lightIds.has(light.id), at, `duplicate light ID ${light.id}`);
@@ -628,7 +723,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
           const pauseSeconds = props.pauseSeconds ?? 8;
           requireThat(pauseSeconds >= 2 && pauseSeconds <= 60, livingAt, "pauseSeconds must be from 2 to 60 seconds");
           world.destinations ??= [];
-          requireThat(world.destinations.length < 16, livingAt, "at most 16 destinations are supported");
+          requireThat(world.destinations.length < 32, livingAt, "at most 32 destinations are supported");
           world.destinations.push({ id, position: point(object, livingAt, world), pauseSeconds,
             ...(own(props, "siteId") ? { siteId: identifier(props.siteId, `${livingAt}.properties.siteId`) } : {}) });
         } else if (role === "occluder") {

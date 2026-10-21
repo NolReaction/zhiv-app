@@ -3,8 +3,30 @@ package ru.zhiv.observability
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class RuntimeMetricsTest {
+    @Test fun `boot usage counters are exact isolated and coherent during concurrent updates`() {
+        val metrics = RuntimeMetrics()
+        assertEquals(0L, metrics.usageSnapshot().requests)
+        val threads = List(4) { index -> Thread {
+            repeat(2000) { metrics.recordRequest("GET", "/api/v1/session", if (index % 2 == 0) 503 else 429, 1) }
+        }.also { it.start() } }
+        repeat(500) {
+            val snapshot = metrics.usageSnapshot()
+            assertEquals(snapshot.requests, snapshot.errors + snapshot.throttled)
+        }
+        threads.forEach(Thread::join)
+        val result = metrics.usageSnapshot()
+        assertEquals(8000L, result.requests)
+        assertEquals(4000L, result.errors)
+        assertEquals(4000L, result.throttled)
+        assertTrue(result.startedAt.isNotBlank())
+        metrics.recordRequest("GET", "/healthz", 200, 1)
+        assertEquals(result, metrics.usageSnapshot())
+        assertEquals(0L, RuntimeMetrics().usageSnapshot().requests)
+    }
     @Test
     fun `replayed receipts do not double committed gameplay totals`() {
         val metrics = RuntimeMetrics()

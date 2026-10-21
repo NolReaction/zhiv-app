@@ -1,32 +1,33 @@
 "use client";
 
-import { ArrowRight, PawPrint, X } from "lucide-react";
+import { ArrowRight, LockKeyhole, PawPrint, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PleskPortrait } from "@/features/world/characters/plesk/plesk-portrait";
 import { BuilderPortrait } from "@/features/world/characters/builder/builder-portrait";
-import { WORLD_CHARACTERS, worldCharacterResident, type WorldCharacter, type WorldResidentId } from "@/features/world/characters/world-characters-model";
+import { LopukhPortrait } from "@/features/world/characters/lopukh/lopukh-portrait";
+import { KamneshmygPortrait } from "@/features/world/characters/kamneshmyg/kamneshmyg-portrait";
+import { LeaftailPortrait } from "@/features/world/characters/leaftail/leaftail-portrait";
+import { WORLD_CHARACTERS, worldResidentAvailable, type WorldCharacterId, type WorldResidentId } from "@/features/world/characters/world-characters-model";
 import styles from "./world-characters.module.css";
 
-const silhouettes = {
-  spines: "M17 74 10 64 14 57 8 46 16 44 13 31 26 34 27 22 38 27 46 17 53 27 65 24 67 35C79 38 88 47 88 62C88 72 81 77 75 79L79 86H62L57 81H39L34 86H18L23 80Z",
-  ears: "M32 42C24 31 20 13 25 6C31 1 38 19 40 33C47 15 58 11 68 17L75 28C68 29 60 22 57 28L51 40C66 43 74 52 73 64C70 71 65 73 63 78L71 85H51L46 80L38 84H21L26 77C18 73 18 66 23 61C21 54 24 46 32 42Z",
-  round: "M19 73C12 63 14 49 20 38C25 27 38 21 50 22C63 22 74 29 78 40L87 46L81 52C84 64 80 73 71 79L76 85H59L54 81H38L31 85H16L22 79Z",
-  tail: "M37 75C11 68 4 43 10 16C19 9 37 17 40 33C43 42 42 50 40 58L48 47L48 27L60 34L71 27L72 41C86 45 89 58 79 66L74 77L84 85H65L58 79L47 85H30Z",
-} as const;
+const portraits = { builder: BuilderPortrait, plesk: PleskPortrait, lopukh: LopukhPortrait, kamneshmyg: KamneshmygPortrait, leaftail: LeaftailPortrait };
 
-function CharacterSilhouette({ character }: { character: Extract<WorldCharacter, { available: false }> }) {
-  return <span className={styles.hiddenPortrait} aria-hidden="true">
-    <svg className={styles.silhouette} viewBox="0 0 96 96"><path d={silhouettes[character.silhouette]} /></svg>
-    <span className={styles.question}>?</span>
-  </span>;
+/** A shared silhouette leaves the next resident's appearance a surprise. */
+function UnknownResident() {
+  return <svg className={styles.silhouette} viewBox="0 0 160 160" aria-hidden="true" focusable="false">
+    <ellipse cx="80" cy="144" rx="43" ry="7" className={styles.shadow} />
+    <path d="M42 123c0-25 14-40 38-40s38 15 38 40v12H42z" />
+    <path d="M47 47c-11-25 16-35 25-12h16c9-23 36-13 25 12a39 39 0 1 1-66 0" />
+    <text x="80" y="90" textAnchor="middle">?</text>
+  </svg>;
 }
 
-/** A full gallery, separate from the compact More menu. The modal owns keyboard
- * focus; only implemented residents can open a conversation. */
-export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus, focusedResident }: {
-  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void;
-  onCloseAutoFocus: (event: Event) => void; focusedResident?: WorldResidentId;
+/** Only introduced residents expose their portrait, name and conversation. */
+export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false, lopukhAvailable = false, lopukhUnlocked = false, leaftailAvailable = false, leaftailUnlocked = false, onCloseAutoFocus, focusedCharacter }: {
+  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void; quarryBuilt?: boolean; lopukhAvailable?: boolean; lopukhUnlocked?: boolean;
+  leaftailAvailable?: boolean; leaftailUnlocked?: boolean;
+  onCloseAutoFocus: (event: Event) => void; focusedCharacter?: WorldCharacterId;
 }) {
   return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <DialogPortal>
@@ -34,7 +35,7 @@ export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus, f
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog}
         onCloseAutoFocus={onCloseAutoFocus} onOpenAutoFocus={event => {
           const gallery = event.target as HTMLElement;
-          const card = (focusedResident && gallery.querySelector<HTMLButtonElement>(`button[data-world-character="${focusedResident}"]`))
+          const card = (focusedCharacter && gallery.querySelector<HTMLButtonElement>(`button[data-world-character="${focusedCharacter}"]`))
             || gallery.querySelector<HTMLButtonElement>("button[data-world-character]");
           if (card) { event.preventDefault(); card.focus({ preventScroll: true }); }
         }}>
@@ -44,18 +45,22 @@ export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus, f
           <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть персонажей"><X size={22} aria-hidden="true" /></button>
         </header>
         <ul className={styles.grid} aria-label="Персонажи леса">
-          {[...WORLD_CHARACTERS].sort((a, b) => Number(b.available) - Number(a.available)).map(character => <li key={character.id}>
-            {character.available ? <button type="button" className={`${styles.card} ${styles.available}`} data-world-character={character.id}
-              aria-label={`${character.name}, ${character.role}. Открыть разговор`} aria-haspopup="dialog"
-              onClick={() => { const resident = worldCharacterResident(character.id); if (resident) onResident(resident); }}>
-              <span className={styles.stage}>{character.id === "builder" ? <BuilderPortrait animated className={styles.portrait} /> : <PleskPortrait animated className={styles.portrait} />}</span>
-              <strong>{character.name}</strong><small>{character.role}</small>
-              <span className={styles.visit}>Заглянуть <ArrowRight size={15} aria-hidden="true" /></span>
-            </button> : <div className={`${styles.card} ${styles.locked}`} aria-label="Неизвестный персонаж, пока недоступен">
-              <span className={styles.stage}><CharacterSilhouette character={character} /></span>
-              <strong>Неизвестный житель</strong><small>Пока недоступен</small>
-            </div>}
-          </li>)}
+          {WORLD_CHARACTERS.map(character => {
+            const available = worldResidentAvailable(character.id, quarryBuilt, leaftailAvailable, lopukhAvailable), Portrait = portraits[character.id];
+            const arrivalHint = character.id === "lopukh" ? lopukhUnlocked ? "Дождитесь прибытия" : "Откройте лесной участок"
+              : character.id === "kamneshmyg" ? "Постройте каменоломню"
+              : leaftailUnlocked ? "Дождитесь прибытия" : "Дом 3-го уровня";
+            return <li key={character.id}>
+              <button type="button" className={`${styles.card} ${available ? styles.available : styles.locked}`} data-world-character={character.id}
+                aria-label={available ? `${character.name}, ${character.role}. Открыть разговор` : `Незнакомый житель. ${arrivalHint}`}
+                aria-haspopup={available ? "dialog" : undefined} aria-disabled={!available || undefined}
+                onClick={() => { if (available) onResident(character.id); }}>
+                <span className={styles.stage}>{available ? <Portrait animated className={styles.portrait} /> : <UnknownResident />}</span>
+                <strong>{available ? character.name : "Незнакомый житель"}</strong><small>{available ? character.role : "Вы ещё не встречались"}</small>
+                <span className={styles.visit}>{available ? <>Заглянуть <ArrowRight size={15} aria-hidden="true" /></> : <><LockKeyhole size={15} aria-hidden="true" />{arrivalHint}</>}</span>
+              </button>
+            </li>;
+          })}
         </ul>
       </DialogPrimitive.Content>
     </DialogPortal>

@@ -3,7 +3,7 @@ const memory = new Map<string, boolean>();
 
 export const sectionGuideLauncherPreferenceKey = (owner: string) => `zhiv.section-guide.launcher.v1:${encodeURIComponent(owner)}`;
 
-/** This only controls replay buttons; first-entry lessons and their progress stay intact. */
+/** Controls manual help launchers without changing saved lesson progress. */
 export function readSectionGuideLauncherPreference(owner: string, storage?: PreferenceStorage): boolean {
   const key = sectionGuideLauncherPreferenceKey(owner);
   const fallback = memory.get(key);

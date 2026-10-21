@@ -5,6 +5,7 @@ import { createAudioAssetCache } from "./audio-asset-cache";
 import { createAudioAssetTransport } from "./audio-asset-transport";
 import { createAudioParameterSmoother } from "./audio-parameter-smoother";
 import { createMusicLoopEnvelope } from "./music-loop-envelope";
+import { AUDIO_VISIBILITY_RELEASE_SECONDS, createAudioReleaseClock } from "./audio-release-clock";
 
 const MAX_VOICES = 24;
 const MAX_LOOPS = 10;
@@ -17,8 +18,6 @@ const MAX_STREAM_RETRY_MS = 30_000;
 const MEDIA_PAUSE_RECOVERY_MS = 250;
 const MAX_LOOP_TIMELINES = 128;
 const MAX_PREPARED_MUSIC_BYTES = 8 * 1024 * 1024;
-const VISIBILITY_RELEASE_SECONDS = .02;
-const VISIBILITY_CLEANUP_MS = 40;
 const SUSPEND_WAIT_MS = 250;
 const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "weather", "world", "footsteps", "characters"]);
 
@@ -74,8 +73,9 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let streamRetryAt = Infinity;
   let visible = true;
-  let visibilityDrain: { done: Promise<void>; finish: () => void } | null = null;
+  let visibilityDrain: { done: Promise<void>; finish: () => void; check: () => void } | null = null;
   let visibilitySuspension: { done: Promise<void>; finish: () => void } | null = null;
+  let visibilityWait: { fence: object; done: Promise<boolean> } | null = null;
   let disposed = false;
   let unavailable = false;
   let everUnlocked = false;
@@ -288,6 +288,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     const done = new Promise<void>(finish => { resolve = finish; });
     const suspension = { done, finish: () => {
       if (visibilitySuspension !== suspension) return;
+      if (visibilityWait?.fence === suspension) visibilityWait = null;
       visibilitySuspension = null; resolve();
       if (visible && settings.enabled && everUnlocked && !disposed) void unlock();
       publish();
@@ -313,11 +314,13 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     }
     let resolve!: () => void;
     const done = new Promise<void>(finish => { resolve = finish; });
-    const drain = { done, finish: () => {
+    let clock: ReturnType<typeof createAudioReleaseClock> | null = null;
+    const drain = { done, check: () => { clock?.check(); }, finish: () => {
       if (visibilityDrain !== drain) return;
-      clearTimeout(timer);
+      clock?.cancel();
       resetSilentMaster();
       for (const voice of [...retiring.values()]) cleanup(voice);
+      if (visibilityWait?.fence === drain) visibilityWait = null;
       visibilityDrain = null;
       if (!visible) suspendSilentContext();
       resolve();
@@ -325,21 +328,34 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       publish();
     } };
     visibilityDrain = drain;
-    // Force a shorter release even when a previous mute already targets zero.
-    ramp(master!.gain, 0, VISIBILITY_RELEASE_SECONDS, true);
-    // This timer only tears down an already silent graph. If background JS is
-    // throttled, the audio thread still reaches and holds zero after 20 ms.
-    const timer = setTimeout(drain.finish, VISIBILITY_CLEANUP_MS);
+    // Keep a gentle native release even when a previous mute already targets
+    // zero. A wall-clock timeout must not sever audio whose clock stalled.
+    const pendingRamp = parameterRamps.get(master!.gain);
+    const releaseSeconds = pendingRamp?.target === 0
+      ? Math.max(0, Math.min(AUDIO_VISIBILITY_RELEASE_SECONDS, pendingRamp.end - context.currentTime)) : AUDIO_VISIBILITY_RELEASE_SECONDS;
+    ramp(master!.gain, 0, releaseSeconds, true);
+    clock = createAudioReleaseClock(context, master!, parameterRamps.get(master!.gain)!.end, drain.finish);
   }
-  async function awaitVisibilityStop(): Promise<boolean> {
-    if (visibilityDrain) await visibilityDrain.done;
-    if (!visibilitySuspension) return true;
+  function awaitVisibilityStop(): Promise<boolean> {
+    const fence = visibilityDrain ?? visibilitySuspension;
+    if (!fence) return Promise.resolve(true);
+    if (visibilityWait?.fence === fence) return visibilityWait.done;
     let timer: ReturnType<typeof setTimeout>;
-    // A broken native promise must not hang a gesture/UI handler. Keep the
-    // output silent until its statechange or promise eventually confirms stop.
-    const completed = await Promise.race([visibilitySuspension.done.then(() => true),
-      new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), SUSPEND_WAIT_MS); })]);
-    clearTimeout(timer!);
+    // A stalled native clock or suspend promise must not hang a gesture/UI.
+    // Keep the output silent until the native deadline/state confirms stop.
+    const stopped = async () => {
+      while (visibilityDrain || visibilitySuspension) {
+        if (visibilityDrain) await visibilityDrain.done;
+        if (visibilitySuspension) await visibilitySuspension.done;
+      }
+      return true;
+    };
+    const completed = Promise.race([stopped(),
+      new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), SUSPEND_WAIT_MS); })])
+      .then(value => { clearTimeout(timer!); return value; });
+    // Repeated pageshow/gesture events share one bounded wait for this native
+    // fence. An unresolved audio device must not accumulate timeout work.
+    visibilityWait = { fence, done: completed };
     return completed;
   }
   function cancelStreamRetry() {
@@ -642,7 +658,8 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
 
   async function unlock(): Promise<boolean> {
     if (disposed || !visible || !settings.enabled || !ensureContext()) return false;
-    if ((visibilityDrain || visibilitySuspension) && (!await awaitVisibilityStop() || disposed || !visible || !settings.enabled)) return false;
+    visibilityDrain?.check();
+    if ((visibilityDrain || visibilitySuspension) && (!await awaitVisibilityStop() || disposed || !visible || !settings.enabled || visibilityDrain || visibilitySuspension)) return false;
     unavailable = false;
     try {
       // A running context may still have gesture-blocked HTML media. Retry those

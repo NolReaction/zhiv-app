@@ -1,0 +1,22 @@
+{
+  "id": "great-wall-badaling",
+  "source": "source.glb",
+  "outputDirectory": "../../../../public/earth/models/great-wall-badaling",
+  "runtimeManifest": "../../../../features/earth/data/great-wall-badaling-model.json",
+  "urlPrefix": "/earth/models/great-wall-badaling",
+  "heightMeters": 20,
+  "headingDegrees": 0,
+  "preserveTopFraction": 0,
+  "lods": [
+    {
+      "name": "overview",
+      "targetTriangles": 6000,
+      "error": 0.03
+    },
+    {
+      "name": "detail",
+      "targetTriangles": 24000,
+      "error": 0.01
+    }
+  ]
+}

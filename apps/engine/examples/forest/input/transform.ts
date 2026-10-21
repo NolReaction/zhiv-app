@@ -1,0 +1,11 @@
+import * as core from "@/packages/engine/src/input/transform";
+import { FOREST_CATALOG } from "../forest-catalog";
+import type { ForestObject } from "../scene/objects";
+import type { ResizePoint, ResizeCorner } from "@/packages/engine/src/input/transform";
+export type { ResizePoint, ResizeCorner } from "@/packages/engine/src/input/transform";
+export { MIN_OBJECT_SCALE, MAX_OBJECT_SCALE, RESIZE_HANDLE_RADIUS } from "@/packages/engine/src/input/transform";
+export const resizeHandlePositions = (object: ForestObject) => core.resizeHandlePositions(object, FOREST_CATALOG);
+export const findResizeHandle = (object: ForestObject, point: ResizePoint, zoom: number, radiusCss?: number) => core.findResizeHandle(object, point, zoom, radiusCss, FOREST_CATALOG);
+export type ResizeSession = Omit<core.ResizeSession, "object"> & { readonly object: ForestObject };
+export const beginResize = (object: ForestObject, corner: ResizeCorner, grab: ResizePoint) => core.beginResize(object, corner, grab, FOREST_CATALOG) as ResizeSession;
+export const resizedObject = (session: ResizeSession, point: ResizePoint, width: number, height: number): ForestObject => core.resizedObject(session, point, width, height) as ForestObject;

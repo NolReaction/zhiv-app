@@ -13,6 +13,8 @@ import java.util.Base64
     @Required val constructionCompleted: Boolean = true,
     @Required val explorationCompleted: Boolean = true,
     @Required val productionCompleted: Boolean = true,
+    // Older saved JSON inherits the category, never device permission or a subscription.
+    val administrationMessages: Boolean = true,
     @Required val checkinReminder: Boolean = false,
     @Required val quietHoursEnabled: Boolean = true,
     @Required val quietStart: String = "23:00",
@@ -27,6 +29,7 @@ import java.util.Base64
         "construction" -> constructionCompleted
         "exploration" -> explorationCompleted
         "production" -> productionCompleted
+        "mail" -> administrationMessages
         "checkin" -> checkinReminder
         else -> false
     }

@@ -217,6 +217,135 @@
         "currency": "pearls",
         "amount": 350
       }
+    },
+    {
+      "id": "trail_hat",
+      "name": "Дорожная шляпа",
+      "slot": "head",
+      "color": "#a98a56",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "rain_hood",
+      "name": "Капюшон дождя",
+      "slot": "head",
+      "color": "#55788b",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "sea_neckerchief",
+      "name": "Морской платок",
+      "slot": "neck",
+      "color": "#4d91a4",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "sunset_scarf",
+      "name": "Шарф заката",
+      "slot": "neck",
+      "color": "#cd7652",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "dune_moss",
+      "name": "Мох дюн",
+      "slot": "palette",
+      "color": "#b7a875",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "storm_moss",
+      "name": "Грозовой мох",
+      "slot": "palette",
+      "color": "#687b91",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "premium_stargazer_moss",
+      "name": "Звёздная мантия",
+      "slot": "palette",
+      "color": "#525984",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
+    },
+    {
+      "id": "premium_stargazer_hat",
+      "name": "Колпак звездочёта",
+      "slot": "head",
+      "color": "#525984",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
+    },
+    {
+      "id": "premium_stargazer_scarf",
+      "name": "Золотой шарф",
+      "slot": "neck",
+      "color": "#e6c66c",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
+    },
+    {
+      "id": "premium_ember_moss",
+      "name": "Огненный плащ",
+      "slot": "palette",
+      "color": "#ad6048",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
+    },
+    {
+      "id": "premium_ember_hat",
+      "name": "Шапка хранителя огня",
+      "slot": "head",
+      "color": "#b86748",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
+    },
+    {
+      "id": "premium_ember_scarf",
+      "name": "Угольный шарф",
+      "slot": "neck",
+      "color": "#434858",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
+    },
+    {
+      "id": "premium_explorer_moss",
+      "name": "Куртка первопроходца",
+      "slot": "palette",
+      "color": "#638879",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
+    },
+    {
+      "id": "premium_explorer_hat",
+      "name": "Шляпа первопроходца",
+      "slot": "head",
+      "color": "#a47e50",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
+    },
+    {
+      "id": "premium_explorer_scarf",
+      "name": "Лазурный шарф",
+      "slot": "neck",
+      "color": "#55a4ab",
+      "sparks": 0,
+      "starter": false,
+      "premium": true
     }
   ],
   "finds": [

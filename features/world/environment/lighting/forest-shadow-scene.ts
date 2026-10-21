@@ -1,4 +1,4 @@
-import type { FixedWorldScene, WorldPoint, WorldShadowCaster } from "@/features/world/tiled/types";
+import type { FixedWorldScene, WorldLight, WorldPoint, WorldShadowCaster } from "@/features/world/tiled/types";
 import type { ForestCampfire } from "@/features/world/activities/campfire/forest-campfire";
 import type { ForestLightSource } from "./forest-building-lights";
 import { forestLightPulse } from "./forest-lighting";
@@ -17,13 +17,19 @@ type ShadowSceneOptions = {
 };
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 
+/** The exact projection height used for an authored or artwork-attached lamp. */
+export function forestShadowLightHeight(scene: FixedWorldScene, light: ForestLightSource | WorldLight): number {
+  const siteId = "siteId" in light ? light.siteId : undefined;
+  const site = siteId ? scene.sites.find(site => site.id === siteId) : undefined;
+  return light.height ?? (light.kind === "torch" ? 17 : site
+    ? clamp(site.entry.y - light.position.y, 12, 90) : 24);
+}
+
 /** Artwork positions mark the glass. The shadow solver uses its ground position
  * plus an independent height; both therefore follow the selected building PNG. */
 export function createForestShadowFrame(scene: FixedWorldScene, options: ShadowSceneOptions): ForestShadowFrame {
   const sources: ForestShadowSource[] = options.lights.map(light => {
-    const site = light.siteId ? scene.sites.find(site => site.id === light.siteId) : undefined;
-    const height = light.height ?? (light.kind === "torch" ? 17 : site
-      ? clamp(site.entry.y - light.position.y, 12, 90) : 24);
+    const height = forestShadowLightHeight(scene, light);
     return { id: light.id, position: { x: light.position.x, y: light.position.y + height }, height,
       radius: light.radius, color: light.color, ownerSiteId: light.siteId,
       intensity: light.intensity * forestLightPulse(light, options.elapsed, options.reducedMotion) };
@@ -33,8 +39,12 @@ export function createForestShadowFrame(scene: FixedWorldScene, options: ShadowS
     const phase = fire.position.x * .073 + fire.position.y * .041;
     const pulse = options.reducedMotion ? 1 : 1 + Math.sin(options.elapsed * 2.3 + phase) * .035
       + Math.sin(options.elapsed * 4.7 + phase * .7) * .018;
+    // An open flame illuminates the nearby clearing more strongly than the
+    // shielded house lantern. With a lantern-sized energy and a short pool,
+    // its sideways actor shadow was filled by the house's much larger pool,
+    // leaving only that lamp's downward shadow visible beside the fire.
     sources.push({ id: `fire:${fire.id}`, position: { ...fire.position }, height: Math.max(4, fire.radius * .8),
-      radius: fire.radius * 6.5, color: "#ffa449", intensity: (fire.flame * 1.05 + fire.embers * .06) * pulse });
+      radius: fire.radius * 10, color: "#ffa449", intensity: (fire.flame * 1.8 + fire.embers * .06) * pulse });
   }
   if (options.testLamp) sources.push({ id: "dev:test-lamp", position: { x: options.testLamp.x, y: options.testLamp.y },
     height: options.testLamp.height, radius: 170, intensity: 1.1, color: "#ffda9d" });

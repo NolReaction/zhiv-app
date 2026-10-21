@@ -68,7 +68,7 @@ test("economy projection includes only confirmed construction, including ready j
   for (const entry of jobs) Object.freeze(entry);
   Object.freeze(jobs);
   const economy = { ownerPublicId: owner, revision: 27, jobs, wallet: { coins: 900, pearls: 55 }, inventory: { plank: 8 } };
-  const before = structuredClone(economy), projected = economySceneConstruction(economy);
+  const before = structuredClone(economy), projected = economySceneConstruction(economy, true, owner);
   assert.deepEqual(projected, { ownerPublicId: owner, revision: 27, jobs: [job(), {
     ...job("ready"), stationId: "workshop", finishesAt: ready.finishesAt,
   }] });
@@ -76,6 +76,8 @@ test("economy projection includes only confirmed construction, including ready j
   assert.notEqual(projected.jobs, jobs);
   projected.jobs[0].stationId = "scene-only-change";
   assert.equal(economy.jobs[0].targetId, "home", "projected jobs never alias account objects");
-  assert.equal(economySceneConstruction(null), null);
-  assert.equal(economySceneConstruction(undefined), null);
+  assert.equal(economySceneConstruction(null, true), null);
+  assert.equal(economySceneConstruction(undefined, true), null);
+  assert.equal(economySceneConstruction(economy, false, owner), null, "restored production journals cannot declare live construction");
+  assert.equal(economySceneConstruction(economy, true, "other-owner"), null);
 });

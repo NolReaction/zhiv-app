@@ -26,6 +26,14 @@ test("small parchment bubbles wrap Cyrillic inside narrow and wide screen insets
   }
 });
 
+test("every new resident has its own canvas caption and safe ink", () => {
+  for (const [speaker, label] of [["lopukh", "Лопоух"], ["kamneshmyg", "Камнешмыг"], ["leaftail", "Листохвост"]]) {
+    const box = layoutForestSpeech({ ...base, speaker, text: "Привет!" }, { width: 320, height: 320 }, measure);
+    assert.equal(box.label, label);
+    assert.equal(box.speaker, speaker);
+  }
+});
+
 test("long words and messages are bounded, whitespace normalizes, short phrases remain compact", () => {
   const viewport = { width: 200, height: 320 };
   const long = layoutForestSpeech({ ...base, text: "Сверхдлинноесловобезпробелов".repeat(18) }, viewport, measure);
@@ -173,4 +181,84 @@ test("painting is read-only, restores context and displays only one line's bubbl
   const hidden = context();
   drawForestSpeech(hidden.ctx, [{ ...base, elapsed: 5 }], { width: 320, height: 320 });
   assert.equal(hidden.calls.length, 0);
+});
+
+test("warm speech reuses text metrics while camera position, entrance, tail, fade and palette remain live", () => {
+  const painted = context(), viewport = { width: 760, height: 420 };
+  let measurements = 0;
+  painted.ctx.measureText = text => { measurements++; return { width: measure(text) }; };
+  const first = drawForestSpeech(painted.ctx, [base], viewport);
+  assert.ok(measurements > 0);
+  // A caller cannot corrupt a later frame by modifying its returned line array.
+  first.lines[0] = "changed outside the painter";
+  measurements = 0;
+  for (const elapsed of [0, .12, 1, 4.9, 5]) for (const reducedMotion of [false, true]) {
+    const frame = { ...base, elapsed, anchor: { x: 210 + elapsed * 40, y: elapsed < .2 ? 12 : 240 } };
+    const view = { ...viewport, reducedMotion, night: elapsed > 4 };
+    const before = painted.calls.length;
+    const actual = drawForestSpeech(painted.ctx, [frame], view);
+    const fresh = context(), expected = drawForestSpeech(fresh.ctx, [frame], view);
+    assert.deepEqual(actual, layoutForestSpeech(frame, view, measure));
+    assert.deepEqual(actual, expected);
+    assert.deepEqual(painted.calls.slice(before), fresh.calls, "cached text must issue identical geometry and text draw commands");
+  }
+  assert.equal(measurements, 0, "moving a fully fitting bubble does not remeasure unchanged text");
+});
+
+test("cached wrapping follows exact width, screen insets, text and speaker without changing authored replies", () => {
+  const { ctx } = context();
+  for (const width of [128, 240, 320, 760]) for (const x of [width / 4, width / 2, width - 20]) {
+    const viewport = { width, height: 320, insets: { top: 36, bottom: 28, right: width === 320 ? 30 : 0 } };
+    for (const conversation of FOREST_CONVERSATIONS) for (const line of conversation.lines) {
+      const frame = { ...base, ...line, anchor: { x, y: 180 } };
+      assert.deepEqual(drawForestSpeech(ctx, [frame], viewport), layoutForestSpeech(frame, viewport, measure));
+    }
+  }
+});
+
+test("speech metrics refresh when fonts load, fail or change context typography", () => {
+  const fonts = new EventTarget();
+  fonts.status = "loaded";
+  const { ctx } = context(), viewport = { width: 320, height: 320 };
+  const document = { fonts, documentElement: { lang: "ru" } };
+  ctx.canvas = { ownerDocument: document, lang: "ru" };
+  let scale = 1, measurements = 0;
+  const measured = text => measure(text) * scale;
+  ctx.measureText = text => { measurements++; return { width: measured(text) }; };
+  const check = () => assert.deepEqual(drawForestSpeech(ctx, [base], viewport), layoutForestSpeech(base, viewport, measured));
+  check(); measurements = 0; check(); assert.equal(measurements, 0);
+  for (const event of ["loading", "loadingdone", "loadingerror"]) {
+    scale += .1; fonts.dispatchEvent(new Event(event));
+    measurements = 0; check(); assert.ok(measurements > 0, `${event} invalidates old glyph widths`);
+  }
+  fonts.status = "loading";
+  for (let index = 0; index < 3; index++) {
+    scale += .1; measurements = 0; check(); assert.ok(measurements > 0, "in-flight fallback metrics are not retained");
+  }
+  fonts.status = "loaded"; scale = 1; check();
+  for (const [property, value] of [["fontKerning", "none"], ["fontStretch", "expanded"], ["fontVariantCaps", "small-caps"],
+    ["letterSpacing", "2px"], ["wordSpacing", "3px"], ["textRendering", "optimizeLegibility"], ["direction", "rtl"]]) {
+    ctx[property] = value; scale += .1; measurements = 0; check();
+    assert.ok(measurements > 0, `${property} invalidates old text layout`);
+  }
+  document.fonts = new EventTarget(); document.fonts.status = "loaded";
+  scale = 1; measurements = 0; check(); assert.ok(measurements > 0, "a different document font set cannot reuse old metrics");
+  ctx.canvas.lang = "en"; scale = 1.1; measurements = 0; check(); assert.ok(measurements > 0);
+  document.documentElement.lang = "en"; scale = 1.2; measurements = 0; check(); assert.ok(measurements > 0);
+});
+
+test("speech caches are per context and evict old text instead of retaining an unbounded conversation history", () => {
+  const { ctx } = context(), viewport = { width: 760, height: 420 };
+  let measurements = 0;
+  ctx.measureText = text => { measurements++; return { width: measure(text) }; };
+  const first = { ...base, text: "Первая реплика." };
+  drawForestSpeech(ctx, [first], viewport);
+  measurements = 0; drawForestSpeech(ctx, [first], viewport); assert.equal(measurements, 0);
+  const separate = context(); let separateMeasurements = 0;
+  separate.ctx.measureText = text => { separateMeasurements++; return { width: measure(text) }; };
+  drawForestSpeech(separate.ctx, [first], viewport); assert.ok(separateMeasurements > 0);
+  for (let index = 0; index < 600; index++) drawForestSpeech(ctx, [{ ...base, text: `Реплика${index}` }], viewport);
+  measurements = 0;
+  assert.deepEqual(drawForestSpeech(ctx, [first], viewport), layoutForestSpeech(first, viewport, measure));
+  assert.ok(measurements > 0, "old text metrics are evicted after bounded history");
 });

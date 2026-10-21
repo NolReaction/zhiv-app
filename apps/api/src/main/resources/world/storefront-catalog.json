@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "currency": "RUB",
+  "paymentsEnabled": false,
+  "pearlPacks": [
+    {
+      "id": "pearls_100_v1",
+      "name": "Горсть жемчуга",
+      "pearls": 200,
+      "priceRub": 99
+    },
+    {
+      "id": "pearls_350_v1",
+      "name": "Мешочек жемчуга",
+      "pearls": 700,
+      "priceRub": 299
+    },
+    {
+      "id": "pearls_800_v1",
+      "name": "Шкатулка жемчуга",
+      "pearls": 1600,
+      "priceRub": 599
+    }
+  ],
+  "costumeOffers": [
+    {
+      "id": "costume_explorer_v1",
+      "name": "Первопроходец",
+      "description": "Дорожная куртка, широкополая шляпа и лазурный шарф.",
+      "outfitId": "premium_explorer",
+      "priceRub": 199,
+      "purchaseLimit": 1
+    },
+    {
+      "id": "costume_stargazer_v1",
+      "name": "Звездочёт",
+      "description": "Ночная мантия, звёздный колпак и золотой шарф.",
+      "outfitId": "premium_stargazer",
+      "priceRub": 299,
+      "purchaseLimit": 1
+    },
+    {
+      "id": "costume_ember_v1",
+      "name": "Хранитель огня",
+      "description": "Огненный плащ, тёплая шапка и угольный шарф.",
+      "outfitId": "premium_ember",
+      "priceRub": 299,
+      "purchaseLimit": 1
+    }
+  ],
+  "starterPacks": [
+    {
+      "id": "starter_home_1_v1",
+      "name": "Первые шаги",
+      "description": "Небольшой запас для первых построек и горячий обед.",
+      "homeLevel": 1,
+      "priceRub": 149,
+      "purchaseLimit": 1,
+      "rewards": {
+        "pearls": 300,
+        "coins": 250,
+        "items": {
+          "wood": 3,
+          "stone": 2,
+          "fiber": 2,
+          "grilled_fish": 1
+        }
+      }
+    },
+    {
+      "id": "starter_home_2_v1",
+      "name": "Крепкое хозяйство",
+      "description": "Доски, верёвки и горячие обеды для нового этапа хозяйства.",
+      "homeLevel": 2,
+      "priceRub": 299,
+      "purchaseLimit": 1,
+      "rewards": {
+        "pearls": 700,
+        "coins": 800,
+        "items": {
+          "planks": 3,
+          "rope": 2,
+          "wood": 2,
+          "stone": 2,
+          "grilled_fish": 2
+        }
+      }
+    },
+    {
+      "id": "starter_home_3_v1",
+      "name": "Большие планы",
+      "description": "Строительные припасы и обеды для расширения мастерских.",
+      "homeLevel": 3,
+      "priceRub": 399,
+      "purchaseLimit": 1,
+      "rewards": {
+        "pearls": 1000,
+        "coins": 2000,
+        "items": {
+          "planks": 4,
+          "rope": 3,
+          "bricks": 3,
+          "grilled_fish": 2
+        }
+      }
+    },
+    {
+      "id": "starter_home_4_v1",
+      "name": "Новые горизонты",
+      "description": "Балки, камень и крепёж для больших работ. Уха придаст сил.",
+      "homeLevel": 4,
+      "priceRub": 499,
+      "purchaseLimit": 1,
+      "rewards": {
+        "pearls": 1300,
+        "coins": 5000,
+        "items": {
+          "beams": 2,
+          "cut_stone": 2,
+          "cloth": 2,
+          "metal_parts": 2,
+          "fish_soup": 2
+        }
+      }
+    },
+    {
+      "id": "starter_home_5_v1",
+      "name": "Уютный мир",
+      "description": "Запас для последних улучшений хозяйства и два сытных ужина.",
+      "homeLevel": 5,
+      "priceRub": 599,
+      "purchaseLimit": 1,
+      "rewards": {
+        "pearls": 1600,
+        "coins": 8000,
+        "items": {
+          "reinforced_parts": 2,
+          "glass": 3,
+          "tools": 2,
+          "hearty_fish": 2
+        }
+      }
+    }
+  ]
+}

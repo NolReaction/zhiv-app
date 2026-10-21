@@ -338,8 +338,11 @@ test("the round face keeps its short muzzle inside the skull and its clip on one
   }
   const right = pleskSpriteRig(pleskSprite("idle", "right", 0));
   const left = pleskSpriteRig(pleskSprite("idle", "left", 0));
-  assert.ok(right.flower.x < right.head.x && left.flower.x < left.head.x,
-    "the clip moves to the far side when she turns, rather than mirroring to the other anatomical temple");
+  assert.ok(right.flower.x < right.head.x && left.flower.x > left.head.x,
+    "both profiles keep the clip behind the same anatomical left ear, mirrored with the rear temple");
+  const petals = new Set(["#efb5bb", "#ffe1d7", "#bd858f", "#e9c371"]);
+  const petalCount = direction => [...pleskSprite("idle", direction, 0).pixels.values()].filter(color => petals.has(color)).length;
+  assert.ok(petalCount("right") < petalCount("left"), "the right view puts the far left-ear flower behind the skull");
 });
 
 test("raising a paw bends two short arm segments instead of stretching a low elbow to the face", () => {
@@ -579,25 +582,27 @@ test("the actual Pleska painter moves smoothly into the exact basket center at e
   }
 });
 
-test("the live map gives Pleska real daytime and nighttime visitors with exact palm contacts", async () => {
+test("the live map gives Pleska real daytime and twilight visitors with exact palm contacts", async () => {
   const {TILED_WORLD:world}=await vite.ssrLoadModule('/features/world/scene/presentation.ts');
   const {createForestFauna,advanceForestFauna,residentFaunaEncounter}=await vite.ssrLoadModule('/features/world/environment/wildlife/forest-fauna.ts');
-  const {createPleskMind,advancePleskMind,pleskMindFrame}=await vite.ssrLoadModule('/features/world/characters/plesk/plesk-mind.ts');
+  const {createPleskMind,advancePleskMind,pleskMindFrame,pleskAvailableForLeisure}=await vite.ssrLoadModule('/features/world/characters/plesk/plesk-mind.ts');
   const {pleskWildlifeHand}=await vite.ssrLoadModule('/features/world/characters/plesk/plesk-painter.ts');
-  for(const dusk of [0,1]){
+  // Twilight uses the profile's evening clock. Omitting it intentionally means
+  // full night in residentNightRest, when Pleska returns home instead of hosting.
+  for(const [dusk,localHour] of [[0,12],[.65,20]]){
     const fauna=createForestFauna(world),mind=createPleskMind(world),ids=fauna.entities.map(e=>e.id),contacts=new Set();
     for(let t=0;t<900;t+=.1){
       const active=residentFaunaEncounter(fauna,'plesk'),pause=!!active&&!['release','interrupt'].includes(active.phase);
-      const feet={...mind.position};advancePleskMind(mind,world,.1,{dusk,rain:0,wildlife:pause});
+      const feet={...mind.position};advancePleskMind(mind,world,.1,{dusk,rain:0,localHour,wildlife:pause});
       if(pause)assert.deepEqual(mind.position,feet);
-      const r=pleskMindFrame(mind,world,false),hand=pleskWildlifeHand(r);
-      advanceForestFauna(fauna,.1,{dusk,rain:0,visitors:[{...r,hand,
-        available:(!r.carryingFish||r.action==='rest')&&['idle','rest','greet'].includes(r.action)}]});
+      const r=pleskMindFrame(mind,world,false),hand=r?pleskWildlifeHand(r):null;
+      advanceForestFauna(fauna,.1,{dusk,rain:0,visitors:r?[{...r,hand,
+        available:pleskAvailableForLeisure(mind)&&(!r.carryingFish||r.action==='rest')&&['idle','rest','greet'].includes(r.action)}]:[]});
       const visit=residentFaunaEncounter(fauna,'plesk');
       if(visit?.phase==='perch'){
         const e=fauna.entities.find(e=>e.id===visit.entityId);contacts.add(visit.token);
         assert.equal(e.species,dusk?'firefly':'butterfly');
-        assert.ok(Math.hypot(e.x-hand.x,e.y-hand.y)<.7);
+        assert.ok(hand); assert.ok(Math.hypot(e.x-hand.x,e.y-hand.y)<.7);
       }
     }
     assert.ok(contacts.size>0,`dusk=${dusk} must actually reach her paw`);

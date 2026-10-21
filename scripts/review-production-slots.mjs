@@ -5,13 +5,17 @@ import { pathToFileURL } from "node:url";
 import { loadJourneyRules, simulateJourney, DEFAULT_JOURNEY_RARE_SEED } from "./simulate-player-journey.mjs";
 import { jointPlanningPolicy } from "./simulate-player-joint.mjs";
 
-/** Gift count, not an assumed average income: payouts arrive on steps 3, 6, 7. */
+/** The seven gifts are a finite account grant, never a repeating income. */
 export function dailyPearlThreshold(rewards, targetPearls) {
   assert(Number.isSafeInteger(targetPearls) && targetPearls > 0);
   assert(rewards.daily.some(reward => reward.pearls > 0));
   let claims = 0, pearls = 0;
-  while (pearls < targetPearls) pearls += rewards.daily[claims++ % rewards.daily.length].pearls;
-  return { targetPearls, giftClaims: claims, elapsedDaysWithFirstGiftToday: claims - 1, pearlsReceived: pearls };
+  for (const reward of rewards.daily) {
+    pearls += reward.pearls; claims++;
+    if (pearls >= targetPearls)
+      return { targetPearls, reachable: true, giftClaims: claims, elapsedDaysWithFirstGiftToday: claims - 1, pearlsReceived: pearls };
+  }
+  return { targetPearls, reachable: false, giftClaims: null, elapsedDaysWithFirstGiftToday: null, pearlsReceived: pearls };
 }
 
 export function reviewProductionSlots(loaded, onScenario = () => {}) {
@@ -40,6 +44,12 @@ export function reviewProductionSlots(loaded, onScenario = () => {}) {
       assert(tier && purchase.houseLevel >= tier.requiredHomeLevel);
       assert.equal(purchase.pricePearls, tier.pricePearls);
     }
+    if (id === "slots_from_daily_pearls") {
+      assert.equal(result.dailyPearlProjection.claims, rewards.daily.length);
+      assert.equal(result.dailyPearlProjection.completed, true);
+      assert.equal(result.dailyPearlProjection.pearlsReceived, rewards.daily.reduce((sum, reward) => sum + reward.pearls, 0));
+      assert(result.pearlsSpent <= result.dailyPearlProjection.pearlsReceived);
+    }
     if (id === "slots_prepaid") {
       assert.equal(result.pearlsSpent, totalPearls);
       assert.equal(result.pearlsRemaining, 0);
@@ -60,7 +70,7 @@ export function reviewProductionSlots(loaded, onScenario = () => {}) {
       pearlsSpent: sample.pearlsSpent ?? 0, productionSlotPurchases: sample.productionSlots.purchases.length };
   });
   return {
-    title: "Production slots: actual command progression and pearl acquisition scenarios", reviewDate: "2026-10-06",
+    title: "Production slots: actual command progression and pearl acquisition scenarios", reviewDate: "2026-10-19",
     catalogVersion: catalog.version, stations, upgrades, allSlotsPricePearls: totalPearls,
     sourceHashes: Object.fromEntries([
       "../apps/api/src/main/resources/world/economy-catalog.json", "../apps/api/src/main/resources/world/progression-rewards-catalog.json",
@@ -69,10 +79,10 @@ export function reviewProductionSlots(loaded, onScenario = () => {}) {
     ].map(file => [file, createHash("sha256").update(readFileSync(new URL(file, import.meta.url))).digest("hex")])),
     method: {
       rules: "Real TypeScript production, buy_production_slot, claims, construction, actor locks, stock and coin accounting through Vite SSR",
-      completion: "Home level 5 and separately all eight progression buildings level 5; not all collections, legendary fishing, social goals or a final game ending",
+      completion: "Home level 5 and separately the current comparison base: ordinary stations through tier 5, bridge/lighthouse at their authored restored tier, and storage through tier 5; not all collections, legendary fishing, social goals or a final game ending",
       policies: {
         one_slot: "Same parallel-aware planning policy, no slot purchases and no initial pearls",
-        slots_from_daily_pearls: "Start with zero pearls. Project only daily gifts' pearl component using real dailyRewardView/afterDailyClaim UTC and minimum-hours rules; purchases use ordinary commands",
+        slots_from_daily_pearls: "Start with zero pearls. Project only the one-time seven gifts' pearl component using real dailyRewardView/afterDailyClaim UTC and minimum-hours rules; purchases use ordinary commands",
         slots_prepaid: "Hypothetical already-owned initial pearl budget; acquire slots for each built station immediately after its house gate and any station construction finish",
       },
       planner: "Prepare next construction, preserve future crafted stock, reserve only publicly guaranteed pending output, fill affordable available capacity, pause a station's fresh jobs when an affordable upgrade needs it to become idle",
@@ -89,11 +99,11 @@ export function reviewProductionSlots(loaded, onScenario = () => {}) {
         "The same planner is used for all variants here; earlier reports without parallel-aware planning are historical, not the comparison baseline"],
     },
     pearlSupply: {
-      pearlsPerGiftCycle: rewards.daily.reduce((sum, reward) => sum + reward.pearls, 0), cycleClaims: rewards.daily.length,
+      oneTimeGiftPearls: rewards.daily.reduce((sum, reward) => sum + reward.pearls, 0), maximumGiftClaims: rewards.daily.length, repeats: false,
       allAchievementPearlsOnce: Object.values(rewards.achievementPearls).flat().reduce((sum, amount) => sum + amount, 0),
       thresholds: [...new Set([upgrades[0].pricePearls, upgrades[1].pricePearls,
         upgrades[0].pricePearls * stations.length, totalPearls])].map(target => dailyPearlThreshold(rewards, target)),
-      assumption: "One claim every day, first gift today, no other pearl income or spending. Level/building gates are additional; achievements are finite and are not assumed earned at start",
+      assumption: "One claim every day for at most seven gifts, first gift today, no other pearl income or spending. Unreachable thresholds cannot be funded by this chain alone. Level/building gates are additional; achievements are finite and are not assumed earned at start",
     },
     summary, scenarios,
   };

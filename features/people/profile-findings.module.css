@@ -1,0 +1,18 @@
+.findings { min-width: 0; }
+.findings h4 { margin: 0 0 8px; font-size: 14px; }
+.filters { display: flex; gap: 4px; margin-bottom: 9px; }
+.filters button { display: flex; flex: 1; justify-content: center; align-items: center; gap: 5px; min-width: 0; min-height: 44px; padding: 6px 5px; border: 1px solid #cfe8ba25; border-radius: 11px; background: #ffffff05; color: #c1c8b8; font-size: 11px; cursor: pointer; }
+.filters button[aria-pressed='true'] { border-color: #a6c99480; background: #a6c99420; color: #e8f1dc; }
+.filters small { font-size: 10px; font-variant-numeric: tabular-nums; }
+.filters svg { flex-shrink: 0; }
+.track { display: flex; position: relative; gap: 8px; margin: 0; padding: 3px 2px 8px; min-width: 0; overflow-x: auto; list-style: none; scroll-snap-type: x mandatory; scroll-padding-inline: 2px; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #91af795c transparent; -webkit-overflow-scrolling: touch; }
+.track::after { content: ""; flex: 0 0 max(0px, calc(100% - 132px)); }
+.card { display: flex; flex: 0 0 124px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 116px; padding: 12px 9px; border: 1px solid #cfe8ba24; border-radius: 14px; background: #10170c3b; scroll-snap-align: start; }
+.card span { color: #e1e9d8; font-size: 12px; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
+.navigation { display: flex; justify-content: center; align-items: center; gap: 8px; }
+.navigation button { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: #d0dfc1; cursor: pointer; }
+.navigation button:disabled { opacity: .3; cursor: default; }
+.navigation span { min-width: 38px; color: #aebba3; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+.empty { margin: 0; padding: 24px 12px; border: 1px dashed #cfe8ba24; border-radius: 14px; color: #b4c1aa; font-size: 12px; text-align: center; }
+.filters button:focus-visible, .track:focus-visible, .navigation button:focus-visible { outline: 2px solid #cce4a8; outline-offset: 2px; }
+@media (max-width: 340px) { .filters button { gap: 3px; font-size: 10px; } .filters svg { width: 13px; } }

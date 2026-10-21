@@ -1,11 +1,15 @@
 import { economyCatalog, type EconomyJob } from "./model";
 
-const fishIds = new Set(economyCatalog.fishing?.fish.map(fish => fish.itemId) ?? ["fish"]);
+const fishIds = new Set([...(economyCatalog.fishing?.fish.map(fish => fish.itemId) ?? ["fish"]),
+  ...(economyCatalog.fishing?.classes.map(group => group.itemId) ?? [])]);
 
-/** The saved catch is private until claim. Otherwise cancelling after inspecting
- * rewards lets a player probe different loadouts against the same draw. */
-export function publicEconomyJob(job: EconomyJob): EconomyJob {
+/** Hide an unfinished draw. Only authoritative server time reveals the saved
+ * completed catch; projecting never rolls or awards any fish. */
+export function publicEconomyJob(job: EconomyJob, now = Date.now()): EconomyJob {
   if (!job.fishing) return job;
+  const finishesAt = Date.parse(job.finishesAt);
+  if (Number.isFinite(now) && Number.isFinite(finishesAt) && now >= finishesAt)
+    return { ...job, fishing: { ...job.fishing, catchRevealed: true } };
   const rewards: Record<string, number> = {};
   let fishCount = 0;
   for (const [itemId, count] of Object.entries(job.rewards)) {
@@ -13,5 +17,7 @@ export function publicEconomyJob(job: EconomyJob): EconomyJob {
     else rewards[itemId] = count;
   }
   if (fishCount > 0) rewards.fish = fishCount;
-  return { ...job, rewards, fishing: { ...job.fishing, fishId: "fish" } };
+  const fishing = { ...job.fishing, fishId: "fish" };
+  delete fishing.catchRevealed;
+  return { ...job, rewards, fishing };
 }

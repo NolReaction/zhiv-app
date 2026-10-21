@@ -1,0 +1,42 @@
+.card { min-height: 0; overflow: auto; overscroll-behavior: contain; width: min(360px, 100%); align-self: center; border: 1px solid #cce1b83d; border-radius: 20px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 10px 12px; color: #edf5e7; }
+.header { display: flex; align-items: center; gap: 8px; }
+.header > div { min-width: 0; flex: 1; }
+.header h2 { margin: 2px 0 0; font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; }
+.header h2:focus { outline: none; }
+.eyebrow { color: #b7cbb1; font-size: 11px; }
+.close { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: #d5e5c710; color: #dce9d5; cursor: pointer; }
+.distance { display: flex; align-items: center; gap: 7px; margin: 7px 0; }
+.distance > div { flex: 1; min-width: 0; }
+.compass { display: grid; place-items: center; width: 20px; flex-shrink: 0; color: #dbf5b1; }
+.distance strong { display: block; font-size: 14px; letter-spacing: -.015em; line-height: 1.2; font-weight: 750; }
+.distance span:not(.compass) { display: block; overflow: hidden; margin-top: 2px; font-size: 10px; color: #b6cbaa; text-overflow: ellipsis; white-space: nowrap; }
+.updated { margin: 0 0 7px; font-size: 11px; color: #a9c1a0; }
+.actions { display: flex; align-items: flex-start; gap: 8px; }
+.actions > button { display: inline-flex; justify-content: center; align-items: center; flex: 1; gap: 7px; min-width: 0; min-height: 44px; padding: 10px 9px; border: 1px solid #c9e0b62e; border-radius: 14px; background: #c6dea710; color: #e0edcf; font: inherit; font-size: 12px; font-weight: 650; text-decoration: none; cursor: pointer; }
+.actions > .routeTrigger { border-color: transparent; background: #d0e9b2; color: #203f2d; }
+.routeTrigger[data-state="open"] > svg:last-child { transform: rotate(180deg); }
+.routePopover { z-index: 80; width: min(280px, calc(100vw - 24px)); max-height: min(280px, var(--radix-popover-content-available-height, 280px)); overflow: auto; padding: 8px; border: 1px solid #c9e0b650; border-radius: 15px; background: #193d32; color: #e7f3da; box-shadow: 0 10px 30px #001e2466; }
+.routeHeading { padding: 4px 6px 8px; font-size: 11px; color: #b7cbb1; }
+.buildRow { display: flex; align-items: center; gap: 5px; }
+.buildRoute, .clearRoute { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 1px solid #c9e0b640; border-radius: 10px; background: #d0e9b2; color: #203f2d; padding: 7px; font: inherit; font-size: 11px; cursor: pointer; }
+.buildRoute { flex: 1; min-width: 0; }
+.clearRoute { flex: 0 0 44px; width: 44px; background: transparent; color: #dce9d5; }
+.buildRoute:disabled { opacity: .5; cursor: default; }
+.routeHint { margin: 5px 5px 10px; font-size: 10px; line-height: 1.4; color: #b7cbb1; overflow-wrap: anywhere; }
+.routePopover button:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 1px; }
+.spin { animation: routeSpin 1s linear infinite; }
+@keyframes routeSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.routeOptions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; border-radius: 10px; }
+.routeOptions a { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 44px; padding: 9px 10px; color: #e7f3da; text-decoration: none; font-size: 11px; }
+.routeOptions a { border: 1px solid #c9e0b61c; border-radius: 9px; }
+.routeOptions a:hover { background: #c6dea718; }
+.actions button:disabled { opacity: .5; cursor: wait; }
+.card button:focus-visible, .card a:focus-visible, .card summary:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 3px; }
+.routePopover a:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 1px; }
+.footnote { margin: 10px 0 0; color: #a7bea0; font-size: 10px; line-height: 1.5; }
+.unavailable { color: #c6d4bd; font-size: 13px; margin: 20px 0 4px; }
+.meetingNote { margin-top: 6px; }
+.meetingNote button { min-height: 44px; padding: 7px 0; border: 0; background: transparent; color: #d4eab7; font: inherit; font-size: 11px; text-align: left; text-decoration: underline; cursor: pointer; }
+.meetingNote button:disabled { opacity: .8; cursor: default; text-decoration: none; }
+.meetingNote span { display: block; color: #a7bea0; font-size: 10px; }

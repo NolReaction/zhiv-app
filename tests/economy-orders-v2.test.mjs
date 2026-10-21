@@ -86,6 +86,7 @@ test("a small resident pool relaxes only oldest history without copying a curren
 
 test("three free replacements share one board budget, then require an approved pearl quote", () => {
   const state = fresh(); state.wallet.pearls = 40;
+  Object.assign(state.buildings, { home: 2, woodlot: 1, workshop: 1, dryer: 1 });
   for (const slot of [0, 1, 2]) {
     const before = board(state); assert.equal(before.replacementPricePearls, 0);
     apply(state, "replace_resident_order", before.offers[slot].id);
@@ -209,8 +210,14 @@ test("paid replacement receipts replay once, reject altered quotes, and fence co
   const stateAfter = read(p); assert.equal(stateAfter.wallet.pearls, 40); assert.equal(stateAfter.residentOrders.freeReplacementsUsed, 3);
 });
 
-test("all six meal tiers shorten one job by their own speed and old saved jobs keep their paid timing", () => {
-  assert.deepEqual(catalog.food.meals.map(meal => [meal.heroSpeedBps, meal.builderSpeedBps]), [[1000,1000],[2500,2000],[4000,3500],[6000,5000],[8000,7000],[10000,9000]]);
+test("eleven meals keep distinct boosts, preserve the six fish tiers and retain old paid timing", () => {
+  assert.equal(catalog.food.meals.length, 11);
+  assert.deepEqual(catalog.food.meals.filter(meal => ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish"].includes(meal.itemId)).map(meal => [meal.heroSpeedBps, meal.builderSpeedBps]), [[1000,1000],[2500,2500],[4000,3500],[6000,5000],[8000,7000],[10000,9000]]);
+  assert.deepEqual(catalog.food.meals.filter(meal => ["strawberry_compote", "blueberry_compote", "currant_jelly", "blackberry_preserve", "cranberry_glaze"].includes(meal.itemId))
+    .map(meal => [meal.itemId, meal.heroSpeedBps, meal.builderSpeedBps]), [
+      ["strawberry_compote", 800, 1200], ["blueberry_compote", 1200, 800], ["currant_jelly", 2000, 3000],
+      ["blackberry_preserve", 4500, 3000], ["cranberry_glaze", 7500, 5500],
+    ]);
   for (const meal of catalog.food.meals) {
     const state = fresh(); state.inventory = { [meal.itemId]: 1 };
     apply(state, "eat_food", meal.itemId); apply(state, "start_exploration", "forest");

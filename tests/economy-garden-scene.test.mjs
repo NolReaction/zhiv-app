@@ -15,7 +15,8 @@ const { connectForestSession } = await vite.ssrLoadModule("/features/world/state
 const { forestGardenBerries } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { createGardenCollectionController } = await vite.ssrLoadModule("/features/economy/integration/garden-collection.ts");
+const { createGardenCollectionController, economyGardenCrop } = await vite.ssrLoadModule("/features/economy/integration/garden-collection.ts");
+const { captureForestMemory } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
 const { isWithinHomeClearing } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: true };
 const start = Date.parse("2026-10-04T10:00:00Z"), finish = start + 600_000;
@@ -53,6 +54,55 @@ test("managed empty and growing bushes ignore legacy fruit, rain bonuses and aut
   assert.equal(garden.bushes[0].growth, .49);
   syncForestGardenProduction(garden, crop, finish);
   assert.equal(gardenActionAvailable(garden, "harvest-berries"), false, "a ripe server crop still needs a player request");
+});
+
+test("parallel species keep their wall-clock growth and visual places when selecting, claiming and replacing crops", () => {
+  const { state, scene } = setup(), garden = state.life.garden;
+  const jobs = ["berries", "blueberries", "cranberries"].map((itemId, index) => ({ id: `mixed-${index}`, kind: "production", targetId: "garden",
+    startedAt: new Date(start + index * 1000).toISOString(), finishesAt: new Date(start + (index + 1) * 600_000).toISOString(), rewards: { [itemId]: 1 } }));
+  const saved = { jobs }, before = structuredClone(saved), wallTime = start + 900_000;
+  syncForestGardenProduction(garden, economyGardenCrop(saved), wallTime);
+  assert.equal(garden.productionNow, wallTime);
+  assert.equal(garden.bushes[0].growth, 1);
+  const places = { ...garden.productionSlots };
+  assert.equal(new Set(Object.values(places)).size, 3);
+  assert.equal(economyGardenGrowth(garden.production.orders[0], wallTime), 1);
+  assert.ok(economyGardenGrowth(garden.production.orders[1], wallTime) > .7);
+  assert.ok(economyGardenGrowth(garden.production.orders[1], wallTime) < .98);
+  assert.ok(economyGardenGrowth(garden.production.orders[2], wallTime) < .5);
+  syncForestGardenProduction(garden, economyGardenCrop(saved, "mixed-2"), wallTime);
+  assert.deepEqual({ ...garden.productionSlots }, places, "changing the picked crop cannot move surviving species");
+  assert.equal(garden.bushes[0].growth, economyGardenGrowth(garden.production, wallTime));
+
+  const replacement = { ...jobs[0], id: "replacement", startedAt: new Date(wallTime).toISOString(),
+    finishesAt: new Date(wallTime + 60_000).toISOString(), rewards: { strawberries: 1 } };
+  syncForestGardenProduction(garden, economyGardenCrop({ jobs: [...jobs.slice(1), replacement] }), wallTime);
+  assert.equal(garden.productionSlots["mixed-1"], places["mixed-1"]);
+  assert.equal(garden.productionSlots["mixed-2"], places["mixed-2"]);
+  assert.equal(garden.productionSlots.replacement, places["mixed-0"], "a new crop reuses only the released visual place");
+  assert.equal(Object.hasOwn(garden.productionSlots, "mixed-0"), false);
+  const memory = captureForestMemory(state, scene);
+  assert.deepEqual(Object.keys(memory.garden).sort(), ["basketBerries", "bushes"]);
+  assert.equal(JSON.stringify(memory).includes("productionSlots"), false);
+  assert.equal(JSON.stringify(memory).includes("cranberries"), false);
+  assert.deepEqual(saved, before, "scene synchronization cannot award or change goods");
+  syncForestGardenProduction(garden, null, wallTime + 60_000);
+  assert.equal(Object.keys(garden.productionSlots).length, 0);
+});
+
+test("legacy scene DTOs retain their single crop and a selected extra paid crop remains visible", () => {
+  const { state } = setup(), garden = state.life.garden;
+  syncForestGardenProduction(garden, crop, finish);
+  assert.deepEqual({ ...garden.productionSlots }, { [crop.jobId]: 0 });
+  assert.equal(garden.bushes[0].growth, 1);
+  const orders = Array.from({ length: 6 }, (_, index) => ({ ...crop, jobId: `old-${index}`, itemId: "strawberries",
+    startedAt: new Date(start + index * 1000).toISOString() }));
+  syncForestGardenProduction(garden, { ...orders.at(-1), orders }, finish);
+  assert.equal(Object.keys(garden.productionSlots).length, 3);
+  assert.equal(garden.productionSlots["old-5"], 2);
+  assert.ok(Object.values(garden.productionSlots).every(slot => slot >= 0 && slot <= 2));
+  syncForestGardenProduction(garden, { ...crop, orders: [] }, finish);
+  assert.equal(garden.productionSlots[crop.jobId], 0, "an empty optional list keeps the primary legacy crop");
 });
 
 test("explicit harvest physically delivers even in rain, emits completion and never awards local berries", () => {
@@ -105,9 +155,11 @@ test("reduced motion and stale requests report unavailable without inventing a p
 });
 
 test("a hero outside the authored home clearing gathers at the server deadline without returning or waiting for a watchdog", () => {
-  for (const view of ["circle", "world"]) for (const destination of ["workshop", "quarry", "fishing", "woodlot"]) {
+  for (const view of ["circle", "world"]) for (const destination of ["workshop", "quarry", "fishing", "lopukh-home-visit"]) {
     const { state, scene } = setup(view), garden = state.life.garden;
-    state.clearing.position = { ...scene.destinations.find(item => item.id === destination).position };
+    const marker = scene.destinations.find(item => item.id === destination);
+    assert.ok(marker, `${destination} remains an authored destination in the current map`);
+    state.clearing.position = { ...marker.position };
     state.clearing.stage = "clearing";
     const before = structuredClone(state.clearing), basketBefore = structuredClone(garden.basket);
     assert.equal(isWithinHomeClearing(state.clearing), false, `${view}: ${destination} is outside the main clearing`);
@@ -119,7 +171,8 @@ test("a hero outside the authored home clearing gathers at the server deadline w
     const input = { snapshot, now: finish, busy: false, uncertain: false, retryAt: 0, sceneAvailable: true };
     const update = patch => controller.update({ ...input, ...patch }, (action, targetId) => sent.push({ action, targetId }));
     update({}); assert.equal(controller.start(job.id), true);
-    job.collection.startedAt = new Date(finish).toISOString(); job.collection.finishesAt = new Date(finish + 8000).toISOString();
+    const batchId = "780be3c1-d920-491c-8ffc-11b66757b224";
+    job.collection.startedAt = new Date(finish).toISOString(); job.collection.finishesAt = new Date(finish + 8000).toISOString(); job.collection.batchId = batchId;
     update({});
     syncForestGardenProduction(garden, job, finish);
     requestForestGardenHarvest(state, controller.getSnapshot().request, calm);
@@ -133,7 +186,7 @@ test("a hero outside the authored home clearing gathers at the server deadline w
     assert.equal(controller.getSnapshot().phase, "waiting"); assert.equal(controller.getSnapshot().request, null);
     update({ now: finish + 7999 }); assert.equal(sent.length, 1, "no early reward before the authoritative eight seconds");
     update({ now: finish + 8000 });
-    assert.deepEqual(sent, [{ action: "start_collection", targetId: job.id }, { action: "claim_job", targetId: job.id }]);
+    assert.deepEqual(sent, [{ action: "start_garden_collection", targetId: job.id }, { action: "claim_garden_collection", targetId: batchId }]);
     assert.deepEqual(snapshot.inventory, {}, "only the later server receipt may change stock");
     controller.sceneEvent(garden.harvestEvent); update({ now: finish + 9000 });
     assert.equal(sent.length, 2, "fallback does not send duplicate claims");

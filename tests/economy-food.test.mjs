@@ -42,25 +42,34 @@ test("older snapshots and saved states gain empty food/order defaults without ch
   assert.equal(read(p).revision, current.revision);
 });
 
-test("fish selection debits the confirmed species and saves canonical recipe plus exact batch ingredients", () => {
+test("class recipes combine species stock and save one exact class cost", () => {
   const state = fresh(); state.buildings.dryer = 1;
-  state.inventory = { fish: 9, fish_silverfin: 3, wood: 3 };
+  state.inventory = { fish: 1, fish_silverfin: 1, wood: 3 };
   state.fishing.catches.fish_silverfin = 5;
-  apply(state, "start_production", "cook_grilled_fish@fish_silverfin", now, 2);
-  assert.deepEqual(state.inventory, { fish: 9, fish_silverfin: 1, wood: 1 });
-  assert.equal(state.jobs[0].recipeId, "cook_grilled_fish");
-  assert.deepEqual(state.jobs[0].cost, { coins: 0, items: { fish_silverfin: 2, wood: 2 } });
-  assert.deepEqual(state.jobs[0].rewards, { grilled_fish: 2 });
-  assert.equal(state.fishing.catches.fish_silverfin, 5, "cooking does not erase collection history");
+  failWithoutChanges(state, "start_production", "cook_grilled_fish", "INVALID_ECONOMY_COMMAND", now, 2);
+  apply(state, "start_production", "cook_grilled_fish");
+  assert.deepEqual(state.inventory, { fish_common: 1, wood: 3 });
+  const first = structuredClone(state.jobs[0]);
+  assert.equal(first.recipeId, "cook_grilled_fish");
+  assert.deepEqual(first.cost, { coins: 0, items: { fish_common: 1 } });
+  assert.deepEqual(first.rewards, { grilled_fish: 1 });
+  const ready = Date.parse(first.finishesAt);
+  apply(state, "claim_job", first.id, ready);
+  apply(state, "start_production", "cook_grilled_fish", ready);
+  assert.deepEqual(state.inventory, { wood: 3, grilled_fish: 1 });
+  assert.deepEqual(state.jobs[0].cost, first.cost); assert.deepEqual(state.jobs[0].rewards, first.rewards);
+  apply(state, "claim_job", state.jobs[0].id, Date.parse(state.jobs[0].finishesAt));
+  assert.deepEqual(state.inventory, { wood: 3, grilled_fish: 2 });
+  assert.equal(state.jobs.length, 0); assert.equal(state.fishing.catches.fish_silverfin, 5);
 });
 
-test("plain recipe IDs retain their original fish and do not silently spend scarce substitutes", () => {
+test("class recipes never substitute rare fish for missing common fish", () => {
   const state = fresh(); state.buildings.dryer = 1;
-  state.inventory = { fish_silverfin: 3, fish_shark: 1, wood: 3 };
+  state.inventory = { fish_uncommon: 3, fish_legendary: 1, wood: 3 };
   failWithoutChanges(state, "start_production", "cook_grilled_fish", "ECONOMY_RESOURCES");
-  state.inventory.fish = 1;
+  state.inventory.fish_common = 1;
   apply(state, "start_production", "cook_grilled_fish");
-  assert.equal(state.inventory.fish_silverfin, 3); assert.equal(state.inventory.fish_shark, 1);
+  assert.equal(state.inventory.fish_uncommon, 3); assert.equal(state.inventory.fish_legendary, 1);
 });
 
 test("invalid fish substitutions and decorated non-fish recipes are rejected before spending", () => {
@@ -139,7 +148,8 @@ test("feeding an active builder speeds up only remaining milliseconds once and p
   const before = structuredClone(state.jobs[0]), at = now + 123456;
   apply(state, "feed_builder", "fish_soup", at);
   const changed = state.jobs[0];
-  assert.equal(changed.finishesAt, new Date(at + Math.ceil((Date.parse(before.finishesAt) - at) * 10000 / 12000)).toISOString());
+  const speed = catalog.food.meals.find(meal => meal.itemId === "fish_soup").builderSpeedBps;
+  assert.equal(changed.finishesAt, new Date(at + Math.ceil((Date.parse(before.finishesAt) - at) * 10000 / (10000 + speed))).toISOString());
   assert.equal(changed.startedAt, before.startedAt); assert.deepEqual(changed.cost, before.cost);
   assert.deepEqual(changed.rewards, before.rewards); assert.equal(changed.id, before.id);
   assert.equal(state.inventory.fish_soup, 1); assert.equal(state.food.builderMeal, null);
@@ -193,6 +203,7 @@ test("orders pay only coins and lifetime totals without activating or consuming 
 
 test("insufficient goods, full wallet and malformed command amounts cannot debit order resources", () => {
   const state = fresh(), offer = food.residentOrderBoard(state, now).offers[0];
+  state.inventory = {};
   failWithoutChanges(state, "complete_resident_order", offer.id, "ECONOMY_RESOURCES");
   state.inventory = { ...offer.items }; state.wallet.coins = model.ECONOMY_MAX_BALANCE;
   failWithoutChanges(state, "complete_resident_order", offer.id, "ECONOMY_CAPACITY");
@@ -258,14 +269,11 @@ test("reading a new board cycle is revision-neutral and does not persist normali
   assert.notEqual(food.residentOrderBoard(snapshot, later).offers[0].id, food.residentOrderBoard(before, now).offers[0].id);
 });
 
-test("food helpers use the snapshot catalog and preserve recipe source data", () => {
+test("class recipes need no species selector and helpers preserve the source", () => {
   const recipe = catalog.recipes.find(item => item.id === "cook_grilled_fish"), copy = structuredClone(recipe);
-  const selected = food.recipeWithFish(recipe, "fish_silverfin");
-  assert.equal(selected.id, recipe.id); assert.deepEqual(recipe, copy);
-  assert.equal(selected.cost.items.fish, undefined); assert.equal(selected.cost.items.fish_silverfin, 1);
-  const options = food.recipeFishOptions({ inventory: { fish_silverfin: 7 }, catalog }, recipe);
-  assert.equal(options.find(option => option.itemId === "fish_silverfin").quantity, 7);
-  assert.ok(options.every(option => option.name && option.rarity));
+  assert.equal(food.recipeWithFish(recipe), recipe); assert.deepEqual(recipe, copy);
+  assert.equal(recipe.cost.items.fish_common, 1); assert.equal(recipe.fishInput, undefined);
+  assert.deepEqual(food.recipeFishOptions({ inventory: { fish_common: 7 }, catalog }, recipe), []);
   assert.equal(food.pendingMeal({ food: { heroMeal: "hearty_fish", builderMeal: null }, catalog }, "hero").heroSpeedBps, 6000);
 });
 
@@ -274,7 +282,7 @@ test("catalog and saved job schemas reject unknown ingredients and misplaced foo
     value => { value.food.meals[0].itemId = "missing_item"; },
     value => { value.food.orders.templates[0].items = { missing_item: 1 }; },
     value => { value.food.orders.templates.push(value.food.orders.templates[0]); },
-    value => { value.recipes.find(recipe => recipe.fishInput).fishInput.itemIds.push("wood"); },
+    value => { value.recipes.find(recipe => recipe.id === "cook_grilled_fish").fishInput = { itemIds: ["wood"] }; },
   ]) {
     const invalid = structuredClone(catalog); mutate(invalid);
     assert.equal(model.economyCatalogSchema.safeParse(invalid).success, false);

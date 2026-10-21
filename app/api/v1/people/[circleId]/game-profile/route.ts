@@ -11,7 +11,12 @@ export async function GET(request: Request, context: { params: Promise<{ circleI
   if (!circleId || [...new URL(request.url).searchParams].length)
     return NextResponse.json({ code: circleId ? "INVALID_GUEST_PROFILE_QUERY" : "INVALID_CIRCLE_ID", message: "Некорректный запрос профиля" }, { status: 400, headers: NO_STORE_HEADERS });
   const result = getDevGuestProfile(await devSessionToken(), circleId);
-  if (result.kind === "ok") return NextResponse.json(result.value, { headers: NO_STORE_HEADERS });
+  if (result.kind === "ok") {
+    // Older clients validate a strict eight-field projection. New fields are opt-in.
+    const { tapStats, ...legacy } = result.value;
+    const payload = request.headers.get("X-Zhiv-Profile") === "tap-stats-v1" ? { ...legacy, tapStats } : legacy;
+    return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+  }
   return NextResponse.json({ code: result.kind === "unauthorized" ? "UNAUTHORIZED" : "GUEST_PROFILE_UNAVAILABLE", message: "Профиль недоступен" },
     { status: result.kind === "unauthorized" ? 401 : 404, headers: NO_STORE_HEADERS });
 }

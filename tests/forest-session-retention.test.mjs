@@ -35,6 +35,7 @@ function connect(account, env, map = TILED_WORLD, extra = {}, view = "circle") {
 
 test("reopening the same account forest keeps all residents and their live journey without offline ticking", () => {
   const env = environment(), first = connect("retained-residents", env);
+  assert.equal(first.created, true);
   first.configure("circle", true, true);
   for (let i = 0; i < 200; i++) {
     advanceBuilderMind(first.state.builderMind, TILED_WORLD, .05, { now: env.now(), construction: undefined });
@@ -45,6 +46,7 @@ test("reopening the same account forest keeps all residents and their live journ
   const before = { builder: structuredClone(builder), plesk: structuredClone(plesk), elapsed: state.elapsed };
   first.release({ retain: true }); env.addTime(5 * 60_000);
   const next = connect("retained-residents", env, TILED_WORLD, {}, "world");
+  assert.equal(next.created, false);
   assert.equal(next.state, state); assert.equal(next.state.clearing, clearing);
   assert.equal(next.state.builderMind, builder); assert.equal(next.state.pleskMind, plesk);
   assert.deepEqual({ builder, plesk, elapsed: state.elapsed }, before);
@@ -83,6 +85,10 @@ test("a changed map never revives the retained route of an earlier geometry", ()
   const changed = { ...TILED_WORLD, destinations: TILED_WORLD.destinations.map((destination, index) => index
     ? destination : { ...destination, position: { ...destination.position, x: destination.position.x + 1 } }) };
   const moved = connect("retained-geometry", env, changed);
+  assert.equal(moved.created, true);
+  const joined = connect("retained-geometry", env, changed, {}, "world");
+  assert.equal(joined.created, false); assert.equal(joined.state, moved.state);
+  joined.release();
   assert.notEqual(moved.state, previous); assert.equal(moved.state.elapsed, 0);
   moved.release({ retain: true });
   const restored = connect("retained-geometry", env);

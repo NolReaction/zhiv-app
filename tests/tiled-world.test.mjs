@@ -26,6 +26,8 @@ const waterPolygon = (id, name = "", x = 30.125, y = 50.375) => ({
 const waterLayer = (id, name, objects) => ({ id, name, type: "objectgroup", draworder: "topdown", objects });
 const groupLayer = (id, name, layers = []) => ({ id, name, type: "group", layers });
 const objectLayer = (id, name, objects) => ({ ...waterLayer(id, name, objects), draworder: "index" });
+const homeEffectAnchor = (extra = {}) => ({ id: 70, name: "plesk-home-fish", x: 35, y: 45, width: 0, height: 0,
+  point: true, class: "EffectAnchor", properties: props({ role: "effect-anchor", effect: "resident-home", residentId: "plesk", siteId: "plesk-shop", level: 1, size: 44 }), ...extra });
 const layerObjects = (layers, offset = { x: 0, y: 0 }) => layers.flatMap(layer => {
   const shift = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
   return layer.layers ? layerObjects(layer.layers, shift) : layer.objects.map(object => ({ ...object, x: object.x + shift.x, y: object.y + shift.y }));
@@ -95,6 +97,48 @@ async function fixture(t, { directoryRoot = tmpdir() } = {}) {
   return { map, options, directory, writeImage, compile: value => compileTiledWorld(value ?? map, options) };
 }
 
+test("EffectAnchors export exact visible-motif centres, sizes and site levels through movable Tiled folders", async t => {
+  const { map, compile } = await fixture(t);
+  for (const object of [...map.layers[0].objects, ...map.tilesets[0].tiles]) {
+    const site = object.properties?.find(property => property.name === "siteId");
+    if (site) site.value = "plesk-shop";
+  }
+  map.layers.push({ ...groupLayer(20, "Pleska", [objectLayer(21, "EffectAnchors", [homeEffectAnchor()])]), offsetx: 5, offsety: 7 });
+  const before = clone(map), scene = await compile();
+  assert.deepEqual(scene.effectAnchors, [{ id: "plesk-home-fish", effect: "resident-home", residentId: "plesk",
+    position: { x: 40, y: 52 }, size: 44, when: { siteId: "plesk-shop", level: 1 } }]);
+  assert.deepEqual(map, before);
+  map.layers.at(-1).offsetx += 13;
+  assert.deepEqual((await compile()).effectAnchors[0].position, { x: 53, y: 52 }, "moving the folder moves the motif without changing its local point or the PNG");
+});
+
+test("EffectAnchors reject unknown owners/effects, malformed points, duplicates and invalid visual levels", async t => {
+  const { map, compile } = await fixture(t);
+  for (const object of [...map.layers[0].objects, ...map.tilesets[0].tiles]) {
+    const site = object.properties?.find(property => property.name === "siteId");
+    if (site) site.value = "plesk-shop";
+  }
+  const anchor = homeEffectAnchor();
+  map.layers.push(objectLayer(20, "EffectAnchors", [anchor]));
+  await compile();
+  const cases = [
+    [value => setProp(value, "effect", "unknown-effect"), /resident-home/],
+    [value => setProp(value, "residentId", "someone"), /unknown residentId/],
+    [value => setProp(value, "residentId", "builder"), /unknown residentId/],
+    [value => setProp(value, "siteId", "kiln"), /own site/],
+    [value => setProp(value, "level", 55), /unknown visual level/],
+    [value => setProp(value, "size", 81), /effect size/],
+    [value => { value.x = -1; }, /finite number/],
+    [value => { value.point = false; }, /expected true/],
+    [value => { delete value.point; value.width = 2; value.height = 2; }, /expected "point"/],
+  ];
+  for (const [change, expected] of cases) {
+    const invalid = clone(map); change(invalid.layers.at(-1).objects[0]); await assert.rejects(compile(invalid), expected);
+  }
+  const duplicate = clone(map); duplicate.layers.at(-1).objects.push({ ...clone(anchor), id: 71, name: "another-fish" });
+  await assert.rejects(compile(duplicate), /duplicate resident-home anchor/);
+});
+
 test("Tiled source compiles physical image scale, top-left objects and local geometry into deterministic world coordinates", async t => {
   const { map, options, compile } = await fixture(t);
   const scene = await compile();
@@ -128,6 +172,39 @@ test("Tiled source compiles physical image scale, top-left objects and local geo
   await writeFile(options.mapPath, JSON.stringify(map));
   assert.deepEqual(await readTiledWorld(options.mapPath, options.publicDir), scene);
   assert.equal(map.layers[0].objects[1].gid, 2, "initial level may differ from the editor preview tile");
+});
+
+test("ConstructionSites export movable decorative lines without changing any gameplay geometry", async t => {
+  const { map, compile } = await fixture(t), before = await compile();
+  const fence = { id: 70, name: "workshop-build", x: 40, y: 70, width: 0, height: 0, rotation: 90,
+    polyline: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }],
+    properties: [...props({ role: "construction-site", siteId: "workshop" }), { name: "materials", type: "bool", value: true }] };
+  map.layers.push({ ...groupLayer(20, "Movable building", [objectLayer(21, "ConstructionSites", [fence])]), offsetx: 3, offsety: 4 });
+  const source = clone(map), scene = await compile();
+  assert.deepEqual(scene.constructionSites, [{ id: "workshop-build", siteId: "workshop", materials: true,
+    points: [{ x: 43, y: 74 }, { x: 43, y: 84 }, { x: 33, y: 84 }] }]);
+  const { constructionSites, ...unchanged } = scene;
+  assert.equal(constructionSites.length, 1); assert.deepEqual(unchanged, before); assert.deepEqual(map, source);
+});
+
+test("ConstructionSites reject unknown hosts, closed shapes, excessive work and duplicate IDs", async t => {
+  const { map, compile } = await fixture(t);
+  const fence = { id: 70, name: "home-build", x: 10, y: 10, width: 0, height: 0,
+    polyline: [{ x: 0, y: 0 }, { x: 15, y: 0 }], properties: props({ role: "construction-site", siteId: "home" }) };
+  map.layers.push(objectLayer(20, "ConstructionSites", [fence])); await compile();
+  const cases = [
+    [value => setProp(value, "siteId", "imaginary"), /unknown construction host/],
+    [value => setProp(value, "role", "nav-obstacle"), /construction-site/],
+    [value => { value.polygon = value.polyline; delete value.polyline; }, /expected "polyline"/],
+    [value => { value.polyline = [{ x: 0, y: 0 }, { x: 0, y: 0 }]; }, /adjacent vertices/],
+    [value => { value.polyline = Array.from({ length: 13 }, (_, i) => ({ x: i, y: i % 2 })); }, /at most 12/],
+    [value => { value.polyline = [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 0, y: 80 }, { x: 80, y: 80 }]; }, /length must not exceed/],
+  ];
+  for (const [change, expected] of cases) {
+    const invalid = clone(map); change(invalid.layers.at(-1).objects[0]); await assert.rejects(compile(invalid), expected);
+  }
+  const duplicate = clone(map); duplicate.layers.at(-1).objects.push({ ...clone(fence), id: 71 });
+  await assert.rejects(compile(duplicate), /duplicate construction site ID/);
 });
 
 test("moving authoring geometry and replacing image bytes changes only the generated data it owns", async t => {
@@ -1424,7 +1501,7 @@ test("committed authoring exports identically and --check refuses stale output w
   const quarry = scene.sites.find(site => site.id === "quarry");
   assert.ok(quarry, "the placed quarry must be exported as a site, not an untyped image");
   assert.equal(quarry.initialLevel, 0);
-  assert.deepEqual(quarry.states.map(state => state.level), [0, 1]);
+  assert.deepEqual(quarry.states.map(state => state.level), [0, 1, 2, 3, 4, 5]);
   const quarryEntry = withRole("entry").find(object => property(object, "siteId") === "quarry" && property(object, "level") === 0)
     ?? withRole("entry").find(object => property(object, "siteId") === "quarry");
   assert.deepEqual(quarry.entry, { x: quarryEntry.x, y: quarryEntry.y });
@@ -1712,8 +1789,10 @@ test("destination validation rejects unknown owners, unsafe placement, duplicate
   targets.push({ ...targets[0], id: 301 });
   await assert.rejects(compile(duplicate), /duplicate destination ID/);
   const overflow = structuredClone(map);
-  overflow.layers.at(-1).objects = Array.from({ length: 17 }, (_, i) => livingPoint(300 + i, `visit-${i}`, 70, 70, { role: "destination" }));
-  await assert.rejects(compile(overflow), /at most 16 destinations/);
+  overflow.layers.at(-1).objects = Array.from({ length: 32 }, (_, i) => livingPoint(300 + i, `visit-${i}`, 70, 70, { role: "destination" }));
+  assert.equal((await compile(overflow)).destinations.length, 32, "the complete bounded destination set must survive export");
+  overflow.layers.at(-1).objects.push(livingPoint(332, "visit-32", 70, 70, { role: "destination" }));
+  await assert.rejects(compile(overflow), /at most 32 destinations/);
   const noAreas = structuredClone(map);
   noAreas.layers = noAreas.layers.filter(l => l.name !== "WalkAreas" && l.name !== "PointsOfInterest");
   await assert.rejects(compile(noAreas), /destinations require WalkAreas/);
@@ -1968,4 +2047,60 @@ test("Lights accepts an optional bounded bulb height without changing legacy lig
   }
   delete lamp.properties;
   assert.deepEqual((await compile()).lights[0], legacy);
+});
+
+test("Lights preserves implicit enabled and positioning defaults and validates authored boolean overrides", async t => {
+  const { map, compile } = await fixture(t);
+  const lamp = { id: 300, name: "editable-lamp", x: 30, y: 30, point: true };
+  map.layers.push(objectLayer(30, "Lights", [lamp]));
+  const legacy = (await compile()).lights[0];
+  assert.equal(Object.hasOwn(legacy, "enabled"), false);
+  assert.equal(Object.hasOwn(legacy, "manualPosition"), false);
+  for (const enabled of [true, false]) for (const manualPosition of [true, false]) {
+    lamp.properties = [
+      { name: "enabled", type: "bool", value: enabled },
+      { name: "manualPosition", type: "bool", value: manualPosition },
+    ];
+    assert.deepEqual((await compile()).lights[0], { ...legacy, enabled, manualPosition });
+  }
+  for (const name of ["enabled", "manualPosition"]) for (const [type, value, pattern] of [
+    ["string", "false", /type: expected "bool"/], ["int", 0, /type: expected "bool"/],
+    ["bool", 1, /expected a boolean/], ["bool", "true", /expected a boolean/],
+  ]) {
+    lamp.properties = [{ name, type, value }];
+    await assert.rejects(compile(), pattern);
+  }
+  delete lamp.properties;
+  assert.deepEqual((await compile()).lights[0], legacy, "legacy world export stays byte-compatible when flags are absent");
+});
+
+test("receiver exclusions use object-local polygon coordinates and follow nested offsets and rotation", async t => {
+  const { map, compile } = await fixture(t);
+  const local = [[{ x: 3, y: 4 }, { x: 7, y: 4 }, { x: 7, y: 8 }, { x: 3, y: 8 }]];
+  const receiver = { ...shadowPolygon(300, "ground-with-house", { shadowHoles: JSON.stringify(local) }), rotation: 90 };
+  map.layers.push({ ...groupLayer(30, "Authoring", [
+    { ...groupLayer(31, "Lighting", [groupLayer(32, "ShadowReceivers", [objectLayer(33, "Clearing", [receiver])])]), offsetx: 2, offsety: 3 },
+  ]), offsetx: 5, offsety: 10 });
+  const result = await compile();
+  assert.deepEqual(result.shadowReceivers[0].holes, [[{ x: 33, y: 46 }, { x: 33, y: 50 }, { x: 29, y: 50 }, { x: 29, y: 46 }]]);
+  assert.deepEqual(result.shadowReceivers[0].points, [{ x: 37, y: 43 }, { x: 37, y: 58 }, { x: 22, y: 58 }, { x: 22, y: 43 }]);
+  receiver.properties = shadowProperties({ shadowHoles: "[]" });
+  assert.equal(Object.hasOwn((await compile()).shadowReceivers[0], "holes"), false);
+});
+
+test("receiver exclusion authoring rejects invalid JSON, formats, bounds and topology", async t => {
+  const { map, compile } = await fixture(t), receiver = shadowPolygon(300, "ground-with-house", {});
+  map.layers.push(objectLayer(30, "ShadowReceivers", [receiver]));
+  const square = (x, y, size) => [{ x, y }, { x: x + size, y }, { x: x + size, y: y + size }, { x, y: y + size }];
+  const cases = ["{", "null", "{}", JSON.stringify([[]]), JSON.stringify([square(0, 3, 4)]),
+    JSON.stringify([square(14, 3, 4)]), JSON.stringify([square(2, 2, 8), square(3, 3, 2)]),
+    JSON.stringify([square(2, 2, 6), square(8, 2, 3)]), JSON.stringify(Array.from({ length: 17 }, () => square(2, 2, 3))),
+    JSON.stringify([square(2, 2, 3).map(point => ({ ...point, z: 1 }))]),
+    JSON.stringify([[{ x: 1, y: 1 }, { x: 12, y: 10 }, { x: 1, y: 10 }, { x: 10, y: 1 }]])];
+  for (const value of cases) {
+    receiver.properties = shadowProperties({ shadowHoles: value });
+    await assert.rejects(compile(), /ground-with-house.*shadowHoles/);
+  }
+  receiver.properties = [{ name: "shadowHoles", type: "bool", value: true }];
+  await assert.rejects(compile(), /expected "string"/);
 });

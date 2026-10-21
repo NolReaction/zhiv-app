@@ -1,5 +1,6 @@
 import { mossPalette } from "./appearance-palette";
 import { drawMiningPickaxe } from "./mining-pickaxe";
+import { drawPremiumHead, drawPremiumNeck, drawPremiumTorso } from "./premium-wearables";
 
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
@@ -95,6 +96,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(24, 32 + bob, 13, 11, c.outline); oval(24, 31 + bob, 12, 11, c.shade);
     oval(direction === "back" ? 24 : side > 0 ? 21 : 28, 29 + bob, 10, 9, c.moss);
     if (direction !== "back") oval(side > 0 ? 26 : side < 0 ? 20 : 22, 32 + bob, 9, 9, c.cream);
+    drawPremiumTorso(appearance?.palette, direction, bob, { rect, oval });
     leanOffset = 0;
     for (const [x, offset] of [[17, step], [31, -step]]) {
       oval(x, 42 + offset, 5, 2, c.outline); oval(x, 41 + offset, 4, 2, c.shade);
@@ -107,6 +109,8 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(8, faceY + 2 + earOffset, 4, 6, c.moss); rect(5, faceY + 2 + earOffset, 2, 4, c.mossLight);
     oval(37, faceY - 3 - earOffset, 7, 10, c.shade); oval(37, faceY - 4 - earOffset, 6, 9, c.cream);
     oval(38, faceY - 2 - earOffset, 4, 6, c.moss); rect(39, faceY - 3 - earOffset, 2, 4, c.mossLight);
+    // Opaque lining seals the gap above the head without painting over the face.
+    if (appearance?.head === "rain_hood" && direction !== "back") rect(13, 7 + headOffset, 23, 7, "#3c5668");
     oval(24, faceY, 13, 12, c.shade); oval(24, faceY - 1, 12, 11, direction === "back" ? c.moss : c.cream);
     if (direction === "back") {
       rect(20, faceY - 8, 6, 3, c.mossLight); rect(17, faceY - 3, 3, 3, c.mossLight);
@@ -117,15 +121,15 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       const look = direction === "left" ? rig?.fishingStance ? -2 : -3 : direction === "right" ? rig?.fishingStance ? 2 : 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
       for (const x of [19 + look, 29 + look]) {
         if (["blink", "groom", "yawn", "sneeze", "shake"].includes(pose) || (pose === "chew" && frame % 2 === 1 || pose === "swallow")) rect(x - 1, faceY, 3, 1, c.eye);
-        else if (rig?.fishingStance) {
-          // A compact rounded glyph retains two-pixel caps. Rasterizing a
-          // narrow ellipse creates isolated tips which read as a cross at zoom.
+        else {
+          // Use the same compact glyph for both eyes in every rig. A narrow
+          // ellipse leaves single-pixel tips which resample unevenly at camera zoom.
           const top = pose === "wonder" ? faceY - 3 : faceY - 2;
           const height = pose === "wonder" ? 6 : 5;
           rect(x - 1, top + 1, 3, height - 2, c.eye);
           rect(x - 1, top, 2, 1, c.eye); rect(x - 1, top + height - 1, 2, 1, c.eye);
           rect(x - 1, top + 1, 1, 1, "#fff8e8");
-        } else { oval(x, faceY, 2, pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
+        }
       }
       rect(23 + look, faceY + 3, 3, 2, c.outline); rect(24 + look, faceY + 5, 1, 2, c.outline);
       if (pose === "yawn") {
@@ -165,24 +169,83 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   }
   // Wearables share the rig's pose anchors and depth rules in every direction.
   if (appearance && pose !== "sleep" && pose !== "drowsy") {
-    if (appearance.neck) {
+    if (appearance.neck && !drawPremiumNeck(appearance.neck, direction, 31 + bob + Math.round((headOffset - bob) / 3), walking ? frame % 2 : 0, { rect, oval })) {
       const scarf = appearance.neck === "berry_scarf" ? "#b96374" : appearance.neck === "river_scarf" ? "#6299b1"
-        : appearance.neck === "forest_bandana" ? "#77905f" : appearance.neck === "moon_scarf" ? "#b7afd7" : "#e2a44d";
+        : appearance.neck === "forest_bandana" ? "#77905f" : appearance.neck === "moon_scarf" ? "#b7afd7"
+          : appearance.neck === "sea_neckerchief" ? "#4d91a4" : appearance.neck === "sunset_scarf" ? "#cd7652" : "#e2a44d";
       const neckY = 31 + bob + Math.round((headOffset - bob) / 3);
       const knotX = direction === "left" ? 18 : 28;
       rect(14, neckY, 21, 3, "#65492f"); rect(15, neckY, 19, 2, scarf);
-      if (appearance.neck === "forest_bandana") {
+      if (appearance.neck === "sea_neckerchief") {
+        // The sailor's white piping and short double knot remain readable at map zoom.
+        rect(15, neckY, 19, 1, "#dce6d0");
+        if (direction === "back") { rect(20, neckY + 2, 9, 2, scarf); rect(22, neckY + 4, 5, 2, "#dce6d0"); }
+        else { rect(knotX - 2, neckY + 2, 3, 4, scarf); rect(knotX + 2, neckY + 2, 3, 5, scarf); rect(knotX, neckY + 1, 2, 2, "#e7d3a0"); }
+      } else if (appearance.neck === "forest_bandana") {
         if (direction === "back") { rect(28, neckY + 2, 4, 2, "#aaba80"); rect(30, neckY + 3, 2, 2, scarf); }
         else { rect(19, neckY + 2, 11, 2, scarf); rect(21, neckY + 4, 7, 2, scarf); rect(23, neckY + 6, 3, 1, "#aaba80"); }
       } else if (direction !== "back") {
         rect(knotX, neckY + 2, 4, 6 + (walking ? frame % 2 : 0), scarf);
         if (appearance.neck === "river_scarf") rect(knotX, neckY + 5, 4, 1, "#c1e0dd");
         if (appearance.neck === "moon_scarf") { rect(knotX + 1, neckY + 4, 2, 2, "#f2e5ba"); rect(17, neckY, 4, 1, "#ddd4ee"); }
+        if (appearance.neck === "sunset_scarf") { rect(16, neckY, 17, 1, "#efba79"); rect(knotX, neckY + 4, 4, 1, "#efba79"); rect(knotX, neckY + 6, 1, 2, "#894e47"); rect(knotX + 3, neckY + 6, 1, 2, "#894e47"); }
       }
     }
-    if (appearance.head) {
+    if (appearance.head && !drawPremiumHead(appearance.head, direction, headOffset, { rect, oval })) {
       const hatY = headOffset;
-      if (appearance.head === "acorn_cap") {
+      if (appearance.head === "trail_hat") {
+        // A low weathered crown and broad brim, distinct from the collection hat.
+        rect(12, 8 + hatY, 26, 3, "#69583c"); rect(13, 8 + hatY, 24, 2, "#c8b17c");
+        rect(17, 3 + hatY, 16, 5, "#a98a56"); rect(20, 1 + hatY, 10, 3, "#c8b17c");
+        rect(17, 6 + hatY, 16, 2, "#69583c");
+        if (direction !== "back") { rect(direction === "left" ? 17 : 29, 6 + hatY, 3, 2, "#d7c584"); }
+      } else if (appearance.head === "rain_hood") {
+        const hood = "#55788b", fold = "#3c5668", edge = "#90a9ad", light = "#7294a0";
+        if (direction === "back") {
+          // A rounded, gathered hood drapes onto the shoulders rather than ending
+          // as a straight helmet. Its seam bends with the fabric's soft folds.
+          oval(24, 15 + hatY, 14, 14, fold); oval(24, 14 + hatY, 13, 13, hood);
+          oval(21, 9 + hatY, 7, 6, light); oval(23, 11 + hatY, 8, 6, hood);
+          rect(26, 4 + hatY, 1, 7, edge); rect(27, 11 + hatY, 1, 7, light);
+          rect(26, 18 + hatY, 1, 6, edge); rect(25, 24 + hatY, 1, 3, fold);
+          rect(12, 20 + hatY, 2, 4, fold); rect(14, 24 + hatY, 3, 3, fold);
+          rect(34, 16 + hatY, 2, 6, fold); rect(32, 22 + hatY, 3, 3, fold);
+          rect(17, 27 + hatY, 14, 2, fold); rect(19, 28 + hatY, 10, 2, hood);
+          rect(19, 27 + hatY, 5, 1, edge);
+        } else {
+          // Rasterize the open arch directly: no face repaint/readback, and the
+          // opening stays outside both eye glyphs even in a turning fishing rig.
+          const openingX = direction === "left" ? 23 : direction === "right" ? 25 : 24;
+          for (let row = 1; row <= 26; row++) {
+            const outer = Math.floor(14 * Math.sqrt(Math.max(0, 1 - ((row - 15) / 14) ** 2)));
+            const inner = row < 7 ? -1 : Math.floor(12 * Math.sqrt(Math.max(0, 1 - ((row - 20) / 14) ** 2)));
+            const left = 24 - outer, right = 24 + outer;
+            if (inner < 0) {
+              rect(left, row + hatY, outer * 2 + 1, 1, fold);
+              if (outer > 1) rect(left + 1, row + hatY, outer * 2 - 1, 1, row < 5 ? light : hood);
+            } else {
+              const leftWidth = Math.max(0, Math.min(right + 1, openingX - inner) - left);
+              const rightX = Math.max(left, openingX + inner + 1), rightWidth = right - rightX + 1;
+              if (leftWidth > 0) {
+                rect(left, row + hatY, leftWidth, 1, fold);
+                if (leftWidth > 1) rect(left + 1, row + hatY, leftWidth - 1, 1, hood);
+                rect(left + leftWidth - 1, row + hatY, 1, 1, edge);
+              }
+              if (rightWidth > 0) {
+                rect(rightX, row + hatY, rightWidth, 1, fold);
+                if (rightWidth > 2) rect(rightX + 1, row + hatY, rightWidth - 2, 1, hood);
+                rect(rightX, row + hatY, 1, 1, light);
+              }
+            }
+          }
+          rect(18, 5 + hatY, 7, 1, edge); rect(27, 5 + hatY, 4, 1, light);
+          rect(12, 25 + hatY, 4, 3, fold); rect(13, 26 + hatY, 5, 3, hood);
+          rect(33, 24 + hatY, 4, 3, fold); rect(31, 26 + hatY, 5, 3, hood);
+          rect(16, 28 + hatY, 4, 2, edge); rect(29, 28 + hatY, 5, 2, light);
+          rect(19, 30 + hatY, 1, 4, "#d1c79a"); rect(28, 30 + hatY, 1, 3, "#d1c79a");
+          rect(18, 33 + hatY, 2, 1, fold); rect(28, 32 + hatY, 2, 1, fold);
+        }
+      } else if (appearance.head === "acorn_cap") {
         // Low rounded acorn cup; the stem follows the crown while bending.
         rect(14, 7 + hatY, 22, 3, "#654b36"); rect(16, 4 + hatY, 18, 4, "#996743");
         rect(20, 2 + hatY, 10, 3, "#bb8652"); rect(24, Math.max(0, hatY), 3, 3, "#654b36");

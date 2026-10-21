@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { ChevronDown, FlaskConical, RotateCcw, X } from "lucide-react";
+import { ChevronDown, FlaskConical, RotateCcw, Sun, X } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { PleskAction } from "@/features/world/characters/plesk/plesk-resident";
 import type { BuilderAction } from "@/features/world/characters/builder/builder-types";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
+import type { GuestWorldTarget } from "@/features/people/guest-world-model";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { worldCatalog } from "@/features/world/domain/model";
 import { TILED_WORLD } from "@/features/world/scene/presentation";
 import { clearingRouteDiagnostics } from "@/features/world/simulation/clearing-activity";
@@ -15,13 +17,22 @@ import { interactiveMapObjects, type MapObjectPlace } from "@/features/world/sce
 import type { WorldController } from "@/features/world/state/use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { WorldDevLighting } from "./world-dev-lighting";
+import { activateWorldLightingStudio, WorldLightingStudio } from "./world-lighting-studio";
+import { claimWorldLightingStudio, hasWorldLightingStudioOwner, releaseWorldLightingStudio } from "./world-lighting-studio-session";
 import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "./world-lighting-editor-store";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
+import { WorldDevBots } from "./world-dev-bots";
 import { WorldDevFishing } from "./world-dev-fishing";
 import { AudioDiagnosticsPanel } from "@/features/audio/dev/audio-diagnostics";
 import { WorldDevBuilderPoints } from "./world-dev-builder-points";
+import { WorldDevScene, type WorldDevSceneChoice } from "./world-dev-scene";
+import { WorldDevAnimationStand } from "./world-dev-animation-stand";
+import { WorldDevResidentDiagnostics } from "./world-dev-resident-diagnostics";
+import { WORLD_DEV_SCENES } from "./forest-scene-preview";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
+import { useLeaftailArrival } from "@/features/world/state/use-leaftail-arrival";
+import { accountSceneLevels } from "@/features/world/state/economy/economy-scene-state";
 import type { ForestGardenObservation, ForestObservation } from "@/features/world/state/forest-observer";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
@@ -31,8 +42,10 @@ export type WorldDevPanelProps = {
   economy?: EconomyController;
   active?: boolean;
   initiallyOpen?: boolean;
+  initialLightingStudio?: boolean;
   worldView?: boolean;
   presenceKey?: string;
+  merchantArrived?: boolean;
   onOpenWorld?: () => void;
   onOpenCalendar?: () => void;
   onOpenGame?: () => void;
@@ -40,8 +53,11 @@ export type WorldDevPanelProps = {
   onOpenWardrobe?: () => void;
   onOpenCollection?: () => void;
   onOpenObject?: (place: MapObjectPlace) => void;
+  onVisitBot?: (target: GuestWorldTarget) => void;
+  onBotsChanged?: () => void;
 };
 type ManualAction = { kind: "scenario"; scenario: WorldDevScenario } | { kind: "pose"; pose: PixelPose }
+  | ({ kind: "rehearsal" } & WorldDevSceneChoice)
   | { kind: "builder"; action: BuilderAction; repeat?: boolean }
   | { kind: "cooking"; action: WorldDevCookingPreview["action"]; repeat?: boolean }
   | { kind: "resident"; action: "routine" | PleskAction; repeat?: boolean } | { kind: "birds" } | { kind: "life"; action: WorldDevLifeAction };
@@ -143,15 +159,15 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
   </details>;
 }
 
-const DEV_TABS = [["cheats", "Читы"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
+const DEV_TABS = [["cheats", "Читы"], ["bots", "Боты"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
 const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"], ["builder", "Шишколап"]] as const;
-const SCENE_TABS = [["scenarios", "Сценарии"], ["world", "Погода"], ["lighting", "Свет"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
+const SCENE_TABS = [["actors", "Жители"], ["scenarios", "Сценарии"], ["world", "Погода"], ["lighting", "Свет"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
 const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["fishing", "Рыбалка"], ["audio", "Звук"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
 type SceneTab = typeof SCENE_TABS[number][0];
 type DebugTab = typeof DEBUG_TABS[number][0];
-type DevPage = "cheats" | MochlikTab | SceneTab | DebugTab;
+type DevPage = "cheats" | "bots" | MochlikTab | SceneTab | DebugTab;
 
 /** Automatic activation: arrow keys move within this tablist; Tab enters its panel. */
 export function WorldDevTabs<T extends string>({ id, label, tabs, selected, onSelect, secondary = false }: {
@@ -181,13 +197,19 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
+  const lighting = useSyncExternalStore(worldLightingEditorStore.subscribe, worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
-  const [open, setOpen] = useState(initiallyOpen);
+  const [open, setOpen] = useState(initiallyOpen && !initialLightingStudio);
+  const merchant = useLeaftailArrival(economy?.snapshot?.ownerPublicId ?? world.snapshot?.ownerPublicId ?? "guest", {
+    unlocked: (economy?.snapshot?.buildings.home ?? 0) >= 3, enabled: false,
+    onboarding: { loaded: false, isPaused: false, progress: null },
+  });
+  const merchantSeen = merchantArrived ?? merchant.seen;
   const [tab, setTab] = useState<DevTab>("cheats");
   const [mochlikTab, setMochlikTab] = useState<MochlikTab>("scenes");
-  const [sceneTab, setSceneTab] = useState<SceneTab>("scenarios");
+  const [sceneTab, setSceneTab] = useState<SceneTab>("actors");
   const [debugTab, setDebugTab] = useState<DebugTab>("overlays");
   const [selectedPose, setSelectedPose] = useState<PixelPose>("greet");
   const scrollPositions = useRef<Partial<Record<DevPage, number>>>({});
@@ -198,8 +220,39 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     && ["water-bush", "harvest-berries", "grow-berries"].includes(lastAction.action)) ? presenceKey : undefined);
   const trigger = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const lightingTrigger = useRef<HTMLButtonElement>(null);
+  const startedLighting = useRef(false);
+  const lightingOwner = useRef<object>({});
+  const wantsLighting = useRef(false);
   const id = useId();
   const titleId = `${id}-title`, drawerId = `${id}-drawer`;
+
+  useEffect(() => {
+    if (!active || !initialLightingStudio || startedLighting.current) return;
+    startedLighting.current = true;
+    wantsLighting.current = true;
+    claimWorldLightingStudio(lightingOwner.current);
+    activateWorldLightingStudio(worldView, onOpenWorld);
+  }, [active, initialLightingStudio, worldView, onOpenWorld]);
+
+  useEffect(() => {
+    if (active && lighting.enabled && worldLightingEditorStore.getSnapshot().enabled && !hasWorldLightingStudioOwner()) {
+      wantsLighting.current = true;
+      claimWorldLightingStudio(lightingOwner.current);
+    }
+  }, [active, lighting.enabled]);
+
+  useEffect(() => {
+    const owner = lightingOwner.current;
+    const release = () => {
+      if (releaseWorldLightingStudio(owner)) { worldLightingEditorStore.commitGesture(); worldLightingEditorStore.setEnabled(false); }
+    };
+    if (!active) { wantsLighting.current = false; release(); }
+    else if (wantsLighting.current) { claimWorldLightingStudio(owner); worldLightingEditorStore.setEnabled(true); }
+    return () => {
+      release();
+    };
+  }, [active, worldView]);
 
   useEffect(() => {
     if (!active || !open) return;
@@ -236,10 +289,11 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
   const birdsUnavailable = motionUnavailable ?? (state.birds === "off" ? "Птицы выключены. Выберите «Авто» или «Включить»." : null);
   function unavailable(action: ManualAction) {
     if (action.kind === "scenario") return null;
+    if (action.kind === "rehearsal") return motionUnavailable;
     if (action.kind === "resident" || action.kind === "builder") return motionUnavailable;
     if (action.kind === "birds") return birdsUnavailable;
     if (action.kind === "cooking") return heroUnavailable ?? (economy?.snapshot?.jobs.some(job =>
-      job.kind === "exploration" && economy.now < Date.parse(job.finishesAt) || job.collection?.startedAt)
+      job.kind === "exploration" && !isMinerJob(job) && economy.now < Date.parse(job.finishesAt) || job.collection?.startedAt)
       ? "Мохлик занят поручением. Дождитесь его возвращения и доставки припасов." : null);
     if (action.kind === "pose") return heroUnavailable;
     if (action.action === "idle") return null;
@@ -256,7 +310,8 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     return null;
   }
   const repeatUnavailable = lastAction ? unavailable(lastAction) : null;
-  const repeatLabel = lastAction?.kind === "scenario" ? WORLD_DEV_SCENARIOS.find(item => item.id === lastAction.scenario)!.label : lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
+  const repeatLabel = lastAction?.kind === "rehearsal" ? WORLD_DEV_SCENES.find(item => item.id === lastAction.scenario)!.label
+    : lastAction?.kind === "scenario" ? WORLD_DEV_SCENARIOS.find(item => item.id === lastAction.scenario)!.label : lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
     : lastAction?.kind === "cooking" ? COOKING_LABELS[lastAction.action]
     : lastAction?.kind === "resident" ? `Плёска: ${RESIDENT_LABELS[lastAction.action]}`
     : lastAction?.kind === "builder" ? `Шишколап: ${BUILDER_LABELS[lastAction.action]}`
@@ -266,13 +321,25 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     worldDevStore.patch(patch); setFeedback(message);
   }
   function close() { setOpen(false); trigger.current?.focus({ preventScroll: true }); }
+  function openLighting() {
+    setOpen(false); wantsLighting.current = true; claimWorldLightingStudio(lightingOwner.current);
+    activateWorldLightingStudio(worldView, onOpenWorld);
+  }
+  function closeLighting() {
+    wantsLighting.current = false;
+    if (releaseWorldLightingStudio(lightingOwner.current)) { worldLightingEditorStore.commitGesture(); worldLightingEditorStore.setEnabled(false); }
+    lightingTrigger.current?.focus({ preventScroll: true });
+  }
   function shortcut(callback: () => void) { setOpen(false); callback(); }
   function outfit(slot: "palette" | "head" | "neck", value: string) {
     change({ equipment: { palette: appearance.palette, head: appearance.head, neck: appearance.neck, [slot]: value || null } }, "Примерка включена. Инвентарь сохранён");
   }
   function play(action: ManualAction) {
     if (unavailable(action)) return;
-    if (action.kind === "scenario") {
+    if (action.kind === "rehearsal") {
+      worldDevStore.triggerScene(action.scenario, action.actor, action.target, action.seed);
+      setFeedback("Репетиция запущена на копии мира. Результат показан во вкладке «Сцена → Жители».");
+    } else if (action.kind === "scenario") {
       worldDevStore.triggerScenario(action.scenario);
       setFeedback(`${WORLD_DEV_SCENARIOS.find(item => item.id === action.scenario)!.label}: условия применены. Память аккаунта отключена для тестовой сессии.`);
     } else if (action.kind === "resident") {
@@ -303,20 +370,25 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     <div className={styles.toolbar}>
       {lastAction && <button type="button" className={styles.repeat} disabled={Boolean(repeatUnavailable)}
         aria-label={`Повторить: ${repeatLabel}`} title={repeatUnavailable ?? repeatLabel} onClick={() => play(lastAction)}><RotateCcw size={15} aria-hidden />Повторить</button>}
+      <button ref={lightingTrigger} type="button" className={styles.lightingTrigger} aria-pressed={lighting.enabled}
+        aria-label="Студия" onClick={() => lighting.enabled ? closeLighting() : openLighting()}><Sun size={16} aria-hidden /><strong>Студия</strong></button>
       <button ref={trigger} type="button" className={styles.trigger} aria-expanded={open} aria-controls={drawerId}
-        aria-label={`Панель разработчика${overrides ? `, изменений: ${overrides}` : ""}`} onClick={() => setOpen(value => !value)}>
+        aria-label={`Панель разработчика${overrides ? `, изменений: ${overrides}` : ""}`} onClick={() => { closeLighting(); setOpen(value => !value); }}>
         <FlaskConical size={16} aria-hidden /><strong>DEV</strong>{overrides > 0 && <span className={styles.count}>{overrides}</span>}
       </button>
     </div>
+    {lighting.enabled && <WorldLightingStudio state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} onClose={closeLighting}
+      levels={accountSceneLevels(TILED_WORLD, world.snapshot?.state.houseLevel, state, economy?.snapshot?.buildings,
+        { merchantArrived: merchantSeen })} />}
     {!open && lastAction && <p className={styles.closedFeedback} role="status">{repeatUnavailable ?? feedback}</p>}
     {open && <section id={drawerId} className={styles.drawer} aria-labelledby={titleId}>
       <header className={styles.header}>
-        <div><h2 id={titleId}>Мастерская DEV</h2><p>{tab === "cheats" ? "Тестовый профиль · изменения сохраняются" : tab === "debug" ? "Диагностика мира и приложения" : "Предпросмотр · без выдачи наград"}</p></div>
+        <div><h2 id={titleId}>Мастерская DEV</h2><p>{tab === "cheats" ? "Тестовый профиль · изменения сохраняются" : tab === "bots" ? "Тестовые друзья · отдельные профили" : tab === "debug" ? "Диагностика мира и приложения" : "Предпросмотр · без выдачи наград"}</p></div>
         <button type="button" className={styles.headerButton} onClick={() => { worldDevStore.reset(); setLastAction(null); setFeedback("Все настройки вида сброшены"); }}
           title="Вернуть настройки вида. Память Мохлика и ресурсы сохранятся."><RotateCcw size={15} aria-hidden />Сброс вида</button>
         <button ref={closeButton} type="button" className={styles.headerButton} onClick={close} aria-label="Закрыть панель разработчика"><X size={16} aria-hidden />Закрыть</button>
       </header>
-      {tab !== "cheats" && <div className={styles.globalControls}>
+      {tab !== "cheats" && tab !== "bots" && <div className={styles.globalControls}>
         <button type="button" data-paused={state.paused} aria-label={state.paused ? "Продолжить сцену" : "Пауза сцены"} onClick={() => change({ paused: !state.paused }, state.paused ? "Сцена продолжена" : "Сцена на паузе")}>
           {state.paused ? "Продолжить" : "Пауза"}
         </button>
@@ -332,18 +404,19 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
           {tab === "scene" && <WorldDevTabs id={`${id}-scene`} label="Сцена и окружение" tabs={SCENE_TABS} selected={sceneTab} onSelect={setSceneTab} secondary />}
           {tab === "debug" && <WorldDevTabs id={`${id}-debug`} label="Инструменты отладки" tabs={DEBUG_TABS} selected={debugTab} onSelect={setDebugTab} secondary />}
           {(tab === "mochlik" ? MOCHLIK_TABS : tab === "debug" ? DEBUG_TABS : tab === "scene" ? SCENE_TABS : [[page, ""]] as const).map(([subpage]) => <div key={subpage}
-            role={tab !== "cheats" ? "tabpanel" : "region"}
-            id={tab !== "cheats" ? `${id}-${tab}-panel-${subpage}` : undefined}
-            aria-labelledby={tab !== "cheats" ? `${id}-${tab}-tab-${subpage}` : `${id}-tab-${tab}`}
+            role={tab !== "cheats" && tab !== "bots" ? "tabpanel" : "region"}
+            id={tab !== "cheats" && tab !== "bots" ? `${id}-${tab}-panel-${subpage}` : undefined}
+            aria-labelledby={tab !== "cheats" && tab !== "bots" ? `${id}-${tab}-tab-${subpage}` : `${id}-tab-${tab}`}
             hidden={page !== subpage} className={styles.body} tabIndex={page === subpage ? 0 : -1}
             ref={node => { if (node && page === subpage) node.scrollTop = scrollPositions.current[subpage] ?? 0; }}
             onScroll={event => { scrollPositions.current[subpage] = event.currentTarget.scrollTop; }}>
-            {page === subpage && <WorldDevPanelContent world={world} economy={economy} worldView={worldView} presenceKey={presenceKey}
+            {page === subpage && <WorldDevPanelContent world={world} economy={economy} worldView={worldView} presenceKey={presenceKey} merchantArrived={merchantSeen}
               onOpenWorld={onOpenWorld} onOpenCalendar={onOpenCalendar} onOpenGame={onOpenGame} onOpenStatus={onOpenStatus} onOpenWardrobe={onOpenWardrobe} onOpenCollection={onOpenCollection}
               onOpenObject={onOpenObject}
+              onVisitBot={onVisitBot ? target => shortcut(() => onVisitBot(target)) : undefined} onBotsChanged={onBotsChanged} onOpenCheats={() => setTab("cheats")}
               state={state} observation={observation} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
               heroUnavailable={heroUnavailable} birdsUnavailable={birdsUnavailable} unavailable={unavailable}
-              change={change} play={play} outfit={outfit} shortcut={shortcut} onFeedback={setFeedback} prefersReducedMotion={prefersReducedMotion} />}
+              change={change} play={play} outfit={outfit} shortcut={shortcut} onFeedback={setFeedback} prefersReducedMotion={prefersReducedMotion} onOpenLighting={openLighting} />}
           </div>)}
         </>}
       </div>)}
@@ -356,14 +429,16 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
 }
 
 /** Stateless controls: navigation never patches the world or launches a scene. */
-export function WorldDevPanelContent({ world, economy, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject,
-  state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion,
+export function WorldDevPanelContent({ world, economy, worldView, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged, onOpenCheats,
+  state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion, onOpenLighting,
 }: WorldDevPanelProps & {
   state: WorldDevState; observation?: ForestObservation | null; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
   heroUnavailable: string | null; birdsUnavailable: string | null; unavailable: (action: ManualAction) => string | null;
   change: (patch: Partial<WorldDevState>, message?: string) => void; play: (action: ManualAction) => void;
   outfit: (slot: "palette" | "head" | "neck", value: string) => void; shortcut: (callback: () => void) => void;
   onFeedback: (message: string) => void; prefersReducedMotion: boolean;
+  onOpenLighting?: () => void;
+  onOpenCheats?: () => void;
 }) {
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
   const previewScene = page === "routes" ? previewWorldScene(TILED_WORLD, state.levels) : null;
@@ -377,7 +452,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
   return <div className={styles.pageContent}>
     {page === "lighting" && <>
       <h3 className={styles.pageTitle}>Свет и тени</h3>
-      <WorldDevLighting state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} onNightCampfire={() => {
+      <WorldDevLighting state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} onOpenStudio={onOpenLighting} onNightCampfire={() => {
         change({ lightShadows: true, lightTestLamp: false });
         play({ kind: "scenario", scenario: "campfire" });
       }} />
@@ -392,6 +467,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       <WorldDevCheats world={world} economy={economy} previewBuildings={state.previewBuildings}
         onShowAccountBuildings={() => change({ previewBuildings: false }, "Карта показывает настоящие уровни хозяйства")} />
     </>}
+    {page === "bots" && <WorldDevBots world={world} economy={economy} onVisitBot={onVisitBot} onBotsChanged={onBotsChanged} onOpenCheats={onOpenCheats} />}
     {page === "scenarios" && <>
       <h3 className={styles.pageTitle}>Готовые сценарии</h3>
       <p className={styles.hint}>Один запуск задаёт погоду, время и нужное занятие, снимает паузу. Положение Мохлика, выбранный дом и масштаб сохраняются.</p>
@@ -401,6 +477,13 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       </button>)}</div>
       <button type="button" onClick={() => play({ kind: "life", action: "idle" })}>Остановить тестовую рыбалку Мохлика</button>
       <p className={styles.hint}>Уменьшенное движение сохраняется: для анимаций проверьте эту настройку в разделе «Мир». Сценарии отключают сохранение тестовой сессии; после проверки перезагрузите страницу для обычной игры.</p>
+    </>}
+    {page === "actors" && <>
+      <h3 className={styles.pageTitle}>Репетиции жителей</h3>
+      <WorldDevScene state={state} prefersReducedMotion={prefersReducedMotion}
+        onStart={choice => play({ kind: "rehearsal", ...choice })} onStop={() => worldDevStore.stopScene()} />
+      <WorldDevResidentDiagnostics />
+      <WorldDevAnimationStand />
     </>}
     {page === "plesk" && <>
       <h3 className={styles.pageTitle}>Плёска · рыбачка и торговка</h3>
@@ -470,7 +553,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       </div>
       <p className={styles.hint}>Кнопки проигрывают действие один раз. Завершение работы здесь показано только жестом: стройка и ресурсы не меняются.</p>
       <WorldDevBuilderPoints source={TILED_WORLD} preview={state} houseLevel={world.snapshot?.state.houseLevel}
-        economy={economy?.snapshot} now={economy?.now ?? world.now} />
+        economy={economy?.snapshot} now={economy?.now ?? world.now} merchantArrived={merchantArrived} />
     </>}
     {page === "scenes" && <>
       <h3 className={styles.pageTitle}>Лесные сценки</h3>

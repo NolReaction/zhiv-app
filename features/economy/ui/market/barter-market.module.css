@@ -36,3 +36,5 @@
 .success { display: flex; align-items: center; gap: 7px; background: #dce2bc; }
 .market button:disabled { opacity: .6; cursor: default; }
 @media (max-width: 360px) { .pair { gap: 5px; }.pair > span { gap: 5px; }.pair > span > svg { flex-basis: 27px; width: 27px; }.offer, .create { padding: 11px; }.pair strong { font-size: .72rem; } }
+
+.shelfCard { display: grid; gap: 10px; min-width: 0; padding: 11px; border: 1px solid #c2c79f; border-radius: 12px; background: #e7e8ca; }

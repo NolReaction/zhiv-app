@@ -12,8 +12,21 @@ class EconomyWardrobeTest {
     private fun command(target: String, price: Long, quantity: Long = 1) = EconomyCommand(
         UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0, "buy_wardrobe_item", target, quantity, price)
 
+    @Test fun `special costumes cannot be bought through either wallet or merchant stock`() {
+        val initial = EconomyRules.initial().copy(wallet = EconomyWallet(20_000, 2_000))
+        for (item in WorldRules.catalog.items.filter { it.premium }) {
+            for (target in listOf(item.id, "coins:${item.id}", "pearls:${item.id}"))
+                assertEquals("ECONOMY_WARDROBE_ITEM", assertFailsWith<AuthFailure> { EconomyRules.apply(initial, command(target, 0), now) }.code)
+            val offer = checkNotNull(EconomyRules.catalog.leaftailShop).travelOffers.first { it.kind == "wardrobe" }
+                .copy(itemId = item.id)
+            assertFalse(EconomyLeaftailShops.validOffer(EconomyRules.catalog, offer))
+            assertFalse(item.id in initial.wardrobe)
+        }
+        assertEquals(EconomyWallet(20_000, 2_000), initial.wallet)
+    }
+
     @Test fun `every sellable cosmetic spends its declared currency once without affecting gameplay or storage`() {
-        val initial = EconomyRules.initial().copy(wallet = EconomyWallet(20_000, 2_000), inventory = mapOf("wood" to 1000L))
+        val initial = EconomyRules.initial().copy(wallet = EconomyWallet(20_000, 2_000), inventory = mapOf("wood" to 50L))
         for (item in WorldRules.catalog.items.filter { it.purchase != null }) {
             val price = checkNotNull(item.purchase)
             val cmd = command("${price.currency}:${item.id}", price.amount)

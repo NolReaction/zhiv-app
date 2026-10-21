@@ -2,10 +2,15 @@ FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY packages/engine/package.json ./packages/engine/package.json
+COPY apps/engine/package.json ./apps/engine/package.json
 RUN npm ci
 COPY . .
 ARG APP_BUILD_ID
 ENV APP_BUILD_ID=${APP_BUILD_ID}
+# NEXT_PUBLIC_ values must exist while Next builds the browser bundle.
+ARG NEXT_PUBLIC_MAPTILER_KEY=
+ENV NEXT_PUBLIC_MAPTILER_KEY=${NEXT_PUBLIC_MAPTILER_KEY}
 RUN npm run build:vps
 
 FROM node:24-bookworm-slim

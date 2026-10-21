@@ -58,7 +58,7 @@ trap cleanup EXIT
 echo 'Stopping site traffic for a consistent backup and reset.'
 services_stopped=true
 "${compose[@]}" stop caddy web api
-"${compose[@]}" exec -T db pg_dump -U zhiv -d zhiv --format=custom --no-owner --no-acl > "$backup_file"
+"${compose[@]}" exec -T db pg_dump -U zhiv -d zhiv --format=custom --exclude-table-data=public.earth_latest_locations --exclude-table-data=public.earth_frozen_locations --no-owner --no-acl > "$backup_file"
 test -s "$backup_file"
 "${compose[@]}" exec -T db pg_restore --list < "$backup_file" > /dev/null
 

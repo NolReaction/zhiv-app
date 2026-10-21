@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createClearingActivity, advanceClearingActivity, requestClearingPoint, isClearingAtPoint,
-  setClearingNavigationObstacle, baseClearingNavigation, requestClearingSleep } =
+  setClearingNavigationObstacle, baseClearingNavigation, requestClearingSleep, noticeClearingActivity } =
   await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const { canTraverse, canTraverseWorldObstacle, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const { canTraverseResidents, residentClearance } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
@@ -144,12 +144,17 @@ test("random free-roam selection cannot reserve a persistent builder's occupied 
   assert.deepEqual(worker, original, "a roaming decision cannot displace a working neighbour");
 });
 
-test("a free-roam goal occupied after departure is released from current feet without completing its activity", () => {
+test("a persistently occupied free-roam goal waits, then is deferred from current feet without completing its activity", () => {
   const source = roamingScene(), state = beginNaturalRoam(source);
   for (let time = 0; time < .3; time += .025) step(state);
   const feet = { ...state.position }, target = { ...state.freeRoute.points.at(-1) }, intention = { ...state.behavior.mind.intention };
   const worker = { ...builder, position: target }, original = structuredClone(worker);
   step(state, { ...conditions, occupants: [worker] });
+  assert.equal(state.stage, "free-walk");
+  assert.equal(state.behavior.reason, "roaming-place-waiting");
+  assert.equal(state.behavior.mind.intention.key, intention.key);
+  for (let time = 0; time < 6.1 && state.stage === "free-walk"; time += .025)
+    step(state, { ...conditions, occupants: [worker] });
   assert.deepEqual(state.position, feet, "releasing an optional destination never restores previous coordinates");
   assert.equal(state.stage, "clearing"); assert.equal(state.freeRoute, null); assert.equal(state.freePurpose, null);
   assert.equal(state.behavior.target, null); assert.equal(state.behavior.mind.intention, null);
@@ -157,4 +162,82 @@ test("a free-roam goal occupied after departure is released from current feet wi
   assert.equal(state.behavior.mind.recent.at(-1)?.key, intention.key);
   assert.equal(state.behavior.mind.recent.at(-1)?.outcome, "interrupted", "unreached activity earns no completion");
   assert.deepEqual(worker, original);
+});
+
+test("a brief occupied roaming goal preserves its exact plan through a pause and resumes after the neighbour leaves", () => {
+  const state = beginNaturalRoam(roamingScene()), route = state.freeRoute;
+  const target = { ...route.points.at(-1) }, intention = state.behavior.mind.intention;
+  const worker = { ...builder, position: target }, options = { ...conditions, occupants: [worker] };
+  const feet = { ...state.position };
+  for (let time = 0; time < 2; time += .025) step(state, options);
+  const elapsed = state.elapsed;
+  for (let time = 0; time < 10; time += .025) step(state, { ...options, enabled: false });
+  assert.equal(state.elapsed, elapsed, "hidden/paused time cannot exhaust the voluntary wait");
+  assert.equal(state.freeRoute, route); assert.equal(state.behavior.mind.intention, intention);
+  assert.deepEqual(state.position, feet);
+  for (let time = 0; time < 30 && state.stage === "free-walk"; time += .025) step(state);
+  assert.ok(Math.hypot(state.position.x - target.x, state.position.y - target.y) < .001);
+  assert.equal(state.stage, "activity");
+  assert.equal(state.behavior.mind.intention?.key, intention.key);
+  assert.ok(!state.behavior.mind.recent.some(item => item.key === intention.key && item.outcome === "interrupted"));
+});
+
+test("greeting the player pauses an occupied roaming goal's patience without forgetting the goal", () => {
+  const state = beginNaturalRoam(roamingScene()), route = state.freeRoute;
+  const worker = { ...builder, position: { ...route.points.at(-1) } }, options = { ...conditions, occupants: [worker] };
+  for (let time = 0; time < 5.5; time += .025) step(state, options);
+  const feet = { ...state.position };
+  assert.equal(noticeClearingActivity(state), true);
+  assert.equal(state.stage, "attention");
+  for (let time = 0; time < 2 && state.stage === "attention"; time += .025) step(state, options);
+  for (let time = 0; time < .2; time += .025) step(state, options);
+  assert.equal(state.stage, "free-walk", "greeting time is not time spent trying a blocked walk");
+  assert.equal(state.freeRoute, route); assert.deepEqual(state.position, feet);
+  for (let time = 0; time < 1 && state.stage === "free-walk"; time += .025) step(state, options);
+  assert.equal(state.stage, "clearing", "the same wait still expires after its remaining active patience");
+  assert.deepEqual(state.position, feet);
+  assert.equal(state.behavior.mind.recent.at(-1)?.outcome, "interrupted");
+});
+
+test("a voluntary walk also defers a sealed mid-route passage while explicit held destinations remain protected", () => {
+  const source = scene();
+  source.navigation.areas = [{ id: "room", points: rect(100, 100, 100, 220) },
+    { id: "passage", points: rect(180, 200, 140, 40) }];
+  const state = createClearingActivity(source, 11), target = point(300, 220);
+  assert.equal(requestClearingPoint(state, target), true);
+  // The same physical route has ordinary leisure ownership in this case.
+  state.requestedPoint = null; state.freePurpose = "roam"; state.freeRoute.id = "far-look";
+  state.behavior.mind.intention = { key: "far-look", action: "look", reason: "Осмотреть тропу", startedAt: 0, source: "clearing" };
+  const worker = { ...builder, position: point(240, 220) }, savedWorker = structuredClone(worker);
+  for (let time = 0; time < 25 && state.stage === "free-walk"; time += .025) {
+    const before = step(state, { ...conditions, occupants: [worker] });
+    assert.ok(canTraverseResidents(before, state.position, state.size, [worker], "mochlik"));
+  }
+  assert.equal(state.stage, "clearing"); assert.equal(state.behavior.reason, "roaming-passage-deferred");
+  assert.equal(state.freeRoute, null); assert.equal(state.behavior.mind.recent.at(-1)?.outcome, "interrupted");
+  assert.deepEqual(worker, savedWorker);
+});
+
+test("a player greeting also pauses patience at a sealed mid-route passage", () => {
+  const source = scene();
+  source.navigation.areas = [{ id: "room", points: rect(100, 100, 100, 220) },
+    { id: "passage", points: rect(180, 200, 140, 40) }];
+  const state = createClearingActivity(source, 11), target = point(300, 220);
+  assert.equal(requestClearingPoint(state, target), true);
+  state.requestedPoint = null; state.freePurpose = "roam"; state.freeRoute.id = "far-look";
+  state.behavior.mind.intention = { key: "far-look", action: "look", reason: "Осмотреть тропу", startedAt: 0, source: "clearing" };
+  const worker = { ...builder, position: point(240, 220) }, options = { ...conditions, occupants: [worker] };
+  for (let time = 0; time < 10 && state.behavior.reason !== "waiting-for-resident"; time += .025) step(state, options);
+  assert.equal(state.behavior.reason, "waiting-for-resident");
+  for (let time = 0; time < 11; time += .025) step(state, options);
+  assert.equal(state.stage, "free-walk");
+  const route = state.freeRoute, feet = { ...state.position };
+  assert.equal(noticeClearingActivity(state), true);
+  for (let time = 0; time < 2 && state.stage === "attention"; time += .025) step(state, options);
+  for (let time = 0; time < .2; time += .025) step(state, options);
+  assert.equal(state.stage, "free-walk"); assert.equal(state.freeRoute, route);
+  assert.deepEqual(state.position, feet);
+  for (let time = 0; time < 2 && state.stage === "free-walk"; time += .025) step(state, options);
+  assert.equal(state.stage, "clearing"); assert.equal(state.behavior.reason, "roaming-passage-deferred");
+  assert.deepEqual(state.position, feet);
 });

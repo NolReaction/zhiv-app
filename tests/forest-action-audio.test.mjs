@@ -149,3 +149,27 @@ test('menu, mute sampling and map reentry never release a backlog of action cont
     assert.equal(only(events, 'action.mushroom.eat').length, 1, 'only the next real bite is audible');
   } finally { controller.dispose(); session.release(); }
 });
+
+test('each new resident speaks once from his own feet even when the main hero is away', () => {
+  const session = makeSession(), state = session.state;
+  try {
+    for (const [index, speaker] of ['lopukh', 'kamneshmyg', 'leaftail'].entries()) {
+      const tracker = createWorldAudioMarkerTracker();
+      const resident = state.villagers.residents[speaker];
+      resident.available = true; resident.position = point(80 + index * 65, 130);
+      state.social.current = null;
+      sample(tracker, state, { showBuildings: true, showHero: false, actorAway: true });
+      state.social.current = { id: `resident-tap-${speaker}`, speaker, text: 'Привет!', elapsed: 0, duration: 3, origin: 'interaction' };
+      state.elapsed += .025;
+      const snapshot = worldAudioMarkers(scene, state, { ...options, showBuildings: true, showHero: false, actorAway: true });
+      const marker = snapshot.markers.find(marker => marker.key === 'speech');
+      assert.deepEqual(marker.position, resident.position);
+      assert.notDeepEqual(marker.position, state.clearing.position, 'a new resident never borrows the absent hero position');
+      const events = tracker.sample(snapshot, listener, 'test', now + state.elapsed * 1000);
+      assert.equal(events.length, 1); assert.equal(events[0].cueId, `actor.${speaker}.greeting`);
+      assert.equal(events[0].gain, 1, 'direct replies remain audible in overview');
+      assert.equal(sample(tracker, state, { showBuildings: true, showHero: false, actorAway: true }).length, 0);
+      assert.equal(sample(tracker, state, { showBuildings: true, showHero: false, actorAway: true }).length, 0);
+    }
+  } finally { session.release(); }
+});

@@ -1,8 +1,10 @@
 import type { FixedSite, FixedWorldScene, WorldBounds, WorldImage, WorldPoint } from "@/features/world/tiled/types";
 import { previewPointInPolygon } from "@/features/world/tiled/preview-state";
 import { forestOcclusionTexture, type ForestOcclusionContour } from "./forest-occlusion-mask";
+import { checkExpandedCanvasMask } from "./canvas-viewport-compatibility";
 
-type Actor = WorldPoint & { size: number };
+type Doorway = { siteId: string; top: number };
+type Actor = WorldPoint & { size: number; doorwayOcclusion?: Doorway };
 type Mask = ForestOcclusionContour & {
   frontY: number;
   siteId?: string;
@@ -10,6 +12,30 @@ type Mask = ForestOcclusionContour & {
 };
 type Geometry = { masks: Mask[]; margin: number; width: number; height: number };
 const geometry = new WeakMap<FixedWorldScene, Geometry>();
+const doorwayMasks = new WeakMap<Mask, Map<number, Mask | null>>();
+
+/** A threshold reveals only its own lower artwork. Keep the roof/awning above
+ * the bounded opening, and leave every unrelated foreground contour intact. */
+function doorwayMask(mask: Mask, doorway?: Doorway): Mask | null {
+  if (!doorway || mask.siteId !== doorway.siteId || !Number.isFinite(doorway.top) || mask.bottom <= doorway.top) return mask;
+  if (mask.top >= doorway.top) return null;
+  let cache = doorwayMasks.get(mask);
+  if (!cache) { cache = new Map(); doorwayMasks.set(mask, cache); }
+  if (cache.has(doorway.top)) return cache.get(doorway.top)!;
+  const points: WorldPoint[] = [];
+  for (let index = 0; index < mask.points.length; index++) {
+    const a = mask.points[index], b = mask.points[(index + 1) % mask.points.length];
+    if (a.y < doorway.top) points.push(a);
+    if ((a.y < doorway.top) !== (b.y < doorway.top)) {
+      const fraction = (doorway.top - a.y) / (b.y - a.y);
+      points.push({ x: a.x + (b.x - a.x) * fraction, y: doorway.top });
+    }
+  }
+  const result = points.length >= 3 ? { ...mask, points, bottom: doorway.top, path: undefined, texture: undefined } : null;
+  if (cache.size >= 8) cache.delete(cache.keys().next().value!);
+  cache.set(doorway.top, result);
+  return result;
+}
 
 function compiled(scene: FixedWorldScene): Geometry {
   let cached = geometry.get(scene);
@@ -40,11 +66,69 @@ function traceInverse(target: CanvasRenderingContext2D | Path2D, mask: Mask, are
 }
 
 type Layer = { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; busy: boolean };
-const layers = new WeakMap<CanvasRenderingContext2D, Layer>();
+const layers = new WeakMap<CanvasRenderingContext2D, Layer[]>();
+const LAYER_MAX_SIDE = 2048;
+const LAYER_PIXEL_BUDGET = 1024 * 1024;
+const LAYER_COUNT = 6;
+const LAYER_MAX_OVERSIZE = 2;
+const layerPixels = (layer: Layer) => layer.canvas.width * layer.canvas.height;
+
+/** Tall and wide subjects need not share a bounding rectangle. Retain a small
+ * pool under the original aggregate pixel budget, growing capacity in steps
+ * rather than reallocating it on every small change of camera scale. */
+function subjectLayer(ctx: CanvasRenderingContext2D, width: number, height: number): Layer | null {
+  let pool = layers.get(ctx);
+  if (!pool) { pool = []; layers.set(ctx, pool); }
+  if (pool.some(layer => layer.busy)) return null;
+  // Bound the backing store used by each subject as well as aggregate memory.
+  // A large land patch must not monopolize later, much smaller subject draws.
+  const maximumPixels = width * height * LAYER_MAX_OVERSIZE;
+  let layer = pool.filter(layer => layer.canvas.width >= width && layer.canvas.height >= height && layerPixels(layer) <= maximumPixels)
+    .sort((a, b) => layerPixels(a) - layerPixels(b))[0];
+  if (layer) {
+    pool.splice(pool.indexOf(layer), 1); pool.push(layer);
+    return layer;
+  }
+  let nextWidth = width, nextHeight = height, growth = width * height;
+  for (const candidate of pool) {
+    const capacity = (current: number, required: number) => current >= required ? current
+      : Math.max(required, Math.ceil(current * 1.5 / 32) * 32);
+    let candidateWidth = capacity(candidate.canvas.width, width), candidateHeight = capacity(candidate.canvas.height, height);
+    if (candidateWidth > LAYER_MAX_SIDE || candidateHeight > LAYER_MAX_SIDE || candidateWidth * candidateHeight > LAYER_PIXEL_BUDGET) {
+      candidateWidth = Math.max(candidate.canvas.width, width); candidateHeight = Math.max(candidate.canvas.height, height);
+    }
+    if (candidateWidth > LAYER_MAX_SIDE || candidateHeight > LAYER_MAX_SIDE
+      || candidateWidth * candidateHeight > Math.min(LAYER_PIXEL_BUDGET, maximumPixels)) continue;
+    const extra = candidateWidth * candidateHeight - layerPixels(candidate);
+    if (extra <= growth) { layer = candidate; nextWidth = candidateWidth; nextHeight = candidateHeight; growth = extra; }
+  }
+  const retained = () => pool!.reduce((total, item) => total + (item === layer ? 0 : layerPixels(item)), 0);
+  while (retained() + nextWidth * nextHeight > LAYER_PIXEL_BUDGET || (!layer && pool.length >= LAYER_COUNT)) {
+    const oldest = pool.find(item => item !== layer && layerPixels(item) > maximumPixels) ?? pool.find(item => item !== layer);
+    if (!oldest) return null;
+    pool.splice(pool.indexOf(oldest), 1);
+    // Dropping a reference alone need not release a browser's backing store.
+    oldest.canvas.width = 0; oldest.canvas.height = 0;
+  }
+  if (!layer) {
+    const canvas = document.createElement("canvas"); canvas.width = nextWidth; canvas.height = nextHeight;
+    const target = canvas.getContext("2d");
+    if (!target || typeof target.setTransform !== "function" || typeof target.drawImage !== "function") {
+      canvas.width = 0; canvas.height = 0; return null;
+    }
+    layer = { canvas, ctx: target, busy: false };
+  } else {
+    if (layer.canvas.width !== nextWidth) layer.canvas.width = nextWidth;
+    if (layer.canvas.height !== nextHeight) layer.canvas.height = nextHeight;
+    pool.splice(pool.indexOf(layer), 1);
+  }
+  pool.push(layer);
+  return layer;
+}
 
 /** Composite just the subject, at physical screen resolution. Its original pixels
- * never pass through a blur or a resized texture. One scratch surface is reused
- * per camera; even long fishing props are clipped to the visible viewport. */
+ * never pass through a blur or a resized texture. Bounded scratch capacity is
+ * reused per camera; long fishing props are clipped to the visible viewport. */
 function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBounds,
   draw: (target: CanvasRenderingContext2D) => void): boolean {
   if (typeof document === "undefined" || typeof ctx.getTransform !== "function"
@@ -55,26 +139,22 @@ function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBo
   const corners = [[bounds.x, bounds.y], [bounds.x + bounds.width, bounds.y],
     [bounds.x, bounds.y + bounds.height], [bounds.x + bounds.width, bounds.y + bounds.height]]
     .map(([x, y]) => ({ x: t.a * x + t.c * y + t.e, y: t.b * x + t.d * y + t.f }));
-  const x = Math.max(0, Math.floor(Math.min(...corners.map(point => point.x))) - 2);
-  const y = Math.max(0, Math.floor(Math.min(...corners.map(point => point.y))) - 2);
-  const right = Math.min(ctx.canvas.width, Math.ceil(Math.max(...corners.map(point => point.x))) + 2);
-  const bottom = Math.min(ctx.canvas.height, Math.ceil(Math.max(...corners.map(point => point.y))) + 2);
+  const leftBound = Math.floor(Math.min(...corners.map(point => point.x))) - 2;
+  const topBound = Math.floor(Math.min(...corners.map(point => point.y))) - 2;
+  const rightBound = Math.ceil(Math.max(...corners.map(point => point.x))) + 2;
+  const bottomBound = Math.ceil(Math.max(...corners.map(point => point.y))) + 2;
+  checkExpandedCanvasMask(ctx, leftBound, topBound, rightBound, bottomBound, 32, LAYER_MAX_SIDE, LAYER_PIXEL_BUDGET);
+  const x = Math.max(0, leftBound), y = Math.max(0, topBound);
+  const right = Math.min(ctx.canvas.width, rightBound), bottom = Math.min(ctx.canvas.height, bottomBound);
   const width = Math.ceil((right - x) / 32) * 32, height = Math.ceil((bottom - y) / 32) * 32;
   if (width <= 0 || height <= 0) return true;
   // Bound transient GPU memory on mobile; an unusually large DEV scale uses
   // the original vector clip instead of allocating a full-screen extra layer.
-  if (width > 2048 || height > 2048 || width * height > 1024 * 1024) return false;
-  let layer = layers.get(ctx);
-  if (layer?.busy) return false;
-  if (!layer) {
-    const canvas = document.createElement("canvas"), target = canvas.getContext("2d");
-    if (!target || typeof target.setTransform !== "function" || typeof target.drawImage !== "function") return false;
-    layer = { canvas, ctx: target, busy: false }; layers.set(ctx, layer);
-  }
+  if (width > LAYER_MAX_SIDE || height > LAYER_MAX_SIDE || width * height > LAYER_PIXEL_BUDGET) return false;
   const textures = masks.map(forestOcclusionTexture);
   if (textures.some(texture => !texture)) return false;
-  if (layer.canvas.width !== width) layer.canvas.width = width;
-  if (layer.canvas.height !== height) layer.canvas.height = height;
+  const layer = subjectLayer(ctx, width, height);
+  if (!layer) return false;
   const target = layer.ctx;
   target.setTransform(1, 0, 0, 1, 0, 0); target.clearRect(0, 0, width, height);
   target.save(); layer.busy = true;
@@ -96,21 +176,24 @@ function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBo
     try {
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(layer.canvas, x, y);
+      // Only the active rectangle was cleared; never copy retained pixels
+      // outside it from an earlier, larger subject.
+      ctx.drawImage(layer.canvas, 0, 0, width, height, x, y, width, height);
     } finally { ctx.restore(); }
   } finally { target.restore(); layer.busy = false; }
   return true;
 }
 
 /** Match visual masking when deciding whether a tap can reach the hero. */
-export function forestPointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint): boolean {
-  return pointOccluded(scene, feetY, point);
+export function forestPointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint, doorway?: Doorway): boolean {
+  return pointOccluded(scene, feetY, point, undefined, doorway);
 }
 
-function pointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint, excludeSiteId?: string): boolean {
+function pointOccluded(scene: FixedWorldScene, feetY: number, point: WorldPoint, excludeSiteId?: string, doorway?: Doorway): boolean {
   if (!scene.occluders?.length || !Number.isFinite(feetY) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
   return compiled(scene).masks.some(mask => feetY < mask.frontY
     && (excludeSiteId === undefined || mask.siteId !== excludeSiteId)
+    && !(doorway && mask.siteId === doorway.siteId && Number.isFinite(doorway.top) && point.y >= doorway.top)
     && point.x >= mask.left && point.x <= mask.right && point.y >= mask.top && point.y <= mask.bottom
     && previewPointInPolygon(point, mask.points));
 }
@@ -144,7 +227,7 @@ export function withForestOcclusion(ctx: CanvasRenderingContext2D, scene: FixedW
   // sprite. Only nearby masks reach the canvas; geometry is shared by cameras.
   const bounds = validBounds(renderBounds) ? renderBounds : { x: actor.x - actor.size * 2,
     y: actor.y - actor.size * 2.5, width: actor.size * 4, height: actor.size * 3.5 };
-  withOcclusion(ctx, scene, actor.y, bounds, draw);
+  withOcclusion(ctx, scene, actor.y, bounds, draw, undefined, actor.doorwayOcclusion);
 }
 
 /** Paint one building using its effective level geometry. The authored anchor
@@ -174,12 +257,13 @@ export function withForestImageOcclusion(ctx: CanvasRenderingContext2D, scene: F
 }
 
 function withOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, feetY: number, bounds: WorldBounds,
-  draw: (target: CanvasRenderingContext2D) => void, excludeSiteId?: string): void {
+  draw: (target: CanvasRenderingContext2D) => void, excludeSiteId?: string, doorway?: Doorway): void {
   const area = compiled(scene);
   const { x: left, y: top } = bounds, right = left + bounds.width, bottom = top + bounds.height;
   const masks = area.masks.filter(mask => feetY < mask.frontY
     && (excludeSiteId === undefined || mask.siteId !== excludeSiteId) && right >= mask.left
-    && left <= mask.right && bottom >= mask.top && top <= mask.bottom);
+    && left <= mask.right && bottom >= mask.top && top <= mask.bottom)
+    .map(mask => doorwayMask(mask, doorway)).filter((mask): mask is Mask => mask !== null);
   if (!masks.length) { draw(ctx); return; }
   if (feathered(ctx, masks, bounds, draw)) return;
   let saved = false;

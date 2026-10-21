@@ -7,6 +7,8 @@ export type ForestLightSource = WorldLight & {
   /** Size of the painted glass in world units; the frame and mullions stay visible. */
   glass?: { width: number; height: number; rotation: number; contour?: WorldPoint[] };
   beamLength?: number;
+  /** Ground-plane origin follows the same active artwork transform as its lens. */
+  beamGround?: WorldPoint;
 };
 
 type ArtworkLamp = {
@@ -23,14 +25,18 @@ const artworkLamps: Record<string, readonly ArtworkLamp[]> = {
   "home-level-3.png": [{ id: "home-lantern", u: .537, v: .673, width: .034, height: .04, radius: .7, intensity: 1.1 }],
   "home-level-4.png": [{ id: "home-lantern", u: .546, v: .666, width: .034, height: .04, radius: .7, intensity: 1.1 }],
   "home-level-5.png": [{ id: "home-lantern", u: .56, v: .65, width: .034, height: .04, radius: .7, intensity: 1.1 }],
-  "quarry-lvl-1.png": [{ id: "quarry-lantern", u: .617, v: .69, width: .022, height: .036, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-1.png": [{ id: "quarry-lantern", u: .895, v: .549, width: .035, height: .041, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-2.png": [{ id: "quarry-lantern", u: .895, v: .548, width: .035, height: .041, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-3.png": [{ id: "quarry-lantern", u: .895, v: .546, width: .035, height: .041, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-4.png": [{ id: "quarry-lantern", u: .896, v: .543, width: .035, height: .041, radius: .46, intensity: 1.18 }],
+  "quarry-lvl-5.png": [{ id: "quarry-lantern", u: .898, v: .543, width: .035, height: .041, radius: .46, intensity: 1.18 }],
   "forest-workshop-level-2.png": [
     { id: "workshop-lantern", u: .518, v: .657, width: .023, height: .031, radius: .4, intensity: 1.15 },
     { id: "workshop-window", u: .233, v: .58, width: .04, height: .072, radius: .25, intensity: .58,
       contour: [[.214, .544], [.249, .552], [.249, .618], [.214, .604]] },
   ],
   "lighthouse-level-1.png": [{ id: "lighthouse-lens", u: .51, v: .326, width: .055, height: .065,
-    radius: .85, intensity: 1.24, color: "#ffe5a6", beam: 3.3 }],
+    radius: .85, intensity: 1.24, color: "#ffe5a6", beam: 4.1 }],
 };
 
 /** Decorative lights follow only known, visibly equipped artwork. Ruins stay dark. */
@@ -50,7 +56,8 @@ export function forestBuildingLights(scene: FixedWorldScene, levels: PreviewLeve
         glass: { width: placement.width * lamp.width, height: placement.height * lamp.height,
           rotation: (geometry.imagePlacement?.rotation ?? 0) * Math.PI / 180,
           contour: lamp.contour?.map(([u, v]) => siteImagePoint(geometry, u, v)) },
-        ...(lamp.beam ? { beamLength: placement.width * lamp.beam } : {}) });
+        ...(lamp.beam ? { beamLength: placement.width * lamp.beam,
+          beamGround: siteImagePoint(geometry, lamp.u, .91) } : {}) });
     }
   }
   return result;

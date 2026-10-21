@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { transitionWorldOnboarding, type WorldOnboardingEvent, type WorldOnboardingStepId } from "@/features/world/domain/world-onboarding";
 import { createWorldOnboardingStore } from "./world-onboarding-storage";
 
@@ -18,23 +18,25 @@ export function useWorldOnboarding(owner: string) {
     window.addEventListener("storage", restore);
     return () => window.removeEventListener("storage", restore);
   }, [store]);
-  const apply = (event: WorldOnboardingEvent) => {
+  const apply = useCallback((event: WorldOnboardingEvent) => {
     // Read the latest store value: an observed crop and a step change can share a render.
     const progress = transitionWorldOnboarding(store.getSnapshot().progress, event);
     if (progress) store.save(progress);
-  };
-  return {
+  }, [store]);
+  return useMemo(() => ({
     progress: state.progress,
     loaded: state.loaded,
     isPaused,
     open: state.loaded && !isPaused && (state.progress === null || state.progress.status === "started"),
     start: () => { apply({ type: "start" }); store.setPaused(false); },
-    step: (stepId: WorldOnboardingStepId) => apply({ type: "step", stepId }),
+    step: (stepId: WorldOnboardingStepId, completeCurrent = false) => apply({ type: "step", stepId, completeCurrent }),
     setCrop: (jobId: string | undefined) => apply({ type: "crop", jobId }),
+    confirmHarvest: (jobId: string) => apply({ type: "harvest", jobId }),
     skip: () => apply({ type: "skip", now: Date.now() }),
     complete: () => apply({ type: "complete", now: Date.now() }),
+    acknowledgeReward: () => apply({ type: "reward-acknowledged" }),
     pause: () => store.setPaused(true),
     resume: () => store.setPaused(false),
     replay: () => { apply({ type: "replay" }); store.setPaused(false); },
-  };
+  }), [state.progress, state.loaded, isPaused, apply, store]);
 }

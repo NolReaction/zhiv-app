@@ -36,8 +36,8 @@ test("a free builder is distinct from an unavailable account snapshot and ignore
     assert.match(html, /Свободен/);
     assert.match(html, /Выберите здание для улучшения/);
     assert.doesNotMatch(html, /Завершить улучшение|Нанять|Жемчуг/);
-    assert.doesNotMatch(html, /data-meal-boost="builder"/);
-    assert.equal([...html.matchAll(/<button\b/g)].length, 0, "unavailable food must not add a spoiler or a paid build/hire action");
+    assert.match(html, /data-meal-boost="builder"/);
+    assert.equal([...html.matchAll(/<button\b/g)].length, 1, "the base campfire exposes one optional food choice and no paid build/hire action");
   }
   const { html } = conversation(economy([], { snapshot: null }));
   assert.match(html, /role="status"/);
@@ -46,7 +46,7 @@ test("a free builder is distinct from an unavailable account snapshot and ignore
 
 test("a free builder still offers food already owned before its recipe unlocks", () => {
   const controller = economy();
-  controller.snapshot.inventory[economyCatalog.food.meals[0].itemId] = 1;
+  controller.snapshot.inventory.legendary_fish = 1;
   const before = structuredClone(controller.snapshot);
   const { html } = conversation(controller);
   assert.match(html, /data-builder-status="free"/);
@@ -62,8 +62,9 @@ test("confirmed work shows its building, timer and pearl completion; navigation 
   assert.match(html, /Занят улучшением/);
   assert.match(html, new RegExp(economyCatalog.buildings.find(building => building.id === "home").name));
   assert.match(html, /Уровень 2/);
-  assert.match(html, /Осталось 2 мин/);
-  assert.match(html, /Завершить сейчас за 8 жемчужин/);
+  assert.match(html, /1:30/);
+  assert.doesNotMatch(html, /Осталось/);
+  assert.match(html, /Завершить сейчас за 2 жемчужины/);
   assert.match(html, /data-construction-speedup="paid-home-upgrade"/);
   const buttons = elements(tree).filter(element => element.type === "button");
   assert.equal(buttons.length, 1); buttons[0].props.onClick();
@@ -92,7 +93,7 @@ test("a pending pearl command stays visible in the builder and retries respect t
   const retry = elements(view.tree).find(element => element.type === "button" && element.props.children === "Проверить результат");
   assert.equal(retry.props.disabled, true);
   retry.props.onClick(); assert.equal(retries, 0);
-  assert.match(view.html, /disabled=""[^>]*aria-label="Завершить сейчас за 8 жемчужин"/);
+  assert.match(view.html, /disabled=""[^>]*aria-label="Завершить сейчас за 2 жемчужины"/);
   controller.now += 1000;
   view = conversation(controller);
   elements(view.tree).find(element => element.type === "button" && element.props.children === "Проверить результат").props.onClick();
@@ -100,7 +101,10 @@ test("a pending pearl command stays visible in the builder and retries respect t
 });
 
 test("short remaining times count seconds and account changes do not retain a previous building", () => {
-  assert.match(conversation(economy([job], { now: now + 60_000 })).html, /Осталось 30 с/);
+  const shortlyReady = conversation(economy([job], { now: now + 60_000 })).html;
+  assert.match(shortlyReady, /0:30/);
+  assert.doesNotMatch(shortlyReady, /Осталось/);
+  assert.match(shortlyReady, /Завершить сейчас за 1 жемчужину/);
   const other = { ...job, targetId: "warehouse", targetLevel: 3 };
   const { html } = conversation(economy([other]));
   assert.match(html, new RegExp(economyCatalog.buildings.find(building => building.id === "warehouse").name));
@@ -139,4 +143,25 @@ test("the builder dialog has animated code art and preserves back, close and foc
   assert.equal(focused, 1);
   const direct = WorldBuilderDialog({ open: true, economy: economy(), onOpenConstruction() {}, onClose() {}, onCloseAutoFocus() {} });
   assert.equal(elements(direct).filter(element => element.type === "button").length, 1, "direct map entry has only its close control");
+});
+
+test("builder conversation keeps its contextual meal picker and a single separate orders entry", () => {
+  const controller = economy();
+  controller.snapshot.inventory.grilled_fish = 2;
+  let orders = 0;
+  const navigation = () => assert.fail("rendering cannot start cooking");
+  const tree = WorldBuilderDialog({ open: true, economy: controller, onOpenConstruction() {}, onNavigateStation: navigation,
+    onOpenOrders() { orders++; }, onClose() {}, onCloseAutoFocus() {} });
+  const nodes = elements(tree), actions = nodes.find(node => node.props["data-guide-builder-actions"]);
+  assert.equal(actions.props["aria-label"], "Заказы Шишколапа");
+  const buttons = elements(actions).filter(node => node.type === "button");
+  assert.equal(buttons.length, 1);
+  buttons[0].props.onClick(); assert.equal(orders, 1);
+  assert.doesNotMatch(renderToStaticMarkup(actions), /Угостить|Еда и заказы/);
+  const body = nodes.find(node => node.type === BuilderConversation);
+  const boost = elements(BuilderConversation(body.props)).find(node => node.type.name === "WorldMealBoost");
+  assert.equal(boost.props.consumer, "builder");
+  assert.equal(boost.props.onNavigateStation, navigation);
+  assert.equal(boost.props.onOpenMeals, undefined);
+  assert.equal(controller.snapshot.inventory.grilled_fish, 2);
 });

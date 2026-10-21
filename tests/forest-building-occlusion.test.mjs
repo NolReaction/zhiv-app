@@ -36,6 +36,21 @@ function withRasterDocument(run) {
 }
 function paintBounds(ctx, bounds) { ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height); }
 
+test("a doorway uses its own clipped feather texture after the full house silhouette has already warmed the cache", () => {
+  withRasterDocument(() => {
+    const own = { ...tree("shop", { x: 20, y: 20, width: 80, height: 100 }, 130), when: { siteId: "plesk-shop", level: 1 } };
+    const world = scene([], [own]), actor = { x: 60, y: 100, size: 50 }, bounds = { x: 20, y: 20, width: 80, height: 100 };
+    const warm = occlusionRaster(); withForestOcclusion(warm.getContext("2d"), world, actor, ctx => paintBounds(ctx, bounds), bounds);
+    assert.equal(warm.alpha(60, 100), 0, "ordinary traffic first caches the full stairs/roof mask");
+    const doorway = occlusionRaster();
+    withForestOcclusion(doorway.getContext("2d"), world, { ...actor, doorwayOcclusion: { siteId: "plesk-shop", top: 60 } }, ctx => paintBounds(ctx, bounds), bounds);
+    assert.equal(doorway.alpha(60, 100), 1, "an old full silhouette texture must never be inherited by its clipped doorway copy");
+    assert.equal(doorway.alpha(60, 35), 0, "the roof stays fully hidden in the native feather/composite branch");
+    const later = occlusionRaster(); withForestOcclusion(later.getContext("2d"), world, actor, ctx => paintBounds(ctx, bounds), bounds);
+    assert.equal(later.alpha(60, 100), 0, "the doorway copy cannot mutate ordinary traffic's full mask");
+  });
+});
+
 test("building anchor depth hides only its tree overlap and preserves the ground beneath it", () => {
   withRasterDocument(() => {
     for (const anchorY of [79.999, 80, 81]) {

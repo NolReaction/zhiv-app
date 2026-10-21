@@ -14,7 +14,7 @@ async function modules() {
   } finally { await vite.close(); }
 }
 
-test("authored initial circle waits only for its five visible artwork URLs while keeping the complete scene", async () => {
+test("authored initial circle waits only for visible artwork URLs while keeping the complete scene", async () => {
   const { worldArtworkUrls, initialPreviewLevels, previewSiteVisual, previewWorldScene } = await modules();
   const source = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
   const before = structuredClone(source), levels = initialPreviewLevels(source);
@@ -24,8 +24,11 @@ test("authored initial circle waits only for its five visible artwork URLs while
   const home = scene.sites.find(site => site.id === "home");
   const terrainUrls = ["forest-ground", "clearing-bush-image", "terrain-311", "terrain-314"]
     .map(id => scene.terrain.find(terrain => terrain.id === id).image);
-  assert.deepEqual(new Set(required), new Set([...terrainUrls, visuals[home.id].image]));
-  assert.equal(all.length, 16); assert.equal(required.length, 5);
+  assert.deepEqual(new Set(required), new Set([...terrainUrls, visuals[home.id].image, visuals.market.image]),
+    "the rotated market's padded envelope now reaches the initial viewport edge");
+  const complete = new Set([...scene.terrain.map(image => image.image), ...Object.values(visuals).map(visual => visual.image)]);
+  assert.deepEqual(new Set(all), complete, "the complete artwork set includes every currently authored remote building");
+  assert.ok(all.length > required.length, "remote buildings still load separately from the initial circle");
   const bytes = async urls => (await Promise.all(urls.map(async url =>
     (await stat(new URL(`../public${url.split("?")[0]}`, import.meta.url))).size))).reduce((sum, size) => sum + size, 0);
   assert.ok(await bytes(all) - await bytes(required) >= 3_900_000, "remote buildings and ground do not consume the initial budget");

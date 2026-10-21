@@ -40,7 +40,7 @@ class EconomyCancellationTest {
             buildings = EconomyRules.initial().buildings + route.requiredBuildings + ("home" to route.requiredHomeLevel))
         val started = apply(initial, "start_exploration", route.id)
         assertNotEquals(initial.inventory, started.inventory)
-        val historic = started.copy(jobs = started.jobs.map { it.copy(cost = it.cost.copy(coins = 25)) })
+        val historic = started.copy(jobs = started.jobs.map { it.copy(cost = it.cost.copy(coins = 25), actorId = null) })
         val result = apply(historic, "cancel_exploration", historic.jobs.single().id)
         assertEquals(started.inventory, result.inventory)
         assertEquals(started.wallet, result.wallet)
@@ -56,7 +56,7 @@ class EconomyCancellationTest {
         for (target in listOf("shore", UUID.randomUUID().toString())) assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
             apply(started, "cancel_exploration", target)
         }.code)
-        val construction = job.copy(id = UUID.randomUUID().toString(), kind = "construction", targetId = "home", targetLevel = 2, rewards = emptyMap())
+        val construction = job.copy(id = UUID.randomUUID().toString(), kind = "construction", actorId = null, targetId = "home", targetLevel = 2, rewards = emptyMap())
         for (nonExploration in listOf(production, construction)) assertEquals("ECONOMY_CANCEL_KIND", assertFailsWith<AuthFailure> {
             apply(started.copy(jobs = listOf(nonExploration)), "cancel_exploration", nonExploration.id)
         }.code)
@@ -64,7 +64,7 @@ class EconomyCancellationTest {
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
             apply(claimed, "cancel_exploration", job.id, Instant.parse(job.finishesAt))
         }.code)
-        assertEquals(started.inventory + job.rewards.mapValues { (id, amount) -> (started.inventory[id] ?: 0L) + amount }, claimed.inventory)
+        assertEquals(EconomyRules.addItems(started.inventory, job.rewards), claimed.inventory)
         assertEquals(1L, claimed.completedExplorations)
     }
 

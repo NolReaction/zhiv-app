@@ -13,115 +13,130 @@ class EconomyWorkshopStarterTest {
     private val now = Instant.parse("2026-10-08T12:00:00Z")
     private fun command() = EconomyCommand(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0,
         "claim_workshop_starter", "workshop")
-    private fun claim(state: EconomyState, reserved: Map<String, Long> = emptyMap()) =
-        EconomyRules.apply(state, command(), now, reserved).first
-    private fun job(kind: String, target: String) = EconomyJob(UUID.randomUUID().toString(), kind, target,
-        startedAt = now.toString(), finishesAt = now.plusSeconds(1200).toString(),
-        targetLevel = if (kind == "construction") 1 else null)
 
-    @Test fun `gift takes the complete first workshop cost from the catalog and leaves building work to the player`() {
-        val state = EconomyRules.initial().copy(wallet = EconomyWallet(30, 77), inventory = mapOf("wood" to 3L, "berries" to 4L))
-        val cost = EconomyWorkshopStarter.cost()
-        assertEquals(EconomyCost(1200, mapOf("wood" to 10L, "stone" to 8L)), cost)
-        assertEquals(EconomyRules.catalog.buildings.single { it.id == "workshop" }.levels.single { it.level == 1 }.cost, cost)
-        val changed = EconomyRules.catalog.copy(buildings = EconomyRules.catalog.buildings.map { building ->
-            if (building.id != "workshop") building else building.copy(levels = building.levels.map { level ->
-                if (level.level != 1) level else level.copy(cost = EconomyCost(4321, mapOf("wood" to 2L))) }) })
-        assertEquals(EconomyCost(4321, mapOf("wood" to 2L)), EconomyWorkshopStarter.cost(changed))
-        val granted = claim(state)
-        assertEquals(EconomyWallet(state.wallet.coins + cost.coins, state.wallet.pearls), granted.wallet)
-        assertEquals(mapOf("wood" to 13L, "stone" to 8L, "berries" to 4L), granted.inventory)
-        assertTrue(granted.workshopStarterClaimed)
-        assertFalse(EconomyWorkshopStarter.canClaim(granted))
-        assertEquals(state.buildings, granted.buildings)
-        assertEquals(state.jobs, granted.jobs)
-        val started = EconomyRules.apply(granted, command().copy(action = "start_construction"), now).first
-        assertEquals(state.wallet, started.wallet)
-        assertEquals(state.inventory, started.inventory)
-        assertEquals(0, started.buildings["workshop"])
-        assertEquals("workshop", started.jobs.single().targetId)
-        assertTrue(started.workshopStarterClaimed)
-    }
-
-    @Test fun `different requests cannot claim the permanent gift twice`() {
-        val state = claim(EconomyRules.initial())
-        val before = economyJson.encodeToString(state)
-        repeat(2) {
-            assertEquals("ECONOMY_WORKSHOP_STARTER_CLAIMED", assertFailsWith<AuthFailure> { claim(state) }.code)
-            assertEquals(before, economyJson.encodeToString(state))
-        }
-    }
-
-    @Test fun `built or started workshops cannot receive first workshop materials`() {
+    @Test fun `retired gift rejects fresh legacy built and previously claimed profiles without minting resources`() {
         val initial = EconomyRules.initial()
-        val blocked = listOf(initial.copy(buildings = initial.buildings + ("workshop" to 1)),
-            initial.copy(jobs = listOf(job("construction", "workshop"))))
-        blocked.forEach { state ->
+        val states = listOf(initial, initial.copy(tutorialOrder = EconomyTutorialOrder()),
+            initial.copy(workshopStarterClaimed = true), initial.copy(buildings = initial.buildings + ("workshop" to 1)))
+        for (state in states) {
+            val before = economyJson.encodeToString(state)
             assertFalse(EconomyWorkshopStarter.canClaim(state))
-            val before = economyJson.encodeToString(state)
-            assertEquals("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", assertFailsWith<AuthFailure> { claim(state) }.code)
+            assertEquals("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", assertFailsWith<AuthFailure> {
+                EconomyRules.apply(state, command(), now) }.code)
             assertEquals(before, economyJson.encodeToString(state))
         }
     }
 
-    @Test fun `hero activity and construction of another building do not consume the gift opportunity`() {
-        val state = EconomyRules.initial().copy(jobs = listOf(job("construction", "woodlot"), job("exploration", "forest")))
-        assertTrue(EconomyWorkshopStarter.canClaim(state))
-        assertFalse(EconomyRules.commandUsesActor(command()))
-        val granted = claim(state)
-        assertTrue(granted.workshopStarterClaimed)
-        assertEquals(state.jobs, granted.jobs)
+    @Test fun `retired command still rejects forged input before reporting availability`() {
+        for (request in listOf(command().copy(targetId = "home"), command().copy(quantity = 2), command().copy(totalPrice = 1)))
+            assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> {
+                EconomyRules.apply(EconomyRules.initial(), request, now) }.code)
     }
 
-    @Test fun `gift command rejects alternate targets quantity and price before issuing any resources`() {
-        val state = EconomyRules.initial()
-        for (request in listOf(command().copy(targetId = "home"), command().copy(quantity = 2), command().copy(totalPrice = 1))) {
-            val before = economyJson.encodeToString(state)
-            assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { EconomyRules.apply(state, request, now) }.code)
-            assertEquals(before, economyJson.encodeToString(state))
-        }
-    }
-
-    @Test fun `wallet item and warehouse limits reject the gift without consuming its permanent marker`() {
+    @Test fun `saved gift marker remains compatible after retirement`() {
         val initial = EconomyRules.initial()
-        val blocked = listOf(
-            initial.copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE - 1199)) to "ECONOMY_CAPACITY",
-            initial.copy(inventory = mapOf("wood" to ECONOMY_MAX_ITEMS - 9)) to "ECONOMY_CAPACITY",
-            initial.copy(inventory = mapOf("berries" to 283L)) to "ECONOMY_STORAGE_FULL",
-        )
-        for ((state, code) in blocked) {
-            val before = economyJson.encodeToString(state)
-            assertEquals(code, assertFailsWith<AuthFailure> { claim(state) }.code)
-            assertEquals(before, economyJson.encodeToString(state))
-            assertFalse(state.workshopStarterClaimed)
+        val missing = JsonObject(economyJson.parseToJsonElement(economyJson.encodeToString(initial)).jsonObject - "workshopStarterClaimed")
+        assertFalse(economyJson.decodeFromString<EconomyState>(missing.toString()).workshopStarterClaimed)
+        val restored = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(initial.copy(workshopStarterClaimed = true)))
+        assertTrue(restored.workshopStarterClaimed); assertFalse(EconomyWorkshopStarter.canClaim(restored))
+    }
+
+    private fun tutorialCommand() = command().copy(action = "start_tutorial_workshop")
+    private fun workshop() = EconomyRules.catalog.buildings.single { it.id == "workshop" }.levels.single { it.level == 1 }
+    private fun job(kind: String, target: String, finishesAt: Instant = now.plusSeconds(300)) = EconomyJob(
+        UUID.randomUUID().toString(), kind, target, targetLevel = if (kind == "construction") 1 else null,
+        startedAt = now.toString(), finishesAt = finishesAt.toString(), cost = EconomyCost(), catalogVersion = EconomyRules.catalog.version)
+
+    @Test fun `tutorial aid builds directly after supplies are spent without crediting personal stock`() {
+        for (inventory in listOf(emptyMap(), mapOf("wood" to 3L, "stone" to 5L, "berries" to 2L))) {
+            val state = EconomyRules.initial().copy(wallet = EconomyWallet(0, 7), inventory = inventory)
+            assertTrue(EconomyWorkshopStarter.canStartTutorialWorkshop(state))
+            val started = EconomyRules.apply(state, tutorialCommand(), now).first
+            val job = started.jobs.single()
+            assertEquals(state.wallet, started.wallet); assertEquals(state.inventory, started.inventory)
+            assertTrue(started.workshopStarterClaimed); assertEquals(0, started.buildings["workshop"])
+            assertEquals("construction", job.kind); assertEquals("workshop", job.targetId); assertEquals(1, job.targetLevel)
+            assertEquals(EconomyCost(), job.cost); assertTrue(job.rewards.isEmpty())
+            assertEquals(now.plusSeconds(workshop().seconds), Instant.parse(job.finishesAt))
+            assertFalse(EconomyWorkshopStarter.canStartTutorialWorkshop(started))
         }
-        val edge = initial.copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE - 1200), inventory = mapOf("berries" to 282L))
-        val accepted = claim(edge)
-        assertEquals(ECONOMY_MAX_BALANCE, accepted.wallet.coins)
-        assertEquals(300L, EconomyRules.storage(accepted).used)
-        assertTrue(accepted.workshopStarterClaimed)
     }
 
-    @Test fun `reserved market and barter stock still occupies warehouse space before marking the gift claimed`() {
-        val state = EconomyRules.initial().copy(inventory = mapOf("berries" to 272L))
-        val before = economyJson.encodeToString(state)
-        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { claim(state, mapOf("wood" to 11L)) }.code)
-        assertEquals(before, economyJson.encodeToString(state))
-        assertFalse(state.workshopStarterClaimed)
-        val accepted = claim(state, mapOf("wood" to 10L))
-        assertTrue(accepted.workshopStarterClaimed)
-        assertEquals(0L, EconomyRules.storage(accepted, mapOf("wood" to 10L)).available)
-    }
-
-    @Test fun `persisted profiles without the gift field remain eligible and consumed state survives serialization`() {
+    @Test fun `legacy claims paid starts and completed workshops cannot receive tutorial aid`() {
         val initial = EconomyRules.initial()
-        val oldJson = JsonObject(economyJson.parseToJsonElement(economyJson.encodeToString(initial)).jsonObject - "workshopStarterClaimed")
-        val oldState = economyJson.decodeFromString<EconomyState>(oldJson.toString())
-        assertFalse(oldState.workshopStarterClaimed)
-        assertTrue(EconomyWorkshopStarter.canClaim(oldState))
-        val granted = claim(oldState)
-        val restored = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(granted))
-        assertTrue(restored.workshopStarterClaimed)
-        assertEquals("ECONOMY_WORKSHOP_STARTER_CLAIMED", assertFailsWith<AuthFailure> { claim(restored) }.code)
+        val paid = job("construction", "workshop").copy(cost = workshop().cost)
+        for (state in listOf(initial.copy(workshopStarterClaimed = true),
+            initial.copy(buildings = initial.buildings + ("workshop" to 1)), initial.copy(jobs = listOf(paid)))) {
+            val before = economyJson.encodeToString(state)
+            assertFalse(EconomyWorkshopStarter.canStartTutorialWorkshop(state))
+            assertEquals("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", assertFailsWith<AuthFailure> {
+                EconomyRules.apply(state, tutorialCommand(), now) }.code)
+            assertEquals(before, economyJson.encodeToString(state))
+        }
+    }
+
+    @Test fun `tutorial build preserves ordinary builder capacity home and building checks without consuming the marker`() {
+        val initial = EconomyRules.initial()
+        val attempts = listOf(
+            initial.copy(jobs = listOf(job("construction", "woodlot"))) to "ECONOMY_CONSTRUCTION_BUSY",
+            initial.copy(jobs = listOf(job("construction", "woodlot", now))) to "ECONOMY_CONSTRUCTION_BUSY",
+            initial.copy(jobs = List(18) { job("production", "garden") }) to "ECONOMY_JOBS_CAPACITY",
+            initial.copy(jobs = listOf(job("production", "workshop"))) to "ECONOMY_BUILDING_BUSY",
+            initial.copy(buildings = initial.buildings + ("home" to 0)) to "ECONOMY_HOME_REQUIRED")
+        for ((state, code) in attempts) {
+            val before = economyJson.encodeToString(state)
+            assertEquals(code, assertFailsWith<AuthFailure> { EconomyRules.apply(state, tutorialCommand(), now) }.code)
+            assertEquals(before, economyJson.encodeToString(state)); assertFalse(state.workshopStarterClaimed)
+        }
+    }
+
+    @Test fun `tutorial construction rejects forged targets quantities prices and unrelated fish selections`() {
+        val initial = EconomyRules.initial()
+        for (request in listOf(tutorialCommand().copy(targetId = "home"), tutorialCommand().copy(quantity = 2),
+            tutorialCommand().copy(totalPrice = 1), tutorialCommand().copy(fishSelection = mapOf("fish_roach" to 1L)))) {
+            assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> {
+                EconomyRules.apply(initial, request, now) }.code)
+            assertFalse(initial.workshopStarterClaimed); assertTrue(initial.jobs.isEmpty())
+        }
+    }
+
+    @Test fun `earmarked aid preserves overflowing storage reserved market goods capped balances and legacy debt`() {
+        val initial = EconomyRules.initial()
+        val reserved = mapOf("wood" to 1L)
+        val states = listOf(initial.copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE, 7), inventory = mapOf("berries" to ECONOMY_MAX_ITEMS)),
+            initial.copy(wallet = EconomyWallet(-20, 7), inventory = mapOf("berries" to 49L)))
+        for (state in states) {
+            val started = EconomyRules.apply(state, tutorialCommand(), now, reserved).first
+            assertEquals(state.wallet, started.wallet); assertEquals(state.inventory, started.inventory)
+            assertEquals(EconomyRules.storage(state, reserved), EconomyRules.storage(started, reserved))
+            assertEquals(EconomyCost(), started.jobs.single().cost); assertTrue(started.workshopStarterClaimed)
+        }
+        assertEquals(mapOf("wood" to 1L), reserved)
+    }
+
+    @Test fun `aid consumes the next builder meal once and preserves the usual construction duration boost`() {
+        val initial = EconomyRules.initial().copy(food = EconomyFoodState(builderMeal = "grilled_fish"))
+        val started = EconomyRules.apply(initial, tutorialCommand(), now).first
+        val meal = EconomyRules.catalog.food!!.meals.single { it.itemId == "grilled_fish" }
+        assertEquals(EconomyJobMeal(meal.itemId, "builder", meal.builderSpeedBps), started.jobs.single().meal)
+        assertEquals(now.plusSeconds(EconomyFood.mealDuration(workshop().seconds, meal.builderSpeedBps)), Instant.parse(started.jobs.single().finishesAt))
+        assertNull(started.food.builderMeal)
+        assertEquals(initial.wallet, started.wallet); assertEquals(initial.inventory, started.inventory)
+    }
+
+    @Test fun `normal workshop build keeps its paid catalog cost and tutorial completion cannot award another aid`() {
+        val initial = EconomyRules.initial()
+        val paid = EconomyRules.apply(initial, tutorialCommand().copy(action = "start_construction"), now).first
+        assertEquals(workshop().cost, paid.jobs.single().cost)
+        assertEquals(initial.wallet.coins - workshop().cost.coins, paid.wallet.coins)
+        workshop().cost.items.forEach { (item, quantity) -> assertEquals((initial.inventory[item] ?: 0) - quantity, paid.inventory[item] ?: 0) }
+        assertFalse(paid.workshopStarterClaimed)
+        val started = EconomyRules.apply(initial, tutorialCommand(), now).first
+        val job = started.jobs.single()
+        val completed = EconomyRules.apply(started, tutorialCommand().copy(action = "claim_job", targetId = job.id), Instant.parse(job.finishesAt)).first
+        assertEquals(1, completed.buildings["workshop"]); assertTrue(completed.workshopStarterClaimed)
+        assertEquals(initial.wallet, completed.wallet); assertEquals(initial.inventory, completed.inventory)
+        assertEquals("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", assertFailsWith<AuthFailure> {
+            EconomyRules.apply(completed, tutorialCommand(), Instant.parse(job.finishesAt)) }.code)
     }
 }

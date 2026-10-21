@@ -44,9 +44,12 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
     if (!subscribers || !owner || view.busy || now() < view.retryAt) return Promise.resolve();
     if (read) return read;
     const generation = epoch, stamp = ++sequence, controller = new AbortController();
-    requests.add(controller); publish({ loading: true });
-    const task = (async () => {
+    requests.add(controller);
+    // Reserve the read before publishing: external-store listeners may synchronously
+    // mount another control and ask for the same snapshot.
+    const task = Promise.resolve().then(async () => {
       try {
+        if (!valid(generation) || stamp !== sequence || controller.signal.aborted) return;
         const data = await transport.get(controller.signal);
         if (valid(generation) && stamp === sequence) { adopt(data); if (!view.pending) publish({ error: "", retryAt: 0 }); }
       } catch (cause) {
@@ -59,19 +62,20 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
         requests.delete(controller);
         if (valid(generation) && stamp === sequence) publish({ loading: false });
       }
-    })();
-    read = task; void task.finally(() => { if (read === task) read = null; }); return task;
+    });
+    read = task; void task.finally(() => { if (read === task) read = null; });
+    publish({ loading: true }); return task;
   }
   async function execute(body: GameRewardClaim): Promise<GameRewardResult | undefined> {
     if (!subscribers || view.busy || body.ownerPublicId !== owner || now() < view.retryAt) return;
     const generation = epoch, controller = new AbortController();
-    requests.add(controller); ++sequence; read = null; remember(body);
-    publish({ loading: false, busy: true, error: "", result: null });
+    requests.add(controller); ++sequence; read = null;
+    publish({ loading: false, busy: true, error: "", result: null }); remember(body);
     try {
       const result = await transport.send(body, controller.signal);
       if (!valid(generation)) return;
       const matching = result.requestId === body.requestId && result.rewards.ownerPublicId === owner && result.economy.ownerPublicId === owner
-        && result.claim.kind === body.kind && (body.kind === "daily" || result.claim.kind === "achievement"
+        && result.claim.kind === body.kind && (body.kind !== "achievement" || result.claim.kind === "achievement"
           && result.claim.achievementId === body.achievementId && result.claim.level === body.level);
       if (!matching) throw new ApiError("Ответ о награде не совпал с запросом. Проверьте его ещё раз.", 502);
       adopt(result.rewards); remember(null); publish({ uncertain: false, result, retryAt: 0 }); return result;
@@ -103,6 +107,8 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
     },
     refresh,
     claimDaily: () => owner && view.data?.daily.claimable && !view.pending ? execute({ requestId: createUuidV4(), ownerPublicId: owner, kind: "daily" }) : Promise.resolve(undefined),
+    claimOnboarding: () => owner && view.data?.onboarding && !view.data.onboarding.claimedAt && !view.pending
+      ? execute({ requestId: createUuidV4(), ownerPublicId: owner, kind: "onboarding" }) : Promise.resolve(undefined),
     claimAchievement: (achievementId: GameAchievementId, level: number) => owner && !view.pending
       && view.data?.achievementRewards.some(row => row.achievementId === achievementId && row.level === level && row.eligible)
       ? execute({ requestId: createUuidV4(), ownerPublicId: owner, kind: "achievement", achievementId, level }) : Promise.resolve(undefined),

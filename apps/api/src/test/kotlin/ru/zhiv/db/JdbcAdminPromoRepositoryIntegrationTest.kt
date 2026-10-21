@@ -25,7 +25,7 @@ class JdbcAdminPromoRepositoryIntegrationTest {
 
     @Test fun `filled database upgrade and live create edit delete preserve claims and replay receipts`() = runBlocking<Unit> {
         DatabaseFactory.create(config()).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("49").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("49").load().migrate()
             val codec = TokenCodec(); val adminToken = codec.issue(); val userToken = codec.issue()
             val users = JdbcZhivRepository(source)
             val admin = users.bootstrap("Админ", codec.issue().hash, adminToken.hash, 365)
@@ -43,7 +43,7 @@ class JdbcAdminPromoRepositoryIntegrationTest {
             assertEquals("ADMIN_REQUEST_CONFLICT", assertFailsWith<AuthFailure> {
                 manager.manage(adminToken.hash, create.copy(definition = gift.copy(title = "Другое название")))
             }.code)
-            val redemption = PromoRequest(UUID.randomUUID().toString(), user.publicId, before.revision, gift.code)
+            val redemption = PromoRequest(UUID.randomUUID().toString(), user.publicId, economy.snapshot(userToken.hash).revision, gift.code)
             val result = redeemer.redeem(userToken.hash, redemption)
             assertEquals(before.wallet.coins + 500, result.state.wallet.coins)
             assertEquals(before.wallet.pearls + 40, result.state.wallet.pearls)

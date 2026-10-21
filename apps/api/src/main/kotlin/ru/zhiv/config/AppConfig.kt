@@ -14,6 +14,7 @@ data class AppConfig(
     val adminPublicIds: Set<String> = emptySet(),
     val monitoringUrl: String? = null,
     val metricsScrapeToken: String? = null,
+    val maptilerServiceToken: MapTilerServiceToken? = null,
 ) {
     val cookieName: String = if (production) "__Host-zhiv_session" else "zhiv_session_dev"
 
@@ -64,6 +65,8 @@ data class AppConfig(
                         require(token.matches(Regex("^[A-Za-z0-9_-]{64}$"))) { "Invalid metrics scrape token file" }
                     }
                 },
+                maptilerServiceToken = environment["MAPTILER_SERVICE_TOKEN_FILE"]?.takeIf(String::isNotBlank)
+                    ?.let(MapTilerServiceToken::fromFile),
             )
         }
 

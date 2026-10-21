@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { measureGuideSpotlight } = await vite.ssrLoadModule("/features/onboarding/guide-spotlight.ts");
+const { guideSpotlightBounds, guideSpotlightTargets, measureGuideSpotlight } = await vite.ssrLoadModule("/features/onboarding/guide-spotlight.ts");
 const viewport = { left: 0, top: 0, width: 1000, height: 800 };
 const getStyle = element => element.style;
 const rect = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height });
@@ -21,6 +21,29 @@ function element(bounds, options = {}) {
 }
 const measure = target => measureGuideSpotlight(target, viewport, getStyle);
 const bounds = value => value && { left: value.left, top: value.top, width: value.width, height: value.height };
+
+test("a list paints only its explicitly marked controls, excluding its wrapper and nested groups", () => {
+  const nested = {};
+  const group = { hasAttribute: name => name === "data-guide-spotlight-group", querySelectorAll: () => [first, second, nestedItem] };
+  const first = { closest: () => group }, second = { closest: () => group }, nestedItem = { closest: () => nested };
+  assert.deepEqual(guideSpotlightTargets(group), [first, second]);
+  const control = { hasAttribute: () => false };
+  assert.deepEqual(guideSpotlightTargets(control), [control]);
+  assert.deepEqual(guideSpotlightTargets(null), []);
+  group.querySelectorAll = () => [];
+  assert.deepEqual(guideSpotlightTargets(group), [], "an empty route group leaves no floating wrapper ring");
+});
+
+test("separate card highlights reserve their complete visible span when positioning a floating lesson", () => {
+  const panel = element(rect(100, 100, 300, 240), { style: { overflowY: "auto" } });
+  const first = element(rect(110, 140, 280, 80), { parentElement: panel });
+  const second = element(rect(110, 240, 280, 140), { parentElement: panel });
+  assert.deepEqual(guideSpotlightBounds([measure(first), measure(second)]), { left: 105, top: 135, width: 290, height: 205 });
+  second.bounds = rect(110, 360, 280, 140);
+  assert.deepEqual(guideSpotlightBounds([first, second].map(measure).filter(Boolean)), measure(first),
+    "a card below the scrollport cannot obstruct coach placement");
+  assert.equal(guideSpotlightBounds([]), null);
+});
 
 test("coach placement ignores a menu item scrolled out of its panel and tracks it again on return", () => {
   const panel = element(rect(100, 200, 240, 300), { style: { overflowY: "auto" } });

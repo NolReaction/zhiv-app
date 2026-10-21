@@ -6,14 +6,29 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { mapGuideCamera } = await vite.ssrLoadModule("/features/world/scene/map-guide-target.ts");
+const { mapGuideCamera, minerArrivalGuideTarget, leaftailArrivalGuideTarget, drawMapGuideTarget } = await vite.ssrLoadModule("/features/world/scene/map-guide-target.ts");
 const { observeMapGuideInset } = await vite.ssrLoadModule("/features/world/scene/map-guide-inset.ts");
 const { worldToScreen } = await vite.ssrLoadModule("/features/world/scene/camera.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { default: authored } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
 
-test("real garden and workshop levels fit between HUD and coach on phone, landscape and desktop", () => {
+test("miner arrival frames the moving helmet and feet above the coach without changing the quarry", () => {
+  const point = { x: 650, y: 250, size: 42 }, before = { ...point };
+  for (const view of [{ width: 393, height: 665, top: 120, bottom: 220 }, { width: 1280, height: 900, top: 100, bottom: 250 }]) {
+    const target = minerArrivalGuideTarget(point), camera = mapGuideCamera(target, view, authored, view);
+    assert.equal(target.place, "quarry"); assert.equal(target.id, "kamneshmyg-arrival");
+    for (const corner of target.hitArea) {
+      const screen = worldToScreen(corner, camera, view);
+      assert.ok(screen.x >= 0 && screen.x <= view.width);
+      assert.ok(screen.y >= view.top && screen.y <= view.height - view.bottom);
+    }
+    assert.deepEqual(point, before);
+  }
+  for (const bad of [{ ...point, x: NaN }, { ...point, size: 0 }]) assert.equal(minerArrivalGuideTarget(bad), undefined);
+});
+
+test("real garden, workshop, orders board and market fit between HUD and coach on phone, landscape and desktop", () => {
   const cases = [
     { width: 320, height: 568, top: 110, bottom: 200 },
     { width: 393, height: 665, top: 120, bottom: 220 },
@@ -22,7 +37,7 @@ test("real garden and workshop levels fit between HUD and coach on phone, landsc
   ];
   for (const level of [0, 1, 2]) {
     const scene = previewWorldScene(authored, { ...initialPreviewLevels(authored), workshop: level });
-    for (const place of ["garden", "workshop"]) {
+    for (const place of ["garden", "workshop", "bulletin-board", "market"]) {
       const object = interactiveMapObjects(scene).find(object => object.place === place);
       assert.ok(object);
       for (const view of cases) {
@@ -36,6 +51,51 @@ test("real garden and workshop levels fit between HUD and coach on phone, landsc
       }
     }
   }
+});
+
+function paintedGuide(elapsed, reducedMotion = false) {
+  const path = [], strokes = [];
+  const context = { globalAlpha: .8, saved: null,
+    save() { this.saved = this.globalAlpha; }, restore() { this.globalAlpha = this.saved; },
+    beginPath() {}, closePath() {}, moveTo(x, y) { path.push([x, y]); }, lineTo(x, y) { path.push([x, y]); },
+    stroke() { strokes.push({ alpha: this.globalAlpha, width: this.lineWidth, color: this.strokeStyle }); },
+  };
+  const target = { ...minerArrivalGuideTarget({ x: 650, y: 250, size: 42 }), id: "tutorial-building" };
+  const original = structuredClone(target);
+  drawMapGuideTarget(context, target, { x: 650, y: 250, zoom: 2 }, { width: 393, height: 665 }, elapsed, reducedMotion);
+  assert.deepEqual(target, original, "the authored click and framing geometry is never animated");
+  assert.equal(context.globalAlpha, .8, "guide paint restores the caller's canvas state");
+  return { path, strokes };
+}
+
+test("both new residents keep camera framing without painting an arrival square", () => {
+  for (const target of [minerArrivalGuideTarget, leaftailArrivalGuideTarget]) {
+    const object = target({ x: 650, y: 250, size: 42 }), original = structuredClone(object);
+    assert.ok(object.hitArea.length >= 3);
+    assert.ok(mapGuideCamera(object, { width: 393, height: 665 }, authored, { top: 120, bottom: 220 }).zoom > 0);
+    for (const still of [false, true]) {
+      const context = new Proxy({}, { get() { throw new Error("resident framing must not paint a square"); } });
+      drawMapGuideTarget(context, object, { x: 650, y: 250, zoom: 2 }, { width: 393, height: 665 }, 1, still);
+      assert.deepEqual(object, original);
+    }
+  }
+});
+
+test("map guide slowly pulses bright paint on the existing active clock with stable geometry", () => {
+  const bright = paintedGuide(0), dim = paintedGuide(.9), next = paintedGuide(1.8);
+  assert.deepEqual(dim.path, bright.path);
+  assert.deepEqual(next, bright, "the slow pulse completes one smooth cycle in 1.8 active seconds");
+  assert.deepEqual(dim.strokes.map(stroke => stroke.width), bright.strokes.map(stroke => stroke.width));
+  assert.equal(dim.strokes[0].alpha, bright.strokes[0].alpha, "the dark backing stays legible");
+  assert.ok(dim.strokes[1].alpha < bright.strokes[1].alpha);
+  assert.ok(dim.strokes[1].alpha >= .8 * .5, "the highlighted contour never disappears");
+});
+
+test("reduced motion keeps the map guide fully visible and static at any clock value", () => {
+  const first = paintedGuide(0, true);
+  assert.deepEqual(paintedGuide(.9, true), first);
+  assert.deepEqual(paintedGuide(100, true), first);
+  assert.ok(first.strokes.every(stroke => stroke.alpha === .8));
 });
 
 function observeEnvironment(run) {
@@ -96,4 +156,19 @@ test("map guide observer stops pending measurements and all observers when the c
   assert.equal(frames.size, 0); assert.ok(observers.every(observer => observer.nodes.size === 0));
   notify(world, "childList"); notify(world.coach, "attributes"); notify(canvas, "resize"); flush();
   assert.deepEqual(values, [], "no camera work survives the disposed lesson");
+}));
+
+test("a coach mounting during overscan measures the fixed root in local CSS pixels", () => observeEnvironment(({ world, card, notify, flush, frames, observers }) => {
+  const surface = { clientHeight: 665, getBoundingClientRect: () => ({ bottom: 600, height: 532 }) };
+  const canvas = { clientHeight: 729, getBoundingClientRect() { throw new Error("the moving canvas is not the viewport"); } };
+  world.coach = card(400);
+  const values = [], stop = observeMapGuideInset(world, surface, value => values.push(value));
+  try {
+    flush(); assert.deepEqual(values, [262], "account for an ancestor's scale using the root's height");
+    assert.ok(observers.some(observer => observer.name === "ResizeObserver" && observer.nodes.has(surface)));
+    notify(canvas, "resize"); assert.equal(frames.size, 0, "overscan backing changes do not remeasure the coach");
+    world.coach.top = 360; notify(world.coach, "attributes"); flush();
+    assert.deepEqual(values, [262, 312], "a moving coach still updates against the same visible area");
+    notify(surface, "resize"); flush(); assert.deepEqual(values, [262, 312]);
+  } finally { stop(); }
 }));

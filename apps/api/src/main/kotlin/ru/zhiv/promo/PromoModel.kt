@@ -63,8 +63,8 @@ object PromoRules {
     fun apply(state: EconomyState, reward: PromoReward, reserved: Map<String, Long> = emptyMap()): EconomyState {
         if (reward.coins > ECONOMY_MAX_BALANCE - state.wallet.coins || reward.pearls > ECONOMY_MAX_PEARLS - state.wallet.pearls)
             economyFailure("ECONOMY_CAPACITY", "В кошельке недостаточно места для подарка. Промокод не использован.")
-        val next = state.copy(wallet = EconomyWallet(state.wallet.coins + reward.coins, state.wallet.pearls + reward.pearls),
-            inventory = EconomyRules.addItems(state.inventory, reward.items))
+        val next = EconomyFishStock.credit(state.copy(wallet = EconomyWallet(state.wallet.coins + reward.coins, state.wallet.pearls + reward.pearls),
+            inventory = EconomyRules.addItems(state.inventory, reward.items)), reward.items)
         try { EconomyRules.assertStorageTransition(state, next, reserved) } catch (error: AuthFailure) {
             if (error.code == "ECONOMY_STORAGE_FULL") economyFailure(error.code, "В кладовой недостаточно места для подарка. Освободите место и повторите: промокод не использован.")
             throw error

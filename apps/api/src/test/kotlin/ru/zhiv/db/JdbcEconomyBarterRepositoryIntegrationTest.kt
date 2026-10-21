@@ -46,13 +46,16 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
     @BeforeEach fun clearOffers() { execute("DELETE FROM economy_barter_showcases"); execute("DELETE FROM economy_barter_offers") }
     private fun execute(sql: String, vararg values: Any?) = source.connection.use { c -> c.economyUpdate(sql, *values).also { c.commit() } }
     private fun scalar(sql: String, vararg values: Any?): Long = source.connection.use { c -> c.economyRows(sql, *values) { it.getLong(1) }.single() }
+    private fun persistedProfile(player: Player): String = source.connection.use { c ->
+        c.economyRows("SELECT to_jsonb(e)::text FROM economy_profiles e WHERE user_id=?", player.id) { it.getString(1) }.single()
+    }
     private suspend fun player(items: Map<String,Long> = mapOf("ancient_core" to 3L), home: Int = 3): Player {
         val token=tokens.issue(); val user=identities.bootstrap("Хранитель", tokens.issue().hash, token.hash, 365)
         economy.snapshot(token.hash)
         source.connection.use { c ->
             val old=readEconomyProfile(c,user.id).state
             c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(old.copy(
-                wallet=EconomyWallet(123,9), inventory=items, buildings=old.buildings + ("home" to home), completedExplorations=1)),user.id)
+                wallet=EconomyWallet(123,9), inventory=items, buildings=old.buildings + mapOf("home" to home,"bridge" to 1), completedExplorations=1)),user.id)
             c.commit()
         }
         return Player(user.id,user.publicId,token.hash,token.raw)
@@ -72,6 +75,32 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         if(command.action=="create_offer") { put("offeredItemId",command.offeredItemId);put("requestedItemId",command.requestedItemId) }
         else put("offerId",command.offerId)
     }.toString()
+
+    @Test fun `bridge gate hides locked barter sellers and allows old escrow cancellation and replay`() = runBlocking<Unit> {
+        val seller=player(); val buyer=player(mapOf("moon_crystal" to 2L))
+        val create=createCommand(seller)
+        val created=barter.command(seller.hash,create)
+        assertEquals(created.offer.id,barter.barter(buyer.hash).offers.single().id)
+        edit(seller) { it.copy(buildings=it.buildings-"bridge") }
+        assertTrue(barter.barter(buyer.hash).offers.isEmpty())
+        assertEquals(created.offer.id,barter.barter(seller.hash).mine.single().id)
+        assertTrue(barter.command(seller.hash,create).replayed)
+        assertEquals("ECONOMY_BARTER_LOCKED",assertFailsWith<AuthFailure> {
+            barter.command(seller.hash,createCommand(seller)) }.code)
+        assertEquals("ECONOMY_BARTER_LOCKED",assertFailsWith<AuthFailure> {
+            barter.command(buyer.hash,action(buyer,"accept_offer",created.offer.id)) }.code)
+        assertEquals(2L,economy.snapshot(buyer.hash).inventory["moon_crystal"])
+        barter.command(seller.hash,action(seller,"cancel_offer",created.offer.id))
+        assertEquals(3L,economy.snapshot(seller.hash).inventory["ancient_core"])
+        edit(seller) { it.copy(buildings=it.buildings+("bridge" to 1)) }
+        val next=offer(seller)
+        expire(buyer)
+        assertEquals(next.id,barter.barter(buyer.hash).offers.single().id)
+        edit(buyer) { it.copy(buildings=it.buildings+("bridge" to 0)) }
+        assertTrue(barter.barter(buyer.hash).offers.isEmpty())
+        assertEquals("ECONOMY_BARTER_LOCKED",assertFailsWith<AuthFailure> {
+            barter.command(buyer.hash,action(buyer,"accept_offer",next.id)) }.code)
+    }
 
     @Test fun `escrow consumes storage and cancel replay restores a finite item while create receipt stays immutable`() = runBlocking<Unit> {
         val p=player(); val command=createCommand(p); val created=barter.command(p.hash,command)
@@ -256,9 +285,19 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         assertEquals("ECONOMY_RESOURCES",assertFailsWith<AuthFailure>{barter.command(buyer.hash,first)}.code)
         edit(buyer){it.copy(inventory=mapOf("moon_crystal" to 1L,"ancient_core" to ECONOMY_MAX_ITEMS))}
         val beforeBuyer=economy.snapshot(buyer.hash);val beforeSeller=economy.snapshot(seller.hash)
+        val buyerProfile=persistedProfile(buyer);val sellerProfile=persistedProfile(seller)
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure>{barter.command(buyer.hash,first)}.code)
-        assertEquals(beforeBuyer,economy.snapshot(buyer.hash).copy(serverTime=beforeBuyer.serverTime))
-        assertEquals(beforeSeller,economy.snapshot(seller.hash).copy(serverTime=beforeSeller.serverTime))
+        assertEquals(buyerProfile,persistedProfile(buyer), "Failed acceptance keeps the complete persisted profile and its revision")
+        assertEquals(sellerProfile,persistedProfile(seller), "Failed acceptance cannot mutate the counterparty's profile")
+        // An unaccepted first stage quote uses this read's clock; every saved field remains exact above.
+        fun normalizeReadClock(current: EconomyView, before: EconomyView): EconomyView {
+            val quote = current.stageOrders.stages.getValue("3")
+            assertEquals(0, quote.step)
+            return current.copy(serverTime = before.serverTime, stageOrders = current.stageOrders.copy(stages =
+                current.stageOrders.stages + ("3" to quote.copy(availableAt = before.stageOrders.stages.getValue("3").availableAt))))
+        }
+        assertEquals(beforeBuyer,normalizeReadClock(economy.snapshot(buyer.hash),beforeBuyer))
+        assertEquals(beforeSeller,normalizeReadClock(economy.snapshot(seller.hash),beforeSeller))
         assertEquals("active",barter.barter(seller.hash).mine.single().status)
         assertEquals(0L,scalar("SELECT count(*) FROM economy_barter_receipts WHERE user_id=?",buyer.id))
         assertEquals(0L,scalar("SELECT count(*) FROM economy_ledger WHERE source_key=?","barter:accept:${lot.id}"))
@@ -296,7 +335,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         economy.command(p.hash,sell)
         assertEquals("ECONOMY_REQUEST_CONFLICT",assertFailsWith<AuthFailure>{barter.command(p.hash,createCommand(p).copy(requestId=sell.requestId))}.code)
         val market=JdbcEconomyMarketRepository(source)
-        val marketRequest=EconomyCommand(UUID.randomUUID().toString(),p.publicId,economy.snapshot(p.hash).revision,"create_listing","berries",totalPrice=30)
+        val marketRequest=EconomyCommand(UUID.randomUUID().toString(),p.publicId,economy.snapshot(p.hash).revision,"create_listing","berries",totalPrice=10)
         market.command(p.hash,marketRequest)
         assertEquals("ECONOMY_REQUEST_CONFLICT",assertFailsWith<AuthFailure>{barter.command(p.hash,createCommand(p).copy(requestId=marketRequest.requestId))}.code)
         val rewardId=UUID.randomUUID()
@@ -330,7 +369,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         try {
             val isolatedConfig=config.copy(databaseUrl="jdbc:postgresql://${postgres.host}:${postgres.getMappedPort(5432)}/$database")
             DatabaseFactory.create(isolatedConfig).use{isolated->
-                Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("38").load().migrate()
+                Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("38").load().migrate()
                 val token=tokens.issue();val user=JdbcZhivRepository(isolated).bootstrap("До обмена",tokens.issue().hash,token.hash,365)
                 val listing=UUID.randomUUID();val request=UUID.randomUUID()
                 isolated.connection.use{c->
@@ -350,14 +389,24 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
                 val tables=listOf("economy_profiles","economy_market_listings","economy_market_receipts","economy_ledger","game_reward_claims")
                 val before=tables.associateWith(::rows)
                 // First prove V39 is additive, before the explicit later currency conversions.
-                val barterMigration=Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("39").load()
+                val barterMigration=Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("39").load()
                 barterMigration.migrate();barterMigration.migrate()
                 assertEquals(before,tables.associateWith(::rows))
                 DatabaseFactory.migrate(isolated);DatabaseFactory.migrate(isolated)
-                assertEquals(9L,isolated.connection.use{readEconomyProfile(it,user.id).revision})
+                assertEquals(10L,isolated.connection.use{readEconomyProfile(it,user.id).revision},
+                    "V40/V41 convert units and V55 fences inherited knowledge once")
                 val repository=JdbcEconomyBarterRepository(isolated)
                 val current=JdbcEconomyRepository(isolated).snapshot(token.hash)
-                assertEquals(10L,current.revision,"Current merchant stock is initialized once after both conversions")
+                assertEquals(11L,current.revision,"Current merchant stock is initialized once after both conversions and the knowledge fence")
+                assertTrue(repository.barter(token.hash).offers.isEmpty())
+                assertEquals(0,current.buildings["bridge"] ?: 0,"Schema upgrades do not restore a bridge")
+                // Keep the historical comparisons above exact; only this current trading fixture opens the bridge.
+                isolated.connection.use { c ->
+                    val state=readEconomyProfile(c,user.id).state
+                    c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
+                        economyJson.encodeToString(state.copy(buildings=state.buildings+("bridge" to 1))),user.id)
+                    c.commit()
+                }
                 val command=EconomyBarterCommand(UUID.randomUUID().toString(),user.publicId,current.revision,"create_offer","ancient_core","moon_crystal")
                 val result=repository.command(token.hash,command)
                 assertEquals(2L,result.state.storage.reserved,"coin listing and barter share warehouse escrow")

@@ -13,6 +13,11 @@ class GameAchievementProgressTest {
         assertEquals(EconomyRules.catalog.explorations.map { it.id }.toSet(),routes.toSet())
         assertEquals(routes.size,routes.toSet().size)
         assertTrue("coastal_deposits" in GameRewards.biomes.getValue("shore"))
+        for (id in listOf("far_bank_path", "far_bank_grove", "ancient_ruins")) {
+            assertTrue(id in GameRewards.biomes.getValue("forest"))
+            val visited = EconomyRules.initial().copy(progression = EconomyProgression(routes = mapOf(id to 1L)))
+            assertEquals(1L, economyAchievementProgress(visited).getValue("familiar_trails"))
+        }
         val state = EconomyRules.initial().copy(progression=EconomyProgression(routes=mapOf("forest" to 1,"shore" to 1,"coastal_deposits" to 1)))
         assertEquals(2L,economyAchievementProgress(state).getValue("familiar_trails"))
     }

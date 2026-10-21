@@ -14,16 +14,22 @@ const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resource
 const now = Date.parse("2026-10-07T12:00:00Z");
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
 
-test("shared Kotlin vectors scale raw materials strongly, bound complex goods and preserve mixed item premiums", () => {
+test("shared Kotlin vectors keep compact requests and mixed-item premiums identical across home levels", () => {
+  for (const multipliers of Object.values(catalog.food.orders.progression)) assert.deepEqual(multipliers, [10000, 10000, 10000, 10000, 10000]);
   for (const expected of vectors.scaling) {
     const template = catalog.food.orders.templates.find(template => template.id === expected.templateId);
     const actual = food.progressedResidentOrderTemplate(template, expected.home);
     assert.deepEqual(actual.items, expected.items, `${expected.templateId}@${expected.home}`);
     assert.equal(actual.coins, expected.coins, `${expected.templateId}@${expected.home}`);
   }
+  for (const template of catalog.food.orders.templates) for (let home = 1; home <= 5; home++) {
+    const actual = food.progressedResidentOrderTemplate(template, home);
+    assert.deepEqual(actual.items, template.items, `${template.id}@${home}: higher houses keep the accepted quantity compact`);
+    assert.equal(actual.coins, template.coins, `${template.id}@${home}: the authored premium is preserved`);
+  }
 });
 
-test("shared Kotlin reachability vectors require every production input and both legendary tackle pieces", () => {
+test("shared Kotlin reachability vectors require every production input and rods with positive class odds", () => {
   for (const scenario of vectors.availability) {
     const state = fresh(); state.buildings = scenario.buildings;
     state.fishing.ownedRods = scenario.ownedRods; state.fishing.ownedHooks = scenario.ownedHooks;
@@ -61,9 +67,9 @@ test("saved cards keep IDs goods and payouts through home upgrades catalog edits
   assert.deepEqual(changed.offers.filter(offer => offer.slot !== 1), before.offers.filter(offer => offer.slot !== 1));
 });
 
-test("the income boost keeps a saved 400-coin delivery exact and pays 560 only for a new wood quote", () => {
+test("the first-stage update keeps a saved 400-coin delivery exact and quotes new wood at 90", () => {
   const state = fresh(), template = catalog.food.orders.templates.find(template => template.id === "builder_wood_supply");
-  assert.equal(template.coins, 560);
+  assert.equal(template.coins, 90);
   state.residentOrders = food.normalizedResidentOrders(state, now);
   state.residentOrders.slots[1] = { sequence: 3, readyAt: new Date(now).toISOString(), templateId: template.id,
     terms: { ...template, items: { wood: 8 }, coins: 400 } };

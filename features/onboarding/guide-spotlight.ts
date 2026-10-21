@@ -2,6 +2,23 @@ export type GuideBounds = { left: number; top: number; width: number; height: nu
 type GuideStyle = Pick<CSSStyleDeclaration, "overflowX" | "overflowY" | "visibility" | "display" | "opacity">;
 const clips = (overflow: string) => /^(auto|scroll|hidden|clip)$/.test(overflow);
 
+/** Lists opt in to separate rings on their real controls. Their wrapper and
+ * headings are layout only; painting them would leave a square frame behind
+ * opaque cards. Nested groups keep ownership of their own controls. */
+export function guideSpotlightTargets(target: HTMLElement | null): HTMLElement[] {
+  if (!target) return [];
+  if (!target.hasAttribute("data-guide-spotlight-group")) return [target];
+  return Array.from(target.querySelectorAll<HTMLElement>("[data-guide-spotlight-item]"))
+    .filter(item => item.closest("[data-guide-spotlight-group]") === target);
+}
+
+export function guideSpotlightBounds(bounds: GuideBounds[]): GuideBounds | null {
+  if (!bounds.length) return null;
+  const left = Math.min(...bounds.map(rect => rect.left)), top = Math.min(...bounds.map(rect => rect.top));
+  const right = Math.max(...bounds.map(rect => rect.left + rect.width)), bottom = Math.max(...bounds.map(rect => rect.top + rect.height));
+  return { left, top, width: right - left, height: bottom - top };
+}
+
 /** Visible target bounds for placing the coach without covering its control.
  * The ring itself is painted on the target and clipped natively by the browser. */
 export function measureGuideSpotlight(

@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": "saint-basils",
+  "source": {
+    "sha256": "792998a5d49db955ca3ecc8b9cc8b18c389535d40de027c59afc66e7b0faa9c9",
+    "bytes": 7985660,
+    "author": "",
+    "license": "",
+    "url": "",
+    "title": ""
+  },
+  "coordinates": {
+    "axes": "east,north,up",
+    "gltfConversion": "x,-z,y",
+    "normalizedHeight": 1,
+    "heightMeters": 65,
+    "headingDegrees": 0,
+    "bounds": {
+      "min": [
+        -0.37556418776512146,
+        -0.37609338760375977,
+        0
+      ],
+      "max": [
+        0.37556418776512146,
+        0.37609338760375977,
+        1
+      ]
+    }
+  },
+  "preparation": {
+    "version": 2,
+    "simplifier": "meshoptimizer@1.1.1",
+    "inputTriangles": 99494,
+    "discardedDegenerateTriangles": 0,
+    "preserveTopFraction": 0,
+    "sourceHeight": 0.980377197265625,
+    "sourceOrigin": [
+      0,
+      0,
+      0
+    ],
+    "colors": "linear baseColor + vertexColor; sRGB baseColor texture; runtime normal/metallic/roughness lighting"
+  },
+  "overview": {
+    "url": "/earth/models/saint-basils/overview.elm",
+    "bytes": 363372,
+    "sha256": "6cef49123558736685fe0e420014d6b47b2b4294bfb9a1b911db8c0dd972e35d",
+    "vertexCount": 5771,
+    "indexCount": 17997,
+    "triangles": 5999,
+    "targetTriangles": 6000,
+    "error": 0.008044315502047539,
+    "errorLimit": 0.03,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 14192,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 16496,
+        "width": 128,
+        "height": 128,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 6684,
+        "width": 64,
+        "height": 64,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  },
+  "detail": {
+    "url": "/earth/models/saint-basils/detail.elm",
+    "bytes": 1501462,
+    "sha256": "2f986df1cb4c66f34c022e28a509fc645c9162a93ddc908382512b25ba69ce60",
+    "vertexCount": 17510,
+    "indexCount": 71973,
+    "triangles": 23991,
+    "targetTriangles": 24000,
+    "error": 0.0024890280328691006,
+    "errorLimit": 0.01,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 126980,
+        "width": 1024,
+        "height": 1024,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 231318,
+        "width": 512,
+        "height": 512,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 84744,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  }
+}

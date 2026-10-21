@@ -394,3 +394,28 @@ test("daytime chimneys share one clock across both views and stop when paused, h
   lateCallback(1000);
   assert.equal(env.world.dataset.frame, finalFrame, "a queued smoke tick cannot repaint a disposed preview");
 });
+
+
+test("closed rabbit home keeps its touch footprint without requesting an empty image", async t => {
+  const env = canvasEnvironment(t), requests = [];
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value: class {
+    naturalWidth = 1; naturalHeight = 1;
+    set src(value) { requests.push(value); queueMicrotask(() => this.onload?.()); }
+    removeAttribute() {}
+  } });
+  t.after(() => descriptor ? Object.defineProperty(globalThis, "Image", descriptor) : delete globalThis.Image);
+  const authored = { ...scene, sites: [{ id: "lopukh-home", label: "Дом Лопоуха", initialLevel: 1,
+    bounds: { x: 300, y: 300, width: 40, height: 40 }, anchor: { x: 320, y: 330 }, entry: { x: 320, y: 345 },
+    collision: [], hitArea: [{ x: 300, y: 300 }, { x: 340, y: 300 }, { x: 340, y: 340 }],
+    states: [{ level: 1, label: "Дом Лопоуха", image: "/rabbit-home.png" }] }] };
+  const renderer = await createFixedWorldRenderer(env.world, env.circle, authored, { ...options, levels: { "lopukh-home": 0 } });
+  t.after(() => renderer.dispose());
+  assert.deepEqual(requests, []);
+  assert.equal(env.world.dataset.renderedLevels, '{"lopukh-home":0}');
+  renderer.update({ ...options, levels: { "lopukh-home": 1 } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(requests, ["/rabbit-home.png"]);
+  assert.equal(env.world.dataset.renderedLevels, '{"lopukh-home":1}');
+  renderer.dispose();
+});

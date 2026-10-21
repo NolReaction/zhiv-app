@@ -2,6 +2,7 @@ package ru.zhiv.economy
 
 import org.junit.jupiter.api.Test
 import ru.zhiv.auth.AuthFailure
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.*
 
@@ -21,6 +22,12 @@ class EconomyMarketRulesTest {
         )) assertFailsWith<AuthFailure> { EconomyMarketRules.validate(bad) }
         EconomyMarketRules.validate(command().copy(action = "cancel_listing", targetId = UUID.randomUUID().toString(), quantity = 1, totalPrice = 0))
         assertFailsWith<AuthFailure> { EconomyMarketRules.validate(command().copy(action = "cancel_listing", targetId = UUID.randomUUID().toString())) }
+        EconomyMarketRules.validate(command().copy(action = "claim_sale", targetId = UUID.randomUUID().toString(), quantity = 1, totalPrice = 0))
+        for (bad in listOf(
+            command().copy(action = "claim_sale", targetId = "berries", quantity = 1, totalPrice = 0),
+            command().copy(action = "claim_sale", targetId = UUID.randomUUID().toString(), quantity = 2, totalPrice = 0),
+            command().copy(action = "claim_sale", targetId = UUID.randomUUID().toString(), quantity = 1, totalPrice = 10),
+        )) assertFailsWith<AuthFailure> { EconomyMarketRules.validate(bad) }
     }
 
     @Test fun `whole lot price allows exact cap but no overflow or one coin over`() {
@@ -36,11 +43,13 @@ class EconomyMarketRulesTest {
         assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, 1_000_000_000, Long.MAX_VALUE) }
     }
 
-    @Test fun `segments limits fee rounding and price ceiling bound premium trade`() {
-        assertTrue(EconomyMarketRules.sameHomeBand(2, 3))
-        assertTrue(EconomyMarketRules.sameHomeBand(4, 5))
-        for ((a,b) in listOf(1 to 1, 2 to 4, 3 to 5, 4 to 3, 5 to 2, 6 to 5))
-            assertFalse(EconomyMarketRules.sameHomeBand(a,b))
+    @Test fun `one coin market retains limits fee rounding and price ceiling while barter keeps its tiers`() {
+        for (buyerHome in 2..5) {
+            assertEquals(2..5, EconomyMarketRules.homeRange(buyerHome))
+            for (sellerHome in 2..5) assertTrue(EconomyMarketRules.canTrade(buyerHome, sellerHome))
+        }
+        for ((a,b) in listOf(1 to 1, 1 to 2, 2 to 1, 6 to 5, 5 to 6))
+            assertFalse(EconomyMarketRules.canTrade(a,b))
         assertEquals(listOf(0L,2400L,4800L,9600L,14400L), (1..5).map { EconomyMarketRules.dailyTradeLimit(it) })
         EconomyMarketRules.assertTradeBudget(2340,60,2400)
         assertEquals("ECONOMY_MARKET_DAILY_LIMIT", assertFailsWith<AuthFailure> { EconomyMarketRules.assertTradeBudget(2341,60,2400) }.code)
@@ -49,8 +58,8 @@ class EconomyMarketRulesTest {
         assertEquals(2L, EconomyMarketRules.sellerFee(30,500))
         assertEquals(3L, EconomyMarketRules.sellerFee(60,500))
         assertEquals(500_000_000L, EconomyMarketRules.sellerFee(ECONOMY_MAX_BALANCE,500))
-        assertTrue(EconomyMarketRules.eligible("berries",2,120,2))
-        assertFalse(EconomyMarketRules.eligible("berries",2,130,2))
+        assertTrue(EconomyMarketRules.eligible("berries",2,40,2))
+        assertFalse(EconomyMarketRules.eligible("berries",2,50,2))
         assertTrue(EconomyBarterRules.sameHomeBand(3,3))
         assertTrue(EconomyBarterRules.sameHomeBand(4,5))
         assertFalse(EconomyBarterRules.sameHomeBand(2,3))
@@ -59,8 +68,20 @@ class EconomyMarketRulesTest {
         assertEquals("ECONOMY_BARTER_DAILY_LIMIT", assertFailsWith<AuthFailure> { EconomyBarterRules.assertDailyLimit(1) }.code)
     }
 
+    @Test fun `five minute showcases reject expired and legacy thirty minute leases`() {
+        val at = Instant.parse("2026-10-19T09:00:00Z")
+        assertEquals(300L, EconomyRules.catalog.market.showcaseRefreshSeconds)
+        assertTrue(EconomyMarketRules.showcaseCurrent(at.plusSeconds(300), at))
+        assertTrue(EconomyMarketRules.showcaseCurrent(at.plusSeconds(1), at))
+        assertFalse(EconomyMarketRules.showcaseCurrent(at, at))
+        assertFalse(EconomyMarketRules.showcaseCurrent(at.minusSeconds(1), at))
+        assertFalse(EconomyMarketRules.showcaseCurrent(at.plusSeconds(301), at))
+        assertFalse(EconomyMarketRules.showcaseCurrent(at.plusSeconds(1800), at))
+    }
+
     @Test fun `home tiers include producer dependencies and fishing without requiring workshop ownership`() {
         assertEquals(2, EconomyMarketRules.requiredHomeLevel("charcoal"))
+        assertEquals(3, EconomyMarketRules.requiredHomeLevel("ore"))
         assertEquals(3, EconomyMarketRules.requiredHomeLevel("resin"))
         assertEquals(4, EconomyMarketRules.requiredHomeLevel("tools"))
         assertEquals(4, EconomyMarketRules.requiredHomeLevel("reinforced_parts"))
@@ -76,8 +97,9 @@ class EconomyMarketRulesTest {
         assertFalse(EconomyMarketRules.eligible("fish_mooncarp", 1, 31, 4))
         for (item in EconomyRules.catalog.items.filter { it.tradable }) {
             assertTrue(EconomyMarketRules.requiredHomeLevel(item.id) in 1..5, item.id)
-            EconomyMarketRules.validatePrice(99, item.baseSellPrice * 99, item.baseSellPrice)
-            assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, item.baseSellPrice * 99 - 1, item.baseSellPrice) }
+            val minimum = (item.baseSellPrice * 99 + 9) / 10 * 10
+            EconomyMarketRules.validatePrice(99, minimum, item.baseSellPrice)
+            assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, minimum - 1, item.baseSellPrice) }
         }
     }
 }

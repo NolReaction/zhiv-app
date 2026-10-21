@@ -24,7 +24,7 @@ const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b
 export function chooseForestGoal(navigation: WorldNavigation, interests: readonly ForestInterest[],
   memory: ForestBehaviorMemory, context: {
     position: WorldPoint; size: number; elapsed: number; awakeUntil: number;
-    dusk: number; rain: number; random: () => number;
+    dusk: number; rain: number; random: () => number; avoidIds?: ReadonlySet<string>;
   }): ForestBehaviorGoal | null {
   const { position, size, elapsed, random } = context;
   const dusk = clamp(context.dusk), rain = clamp(context.rain);
@@ -66,6 +66,7 @@ export function chooseForestGoal(navigation: WorldNavigation, interests: readonl
   for (const interest of choices) {
     const candidate = scoreForestAction(memory.mind, interest.activity, interest.id, { rain, dusk, noise: random() * .6 });
     const reject = (reason: string) => candidates.push({ ...candidate, available: false, score: null, reasons: [reason] });
+    if (context.avoidIds?.has(interest.id)) { reject("Место недавно было занято, пока выберет другое"); continue; }
     if (interest.activity === "rest" && (rain > .35 || elapsed < context.awakeUntil || elapsed < memory.restUntil)) {
       reject(rain > .35 ? "На мокрой траве отдыхать неуютно" : "Недавно отдыхал или проснулся"); continue;
     }

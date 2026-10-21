@@ -3,6 +3,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { prepareEarthAssets } from "./prepare-earth-assets.mjs";
 
 export function appBuildId(value = process.env.APP_BUILD_ID) {
   const buildId = value || `${Date.now().toString(36)}-${randomUUID()}`;
@@ -24,6 +25,7 @@ async function main() {
   if (args[0] === "--") args.shift();
   if (args.length === 0) throw new Error("Usage: node scripts/app-build.mjs -- command [args...]");
   const buildId = appBuildId();
+  await prepareEarthAssets(process.cwd());
   await writeAppBuildStatus(process.cwd(), buildId);
   const child = spawn(args[0], args.slice(1), {
     stdio: "inherit",

@@ -126,11 +126,30 @@ export function advanceForestWaterDynamics(state: ForestWaterDynamics, dt: numbe
 export function sampleForestWater(state: ForestWaterDynamics, point: WorldPoint) {
   const index = dynamicsCellAt(state.geometry, point);
   if (index < 0 || !state.mask[index] || !containsDynamicsWater(state.geometry, point)) return { height: 0, slopeX: 0, slopeY: 0, flowX: 0, flowY: 0 };
-  const { heights, neighbours, cellSize } = state, left = neighbours[index * 4], right = neighbours[index * 4 + 1];
-  const up = neighbours[index * 4 + 2], down = neighbours[index * 4 + 3];
+  const { cellSize } = state;
   const dx = (point.x - state.origin.x) / cellSize - (index % state.columns + .5);
   const dy = (point.y - state.origin.y) / cellSize - (Math.floor(index / state.columns) + .5);
+  return sampleCell(state, index, dx, dy);
+}
+
+function sampleCell(state: ForestWaterDynamics, index: number, dx: number, dy: number) {
+  const { heights, neighbours, cellSize } = state, left = neighbours[index * 4], right = neighbours[index * 4 + 1];
+  const up = neighbours[index * 4 + 2], down = neighbours[index * 4 + 3];
   const slopeX = (heights[right] - heights[left]) / (2 * cellSize), slopeY = (heights[down] - heights[up]) / (2 * cellSize);
   return { height: heights[index] + slopeX * dx * cellSize + slopeY * dy * cellSize, slopeX, slopeY,
     flowX: state.flowX[index], flowY: state.flowY[index] };
+}
+
+/** Fixed painter points can certify membership once in immutable geometry. Each
+ * call still reads its supplied session's live arrays; a replacement shoreline
+ * uses the ordinary checked sampler instead of the cached cell. */
+export function createForestWaterPointSampler(geometry: WaterDynamicsGeometry, point: WorldPoint) {
+  const anchor = { x: point.x, y: point.y }, index = dynamicsCellAt(geometry, anchor);
+  if (index < 0 || !geometry.mask[index] || !containsDynamicsWater(geometry, anchor)) {
+    return (state: ForestWaterDynamics) => sampleForestWater(state, anchor);
+  }
+  const dx = (anchor.x - geometry.origin.x) / geometry.cellSize - (index % geometry.columns + .5);
+  const dy = (anchor.y - geometry.origin.y) / geometry.cellSize - (Math.floor(index / geometry.columns) + .5);
+  return (state: ForestWaterDynamics) => state.geometry === geometry
+    ? sampleCell(state, index, dx, dy) : sampleForestWater(state, anchor);
 }

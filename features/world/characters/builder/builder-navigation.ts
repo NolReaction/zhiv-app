@@ -29,14 +29,6 @@ const finite = (p: WorldPoint | undefined): p is WorldPoint => !!p && Number.isF
 export const builderDirection = (dx: number, dy: number): PixelDirection => Math.abs(dx) > Math.abs(dy)
   ? dx > 0 ? "right" : "left" : dy > 0 ? "front" : "back";
 
-function nearby(entry: WorldPoint, anchor: WorldPoint): WorldPoint[] {
-  const length = distance(entry, anchor), dx = length > .1 ? (entry.x - anchor.x) / length : 0;
-  const dy = length > .1 ? (entry.y - anchor.y) / length : 1;
-  // Work beside the entrance instead of occupying the hero's exact doorway.
-  return [[12, 12], [12, -12], [20, 0], [8, 0], [0, 0], [24, 12], [24, -12], [32, 0]]
-    .map(([forward, side]) => ({ x: entry.x + dx * forward - dy * side, y: entry.y + dy * forward + dx * side }));
-}
-
 /** A permanent work stop leaves the same body clearance as a passing resident;
  * reserving half of both sprite widths pushes the worker away from the facade. */
 export function builderWorkClearance(scene: FixedWorldScene): number {
@@ -144,15 +136,17 @@ export function builderLocalPlaces(scene: FixedWorldScene): BuilderPlaces | null
   if (!point) { cache.set(scene, null); return null; }
   const rest: BuilderStop = { id: "builder-rest", position: { ...point }, lookAt: { x: point.x, y: point.y + 10 } };
   const wander: BuilderStop[] = [rest];
+  // A builder sometimes checks existing facades from the side, never their
+  // shared entry axis. Reserve these few places before capping generic interests.
+  const facadeIds = ["workshop", "quarry", scene.sites.some(site => site.id === "lopukh-home") ? "lopukh-home" : "woodlot"];
+  for (const site of scene.sites.filter(site => facadeIds.includes(site.id))) {
+    const position = beside(site.entry, site.anchor, builderWorkClearance(scene) + nav.radius)
+      .find(point => isWalkable(nav, point) && scene.sites.every(other => distance(point, other.entry) >= gap));
+    if (position) wander.push({ id: `builder-look-${site.id}`, position, lookAt: { ...site.anchor } });
+  }
   for (const interest of scene.navigation?.interests ?? []) {
     if (distance(interest.position, spawn) >= gap && isWalkable(nav, interest.position))
       wander.push({ id: interest.id, position: { ...interest.position }, lookAt: { x: interest.position.x, y: interest.position.y + 10 } });
-  }
-  for (const site of scene.sites.filter(site => ["workshop", "quarry", "woodlot"].includes(site.id))) {
-    const destination = scene.destinations?.find(destination => destination.id === site.id && destination.siteId === site.id);
-    const position = [...nearby(site.entry, site.anchor), ...(destination ? nearby(destination.position, site.anchor) : [])]
-      .find(point => isWalkable(nav, point));
-    if (position) wander.push({ id: `builder-look-${site.id}`, position, lookAt: { ...site.anchor } });
   }
   const result = { navigation: nav, rest, wander: wander.slice(0, BUILDER_NAVIGATION_LIMITS.wanderStops), home: personalHome(scene, nav) };
   cache.set(scene, result); return result;
@@ -166,7 +160,8 @@ function builderWorkPlan(scene: FixedWorldScene, job: SceneConstructionJob): Bui
   const key = `${job.stationId}:${job.targetLevel}`, cached = jobs.get(key);
   if (cached) return cached;
   const places = builderLocalPlaces(scene), place = constructionMapPlace(job.stationId);
-  const siteId = place === "house" ? "home" : place;
+  const siteId = place === "house" ? "home" : job.stationId === "woodlot"
+    && !scene.sites.some(site => site.id === "lopukh-home") ? "woodlot" : place;
   const markers = [job.stationId, siteId].filter((id, index, ids) => !!id && ids.indexOf(id) === index)
     .flatMap(id => {
       const marker = scene.destinations?.find(destination => destination.id === `builder-work-${id}`);
@@ -193,8 +188,11 @@ function builderWorkPlan(scene: FixedWorldScene, job: SceneConstructionJob): Bui
       for (const path of scene.paths.filter(path => path.siteId === siteId && path.behavior === "home"))
         if (path.points.length) access.push({ id: path.id, points: [...path.points, site.entry] });
     }
-    // Warehouse and kiln levels do not select a different exterior house/art.
-    const next = job.stationId === site.id && site.states.find(state => state.level === job.targetLevel)?.geometry;
+    // Interior stations keep their exterior. Woodlot tier 3 selects the
+    // rabbit home's second authored exterior, with its own larger footprint.
+    const visualLevel = job.stationId === "woodlot" && site.id === "lopukh-home"
+      ? job.targetLevel >= 3 ? 2 : 1 : job.stationId === site.id ? job.targetLevel : undefined;
+    const next = site.states.find(state => state.level === visualLevel)?.geometry;
     if (next) {
       const nextId = `${site.id}:future:${job.targetLevel}`;
       contours.push({ id: nextId, points: exterior(next.collision, next.hitArea, next.entry, next.anchor) });

@@ -34,8 +34,11 @@ object EconomyCollectionProgress {
         val quarry = job.kind == "exploration" && job.targetId in catalog.quarry.routes ||
             job.kind == "production" && job.targetId == catalog.quarry.productionBuilding
         val previous = value.collections
-        val travelSeconds = if (travel) add(previous.travelSeconds, seconds) else previous.travelSeconds
-        val quarrySeconds = if (quarry) add(previous.quarrySeconds, seconds) else previous.quarrySeconds
+        // Keep the original terms of already-paid jobs. New long jobs cannot
+        // bank excess time and release several finds in later claims or merges.
+        fun credited(interval: Long) = if (job.catalogVersion >= 12) minOf(seconds, interval) else seconds
+        val travelSeconds = if (travel) add(previous.travelSeconds, credited(catalog.travel.secondsPerFind)) else previous.travelSeconds
+        val quarrySeconds = if (quarry) add(previous.quarrySeconds, credited(catalog.quarry.secondsPerFind)) else previous.quarrySeconds
         val finds = previous.finds.toMutableSet()
         fun discover(ids: List<String>, count: Long) {
             repeat(minOf(ids.size.toLong(), count).toInt()) {

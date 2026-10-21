@@ -16,7 +16,7 @@
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "ee3e5a13e18283f374727bef1e8fdd3b249f4ecae427501be061f9ae2fbb08a0"
+      "sha256": "33cc0627d5da76804dc160a730e10ffca7cb8418d00f7475baf70d842ada2986"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -2814,6 +2814,358 @@
         }
       ],
       "composition": {}
+    },
+    {
+      "id": "actor.lopukh.greeting.01",
+      "kind": "effect",
+      "title": "Lopukh greeting 1",
+      "description": "An original nonverbal bright soft woody chuckle, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 34176,
+      "durationSeconds": 0.712,
+      "decodedBytes": 136704,
+      "masterSha256": "9c74b539863d059ef1460abd63eed16b7ce79f504a9bc5683f5a4330333b65fa",
+      "measurements": {
+        "peakDb": -8.9262,
+        "rmsDb": -22.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.06569241
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.lopukh.greeting.01.wav",
+          "bytes": 68396,
+          "sha256": "9c74b539863d059ef1460abd63eed16b7ce79f504a9bc5683f5a4330333b65fa"
+        }
+      ],
+      "composition": {
+        "creature": "lopukh",
+        "gesture": "greeting",
+        "variant": 1,
+        "fundamentalHz": 302,
+        "formantsHz": [
+          920,
+          1720,
+          2640
+        ],
+        "syllables": 3,
+        "phrasePace": 0.88
+      }
+    },
+    {
+      "id": "actor.lopukh.greeting.02",
+      "kind": "effect",
+      "title": "Lopukh greeting 2",
+      "description": "An original nonverbal bright soft woody chuckle, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 35866,
+      "durationSeconds": 0.747208,
+      "decodedBytes": 143464,
+      "masterSha256": "a295073ea3e7b26ff606bd152b8cf46fe74eb516430fbe05887bb717fba08514",
+      "measurements": {
+        "peakDb": -9.18,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.06024731
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.lopukh.greeting.02.wav",
+          "bytes": 71776,
+          "sha256": "a295073ea3e7b26ff606bd152b8cf46fe74eb516430fbe05887bb717fba08514"
+        }
+      ],
+      "composition": {
+        "creature": "lopukh",
+        "gesture": "greeting",
+        "variant": 2,
+        "fundamentalHz": 302,
+        "formantsHz": [
+          920,
+          1720,
+          2640
+        ],
+        "syllables": 3,
+        "phrasePace": 0.88
+      }
+    },
+    {
+      "id": "actor.lopukh.greeting.03",
+      "kind": "effect",
+      "title": "Lopukh greeting 3",
+      "description": "An original nonverbal bright soft woody chuckle, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 34598,
+      "durationSeconds": 0.720792,
+      "decodedBytes": 138392,
+      "masterSha256": "b2dad33ddba32e9be88fcc8f57e607f99f4814f1ee235cca85bd27f3a9376452",
+      "measurements": {
+        "peakDb": -9.1295,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.062121935
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.lopukh.greeting.03.wav",
+          "bytes": 69240,
+          "sha256": "b2dad33ddba32e9be88fcc8f57e607f99f4814f1ee235cca85bd27f3a9376452"
+        }
+      ],
+      "composition": {
+        "creature": "lopukh",
+        "gesture": "greeting",
+        "variant": 3,
+        "fundamentalHz": 302,
+        "formantsHz": [
+          920,
+          1720,
+          2640
+        ],
+        "syllables": 3,
+        "phrasePace": 0.88
+      }
+    },
+    {
+      "id": "actor.kamneshmyg.greeting.01",
+      "kind": "effect",
+      "title": "Kamneshmyg greeting 1",
+      "description": "An original nonverbal deep rounded gravel-free hum, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 40512,
+      "durationSeconds": 0.844,
+      "decodedBytes": 162048,
+      "masterSha256": "cf4d40c11884885aecf9f9d7c8c088fcf4f7aa331c0cfde79f16db49145082ff",
+      "measurements": {
+        "peakDb": -10.3273,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.025985967
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.kamneshmyg.greeting.01.wav",
+          "bytes": 81068,
+          "sha256": "cf4d40c11884885aecf9f9d7c8c088fcf4f7aa331c0cfde79f16db49145082ff"
+        }
+      ],
+      "composition": {
+        "creature": "kamneshmyg",
+        "gesture": "greeting",
+        "variant": 1,
+        "fundamentalHz": 102,
+        "formantsHz": [
+          335,
+          710,
+          1310
+        ],
+        "syllables": 2,
+        "phrasePace": 1.1
+      }
+    },
+    {
+      "id": "actor.kamneshmyg.greeting.02",
+      "kind": "effect",
+      "title": "Kamneshmyg greeting 2",
+      "description": "An original nonverbal deep rounded gravel-free hum, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 40512,
+      "durationSeconds": 0.844,
+      "decodedBytes": 162048,
+      "masterSha256": "5b2c279b32c6874f59fe5fd10c85a066b869227a62859bd09b8c69289a65d4de",
+      "measurements": {
+        "peakDb": -10.1571,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.024976114
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.kamneshmyg.greeting.02.wav",
+          "bytes": 81068,
+          "sha256": "5b2c279b32c6874f59fe5fd10c85a066b869227a62859bd09b8c69289a65d4de"
+        }
+      ],
+      "composition": {
+        "creature": "kamneshmyg",
+        "gesture": "greeting",
+        "variant": 2,
+        "fundamentalHz": 102,
+        "formantsHz": [
+          335,
+          710,
+          1310
+        ],
+        "syllables": 2,
+        "phrasePace": 1.1
+      }
+    },
+    {
+      "id": "actor.kamneshmyg.greeting.03",
+      "kind": "effect",
+      "title": "Kamneshmyg greeting 3",
+      "description": "An original nonverbal deep rounded gravel-free hum, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 41040,
+      "durationSeconds": 0.855,
+      "decodedBytes": 164160,
+      "masterSha256": "1a5cd355ac62cbb109df6c1eb85fa2283585033e26a520d581410fecc52b835f",
+      "measurements": {
+        "peakDb": -9.8429,
+        "rmsDb": -22.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.030054256
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.kamneshmyg.greeting.03.wav",
+          "bytes": 82124,
+          "sha256": "1a5cd355ac62cbb109df6c1eb85fa2283585033e26a520d581410fecc52b835f"
+        }
+      ],
+      "composition": {
+        "creature": "kamneshmyg",
+        "gesture": "greeting",
+        "variant": 3,
+        "fundamentalHz": 102,
+        "formantsHz": [
+          335,
+          710,
+          1310
+        ],
+        "syllables": 2,
+        "phrasePace": 1.1
+      }
+    },
+    {
+      "id": "actor.leaftail.greeting.01",
+      "kind": "effect",
+      "title": "Leaftail greeting 1",
+      "description": "An original nonverbal nimble warm dry chatter, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 33446,
+      "durationSeconds": 0.696792,
+      "decodedBytes": 133784,
+      "masterSha256": "353579e0e55de24813e291ba2170f50ebacad40a62c8e222857eb36a887f4143",
+      "measurements": {
+        "peakDb": -9.5434,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.045908719
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.leaftail.greeting.01.wav",
+          "bytes": 66936,
+          "sha256": "353579e0e55de24813e291ba2170f50ebacad40a62c8e222857eb36a887f4143"
+        }
+      ],
+      "composition": {
+        "creature": "leaftail",
+        "gesture": "greeting",
+        "variant": 1,
+        "fundamentalHz": 219,
+        "formantsHz": [
+          650,
+          1320,
+          2240
+        ],
+        "syllables": 2,
+        "phrasePace": 0.96
+      }
+    },
+    {
+      "id": "actor.leaftail.greeting.02",
+      "kind": "effect",
+      "title": "Leaftail greeting 2",
+      "description": "An original nonverbal nimble warm dry chatter, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 40358,
+      "durationSeconds": 0.840792,
+      "decodedBytes": 161432,
+      "masterSha256": "65bfe436728fd5ee49a568f21252de6c3bb5a549d58a4513f08c732cf4793182",
+      "measurements": {
+        "peakDb": -9.6433,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.047400303
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.leaftail.greeting.02.wav",
+          "bytes": 80760,
+          "sha256": "65bfe436728fd5ee49a568f21252de6c3bb5a549d58a4513f08c732cf4793182"
+        }
+      ],
+      "composition": {
+        "creature": "leaftail",
+        "gesture": "greeting",
+        "variant": 2,
+        "fundamentalHz": 219,
+        "formantsHz": [
+          650,
+          1320,
+          2240
+        ],
+        "syllables": 3,
+        "phrasePace": 0.96
+      }
+    },
+    {
+      "id": "actor.leaftail.greeting.03",
+      "kind": "effect",
+      "title": "Leaftail greeting 3",
+      "description": "An original nonverbal nimble warm dry chatter, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 32986,
+      "durationSeconds": 0.687208,
+      "decodedBytes": 131944,
+      "masterSha256": "971cb2d3085841de57eeb33db7b43f67baf1fba3b46e9ebf319c7c29334593f8",
+      "measurements": {
+        "peakDb": -9.7793,
+        "rmsDb": -22.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.044436805
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.leaftail.greeting.03.wav",
+          "bytes": 66016,
+          "sha256": "971cb2d3085841de57eeb33db7b43f67baf1fba3b46e9ebf319c7c29334593f8"
+        }
+      ],
+      "composition": {
+        "creature": "leaftail",
+        "gesture": "greeting",
+        "variant": 3,
+        "fundamentalHz": 219,
+        "formantsHz": [
+          650,
+          1320,
+          2240
+        ],
+        "syllables": 2,
+        "phrasePace": 0.96
+      }
     }
-  ]
+  ],
+  "updatedAt": "2026-10-16"
 }

@@ -16,6 +16,12 @@ import type { EconomySceneConstruction } from "@/features/world/state/economy/ec
 import type { ForestJourneyTravel } from "@/features/world/activities/journeys/forest-journey-travel";
 import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
 import type { ForestWaterDynamics } from "@/features/world/environment/water/forest-water-dynamics";
+import { createForestVillagers, type ForestVillagersState } from "@/features/world/characters/villagers/villager-mind";
+import { createVillagerWildlife, type VillagerWildlifeState } from "@/features/world/characters/villagers/villager-wildlife";
+import type { EconomySceneResidents } from "@/features/world/state/economy/economy-residents-state";
+import type { ForestSceneRehearsal } from "@/features/world/dev/forest-scene-rehearsal";
+import type { ResidentSceneFacts } from "@/features/world/scene/resident-scene-social";
+import type { LeaftailBoatArrivalState } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 
 type View = "circle" | "world";
 type Member = { view: View; active: boolean; retain: boolean; changed: (ownerChanged: boolean) => void };
@@ -32,6 +38,9 @@ export type ForestSessionState = {
   /** Resident autonomy shares the visible session clock, never economic inventory. */
   pleskMind: PleskMind | null;
   builderMind: BuilderMind | null;
+  villagers?: ForestVillagersState;
+  villagerWildlife?: VillagerWildlifeState;
+  economyResidents?: EconomySceneResidents;
   economyConstruction?: EconomySceneConstruction;
   birdReactions: ReturnType<typeof createBirdReactions>;
   lastBirdStimulus: number;
@@ -48,6 +57,9 @@ export type ForestSessionState = {
   builderPreview?: { id: number; startedAt: number };
   fishingPreview?: { id: number; startedAt: number };
   cookingPreview?: { id: number; startedAt: number | null; requestedAt: number; attentionAt?: number };
+  devSceneRehearsal?: ForestSceneRehearsal;
+  residentSceneFacts?: ResidentSceneFacts;
+  leaftailBoat?: LeaftailBoatArrivalState;
   reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;
@@ -70,7 +82,7 @@ export function forgetForestSession(key: string | undefined) {
   }
 }
 
-export type ForestSessionOptions = { persistence?: boolean; environment?: ForestMemoryEnvironment | null;
+export type ForestSessionOptions = { /** A visit neither joins, replaces nor persists an account simulation. */ isolated?: boolean; persistence?: boolean; environment?: ForestMemoryEnvironment | null;
   /** Real account scenes wait for their first confirmed economic snapshot. */
   awaitBuilderConstruction?: boolean;
   sync?: false | { transport?: ForestMemoryTransport; environment?: ForestMemorySyncEnvironment } };
@@ -85,17 +97,19 @@ export function takeOverForestSession(key: string | undefined) {
 export function connectForestSession(key: string | undefined, scene: FixedWorldScene, view: View,
   timestamp: number, dusk: number, changed: Member["changed"],
   options: ForestSessionOptions = {}) {
+  if (options.isolated) { key = undefined; options = { ...options, persistence: false, sync: false }; }
   const identity = key ? `account:${key}:${forestSceneFingerprint(scene)}` : undefined;
   // Keep at most one unmounted forest, and never reuse another account's or
   // another map geometry's parked routes. Mounted views still share as before.
-  for (const [parkedIdentity, parked] of sessions) if (!parked.members.size && parkedIdentity !== identity) {
+  for (const [parkedIdentity, parked] of sessions) if (!options.isolated && !parked.members.size && parkedIdentity !== identity) {
     discardSession(parkedIdentity, parked);
   }
   let shared = identity === undefined ? undefined : sessions.get(identity);
+  const created = !shared;
   if (!shared) {
     const state: ForestSessionState = { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene),
       social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: createBuilderMind(scene, { awaitConstruction: options.awaitBuilderConstruction }), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
-      pendingLife: null, pendingAttention: false,
+      villagers: createForestVillagers(scene), villagerWildlife: createVillagerWildlife(), pendingLife: null, pendingAttention: false,
       reaction: 0, animation: null, birdStarted: null, birdSeed: -1,
       memory: { mode: "ephemeral", restored: false, reconciled: false, lastSavedAt: null, enabled: false } };
     // A remembered outdoor position must also be clear of the parked basket.
@@ -115,6 +129,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
           Object.assign(state, { elapsed: 0, wetness: 0, water: undefined,
             clearing: createClearingActivity(scene), life: createForestLife(scene),
             social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: rehydrateBuilderMind(scene, state.builderMind), director: createForestDirector(), birdReactions: createBirdReactions(),
+            villagers: createForestVillagers(scene), villagerWildlife: createVillagerWildlife(), devSceneRehearsal: undefined, residentSceneFacts: undefined, leaftailBoat: undefined,
             lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, builderPreview: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
@@ -163,6 +178,8 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   session.members.add(member);
   return {
     state: session.state,
+    /** Geometry handoffs may seed a new session, never overwrite a joined one. */
+    created,
     isOwner: () => !disposed && session.owner === member && (session.sync?.isSimulationAllowed() ?? true),
     isSimulationAllowed: () => !disposed && (session.sync?.isSimulationAllowed() ?? true),
     isObservationOwner: () => !disposed && (session.owner === member || session.owner === null),

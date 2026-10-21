@@ -1,0 +1,31 @@
+.journal { container-type: inline-size; position: relative; display: grid; gap: 14px; min-width: 0; padding: 3px 4px 14px 20px; color: #354b38; }
+.journal::before { content: ""; position: absolute; inset: 9px auto 0 3px; width: 5px; border-right: 1px solid #9a8d6b33; background: radial-gradient(circle at 2px 5px, #9a8d6b66 1.5px, transparent 2px) 0 0 / 5px 25px repeat-y; pointer-events: none; }
+.cover { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; padding: 8px 0 14px; border-bottom: 1px solid #a5aa8066; }
+.cover::after { content: ""; position: absolute; bottom: -3px; left: 0; width: 66px; height: 5px; background: #728560; border-radius: 3px; }
+.emblem { position: relative; display: grid; place-items: center; width: 44px; height: 45px; color: #ede8c9; background: #466049; border: 1px solid #75815c; border-radius: 4px 12px 4px 4px; box-shadow: inset 3px 0 #ffffff17, 2px 2px 0 #a59c6726; transform: rotate(-5deg); }
+.emblem .leaf { position: absolute; right: -4px; bottom: -4px; padding: 2px; box-sizing: content-box; color: #607746; background: #ede6cb; border-radius: 50%; }
+.coverTitle { min-width: 0; }
+.coverTitle p { margin: 0 0 3px; color: #6e7957; font-size: 9px; font-weight: 650; letter-spacing: .16em; text-transform: uppercase; }
+.coverTitle h2 { margin: 0; color: #354e3b; font-family: Georgia, "Times New Roman", serif; font-size: clamp(22px, 3.5cqi, 29px); font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; }
+.status { display: grid; justify-items: center; align-content: center; gap: 2px; min-width: 82px; padding: 7px 8px; color: #506543; border: 1px solid #8d9a6d80; outline: 1px solid #8d9a6d40; outline-offset: 3px; border-radius: 2px; transform: rotate(3deg); }
+.status strong { display: inline-flex; align-items: center; gap: 4px; font-size: 19px; font-variant-numeric: tabular-nums; }
+.status strong > span { font-size: 10px; font-weight: 600; }
+.status small { color: #70745a; font-size: 9px; font-variant-numeric: tabular-nums; }
+.recovery { display: grid; gap: 8px; padding: 12px; color: #87533c; background: #f0e4cf; border: 1px solid #cdb894; border-radius: 8px; font-size: 12px; }
+.recovery p { margin: 0; }
+.recovery button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: fit-content; min-height: 44px; padding: 8px 12px; border: 1px solid #acb18b; border-radius: 6px; background: #ebe9d3; color: #42553d; font: inherit; cursor: pointer; }
+.recovery button:disabled { cursor: default; opacity: .55; }
+.recovery button:focus-visible { outline: 2px solid #4c764a; outline-offset: 2px; }
+.placeholder { margin: 0; padding: 20px 8px; text-align: center; color: #74775d; font-size: 13px; }
+@container (max-width: 390px) {
+  .cover { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px; }
+  .emblem { width: 31px; height: 36px; }
+  .emblem > svg:first-child { width: 22px; }
+  .emblem .leaf { width: 12px; height: 12px; }
+  .coverTitle h2 { font-size: 21px; }
+  .status { min-width: 61px; padding: 5px; margin-right: 3px; }
+  .status strong { font-size: 17px; gap: 3px; }
+  .status strong > svg { display: none; }
+  .status strong > span { font-size: 9px; }
+}
+@media (forced-colors: active) { .emblem, .cover, .status, .recovery, .recovery button { border-color: ButtonText; } .status { outline-color: ButtonText; } .journal::before { border-color: ButtonText; } }

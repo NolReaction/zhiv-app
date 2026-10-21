@@ -3,7 +3,7 @@ import { BranchPage } from "@/features/progression/branch-page";
 
 export const metadata: Metadata = {
   title: "Дерево развития мира · Я живой",
-  description: "Уровни построек, открываемые рецепты, вылазки, торговля и проект развития мира Мохлика.",
+  description: "Дерево развития мира Мохлика: все ингредиенты, рецепты, производственные цепочки, расчёты экономики, постройки и торговля.",
   robots: { index: false, follow: false },
 };
 

@@ -317,6 +317,47 @@ test("autonomous stationary props preserve the visible inactivity clock and allo
   assert.ok(sawRoutine); assert.equal(clearingActivityFrame(state.clearing).homeSleeping, true);
 });
 
+test("an active lesson defers both lawn naps and retirement without refilling needs, then ordinary sleep returns", () => {
+  const state = create({ navigation: undefined, habitats: [], sites: [homeSite],
+    paths: [homePath, { ...fixture.paths[0], activity: "rest" }], mushrooms: [] });
+  const options = { ...calm, autoLife: true, homeAvailable: true, tutorialActive: true };
+  const mind = state.clearing.behavior.mind;
+  const energy = state.clearing.behavior.mind.needs.energy;
+  advance(state, 240, options, () => {
+    const frame = clearingActivityFrame(state.clearing);
+    assert.equal(frame.homeSleeping, false);
+    assert.equal(["sleep", "drowsy", "yawn"].includes(frame.pose), false);
+  });
+  assert.ok(state.clearing.idleSeconds >= 180, "the tutorial does not repeatedly falsify the inactivity clock");
+  assert.ok(state.clearing.behavior.mind.needs.energy < energy, "the tutorial is not a needs/energy cheat");
+  assert.equal(state.clearing.behavior.mind, mind, "the same mind and accumulated memory survive the lesson");
+  until(state, current => clearingActivityFrame(current.clearing).homeSleeping, 30, { ...options, tutorialActive: false });
+});
+
+test("resuming the lesson wakes an indoor hero through the original threshold without restarting the exit", () => {
+  const state = create({ sites: [homeSite], paths: [homePath], habitats: [], mushrooms: [] });
+  const options = { ...calm, homeAvailable: true };
+  requestForestDirective(state, "home-sleep", options);
+  until(state, current => clearingActivityFrame(current.clearing).homeSleeping, 20, options);
+  const indoors = { ...state.clearing.position };
+  const tutorial = { ...options, tutorialActive: true };
+  advanceForestDirector(state, 0, tutorial);
+  assert.deepEqual(state.clearing.position, indoors, "configuration cannot move feet or advance clocks");
+  let previous = indoors, sawThreshold = false, episodes = 0, wasAttention = false;
+  until(state, current => {
+    const frame = clearingActivityFrame(current.clearing);
+    if (frame.attention && !wasAttention) episodes++;
+    wasAttention = frame.attention;
+    if (frame.opacity > 0 && frame.opacity < 1) sawThreshold = true;
+    assert.ok(distance(previous, current.clearing.position) <= current.clearing.size * .36 * .025 + 1e-7);
+    previous = { ...current.clearing.position };
+    return !frame.residing && !frame.attention;
+  }, 30, tutorial);
+  assert.ok(sawThreshold, "the real doorway fade runs before returning to outdoor ground");
+  assert.equal(episodes, 1, "the tutorial does not inject a fresh wake request on every tick");
+  assert.equal(state.clearing.waking, false);
+});
+
 test("a prop requested indoors waits for the physical exit before any pickup", () => {
   const state = create({ sites: [homeSite], paths: [homePath], habitats: [] });
   const options = { ...calm, homeAvailable: true };

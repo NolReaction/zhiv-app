@@ -28,6 +28,15 @@ class NotificationRulesTest {
     @Test fun `partial preferences do not silently reset omitted fields`() {
         assertFailsWith<SerializationException> { Json.decodeFromString<NotificationPreferences>("{\"constructionCompleted\":false}") }
     }
+    @Test fun `legacy mail preference defaults on while an explicit opt out survives`() {
+        val json=Json { encodeDefaults=true }
+        val defaults=NotificationPreferences()
+        val legacy=JsonObject(json.parseToJsonElement(json.encodeToString(defaults)).jsonObject - "administrationMessages")
+        assertTrue(json.decodeFromString<NotificationPreferences>(legacy.toString()).enabled("mail"))
+        val off=defaults.copy(administrationMessages=false)
+        assertFalse(json.decodeFromString<NotificationPreferences>(json.encodeToString(off)).enabled("mail"))
+        assertFalse(off.enabled("unknown"))
+    }
     @Test fun `frequency defaults off for new and missing preferences while explicit choices survive serialization`() {
         val json=Json { encodeDefaults=true }
         val defaults=NotificationPreferences()

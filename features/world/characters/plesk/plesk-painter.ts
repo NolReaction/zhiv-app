@@ -53,7 +53,7 @@ export function pleskWildlifeHand(frame: PleskResidentFrame): WorldPoint {
 /** The complete 48 px joint rig shares contact and hand anchors with the prop
  * painter. Only local limb geometry changes; feet do not bounce off the shore. */
 export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskResidentFrame, still: boolean) {
-  if (![frame.x, frame.y, frame.size].every(Number.isFinite) || frame.size <= 0) return;
+  if (![frame.x, frame.y, frame.size].every(Number.isFinite) || frame.size <= 0 || (frame.opacity ?? 1) <= 0) return;
   const shore = usesShoreRig(frame), traveling = usesTravelRig(frame), directed = shore ? shoreFrame(frame) : frame;
   const props = { ...directed, rodId: "willow_rod", carryingBasket: false };
   const shoreRig = shore || traveling ? fishingShoreRig({ ...props, ...(traveling ? { waterTarget: undefined } : {}) }, still, "plesk") : undefined;
@@ -63,6 +63,7 @@ export function drawPleskResident(ctx: CanvasRenderingContext2D, frame: PleskRes
   const size = frame.size, scale = size / PLESK_SPRITE_SIZE;
   const origin = { x: frame.x - size / 2, y: frame.y - rig.contact.bottom * scale };
   ctx.save();
+  ctx.globalAlpha *= Math.max(0, Math.min(1, frame.opacity ?? 1));
   ctx.fillStyle = "rgba(28,43,35,.08)"; ctx.beginPath();
   ctx.ellipse(frame.x, frame.y + size * .012, size * .28, size * .06, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(28,43,35,.2)"; ctx.beginPath();

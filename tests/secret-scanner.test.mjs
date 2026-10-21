@@ -111,6 +111,53 @@ test("large text files fail visibly instead of being skipped", (t) => {
   assert.throws(() => checkRepositorySecrets(repo.dir), /size limit/);
 });
 
+function largeGlb() {
+  const bytes = Buffer.alloc(4 * 1024 * 1024 + 16);
+  bytes.write("glTF", 0, "ascii");
+  bytes.writeUInt32LE(2, 4);
+  bytes.writeUInt32LE(bytes.length, 8);
+  return bytes;
+}
+
+test("oversized GLB v2 requires its exact container length in both working tree and history", (t) => {
+  const repo = fixture(t);
+  repo.put("art/model.glb", largeGlb()); repo.git("add", "art/model.glb"); repo.git("commit", "-qm", "GLB fixture");
+  for (const history of [false, true]) {
+    const result = checkRepositorySecrets(repo.dir, { history });
+    assert.equal(result.knownBinary, 1);
+    assert.deepEqual(result.findings, []);
+  }
+});
+
+test("GLB extension never exempts oversized text, invalid headers or arbitrary binary extensions", (t) => {
+  for (const [name, change] of [
+    ["text.glb", bytes => bytes.fill(97)],
+    ["magic.glb", bytes => bytes.write("gltf", 0, "ascii")],
+    ["high-bit-magic.glb", bytes => { bytes[0] |= 128; }],
+    ["version.glb", bytes => bytes.writeUInt32LE(1, 4)],
+    ["short-length.glb", bytes => bytes.writeUInt32LE(bytes.length - 4, 8)],
+    ["long-length.glb", bytes => bytes.writeUInt32LE(bytes.length + 4, 8)],
+    ["arbitrary.bin", () => {}],
+  ]) {
+    const repo = fixture(t), bytes = largeGlb(); change(bytes);
+    repo.put(name, bytes); repo.git("add", name); repo.git("commit", "-qm", "Invalid container fixture");
+    assert.throws(() => checkRepositorySecrets(repo.dir), /Text scan size limit/);
+    assert.throws(() => checkRepositorySecrets(repo.dir, { history: true }), /History text scan size limit/);
+  }
+});
+
+test("text disguised as a small GLB still receives ordinary token scans", (t) => {
+  const repo = fixture(t);
+  repo.put("model.glb", fakeProviderToken); repo.git("add", "model.glb"); repo.git("commit", "-qm", "Disguised text fixture");
+  for (const history of [false, true]) {
+    const result = checkRepositorySecrets(repo.dir, { history });
+    assert.equal(result.knownBinary, 0);
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].kind, "github-token");
+    assert.equal(JSON.stringify(result).includes(fakeProviderToken), false);
+  }
+});
+
 test("history scans deleted credentials from reachable commits with no raw values in the report", (t) => {
   const repo = fixture(t);
   repo.put("old.txt", fakeProviderToken); repo.git("add", "old.txt"); repo.git("commit", "-qm", "Synthetic fixture");

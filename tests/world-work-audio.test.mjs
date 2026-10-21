@@ -40,8 +40,13 @@ for (const character of ['mochlik', 'plesk']) test(`${character} float sounds on
       state.pleskMind = createPleskMind(scene);
       frame = () => pleskMindFrame(state.pleskMind, scene, false);
     }
-    const sample = () => only(tracker.sample(worldAudioMarkers(scene, state, options),
-      at(frame().waterTarget ?? frame()), 'test', now + state.elapsed * 1000), 'action.fish.bobber');
+    const sample = () => {
+      const visible = frame();
+      const events = only(tracker.sample(worldAudioMarkers(scene, state, options),
+        at(visible?.waterTarget ?? visible ?? state.pleskMind?.position ?? state.clearing.position), 'test', now + state.elapsed * 1000), 'action.fish.bobber');
+      if (!visible) assert.equal(events.length, 0, 'an indoor resident cannot splash an invisible float');
+      return events;
+    };
     assert.equal(sample().length, 0);
     let impacts = 0;
     for (let tick = 1; tick <= 4000; tick++) {
@@ -143,7 +148,7 @@ test('the mine contacts share the painted pickaxe beat and require the confirmed
   } finally { session.release(); }
 });
 
-test('map preparation warms six shared contact files and aborts on hidden view, menu and disposal', () => {
+test('map preparation warms shared contacts and new resident greetings, and aborts on hidden view, menu and disposal', () => {
   const session = create(), state = session.state, preparations = [];
   const controller = createWorldAudioController({ updateFrame() {}, clearFrame() {}, play() {},
     prepare(cues, options) { preparations.push({ cues, signal: options.signal }); return Promise.resolve(); } });
@@ -155,7 +160,8 @@ test('map preparation warms six shared contact files and aborts on hidden view, 
     controller.update(scene, state, input, { ...control, scope: 'world' });
     controller.update(scene, state, input, { ...control, scope: 'world' });
     assert.equal(preparations.length, 1);
-    assert.deepEqual(preparations[0].cues, ['action.fish.bobber', 'action.mine.strike', 'action.tree.rustle']);
+    assert.deepEqual(preparations[0].cues, ['action.fish.bobber', 'action.mine.strike', 'action.tree.rustle',
+      'actor.lopukh.greeting', 'actor.kamneshmyg.greeting', 'actor.leaftail.greeting']);
     controller.update(scene, state, input, { ...control, scope: 'world', visible: false });
     assert.equal(preparations[0].signal.aborted, true);
     controller.update(scene, state, input, { ...control, scope: 'world' });

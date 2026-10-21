@@ -16,18 +16,23 @@ const achievementRewardSchema = z.object({ achievementId, level: count.positive(
   eligible: z.boolean(), blockedReason: z.enum(["not_earned", "admin_grant", "no_reward"]).nullable() })
   .refine(value => GAME_ACHIEVEMENT_TARGETS[value.achievementId][value.level - 1] === value.target
     && (!value.eligible || Boolean(value.earnedAt && !value.claimedAt && !value.blockedReason && value.pearls > 0)));
-export const gameRewardsSchema = z.object({ ownerPublicId: owner, serverTime: z.string().datetime(), catalogVersion: z.literal(1),
-  daily: z.object({ step, homeLevel: z.number().int().min(1).max(5).optional(), claimable: z.boolean(), nextClaimAt: z.string().datetime(), lastClaimAt: z.string().datetime().nullable(),
+export const gameRewardsSchema = z.object({ ownerPublicId: owner, serverTime: z.string().datetime(), catalogVersion: z.union([z.literal(2), z.literal(3), z.literal(4)]),
+  daily: z.object({ step, homeLevel: z.number().int().min(1).max(5).optional(), completed: z.boolean().default(false), claimable: z.boolean(), nextClaimAt: z.string().datetime().nullable(), lastClaimAt: z.string().datetime().nullable(),
     lastClaimDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), reward: gameRewardSchema,
-    cycle: z.array(z.object({ step, reward: gameRewardSchema })).length(7).refine(rows => rows.every((row, index) => row.step === index + 1)) }),
+    cycle: z.array(z.object({ step, reward: gameRewardSchema })).length(7).refine(rows => rows.every((row, index) => row.step === index + 1)) })
+    .refine(value => value.completed ? value.step === 7 && !value.claimable && value.nextClaimAt === null && value.lastClaimAt !== null
+      : value.nextClaimAt !== null),
   achievementRewards: z.array(achievementRewardSchema).length(21).refine(rows => new Set(rows.map(row => `${row.achievementId}:${row.level}`)).size === 21),
+  onboarding: z.object({ claimedAt: z.string().datetime().nullable() }).optional(),
 });
 export const gameRewardClaimSchema = z.discriminatedUnion("kind", [
   z.object({ requestId: z.string().uuid(), ownerPublicId: owner, kind: z.literal("daily") }).strict(),
+  z.object({ requestId: z.string().uuid(), ownerPublicId: owner, kind: z.literal("onboarding") }).strict(),
   z.object({ requestId: z.string().uuid(), ownerPublicId: owner, kind: z.literal("achievement"), achievementId, level: count.positive().max(4) }).strict(),
 ]);
 const claim = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("daily"), step, reward: gameRewardSchema, claimedAt: z.string().datetime() }),
+  z.object({ kind: z.literal("onboarding"), reward: gameRewardSchema, claimedAt: z.string().datetime() }),
   z.object({ kind: z.literal("achievement"), achievementId, level: count.positive().max(4), reward: gameRewardSchema, claimedAt: z.string().datetime() }),
 ]);
 export const gameRewardResultSchema = z.object({ requestId: z.string().uuid(), rewards: gameRewardsSchema, economy: economyViewSchema,

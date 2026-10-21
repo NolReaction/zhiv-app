@@ -1,40 +1,31 @@
 .marker.marker {
-  position: absolute;
-  z-index: 3;
-  width: 124px;
-  height: 44px;
-  min-height: 44px;
-  padding: 7px 11px 10px;
-  gap: 7px;
-  border: 1px solid #e5ca8980;
-  border-radius: 11px;
-  background: linear-gradient(180deg, #354230fa, #1b291cf5);
-  box-shadow: 0 3px 0 #0b170e80, 0 5px 14px #07130780;
-  color: #f4e4b1;
-  transform: translate(-50%, -100%);
-  pointer-events: auto;
-  font-variant-numeric: tabular-nums;
-  isolation: isolate;
+  position: absolute; z-index: 3; width: 98px; height: 44px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center; padding: 7px 9px;
+  border: 0; border-radius: 16px; background: transparent; color: #f4e4b1;
+  transform: translate(-50%, -100%); pointer-events: auto; font-variant-numeric: tabular-nums; isolation: isolate;
 }
-.marker.marker:hover { background: #3c4c31; border-color: #f4db9d; }
-.marker::after {
-  content: "";
-  position: absolute;
-  top: calc(100% - 3px);
+.pill {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 4px;
+  box-sizing: border-box; width: 80px; height: 30px; padding: 2px 5px 4px;
+  border: 1px solid #e5ca8980; border-radius: 15px;
+  background: linear-gradient(180deg, #354230f5, #1b291cef);
+  box-shadow: 0 2px 0 #0b170e66, 0 3px 8px #07130755;
+}
+.pill[data-long-clock="true"] { width: 96px; flex: 0 0 96px; }
+.marker.marker:hover .pill { background: #3c4c31; border-color: #f4db9d; }
+.marker.marker:focus-visible { outline: none; }
+.marker.marker:focus-visible .pill { outline: 2px solid #ffebaf; outline-offset: 3px; }
+.pill::after {
+  content: ""; position: absolute; top: calc(100% - 3px);
   left: clamp(8px, calc(50% + var(--pointer-offset, 0px)), calc(100% - 8px));
-  width: 7px;
-  height: 7px;
-  border-right: 1px solid #e5ca8980;
-  border-bottom: 1px solid #e5ca8980;
-  background: #1b291c;
-  transform: translateX(-50%) rotate(45deg);
-  z-index: -1;
+  width: 5px; height: 5px; border-right: 1px solid #e5ca8980; border-bottom: 1px solid #e5ca8980;
+  background: #1b291c; transform: translateX(-50%) rotate(45deg); z-index: -1;
 }
-.marker > svg { flex: 0 0 auto; }
-.marker > strong { font-size: .83rem; line-height: 1; white-space: nowrap; }
-.track { position: absolute; inset: auto 9px 5px; height: 3px; overflow: hidden; background: #080e0966; border-radius: 3px; }
+.pill > svg { flex: 0 0 auto; }
+.pill > strong { font-size: .67rem; line-height: 1.1; white-space: nowrap; letter-spacing: -.02em; }
+.track { position: absolute; inset: auto 10px 2px; height: 1.5px; overflow: hidden; background: #080e0966; border-radius: 3px; }
 .track > span { display: block; height: 100%; background: linear-gradient(90deg, #a8c473, #ecda93); border-radius: inherit; transition: width .5s linear; }
-.marker[data-ready="true"] { border-color: #d4efa5; color: #e5f6c4; background: #31432bf5; }
-.marker[data-ready="true"]::after { border-color: #d4efa5; background: #31432b; }
+.marker[data-ready="true"] .pill { border-color: #d4efa5; color: #e5f6c4; background: #31432bef; }
+.marker[data-ready="true"] .pill::after { border-color: #d4efa5; background: #31432b; }
 .marker[data-ready="true"] .track > span { background: #d4efa5; }
 @media (prefers-reduced-motion: reduce) { .marker.marker, .track > span { transition: none; } }

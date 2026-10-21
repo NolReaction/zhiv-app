@@ -1,0 +1,22 @@
+.card { display: grid; gap: 14px; min-width: 0; padding: 18px; border: 1px solid #ffffff18; border-radius: 20px; background: #ffffff09; color: #e2ebd7; }
+.card h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 17px; }
+.card h2 svg { color: #b7d8a2; }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.setting label { display: grid; gap: 5px; min-width: 0; cursor: pointer; }
+.setting strong { font-size: 14px; line-height: 1.4; }
+.setting span, .hint, .notice p, .details p { color: #aab49f; font-size: 12px; line-height: 1.55; }
+.setting button { flex-shrink: 0; }
+.hint, .notice p, .details p { margin: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions button, .notice button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 9px 12px; border: 1px solid #b7d8a238; border-radius: 12px; background: #b7d8a211; color: #dfedd2; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+.actions button:disabled { opacity: .6; cursor: wait; }
+.result { color: #b9ccaa; font-size: 12px; line-height: 1.5; }
+.notice { display: grid; gap: 7px; font-size: 13px; }
+.notice button { justify-self: start; }
+.card .error { margin: 6px 0 0; color: #e7c19f; font-size: 12px; line-height: 1.5; }
+.details { min-width: 0; padding-top: 12px; border-top: 1px solid #ffffff12; }
+.details summary { color: #c1d3b2; font-size: 12px; cursor: pointer; padding: 8px 0; }
+.details p + p { margin-top: 9px; }
+.card button:focus-visible, .details summary:focus-visible { outline: 2px solid #cde39e; outline-offset: 3px; }
+@media (max-width: 359px) { .card { padding: 14px; } }
+@media (forced-colors: active) { .card, .details, .actions button, .notice button { border-color: ButtonText; } }

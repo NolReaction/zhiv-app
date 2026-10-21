@@ -29,7 +29,7 @@ class JdbcNotificationMigrationIntegrationTest {
     @Test fun `V50 materializes actionable garden jobs without reviving terminal sources or changing paid jobs and preferences`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("49").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("49").load().migrate()
             val codec = TokenCodec(); val token = codec.issue()
             val user = JdbcZhivRepository(source).bootstrap("Существующий урожай", codec.issue().hash, token.hash, 365)
             JdbcEconomyRepository(source).snapshot(token.hash)
@@ -58,14 +58,14 @@ class JdbcNotificationMigrationIntegrationTest {
                 c.commit()
             }
             assertEquals("0", scalar(source, "SELECT count(*) FROM notification_events WHERE user_id=? AND source_key IN ('job:ripe','job:fiber')", user.id))
-            val profileBefore = scalar(source, "SELECT state::text FROM economy_profiles WHERE user_id=?", user.id)
+            val profileBefore = scalar(source, "SELECT (state-'marketSlots'-'unlockedItems'-'itemUnlockVersion')::text FROM economy_profiles WHERE user_id=?", user.id)
             val preferencesBefore = scalar(source, "SELECT to_jsonb(p)::text FROM notification_preferences p WHERE user_id=?", user.id)
             val subscriptionBefore = scalar(source, "SELECT to_jsonb(s)::text FROM notification_subscriptions s WHERE user_id=?", user.id)
             val deferredBefore = scalar(source, "SELECT (to_jsonb(e)-'harvest_ready_at'-'waiting_for_actor'-'actor_wait_until')::text FROM notification_events e WHERE user_id=? AND source_key='job:deferred'", user.id)
             val terminalBefore = scalar(source, "SELECT (to_jsonb(e)-'harvest_ready_at'-'waiting_for_actor'-'actor_wait_until')::text FROM notification_events e WHERE user_id=? AND source_key='job:delivered'", user.id)
 
             DatabaseFactory.migrate(source)
-            assertEquals(profileBefore, scalar(source, "SELECT state::text FROM economy_profiles WHERE user_id=?", user.id))
+            assertEquals(profileBefore, scalar(source, "SELECT (state-'marketSlots'-'unlockedItems'-'itemUnlockVersion')::text FROM economy_profiles WHERE user_id=?", user.id))
             assertEquals(preferencesBefore, scalar(source, "SELECT to_jsonb(p)::text FROM notification_preferences p WHERE user_id=?", user.id))
             assertEquals(subscriptionBefore, scalar(source, "SELECT to_jsonb(s)::text FROM notification_subscriptions s WHERE user_id=?", user.id))
             assertEquals(deferredBefore, scalar(source, "SELECT (to_jsonb(e)-'harvest_ready_at'-'waiting_for_actor'-'actor_wait_until')::text FROM notification_events e WHERE user_id=? AND source_key='job:deferred'", user.id))

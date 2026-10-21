@@ -45,6 +45,22 @@ test("builder diagnostics follow account geometry and explicit DEV previews whil
   assert.match(render(account, "workshop"), /проверка текущего уровня/);
 });
 
+test("builder diagnostics use actual merchant arrival and keep explicit DEV exterior previews", () => {
+  const source = boundaryScene({ x: 20, y: 20 }), geometry = level => ({ bounds: { x: 170 + level * 40, y: 50, width: 35, height: 40 },
+    anchor: { x: 185 + level * 40, y: 90 }, entry: { x: 185 + level * 40, y: 110 },
+    collision: rect(170 + level * 40, 60, 35, 30), hitArea: rect(170 + level * 40, 50, 35, 40) });
+  source.sites.push({ id: "leaftail-caravan", label: "Караван", initialLevel: 0, ...geometry(0),
+    states: [0, 1].map(level => ({ level, label: `Караван ${level}`, image: `/tent-${level}.webp`, geometry: geometry(level) })) });
+  const preview = { levels: { home: 1, "leaftail-caravan": 0 }, previewBuildings: false }, state = economy({ home: 3 });
+  const before = structuredClone({ source, preview, state });
+  const site = arrived => builderWorkDiagnosticContext(source, preview, 1, state, now, arrived).scene.sites.find(site => site.id === "leaftail-caravan");
+  assert.deepEqual(site(false).collision, geometry(0).collision);
+  assert.deepEqual(site(true).collision, geometry(1).collision);
+  const forced = builderWorkDiagnosticContext(source, { ...preview, previewBuildings: true }, 1, state, now, true);
+  assert.deepEqual(forced.scene.sites.find(site => site.id === "leaftail-caravan").collision, geometry(0).collision);
+  assert.deepEqual({ source, preview, state }, before);
+});
+
 test("an existing confirmed order determines its exact checked level and opens that station by default", () => {
   const state = economy({ home: 3, workshop: 1 }, [{ id: "existing-workshop", kind: "construction", targetId: "workshop", targetLevel: 3,
     startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 3600_000).toISOString() }]);

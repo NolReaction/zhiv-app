@@ -35,7 +35,7 @@ export function reviewMiningFishing(loaded, onScenario = () => {}) {
     const route = catalog.explorations.find(route => route.id === routeId), portfolio = math.catchPortfolio("reed_rod", null, routeId);
     return { routeId, hours: route.seconds / 3600, totalCatch: route.rewards.fish, speciesDraws: portfolio.speciesDrawsPerJob,
       catchesPerHour: route.rewards.fish * 3600 / route.seconds, speciesDrawsPerHour: portfolio.speciesDrawsPerJob * 3600 / route.seconds,
-      expectedStarterRevenue: portfolio.expectedFishRevenue, expectedStarterOrdinaryFish: portfolio.output.fish };
+      expectedStarterRevenue: portfolio.expectedFishRevenue, expectedStarterOrdinaryFish: portfolio.output.fish_common };
   });
   const baitMargins = catalog.fishing.routeIds.map(routeId => {
     const comparisons = audit.fishingLoadouts.filter(loadout => loadout.baitId).map(loadout => {
@@ -47,11 +47,11 @@ export function reviewMiningFishing(loaded, onScenario = () => {}) {
     return { routeId, testedCombinations: comparisons.length, maximum: comparisons[0] };
   });
   const resourceRoutes = catalog.explorations.filter(route => route.activity === "mining" || route.id === "coastal_deposits").map(route => {
-    const batch = math.batch(route), actorMinutes = batch.slotMinutes.mochlik;
+    const batch = math.batch(route), actorId = route.activity === "mining" ? "miner" : "mochlik", actorMinutes = batch.slotMinutes[actorId];
     return { routeId: route.id, homeLevel: route.requiredHomeLevel, buildingRequirements: route.requiredBuildings,
-      rewards: route.rewards, inputs: route.cost.items, durationMinutes: batch.processMinutes,
-      actorMinutesWithFoodAndTools: rounded(actorMinutes), outputEquivalentFocusedActorMinutes: rounded(batch.elementaryOutputMinutes.mochlik ?? 0),
-      equivalentFocusedWorkPerOccupiedActorMinute: rounded((batch.elementaryOutputMinutes.mochlik ?? 0) / actorMinutes),
+      rewards: route.rewards, inputs: route.cost.items, durationMinutes: batch.processMinutes, actorId,
+      actorMinutesWithFoodAndTools: rounded(actorMinutes), outputEquivalentFocusedActorMinutes: rounded(batch.elementaryOutputMinutes[actorId] ?? 0),
+      equivalentFocusedWorkPerOccupiedActorMinute: rounded((batch.elementaryOutputMinutes[actorId] ?? 0) / actorMinutes),
       netDirectSaleCoins: batch.incrementalMargin };
   });
   return {

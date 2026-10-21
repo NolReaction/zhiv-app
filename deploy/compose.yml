@@ -82,6 +82,7 @@ services:
       ADMIN_PUBLIC_IDS: ${ADMIN_PUBLIC_IDS:-}
       MONITORING_URL: ${MONITORING_URL:-}
       METRICS_TOKEN_FILE: ${METRICS_TOKEN_FILE:-}
+      MAPTILER_SERVICE_TOKEN_FILE: ${MAPTILER_SERVICE_TOKEN_FILE:-}
       WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
       WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-}
@@ -112,11 +113,14 @@ services:
       dockerfile: deploy/web.Dockerfile
       args:
         APP_BUILD_ID: ${APP_BUILD_ID:-}
+        NEXT_PUBLIC_MAPTILER_KEY: ${NEXT_PUBLIC_MAPTILER_KEY:-}
     restart: unless-stopped
     environment:
       NODE_ENV: production
     init: true
-    networks: [backend]
+    # The bounded public weather proxy fetches MET Norway from the web runtime.
+    # Keep the database network private and allow only outbound connectivity here.
+    networks: [backend, outbound]
     read_only: true
     tmpfs: [/tmp, /app/.next/cache]
     cap_drop: [ALL]

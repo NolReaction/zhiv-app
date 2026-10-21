@@ -1,4 +1,7 @@
 import { campfireFootprint } from "@/features/world/activities/campfire/forest-campfire";
+import { forestLightSources } from "@/features/world/environment/lighting/forest-light-sources";
+import { forestTorchFootprints } from "@/features/world/environment/lighting/forest-torch-fixture";
+import { forestPerformanceProfiler } from "@/features/world/dev/forest-performance-profiler";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "@/features/world/tiled/types";
 
 type Edge = { a: WorldPoint; b: WorldPoint; bounds: WorldBounds };
@@ -170,6 +173,14 @@ function nearbyEdges(index: SpatialIndex, query: WorldBounds, visit: (edge: Edge
   const hiX = clamp(Math.floor((query.x + query.width - index.bounds.x + EPS) / index.step), 0, index.columns - 1);
   const loY = clamp(Math.floor((query.y - index.bounds.y - EPS) / index.step), 0, index.rows - 1);
   const hiY = clamp(Math.floor((query.y + query.height - index.bounds.y + EPS) / index.step), 0, index.rows - 1);
+  // buildIndex inserts each edge once per bucket. Most short movement/support
+  // queries touch one bucket, so they need no duplicate-tracking allocation.
+  if (loX === hiX && loY === hiY) {
+    for (const edge of index.buckets.get(loY * index.columns + loX) ?? []) {
+      if (overlaps(edge.bounds, query, EPS) && !visit(edge)) return false;
+    }
+    return true;
+  }
   const seen = new Set<Edge>();
   for (let y = loY; y <= hiY; y++) for (let x = loX; x <= hiX; x++) {
     for (const edge of index.buckets.get(y * index.columns + x) ?? []) {
@@ -243,6 +254,7 @@ function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigatio
   const rowCount = Math.max(1, Math.ceil(box.height / rowStep) + 1);
   const budget = { remaining: WORLD_NAVIGATION_LIMITS.preparationChecks as number };
   const rawBlockers = [...source.obstacles.map(item => item.points), ...scene.sites.map(site => site.collision),
+    ...forestTorchFootprints(forestLightSources(scene)),
     ...(scene.water?.surfaces.map(surface => surface.points) ?? []),
     ...(scene.campfires ?? []).map(campfireFootprint)];
   if (rawBlockers.some(points => !Array.isArray(points))
@@ -324,6 +336,12 @@ function pop(heap: HeapEntry[]) {
 
 /** Exact endpoints connect only through independently validated swept-circle segments. */
 export function findWorldPath(nav: WorldNavigation, start: WorldPoint, end: WorldPoint): WorldPoint[] | null {
+  const sample = forestPerformanceProfiler.begin("navigation");
+  try { return findWorldPathInternal(nav, start, end); }
+  finally { forestPerformanceProfiler.end(sample); }
+}
+
+function findWorldPathInternal(nav: WorldNavigation, start: WorldPoint, end: WorldPoint): WorldPoint[] | null {
   const search = { reason: "no-path" as NavigationSearchReason, visited: 0, checks: 0, pathPoints: 0 };
   nav.stats.lastSearch = search;
   const check = (a: WorldPoint, b: WorldPoint) => { search.checks++; return canTraverse(nav, a, b); };

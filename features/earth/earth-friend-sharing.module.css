@@ -1,0 +1,63 @@
+.control { min-width: 0; color: #e4ecdc; }
+.main { display: grid; grid-template-columns: 35px minmax(0, 1fr) 48px; gap: 9px; align-items: center; min-width: 0; min-height: 52px; }
+.avatar { display: grid; width: 35px; height: 35px; place-items: center; border: 1px solid #d5e7bf20; border-radius: 12px; background: #d0e6b40b; color: #c4d6b4; font-size: 13px; font-weight: 700; }
+.name { display: grid; min-width: 0; gap: 3px; }
+.name strong { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+.name > span { color: #adbea7; font-size: 11px; line-height: 1.4; }
+.name > span[data-frozen] { color: #c8c2e8; }
+.toggle { display: grid; flex-shrink: 0; place-items: center; width: 48px; height: 44px; border: 0; background: none; padding: 0; border-radius: 12px; cursor: pointer; }
+.toggle:disabled { opacity: .45; cursor: default; }
+.track { display: block; position: relative; box-sizing: content-box; width: 40px; height: 24px; border: 1px solid #d4dfd339; border-radius: 999px; background: #092a248a; transition: background 140ms ease, border-color 140ms ease; }
+.track > span { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #9faea8; transition: transform 140ms ease, background 140ms ease; }
+.toggle[aria-checked="true"] .track { background: #c9e8a8; border-color: #d7edbd; }
+.toggle[aria-checked="true"] .track > span { transform: translateX(16px); background: #214b35; }
+.ghostToggle[aria-checked="true"] .track { background: #d3cafa; border-color: #e0d9ff; }
+.ghostToggle[aria-checked="true"] .track > span { background: #4d426f; }
+.control :is(button, summary):focus-visible, .toggle:focus-visible { outline: 2px solid #d9efab; outline-offset: 3px; }
+.details { min-width: 0; margin-left: 44px; }
+.details > summary { display: flex; min-height: 44px; align-items: center; gap: 6px; color: #aabc9e; font-size: 11px; cursor: pointer; list-style: none; border-radius: 8px; }
+.details > summary::-webkit-details-marker { display: none; }
+.details > summary > span { flex: 1; }
+.details[open] > summary > svg:last-child { transform: rotate(180deg); }
+.options { display: grid; gap: 10px; padding: 0 0 10px; }
+.options p { margin: 0; color: #b4c4aa; font-size: 11px; line-height: 1.5; }
+.options button { min-height: 44px; border: 1px solid #eac2a02b; border-radius: 10px; background: #c7946e08; padding: 9px 12px; color: #e5c5a9; text-align: left; font: inherit; font-size: 11px; cursor: pointer; }
+.options button:disabled { opacity: .45; cursor: default; }
+.openMap { display: inline-flex; align-items: center; min-height: 44px; margin-left: 44px; padding: 0 4px; border: 0; border-radius: 8px; background: none; color: #d1e1b4; font: inherit; font-size: 11px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .control *, .toggle * { transition: none !important; } }
+
+.buttonControl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: stretch; }
+.accessButton { display: flex; width: 100%; min-width: 0; height: 48px; min-height: 48px; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid #d5e7bf24; border-radius: 11px; background: #d0e6b407; color: #9aa892; font: inherit; text-align: left; cursor: pointer; transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease; }
+.buttonIcon { display: grid; flex: 0 0 18px; place-items: center; }
+.buttonIcon > svg { width: 18px; height: 18px; }
+.buttonText { display: grid; min-width: 0; gap: 2px; }
+.buttonText strong { font-size: 12px; line-height: 1.3; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.buttonText > span { font-size: 10px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.accessButton[aria-pressed="true"] { border-color: #b5df91a6; background: linear-gradient(135deg, #b8e39524, #a2cf7b10); color: #d6edc2; box-shadow: inset 0 1px 0 #d4f5b51a, 0 0 14px #a9d9830c; }
+.accessButton[aria-pressed="true"] .buttonIcon { color: #c6ed9f; filter: drop-shadow(0 0 5px #a4de7370); }
+.accessButton:not(:disabled):hover { border-color: #c5e4ab77; background-color: #c8e4b211; }
+.accessButton:disabled { opacity: .5; cursor: default; }
+.accessButton:focus-visible { outline: 2px solid #d9efab; outline-offset: 3px; }
+.buttonText > span[data-frozen] { color: #c8c2e8; }
+.buttonControl > :is(.details, .openMap) { grid-column: 1 / -1; margin-left: 0; }
+.buttonControl > .details { margin-top: -3px; }
+.buttonControl .details > summary { min-height: 40px; }
+
+.compactControl { position: relative; }
+.compactControl .main { min-height: 44px; grid-template-columns: 28px minmax(0, 1fr) 44px; gap: 7px; padding-right: 44px; }
+.compactControl .avatar { width: 28px; height: 28px; border-radius: 9px; font-size: 11px; }
+.compactControl .name { gap: 1px; }
+.compactControl .name strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.compactControl .name > span { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iconToggle { width: 44px; height: 44px; border: 1px solid transparent; color: #8da296; }
+.iconToggle[aria-checked="true"] { color: #d3edb0; background: #c4e7a51a; border-color: #c5e8a53d; }
+.iconToggle:not(:disabled):hover { background: #c4e7a512; }
+.compactControl .details { position: absolute; top: 0; right: 0; width: 44px; margin: 0; }
+.compactControl .details[open] { z-index: 2; }
+.compactControl .details > summary { justify-content: center; width: 44px; height: 44px; padding: 0; color: #aabc9e; }
+.compactControl .details[open] > summary { background: #c4e7a512; }
+.compactControl .details[open] > summary > svg:last-child { transform: none; }
+.compactControl .options { position: absolute; top: 47px; right: 0; box-sizing: border-box; width: min(258px, calc(100vw - 64px)); gap: 8px; padding: 12px; border: 1px solid #d4e4c92b; border-radius: 12px; background: #163b30; box-shadow: 0 8px 24px #061d2399; }
+.compactControl .options button { padding: 8px 10px; }
+
+@media (prefers-reduced-motion: reduce) { .accessButton { transition: none; } }

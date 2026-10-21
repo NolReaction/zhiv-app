@@ -1,0 +1,23 @@
+.scene { display: grid; gap: 12px; min-width: 0; }
+.scene h4 { margin: 8px 0 0; }
+.diagnosticChoice { display: grid; gap: 6px; font-size: 11px; }
+.diagnosticChoice select { width: 100%; min-height: 40px; padding: 7px 8px; border: 1px solid #485c46; border-radius: 9px; background: #15271d; color: #f0f3df; }
+.seed { display: grid; grid-template-columns: 1fr 100px; align-items: center; gap: 6px; font-size: 11px; }
+.seed input { box-sizing: border-box; width: 100%; min-height: 40px; border: 1px solid #485c46; border-radius: 8px; background: #15271d; color: #f0f3df; padding: 7px; }
+.seed span { grid-column: 1 / -1; color: #a8b5a5; line-height: 1.5; }
+.hint { margin: 0; color: var(--dev-muted, #a8b5a5); font-size: 12px; line-height: 1.5; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.fields label { display: grid; gap: 6px; min-width: 0; color: var(--dev-muted, #a8b5a5); font-size: 11px; }
+.fields select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 42px; padding: 7px 8px; border: 1px solid var(--dev-line, #485c46); border-radius: 9px; background: #15271d; color: #f0f3df; font: inherit; font-size: 13px; }
+.partner { grid-column: 1 / -1; }
+.description { min-height: 3em; margin: 0; color: #e1e8cc; font-size: 12px; line-height: 1.5; }
+.actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.actions button { min-height: 42px; }
+.actions button:first-child { background: #415d35; border-color: #8aa46c; }
+.feedback { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--dev-line, #485c46); border-radius: 10px; background: #172b1e; font-size: 12px; overflow-wrap: anywhere; }
+.feedback[data-phase="blocked"] { border-color: #a58955; }
+.feedback p { margin: 0; line-height: 1.5; }
+.phase { color: #c1d49a; font-size: 11px; }
+.scene :is(button, select):focus-visible { outline: 2px solid #dceaa5; outline-offset: 3px; }
+@media (max-width: 600px) { .fields select, .diagnosticChoice select { font-size: 16px; } }
+@media (prefers-reduced-motion: reduce) { .scene * { scroll-behavior: auto; } }

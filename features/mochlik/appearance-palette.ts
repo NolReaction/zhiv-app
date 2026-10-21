@@ -8,6 +8,11 @@ const palettes: Record<string, MossPalette> = {
   heather: { moss: "#8a739b", mossLight: "#baa3c7", mossDark: "#62536e" },
   frost: { moss: "#8ba9a3", mossLight: "#c3d7c9", mossDark: "#587b76" },
   ember: { moss: "#a96750", mossLight: "#d59b6f", mossDark: "#764936" },
+  dune_moss: { moss: "#b7a875", mossLight: "#e0d3a0", mossDark: "#80754f" },
+  storm_moss: { moss: "#687b91", mossLight: "#a6bbcd", mossDark: "#465668" },
+  premium_stargazer_moss: { moss: "#525984", mossLight: "#9b9ed1", mossDark: "#353955" },
+  premium_ember_moss: { moss: "#ad6048", mossLight: "#eda773", mossDark: "#733f3a" },
+  premium_explorer_moss: { moss: "#638879", mossLight: "#a8c6a0", mossDark: "#3a5d55" },
 };
 
 export function mossPalette(id?: string): MossPalette {

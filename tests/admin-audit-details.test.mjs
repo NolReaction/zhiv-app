@@ -32,3 +32,16 @@ test("old moderation history and malformed payloads stay readable", () => {
   for (const value of ["broken", "null", "[]", "{}"])
     assert.equal(adminActionDetails(value), "Записано в журнал");
 });
+
+test("legacy reward audit reads both new flat delivery payload and wrapped request without exposing the player message", () => {
+  const request = { requestId: "00000000-0000-4000-8000-000000000001", confirmationPublicId: "7K3P-2Q9M-W8ZS",
+    reason: "Внутренняя причина", kind: "item", rewardId: "leaf_garland", delivery: "notify",
+    playerMessage: { title: "Спасибо", body: "Отдельное сообщение игроку" } };
+  for (const shape of [request, { request }]) {
+    const label = adminActionDetails(JSON.stringify(shape));
+    assert.equal(label, "Календарный предмет: Гирлянда из листьев · Письмо и уведомление");
+    assert.doesNotMatch(label, /Внутренняя причина|Отдельное сообщение|requestId/);
+  }
+  assert.equal(adminActionDetails(JSON.stringify({ kind: "achievement", rewardId: "seven_day_streak", delivery: "silent" })), "Достижение: В ритме · Тихо");
+  assert.equal(adminActionDetails("null"), "Записано в журнал");
+});

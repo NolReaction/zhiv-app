@@ -98,9 +98,9 @@ test("all five actual houses and their interior upgrades leave Mochlik's doorway
   }
 });
 
-test("actual selected stops leave each of the eight hosts' interaction points free and remain reachable", () => {
+test("actual selected stops leave each of the seven placed hosts' interaction points free and remain reachable", () => {
   const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)), clearance = builderWorkClearance(scene);
-  const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop", woodlot: "woodlot", quarry: "quarry" };
+  const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop", quarry: "quarry" };
   for (const stationId of [...Object.keys(hosts), "garden", "dryer"]) {
     const { route } = checkedRoute(scene, job(stationId)), point = route.target.position;
     for (const destination of scene.destinations.filter(destination => !destination.id.startsWith("builder-")))
@@ -134,7 +134,7 @@ test("actual selected stops leave each of the eight hosts' interaction points fr
 test("each actual Tiled work marker keeps its exact position across its host's exterior levels", () => {
   const initial = initialPreviewLevels(TILED_WORLD);
   const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop",
-    quarry: "quarry", woodlot: "woodlot", garden: "garden", dryer: "dryer" };
+    quarry: "quarry", garden: "garden", dryer: "dryer" };
   for (const [stationId, host] of Object.entries(hosts)) {
     const site = TILED_WORLD.sites.find(site => site.id === host), levels = site?.states.map(state => state.level) ?? [1];
     for (const level of levels) {
@@ -144,6 +144,24 @@ test("each actual Tiled work marker keeps its exact position across its host's e
       const targetLevel = Math.min(host === "home" ? 5 : host === "workshop" ? 2 : 1, level + 1);
       const { route } = checkedRoute(scene, job(stationId, targetLevel));
       assert.deepEqual(route.target.position, marker.position, `${stationId}, exterior ${level} keeps the valid authored foot position`);
+    }
+  }
+});
+
+test("woodlot construction visits the rabbit home and respects its upgraded exterior", () => {
+  const initial = initialPreviewLevels(TILED_WORLD);
+  for (const exterior of [1, 2]) for (const target of [1, 2, 3, 4, 5]) {
+    const scene = previewWorldScene(TILED_WORLD, { ...initial, "lopukh-home": exterior });
+    const next = previewWorldScene(TILED_WORLD, { ...initial, "lopukh-home": target >= 3 ? 2 : 1 });
+    const nextNavigation = createWorldNavigation(next, BUILDER_NAVIGATION_LIMITS.radius);
+    assert.equal(scene.sites.some(site => site.id === "woodlot"), false, "the removed workbench artwork stays absent");
+    const order = job("woodlot", target), { stops } = checkedRoute(scene, order);
+    const home = scene.sites.find(site => site.id === "lopukh-home");
+    for (const stop of stops) {
+      assert.equal(stop.id, "woodlot", "the job keeps its saved economic station ID");
+      assert.deepEqual(stop.lookAt, home.anchor);
+      assert.ok(isWalkable(nextNavigation, stop.position), "claiming the upgrade cannot place the builder inside the future house");
+      assertClear(stop.position, [home.entry, home.doorway ?? home.entry], builderWorkClearance(scene), "rabbit doorway stays free");
     }
   }
 });

@@ -59,7 +59,7 @@ trap cleanup EXIT
 echo 'Stopping traffic and application writers; PostgreSQL stays running.'
 services_stopped=true
 "${compose[@]}" stop caddy web api provision migrate
-"${compose[@]}" exec -T db pg_dump -U zhiv -d zhiv --format=custom > "$backup_file"
+"${compose[@]}" exec -T db pg_dump -U zhiv -d zhiv --format=custom --exclude-table-data=public.earth_latest_locations --exclude-table-data=public.earth_frozen_locations > "$backup_file"
 test -s "$backup_file"
 "${compose[@]}" exec -T db pg_restore --list < "$backup_file" > /dev/null
 
@@ -76,14 +76,21 @@ echo 'Backup verified. Replacing only database zhiv and replaying migrations.'
 "${compose[@]}" exec -T db dropdb -U zhiv --maintenance-db=postgres zhiv
 database_replaced=true
 "${compose[@]}" exec -T db createdb -U zhiv --template=template0 --owner=zhiv zhiv
+# Use the database clock before migration starts. A baseline seeds its metadata
+# in its own transaction, before Flyway writes the successful history entry.
+migration_started_epoch="$("${compose[@]}" exec -T db psql -X -A -t -U zhiv -d zhiv \
+  -v ON_ERROR_STOP=1 -c 'SELECT extract(epoch FROM clock_timestamp())')"
 "${compose[@]}" run --rm --no-deps provision
 "${compose[@]}" run --rm --no-deps migrate
 
-"${compose[@]}" exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+"${compose[@]}" exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 \
+  -v reset_migration_started_epoch="$migration_started_epoch" <<'SQL'
+SELECT set_config('zhiv.reset_migration_started_epoch', :'reset_migration_started_epoch', false);
 DO $$
 DECLARE
     item record;
     remaining bigint;
+    migration_started_at timestamptz := to_timestamp(current_setting('zhiv.reset_migration_started_epoch')::double precision);
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE success)
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success)
@@ -93,8 +100,20 @@ BEGIN
     IF (SELECT count(*) FROM public.game_tap_collection_metadata) <> 1
         OR NOT EXISTS (
             SELECT 1 FROM public.game_tap_collection_metadata m
-            JOIN public.flyway_schema_history h ON h.version = '28' AND h.success
-            WHERE m.singleton AND m.started_at = h.installed_on::timestamptz
+            WHERE m.singleton AND isfinite(m.started_at) AND (
+                -- Existing installations retain the exact V28 coverage marker.
+                (NOT EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE type='SQL_BASELINE')
+                    AND EXISTS (SELECT 1 FROM public.flyway_schema_history h
+                        WHERE h.version='28' AND h.type='SQL' AND h.success
+                            AND m.started_at=h.installed_on::timestamptz))
+                OR
+                -- A fresh baseline has no V28 row. Require the exact reviewed
+                -- baseline plus later migrations, not an arbitrary history.
+                (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
+                    FROM public.flyway_schema_history h ORDER BY h.installed_rank)
+                    = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true','67:SQL:true']
+                    AND m.started_at BETWEEN migration_started_at AND clock_timestamp())
+            )
         ) THEN
         RAISE EXCEPTION 'Fresh collection metadata is missing or does not match its migration. Site remains stopped.';
     END IF;

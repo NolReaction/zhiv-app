@@ -3,6 +3,8 @@ export type WorldHelpTarget =
   | { kind: "expeditions"; sector?: "forest" | "coast" | "caves" }
   | { kind: "station"; stationId: string; recipeId?: string }
   | { kind: "upgrade"; stationId: string }
+  | { kind: "orders"; residentId?: "plesk" | "builder" }
+  /** @deprecated Old links map to the orders journal or contextual meal controls. */
   | { kind: "food"; tab?: "meals" | "orders"; residentId?: "plesk" | "builder" }
   | { kind: "resident"; residentId: "plesk" | "builder" }
   | { kind: "profile"; tab?: "profile" | "mood" | "friends" | "settings" }

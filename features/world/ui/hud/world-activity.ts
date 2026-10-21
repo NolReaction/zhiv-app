@@ -1,6 +1,7 @@
 import type { EconomySceneActivity } from "@/features/world/state/economy/economy-scene-state";
 import type { WorldState } from "@/features/world/domain/model";
 import { sceneJourney } from "@/features/world/activities/journeys/journey-timeline";
+import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
 
 export type WorldActivity = {
   id: string; label: string; kind: "forest" | "fishing" | "cave" | "production";
@@ -42,17 +43,11 @@ export function worldActivity(activity: EconomySceneActivity | null | undefined,
 }
 
 export function activityTime(seconds: number) {
-  const value = Math.max(0, Math.ceil(seconds));
-  if (value < 60) return `${value} с`;
-  const minutes = Math.ceil(value / 60);
-  if (minutes < 60) return `${minutes} мин`;
-  const hours = Math.floor(minutes / 60), rest = minutes % 60;
-  if (hours < 24) return `${hours} ч${rest ? ` ${rest} мин` : ""}`;
-  return `${Math.floor(hours / 24)} д${hours % 24 ? ` ${hours % 24} ч` : ""}`;
+  return worldCountdown(seconds);
 }
 
 export function activityStatus(activity: WorldActivity) {
   if (activity.collectionPhase === "harvesting") return "Собирает ягоды";
   if (activity.collectionPhase === "ripe") return "Ягоды созрели";
-  return activity.ready ? activity.kind === "production" ? "Можно забрать" : "Находки ждут" : `Ещё ${activityTime(activity.remainingSeconds)}`;
+  return activity.ready ? activity.kind === "production" ? "Можно забрать" : "Находки ждут" : activityTime(activity.remainingSeconds);
 }

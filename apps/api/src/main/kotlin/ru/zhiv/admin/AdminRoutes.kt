@@ -91,6 +91,11 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
                 call.respond(repository.player(hash, target))
             }
+            get("/users/{publicId}/security") {
+                val hash = call.adminSessionHash(config, codec)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                call.respond(repository.security(hash, target))
+            }
             get("/users/{publicId}/tap-history") {
                 val hash = call.adminSessionHash(config, codec)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
@@ -109,6 +114,13 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
             }
         }
         rateLimit(RateLimitName("admin-write")) {
+            post("/users/{publicId}/adjust-economy") {
+                val hash = call.adminSessionHash(config, codec, writing = true)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                val request = call.receive<AdminEconomyAdjustmentRequest>()
+                val id = parseCanonicalUuidV4(request.requestId) ?: badQuery()
+                call.respond(repository.adjustEconomy(hash, target, id, request))
+            }
             post("/users/{publicId}/grant-economy") {
                 val hash = call.adminSessionHash(config, codec, writing = true)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()

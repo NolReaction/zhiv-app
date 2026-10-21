@@ -22,7 +22,7 @@ class EconomyActorTest {
     private fun legacyMine(state: EconomyState, routeId: String = "quarry_stone"): EconomyState {
         val route = quarryRoutes.single { it.id == routeId }
         val job = EconomyJob(UUID.randomUUID().toString(), "production", "quarry", routeId,
-            startedAt = now.toString(), finishesAt = now.plusSeconds(route.seconds).toString(),
+            startedAt = now.toString(), finishesAt = now.plusSeconds(if (routeId == "quarry_stone") 1800L else route.seconds).toString(),
             rewards = route.rewards, cost = route.cost, catalogVersion = 3)
         return state.copy(jobs = state.jobs + job)
     }
@@ -94,7 +94,7 @@ class EconomyActorTest {
             val result = apply(saved, if (cancel) "cancel_exploration" else "claim_job", job.id, readyAt(job))
             assertTrue(result.jobs.isEmpty())
             assertEquals(saved.wallet, result.wallet, "historic coin costs are never recomputed or refunded")
-            assertEquals(if (cancel) emptyMap() else job.rewards, result.inventory)
+            assertEquals(if (cancel) emptyMap() else EconomyFishInventory.items(job.rewards), result.inventory)
             assertEquals(0, result.buildings["quarry"])
             assertEquals(if (cancel) 0L else 1L, result.completedExplorations)
             assertEquals(if (cancel) 0L else 1L, result.progression.routes[id] ?: 0L)
@@ -104,13 +104,15 @@ class EconomyActorTest {
         }
     }
 
-    @Test fun `quarry and all routes exclude each other until delivery without changing spent resources or rare clocks`() {
+    @Test fun `legacy quarry jobs still own Mochlik while new mining owns an independent worker`() {
         val mining = legacyMine(player())
         val before = economyJson.encodeToString(mining)
         for (at in listOf(now, readyAt(mining.jobs.single()))) for (route in EconomyRules.catalog.explorations) {
             val actions = if (route.id in checkNotNull(EconomyRules.catalog.fishing).routeIds) listOf("start_exploration", "start_fishing")
                 else listOf("start_exploration")
-            for (action in actions) assertEquals("ECONOMY_QUARRY_BUSY", assertFailsWith<AuthFailure> {
+            for (action in actions) if (route.activity == "mining") {
+                assertEquals("miner", apply(mining, action, route.id, at).jobs.last().actorId)
+            } else assertEquals("ECONOMY_QUARRY_BUSY", assertFailsWith<AuthFailure> {
                 apply(mining, action, route.id, at)
             }.code)
         }
@@ -118,7 +120,7 @@ class EconomyActorTest {
         val travelling = apply(player(), "start_exploration", "cave")
         val paid = economyJson.encodeToString(travelling)
         for (at in listOf(now, readyAt(travelling.jobs.single()))) for (recipe in quarryRoutes)
-            assertEquals("ECONOMY_EXPLORER_BUSY", assertFailsWith<AuthFailure> { apply(travelling, "start_exploration", recipe.id, at) }.code)
+            assertEquals("ECONOMY_MINER_BUSY", assertFailsWith<AuthFailure> { apply(travelling, "start_exploration", recipe.id, at) }.code)
         assertEquals(paid, economyJson.encodeToString(travelling))
     }
 
@@ -138,9 +140,8 @@ class EconomyActorTest {
         val collecting = apply(construction, "start_collection", berries.id, finish)
         val deliveredAt = Instant.parse(checkNotNull(collecting.jobs.single { it.id == berries.id }.collection?.finishesAt))
         val receivedStone = apply(collecting, "claim_job", mine.id, deliveredAt)
-        for (recipe in quarryRoutes) assertEquals("ECONOMY_COLLECTOR_BUSY", assertFailsWith<AuthFailure> {
-            apply(receivedStone, "start_exploration", recipe.id, deliveredAt)
-        }.code)
+        for (recipe in quarryRoutes) assertEquals("miner",
+            apply(receivedStone, "start_exploration", recipe.id, deliveredAt).jobs.last().actorId)
         assertEquals("ECONOMY_COLLECTOR_BUSY", assertFailsWith<AuthFailure> { apply(receivedStone, "start_exploration", "forest", deliveredAt) }.code)
         val receivedBerries = apply(receivedStone, "claim_job", berries.id, deliveredAt)
         assertTrue(apply(receivedBerries, "start_exploration", "quarry_stone", deliveredAt).jobs.any { it.targetId == "quarry_stone" })
@@ -165,7 +166,7 @@ class EconomyActorTest {
             val mine = legacyMine(original).jobs.single().copy(
                 recipeId = "retired-quarry-order", rewards = mapOf("stone" to 13L), catalogVersion = 1)
             val cave = apply(original, "start_exploration", "cave").jobs.single().copy(
-                rewards = mapOf("ore" to 9L), rareDrop = null, catalogVersion = 1)
+                rewards = mapOf("ore" to 9L), rareDrop = null, actorId = null, catalogVersion = 1)
             var saved = original.copy(jobs = listOf(mine, cave), inventory = emptyMap())
             val at = maxOf(readyAt(mine), readyAt(cave))
             for (job in if (miningFirst) listOf(mine, cave) else listOf(cave, mine)) saved = apply(saved, "claim_job", job.id, at)
@@ -179,7 +180,8 @@ class EconomyActorTest {
     }
 
     @Test fun `retired production cannot spend and focused mining advances only its book and routes`() {
-        val original = player().copy(rareDropState = EconomyRareDropClock(1, 1800, "moon_crystal"))
+        val original = player().copy(rareDropState = EconomyRareDropClock(1, 1800, "moon_crystal"),
+            minerRareDropState = EconomyRareDropClock(1, EconomyRules.catalog.explorations.single { it.id == "quarry_stone" }.seconds, "moon_crystal"))
         assertTrue(EconomyRules.catalog.recipes.none { it.buildingId == "quarry" })
         for (route in quarryRoutes) assertEquals("ECONOMY_MINING_ACTIVITY", assertFailsWith<AuthFailure> {
             apply(original, "start_production", route.id)
@@ -190,7 +192,7 @@ class EconomyActorTest {
         assertEquals(1800L, mining.rareDropState?.remainingSeconds)
         val claimed = apply(mining, "claim_job", job.id, readyAt(job))
         assertEquals(0L, claimed.completedExplorations)
-        assertEquals(1800L, claimed.progression.collections.quarrySeconds)
+        assertEquals(EconomyRules.catalog.explorations.single { it.id == "quarry_stone" }.seconds, claimed.progression.collections.quarrySeconds)
         assertEquals(0L, claimed.progression.collections.travelSeconds)
         assertEquals(1L, claimed.progression.routes["quarry_stone"])
         assertTrue(claimed.progression.recipes.isEmpty())

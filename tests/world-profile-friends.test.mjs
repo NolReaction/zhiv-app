@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { WorldProfileFriendsContent, profileFriends } = await vite.ssrLoadModule("/features/world/ui/profile/world-profile-friends.tsx");
+const { profileFriendVisit, currentProfileFriendVisit } = await vite.ssrLoadModule("/features/world/ui/profile/world-friend-visit.ts");
 
 const person = (id, displayName, extra = {}) => ({
   circleId: id, user: { publicId: `PRIVATE-${id}`, displayName },
@@ -80,6 +81,53 @@ test("refresh and People navigation require an explicit press; rendering never f
   buttons.find(element => element.props["aria-label"] === "Обновить список друзей").props.onClick();
   buttons.find(element => !element.props["aria-label"]).props.onClick();
   assert.deepEqual(result.calls, ["refresh", "people"]);
+});
+
+test("a shared friend card opens that friend only on an explicit press and keeps friend management", () => {
+  const visited = [];
+  const visible = { ...people[0], theirSharingMode: "LATEST_ONLY" };
+  const result = view({ friends: { data: { ...data, people: [visible] }, loading: false, error: null, isOnline: true, onRefresh() {} },
+    onVisitFriend: person => visited.push(person) });
+  assert.deepEqual(visited, []);
+  const card = result.elements.find(element => element.props["aria-label"] === "В гости к Мама");
+  assert.equal(card.type, "button");
+  assert.equal(card.props.disabled, false);
+  card.props.onClick();
+  assert.deepEqual(visited, [visible]);
+  assert.match(result.markup, /Друзья и заявки/);
+  assert.doesNotMatch(result.markup, /PRIVATE-|private-status|14:59:59/);
+});
+
+test("private and offline friend cards explain the disabled visit and never navigate", () => {
+  const visited = [];
+  const hidden = view({ onVisitFriend: person => visited.push(person) });
+  const cards = hidden.elements.filter(element => element.props["aria-label"]?.endsWith(": мир скрыт"));
+  assert.equal(cards.length, 3);
+  for (const card of cards) { assert.equal(card.props.disabled, true); card.props.onClick(); }
+  const offline = view({ friends: { data: { ...data, people: people.map(person => ({ ...person, theirSharingMode: "LATEST_ONLY" })) },
+    loading: false, error: null, isOnline: false, onRefresh() {} }, onVisitFriend: person => visited.push(person) });
+  const offlineCards = offline.elements.filter(element => element.props["aria-label"]?.endsWith(": нужен интернет"));
+  assert.equal(offlineCards.length, 3);
+  for (const card of offlineCards) { assert.equal(card.props.disabled, true); card.props.onClick(); }
+  assert.deepEqual(visited, []);
+});
+
+test("visit navigation resolves owner, relationship, target and live visibility without mutating the people snapshot", () => {
+  const shared = { ...people[0], theirSharingMode: "LATEST_ONLY" };
+  const saved = JSON.stringify(shared);
+  const selection = profileFriendVisit("VIEWER", [shared], shared, true);
+  assert.deepEqual(selection, { ownerPublicId: "VIEWER", target: { circleId: "a", targetPublicId: "PRIVATE-a", displayName: "Мама" } });
+  assert.deepEqual(currentProfileFriendVisit("VIEWER", selection, [shared], true, true), selection.target);
+  assert.equal(profileFriendVisit("VIEWER", [shared], { ...shared, circleId: "other" }, true), null);
+  assert.equal(profileFriendVisit("VIEWER", [shared], { ...shared, user: { ...shared.user, publicId: "other" } }, true), null);
+  assert.equal(profileFriendVisit(shared.user.publicId, [shared], shared, true), null);
+  assert.equal(profileFriendVisit("VIEWER", [shared], shared, false), null);
+  assert.equal(profileFriendVisit(null, [shared], shared, true), null);
+  for (const [owner, connected, online, open] of [
+    ["NEW-OWNER", [shared], true, true], ["VIEWER", [], true, true], ["VIEWER", [{ ...shared, theirSharingMode: "OFF" }], true, true],
+    ["VIEWER", [shared], false, true], ["VIEWER", [shared], true, false],
+  ]) assert.equal(currentProfileFriendVisit(owner, selection, connected, online, open), undefined);
+  assert.equal(JSON.stringify(shared), saved);
 });
 
 test("loading, failed and offline snapshots retain cached names and explain whether refreshing is possible", () => {

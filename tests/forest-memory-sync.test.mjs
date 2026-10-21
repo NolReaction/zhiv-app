@@ -13,6 +13,7 @@ const { connectForestSession } = await vite.ssrLoadModule("/features/world/state
 const { captureForestMemory, forestMemoryKey } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
+const { setGamePresence, gamePresenceHeaders } = await vite.ssrLoadModule("/features/activity/transport-state.ts");
 const OWNER = "1234-ABCD-EFGH";
 let serial = 0;
 const uuid = () => `00000000-0000-4000-8000-${(++serial).toString(16).padStart(12, "0")}`;
@@ -80,6 +81,102 @@ function client(env, remote, energy = .3, overrides = {}) {
     capture: () => { captures++; return clone(value); }, apply: snapshot => { value = clone(snapshot); applied.push(clone(snapshot)); }, ...overrides });
   return { sync, applied, get captures() { return captures; }, get value() { return value; } };
 }
+
+test("returning before presence reconnects waits without polling and resumes the same forest writer", async () => {
+  const env = clock(), remote = server(env), original = remote.transport.command, attempted = [];
+  remote.transport.command = async command => {
+    attempted.push(clone(command));
+    if (!gamePresenceHeaders()["X-Game-Presence"]) throw new ApiError("Return", 409, { code: "GAME_SESSION_INACTIVE", message: "Return" });
+    return original(command);
+  };
+  const a = client(env, remote, .52);
+  try {
+    setGamePresence("before-hide"); a.sync.setActive(true); await env.advance();
+    a.sync.setActive(false, true); await env.advance();
+    setGamePresence(null); a.sync.setActive(true, true); await env.advance();
+    assert.equal(a.sync.getStatus().mode, "offline"); assert.equal(a.sync.isSimulationAllowed(), false);
+    const attempts = attempted.length;
+    await env.advance(60_000); a.sync.setActive(true, true); await env.advance();
+    assert.equal(attempted.length, attempts, "an already visible canvas does not retry without presence");
+    setGamePresence("after-return"); await env.advance();
+    assert.equal(a.sync.getStatus().mode, "synced"); assert.equal(a.sync.isSimulationAllowed(), true);
+    assert.deepEqual(attempted.at(-1), attempted.at(-2), "presence recovery retries the unchanged pending acquire");
+  } finally { a.sync.release(); await settle(); setGamePresence(null); }
+});
+
+for (const action of ["acquire", "save"]) test(`a late inactive ${action} response cannot miss an already renewed presence`, async () => {
+  const env = clock(), remote = server(env), original = remote.transport.command, attempted = [];
+  let fail;
+  remote.transport.command = async command => {
+    attempted.push(clone(command));
+    if (command.action === action && !fail) await new Promise((_, reject) => { fail = reject; });
+    return original(command);
+  };
+  const a = client(env, remote, .52);
+  try {
+    setGamePresence("old-presence"); a.sync.setActive(true); await env.advance();
+    if (action === "save") { a.sync.flush(); await env.advance(); }
+    assert.ok(fail, "the old-presence request is in flight");
+    setGamePresence("new-presence");
+    fail(new ApiError("Return", 409, { code: "GAME_SESSION_INACTIVE", message: "Return" }));
+    await settle(); await env.advance();
+    assert.equal(a.sync.getStatus().mode, "synced"); assert.equal(a.sync.isSimulationAllowed(), true);
+    const retries = attempted.filter(command => command.action === action);
+    assert.equal(retries.length, 2); assert.deepEqual(retries[0], retries[1]);
+    assert.equal(gamePresenceHeaders()["X-Game-Presence"], "new-presence");
+  } finally { a.sync.release(); await settle(); setGamePresence(null); }
+});
+
+test("presence recovery retains an uncertain save body and its receipt instead of recapturing live state", async () => {
+  const env = clock(), remote = server(env), original = remote.transport.command, attempted = [];
+  let drop = true;
+  remote.transport.command = async command => {
+    attempted.push(clone(command));
+    if (!gamePresenceHeaders()["X-Game-Presence"]) throw new ApiError("Return", 409, { code: "GAME_SESSION_INACTIVE", message: "Return" });
+    const result = await original(command);
+    if (command.action === "save" && drop) { drop = false; throw Error("lost acknowledgement"); }
+    return result;
+  };
+  const a = client(env, remote, .52);
+  try {
+    setGamePresence("old-presence"); a.sync.setActive(true); await env.advance();
+    a.sync.flush(); await env.advance();
+    setGamePresence(null); await env.advance(1000);
+    assert.equal(a.sync.getStatus().mode, "offline");
+    a.value.mind.needs.energy = .01;
+    setGamePresence("new-presence"); await env.advance();
+    const saves = attempted.filter(command => command.action === "save");
+    assert.equal(saves.length, 3); assert.deepEqual(saves[0], saves[1]); assert.deepEqual(saves[1], saves[2]);
+    assert.equal(remote.snapshot.mind.needs.energy, .52); assert.equal(a.value.mind.needs.energy, .52);
+    assert.equal(a.sync.getStatus().mode, "synced"); assert.equal(a.sync.isSimulationAllowed(), true);
+  } finally { a.sync.release(); await settle(); setGamePresence(null); }
+});
+
+for (const boundary of ["hidden-or-afk", "suspend", "release"]) test(`new presence never wakes a ${boundary} forest`, async () => {
+  const env = clock(), remote = server(env), original = remote.transport.command;
+  let attempts = 0;
+  remote.transport.command = async command => {
+    attempts++;
+    if (!gamePresenceHeaders()["X-Game-Presence"]) throw new ApiError("Return", 409, { code: "GAME_SESSION_INACTIVE", message: "Return" });
+    return original(command);
+  };
+  const a = client(env, remote, .52);
+  try {
+    setGamePresence(null); a.sync.setActive(true); await env.advance();
+    assert.equal(a.sync.getStatus().mode, "offline");
+    if (boundary === "hidden-or-afk") a.sync.setActive(false, true);
+    else a.sync[boundary]();
+    await settle();
+    const previous = { attempts, reads: remote.reads.length };
+    setGamePresence("new-presence"); await env.advance(60_000);
+    assert.deepEqual({ attempts, reads: remote.reads.length }, previous, "presence alone does not activate a paused or disposed scene");
+    assert.equal(a.sync.isSimulationAllowed(), boundary === "suspend", "DEV-disabled persistence preserves its existing simulation policy");
+    if (boundary === "hidden-or-afk") {
+      a.sync.setActive(true, true); await env.advance();
+      assert.equal(a.sync.getStatus().mode, "synced"); assert.equal(a.sync.isSimulationAllowed(), true);
+    }
+  } finally { a.sync.release(); await settle(); setGamePresence(null); }
+});
 
 test("server memory wins over local cache; second device stays passive until explicit takeover", async () => {
   const env = clock(), remote = server(env, payload(.8)), a = client(env, remote, .1), b = client(env, remote, .2);

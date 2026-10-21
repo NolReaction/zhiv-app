@@ -53,6 +53,7 @@ test("abandoning a supplied trip never refunds its consumed provisions or histor
   assert.notDeepEqual(started.inventory, { ...route.cost.items, fish: 3 });
   // Persisted jobs can originate in an older catalog with a coin cost.
   row.state.jobs[0].cost.coins = 250;
+  row.state.jobs[0].actorId = null; row.state.jobs[0].catalogVersion = 6;
   const result = issue(p, "cancel_exploration", trip.id).state;
   assert.deepEqual(result.inventory, started.inventory);
   assert.deepEqual(result.wallet, started.wallet);
@@ -92,7 +93,11 @@ test("claim and cancel from the same revision allow exactly one outcome in eithe
     assert.throws(() => economy.commandDevEconomy(p.token, stale, at), { code: "ECONOMY_REVISION_CONFLICT" });
     assert.throws(() => issue(p, loser, trip.id, at), { code: "ECONOMY_JOB_GONE" });
     const expected = { ...started.inventory };
-    if (winner === "claim_job") for (const [item, amount] of Object.entries(savedRewards)) expected[item] = (expected[item] ?? 0) + amount;
+    if (winner === "claim_job") for (const [item, amount] of Object.entries(savedRewards)) {
+      const species = economyCatalog.fishing.fish.find(fish => fish.itemId === item);
+      const stockId = species ? `fish_${species.rarity}` : item;
+      expected[stockId] = (expected[stockId] ?? 0) + amount;
+    }
     assert.deepEqual(result.state.inventory, expected);
     assert.equal(result.state.completedExplorations, winner === "claim_job" ? 1 : 0);
     assert.deepEqual(read(p, at), result.state);
@@ -113,16 +118,20 @@ test("replaying cancellation after a new departure cannot cancel the replacement
   assert.deepEqual(read(p), next);
 });
 
-test("cancellation is available with full storage and cannot be forged into a refund or bulk command", () => {
-  const p = player(), trip = issue(p, "start_exploration", "shore").state.jobs[0];
-  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.inventory = { wood: 300 };
-  const before = read(p), cancel = command(p, "cancel_exploration", trip.id);
-  for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { rewards: { fish: 99 } }, { refund: true }, { targetId: "" }]) {
-    assert.throws(() => economy.commandDevEconomy(p.token, { ...cancel, ...extra }, now), { code: "INVALID_ECONOMY_COMMAND" });
-    assert.deepEqual(read(p), before);
+test("cancellation is available with full or overflowing storage and cannot be forged into a refund or bulk command", () => {
+  for (const stored of [50, 300]) {
+    const p = player(), trip = issue(p, "start_exploration", "shore").state.jobs[0];
+    const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+    row.state.inventory = { wood: stored };
+    const before = read(p), cancel = command(p, "cancel_exploration", trip.id);
+    assert.equal(before.storage.capacity, 50); assert.equal(before.storage.available, 0);
+    assert.equal(before.storage.overflow, stored - 50);
+    for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { rewards: { fish: 99 } }, { refund: true }, { targetId: "" }]) {
+      assert.throws(() => economy.commandDevEconomy(p.token, { ...cancel, ...extra }, now), { code: "INVALID_ECONOMY_COMMAND" });
+      assert.deepEqual(read(p), before);
+    }
+    const result = economy.commandDevEconomy(p.token, cancel, now);
+    assert.deepEqual(result.state.inventory, before.inventory);
+    assert.deepEqual(result.state.jobs, []);
   }
-  const result = economy.commandDevEconomy(p.token, cancel, now);
-  assert.deepEqual(result.state.inventory, before.inventory);
-  assert.deepEqual(result.state.jobs, []);
 });

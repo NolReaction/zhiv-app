@@ -4,7 +4,7 @@
 
 Настоящий API — Kotlin/Ktor в `apps/api/`, данные — PostgreSQL. `app/api/v1/` — локальная имитация Next/Vinext. На VPS Caddy отправляет `/api/*`, `/healthz`, `/readyz` прямо в Ktor.
 
-Экономика версии 0.7.0 (каталог не изменён после 0.6.9): [полный контракт, баланс и миграции](../game/economy-foundation.md). `features/economy/` ↔ `ru.zhiv.economy` ↔ `JdbcEconomyRepository`/`JdbcEconomyMarketRepository`; endpoints `/api/v1/economy`, `/commands`, `/market`, `/market/commands`. Текущий каталог **v3** задаёт цепочки переработки, зависимости построек, вместимость склада, рыбалку, еду и заказы жителей. Основа хранения введена V32–V34, последующие миграции добавляют витрину рынка, награды, номинал валют, торговые ограничения и контекст операций. Старый world API обслуживает гардероб, альбомы и завершение прежних походов; валюту за тапы и мгновенную стройку больше не выдаёт.
+Экономика версии 0.7.0: [полный контракт, баланс и миграции](../game/economy-foundation.md). `features/economy/` ↔ `ru.zhiv.economy` ↔ `JdbcEconomyRepository`/`JdbcEconomyMarketRepository`; endpoints `/api/v1/economy`, `/commands`, `/market`, `/market/commands`. Текущий каталог **v10** задаёт цепочки переработки, зависимости построек, вместимость склада, рыбалку, еду и заказы жителей. В [рыбалке по классам](../game/fishing-economy-0.6.9.md) базовые шансы задаёт удочка, а крючок и наживка усиливают выбранный класс. Основа хранения введена V32–V34, последующие миграции добавляют витрину рынка, награды, номинал валют, торговые ограничения и контекст операций. Старый world API обслуживает гардероб, альбомы и завершение прежних походов; валюту за тапы и мгновенную стройку больше не выдаёт.
 
 ## Где искать правило
 
@@ -15,6 +15,7 @@
 | `GET/PATCH /api/v1/me`, calendar, time-zone, status, bootstrap | [identity/IdentityRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/identity/IdentityRoutes.kt), `identity/*` | [db/JdbcZhivRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcZhivRepository.kt), [db/CheckInCalendarQuery.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/CheckInCalendarQuery.kt) | [lib/check-in-contract.ts](../../lib/check-in-contract.ts), [lib/check-in-api.ts](../../lib/check-in-api.ts) |
 | `POST /api/v1/check-ins` | [checkins/CheckInRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/checkins/CheckInRoutes.kt), [CheckInRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/checkins/CheckInRepository.kt) | [db/JdbcZhivRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcZhivRepository.kt) | [lib/check-in-api.ts](../../lib/check-in-api.ts) |
 | `/people`, `/users/{publicId}`, `/direct-requests` | [relationships/RelationshipRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/relationships/RelationshipRoutes.kt) | [db/JdbcRelationshipRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcRelationshipRepository.kt) | [lib/check-in-api.ts](../../lib/check-in-api.ts) |
+| `/earth/sharing`, `/earth/location`, `/earth/people` | [earth/EarthLocationRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/earth/EarthLocationRoutes.kt) | [db/JdbcEarthLocationRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcEarthLocationRepository.kt), V65–V67 | [Доступ к геопозиции и призрак](earth-sharing.md), `lib/earth-sharing-contract.ts` |
 | `/groups`, `/group-invites` | [groups/GroupRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/groups/GroupRoutes.kt) | [db/JdbcGroupRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcGroupRepository.kt) | [lib/check-in-api.ts](../../lib/check-in-api.ts) |
 | `/direct-invite-links`, preview, redeem | [invites/DirectInviteRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/invites/DirectInviteRoutes.kt) | [db/JdbcDirectInviteRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcDirectInviteRepository.kt) | [lib/check-in-api.ts](../../lib/check-in-api.ts), [lib/invite-import.ts](../../lib/invite-import.ts) |
 | `/auth/*`, `/recovery-code` | [auth/AuthRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/auth/AuthRoutes.kt), [recovery/CodeRecoveryRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/recovery/CodeRecoveryRoutes.kt) | [db/JdbcAuthRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAuthRepository.kt), [JdbcAccountLifecycleRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAccountLifecycleRepository.kt), [JdbcCodeRecoveryRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcCodeRecoveryRepository.kt) | [lib/auth-api.ts](../../lib/auth-api.ts), [lib/account-lifecycle.ts](../../lib/account-lifecycle.ts) |
@@ -45,7 +46,13 @@
 
 ## PostgreSQL и миграции
 
-Источник схемы: `apps/api/src/main/resources/db/migration/`. Текущая последовательность — **V1–V52**.
+Источник схемы: `apps/api/src/main/resources/db/migration/`. Новая пустая БД создаётся одним [B49__current_schema.sql](../../apps/api/src/main/resources/db/migration/B49__current_schema.sql): итоговая структура версии 49 без воспроизведения исторических преобразований данных. Flyway записывает `SQL_BASELINE` версии 49.
+
+[История V1–V49](../../apps/api/src/main/resources/db/migration/history/) сохранена без изменения содержимого. Flyway рекурсивно читает общий каталог: БД с прежней историей продолжает обновляться через V-миграции, B49 на ней не исполняется. Старые checksums и записи `flyway_schema_history` не меняются. [Обслуживание baseline и проверки двух путей](database-baseline.md).
+
+Таблица ниже — ориентиры исторических изменений, а не список шагов создания новой БД.
+
+Текущая итоговая версия схемы — **67**: B49 → V50–V67 или V1–V67.
 
 | Область | Миграции-ориентиры |
 |---|---|
@@ -81,8 +88,12 @@
 | Доступность ягодного сбора, занятость сборщика и стабильное время уведомления | V50 |
 | Ревизия подтверждённой административной выдачи в неизменяемом аудите | V51 |
 | Управляемые промокоды с периодом действия и сохраняемой конфигурацией | V52 |
+| Начальные ресурсы и последовательные учебные заказы | V53 |
+| Независимая шахта: до 18 заданий | V54 |
+| Рыночные места и постоянное знание товаров | V55 |
+| Независимая шахта не задерживает уведомления о сборе ягод | V56 |
 
-Для изменения схемы добавьте следующую `V<N>__description.sql`; применённые файлы не редактируются. Учитывайте существующие строки, constraints, индексы и роли доступа. Проверяйте обновление старой схемы, а не только создание пустой БД.
+Для следующего изменения схемы добавьте `V59__description.sql` (далее — следующий свободный номер) в корень `db/migration/`. Историю V1–V58 и опубликованный B49 не редактируйте. Проверяйте как обновление заполненной БД, так и создание новой через baseline; учитывайте constraints, индексы, SQL-функции и роли доступа. Baseline не сбрасывает прогресс и не меняет аккаунты, друзей или служебные данные существующей БД.
 
 [db/DatabaseFactory.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/DatabaseFactory.kt) настраивает HikariCP и Flyway; [db/MigrationMain.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/MigrationMain.kt) — отдельный запуск миграций. В Compose сначала выполняются `provision` и `migrate`, затем стартует `api`. Приложение использует ограниченную роль, мигратор — отдельную. [db/schema.ts](../../db/schema.ts) и `npm run db:generate` относятся к заготовке Sites/D1 и **не создают PostgreSQL-миграции приложения**.
 
@@ -90,7 +101,7 @@
 
 V32 сохраняет исходные три баланса в `economy_conversion_audit`, выдаёт ограниченный запас по замороженной формуле и обнуляет прежний кошелёк. Для аккаунта, впервые открывшего мир после миграции, тот же переход выполняется под блокировкой пользователя. Аудит запрещает повторную конвертацию после административного сброса. Сброс не входит в обновление: выполняются backup и штатные миграции. Подробности и примеры — [экономика](../game/economy-foundation.md#перевод-старых-накоплений).
 
-V34 добавляет отсутствующие `warehouse: 1` и `kiln: 0`, не обнуляя инвентарь, уровень дома или начатые заказы. Награды, цены, сроки и `catalogVersion: 1` старых работ сохраняются; после этого исторического обновления новые работы использовали каталог v2, сейчас — актуальный v3. Прежний запас сверх вместимости можно расходовать и продавать, но нельзя увеличивать до освобождения места. `storage` в API вычисляется из уровня склада, всего инвентаря и активного резерва рынка.
+V34 добавляет отсутствующие `warehouse: 1` и `kiln: 0`, не обнуляя инвентарь, уровень дома или начатые заказы. Награды, цены, сроки и `catalogVersion: 1` старых работ сохраняются; после этого исторического обновления новые работы использовали каталог v2, сейчас — актуальный v5. Прежний запас сверх вместимости можно расходовать и продавать, но нельзя увеличивать до освобождения места. `storage` в API вычисляется из уровня склада, всего инвентаря и активного резерва рынка.
 
 При объединении аккаунтов сохраняются кошельки, предметы и максимальные уровни зданий. Активные заказы сначала требуется получить; объявления отменяются с возвратом товара. Общие запасы и резерв должны помещаться в склад максимального из двух уровней: иначе операция полностью отклоняется и предлагает освободить место. Хеш подтверждения учитывает профили экономики, квитанции и объявления. Исходные UUID уже исполненных запросов остаются занятыми. При удалении аккаунта активные объявления закрываются до удаления экономического профиля; квитанция конвертации остаётся у выведенного из обращения UUID.
 
@@ -127,7 +138,7 @@ V34 добавляет отсутствующие `warehouse: 1` и `kiln: 0`, �
 - Заказ сохраняет стоимость, выход, целевой уровень и сроки на момент старта. Изменение каталога не пересчитывает уже оплаченные работы. `claim_job` применяет результат один раз, в том числе после офлайна. Открытие страницы само награду не выдаёт.
 - Рынок использует те же товары: `tradable`, цена выкупа, максимум партии/объявлений и ценовой коридор. Публикация резервирует товар, покупка переносит монеты и предметы между игроками одной транзакцией. Не реализуйте покупку двумя независимыми запросами.
 - Старый `/world/commands` принимает `equip`, `set_decoration`, `claim_journey`, `recall_journey`. Запуск прежнего маршрута, мгновенная стройка и крафт возвращают `WORLD_ECONOMY_MOVED`. Старый `grant_resource` администратора возвращает `ADMIN_RESOURCE_RETIRED`. Тапы сохраняют игровой счёт, но валюту больше не начисляют.
-- Для нового здания/перехода нужна отдельная графическая интеграция в Tiled. Подтверждённые уровни из `economyBuildings` выбирают рисунок и всю геометрию совпадающих `siteId`, сейчас это `home`, `workshop`, `quarry` и `woodlot`. Если точного рисунка нет, берётся ближайший доступный младший уровень; экономический прогресс при этом не уменьшается. Карточки хозяйства остаются источником требований, таймеров и команд; визуальная DEV-примерка меняет только внешний вид и доступна лишь в development. [Правила выбора и разметки](../game/building-workbench.md).
+- Для нового здания/перехода нужна отдельная графическая интеграция в Tiled. Подтверждённые уровни из `economyBuildings` выбирают рисунок и всю геометрию совпадающих `siteId`: `home`, `workshop`, `quarry`, `bridge`, `lighthouse`. Экономический `woodlot` размещён в `lopukh-home`: рисунок дома 1 остаётся до уровня участка 2 включительно, рисунок 2 выбирается с полученного уровня участка 3. Если точного рисунка нет, берётся ближайший доступный младший уровень; экономический прогресс при этом не уменьшается. Карточки хозяйства остаются источником требований, таймеров и команд; визуальная DEV-примерка меняет только внешний вид и доступна лишь в development. [Правила выбора и разметки](../game/building-workbench.md).
 - Проверки: достижимость рецептов с нулевого старта, достаточность материалов, граница таймера, повтор, конкуренция двух покупателей, возврат резерва, ограничения слияния, сохранённые поездки. Ktor: `EconomyRulesTest`, `JdbcEconomyRepositoryIntegrationTest`, `JdbcEconomyMarketRepositoryIntegrationTest`, `JdbcAccountLifecycleIntegrationTest`; web: `tests/economy*.test.mjs` и [tests/world.test.mjs](../../tests/world.test.mjs).
 
 ### Изменить уровни или добавить достижение
@@ -161,7 +172,7 @@ V34 добавляет отсутствующие `warehouse: 1` и `kiln: 0`, �
 
 Фикстуры текущей экономики используют действующий номинал: монеты ×10, жемчуг ×50. Старые суммы остаются в сценариях обновления прежней БД. Проверяйте полную цепочку после конверсии: балансы, цены, квитанции и ревизию после первого создания витрины. Команда получает ревизию актуального снимка; точное число переходов проверяется отдельно.
 
-Историческую схему наполняйте SQL-функциями, существующими в выбранной версии, а не текущим `ensureEconomyProfile`. Сначала изолированно проверяйте целевую миграцию и повторный запуск, затем обновляйте до последней версии и проверяйте текущий API. Сохранённое состояние сравнивайте отдельно от нормализации чтения — например, сортировки гардероба: удобный порядок ответа не должен скрывать изменение исторических данных. Версии миграций, защита склада и ценовые ограничения сохраняются строгими проверками.
+Исторические тесты, которым нужна версия ниже 49, загружают только `classpath:db/migration/history`; обычные тесты и runtime используют весь `classpath:db/migration`. Историческую схему наполняйте SQL-функциями, существующими в выбранной версии, а не текущим `ensureEconomyProfile`. Сначала изолированно проверяйте целевую миграцию и повторный запуск, затем обновляйте до последней версии и проверяйте текущий API. Сохранённое состояние сравнивайте отдельно от нормализации чтения — например, сортировки гардероба: удобный порядок ответа не должен скрывать изменение исторических данных. Версии миграций, защита склада и ценовые ограничения сохраняются строгими проверками.
 
 Настройки сервера: [config/AppConfig.kt](../../apps/api/src/main/kotlin/ru/zhiv/config/AppConfig.kt), [auth/AuthConfig.kt](../../apps/api/src/main/kotlin/ru/zhiv/auth/AuthConfig.kt), безопасный образец `deploy/.env.example`. Авторизация — [инструкция](../operations/auth-0.5.0.md); админские права — [админка](../operations/admin-panel.md); расследование — [инциденты](../operations/incident-response.md), [диагностика API](../../apps/api/DIAGNOSTICS.md).
 

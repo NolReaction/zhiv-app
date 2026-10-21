@@ -1,30 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ArrowLeft, Bell, ChevronRight, Settings2, Smartphone, Volume2 } from "lucide-react";
+import { ArrowLeft, Bell, ChevronRight, MapPin, Settings2, Smartphone, Volume2 } from "lucide-react";
 import { InstallPanel } from "@/features/pwa/install-panel";
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { NotificationSettingsPanel, type NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { useSectionGuideLauncherPreference } from "@/features/onboarding/use-section-guide-preferences";
+import { WorldTapHintSetting } from "@/features/world/ui/profile/world-tap-hint-setting";
+import { ProfileLocationSettings, type LocationPrivacyState } from "./profile-location-settings";
 import styles from "./profile-settings.module.css";
 
 const screens = [
   { id: "installation", title: "Установить приложение", description: "Значок на экране и инструкция для вашего браузера", icon: Smartphone },
   { id: "notifications", title: "Уведомления", description: "События, тихие часы и частота сообщений", icon: Bell },
+  { id: "location", title: "Геопозиция", description: "Полное отключение, проверка разрешения и точности", icon: MapPin },
   { id: "audio", title: "Звук", description: "Музыка, окружение и громкость игры", icon: Volume2 },
-  { id: "appearance", title: "Внешний вид", description: "Простой вид и кнопка подсказок", icon: Settings2 },
+  { id: "appearance", title: "Внешний вид", description: "Простой вид, подсказки и ромбики на карте", icon: Settings2 },
 ] as const;
 
 type SettingsScreen = typeof screens[number]["id"];
 
-export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simpleView, onSimpleViewChange, notificationSettingsExit }: {
+export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simpleView, onSimpleViewChange, notificationSettingsExit, active = true, locationPrivacy }: {
   ownerPublicId: string;
   isOnline: boolean;
   onSessionLost: () => void;
   simpleView: boolean;
   onSimpleViewChange: (value: boolean) => void;
   notificationSettingsExit: RefObject<NotificationSettingsExit | null>;
+  active?: boolean;
+  locationPrivacy?: LocationPrivacyState;
 }) {
   const { showSectionGuideLauncher, setShowSectionGuideLauncher } = useSectionGuideLauncherPreference(ownerPublicId);
   const [screen, setScreen] = useState<SettingsScreen | null>(null);
@@ -87,6 +92,9 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
     {visited.includes("audio") && <div className={styles.screen} hidden={screen !== "audio"}>
       <AudioSettingsPanel />
     </div>}
+    {visited.includes("location") && <div className={styles.screen} hidden={screen !== "location"}>
+      <ProfileLocationSettings ownerPublicId={ownerPublicId} visible={active && screen === "location"} privacy={locationPrivacy} />
+    </div>}
     {visited.includes("appearance") && <section className={`${styles.screen} ${styles.appearanceCard}`} hidden={screen !== "appearance"} aria-labelledby="appearance-title">
       <h2 id="appearance-title"><Settings2 size={19} aria-hidden="true" />Внешний вид</h2>
       <div className={styles.appearanceSetting}>
@@ -94,9 +102,10 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
         <Switch id="simple-view" checked={simpleView} onCheckedChange={onSimpleViewChange} data-audio-cue="ui.click" />
       </div>
       <div className={styles.appearanceSetting}>
-        <label htmlFor="section-guide-launcher"><strong>Кнопка «Что здесь делать?»</strong><span>Повтор коротких подсказок в разделах игры. Новые знакомства и продолжение подсказки останутся доступны.</span></label>
+        <label htmlFor="section-guide-launcher"><strong>Кнопка «Что здесь делать?»</strong><span>Кнопка ручного запуска подсказок в разделах игры. Продолжение приостановленной подсказки доступно и со скрытой кнопкой.</span></label>
         <Switch id="section-guide-launcher" checked={showSectionGuideLauncher} onCheckedChange={setShowSectionGuideLauncher} data-audio-cue="ui.click" />
       </div>
+      <WorldTapHintSetting owner={ownerPublicId} />
       <p className={styles.hint}>Настройки сохраняются на этом устройстве.</p>
     </section>}
   </div>;

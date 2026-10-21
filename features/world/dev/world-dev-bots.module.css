@@ -1,0 +1,49 @@
+.root, .editor, .tools, .root form { display: grid; gap: 12px; min-width: 0; }
+.root { color: #f1f4e8; }
+.root :is(h3, h4, p) { margin: 0; }
+.root h3 { font-size: 14px; font-weight: 700; }
+.root h4 { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.root h4 small { color: #c0d0bc; font-size: 12px; font-variant-numeric: tabular-nums; }
+.intro { display: grid; gap: 6px; }
+.intro p, .hint { color: #c0d0bc; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.root label { display: grid; gap: 5px; min-width: 0; }
+.root label > span { color: #c0d0bc; font-size: 12px; }
+.root :is(input, select) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid #536b56; border-radius: 9px; background: #203326; color: #f1f4e8; font: inherit; }
+.root button { box-sizing: border-box; min-height: 44px; min-width: 0; padding: 8px; border: 1px solid #536b56; border-radius: 9px; background: #2a4030; color: #f1f4e8; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.root button:disabled { opacity: .48; cursor: default; }
+.root :is(button, input, select, summary):focus-visible { outline: 2px solid #deeda6; outline-offset: 2px; }
+.box { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid #445c4c; border-radius: 12px; background: #203126; }
+.columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; }
+.identity { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.identity strong { min-width: 0; overflow-wrap: anywhere; font-size: 15px; }
+.identity > span { padding: 3px 7px; border-radius: 6px; background: #415a34; white-space: nowrap; font-size: 11px; }
+.balance { display: flex; flex-wrap: wrap; gap: 6px 14px; font-variant-numeric: tabular-nums; font-size: 12px; }
+.notice, .warning, .error { padding: 10px; border: 1px solid #607848; border-radius: 9px; background: #304229; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+.warning { display: grid; gap: 8px; border-color: #766b43; color: #eee0b5; background: #393321; }
+.error { border-color: #966258; color: #ffe0d7; background: #492c28; }
+.section { min-width: 0; border-top: 1px solid #445c4c; }
+.section > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; padding-block: 8px; cursor: pointer; font-size: 13px; font-weight: 650; list-style: none; }
+.section > summary::after { content: "+"; margin-left: auto; font-size: 19px; color: #c0d0bc; }
+.section[open] > summary::after { content: "−"; }
+.section > summary::-webkit-details-marker { display: none; }
+.tools { padding-block: 4px 12px; }
+.tools > form + form { padding-top: 12px; border-top: 1px solid #445c4c; }
+.buildings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+.buildings > div { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 3px; min-width: 0; font-size: 11px; }
+.buildings strong { font-weight: 600; color: #d8e6bd; }
+.lots { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.lots li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 7px; align-items: center; padding: 8px; min-width: 0; border: 1px solid #445c4c; border-radius: 9px; background: #203126; }
+.lots li > div { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.lots strong { font-size: 12px; font-weight: 650; }
+.lots span { color: #c0d0bc; font-size: 11px; font-variant-numeric: tabular-nums; }
+.job { display: grid; gap: 8px; padding: 9px; border: 1px solid #445c4c; border-radius: 9px; font-size: 12px; overflow-wrap: anywhere; }
+.danger { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #76534b; color: #f1c8b7; font-size: 12px; }
+.danger > button { color: #f1c8b7; background: #3e302a; }
+@media (max-width: 360px) {
+  .box { padding: 9px; }
+  .columns { gap: 6px; }
+  .root label > span { font-size: 11px; }
+  .lots li { grid-template-columns: 25px minmax(0, 1fr); }
+  .lots li > button { grid-column: 1 / -1; }
+  .buildings { grid-template-columns: minmax(0, 1fr); }
+}

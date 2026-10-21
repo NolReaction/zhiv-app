@@ -22,6 +22,7 @@ function enterGame(p) {
 
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/economy/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/economy/commands/route.ts");
 const { GET: marketGET } = await vite.ssrLoadModule("/app/api/v1/economy/market/route.ts");
@@ -48,6 +49,76 @@ test("local economy routes require account cookies and never cache private state
   assert.equal((await GET(read("?ownerPublicId=someone"))).status, 400);
 });
 
+test("authenticated production distinguishes an explicit one-time teaching request from an ordinary crop", async () => {
+  const ordinaryPlayer = player();
+  const ordinary = await (await POST(post(command(ordinaryPlayer)))).json();
+  const recipe = ordinary.state.catalog.recipes.find(entry => entry.id === "grow_berries");
+  const crop = ordinary.state.jobs[0];
+  assert.equal(Date.parse(crop.finishesAt) - Date.parse(crop.startedAt), recipe.seconds * 1000);
+  assert.equal(ordinary.state.tutorialOrder.firstHarvestPrepared, false);
+  const p = player(), assistance = { ...command(p), action: "start_tutorial_harvest" };
+  const response = await POST(post(assistance));
+  assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
+  const accepted = await response.json(), job = accepted.state.jobs[0];
+  assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 1);
+  assert.equal(accepted.state.tutorialOrder.firstHarvestPrepared, true);
+  const replay = await (await POST(post(assistance))).json();
+  assert.equal(replay.replayed, true); assert.equal(replay.state.jobs.length, 1);
+  const duplicate = await POST(post({ ...command(p), action: "start_tutorial_harvest" }));
+  assert.equal(duplicate.status, 409);
+  assert.equal((await duplicate.json()).code, "ECONOMY_TUTORIAL_HARVEST_UNAVAILABLE");
+  assert.equal(economy.getDevEconomy(p.token).jobs.length, 1);
+});
+
+test("a stale tab cannot publish the new cookie owner's private market after another tab switches accounts", async () => {
+  const first = player(), observed = []; let lost = 0;
+  const session = createEconomySession(first.me.user.publicId, {
+    get: async () => (await GET(read())).json(),
+    market: async () => {
+      const response = await marketGET(read("/market"));
+      assert.equal(response.headers.get("Cache-Control"), "no-store");
+      return model.marketViewSchema.parse(await response.json());
+    },
+    send: async () => assert.fail("A read cannot mutate the economy"),
+    trade: async () => assert.fail("A read cannot trade"),
+  }, () => lost++);
+  const unsubscribe = session.subscribe(() => observed.push(session.getSnapshot().market?.ownerPublicId));
+  const stop = session.activate();
+  try {
+    await session.refresh(); await session.refreshMarket();
+    const original = session.getSnapshot().market;
+    assert.equal(original.ownerPublicId, first.me.user.publicId);
+    const second = player();
+    economy.getDevEconomy(second.token);
+    globalThis.__zhivDevEconomyStore.profiles.get(second.me.user.publicId).state.buildings.home = 4;
+    const replacement = model.marketViewSchema.parse(await (await marketGET(read("/market"))).json());
+    assert.equal(replacement.ownerPublicId, second.me.user.publicId);
+    assert.ok(replacement.tradeBudget.limit > original.tradeBudget.limit);
+    await session.refreshMarket();
+    assert.equal(lost, 1, "a valid response for a different cookie owner invalidates the stale session");
+    assert.equal(session.getSnapshot().market, original, "foreign private listings and turnover never enter the retained view");
+    assert.equal(observed.includes(second.me.user.publicId), false);
+  } finally { stop(); unsubscribe(); }
+});
+
+test("two authenticated accounts cannot replay another owner's command or claim its private job", async () => {
+  const first = player(), original = command(first);
+  const started = await (await POST(post(original))).json();
+  const second = player(), before = economy.getDevEconomy(second.token);
+  const foreignEnvelope = await POST(post(original));
+  assert.equal(foreignEnvelope.status, 409);
+  assert.equal((await foreignEnvelope.json()).code, "ECONOMY_OWNER_CHANGED");
+  const stolenClaim = await POST(post({ ...command(second), action: "claim_job", targetId: started.state.jobs[0].id }));
+  assert.equal(stolenClaim.status, 409);
+  assert.equal((await stolenClaim.json()).code, "ECONOMY_JOB_GONE");
+  const after = economy.getDevEconomy(second.token), unchangedFirst = economy.getDevEconomy(first.token);
+  for (const key of ["revision", "wallet", "inventory", "jobs"])
+    assert.deepEqual(after[key], before[key], `rejected foreign commands leave ${key} unchanged`);
+  for (const key of ["revision", "wallet", "inventory", "jobs"])
+    assert.deepEqual(unchangedFirst[key], started.state[key], `the victim's ${key} remains unchanged`);
+  assert.equal(globalThis.__zhivDevEconomyStore.profiles.get(second.me.user.publicId).receipts.size, 0);
+});
+
 test("POST validates payload then atomically replays its original receipt", async () => {
   const p = player(), cmd = command(p);
   const response = await POST(post(cmd)); assert.equal(response.status, 200);
@@ -56,31 +127,167 @@ test("POST validates payload then atomically replays its original receipt", asyn
   const conflict = await POST(post({ ...cmd, quantity: 2 })); assert.equal(conflict.status, 409); assert.equal((await conflict.json()).code, "ECONOMY_REQUEST_CONFLICT");
 });
 
-test("HTTP starter gift is owner-bound server state and receipt retries never mint a second cost", async () => {
-  const p = player(), before = economy.getDevEconomy(p.token);
-  const cmd = { ...command(p), action: "claim_workshop_starter", targetId: "workshop" };
-  const suppliedReward = await POST(post({ ...cmd, coins: 999999 }));
-  assert.equal(suppliedReward.status, 400);
-  const other = identities.createDevIdentity("Other", crypto.randomUUID());
-  assert.equal((await POST(post({ ...cmd, ownerPublicId: other.me.user.publicId }))).status, 409);
-  assert.deepEqual({ ...economy.getDevEconomy(p.token), serverTime: before.serverTime }, before);
+test("HTTP fishSelection cooks exact owned species, binds its receipt and keeps old clients compatible", async () => {
+  const p = player();
+  economy.getDevEconomy(p.token);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  Object.assign(row.state.buildings, { home: 3, dryer: 2, warehouse: 10 });
+  row.state.productionSlots = { dryer: 3 };
+  row.state.progression.recipes.cook_grilled_fish = 1;
+  // Actual old species inventory is ownership proof, separate from lifetime catches.
+  row.state.inventory = { fish_silverfin: 2, fish_rudd: 2, berries: 1, charcoal: 1 };
+  row.state.fishing.catches = { fish_sturgeon: 100 };
+  const before = await (await GET(read())).json();
+  assert.deepEqual(before.fishing.stock, { fish_silverfin: 2, fish_rudd: 2 });
+  const cmd = { ...command(p), targetId: "cook_fish_soup", fishSelection: { fish_silverfin: 1, fish_rudd: 1 } };
   const response = await POST(post(cmd));
   assert.equal(response.status, 200);
-  const accepted = await response.json();
-  assert.equal(accepted.state.workshopStarterClaimed, true);
-  assert.deepEqual(accepted.state.wallet, { coins: before.wallet.coins + 1200, pearls: before.wallet.pearls });
-  assert.deepEqual(accepted.state.inventory, { ...before.inventory, wood: before.inventory.wood + 10, stone: before.inventory.stone + 8 });
-  assert.deepEqual(accepted.state.jobs, []);
-  const retried = await (await POST(post(cmd))).json();
-  assert.equal(retried.replayed, true);
-  assert.deepEqual(retried.state.wallet, accepted.state.wallet);
-  const freshRequest = { ...cmd, requestId: crypto.randomUUID(), expectedRevision: accepted.state.revision };
-  const repeated = await POST(post(freshRequest));
-  assert.equal(repeated.status, 409);
-  assert.equal((await repeated.json()).code, "ECONOMY_WORKSHOP_STARTER_CLAIMED");
+  const started = await response.json();
+  assert.equal(model.economyResultSchema.safeParse(started).success, true);
+  assert.deepEqual(started.state.inventory, { fish_common: 2 });
+  assert.deepEqual(started.state.fishing.stock, { fish_silverfin: 1, fish_rudd: 1 });
+  assert.deepEqual(started.state.fishing.catches, before.fishing.catches);
+  assert.deepEqual(started.state.jobs[0].cost.items, { fish_common: 2, berries: 1, charcoal: 1 });
+  assert.deepEqual(started.state.jobs[0].fishStockCost, cmd.fishSelection);
+
+  const repeatedResponse = await POST(post({ ...cmd, fishSelection: { fish_rudd: 1, fish_silverfin: 1 } }));
+  assert.equal(repeatedResponse.status, 200);
+  const repeated = await repeatedResponse.json();
+  assert.equal(repeated.replayed, true);
+  assert.equal(repeated.acceptedRevision, started.acceptedRevision);
+  assert.deepEqual(repeated.state.inventory, started.state.inventory);
+  assert.deepEqual(repeated.state.fishing.stock, started.state.fishing.stock);
+  assert.deepEqual(repeated.state.jobs, started.state.jobs);
+
+  const changed = await POST(post({ ...cmd, fishSelection: { fish_rudd: 2 } }));
+  assert.equal(changed.status, 409);
+  assert.equal((await changed.json()).code, "ECONOMY_REQUEST_CONFLICT");
+  for (const fishSelection of [{}, { fish_silverfin: 2 }, { fish_sturgeon: 1 }]) {
+    const invalid = await POST(post({ ...command(p), targetId: "cook_grilled_fish", fishSelection }));
+    assert.equal(invalid.status, 409);
+    assert.equal((await invalid.json()).code, "ECONOMY_FISH_SELECTION_CHANGED");
+    const unchanged = await (await GET(read())).json();
+    assert.equal(unchanged.revision, started.state.revision);
+    assert.deepEqual(unchanged.wallet, started.state.wallet);
+    assert.deepEqual(unchanged.inventory, started.state.inventory);
+    assert.deepEqual(unchanged.fishing, started.state.fishing);
+    assert.deepEqual(unchanged.jobs, started.state.jobs);
+  }
+
+  const legacy = await POST(post({ ...command(p), targetId: "cook_grilled_fish" }));
+  assert.equal(legacy.status, 200);
+  const automatic = await legacy.json();
+  assert.equal(automatic.state.inventory.fish_common, 1);
+  assert.deepEqual(automatic.state.fishing.stock, { fish_rudd: 1 });
+  assert.deepEqual(automatic.state.fishing.catches, before.fishing.catches);
+  assert.equal(automatic.state.jobs.length, 2);
+});
+
+test("HTTP fish commerce sales spend the chosen species at the original price and bind the receipt", async () => {
+  const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
+  const price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice;
+  for (const action of ["sell", "sell_fish"]) {
+    const p = player(); economy.getDevEconomy(p.token);
+    const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+    row.state.inventory = { fish_sturgeon: 1, fish_mirror_koi: 2 };
+    const before = await (await GET(read())).json();
+    const cmd = { ...command(p), action, targetId: "fish_epic", quantity: 2,
+      fishSelection: { fish_sturgeon: 1, fish_mirror_koi: 1 } };
+    const response = await POST(post(cmd)); assert.equal(response.status, 200);
+    const sold = await response.json();
+    assert.deepEqual(sold.state.inventory, { fish_epic: 1 });
+    assert.deepEqual(sold.state.fishing.stock, { fish_mirror_koi: 1 });
+    assert.deepEqual(sold.state.fishing.catches, before.fishing.catches);
+    const coins = action === "sell_fish" ? price * 2 : economyLocalSellPrice(price, 2, model.economyCatalog.localBuyer, "fish_epic");
+    assert.equal(sold.state.wallet.coins, before.wallet.coins + coins);
+    const repeated = await POST(post({ ...cmd, fishSelection: { fish_mirror_koi: 1, fish_sturgeon: 1 } }));
+    assert.equal(repeated.status, 200); assert.equal((await repeated.json()).replayed, true);
+    const changed = await POST(post({ ...cmd, fishSelection: { fish_mirror_koi: 2 } }));
+    assert.equal(changed.status, 409); assert.equal((await changed.json()).code, "ECONOMY_REQUEST_CONFLICT");
+    for (const fishSelection of [{}, { fish_sturgeon: 1 }, { fish_shark: 1 }]) {
+      const invalid = await POST(post({ ...command(p), action, targetId: "fish_epic", fishSelection }));
+      assert.equal(invalid.status, 409); assert.equal((await invalid.json()).code, "ECONOMY_FISH_SELECTION_CHANGED");
+      const unchanged = await (await GET(read())).json();
+      assert.equal(unchanged.revision, sold.state.revision);
+      assert.deepEqual(unchanged.wallet, sold.state.wallet); assert.deepEqual(unchanged.inventory, sold.state.inventory);
+      assert.deepEqual(unchanged.fishing, sold.state.fishing);
+    }
+    const legacy = await POST(post({ ...command(p), action, targetId: "fish_epic" }));
+    assert.equal(legacy.status, 200);
+    assert.deepEqual((await legacy.json()).state.fishing.stock, {});
+  }
+});
+
+test("HTTP fish commerce listings keep the chosen species in escrow and reject choices on buy or cancel", async () => {
+  const p = player(); economy.getDevEconomy(p.token);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  Object.assign(row.state.buildings, { home: 4, bridge: 1, warehouse: 10 });
+  row.state.unlockedItems = ["fish_epic"];
+  row.state.inventory = { fish_sturgeon: 1, fish_mirror_koi: 2 };
+  const before = await (await GET(read())).json();
+  const price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice * 2;
+  const marketCommand = extra => ({ ...command(p), action: "create_listing", targetId: "fish_epic", quantity: 2, totalPrice: price, ...extra });
+  for (const fishSelection of [{}, { fish_sturgeon: 2 }, { fish_mirror_koi: 1 }, { fish_shark: 2 }]) {
+    const invalid = await marketPOST(post(marketCommand({ fishSelection }), {}, "/market/commands"));
+    assert.equal(invalid.status, 409); assert.equal((await invalid.json()).code, "ECONOMY_FISH_SELECTION_CHANGED");
+    const unchanged = await (await GET(read())).json();
+    assert.equal(unchanged.revision, before.revision);
+    assert.deepEqual(unchanged.wallet, before.wallet); assert.deepEqual(unchanged.inventory, before.inventory);
+    assert.deepEqual(unchanged.fishing, before.fishing); assert.equal(unchanged.storage.reserved, 0);
+  }
+  const cmd = marketCommand({ fishSelection: { fish_sturgeon: 1, fish_mirror_koi: 1 } });
+  const response = await marketPOST(post(cmd, {}, "/market/commands")); assert.equal(response.status, 200);
+  const listed = await response.json(), lot = listed.listing;
+  assert.equal(lot.itemId, "fish_epic"); assert.equal(lot.totalPrice, price);
+  assert.deepEqual(listed.state.fishing.stock, { fish_mirror_koi: 1 });
+  assert.deepEqual(listed.state.fishing.escrow[lot.id], cmd.fishSelection);
+  const repeated = await marketPOST(post({ ...cmd, fishSelection: { fish_mirror_koi: 1, fish_sturgeon: 1 } }, {}, "/market/commands"));
+  assert.equal(repeated.status, 200); assert.equal((await repeated.json()).replayed, true);
+  const changed = await marketPOST(post({ ...cmd, fishSelection: { fish_mirror_koi: 2 } }, {}, "/market/commands"));
+  assert.equal(changed.status, 409); assert.equal((await changed.json()).code, "ECONOMY_REQUEST_CONFLICT");
+  for (const action of ["buy_listing", "cancel_listing"]) for (const fishSelection of [{}, { fish_sturgeon: 1 }]) {
+    const invalid = await marketPOST(post({ ...command(p), action, targetId: lot.id,
+      ...(action === "buy_listing" ? { quantity: 2, totalPrice: price } : {}), fishSelection }, {}, "/market/commands"));
+    assert.equal(invalid.status, 400); assert.equal((await invalid.json()).code, "INVALID_ECONOMY_COMMAND");
+    const unchanged = await (await GET(read())).json();
+    assert.equal(unchanged.revision, listed.state.revision); assert.deepEqual(unchanged.fishing, listed.state.fishing);
+  }
+  const returned = await marketPOST(post({ ...command(p), action: "cancel_listing", targetId: lot.id }, {}, "/market/commands"));
+  assert.equal(returned.status, 200);
+  const restored = await returned.json();
+  assert.deepEqual(restored.state.inventory, before.inventory);
+  assert.deepEqual(restored.state.fishing.stock, before.fishing.stock);
+  assert.deepEqual(restored.state.fishing.catches, before.fishing.catches);
+});
+
+test("HTTP obsolete starter gift remains owner-bound and repeated requests cannot mint any cost", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token);
+  const cmd = { ...command(p), action: "claim_workshop_starter", targetId: "workshop" };
+  assert.equal((await POST(post({ ...cmd, coins: 999999 }))).status, 400);
+  const other = identities.createDevIdentity("Other", crypto.randomUUID());
+  assert.equal((await POST(post({ ...cmd, ownerPublicId: other.me.user.publicId }))).status, 409);
+  for (const payload of [cmd, cmd, { ...cmd, requestId: crypto.randomUUID() }]) {
+    const response = await POST(post(payload)); assert.equal(response.status, 409);
+    assert.equal((await response.json()).code, "ECONOMY_WORKSHOP_STARTER_UNAVAILABLE");
+    assert.deepEqual({ ...economy.getDevEconomy(p.token), serverTime: before.serverTime }, before);
+  }
   const loaded = await (await GET(read())).json();
-  assert.equal(loaded.workshopStarterClaimed, true);
-  assert.deepEqual(loaded.wallet, accepted.state.wallet);
+  assert.equal(loaded.workshopStarterClaimed, false); assert.deepEqual(loaded.wallet, before.wallet); assert.deepEqual(loaded.inventory, before.inventory);
+});
+
+test("HTTP tutorial workshop starts one earmarked build with normal owner checks and receipt replay", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token);
+  const cmd = { ...command(p), action: "start_tutorial_workshop", targetId: "workshop" };
+  const other = identities.createDevIdentity("Other", crypto.randomUUID());
+  assert.equal((await POST(post({ ...cmd, ownerPublicId: other.me.user.publicId }))).status, 409);
+  assert.equal((await POST(post({ ...cmd, targetId: "home" }))).status, 400);
+  const response = await POST(post(cmd)); assert.equal(response.status, 200);
+  const started = await response.json();
+  assert.equal(started.state.workshopStarterClaimed, true); assert.equal(started.state.jobs.at(-1).targetId, "workshop");
+  assert.deepEqual(started.state.wallet, before.wallet); assert.deepEqual(started.state.inventory, before.inventory);
+  const replay = await POST(post(cmd)); assert.equal(replay.status, 200); assert.equal((await replay.json()).replayed, true);
+  const repeat = await POST(post({ ...cmd, requestId: crypto.randomUUID(), expectedRevision: started.state.revision }));
+  assert.equal(repeat.status, 409); assert.equal((await repeat.json()).code, "ECONOMY_WORKSHOP_STARTER_UNAVAILABLE");
 });
 
 test("gameplay requires a live session even for receipt replay and explicit return preserves the original command", async () => {
@@ -130,16 +337,23 @@ test("HTTP rejects every mining route at an unbuilt quarry without spending or i
   }
 });
 
-test("HTTP upgrades warehouse one through three with home one and no workshop while preserving paid costs and one builder", async () => {
+test("HTTP gates warehouse two at home two and keeps warehouse three independent while preserving paid costs and one builder", async () => {
   const p = player();
   economy.getDevEconomy(p.token);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.buildings = { ...row.state.buildings, home: 1, warehouse: 1, workshop: 0 };
-  const buildings = structuredClone(row.state.buildings);
   const targets = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.slice(1, 3);
   for (const target of targets) {
     row.state.inventory = { ...target.cost.items, wood: 2 };
     row.state.wallet = { coins: target.cost.coins, pearls: 0 };
+    if (target.level === 2) {
+      const before = structuredClone(row.state), revision = row.revision, receipts = row.receipts.size;
+      const blocked = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
+      assert.equal(blocked.status, 409); assert.equal((await blocked.json()).code, "ECONOMY_HOME_REQUIRED");
+      assert.deepEqual(row.state, before); assert.equal(row.revision, revision); assert.equal(row.receipts.size, receipts);
+    }
+    row.state.buildings.home = target.level === 2 ? 2 : 1;
+    const buildings = structuredClone(row.state.buildings);
     const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
     const response = await POST(post(order));
     assert.equal(response.status, 200);
@@ -185,7 +399,7 @@ test("HTTP builds and claims warehouse ten from earned low-home progress using o
   const started = await response.json();
   assert.equal(model.economyResultSchema.safeParse(started).success, true);
   assert.equal(started.state.jobs[0].targetLevel, 10);
-  assert.equal(started.state.storage.capacity, 8200);
+  assert.equal(started.state.storage.capacity, 450);
   assert.deepEqual(started.state.wallet, { coins: 0, pearls: 0 });
   assert.deepEqual(started.state.inventory, {});
   assert.equal((await (await POST(post(order))).json()).replayed, true);
@@ -200,7 +414,7 @@ test("HTTP builds and claims warehouse ten from earned low-home progress using o
   assert.equal(model.economyResultSchema.safeParse(claimed).success, true);
   assert.equal(claimed.state.buildings.home, 1);
   assert.equal(claimed.state.buildings.warehouse, 10);
-  assert.equal(claimed.state.storage.capacity, 10000);
+  assert.equal(claimed.state.storage.capacity, 500);
   assert.deepEqual(claimed.state.jobs, []);
   const repeated = await (await POST(post(claim))).json();
   assert.equal(repeated.replayed, true);

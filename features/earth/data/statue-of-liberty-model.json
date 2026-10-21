@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "id": "statue-of-liberty",
+  "source": {
+    "sha256": "8d16ee1c4ce44f9fe1e89062b762bcfc7342ec64241f113450892964424f131b",
+    "bytes": 5309088,
+    "author": "",
+    "license": "",
+    "url": "",
+    "title": ""
+  },
+  "coordinates": {
+    "axes": "east,north,up",
+    "gltfConversion": "x,-z,y",
+    "normalizedHeight": 1,
+    "heightMeters": 93,
+    "headingDegrees": 0,
+    "bounds": {
+      "min": [
+        -0.200919508934021,
+        -0.20140184462070465,
+        0
+      ],
+      "max": [
+        0.200919508934021,
+        0.20140184462070465,
+        1
+      ]
+    }
+  },
+  "preparation": {
+    "version": 2,
+    "simplifier": "meshoptimizer@1.1.1",
+    "inputTriangles": 48658,
+    "discardedDegenerateTriangles": 0,
+    "preserveTopFraction": 0,
+    "sourceHeight": 0.980712890625,
+    "sourceOrigin": [
+      0,
+      0,
+      0
+    ],
+    "colors": "linear baseColor + vertexColor; sRGB baseColor texture; runtime normal/metallic/roughness lighting"
+  },
+  "overview": {
+    "url": "/earth/models/statue-of-liberty/overview.elm",
+    "bytes": 329320,
+    "sha256": "1ef70db0c3f053fd53c3b7130799faa407f8721c46e0ed23fde62d153427487a",
+    "vertexCount": 4958,
+    "indexCount": 18000,
+    "triangles": 6000,
+    "targetTriangles": 6000,
+    "error": 0.002926749177277088,
+    "errorLimit": 0.03,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 16950,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 17860,
+        "width": 128,
+        "height": 128,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 4270,
+        "width": 64,
+        "height": 64,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  },
+  "detail": {
+    "url": "/earth/models/statue-of-liberty/detail.elm",
+    "bytes": 1375234,
+    "sha256": "73a37e3b7ad590b05df1c6e9e48068857bff01f076393e551cc9824e7d5a5a61",
+    "vertexCount": 15792,
+    "indexCount": 72000,
+    "triangles": 24000,
+    "targetTriangles": 24000,
+    "error": 0.0006731787580065429,
+    "errorLimit": 0.01,
+    "preserveTopFraction": 0,
+    "format": 2,
+    "textures": [
+      {
+        "kind": "baseColor",
+        "bytes": 115638,
+        "width": 1024,
+        "height": 1024,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "normal",
+        "bytes": 215272,
+        "width": 512,
+        "height": 512,
+        "wrapS": 10497,
+        "wrapT": 10497
+      },
+      {
+        "kind": "metallicRoughness",
+        "bytes": 61388,
+        "width": 256,
+        "height": 256,
+        "wrapS": 10497,
+        "wrapT": 10497
+      }
+    ]
+  }
+}

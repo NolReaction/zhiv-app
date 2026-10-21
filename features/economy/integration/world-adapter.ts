@@ -1,8 +1,10 @@
 import type { EconomyView } from "@/features/economy/domain/model";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import type { WorldState } from "@/features/world/domain/model";
 import type { EconomySceneActivity, EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
 import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
 import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
+import type { EconomySceneResidents } from "@/features/world/state/economy/economy-residents-state";
 
 /** A scene click selects existing economy UI; it never upgrades a local site. */
 export function economyBuildingDestination(buildingId: string, economy: EconomyView | null | undefined): { tab: "buildings" | "production"; focusId: string } {
@@ -22,10 +24,13 @@ export function economyWorldState(state: WorldState | undefined, economy: Econom
 }
 
 export function economySceneJourney(economy: EconomyView | null | undefined): EconomySceneJourney | null {
-  const job = economy?.jobs.find(job => job.kind === "exploration");
+  // The miner owns a separate queue. Only Mochlik's saved or legacy journey
+  // drives his departure, travel animation and home-circle status.
+  const job = economy?.jobs.find(job => job.kind === "exploration" && !isMinerJob(job));
   return job ? { id: job.id, startedAt: job.startedAt, finishesAt: job.finishesAt, routeId: job.targetId,
     rewards: { ...job.rewards },
-    ...(job.fishing ? { fishing: { rodId: job.fishing.rodId, fishId: job.fishing.fishId } } : {}),
+    ...(job.fishing ? { fishing: { rodId: job.fishing.rodId, fishId: job.fishing.fishId,
+      ...(job.fishing.catchRevealed == null ? {} : { catchRevealed: job.fishing.catchRevealed }) } } : {}),
     label: economy?.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Исследование" } : null;
 }
 
@@ -44,9 +49,22 @@ export function economySceneProduction(economy: EconomyView | null | undefined):
   }) };
 }
 
+/** Independent quarry orders belong to Kamneshmyg, never to Mochlik's journey. */
+export function economySceneResidents(economy: EconomyView | null | undefined, confirmed: boolean,
+  expectedOwner?: string): EconomySceneResidents | null {
+  if (!economy || !confirmed || expectedOwner && economy.ownerPublicId !== expectedOwner) return null;
+  const production = economySceneProduction(economy)!;
+  return { ownerPublicId: economy.ownerPublicId, revision: economy.revision, buildings: { ...economy.buildings },
+    production: { ...production, jobs: [...production.jobs, ...economy.jobs.filter(isMinerJob).map(job => ({
+      id: job.id, stationId: "quarry", stationLevel: economy.buildings.quarry ?? 0,
+      recipeId: job.recipeId ?? job.targetId, startedAt: job.startedAt, finishesAt: job.finishesAt,
+    }))] } };
+}
+
 /** Only confirmed construction reaches the builder; a completed timer still reserves him until claim. */
-export function economySceneConstruction(economy: EconomyView | null | undefined): EconomySceneConstruction | null {
-  if (!economy) return null;
+export function economySceneConstruction(economy: EconomyView | null | undefined, confirmed: boolean,
+  expectedOwner?: string): EconomySceneConstruction | null {
+  if (!economy || !confirmed || expectedOwner && economy.ownerPublicId !== expectedOwner) return null;
   return { ownerPublicId: economy.ownerPublicId, revision: economy.revision, jobs: economy.jobs.flatMap(job =>
     job.kind === "construction" && Number.isInteger(job.targetLevel) && job.targetLevel! > 0
       ? [{ id: job.id, stationId: job.targetId, targetLevel: job.targetLevel!, startedAt: job.startedAt, finishesAt: job.finishesAt }]

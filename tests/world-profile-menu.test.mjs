@@ -12,6 +12,7 @@ const { WorldProfileContent, WorldProfileMenu } = await vite.ssrLoadModule("/fea
 const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts");
 const { AUDIO_BUSES } = await vite.ssrLoadModule("/features/audio/domain/types.ts");
 const { WorldMoodModule } = await vite.ssrLoadModule("/features/world/ui/profile/world-mood-module.tsx");
+const { WorldTapHintSetting } = await vite.ssrLoadModule("/features/world/ui/profile/world-tap-hint-setting.tsx");
 const { BOOK_COLLECTION_COUNT } = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
 const { newWorldState, worldCatalog } = await vite.ssrLoadModule("/features/world/domain/model.ts");
 const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
@@ -50,7 +51,7 @@ const namedButton = (view, name) => view.elements.find(element => element.type =
 function mood(overrides = {}) {
   const calls = [];
   return { ...inspect(WorldMoodModule({ observation, economy: { snapshot: freshEconomy() },
-    onCall: () => calls.push("call"), onOpenHelp: () => calls.push("help"), onOpenFood: () => calls.push("food"), ...overrides })), calls };
+    onCall: () => calls.push("call"), onOpenHelp: () => calls.push("help"), onOpenExpeditions: () => calls.push("expeditions"), ...overrides })), calls };
 }
 
 test("profile keeps authoritative progress compact and leaves the full mood outside its three navigation tabs", () => {
@@ -188,8 +189,9 @@ test("mood module keeps missing and paused character controls safe, and offers a
   const sleeping = mood({ observation: { ...observation, sleeping: true } });
   namedButton(sleeping, "Разбудить Мохлика").props.onClick();
   namedButton(sleeping, "Как заботиться о Мохлике").props.onClick();
-  namedButton(sleeping, "Еда").props.onClick();
-  assert.deepEqual(sleeping.calls, ["call", "help", "food"]);
+  namedButton(sleeping, "К вылазкам").props.onClick();
+  assert.equal(namedButton(sleeping, "Еда"), undefined);
+  assert.deepEqual(sleeping.calls, ["call", "help", "expeditions"]);
 });
 
 test("the meal card uses saved pending or active work bonuses independently of mood energy", () => {
@@ -209,26 +211,38 @@ test("the meal card uses saved pending or active work bonuses independently of m
   const builderOnly = mood({ economy: { snapshot: state } });
   assert.doesNotMatch(builderOnly.markup, /Еда: \+/);
   assert.match(builderOnly.markup, /Силы восстанавливаются во время отдыха/);
+  state.jobs = [{ kind: "exploration", actorId: "miner", targetId: "quarry_stone",
+    meal: { itemId: recipeMeal.itemId, consumer: "hero", speedBps: 2500 } }];
+  assert.doesNotMatch(mood({ economy: { snapshot: state } }).markup, /Еда: \+|Бонус учтён в текущей вылазке/,
+    "a miner's stale meal metadata never becomes Mochlik's active food bonus");
+  state.food.heroMeal = recipeMeal.itemId;
+  assert.match(mood({ economy: { snapshot: state } }).markup, /Бонус ждёт следующую вылазку/);
   assert.doesNotMatch(mood({ economy: { snapshot: null } }).markup, /Бонус от еды/);
 });
 
-test("friends tab receives parent data and navigation without claiming friend profiles are available", () => {
+test("friends tab receives parent data, visit navigation and friend management", () => {
   const friends = { data: null, loading: true, error: null, onRefresh() {} };
   const onOpenPeople = () => {};
-  const view = profile({ activeTab: "friends", friends, onOpenPeople });
+  const onVisitFriend = () => {};
+  const view = profile({ activeTab: "friends", friends, onOpenPeople, onVisitFriend });
   const component = view.elements.find(element => element.type?.name === "WorldProfileFriends");
   assert.equal(component.props.friends, friends);
   assert.equal(component.props.onOpenPeople, onOpenPeople);
+  assert.equal(component.props.onVisitFriend, onVisitFriend);
   assert.match(view.markup, /Загружаем/);
   assert.doesNotMatch(view.markup, /Достижения Мохлика|Бонус от еды/);
 });
 
 test("settings are available inline in their own profile tab without a nested audio dialog", () => {
-  const view = profile({ activeTab: "settings", idPrefix: "settings-test" });
+  const view = profile({ activeTab: "settings", idPrefix: "settings-test",
+    tapHintSetting: createElement(WorldTapHintSetting, { owner: "profile-player", tone: "forest" }) });
   const panel = view.elements.find(element => element.props.role === "tabpanel");
   assert.equal(panel.props.id, "settings-test-panel-settings");
   assert.equal(panel.props["aria-labelledby"], "settings-test-tab-settings");
   assert.match(view.markup, /Звуки игры/);
+  assert.match(view.markup, /Подсказки нажатия/);
+  assert.match(view.markup, /role="switch"[^>]*aria-checked="true"|aria-checked="true"[^>]*role="switch"/);
+  assert.match(view.markup, /Сами объекты и подсветка обучения останутся доступны/);
   assert.equal((view.markup.match(/type="range"/g) ?? []).length, AUDIO_BUSES.length + 1);
   assert.doesNotMatch(view.markup, /role="dialog"|Достижения Мохлика|Самочувствие Мохлика/);
   const defaultView = profile();

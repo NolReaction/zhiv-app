@@ -1,5 +1,6 @@
 import type { EconomyCatalog, EconomyView } from "@/features/economy/domain/model";
 import type { AdminEconomyGrant } from "./admin-grants-api";
+import type { DeliveryOptions } from "./admin-delivery-contract";
 
 export type GrantKind = "coins" | "pearls" | "item" | "building" | "slots" | "rod" | "hook";
 export type GrantEntry = { kind: GrantKind; id: string; name: string; amount: number };
@@ -13,9 +14,9 @@ export function grantAmountLabel(entry: GrantEntry) {
   return entry.kind === "building" ? `до ур. ${entry.amount}` : entry.kind === "slots" ? `до ${entry.amount} мест`
     : entry.kind === "rod" || entry.kind === "hook" ? "во владение" : `+${formatGrantNumber(entry.amount)}`;
 }
-export function makeEconomyGrant(entries: GrantEntry[], requestId: string, publicId: string, reason: string): AdminEconomyGrant {
+export function makeEconomyGrant(entries: GrantEntry[], requestId: string, publicId: string, reason: string, delivery: DeliveryOptions = {}): AdminEconomyGrant {
   const request: AdminEconomyGrant = { requestId, confirmationPublicId: publicId, reason: reason.trim(), coins: 0, pearls: 0,
-    items: {}, buildings: {}, productionSlots: {}, rods: [], hooks: [] };
+    items: {}, buildings: {}, productionSlots: {}, rods: [], hooks: [], ...delivery };
   for (const entry of entries) {
     if (entry.kind === "coins" || entry.kind === "pearls") request[entry.kind] += entry.amount;
     else if (entry.kind === "rod" || entry.kind === "hook") request[entry.kind === "rod" ? "rods" : "hooks"].push(entry.id);

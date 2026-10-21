@@ -18,11 +18,12 @@ const image = { naturalWidth: 2508, naturalHeight: 2508 };
 const scene = () => ({ width: 1254, height: 1254, sites: [], lights: [], paths: [], terrain: [terrain],
   water: { surfaces: [rectangle(10, 10, 280, 240)], exclusions: [rectangle(111.1, 70, .2, 100), rectangle(190, 155, 25, 25)] } });
 function context(e = 0) {
-  const draws = [], stack = [];
-  return new Proxy({ draws, globalAlpha: 1, imageSmoothingEnabled: false, canvas: { width: 1254, height: 1254 },
+  const draws = [], clips = [], stack = [];
+  return new Proxy({ draws, clips, globalAlpha: 1, imageSmoothingEnabled: false, canvas: { width: 1254, height: 1254 },
     getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e, f: 0 }),
     save() { stack.push([this.globalAlpha, this.imageSmoothingEnabled]); },
     restore() { [this.globalAlpha, this.imageSmoothingEnabled] = stack.pop(); },
+    clip(...args) { clips.push(args); },
     drawImage(...args) { draws.push(args); },
   }, { get: (target, key) => key in target ? target[key] : () => {} });
 }
@@ -37,6 +38,7 @@ test("refraction keeps both its source and destination footprints in water, incl
   disturb(state, { x: 75, y: 90 }, { strength: 3 }); state.elapsed = 3;
   draw(ctx, world, state, image, terrain, {});
   assert.ok(ctx.draws.length > 10 && ctx.draws.length <= 48 * 48);
+  assert.equal(ctx.clips.length, 0, "certified interior patches need no repeated shoreline clip");
   for (const args of ctx.draws) {
     const [, sx, sy, sw, sh, x, y, width, height] = args;
     for (const [left, top, w, h] of [[sx / 2, sy / 2, sw / 2, sh / 2], [x, y, width, height]]) {
@@ -48,6 +50,18 @@ test("refraction keeps both its source and destination footprints in water, incl
     }
   }
   assert.equal(ctx.globalAlpha, 1); assert.equal(ctx.imageSmoothingEnabled, false);
+}));
+
+test("a scene with replacement shoreline geometry retains exact clipping while its solver is stale", () => browser(() => {
+  const world = scene(), state = create(world), changed = { ...world,
+    water: { ...world.water, exclusions: [rectangle(60, 20, 15, 160)] } };
+  const ctx = context();
+  draw(ctx, changed, state, image, terrain, {});
+  assert.ok(ctx.draws.length > 10);
+  assert.equal(ctx.clips.length, 1, "the compiled wet boundary includes the new island when clipping the old solver's patches");
+  const current = context();
+  draw(current, changed, create(changed), image, terrain, {});
+  assert.equal(current.clips.length, 0, "replacement solver geometry restores the certified fast path");
 }));
 
 test("refraction follows active water time and waves without mutating or allocating simulation state", () => browser(() => {

@@ -6,8 +6,25 @@ import { collectionArt } from "./art-collection";
 import { equipmentArt } from "./art-equipment";
 import { hookArt } from "./art-hooks";
 import { foodItemArt } from "./art-food";
+import { expeditionItemArt } from "./art-expeditions";
+import { berryTierArt } from "./art-berry-tiers";
+import { premiumCostumeArt } from "./art-premium-costumes";
 import { FishArt } from "@/features/world/activities/fishing/fish-icon";
-import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
+import { FISH_SPECIES_IDS, type FishSpeciesId } from "@/features/world/activities/fishing/fish-species";
+
+const fishClassMarks = {
+  fish_common: ["#829884", "I"], fish_uncommon: ["#5ca775", "II"], fish_rare: ["#579bd4", "III"],
+  fish_epic: ["#a782cb", "IV"], fish_legendary: ["#d8ac4e", "V"],
+} as const;
+
+function fishClassArt(itemId: keyof typeof fishClassMarks, species: FishSpeciesId = "fish") {
+  const [color, mark] = fishClassMarks[itemId];
+  return <g data-fish-illustration={species}>
+    <g transform="translate(25 22) scale(24)"><FishArt species={species} /></g>
+    <circle cx="36" cy="36" r="10" fill={color} stroke="#344236" strokeWidth="1.5" />
+    <text x="36" y="39.5" fill="#17251b" stroke="none" textAnchor="middle" fontSize="10" fontWeight="800">{mark}</text>
+  </g>;
+}
 
 const fishingArt: Record<string, ReactNode> = {
   glow_bait: <>
@@ -17,6 +34,14 @@ const fishingArt: Record<string, ReactNode> = {
     <path d="m18 26 3 2m7-5 3 2m-7 8 3 2" stroke="#dded9f" strokeWidth="4" />
     <path d="m16 28 7-3m3-2 7-3m-13 16 9-5" stroke="#bdd398" strokeWidth="1" />
     <path d="M14 38c6 3 14 3 20 0" stroke="#c8d5ad" strokeWidth="1.5" />
+  </>,
+  star_bait: <>
+    <path d="M14 14h20l5 23c-2 7-28 7-30 0Z" fill="#a797cf" />
+    <ellipse cx="24" cy="14" rx="10" ry="4" fill="#725e9b" />
+    <path d="M15 9h18v7H15Z" fill="#d8b566" />
+    <path d="m24 21 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z" fill="#f7dd8e" stroke="#9c743d" strokeWidth="1.3" />
+    <path d="m7 13 1 3 3 1-3 1-1 3-1-3-3-1 3-1Zm32-7 1 3 3 1-3 1-1 3-1-3-3-1 3-1Z" fill="#f5e1a4" strokeWidth="1" />
+    <path d="M13 37c1 3 4 4 7 4" fill="none" stroke="#d8ccef" strokeWidth="1.5" />
   </>,
   firefly_bait: <>
     <path d="M24 24c-3-16-16-14-14-5 1 5 8 8 14 8m1-3c6-16 18-11 13-3-3 4-9 6-13 6" fill="#c6b5d8" />
@@ -30,6 +55,7 @@ const fishingArt: Record<string, ReactNode> = {
   </>,
   ...Object.fromEntries(FISH_SPECIES_IDS.map(species => [species,
     <g key={species} transform="translate(27 25) scale(27)"><FishArt species={species} /></g>])),
+  ...Object.fromEntries(Object.keys(fishClassMarks).map(itemId => [itemId, fishClassArt(itemId as keyof typeof fishClassMarks)])),
   crumb_bait: <>
     <path d="M13 19c-2 5-7 14-4 19 4 6 27 6 31-1 2-5-4-14-6-19Z" fill="#bda370" />
     <path d="m15 9 5 2 5-3 7 2-1 8H17Z" fill="#dfca96" />
@@ -61,7 +87,7 @@ const currencyArt: Record<string, ReactNode> = {
   pearls: collectionArt.river_pearl,
 };
 
-const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...relicItemArt, ...equipmentArt, ...currencyArt, ...fishingArt, ...hookArt, ...foodItemArt };
+const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...relicItemArt, ...equipmentArt, ...currencyArt, ...fishingArt, ...hookArt, ...foodItemArt, ...expeditionItemArt, ...berryTierArt, ...premiumCostumeArt };
 export const itemIconIds: readonly string[] = Object.keys(itemArt);
 export const collectionIconIds: readonly string[] = Object.keys(collectionArt);
 
@@ -82,8 +108,11 @@ function Illustration({ art, size = 24, className, label, itemId, findId }: Icon
 }
 
 /** One visual identity for inventory, recipes, prices, trade and progression. */
-export function ItemIcon({ itemId, ...props }: IconProps & { itemId: string }) {
-  return <Illustration {...props} itemId={itemId} art={Object.hasOwn(itemArt, itemId) ? itemArt[itemId] : unknownArt} />;
+export function ItemIcon({ itemId, fishSpecies, ...props }: IconProps & { itemId: string; fishSpecies?: FishSpeciesId }) {
+  const art = fishSpecies && Object.hasOwn(fishClassMarks, itemId)
+    ? fishClassArt(itemId as keyof typeof fishClassMarks, fishSpecies)
+    : Object.hasOwn(itemArt, itemId) ? itemArt[itemId] : unknownArt;
+  return <Illustration {...props} itemId={itemId} art={art} />;
 }
 
 /** Collection art is keyed by the find itself, never by its old shared symbol. */

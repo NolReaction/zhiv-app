@@ -70,8 +70,8 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
       const at = lerp(a, b, step / steps); oval(at.x, at.y, radius, radius, color);
     }
   };
-  // Left mirrors the skeleton, not the clip: the little lily remains on her
-  // anatomical left temple, partly hidden when she turns left.
+  // Geometry mirrors with a profile, but the flower's depth does not: her
+  // anatomical left ear is near in the left view and far in the right view.
   const sideView = direction === "left" || direction === "right";
   const back = direction === "back";
   const mirror = (p: WorldPoint) => point(direction === "left" ? 48 - p.x : p.x, p.y);
@@ -235,7 +235,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     oval(ear.x, ear.y, 4, 4, c.outline); oval(ear.x, ear.y - 1, 3, 3, c.fur);
     oval(ear.x, ear.y, 2, 2, back ? c.dark : c.ear);
   }
-  const flower = sideView ? point(direction === "left" ? head.x + 10 : head.x - 11, head.y - 4)
+  const flower = sideView ? point(head.x - 11, head.y - 4)
     : point(head.x + (back ? -12 : 12), head.y - 2);
   const drawFlower = () => {
     rect(flower.x - 2, flower.y + 2, 3, 1, c.leaf);
@@ -249,7 +249,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
   };
   // The far-side clip disappears naturally behind the head. Neither clip
   // replaces an ear; the ear silhouette and its inner fur remain visible.
-  if (direction === "left") drawFlower();
+  if (direction === "right") drawFlower();
   oval(head.x, head.y, 12, 10, c.outline);
   oval(head.x, head.y - 1, 11, 9, c.fur);
   oval(head.x - 2, head.y - 4, 8, 5, c.light);
@@ -288,7 +288,7 @@ export function pleskSprite(action: FishingAction, direction: PixelDirection, fr
     oval(head.x, head.y + 4, 8, 4, c.fur);
     rect(head.x - 3, head.y + 6, 5, 1, c.dark);
   }
-  if (direction !== "left") drawFlower();
+  if (direction !== "right") drawFlower();
   if (!externalArms) {
     if (!sideView) drawArm(farShoulder, otherHand, false);
     drawArm(shoulder, grip, true);

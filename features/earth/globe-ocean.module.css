@@ -1,0 +1,22 @@
+.ripple {
+  width: 72px;
+  height: 72px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ring {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid rgb(222 255 241 / 85%);
+  border-radius: 50%;
+  background: radial-gradient(circle, transparent 58%, rgb(194 246 229 / 12%) 70%, transparent 73%);
+  box-shadow: 0 0 0 1px rgb(39 133 154 / 12%), inset 0 0 7px rgb(215 253 235 / 25%);
+  opacity: 0;
+  transform: scale(0.15);
+  transition: transform 125ms linear, opacity 125ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring { transition: none; }
+}

@@ -28,6 +28,7 @@ import { TransientNotice } from "@/components/app-notifications";
 import { AccountAccess } from "./account-access";
 import { TimeZoneSetting } from "./time-zone-setting";
 import { ProfileSettings } from "./profile-settings";
+import type { LocationPrivacyState } from "./profile-location-settings";
 import type { NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { GameAchievementsButton } from "@/features/game/game-achievements";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -37,6 +38,7 @@ type ProfileViewProps = {
   simpleView: boolean;
   onSimpleViewChange: (value: boolean) => void;
   notificationSettingsExit: RefObject<NotificationSettingsExit | null>;
+  locationPrivacy?: LocationPrivacyState;
   me: MeResponse;
   nowMs: number;
   isOnline: boolean;
@@ -89,6 +91,7 @@ export function ProfileView({
   simpleView,
   onSimpleViewChange,
   notificationSettingsExit,
+  locationPrivacy,
   me,
   nowMs,
   isOnline,
@@ -198,7 +201,7 @@ export function ProfileView({
         <div className={styles.navigation}>
         <TabsPrimitive.List className={styles.tabs} aria-label="Разделы профиля">
           <TabsPrimitive.Trigger value="profile"><UserRound size={17} aria-hidden="true" />Профиль</TabsPrimitive.Trigger>
-          <TabsPrimitive.Trigger value="settings" className={styles.settingsTab} aria-label="Настройки" title="Настройки"><Settings size={19} aria-hidden="true" /></TabsPrimitive.Trigger>
+          <TabsPrimitive.Trigger value="settings" className={styles.settingsTab} data-app-onboarding="profile-settings" aria-label="Настройки" title="Настройки"><Settings size={19} aria-hidden="true" /></TabsPrimitive.Trigger>
         </TabsPrimitive.List>
         {onOpenOnboarding && <button type="button" className={styles.guideEntry} data-app-onboarding-entry
           aria-label="О профиле" title="О профиле" aria-expanded={guideOpen} aria-controls="app-profile-guide"
@@ -220,13 +223,15 @@ export function ProfileView({
                 <img src={me.profile.avatarUrl} alt="" />
               ) : <strong>{initials(me.user.displayName)}</strong>}
             </div>
-            <div className={styles.identity}>
-              <div className={styles.identityTitle}>
-                <strong><PlayerName name={me.user.displayName} tag={me.user.tag} /></strong>
+            <h2 className={styles.identityName}><PlayerName name={me.user.displayName} tag={me.user.tag} /></h2>
+            <div className={styles.identityActions}>
+              {gameLoaded ? <GameLevelsButton lifetimeTaps={clickerStats.lifetimeTaps} className={styles.identityLevel}>
+                <GameLevelIcon level={clickerStats.level.level} size={18} />
+                <span><strong>Уровень {clickerStats.level.level}</strong><small>{clickerStats.level.title}</small></span>
+              </GameLevelsButton> : <span className={styles.identityLevelLoading} role="status">Уровень загружается…</span>}
+              <div className={styles.identityAchievements}>
                 <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} onRewardsClaimed={onRewardsClaimed} />
               </div>
-              <span>{me.user.publicId}</span>
-              <button type="button" className={styles.editLink} onClick={() => setPanel(panel === "name" ? "" : "name")}>Изменить имя</button>
             </div>
           </div>
           <div className={styles.stats} aria-label="Статистика профиля">
@@ -236,12 +241,13 @@ export function ProfileView({
             </button>
             <div><Check size={18} aria-hidden="true" /><strong>{me.checkInCount}</strong>
               <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span></div>
+            <div><GameLevelIcon level={clickerStats.level.level} size={18} /><strong>{gameLoaded ? clickerStats.lifetimeTaps.toLocaleString("ru-RU") : "—"}</strong><span>всего тапов</span></div>
             <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг"><Trophy size={18} aria-hidden="true" /><strong>{gameLoaded ? `×${clickerStats.bestSeries.toLocaleString("ru-RU")}` : "-"}</strong><span>{gamePendingTaps > 0 ? "сохраняем…" : "рекорд игры"}</span></button>
           </div>
         </div>
         <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList}>
           <AccordionItem value="name" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger} data-app-onboarding="profile-content"><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
+            <AccordionTrigger className={styles.settingsTrigger}><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "name"} className={styles.settingsContent}>
               <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
             <div className={styles.formHeading}>
@@ -361,6 +367,7 @@ export function ProfileView({
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="settings" forceMount className={styles.tabPanel}>
           <ProfileSettings key={me.user.publicId} ownerPublicId={me.user.publicId}
+            active={activeTab === "settings"} locationPrivacy={locationPrivacy}
             isOnline={isOnline} onSessionLost={onSessionLost} simpleView={simpleView} onSimpleViewChange={onSimpleViewChange}
             notificationSettingsExit={notificationSettingsExit} />
         </TabsPrimitive.Content>

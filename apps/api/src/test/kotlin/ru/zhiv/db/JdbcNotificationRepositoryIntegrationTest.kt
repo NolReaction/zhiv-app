@@ -26,7 +26,8 @@ import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import java.time.Instant
 import java.time.OffsetDateTime
-import java.time.ZoneOffset
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
@@ -60,7 +61,7 @@ class JdbcNotificationRepositoryIntegrationTest {
     }
     @AfterEach fun cleanup() {
         if(::source.isInitialized) createdUsers.forEach { id ->
-            listOf("notification_events","notification_batches","notification_subscriptions","notification_preferences").forEach { table ->
+            listOf("player_mail_messages","notification_events","notification_batches","notification_subscriptions","notification_preferences").forEach { table ->
                 execute("DELETE FROM $table WHERE user_id=?",id)
             }
         }
@@ -103,7 +104,110 @@ class JdbcNotificationRepositoryIntegrationTest {
         NotificationDispatcher(source,PushSender { _,payload -> sent.add(payload); result },now)
     private fun checkin(p: Player,at: Instant) {
         execute("""INSERT INTO check_ins(user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
-            VALUES (?,?,?,?,?,'Europe/Moscow',?)""",p.id,p.session,UUID.randomUUID(),at.notificationSqlTime(),at.plusSeconds(30).notificationSqlTime(),at.atOffset(ZoneOffset.UTC).toLocalDate())
+            VALUES (?,?,?,?,?,'Europe/Moscow',?)""",p.id,p.session,UUID.randomUUID(),at.notificationSqlTime(),at.plusSeconds(30).notificationSqlTime(),at.atZone(ZoneId.of("Europe/Moscow")).toLocalDate())
+    }
+    // Freeze the worker at PostgreSQL's timestamp precision. A nanosecond clock
+    // can round due_at upwards and incorrectly postpone a fixture before reserve.
+    private fun mailClock(): Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
+    private fun mail(p: Player,now: Instant,notify: Boolean=true): UUID {
+        val id=UUID.randomUUID()
+        source.connection.use { c ->
+            c.economyUpdate("""INSERT INTO player_mail_messages(id,user_id,source_key,type,title,body,notify,created_at)
+                VALUES (?,?,?,'event','Личное письмо','Закрытая причина и баланс 12345',?,?)""",id,p.id,"test:$id",notify,now.notificationSqlTime())
+            enqueueMailNotification(c,p.id,id,now.notificationSqlTime())
+            c.commit()
+        }
+        return id
+    }
+
+    @Test fun `mail uses existing opted in subscription and generic owner bound push only once`() = runBlocking<Unit> {
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); val now=mailClock(); val id=mail(p,now)
+        val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+        worker.tick(); worker.tick()
+        assertEquals(1,sent.size)
+        assertEquals("Письмо от администрации",sent.single().title)
+        assertEquals("Новое письмо от администрации. Откройте почту.",sent.single().body)
+        assertEquals("/?notification=mailbox&owner=${p.owner}",sent.single().url)
+        assertEquals(p.owner,sent.single().ownerPublicId)
+        assertEquals("delivered",scalar("SELECT state FROM notification_events WHERE user_id=? AND source_key=?",p.id,"mail:$id"))
+        assertEquals("1",scalar("SELECT count(*) FROM player_mail_messages WHERE id=? AND read_at IS NULL",id))
+    }
+    @Test fun `mail never creates device consent or replays earlier letters after first connection`() = runBlocking<Unit> {
+        val p=player(); val now=mailClock(); mail(p,now)
+        assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",p.id))
+        repository.snapshot(p.hash,p.owner); mail(p,now)
+        assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",p.id))
+        connect(p,noQuiet.copy(rateLimitsEnabled=false)); val sent=CopyOnWriteArrayList<PushPayload>()
+        dispatcher({now},sent).tick(); assertTrue(sent.isEmpty())
+        mail(p,now,notify=false); dispatcher({now},sent).tick(); assertTrue(sent.isEmpty())
+        repository.preferences(p.hash,p.owner,noQuiet.copy(administrationMessages=false)); mail(p,now)
+        dispatcher({now},sent).tick(); assertTrue(sent.isEmpty())
+        assertTrue(repository.snapshot(p.hash,p.owner).subscription.subscribed)
+    }
+    @Test fun `mail quiet hours and shared rolling budget apply without erasing inbox`() = runBlocking<Unit> {
+        val p=player(); var now=Instant.parse("2026-10-12T23:30:00Z")
+        connect(p,noQuiet.copy(quietHoursEnabled=true,timeZone="UTC",maxPerDay=1))
+        mail(p,now); val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+        worker.tick(); assertTrue(sent.isEmpty())
+        now=Instant.parse("2026-10-13T10:00:00Z"); worker.tick(); assertEquals(1,sent.size)
+        mail(p,now); worker.tick(); assertEquals(1,sent.size)
+        assertEquals("pending",scalar("SELECT state FROM notification_events WHERE user_id=? AND state='pending'",p.id))
+        assertEquals("2",scalar("SELECT count(*) FROM player_mail_messages WHERE user_id=? AND read_at IS NULL",p.id))
+        now=now.plusSeconds(86400); worker.tick(); assertEquals(2,sent.size)
+    }
+    @Test fun `read and revoked owner sessions suppress a reserved mail before provider send`() = runBlocking<Unit> {
+        listOf("read","revoke","visible").forEach { change ->
+            val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); val now=mailClock(); val id=mail(p,now)
+            var calls=0; val sent=CopyOnWriteArrayList<PushPayload>()
+            dispatcher({
+                if(++calls==2) when(change) {
+                    "read" -> execute("UPDATE player_mail_messages SET read_at=clock_timestamp() WHERE id=?",id)
+                    "revoke" -> execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE id=?",p.session)
+                    else -> execute("UPDATE notification_preferences SET last_visible_at=clock_timestamp() WHERE user_id=?",p.id)
+                }
+                now
+            },sent).tick()
+            assertEquals(2,calls,"$change must occur after a real reservation and before provider delivery")
+            assertTrue(sent.isEmpty(),change)
+            assertEquals("dismissed",scalar("SELECT state FROM notification_batches WHERE user_id=?",p.id))
+            assertEquals("1",scalar("SELECT count(*) FROM player_mail_messages WHERE user_id=?",p.id))
+        }
+    }
+    @Test fun `forged cross owner mail queue source cannot reveal or send another players letter`() = runBlocking<Unit> {
+        val owner=player(); val stranger=player(); connect(owner,noQuiet.copy(rateLimitsEnabled=false)); connect(stranger,noQuiet.copy(rateLimitsEnabled=false))
+        val now=mailClock(); val id=mail(owner,now,notify=false)
+        execute("UPDATE player_mail_messages SET notify=true WHERE id=?",id)
+        source.connection.use { c -> enqueueMailNotification(c,stranger.id,id,now.notificationSqlTime()); c.commit() }
+        assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",stranger.id))
+        execute("""INSERT INTO notification_events(user_id,source_key,category,due_at,next_attempt_at)
+            VALUES (?,?,'mail',?,?)""",stranger.id,"mail:$id",now.notificationSqlTime(),now.notificationSqlTime())
+        val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick(); assertTrue(sent.isEmpty())
+        assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=? AND state IN ('pending','sending')",stranger.id))
+    }
+
+    @Test fun `only ready confirmed miner sources open mine even with a future hero journey`() = runBlocking<Unit> {
+        val p=player(); connect(p); val now=Instant.now()
+        val mine=job(now,"exploration","unrelated-route-name").copy(actorId="miner")
+        val futureHero=job(now,"exploration","forest",now.plusSeconds(300)).copy(actorId="mochlik")
+        jobs(p,mine,futureHero)
+        val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+        assertEquals(1,sent.size)
+        assertEquals("/?notification=world&section=mine&owner=${p.owner}",sent.single().url)
+        assertEquals("Шахтёр завершил смену",sent.single().title)
+        assertEquals(p.owner,sent.single().ownerPublicId)
+    }
+    @Test fun `mine route names and mixed batches cannot redirect non miner work into mine`() = runBlocking<Unit> {
+        val now=Instant.now()
+        val mine=job(now,"exploration","quarry_shift").copy(actorId="miner")
+        val hero=job(now,"exploration","quarry_shift").copy(actorId="mochlik")
+        val legacy=job(now,"exploration","quarry_shift")
+        listOf(listOf(hero),listOf(legacy),listOf(mine,hero),listOf(mine,job(now))).forEach { batch ->
+            val p=player(); connect(p); jobs(p,*batch.toTypedArray())
+            val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+            assertEquals(1,sent.size)
+            assertEquals("/?notification=world&section=activities&owner=${p.owner}",sent.single().url)
+            assertNotEquals("Шахтёр завершил смену",sent.single().title)
+        }
     }
 
     @Test fun `unconfigured server saves preferences but never pretends to subscribe`() = runBlocking<Unit> {
@@ -151,6 +255,18 @@ class JdbcNotificationRepositoryIntegrationTest {
         assertContains(sent.single().url,"owner=${p.owner}")
         jobs(p,a,b); repository.preferences(p.hash,p.owner,noQuiet.copy(maxPerDay=1)); worker.tick()
         assertEquals(1,sent.size)
+    }
+    @Test fun `independent miner does not postpone ripe crop sources in database or dispatcher`() = runBlocking<Unit> {
+        val p=player(); connect(p); val now=Instant.now()
+        val crop=job(now,target="garden").copy(rewards=mapOf("blueberries" to 2),collection=EconomyCollection("berry_harvest",8,null,null))
+        val mine=job(now,"exploration","quarry_shift",now.plusSeconds(3600)).copy(actorId="miner")
+        jobs(p,crop,mine)
+        assertEquals("false",scalar("SELECT waiting_for_actor::text FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+        val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+        assertEquals(1,sent.size)
+        assertEquals("Ресурсы готовы",sent.single().title)
+        assertContains(sent.single().body,"2 ягоды черники готовы к сбору")
+        assertEquals("pending",scalar("SELECT state FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${mine.id}"))
     }
     @Test fun `ripe berries notify before collection and collection never repeats the same source`() = runBlocking<Unit> {
         val p=player(); connect(p); var now=Instant.now()

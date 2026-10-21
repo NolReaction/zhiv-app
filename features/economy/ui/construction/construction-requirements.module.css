@@ -1,0 +1,16 @@
+.list { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.list > li { min-width: 0; }
+.row, .list.list .row { display: flex; align-items: center; justify-content: flex-start; gap: 9px; width: 100%; min-width: 0; min-height: 52px; padding: 7px 9px; border: 1px solid #c5b286; border-radius: 10px; background: #f1e4c4; color: #586447; font: inherit; text-align: left; }
+button.row { cursor: pointer; touch-action: manipulation; }
+.list button.row:hover { border-color: #95a274; background: #ece5c5; }
+.list button.row:focus-visible { outline: 2px solid #3f6544; outline-offset: 2px; }
+.art { display: inline-grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; background-position: center; background-size: contain; background-repeat: no-repeat; color: #708051; }
+.art[data-building-art="dryer"] > svg { width: 100%; height: 100%; }
+.art[data-building-art="lighthouse"] { background-size: auto 100%; }
+.copy { display: grid; flex: 1 1 auto; gap: 3px; min-width: 0; }
+.copy strong { color: #3c543c; font-size: 11px; font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
+.copy > span { color: #7b795a; font-size: 10px; line-height: 1.25; }
+.level { flex: 0 0 auto; padding: 4px 6px; border: 1px solid #cbb88c; border-radius: 6px; background: #fbefd3; color: #745d36; font-size: 10px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.row > svg { flex: 0 0 auto; }
+@media (max-width: 360px) { .row, .list.list .row { gap: 6px; padding-inline: 7px; } .art { flex-basis: 30px; width: 30px; height: 32px; } .level { padding: 4px; } }
+@media (forced-colors: active) { .row, .list.list .row, .level { border-color: CanvasText; } }

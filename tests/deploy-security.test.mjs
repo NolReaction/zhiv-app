@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import yaml from "js-yaml";
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -12,6 +13,28 @@ const { forestMemoryCommandSchema, FOREST_MEMORY_BODY_BYTES, FOREST_MEMORY_SNAPS
   await vite.ssrLoadModule("/features/world/state/memory/forest-memory-model.ts");
 const caddy = await readFile(new URL("../deploy/Caddyfile", import.meta.url), "utf8");
 const forestRoute = await readFile(new URL("../apps/api/src/main/kotlin/ru/zhiv/forest/ForestMemoryRoutes.kt", import.meta.url), "utf8");
+
+test("the production weather runtime can reach its upstream without publishing application or database ports", async () => {
+  const compose = yaml.load(await readFile(new URL("../deploy/compose.yml", import.meta.url), "utf8"));
+  const web = compose.services.web;
+  const networks = Array.isArray(web.networks) ? web.networks : Object.keys(web.networks);
+  assert.ok(networks.includes("backend"), "the edge still needs a private path to web");
+  assert.ok(networks.some(name => compose.networks[name]?.internal !== true),
+    "the weather proxy needs a network with internet egress; an internal-only web container always returns weather_unavailable");
+  assert.equal(compose.networks.backend.internal, true, "do not open the database network to fix web egress");
+  assert.deepEqual(compose.services.db.networks, ["backend"]);
+  for (const [name, service] of Object.entries(compose.services)) {
+    if (name !== "caddy") assert.equal(service.ports, undefined, `${name}: inbound traffic must still pass through the edge`);
+  }
+});
+
+test("the edge preserves first-party map geolocation while keeping camera and microphone disabled", async () => {
+  const nextConfig = await readFile(new URL("../next.config.ts", import.meta.url), "utf8");
+  const policy = "camera=(), microphone=(), geolocation=(self)";
+  assert.equal(caddy.match(/Permissions-Policy "([^"]+)"/)?.[1], policy);
+  assert.equal(nextConfig.match(/key: "Permissions-Policy",\s*value: "([^"]+)"/)?.[1], policy,
+    "the production proxy must not revoke the web runtime's first-party location policy");
+});
 
 test("a supported forest snapshot can exceed the ordinary edge limit while staying inside both API caps", () => {
   const snapshot = {

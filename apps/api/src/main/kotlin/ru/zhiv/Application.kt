@@ -31,6 +31,7 @@ import ru.zhiv.checkins.checkInRoutes
 import ru.zhiv.config.AppConfig
 import ru.zhiv.db.DatabaseFactory
 import ru.zhiv.db.JdbcGuestProfileRepository
+import ru.zhiv.db.JdbcGuestWorldRepository
 import ru.zhiv.db.JdbcRelationshipRepository
 import ru.zhiv.db.JdbcGroupRepository
 import ru.zhiv.db.JdbcDirectInviteRepository
@@ -76,12 +77,24 @@ import ru.zhiv.db.JdbcGameRepository
 import ru.zhiv.observability.GameEventSink
 import ru.zhiv.observability.Slf4jGameEventSink
 import ru.zhiv.observability.RequestDiagnostics
+import ru.zhiv.observability.RequestTraffic
+import ru.zhiv.observability.RequestTrafficObservation
+import ru.zhiv.observability.RequestTrafficSnapshot
+import ru.zhiv.observability.MapTilerUsageService
+import ru.zhiv.observability.apiUsageRoutes
+import ru.zhiv.observability.trafficUserId
 import ru.zhiv.observability.recordApiFailure
 import ru.zhiv.observability.recordAuthFailure
 import ru.zhiv.relationships.GuestProfileRepository
 import ru.zhiv.relationships.guestProfileRoutes
+import ru.zhiv.relationships.GuestWorldRepository
+import ru.zhiv.relationships.guestWorldRoutes
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.relationshipRoutes
+import ru.zhiv.earth.EarthLocationRepository
+import ru.zhiv.earth.earthLocationRoutes
+import ru.zhiv.db.JdbcEarthLocationRepository
+import ru.zhiv.db.EarthLocationMaintenance
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.auth.*
 import ru.zhiv.db.JdbcAuthRepository
@@ -104,6 +117,9 @@ import java.security.MessageDigest
 import ru.zhiv.notifications.NotificationRepository
 import ru.zhiv.notifications.WebPushConfig
 import ru.zhiv.notifications.WebPushSender
+import ru.zhiv.mail.MailRepository
+import ru.zhiv.mail.mailRoutes
+import ru.zhiv.db.JdbcMailRepository
 import ru.zhiv.notifications.notificationRoutes
 import ru.zhiv.db.JdbcNotificationRepository
 import ru.zhiv.db.NotificationMaintenance
@@ -118,6 +134,7 @@ fun Application.module() {
     val config = AppConfig.fromEnvironment()
     val dataSource = DatabaseFactory.create(config)
     val tapMaintenance = ru.zhiv.db.TapActivityMaintenance(dataSource)
+    val earthMaintenance = EarthLocationMaintenance(dataSource)
     val pushConfig = WebPushConfig.fromEnvironment()
     val pushSender = if (pushConfig.configured) WebPushSender(pushConfig) else null
     val pushMaintenance = pushSender?.let { NotificationMaintenance(dataSource, it) }
@@ -133,6 +150,7 @@ fun Application.module() {
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         tapMaintenance.close()
+        earthMaintenance.close()
         pushMaintenance?.close()
         pushSender?.close()
         telegram?.close()
@@ -144,7 +162,9 @@ fun Application.module() {
         repository,
         config,
         relationships = relationships,
+        earthLocations = JdbcEarthLocationRepository(dataSource),
         guestProfiles = JdbcGuestProfileRepository(dataSource),
+        guestWorlds = JdbcGuestWorldRepository(dataSource),
         groups = groups,
         directInvites = directInvites,
         recovery = recovery,
@@ -168,6 +188,7 @@ fun Application.module() {
         notifications = JdbcNotificationRepository(dataSource, pushConfig),
         promo = JdbcPromoRepository(dataSource),
         adminPromo = JdbcAdminPromoRepository(dataSource, AdminConfig(config.adminPublicIds)),
+        playerMail = JdbcMailRepository(dataSource, AdminConfig(config.adminPublicIds)),
     )
 }
 
@@ -198,14 +219,20 @@ fun Application.installZhivApi(
     progressionRewards: ProgressionRewardsRepository? = null,
     economyBarter: EconomyBarterRepository? = null,
     guestProfiles: GuestProfileRepository? = null,
+    guestWorlds: GuestWorldRepository? = null,
     presence: PresenceRepository? = null,
     notifications: NotificationRepository? = null,
     promo: PromoRepository? = null,
     adminPromo: AdminPromoRepository? = null,
+    playerMail: MailRepository? = null,
+    earthLocations: EarthLocationRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
+    val traffic = RequestTraffic()
     val monitoring = MonitoringService(config.monitoringUrl)
+    val maptilerUsage = MapTilerUsageService(config.maptilerServiceToken)
     install(RequestMetrics) { this.metrics = metrics }
+    install(RequestTrafficObservation) { this.traffic = traffic }
     install(RequestDiagnostics) {
         persist = { call, code, status ->
             val raw = call.sessionCookie(config)
@@ -227,6 +254,7 @@ fun Application.installZhivApi(
             "profile-read" to 600,
             "check-in-attempt" to 240,
             "relationships" to 2_400,
+            "earth-read" to 600,
             "game-events" to 2_400,
             "game-read" to 1_200,
             "world-read" to 60,
@@ -235,6 +263,9 @@ fun Application.installZhivApi(
             "forest-memory-write" to 30,
             "game-session" to 120,
             "presence-write" to 1_200,
+            "mail-read" to 240,
+            "mail-write" to 120,
+            "admin-mail-write" to 6,
             "notifications-read" to 120,
             "notifications-write" to 60,
             "notifications-presence" to 120,
@@ -254,6 +285,7 @@ fun Application.installZhivApi(
                     val userId = call.sessionCookie(config)?.let { raw ->
                         identities.findSessionUserId(tokenCodec.hash(raw))
                     }
+                    if (userId != null) call.attributes.put(trafficUserId, userId)
                     // Forged cookies share one anonymous budget; they cannot create new buckets.
                     userId?.let { "user:$it" } ?: "anonymous:${clientIpKey(call)}"
                 }
@@ -365,11 +397,33 @@ fun Application.installZhivApi(
         forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config, presence) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         notifications?.let { notificationRoutes(it, tokenCodec, config) }
+        playerMail?.let { mailRoutes(it, tokenCodec, config) }
         promo?.let { promoRoutes(it, tokenCodec, config, presence) }
         adminPromo?.let { adminPromoRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
+            apiUsageRoutes(repository, tokenCodec, config, metrics, maptilerUsage)
             rateLimit(RateLimitName("admin-read")) {
+                get("/api/v1/admin/request-traffic") {
+                    call.response.header(HttpHeaders.CacheControl, "no-store")
+                    call.response.header("X-Robots-Tag", "noindex, nofollow")
+                    val raw = call.sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
+                    val hash = tokenCodec.hash(raw)
+                    val actor = repository.access(hash)
+                    if (!call.request.queryParameters.isEmpty()) throw AuthFailure("INVALID_ADMIN_QUERY", "Проверьте параметры запроса", 400)
+                    val samples = traffic.samples()
+                    val ids = samples.mapNotNull { it.userId }.distinct()
+                    val players = if (ids.isEmpty()) emptyMap() else repository.trafficPlayers(hash, ids).associateBy { it.id }
+                    val signals = samples.mapNotNull { sample ->
+                        if (sample.userId == null) sample.signal
+                        else players[sample.userId]?.let { sample.signal.copy(publicId = it.publicId, displayName = it.displayName) }
+                    }
+                    // A concurrent logout or revoke must not expose a completed private snapshot.
+                    if (repository.access(hash).publicId != actor.publicId)
+                        throw AuthFailure("ADMIN_FORBIDDEN", "Аккаунт администратора сменился. Откройте панель заново", 403)
+                    call.respond(RequestTrafficSnapshot(actor.publicId, java.time.Instant.now().toString(), traffic.startedAt,
+                        RequestTraffic.RETENTION_SECONDS, traffic.capacity, traffic.evicted(), signals))
+                }
                 get("/api/v1/admin/monitoring") {
                     call.response.header(HttpHeaders.CacheControl, "no-store")
                     call.response.header("X-Robots-Tag", "noindex, nofollow")
@@ -382,7 +436,9 @@ fun Application.installZhivApi(
             }
         }
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
+        earthLocations?.let { earthLocationRoutes(it, tokenCodec, config) }
         guestProfiles?.let { guestProfileRoutes(it, tokenCodec, config) }
+        guestWorlds?.let { guestWorldRoutes(it, tokenCodec, config, presence) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
         directInvites?.let { directInviteRoutes(it, tokenCodec, config) }
         recovery?.let { codeRecoveryRoutes(it, identities, tokenCodec, config) }

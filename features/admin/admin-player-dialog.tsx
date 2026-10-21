@@ -9,19 +9,28 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { validAdminReason } from "./admin-input";
 import { ApiError } from "@/lib/check-in-api";
 import { worldCatalog } from "@/features/world/domain/model";
-import { getAdminAccess, getAdminPlayer, manageAdminPlayer, type AdminPlayer, type AdminPlayerCommand, type AdminUser } from "./admin-api";
+import { getAdminAccess, manageAdminPlayer, verifyAdminActor, type AdminPlayerCommand, type AdminUser } from "./admin-api";
+import { definitiveAdminWriteFailure } from "./admin-write-outcome";
+import { AdminSecurityContent, adminReviewReasons, loadAdminPlayerReview } from "./admin-security-panel";
+import { AdminDeliveryFields, AdminDeliveryPreview } from "./admin-delivery";
+import { deliveryIssue, deliveryMessage, type AdminDelivery } from "./admin-delivery-contract";
+import { readLegacyManageAttempt, saveLegacyManageAttempt } from "./admin-legacy-delivery-journal";
 import styles from "./admin-management.module.css";
 
 export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose, onChanged }: {
   target: AdminUser; actorPublicId: string; onAccessLost: (error: ApiError) => void; onClose: () => void; onChanged: () => void;
 }) {
-  const [player, setPlayer] = useState<AdminPlayer | null>(null);
+  const [restored] = useState(() => readLegacyManageAttempt(actorPublicId, target.publicId));
+  const [snapshot, setSnapshot] = useState<{ key: string; value: Awaited<ReturnType<typeof loadAdminPlayerReview>> } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<AdminPlayerCommand | null>(null);
-  const [reason, setReason] = useState("");
-  const [confirmation, setConfirmation] = useState("");
+  const [pending, setPending] = useState<AdminPlayerCommand | null>(restored);
+  const [reason, setReason] = useState(restored?.reason ?? "");
+  const [confirmation, setConfirmation] = useState(restored?.confirmationPublicId ?? "");
+  const [delivery, setDelivery] = useState<AdminDelivery>(restored?.delivery ?? "silent");
+  const [playerTitle, setPlayerTitle] = useState(restored?.playerMessage?.title ?? "");
+  const [playerBody, setPlayerBody] = useState(restored?.playerMessage?.body ?? "");
   const [item, setItem] = useState(worldCatalog.items[0].id);
   const [find, setFind] = useState(worldCatalog.finds[0].id);
   const [tagText, setTagText] = useState(target.tag?.text ?? "");
@@ -29,49 +38,59 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
   const sending = useRef(false);
   const writeController = useRef<AbortController | null>(null);
   const alive = useRef(true);
+  const snapshotKey = JSON.stringify([actorPublicId, target.publicId]);
+  const current = snapshot?.key === snapshotKey ? snapshot.value : null;
+  const player = current?.player;
   useEffect(() => {
     alive.current = true;
     const controller = new AbortController();
-    getAdminPlayer(target.publicId, controller.signal).then(value => {
+    loadAdminPlayerReview(actorPublicId, target.publicId, controller.signal).then(value => {
       if (!alive.current || controller.signal.aborted) return;
-      if (value.publicId !== target.publicId) throw new ApiError("Ответ относится к другому игроку", 502);
-      setPlayer(value); setTagText(value.tag?.text ?? ""); setTagColor(value.tag?.color ?? "green");
+      setSnapshot({ key: snapshotKey, value }); setTagText(value.player.tag?.text ?? ""); setTagColor(value.player.tag?.color ?? "green");
     }).catch(failure => {
-      if (controller.signal.aborted) return;
-      if (failure instanceof ApiError && [401, 403].includes(failure.status)) onAccessLost(failure);
+      if (!alive.current || controller.signal.aborted) return;
+      if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setPending(null); setSnapshot(null); onAccessLost(failure); }
       else setError(failure instanceof Error ? failure.message : "Не удалось загрузить игрока");
     });
     return () => { alive.current = false; controller.abort(); writeController.current?.abort(); };
-  }, [target.publicId, onAccessLost]);
+  }, [actorPublicId, target.publicId, snapshotKey, onAccessLost]);
   const authorized = confirmation === target.publicId && validAdminReason(reason);
   const locked = busy || Boolean(pending);
+  const playerMessage = deliveryMessage(delivery, playerTitle, playerBody);
+  const messageIssue = deliveryIssue(delivery, playerTitle, playerBody);
   async function run(action: AdminPlayerCommand["action"], extra: Partial<AdminPlayerCommand> = {}) {
-    if (sending.current || !authorized || !player) return;
-    const request = pending ?? { ...extra, requestId: createUuidV4(), confirmationPublicId: target.publicId, reason: reason.trim(), action };
+    if (sending.current || !authorized || (!player && !pending)) return;
+    const isGrant = ["grant_world_item", "grant_find"].includes(pending?.action ?? action);
+    if (!pending && isGrant && messageIssue) return;
+    const request = pending ?? { ...extra, requestId: createUuidV4(), confirmationPublicId: target.publicId, reason: reason.trim(), action,
+      ...(isGrant ? { delivery, ...(playerMessage ? { playerMessage } : {}) } : {}) };
+    if (isGrant && !saveLegacyManageAttempt(actorPublicId, target.publicId, request)) { setError("Браузер не сохранил запрос. Выдача не отправлена. Разрешите хранилище и повторите."); return; }
     sending.current = true; setBusy(true); setError(""); setNotice(""); setPending(request);
     const controller = new AbortController(); writeController.current = controller;
     try {
       const actor = await getAdminAccess(controller.signal);
       if (!alive.current || controller.signal.aborted) return;
       if (actor.publicId !== actorPublicId) {
-        onAccessLost(new ApiError("Аккаунт администратора сменился. Откройте панель заново.", 403)); return;
+        setSnapshot(null); onAccessLost(new ApiError("Аккаунт администратора сменился. Откройте панель заново.", 403)); return;
       }
       const receipt = await manageAdminPlayer(target.publicId, request, controller.signal);
+      await verifyAdminActor(actorPublicId, controller.signal);
       if (!alive.current || controller.signal.aborted) return;
       if (receipt.requestId !== request.requestId || receipt.action !== request.action) throw new ApiError("Ответ не соответствует отправленному действию", 502);
+      if (isGrant) saveLegacyManageAttempt(actorPublicId, target.publicId, null);
       setPending(null); setNotice(receipt.changed ? "Изменение сохранено и записано в журнал." : "У игрока уже установлено это состояние. Повторная выдача не выполнена.");
       onChanged();
-      try { const next = await getAdminPlayer(target.publicId, controller.signal); if (next.publicId !== target.publicId) throw new ApiError("Ответ относится к другому игроку", 502); if (alive.current && !controller.signal.aborted) setPlayer(next); }
+      try { const next = await loadAdminPlayerReview(actorPublicId, target.publicId, controller.signal); if (alive.current && !controller.signal.aborted) setSnapshot({ key: snapshotKey, value: next }); }
       catch (failure) {
         if (!alive.current || controller.signal.aborted) return;
-        if (failure instanceof ApiError && [401, 403].includes(failure.status)) onAccessLost(failure);
+        if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setPending(null); setSnapshot(null); onAccessLost(failure); }
         else setError("Изменение сохранено, но состояние не обновилось. Откройте карточку снова.");
       }
     } catch (failure) {
       if (!alive.current || controller.signal.aborted) return;
-      if (failure instanceof ApiError && [401, 403].includes(failure.status)) { onAccessLost(failure); return; }
-      const definitive = failure instanceof ApiError && [400, 404, 409].includes(failure.status);
-      if (definitive) setPending(null);
+      if (failure instanceof ApiError && [401, 403].includes(failure.status)) { setPending(null); setSnapshot(null); onAccessLost(failure); return; }
+      const definitive = definitiveAdminWriteFailure(failure);
+      if (definitive) { if (isGrant) saveLegacyManageAttempt(actorPublicId, target.publicId, null); setPending(null); }
       setError(failure instanceof Error ? failure.message : "Нет ответа. Повторите тот же запрос.");
     } finally { sending.current = false; if (alive.current) setBusy(false); }
   }
@@ -90,14 +109,21 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
           <label>Причина изменения<input maxLength={240} value={reason} onChange={event => setReason(event.target.value)} placeholder="Не менее 8 символов · останется в журнале" /></label>
           <label>Подтвердите ID игрока<input value={confirmation} onChange={event => setConfirmation(event.target.value.toUpperCase())} placeholder={target.publicId} autoComplete="off" /></label>
         </fieldset>
-        <Tabs defaultValue="world">
-          <TabsList className={styles.tabs}><TabsTrigger value="world">Вещи и коллекции</TabsTrigger><TabsTrigger value="tag">Тег</TabsTrigger><TabsTrigger value="account">Аккаунт</TabsTrigger></TabsList>
+        <Tabs defaultValue={restored ? "world" : adminReviewReasons(target).length ? "security" : "world"}>
+          <TabsList className={styles.tabs}><TabsTrigger value="security">Наблюдение</TabsTrigger><TabsTrigger value="world">Вещи и коллекции</TabsTrigger><TabsTrigger value="tag">Тег</TabsTrigger><TabsTrigger value="account">Аккаунт</TabsTrigger></TabsList>
+          <TabsContent value="security" className={styles.stack}>
+            {current && <AdminSecurityContent detail={current.security} canManage={authorized} locked={locked}
+              onClear={() => void run("clear_signal")} onWatch={() => void run(current.security.watchlisted ? "unwatch" : "watch")} />}
+          </TabsContent>
           <TabsContent value="world" className={styles.stack}>
+            <AdminDeliveryFields delivery={delivery} title={playerTitle} body={playerBody} disabled={locked} onDelivery={setDelivery} onTitle={setPlayerTitle} onBody={setPlayerBody} />
+            {messageIssue && <p className={styles.error} role="status">{messageIssue}</p>}
+            {pending && ["grant_world_item", "grant_find"].includes(pending.action) && <AdminDeliveryPreview {...pending} />}
             <fieldset disabled={locked} className={styles.stack}>
               <label>Предмет<select value={item} onChange={event => setItem(event.target.value)}>{worldCatalog.items.map(value => <option key={value.id} value={value.id}>{value.name}{player.world.inventory.includes(value.id) ? " · уже есть" : ""}</option>)}</select></label>
-              <button disabled={!authorized || player.world.inventory.includes(item)} onClick={() => void run("grant_world_item", { target: item })}>Выдать предмет</button>
+              <button disabled={!authorized || !!messageIssue || player.world.inventory.includes(item)} onClick={() => void run("grant_world_item", { target: item })}>Выдать предмет</button>
               <label>Находка<select value={find} onChange={event => setFind(event.target.value)}>{worldCatalog.finds.map(value => <option key={value.id} value={value.id}>{value.name}{player.world.collection.includes(value.id) ? " · уже есть" : ""}</option>)}</select></label>
-              <button disabled={!authorized || player.world.collection.includes(find)} onClick={() => void run("grant_find", { target: find })}>Добавить в коллекцию</button>
+              <button disabled={!authorized || !!messageIssue || player.world.collection.includes(find)} onClick={() => void run("grant_find", { target: find })}>Добавить в коллекцию</button>
             </fieldset>
           </TabsContent>
           <TabsContent value="tag" className={styles.stack}>
@@ -114,10 +140,8 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
             <p>{player.bannedAt ? `Аккаунт заблокирован. Причина: ${player.banReason}` : "Аккаунт активен."}</p>
             <p className={styles.hint}>Блокировка завершает сеансы и запрещает вход в этот аккаунт. Прогресс сохраняется. После разблокировки потребуется войти заново.</p>
             <button className={styles.danger} disabled={locked || !authorized || target.isAdmin} onClick={() => void run(player.bannedAt ? "unban" : "ban")}>{player.bannedAt ? "Разблокировать аккаунт" : "Заблокировать аккаунт"}</button>
-            {player.watchlisted && <p className={styles.watchBadge}>Наблюдение</p>}
             {target.isAdmin && <p className={styles.hint}>Аккаунт администратора защищён от блокировки.</p>}
-            {player.tapSignalAt && <><p className={styles.hint}>Автоматический сигнал: {new Date(player.tapSignalAt).toLocaleString("ru-RU")}. Проверьте историю кликов. Если рисунок нажатий сохраняется, сигнал может появиться вновь.</p><button disabled={locked || !authorized} onClick={() => void run("clear_signal")}>Сигнал проверен: снять отметку</button></>}
-            <button disabled={locked || !authorized} onClick={() => void run(player.watchlisted ? "unwatch" : "watch")}>{player.watchlisted ? "Снять отметку наблюдения" : "Пометить для наблюдения"}</button>
+            <p className={styles.hint}>Причины наблюдения, автоматические сигналы и снятие отметок находятся во вкладке «Наблюдение».</p>
           </TabsContent>
         </Tabs>
       </>}

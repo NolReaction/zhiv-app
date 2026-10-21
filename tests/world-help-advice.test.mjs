@@ -4,11 +4,13 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-journal-guides-advice-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/ui/help/world-help-advice.ts");
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
+const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 const now = Date.parse("2026-10-07T12:00:00Z");
 const snapshot = (patch = {}) => {
   const value = { ownerPublicId: "0000-0000-0001", revision: 0, serverTime: new Date(now).toISOString(), catalog: economyCatalog,
@@ -57,18 +59,18 @@ test("failed reads and cooldowns do not claim stale money or expose an early ret
   assert.equal(worldHelpAdvice({ economy: { ...economy, retryAt: now + 1, uncertain: true } })[0].action, undefined);
 });
 
-test("recipe advice follows actual selected fish and batch instead of its placeholder", () => {
-  const missing = advice({ inventory: { wood: 1 } }, { context: { ...context, quantity: 3 } });
-  assert.equal(missing[0].id, "missing:wood"); assert.match(missing[0].message, /Есть 1, нужно 6/);
+test("single-item recipe advice uses exact ingredients without substituting rarer fish stock", () => {
+  const missing = advice({ inventory: { wood: 0 } }, { context: { ...context, quantity: 1 } });
+  assert.equal(missing[0].id, "missing:wood"); assert.match(missing[0].message, /Есть 0, нужно 1/);
   assert.deepEqual(missing[0].action.target, { kind: "station", stationId: "woodlot", recipeId: "gather_wood" });
-  const foodContext = { intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", fishItemId: "fish_silverfin", quantity: 2 };
-  assert.deepEqual(advice({ inventory: { fish_silverfin: 2, wood: 2 } }, { context: foodContext }), []);
-  const selected = advice({ inventory: { fish_silverfin: 1, wood: 2 } }, { context: foodContext });
-  assert.equal(selected[0].id, "missing:fish_silverfin"); assert.match(selected[0].message, /Есть 1, нужно 2/);
+  const foodContext = { intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 1 };
+  assert.deepEqual(advice({ inventory: { fish_common: 1 } }, { context: foodContext }), []);
+  const selected = advice({ inventory: {} }, { context: foodContext });
+  assert.equal(selected[0].id, "missing:fish_common"); assert.match(selected[0].message, /Есть 0, нужно 1/);
   assert.deepEqual(selected[0].action.target, { kind: "expeditions", sector: "coast" });
-  const alternative = advice({ inventory: { fish_silverfin: 2, wood: 2 } }, { context: { ...foodContext, fishItemId: "fish", quantity: 2 } });
-  assert.equal(alternative[0].id, "recipe:fish-choice:cook_grilled_fish");
-  assert.deepEqual(alternative[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_grilled_fish" });
+  const rarerStock = advice({ inventory: { fish_uncommon: 2, wood: 2 } }, { context: foodContext });
+  assert.equal(rarerStock[0].id, "missing:fish_common");
+  assert.deepEqual(rarerStock[0].action.target, { kind: "expeditions", sector: "coast" });
   for (const bad of [{ recipeId: "unknown" }, { quantity: 0 }, { quantity: 1.1 }, { stationId: "kiln" }, { fishItemId: "fish_shark" }])
     assert.deepEqual(advice({}, { context: { ...context, ...bad } }), []);
 });
@@ -86,7 +88,140 @@ test("missing prerequisites point to the next relevant building, not impossible 
 test("batch limits send the player back to quantity before recommending a bigger warehouse", () => {
   const result = advice({}, { context: { ...context, quantity: 9 } });
   assert.equal(result[0].id, "recipe:storage-capacity"); assert.equal(result[0].action.target.kind, "station");
-  assert.match(result[0].message, /не больше 8/);
+  assert.match(result[0].message, /не больше 1/);
+});
+
+test("strawberry advice opens the compote recipe until its result has been collected", () => {
+  const context = { intent: "production", stationId: "garden", recipeId: "grow_strawberries", quantity: 1 };
+  const result = advice({}, { context });
+  assert.equal(result[0].id, "recipe:unlock:cook_compote");
+  assert.match(result[0].message, /Произведите и заберите «Малиновый компот»: 0 \/ 1\. После этого откроется клубника\./);
+  assert.doesNotMatch(result[0].message, /Приготовить|вырастить/i);
+  assert.deepEqual(result[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_compote" });
+  const running = job({ targetId: "dryer", recipeId: "cook_compote", rewards: { berry_compote: 1 } });
+  assert.equal(advice({ jobs: [running] }, { context })[0].id, "recipe:unlock:cook_compote", "a started job does not unlock strawberries");
+  assert.deepEqual(advice({ progression: { recipes: { cook_compote: 1 } } }, { context }), []);
+});
+
+test("house two advice separates its single intro from three stage requests before sale suggestions", () => {
+  const patch = { inventory: { wood: 3, stone: 2, planks: 2 }, wallet: { coins: 250, pearls: 0 }, tutorialOrder: newTutorialOrder() };
+  const context = { intent: "construction", stationId: "home" };
+  let result = advice(patch, { context });
+  assert.equal(result[0].id, "construction:tutorial");
+  assert.match(result[0].message, /одну малину/);
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
+  patch.tutorialOrder.step = 1; patch.tutorialOrder.completed = true;
+  result = advice(patch, { context });
+  assert.equal(result[0].id, "construction:stage-orders");
+  assert.match(result[0].message, /0 из 3/);
+  patch.stageOrders = { version: 1, stages: { 1: { step: 3, completed: true, terms: null } } };
+  result = advice(patch, { context });
+  assert.deepEqual(result, []);
+});
+
+test("house-three advice prioritizes the seven current stage requests and keeps the original warehouse sufficient", () => {
+  const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 3);
+  const patch = { buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1, garden: 1, dryer: 1, woodlot: 1 },
+    inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 0 },
+    tutorialOrder: { ...newTutorialOrder(), step: 4, completed: true },
+    stageOrders: { version: 1, stages: { 2: { step: 0, completed: false, terms: null } } } };
+  const context = { intent: "construction", stationId: "home" };
+  let result = advice(patch, { context });
+  assert.equal(result[0].id, "construction:stage-orders");
+  assert.match(result[0].message, /0 из 7/);
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
+  patch.stageOrders.stages[2].step = 6;
+  assert.match(advice(patch, { context })[0].message, /6 из 7/);
+  patch.stageOrders.stages[2] = { step: 5, completed: true, terms: null };
+  result = advice(patch, { context });
+  assert.deepEqual(result, []);
+});
+
+test("house-four advice gates legacy tutorials on the eight supplies and distinguishes waiting from preparation", () => {
+  const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 4);
+  const course = economyCatalog.stageOrders.find(entry => entry.homeLevel === 3);
+  const patch = { buildings: { home: 3, warehouse: 1, garden: 1, woodlot: 1, dryer: 2, ...target.requiredBuildings },
+    inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 1000 },
+    tutorialOrder: { version: 1, ingredientsClaimed: true, completed: true, step: 0, terms: null },
+    stageOrders: { version: 1, stages: { 3: { step: 0, completed: false, terms: course.orders[0],
+      availableAt: new Date(now).toISOString(), intervalSeconds: course.intervalSeconds, completionRewards: course.completionRewards } } } };
+  const context = { intent: "construction", stationId: "home" };
+  let result = advice(patch, { context });
+  assert.equal(result[0].id, "construction:stage-orders");
+  assert.equal(result[0].title, "Завершите заказы этапа");
+  assert.match(result[0].message, /0 из 8/);
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
+  patch.stageOrders.stages[3] = { ...patch.stageOrders.stages[3], step: 1, terms: course.orders[1], availableAt: new Date(now + 86400000).toISOString() };
+  const before = structuredClone(patch);
+  result = advice(patch, { context });
+  assert.equal(result[0].title, "Дождитесь следующей поставки");
+  assert.match(result[0].message, /1 из 8.*Следующая поставка через 1 д/,
+    "an already accepted 24-hour deadline remains authoritative after the current course changes to 23 hours");
+  assert.match(result[0].message, /Материалы можно подготовить заранее.*жемчуг не сокращает/);
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
+  assert.deepEqual(patch, before, "waiting advice never moves the accepted deadline or the course");
+  patch.stageOrders.stages[3].availableAt = new Date(now + course.intervalSeconds * 1000).toISOString();
+  assert.match(advice(patch, { context })[0].message, new RegExp(`Следующая поставка через ${worldDuration(course.intervalSeconds)}`));
+  assert.equal(advice({ ...patch, inventory: {} }, { context })[0].id, "construction:stage-orders",
+    "the required project remains ahead of unrelated resource shortfalls");
+  patch.stageOrders.stages[3] = { step: 8, completed: true, terms: null };
+  assert.deepEqual(advice(patch, { context }), [], "warehouse one remains sufficient when project and other requirements are complete");
+});
+
+test("material advice directs stage-two stone and clay to the mine and first-stage recovery to the forest", () => {
+  const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 3);
+  const inventory = { ...target.cost.items, stone: 0 };
+  const patch = { buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 }, inventory,
+    wallet: { coins: target.cost.coins, pearls: 0 } };
+  const stone = advice(patch, { context: { intent: "construction", stationId: "home" } }).find(entry => entry.id === "missing:stone");
+  assert.deepEqual(stone.action.target, { kind: "station", stationId: "quarry", recipeId: "quarry_stone" });
+  const clay = advice({ ...patch, inventory: { clay: 0, charcoal: 1 } },
+    { context: { intent: "production", stationId: "kiln", recipeId: "fire_bricks", quantity: 1 } }).find(entry => entry.id === "missing:clay");
+  assert.deepEqual(clay.action.target, { kind: "station", stationId: "quarry", recipeId: "quarry_clay" });
+  const first = advice({ inventory: { wood: 3, stone: 0, planks: 2 }, wallet: { coins: 250, pearls: 0 } },
+    { context: { intent: "construction", stationId: "home" } }).find(entry => entry.id === "missing:stone");
+  assert.deepEqual(first.action.target, { kind: "expeditions", sector: "forest" });
+});
+
+test("independent miner guidance stays at the mine and never occupies Mochlik or suggests food", () => {
+  const mining = job({ kind: "exploration", actorId: "miner", targetId: "quarry_stone", recipeId: null,
+    rewards: { stone: 1 }, cost: { coins: 0, items: {} } });
+  const patch = { buildings: { home: 2, warehouse: 1, quarry: 2 }, inventory: { wood: 3 }, jobs: [mining] };
+  assert.deepEqual(advice(patch, { context: { intent: "expedition", routeId: "forest" } }), []);
+  let result = advice(patch, { context: { intent: "expedition", routeId: "quarry_clay" } });
+  assert.equal(result[0].id, `job:${mining.id}`);
+  assert.match(result[0].title, /Шахтёр/);
+  assert.deepEqual(result[0].action.target, { kind: "station", stationId: "quarry" });
+  mining.finishesAt = new Date(now).toISOString();
+  result = advice(patch);
+  assert.equal(result[0].id, `job:${mining.id}`);
+  assert.match(result[0].title, /Добыча ждёт получения/);
+  assert.deepEqual(result[0].action.target, { kind: "station", stationId: "quarry" });
+  assert.doesNotMatch(JSON.stringify(result), /Мохлик ещё в пути|food|Сыт/);
+});
+
+test("legacy underground jobs direct Mochlik to the separate mine while forest and fishing remain journeys", () => {
+  for (const patch of [{ kind: "production", targetId: "quarry", recipeId: "extract_stone" },
+    { kind: "exploration", targetId: "cave", recipeId: null },
+    { kind: "exploration", targetId: "deep_cave", recipeId: null },
+    { kind: "exploration", targetId: "quarry_stone", recipeId: null }]) {
+    for (const finished of [false, true]) {
+      const oldJob = job({ ...patch, finishesAt: new Date(now + (finished ? 0 : 1000)).toISOString(), rewards: { stone: 1 } });
+      const result = advice({ jobs: [oldJob] }, { context: { intent: "expedition", routeId: "forest" } })[0];
+      assert.deepEqual(result.action.target, { kind: "station", stationId: "quarry" });
+      assert.equal(result.action.label, "Открыть шахту");
+      assert.equal(result.topicId, "mining");
+      assert.match(result.message, /Мохлик/);
+      assert.doesNotMatch(result.message, /«В путь»|Шахтёр/);
+      assert.equal(oldJob.actorId, undefined, "navigation never rewrites historical ownership");
+    }
+  }
+  for (const [targetId, expectedSector] of [["forest", "forest"], ["shore", "coast"]]) {
+    const trip = job({ kind: "exploration", targetId, recipeId: null, finishesAt: new Date(now).toISOString() });
+    const result = advice({ jobs: [trip] }, { context: { intent: "expedition", routeId: "forest" } })[0];
+    assert.deepEqual(result.action.target, { kind: "expeditions", sector: expectedSector });
+    assert.match(result.message, /«В путь»/);
+  }
 });
 
 test("ready jobs use the supplied server clock and never claim their result", () => {
@@ -127,7 +262,7 @@ test("coin shortfall uses the same integer amount shown by construction and orde
   assert.equal(result[0].id, "missing:coins");
   assert.match(result[0].message, /Нужно ещё 47\./);
   assert.doesNotMatch(result[0].message, /4,7/);
-  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
 });
 
 test("ripe berries are not treated as collected while the separate harvest timer runs", () => {
@@ -184,4 +319,18 @@ test("advice stays deterministic, bounded, mutation-free and only uses valid hel
   assert.equal(JSON.stringify(economy), before);
   const ids = new Set(worldHelpTopics().map(topic => topic.id));
   assert.ok(first.every(entry => ids.has(entry.topicId)));
+});
+
+
+test("trip advice explains incompatible stocked bait before allowing a wasted departure", () => {
+  const state = snapshot();
+  state.fishing.equippedRodId = "reed_rod";
+  state.fishing.equippedBaitId = "star_bait";
+  state.inventory.star_bait = 2;
+  const before = structuredClone(state);
+  const advice = worldHelpAdvice({ economy: controller({ snapshot: state }), context: { intent: "expedition", routeId: "shore" } });
+  assert.equal(advice[0].id, "fishing:bait-incompatible");
+  assert.match(advice[0].message, /Без наживки/);
+  assert.match(advice[0].message, /запас наживки сохранится/);
+  assert.deepEqual(state, before);
 });

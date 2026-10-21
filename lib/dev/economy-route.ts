@@ -16,9 +16,25 @@ export async function devEconomyContext(request: Request, write = false, limit =
   return { token };
 }
 export async function readDevEconomyBody(request: Request, limit = 4096) {
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > limit) return { response: economyErrorResponse("BODY_TOO_LARGE", "Запрос слишком большой", 413) };
-  try { return { body: JSON.parse(text) as unknown }; } catch { return { body: null }; }
+  const reader = request.body?.getReader();
+  if (!reader) return { body: null };
+  // Enforce the existing byte limit while reading, even when Content-Length is
+  // absent or dishonest. A rejected upload must not remain buffered in memory.
+  const bytes = new Uint8Array(limit);
+  let size = 0;
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      if (size + chunk.value.byteLength > limit) {
+        void reader.cancel().catch(() => {});
+        return { response: economyErrorResponse("BODY_TOO_LARGE", "Запрос слишком большой", 413) };
+      }
+      bytes.set(chunk.value, size); size += chunk.value.byteLength;
+    }
+    return { body: JSON.parse(new TextDecoder().decode(bytes.subarray(0, size))) as unknown };
+  } catch { return { body: null }; }
+  finally { reader.releaseLock(); }
 }
 export function respondDevEconomy<T>(action: () => T) {
   try { return NextResponse.json(action(), { headers: NO_STORE_HEADERS }); }

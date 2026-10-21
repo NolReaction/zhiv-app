@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { RefreshCw, Search, Star, UserRoundPlus, Users, X } from "lucide-react";
+import { ChevronRight, RefreshCw, Search, Star, UserRoundPlus, Users, X } from "lucide-react";
 import { PlayerName } from "@/components/player-name";
 import type { PeopleResponse, Person } from "@/lib/check-in-contract";
 import { matchesPersonSearch } from "@/lib/people-search";
@@ -20,6 +20,7 @@ export type WorldFriendsState = {
 type FriendsProps = {
   friends?: WorldFriendsState;
   onOpenPeople?: () => void;
+  onVisitFriend?: (person: Person) => void;
 };
 
 function loadedAt(value: number | null | undefined): string | null {
@@ -51,7 +52,7 @@ export function profileFriends(people: readonly Person[], query: string): Person
 }
 
 /** Controlled content keeps all network state and refreshes with the existing People controller. */
-export function WorldProfileFriendsContent({ friends, onOpenPeople, query, onQueryChange, searchId }: FriendsProps & {
+export function WorldProfileFriendsContent({ friends, onOpenPeople, onVisitFriend, query, onQueryChange, searchId }: FriendsProps & {
   query: string;
   onQueryChange: (value: string) => void;
   searchId: string;
@@ -89,13 +90,21 @@ export function WorldProfileFriendsContent({ friends, onOpenPeople, query, onQue
         {filtered.map(person => {
           const name = personDisplayName(person);
           const hasNickname = Boolean(person.nickname && person.nickname !== person.user.displayName);
-          return <li key={person.circleId} className={styles.person}>
+          const unavailable = friends?.isOnline === false ? "Нужен интернет" : person.theirSharingMode === "OFF" ? "Мир скрыт" : null;
+          const identity = <>
             <span className={styles.avatar} aria-hidden="true">{Array.from(name.trim())[0]?.toLocaleUpperCase("ru-RU") ?? "Ж"}</span>
-            <div className={styles.names}>
+            <span className={styles.names}>
               <strong><PlayerName name={name} tag={person.user.tag} /></strong>
               {hasNickname && <span>{person.user.displayName}</span>}
-            </div>
+              {onVisitFriend && <small>{unavailable ?? "В гости"}</small>}
+            </span>
             {person.isFavorite && <Star className={styles.favorite} size={16} role="img" aria-label="В избранном" />}
+            {onVisitFriend && <ChevronRight className={styles.arrow} size={17} aria-hidden="true" />}
+          </>;
+          return <li key={person.circleId} className={styles.person}>
+            {onVisitFriend ? <button type="button" className={styles.visit} disabled={Boolean(unavailable)}
+              aria-label={unavailable ? `${name}: ${unavailable.toLocaleLowerCase("ru-RU")}` : `В гости к ${name}`}
+              onClick={() => { if (!unavailable) onVisitFriend(person); }} data-audio-cue="ui.open">{identity}</button> : identity}
           </li>;
         })}
       </ul> : <p className={styles.empty} role="status">Никого не нашли. Попробуйте имя или вашу подпись.</p>}

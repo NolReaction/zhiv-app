@@ -13,6 +13,8 @@ import java.util.concurrent.atomic.LongAdder
 
 /** In-process counters, intentionally reset when this API instance restarts. No user labels. */
 class RuntimeMetrics {
+    private val startedAt = java.time.Instant.now().toString()
+    private val usageLock = Any()
     private data class ResponseKey(val method: String, val operation: String, val status: String)
     private val requests = LongAdder()
     private val errors = LongAdder()
@@ -25,13 +27,19 @@ class RuntimeMetrics {
     private val gameCommitted = LongAdder()
     private val gameReplayed = LongAdder()
 
+    fun usageSnapshot(): ApiRequestUsage = synchronized(usageLock) {
+        ApiRequestUsage(startedAt, requests.sum(), errors.sum(), throttled.sum())
+    }
+
     fun recordRequest(method: String, path: String, status: Int, elapsedNanos: Long) {
         if (path in setOf("/healthz", "/readyz", "/internal/metrics") || status !in 100..599) return
         val key = ResponseKey(method.takeIf { it in METHODS } ?: "OTHER", diagnosticOperation(path), "${status / 100}xx")
         responses.computeIfAbsent(key) { LongAdder() }.increment()
-        requests.increment()
-        if (status >= 500) errors.increment()
-        if (status == 429) throttled.increment()
+        synchronized(usageLock) {
+            requests.increment()
+            if (status >= 500) errors.increment()
+            if (status == 429) throttled.increment()
+        }
         val seconds = elapsedNanos.coerceAtLeast(0).toDouble() / 1_000_000_000
         durationSum.add(seconds)
         BOUNDS.forEachIndexed { index, bound -> if (seconds <= bound) durationBuckets[index].increment() }
@@ -74,6 +82,7 @@ class RuntimeMetrics {
         append("# TYPE zhiv_game_batches_total counter\n")
         append("zhiv_game_batches_total{result=\"committed\"} ${gameCommitted.sum()}\n")
         append("zhiv_game_batches_total{result=\"replayed\"} ${gameReplayed.sum()}\n")
+        append(ru.zhiv.db.SecurityObservationRecorderMetrics.shared.exposition())
         val runtime = ManagementFactory.getRuntimeMXBean()
         val memory = ManagementFactory.getMemoryMXBean()
         append("# TYPE zhiv_process_uptime_seconds gauge\nzhiv_process_uptime_seconds ${runtime.uptime / 1000.0}\n")

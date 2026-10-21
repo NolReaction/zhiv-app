@@ -17,7 +17,7 @@ const shelf = (p, at = now) => economy.getDevEconomyBarter(p.token, at);
 function player(inventory = { [core]: 5, [resin]: 5, [crystal]: 5 }, home = 3) {
   const p = identities.createDevIdentity("Лесник", crypto.randomUUID()); read(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.inventory = inventory; row.state.buildings.home = home; row.state.completedExplorations = 1;
+  row.state.inventory = inventory; row.state.buildings.home = home; row.state.buildings.bridge = 1; row.state.completedExplorations = 1;
   row.state.wallet = { coins: 100, pearls: 5 };
   return p;
 }
@@ -70,7 +70,7 @@ test("a resource failure leaves both accounts, offer, and receipt unused", () =>
 });
 
 test("a full or already overflowing warehouse can exchange or cancel reserved goods without loss", () => {
-  const seller = player({ wood: 350, [core]: 1 }), buyer = player({ wood: 350, [resin]: 1 });
+  const seller = player({ wood: 100, [core]: 1 }), buyer = player({ wood: 100, [resin]: 1 });
   const original = read(seller).storage, row = offer(seller); shelf(buyer); accept(buyer, row);
   assert.deepEqual(read(seller).storage, original); assert.equal(read(buyer).storage.overflow, 51);
   const next = offer(seller, resin, core); cancel(seller, next);
@@ -78,7 +78,7 @@ test("a full or already overflowing warehouse can exchange or cancel reserved go
 });
 
 test("new ordinary production cannot use space held by a barter offer", () => {
-  const seller = player({ wood: 299, [core]: 1 }); offer(seller);
+  const seller = player({ wood: 49, [core]: 1 }); offer(seller);
   const body = command(seller, { action: "start_exploration", targetId: "forest", quantity: 1, totalPrice: 0 });
   const job = economy.commandDevEconomy(seller.token, body, now).state.jobs[0];
   const at = Date.parse(job.finishesAt), before = read(seller, at);

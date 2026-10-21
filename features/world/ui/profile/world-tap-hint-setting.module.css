@@ -1,0 +1,10 @@
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 12px 0; }
+.setting label { display: grid; gap: 7px; min-width: 0; cursor: pointer; }
+.setting strong { color: #e2ebd7; font-size: 14px; line-height: 1.4; }
+.setting label span { color: #aab49f; font-size: 12px; line-height: 1.5; }
+.setting > button { flex-shrink: 0; }
+.setting[data-tone="forest"] { padding: 13px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 14px; background: #e5e8cb; }
+.setting[data-tone="forest"] strong { color: var(--forest-ink, #394d3e); }
+.setting[data-tone="forest"] label span { color: var(--forest-muted, #59624d); }
+.setting[data-tone="forest"] > button:focus-visible { outline-color: var(--forest-focus, #355e48); }
+@media (forced-colors: active) { .setting[data-tone="forest"] { border-color: ButtonText; } }

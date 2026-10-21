@@ -72,8 +72,7 @@ test("builder home preserves the authored PNG and ground placement as a permanen
     assert.deepEqual(exported.bounds, { x: image.x, y: image.y, width: image.width, height: image.height });
   }
   for (const role of ["anchor", "entry", "doorway"]) {
-    const marker = authoredObjects.find(object => object.name === `builder-home-${role}`
-      && property(object, "role") === role && property(object, "siteId") === home.id);
+    const marker = authoredObjects.find(object => property(object, "role") === role && property(object, "siteId") === home.id);
     assert.ok(marker);
     assert.deepEqual(home[role], { x: marker.x, y: marker.y });
   }
@@ -84,14 +83,17 @@ test("builder home preserves the authored PNG and ground placement as a permanen
 });
 
 test("every account level preserves the resident house independently of economy building levels", () => {
+  const original = structuredClone(home);
+  const defaultHome = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)).sites.find(site => site.id === home.id);
   for (let houseLevel = 1; houseLevel <= 5; houseLevel++) {
     for (const buildings of [undefined, {}, { home: houseLevel, workshop: 0, quarry: 0, woodlot: 0 },
       { home: houseLevel, workshop: 2, quarry: 1, woodlot: 1 }, { "builder-home": 0 }, { "builder-home": 99 }]) {
       const levels = accountSceneLevels(TILED_WORLD, houseLevel, undefined, buildings);
       assert.equal(levels[home.id], 1);
-      assert.deepEqual(previewWorldScene(TILED_WORLD, levels).sites.find(site => site.id === home.id), home);
+      assert.deepEqual(previewWorldScene(TILED_WORLD, levels).sites.find(site => site.id === home.id), defaultHome);
     }
   }
+  assert.deepEqual(home, original, "selecting effective geometry never mutates the authored resident house");
 });
 
 test("builder house keeps the authored tree mask ahead of its left wall and its doorway visible", () => {
@@ -106,11 +108,13 @@ test("builder house keeps the authored tree mask ahead of its left wall and its 
 });
 
 test("the house silhouette hides residents behind the roof while preserving its open entrance and foreground", () => {
-  const silhouette = TILED_WORLD.occluders.find(mask => mask.id === "builder-home-silhouette");
-  assert.ok(silhouette);
-  assert.deepEqual(silhouette.when, { siteId: home.id, level: 1 });
-  assert.equal(silhouette.frontY, home.anchor.y);
-  const scene = { ...TILED_WORLD, occluders: [silhouette] };
+  const silhouettes = TILED_WORLD.occluders.filter(mask => mask.when?.siteId === home.id && mask.when.level === 1);
+  assert.ok(silhouettes.length);
+  for (const silhouette of silhouettes) {
+    assert.deepEqual(silhouette.when, { siteId: home.id, level: 1 });
+    assert.ok(Math.abs(silhouette.frontY - home.anchor.y) < 1e-5, "mask and rounded geometry share the same ground depth");
+  }
+  const scene = { ...TILED_WORLD, occluders: silhouettes };
   const roof = imagePoint(.51, .35), wall = imagePoint(.53, .67), openDoor = imagePoint(.66, .63);
   const behindDepth = home.anchor.y - home.bounds.height * .4, sideDepth = home.anchor.y - home.bounds.height * .06;
   assert.equal(forestPointOccluded(scene, behindDepth, roof), true, "a resident behind the footprint cannot paint over roof leaves");

@@ -9,7 +9,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createForestWaterDynamics: create, advanceForestWaterDynamics: advance,
-  disturbForestWater: disturb, touchForestWater: touch, sampleForestWater: sample, WATER_DYNAMICS_LIMITS: limits } =
+  disturbForestWater: disturb, touchForestWater: touch, sampleForestWater: sample,
+  createForestWaterPointSampler: pointSampler, WATER_DYNAMICS_LIMITS: limits } =
   await vite.ssrLoadModule("/features/world/environment/water/forest-water-dynamics.ts");
 const { dynamicsFootprintFits, containsDynamicsWater } = await vite.ssrLoadModule("/features/world/environment/water/water-dynamics-geometry.ts");
 const actual = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
@@ -235,4 +236,60 @@ test("tap forces and moving leaf footprints cannot cross a sub-grid island or se
     assert.ok(leaf.x < 116.4, "the full leaf stays on its original side");
     assert.ok(dynamicsFootprintFits(state.geometry, leaf, leaf.size + .6 * state.scale));
   }
+});
+
+test("cached fixed-point sampling matches checked water samples across live waves and independent sessions", () => {
+  const state = create(actual), other = create(actual);
+  const stride = Math.max(4, Math.ceil(Math.max(state.columns, state.rows) / 48));
+  const size = state.cellSize * stride, radius = size * Math.SQRT1_2 + 1.5 * state.scale;
+  const probes = [];
+  for (let row = 0; row < state.rows; row += stride) for (let column = 0; column < state.columns; column += stride) {
+    const point = { x: state.origin.x + column * state.cellSize + size / 2,
+      y: state.origin.y + row * state.cellSize + size / 2 };
+    if (dynamicsFootprintFits(state.geometry, point, radius)) probes.push({ point, read: pointSampler(state.geometry, point) });
+  }
+  assert.ok(probes.length > 250, "cover both river arms using the refraction's certified centers");
+  disturb(state, probes[0].point, { strength: 2 });
+  disturb(other, probes.at(-1).point, { strength: -2 });
+  for (let phase = 0; phase < 5; phase++) {
+    run(state, .2, { rain: .5, wind: .6 });
+    run(other, .2, { rain: 0, wind: .2 });
+    for (const { point, read } of probes) {
+      assert.deepEqual(read(state), sample(state, point));
+      assert.deepEqual(read(other), sample(other, point), "shared geometry never caches another session's wave values");
+    }
+  }
+});
+
+test("cached point samplers retain exact boundaries, tiny exclusions, and checked replacement geometry", () => {
+  const world = scene([rectangle(0, 0, 240, 240)], [rectangle(111.1, 70, .2, 100)]);
+  const state = create(world), changed = create(scene([rectangle(0, 0, 240, 240)], [rectangle(50, 50, 50, 50)]));
+  for (const point of [{ x: 0, y: 120 }, { x: 240, y: 120 }, { x: -.000001, y: 120 },
+    { x: 111.1, y: 100 }, { x: 111.2, y: 100 }, { x: 111.3, y: 100 },
+    { x: 111.09, y: 100 }, { x: 111.31, y: 100 }, { x: 70, y: 70 },
+    { x: NaN, y: 100 }, { x: Infinity, y: 100 }]) {
+    const read = pointSampler(state.geometry, point);
+    assert.deepEqual(read(state), sample(state, point));
+    assert.deepEqual(read(changed), sample(changed, point), "new shoreline rechecks the saved world point");
+  }
+  const anchor = { x: 70, y: 70 }, fixed = pointSampler(state.geometry, anchor);
+  anchor.x = 111.2;
+  disturb(state, { x: 70, y: 70 });
+  assert.deepEqual(fixed(state), sample(state, { x: 70, y: 70 }), "external mutation cannot move the fixed painter point");
+  assert.equal(fixed(changed).height, 0, "a formerly wet anchor becomes dry after geometry replacement");
+});
+
+test("a certified fixed point skips repeated polygon membership without weakening ordinary samples", () => {
+  const state = create(scene()), geometry = state.geometry, surfaces = geometry.surfaces;
+  let reads = 0;
+  Object.defineProperty(geometry, "surfaces", { configurable: true, get() { reads++; return surfaces; } });
+  try {
+    const point = { x: 70, y: 110 }, read = pointSampler(geometry, point);
+    assert.ok(reads > 0, "certify exact water membership once");
+    reads = 0;
+    for (let frame = 0; frame < 100; frame++) read(state);
+    assert.equal(reads, 0, "fixed draws read current grid arrays without polygon walks");
+    sample(state, point);
+    assert.ok(reads > 0, "the public arbitrary-point sampler still checks exact water geometry");
+  } finally { Object.defineProperty(geometry, "surfaces", { configurable: true, writable: true, value: surfaces }); }
 });

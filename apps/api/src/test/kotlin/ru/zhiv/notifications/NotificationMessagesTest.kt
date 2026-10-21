@@ -9,6 +9,15 @@ import ru.zhiv.economy.EconomyRules
 import kotlin.test.*
 
 class NotificationMessagesTest {
+    @Test fun `mail push contains a generic invitation and no letter payload`() {
+        val mail=NotificationMessageEvent("mail")
+        val actual=notificationMessage(listOf(mail,mail))
+        assertEquals("Письмо от администрации",actual.title)
+        assertEquals("Новое письмо от администрации. Откройте почту.",actual.body)
+        val combined=notificationMessage(listOf(mail,NotificationMessageEvent("checkin")))
+        assertContains(combined.body,actual.body)
+        assertTrue(combined.body.length<=360)
+    }
     private val startedAt = "2026-10-13T08:00:00Z"
     private val finishesAt = "2026-10-13T09:00:00Z"
     private fun job(kind: String, target: String, rewards: Map<String, Long> = emptyMap(), id: String = "$kind:$target") =
@@ -74,6 +83,12 @@ class NotificationMessagesTest {
             "hearty_fish" to "2 порции сытного рыбного ужина", "epic_fish" to "2 порции праздничной рыбы",
             "legendary_fish" to "2 порции акульего жаркого", "wood" to "2 ед. древесины", "hardwood" to "2 ед. твёрдой древесины",
             "resin" to "2 ед. смолы", "fiber" to "2 пучка волокна",
+            "strawberries" to "2 ягоды клубники", "blueberries" to "2 ягоды черники",
+            "currants" to "2 ягоды смородины", "blackberries" to "2 ягоды ежевики", "cranberries" to "2 ягоды клюквы",
+            "berry_compote" to "2 порции малинового компота", "strawberry_compote" to "2 порции клубничного компота",
+            "blueberry_compote" to "2 порции черничного компота", "currant_jelly" to "2 порции смородинового желе",
+            "blackberry_preserve" to "2 порции ежевичного варенья", "cranberry_glaze" to "2 порции клюквенного десерта",
+            "trail_ration" to "2 походных пайка", "research_gear" to "2 комплекта снаряжения исследователя",
         )
         expectations.forEach { (resource, expected) ->
             assertEquals("Готово: $expected. Можно забрать в кладовую.", message(job("production", "workshop", mapOf(resource to 2))).body)
@@ -105,12 +120,18 @@ class NotificationMessagesTest {
             "abandoned_quarry" to "из заброшенного карьера", "quarry_stone" to "из шахты",
             "quarry_stone_overnight" to "из шахты", "quarry_ore" to "из шахты", "quarry_clay" to "из шахты",
             "quarry_sand" to "из шахты", "quarry_shift" to "из шахты", "quarry_deep_face" to "из шахты", "quarry_supply" to "из шахты",
+            "quarry_stone_hour" to "из шахты", "quarry_ore_hour" to "из шахты", "quarry_ore_overnight" to "из шахты",
+            "quarry_clay_hour" to "из шахты", "quarry_clay_overnight" to "из шахты", "quarry_sand_hour" to "из шахты",
+            "quarry_sand_overnight" to "из шахты",
         )
-        assertEquals(EconomyRules.catalog.explorations.map { it.id }.toSet(), expectedPlaces.keys)
+        val namedRoutes = mapOf("far_bank_path" to "Тропа дальнего берега", "far_bank_grove" to "Роща за рекой", "ancient_ruins" to "Древние руины")
+        assertEquals(EconomyRules.catalog.explorations.map { it.id }.toSet(), expectedPlaces.keys + namedRoutes.keys)
         EconomyRules.catalog.explorations.forEach { route ->
             val actual = message(job("exploration", route.id, route.rewards))
             assertEquals("Мохлик вернулся", actual.title)
-            assertTrue(actual.body.startsWith("Мохлик вернулся ${expectedPlaces.getValue(route.id)}."), route.id)
+            val expected = expectedPlaces[route.id]?.let { "Мохлик вернулся $it." }
+                ?: "Мохлик завершил маршрут «${namedRoutes.getValue(route.id)}»."
+            assertTrue(actual.body.startsWith(expected), route.id)
             assertFalse(actual.body.any { it.isDigit() }, route.id)
         }
         val fishing = job("exploration", "shore", mapOf("fish_shark" to 1, "fish" to 2, "moon_crystal" to 1)).copy(
@@ -120,6 +141,29 @@ class NotificationMessagesTest {
         assertFalse(hidden.contains("акул", ignoreCase = true))
         assertFalse(hidden.contains("кристалл", ignoreCase = true))
         assertEquals(message(fishing), message(fishing.copy(rewards = mapOf("fish" to 4), fishing = null, rareDrop = null)))
+    }
+
+    @Test fun `confirmed miners have their own message and preserve hero events in mixed batches`() {
+        val mine = job("exploration", "unrelated-route-name", mapOf("moon_crystal" to 1)).copy(actorId = "miner")
+        assertEquals(NotificationMessage("Шахтёр завершил смену", "Работа в шахте завершена. Можно забрать добычу."), message(mine))
+        val hero = job("exploration", "quarry_shift").copy(actorId = "mochlik")
+        assertEquals("Мохлик вернулся", message(hero).title)
+        assertEquals("Мохлик вернулся", message(hero.copy(actorId = null)).title)
+        val events = listOf(NotificationMessageEvent("exploration", mine), NotificationMessageEvent("exploration", hero),
+            NotificationMessageEvent("production", job("production", "workshop", mapOf("planks" to 2))))
+        val mixed = notificationMessage(events)
+        assertEquals("Новости полянки", mixed.title)
+        assertContains(mixed.body, "Работа в шахте завершена.")
+        assertContains(mixed.body, "Мохлик вернулся из шахты.")
+        assertContains(mixed.body, "2 доски")
+        assertFalse(mixed.body.contains("кристалл", ignoreCase = true))
+        assertEquals(mixed, notificationMessage(events.reversed()))
+    }
+
+    @Test fun `harvest keeps all new berry types and their saved quantities`() {
+        val crop = berries(1).copy(rewards = mapOf("strawberries" to 1, "blueberries" to 2, "fiber" to 3))
+        assertEquals("1 ягода клубники и 2 ягоды черники готовы к сбору. Вместе с урожаем: 3 пучка волокна. Откройте куст, чтобы Мохлик собрал урожай.", message(crop, "harvest").body)
+        assertEquals("1 ягода клюквы готова к сбору. Откройте куст, чтобы Мохлик собрал урожай.", message(crop.copy(rewards = mapOf("cranberries" to 1)), "harvest").body)
     }
 
     @Test fun `every construction names its building and actual target level`() {

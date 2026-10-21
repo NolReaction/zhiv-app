@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({
-  appType: "custom", configFile: false, root,
+  appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-main-course-audit-model-vite",
   resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false },
 });
@@ -16,6 +16,7 @@ const {
   WORLD_ONBOARDING_STEPS,
   parseWorldOnboarding,
   transitionWorldOnboarding,
+  worldOnboardingNeedsHarvest,
 } = await vite.ssrLoadModule("/features/world/domain/world-onboarding.ts");
 const {
   createWorldOnboardingStore,
@@ -53,6 +54,89 @@ test("the introduction includes berry practice, neighbors, orders and workshop w
   assert.ok(Object.isFrozen(WORLD_ONBOARDING_STEPS));
   assert.ok(WORLD_ONBOARDING_STEPS.every(Object.isFrozen));
   assert.equal(new Set(WORLD_ONBOARDING_STEPS.map(step => step.pose)).size, stepIds.length);
+  const orders = WORLD_ONBOARDING_STEPS.find(step => step.id === "orders");
+  assert.equal(orders.selector, undefined, "the authored board contour is highlighted on the canvas");
+  assert.match(orders.text, /Доска заказов на карте открывает журнал/);
+  assert.match(orders.summary, /выделенную доску/);
+  const expedition = WORLD_ONBOARDING_STEPS.find(step => step.id === "expeditions");
+  assert.match(expedition.text, /выбери занятие, затем маршрут/);
+  const help = WORLD_ONBOARDING_STEPS.find(step => step.id === "help");
+  assert.match(help.text, /«Что здесь делать\?»/);
+  assert.match(help.hint, /профиль.*«\?».*«Повторить обучение».*«Продолжить обучение»/);
+});
+
+function completeRun(progress = transitionWorldOnboarding(null, { type: "start" })) {
+  for (let index = 1; index < stepIds.length; index++) {
+    progress = transitionWorldOnboarding(progress, { type: "step", stepId: stepIds[index], completeCurrent: true });
+  }
+  return transitionWorldOnboarding(progress, { type: "complete", now });
+}
+
+test("only all explicitly completed lessons create a persisted completion reward intent", () => {
+  const progress = completeRun();
+  assert.equal(progress.status, "completed");
+  assert.equal(progress.rewardReady, true);
+  assert.deepEqual(progress.completedSteps, stepIds);
+  assert.deepEqual(parse(progress), progress);
+  const storage = memoryStorage();
+  writeWorldOnboarding("FULL-COURSE", progress, storage);
+  const reopened = createWorldOnboardingStore("FULL-COURSE", storage);
+  reopened.restore();
+  assert.equal(reopened.getSnapshot().progress.rewardReady, true, "offline completion can be delivered after reentry");
+  assert.equal(readWorldOnboarding("ANOTHER-PLAYER", storage), null);
+  const acknowledged = transitionWorldOnboarding(progress, { type: "reward-acknowledged" });
+  assert.equal(acknowledged.rewardReady, undefined);
+  assert.equal(acknowledged.status, "completed");
+  assert.deepEqual(acknowledged.completedSteps, stepIds);
+  assert.equal(parse(acknowledged).rewardReady, undefined);
+});
+
+test("skipping or going back does not earn a lesson, while completing it on return does", () => {
+  let progress = transitionWorldOnboarding(null, { type: "start" });
+  progress = transitionWorldOnboarding(progress, { type: "step", stepId: "pantry" });
+  assert.equal(progress.completedSteps, undefined);
+  progress = transitionWorldOnboarding(progress, { type: "step", stepId: "garden", completeCurrent: true });
+  assert.deepEqual(progress.completedSteps, ["pantry"]);
+  progress = transitionWorldOnboarding(progress, { type: "step", stepId: "profile" });
+  assert.deepEqual(progress.completedSteps, ["pantry"], "back navigation cannot mark garden complete");
+  progress = transitionWorldOnboarding(progress, { type: "step", stepId: "pantry", completeCurrent: true });
+  assert.deepEqual(progress.completedSteps, ["profile", "pantry"]);
+  for (let index = 2; index < stepIds.length; index++) {
+    progress = transitionWorldOnboarding(progress, { type: "step", stepId: stepIds[index], completeCurrent: true });
+  }
+  assert.equal(transitionWorldOnboarding(progress, { type: "complete", now }).rewardReady, true);
+});
+
+test("each omitted lesson blocks the reward until a later complete replay", () => {
+  for (let omitted = 0; omitted < stepIds.length - 1; omitted++) {
+    let progress = transitionWorldOnboarding(null, { type: "start" });
+    for (let index = 1; index < stepIds.length; index++) {
+      progress = transitionWorldOnboarding(progress, { type: "step", stepId: stepIds[index], completeCurrent: index - 1 !== omitted });
+    }
+    const partial = transitionWorldOnboarding(progress, { type: "complete", now });
+    assert.equal(partial.rewardReady, undefined, `omitting ${stepIds[omitted]} cannot grant a reward`);
+    assert.equal(completeRun(transitionWorldOnboarding(partial, { type: "replay" })).rewardReady, true);
+  }
+  const earlySkip = transitionWorldOnboarding(null, { type: "skip", now });
+  assert.equal(earlySkip.rewardReady, undefined);
+  assert.equal(completeRun(transitionWorldOnboarding(earlySkip, { type: "replay" })).rewardReady, true);
+});
+
+test("old completions and malformed reward flags never acquire a new award intent", () => {
+  for (const version of [1, 2]) {
+    const progress = parse({ version, status: "completed", finishedAt: now });
+    assert.equal(progress.rewardReady, undefined);
+    assert.equal(transitionWorldOnboarding(progress, { type: "complete", now }).rewardReady, undefined);
+  }
+  for (const completedSteps of [undefined, [], ["help"], Array(9).fill("help"), [...stepIds.slice(1), "unknown"]]) {
+    assert.equal(parse({ version: 2, status: "completed", rewardReady: true, completedSteps }).rewardReady, undefined);
+  }
+  const reordered = parse({ version: 2, status: "completed", rewardReady: true,
+    completedSteps: [...stepIds].reverse().concat("profile", "unrecognized") });
+  assert.deepEqual(reordered.completedSteps, stepIds, "only the bounded known lesson set is retained");
+  assert.equal(reordered.rewardReady, true);
+  assert.equal(parse({ ...reordered, status: "skipped" }).rewardReady, undefined);
+  assert.equal(parse({ ...reordered, status: "started", stepId: "help" }).rewardReady, undefined);
 });
 
 test("every saved step resumes at the same place with its real crop reference", () => {
@@ -397,4 +481,58 @@ test("an update preserves existing players' terminal decisions and does not rewr
       assert.equal(storage.getItem(store.pauseStorageKey), null, "restoring does not invent a new preference");
     }
   }
+});
+
+
+test("only an actual tracked crop receipt persists harvest proof across steps and reload", () => {
+  const before = { ...started("orders"), cropJobId };
+  const harvested = transitionWorldOnboarding(before, { type: "harvest", jobId: cropJobId });
+  assert.deepEqual(harvested, { ...started("orders"), harvested: true });
+  assert.deepEqual(parse(harvested), harvested);
+  assert.deepEqual(parse({ ...harvested, cropJobId }), harvested, "an old saved crop cannot override a confirmed harvest");
+  assert.deepEqual(transitionWorldOnboarding(harvested, { type: "crop", jobId: cropJobId }), harvested,
+    "a late observer cannot reattach the already received crop");
+  for (const stepId of stepIds) {
+    assert.deepEqual(transitionWorldOnboarding(harvested, { type: "step", stepId }), { ...started(stepId), harvested: true });
+  }
+  assert.deepEqual(transitionWorldOnboarding(harvested, { type: "complete", now }), { ...finished("completed"), harvested: true });
+  assert.deepEqual(transitionWorldOnboarding(harvested, { type: "replay" }), started("profile"));
+  assert.deepEqual(transitionWorldOnboarding(harvested, { type: "start" }), started("profile"));
+  for (const invalid of [undefined, null, false, "true", 1, {}, []]) {
+    assert.deepEqual(parse({ ...started("orders"), harvested: invalid }), started("orders"));
+  }
+});
+
+test("a stale harvest callback cannot complete another crop or a new replay", () => {
+  for (const progress of [null, started("profile"), { ...started("grow"), cropJobId: "new-crop" }]) {
+    assert.deepEqual(transitionWorldOnboarding(progress, { type: "harvest", jobId: cropJobId }), progress);
+  }
+  const order = { items: { berries: 1 } };
+  assert.equal(worldOnboardingNeedsHarvest(started("orders"), order), true);
+  assert.equal(worldOnboardingNeedsHarvest({ ...started("orders"), harvested: true }, order), false);
+  assert.equal(worldOnboardingNeedsHarvest(started("orders"), order, true), false);
+  assert.equal(worldOnboardingNeedsHarvest(started("orders"), { items: { berries: 2 } }), false);
+  assert.equal(worldOnboardingNeedsHarvest(started("orders"), { items: { berries: 1, stone: 1 } }), false);
+  assert.equal(worldOnboardingNeedsHarvest(started("neighbors"), order), false);
+  assert.equal(worldOnboardingNeedsHarvest(terminal("completed"), order), false);
+});
+
+
+test("harvest proof survives the account store and pause without unlocking another player's lesson", () => {
+  const storage = memoryStorage(), first = createWorldOnboardingStore("HARVEST-OWNER", storage);
+  first.restore();
+  first.save({ ...started("orders"), cropJobId });
+  advance(first, { type: "harvest", jobId: cropJobId });
+  first.setPaused(true);
+  const reopened = createWorldOnboardingStore("HARVEST-OWNER", storage);
+  reopened.restore();
+  assert.deepEqual(reopened.getSnapshot(), { loaded: true, paused: true, progress: { ...started("orders"), harvested: true } });
+  const second = createWorldOnboardingStore("NO-HARVEST-OWNER", storage);
+  second.restore();
+  second.save(started("orders"));
+  assert.equal(worldOnboardingNeedsHarvest(second.getSnapshot().progress, { items: { berries: 1 } }), true);
+  assert.equal(second.getSnapshot().paused, false);
+  advance(reopened, { type: "replay" });
+  assert.deepEqual(reopened.getSnapshot().progress, started("profile"));
+  assert.deepEqual(second.getSnapshot().progress, started("orders"));
 });

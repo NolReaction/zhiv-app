@@ -93,7 +93,7 @@ class JdbcAccountLifecycleIntegrationTest {
         execute("INSERT INTO recipient_sharing_preferences(actor_user_id,recipient_user_id,sharing_mode) VALUES (?,?,?) ON CONFLICT(actor_user_id,recipient_user_id) DO UPDATE SET sharing_mode=EXCLUDED.sharing_mode",a.id,b.id,mode)
     }
 
-    @Test fun `workshop gift consumed in either account survives real merge without another award`(): Unit=runBlocking {
+    @Test fun `historical workshop gift consumed in either account survives real merge without another award`(): Unit=runBlocking {
         for (targetClaims in listOf(false, true)) {
             val a=account(); val b=account(); val browser=tokens.issue().hash
             val economy=JdbcEconomyRepository(source)
@@ -101,7 +101,19 @@ class JdbcAccountLifecycleIntegrationTest {
             val recipient=if(targetClaims) a else b
             val before=economy.snapshot(recipient.session)
             val request=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"claim_workshop_starter","workshop")
-            economy.command(recipient.session,request)
+            // The retired command cannot grant a gift today; seed the original paid state and receipt.
+            val historicalItems=mapOf("wood" to 10L,"stone" to 8L)
+            val persisted=source.connection.use { readEconomyProfile(it,recipient.id).state }
+            val historical=persisted.copy(workshopStarterClaimed=true,
+                wallet=persisted.wallet.copy(coins=persisted.wallet.coins+1200),
+                inventory=(persisted.inventory.keys+historicalItems.keys).associateWith {
+                    (persisted.inventory[it] ?: 0L)+(historicalItems[it] ?: 0L) })
+            execute("UPDATE economy_profiles SET state=?::jsonb,revision=revision+1 WHERE user_id=?",economyJson.encodeToString(historical),recipient.id)
+            execute("INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision) VALUES (?,?,?,?,?)",
+                recipient.id,UUID.fromString(request.requestId),economyJson.encodeToString(request),"Материалы мастерской получены",before.revision+1)
+            execute("INSERT INTO economy_ledger(user_id,source_key,kind,coins,items) VALUES (?,?,'claim_workshop_starter',1200,?::jsonb)",
+                recipient.id,"command:${request.requestId}",economyJson.encodeToString(historicalItems))
+            assertTrue(economy.command(recipient.session,request).replayed)
             val targetBefore=economy.snapshot(a.session); val sourceBefore=economy.snapshot(b.session)
             assertEquals(targetClaims,targetBefore.workshopStarterClaimed)
             assertEquals(!targetClaims,sourceBefore.workshopStarterClaimed)
@@ -115,7 +127,7 @@ class JdbcAccountLifecycleIntegrationTest {
                 (targetBefore.inventory[it] ?: 0L)+(sourceBefore.inventory[it] ?: 0L) }
             assertEquals(expectedInventory,merged.inventory)
             assertEquals(0,merged.buildings["workshop"])
-            assertEquals("ECONOMY_WORKSHOP_STARTER_CLAIMED",assertFailsWith<AuthFailure> {
+            assertEquals("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE",assertFailsWith<AuthFailure> {
                 economy.command(a.session,EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"claim_workshop_starter","workshop"))
             }.code)
             if(!targetClaims) {
@@ -167,6 +179,10 @@ class JdbcAccountLifecycleIntegrationTest {
             economy.snapshot(current.session)
             execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'thousand_taps','2020-01-01T00:00:00Z')",current.id)
         }
+        // Both paid daily gifts must fit after union; the target already owns the second warehouse.
+        val targetState=source.connection.use { readEconomyProfile(it,a.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(targetState.copy(
+            buildings=targetState.buildings+("home" to 2)+("warehouse" to 2))),a.id)
         val preview=readyMerge(a,b,browser)
         val paidA=rewards.claim(a.session,request(a,"thousand_taps")); val paidB=rewards.claim(b.session,request(b,"thousand_taps"))
         assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,preview) }.code)
@@ -216,6 +232,10 @@ class JdbcAccountLifecycleIntegrationTest {
         for((owner,email) in listOf(a to emailA,b to emailB))
             auth.finish(emailFlow("link",email,owner.session),email,tokens.issue().hash,365,"Unused")
         val rewards=JdbcProgressionRewardsRepository(source);val economy=JdbcEconomyRepository(source)
+        economy.snapshot(a.session)
+        val targetState=source.connection.use { readEconomyProfile(it,a.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(targetState.copy(
+            buildings=targetState.buildings+("home" to 2)+("warehouse" to 2))),a.id)
         for(owner in listOf(a,b)) {
             val publicId=checkNotNull(scalar("SELECT public_id FROM app_users WHERE id=?",owner.id))
             rewards.claim(owner.session,ProgressionRewardClaim(UUID.randomUUID().toString(),publicId,"daily"))
@@ -755,12 +775,13 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account();val b=account();val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         fun prepare(owner: Account, amount: Long) {
-            val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to amount),completedExplorations=1)
+            val initial=EconomyRules.initial(homeLevel=2)
+            val state=initial.copy(inventory=mapOf("berries" to amount),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
             execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
         }
         economy.snapshot(a.session);economy.snapshot(b.session);prepare(a,5);prepare(b,8)
         val before=economy.snapshot(b.session)
-        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,90)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,30)
         market.command(b.session,listing)
         val listingId=UUID.fromString(market.market(b.session).mine.single().id)
         assertEquals(5L,economy.snapshot(b.session).inventory["berries"])
@@ -779,7 +800,7 @@ class JdbcAccountLifecycleIntegrationTest {
         assertFailsWith<AuthFailure> { market.command(a.session,listing.copy(ownerPublicId=merged.ownerPublicId,expectedRevision=merged.revision)) }
         auth.confirmMerge(a.session,browser,key)
         assertEquals(13L,economy.snapshot(a.session).inventory["berries"])
-        val active=EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"create_listing","berries",2,60)
+        val active=EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"create_listing","berries",2,20)
         market.command(a.session,active)
         prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
         assertEquals("0",scalar("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'",a.id))
@@ -792,19 +813,21 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account();val b=account();val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         economy.snapshot(a.session);economy.snapshot(b.session)
-        for(owner in listOf(a,b)) {
-            val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 500_000_001L),completedExplorations=1)
+        for((owner,amount) in listOf(a to 25L,b to 26L)) {
+            val initial=EconomyRules.initial(homeLevel=2)
+            val state=initial.copy(inventory=mapOf("berries" to amount),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
             execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
         }
         val before=economy.snapshot(b.session)
-        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,90)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,30)
         market.command(b.session,listing)
         val listingId=UUID.fromString(market.market(b.session).mine.single().id)
+        assertEquals(48L,economy.snapshot(a.session).storage.used+economy.snapshot(b.session).storage.used)
         prove(a,browser,"merge");prove(a,browser,"merge","other",b)
         val preview=auth.previewMerge(a.session,browser,MergeChoices(providerChoices=mapOf("vk" to "current")),tokens.issue().hash)
         assertTrue(preview.conflicts.any { it.contains("вместимость") })
         assertEquals("active",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
-        assertEquals(499_999_998L,economy.snapshot(b.session).inventory["berries"])
+        assertEquals(23L,economy.snapshot(b.session).inventory["berries"])
     }
 
 
@@ -812,22 +835,23 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account();val b=account();val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         economy.snapshot(a.session);economy.snapshot(b.session)
-        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 180L),completedExplorations=1)
-        val sourceState=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 280L,"stone" to 40L),
-            buildings=EconomyRules.initial(homeLevel=2).buildings + ("warehouse" to 2),completedExplorations=1)
+        val initial=EconomyRules.initial(homeLevel=2)
+        val target=initial.copy(inventory=mapOf("wood" to 35L),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
+        val sourceState=initial.copy(inventory=mapOf("berries" to 55L,"stone" to 10L),
+            buildings=initial.buildings + mapOf("warehouse" to 2,"bridge" to 1),completedExplorations=1)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(sourceState),b.id)
         val before=economy.snapshot(b.session)
-        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",20,600)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",20,200)
         market.command(b.session,listing)
         val listingId=UUID.fromString(market.market(b.session).mine.single().id)
         val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
         val merged=economy.snapshot(a.session)
         assertEquals(2,merged.buildings["warehouse"])
-        assertEquals(500L,merged.storage.capacity)
-        assertEquals(500L,merged.storage.used)
+        assertEquals(100L,merged.storage.capacity)
+        assertEquals(100L,merged.storage.used)
         assertEquals(0L,merged.storage.reserved)
-        assertEquals(mapOf("wood" to 180L,"berries" to 280L,"stone" to 40L),merged.inventory)
+        assertEquals(mapOf("wood" to 35L,"berries" to 55L,"stone" to 10L),merged.inventory)
         assertEquals("cancelled",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
         auth.confirmMerge(a.session,browser,key)
         assertEquals(merged.inventory,economy.snapshot(a.session).inventory)
@@ -837,13 +861,15 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account();val b=account();val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         economy.snapshot(a.session);economy.snapshot(b.session)
-        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 220L),completedExplorations=1)
-        val other=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 50L,"stone" to 50L),completedExplorations=1)
+        val initial=EconomyRules.initial(homeLevel=2)
+        val target=initial.copy(inventory=mapOf("wood" to 30L),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
+        val other=initial.copy(inventory=mapOf("berries" to 15L,"stone" to 10L),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(other),b.id)
         val snapshot=economy.snapshot(b.session)
-        market.command(b.session,EconomyCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"create_listing","berries",20,600))
+        market.command(b.session,EconomyCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"create_listing","berries",10,100))
         val beforeA=economy.snapshot(a.session);val beforeB=economy.snapshot(b.session)
+        assertEquals(45L,beforeA.storage.used+beforeB.storage.used)
         prove(a,browser,"merge");prove(a,browser,"merge","other",b)
         val key=tokens.issue().hash
         val preview=auth.previewMerge(a.session,browser,MergeChoices(providerChoices=mapOf("vk" to "current")),key)

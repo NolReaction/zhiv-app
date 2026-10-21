@@ -14,6 +14,7 @@ const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_D
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
 const { WorldDevCheats } = await vite.ssrLoadModule("/features/world/dev/world-dev-cheats.tsx");
+const { WorldDevBots } = await vite.ssrLoadModule("/features/world/dev/world-dev-bots.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 
@@ -106,6 +107,19 @@ test("each DEV page renders only its controls, with no simulation or account mut
     if (page !== "ai") assert.doesNotMatch(markup, /Данные появятся, когда сцена/);
   }
   assert.equal(worldDevStore.getSnapshot(), snapshot, "opening and switching pages must not reset or override a running scene");
+});
+
+test("the bots page connects its own account tools and visit navigation without rendering preview controls", () => {
+  const visits = [], changes = [], cheats = [];
+  const view = panel("bots", { onVisitBot: target => visits.push(target), onBotsChanged: () => changes.push(true), onOpenCheats: () => cheats.push(true) });
+  const bots = view.elements.find(element => element.type === WorldDevBots);
+  assert.ok(bots); assert.equal(bots.props.world, view.props.world); assert.equal(bots.props.economy, view.props.economy);
+  assert.match(view.markup, /Тестовые друзья/);
+  assert.doesNotMatch(view.markup, /Предпросмотр построек|Погода и живность|Готовые сценарии/);
+  const target = { circleId: "circle", targetPublicId: "BOT", displayName: "Сосед" };
+  bots.props.onVisitBot(target); bots.props.onBotsChanged(); bots.props.onOpenCheats();
+  assert.deepEqual(visits, [target]); assert.deepEqual(changes, [true]); assert.deepEqual(cheats, [true]);
+  assert.deepEqual(view.calls.patches, []); assert.deepEqual(view.calls.actions, []);
 });
 
 test("garden checks have their own compact page, descriptive disabled actions and an available cancel", () => {
@@ -388,6 +402,22 @@ test("DEV wallet and grant labels halve pearls while currency commands keep thei
   assert.deepEqual(view.props.economy.snapshot.wallet, { coins: 17, pearls: 7 });
 });
 
+test("DEV distinguishes the independent miner and keeps missing-actor saved mining owned by Mochlik", () => {
+  const saved = { id: "mining", kind: "exploration", targetId: "quarry_stone", recipeId: null, targetLevel: null,
+    startedAt: new Date(cheatNow - 1_000).toISOString(), finishesAt: new Date(cheatNow + 180_000).toISOString(),
+    rewards: { stone: 1 }, cost: { coins: 0, items: {} }, catalogVersion: economyCatalog.version };
+  const miner = cheats({}, { jobs: [{ ...saved, actorId: "miner" }] });
+  assert.match(miner.markup, /Шахтёр · Добыть камень/);
+  assert.doesNotMatch(miner.markup, /Мохлик · Добыть камень/);
+  assert.deepEqual(miner.commands, []); assert.deepEqual(miner.claims, []);
+  for (const actorId of [undefined, null]) {
+    const legacy = cheats({}, { jobs: [{ ...saved, actorId }] });
+    assert.match(legacy.markup, /Мохлик · Добыть камень/);
+    assert.doesNotMatch(legacy.markup, /Шахтёр · Добыть камень/);
+    assert.deepEqual(legacy.commands, []); assert.deepEqual(legacy.claims, []);
+  }
+});
+
 test("unpermitted servers, unloaded accounts, pending receipts and cooldowns prevent cheat dispatch", () => {
   for (const [patch, props] of [[{}, { world: { snapshot: { devTools: false } } }], [{ snapshot: null }, {}],
     [{ uncertain: true }, {}], [{ busy: true }, {}], [{ retryAt: cheatNow + 5000 }, {}], [{ devAvailable: false }, {}]]) {
@@ -521,8 +551,9 @@ test("DEV inventory browser exposes fish, consumable bait and permanent tackle a
     ["all", "materials", "food", "fish", "rods", "hooks", "bait", "relics", "wardrobe"]);
   const items = view.elements.find(element => element.type === "select" && element.props.value === "wood");
   const ids = Children.toArray(items.props.children).map(option => option.props.value);
-  for (const id of ["fish_shark", "fish", "firefly_bait", "leviathan_hook", "starfall_rod", "ancient_core"]) assert.ok(ids.includes(id), id);
+  for (const id of ["fish_common", "fish_uncommon", "fish_rare", "fish_epic", "fish_legendary", "firefly_bait", "star_bait", "leviathan_hook", "starfall_rod", "ancient_core"]) assert.ok(ids.includes(id), id);
   assert.equal(new Set(ids).size, ids.length);
+  for (const species of ["fish", "fish_silverfin", "fish_shark"]) assert.ok(!ids.includes(species), "collection species cannot be granted as separate stock");
   assert.match(view.markup, /data-item-icon="wood"/);
   assert.deepEqual(view.commands, []);
 });

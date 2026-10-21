@@ -6,36 +6,70 @@ import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { WorldObjectMenu, WorldRecipeDetail } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-simple-cards-${process.pid}`,
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const { WorldObjectMenu } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+const { WorldProductionCard } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-card.tsx");
 const { WorldExpeditionSector, ExpeditionRouteDetails } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { worldRecipeGroups } = await vite.ssrLoadModule("/features/economy/ui/stations/world-recipe-groups.ts");
+const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
 function controller(overrides = {}, flags = {}) {
   const state = { ownerPublicId: "ME", revision: 1, serverTime: new Date(now).toISOString(), wallet: { coins: 100, pearls: 0 }, inventory: {},
-    buildings: { home: 2, garden: 2, warehouse: 1, workshop: 2 }, jobs: [], completedExplorations: 0,
+    buildings: { home: 3, garden: 2, warehouse: 1, workshop: 2 }, jobs: [], completedExplorations: 0,
     migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: structuredClone(economyCatalog), ...overrides };
   return { snapshot: { ...state, storage: overrides.storage ?? economyStorage(state) }, market: null, marketError: null, busy: false, uncertain: false, error: null, notice: "", now, retryAt: 0,
-    act() {}, actMarket() {}, refresh() {}, refreshMarket() {}, retry() {}, ...flags };
+    act() { return true; }, actMarket() {}, refresh() {}, refreshMarket() {}, retry() {}, ...flags };
 }
 function renderMenu(place, economy = controller(), extra = {}) {
   return renderToStaticMarkup(createElement(WorldObjectMenu, { selection: { place, objectId: `${place}.position`, x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 }, economy, onClose() {}, ...extra }));
 }
-function renderRecipe(id, economy = controller(), extra = {}) {
-  return renderToStaticMarkup(createElement(WorldRecipeDetail, { economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === id), onCollapse() {}, ...extra }));
+function renderCard(id, economy = controller(), extra = {}) {
+  return renderToStaticMarkup(createElement(WorldProductionCard, { economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === id), ...extra }));
 }
-function section(html, label) {
-  const match = html.match(new RegExp(`<section[^>]*aria-label="${label}"[^>]*>([\\s\\S]*?)</section>`));
-  assert.ok(match, `Missing section: ${label}`);
-  return match[1];
+function cardBlocked(html) {
+  const match = html.match(/<button\b([^>]*data-recipe=[^>]*)>/);
+  assert.ok(match, "Missing one-tap product card");
+  return /data-blocked="true"/.test(match[1]);
 }
-function startDisabled(html) {
-  const match = html.match(/<button\b([^>]*)>Начать ·/);
-  assert.ok(match, "Missing production action");
-  return /\bdisabled=/.test(match[1]);
+
+test("first raspberry aid is visible only in the active lesson and reverts to the catalog duration when paused or used", () => {
+  const economy = controller({ buildings: { home: 1, garden: 1, warehouse: 1 }, tutorialOrder: newTutorialOrder(),
+    progression: { recipes: {}, routes: {}, buildings: {} } });
+  const ordinary = renderCard("grow_berries", economy);
+  assert.doesNotMatch(ordinary, /Сразу · первый урожай/);
+  assert.match(ordinary, /aria-label="Произвести: Малина, 1 мин"/);
+  const fresh = renderCard("grow_berries", economy, { tutorialHarvestActive: true });
+  assert.match(fresh, /Сразу · первый урожай/);
+  assert.match(fresh, /Сбор Мохликом остаётся обычным; помощь доступна один раз/);
+  economy.snapshot.tutorialOrder.firstHarvestPrepared = true;
+  const replay = renderCard("grow_berries", economy, { tutorialHarvestActive: true });
+  assert.doesNotMatch(replay, /Сразу · первый урожай/);
+  assert.match(replay, /aria-label="Произвести: Малина, 1 мин"/);
+});
+
+test("fish cooking retains its catalog class cost and never substitutes a more valuable rarity", () => {
+  const calls = [], economy = controller({ buildings: { home: 5, dryer: 5, warehouse: 1 }, inventory: { fish_common: 2, fish_legendary: 1 } },
+    { act: (...args) => { calls.push(args); return true; } });
+  const before = structuredClone(economy.snapshot), initial = renderCard("cook_grilled_fish", economy);
+  assert.equal(cardBlocked(initial), false); assert.match(initial, /data-item-icon="fish_common"/);
+  assert.doesNotMatch(initial, /data-item-icon="fish_legendary"|<select\b/);
+  assert.deepEqual(economy.snapshot, before); economy.snapshot.inventory.fish_common = 0;
+  const recipe = economy.snapshot.catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish");
+  let tree;
+  function Probe() { tree = WorldProductionCard({ economy, recipe }); return tree; }
+  const blocked = renderToStaticMarkup(createElement(Probe)); assert.equal(cardBlocked(blocked), true);
+  const action = elements(tree).find(element => element.props["data-recipe-order"] !== undefined);
+  action.props.onClick(); assert.deepEqual(calls, [], "legendary stock cannot pay a missing common-fish cost");
+});
+function elements(tree) {
+  const found = [];
+  const walk = element => { if (isValidElement(element)) { found.push(element); Children.forEach(element.props.children, walk); } };
+  walk(tree); return found;
 }
 function prepareMineRoute(economy, routeId = "quarry_stone") {
   let selectedRoute = null, tree;
@@ -43,7 +77,7 @@ function prepareMineRoute(economy, routeId = "quarry_stone") {
   const trackedEconomy = { ...economy, act: (...args) => calls.push(args) };
   function Probe() {
     tree = WorldExpeditionSector({ sectorId: "caves", selectedRoute, onSelectRoute: id => { selectedRoute = id; },
-      economy: trackedEconomy, state: economy.snapshot, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration"), onOpenPantry() {} });
+      economy: trackedEconomy, state: economy.snapshot, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration" && job.actorId !== "miner"), onOpenPantry() {} });
     return tree;
   }
   function walk(element) {
@@ -67,139 +101,138 @@ function prepareMineRoute(economy, routeId = "quarry_stone") {
   const html = renderToStaticMarkup(createElement(Probe)); walk(tree);
   assert.match(html, /data-route-preparation="true"/);
   return { html, calls, departure: elements.find(element => element.type === "button"
-    && element.props["aria-label"] === "Отправиться: Добыть камень") };
+    && element.props["aria-label"] === "Начать добычу: Добыть камень") };
 }
 
-test("workshop presents one catalogue of unlocked recipes regardless of duration", () => {
+
+test("workshop shows one tap products with inline material costs and no preparation screen", () => {
   const html = renderMenu("workshop");
-  const catalogue = section(html, "Доступные рецепты");
-  for (const id of ["make_planks", "make_rope", "weave_cloth", "workshop_overnight"]) assert.ok(catalogue.includes(`data-recipe="${id}"`));
-  assert.doesNotMatch(html, /data-recipe="make_metal_parts"|data-recipe="make_tools"|Обычные заказы|На несколько часов|Позже/);
-  assert.doesNotMatch(html, /aria-label="Стоимость"|Недостающие условия|Начать ·/);
+  assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["make_planks", "make_rope", "weave_cloth"]);
+  assert.match(html, /data-item-icon="fiber"/);
+  assert.match(html, /data-item-icon="rope"/);
+  assert.match(html, /0 \/ 1/);
+  assert.doesNotMatch(html, /data-recipe-preparation|data-recipe-method|Способов|Способ производства|Все рецепты|Начать ·|Откуда брать/);
 });
 
-test("unlocking an external station reveals its recipe in the same catalogue", () => {
-  const html = renderMenu("workshop", controller({ buildings: { home: 2, workshop: 2, kiln: 2, warehouse: 1 } }));
-  assert.match(section(html, "Доступные рецепты"), /data-recipe="make_metal_parts"/);
-});
-
-test("workshop equipment tabs share the header and expose the selected station and its own level", () => {
+test("workshop tabs and all three slot controls remain available beside a focused product", () => {
   const economy = controller({ buildings: { home: 3, workshop: 2, kiln: 1, warehouse: 1 } });
   for (const stationId of ["workshop", "kiln"]) {
-    const html = renderMenu("workshop", economy, { initialStationId: stationId });
-    const header = html.match(/<header\b[^>]*>([\s\S]*?)<\/header>/)?.[1];
-    assert.ok(header);
-    assert.match(header, /role="tablist" aria-label="Оборудование: Мастерская"/);
-    assert.doesNotMatch(header, /<h2|Верстак/);
-    const tabs = [...header.matchAll(/<button\b([^>]*role="tab"[^>]*)>([\s\S]*?)<\/button>/g)];
-    assert.equal(tabs.length, 2);
-    for (const [index, [, attributes, content]] of tabs.entries()) {
-      const selected = (index === 0 ? "workshop" : "kiln") === stationId;
-      assert.match(attributes, new RegExp(`aria-selected="${selected}"`));
-      assert.match(attributes, new RegExp(`tabindex="${selected ? 0 : -1}"`));
-      assert.match(content, index === 0 ? /Мастерская<small>ур. 2<\/small>/ : /Печь<small>ур. 1<\/small>/);
-    }
+    const html = renderMenu("workshop", economy, { initialStationId: stationId, initialRecipeId: "make_planks" });
+    assert.match(html, /role="tablist" aria-label="Оборудование: Мастерская"/);
+    assert.equal((html.match(/role="tab"/g) ?? []).length, 2);
     assert.match(html, /role="tabpanel" aria-labelledby=/);
+    assert.match(html, /data-production-slot="1"/);
+    assert.match(html, /data-production-slot="2"/);
+    assert.match(html, /data-production-slot="3"/);
+    assert.match(html, /aria-haspopup="dialog"/);
+    assert.doesNotMatch(html, /hidden=""[^>]*aria-label="Продукция/);
   }
 });
 
-test("harvest cards distinguish quantity and time while keeping the result name short", () => {
-  const html = renderMenu("garden", controller({ buildings: { home: 1, garden: 1, warehouse: 1 } }));
-  const catalogue = section(html, "Доступные рецепты");
-  const cards = [...catalogue.matchAll(/<button[^>]*data-recipe="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)];
-  assert.equal(cards.length, 2);
-  for (const [, , card] of cards) assert.match(card, /<strong>Лесные ягоды<\/strong>/);
-  assert.match(cards[0][2], /×4<\/b>/);
-  assert.match(cards[0][2], /15 мин/);
-  assert.match(cards[1][2], /×32<\/b>/);
-  assert.match(cards[1][2], /8 ч/);
-});
-
-test("selected recipe shows actual multi-item rewards and only its own costs", () => {
-  const html = renderRecipe("workshop_overnight", controller({ inventory: { wood: 12, fiber: 20 } }));
-  assert.match(html, /Все рецепты/);
-  for (const amount of [6, 4, 1]) assert.match(html, new RegExp(`×${amount}</b>`));
-  assert.match(html, /Понадобится/);
-  assert.match(html, /12 \/ 12/);
-  assert.match(html, /20 \/ 20/);
-  assert.equal(startDisabled(html), false);
-  assert.doesNotMatch(html, /Обычные заказы|На несколько часов|data-recipe=/);
-});
-
-test("selection preserves missing-material navigation and all request locks", () => {
-  const navigation = { open() {}, canOpen() { return true; }, explore() {} };
-  const missing = renderRecipe("make_planks", controller(), { navigation });
-  assert.equal(startDisabled(missing), true);
-  assert.match(missing, /aria-label="Где получить: Древесина, В путь"/);
-  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 10_000 }]) {
-    const html = renderRecipe("make_planks", controller({ inventory: { wood: 2 } }, flags));
-    assert.equal(startDisabled(html), true);
-    assert.match(html, /<button(?![^>]*disabled)[^>]*>[\s\S]*?Все рецепты<\/button>/);
+test("garden upgrades improve the single product automatically and retain precise seconds", () => {
+  for (const [home, garden, raspberryId, strawberryId] of [
+    [1, 1, "grow_berries", "grow_strawberries"],
+    [3, 2, "grow_berries_large", "grow_strawberries"],
+    [3, 3, "garden_season", "grow_strawberries"],
+    [4, 4, "garden_season", "garden_supply"],
+    [5, 5, "garden_season", "garden_abundance"],
+  ]) {
+    const economy = controller({ buildings: { home, garden, warehouse: 1 }, progression: { recipes: { cook_compote: 1 } } });
+    const html = renderMenu("garden", economy);
+    assert.equal((html.match(/data-recipe-product="berries"/g) ?? []).length, 1);
+    assert.equal((html.match(/data-recipe-product="strawberries"/g) ?? []).length, 1);
+    assert.match(html, new RegExp(`data-recipe="${raspberryId}"`));
+    assert.match(html, new RegExp(`data-recipe="${strawberryId}"`));
+    assert.doesNotMatch(html, /Способ производства|data-recipe-method|data-recipe-preparation/);
+    if (garden >= 3) assert.match(html, /30 с/);
+    else if (garden === 2) assert.match(html, /45 с/);
   }
 });
 
-test("locked recipe explains its prerequisites once and remains unavailable", () => {
-  const html = renderRecipe("make_metal_parts", controller({ inventory: { iron_ingot: 1, wood: 1 } }));
-  assert.equal(startDisabled(html), true);
-  assert.match(html, /aria-label="Недостающие условия"/);
-  assert.match(html, /Печь · нужен ур. 2/);
-  assert.doesNotMatch(html, /Печь: нужен уровень 2/);
+test("automatic product grouping preserves paid legacy recipes and chooses personally unlocked improvements", () => {
+  const economy = controller({ buildings: { home: 3, woodlot: 3, garden: 3, warehouse: 1 }, progression: { recipes: {} } });
+  const before = structuredClone(economy.snapshot);
+  const group = () => worldRecipeGroups(economy.snapshot, economy.snapshot.catalog.recipes).find(entry => entry.methods.some(method => method.id === "gather_hardwood"));
+  assert.equal(group().recipe.id, "gather_hardwood");
+  assert.deepEqual(economy.snapshot, before);
+  economy.snapshot.progression.recipes.gather_hardwood = 10;
+  assert.equal(group().recipe.id, "hardwood_shift");
 });
 
-test("direct material navigation opens only unlocked recipe preparations", () => {
-  for (const workshopLevel of [0, 1]) {
-    const economy = controller({ buildings: { home: 2, workshop: workshopLevel, warehouse: 1 }, inventory: { wood: 2 } },
-      { act() { assert.fail("opening recipe preparation cannot start production"); } });
-    const recipe = economy.snapshot.catalog.recipes.find(entry => entry.id === "make_planks");
-    const html = renderMenu("workshop", economy, { initialStationId: "workshop", initialRecipeId: recipe.id });
-    if (!workshopLevel) {
-      assert.doesNotMatch(html, /data-recipe-preparation=|data-recipe="make_planks"|Начать ·/);
-      assert.match(html, /Сначала обустройте это место/);
-      continue;
+test("help links focus the logical product without starting it or hiding existing work", () => {
+  const economy = controller({ buildings: { home: 3, garden: 3, warehouse: 1 } }, { act() { assert.fail("Opening a source must never start production"); } });
+  for (const id of ["grow_berries", "grow_berries_large", "garden_season"]) {
+    const html = renderMenu("garden", economy, { initialRecipeId: id });
+    assert.match(html, /data-recipe="garden_season"[^>]*data-recipe-focused="true"/);
+    assert.match(html, /data-production-slots="garden"/);
+    assert.doesNotMatch(html, /data-recipe-preparation|Все рецепты|data-recipe-method/);
+  }
+  for (const initialRecipeId of ["make_planks", "missing_recipe"]) {
+    assert.doesNotMatch(renderMenu("garden", economy, { initialRecipeId }), /data-recipe-focused="true"/);
+  }
+});
+
+test("crafting shows only its actual ingredient images and quantities inline", () => {
+  const html = renderCard("weave_cloth", controller({ inventory: { wood: 6, fiber: 3, rope: 1 } }));
+  assert.match(html, /data-item-icon="cloth"/);
+  assert.match(html, /data-item-icon="fiber"/);
+  assert.match(html, /3 \/ 5/);
+  assert.match(html, /data-item-icon="rope"/);
+  assert.match(html, /×1/);
+  assert.doesNotMatch(html, /data-item-icon="wood"|<select|Где получить|Открыть рецепт|Все рецепты/);
+  assert.equal(cardBlocked(html), true);
+  assert.doesNotMatch(html, /disabled=/, "shortages remain clickable for an explanation");
+});
+
+test("ordinary production puts the product name alongside its image without an output multiplier", () => {
+  const html = renderCard("grow_berries");
+  const header = html.match(/<span\b[^>]*data-production-header[^>]*>([\s\S]*?)<\/strong><\/span>/)?.[1];
+  assert.ok(header);
+  assert.match(header, /data-item-icon="berries"/);
+  assert.match(header, /<strong[^>]*>Малина/);
+  assert.doesNotMatch(header, /×1/);
+  assert.doesNotMatch(html, /×1/, "free one-item cultivation has no redundant quantity badge or invented inputs");
+  assert.match(html, /1 мин/);
+});
+
+test("larger and mixed production outputs retain their actual quantities", () => {
+  const economy = controller();
+  const recipe = economy.snapshot.catalog.recipes.find(entry => entry.id === "grow_berries");
+  for (const rewards of [{ berries: 3 }, { berries: 1, strawberries: 2 }]) {
+    const html = renderToStaticMarkup(createElement(WorldProductionCard, { economy, recipe: { ...recipe, rewards } }));
+    for (const [id, amount] of Object.entries(rewards)) {
+      assert.match(html, new RegExp(`data-item-icon="${id}"`));
+      assert.match(html, new RegExp(`×${amount}`));
     }
-    const preparation = section(html, recipe.name);
-    assert.match(preparation, /Все рецепты/);
-    assert.match(preparation, /2 \/ 2/);
-    assert.equal(startDisabled(preparation), false);
-    assert.match(html, /<div[^>]*hidden=""[^>]*aria-label="Продукция: Мастерская"/);
   }
 });
 
-test("recipe preparation replaces goal, slots, running jobs and upgrade controls with its own order screen", () => {
-  const economy = controller({ inventory: { wood: 8 }, jobs: [{ id: "existing-planks", kind: "production", targetId: "workshop", recipeId: "make_planks", startedAt: new Date(now - 1_000).toISOString(), finishesAt: new Date(now + 30_000).toISOString(), rewards: { plank: 1 }, cost: { coins: 0, items: { wood: 2 } } }] });
-  const goal = { goal: { buildingId: "home", targetLevel: 3 }, details: { goal: { buildingId: "home", targetLevel: 3 }, name: "Дом", cost: { coins: 100, items: { plank: 8 } }, missing: { coins: 0, items: { plank: 8 } }, keepItems: { wood: 8 }, excessItems: {}, reservesComplete: true }, pin() {}, clear() {} };
-  const catalogue = renderMenu("workshop", economy, { constructionGoal: goal, onOpenGoal() {} });
-  assert.match(catalogue, /data-running-orders="workshop"/);
-  assert.match(catalogue, /aria-haspopup="dialog"/);
-  const html = renderMenu("workshop", economy, { initialRecipeId: "make_planks", constructionGoal: goal, onOpenGoal() {} });
-  assert.match(html, /data-recipe-preparation="make_planks"/);
-  assert.match(html, /data-recipe-scroll="true"/);
-  assert.match(html, /data-recipe-order="true"/);
-  assert.doesNotMatch(html, /data-running-orders=|data-job-id=|aria-haspopup="dialog"|data-construction-goal-open/);
-  assert.match(html, /Все рецепты/);
-  assert.equal(startDisabled(html), true, "the occupied slot still blocks production even though its card is hidden");
+test("locked food cards keep ingredients and bonuses while moving the full prerequisite out of the visible card", () => {
+  const economy = controller({ buildings: { home: 3, dryer: 2, warehouse: 1 }, inventory: { berries: 1 } });
+  const recipe = economy.snapshot.catalog.recipes.find(entry => entry.id === "cook_fish_soup");
+  let tree;
+  function Probe() { tree = WorldProductionCard({ economy, recipe }); return tree; }
+  const html = renderToStaticMarkup(createElement(Probe));
+  const card = elements(tree).find(element => element.type === "button");
+  assert.match(card.props.title, /Приготовьте и заберите/);
+  const contents = renderToStaticMarkup(createElement("div", null, card.props.children));
+  assert.doesNotMatch(contents, /Приготовьте и заберите/, "the long locked-recipe explanation does not increase card height");
+  assert.match(contents, /data-production-inputs/);
+  assert.match(contents, /data-item-icon="fish_common"/);
+  assert.match(contents, /data-item-icon="berries"/);
+  assert.match(contents, /data-item-icon="charcoal"/);
+  assert.match(contents, /0 \/ 2/);
+  assert.match(contents, /Вылазка \+25%/);
+  assert.match(contents, /Стройка \+25%/);
+  assert.match(html, /aria-describedby=/);
+  assert.equal(card.props.disabled, undefined, "a locked card still explains its reason on tap");
 });
 
-test("a direct recipe from another station or an unknown recipe leaves the ordinary catalog visible", () => {
-  const economy = controller({}, { act() { assert.fail("an invalid recipe cannot start production"); } });
-  for (const initialRecipeId of ["grow_berries", "missing_recipe"]) {
-    const html = renderMenu("workshop", economy, { initialStationId: "workshop", initialRecipeId });
-    assert.match(section(html, "Доступные рецепты"), /data-recipe="make_planks"/);
-    assert.doesNotMatch(html, /Начать ·|Все рецепты|<div[^>]*hidden=""[^>]*aria-label="Продукция:/);
-  }
-});
-
-test("storage warning appears only when the selected result will not currently fit", () => {
-  const available = { capacity: 200, used: 198, reserved: 0, available: 2, overflow: 0 };
-  assert.match(renderRecipe("grow_berries", controller({ storage: available })), /Для получения понадобится 4 мест · свободно 2/);
-  assert.doesNotMatch(renderRecipe("grow_berries", controller()), /Для получения понадобится|Место понадобится/);
-});
-
-test("recipe returns to its catalogue only after its own confirmed order, retaining failed or uncertain preparations", async () => {
-  const hookModule = "virtual:production-preparation-hooks";
-  const runtime = await createServer({ appType: "custom", configFile: false, root,
+test("one tap dispatches a single unit, reports shortages and refuses repeated submissions", async () => {
+  const hookModule = "virtual:simple-production-hooks";
+  const runtime = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-simple-card-hooks-${process.pid}`,
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
-    plugins: [{ name: "production-preparation-hooks", enforce: "pre",
+    plugins: [{ name: "simple-production-hooks", enforce: "pre",
       resolveId(id) { if (id === hookModule) return `\0${id}`; },
       load(id) { if (id === `\0${hookModule}`) return `
         let slots = [], cursor = 0, effects = [];
@@ -207,57 +240,95 @@ test("recipe returns to its catalogue only after its own confirmed order, retain
         export function render() { cursor = 0; effects = []; }
         export function flush() { for (const effect of effects) effect(); }
         export function useRef(initial) { const index = cursor++; return slots[index] ??= { current: initial }; }
-        export function useId() { return useRef('preparation-quantity').current; }
+        export function useId() { return useRef('card-status').current; }
         export function useState(initial) { const slot = useRef(typeof initial === 'function' ? initial() : initial); return [slot.current, value => { slot.current = typeof value === 'function' ? value(slot.current) : value; }]; }
-        export function useEffect(effect, dependencies) {
-          const previous = useRef(null);
-          if (!previous.current || dependencies.some((value, index) => !Object.is(value, previous.current[index]))) { previous.current = dependencies; effects.push(effect); }
-        }
+        export function useEffect(effect, dependencies) { const previous = useRef(null); if (!previous.current || dependencies.some((value, index) => !Object.is(value, previous.current[index]))) { previous.current = dependencies; effects.push(effect); } }
+        export const useLayoutEffect = useEffect;
       `; },
-      transform(source, id) { if (id.endsWith("/features/economy/ui/stations/world-object-menu.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+      transform(source, id) { if (id.endsWith("/features/economy/ui/production/world-production-card.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
     }],
   });
   try {
     const hooks = await runtime.ssrLoadModule(hookModule);
-    const { WorldRecipeDetail: Preparation } = await runtime.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
-    const recipeId = "make_planks";
-    const newJob = id => ({ id, kind: "production", targetId: "workshop", recipeId, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 30_000).toISOString(), rewards: { plank: 1 }, cost: { coins: 0, items: { wood: 2 } } });
-    for (const outcome of ["confirmed", "failed", "uncertain", "background"]) {
-      hooks.reset(); let collapsed = 0;
-      const calls = [];
-      const economy = controller({ inventory: { wood: 8 } }, { act(...args) { calls.push(args); } });
-      const props = { economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === recipeId), onCollapse() { collapsed++; } };
-      const render = () => { hooks.render(); const tree = Preparation(props); hooks.flush(); return tree; };
-      const elements = [];
-      const walk = element => { if (isValidElement(element)) { elements.push(element); Children.forEach(element.props.children, walk); } };
-      walk(render());
-      assert.equal(collapsed, 0);
-      if (outcome !== "background") {
-        const action = elements.find(element => element.type === "button" && element.props.children?.[0] === "Начать · ");
-        assert.ok(action); assert.equal(action.props.disabled, false);
-        action.props.onClick();
-        assert.deepEqual(calls, [["start_production", recipeId, 1]]);
-        assert.equal(collapsed, 0, "sending alone must not leave the preparation");
-        economy.busy = true; render();
-        economy.busy = false;
-      }
-      economy.snapshot = { ...economy.snapshot, revision: 2, jobs: [newJob("confirmed-job")] };
-      if (outcome === "failed") economy.error = "Заказ не создан";
-      if (outcome === "uncertain") { economy.error = "Нет подтверждения"; economy.uncertain = true; }
-      render();
-      assert.equal(collapsed, outcome === "confirmed" ? 1 : 0, outcome);
-      if (outcome === "uncertain") {
-        economy.error = null; economy.uncertain = false; render();
-        assert.equal(collapsed, 1, "a confirmed retry may safely return to the catalogue");
-      }
-      if (outcome === "failed") {
-        economy.error = null; render();
-        assert.equal(collapsed, 0, "later snapshots cannot revive an order intent after a definitive failure");
-      }
-      render();
-      assert.ok(collapsed <= 1, "a consumed confirmation cannot keep moving focus");
+    const { WorldProductionCard: Card } = await runtime.ssrLoadModule("/features/economy/ui/production/world-production-card.tsx");
+    const calls = [], contexts = [];
+    const economy = controller({ inventory: { wood: 8 } }, { act(...args) { calls.push(args); return true; } });
+    const recipe = economy.snapshot.catalog.recipes.find(recipe => recipe.id === "make_planks");
+    const render = () => { hooks.render(); const tree = Card({ economy, recipe, onHelpContextChange: context => contexts.push(context) }); hooks.flush(); return tree; };
+    const action = tree => elements(tree).find(element => element.type === "button" && element.props["data-recipe-order"]);
+    hooks.reset();
+    hooks.render();
+    const focusedTree = Card({ economy, recipe, focused: true });
+    const movements = [];
+    action(focusedTree).props.ref.current = { focus: options => movements.push(["focus", options]), scrollIntoView: options => movements.push(["scroll", options]) };
+    hooks.flush();
+    assert.deepEqual(movements, [["focus", { preventScroll: true }], ["scroll", { block: "nearest" }]]);
+    assert.deepEqual(calls, [], "help focus and scroll cannot start an order");
+    hooks.reset();
+    const first = action(render());
+    assert.deepEqual(calls, [], "rendering and reading costs cannot spend");
+    first.props.onClick(); first.props.onClick();
+    assert.deepEqual(calls, [["start_production", "make_planks", 1]], "a double press cannot queue two jobs from one intent");
+    assert.match(renderToStaticMarkup(render()), /role="status"[^>]*>Дождитесь завершения действия/);
+    assert.deepEqual(contexts[0], { intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 });
+    economy.snapshot = { ...economy.snapshot, revision: 2 };
+    render(); action(render()).props.onClick();
+    assert.equal(calls.length, 2, "a confirmed revision releases the local submission guard");
+    for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 10_000 }]) {
+      hooks.reset(); Object.assign(economy, { busy: false, uncertain: false, retryAt: 0 }, flags);
+      const before = calls.length; action(render()).props.onClick();
+      assert.equal(calls.length, before); assert.match(renderToStaticMarkup(render()), /role="status"/);
     }
+    hooks.reset(); Object.assign(economy, { busy: false, uncertain: false, retryAt: 0, error: null });
+    economy.snapshot.inventory.wood = 0;
+    action(render()).props.onClick();
+    assert.match(renderToStaticMarkup(render()), /Не хватает: Бревно ×1/);
+    const before = calls.length;
+    economy.snapshot.inventory.wood = 2;
+    economy.act = () => false;
+    action(render()).props.onClick();
+    assert.match(renderToStaticMarkup(render()), /Не удалось начать/);
+    economy.act = (...args) => { calls.push(args); return true; };
+    action(render()).props.onClick();
+    assert.equal(calls.length, before + 1, "a refused command cannot latch the card forever");
+    economy.busy = true; render(); economy.busy = false; economy.error = "Материалы уже использованы"; render();
+    action(render()).props.onClick();
+    assert.equal(calls.length, before + 2, "a definitive old error cannot block an otherwise valid new order");
+
+    hooks.reset();
+    const aidCalls = [], aid = controller({ buildings: { home: 1, garden: 1, warehouse: 1 }, tutorialOrder: newTutorialOrder(),
+      progression: { recipes: {}, routes: {}, buildings: {} } }, { productionQueueAvailable: true,
+      act(...args) { aidCalls.push(args); return true; } });
+    const berry = aid.snapshot.catalog.recipes.find(recipe => recipe.id === "grow_berries");
+    let activeLesson = true;
+    const renderAid = () => { hooks.render(); const tree = Card({ economy: aid, recipe: berry, tutorialHarvestActive: activeLesson }); hooks.flush(); return tree; };
+    const oldAidButton = action(renderAid());
+    activeLesson = false; const ordinaryButton = action(renderAid());
+    oldAidButton.props.onClick(); assert.deepEqual(aidCalls, [], "a pre-pause callback cannot issue assistance after the lesson closes");
+    ordinaryButton.props.onClick(); assert.deepEqual(aidCalls, [["start_production", "grow_berries", 1]]);
+    hooks.reset(); aidCalls.length = 0; activeLesson = true;
+    const assistance = action(renderAid()); assistance.props.onClick(); assistance.props.onClick();
+    assert.deepEqual(aidCalls, [["start_tutorial_harvest", "grow_berries", 1]], "the aid uses one confirmed direct action even with the ordinary durable queue enabled");
+    hooks.reset(); aidCalls.length = 0; aid.directActionsAvailable = false;
+    action(renderAid()).props.onClick(); assert.deepEqual(aidCalls, [], "teaching aid is never accepted into the offline production queue");
+    assert.match(renderToStaticMarkup(renderAid()), /Восстанавливаем соединение/);
   } finally { await runtime.close(); }
+});
+
+test("occupied places and prerequisites explain themselves without dispatch or navigation", async () => {
+  const cases = [
+    controller({ jobs: [{ kind: "production", targetId: "workshop", rewards: { plank: 1 } }], inventory: { wood: 8 } }),
+    controller({ inventory: {} }),
+    controller({ buildings: { home: 1, workshop: 0, warehouse: 1 }, inventory: { wood: 8 } }),
+  ];
+  for (const economy of cases) {
+    let called = 0, tree;
+    economy.act = () => { called++; return true; };
+    function Probe() { tree = WorldProductionCard({ economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === "make_planks") }); return tree; }
+    renderToStaticMarkup(createElement(Probe));
+    elements(tree).find(element => element.type === "button").props.onClick();
+    assert.equal(called, 0);
+  }
 });
 
 test("mine exposes actor routes instead of production and passive crafting remains available while the hero is busy", () => {
@@ -282,16 +353,10 @@ test("mine exposes actor routes instead of production and passive crafting remai
     assert.doesNotMatch(mine, /data-recipe=|Начать ·/);
     assert.match(mine, /data-route="quarry_stone"/);
     const preparation = prepareMineRoute(economy), departure = preparation.departure;
-    if (occupied.kind === "exploration") {
-      assert.equal(departure, undefined, "a current or unclaimed trip has a claim/recall card instead of another departure");
-      assert.match(preparation.html, /Сначала заберите находки или отмените текущую вылазку/);
-    } else {
-      assert.ok(departure);
-      assert.equal(departure.props.disabled, true);
-      assert.match(preparation.html, /Сначала завершите сбор припасов/);
-      departure.props.onClick();
-    }
-    assert.deepEqual(preparation.calls, [], "busy heroes cannot dispatch another departure from preparation");
-    assert.equal(startDisabled(renderRecipe("make_planks", economy)), false);
+    assert.ok(departure);
+    assert.equal(departure.props.disabled, false, "the miner remains independent during a hero trip or harvest");
+    departure.props.onClick();
+    assert.deepEqual(preparation.calls, [["start_exploration", "quarry_stone", 1, 0]]);
+    assert.equal(cardBlocked(renderCard("make_planks", economy)), false);
   }
 });

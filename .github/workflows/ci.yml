@@ -33,10 +33,16 @@ jobs:
           node scripts/check-secrets.mjs
           node scripts/check-secrets.mjs --history
 
-  web:
-    name: Web checks
+  web_shards:
+    name: Web checks (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    # Each isolated checkout builds both targets before its sequential test shard.
+    # Keep the 60-minute ceiling for slow runners without dropping any tests.
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -71,8 +77,191 @@ jobs:
       - name: Build the VPS application
         run: npm run build:vps
 
-      - name: Build Sites and run web tests
-        run: npm test
+      - name: Build Sites
+        run: npm run build
+
+      - name: Run web test shard
+        run: node --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/3 tests/*.test.mjs
+
+  web:
+    name: Web checks
+    needs: web_shards
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every web shard
+        shell: bash
+        env:
+          WEB_SHARDS_RESULT: ${{ needs.web_shards.result }}
+        run: test "$WEB_SHARDS_RESULT" = success
+
+  engine:
+    name: Engine package and standalone editor
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check the engine and editor independently
+        run: npm run typecheck:engine
+
+      - name: Build the library and standalone editor
+        run: npm run build:engine
+
+      - name: Check engine contracts and editor regressions
+        run: npm run test:engine
+
+  market-sales:
+    name: Markets, trader, collections and costumes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run market, trader and collection regressions
+        working-directory: apps/api
+        run: |
+          ./gradlew --no-daemon test \
+            --tests ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest \
+            --tests ru.zhiv.economy.EconomyMarketRulesTest \
+            --tests ru.zhiv.db.JdbcLeaftailV12IntegrationTest \
+            --tests ru.zhiv.db.JdbcCollectionV12IntegrationTest \
+            --tests ru.zhiv.economy.EconomyLeaftailShopTest \
+            --tests ru.zhiv.economy.EconomyLeaftailAssortmentTest \
+            --tests ru.zhiv.economy.EconomyBookProgressionTest \
+            --tests ru.zhiv.economy.EconomyFourthStageTest \
+            --tests ru.zhiv.world.WorldRulesTest \
+            --tests ru.zhiv.economy.EconomyWardrobeTest \
+            --tests ru.zhiv.db.JdbcPremiumCostumesIntegrationTest
+
+      - name: Require PostgreSQL and all focused suites
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest', 'ru.zhiv.world.WorldRulesTest', 'ru.zhiv.economy.EconomyWardrobeTest', 'ru.zhiv.db.JdbcPremiumCostumesIntegrationTest'):
+              path = Path('apps/api/build/test-results/test') / f'TEST-{name}.xml'
+              report = ET.parse(path).getroot()
+              count = int(report.get('tests', '0'))
+              assert report.get('name') == name and count > 0, f'{name}: missing or empty suite'
+              assert all(int(report.get(key, '0')) == 0 for key in ('failures', 'errors', 'skipped')), f'{name}: suite failed or PostgreSQL was skipped'
+              cases = report.findall('testcase')
+              assert len(cases) == count, f'{name}: incomplete test cases'
+              assert not any(child.tag in ('failure', 'error', 'skipped') for case in cases for child in case), f'{name}: failed or skipped test cases'
+              print(f'{name}: {count} passed, 0 skipped, 0 failures, 0 errors.')
+          PY
+
+      - name: Upload market sale test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-sales-test-reports-${{ github.run_attempt }}
+          path: |
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyMarketRulesTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcLeaftailV12IntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcCollectionV12IntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailShopTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailAssortmentTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyBookProgressionTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyFourthStageTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.world.WorldRulesTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyWardrobeTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcPremiumCostumesIntegrationTest.xml
+          retention-days: 7
+          if-no-files-found: error
+
+  one-time-rewards:
+    name: One-time gifts and migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run one-time gift and migration regressions
+        working-directory: apps/api
+        run: |
+          ./gradlew --no-daemon test \
+            --tests ru.zhiv.game.ProgressionRewardsTest \
+            --tests ru.zhiv.db.JdbcProgressionRewardsIntegrationTest \
+            --tests ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcSchemaBaselineIntegrationTest \
+            --tests ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest \
+            --tests ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest \
+            --tests ru.zhiv.db.JdbcGameProgressResetIntegrationTest
+
+      - name: Require every suite with real PostgreSQL
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest'):
+              report = ET.parse(Path('apps/api/build/test-results/test') / f'TEST-{name}.xml').getroot()
+              count = int(report.get('tests', '0'))
+              assert report.get('name') == name and count > 0, f'{name}: missing or empty suite'
+              assert all(int(report.get(key, '0')) == 0 for key in ('failures', 'errors', 'skipped')), f'{name}: failed or PostgreSQL skipped'
+              cases = report.findall('testcase')
+              assert len(cases) == count, f'{name}: incomplete cases'
+              assert not any(child.tag in ('failure', 'error', 'skipped') for case in cases for child in case), f'{name}: failed or skipped case'
+              print(f'{name}: {count} passed, 0 skipped, 0 failures, 0 errors.')
+          PY
+
+      - name: Upload one-time gift test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-time-rewards-test-reports-${{ github.run_attempt }}
+          path: |
+            apps/api/build/test-results/test/TEST-ru.zhiv.game.ProgressionRewardsTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcProgressionRewardsIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcSchemaBaselineIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcGameProgressResetIntegrationTest.xml
+          retention-days: 7
+          if-no-files-found: error
 
   backend:
     name: Ktor and PostgreSQL checks
@@ -113,7 +302,7 @@ jobs:
             echo "Authentication integration tests must run with PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedIdentityMigrationIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcEconomyRepositoryIntegrationTest JdbcEconomyMarketRepositoryIntegrationTest JdbcForestMemoryRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest JdbcTapHistoryIntegrationTest JdbcTapHistoryMigrationIntegrationTest JdbcFeedbackRepositoryIntegrationTest JdbcCurrencyDenominationIntegrationTest JdbcPearlDenominationIntegrationTest JdbcEconomyBarterRepositoryIntegrationTest JdbcProgressionRewardsIntegrationTest JdbcGuestProfileRepositoryIntegrationTest JdbcReleaseUpgradeIntegrationTest JdbcOnboardingEconomyIntegrationTest JdbcPresenceRepositoryIntegrationTest JdbcNotificationRepositoryIntegrationTest JdbcNotificationMigrationIntegrationTest JdbcPromoRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcAdminPromoRepositoryIntegrationTest JdbcAdminMigrationCompatibilityIntegrationTest; do
+          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedIdentityMigrationIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcEconomyRepositoryIntegrationTest JdbcEconomyMarketRepositoryIntegrationTest JdbcMarketSaleClaimsIntegrationTest JdbcForestMemoryRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest JdbcTapHistoryIntegrationTest JdbcTapHistoryMigrationIntegrationTest JdbcFeedbackRepositoryIntegrationTest JdbcCurrencyDenominationIntegrationTest JdbcPearlDenominationIntegrationTest JdbcEconomyBarterRepositoryIntegrationTest JdbcProgressionRewardsIntegrationTest JdbcGuestProfileRepositoryIntegrationTest JdbcGuestWorldRepositoryIntegrationTest JdbcReleaseUpgradeIntegrationTest JdbcOnboardingEconomyIntegrationTest JdbcPresenceRepositoryIntegrationTest JdbcNotificationRepositoryIntegrationTest JdbcNotificationMigrationIntegrationTest JdbcPromoRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcAdminPromoRepositoryIntegrationTest JdbcAdminMigrationCompatibilityIntegrationTest JdbcSchemaBaselineIntegrationTest JdbcGameProgressResetIntegrationTest; do
             lifecycle_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${lifecycle_report}"
             if grep --quiet '<skipped' "${lifecycle_report}"; then
@@ -121,6 +310,35 @@ jobs:
               exit 1
             fi
           done
+          security_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcSecurityObservationsIntegrationTest.xml"
+          test -s "${security_report}"
+          grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${security_report}"
+          if grep --quiet '<skipped' "${security_report}"; then
+            echo "Security observations must run with real PostgreSQL." >&2
+            exit 1
+          fi
+          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest; do
+            mail_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
+            test -s "${mail_report}"
+            grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${mail_report}"
+            if grep --quiet '<skipped' "${mail_report}"; then
+              echo "Mail, signed economy adjustments and first harvest must run with real PostgreSQL: ${suite}." >&2
+              exit 1
+            fi
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          reports = [ET.parse(path).getroot() for path in Path('apps/api/build/test-results/test').glob('TEST-*.xml')]
+          totals = {key: sum(int(report.get(key, '0')) for report in reports) for key in ('tests', 'failures', 'errors', 'skipped')}
+          passed = totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped']
+          print(f"Backend verification: {passed} passed, {totals['skipped']} skipped, {totals['failures']} failures, {totals['errors']} errors.")
+          security = next(report for report in reports if report.get('name') == 'ru.zhiv.db.JdbcSecurityObservationsIntegrationTest')
+          print(f"Security observations PostgreSQL: {security.get('tests')} tests, {security.get('skipped', '0')} skipped.")
+          for name in ('JdbcMailRepositoryIntegrationTest', 'JdbcAdminEconomyGrantsIntegrationTest'):
+              report = next(report for report in reports if report.get('name') == f'ru.zhiv.db.{name}')
+              print(f"{name} PostgreSQL: {report.get('tests')} tests, {report.get('skipped', '0')} skipped.")
+          PY
 
       - name: Upload backend test reports on failure
         if: failure()
@@ -137,7 +355,7 @@ jobs:
     name: Production Compose smoke test
     needs: [secrets, web, backend]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       COMPOSE_PROJECT_NAME: zhiv-ci-${{ github.run_id }}
       DOMAIN: localhost
@@ -159,6 +377,18 @@ jobs:
         run: |
           docker compose -f deploy/compose.yml run --rm --no-deps --entrypoint /bin/promtool prometheus check config /etc/prometheus/prometheus.yml
           docker compose -f deploy/compose.yml run --rm --no-deps --entrypoint /bin/promtool prometheus check rules /etc/prometheus/alerts.yml
+
+      - name: Validate optional alert delivery without sending notifications
+        run: |
+          mkdir -p deploy/.secrets/alerts
+          chmod 755 deploy/.secrets/alerts
+          printf '%s\n' 'https://alerts.example.invalid/ci-only' > deploy/.secrets/alerts/webhook_url
+          chmod 444 deploy/.secrets/alerts/webhook_url
+          python3 scripts/check-alert-delivery.py
+          docker compose -f deploy/compose.yml -f deploy/monitoring/alerting.compose.yml config --format json | python3 scripts/check-deploy-perimeter.py
+          docker compose -f deploy/compose.yml -f deploy/monitoring/alerting.compose.yml run --rm --no-deps --entrypoint /bin/amtool alertmanager check-config /etc/alertmanager/alertmanager.yml
+          docker compose -f deploy/compose.yml -f deploy/monitoring/alerting.compose.yml run --rm --no-deps --entrypoint /bin/promtool prometheus check config /etc/prometheus/prometheus.yml
+          docker compose -f deploy/compose.yml -f deploy/monitoring/alerting.compose.yml run --rm --no-deps --entrypoint /bin/promtool prometheus check rules /etc/prometheus/alert-delivery.yml
 
       - name: Reproduce a checkout with restrictive file permissions
         run: chmod --recursive go-rwx public
@@ -184,6 +414,31 @@ jobs:
               if (response.status !== 503 || (await response.json()).code !== "DEV_API_DISABLED")
                 throw new Error("Production web must not serve its development API");
             }).catch(error => { console.error(error.message); process.exit(1); });'
+          docker compose -f deploy/compose.yml exec -T web node -e '
+            (async () => {
+              for (const method of ["GET", "POST"]) {
+                const response = await fetch("http://127.0.0.1:3000/api/dev/world-studio", {
+                  method, headers: { Origin: "http://127.0.0.1:3000", "Content-Type": "application/json" },
+                  ...(method === "POST" ? { body: "{}" } : {}),
+                });
+                const data = await response.json();
+                if (response.status !== 404 || data.available !== false || response.headers.get("cache-control") !== "no-store")
+                  throw new Error("Production web must not expose studio project files");
+              }
+            })().catch(error => { console.error(error.message); process.exit(1); });'
+
+      - name: Verify the public weather route through the production edge
+        shell: bash
+        run: |
+          weather_response="$(mktemp)"
+          trap 'rm -f "$weather_response"' EXIT
+          weather_status="$(curl --silent --show-error --insecure --max-time 10 --output "$weather_response" --write-out '%{http_code}' 'https://localhost/api/v1/earth/weather?lat=55.75&lng=38')"
+          test "$weather_status" = 400
+          node --input-type=module - "$weather_response" <<'NODE'
+          import fs from 'node:fs';
+          const response = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (response.error !== 'invalid_coordinates') throw new Error('Public weather did not reach its bounded web handler');
+          NODE
 
       - name: Exercise the isolated production API
         run: node scripts/smoke-production.mjs
@@ -211,6 +466,40 @@ jobs:
 
       - name: Exercise private administration and real monitoring
         run: node scripts/smoke-admin.mjs
+
+      - name: Rehearse the real deployment with a restored backup and existing players
+        shell: bash
+        run: |
+          test "$DOMAIN" = localhost
+          [[ "$COMPOSE_PROJECT_NAME" =~ ^zhiv-ci-[0-9]+$ ]]
+          test ! -e deploy/.env
+          # deploy-update uses sudo docker, which strips inherited CI variables.
+          # Pin only this disposable project in a temporary deployment env file.
+          trap 'rm -f deploy/.env' EXIT
+          for variable in COMPOSE_PROJECT_NAME COMPOSE_PROFILES DOMAIN ADMIN_PUBLIC_IDS MONITORING_URL METRICS_TOKEN_FILE; do
+            printf '%s=%s\n' "$variable" "${!variable}"
+          done > deploy/.env
+          chmod 600 deploy/.env
+          persistent_snapshot() {
+            docker compose -f deploy/compose.yml exec -T db psql -X -A -t -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT md5(jsonb_build_object(
+            'users', (SELECT jsonb_agg(to_jsonb(u) ORDER BY id) FROM app_users u),
+            'economy', (SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id) FROM economy_profiles e),
+            'checkins', (SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM check_ins c)
+          )::text);
+          SQL
+          }
+          before_deployment="$(persistent_snapshot)"
+          bash scripts/deploy-update.sh
+          test "$(persistent_snapshot)" = "$before_deployment"
+          test ! -e deploy/runtime/maintenance
+          curl --fail --silent --show-error --insecure --max-time 20 https://localhost/readyz
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const status = JSON.parse(fs.readFileSync('deploy/runtime/app-status.json', 'utf8'));
+          if (status.schemaVersion !== 1 || status.maintenance !== false || !status.buildId)
+            throw new Error('The real deployment did not reopen a ready build');
+          NODE
 
       - name: Verify explicit user reset with a restored backup
         shell: bash

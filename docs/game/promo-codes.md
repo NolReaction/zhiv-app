@@ -1,6 +1,6 @@
 # Промокоды
 
-Кнопка **«У меня есть промокод»** находится сверху магазина валют в мире. Игрок вводит код и получает подтверждение с точными монетами, жемчугом и предметами. Покупки за реальные деньги и обмен из прежней витрины пока недоступны.
+Кнопка **«У меня есть промокод»** находится в нижней части магазина в мире. Игрок вводит код и получает подтверждение с точными монетами, жемчугом и предметами. Покупки за реальные деньги и обмен из прежней витрины пока недоступны.
 
 ## Управление из админки
 
@@ -80,7 +80,7 @@
 
 ## Основные файлы
 
-- Сервер: [`promo/PromoModel.kt`](../../apps/api/src/main/kotlin/ru/zhiv/promo/PromoModel.kt), [`PromoRoutes.kt`](../../apps/api/src/main/kotlin/ru/zhiv/promo/PromoRoutes.kt), [`JdbcPromoRepository.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcPromoRepository.kt), [V48](../../apps/api/src/main/resources/db/migration/V48__promo_codes.sql).
+- Сервер: [`promo/PromoModel.kt`](../../apps/api/src/main/kotlin/ru/zhiv/promo/PromoModel.kt), [`PromoRoutes.kt`](../../apps/api/src/main/kotlin/ru/zhiv/promo/PromoRoutes.kt), [`JdbcPromoRepository.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcPromoRepository.kt), [V48](../../apps/api/src/main/resources/db/migration/history/V48__promo_codes.sql).
 - Админское управление: [`AdminPromo.kt`](../../apps/api/src/main/kotlin/ru/zhiv/admin/AdminPromo.kt), [`AdminPromoRoutes.kt`](../../apps/api/src/main/kotlin/ru/zhiv/admin/AdminPromoRoutes.kt), [`JdbcAdminPromoRepository.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAdminPromoRepository.kt), [V52](../../apps/api/src/main/resources/db/migration/V52__managed_promo_codes.sql).
 - Клиент: [`features/promo/`](../../features/promo/), [`currency-shop-panel.tsx`](../../features/economy/ui/market/currency-shop-panel.tsx).
 - Локальный API: [`lib/server/promo-catalog.ts`](../../lib/server/promo-catalog.ts), [`lib/dev/economy-store.ts`](../../lib/dev/economy-store.ts), [`app/api/v1/economy/promo/route.ts`](../../app/api/v1/economy/promo/route.ts).

@@ -1,5 +1,4 @@
 import type { WorldDevState } from "./world-dev-store";
-import { WorldLightingEditor } from "./world-lighting-editor";
 import styles from "./world-dev-panel.module.css";
 
 type LightingControlsProps = {
@@ -8,15 +7,17 @@ type LightingControlsProps = {
   onNightCampfire: () => void;
   worldView?: boolean;
   onOpenWorld?: () => void;
+  onOpenStudio?: () => void;
 };
 
 /** Only transient scene controls; account commands are intentionally not a dependency. */
-export function WorldDevLighting({ state, change, onNightCampfire, worldView, onOpenWorld }: LightingControlsProps) {
+export function WorldDevLighting({ state, change, onNightCampfire, onOpenStudio }: LightingControlsProps) {
   return <>
     <p className={styles.hint}>Прототип света: формы и условные высоты объектов задают тени на земле. Уже нарисованные тени фона остаются частью изображения.</p>
     <label className={styles.toggle}><input type="checkbox" checked={state.lightShadows}
       onChange={event => change({ lightShadows: event.target.checked })} /><span>Тени от света</span></label>
     <p className={styles.hint}>Выключайте тени для сравнения. Костёр и фонари остаются источниками света.</p>
+    {onOpenStudio && <button type="button" onClick={onOpenStudio}>Открыть студию</button>}
     <button type="button" onClick={onNightCampfire}>Ночь у костра</button>
     <fieldset className={styles.fieldset}>
       <legend>Солнце и луна</legend>
@@ -55,6 +56,5 @@ export function WorldDevLighting({ state, change, onNightCampfire, worldView, on
       </label>
     </fieldset>
     <p className={styles.hint}>Для проверки лампы включите ночь. Координаты лампы задают точку на земле; светящаяся отметка находится выше неё. Все настройки действуют только в текущей DEV-сессии.</p>
-    <WorldLightingEditor state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} />
   </>;
 }
