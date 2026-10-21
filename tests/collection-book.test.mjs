@@ -11,6 +11,7 @@ after(() => vite.close());
 const book = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
 const { WorldCollections, CollectionBookFinds } = await vite.ssrLoadModule("/features/world/ui/collections/world-collections.tsx");
 const { collectionBookPage, COLLECTION_PAGE_SIZE } = await vite.ssrLoadModule("/features/world/ui/collections/collection-book-page.ts");
+const { createCollectionBookSwipe } = await vite.ssrLoadModule("/features/world/ui/collections/collection-book-swipe.ts");
 const { newWorldState } = await vite.ssrLoadModule("/features/world/domain/model.ts");
 const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -60,6 +61,8 @@ test("book UI renders accessible chapter tabs, owned records and current acquisi
   assert.match(html, /За одну работу учитывается до 2 ч/);
   assert.match(html, /Продажа рыбы и материалов их не стирает/);
   assert.match(html, /Страница 1 из 2/);
+  assert.match(html, /data-page-content="true" data-page-index="0"/);
+  assert.match(html, /Листайте страницы ↔/);
   assert.equal((html.match(/role="listitem"/g) ?? []).length, COLLECTION_PAGE_SIZE);
   assert.doesNotMatch(html, /листайте влево и вправо/);
   assert.doesNotMatch(html, /Лесной альбом|прежних путешествий.<\/p><\/div>|Мохлику ·/);
@@ -112,7 +115,58 @@ test("fish pages have explicit bounded navigation and keep unearned names and il
   const owned = renderToStaticMarkup(render("owned", 99));
   assert.match(owned, /Страница 1 из 1/); assert.equal((owned.match(/data-owned="true"/g) ?? []).length, 2);
   assert.doesNotMatch(owned, /Неизвестная рыба/);
+  assert.doesNotMatch(owned, /Листайте страницы ↔/);
   const empty = render("owned", 9, entries.map(entry => ({ ...entry, owned: false })));
   assert.match(renderToStaticMarkup(empty), /пока нет открытых находок/);
   assert.ok(elements(empty).filter(node => node.type === "button").every(node => node.props.disabled));
+});
+
+const swipePoint = (x, y = 20, extra = {}) => ({ pointerId: 1, pointerType: "touch", isPrimary: true,
+  clientX: x, clientY: y, timeStamp: 100, ...extra });
+const swipeContext = { key: "all:catalogue", page: 1, pages: 3 };
+
+test("a horizontal touch or pen turns exactly one bounded page on release", () => {
+  for (const pointerType of ["touch", "pen"]) {
+    const swipe = createCollectionBookSwipe();
+    swipe.down(swipePoint(150, 20, { pointerType }), swipeContext);
+    swipe.move(swipePoint(10, 25, { pointerType, timeStamp: 250 }), swipeContext);
+    assert.equal(swipe.up(swipePoint(10, 25, { pointerType, timeStamp: 300 }), swipeContext), 2);
+    assert.equal(swipe.up(swipePoint(10, 25, { pointerType, timeStamp: 300 }), swipeContext), null);
+    swipe.down(swipePoint(50, 20, { pointerType }), swipeContext);
+    assert.equal(swipe.up(swipePoint(150, 25, { pointerType, timeStamp: 300 }), swipeContext), 0);
+  }
+  for (const [page, start, end] of [[0, 50, 150], [2, 150, 50]]) {
+    const swipe = createCollectionBookSwipe(), context = { ...swipeContext, page };
+    swipe.down(swipePoint(start), context);
+    assert.equal(swipe.up(swipePoint(end, 20, { timeStamp: 300 }), context), null);
+  }
+});
+
+test("tap, long press, vertical or diagonal scrolling, cancellation and mouse cannot turn a page", () => {
+  for (const end of [swipePoint(145, 22, { timeStamp: 300 }), swipePoint(20, 20, { timeStamp: 900 }),
+    swipePoint(20, 150, { timeStamp: 300 }), swipePoint(20, 110, { timeStamp: 300 })]) {
+    const swipe = createCollectionBookSwipe(); swipe.down(swipePoint(150), swipeContext);
+    assert.equal(swipe.up(end, swipeContext), null);
+  }
+  const scroll = createCollectionBookSwipe(); scroll.down(swipePoint(150), swipeContext);
+  scroll.move(swipePoint(148, 60), swipeContext);
+  assert.equal(scroll.up(swipePoint(20, 60, { timeStamp: 300 }), swipeContext), null, "a scroll cannot become a late horizontal swipe");
+  const cancel = createCollectionBookSwipe(); cancel.down(swipePoint(150), swipeContext); cancel.cancel(1);
+  assert.equal(cancel.up(swipePoint(20, 20, { timeStamp: 300 }), swipeContext), null);
+  cancel.down(swipePoint(150, 20, { pointerType: "mouse" }), swipeContext);
+  assert.equal(cancel.up(swipePoint(20, 20, { pointerType: "mouse", timeStamp: 300 }), swipeContext), null);
+});
+
+test("a second contact and changed catalogue, filter or page invalidate an unfinished swipe", () => {
+  const swipe = createCollectionBookSwipe(); swipe.down(swipePoint(150), swipeContext);
+  swipe.down(swipePoint(170, 20, { pointerId: 2, isPrimary: false }), swipeContext);
+  assert.equal(swipe.up(swipePoint(20, 20, { timeStamp: 300 }), swipeContext), null);
+  assert.equal(swipe.up(swipePoint(30, 20, { pointerId: 2, isPrimary: false, timeStamp: 300 }), swipeContext), null);
+  swipe.down(swipePoint(150), swipeContext);
+  assert.equal(swipe.up(swipePoint(20, 20, { timeStamp: 300 }), swipeContext), 2, "a new single contact works after pinch ends");
+  for (const changed of [{ ...swipeContext, key: "owned:catalogue" }, { ...swipeContext, key: "all:new-entry" },
+    { ...swipeContext, page: 0 }, { ...swipeContext, pages: 2 }]) {
+    swipe.down(swipePoint(150), swipeContext);
+    assert.equal(swipe.up(swipePoint(20, 20, { timeStamp: 300 }), changed), null);
+  }
 });

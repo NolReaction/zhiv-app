@@ -2,7 +2,7 @@
 
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { BookOpen, Check, ChevronLeft, ChevronRight, Fish, Mountain, Trees } from "lucide-react";
 import { CollectionIcon, ItemIcon } from "@/features/items/item-icon";
 import { HiddenFishIcon } from "@/features/economy/ui/fishing/fish-discovery";
@@ -11,26 +11,46 @@ import type { EconomyView } from "@/features/economy/domain/model";
 import { worldCatalog, type WorldState } from "@/features/world/domain/model";
 import { BOOK_COLLECTION_COUNT, COLLECTION_CHAPTERS, collectionBookEntries, collectionBookProgress, type CollectionChapter } from "@/features/world/domain/collection-book";
 import { collectionBookPage, type CollectionBookFilter } from "./collection-book-page";
+import { createCollectionBookSwipe } from "./collection-book-swipe";
 import styles from "./world-collections.module.css";
 
 const chapterIcons = { travel: Trees, fishing: Fish, quarry: Mountain };
 const hours = (seconds: number) => new Intl.NumberFormat("ru", { maximumFractionDigits: 1 }).format(seconds / 3600);
 type BookEntry = ReturnType<typeof collectionBookEntries>[number];
 
+function CollectionBookSwipeSurface({ contextKey, page, pages, onPageChange, children }: {
+  contextKey: string; page: number; pages: number; onPageChange: (page: number) => void; children: ReactNode;
+}) {
+  const [swipe] = useState(createCollectionBookSwipe);
+  const context = { key: contextKey, page, pages };
+  return <div className={styles.finds} role="list" aria-label="Находки на странице" data-page-content data-page-index={page}
+    onPointerDown={event => {
+      if (pages <= 1 || event.pointerType !== "touch" && event.pointerType !== "pen") return;
+      swipe.down(event, context);
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { swipe.cancel(); }
+    }} onPointerMove={event => swipe.move(event, context)} onPointerUp={event => {
+      const next = swipe.up(event, context);
+      if (next !== null) onPageChange(next);
+    }} onPointerCancel={event => swipe.cancel(event.pointerId)} onLostPointerCapture={event => swipe.cancel(event.pointerId)}
+    onContextMenu={() => swipe.cancel()}>{children}</div>;
+}
+
 export function CollectionBookFinds({ entries, filter, page, onFilterChange, onPageChange }: {
   entries: readonly BookEntry[]; filter: CollectionBookFilter; page: number;
   onFilterChange: (filter: CollectionBookFilter) => void; onPageChange: (page: number) => void;
 }) {
   const visible = collectionBookPage(entries, filter, page);
+  const contextKey = `${filter}:${entries.map(entry => `${entry.id}:${entry.owned}`).join("|")}`;
   return <>
     <label className={styles.filter}>Показать<select aria-label="Показать находки" value={filter}
       onChange={event => onFilterChange(event.target.value as CollectionBookFilter)}>
       <option value="all">Все находки</option><option value="owned">Открытые</option><option value="missing">Не открытые</option>
     </select><span>{visible.count}</span></label>
-    {visible.count > 0 ? <div className={styles.finds} role="list" aria-label="Находки на странице">{visible.entries.map(entry => <article role="listitem" className={styles.find} key={entry.id} data-owned={entry.owned}>
+    {visible.count > 0 ? <CollectionBookSwipeSurface key={`${filter}:${visible.page}`} contextKey={contextKey} page={visible.page} pages={visible.pages} onPageChange={onPageChange}>{visible.entries.map(entry => <article role="listitem" className={styles.find} key={entry.id} data-owned={entry.owned}>
       <div className={styles.art}>{entry.illustration === "item" ? entry.owned ? <ItemIcon itemId={entry.id} size={64} /> : <HiddenFishIcon size={64} /> : <CollectionIcon findId={entry.id} size={64} />}{entry.owned ? <Check size={15} aria-label="Найдено" /> : <span aria-hidden="true">?</span>}</div>
       <h4>{entry.illustration === "item" && !entry.owned ? "Неизвестная рыба" : entry.name}</h4>{entry.rarity && <FishRarityBadge rarity={entry.rarity} />}<p>{entry.owned ? entry.description : entry.source}</p><small>{entry.owned ? "Записано в книге" : "Ещё не найдено"}</small>
-    </article>)}</div> : <p className={styles.empty} role="status">{filter === "owned" ? "В этой главе пока нет открытых находок." : filter === "missing" ? "Все находки главы уже открыты." : "В этой главе пока нет находок."}</p>}
+    </article>)}</CollectionBookSwipeSurface> : <p className={styles.empty} role="status">{filter === "owned" ? "В этой главе пока нет открытых находок." : filter === "missing" ? "Все находки главы уже открыты." : "В этой главе пока нет находок."}</p>}
+    {visible.pages > 1 && <p className={styles.swipeHint}>Листайте страницы ↔</p>}
     <nav className={styles.footer} aria-label="Страницы находок">
       <button type="button" disabled={visible.page === 0} onClick={() => { if (visible.page > 0) onPageChange(visible.page - 1); }} aria-label="Предыдущая страница находок"><ChevronLeft size={16} aria-hidden="true" />Назад</button>
       <select className={styles.pageSelect} aria-label="Выбрать страницу находок" value={visible.page} onChange={event => {
