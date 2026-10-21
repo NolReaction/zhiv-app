@@ -131,6 +131,11 @@
   .worldButton { padding: 8px 10px; font-size: 10px; }
   .worldButton > svg { width: 16px; }
 }
+@media (max-width: 600px) and (orientation: portrait) {
+  .bottomOverlay[data-panel-open="true"] {
+    max-height: min(55%, calc(100% - var(--earth-overlay-top) - 196px - var(--earth-navigation-clearance, 84px) - 30px));
+  }
+}
 @media (max-height: 500px) and (min-width: 501px) {
   .view { --earth-overlay-top: max(10px, env(safe-area-inset-top)); }
   .bottomOverlay { max-height: calc(100% - var(--earth-overlay-top) - 78px - var(--earth-navigation-clearance, 84px)); }

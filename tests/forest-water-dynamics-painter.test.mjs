@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -127,6 +128,30 @@ test("both views share one bounded texture, drawing is pure, and a new solver re
   drawForestWaterDynamics(context(), world, water, { dusk: 1 });
   assert.equal(metrics.updates.length, 3);
   assert.notDeepEqual(metrics.updates[1], metrics.updates[2], "night has quieter, cooler surface light");
+}));
+
+test("cached spatial phases preserve every original RGBA byte on sparse fractional grids and long-running clocks", () => browser(metrics => {
+  const water = state();
+  water.origin = { x: -7.125, y: -.3125 }; water.scale = .613;
+  water.active = water.active.filter(index => index % 3 !== 0);
+  // Captured from the uncached shader at 7f04fd6. These cases exercise double
+  // precision, inactive texels, changing normals, dusk and accumulated time.
+  const expected = [
+    "e2ee8762d1bfcffd9b544646cfcacc05e84bef46b5f3c7df7e41f8dec015d125",
+    "d83a904a71974c5d54192c0d49dc748f96546d63aca0f58041b9eba342fec374",
+    "6d168e373471846281292b35f50750aaf77e87fcf8257a41231074f1a861cb57",
+  ];
+  for (let frame = 0; frame < expected.length; frame++) {
+    if (frame === 1) water.elapsed = 12345.6789;
+    if (frame === 2) {
+      water.elapsed += .03;
+      for (const index of water.active) water.heights[index] = Math.sin(index * .01) * 2;
+    }
+    water.revision++;
+    drawForestWaterDynamics(context(), scene(), water, { dusk: [0, .4375, 1][frame] });
+    assert.equal(createHash("sha256").update(metrics.updates.at(-1)).digest("hex"), expected[frame]);
+  }
+  assert.deepEqual(metrics.allocations, [[20, 20]], "live revisions retain the original grid resolution and one texture");
 }));
 
 test("offscreen and reduced-motion views do not allocate or paint a dynamics surface", () => browser(metrics => {

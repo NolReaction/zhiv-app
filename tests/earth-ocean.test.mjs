@@ -132,6 +132,20 @@ test("the shared clock starts explicitly, uploads at most four frames per second
   assert.equal(s.uploads.length, 5);
 });
 
+test("adaptive ocean cadence preserves the full texture and absolute wave phase while halving uploads", () => {
+  const s = fixture(); registerEarthOceanMaterialImage(s.map);
+  const motion = createEarthOceanMotion(s.map, s.Marker);
+  motion.setEnabled(true); motion.setIntervalMs(500);
+  for (let timestamp = 0; timestamp <= 1_000; timestamp += 125) motion.update(timestamp);
+  assert.equal(s.uploads.length, 3);
+  assert.equal(s.uploads.at(-1).pixels.byteLength, 65_536);
+  assert.deepEqual(s.uploads.at(-1).pixels, createEarthOceanMaterialImage(1_000).data,
+    "slower cadence samples the same movement, not a slowed or degraded texture");
+  motion.setIntervalMs(250); motion.update(1_250); assert.equal(s.uploads.length, 4);
+  motion.setEnabled(false); motion.update(5_000); assert.equal(s.uploads.length, 4);
+  motion.dispose(); motion.setIntervalMs(250); motion.update(6_000); assert.equal(s.uploads.length, 4);
+});
+
 test("tap ripples are bounded, short-lived native markers and are removed on pause/disposal", () => {
   const s = fixture();
   const motion = createEarthOceanMotion(s.map, s.Marker);

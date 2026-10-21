@@ -332,6 +332,24 @@ test("rain and snow use a bounded continuous forecast field; reduced motion free
   s.renderer.dispose();
 });
 
+test("adaptive precipitation keeps full cloud textures and canvas resolution and restores the original field", () => {
+  const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true); s.renderer.setWeather(s.snapshot());
+  const originalCount = Number(s.field.dataset.weatherParticles), width = s.field.width, height = s.field.height;
+  const textures = s.elements.filter(element => element !== s.field && element.tag === "canvas");
+  const images = textures.map(texture => texture.context.imageData.data);
+  s.renderer.setPrecipitationScale(.7);
+  assert.equal(Number(s.field.dataset.weatherParticles), Math.floor(originalCount * .7));
+  assert.equal(s.field.width, width); assert.equal(s.field.height, height);
+  assert.ok(textures.every((texture, index) => texture.width === 256 && texture.height === 256 && texture.context.imageData.data === images[index]));
+  const drawn = s.calls.length; s.renderer.setPrecipitationScale(.7); s.renderer.setPrecipitationScale(NaN);
+  assert.equal(s.calls.length, drawn);
+  s.renderer.setPrecipitationScale(1); assert.equal(Number(s.field.dataset.weatherParticles), originalCount);
+  s.renderer.setMotionEnabled(false); s.renderer.update(50_000); const still = s.calls.length;
+  s.renderer.update(60_000); assert.equal(s.calls.length, still);
+  s.renderer.setVisible(false); s.renderer.setPrecipitationScale(.7); assert.equal(s.calls.length, still);
+  s.renderer.dispose();
+});
+
 test("clouds use continuous material without moon/sun stamps, and clear/missing data never invents precipitation", () => {
   const s = rendererFixture(); s.move({ zoom: 14 }); s.renderer.setVisible(true);
   s.renderer.setWeather(s.snapshot({ condition: "partly-cloudy", cloudCoverPercent: 40, precipitationMm: 0, isDay: false }));

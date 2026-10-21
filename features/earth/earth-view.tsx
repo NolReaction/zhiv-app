@@ -8,8 +8,10 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { PlayerName } from "@/components/player-name";
 import { EarthMap, type EarthCameraFocusRequest, type EarthMapView } from "./earth-map";
 import { EarthAtlasPanel } from "./earth-atlas-panel";
-import { EARTH_ATLAS_MEETING_ID, type EarthAtlasEntry } from "./earth-atlas";
+import { EARTH_ATLAS_MEETING_ID, earthAtlasEntry, type EarthAtlasEntry } from "./earth-atlas";
 import { useEarthAtlas } from "./use-earth-atlas";
+import { useEarthAtlasDiscovery } from "./use-earth-atlas-discovery";
+import { EarthAtlasDiscovery } from "./earth-atlas-discovery";
 import { canRecordEarthMeeting } from "./meet";
 import type { EarthCameraSession } from "./camera-session";
 import { useEarthLocation } from "./use-earth-location";
@@ -109,6 +111,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const [meetCircleId, setMeetCircleId] = useState<string | null>(null);
   const [meetFocusRequest, setMeetFocusRequest] = useState(0);
   const atlas = useEarthAtlas(ownerPublicId);
+  const atlasFeedback = useEarthAtlasDiscovery(ownerPublicId, active && visible && !editingModel);
   const [atlasView, setAtlasView] = useState<EarthMapView | null>(null);
   const [atlasFocusRequest, setAtlasFocusRequest] = useState<EarthCameraFocusRequest | null>(null);
   const [panelSelection, setPanelSelection] = useState<{ visible: boolean; value: "friends" | "sharing" | "info" | "atlas" | null; privacyRequest: number | null }>({
@@ -222,6 +225,9 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     setMeetCircleId(null);
     setAtlasFocusRequest(previous => ({ center: [...entry.center!], zoom: entry.zoom!, requestId: (previous?.requestId ?? 0) + 1 }));
   };
+  const discoverAtlasEntry = (entry: EarthAtlasEntry) => {
+    if (foreground.current && !document.hidden && atlas.discover(entry.id)) atlasFeedback.show(entry, atlas.readSnapshot().ids.length);
+  };
   const meetContact = people?.people.find(person => person.circleId === meetCircleId && person.user.publicId === meetPerson?.user.publicId);
   const locationDetails = <section className={styles.locationDetails} aria-labelledby="earth-location-heading">
     <h3 id="earth-location-heading">Моё местоположение</h3>
@@ -249,7 +255,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
         locationDetails={editingModel ? null : locationDetails} onModelEditorOpenChange={onModelEditorOpenChange}
         infoOpen={panel === "info"} onInfoOpenChange={open => setPanel(open ? "info" : null)} />
     </div>
-    <header className={styles.header}>
+    <header className={styles.header} data-earth-camera-blocker>
       <h1 id="earth-title" ref={heading} tabIndex={-1} className={styles.brand}>
         <Globe2 size={21} aria-hidden="true" /><span>Я живой<span className={styles.brandDivider}>·</span><span className={styles.brandPlace}>Земля</span></span>
       </h1>
@@ -257,19 +263,21 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
         <Leaf size={18} aria-hidden="true" /><span>Моя полянка</span>
       </button>
     </header>
+    <EarthAtlasDiscovery discovery={atlasOpen ? null : atlasFeedback.discovery} />
     {EarthDevBots && active && visible && !editingModel && <Suspense fallback={null}><EarthDevBots
       key={ownerPublicId} ownerPublicId={ownerPublicId} online={isOnline} commandsAvailable={devCommandsAvailable} position={location.status === "active" ? location.position : null}
       otherPanelOpen={panel !== null || meetCircleId !== null} onOpen={() => { setPanel(null); setMeetCircleId(null); }}
       readCenter={() => { const camera = cameraSession?.read(); return camera ? { latitude: camera.center[1], longitude: ((camera.center[0] + 540) % 360) - 180 } : null; }}
       onChanged={() => { onRefreshPeople(); sharing.refresh(); }} onFocus={focusFriend} /></Suspense>}
 
-    {!editingModel && <div className={styles.bottomOverlay}>
+    {!editingModel && <div className={styles.bottomOverlay} data-earth-camera-blocker data-panel-open={panel !== null || meetCircleId !== null}>
       {atlasOpen && <section id="earth-atlas-panel" className={styles.friendsPanel} aria-labelledby="earth-atlas-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
       }}>
         <header><h2 id="earth-atlas-title" ref={panelHeading} tabIndex={-1}>Личный атлас</h2>
           <button type="button" data-audio-cue="ui.close" onClick={closeFriends} aria-label="Закрыть атлас"><X size={18} aria-hidden="true" /></button></header>
-        <EarthAtlasPanel atlas={atlas} view={atlasView} onFocus={focusAtlasEntry} />
+        <EarthAtlasPanel atlas={atlas} view={atlasView} onFocus={focusAtlasEntry} onDiscover={discoverAtlasEntry}
+          recentDiscoveryId={atlasFeedback.discovery?.entry.id} discoveryFeedback={atlasFeedback.discovery} />
       </section>}
       {(friendsOpen || sharingOpen) && <section id="earth-friends-panel" className={styles.friendsPanel} aria-labelledby="earth-friends-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
@@ -289,7 +297,10 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       {meetCircleId && panel === null && <EarthMeetCard person={meetPerson} name={meetContact?.nickname || meetPerson?.user.displayName}
         meetingRecorded={atlas.snapshot.ids.includes(EARTH_ATLAS_MEETING_ID)} onRecordMeeting={() => {
           if (foreground.current && location.allowed && location.status === "active" && meetPerson
-            && canRecordEarthMeeting(location.position, meetPerson, performance.now(), Date.now())) atlas.discover(EARTH_ATLAS_MEETING_ID);
+            && canRecordEarthMeeting(location.position, meetPerson, performance.now(), Date.now())) {
+            const entry = earthAtlasEntry(EARTH_ATLAS_MEETING_ID);
+            if (entry) discoverAtlasEntry(entry);
+          }
         }}
         position={location.status === "active" ? location.position : null} now={now} monotonicNow={monotonicNow} locating={locating} locationAllowed={location.allowed}
         onLocate={() => { if (location.allowed) { location.locate(); setMeetFocusRequest(value => value + 1); } }}

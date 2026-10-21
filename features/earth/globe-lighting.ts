@@ -1,5 +1,6 @@
 import type { FeatureCollection, Point } from "geojson";
 import { createEarthNightShadeLayer, EARTH_NIGHT_SHADE_LAYER } from "./night-shade-layer";
+import { earthSeasonLightColor } from "./earth-seasons";
 import type { ExpressionSpecification, GeoJSONSource, GeoJSONSourceSpecification, LayerSpecification, LightSpecification, Map, SkySpecification } from "maplibre-gl";
 
 export type EarthLightingMode = "auto" | "day" | "evening";
@@ -113,8 +114,8 @@ export function earthLightingSky(mode: EarthLightingMode): SkySpecification {
   };
 }
 
-export function earthLightingLight(mode: EarthLightingMode): LightSpecification {
-  return { anchor: "viewport", color: mode === "evening" ? "#ffd5a1" : "#fff7e9",
+export function earthLightingLight(mode: EarthLightingMode, now = Date.now(), latitude = DEFAULT_CENTER.lat): LightSpecification {
+  return { anchor: "viewport", color: earthSeasonLightColor(mode === "evening" ? "#ffd5a1" : "#fff7e9", latitude, now),
     intensity: mode === "evening" ? 0.42 : 0.35, position: [1.5, 210, 35] };
 }
 
@@ -125,11 +126,20 @@ export function createEarthLightingController(map: EarthLightingMap, options: {
   let mode = options.mode ?? "auto";
   let center = options.center ?? DEFAULT_CENTER;
   let lastKey = "";
+  let lastLightKey = "";
   let disposed = false;
   const night = createEarthNightShadeLayer(map);
   map.addLayer(night.layer, map.getLayer("earth-city-lights-glow") ? "earth-city-lights-glow" : undefined);
   const update = (now = Date.now()) => {
     if (disposed || !Number.isFinite(now)) return;
+    // Use the viewed hemisphere, not the visitor's location. A coarse latitude
+    // sample avoids changing light while dragging within the same region.
+    const latitude = Math.round((mode === "evening" ? center.lat : map.getCenter().lat) / 10) * 10;
+    const lightKey = `${mode}:${Math.floor(now / 86_400_000)}:${latitude}`;
+    if (lightKey !== lastLightKey) {
+      map.setLight(earthLightingLight(mode, now, latitude));
+      lastLightKey = lightKey;
+    }
     const key = mode === "auto" ? `${mode}:${Math.floor(now / MINUTE)}` : `${mode}:${center.lng}:${center.lat}`;
     if (key === lastKey) return;
     const lightsSource = map.getSource(EARTH_LIGHTS_SOURCE) as GeoJSONSource | undefined;
@@ -140,7 +150,6 @@ export function createEarthLightingController(map: EarthLightingMap, options: {
     lightsSource.setData(data.lights);
     if (!lastKey || !lastKey.startsWith(`${mode}:`)) {
       map.setSky(earthLightingSky(mode));
-      map.setLight(earthLightingLight(mode));
     }
     lastKey = key;
   };

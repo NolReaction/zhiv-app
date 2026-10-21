@@ -6,6 +6,8 @@ import { createEarthSceneClock } from "./scene-clock";
 import { createEarthWeather } from "./earth-weather";
 import type { EarthWeatherSnapshot } from "./weather";
 import { createEarthLandmarks } from "./globe-landmarks";
+import { createEarthSeasonsController } from "./earth-seasons";
+import { createEarthQualityController } from "./quality-controller";
 
 export const EARTH_SCENE_MOTION_MAX_ZOOM = 4.2;
 
@@ -17,6 +19,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
   const lighting = createEarthLightingController(map, { mode, center: initialEveningCenter ?? map.getCenter() });
   const weather = createEarthWeather(map, MarkerConstructor);
   const landmarks = createEarthLandmarks(map, MarkerConstructor);
+  const seasons = createEarthSeasonsController(map);
   const motionPreference = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   let ready = false;
   let foreground = true;
@@ -31,13 +34,20 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
       if (map.getZoom() < EARTH_SCENE_MOTION_MAX_ZOOM) { clouds.update(time); ocean.update(time); }
       weather.update(time);
       lighting.update(Date.now());
+      seasons.update();
     },
   });
+  const quality = createEarthQualityController(map, { onChange: (_level, profile) => {
+    clock.setIntervalMs(profile.intervalMs);
+    ocean.setIntervalMs(profile.oceanIntervalMs);
+    weather.setPrecipitationScale(profile.precipitationScale);
+  } });
 
   function synchronize() {
     if (disposed) return;
     const visible = ready && foreground && !document.hidden;
     const animate = visible && !motionPreference?.matches;
+    quality.setEnabled(animate);
     weather.setVisible(visible);
     lighting.setVisible(visible);
     weather.setMotionEnabled(animate);
@@ -46,7 +56,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
     landmarks.setVisible(visible);
     ocean.setEnabled(globeMotion);
     clock.setRunning(globeMotion || animate && weather.hasMotion());
-    if (visible) lighting.update(Date.now());
+    if (visible) { lighting.update(Date.now()); seasons.update(); }
   }
   const onClick = (event: MapMouseEvent) => { ocean.ripple(event.point, elapsed); };
   clouds.update(0);
@@ -73,6 +83,8 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
       if (disposed) return;
       disposed = true;
       clock.dispose();
+      quality.dispose();
+      seasons.dispose();
       map.off("move", synchronize);
       map.off("zoom", synchronize);
       map.off("click", onClick);

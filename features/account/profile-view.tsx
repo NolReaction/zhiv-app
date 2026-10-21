@@ -223,16 +223,15 @@ export function ProfileView({
                 <img src={me.profile.avatarUrl} alt="" />
               ) : <strong>{initials(me.user.displayName)}</strong>}
             </div>
-            <div className={styles.identity}>
-              <div className={styles.identityTitle}>
-                <strong><PlayerName name={me.user.displayName} tag={me.user.tag} /></strong>
+            <h2 className={styles.identityName}><PlayerName name={me.user.displayName} tag={me.user.tag} /></h2>
+            <div className={styles.identityActions}>
+              {gameLoaded ? <GameLevelsButton lifetimeTaps={clickerStats.lifetimeTaps} className={styles.identityLevel}>
+                <GameLevelIcon level={clickerStats.level.level} size={18} />
+                <span><strong>Уровень {clickerStats.level.level}</strong><small>{clickerStats.level.title}</small></span>
+              </GameLevelsButton> : <span className={styles.identityLevelLoading} role="status">Уровень загружается…</span>}
+              <div className={styles.identityAchievements}>
                 <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} onRewardsClaimed={onRewardsClaimed} />
               </div>
-              {gameLoaded ? <GameLevelsButton lifetimeTaps={clickerStats.lifetimeTaps} className={styles.identityLevel}>
-                <GameLevelIcon level={clickerStats.level.level} size={19} /><strong>Уровень {clickerStats.level.level}</strong><small>{clickerStats.level.title}</small>
-              </GameLevelsButton> : <span role="status">Уровень загружается…</span>}
-              <span>{me.user.publicId}</span>
-              <button type="button" className={styles.editLink} onClick={() => setPanel(panel === "name" ? "" : "name")}>Изменить имя</button>
             </div>
           </div>
           <div className={styles.stats} aria-label="Статистика профиля">

@@ -22,6 +22,7 @@ import { installEarthMaterialImages, registerEarthMaterialImage } from "./land-m
 import { EarthAttribution } from "./earth-attribution";
 import { EarthModelCredits } from "./earth-model-credits";
 import { installEarthGlobeCamera } from "./globe-camera";
+import { createEarthCameraViewport } from "./camera-viewport";
 import { EARTH_OCEAN_MATERIAL_IMAGE, registerEarthOceanMaterialImage } from "./globe-ocean";
 import { bindEarthPositionMarkerMotion } from "./marker-motion";
 import { createEarthGlobeScene } from "./globe-scene";
@@ -114,6 +115,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const [weatherState, setWeatherState] = useState<EarthWeatherState>({ status: "disabled", area: null, snapshot: null, nextRequestAt: null, error: null });
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LibreMap | null>(null);
+  const cameraViewportRef = useRef<ReturnType<typeof createEarthCameraViewport> | null>(null);
   const [editorMap, setEditorMap] = useState<LibreMap | null>(null);
   const [modelEditorOpen, setModelEditorOpen] = useState(readEarthModelEditorOpen);
   const changeModelEditorOpen = useCallback((open: boolean) => {
@@ -163,6 +165,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   useLayoutEffect(() => {
     latestMeet.current = { circleId: meetCircleId, requestId: meetFocusRequest };
     editingRef.current = modelEditorOpen;
+    cameraViewportRef.current?.setEnabled(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen);
     syncFriendsRef.current?.();
   }, [meetCircleId, meetFocusRequest, modelEditorOpen]);
   useLayoutEffect(() => { selectFriendsRef.current = onSelectFriends; }, [onSelectFriends]);
@@ -176,6 +179,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     const { center: target, zoom } = cameraFocusRequest;
     if (!target.every(Number.isFinite) || Math.abs(target[1]) > 85 || !Number.isFinite(zoom)) return;
     handledCameraFocus.current = cameraFocusRequest.requestId;
+    cameraViewportRef.current?.refresh(false);
     current.flyTo({ center: target, zoom: Math.max(0, Math.min(17, zoom)), bearing: 0, pitch: 0,
       duration: reducedMotion() ? 0 : 1200, essential: false });
   }, [active, visible, modelEditorOpen, phase, cameraFocusRequest, onViewChange]);
@@ -310,6 +314,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     let canvas: HTMLCanvasElement | null = null;
     let tileRecovery: ReturnType<typeof createEarthTileRecovery> | null = null;
     let restoreGlobeCamera: (() => void) | null = null;
+    let cameraViewport: ReturnType<typeof createEarthCameraViewport> | null = null;
 
     function syncFriends() {
       if (cancelled || attemptFailed || !friendMarkers) return;
@@ -322,8 +327,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       const meet = latestMeet.current;
       meetMap?.setSnapshot(latestPosition.current, latestFriends.current.find(person => person.circleId === meet.circleId) ?? null, meet.requestId);
       const request = latestFriendFocus.current;
-      if (request && request.requestId > handledFriendFocus.current && friendMarkers.focusFriend(request.circleId)) {
-        handledFriendFocus.current = request.requestId;
+      if (request && request.requestId > handledFriendFocus.current) {
+        cameraViewport?.refresh(false);
+        if (friendMarkers.focusFriend(request.circleId)) handledFriendFocus.current = request.requestId;
       }
     }
     syncFriendsRef.current = syncFriends;
@@ -388,6 +394,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         resize();
       }
       foreground = next;
+      cameraViewport?.setEnabled(next && initialReady && !editingRef.current);
       syncFriends();
       scene?.setVisible(next);
       stars?.setVisible(next && initialReady);
@@ -528,6 +535,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         updateCacheView();
         current.on("move", updateCacheView);
         restoreGlobeCamera = installEarthGlobeCamera(current);
+        cameraViewport = createEarthCameraViewport(current);
+        cameraViewportRef.current = cameraViewport;
         installEarthMaterialImages(current, id => {
           if (id === EARTH_OCEAN_MATERIAL_IMAGE) registerEarthOceanMaterialImage(current);
         });
@@ -629,6 +638,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         syncPositionRef.current = syncPosition;
         friendMarkers = createEarthFriendMarkers(current, sdk.Marker, ids => selectFriendsRef.current?.(ids));
         meetMap = createEarthMeetMap(current);
+        meetMap.setCameraPadding({ top: 28, bottom: 40, left: 28, right: 28 }, () => cameraViewport?.refresh(false));
 
         current.on("style.load", () => {
           if (cancelled || attemptFailed) return;
@@ -754,6 +764,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       scene?.dispose();
       if (sceneRef.current === scene) sceneRef.current = null;
       map?.stop();
+      cameraViewport?.dispose();
+      if (cameraViewportRef.current === cameraViewport) cameraViewportRef.current = null;
       restoreGlobeCamera?.();
       map?.remove();
       if (mapRef.current === map) mapRef.current = null;
@@ -764,6 +776,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   useEffect(() => {
     if (!active || !visible || !focusWhenReady || phase !== "ready" || !position || !mapRef.current || focusRequest <= handledFocus.current) return;
     handledFocus.current = focusRequest;
+    cameraViewportRef.current?.refresh(false);
     flyToPosition(mapRef.current, position);
   }, [active, visible, phase, position, focusRequest, focusWhenReady]);
 
@@ -773,11 +786,16 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       : stage === "engine" ? "Загрузка движка" : stage === "resources" ? "Загрузка карты" : "Первый кадр";
   return <div className={styles.root} data-earth-map data-map-status={phase} data-lighting={lightingMode} data-development={process.env.NODE_ENV === "development" || undefined}>
     <div ref={host} className={styles.canvas} data-visible={phase === "ready"} aria-hidden={phase !== "ready"} inert={phase !== "ready" || undefined} />
-    <div className={styles.controls} role="group" aria-label="Управление картой">
+    <div className={styles.controls} data-earth-camera-blocker role="group" aria-label="Управление картой">
       <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Показать всю Землю" aria-label="Показать всю Землю" onClick={() => {
         const current = mapRef.current;
         const element = host.current;
-        if (current && element) current.flyTo({ center: EARTH_CENTER, zoom: globeZoom(element.clientWidth, element.clientHeight), bearing: 0, pitch: 0, duration: reducedMotion() ? 0 : 1200, essential: false });
+        if (current && element) {
+          cameraViewportRef.current?.refresh(false);
+          const viewport = cameraViewportRef.current?.getViewport();
+          current.flyTo({ center: EARTH_CENTER, zoom: globeZoom(viewport ? viewport.right - viewport.left : element.clientWidth,
+            viewport ? viewport.bottom - viewport.top : element.clientHeight), bearing: 0, pitch: 0, duration: reducedMotion() ? 0 : 1200, essential: false });
+        }
       }}><Earth size={21} aria-hidden="true" /></button>
       <button type="button" data-audio-cue="ui.click" disabled={!ready} title="Север сверху" aria-label="Повернуть карту севером вверх" onClick={() => mapRef.current?.resetNorthPitch({ duration: reducedMotion() ? 0 : 400 })}><Compass size={21} aria-hidden="true" /></button>
       {showLocationControl && !modelEditorOpen && <button type="button" data-audio-cue="ui.click" className={styles.locateButton} disabled={!ready} data-active={locationActive} aria-busy={locating}
@@ -791,7 +809,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         aria-label={diagnosticCopied ? "Отчёт карты скопирован" : "Скопировать диагностику карты"} onClick={copyDiagnostics}>
         <ClipboardCopy size={18} aria-hidden="true" /><small>DEV</small></button>}
     </div>
-    {diagnostics && diagnosticReport && <section className={`${styles.infoPanel} ${styles.diagnosticPanel}`} role="dialog" aria-labelledby="earth-diagnostic-title"
+    {diagnostics && diagnosticReport && <section data-earth-camera-blocker className={`${styles.infoPanel} ${styles.diagnosticPanel}`} role="dialog" aria-labelledby="earth-diagnostic-title"
       onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); closeDiagnostics(); } }}>
       <header><h2 id="earth-diagnostic-title">DEV · Диагностика карты</h2>
         <button type="button" data-audio-cue="ui.close" aria-label="Закрыть диагностику" onClick={closeDiagnostics}><X size={18} aria-hidden="true" /></button></header>
@@ -818,9 +836,9 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     </p>}
     {ready && <EarthAttribution />}
     {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} open={modelEditorOpen} onOpenChange={changeModelEditorOpen} /></Suspense>}
-    {ready && <button ref={infoButton} type="button" data-audio-cue={infoOpen ? "ui.close" : "ui.open"} className={styles.infoButton} aria-label="О карте и её настройках"
+    {ready && <button ref={infoButton} data-earth-camera-blocker type="button" data-audio-cue={infoOpen ? "ui.close" : "ui.open"} className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => { setDiagnosticReport(null); onInfoOpenChange(!infoOpen); }}><Info size={21} aria-hidden="true" /></button>}
-    {ready && infoOpen && <section id="earth-info-panel" className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
+    {ready && infoOpen && <section id="earth-info-panel" data-earth-camera-blocker className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
       if (event.key === "Escape") { event.stopPropagation(); playUiCue(getAudioRuntime(), "ui.close"); onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }
     }}>
       <header className={styles.infoHeader}><h2 ref={infoHeading} tabIndex={-1} id="earth-info-title">О карте</h2>

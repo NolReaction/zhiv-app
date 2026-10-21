@@ -1,0 +1,44 @@
+.journeys { --journey-accent: #cde6a5; min-width: 0; }
+.journeys[data-accent="sand"] { --journey-accent: #e2cc9c; }
+.journeys[data-accent="north"] { --journey-accent: #b8d9d2; }
+.chooserIntro { display: flex; align-items: center; gap: 7px; margin-top: 7px; color: #e0edcd; font-size: 12px; }
+.hint, .finished { margin: 7px 0; color: #b7cdaf; font-size: 11px; line-height: 1.5; }
+.routes { display: flex; gap: 8px; width: 100%; min-width: 0; margin: 0; padding: 4px 3px 10px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; list-style: none; scrollbar-width: thin; scrollbar-color: #a0c37d50 transparent; }
+.routes > li { display: flex; flex: 0 0 208px; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid #d4e7ad32; border-radius: 14px; scroll-snap-align: start; background: linear-gradient(145deg, #afcb8e17, #0c251e22); }
+.routes > li[data-accent="sand"] { background: linear-gradient(145deg, #d4b97b1f, #0c251e22); }
+.routes > li[data-accent="north"] { background: linear-gradient(145deg, #a4d2cc1a, #0c251e22); }
+.routeCount { color: #b7cdaf; font-size: 10px; }
+.routes strong { color: #e6f0d8; font-size: 13px; line-height: 1.4; }
+.routes p { flex: 1; margin: 0; color: #b7cdaf; font-size: 11px; line-height: 1.5; }
+.routes button, .navigation button { display: flex; justify-content: center; align-items: center; gap: 7px; min-height: 44px; padding: 8px 12px; border: 1px solid #d4e7ad40; border-radius: 10px; color: #e2edce; background: #c9e5a410; font-size: 11px; }
+.routes button { justify-content: space-between; margin-top: 3px; }
+.activeHeader { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.activeHeader > div { flex: 1; display: grid; min-width: 0; gap: 4px; }
+.activeHeader span { color: #b7cdaf; font-size: 10px; }
+.activeHeader strong { color: #e6f0d8; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.activeHeader > button { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; color: #bfd3af; background: transparent; }
+.steps { display: flex; justify-content: space-between; gap: 2px; width: 100%; margin: 3px 0 5px; padding: 0; list-style: none; }
+.steps li { flex: 1; min-width: 0; }
+.steps button { display: grid; place-items: center; width: 100%; min-width: 36px; min-height: 44px; padding: 0; border: 0; border-radius: 9px; color: #b9cfae; background: transparent; }
+.steps button > span { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid #d4e7ad40; border-radius: 50%; font-size: 11px; }
+.steps button[aria-current="step"] > span { color: #234632; background: var(--journey-accent); border-color: transparent; }
+.stop { padding: 11px; border: 1px solid #d4e7ad35; border-radius: 13px; background: #c9e5a40b; touch-action: pan-y pinch-zoom; }
+.stopHeading { display: grid; gap: 2px; }
+.stopHeading h3 { margin: 0; font-size: 13px; }
+.stopHeading h3 button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 44px; margin: -5px 0 -3px; padding: 5px 0; border: 0; border-radius: 6px; text-align: left; color: #e6f0d8; background: transparent; font-size: 13px; font-weight: 600; line-height: 1.4; }
+.stopHeading h3 button > svg { flex: 0 0 auto; color: var(--journey-accent); }
+.stopHeading h3 button > span { overflow-wrap: anywhere; }
+.stopHeading > span { color: #a9c2a1; font-size: 10px; }
+.stop > p { min-height: 49.5px; margin: 9px 0; color: #c5d7bc; font-size: 11px; line-height: 1.5; }
+.discovery { display: flex; align-items: center; gap: 8px; }
+.discovery > span { flex: 1; min-width: 0; color: #a9c2a1; font-size: 10px; line-height: 1.4; }
+.discovery button { display: flex; align-items: center; justify-content: center; gap: 5px; flex: 0 0 auto; min-height: 44px; padding: 6px 9px; border: 1px solid #d4e7ad55; border-radius: 10px; color: #274c35; background: var(--journey-accent); font-size: 10px; }
+.discovery button:disabled { color: #b7cda7; background: #c9e5a40c; border-color: #d4e7ad20; cursor: default; }
+.navigation { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.swipeHint { margin: 6px 0 0; color: #a9c2a1; text-align: center; font-size: 10px; line-height: 1.4; }
+.navigation button { flex: 1; min-width: 0; }
+.navigation button:disabled { color: #95ad8c; border-color: #d4e7ad16; background: transparent; cursor: default; }
+.journeys button:focus-visible, .routes:focus-visible, .chooserIntro:focus-visible, .stopHeading h3:focus-visible { outline: 2px solid #e3f7ac; outline-offset: 2px; }
+.journeys button:not(:disabled):hover { border-color: #d4e7ad88; background-color: #c9e5a41a; }
+.srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (max-width: 359px) { .routes > li { flex-basis: 196px; } }

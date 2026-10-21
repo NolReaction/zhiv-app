@@ -3,11 +3,21 @@
 import { useRef, useState } from "react";
 import { BookOpen, Check, ChevronLeft, ChevronRight, Compass, Handshake, Landmark, Trees } from "lucide-react";
 import { EARTH_ATLAS_ENTRIES, earthAtlasCandidate, type EarthAtlasEntry, type EarthAtlasView } from "./earth-atlas";
+import { EarthAtlasJourneys } from "./earth-atlas-journey-panel";
+import { EarthAtlasDiscovery } from "./earth-atlas-discovery";
+import type { EarthAtlasDiscoveryFeedback } from "./earth-atlas-discovery-feedback";
 import type { useEarthAtlas } from "./use-earth-atlas";
 import styles from "./earth-atlas-panel.module.css";
 
 type Filter = "all" | "landmark" | "region";
-type Props = { atlas: ReturnType<typeof useEarthAtlas>; view: EarthAtlasView | null; onFocus: (entry: EarthAtlasEntry) => void };
+type Props = {
+  atlas: ReturnType<typeof useEarthAtlas>;
+  view: EarthAtlasView | null;
+  onFocus: (entry: EarthAtlasEntry) => void;
+  onDiscover?: (entry: EarthAtlasEntry) => void;
+  recentDiscoveryId?: string | null;
+  discoveryFeedback?: EarthAtlasDiscoveryFeedback | null;
+};
 const FILTERS = [{ id: "all", title: "Все" }, { id: "landmark", title: "Места" }, { id: "region", title: "Биомы" }] as const;
 
 function EntryIcon({ entry, size = 20 }: { entry: EarthAtlasEntry; size?: number }) {
@@ -15,11 +25,13 @@ function EntryIcon({ entry, size = 20 }: { entry: EarthAtlasEntry; size?: number
   return <Icon size={size} aria-hidden="true" />;
 }
 
-export function EarthAtlasPanel({ atlas, view, onFocus }: Props) {
+export function EarthAtlasPanel({ atlas, view, onFocus, onDiscover, recentDiscoveryId, discoveryFeedback = null }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [section, setSection] = useState<"discoveries" | "journeys">("discoveries");
   const rail = useRef<HTMLUListElement>(null);
   const opened = new Set(atlas.snapshot.ids);
   const candidate = earthAtlasCandidate(view);
+  const discover = onDiscover ?? ((entry: EarthAtlasEntry) => { atlas.discover(entry.id); });
   // Keep card positions stable when a discovery is recorded mid-swipe.
   const entries = EARTH_ATLAS_ENTRIES.filter(entry => filter === "all" || entry.kind === filter);
   const scroll = (direction: number) => {
@@ -31,15 +43,25 @@ export function EarthAtlasPanel({ atlas, view, onFocus }: Props) {
 
   return <section className={styles.atlas} aria-label="Личный атлас">
     <div className={styles.intro}><BookOpen size={19} aria-hidden="true" /><strong>Твой атлас</strong>
-      <span aria-label={`Открыто ${opened.size} из ${EARTH_ATLAS_ENTRIES.length}`}>{opened.size} / {EARTH_ATLAS_ENTRIES.length}</span></div>
-    <p className={styles.explanation}>Исследуй глобус и отмечай открытия. Это просмотр карты, а не отметки о поездках.</p>
+      <span key={recentDiscoveryId ?? "progress"} data-recent={recentDiscoveryId ? true : undefined}
+        aria-label={`Открыто ${opened.size} из ${EARTH_ATLAS_ENTRIES.length}`}>{opened.size} / {EARTH_ATLAS_ENTRIES.length}</span></div>
+    <div className={styles.explanation}>
+      <p data-covered={Boolean(discoveryFeedback)} aria-hidden={Boolean(discoveryFeedback)}>Исследуй глобус и отмечай открытия. Это просмотр карты, а не отметки о поездках.</p>
+      <EarthAtlasDiscovery discovery={discoveryFeedback} inline />
+    </div>
+    <div className={styles.sections} role="group" aria-label="Раздел атласа">
+      <button type="button" data-audio-cue="ui.click" aria-pressed={section === "discoveries"} onClick={() => setSection("discoveries")}>Открытия</button>
+      <button type="button" data-audio-cue="ui.click" aria-pressed={section === "journeys"} onClick={() => setSection("journeys")}>Маршруты</button>
+    </div>
+    {section === "journeys" ? <EarthAtlasJourneys view={view} openedIds={atlas.snapshot.ids} loaded={atlas.snapshot.loaded}
+      onFocus={onFocus} onDiscover={discover} /> : <>
     <div className={styles.candidate} aria-live="polite" aria-atomic="true">
       {candidate ? <>
         <span className={styles.candidateIcon}><EntryIcon entry={candidate} /></span>
         <div><strong>{candidate.title}</strong><span>{candidate.subtitle} · в центре карты</span></div>
         <button type="button" data-audio-cue="ui.click" disabled={!atlas.snapshot.loaded || opened.has(candidate.id)}
           aria-label={opened.has(candidate.id) ? `${candidate.title}: уже в атласе` : `Открыть в атласе: ${candidate.title}`}
-          onClick={() => atlas.discover(candidate.id)}>
+          onClick={() => discover(candidate)}>
           {opened.has(candidate.id) ? <Check size={18} aria-hidden="true" /> : <BookOpen size={18} aria-hidden="true" />}
           <span>{opened.has(candidate.id) ? "Открыто" : "Открыть"}</span>
         </button>
@@ -56,7 +78,8 @@ export function EarthAtlasPanel({ atlas, view, onFocus }: Props) {
       </div>
     </div>
     <ul ref={rail} className={styles.rail} aria-label="Открытия на глобусе" tabIndex={0}>
-      {entries.map(entry => <li key={entry.id} className={styles.card} data-opened={opened.has(entry.id) || undefined} data-kind={entry.kind}>
+      {entries.map(entry => <li key={entry.id} className={styles.card} data-opened={opened.has(entry.id) || undefined}
+        data-recent={recentDiscoveryId === entry.id || undefined} data-kind={entry.kind}>
         <button type="button" disabled={!entry.center} data-audio-cue="ui.click" onClick={() => { if (entry.center) onFocus(entry); }}
           aria-label={`${entry.title}: ${opened.has(entry.id) ? "открыто" : "ещё не открыто"}${entry.center ? ", показать на карте" : ""}`}>
           <span className={styles.art} data-biome={entry.biome}><EntryIcon entry={entry} size={26} />
@@ -66,6 +89,7 @@ export function EarthAtlasPanel({ atlas, view, onFocus }: Props) {
         </button>
       </li>)}
     </ul>
+    </>}
     <p className={styles.storage} role="status">{!atlas.snapshot.loaded ? "Загружаем атлас…" : atlas.snapshot.persistent
       ? "Атлас сохраняется на этом устройстве."
       : "Хранилище недоступно. Открытия останутся до закрытия этой карты."}</p>

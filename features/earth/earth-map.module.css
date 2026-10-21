@@ -102,6 +102,9 @@
   .networkNotice, .tileProgress { top: calc(var(--earth-overlay-top, 16px) + 112px); }
 }
 @keyframes locate-search { 50% { opacity: .45; transform: scale(.82); } }
+@media (max-width: 600px) and (orientation: portrait) {
+  .infoPanel { max-height: min(50%, calc(100% - var(--earth-overlay-top, 16px) - 196px - var(--earth-navigation-clearance, 84px) - 88px)); }
+}
 @media (prefers-reduced-motion: reduce) { .controls button, .infoButton, .infoToggle > span, .infoToggle > span::before { transition: none; } .controls button[aria-busy="true"] svg { animation: none; } }
 
 .root[data-lighting="evening"] { background: radial-gradient(ellipse at 35% 42%, #202d53, #10172d 55%, #070d1a 90%); }

@@ -104,9 +104,14 @@ export function createEarthOceanMotion(map: LibreMap, MarkerConstructor: typeof 
   let disposed = false;
   let lastUpload = -Infinity;
   let lastRipple = -Infinity;
+  let uploadInterval = textureInterval;
   const clearRipples = () => { for (const ripple of ripples) ripple.marker.remove(); ripples.length = 0; };
 
   return {
+    setIntervalMs(value: number) {
+      if (disposed || !Number.isFinite(value)) return;
+      uploadInterval = Math.max(textureInterval, Math.min(1_000, value));
+    },
     setEnabled(value: boolean) {
       if (disposed) return;
       enabled = value;
@@ -121,7 +126,7 @@ export function createEarthOceanMotion(map: LibreMap, MarkerConstructor: typeof 
         if (elapsed >= rippleDuration) { ripple.marker.remove(); ripples.splice(index, 1); }
         else paintRipple(ripple, elapsed);
       }
-      if (timestamp - lastUpload < textureInterval || !map.hasImage(EARTH_OCEAN_MATERIAL_IMAGE)) return;
+      if (timestamp - lastUpload < uploadInterval || !map.hasImage(EARTH_OCEAN_MATERIAL_IMAGE)) return;
       paintOceanImage(image, timestamp);
       map.updateImage(EARTH_OCEAN_MATERIAL_IMAGE, image);
       lastUpload = timestamp;

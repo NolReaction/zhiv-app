@@ -71,7 +71,7 @@ export function prepareEarthVegetation() {
       if (!clipped.length) continue;
       if (tone === "crown") crowns += 1;
       features.push({ type: "Feature", properties: { cluster: cluster.id, region: cluster.region,
-        family, tone, order: ORDER[tone] }, geometry: { type: "MultiPolygon", coordinates: round(clipped) } });
+        family, tone, order: ORDER[tone], seasonLatitude: latitude }, geometry: { type: "MultiPolygon", coordinates: round(clipped) } });
     }
     if (!crowns) throw new Error(`Vegetation cluster misses its biome core: ${cluster.id}`);
   }

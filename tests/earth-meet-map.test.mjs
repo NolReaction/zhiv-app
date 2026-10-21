@@ -48,8 +48,16 @@ test("meeting draws an ephemeral direct line and frames both locations only once
   assert.ok(h.fits[0].options.padding.bottom > h.fits[0].options.padding.top);
   h.overlay.setSnapshot(self(), friend({ latitude: 55.77 }), 1);
   assert.equal(h.fits.length, 1, "updates must not fight the user's camera gestures");
+  let preparations = 0;
+  const padding = { top: 28, bottom: 40, left: 28, right: 28 };
+  h.overlay.setCameraPadding(padding, () => { preparations++; });
   h.overlay.setSnapshot(self(), friend(), 2);
   assert.equal(h.fits.length, 2);
+  assert.equal(preparations, 1, "measured viewport is applied only before a new explicit framing");
+  assert.deepEqual(h.fits[1].options.padding, padding, "only marker clearance is added to the native panel padding");
+  assert.equal(h.fits[1].options.absolutePadding, undefined);
+  h.overlay.setSnapshot(self(), friend(), 2);
+  assert.equal(preparations, 1, "ordinary location snapshots cannot interrupt camera movement");
   h.overlay.dispose();
   assert.equal(h.sources.size, 0); assert.equal(h.layers.size, 0); assert.equal(h.timers.size, 0);
 });

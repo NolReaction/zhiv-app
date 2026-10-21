@@ -51,3 +51,23 @@ test("a scene disposed by its own frame cannot leave another timeout behind", ()
   clock.setRunning(true); instance.advance(1_000);
   assert.equal(instance.pending.size, 0);
 });
+
+test("adaptive cadence keeps one timer, wall-time motion and pause semantics", () => {
+  const frames = [], { clock, pending, advance } = fixture(time => frames.push(time));
+  clock.setIntervalMs(250); assert.equal(pending.size, 0);
+  clock.setRunning(true); advance(1_000);
+  assert.deepEqual(frames, [250, 500, 750, 1_000]);
+  advance(100); clock.setIntervalMs(125); assert.equal(pending.size, 1);
+  advance(125); assert.equal(frames.at(-1), 1_225, "cadence changes cannot discard pending elapsed time");
+  clock.setRunning(false); advance(50_000); clock.setIntervalMs(250); clock.setRunning(true); advance(250);
+  assert.equal(frames.at(-1), 1_475, "hidden time never advances the decorative scene");
+  clock.dispose(); clock.setIntervalMs(125); assert.equal(pending.size, 0);
+});
+
+test("a cadence change inside a frame cannot double-schedule the clock", () => {
+  let clock;
+  const s = fixture(() => clock.setIntervalMs(250)); clock = s.clock;
+  clock.setRunning(true); s.advance(1_000);
+  assert.equal(s.pending.size, 1);
+  clock.dispose();
+});

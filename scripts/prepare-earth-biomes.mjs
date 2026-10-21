@@ -66,6 +66,7 @@ export function prepareEarthBiomes() {
     ids.add(region.id);
     const contour = roundContour(region.points);
     const center = contour.reduce((sum, point) => [sum[0] + point[0] / contour.length, sum[1] + point[1] / contour.length], [0, 0]);
+    const seasonLatitude = Math.round(region.points.reduce((sum, point) => sum + point[1], 0) / region.points.length * 100) / 100;
     // Each inner contour is intersected with the previous one, so concave
     // authored footprints cannot grow outside their outer feather band.
     const levels = [];
@@ -84,6 +85,7 @@ export function prepareEarthBiomes() {
       const shell = polygonClipping.intersection(feather, landMask);
       if (shell.length === 0 || area(shell) < 0.00001) continue;
       features.push({ type: "Feature", properties: { region: region.id, biome: region.biome, band,
+        seasonLatitude,
         opacity: Math.round(FEATHER[band].opacity * STRENGTH[region.biome] * 10_000) / 10_000 },
         geometry: { type: "MultiPolygon", coordinates: roundedGeometry(shell) } });
     }

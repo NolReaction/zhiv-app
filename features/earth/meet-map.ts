@@ -1,4 +1,4 @@
-import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
+import type { GeoJSONSource, Map as LibreMap, PaddingOptions } from "maplibre-gl";
 import type { FeatureCollection, MultiLineString } from "geojson";
 import { EARTH_POSITION_MAX_AGE_MS, type EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
@@ -46,6 +46,8 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
   let handledFocus = 0;
   let selfDeadline = -Infinity;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let cameraPadding: PaddingOptions | null = null;
+  let prepareCamera: (() => void) | undefined;
 
   function cancelTimer() {
     if (timer !== null) environment.clearTimeout(timer);
@@ -67,9 +69,10 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
       const container = map.getContainer();
       const width = container.clientWidth, height = container.clientHeight;
       if (width > 0 && height > 0) {
+        prepareCamera?.();
         map.fitBounds([[Math.min(position.longitude, longitude), Math.min(position.latitude, friend.latitude)],
           [Math.max(position.longitude, longitude), Math.max(position.latitude, friend.latitude)]], {
-          padding: { top: Math.min(96, height * .15), bottom: Math.min(290, height * .45), left: Math.min(48, width * .15), right: Math.min(84, width * .25) },
+          padding: cameraPadding ?? { top: Math.min(96, height * .15), bottom: Math.min(290, height * .45), left: Math.min(48, width * .15), right: Math.min(84, width * .25) },
           maxZoom: 15, pitch: 0, bearing: 0, duration: environment.reducedMotion() ? 0 : 900, essential: false,
         });
         handledFocus = focusRequest;
@@ -79,6 +82,8 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
     timer = environment.setTimeout(reconcile, Math.max(1, remaining + 1));
   }
   return {
+    /** Extra marker clearance inside the map's measured panel padding. */
+    setCameraPadding(padding: PaddingOptions, prepare?: () => void) { cameraPadding = { ...padding }; prepareCamera = prepare; },
     install() {
       if (disposed) return;
       if (!map.getSource(EARTH_MEET_SOURCE)) map.addSource(EARTH_MEET_SOURCE, { type: "geojson", data: EMPTY });
@@ -109,6 +114,7 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
     dispose() {
       if (disposed) return;
       disposed = true; visible = false; position = null; friend = null;
+      prepareCamera = undefined;
       cancelTimer(); clearLine();
       if (map.getLayer(LINE)) map.removeLayer(LINE);
       if (map.getLayer(HALO)) map.removeLayer(HALO);

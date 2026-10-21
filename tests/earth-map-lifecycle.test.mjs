@@ -15,12 +15,13 @@ const platformCode = `
   const noop=()=>{};
   class Canvas extends EventTarget {setAttribute(){}}
   export class MapMock {
-    constructor(){this.listeners=new Map();this.canvas=new Canvas();this.complete=false;this.tilesComplete=false;this.sizeChanges=0;this.sourceChanges=0;
+    constructor(options){this.container=options.container;this.padding={top:0,bottom:0,left:0,right:0};this.listeners=new Map();this.canvas=new Canvas();this.complete=false;this.tilesComplete=false;this.sizeChanges=0;this.sourceChanges=0;
       this.style={sources:{'earth-streets':{type:'vector'}},layers:[]};this.sources=new Map();maps.push(this);}
     on(name,callback){const callbacks=this.listeners.get(name)??[];callbacks.push(callback);this.listeners.set(name,callbacks);return this;}
     off(name,callback){this.listeners.set(name,(this.listeners.get(name)??[]).filter(item=>item!==callback));return this;}
     emit(name,event={}){for(const callback of [...this.listeners.get(name)??[]])callback(event);}
     getCenter(){return {lng:35,lat:27};}getZoom(){return 1;}getBearing(){return 0;}getPitch(){return 0;}
+    getContainer(){return this.container;}getPadding(){return this.padding;}easeTo(options){this.padding=options.padding??this.padding;return this;}
     getCanvas(){return this.canvas;}getStyle(){return this.style;}getSource(id){return this.sources.get(id);}
     addSource(id,source){this.sourceChanges++;this.style.sources[id]=source;this.sources.set(id,{...source,setData(){}});}
     getLayer(){return undefined;}addLayer(){}removeLayer(){}removeSource(id){this.sources.delete(id);}
@@ -42,7 +43,7 @@ const platformCode = `
   export const createEarthWeatherProvider=noop;
   export const createEarthWeatherController=()=>({setEnabled:noop,setVisible:noop,setView:noop,dispose:noop});
   export const createEarthFriendMarkers=()=>({setVisible:noop,setSnapshot:noop,setSelfPosition:noop,focusFriend:()=>false,dispose:noop});
-  export const createEarthMeetMap=()=>({setVisible:noop,setSnapshot:noop,install:noop,dispose:noop});
+  export const createEarthMeetMap=()=>({setCameraPadding:noop,setVisible:noop,setSnapshot:noop,install:noop,dispose:noop});
 `;
 const hooksCode = `
   export {lazy,Suspense} from 'react';let current,cursor;
@@ -83,6 +84,8 @@ function harness() {
     devicePixelRatio: 1, matchMedia: () => ({ matches: true }),
   });
   const document = Object.assign(new EventTarget(), { hidden: false, createElement: () => ({ getContext: () => ({ getExtension: () => null }) }) });
+  document.defaultView=window;document.querySelectorAll=()=>[];
+  window.requestAnimationFrame=callback=>window.setTimeout(callback);window.cancelAnimationFrame=id=>window.clearTimeout(id);
   for (const [name, value] of Object.entries({ window, document, navigator: { onLine: true }, ResizeObserver: undefined, IntersectionObserver: undefined }))
     Object.defineProperty(globalThis, name, { value, configurable: true });
   platform.maps.length = 0;
@@ -90,7 +93,8 @@ function harness() {
   const props = { position: null, active: true, visible: true, onReadyChange: value => ready.push(value),
     focusRequest: 0, isOnline: true, onLocate() {}, locating: false, locationActive: false, locationDetails: null,
     infoOpen: false, onInfoOpenChange() {} };
-  const host = { clientWidth: 800, clientHeight: 600 };
+  const host = { clientWidth: 800, clientHeight: 600, ownerDocument:document, closest:()=>null,
+    querySelectorAll:()=>[],getBoundingClientRect:()=>({left:0,top:0}) };
   let nodes;
   function render() {
     for (let pass = 0; pass < 20; pass++) {

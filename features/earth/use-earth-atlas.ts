@@ -16,5 +16,5 @@ export function useEarthAtlas(owner: string | null) {
     window.addEventListener("storage", changed);
     return () => { deactivate(); window.removeEventListener("storage", changed); };
   }, [store]);
-  return { snapshot, discover: store.discover, reset: store.reset };
+  return { snapshot, readSnapshot: store.getSnapshot, discover: store.discover, reset: store.reset };
 }

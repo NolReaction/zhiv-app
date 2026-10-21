@@ -25,6 +25,7 @@ export function createEarthWeather(map: LibreMap, _MarkerConstructor?: typeof Ma
   let snapshot: EarthWeatherSnapshot | null = null;
   let visible = false, disposed = false, motionEnabled = true, drawing = false;
   let elapsedMs = 0, lastFrame = -1;
+  let precipitationScale = 1;
   let canvas: HTMLCanvasElement | null = null, context: CanvasRenderingContext2D | null = null;
   let footprint: EarthWeatherFootprint | null = null;
   let frame: ReturnType<typeof earthWeatherFrame> = null;
@@ -112,7 +113,7 @@ export function createEarthWeather(map: LibreMap, _MarkerConstructor?: typeof Ma
     }
     const snow = snapshot.condition === "snow", precipitation = precipitating(snapshot.condition);
     const maximum = snow ? MAX_SNOW : MAX_RAIN;
-    const count = precipitation ? Math.min(maximum, Math.floor(footprint.surface / (snow ? 16000 : 12000))) : 0;
+    const count = precipitation ? Math.floor(Math.min(maximum, Math.floor(footprint.surface / (snow ? 16000 : 12000))) * precipitationScale) : 0;
     const seed = earthCloudSeed(snapshot.area.key), { left, right, top, bottom } = footprint.bounds;
     const rainWidth = right - left, rainHeight = bottom - top;
     context.lineWidth = 1; context.lineCap = "round";
@@ -153,6 +154,12 @@ export function createEarthWeather(map: LibreMap, _MarkerConstructor?: typeof Ma
     setMotionEnabled(value: boolean) {
       if (disposed || motionEnabled === value) return;
       motionEnabled = value; lastFrame = -1; draw();
+    },
+    setPrecipitationScale(value: number) {
+      if (disposed || !Number.isFinite(value)) return;
+      const next = clamp(value, .5, 1);
+      if (precipitationScale === next) return;
+      precipitationScale = next; lastFrame = -1; draw();
     },
     setWeather(value: EarthWeatherSnapshot | null) {
       if (disposed || snapshot === value) return;

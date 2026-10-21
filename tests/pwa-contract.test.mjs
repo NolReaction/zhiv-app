@@ -1080,7 +1080,9 @@ test("uses a wide desktop dashboard without changing the mobile navigation contr
   assert.match(desktopPeople, /\.tabPanel, \.freshnessRow\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
   assert.match(desktopPeople, /\.tabPanel:not\(\.sections\) > \.sections\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
   assert.match(desktopProfile, /grid-template-columns:\s*minmax\(280px, 0\.8fr\) minmax\(0, 1\.2fr\);/);
-  assert.doesNotMatch(profileStyles, /grid-row:/);
+  // Dashboard panels follow document order. Local icon/label rows inside a
+  // button do not pin a dashboard panel or change mobile navigation.
+  assert.doesNotMatch(profileStyles, /[^{}]*\.(?:columns|overviewColumn|settingsList)[^{}]*\{[^}]*\bgrid-row(?:-[a-z]+)?:/);
 
   const narrowQuery = "@media (max-width: 360px)";
   const narrowPeople = peopleStyles.slice(peopleStyles.indexOf(narrowQuery));

@@ -31,7 +31,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     },
     transform(source, id) {
       if (id.endsWith("/features/earth/earth-view.tsx") || id.endsWith("/features/earth/use-earth-location.ts")
-        || id.endsWith("/features/earth/use-earth-atlas.ts"))
+        || id.endsWith("/features/earth/use-earth-atlas.ts") || id.endsWith("/features/earth/use-earth-atlas-discovery.ts"))
         return source.replace('from "react";', `from "${hooksId}";`);
     },
   }],

@@ -10,14 +10,17 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { createEarthGlobeScene } = await vite.ssrLoadModule("/features/earth/globe-scene.ts");
 const { createEarthLightingData, EARTH_LIGHTS_SOURCE } = await vite.ssrLoadModule("/features/earth/globe-lighting.ts");
+const { EARTH_BIOME_LAYER, EARTH_VEGETATION_LAYER, earthSeasonBiomeColor } = await vite.ssrLoadModule("/features/earth/earth-seasons.ts");
 
-function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recordLighting = false } = {}) {
-  const originals = { window: globalThis.window, document: globalThis.document, performance: globalThis.performance };
+function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recordLighting = false,
+  recordSeasons = false, now = Date.UTC(2026, 0, 15, 12) } = {}) {
+  const originals = { window: globalThis.window, document: globalThis.document, performance: globalThis.performance, dateNow: Date.now };
   let time = 0, sequence = 0, imageUpdates = 0;
   let center = { lng: 38, lat: 55 };
   const timers = new Map(), listeners = new Map(), visibilityListeners = new Set(), preferenceListeners = new Set();
   const markers = [];
   const lightsUpdates = [];
+  const seasonUpdates = [], layers = new Map(recordSeasons ? [[EARTH_BIOME_LAYER, {}], [EARTH_VEGETATION_LAYER, {}]] : []);
   const ownerDocument = {
     hidden: false,
     addEventListener(type, callback) { assert.equal(type, "visibilitychange"); visibilityListeners.add(callback); },
@@ -44,17 +47,19 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
   globalThis.document = ownerDocument;
   globalThis.window = {
     matchMedia: () => media,
-    setTimeout(callback, delay) { const id = ++sequence; timers.set(id, { callback, due: time + delay }); return id; },
+    setTimeout(callback, delay) { const id = ++sequence; timers.set(id, { callback, delay, due: time + delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
   };
   Object.defineProperty(globalThis, "performance", { configurable: true, value: { now: () => time } });
+  Date.now = () => now + time;
   const container = { ownerDocument, clientWidth: 800, clientHeight: 600, children: [], append(...children) { this.children.push(...children); } };
   const mercatorY = latitude => (1 - Math.asinh(Math.tan(latitude * Math.PI / 180)) / Math.PI) / 2;
   const map = {
     getContainer: () => container, getCanvasContainer: () => container, getCenter: () => center, getZoom: () => zoom,
     getSource: id => recordLighting && id === EARTH_LIGHTS_SOURCE
       ? { setData(data) { lightsUpdates.push(data); } } : undefined,
-    getLayer: () => undefined, hasImage: () => true, setSky() {}, setLight() {},
+    getLayer: id => layers.get(id), hasImage: () => true, setSky() {}, setLight() {},
+    setPaintProperty: (...args) => seasonUpdates.push(args),
     updateImage() { imageUpdates++; }, triggerRepaint() {}, addLayer() {}, removeLayer() {},
     project(position) {
       const scale = 512 * 2 ** zoom;
@@ -85,9 +90,9 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
     addTo(target) { assert.equal(target, map); return this; }
     remove() { this.removed++; }
   }
-  const emit = type => { for (const callback of [...listeners.get(type) ?? []]) callback(); };
+  const emit = (type, event) => { for (const callback of [...listeners.get(type) ?? []]) callback(event); };
   const scene = createEarthGlobeScene(map, Marker, mode, eveningCenter);
-  return { scene, map, markers, timers, listeners, visibilityListeners, preferenceListeners, lightsUpdates,
+  return { scene, map, markers, timers, listeners, visibilityListeners, preferenceListeners, lightsUpdates, seasonUpdates,
     get imageUpdates() { return imageUpdates; },
     get weatherField() { return container.children.find(element => element.dataset.earthWeather); },
     advance(duration) {
@@ -99,6 +104,15 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
       }
       time = end;
     },
+    cameraFrames(interval, duration, inputType = "mousemove") {
+      const end = time + duration;
+      while (time + interval <= end) {
+        this.advance(interval);
+        emit("move", inputType ? { originalEvent: { type: inputType, timeStamp: time } } : {});
+        emit("render");
+      }
+      emit("moveend");
+    },
     setZoom(value) { zoom = value; emit("zoom"); emit("move"); },
     move(value) { center = value; emit("move"); },
     reduce(value) { reduced = value; for (const callback of preferenceListeners) callback(); },
@@ -108,6 +122,7 @@ function fixture({ zoom = 1, reduced = false, mode = "day", eveningCenter, recor
       globalThis.window = originals.window;
       globalThis.document = originals.document;
       Object.defineProperty(globalThis, "performance", { configurable: true, value: originals.performance });
+      Date.now = originals.dateNow;
     },
   };
 }
@@ -206,5 +221,72 @@ test("reduced motion and hidden/retained maps have no timer, and terminal callba
     s.map.getCenter = () => { throw new Error("disposed map was read"); };
     queued(); s.scene.setLighting("evening"); s.scene.setVisible(true); s.scene.setReady(true); s.scene.setWeather(rain);
     assert.equal(s.timers.size, 0);
+  } finally { s.restore(); }
+});
+
+test("real slow user frames adapt the existing scene clock, ocean uploads and precipitation, then healthy input restores them", () => {
+  const s = fixture();
+  try {
+    s.cameraFrames(50, 3_000); assert.equal(s.timers.size, 0, "loading cannot produce quality evidence or an effect clock");
+    s.scene.setReady(true); s.setZoom(14); s.scene.setWeather(rain);
+    const fullParticles = Number(s.weatherField.dataset.weatherParticles);
+    const weatherSize = [s.weatherField.width, s.weatherField.height];
+    assert.ok(fullParticles > 0);
+    s.setZoom(1);
+    s.cameraFrames(50, 3_000, null);
+    s.advance(3_000);
+    assert.equal([...s.timers.values()][0].delay, 125, "flyTo and the existing 8 Hz decor clock are not poor device FPS");
+    s.cameraFrames(50, 2_100);
+    assert.equal(s.timers.size, 1); assert.equal([...s.timers.values()][0].delay, 250);
+    const cloudMarkers = s.markers.filter(marker => marker.options.element.dataset.earthCloud);
+    const writes = cloudMarkers.map(marker => marker.positions.length), uploads = s.imageUpdates;
+    s.advance(1_000);
+    assert.deepEqual(cloudMarkers.map((marker, index) => marker.positions.length - writes[index]), [4, 4, 4, 4, 4]);
+    assert.equal(s.imageUpdates - uploads, 2, "ocean retains its image while uploading half as often");
+    s.setZoom(14);
+    assert.equal(Number(s.weatherField.dataset.weatherParticles), Math.floor(fullParticles * .7));
+    assert.deepEqual([s.weatherField.width, s.weatherField.height], weatherSize);
+    s.setZoom(1); s.hide(true); s.advance(5_000); s.hide(false);
+    s.cameraFrames(16, 6_400);
+    assert.equal([...s.timers.values()][0].delay, 125, "healthy foreground gestures restore full decorative motion");
+    s.setZoom(14); assert.equal(Number(s.weatherField.dataset.weatherParticles), fullParticles);
+    s.scene.dispose(); assert.equal(s.timers.size, 0); assert.equal(s.listeners.size, 0);
+  } finally { s.restore(); }
+});
+
+test("hidden, retained and reduced-motion intervals discard partial quality evidence", () => {
+  const s = fixture();
+  try {
+    s.scene.setReady(true);
+    for (const suspend of [value => s.hide(value), value => s.scene.setVisible(!value), value => s.reduce(value)]) {
+      s.cameraFrames(50, 1_050); suspend(true);
+      assert.equal(s.timers.size, 0);
+      s.cameraFrames(50, 3_000); suspend(false); s.cameraFrames(50, 1_050);
+      assert.equal([...s.timers.values()][0].delay, 125, "separate foreground periods cannot complete an old slow window");
+      // Start the next case with a clean foreground sample period.
+      s.scene.setReady(false); s.scene.setReady(true);
+    }
+    const render = [...s.listeners.get("render") ?? []];
+    s.scene.dispose();
+    s.map.getCenter = () => { throw new Error("disposed quality or season callback touched the map"); };
+    for (const callback of render) callback();
+    assert.equal(s.listeners.size, 0); assert.equal(s.timers.size, 0);
+  } finally { s.restore(); }
+});
+
+test("seasons reuse scene lifecycle, update once per day and refresh after a long hidden or reduced-motion spell", () => {
+  const base = Date.UTC(2026, 0, 15, 12), day = 86_400_000;
+  const s = fixture({ recordSeasons: true, now: base });
+  try {
+    assert.equal(s.seasonUpdates.length, 2); assert.equal(s.timers.size, 0, "season setup has no independent clock");
+    assert.deepEqual(s.seasonUpdates[0], [EARTH_BIOME_LAYER, "fill-color", earthSeasonBiomeColor(base)]);
+    s.scene.setReady(true); s.advance(1_000); assert.equal(s.seasonUpdates.length, 2);
+    s.hide(true); s.advance(day * 2); assert.equal(s.seasonUpdates.length, 2);
+    s.hide(false); assert.equal(s.seasonUpdates.length, 4);
+    s.reduce(true); s.advance(day); assert.equal(s.seasonUpdates.length, 4); assert.equal(s.timers.size, 0);
+    s.move({ lng: 38.1, lat: 55 }); assert.equal(s.seasonUpdates.length, 6, "a visible static map refreshes seasonal paint when the user moves it");
+    s.move({ lng: 38.2, lat: 55 }); assert.equal(s.seasonUpdates.length, 6);
+    s.scene.dispose(); s.advance(day); s.scene.setReady(true);
+    assert.equal(s.seasonUpdates.length, 6); assert.equal(s.timers.size, 0);
   } finally { s.restore(); }
 });
