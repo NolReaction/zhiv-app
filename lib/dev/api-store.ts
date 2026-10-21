@@ -1,3 +1,4 @@
+import { devSharedTapStats } from "./game-state";
 import { GUEST_ACHIEVEMENT_IDS, guestCollections, type GuestProfile } from "@/features/people/guest-profile-model";
 import type { GuestWorld } from "@/features/people/guest-world-model";
 import { naturalItems } from "@/features/game/game-rewards";
@@ -1093,7 +1094,7 @@ export function getDevGuestProfile(token: string | undefined, circleId: string):
   return { kind: "ok", value: { ownerPublicId: viewer.publicId, circleId,
     user: { publicId: target.publicId, displayName: target.displayName },
     homeLevel: Math.min(5, Math.max(1, state?.buildings.home ?? 1)), completedExplorations: state?.completedExplorations ?? 0,
-    achievements, collections: guestCollections(finds, state?.fishing.catches ?? {}), serverTime: new Date().toISOString() } };
+    achievements, tapStats: devSharedTapStats(target.publicId), collections: guestCollections(finds, state?.fishing.catches ?? {}), serverTime: new Date().toISOString() } };
 }
 
 /** Safe game profiles require an accepted direct friendship, independently of status sharing. */

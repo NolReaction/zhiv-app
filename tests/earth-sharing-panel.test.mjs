@@ -192,6 +192,8 @@ test("offline still allows entering Ghost but cannot silently resume or change a
   pending.button("Режим призрака").props.onClick();
   assert.match(pending.markup, /остановлена на устройстве/);
   assert.match(pending.markup, /Ждём подтверждения сервера/);
+  assert.match(pending.markup, /Сохраняем приватность…/);
+  assert.doesNotMatch(pending.markup, /Включён для всех/);
   assert.doesNotMatch(pending.markup, /на сервере включён|успешно/);
   assert.deepEqual(pending.calls, []);
 });

@@ -34,6 +34,22 @@ function render(extra = {}) {
 }
 const control = (view, label) => view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes(label));
 
+test("atlas meeting notes require an explicit click and revalidate freshness after a sleeping tab", t => {
+  let now = wall, clock = mono, recorded = 0;
+  t.mock.method(Date, "now", () => now); t.mock.method(performance, "now", () => clock);
+  const to = friend({ latitude: from.latitude, longitude: from.longitude });
+  const view = render({ person: to, onRecordMeeting: () => { recorded++; } });
+  assert.equal(recorded, 0);
+  const button = control(view, "Отметить встречу в атласе"); assert.ok(button);
+  button.props.onClick(); assert.equal(recorded, 1);
+  now += 60_001; clock += 60_001;
+  button.props.onClick(); assert.equal(recorded, 1, "an old rendered control cannot record stale proximity");
+  const hidden = render({ person: to, onRecordMeeting: () => {}, locationAllowed: false });
+  assert.equal(control(hidden, "Отметить встречу в атласе"), undefined);
+  const done = render({ person: to, onRecordMeeting: () => {}, meetingRecorded: true });
+  assert.equal(control(done, "Встреча отмечена в атласе").props.disabled, true);
+});
+
 test("fresh meeting card describes straight-line distance and offers a closed map chooser before external navigation", () => {
   const view = render({ name: "<script>Лена</script>" });
   assert.match(view.html, /по прямой/); assert.match(view.html, /Только что/);

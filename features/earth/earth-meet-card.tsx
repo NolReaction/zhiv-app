@@ -6,7 +6,7 @@ import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
-import { earthMeetDetails, walkingRouteUrl, WALKING_MAP_SERVICES, type WalkingMapService } from "./meet";
+import { canRecordEarthMeeting, earthMeetDetails, walkingRouteUrl, WALKING_MAP_SERVICES, type WalkingMapService } from "./meet";
 import styles from "./earth-meet-card.module.css";
 
 export function formatMeetDistance(meters: number): string {
@@ -20,10 +20,12 @@ function openWalkingRoute(event: MouseEvent<HTMLAnchorElement>, person: EarthMap
   playUiCue(getAudioRuntime(), "ui.open");
 }
 
-export function EarthMeetCard({ person, name, position, now, monotonicNow, locating, locationAllowed = true, onLocate, onShowBoth, onClose }: {
+export function EarthMeetCard({ person, name, position, now, monotonicNow, locating, locationAllowed = true, onLocate, onShowBoth, onClose,
+  onRecordMeeting, meetingRecorded = false }: {
   person: EarthMapPerson | null; name?: string; position: EarthPosition | null;
   now: number; monotonicNow: number; locating: boolean; locationAllowed?: boolean;
   onLocate: () => void; onShowBoth: () => void; onClose: () => void;
+  onRecordMeeting?: () => void; meetingRecorded?: boolean;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const routePicker = useRef<HTMLDetailsElement>(null);
@@ -73,6 +75,12 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
       </div>
       <p className={styles.footnote}>{route ? "Выбери карты — откроется приложение или сайт." : person.precision === "APPROXIMATE"
         ? "Для пешего маршрута нужна точная геопозиция друга." : "Пеший маршрут появится, когда точка будет свежей и точной."}</p>
+      {onRecordMeeting && locationAllowed && canRecordEarthMeeting(position, person, monotonicNow, now) && <div className={styles.meetingNote}>
+        <button type="button" data-audio-cue="ui.click" disabled={meetingRecorded} onClick={() => {
+          if (canRecordEarthMeeting(position, person, performance.now(), Date.now())) onRecordMeeting();
+        }}>{meetingRecorded ? "Встреча отмечена в атласе" : "Отметить встречу в атласе"}</button>
+        {!meetingRecorded && <span>Вы рядом. Отметь, если встретились.</span>}
+      </div>}
     </> : <p className={styles.unavailable} role="status">Геопозиция больше недоступна.</p>}
   </section>;
 }

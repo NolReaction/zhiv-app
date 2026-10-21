@@ -2,13 +2,16 @@ import type { CustomLayerInterface, CustomRenderMethodInput, Map as LibreMap } f
 
 export const EARTH_NIGHT_SHADE_LAYER = "earth-evening-shade";
 export const EARTH_NIGHT_MAX_ALPHA = 0.36;
+export const EARTH_TWILIGHT_MAX_ALPHA = 0.075;
+export const EARTH_ATMOSPHERE_MAX_ALPHA = 0.14;
 const COLUMNS = 128;
 const ROWS = 64;
 const MAX_LATITUDE = 85.0511287798066;
 type Vector = readonly [number, number, number];
 type Program = { program: WebGLProgram; uniforms: Record<string, WebGLUniformLocation | null> };
 const uniformNames = ["u_projection_matrix", "u_projection_fallback_matrix", "u_projection_tile_mercator_coords",
-  "u_projection_clipping_plane", "u_projection_transition", "u_sun", "u_center_x"] as const;
+  "u_projection_clipping_plane", "u_projection_transition", "u_sun", "u_center_x",
+  "u_view_normal", "u_atmosphere_strength", "u_night_enabled"] as const;
 
 /** A single surface, rather than overlapping polygons in an overzoomed GeoJSON tile. */
 export function createEarthNightMesh(): Float32Array {
@@ -38,13 +41,35 @@ export function earthNightAlpha(facing: number): number {
   return EARTH_NIGHT_MAX_ALPHA * (1 - value * value * (3 - 2 * value));
 }
 
+const clamp = (value: number) => Math.max(0, Math.min(1, value));
+function smoothstep(low: number, high: number, value: number) {
+  const t = clamp((value - low) / (high - low));
+  return t * t * (3 - 2 * t);
+}
+
+/** A separate warm transition leaves both daylight and deep night untinted. */
+export function earthTwilightAlpha(facing: number): number {
+  return EARTH_TWILIGHT_MAX_ALPHA * smoothstep(-0.22, -0.06, facing) * (1 - smoothstep(0.04, 0.23, facing));
+}
+
+/** Only the atmospheric rim fades with camera distance; geographic night does not. */
+export function earthAtmosphereStrength(zoom: number, projectionTransition = 1): number {
+  return clamp(projectionTransition) * (1 - smoothstep(2.5, 5.5, zoom));
+}
+
+export function earthAtmosphereAlpha(viewFacing: number, zoom: number, projectionTransition = 1): number {
+  const rim = 1 - smoothstep(0.2, 0.55, viewFacing);
+  return EARTH_ATMOSPHERE_MAX_ALPHA * rim * rim * earthAtmosphereStrength(zoom, projectionTransition);
+}
+
 /** Public SDK projection prelude handles globe clipping, poles and the Mercator transition. */
-export function createEarthNightShadeLayer(map: Pick<LibreMap, "getCenter" | "triggerRepaint">) {
+export function createEarthNightShadeLayer(map: Pick<LibreMap, "getCenter" | "triggerRepaint"> & Partial<Pick<LibreMap, "getZoom">>) {
   const programs = new Map<string, Program>();
   let buffer: WebGLBuffer | null = null, vao: WebGLVertexArrayObject | null = null;
   let context: WebGL2RenderingContext | null = null;
   let vertexCount = 0, enabled = false, visible = true, failed = false, disposed = false;
   let sun: Vector = [1, 0, 0];
+  let nightEnabled = true;
   function release(gl: WebGL2RenderingContext) {
     for (const { program } of programs.values()) gl.deleteProgram(program);
     programs.clear();
@@ -75,13 +100,34 @@ void main() {
 precision highp float;
 in vec3 v_normal;
 uniform vec3 u_sun;
+uniform vec3 u_view_normal;
+uniform float u_atmosphere_strength;
+uniform float u_night_enabled;
 out vec4 fragColor;
 void main() {
-  float facing = dot(normalize(v_normal), u_sun);
-  float darkness = 1.0 - smoothstep(-0.34, 0.05, facing);
+  vec3 normal = normalize(v_normal);
+  float facing = dot(normal, u_sun);
+  // Night and sunset stay in geographic space across every camera scale.
+  float darkness = (1.0 - smoothstep(-0.34, 0.05, facing)) * u_night_enabled;
   float alpha = ${EARTH_NIGHT_MAX_ALPHA.toFixed(2)} * darkness;
-  vec3 color = mix(vec3(0.81, 0.61, 0.43), vec3(0.12, 0.22, 0.29), smoothstep(0.2, 0.85, darkness));
-  fragColor = vec4(color * alpha, alpha);
+  vec3 nightColor = mix(vec3(0.2, 0.32, 0.4), vec3(0.12, 0.22, 0.29), smoothstep(0.2, 0.85, darkness));
+  vec3 premultiplied = nightColor * alpha;
+  float twilight = smoothstep(-0.22, -0.06, facing) * (1.0 - smoothstep(0.04, 0.23, facing));
+  float warmAlpha = ${EARTH_TWILIGHT_MAX_ALPHA.toFixed(3)} * twilight * u_night_enabled;
+  premultiplied = vec3(1.0, 0.69, 0.43) * warmAlpha + premultiplied * (1.0 - warmAlpha);
+  alpha = warmAlpha + alpha * (1.0 - warmAlpha);
+  // A restrained inward limb uses the same static mesh, never a screen-space
+  // circle that could drift off the globe. It vanishes before street scale.
+  float viewFacing = dot(normal, u_view_normal);
+  float rim = 1.0 - smoothstep(0.2, 0.55, viewFacing);
+  float rimAlpha = ${EARTH_ATMOSPHERE_MAX_ALPHA.toFixed(2)} * rim * rim * u_atmosphere_strength;
+  vec3 rimColor = mix(vec3(0.64, 0.84, 0.88), vec3(0.44, 0.61, 0.78), darkness);
+  rimColor = mix(rimColor, vec3(1.0, 0.75, 0.58), twilight * u_night_enabled);
+  premultiplied = rimColor * rimAlpha + premultiplied * (1.0 - rimAlpha);
+  alpha = rimAlpha + alpha * (1.0 - rimAlpha);
+  // Preserve the same readability ceiling even where the limb crosses night.
+  float cappedAlpha = min(alpha, ${EARTH_NIGHT_MAX_ALPHA.toFixed(2)});
+  fragColor = vec4(premultiplied * cappedAlpha / max(alpha, 0.00001), cappedAlpha);
 }`;
     try {
       for (const [type, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]] as const) {
@@ -114,6 +160,8 @@ void main() {
     },
     render(gl, input) {
       if (disposed || failed || !enabled || !visible || !buffer || !vao) return;
+      const atmosphere = earthAtmosphereStrength(map.getZoom?.() ?? 0, input.defaultProjectionData.projectionTransition);
+      if (!nightEnabled && atmosphere === 0) return;
       let compiled = programs.get(input.shaderData.variantName);
       if (!compiled) {
         try {
@@ -133,18 +181,23 @@ void main() {
       gl.uniform4fv(uniforms.u_projection_tile_mercator_coords, data.tileMercatorCoords);
       gl.uniform4fv(uniforms.u_projection_clipping_plane, data.clippingPlane);
       gl.uniform1f(uniforms.u_projection_transition, data.projectionTransition);
+      const center = map.getCenter(), longitude = center.lng * Math.PI / 180, latitude = center.lat * Math.PI / 180;
       gl.uniform3fv(uniforms.u_sun, sun);
-      gl.uniform1f(uniforms.u_center_x, (map.getCenter().lng + 180) / 360);
+      gl.uniform3fv(uniforms.u_view_normal, [Math.cos(latitude) * Math.cos(longitude), Math.cos(latitude) * Math.sin(longitude), Math.sin(latitude)]);
+      gl.uniform1f(uniforms.u_atmosphere_strength, atmosphere);
+      gl.uniform1f(uniforms.u_night_enabled, nightEnabled ? 1 : 0);
+      gl.uniform1f(uniforms.u_center_x, (center.lng + 180) / 360);
       gl.drawArrays(gl.TRIANGLES, 0, vertexCount); gl.bindVertexArray(null);
     },
     onRemove(_map, gl) { release(gl); context = null; },
   };
   return {
     layer,
-    setLighting(next: Vector | null) {
+    setLighting(next: Vector | null, options: { night?: boolean } = {}) {
       if (disposed) return;
-      const changed = enabled !== (next !== null) || !!next && next.some((value, index) => value !== sun[index]);
-      enabled = next !== null; if (next) sun = [...next];
+      const nextNight = options.night ?? true;
+      const changed = enabled !== (next !== null) || nextNight !== nightEnabled || !!next && next.some((value, index) => value !== sun[index]);
+      enabled = next !== null; nightEnabled = nextNight; if (next) sun = [...next];
       if (changed && visible) map.triggerRepaint();
     },
     setVisible(next: boolean) { if (!disposed && visible !== next) { visible = next; map.triggerRepaint(); } },

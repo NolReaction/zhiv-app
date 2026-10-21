@@ -74,20 +74,17 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
   return <div className={styles.panel}>
     <section className={styles.ghostCard} data-enabled={ghost || undefined} aria-labelledby="earth-ghost-heading">
       <div className={styles.ghostRow}>
-        <span className={styles.ghostIcon}><Ghost size={23} aria-hidden="true" /></span>
-        <div className={styles.ghostTitle}><strong id="earth-ghost-heading">Режим призрака</strong><span>{ghost ? "Включён для всех" : "Можно включить в любой момент"}</span></div>
+        <span className={styles.ghostIcon}><Ghost size={20} aria-hidden="true" /></span>
+        <div className={styles.ghostTitle}><strong id="earth-ghost-heading">Режим призрака</strong>
+          <span role="status"><i className={styles.statusDot} data-live={sharing.publishing && !ghost || undefined} />{busy ? "Сохраняем…" : sharing.pendingGhost ? sharingSummary(sharing) : ghost ? "Включён для всех" : sharingSummary(sharing)}</span></div>
         <EarthSharingToggle ghost checked={ghost} disabled={ghost && !canChange} label="Режим призрака"
           description="earth-ghost-hint" onChange={() => { if (ghost) resume(); else onGhost(); }} />
       </div>
-      <p id="earth-ghost-hint">Последнее место вместо обновлений. Без уведомлений.</p>
+      <p id="earth-ghost-hint" className={styles.srOnly}>Последнее место вместо обновлений. Без уведомлений.</p>
     </section>
 
-    <div className={styles.connection} role="status">
-      <span className={styles.statusDot} data-live={sharing.publishing && !ghost || undefined} />
-      <span>{busy ? "Сохраняем…" : sharingSummary(sharing)}</span>
-      {settings?.mode === "SHARING" && !sharing.publishing && !sharing.pendingGhost && liveCount > 0 &&
-        <button type="button" data-audio-cue="ui.click" className={styles.resume} disabled={!canChange} onClick={resume}>Возобновить</button>}
-    </div>
+    {settings?.mode === "SHARING" && !sharing.publishing && !sharing.pendingGhost && liveCount > 0 &&
+      <button type="button" data-audio-cue="ui.click" className={styles.resume} disabled={!canChange} onClick={resume}>Возобновить</button>}
     {sharing.pendingGhost && <p className={styles.pending} role="status">{sharing.pendingPrivacyMode === "OFF"
       ? "Удаление доступа ещё не подтверждено сервером."
       : "Передача остановлена на устройстве. Ждём подтверждения сервера."}</p>}
@@ -108,6 +105,7 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
           const name = personDisplayName(person);
           return <li key={person.circleId} className={styles.friend}>
             <EarthFriendSharingControls person={person} sharing={sharing} online={online} working={working}
+              presentation="compact"
               heading={<PlayerName name={name} tag={person.user.tag} />}
               avatar={Array.from(name.trim())[0]?.toLocaleUpperCase("ru-RU") || "Ж"} firstChoices={draft}
               onShare={onShare} onSetFrozen={onSetFrozen} onRevokeRecipient={onRevokeRecipient} />
@@ -118,7 +116,8 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
     </section>
 
     <details className={styles.options}>
-      <summary onClick={playDisclosureCue}><SlidersHorizontal size={16} aria-hidden="true" /><span>Точность и срок</span><ChevronDown size={16} aria-hidden="true" /></summary>
+      <summary onClick={playDisclosureCue}><SlidersHorizontal size={16} aria-hidden="true" /><span>Точность и срок</span>
+        <small>{settings?.precision === "PRECISE" ? "Точно" : "Примерно"}</small><ChevronDown size={16} aria-hidden="true" /></summary>
       <form onSubmit={event => { event.preventDefault(); if (settings && canChange && !ghost && selected.size > 0) void onShare(choicesFor(settings, draft)); }}>
         <fieldset disabled={!canChange || ghost} className={styles.precision}><legend>Точность</legend>
           <label><input type="radio" name="earth-sharing-precision" value="APPROXIMATE" checked={draft.precision === "APPROXIMATE"}

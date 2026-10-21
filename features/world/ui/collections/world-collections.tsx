@@ -56,7 +56,7 @@ export function WorldCollections({ state, economy, gifts }: { state: WorldState;
         {chapter === "travel" && <p className={styles.sources}>Лесная разведка, Лесной обход, Старый лес и Лесное нагорье.</p>}
         {chapter === "quarry" && <p className={styles.sources}>Заказы шахты, Вход в пещеру, Глубокий проход, Прибрежные отложения и Заброшенный карьер.</p>}
         {chapter === "fishing" && <FishRarityScale />}
-        <div className={styles.finds}>{entries.map(entry => <article className={styles.find} key={entry.id} data-owned={entry.owned}>
+        <div className={styles.finds} role="region" aria-label="Находки главы — листайте влево и вправо" tabIndex={0}>{entries.map(entry => <article className={styles.find} key={entry.id} data-owned={entry.owned}>
           <div className={styles.art}>{entry.illustration === "item" ? entry.owned ? <ItemIcon itemId={entry.id} size={64} /> : <HiddenFishIcon size={64} /> : <CollectionIcon findId={entry.id} size={64} />}{entry.owned ? <Check size={15} aria-label="Найдено" /> : <span aria-hidden="true">?</span>}</div>
           <h4>{entry.illustration === "item" && !entry.owned ? "Неизвестная рыба" : entry.name}</h4>{entry.rarity && <FishRarityBadge rarity={entry.rarity} />}<p>{entry.owned ? entry.description : entry.source}</p><small>{entry.owned ? "Записано в книге" : "Ещё не найдено"}</small>
         </article>)}</div>

@@ -9,16 +9,18 @@ import java.util.UUID
 @Serializable data class GuestProfileUser(val publicId: String, val displayName: String)
 @Serializable data class GuestAchievement(val id: String, val level: Int)
 @Serializable data class GuestCollections(val travel: List<String>, val fishing: List<String>, val quarry: List<String>)
+@Serializable data class GuestTapStats(val lifetimeTaps: Long, val bestSeries: Long)
 @Serializable data class GuestProfile(
     val ownerPublicId: String, val circleId: String, val user: GuestProfileUser,
     val homeLevel: Int, val completedExplorations: Long,
     val achievements: List<GuestAchievement>, val collections: GuestCollections, val serverTime: String,
+    val tapStats: GuestTapStats? = null,
 )
 interface GuestProfileRepository {
     suspend fun profile(sessionHash: ByteArray, circleId: UUID): GuestProfile
 }
 
-/** Explicit shared allowlist: account/security, check-ins, friendships and leaderboard-only records stay private. */
+/** Explicit shared allowlist: account/security, check-ins, friendships and leaderboard records stay private unless their owner opts in. */
 object GuestProfileRules {
     private fun resource(name: String): JsonObject = Json.parseToJsonElement(checkNotNull(
         GuestProfileRules::class.java.getResourceAsStream("/world/$name.json"))

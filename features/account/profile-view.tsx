@@ -228,6 +228,9 @@ export function ProfileView({
                 <strong><PlayerName name={me.user.displayName} tag={me.user.tag} /></strong>
                 <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} onRewardsClaimed={onRewardsClaimed} />
               </div>
+              {gameLoaded ? <GameLevelsButton lifetimeTaps={clickerStats.lifetimeTaps} className={styles.identityLevel}>
+                <GameLevelIcon level={clickerStats.level.level} size={19} /><strong>Уровень {clickerStats.level.level}</strong><small>{clickerStats.level.title}</small>
+              </GameLevelsButton> : <span role="status">Уровень загружается…</span>}
               <span>{me.user.publicId}</span>
               <button type="button" className={styles.editLink} onClick={() => setPanel(panel === "name" ? "" : "name")}>Изменить имя</button>
             </div>
@@ -239,6 +242,7 @@ export function ProfileView({
             </button>
             <div><Check size={18} aria-hidden="true" /><strong>{me.checkInCount}</strong>
               <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span></div>
+            <div><GameLevelIcon level={clickerStats.level.level} size={18} /><strong>{gameLoaded ? clickerStats.lifetimeTaps.toLocaleString("ru-RU") : "—"}</strong><span>всего тапов</span></div>
             <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг"><Trophy size={18} aria-hidden="true" /><strong>{gameLoaded ? `×${clickerStats.bestSeries.toLocaleString("ru-RU")}` : "-"}</strong><span>{gamePendingTaps > 0 ? "сохраняем…" : "рекорд игры"}</span></button>
           </div>
         </div>

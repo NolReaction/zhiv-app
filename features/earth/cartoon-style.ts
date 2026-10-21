@@ -10,11 +10,14 @@ import { earthOceanBackgroundLayer, earthOceanWaterLayer } from "./globe-ocean";
 import { earthLightingSources, earthLightingLayers } from "./globe-lighting";
 import { EARTH_RELIEF_SOURCE, earthReliefData, earthReliefLayer } from "./globe-relief";
 import { EARTH_BIOME_SOURCE, earthBiomeData, earthBiomeLayer } from "./globe-biomes";
+import { EARTH_VEGETATION_SOURCE, earthVegetationData, earthVegetationLayer } from "./globe-vegetation";
+import { EARTH_OVERVIEW_RIVER_SOURCE, earthOverviewRiverData, earthOverviewRiverLayer } from "./globe-rivers";
+import { EARTH_REEF_SOURCE, earthReefData, earthReefLayers } from "./globe-reefs";
 
 export const EARTH_LAND_SOURCE = "earth-local-land";
 export const EARTH_VECTOR_SOURCE = "earth-streets";
 export const EARTH_PALETTE = {
-  ocean: "#65bdc7", land: "#b5d39b", forest: "#75b58b", grass: "#9acb91",
+  ocean: "#60b5c3", land: "#b5d39b", forest: "#75b58b", grass: "#9acb91",
   sand: "#efe4ae", ice: "#edf7e4", neighborhood: "#cbe0b2", park: "#94d2a0",
   road: "#fff6da", highway: "#f3cb82", roadEdge: "#b6c89e", building: "#e5c6a7",
   buildingEdge: "#c6a98d", ink: "#315b53", mutedInk: "#4e7970", halo: "#f5fae9",
@@ -38,7 +41,9 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       filter: ["==", ["get", "kind"], "grid"],
       paint: { "line-color": "#c4ece1", "line-width": 0.7,
         "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.26, 2, 0.18, 3, 0] } },
+    coast.depth,
     coast.shelf,
+    ...earthReefLayers(),
     coast.shadow,
     { id: "earth-land", type: "fill", source: EARTH_LAND_SOURCE,
       paint: { "fill-color": p.land, "fill-antialias": false } },
@@ -55,7 +60,9 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
     earthBiomeLayer(),
     { ...earthLandMaterialLayer("earth-land-material", EARTH_LAND_SOURCE), maxzoom: 4 },
     earthLandMaterialLayer("earth-detail-land-material", EARTH_VECTOR_SOURCE, EARTH_TILE_BASE_LAYER),
+    earthVegetationLayer(),
     earthReliefLayer(),
+    earthOverviewRiverLayer(),
     coast.edge,
     { id: "earth-overview-ice", type: "fill", source: EARTH_OVERVIEW_SOURCE, maxzoom: 6,
       filter: ["==", ["get", "kind"], "ice"], paint: { "fill-color": p.ice, "fill-antialias": false,
@@ -77,9 +84,10 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
     { id: "earth-water", type: "fill", ...details, "source-layer": "water",
       filter: ["!=", ["get", "brunnel"], "tunnel"], paint: { "fill-color": p.ocean, "fill-antialias": false } },
     earthOceanWaterLayer("earth-water-waves", EARTH_VECTOR_SOURCE, "water", ["!=", ["get", "brunnel"], "tunnel"]),
-    { id: "earth-rivers", type: "line", ...details, minzoom: 8, "source-layer": "waterway",
+    { id: "earth-rivers", type: "line", ...details, "source-layer": "waterway",
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": p.ocean, "line-width": zoomWidth(0.4, 5) } },
+      paint: { "line-color": p.ocean, "line-width": zoomWidth(0.4, 5),
+        "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0, 5, 1] } },
     { id: "earth-borders", type: "line", source: EARTH_VECTOR_SOURCE, minzoom: 2, "source-layer": "boundary",
       filter: ["all", ["==", ["get", "admin_level"], 2], ["!=", ["get", "maritime"], 1]],
       paint: { "line-color": "#80b18f", "line-width": 1, "line-opacity": 0.65, "line-dasharray": [3, 2] } },
@@ -152,6 +160,9 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       [EARTH_COAST_SOURCE]: { type: "geojson", data: createEarthCoastlineData(land as FeatureCollection<Polygon>), maxzoom: 0, tolerance: 0, buffer: 0 },
       [EARTH_RELIEF_SOURCE]: { type: "geojson", data: earthReliefData, maxzoom: 0, tolerance: 0, buffer: 0 },
       [EARTH_BIOME_SOURCE]: { type: "geojson", data: earthBiomeData, maxzoom: 0, tolerance: 0, buffer: 0 },
+      [EARTH_VEGETATION_SOURCE]: { type: "geojson", data: earthVegetationData, maxzoom: 0, tolerance: 0, buffer: 0 },
+      [EARTH_OVERVIEW_RIVER_SOURCE]: { type: "geojson", data: earthOverviewRiverData, maxzoom: 0, tolerance: 0.25, buffer: 64 },
+      [EARTH_REEF_SOURCE]: { type: "geojson", data: earthReefData, maxzoom: 0, tolerance: 0.25, buffer: 64 },
       ...earthLightingSources(),
     }, layers,
   };

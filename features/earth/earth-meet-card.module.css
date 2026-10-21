@@ -25,3 +25,7 @@
 .card button:focus-visible, .card a:focus-visible, .card summary:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 3px; }
 .footnote { margin: 10px 0 0; color: #a7bea0; font-size: 10px; line-height: 1.5; }
 .unavailable { color: #c6d4bd; font-size: 13px; margin: 20px 0 4px; }
+.meetingNote { margin-top: 6px; }
+.meetingNote button { min-height: 44px; padding: 7px 0; border: 0; background: transparent; color: #d4eab7; font: inherit; font-size: 11px; text-align: left; text-decoration: underline; cursor: pointer; }
+.meetingNote button:disabled { opacity: .8; cursor: default; text-decoration: none; }
+.meetingNote span { display: block; color: #a7bea0; font-size: 10px; }

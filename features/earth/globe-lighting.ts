@@ -5,7 +5,7 @@ import type { ExpressionSpecification, GeoJSONSource, GeoJSONSourceSpecification
 export type EarthLightingMode = "auto" | "day" | "evening";
 export type EarthLightingCenter = { lng: number; lat: number };
 type GlobePoint = [number, number];
-type EarthLightingMap = Pick<Map, "getSource" | "setSky" | "setLight" | "getCenter" | "getLayer" | "addLayer" | "removeLayer" | "triggerRepaint">;
+type EarthLightingMap = Pick<Map, "getSource" | "setSky" | "setLight" | "getCenter" | "getLayer" | "addLayer" | "removeLayer" | "triggerRepaint"> & Partial<Pick<Map, "getZoom">>;
 
 export const EARTH_LIGHTS_SOURCE = "earth-globe-city-lights";
 const DEGREES = Math.PI / 180;
@@ -136,7 +136,7 @@ export function createEarthLightingController(map: EarthLightingMap, options: {
     if (!lightsSource?.setData) return;
     const data = createEarthLightingData(mode, Math.floor(now / MINUTE) * MINUTE, center);
     const sun = mode === "evening" ? earthEveningSun(center) : earthSunPosition(Math.floor(now / MINUTE) * MINUTE);
-    night.setLighting(mode === "day" ? null : globeVector(sun));
+    night.setLighting(globeVector(sun), { night: mode !== "day" });
     lightsSource.setData(data.lights);
     if (!lastKey || !lastKey.startsWith(`${mode}:`)) {
       map.setSky(earthLightingSky(mode));

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import polygonClipping from "polygon-clipping";
 import { createServer } from "vite";
 import { createExpression, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 
@@ -20,8 +22,8 @@ test("illustrated relief stays one bounded local fill source without a DEM or st
   assert.equal(source.type, "geojson");
   assert.equal(source.maxzoom, 0);
   assert.equal(source.data, earthReliefData);
-  assert.ok(Buffer.byteLength(JSON.stringify(source.data)) < 230_000);
-  assert.ok(earthReliefData.features.length > 500 && earthReliefData.features.length <= 1_100);
+  assert.ok(Buffer.byteLength(JSON.stringify(source.data)) < 275_000);
+  assert.ok(earthReliefData.features.length > 500 && earthReliefData.features.length <= 1_350);
   assert.equal(style.layers.filter(layer => layer.source === EARTH_RELIEF_SOURCE).length, 1);
   const layer = style.layers.find(layer => layer.id === EARTH_RELIEF_LAYER);
   assert.equal(layer.type, "fill");
@@ -94,4 +96,51 @@ test("overview relief fades before exact detail and remains under water, glacier
   assert.ok(at(3.5) > 0 && at(3.5) < at(3));
   assert.equal(at(4), 0);
   assert.equal(at(10), 0);
+});
+
+test("plateaus, isolated cones and glacier tongues add different silhouettes within the same static source", () => {
+  const grouped = form => earthReliefData.features.filter(feature => feature.properties.form === form);
+  const plateaus = grouped("plateau"), volcanoes = grouped("volcano"), glaciers = grouped("glacier");
+  assert.ok(plateaus.length > 40 && plateaus.length < 90);
+  assert.ok(volcanoes.length > 50 && volcanoes.length < 90);
+  assert.ok(glaciers.length > 10 && glaciers.length < 30);
+  for (const name of ["tibetan-plateau", "deccan-plateau", "colorado-plateau", "guiana-highlands"]) {
+    assert.ok(plateaus.some(feature => feature.properties.range === name));
+  }
+  for (const name of ["iceland-volcano", "kilimanjaro", "cotopaxi", "fuji"]) {
+    assert.ok(volcanoes.some(feature => feature.properties.range === name && feature.properties.tone === "volcano-crater"));
+  }
+  assert.ok(volcanoes.some(feature => feature.properties.tone === "volcano-apron"));
+  assert.ok(glaciers.some(feature => feature.properties.tone === "glacier-shade"));
+  assert.ok([...plateaus, ...volcanoes, ...glaciers].every(feature => feature.properties.elevation === undefined
+    && feature.properties.snowDepth === undefined && feature.properties.activity === undefined));
+});
+
+
+test("desert accents stay sparse, small and within dry desert masks", () => {
+  const accents = earthReliefData.features.filter(feature => ["dune", "outcrop"].includes(feature.properties.form));
+  const dunes = accents.filter(feature => feature.properties.form === "dune");
+  const rocks = accents.filter(feature => feature.properties.form === "outcrop");
+  assert.equal(dunes.length, 72, "four small patches, three crests, six narrow faces each");
+  assert.equal(rocks.length, 12, "only two tiny flat-topped rock outcrops");
+  assert.equal(new Set(dunes.map(feature => feature.properties.range)).size, 4);
+  for (const id of ["sahara-dunes", "arabian-dunes", "namib-dunes", "australian-dunes"]) {
+    const patch = dunes.filter(feature => feature.properties.range === id);
+    assert.equal(patch.filter(feature => feature.properties.tone === "dune-light").length, 9);
+    assert.equal(patch.filter(feature => feature.properties.tone === "dune-shade").length, 9);
+  }
+  const json = path => JSON.parse(readFileSync(new URL(path, new URL("..", import.meta.url)), "utf8"));
+  const polygons = feature => feature.geometry.type === "Polygon" ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+  const desert = json("features/earth/data/biomes-illustrated.json").features
+    .filter(feature => feature.properties.biome === "desert").flatMap(polygons);
+  const physical = json("features/earth/data/physical-110m.json").features.flatMap(polygons);
+  for (const face of accents) {
+    const ring = face.geometry.coordinates[0];
+    assert.equal(polygonClipping.difference([ring], desert).length, 0, "the whole accent lies in an authored desert");
+    assert.equal(polygonClipping.intersection([ring], physical).length, 0, "sand and rocks cannot cover a lake or ice");
+    const xs = ring.map(point => point[0]), ys = ring.map(point => point[1]);
+    assert.ok(Math.max(...xs) - Math.min(...xs) < 1.2 && Math.max(...ys) - Math.min(...ys) < 1.2,
+      "small narrow facets, not giant desert triangles");
+    if (face.properties.form === "dune") assert.equal(ring.length, 5);
+  }
 });

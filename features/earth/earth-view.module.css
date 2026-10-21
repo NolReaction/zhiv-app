@@ -90,6 +90,7 @@
 .sharingButton svg { flex-shrink: 0; }
 .sharingButton span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sharingButton[aria-expanded="true"] { background: #315347; border-color: #c5e3ad7a; }
+.bottomButtons .atlasButton { width: 44px; min-width: 44px; min-height: 46px; flex-shrink: 0; padding: 8px; }
 .notice { position: absolute; z-index: 4; bottom: calc(var(--earth-navigation-clearance, 84px) + 90px); left: var(--earth-overlay-left); max-width: min(340px, calc(100% - var(--earth-overlay-left) - 76px)); margin: 0; border: 1px solid #f1d3a230; border-radius: 15px; background: #263d30f5; color: #f3d9b1; padding: 10px 12px; font-size: 11px; line-height: 1.55; }
 .friendsPanel { width: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 22px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 15px; }
 .friendsPanel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -119,6 +120,8 @@
 .view button:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 3px; }
 .view button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 380px) {
+  .bottomButtons .privacyButton { width: 44px; min-width: 44px; padding: 8px; }
+  .privacyButton span { display: none; }
   .bottomButtons .friendsCount { display: none; }
   .header { gap: 8px; }
   .brand { padding-inline: 10px; gap: 6px; font-size: 12px; }

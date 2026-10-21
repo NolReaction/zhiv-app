@@ -62,6 +62,15 @@ export function earthMeetDetails(position: EarthPosition | null, friend: EarthMa
     direction: bearingDegrees === null ? null : DIRECTIONS[Math.round(bearingDegrees / 45) % 8] };
 }
 
+/** Enables a personal, explicit atlas note; proximity is not proof of attendance. */
+export function canRecordEarthMeeting(position: EarthPosition | null, friend: EarthMapPerson,
+  monotonicNow: number, wallNow = Date.now()): boolean {
+  if (!position || friend.precision !== "PRECISE" || position.accuracy > 50 || friend.accuracyMeters > 50
+    || wallNow - Date.parse(friend.updatedAt) > 60_000) return false;
+  const details = earthMeetDetails(position, friend, monotonicNow, wallNow);
+  return details !== null && details.distanceMeters <= 100;
+}
+
 export const WALKING_MAP_SERVICES = [
   { id: "yandex", name: "Яндекс Карты" },
   { id: "2gis", name: "2ГИС" },

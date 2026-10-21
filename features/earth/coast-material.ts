@@ -33,16 +33,24 @@ export function createEarthCoastlineData(land: FeatureCollection<Polygon | Multi
 }
 
 /** Coarse coast treatment fades out before precise vector coastlines take over. */
-export function earthCoastMaterialLayers(): { shelf: LineLayerSpecification; shadow: LineLayerSpecification; edge: LineLayerSpecification } {
+export function earthCoastMaterialLayers(): { depth: LineLayerSpecification; shelf: LineLayerSpecification; shadow: LineLayerSpecification; edge: LineLayerSpecification } {
   const shared = { type: "line" as const, source: EARTH_COAST_SOURCE, maxzoom: 4,
     layout: { "line-cap": "round" as const, "line-join": "round" as const } };
   return {
+    // Wide low-contrast waterward halo and a narrower turquoise shelf form a
+    // gentle depth gradient. Both reuse the same broken coastline geometry.
+    depth: { ...shared, id: "earth-coast-outer-shelf", paint: {
+      "line-color": "#79c8cb",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 0, 17, 2, 27, 4, 34],
+      "line-blur": 5,
+      "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.22, 2, 0.32, 3, 0.25, 4, 0],
+    } },
     // Painted before land: the land silhouette masks the inner half, leaving a
     // restrained turquoise fringe in the sea rather than an outline on land.
     // This is illustrated shallow water, never measured bathymetry.
     shelf: { ...shared, id: "earth-coast-shallows", paint: {
-      "line-color": "#9cd9cd",
-      "line-width": ["interpolate", ["linear"], ["zoom"], 0, 6, 2, 10, 4, 14],
+      "line-color": "#b1dfce",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 0, 5, 2, 9, 4, 13],
       "line-blur": 3.5,
       "line-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.28, 2, 0.4, 3, 0.34, 4, 0],
     } },

@@ -42,6 +42,8 @@ const EarthModelEditor = process.env.NODE_ENV === "development"
   ? lazy(() => import("./dev/earth-model-editor").then(module => ({ default: module.EarthModelEditor }))) : null;
 const EMPTY_FRIENDS: readonly EarthMapPerson[] = [];
 export type EarthFriendFocusRequest = { circleId: string; requestId: number };
+export type EarthMapView = Pick<EarthCameraSnapshot, "center" | "zoom">;
+export type EarthCameraFocusRequest = EarthMapView & { requestId: number };
 
 type EarthMapProps = {
   position: EarthPosition | null;
@@ -66,6 +68,8 @@ type EarthMapProps = {
   onSelectFriends?: (circleIds: string[]) => void;
   showLocationControl?: boolean;
   onModelEditorOpenChange?: (open: boolean) => void;
+  onViewChange?: (view: EarthMapView | null) => void;
+  cameraFocusRequest?: EarthCameraFocusRequest | null;
 };
 
 function weatherConditionLabel(condition: string): string {
@@ -100,7 +104,7 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
   locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true,
-  onModelEditorOpenChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, locationStatus = "idle" }: EarthMapProps) {
+  onModelEditorOpenChange, onViewChange, cameraFocusRequest = null, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, locationStatus = "idle" }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -150,6 +154,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const latestFriends = useRef<readonly EarthMapPerson[]>(friends);
   const latestFriendFocus = useRef(friendFocusRequest);
   const handledFriendFocus = useRef(0);
+  const handledCameraFocus = useRef(0);
+  const viewChangeRef = useRef(onViewChange);
   const selectFriendsRef = useRef(onSelectFriends);
   const syncFriendsRef = useRef<(() => void) | null>(null);
   const latestMeet = useRef({ circleId: meetCircleId, requestId: meetFocusRequest });
@@ -160,6 +166,19 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     syncFriendsRef.current?.();
   }, [meetCircleId, meetFocusRequest, modelEditorOpen]);
   useLayoutEffect(() => { selectFriendsRef.current = onSelectFriends; }, [onSelectFriends]);
+  useLayoutEffect(() => { viewChangeRef.current = onViewChange; }, [onViewChange]);
+  useEffect(() => {
+    const current = mapRef.current;
+    if (!active || !visible || modelEditorOpen || phase !== "ready" || !current) { onViewChange?.(null); return; }
+    const center = current.getCenter();
+    onViewChange?.({ center: [center.lng, center.lat], zoom: current.getZoom() });
+    if (!cameraFocusRequest || cameraFocusRequest.requestId <= handledCameraFocus.current || document.hidden) return;
+    const { center: target, zoom } = cameraFocusRequest;
+    if (!target.every(Number.isFinite) || Math.abs(target[1]) > 85 || !Number.isFinite(zoom)) return;
+    handledCameraFocus.current = cameraFocusRequest.requestId;
+    current.flyTo({ center: target, zoom: Math.max(0, Math.min(17, zoom)), bearing: 0, pitch: 0,
+      duration: reducedMotion() ? 0 : 1200, essential: false });
+  }, [active, visible, modelEditorOpen, phase, cameraFocusRequest, onViewChange]);
   useLayoutEffect(() => {
     latestFriendFocus.current = friendFocusRequest;
     syncFriendsRef.current?.();
@@ -316,6 +335,11 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       savedCamera.current = camera;
       cameraSession?.save(camera);
     }
+    function notifyView() {
+      if (!initialReady || !foreground || cancelled || attemptFailed || editingRef.current || !map) return;
+      const center = map.getCenter();
+      viewChangeRef.current?.({ center: [center.lng, center.lat], zoom: map.getZoom() });
+    }
 
     function resize() {
       if (!cancelled && map && activeRef.current && visibleRef.current && !document.hidden && element!.clientWidth && element!.clientHeight) map.resize();
@@ -426,6 +450,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         setPhase("ready");
         scene?.setReady(true);
         updateForeground();
+        notifyView();
       }
     }
     function scheduleReadyCheck() {
@@ -655,8 +680,11 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           scheduleReadyCheck();
           tileRecovery?.check();
         });
-        current.on("movestart", () => tileRecovery?.check());
-        current.on("moveend", () => { savePreparedCamera(); scheduleReadyCheck(); tileRecovery?.check(); });
+        current.on("movestart", () => {
+          if (initialReady && foreground) viewChangeRef.current?.(null);
+          tileRecovery?.check();
+        });
+        current.on("moveend", () => { savePreparedCamera(); notifyView(); scheduleReadyCheck(); tileRecovery?.check(); });
         current.on("render", () => { rendered = true; scheduleReadyCheck(); if (foreground) tileOverlay?.refresh(); });
         current.on("load", scheduleReadyCheck);
         current.on("idle", () => { scheduleReadyCheck(); tileRecovery?.check(true); });

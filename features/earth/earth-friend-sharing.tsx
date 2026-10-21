@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import { ChevronDown, MapPin, ShieldCheck } from "lucide-react";
+import { ChevronDown, Ellipsis, MapPin, ShieldCheck } from "lucide-react";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { Person } from "@/lib/check-in-contract";
@@ -21,12 +21,12 @@ export function confirmedEarthChoices(settings: EarthSharingSettings): EarthShar
     precision: settings.precision, durationMinutes };
 }
 
-export function EarthSharingToggle({ checked, disabled, label, description, onChange, ghost = false }: {
-  checked: boolean; disabled: boolean; label: string; description?: string; onChange: () => void; ghost?: boolean;
+export function EarthSharingToggle({ checked, disabled, label, description, onChange, ghost = false, compact = false }: {
+  checked: boolean; disabled: boolean; label: string; description?: string; onChange: () => void; ghost?: boolean; compact?: boolean;
 }) {
   return <button type="button" data-audio-cue="ui.click" role="switch" aria-checked={checked} disabled={disabled} aria-label={label}
-    aria-describedby={description} className={styles.toggle + (ghost ? " " + styles.ghostToggle : "")}
-    onClick={() => { if (!disabled) onChange(); }}><span className={styles.track}><span /></span></button>;
+    aria-describedby={description} className={styles.toggle + (ghost ? " " + styles.ghostToggle : "") + (compact ? " " + styles.iconToggle : "")}
+    onClick={() => { if (!disabled) onChange(); }}>{compact ? <MapPin size={18} aria-hidden="true" /> : <span className={styles.track}><span /></span>}</button>;
 }
 
 /** A compact, named on/off button. Confirmed state is conveyed in text as well as colour. */
@@ -56,7 +56,7 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
   idPrefix?: string; firstChoices?: Options; onShare?: (choices: EarthSharingChoices) => Promise<void>;
   onSetFrozen?: (circleId: string, frozen: boolean) => Promise<boolean | void>;
   onRevokeRecipient?: (circleId: string) => Promise<boolean | void>; onOpenMap?: () => void;
-  presentation?: "row" | "buttons"; companionControl?: ReactNode; showDetails?: boolean; showResume?: boolean; locationEnabled?: boolean;
+  presentation?: "row" | "buttons" | "compact"; companionControl?: ReactNode; showDetails?: boolean; showResume?: boolean; locationEnabled?: boolean;
 }) {
   const settings = sharing?.settings, name = personDisplayName(person);
   const ghost = sharing?.pendingGhost ? sharing.pendingPrivacyMode !== "OFF" : settings?.mode === "GHOST";
@@ -76,7 +76,8 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
       ? { precision: firstChoices.precision, durationMinutes: firstChoices.durationMinutes } : {};
     void onShare?.({ ...choices, ...initial, recipientCircleIds: [...choices.recipientCircleIds, person.circleId] });
   };
-  return <div className={styles.control + (presentation === "buttons" ? " " + styles.buttonControl : "")}>
+  return <div className={styles.control + (presentation === "buttons" ? " " + styles.buttonControl : presentation === "compact" ? " " + styles.compactControl : "")}
+    data-presentation={presentation}>
     {presentation === "buttons" ? <>
       {companionControl}
       <FriendSharingButton checked={checked} disabled={disabled} label={"Обновлять геопозицию для " + name}
@@ -86,12 +87,20 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
     </> : <div className={styles.main}>
       <span className={styles.avatar} aria-hidden="true">{avatar ?? <MapPin size={17} />}</span>
       <div className={styles.name}><strong>{heading}</strong><span id={id} data-frozen={hasAccess && (ghost || frozen) || undefined}>{status}</span></div>
-      <EarthSharingToggle checked={checked} disabled={disabled}
+      <EarthSharingToggle checked={checked} disabled={disabled} compact={presentation === "compact"}
         label={"Обновлять геопозицию для " + name} description={id} onChange={change} />
     </div>}
-    {showDetails && hasAccess && <details className={styles.details}>
-      <summary aria-label={"Настройки доступа: " + name} onClick={playDisclosureCue}>
-        <ShieldCheck size={14} aria-hidden="true" /><span>Доступ к геопозиции</span><ChevronDown size={15} aria-hidden="true" />
+    {showDetails && hasAccess && <details className={styles.details}
+      onBlur={presentation === "compact" ? event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
+      } : undefined}
+      onKeyDown={presentation === "compact" ? event => {
+        if (event.key !== "Escape") return;
+        event.preventDefault(); event.stopPropagation();
+        event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus();
+      } : undefined}>
+      <summary aria-label={"Настройки доступа: " + name} title="Настройки доступа" onClick={playDisclosureCue}>
+        {presentation === "compact" ? <Ellipsis size={18} aria-hidden="true" /> : <><ShieldCheck size={14} aria-hidden="true" /><span>Доступ к геопозиции</span><ChevronDown size={15} aria-hidden="true" /></>}
       </summary>
       <div className={styles.options}>
         <p>{sharing?.pendingGhost ? "Изменение доступа ещё не подтверждено." : ghost ? "Призрак включён для всех. Последнее место сохраняется."

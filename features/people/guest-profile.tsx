@@ -5,25 +5,29 @@ import { RefreshCw } from "lucide-react";
 import { ApiError } from "@/lib/check-in-api";
 import { AchievementMedal } from "@/features/game/achievement-medal";
 import { GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
-import { CollectionIcon, ItemIcon } from "@/features/items/item-icon";
-import { collectionCatalog, COLLECTION_CHAPTERS } from "@/features/world/domain/collection-book";
-import { worldCatalog } from "@/features/world/domain/model";
-import { economyCatalog } from "@/features/economy/domain/model";
+import { GameLevelIcon } from "@/features/game/game-level-icon";
+import { getClickerLevel } from "@/features/game/clicker-story";
+import { ProfileFindings } from "./profile-findings";
 import { getGuestProfile } from "./guest-profile-api";
-import { GUEST_COLLECTION_IDS, type GuestProfile } from "./guest-profile-model";
+import type { GuestProfile } from "./guest-profile-model";
 import styles from "./guest-profile.module.css";
 
-const names = new Map([...worldCatalog.finds, ...collectionCatalog.quarry.finds, ...economyCatalog.items].map(item => [item.id, item.name]));
 
 export function GuestProfileContents({ profile, section = "overview" }: { profile: GuestProfile; section?: "overview" | "collections" }) {
   const collectionCount = Object.values(profile.collections).reduce((sum, ids) => sum + ids.length, 0);
+  const level = profile.tapStats ? getClickerLevel(profile.tapStats.lifetimeTaps) : null;
   return <div className={styles.contents}>
     {section === "overview" && <>
+    {level && <div className={styles.playerLevel}><GameLevelIcon level={level.level} size={25} /><strong>Уровень {level.level}</strong><span>{level.title}</span></div>}
     <dl className={styles.stats}>
       <div><dt>Уровень дома</dt><dd>{profile.homeLevel}</dd></div>
       <div><dt>Завершено вылазок</dt><dd>{profile.completedExplorations.toLocaleString("ru-RU")}</dd></div>
       <div><dt>Страниц коллекции</dt><dd>{collectionCount}</dd></div>
     </dl>
+    {profile.tapStats ? <dl className={styles.tapStats} aria-label="Рекорды по тапам">
+      <div><dt>Всего тапов</dt><dd>{profile.tapStats.lifetimeTaps.toLocaleString("ru-RU")}</dd></div>
+      <div><dt>Лучшая серия</dt><dd>×{profile.tapStats.bestSeries.toLocaleString("ru-RU")}</dd></div>
+    </dl> : <p className={styles.privateStats}>Уровень и рекорды по тапам скрыты настройкой рейтинга игрока.</p>}
     <section aria-label="Достижения друга">
       <h4>Достижения мира · {profile.achievements.length}</h4>
       {profile.achievements.length === 0 ? <p>Первые игровые медали ещё впереди.</p> : <ul className={styles.awards}>
@@ -37,18 +41,7 @@ export function GuestProfileContents({ profile, section = "overview" }: { profil
       </ul>}
     </section>
     </>}
-    {section === "collections" && <section aria-label="Коллекции друга">
-      <h4>Книга находок</h4>
-      {COLLECTION_CHAPTERS.map(chapter => <details className={styles.chapter} key={chapter.id}>
-        <summary>{chapter.title}<span>{profile.collections[chapter.id].length} / {GUEST_COLLECTION_IDS[chapter.id].length}</span></summary>
-        {profile.collections[chapter.id].length === 0 ? <p>Пока нет открытых страниц.</p> : <ul className={styles.finds}>
-          {profile.collections[chapter.id].map(id => <li key={id}>
-            {chapter.id === "fishing" ? <ItemIcon itemId={id} size={28} /> : <CollectionIcon findId={id} size={28} />}
-            <span>{names.get(id) ?? id}</span>
-          </li>)}
-        </ul>}
-      </details>)}
-    </section>}
+    {section === "collections" && <ProfileFindings collections={profile.collections} />}
   </div>;
 }
 
@@ -66,7 +59,7 @@ function LoadedGuestProfile({ ownerPublicId, circleId, targetPublicId, onSession
       controller = new AbortController();
       const request = ++sequence;
       // Hidden/offline views discard the snapshot; visible refreshes preserve
-      // the open book chapters and keyboard focus until authorization responds.
+      // the selected chapter, scroll position and keyboard focus until authorization responds.
       if (document.visibilityState === "hidden") {
         setView({ data: null, error: null, loading: true });
         return;

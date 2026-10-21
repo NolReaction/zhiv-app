@@ -32,6 +32,8 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                            WHERE t.user_id=a.user_id AND t.achievement_id=a.achievement_id),1))
                            FROM game_achievements a WHERE a.user_id=other.id AND a.achievement_id=ANY(?::text[])),
                            '{}'::jsonb) AS achievements,
+                       CASE WHEN gp.leaderboard_opt_in THEN gp.lifetime_taps END AS lifetime_taps,
+                       CASE WHEN gp.leaderboard_opt_in THEN gp.best_series END AS best_series,
                        statement_timestamp() AS server_time
                 FROM app_sessions s JOIN app_users viewer ON viewer.id=s.user_id
                 JOIN circles circle ON circle.id=? AND circle.kind='DIRECT' AND circle.archived_at IS NULL
@@ -40,6 +42,7 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                     THEN circle.direct_user_high_id ELSE circle.direct_user_low_id END
                 LEFT JOIN economy_profiles ep ON ep.user_id=other.id
                 LEFT JOIN world_profiles wp ON wp.user_id=other.id
+                LEFT JOIN game_profiles gp ON gp.user_id=other.id
                 WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>statement_timestamp()
                     AND viewer.deleted_at IS NULL AND viewer.banned_at IS NULL
                     AND other.deleted_at IS NULL AND other.banned_at IS NULL
@@ -55,7 +58,8 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                             GuestProfileRules.achievements(Json.decodeFromString<Map<String,Int>>(r.getString("achievements"))),
                             GuestProfileRules.collections(Json.decodeFromString<List<String>>(r.getString("finds")),
                                 Json.decodeFromString<Map<String,Long>>(r.getString("catches"))),
-                            r.getObject("server_time",OffsetDateTime::class.java).toInstant().toString())
+                            r.getObject("server_time",OffsetDateTime::class.java).toInstant().toString(),
+                            r.getObject("lifetime_taps")?.let { GuestTapStats(r.getLong("lifetime_taps"), r.getLong("best_series")) })
                     }
                 } finally { ids.free() }
             }

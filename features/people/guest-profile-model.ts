@@ -23,6 +23,8 @@ export const guestProfileSchema = z.object({
       return !!levels && award.level <= levels.length;
     })).max(GUEST_ACHIEVEMENT_IDS.length).refine(awards => new Set(awards.map(award => award.id)).size === awards.length),
   collections: z.object({ travel: ids(GUEST_COLLECTION_IDS.travel), fishing: ids(GUEST_COLLECTION_IDS.fishing), quarry: ids(GUEST_COLLECTION_IDS.quarry) }).strict(),
+  tapStats: z.object({ lifetimeTaps: z.number().int().nonnegative().safe(), bestSeries: z.number().int().nonnegative().safe() }).strict()
+    .refine(value => value.bestSeries <= value.lifetimeTaps).nullable().default(null),
   serverTime: z.string().datetime(),
 }).strict();
 export type GuestProfile = z.infer<typeof guestProfileSchema>;

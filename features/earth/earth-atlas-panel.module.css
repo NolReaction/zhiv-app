@@ -1,0 +1,36 @@
+.atlas { min-width: 0; color: #e6f0d8; }
+.intro { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.intro > span { margin-left: auto; color: #c1d6ac; font-size: 12px; font-variant-numeric: tabular-nums; }
+.atlas .explanation, .atlas .storage { margin: 7px 0 11px; color: #b7cdaf; font-size: 11px; line-height: 1.5; }
+.candidate { display: flex; align-items: center; gap: 8px; min-height: 64px; padding: 8px; border: 1px solid #d4e7ad32; border-radius: 13px; background: #c9e5a40d; }
+.candidateIcon { flex: 0 0 auto; color: #cde6a5; }
+.candidate > div { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.candidate strong { font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.candidate > div > span { color: #b7cdaf; font-size: 10px; }
+.candidate > p { flex: 1; margin: 0; color: #b7cdaf; font-size: 11px; line-height: 1.5; }
+.atlas button { font: inherit; cursor: pointer; }
+.candidate > button { display: grid; flex: 0 0 auto; place-items: center; gap: 3px; min-height: 44px; min-width: 56px; padding: 5px 8px; border: 1px solid #d4e7ad55; border-radius: 10px; background: #d0e6ab; color: #274c35; font-size: 9px; }
+.candidate > button:disabled { cursor: default; background: #c9e5a40c; color: #b7d49f; border-color: #d4e7ad20; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.filters, .arrows { display: flex; align-items: center; gap: 2px; }
+.filters button, .arrows button { display: grid; place-items: center; min-height: 44px; min-width: 40px; padding: 7px 9px; border: 0; border-radius: 10px; color: #adc5a4; background: transparent; font-size: 11px; }
+.filters button[aria-pressed="true"] { color: #e5f1cc; background: #c9e5a413; }
+.arrows button { min-width: 36px; padding-inline: 5px; }
+.atlas button:focus-visible, .rail:focus-visible { outline: 2px solid #e3f7ac; outline-offset: 2px; }
+.rail { display: flex; gap: 8px; width: 100%; min-width: 0; margin: 0; padding: 4px 3px 10px; list-style: none; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: thin; scrollbar-color: #a0c37d50 transparent; }
+.card { flex: 0 0 148px; scroll-snap-align: start; }
+.card > button { display: flex; align-items: flex-start; flex-direction: column; gap: 6px; width: 100%; height: 100%; min-height: 169px; padding: 10px; border: 1px solid #d4e7ad1c; border-radius: 14px; text-align: left; color: #b7cdaf; background: #0c251e22; }
+.card[data-opened="true"] > button { color: #e6f0d8; border-color: #d4e7ad48; background: #c9e5a40d; }
+.card > button:disabled { cursor: default; opacity: 1; }
+.card > button:not(:disabled):hover { border-color: #d4e7ad70; }
+.art { display: grid; position: relative; place-items: center; width: 100%; height: 49px; margin-bottom: 3px; border-radius: 9px; color: #b2caa2; background: linear-gradient(135deg, #52795344, #91ab7414); }
+.art[data-biome="desert"] { color: #d7c697; background: linear-gradient(135deg, #a8935c50, #b8a67217); }
+.art[data-biome="tundra"] { color: #c1d5ca; background: linear-gradient(135deg, #8da5a145, #a4bab719); }
+.art[data-biome="rainforest"] { color: #9bc4a4; background: linear-gradient(135deg, #35745c55, #59996c14); }
+.art[data-biome="savanna"], .art[data-biome="steppe"] { color: #ced098; background: linear-gradient(135deg, #959b5845, #a5ab7619); }
+.badge { display: grid; place-items: center; position: absolute; top: 5px; right: 5px; width: 19px; height: 19px; color: #223d28; background: #cde6a5; border-radius: 50%; }
+.card strong { font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.subtitle { color: #9eb899; font-size: 10px; line-height: 1.4; }
+.cardAction { margin-top: auto; padding-top: 6px; color: #bcd3aa; font-size: 9px; line-height: 1.4; }
+.atlas .storage { margin-bottom: 0; font-size: 10px; }
+@media (max-width: 359px) { .card { flex-basis: 138px; } .filters button { padding-inline: 7px; } .arrows button { min-width: 30px; } }

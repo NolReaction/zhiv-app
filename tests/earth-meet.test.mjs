@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { earthMeetDetails, walkingRouteUrl } = await vite.ssrLoadModule("/features/earth/meet.ts");
+const { canRecordEarthMeeting, earthMeetDetails, walkingRouteUrl } = await vite.ssrLoadModule("/features/earth/meet.ts");
 const wall = Date.parse("2026-10-20T12:00:00Z"), mono = 10_000;
 const self = (extra = {}) => ({ latitude: 0, longitude: 0, accuracy: 10, timestamp: wall, ...extra });
 const friend = (extra = {}) => ({ circleId: "circle", user: { publicId: "friend", displayName: "Друг" },
@@ -17,6 +17,21 @@ const friend = (extra = {}) => ({ circleId: "circle", user: { publicId: "friend"
 const details = (from = self(), to = friend(), atMono = mono, atWall = wall) => earthMeetDetails(from, to, atMono, atWall);
 const route = (to = friend(), atMono = mono, atWall = wall) => walkingRouteUrl(to, atMono, atWall);
 const near = (value, expected, tolerance) => assert.ok(Math.abs(value - expected) < tolerance, `${value} must be near ${expected}`);
+
+test("an explicit atlas meeting note requires two fresh precise nearby fixes and rechecks expiry", () => {
+  const to = friend({ longitude: 0.0005 });
+  assert.equal(canRecordEarthMeeting(self(), to, mono, wall), true);
+  assert.equal(canRecordEarthMeeting(null, to, mono, wall), false);
+  for (const from of [self({ accuracy: 51 }), self({ timestamp: wall - 60_001 }), self({ accuracy: NaN })]) {
+    assert.equal(canRecordEarthMeeting(from, to, mono, wall), false);
+  }
+  for (const patch of [{ precision: "APPROXIMATE" }, { accuracyMeters: 51 }, { longitude: 0.001 },
+    { updatedAt: new Date(wall - 60_001).toISOString() }, { expiresAtMonotonic: mono },
+    { updatedAt: new Date(wall + 10_001).toISOString() }]) {
+    assert.equal(canRecordEarthMeeting(self(), { ...to, ...patch }, mono, wall), false);
+  }
+  assert.equal(canRecordEarthMeeting(self(), to, mono + 60_001, wall + 60_001), false);
+});
 
 test("meeting estimates the straight-line distance and direction to the last received point without mutating either fix", () => {
   const from = self(), to = friend(), before = structuredClone([from, to]);

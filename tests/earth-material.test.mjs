@@ -91,7 +91,8 @@ test("coarse and detailed land use identical material, then become undecorated b
   assert.equal(style.sources[EARTH_COAST_SOURCE].maxzoom, 0);
   assert.equal(typeof style.sources[EARTH_COAST_SOURCE].data, "object");
   const coast = style.layers.filter(layer => layer.source === EARTH_COAST_SOURCE);
-  assert.equal(coast.length, 3);
+  assert.equal(coast.length, 4);
+  assert.ok(index("earth-coast-outer-shelf") < index("earth-coast-shallows"), "the soft depth gradient stays under the narrow shelf and land");
   assert.ok(coast.every(layer => layer.maxzoom <= detail.minzoom), "coarse coast treatment ends before precise coastlines take over");
 });
 

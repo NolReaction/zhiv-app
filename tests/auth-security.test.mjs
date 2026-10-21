@@ -15,6 +15,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     load(id) { if (id === cookieModule) return "export async function cookies() { return { get() { return { value: globalThis.__authSecurityToken }; } }; }"; } }],
 });
 const social = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const games = await vite.ssrLoadModule("/lib/dev/game-store.ts");
 const notifications = await vite.ssrLoadModule("/lib/dev/notifications-store.ts");
 const { defaultNotificationPreferences } = await vite.ssrLoadModule("/features/notifications/notification-contract.ts");
 const { PeopleView } = await vite.ssrLoadModule("/features/people/people-view.tsx");
@@ -35,6 +36,7 @@ beforeEach(() => {
   process.env.NODE_ENV = "test";
   delete globalThis.__authSecurityToken;
   social.resetDevStoreForTests();
+  games.resetDevGameStoreForTests();
   notifications.resetDevNotificationsForTests();
 });
 after(async () => {
@@ -229,4 +231,27 @@ test("real people UI escapes stored HTML in names, nicknames and statuses while 
   assert.ok(html.includes("&lt;svg onload=alert(3)&gt;"));
   assert.ok(html.includes("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"));
   assert.doesNotMatch(html, /<script\b|<img src=x|<svg onload=/);
+});
+
+
+test("guest HTTP extension is exact opt-in and never leaks public or private records to legacy clients", async () => {
+  const f = fixture(), path = `/api/v1/people/${f.circleId}/game-profile`;
+  globalThis.__authSecurityToken = f.owner.token;
+  const get = async version => (await status(await routes.guest.GET(request(path, "GET", undefined,
+    version === undefined ? {} : { "X-Zhiv-Profile": version }), context(f)), 200)).json();
+  assert.equal(Object.hasOwn(await get(), "tapStats"), false);
+  assert.equal(Object.hasOwn(await get("tap-stats-v2"), "tapStats"), false);
+  assert.equal((await get("tap-stats-v1")).tapStats, null);
+  ok(games.getDevGameProgress(f.member.token));
+  Object.assign(globalThis.__zhivDevGameStore.profiles.get(f.member.me.user.publicId), { lifetimeTaps: 12345, bestSeries: 678 });
+  assert.equal((await get("tap-stats-v1")).tapStats, null, "the protocol header cannot grant visibility");
+  ok(games.updateDevGameVisibility(f.member.token, f.member.me.user.publicId, true, 0));
+  assert.deepEqual((await get("tap-stats-v1")).tapStats, { lifetimeTaps: 12345, bestSeries: 678 });
+  for (const header of [undefined, "tap-stats-v2", "TAP-STATS-V1", "tap-stats-v1, tap-stats-v1"])
+    assert.equal(Object.hasOwn(await get(header), "tapStats"), false, "only the exact negotiated version adds a field");
+  ok(games.updateDevGameVisibility(f.member.token, f.member.me.user.publicId, false, 1));
+  assert.equal((await get("tap-stats-v1")).tapStats, null);
+  await status(await routes.guest.GET(request(path + "?include=tapStats", "GET", undefined, { "X-Zhiv-Profile": "tap-stats-v1" }), context(f)), 400);
+  globalThis.__authSecurityToken = f.outsider.token;
+  await status(await routes.guest.GET(request(path, "GET", undefined, { "X-Zhiv-Profile": "tap-stats-v1" }), context(f)), 404);
 });

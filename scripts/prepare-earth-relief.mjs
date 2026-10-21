@@ -5,7 +5,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 const guides = JSON.parse(readFileSync(new URL("../art/earth/relief/ranges.json", import.meta.url), "utf8"));
 if (guides.schemaVersion !== 1) throw new Error("Unsupported illustrated relief guide version");
 const ranges = guides.ranges;
+const landforms = JSON.parse(readFileSync(new URL("../art/earth/relief/landforms.json", import.meta.url), "utf8"));
+if (landforms.schemaVersion !== 1) throw new Error("Unsupported illustrated landform guide version");
 const land = JSON.parse(readFileSync(new URL("../features/earth/data/land-110m.json", import.meta.url), "utf8"));
+
+const physical = JSON.parse(readFileSync(new URL("../features/earth/data/physical-110m.json", import.meta.url), "utf8"));
+const excludedPhysicalRings = physical.features.flatMap(feature => feature.geometry.type === "Polygon"
+  ? [feature.geometry.coordinates] : feature.geometry.coordinates);
 
 const polygons = land.features.map(feature => {
   const rings = feature.geometry.coordinates;
@@ -29,22 +35,41 @@ function onLand(point) {
     && insideRing(point, polygon.rings[0]) && !polygon.rings.slice(1).some(ring => insideRing(point, ring)));
 }
 
+function onDryLand(point) {
+  return onLand(point) && !excludedPhysicalRings.some(rings => insideRing(point, rings[0])
+    && !rings.slice(1).some(ring => insideRing(point, ring)));
+}
+
 function rounded([x, y]) { return [Math.round(x * 10000) / 10000, Math.round(y * 10000) / 10000]; }
 function mix(from, to, amount) { return [from[0] + (to[0] - from[0]) * amount, from[1] + (to[1] - from[1]) * amount]; }
 
 function createReliefData() {
   const features = [];
-  const add = (range, tone, points) => {
+  const add = (range, tone, points, form) => {
     // Never paint invented islands. Also sample each edge: a face with land at
     // both ends can still cross a coarse coastal inlet or a lake hole.
     const ring = points.map(rounded);
+    const allowed = form === "dune" || form === "outcrop" ? onDryLand : onLand;
     if (!ring.every((point, index) => {
       const next = ring[(index + 1) % ring.length];
-      return onLand(point) && onLand([(point[0] + next[0]) / 2, (point[1] + next[1]) / 2]);
+      return allowed(point) && allowed([(point[0] + next[0]) / 2, (point[1] + next[1]) / 2]);
     })) return;
-    features.push({ type: "Feature", properties: { range, tone },
+    features.push({ type: "Feature", properties: { range, tone, ...(form ? { form } : {}) },
       geometry: { type: "Polygon", coordinates: [[...ring, ring[0]]] } });
   };
+  // Low, broad flat tops and a broken shaded apron distinguish plateaus from
+  // narrow jagged ranges. They are painted first, below mountain ridge facets.
+  for (const plateau of landforms.plateaus) {
+    const points = plateau.points;
+    const center = points.reduce((sum, point) => [sum[0] + point[0] / points.length, sum[1] + point[1] / points.length], [0, 0]);
+    for (let index = 0; index < points.length; index += 1) {
+      const a = points[index]; const b = points[(index + 1) % points.length];
+      const outerA = mix(center, a, 1.13); const outerB = mix(center, b, 1.13);
+      add(plateau.id, index < Math.ceil(points.length / 2) ? "plateau-rim-light" : "plateau-rim-shade",
+        [a, b, outerB, outerA], "plateau");
+      add(plateau.id, plateau.tone, [center, a, b], "plateau");
+    }
+  }
   for (const range of ranges) {
     const centers = [];
     for (let index = 1; index < range.points.length; index += 1) {
@@ -104,6 +129,78 @@ function createReliefData() {
       add(range.id, northWestLit ? "snow-shade" : "snow", [peak.crest, right, tail]);
     }
   }
+  // A few broad cones, each with a low shadow apron, asymmetric facets and a
+  // quiet crater. No smoke, eruption animation or scientific activity claim.
+  for (const volcano of landforms.volcanoes) {
+    const [x, y] = volcano.center; const [rx, ry] = volcano.radius;
+    const center = [x, y + ry * 0.23];
+    const points = Array.from({ length: 8 }, (_, index) => {
+      const angle = index * Math.PI / 4;
+      const uneven = 1 + Math.sin(index * 2.1) * 0.08;
+      return [x + Math.cos(angle) * rx * uneven, y + Math.sin(angle) * ry * uneven];
+    });
+    for (let index = 0; index < points.length; index += 1) {
+      const a = points[index]; const b = points[(index + 1) % points.length];
+      const outerA = mix([x, y - ry * 0.15], a, 1.35); const outerB = mix([x, y - ry * 0.15], b, 1.35);
+      add(volcano.id, "volcano-apron", [a, b, outerB, outerA], "volcano");
+      add(volcano.id, index >= 2 && index <= 5 ? "volcano-light" : "volcano-shade", [center, a, b], "volcano");
+    }
+    if (volcano.snow) {
+      add(volcano.id, "volcano-snow", [mix(center, points[2], 0.3), mix(center, points[4], 0.3), mix(center, points[6], 0.23)], "volcano");
+      add(volcano.id, "volcano-snow-shade", [mix(center, points[6], 0.23), mix(center, points[0], 0.24), mix(center, points[2], 0.3)], "volcano");
+    }
+    const crater = [[x - rx * 0.16, center[1]], [x, center[1] + ry * 0.07],
+      [x + rx * 0.13, center[1]], [x, center[1] - ry * 0.07]];
+    add(volcano.id, "volcano-crater", crater, "volcano");
+  }
+  // Sparse small ice tongues sit on the illustrated relief and share its fade.
+  // They do not modify Natural Earth's physical ice polygons or live snow.
+  for (const glacier of landforms.glaciers) {
+    for (let index = 1; index < glacier.points.length; index += 1) {
+      const a = glacier.points[index - 1]; const b = glacier.points[index];
+      const width = glacier.width * (1 - index / glacier.points.length * 0.55);
+      const leftA = [a[0] - width, a[1]]; const rightA = [a[0] + width, a[1]];
+      const leftB = [b[0] - width * 0.7, b[1]]; const rightB = [b[0] + width * 0.7, b[1]];
+      add(glacier.id, "glacier-light", [leftA, a, b, leftB], "glacier");
+      add(glacier.id, "glacier-shade", [a, rightA, rightB, b], "glacier");
+    }
+  }
+  // Three narrow curved crests per patch give warm deserts their own quiet
+  // surface character. Each crest uses only six small tapered quadrilaterals;
+  // no giant triangles, image pattern, simulation or repeated global lattice.
+  for (const cluster of landforms.duneClusters ?? []) {
+    const angle = cluster.rotation * Math.PI / 180;
+    const cosLatitude = Math.cos(cluster.center[1] * Math.PI / 180);
+    const world = (x, y) => [cluster.center[0] + (x * Math.cos(angle) - y * Math.sin(angle)) / cosLatitude,
+      cluster.center[1] + x * Math.sin(angle) + y * Math.cos(angle)];
+    for (let ridge = 0; ridge < 3; ridge += 1) {
+      const length = cluster.length * (1 - ridge * 0.075);
+      const sections = Array.from({ length: 4 }, (_, index) => {
+        const t = index / 3;
+        const x = (t - 0.5) * length;
+        const y = (ridge - 1) * cluster.spacing + Math.sin(t * Math.PI) * length * 0.12;
+        const width = cluster.width * (0.12 + Math.sin(t * Math.PI) * 0.88);
+        return { crest: world(x, y), lit: world(x, y + width * 0.65), shade: world(x, y - width) };
+      });
+      for (let index = 1; index < sections.length; index += 1) {
+        const a = sections[index - 1]; const b = sections[index];
+        add(cluster.id, "dune-light", [a.lit, b.lit, b.crest, a.crest], "dune");
+        add(cluster.id, "dune-shade", [a.crest, b.crest, b.shade, a.shade], "dune");
+      }
+    }
+  }
+  // Two tiny broken flat-topped rock outcrops contrast with the flowing sand.
+  for (const rock of landforms.outcrops ?? []) {
+    const [x, y] = rock.center; const [rx, ry] = rock.radius;
+    const top = [[x - rx, y], [x - rx * 0.4, y + ry * 0.65], [x + rx * 0.6, y + ry * 0.5], [x + rx, y - ry * 0.1]];
+    const foot = top.map(point => [point[0] + rx * 0.18, point[1] - ry * 0.7]);
+    for (let index = 0; index < top.length; index += 1) {
+      const next = (index + 1) % top.length;
+      add(rock.id, index < 2 ? "rock-light" : "rock-shade", [top[index], top[next], foot[next], foot[index]], "outcrop");
+    }
+    add(rock.id, "rock-top", [top[0], top[1], top[2]], "outcrop");
+    add(rock.id, "rock-top", [top[0], top[2], top[3]], "outcrop");
+  }
   return { type: "FeatureCollection", features };
 }
 
@@ -111,7 +208,7 @@ const output = new URL("../features/earth/data/relief-illustrated.json", import.
 const data = createReliefData();
 const serialized = `${JSON.stringify(data)}\n`;
 const bytes = Buffer.byteLength(serialized);
-if (data.features.length > 1100 || bytes > 230_000) throw new Error("Illustrated relief exceeds its local geometry budget");
+if (data.features.length > 1350 || bytes > 275_000) throw new Error("Illustrated relief exceeds its local geometry budget");
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== "--check")) throw new Error("Usage: node scripts/prepare-earth-relief.mjs [--check]");
 if (args.includes("--check")) {

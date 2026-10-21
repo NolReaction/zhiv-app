@@ -108,7 +108,7 @@
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   border-radius: 20px;
@@ -520,3 +520,10 @@
 .guideHelp p { margin: 0; }
 .guideHelp button { justify-self: start; min-height: 44px; padding: 8px 12px; border: 1px solid #b7d8a24d; border-radius: 10px; background: #b7d8a218; color: #e4f2d9; font: inherit; font-weight: 650; cursor: pointer; }
 .guideHelp button:focus-visible { outline: 2px solid #cde39e; outline-offset: 3px; }
+
+.identityLevel { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; align-self: flex-start; min-height: 34px; padding: 5px 8px; border: 1px solid #a6c99440; border-radius: 10px; background: #a6c99412; color: #d8e8cd; cursor: pointer; }
+.identity .identityLevel strong { font-size: 12px; letter-spacing: normal; }
+.identityLevel small { margin: 0; color: #a6b69c; font-size: 10px; }
+.identityLevel:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+@media (max-width: 420px) { .stats strong { font-size: 13px; } .stats span { font-size: 10px; } .stats > button, .stats > div { padding-inline: 4px; } }

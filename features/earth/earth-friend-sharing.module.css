@@ -43,4 +43,21 @@
 .buttonControl > .details { margin-top: -3px; }
 .buttonControl .details > summary { min-height: 40px; }
 
+.compactControl { position: relative; }
+.compactControl .main { min-height: 44px; grid-template-columns: 28px minmax(0, 1fr) 44px; gap: 7px; padding-right: 44px; }
+.compactControl .avatar { width: 28px; height: 28px; border-radius: 9px; font-size: 11px; }
+.compactControl .name { gap: 1px; }
+.compactControl .name strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.compactControl .name > span { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iconToggle { width: 44px; height: 44px; border: 1px solid transparent; color: #8da296; }
+.iconToggle[aria-checked="true"] { color: #d3edb0; background: #c4e7a51a; border-color: #c5e8a53d; }
+.iconToggle:not(:disabled):hover { background: #c4e7a512; }
+.compactControl .details { position: absolute; top: 0; right: 0; width: 44px; margin: 0; }
+.compactControl .details[open] { z-index: 2; }
+.compactControl .details > summary { justify-content: center; width: 44px; height: 44px; padding: 0; color: #aabc9e; }
+.compactControl .details[open] > summary { background: #c4e7a512; }
+.compactControl .details[open] > summary > svg:last-child { transform: none; }
+.compactControl .options { position: absolute; top: 47px; right: 0; box-sizing: border-box; width: min(258px, calc(100vw - 64px)); gap: 8px; padding: 12px; border: 1px solid #d4e4c92b; border-radius: 12px; background: #163b30; box-shadow: 0 8px 24px #061d2399; }
+.compactControl .options button { padding: 8px 10px; }
+
 @media (prefers-reduced-motion: reduce) { .accessButton { transition: none; } }

@@ -95,6 +95,19 @@ class JdbcGuestProfileRepositoryIntegrationTest {
         assertEquals(before,source.connection.use { c -> c.economyRows("SELECT state::text FROM economy_profiles WHERE user_id=?",b.id){it.getString(1)}.single() })
     }
 
+
+    @Test fun `tap statistics require leaderboard consent and are revoked immediately`() = runBlocking<Unit> {
+        val a=player();val b=player();val circle=connect(a,b)
+        assertNull(profiles.profile(a.hash,circle).tapStats)
+        execute("INSERT INTO game_profiles(user_id,lifetime_taps,best_series) VALUES (?,12345,678)",b.id)
+        assertNull(profiles.profile(a.hash,circle).tapStats)
+        execute("UPDATE game_profiles SET leaderboard_opt_in=true WHERE user_id=?",b.id)
+        assertEquals(GuestTapStats(12345,678),profiles.profile(a.hash,circle).tapStats)
+        execute("UPDATE game_profiles SET leaderboard_opt_in=false WHERE user_id=?",b.id)
+        assertNull(profiles.profile(a.hash,circle).tapStats)
+        ok(relationships.removePerson(a.hash,circle));unavailable(a,circle)
+    }
+
     @Test fun `status sharing changes keep game profiles available only to active direct friends`() = runBlocking<Unit> {
         val a=player();val b=player();val stranger=player();val circle=connect(a,b)
         unavailable(stranger,circle);unavailable(a,UUID.randomUUID())
