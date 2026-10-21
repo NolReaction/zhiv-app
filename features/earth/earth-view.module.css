@@ -75,13 +75,13 @@
   z-index: 5;
   left: var(--earth-overlay-left);
   right: var(--earth-overlay-right);
-  bottom: calc(var(--earth-navigation-clearance, 84px) + 30px);
+  bottom: calc(var(--earth-navigation-clearance, 84px) + 48px);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
   width: auto;
-  max-height: calc(100% - var(--earth-overlay-top) - 88px - var(--earth-navigation-clearance, 84px));
+  max-height: calc(100% - var(--earth-overlay-top) - 106px - var(--earth-navigation-clearance, 84px));
   pointer-events: none;
 }
 .bottomOverlay > * { pointer-events: auto; }

@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ClipboardCopy, CloudSun, Compass, Earth, HardDriveDownload, Info, LocateFixed, X } from "lucide-react";
+import { ClipboardCopy, CloudSun, Compass, Earth, HardDriveDownload, Info, LocateFixed, Map, Satellite, X } from "lucide-react";
 import type { GeoJSONSource, Map as LibreMap, Marker } from "maplibre-gl";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
@@ -24,6 +24,7 @@ import { EarthModelCredits } from "./earth-model-credits";
 import { installEarthGlobeCamera } from "./globe-camera";
 import { createEarthCameraViewport } from "./camera-viewport";
 import { createEarthTouchPitch } from "./touch-pitch";
+import { createEarthSatellite, EARTH_SATELLITE_INITIAL_STATE, type EarthSatelliteState } from "./satellite";
 import { EARTH_OCEAN_MATERIAL_IMAGE, registerEarthOceanMaterialImage } from "./globe-ocean";
 import { bindEarthPositionMarkerMotion } from "./marker-motion";
 import { createEarthGlobeScene } from "./globe-scene";
@@ -43,6 +44,7 @@ type MapPhase = "loading" | "ready" | "failed" | "unsupported";
 const EarthModelEditor = process.env.NODE_ENV === "development"
   ? lazy(() => import("./dev/earth-model-editor").then(module => ({ default: module.EarthModelEditor }))) : null;
 const EMPTY_FRIENDS: readonly EarthMapPerson[] = [];
+const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY ?? "";
 export type EarthFriendFocusRequest = { circleId: string; requestId: number };
 export type EarthMapView = Pick<EarthCameraSnapshot, "center" | "zoom">;
 export type EarthCameraFocusRequest = EarthMapView & { requestId: number };
@@ -118,6 +120,10 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const mapRef = useRef<LibreMap | null>(null);
   const cameraViewportRef = useRef<ReturnType<typeof createEarthCameraViewport> | null>(null);
   const touchPitchRef = useRef<ReturnType<typeof createEarthTouchPitch> | null>(null);
+  const satelliteRef = useRef<ReturnType<typeof createEarthSatellite> | null>(null);
+  const satelliteEnabledRef = useRef(false);
+  const onlineRef = useRef(isOnline);
+  const [satelliteState, setSatelliteState] = useState<EarthSatelliteState>(EARTH_SATELLITE_INITIAL_STATE);
   const [editorMap, setEditorMap] = useState<LibreMap | null>(null);
   const [modelEditorOpen, setModelEditorOpen] = useState(readEarthModelEditorOpen);
   const changeModelEditorOpen = useCallback((open: boolean) => {
@@ -169,6 +175,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     editingRef.current = modelEditorOpen;
     cameraViewportRef.current?.setEnabled(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen);
     touchPitchRef.current?.setEnabled(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen);
+    satelliteRef.current?.setVisible(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen && !document.hidden);
     syncFriendsRef.current?.();
   }, [meetCircleId, meetFocusRequest, modelEditorOpen]);
   useLayoutEffect(() => { selectFriendsRef.current = onSelectFriends; }, [onSelectFriends]);
@@ -194,6 +201,10 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     cameraSession?.savePreferences({ weatherEnabled, lightingMode, eveningCenter, buildings3d });
   }, [cameraSession, weatherEnabled, lightingMode, eveningCenter, buildings3d]);
   useEffect(() => { phaseRef.current = phase; onReadyChange?.(phase === "ready"); }, [phase, onReadyChange]);
+  useEffect(() => {
+    onlineRef.current = isOnline;
+    satelliteRef.current?.setOnline(isOnline);
+  }, [isOnline]);
   useLayoutEffect(() => {
     visibleRef.current = visible;
     foregroundRef.current?.();
@@ -229,6 +240,13 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     try { await earthResourceCache.requestPersistence(); }
     finally { setPersisting(false); }
   }, []);
+
+  const selectMapMode = (satellite: boolean) => {
+    if (!satelliteRef.current || satellite && (!MAPTILER_KEY.trim() || !isOnline)) return;
+    playUiCue(getAudioRuntime(), "ui.tab");
+    satelliteEnabledRef.current = satellite;
+    satelliteRef.current.setEnabled(satellite);
+  };
 
   const retryMap = useCallback(async () => {
     if (retrying.current) return;
@@ -319,6 +337,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     let restoreGlobeCamera: (() => void) | null = null;
     let cameraViewport: ReturnType<typeof createEarthCameraViewport> | null = null;
     let touchPitch: ReturnType<typeof createEarthTouchPitch> | null = null;
+    let satellite: ReturnType<typeof createEarthSatellite> | null = null;
 
     function syncFriends() {
       if (cancelled || attemptFailed || !friendMarkers) return;
@@ -400,6 +419,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       foreground = next;
       cameraViewport?.setEnabled(next && initialReady && !editingRef.current);
       touchPitch?.setEnabled(next && initialReady && !editingRef.current);
+      satellite?.setVisible(next && initialReady && !editingRef.current);
       syncFriends();
       scene?.setVisible(next);
       stars?.setVisible(next && initialReady);
@@ -417,6 +437,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       attemptFailed = true;
       cameraViewport?.setEnabled(false);
       touchPitch?.setEnabled(false);
+      satellite?.setVisible(false);
       diagnostics?.record("failed");
       controller.abort();
       window.clearTimeout(timeout);
@@ -533,6 +554,14 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           },
         });
         const current = map;
+        satellite = createEarthSatellite(current, { apiKey: MAPTILER_KEY, onChange: value => {
+          if (cancelled || attemptFailed) return;
+          if (value.status === "error") satelliteEnabledRef.current = false;
+          setSatelliteState(value);
+        } });
+        satelliteRef.current = satellite;
+        satellite.setOnline(onlineRef.current);
+        satellite.setEnabled(satelliteEnabledRef.current);
         diagnostics?.record("created");
         const updateCacheView = () => {
           if (cancelled || attemptFailed || !visibleRef.current || document.hidden) return;
@@ -708,6 +737,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         current.on("load", scheduleReadyCheck);
         current.on("idle", () => { scheduleReadyCheck(); tileRecovery?.check(true); });
         current.on("error", event => {
+          // Optional imagery has its own fallback and must never repair/fail the base map.
+          if (satellite?.ownsError(event)) return;
           if (cancelled || attemptFailed || !foreground && initialReady) return;
           diagnostics?.record("source-error");
           tileOverlay?.observe(event);
@@ -753,6 +784,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       meetMap?.dispose();
       latestFriends.current = EMPTY_FRIENDS;
       weather?.dispose();
+      satellite?.dispose();
+      if (satelliteRef.current === satellite) satelliteRef.current = null;
       if (weatherControllerRef.current === weather) weatherControllerRef.current = null;
       stars?.dispose();
       if (starsRef.current === stars) starsRef.current = null;
@@ -792,6 +825,13 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [active, visible, phase, position, focusRequest, focusWhenReady]);
 
   const ready = active && visible && phase === "ready";
+  const satelliteMessage = satelliteState.error ?? (satelliteState.status === "zoom-required"
+    ? "Приблизь карту, чтобы увидеть спутниковые снимки."
+    : satelliteState.status === "loading" ? "Загружаем спутниковые снимки…"
+      : satelliteState.status === "offline" ? "Спутниковые снимки доступны при подключении к сети."
+        : satelliteState.status === "ready" ? "Спутник · дороги и подписи на карте"
+          : !MAPTILER_KEY.trim() ? "Спутниковый режим пока не подключён." : "Спутниковые снимки появляются при близком приближении.");
+  const satelliteAttribution = satelliteState.status === "loading" || satelliteState.status === "ready" ? satelliteState.attribution : null;
   const diagnosticStage = phase === "failed" ? "Ошибка карты" : phase === "unsupported" ? "WebGL недоступен"
     : phase === "ready" ? tileStatus === "idle" ? "Карта готова" : tileStatus === "failed" ? "Детали недоступны" : "Восстановление деталей"
       : stage === "engine" ? "Загрузка движка" : stage === "resources" ? "Загрузка карты" : "Первый кадр";
@@ -845,7 +885,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             ? `${weatherState.error ? "Прогноз недоступен · повтор" : "Обновим прогноз"} в ${new Date(weatherState.nextRequestAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
             : weatherState.status === "error" ? "Прогноз пока недоступен" : "Узнаём погоду…"}
     </p>}
-    {ready && <EarthAttribution />}
+    {ready && !infoOpen && tileStatus === "idle" && cache.pending === 0 && (satelliteState.error || satelliteState.enabled && ["zoom-required", "loading", "offline"].includes(satelliteState.status)) && <p className={styles.satelliteNotice} role="status">{satelliteMessage}</p>}
+    {ready && <EarthAttribution satelliteAttribution={satelliteAttribution} />}
     {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} open={modelEditorOpen} onOpenChange={changeModelEditorOpen} /></Suspense>}
     {ready && <button ref={infoButton} data-earth-camera-blocker type="button" data-audio-cue={infoOpen ? "ui.close" : "ui.open"} className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => { setDiagnosticReport(null); onInfoOpenChange(!infoOpen); }}><Info size={21} aria-hidden="true" /></button>}
@@ -855,6 +896,12 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       <header className={styles.infoHeader}><h2 ref={infoHeading} tabIndex={-1} id="earth-info-title">О карте</h2>
         <button type="button" data-audio-cue="ui.close" className={styles.infoClose} aria-label="Закрыть настройки карты" onClick={() => { onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }}><X size={18} aria-hidden="true" /></button></header>
       <section className={styles.infoSection}><h3>Вид карты</h3>
+        <div className={styles.mapModes} role="group" aria-label="Подложка карты">
+          <button type="button" aria-pressed={!satelliteState.enabled} onClick={() => selectMapMode(false)}><Map size={16} aria-hidden="true" />Карта</button>
+          <button type="button" aria-pressed={satelliteState.enabled} disabled={!MAPTILER_KEY.trim() || !isOnline && !satelliteState.enabled}
+            onClick={() => selectMapMode(true)}><Satellite size={16} aria-hidden="true" />Спутник</button>
+        </div>
+        <p role="status">{satelliteMessage}</p>
         <div className={styles.lightingModes} role="group" aria-label="Освещение глобуса">
           {([ ["auto", "Авто"], ["day", "День"], ["evening", "Вечер"] ] as const).map(([value, label]) =>
             <button key={value} type="button" aria-pressed={lightingMode === value} onClick={() => {

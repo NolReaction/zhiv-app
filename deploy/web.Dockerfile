@@ -8,6 +8,9 @@ RUN npm ci
 COPY . .
 ARG APP_BUILD_ID
 ENV APP_BUILD_ID=${APP_BUILD_ID}
+# NEXT_PUBLIC_ values must exist while Next builds the browser bundle.
+ARG NEXT_PUBLIC_MAPTILER_KEY=
+ENV NEXT_PUBLIC_MAPTILER_KEY=${NEXT_PUBLIC_MAPTILER_KEY}
 RUN npm run build:vps
 
 FROM node:24-bookworm-slim

@@ -6,6 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
 const { refreshEarthTileSource, earthTileSourceIds, areEarthTileSourcesReady } = await vite.ssrLoadModule("/features/earth/source-recovery.ts");
+const { EARTH_SATELLITE_SOURCE } = await vite.ssrLoadModule("/features/earth/satellite.ts");
 after(() => vite.close());
 
 function fixture() {
@@ -54,6 +55,40 @@ test("tile readiness ignores animated local sources and renderer dirty flags, bu
     assert.equal(areEarthTileSourcesReady(map), false, `${source} still needs its real network/worker recovery`);
     loading.delete(source);
   }
+});
+
+test("optional satellite loading and errors do not block base map readiness or join global recovery", () => {
+  const s = fixture();
+  s.style.sources[EARTH_SATELLITE_SOURCE] = { type: "raster", tiles: ["https://example.test/{z}/{x}/{y}.jpg"] };
+  for (const satelliteState of ["loading", "failed"]) {
+    const reads = [];
+    const map = { ...s.map, isSourceLoaded(id) {
+      reads.push(id);
+      if (id === EARTH_SATELLITE_SOURCE) {
+        if (satelliteState === "failed") throw new Error("optional imagery unavailable");
+        return false;
+      }
+      return true;
+    } };
+    assert.deepEqual(earthTileSourceIds(map), ["streets"], "global recovery never targets optional imagery");
+    assert.equal(areEarthTileSourcesReady(map), true, `${satelliteState} imagery cannot stall loaded streets`);
+    assert.deepEqual(reads, ["streets"], "optional source readiness is independent of the base map");
+  }
+});
+
+test("late optional satellite repair targets cannot refresh or rebuild the source", () => {
+  const s = fixture();
+  s.map.addSource(EARTH_SATELLITE_SOURCE, { type: "raster", tiles: ["https://example.test/{z}/{x}/{y}.jpg"] });
+  s.map.addLayer({ id: "earth-satellite-imagery", type: "raster", source: EARTH_SATELLITE_SOURCE }, "detail");
+  const source = s.map.getSource(EARTH_SATELLITE_SOURCE), expected = structuredClone(s.style);
+  s.operations.length = 0;
+  for (const target of [
+    { sourceId: EARTH_SATELLITE_SOURCE },
+    { sourceId: EARTH_SATELLITE_SOURCE, tiles: [{ x: 2, y: 3, z: 4 }] },
+  ]) assert.equal(refreshEarthTileSource(s.map, target), false);
+  assert.deepEqual(s.operations, []);
+  assert.equal(s.map.getSource(EARTH_SATELLITE_SOURCE), source);
+  assert.deepEqual(s.style, expected);
 });
 
 test("canonical tile repairs keep the source and forward only affected tile IDs", () => {

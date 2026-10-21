@@ -46,15 +46,15 @@
 .diagnosticButton small { font-size: 8px; line-height: 1; }
 .diagnosticPanel { z-index: 7; }
 .diagnosticPanel textarea { width: 100%; height: min(280px, 35cqh); padding: 9px; border: 1px solid #d9efcd30; border-radius: 10px; background: #0b2924; color: #e7f3da; font: 11px/1.5 monospace; resize: vertical; }
-.infoButton { position: absolute; z-index: 4; right: var(--earth-overlay-right, 16px); bottom: calc(var(--earth-navigation-clearance, 84px) + 30px); width: 48px; height: 48px; border-radius: 50%; }
+.infoButton { position: absolute; z-index: 4; right: var(--earth-overlay-right, 16px); bottom: calc(var(--earth-navigation-clearance, 84px) + 48px); width: 48px; height: 48px; border-radius: 50%; }
 .infoButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
 .infoPanel {
   position: absolute;
   z-index: 5;
   right: var(--earth-overlay-right, 16px);
-  bottom: calc(var(--earth-navigation-clearance, 84px) + 88px);
+  bottom: calc(var(--earth-navigation-clearance, 84px) + 106px);
   width: min(360px, calc(100% - var(--earth-overlay-left, 16px) - var(--earth-overlay-right, 16px)));
-  max-height: calc(100% - var(--earth-overlay-top, 16px) - 148px - var(--earth-navigation-clearance, 84px));
+  max-height: calc(100% - var(--earth-overlay-top, 16px) - 166px - var(--earth-navigation-clearance, 84px));
   overflow: auto;
   overscroll-behavior: contain;
   border: 1px solid #cce1b83d;
@@ -82,6 +82,11 @@
 .lightingModes button { min-height: 44px; padding: 7px 8px; border: 1px solid transparent; border-radius: 11px; color: #b4cbb0; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
 .lightingModes button[aria-pressed="true"] { color: #edf6da; border-color: #dae6ad38; background: #355a43; box-shadow: 0 2px 6px #001e2429; }
 .lightingModes button:hover { color: #edf6da; }
+.mapModes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid #d9efcd20; border-radius: 16px; background: #0b2924; }
+.mapModes button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 7px 8px; border: 1px solid transparent; border-radius: 11px; color: #b4cbb0; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.mapModes button[aria-pressed="true"] { color: #edf6da; border-color: #dae6ad38; background: #355a43; }
+.mapModes button:disabled { opacity: .45; cursor: default; }
+.mapModes svg { flex-shrink: 0; }
 .infoToggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 52px; height: 44px; padding: 0; border: 0; border-radius: 13px; background: transparent; cursor: pointer; }
 .infoToggle > span { position: relative; display: block; width: 42px; height: 24px; border-radius: 999px; background: #627e6d; box-shadow: inset 0 0 0 1px #d9efcd22; transition: background 160ms ease; }
 .infoToggle > span::before { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #edf5e7; box-shadow: 0 1px 4px #082b2550; content: ""; transition: transform 160ms ease, background 160ms ease; }
@@ -95,15 +100,18 @@
 .networkNotice { position: absolute; z-index: 2; top: calc(var(--earth-overlay-top, 16px) + 60px); left: var(--earth-overlay-left, 16px); max-width: min(340px, calc(100% - 92px)); display: grid; gap: 4px; padding: 9px 11px; border: 1px solid #d6c38d45; border-radius: 15px; color: #f1dfb7; background: #263d30f5; font-size: 11px; line-height: 1.45; }
 .networkNotice button { justify-self: start; min-height: 40px; padding: 0 4px; color: #e4efcf; text-decoration: underline; cursor: pointer; }
 .root[data-development="true"] :is(.networkNotice, .tileProgress) { top: calc(var(--earth-overlay-top, 16px) + 112px); }
+.satelliteNotice { position: absolute; z-index: 2; top: calc(var(--earth-overlay-top, 16px) + 108px); left: var(--earth-overlay-left, 16px); max-width: min(280px, calc(100% - 92px)); margin: 0; padding: 8px 10px; border: 1px solid #d9efcd25; border-radius: 14px; color: #e3edda; background: #153b32ed; font-size: 11px; line-height: 1.5; pointer-events: none; }
+.root[data-development="true"] .satelliteNotice { top: calc(var(--earth-overlay-top, 16px) + 160px); }
 @media (max-height: 500px) {
   .controls { grid-auto-flow: column; grid-auto-columns: 44px; gap: 4px; }
   .controls .locateButton { margin: 0; }
-  .infoPanel { max-height: calc(100% - var(--earth-overlay-top, 16px) - 143px - var(--earth-navigation-clearance, 84px)); padding: 12px; }
+  .infoPanel { max-height: calc(100% - var(--earth-overlay-top, 16px) - 161px - var(--earth-navigation-clearance, 84px)); padding: 12px; }
   .networkNotice, .tileProgress { top: calc(var(--earth-overlay-top, 16px) + 112px); }
+  .satelliteNotice { top: calc(var(--earth-overlay-top, 16px) + 164px); }
 }
 @keyframes locate-search { 50% { opacity: .45; transform: scale(.82); } }
 @media (max-width: 600px) and (orientation: portrait) {
-  .infoPanel { max-height: min(50%, calc(100% - var(--earth-overlay-top, 16px) - 196px - var(--earth-navigation-clearance, 84px) - 88px)); }
+  .infoPanel { max-height: min(50%, calc(100% - var(--earth-overlay-top, 16px) - 196px - var(--earth-navigation-clearance, 84px) - 106px)); }
 }
 @media (prefers-reduced-motion: reduce) { .controls button, .infoButton, .infoToggle > span, .infoToggle > span::before { transition: none; } .controls button[aria-busy="true"] svg { animation: none; } }
 

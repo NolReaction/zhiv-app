@@ -1,7 +1,7 @@
 .credits {
   position: absolute;
   z-index: 2;
-  bottom: calc(var(--earth-navigation-clearance, 84px) + 7px);
+  bottom: var(--earth-attribution-bottom, calc(var(--earth-navigation-clearance, 84px) + 7px));
   left: var(--earth-overlay-left, 16px);
   display: flex;
   flex-wrap: wrap;
@@ -19,4 +19,7 @@
 .credits a { color: inherit; text-decoration: none; pointer-events: auto; }
 .credits a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .credits a:focus-visible { outline: 2px solid #d5efab; outline-offset: 3px; border-radius: 2px; }
+.satellite { gap: 2px 5px; }
+.logo { display: flex; flex-shrink: 0; align-items: center; }
+.logo img { display: block; width: 67px; height: 20px; }
 @media (forced-colors: active) { .credits { color: CanvasText; background: Canvas; text-shadow: none; } }

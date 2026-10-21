@@ -1,13 +1,15 @@
 import type { Map as LibreMap } from "maplibre-gl";
 import type { EarthTileRecoveryTarget } from "./tile-recovery";
+import { EARTH_SATELLITE_SOURCE } from "./satellite";
 
 type RecoveryMap = Pick<LibreMap, "getSource" | "getStyle" | "getLayer" | "refreshTiles"
   | "removeLayer" | "removeSource" | "addSource" | "addLayer">;
 
-/** Only downloaded map detail participates in tile recovery, never animated GeoJSON. */
+/** Optional imagery has its own retries; only base map detail gates global recovery. */
 export function earthTileSourceIds(map: Pick<LibreMap, "getStyle">): string[] {
   return Object.entries(map.getStyle()?.sources ?? {})
-    .filter(([, source]) => source.type === "vector" || source.type === "raster").map(([id]) => id);
+    .filter(([id, source]) => id !== EARTH_SATELLITE_SOURCE && (source.type === "vector" || source.type === "raster"))
+    .map(([id]) => id);
 }
 
 /** Map.loaded also waits for style changes and unrelated local source work. */
@@ -17,7 +19,7 @@ export function areEarthTileSourcesReady(map: Pick<LibreMap, "getStyle" | "isSou
 
 /** Keep the camera, WebGL context and local land while resetting stalled source tile requests. */
 export function refreshEarthTileSource(map: RecoveryMap, target: EarthTileRecoveryTarget): boolean {
-  if (!map.getSource(target.sourceId)) return false;
+  if (target.sourceId === EARTH_SATELLITE_SOURCE || !map.getSource(target.sourceId)) return false;
   if (target.tiles) {
     if (!target.tiles.length) return false;
     map.refreshTiles(target.sourceId, target.tiles);

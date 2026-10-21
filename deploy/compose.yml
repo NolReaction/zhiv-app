@@ -112,6 +112,7 @@ services:
       dockerfile: deploy/web.Dockerfile
       args:
         APP_BUILD_ID: ${APP_BUILD_ID:-}
+        NEXT_PUBLIC_MAPTILER_KEY: ${NEXT_PUBLIC_MAPTILER_KEY:-}
     restart: unless-stopped
     environment:
       NODE_ENV: production
