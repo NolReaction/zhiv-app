@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { parseAppOnboarding, type AppOnboardingProgress } from "./app-onboarding-model";
 
 type AppOnboardingStorage = Pick<Storage, "getItem" | "setItem">;
@@ -5,8 +6,8 @@ type Snapshot = { loaded: boolean; progress: AppOnboardingProgress | null; pause
 const serverSnapshot: Snapshot = { loaded: false, progress: null, paused: false };
 const memory = new Map<string, AppOnboardingProgress | null>();
 const pausedMemory = new Map<string, boolean>();
-export const appOnboardingStorageKey = (owner: string) => `zhiv.app-onboarding.v2:${owner}`;
-export const appOnboardingPauseStorageKey = (owner: string) => `zhiv.app-onboarding.paused.v1:${encodeURIComponent(owner)}`;
+export const appOnboardingStorageKey = (owner: string) => gameplayStorageKey(`zhiv.app-onboarding.v2:${owner}`);
+export const appOnboardingPauseStorageKey = (owner: string) => gameplayStorageKey(`zhiv.app-onboarding.paused.v1:${encodeURIComponent(owner)}`);
 
 export function createAppOnboardingStore(owner: string, storage?: AppOnboardingStorage) {
   let snapshot = serverSnapshot;

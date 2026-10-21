@@ -227,7 +227,8 @@ jobs:
             --tests ru.zhiv.db.JdbcSchemaBaselineIntegrationTest \
             --tests ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest \
             --tests ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest \
-            --tests ru.zhiv.db.JdbcGameProgressResetIntegrationTest
+            --tests ru.zhiv.db.JdbcGameProgressResetIntegrationTest \
+            --tests ru.zhiv.db.JdbcGameplayGenerationIntegrationTest
 
       - name: Require every suite with real PostgreSQL
         if: always()
@@ -235,7 +236,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest'):
+          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
               report = ET.parse(Path('apps/api/build/test-results/test') / f'TEST-{name}.xml').getroot()
               count = int(report.get('tests', '0'))
               assert report.get('name') == name and count > 0, f'{name}: missing or empty suite'
@@ -260,6 +261,7 @@ jobs:
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcGameProgressResetIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcGameplayGenerationIntegrationTest.xml
           retention-days: 7
           if-no-files-found: error
 
@@ -500,6 +502,73 @@ jobs:
           if (status.schemaVersion !== 1 || status.maintenance !== false || !status.buildId)
             throw new Error('The real deployment did not reopen a ready build');
           NODE
+
+      - name: Rehearse the one-time 0.7.1 fresh start without losing sign-ins or friends
+        shell: bash
+        run: |
+          test "$DOMAIN" = localhost
+          [[ "$COMPOSE_PROJECT_NAME" =~ ^zhiv-ci-[0-9]+$ ]]
+          test ! -e deploy/.env
+          trap 'rm -f deploy/.env' EXIT
+          for variable in COMPOSE_PROJECT_NAME COMPOSE_PROFILES DOMAIN ADMIN_PUBLIC_IDS MONITORING_URL METRICS_TOKEN_FILE; do
+            printf '%s=%s\n' "$variable" "${!variable}"
+          done > deploy/.env
+          chmod 600 deploy/.env
+          preserved_snapshot() {
+            docker compose -f deploy/compose.yml exec -T db psql -X -A -t -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT md5(jsonb_build_object(
+            'users', (SELECT jsonb_agg(to_jsonb(u) - 'last_check_in_at' ORDER BY id) FROM app_users u),
+            'sessions', (SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM app_sessions s),
+            'identities', (SELECT jsonb_agg(to_jsonb(i) ORDER BY provider, subject) FROM account_login_identities i),
+            'circles', (SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM circles c),
+            'memberships', (SELECT jsonb_agg(to_jsonb(m) ORDER BY circle_id, user_id) FROM circle_memberships m),
+            'friends', (SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM direct_requests r)
+          )::text);
+          SQL
+          }
+          docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM app_sessions) OR NOT EXISTS (SELECT 1 FROM check_ins)
+                OR NOT EXISTS (SELECT 1 FROM circles WHERE kind = 'DIRECT' AND archived_at IS NULL) THEN
+              RAISE EXCEPTION 'Fresh-start rehearsal requires existing signed-in players, history and friends.';
+            END IF;
+          END $$;
+          SQL
+          preserved_before="$(preserved_snapshot)"
+          bash scripts/deploy-update.sh --reset-game-progress-0.7.1
+          test "$(preserved_snapshot)" = "$preserved_before"
+          test ! -e deploy/runtime/maintenance
+          curl --fail --silent --show-error --insecure --max-time 20 https://localhost/readyz
+          docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF (SELECT generation FROM gameplay_generations) <> 1
+                OR (SELECT count(*) FROM gameplay_reset_runs WHERE reset_id = '0.7.1') <> 1
+                OR EXISTS (SELECT 1 FROM check_ins) OR EXISTS (SELECT 1 FROM check_in_audiences)
+                OR EXISTS (SELECT 1 FROM game_daily_rewards) OR EXISTS (SELECT 1 FROM game_reward_claims)
+                OR EXISTS (SELECT 1 FROM game_achievement_reward_claims WHERE achievement_id NOT IN ('linked_email', 'saved_recovery_code'))
+                OR EXISTS (SELECT 1 FROM app_users WHERE last_check_in_at IS NOT NULL) THEN
+              RAISE EXCEPTION 'One-time fresh start did not clear history and reward progress.';
+            END IF;
+          END $$;
+          -- New activity after release must survive an accidentally repeated command.
+          INSERT INTO check_ins (user_id, session_id, idempotency_key, checked_at, next_allowed_at, timezone_id, local_date)
+          SELECT user_id, id, '00000000-0000-4000-8000-000000000077', now(), now() + interval '30 seconds',
+                 'UTC', (now() AT TIME ZONE 'UTC')::date FROM app_sessions ORDER BY id LIMIT 1;
+          UPDATE app_users u SET last_check_in_at = c.checked_at FROM check_ins c WHERE c.user_id = u.id;
+          SQL
+          bash scripts/reset-game-progress.sh --confirm-reset-game-progress
+          docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF (SELECT generation FROM gameplay_generations) <> 1
+                OR (SELECT count(*) FROM gameplay_reset_runs) <> 1
+                OR (SELECT count(*) FROM check_ins WHERE idempotency_key = '00000000-0000-4000-8000-000000000077') <> 1
+                OR NOT EXISTS (SELECT 1 FROM app_users WHERE last_check_in_at IS NOT NULL) THEN
+              RAISE EXCEPTION 'Repeated release reset changed new player progress.';
+            END IF;
+          END $$;
+          SQL
+          test "$(preserved_snapshot)" = "$preserved_before"
+          curl --fail --silent --show-error --insecure --max-time 20 https://localhost/readyz
 
       - name: Verify explicit user reset with a restored backup
         shell: bash

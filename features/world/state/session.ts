@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
@@ -17,7 +18,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   let rateLimitedUntil = 0;
   let reading: Promise<void> | null = null, lastReadAt = -Infinity, blockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
-  const storageKey = `zhiv:world:pending:v1:${owner}`;
+  const storageKey = gameplayStorageKey(`zhiv:world:pending:v1:${owner}`);
   function remember(value: WorldCommand | null) {
     pending = value;
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Memory remains available. */ }

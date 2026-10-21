@@ -98,9 +98,24 @@ class JdbcPresenceRepository(
 
     }
 
-    override suspend fun update(sessionHash: ByteArray, request: PresenceRequest): PresenceView {
+    private fun requireGeneration(c: Connection, expected: Long) {
+        val current = c.economyRows("SELECT generation FROM gameplay_generations WHERE singleton") { it.getLong(1) }.single()
+        if (expected != current) throw AuthFailure("GAME_PROGRESS_RESET", "Игра началась заново. Обновите страницу", 409)
+    }
+
+    override suspend fun currentGeneration(): Long = withContext(Dispatchers.IO) {
+        source.connection.use { c ->
+            c.economyRows("SELECT generation FROM gameplay_generations WHERE singleton") { it.getLong(1) }.single()
+        }
+    }
+
+    override suspend fun requireGeneration(sessionHash: ByteArray, gameplayGeneration: Long) =
+        transaction(sessionHash) { c, _, _ -> requireGeneration(c, gameplayGeneration) }
+
+    override suspend fun update(sessionHash: ByteArray, request: PresenceRequest, gameplayGeneration: Long): PresenceView {
         val id = validatePresenceRequest(request)
         return transaction(sessionHash) { c, actor, now ->
+            requireGeneration(c, gameplayGeneration)
             var row = client(c, id)
             if (row == null) {
                 if (request.kind != "resume") throw AuthFailure("GAME_SESSION_INACTIVE", "Вернитесь в игру, чтобы продолжить", 409)
@@ -135,8 +150,9 @@ class JdbcPresenceRepository(
         }
     }
 
-    override suspend fun requireActive(sessionHash: ByteArray, presenceId: UUID) = transaction(sessionHash) { c, actor, now ->
-        val row = client(c, presenceId)
+    override suspend fun requireActive(sessionHash: ByteArray, presenceId: UUID?, gameplayGeneration: Long) = transaction(sessionHash) { c, actor, now ->
+        requireGeneration(c, gameplayGeneration)
+        val row = presenceId?.let { client(c, it) }
         if (row == null || row.user != actor.user || row.session != actor.session ||
             presenceStatus(row.status, row.seen, row.active, now) != "active") {
             throw AuthFailure("GAME_SESSION_INACTIVE", "Вы отошли. Вернитесь в игру, чтобы продолжить", 409)

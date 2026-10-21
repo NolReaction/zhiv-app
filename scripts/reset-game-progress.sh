@@ -13,9 +13,23 @@ if (( $# > 1 )); then echo 'Expected at most one option.' >&2; exit 2; fi
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
+if $apply_reset; then
+  # The same lock protects deployment and resets from reopening one another's gate.
+  mkdir -p deploy/runtime
+  if (( EUID == 0 )); then
+    touch deploy/runtime/deploy.lock
+    chown --reference="$project_dir" deploy/runtime deploy/runtime/deploy.lock
+    chmod 755 deploy/runtime
+    chmod 644 deploy/runtime/deploy.lock
+  fi
+  exec 9> deploy/runtime/deploy.lock
+  flock -n 9 || { echo 'Another deployment or game reset is running.' >&2; exit 75; }
+fi
 compose=(docker compose)
+if (( EUID != 0 )); then compose=(sudo docker compose); fi
 if [[ -f deploy/.env ]]; then compose+=(--env-file deploy/.env); fi
 compose+=(-f deploy/compose.yml)
+dc() { "${compose[@]}" "$@"; }
 "${compose[@]}" config --quiet
 
 # Validate the exact reviewed schema before stopping traffic or creating a dump.
@@ -23,57 +37,23 @@ compose+=(-f deploy/compose.yml)
   -v apply_reset=off < scripts/reset-game-progress.sql
 if ! $apply_reset; then exit 0; fi
 
-backup_dir="$project_dir/../zhiv-backups"
-mkdir -p "$backup_dir"
-chmod 700 "$backup_dir"
-exec 9> "$backup_dir/.game-progress-reset.lock"
-if ! flock -n 9; then echo 'Another game progress reset is running.' >&2; exit 1; fi
-backup_file="$(mktemp "$backup_dir/before-game-reset-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
-restore_db="zhiv_game_reset_verify_$$"
-restore_created=false
-backup_verified=false
 services_stopped=false
-reset_committed=false
 cleanup() {
   local result=$?
-  if $restore_created; then "${compose[@]}" exec -T db dropdb -U zhiv --if-exists "$restore_db" || true; fi
   if $services_stopped; then
     echo 'Site services may be stopped. Resolve the error before starting api web caddy.' >&2
-  fi
-  if $reset_committed; then echo 'The game reset COMMITTED. Restarting services does not restore old progress.' >&2; fi
-  if $backup_verified; then
-    echo "Verified original backup retained: $backup_file"
-  else
-    echo "Backup path (verification incomplete): $backup_file" >&2
   fi
   return "$result"
 }
 trap cleanup EXIT
+source scripts/lib/reset-game-progress.sh
 
-echo 'Stopping site traffic; account login sessions will be retained.'
+echo 'Stopping site traffic; sign-ins and friends will be retained, game and check-in history will restart.'
 services_stopped=true
-"${compose[@]}" stop caddy web api
-"${compose[@]}" exec -T db pg_dump -U zhiv -d zhiv --format=custom --exclude-table-data=public.earth_latest_locations --exclude-table-data=public.earth_frozen_locations --no-owner --no-acl > "$backup_file"
-test -s "$backup_file"
-"${compose[@]}" exec -T db pg_restore --list < "$backup_file" > /dev/null
-"${compose[@]}" exec -T db createdb -U zhiv --template=template0 "$restore_db"
-restore_created=true
-"${compose[@]}" exec -T db pg_restore -U zhiv -d "$restore_db" \
-  --no-owner --no-acl --exit-on-error < "$backup_file"
-backup_verified=true
-
-echo 'Rehearsing the reset on the restored copy, including preservation checks.'
-"${compose[@]}" exec -T db psql -X -U zhiv -d "$restore_db" -v ON_ERROR_STOP=1 \
-  -v apply_reset=on < scripts/reset-game-progress.sql
-"${compose[@]}" exec -T db dropdb -U zhiv "$restore_db"
-restore_created=false
-
-echo 'Backup and rehearsal passed. Resetting game progress in one transaction.'
-"${compose[@]}" exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 \
-  -v apply_reset=on < scripts/reset-game-progress.sql
-reset_committed=true
+"${compose[@]}" stop --timeout 30 caddy web api
+reset_game_progress_with_rehearsal
 "${compose[@]}" up -d --no-deps --no-build --no-recreate --wait --wait-timeout 120 api web caddy
 services_stopped=false
 "${compose[@]}" exec -T api curl -fsS --max-time 10 http://127.0.0.1:8080/readyz
 echo
-echo 'Reset complete. Reload game tabs to refresh the scene; old game commands are fenced and existing sign-ins still work.'
+echo 'The one-time 0.7.1 reset is complete. Clients will refresh their gameplay state; existing sign-ins and friends still work.'

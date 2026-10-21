@@ -34,7 +34,7 @@ fun Route.presenceRoutes(repository: PresenceRepository, codec: TokenCodec, conf
                 if (!call.request.queryParameters.isEmpty()) throw AuthFailure("INVALID_PRESENCE", "Некорректный запрос игровой активности", 400)
                 val request = call.receive<PresenceRequest>()
                 validatePresenceRequest(request)
-                call.respond(repository.update(hash, request))
+                call.respond(repository.update(hash, request, call.gameplayGeneration()))
             }
         }
     }
@@ -46,6 +46,19 @@ fun Route.presenceRoutes(repository: PresenceRepository, codec: TokenCodec, conf
 suspend fun ApplicationCall.requireGameplayPresence(repository: PresenceRepository?, sessionHash: ByteArray) {
     if (repository == null) return
     val id = parseCanonicalUuidV4(request.headers[PRESENCE_HEADER])
-        ?: throw AuthFailure("GAME_SESSION_INACTIVE", "Вернитесь в игру, чтобы продолжить", 409)
-    repository.requireActive(sessionHash, id)
+    repository.requireActive(sessionHash, id, gameplayGeneration())
+}
+
+/** Service check-ins and welcome gifts need the reset fence without an active
+ * game lease. Missing headers identify legacy clients in generation zero only. */
+suspend fun ApplicationCall.requireGameplayGeneration(repository: PresenceRepository?, sessionHash: ByteArray) {
+    repository?.requireGeneration(sessionHash, gameplayGeneration())
+}
+
+private fun ApplicationCall.gameplayGeneration(): Long {
+    val values = request.headers.getAll(GAMEPLAY_GENERATION_HEADER) ?: return 0
+    val value = values.singleOrNull()
+    return value?.takeIf { Regex("0|[1-9][0-9]{0,15}").matches(it) }?.toLongOrNull()
+        ?.takeIf { it <= 9_007_199_254_740_990L }
+        ?: throw AuthFailure("GAME_PROGRESS_RESET", "Игра началась заново. Обновите страницу", 409)
 }

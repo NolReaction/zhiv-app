@@ -7,7 +7,10 @@ import { readFileSync } from "node:fs";
 assert.equal(process.env.CI, "true", "Run only against the isolated CI stack");
 const origin = "https://localhost";
 const presenceByCookie = new Map();
+const generationByCookie = new Map();
 async function resumePresence(cookie) {
+  const me = await api("GET", "/api/v1/me", { cookie });
+  generationByCookie.set(cookie, me.data.gameplayGeneration);
   const presenceId = randomUUID();
   const result = await api("POST", "/api/v1/presence", { cookie, body: { kind: "resume", presenceId, sequence: 0, active: true } });
   assert.equal(result.data.status, "active");
@@ -21,6 +24,7 @@ async function api(method, path, { cookie, body, expected = 200, key = randomUUI
     const headers = { Origin: source, "Idempotency-Key": key };
     if (cookie) headers.Cookie = cookie;
     if (presenceByCookie.has(cookie)) headers["X-Game-Presence"] = presenceByCookie.get(cookie);
+    if (generationByCookie.has(cookie)) headers["X-Game-Generation"] = String(generationByCookie.get(cookie));
     if (payload !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(payload);
@@ -50,6 +54,9 @@ async function profile(name) {
   for (const flag of ["__Host-zhiv_session=", "HttpOnly", "Secure", "SameSite=Lax"]) {
     assert.ok(header.includes(flag), "Missing cookie protection: " + flag);
   }
+  const me = await api("GET", "/api/v1/me", { cookie: result.cookie });
+  assert.ok(Number.isSafeInteger(me.data.gameplayGeneration) && me.data.gameplayGeneration >= 0);
+  generationByCookie.set(result.cookie, me.data.gameplayGeneration);
   return result;
 }
 const owner = await profile("CI owner");

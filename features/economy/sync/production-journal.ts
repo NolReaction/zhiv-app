@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { z } from "zod";
 import { economyCommandSchema, economyViewSchema, recipeBuildingLevel, type EconomyCommand, type EconomyView } from "@/features/economy/domain/model";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
@@ -11,7 +12,7 @@ const intentSchema = z.object({ requestId: economyCommandSchema.shape.requestId,
   command: economyCommandSchema.optional() }).strict();
 const journalSchema = z.object({ version: z.literal(1), owner: z.string(), snapshot: economyViewSchema,
   entries: z.array(intentSchema).max(PRODUCTION_JOURNAL_LIMIT) }).strict();
-export const productionJournalKey = (owner: string) => `zhiv:economy:production:v1:${owner}`;
+export const productionJournalKey = (owner: string) => gameplayStorageKey(`zhiv:economy:production:v1:${owner}`);
 
 /** Cache data is an untrusted preview. Only a server receipt changes confirmed state. */
 export function parseProductionJournal(raw: string | null, owner: string): ProductionJournal | null {
@@ -78,7 +79,7 @@ export const browserJournalCoordinator: JournalCoordinator = (owner, signal) => 
   return new Promise(resolve => {
     let answered = false;
     const answer = (value: (() => void) | null) => { if (!answered) { answered = true; resolve(value); } };
-    void navigator.locks.request(`zhiv:economy:production:${owner}`, { mode: "exclusive", ifAvailable: true }, async lock => {
+    void navigator.locks.request(gameplayStorageKey(`zhiv:economy:production:${owner}`), { mode: "exclusive", ifAvailable: true }, async lock => {
       if (!lock || signal.aborted) { answer(null); return; }
       await new Promise<void>(release => { answer(release); signal.addEventListener("abort", () => release(), { once: true }); });
     }).catch(() => answer(null));

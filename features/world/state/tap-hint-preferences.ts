@@ -1,7 +1,8 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
 const memory = new Map<string, boolean>();
 
-export const tapHintPreferenceKey = (owner: string) => `zhiv.world.tap-hints.v1:${encodeURIComponent(owner)}`;
+export const tapHintPreferenceKey = (owner: string) => gameplayStorageKey(`zhiv.world.tap-hints.v1:${encodeURIComponent(owner)}`);
 
 /** This appearance preference never changes object hit areas or lesson progress. */
 export function readTapHintPreference(owner: string, storage?: PreferenceStorage): boolean {

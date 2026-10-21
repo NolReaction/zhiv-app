@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { readSectionGuideLauncherPreference: read, saveSectionGuideLauncherPreference: save, sectionGuideLauncherPreferenceKey: key } = await vite.ssrLoadModule("/features/onboarding/section-guide-preferences.ts");
 function storage() {

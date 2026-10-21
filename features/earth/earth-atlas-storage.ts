@@ -1,9 +1,10 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { EARTH_ATLAS_ENTRIES, earthAtlasEntry } from "./earth-atlas";
 
 type AtlasStorage = Pick<Storage, "getItem" | "setItem">;
 export type EarthAtlasSnapshot = Readonly<{ loaded: boolean; ids: readonly string[]; persistent: boolean }>;
 const serverSnapshot: EarthAtlasSnapshot = { loaded: false, ids: [], persistent: true };
-export const earthAtlasStorageKey = (owner: string) => `zhiv.earth-atlas.v1:${encodeURIComponent(owner)}`;
+export const earthAtlasStorageKey = (owner: string) => gameplayStorageKey(`zhiv.earth-atlas.v1:${encodeURIComponent(owner)}`);
 
 export function parseEarthAtlas(raw: string | null): string[] {
   if (!raw || raw.length > 8_000) return [];

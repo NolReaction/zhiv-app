@@ -43,7 +43,7 @@ class JdbcEarthLocationIntegrationTest {
             AppConfig(pg.jdbcUrl,pg.username,pg.password,false,setOf("http://localhost"))
         }
         source=DatabaseFactory.create(config)
-        // Exercise V65 -> V67 on an already published point; migration must not extend old retention.
+        // Exercise V65 -> latest (V68) on an already published point; migration must not extend old retention.
         Flyway.configure().dataSource(source).locations("classpath:db/migration").target("65").load().migrate()
         repo=JdbcEarthLocationRepository(source)
         val legacy=runBlocking {
@@ -59,7 +59,7 @@ class JdbcEarthLocationIntegrationTest {
         val before=scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h")
         DatabaseFactory.migrate(source)
         assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=65"))
-        assertEquals("67",scalar("SELECT max(version::int) FROM flyway_schema_history"))
+        assertEquals("68",scalar("SELECT max(version::int) FROM flyway_schema_history"))
         runBlocking {
             assertEquals(legacy.third,scalar("SELECT updated_at::text || '/' || expires_at::text FROM earth_latest_locations WHERE user_id=?",legacy.first.id),"upgrade preserves the original fix and deadline")
             assertEquals(1,repo.people(legacy.second.hash).people.size)

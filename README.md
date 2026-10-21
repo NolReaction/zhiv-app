@@ -14,7 +14,7 @@
 - **Профиль и награды:** почта, одноразовые подарки, обновлённое обучение и книга коллекций с главами, фильтрами и перелистыванием пальцем. [Коллекции](docs/game/collections-and-achievements.md) · [Обучение](docs/game/onboarding.md).
 - **Мир и инструменты:** доработаны жители, свет, звук и перемещение камеры; отдельный [Engine](docs/engine/README.md) и [студия света](docs/game/world-lighting-studio.md) получили проекты, папки и сохранение.
 
-Выпуск объединяет `0.7.1v2` в `master` одним squash-коммитом; версия приложения — `0.7.1`. Обычное обновление переносит существующую БД и **не обнуляет прогресс игроков**. Ручной сброс игрового прогресса и развёртывание на сервере — отдельные операции.
+Выпуск объединяет `0.7.1v2` в `master` одним squash-коммитом; версия приложения — `0.7.1`. Обычное обновление переносит существующую БД и **не обнуляет прогресс игроков**. Для согласованного общего старта 0.7.1 используется `bash scripts/deploy-update.sh --reset-game-progress-0.7.1`: входы и друзья сохраняются, игра и история отметок начинаются заново. [Граница очистки](docs/operations/reset-game-progress.md).
 
 ## Что умеет приложение
 
@@ -41,7 +41,7 @@
 | Совместимый контур Sites | Vite, Vinext, Cloudflare Workers |
 | Отдельный Engine | TypeScript и Canvas 2D в `packages/engine`; React/Vite-редактор в `apps/engine` |
 
-Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Новая PostgreSQL создаётся из [B49__current_schema.sql](apps/api/src/main/resources/db/migration/B49__current_schema.sql), затем применяет V50–V67; [V1–V49](apps/api/src/main/resources/db/migration/history/) сохранены для обновления существующих БД. [Правила baseline и следующих миграций](docs/development/database-baseline.md). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
+Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Новая PostgreSQL создаётся из [B49__current_schema.sql](apps/api/src/main/resources/db/migration/B49__current_schema.sql), затем применяет V50–V68; [V1–V49](apps/api/src/main/resources/db/migration/history/) сохранены для обновления существующих БД. [Правила baseline и следующих миграций](docs/development/database-baseline.md). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
 
 ## Где искать код
 

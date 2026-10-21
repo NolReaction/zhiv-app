@@ -7,10 +7,8 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.config.AppConfig
-import ru.zhiv.relationships.DirectRequestMutationSnapshot
 import ru.zhiv.relationships.PeopleSnapshot
 import ru.zhiv.relationships.RelationshipResult
-import ru.zhiv.relationships.RequestAction
 import ru.zhiv.security.TokenCodec
 import java.sql.Connection
 import java.time.OffsetDateTime
@@ -119,7 +117,7 @@ class JdbcSchemaBaselineIntegrationTest {
         }
     }
 
-    @Test fun `fresh database executes baseline and V50 through V67 equivalent to the upgraded historical chain`() {
+    @Test fun `fresh database executes baseline and V50 through V68 equivalent to the upgraded historical chain`() {
         DatabaseFactory.create(config()).use { legacy ->
             // Deliberately excludes the parent location: Flyway 12.8 applies the newest B
             // even when target is lower, so historical builds must resolve only V files.
@@ -129,7 +127,7 @@ class JdbcSchemaBaselineIntegrationTest {
             assertEquals("49", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(legacy, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             DatabaseFactory.migrate(legacy)
-            assertEquals("67", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("68", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
 
             val database = "baseline_${UUID.randomUUID().toString().replace("-", "")}"
             legacy.connection.use { c ->
@@ -141,7 +139,7 @@ class JdbcSchemaBaselineIntegrationTest {
                     val started = databaseTime(fresh)
                     DatabaseFactory.migrate(fresh)
                     val finished = databaseTime(fresh)
-                    assertEquals("19", scalar(fresh, "SELECT count(*) FROM flyway_schema_history"))
+                    assertEquals("20", scalar(fresh, "SELECT count(*) FROM flyway_schema_history"))
                     assertEquals("49:SQL_BASELINE:true", scalar(fresh,
                         "SELECT version || ':' || type || ':' || success::text FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
                     val metadata = fresh.connection.use { c -> c.createStatement().use { statement ->
@@ -151,7 +149,11 @@ class JdbcSchemaBaselineIntegrationTest {
                         }
                     } }
                     assertTrue(!metadata.isBefore(started) && !metadata.isAfter(finished), "Fresh coverage begins during the baseline")
-                    for ((table, data) in tableData(fresh).filterKeys { it != "game_tap_collection_metadata" })
+                    assertEquals("0:true", scalar(fresh,
+                        "SELECT generation::text || ':' || (reset_at IS NULL)::text FROM gameplay_generations WHERE singleton"))
+                    for ((table, data) in tableData(fresh).filterKeys {
+                        it !in setOf("game_tap_collection_metadata", "gameplay_generations")
+                    })
                         assertEquals("[]", data, "The baseline must not seed player data into $table")
 
                     val expected = schema(legacy)
@@ -159,7 +161,7 @@ class JdbcSchemaBaselineIntegrationTest {
                     for ((category, definitions) in expected) {
                         assertEquals(definitions.keys, actual.getValue(category).keys, "$category object names differ")
                         for ((name, definition) in definitions)
-                            assertEquals(definition, actual.getValue(category).getValue(name), "$category: $name differs from V1–V67")
+                            assertEquals(definition, actual.getValue(category).getValue(name), "$category: $name differs from V1–V68")
                     }
                     val freshHistory = history(fresh)
                     val freshMetadata = scalar(fresh, "SELECT row_to_json(m)::text FROM game_tap_collection_metadata m")
@@ -190,13 +192,12 @@ class JdbcSchemaBaselineIntegrationTest {
             val first = identities.bootstrap("До baseline", tokens.issue().hash, firstSession, 365)
             val second = identities.bootstrap("Друг до baseline", tokens.issue().hash, secondSession, 365)
             val relationships = JdbcRelationshipRepository(source)
-            val request = assertIs<RelationshipResult.Success<*>>(
-                relationships.sendRequest(firstSession, second.publicId, UUID.randomUUID()),
-            ).value as DirectRequestMutationSnapshot
-            assertIs<RelationshipResult.Success<*>>(
-                relationships.actOnRequest(secondSession, request.request.requestId, RequestAction.ACCEPTED),
-            )
             source.connection.use { c ->
+                // Seed the old schema directly: current friend writes also evaluate
+                // V68's generation-aware achievement policy, unavailable at V48.
+                c.economyUpdate("""INSERT INTO circles(id,kind,created_by_user_id,direct_user_low_id,direct_user_high_id)
+                    VALUES (?,'DIRECT',?,LEAST(?::uuid,?::uuid),GREATEST(?::uuid,?::uuid))""",
+                    UUID.randomUUID(),first.id,first.id,second.id,first.id,second.id)
                 c.economyUpdate("INSERT INTO account_login_identities(provider,subject,user_id) VALUES ('email','baseline@example.test',?)", first.id)
                 c.commit()
             }
@@ -207,11 +208,15 @@ class JdbcSchemaBaselineIntegrationTest {
             assertEquals(data, tableData(source).filterKeys { it in data }, "Adding a baseline must not rewrite existing records")
             assertEquals(mapOf("managed_promo_codes" to "[]", "player_security_observations" to "[]",
                 "player_mail_messages" to "[]", "admin_mail_broadcasts" to "[]",
-                "earth_sharing_settings" to "[]", "earth_sharing_recipients" to "[]", "earth_latest_locations" to "[]", "earth_frozen_locations" to "[]"), tableData(source).filterKeys { it !in data },
+                "earth_sharing_settings" to "[]", "earth_sharing_recipients" to "[]", "earth_latest_locations" to "[]", "earth_frozen_locations" to "[]",
+                "gameplay_reset_runs" to "[]"), tableData(source).filterKeys { it !in data && it != "gameplay_generations" },
                 "New campaign configuration, security observations and mail start empty on the historical schema")
+            assertEquals("0:true", scalar(source,
+                "SELECT generation::text || ':' || (reset_at IS NULL)::text FROM gameplay_generations WHERE singleton"),
+                "Schema upgrade only prepares the reset mechanism; it does not start a new game")
             assertEquals(earlierHistory, scalar(source,
                 "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=48"))
-            assertEquals("67", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
+            assertEquals("68", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             assertEquals(first.id, identities.findBySession(firstSession)?.id)
             assertEquals(second.id, identities.findBySession(secondSession)?.id)

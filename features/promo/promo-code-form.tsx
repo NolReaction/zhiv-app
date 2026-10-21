@@ -1,4 +1,5 @@
 "use client";
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { useId, useRef, useState } from "react";
 import { Gift, Ticket } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -9,7 +10,7 @@ import { redeemPromoCode } from "./api";
 import { normalizePromoCode, promoRequestSchema, type PromoRequest, type PromoResult } from "./model";
 import styles from "./promo-code-form.module.css";
 
-const pendingKey = (owner: string) => `zhiv:pending-promo:v1:${owner}`;
+const pendingKey = (owner: string) => gameplayStorageKey(`zhiv:pending-promo:v1:${owner}`);
 function saved(owner: string): PromoRequest | null {
   try { const result = promoRequestSchema.safeParse(JSON.parse(sessionStorage.getItem(pendingKey(owner)) ?? "null"));
     return result.success && result.data.ownerPublicId === owner ? result.data : null; } catch { return null; }

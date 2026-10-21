@@ -1,10 +1,11 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { parseSectionGuideProgress, type SectionGuideStorageId, type SectionGuideProgress } from "./section-guide-model";
 
 type GuideStorage = Pick<Storage, "getItem" | "setItem">;
 type Snapshot = { loaded: boolean; progress: SectionGuideProgress | null };
 const serverSnapshot: Snapshot = { loaded: false, progress: null };
 const memory = new Map<string, SectionGuideProgress>();
-export const sectionGuideStorageKey = (owner: string, section: SectionGuideStorageId) => `zhiv.section-guide.v1:${encodeURIComponent(owner)}:${section}`;
+export const sectionGuideStorageKey = (owner: string, section: SectionGuideStorageId) => gameplayStorageKey(`zhiv.section-guide.v1:${encodeURIComponent(owner)}:${section}`);
 
 /** Local presentation preference only. A blocked browser store still remembers within this session. */
 export function createSectionGuideStore(owner: string, section: SectionGuideStorageId, storage?: GuideStorage) {

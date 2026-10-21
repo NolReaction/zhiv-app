@@ -19,6 +19,7 @@ export type ProfileState = {
 };
 
 export type MeResponse = {
+  gameplayGeneration?: number;
   status?: UserStatus | null;
   user: PublicUser;
   lastCheckInAt: string | null;

@@ -2,6 +2,13 @@
 # Build the checked-out release, verify a backup, then update the VPS services.
 set -euo pipefail
 umask 022
+reset_game_progress=false
+case "${1:-}" in
+  '') ;;
+  --reset-game-progress-0.7.1) reset_game_progress=true ;;
+  *) echo 'Usage: bash scripts/deploy-update.sh [--reset-game-progress-0.7.1]' >&2; exit 2 ;;
+esac
+if (( $# > 1 )); then echo 'Expected at most one option.' >&2; exit 2; fi
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 git diff --quiet
@@ -10,6 +17,12 @@ git diff --cached --quiet
 # One deployment owns the edge gate; competing scripts must not reopen it.
 runtime_dir="$project_dir/deploy/runtime"
 mkdir -p "$runtime_dir"
+if (( EUID == 0 )); then
+  touch "$runtime_dir/deploy.lock"
+  chown --reference="$project_dir" "$runtime_dir" "$runtime_dir/deploy.lock"
+  chmod 755 "$runtime_dir"
+  chmod 644 "$runtime_dir/deploy.lock"
+fi
 exec 9> "$runtime_dir/deploy.lock"
 flock -n 9 || { echo 'Another deployment is already running.' >&2; exit 75; }
 export APP_BUILD_ID="$(git rev-parse --short=12 HEAD)-$(date -u +%Y%m%dT%H%M%S)-$$"
@@ -90,7 +103,18 @@ backup_dir="$project_dir/../zhiv-backups"
   echo "Backup restored and verified: $backup_file"
 )
 
-dc up -d --no-build --wait --wait-timeout 600 db provision migrate api web
+if $reset_game_progress; then
+  # Complete schema changes without starting any game writers. The reset backup
+  # below has the new schema, so its rehearsal exercises the exact live SQL.
+  dc up -d --no-build --wait --wait-timeout 600 db
+  dc run --rm --no-deps provision
+  dc run --rm --no-deps migrate
+  source scripts/lib/reset-game-progress.sh
+  reset_game_progress_with_rehearsal
+  dc up -d --no-deps --no-build --wait --wait-timeout 600 api web
+else
+  dc up -d --no-build --wait --wait-timeout 600 db provision migrate api web
+fi
 dc exec -T caddy wget --quiet --output-document=- http://api:8080/readyz > /dev/null
 dc exec -T caddy wget --quiet --output-document=- http://web:3000/app-status.json > /dev/null
 dc exec -T -e "EXPECTED_BUILD_ID=$APP_BUILD_ID" web node -e '

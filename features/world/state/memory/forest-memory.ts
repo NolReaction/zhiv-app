@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 import { isWalkable } from "@/features/world/navigation/navigation";
@@ -31,7 +32,7 @@ const point = (value: unknown): value is WorldPoint => object(value) && finite(v
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 160;
 const samePoint = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y) < .001;
 
-export function forestMemoryKey(account: string) { return `zhiv:forest-memory:v${STORAGE_VERSION}:${encodeURIComponent(account)}`; }
+export function forestMemoryKey(account: string) { return gameplayStorageKey(`zhiv:forest-memory:v${STORAGE_VERSION}:${encodeURIComponent(account)}`); }
 
 /** A geometry edit invalidates feet and old landmarks, without resetting the pet's needs. */
 export function forestSceneFingerprint(scene: FixedWorldScene): string {

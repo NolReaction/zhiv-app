@@ -111,16 +111,20 @@ BEGIN
                 -- baseline plus later migrations, not an arbitrary history.
                 (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
                     FROM public.flyway_schema_history h ORDER BY h.installed_rank)
-                    = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true','67:SQL:true']
+                    = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true','67:SQL:true','68:SQL:true']
                     AND m.started_at BETWEEN migration_started_at AND clock_timestamp())
             )
         ) THEN
         RAISE EXCEPTION 'Fresh collection metadata is missing or does not match its migration. Site remains stopped.';
     END IF;
+    IF (SELECT count(*) FROM public.gameplay_generations) <> 1
+        OR NOT EXISTS (SELECT 1 FROM public.gameplay_generations WHERE singleton AND generation=0 AND reset_at IS NULL) THEN
+        RAISE EXCEPTION 'Fresh gameplay generation is missing or not zero. Site remains stopped.';
+    END IF;
     FOR item IN SELECT schemaname, tablename FROM pg_tables
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
           AND schemaname !~ '^pg_toast'
-          AND NOT (schemaname = 'public' AND tablename IN ('flyway_schema_history', 'game_tap_collection_metadata'))
+          AND NOT (schemaname = 'public' AND tablename IN ('flyway_schema_history', 'game_tap_collection_metadata', 'gameplay_generations'))
     LOOP
         EXECUTE format('SELECT count(*) FROM %I.%I', item.schemaname, item.tablename) INTO remaining;
         IF remaining <> 0 THEN

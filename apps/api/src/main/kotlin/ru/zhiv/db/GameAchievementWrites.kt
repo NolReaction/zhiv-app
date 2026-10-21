@@ -18,7 +18,7 @@ internal fun recordFriendAchievement(connection: Connection, userId: UUID, at: O
     connection.prepareStatement("""
         INSERT INTO game_achievements(user_id,achievement_id,unlocked_at)
         SELECT ?, 'five_friends', ?::timestamptz
-        WHERE (SELECT count(*) FROM (SELECT user_id FROM active_direct_friend_ids(?) LIMIT 5) friends)=5
+        WHERE gameplay_friend_count(?)=5
         ON CONFLICT(user_id,achievement_id) DO UPDATE SET reward_eligible=true WHERE NOT game_achievements.reward_eligible
     """.trimIndent()).use {
         it.setObject(1,userId); it.setObject(2,at); it.setObject(3,userId); it.executeUpdate()

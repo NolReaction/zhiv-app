@@ -1,10 +1,11 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { parseMarketUnlockOnboarding, type MarketUnlockOnboardingProgress } from "@/features/world/domain/market-unlock-onboarding";
 
 type GuideStorage = Pick<Storage, "getItem" | "setItem">;
 type Snapshot = { loaded: boolean; progress: MarketUnlockOnboardingProgress | null };
 const serverSnapshot: Snapshot = { loaded: false, progress: null };
 const memory = new Map<string, MarketUnlockOnboardingProgress>();
-export const marketUnlockOnboardingStorageKey = (owner: string) => `zhiv.market-unlock-onboarding.v1:${encodeURIComponent(owner)}`;
+export const marketUnlockOnboardingStorageKey = (owner: string) => gameplayStorageKey(`zhiv.market-unlock-onboarding.v1:${encodeURIComponent(owner)}`);
 
 /** Per-player browser presentation only. No bridge claims, inventory or market commands. */
 export function createMarketUnlockOnboardingStore(owner: string, storage?: GuideStorage) {

@@ -1,16 +1,19 @@
 import { z } from "zod";
+import { gameplayGenerationHeaders, reportGameplayReset } from "@/lib/gameplay-generation";
 import { ApiError } from "@/lib/check-in-api";
 import { retryAfterMs, withRequestDeadline } from "@/lib/request-deadline";
 import { mailboxPageSchema, mailReadResultSchema, mailClaimResultSchema } from "./model";
 
 async function request<T>(path: string, owner: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: unknown) {
   return withRequestDeadline(10_000, signal, async requestSignal => {
+    const generation = gameplayGenerationHeaders();
     const response = await fetch(path, { method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: requestSignal,
-      headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
+      headers: { Accept: "application/json", ...generation, ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}) });
     const raw: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const error = z.object({ code: z.string(), message: z.string() }).safeParse(raw);
+      reportGameplayReset(error.success ? error.data.code : undefined, generation);
       throw new ApiError(error.success ? error.data.message : "Не удалось открыть почту", response.status,
         error.success ? error.data : undefined, response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
     }

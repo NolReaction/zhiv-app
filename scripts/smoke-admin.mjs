@@ -21,7 +21,10 @@ assert.ok((process.env.COMPOSE_PROFILES ?? "").split(",").includes("monitoring")
 
 const origin = "https://localhost";
 const presenceByCookie = new Map();
+const generationByCookie = new Map();
 async function resumePresence(cookie) {
+  const me = await api("GET", "/api/v1/me", { cookie });
+  generationByCookie.set(cookie, me.data.gameplayGeneration);
   const presenceId = randomUUID();
   const result = await api("POST", "/api/v1/presence", { cookie, body: { kind: "resume", presenceId, sequence: 0, active: true } });
   assert.equal(result.data.status, "active");
@@ -48,6 +51,7 @@ async function api(method, path, { cookie, body, expected = 200, source = origin
     if (source !== null) headers.Origin = source;
     if (cookie) headers.Cookie = cookie;
     if (presenceByCookie.has(cookie)) headers["X-Game-Presence"] = presenceByCookie.get(cookie);
+    if (generationByCookie.has(cookie)) headers["X-Game-Generation"] = String(generationByCookie.get(cookie));
     if (payload !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(payload);
@@ -90,6 +94,9 @@ function seedAdmin(publicId, name, email) {
 async function profile(name) {
   const created = await api("POST", "/api/v1/bootstrap", { body: { displayName: name }, expected: 201 });
   assert.ok(created.cookie, "Fixture bootstrap did not return a protected session");
+  const me = await api("GET", "/api/v1/me", { cookie: created.cookie });
+  assert.ok(Number.isSafeInteger(me.data.gameplayGeneration) && me.data.gameplayGeneration >= 0);
+  generationByCookie.set(created.cookie, me.data.gameplayGeneration);
   return { publicId: created.data.user.publicId, cookie: created.cookie };
 }
 

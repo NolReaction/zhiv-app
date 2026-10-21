@@ -7,6 +7,7 @@ import test from "node:test";
 
 const sql = await readFile(new URL("../scripts/reset-game-progress.sql", import.meta.url), "utf8");
 const shell = await readFile(new URL("../scripts/reset-game-progress.sh", import.meta.url), "utf8");
+const resetHelper = await readFile(new URL("../scripts/lib/reset-game-progress.sh", import.meta.url), "utf8");
 const policy = name => [...sql.match(new RegExp(`${name} text\\[\\] := ARRAY\\[([\\s\\S]*?)\\];`))[1]
   .matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
 
@@ -39,19 +40,25 @@ test("game reset reviews every table and the latest migration without clearing i
     assert.equal(new Set(created).size, created.length, `${path.name}: duplicate table definitions`);
     assert.deepEqual(classified.toSorted(), created.toSorted(), `${path.name}: game reset must classify every table`);
   }
-  for (const name of ["app_users", "app_sessions", "account_login_identities", "account_recovery_codes",
-    "circles", "circle_memberships", "direct_requests", "check_ins", "admin_actions", "promo_redemptions", "managed_promo_codes",
-    "notification_subscriptions", "notification_preferences", "game_presence_daily", "player_mail_messages", "admin_mail_broadcasts", "player_security_observations",
-    "game_daily_rewards", "game_reward_claims", "game_achievement_reward_claims",
+  for (const name of ["app_sessions", "account_login_identities", "account_recovery_codes",
+    "circles", "circle_memberships", "direct_requests", "admin_actions", "promo_redemptions", "managed_promo_codes",
+    "notification_subscriptions", "notification_preferences", "admin_mail_broadcasts", "player_security_observations",
     "earth_sharing_settings", "earth_sharing_recipients"]) assert.ok(preserved.includes(name), name);
-  for (const table of ["earth_latest_locations", "earth_frozen_locations"])
-    assert.ok(cleared.includes(table), `${table}: gameplay reset discards ephemeral points without changing account consent`);
-  assert.deepEqual(partial, ["notification_events"]);
+  for (const table of ["earth_latest_locations", "earth_frozen_locations", "check_ins", "check_in_audiences",
+    "game_presence_daily", "game_presence_accounts", "game_daily_rewards", "game_reward_claims"])
+    assert.ok(cleared.includes(table), `${table}: release reset discards old activity and gameplay`);
+  assert.deepEqual(partial, ["app_users", "game_achievements", "game_achievement_reward_claims", "player_mail_messages",
+    "notification_events", "notification_batches", "gameplay_generations", "gameplay_reset_runs"]);
   for (const name of ["economy_profiles", "world_profiles", "forest_memory", "game_profiles"])
     assert.ok(reinitialized.includes(name), `${name}: preserve a monotonic revision fence`);
   assert.doesNotMatch(sql, /\bCASCADE\b|DISABLE\s+TRIGGER|DROP\s+(TABLE|SCHEMA|DATABASE)/i);
   assert.match(sql, /SET TRANSACTION READ ONLY/);
-  assert.match(sql, /DELETE FROM public\.notification_events WHERE category NOT IN \('checkin','mail'\)/);
+  assert.match(sql, /UPDATE public\.app_users SET last_check_in_at = NULL/);
+  assert.match(sql, /DELETE FROM public\.game_achievements WHERE achievement_id NOT IN \('linked_email','saved_recovery_code'\)/);
+  assert.match(sql, /DELETE FROM public\.player_mail_messages WHERE source_key = 'welcome:v1'/);
+  assert.match(sql, /release_reset_id constant text := '0\.7\.1'/);
+  assert.ok(sql.indexOf("reset already completed") < sql.indexOf("EXECUTE 'TRUNCATE TABLE '"));
+  assert.match(sql, /SET generation = previous_generation \+ 1/);
   assert.match(sql, /INSERT INTO public\.notification_events SELECT \* FROM game_reset_service_events/);
   assert.match(sql, /previous_revision >= 9007199254740990/);
   assert.match(sql, /\(previous_revision \+ 1\)::bigint/);
@@ -61,10 +68,11 @@ async function sandbox(run) {
   const directory = await mkdtemp(join(tmpdir(), "zhiv-game-reset-"));
   try {
     const project = join(directory, "repo"), bin = join(directory, "bin"), log = join(directory, "docker.log");
-    await mkdir(join(project, "scripts"), { recursive: true });
+    await mkdir(join(project, "scripts/lib"), { recursive: true });
     await mkdir(join(project, "deploy"));
     await mkdir(bin);
     await writeFile(join(project, "scripts/reset-game-progress.sh"), shell);
+    await writeFile(join(project, "scripts/lib/reset-game-progress.sh"), resetHelper);
     await writeFile(join(project, "scripts/reset-game-progress.sql"), sql);
     await writeFile(join(bin, "docker"), `#!/usr/bin/env bash
 set -euo pipefail
@@ -79,11 +87,12 @@ case "$*" in
 esac
 `);
     await chmod(join(bin, "docker"), 0o700);
+    await writeFile(join(bin, "sudo"), '#!/bin/sh\nexec "$@"\n', { mode: 0o700 });
     const invoke = (args = [], failure = "") => spawnSync("bash", [join(project, "scripts/reset-game-progress.sh"), ...args], {
       encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RESET_TEST_LOG: log, RESET_TEST_FAIL: failure },
     });
     const calls = async () => (await readFile(log, "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
-    await run({ invoke, calls, directory });
+    await run({ invoke, calls, directory, project });
   } finally { await rm(directory, { recursive: true, force: true }); }
 }
 
@@ -116,7 +125,7 @@ test("live reset follows full backup restore and successful rehearsal, retaining
   assert.equal(result.status, 0, result.stderr);
   const commands = await calls();
   const at = pattern => commands.findIndex(command => pattern.test(command));
-  const stop = at(/ stop caddy web api$/), dump = at(/pg_dump/), restore = at(/pg_restore .*--exit-on-error/);
+  const stop = at(/ stop --timeout 30 caddy web api$/), dump = at(/pg_dump/), restore = at(/pg_restore .*--exit-on-error/);
   const rehearsal = at(/psql .* -d zhiv_game_reset_verify_.*apply_reset=on/);
   const live = at(/psql .* -d zhiv .*apply_reset=on/), start = at(/ up -d /);
   assert.ok(stop >= 0 && stop < dump && dump < restore && restore < rehearsal && rehearsal < live && live < start);
@@ -124,4 +133,16 @@ test("live reset follows full backup restore and successful rehearsal, retaining
   const backups = (await readdir(backupDir)).filter(name => name.endsWith(".dump"));
   assert.equal(backups.length, 1);
   assert.equal((await stat(join(backupDir, backups[0]))).mode & 0o077, 0);
+}));
+
+test("standalone reset refuses the deployment lock before any Docker action", () => sandbox(async ({ calls, project, directory }) => {
+  await mkdir(join(project, "deploy/runtime"), { recursive: true });
+  const command = 'exec 9> deploy/runtime/deploy.lock; flock -n 9; bash scripts/reset-game-progress.sh --confirm-reset-game-progress; result=$?; exit "$result"';
+  const result = spawnSync("bash", ["-c", command], {
+    cwd: project, encoding: "utf8",
+    env: { ...process.env, PATH: `${join(directory, "bin")}:${process.env.PATH}`, RESET_TEST_LOG: join(directory, "docker.log") },
+  });
+  assert.equal(result.status, 75, result.stderr);
+  assert.match(result.stderr, /Another deployment or game reset/);
+  assert.deepEqual(await calls(), []);
 }));

@@ -15,6 +15,8 @@ import ru.zhiv.http.DailyStreakDto
 import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.parseCanonicalUuid
 import ru.zhiv.http.sessionCookie
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayGeneration
 import ru.zhiv.security.TokenCodec
 import java.time.Duration
 
@@ -22,6 +24,7 @@ fun Route.checkInRoutes(
     repository: CheckInRepository,
     tokenCodec: TokenCodec,
     config: AppConfig,
+    presence: PresenceRepository? = null,
 ) {
     post("/api/v1/check-ins") {
         call.response.header(HttpHeaders.CacheControl, "no-store")
@@ -45,7 +48,9 @@ fun Route.checkInRoutes(
             return@post
         }
 
-        when (val result = repository.record(tokenCodec.hash(rawToken), idempotencyKey)) {
+        val hash = tokenCodec.hash(rawToken)
+        call.requireGameplayGeneration(presence, hash)
+        when (val result = repository.record(hash, idempotencyKey)) {
             CheckInResult.Unauthorized -> call.respond(
                 HttpStatusCode.Unauthorized,
                 ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"),

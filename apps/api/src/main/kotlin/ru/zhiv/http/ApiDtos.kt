@@ -35,6 +35,7 @@ data class MeResponse(
     val profile: ProfileStateDto,
     val serverTime: String,
     val status: UserStatusDto? = null,
+    val gameplayGeneration: Long = 0,
 )
 
 @Serializable

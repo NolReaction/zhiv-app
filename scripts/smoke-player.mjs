@@ -12,13 +12,14 @@ const { nextBin } = checkNextDevDependencies(root);
 const server = spawn(process.execPath, [nextBin, ...nextDevArguments(["--hostname", "127.0.0.1", "--port", String(port)])], {
   cwd: root, env: { ...process.env, NODE_ENV: "development", NEXT_TELEMETRY_DISABLED: "1" }, stdio: ["ignore", "pipe", "pipe"],
 });
-let serverLog = "", cookie = "", checked = 0, presenceId = "";
+let serverLog = "", cookie = "", checked = 0, presenceId = "", gameplayGeneration = 0;
 for (const stream of [server.stdout, server.stderr]) stream.on("data", data => { serverLog = (serverLog + data).slice(-12_000); });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const request = async (path, { method = "GET", body, expected = 200, key = crypto.randomUUID(), useCookie = true } = {}) => {
   const response = await fetch(`${origin}${path}`, { method, redirect: "error", signal: AbortSignal.timeout(30_000),
     headers: { Accept: "application/json", Origin: origin, "Idempotency-Key": key,
       ...(useCookie && cookie ? { Cookie: cookie } : {}),
+      ...(useCookie && cookie ? { "X-Game-Generation": String(gameplayGeneration) } : {}),
       ...(useCookie && presenceId ? { "X-Game-Presence": presenceId } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined });
   const value = await response.json();
@@ -39,6 +40,8 @@ try {
     body: { displayName: "Проверка пути игрока", timeZone: "Europe/Moscow" } });
   cookie = registration.response.headers.getSetCookie().map(value => value.split(";", 1)[0]).join("; ");
   assert.ok(cookie, "Registration must establish the local session");
+  gameplayGeneration = (await request("/api/v1/me")).value.gameplayGeneration;
+  assert.ok(Number.isSafeInteger(gameplayGeneration) && gameplayGeneration >= 0);
   const checkInKey = crypto.randomUUID();
   await request("/api/v1/check-ins", { method: "POST", key: checkInKey });
   const repeatedCheckIn = await request("/api/v1/check-ins", { method: "POST", key: checkInKey });

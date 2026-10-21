@@ -86,7 +86,7 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
             val taps=c.economyRows("SELECT lifetime_taps,best_series FROM game_profiles WHERE user_id=?",a.id) { it.getLong(1) to it.getLong(2) }.firstOrNull()
             if (taps != null && (taps.first>=1000 && missing("thousand_taps") || taps.second>=10000 && missing("ten_thousand_series"))) return true
         }
-        if (missing("five_friends") && c.economyRows("SELECT count(*) FROM (SELECT user_id FROM active_direct_friend_ids(?) LIMIT 5) friends",a.id) { it.getLong(1) }.single()>=5) return true
+        if (missing("five_friends") && c.economyRows("SELECT gameplay_friend_count(?)",a.id) { it.getLong(1) }.single()>=5) return true
         if (missing("linked_email") && c.economyRows("SELECT 1 FROM account_login_identities WHERE user_id=? AND provider='email' LIMIT 1",a.id) { true }.isNotEmpty()) return true
         if (missing("saved_recovery_code") && c.economyRows("SELECT 1 FROM account_recovery_codes WHERE user_id IN (SELECT user_id FROM account_history_user_ids(?)) LIMIT 1",a.id) { true }.isNotEmpty()) return true
         if (missing("full_collection")) {
