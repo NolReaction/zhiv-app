@@ -93,13 +93,13 @@ function sharingView(extra = {}) {
   return { changes, all: nodes(tree) };
 }
 
-test("sharing switches use one delegated click; radio/select sound only for an enabled change", () => {
+test("the explicit sharing action uses one delegated click; radio/select sound only for an enabled change", () => {
   events.length = 0;
   const view = sharingView();
-  const switches = view.all.filter(node => node.props.role === "switch");
-  assert.ok(switches.length > 1);
-  assert.ok(switches.every(node => node.props["data-audio-cue"] === "ui.click"));
-  switches[0].props.onClick(); assert.deepEqual(cueIds(), [], "switch handlers do not duplicate delegated clicks");
+  const action = view.all.find(node => node.type === "button" && node.props["aria-label"] === "Включить обновления геопозиции");
+  assert.ok(action);
+  assert.equal(action.props["data-audio-cue"], "ui.click");
+  action.props.onClick(); assert.deepEqual(cueIds(), [], "the action handler does not duplicate delegated clicks");
   const approximate = view.all.find(node => node.type === "input" && node.props.value === "APPROXIMATE");
   const precise = view.all.find(node => node.type === "input" && node.props.value === "PRECISE");
   const duration = view.all.find(node => node.type === "select");
@@ -124,7 +124,7 @@ test("native disclosures sound once per explicit open/close click and never on m
     summary.props.onClick({ currentTarget: { closest: () => ({ open: true }) } });
     summary.props.onClick({ defaultPrevented: true, currentTarget: { closest() { throw new Error("cancelled disclosure"); } } });
   }
-  assert.deepEqual(cueIds(), ["ui.open", "ui.close", "ui.open", "ui.close"]);
+  assert.deepEqual(cueIds(), ["ui.open", "ui.close"]);
 });
 
 test("external walking audio follows the live route guard, including middle clicks, without a delegated duplicate", t => {

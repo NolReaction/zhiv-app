@@ -222,18 +222,18 @@
 .cheatItemPreview strong { font-size: 13px; }
 .cheatItemPreview span, .cheatItemPreview small { color: var(--dev-muted); font-size: 11px; }
 
-/* During the app lesson, diagnostics share the navigation row instead of
-   floating over Mochlik's text or a highlighted control. Production has no root. */
-:global(main[data-active-view]:has(> [data-guide-coach="app"])):has(> .root:not([data-world-view="true"])) > :global(footer) {
-  grid-area: 3 / 1;
-  padding-right: 52px;
+/* Diagnostics get their own compact row below the lesson. They never take
+   space from navigation or cover the check-in actions. Production has no root. */
+:global(main[data-active-view]:has(> [data-guide-coach="app"])):has(> .root:not([data-world-view="true"])) {
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 :global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) {
   position: relative;
   inset: auto;
-  grid-area: 3 / 1;
+  grid-area: 2 / 1;
   align-self: center;
   justify-self: end;
+  margin-bottom: 8px;
   z-index: 45;
   width: 44px;
   max-width: 44px;
@@ -254,8 +254,7 @@
 
 .root .toolbar .lightingTrigger { border-radius: 999px; padding: 8px 12px; background: #293627f5; border-color: #aa9e65; color: #f4e5ad; font-size: 12px; }
 .root .toolbar .lightingTrigger[aria-pressed='true'] { background: #465439; border-color: #dec987; }
-/* Keep both direct launchers reachable alongside the compact onboarding row. */
+/* Keep both direct launchers reachable without shrinking the navigation dock. */
 :global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) { width: auto; max-width: 100px; }
 :global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) .lightingTrigger { min-width: 44px; padding: 8px; }
 :global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) .lightingTrigger strong { display: none; }
-:global(main[data-active-view]:has(> [data-guide-coach="app"])):has(> .root:not([data-world-view="true"])) > :global(footer) { padding-right: 100px; }

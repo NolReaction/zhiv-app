@@ -23,6 +23,7 @@ import { EarthAttribution } from "./earth-attribution";
 import { EarthModelCredits } from "./earth-model-credits";
 import { installEarthGlobeCamera } from "./globe-camera";
 import { createEarthCameraViewport } from "./camera-viewport";
+import { createEarthTouchPitch } from "./touch-pitch";
 import { EARTH_OCEAN_MATERIAL_IMAGE, registerEarthOceanMaterialImage } from "./globe-ocean";
 import { bindEarthPositionMarkerMotion } from "./marker-motion";
 import { createEarthGlobeScene } from "./globe-scene";
@@ -66,7 +67,7 @@ type EarthMapProps = {
   onInfoOpenChange: (open: boolean) => void;
   friends?: readonly EarthMapPerson[];
   friendFocusRequest?: EarthFriendFocusRequest | null;
-  onSelectFriends?: (circleIds: string[]) => void;
+  onSelectFriends?: (circleIds: string[], trigger?: HTMLButtonElement) => void;
   showLocationControl?: boolean;
   onModelEditorOpenChange?: (open: boolean) => void;
   onViewChange?: (view: EarthMapView | null) => void;
@@ -116,6 +117,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LibreMap | null>(null);
   const cameraViewportRef = useRef<ReturnType<typeof createEarthCameraViewport> | null>(null);
+  const touchPitchRef = useRef<ReturnType<typeof createEarthTouchPitch> | null>(null);
   const [editorMap, setEditorMap] = useState<LibreMap | null>(null);
   const [modelEditorOpen, setModelEditorOpen] = useState(readEarthModelEditorOpen);
   const changeModelEditorOpen = useCallback((open: boolean) => {
@@ -166,6 +168,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     latestMeet.current = { circleId: meetCircleId, requestId: meetFocusRequest };
     editingRef.current = modelEditorOpen;
     cameraViewportRef.current?.setEnabled(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen);
+    touchPitchRef.current?.setEnabled(activeRef.current && visibleRef.current && phaseRef.current === "ready" && !modelEditorOpen);
     syncFriendsRef.current?.();
   }, [meetCircleId, meetFocusRequest, modelEditorOpen]);
   useLayoutEffect(() => { selectFriendsRef.current = onSelectFriends; }, [onSelectFriends]);
@@ -315,6 +318,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     let tileRecovery: ReturnType<typeof createEarthTileRecovery> | null = null;
     let restoreGlobeCamera: (() => void) | null = null;
     let cameraViewport: ReturnType<typeof createEarthCameraViewport> | null = null;
+    let touchPitch: ReturnType<typeof createEarthTouchPitch> | null = null;
 
     function syncFriends() {
       if (cancelled || attemptFailed || !friendMarkers) return;
@@ -395,6 +399,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       }
       foreground = next;
       cameraViewport?.setEnabled(next && initialReady && !editingRef.current);
+      touchPitch?.setEnabled(next && initialReady && !editingRef.current);
       syncFriends();
       scene?.setVisible(next);
       stars?.setVisible(next && initialReady);
@@ -410,6 +415,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (cancelled || attemptFailed) return;
       savePreparedCamera();
       attemptFailed = true;
+      cameraViewport?.setEnabled(false);
+      touchPitch?.setEnabled(false);
       diagnostics?.record("failed");
       controller.abort();
       window.clearTimeout(timeout);
@@ -522,7 +529,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           locale: {
             "AttributionControl.ToggleAttribution": "Источники карты",
             "Map.Title": "Карта Земли",
-            "Map.MapInstructions": "Перетаскивайте глобус. Стрелки перемещают карту; плюс и минус меняют масштаб.",
+            "Map.MapInstructions": "Перетаскивайте глобус. Два пальца вверх или вниз — наклон, сведение и разведение — масштаб. Стрелки перемещают карту; плюс и минус меняют масштаб.",
           },
         });
         const current = map;
@@ -535,6 +542,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         updateCacheView();
         current.on("move", updateCacheView);
         restoreGlobeCamera = installEarthGlobeCamera(current);
+        touchPitch = createEarthTouchPitch(current);
+        touchPitchRef.current = touchPitch;
         cameraViewport = createEarthCameraViewport(current);
         cameraViewportRef.current = cameraViewport;
         installEarthMaterialImages(current, id => {
@@ -609,7 +618,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           setStage("engine");
         });
         canvas = current.getCanvas();
-        canvas.setAttribute("aria-label", "Карта Земли. Перетаскивайте глобус, приближайте двумя пальцами или колёсиком. Стрелки перемещают карту; плюс и минус меняют масштаб.");
+        canvas.setAttribute("aria-label", "Карта Земли. Перетаскивайте глобус. Два пальца вверх или вниз — наклон, сведение и разведение — масштаб. Стрелки перемещают карту; плюс и минус меняют масштаб.");
         canvas.addEventListener("webglcontextlost", contextLost);
         canvas.addEventListener("webglcontextrestored", contextRestored);
 
@@ -636,7 +645,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           updateEarthPositionMarkerLabel(marker.getElement(), value.accuracy);
         };
         syncPositionRef.current = syncPosition;
-        friendMarkers = createEarthFriendMarkers(current, sdk.Marker, ids => selectFriendsRef.current?.(ids));
+        friendMarkers = createEarthFriendMarkers(current, sdk.Marker, (ids, trigger) => selectFriendsRef.current?.(ids, trigger));
         meetMap = createEarthMeetMap(current);
         meetMap.setCameraPadding({ top: 28, bottom: 40, left: 28, right: 28 }, () => cameraViewport?.refresh(false));
 
@@ -765,6 +774,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       if (sceneRef.current === scene) sceneRef.current = null;
       map?.stop();
       cameraViewport?.dispose();
+      touchPitch?.dispose();
+      if (touchPitchRef.current === touchPitch) touchPitchRef.current = null;
       if (cameraViewportRef.current === cameraViewport) cameraViewportRef.current = null;
       restoreGlobeCamera?.();
       map?.remove();
@@ -809,7 +820,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         aria-label={diagnosticCopied ? "Отчёт карты скопирован" : "Скопировать диагностику карты"} onClick={copyDiagnostics}>
         <ClipboardCopy size={18} aria-hidden="true" /><small>DEV</small></button>}
     </div>
-    {diagnostics && diagnosticReport && <section data-earth-camera-blocker className={`${styles.infoPanel} ${styles.diagnosticPanel}`} role="dialog" aria-labelledby="earth-diagnostic-title"
+    {diagnostics && diagnosticReport && <section data-earth-camera-panel className={`${styles.infoPanel} ${styles.diagnosticPanel}`} role="dialog" aria-labelledby="earth-diagnostic-title"
       onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); closeDiagnostics(); } }}>
       <header><h2 id="earth-diagnostic-title">DEV · Диагностика карты</h2>
         <button type="button" data-audio-cue="ui.close" aria-label="Закрыть диагностику" onClick={closeDiagnostics}><X size={18} aria-hidden="true" /></button></header>
@@ -838,7 +849,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
     {EarthModelEditor && editorMap && <Suspense fallback={null}><EarthModelEditor map={editorMap} visible={ready} open={modelEditorOpen} onOpenChange={changeModelEditorOpen} /></Suspense>}
     {ready && <button ref={infoButton} data-earth-camera-blocker type="button" data-audio-cue={infoOpen ? "ui.close" : "ui.open"} className={styles.infoButton} aria-label="О карте и её настройках"
       aria-expanded={infoOpen} aria-controls="earth-info-panel" onClick={() => { setDiagnosticReport(null); onInfoOpenChange(!infoOpen); }}><Info size={21} aria-hidden="true" /></button>}
-    {ready && infoOpen && <section id="earth-info-panel" data-earth-camera-blocker className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
+    {ready && infoOpen && <section id="earth-info-panel" data-earth-camera-panel className={styles.infoPanel} role="dialog" aria-labelledby="earth-info-title" onKeyDown={event => {
       if (event.key === "Escape") { event.stopPropagation(); playUiCue(getAudioRuntime(), "ui.close"); onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }
     }}>
       <header className={styles.infoHeader}><h2 ref={infoHeading} tabIndex={-1} id="earth-info-title">О карте</h2>
@@ -860,7 +871,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
         <p>Объёмные миниатюры достопримечательностей стоят на своих географических местах и поворачиваются вместе с Землёй. Нажмите на любую, чтобы узнать название. При сильном отдалении и перед масштабом улиц они скрываются.</p>
         <div className={styles.infoRow}><span id="earth-buildings-label">Объёмные здания</span>
           <button type="button" data-audio-cue="ui.click" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
-        <p>Появляются при приближении к улицам. Наклоните карту двумя пальцами или перетаскивайте её с зажатой правой кнопкой мыши.</p>
+        <p>Появляются при приближении к улицам. Два пальца вверх или вниз — наклон; сведение и разведение — масштаб. Мышью наклоняйте с зажатой правой кнопкой.</p>
       </section>
       {locationDetails}
       <section className={styles.infoSection}><h3>На устройстве</h3><div className={styles.storageDetails}>

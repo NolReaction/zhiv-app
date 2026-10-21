@@ -15,13 +15,14 @@ const platformCode = `
   const noop=()=>{};
   class Canvas extends EventTarget {setAttribute(){}}
   export class MapMock {
-    constructor(options){this.container=options.container;this.padding={top:0,bottom:0,left:0,right:0};this.listeners=new Map();this.canvas=new Canvas();this.complete=false;this.tilesComplete=false;this.sizeChanges=0;this.sourceChanges=0;
+    constructor(options){this.container=options.container;this.padding={top:0,bottom:0,left:0,right:0};this.listeners=new Map();this.canvas=new Canvas();this.canvas.ownerDocument=options.container.ownerDocument;this.touchPitch={isEnabled:()=>true};this.complete=false;this.tilesComplete=false;this.sizeChanges=0;this.sourceChanges=0;
       this.style={sources:{'earth-streets':{type:'vector'}},layers:[]};this.sources=new Map();maps.push(this);}
     on(name,callback){const callbacks=this.listeners.get(name)??[];callbacks.push(callback);this.listeners.set(name,callbacks);return this;}
     off(name,callback){this.listeners.set(name,(this.listeners.get(name)??[]).filter(item=>item!==callback));return this;}
     emit(name,event={}){for(const callback of [...this.listeners.get(name)??[]])callback(event);}
     getCenter(){return {lng:35,lat:27};}getZoom(){return 1;}getBearing(){return 0;}getPitch(){return 0;}
     getContainer(){return this.container;}getPadding(){return this.padding;}easeTo(options){this.padding=options.padding??this.padding;return this;}
+    getCanvasContainer(){return this.canvas;}getMinPitch(){return 0;}getMaxPitch(){return 60;}setPitch(){return this;}
     getCanvas(){return this.canvas;}getStyle(){return this.style;}getSource(id){return this.sources.get(id);}
     addSource(id,source){this.sourceChanges++;this.style.sources[id]=source;this.sources.set(id,{...source,setData(){}});}
     getLayer(){return undefined;}addLayer(){}removeLayer(){}removeSource(id){this.sources.delete(id);}

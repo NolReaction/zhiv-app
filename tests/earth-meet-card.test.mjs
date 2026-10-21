@@ -95,7 +95,7 @@ test("expired and revoked friend points never keep meeting controls or an extern
 test("missing or stale own GPS requests a private lookup while valid friend routing never embeds an origin", () => {
   for (const position of [null, { ...from, timestamp: wall - 60_001 }]) {
     const view = render({ position });
-    assert.match(view.html, /Где ты сейчас/); assert.doesNotMatch(view.html, /по прямой/);
+    assert.match(view.html, /Расстояние — после поиска тебя/); assert.doesNotMatch(view.html, /по прямой/);
     assert.ok(control(view, "Найти меня")); assert.deepEqual(view.calls, []);
     control(view, "Найти меня").props.onClick(); assert.deepEqual(view.calls, ["locate"]);
     assert.equal(new URL(view.nodes.find(node => node.type === "a" && node.props.children[0] === "Google Карты").props.href).searchParams.has("origin"), false);

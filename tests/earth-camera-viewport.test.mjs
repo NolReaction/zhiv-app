@@ -7,16 +7,28 @@ const vite = await createServer({ appType: "custom", configFile: false,
 after(() => vite.close());
 const { earthCameraViewport, earthViewportPadding, createEarthCameraViewport } = await vite.ssrLoadModule("/features/earth/camera-viewport.ts");
 const overlap = (a,b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-const header = width => ({ left:16, top:16, right:width-16, bottom:60 });
 
-test("phone camera leaves the measured atlas sheet, header and controls clear", () => {
+test("a bare globe stays at the exact screen centre despite header and navigation", () => {
+  for (const [width,height] of [[320,600],[390,844],[844,390],[1280,900]]) {
+    const viewport = earthCameraViewport(width,height,[],{top:60,bottom:84});
+    assert.equal((viewport.left+viewport.right)/2,width/2);
+    assert.equal((viewport.top+viewport.bottom)/2,height/2);
+    const padding = earthViewportPadding(width,height,viewport);
+    assert.equal(padding.left,padding.right);
+    assert.equal(padding.top,padding.bottom);
+  }
+});
+
+test("phone sheets leave the focused place above the panel without moving it sideways", () => {
   for (const width of [320,390]) {
-    const blocks = [header(width), {left:16,top:335,right:width-16,bottom:730}, {left:width-60,top:76,right:width-16,bottom:280}, {left:0,top:760,right:width,bottom:844}];
-    const viewport = earthCameraViewport(width,844,blocks);
-    assert.ok(blocks.every(block=>!overlap(viewport,block)));
+    const panel = {left:16,top:335,right:width-16,bottom:730};
+    const viewport = earthCameraViewport(width,844,[panel],{top:60,bottom:84});
+    assert.ok(!overlap(viewport,panel));
     assert.ok(viewport.right-viewport.left > 200);
     assert.ok(viewport.bottom <=335 && viewport.top>=60);
     const padding = earthViewportPadding(width,844,viewport);
+    assert.equal(padding.left,padding.right);
+    assert.equal((viewport.left+viewport.right)/2,width/2);
     assert.equal((padding.left + width-padding.right)/2,(viewport.left+viewport.right)/2);
     assert.equal((padding.top + 844-padding.bottom)/2,(viewport.top+viewport.bottom)/2);
   }
@@ -25,11 +37,21 @@ test("phone camera leaves the measured atlas sheet, header and controls clear", 
 test("desktop uses space beside a tall panel and mirrors a right settings panel", () => {
   for(const side of ["left","right"]) {
     const panel = side === "left" ? {left:16,right:376,top:180,bottom:780} : {left:904,right:1264,top:180,bottom:780};
-    const viewport = earthCameraViewport(1280,900,[header(1280),panel]);
+    const viewport = earthCameraViewport(1280,900,[panel],{top:60});
     assert.ok(!overlap(viewport,panel));
     assert.ok(viewport.right-viewport.left>=880);
     assert.ok(viewport.bottom-viewport.top>=800);
     assert.ok(side === "left" ? viewport.left>376 : viewport.right<904);
+  }
+});
+
+test("a centred meeting card leaves its friend pin directly above the menu on desktop too", () => {
+  for(const width of [390,844,1280]) {
+    const panel = {left:width/2-160,right:width/2+160,top:400,bottom:660,placement:"bottom"};
+    const viewport = earthCameraViewport(width,844,[panel],{top:60,bottom:84});
+    assert.equal((viewport.left+viewport.right)/2,width/2);
+    assert.ok(viewport.bottom<panel.top);
+    assert.ok((viewport.top+viewport.bottom)/2<panel.top-24);
   }
 });
 
@@ -47,12 +69,12 @@ test("empty, offscreen, invalid and fully obscured layouts remain finite", () =>
 function harness() {
   let next=0,moving=false,padding={left:0,right:0,top:0,bottom:0};
   const frames=new Map(),events=new Map(),windowEvents=new Map(),calls=[];
-  const panel={getBoundingClientRect:()=>({left:16,right:374,top:330,bottom:730,width:358,height:400})};
+  const panel={getBoundingClientRect:()=>({left:16,right:374,top:330,bottom:730,width:358,height:400}),getAttribute:()=>null};
   const window={requestAnimationFrame(fn){frames.set(++next,fn);return next;},cancelAnimationFrame:id=>frames.delete(id),
     getComputedStyle:()=>({visibility:"visible"}),matchMedia:()=>({matches:false}),
     addEventListener:(name,fn)=>windowEvents.set(name,fn),removeEventListener:name=>windowEvents.delete(name)};
   const owner={hidden:false,defaultView:window,querySelectorAll:()=>[]};
-  const scope={querySelectorAll:()=>[panel]};
+  const scope={querySelectorAll:selector=>selector==="[data-earth-camera-panel]"?[panel]:[]};
   const container={clientWidth:390,clientHeight:844,ownerDocument:owner,closest:()=>scope,getBoundingClientRect:()=>({left:0,top:0})};
   const map={getContainer:()=>container,getCenter:()=>({lng:2.3,lat:48.8}),getPadding:()=>padding,isMoving:()=>moving,
     easeTo(options){padding=options.padding;calls.push(options);},on:(name,fn)=>events.set(name,fn),off:name=>events.delete(name)};

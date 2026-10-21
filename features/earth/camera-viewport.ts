@@ -1,16 +1,35 @@
 import type { Map as LibreMap, PaddingOptions } from "maplibre-gl";
 
 export type EarthScreenRect = { left: number; top: number; right: number; bottom: number };
+export type EarthCameraPanel = EarthScreenRect & { placement?: "bottom" | "side" };
+type EarthCameraChrome = { top?: number; bottom?: number };
 const CLEARANCE = 12;
 
-/** Largest unobstructed rectangle, in map pixels. No assumptions about sheet height. */
-export function earthCameraViewport(width: number, height: number, obstacles: readonly EarthScreenRect[]): EarthScreenRect {
+/** Only open panels reserve camera space. Floating controls never move the globe. */
+export function earthCameraViewport(width: number, height: number, panels: readonly EarthCameraPanel[], chrome: EarthCameraChrome = {}): EarthScreenRect {
   width = Number.isFinite(width) ? Math.max(1, width) : 1;
   height = Number.isFinite(height) ? Math.max(1, height) : 1;
   const margin = Math.min(CLEARANCE, width / 8, height / 8);
-  const bounds = { left: margin, top: margin, right: width - margin, bottom: height - margin };
-  const clipped = obstacles.filter(rect => Object.values(rect).every(Number.isFinite)
-    && rect.right > rect.left && rect.bottom > rect.top).map(rect => ({
+  const base = { left: margin, top: margin, right: width - margin, bottom: height - margin };
+  const valid = panels.filter(rect => [rect.left, rect.right, rect.top, rect.bottom].every(Number.isFinite)
+    && rect.right > rect.left && rect.bottom > rect.top
+    && rect.right > 0 && rect.left < width && rect.bottom > 0 && rect.top < height);
+  // With no sheet the visual centre is the screen centre, on both axes. The
+  // old largest-rectangle search treated the right controls as a side panel.
+  if (!valid.length) return base;
+  const bounds = { ...base,
+    top: Math.max(base.top, Number.isFinite(chrome.top) ? chrome.top! + margin : base.top),
+    bottom: Math.min(base.bottom, Number.isFinite(chrome.bottom) ? height - chrome.bottom! - margin : base.bottom),
+  };
+  if (bounds.top >= bounds.bottom) return base;
+  // Mobile sheets, and an explicitly centred meeting card on every screen,
+  // leave a full-width strip above the menu. A pin stays directly above it.
+  const bottomPanels = valid.filter(panel => width <= 600 || panel.placement === "bottom");
+  if (bottomPanels.length) {
+    const bottom = Math.min(bounds.bottom, ...bottomPanels.map(panel => panel.top - margin));
+    if (bottom > bounds.top) bounds.bottom = bottom;
+  }
+  const clipped = valid.map(rect => ({
     left: Math.max(bounds.left, rect.left - margin), right: Math.min(bounds.right, rect.right + margin),
     top: Math.max(bounds.top, rect.top - margin), bottom: Math.min(bounds.bottom, rect.bottom + margin),
   })).filter(rect => rect.right > rect.left && rect.bottom > rect.top);
@@ -48,23 +67,30 @@ export function createEarthCameraViewport(map: ViewportMap) {
   const resize = typeof window.ResizeObserver === "function" ? new window.ResizeObserver(schedule) : null;
   const mutations = typeof window.MutationObserver === "function" ? new window.MutationObserver(() => { observe(); schedule(); }) : null;
 
-  function blockers() {
-    return [...scope.querySelectorAll("[data-earth-camera-blocker]"),
-      ...owner.querySelectorAll('[data-earth-camera-blocker="navigation"][data-active-view="earth"]')];
+  function panels() { return [...scope.querySelectorAll("[data-earth-camera-panel]")]; }
+  function chrome() {
+    return { headers: [...scope.querySelectorAll("header[data-earth-camera-blocker]")],
+      navigation: [...owner.querySelectorAll('[data-earth-camera-blocker="navigation"][data-active-view="earth"]')] };
   }
   function observe() {
-    const elements = [container, ...blockers()];
+    const elements = [container, ...panels(), ...chrome().headers, ...chrome().navigation];
     if (elements.length === observed.length && elements.every((element, index) => element === observed[index])) return;
     resize?.disconnect(); observed = elements;
     for (const element of elements) resize?.observe(element);
   }
   function measure() {
     const origin = container.getBoundingClientRect();
-    viewport = earthCameraViewport(container.clientWidth, container.clientHeight, blockers().flatMap(element => {
+    const readRect = (element: Element) => {
       const rect = element.getBoundingClientRect();
       if (!rect.width || !rect.height || window.getComputedStyle(element).visibility === "hidden") return [];
       return [{ left: rect.left - origin.left, right: rect.right - origin.left, top: rect.top - origin.top, bottom: rect.bottom - origin.top }];
-    }));
+    };
+    const framing = chrome();
+    const headers = framing.headers.flatMap(readRect), navigation = framing.navigation.flatMap(readRect);
+    viewport = earthCameraViewport(container.clientWidth, container.clientHeight, panels().flatMap(element => readRect(element).map((rect): EarthCameraPanel => ({
+      ...rect, placement: element.getAttribute("data-earth-camera-panel") === "bottom" ? "bottom" : undefined,
+    }))), { top: headers.length ? Math.max(...headers.map(rect => rect.bottom)) : 0,
+      bottom: navigation.length ? container.clientHeight - Math.min(...navigation.map(rect => rect.top)) : 0 });
     return earthViewportPadding(container.clientWidth, container.clientHeight, viewport);
   }
   function refresh(animate = true) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { BookOpen, Ghost, Globe2, Leaf, MapPin, RefreshCw, Users, X } from "lucide-react";
+import { BookOpen, Globe2, Leaf, MapPin, Users, X } from "lucide-react";
 import type { PeopleResponse } from "@/lib/check-in-contract";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
@@ -58,45 +58,29 @@ export function locationSummary(status: EarthLocationStatus, position: EarthPosi
   return "Найдите себя на Земле";
 }
 
-/** A small roster. Meeting controls belong to the geographic marker, not every row. */
-export function EarthFriends({ people, loading, error, online, onRefresh, onOpenPeople, locations = [], onFocusPerson, onMeetPerson, selectedCircleIds = [] }: {
+/** Only current map participants; a horizontal picker also handles co-located markers. */
+export function EarthFriends({ people, locations = [], onFocusPerson, onMeetPerson, selectedCircleIds = [] }: {
   people: PeopleResponse | null; loading: boolean; error: string | null; online: boolean;
   onRefresh: () => void; onOpenPeople: () => void;
   locations?: readonly EarthMapPerson[]; onFocusPerson?: (circleId: string) => void; onMeetPerson?: (circleId: string) => void; selectedCircleIds?: readonly string[];
 }) {
-  const contacts = people?.people ?? locations.map(person => ({ circleId: person.circleId, user: person.user, nickname: null }));
-  const displayed = selectedCircleIds.length ? contacts.filter(person => selectedCircleIds.includes(person.circleId)) : contacts;
-  // Group members may have the exact same coordinates: focusing cannot split
-  // their marker. The already selected map group is therefore a member picker.
-  const selectingMeeting = selectedCircleIds.length > 0 && Boolean(onMeetPerson);
-  const selectPerson = selectingMeeting ? onMeetPerson : onFocusPerson;
-  return <div className={styles.friendsContent}>
-    <p className={styles.friendsIntro}>{selectingMeeting ? "Выбери участника, чтобы открыть встречу." : "Выбери близкого, чтобы найти его значок на карте."}</p>
-    {(!online || error || loading) && <p role="status" className={styles.hint}>
-      {!online ? "Нет сети. Список может быть неактуален." : loading ? "Обновляем список друзей…" : "Не удалось обновить список друзей."}
-    </p>}
-    {displayed.length > 0 ? <ul className={styles.friendsList}>
-      {displayed.map(person => {
-        const displayName = person.nickname || person.user.displayName;
-        const position = locations.find(row => row.circleId === person.circleId && row.user.publicId === person.user.publicId);
-        return <li key={person.circleId}>
-          <button type="button" className={styles.friendRow} data-audio-cue={selectingMeeting ? "ui.open" : "ui.click"}
-            disabled={!position || !selectPerson} aria-label={position && selectPerson ? `${selectingMeeting ? "Открыть встречу" : "Показать на карте"}: ${displayName}` : `${displayName}: геопозиция недоступна`}
-            onClick={() => { if (position) selectPerson?.(person.circleId); }}>
-            <span className={styles.avatar} aria-hidden="true">{Array.from(displayName.trim())[0]?.toLocaleUpperCase("ru-RU") || "Ж"}</span>
-            <span className={styles.friendIdentity}><strong><PlayerName name={displayName} tag={person.user.tag} /></strong>
-              <span>{position ? position.precision === "APPROXIMATE" ? "Примерный район" : "На карте" : "Геопозиция недоступна"}</span>
-            </span>
-            {position && <MapPin size={17} aria-hidden="true" />}
-          </button>
-        </li>;
-      })}
-    </ul> : !loading && <p className={styles.hint}>{people ? "Добавьте близких в разделе «Люди»." : "Обновите список, чтобы увидеть своих друзей."}</p>}
-    <div className={styles.panelActions}>
-      <button type="button" onClick={onOpenPeople}><Users size={16} aria-hidden="true" />Открыть «Люди»</button>
-      <button type="button" data-audio-cue="ui.click" disabled={loading || !online} onClick={onRefresh} aria-label="Обновить список друзей"><RefreshCw size={16} aria-hidden="true" /></button>
-    </div>
-  </div>;
+  const participants = locations.filter(person => (!selectedCircleIds.length || selectedCircleIds.includes(person.circleId))
+    && (!people || people.people.some(contact => contact.circleId === person.circleId && contact.user.publicId === person.user.publicId)));
+  const select = onMeetPerson ?? onFocusPerson;
+  return <ul className={styles.participants} aria-label="Участники на карте" tabIndex={0}>
+    {participants.map(person => {
+      const contact = people?.people.find(row => row.circleId === person.circleId && row.user.publicId === person.user.publicId);
+      const name = contact?.nickname || person.user.displayName;
+      return <li key={person.circleId}><button type="button" data-audio-cue="ui.open" disabled={!select}
+        aria-label={`Открыть встречу: ${name}`} onClick={() => {
+          if (person.expiresAtMonotonic > performance.now() && Date.parse(person.expiresAt) > Date.now()) select?.(person.circleId);
+        }}>
+        <span className={styles.avatar} aria-hidden="true">{Array.from(name.trim())[0]?.toLocaleUpperCase("ru-RU") || "Ж"}</span>
+        <span><PlayerName name={name} tag={person.user.tag} /></span>
+      </button></li>;
+    })}
+    {!participants.length && <li className={styles.hint}>Сейчас на карте никого нет.</li>}
+  </ul>;
 }
 
 export function EarthView({ ownerPublicId, active, visible, onReadyChange, cameraSession, sharing, privacyRequest = null, onPrivacyRequestHandled, devCommandsAvailable = false, isOnline, people, peopleLoading, peopleError,
@@ -110,6 +94,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const [focusAfter, setFocusAfter] = useState<number | null>(null);
   const [meetCircleId, setMeetCircleId] = useState<string | null>(null);
   const [meetFocusRequest, setMeetFocusRequest] = useState(0);
+  const [meetFocusTarget, setMeetFocusTarget] = useState<string | null>(null);
   const atlas = useEarthAtlas(ownerPublicId);
   const atlasFeedback = useEarthAtlasDiscovery(ownerPublicId, active && visible && !editingModel);
   const [atlasView, setAtlasView] = useState<EarthMapView | null>(null);
@@ -143,6 +128,7 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
   const [monotonicNow, setMonotonicNow] = useState(() => performance.now());
   const heading = useRef<HTMLHeadingElement>(null);
   const friendsButton = useRef<HTMLButtonElement>(null);
+  const meetingTrigger = useRef<HTMLButtonElement | null>(null);
   const sharingButton = useRef<HTMLButtonElement>(null);
   const atlasButton = useRef<HTMLButtonElement>(null);
   const panelHeading = useRef<HTMLHeadingElement>(null);
@@ -215,10 +201,18 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     setNow(Date.now());
     setMonotonicNow(performance.now());
     setMeetCircleId(circleId);
-    setMeetFocusRequest(value => value + 1);
+    setMeetFocusTarget(null);
+    setFriendFocusRequest(previous => ({ circleId, requestId: (previous?.requestId ?? 0) + 1 }));
     setPanelSelection(current => ({ ...current, visible, value: null }));
     if (location.allowed && (!location.position || Date.now() - location.position.timestamp > 60_000 || location.status !== "active")) location.locate();
   }, [sharedPeople, location, visible]);
+  const frameMeeting = () => { setMeetFocusTarget(meetCircleId); setMeetFocusRequest(value => value + 1); };
+  const closeMeeting = () => {
+    setMeetCircleId(null);
+    const trigger = meetingTrigger.current;
+    if (trigger?.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
+    else (friendsButton.current ?? sharingButton.current)?.focus({ preventScroll: true });
+  };
   const meetPerson = sharedPeople.find(person => person.circleId === meetCircleId) ?? null;
   const focusAtlasEntry = (entry: EarthAtlasEntry) => {
     if (!entry.center || entry.zoom === null) return;
@@ -239,14 +233,17 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
     {watching && <button className={styles.stopButton} type="button" data-audio-cue="ui.click" onClick={stopGps}>Приостановить GPS</button>}
   </section>;
 
-  return <section className={styles.view} aria-labelledby="earth-title" data-earth-world>
+  return <section className={styles.view} aria-labelledby="earth-title" data-earth-world onContextMenu={event => {
+    if (!(event.target instanceof Element) || !event.target.closest("input, textarea, [contenteditable='true'], a[href]")) event.preventDefault();
+  }}>
     <p id="earth-location-privacy" className={styles.srOnly}>«Найти меня» центрирует карту. Доступ друзей к геопозиции не меняется.</p>
     <div className={styles.stage}>
       <EarthMap position={visible && !editingModel && location.allowed ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange} cameraSession={cameraSession}
         onViewChange={setAtlasView} cameraFocusRequest={atlasFocusRequest}
         focusRequest={focusRequest} focusWhenReady={focusAfter === null || location.status === "active" && Boolean(location.position && location.position.timestamp >= focusAfter)}
-        meetCircleId={!editingModel && panel === null ? meetPerson?.circleId : null} meetFocusRequest={meetFocusRequest} isOnline={isOnline} friends={editingModel ? NO_SHARED_PEOPLE : sharedPeople} friendFocusRequest={editingModel ? null : friendFocusRequest}
-        onSelectFriends={ids => { if (!editingModel) {
+        meetCircleId={!editingModel && panel === null ? meetPerson?.circleId : null} meetFocusRequest={meetFocusTarget === meetCircleId ? meetFocusRequest : 0} isOnline={isOnline} friends={editingModel ? NO_SHARED_PEOPLE : sharedPeople} friendFocusRequest={editingModel ? null : friendFocusRequest}
+        onSelectFriends={(ids, trigger) => { if (!editingModel) {
+          meetingTrigger.current = trigger ?? null;
           playUiCue(getAudioRuntime(), "ui.open");
           if (ids.length === 1) meetFriend(ids[0]);
           else { setMeetCircleId(null); setSelectedCircleIds(ids); setPanel("friends"); }
@@ -270,8 +267,8 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
       readCenter={() => { const camera = cameraSession?.read(); return camera ? { latitude: camera.center[1], longitude: ((camera.center[0] + 540) % 360) - 180 } : null; }}
       onChanged={() => { onRefreshPeople(); sharing.refresh(); }} onFocus={focusFriend} /></Suspense>}
 
-    {!editingModel && <div className={styles.bottomOverlay} data-earth-camera-blocker data-panel-open={panel !== null || meetCircleId !== null}>
-      {atlasOpen && <section id="earth-atlas-panel" className={styles.friendsPanel} aria-labelledby="earth-atlas-title" onKeyDown={event => {
+    {!editingModel && <div className={styles.bottomOverlay} data-panel-open={panel !== null || meetCircleId !== null}>
+      {atlasOpen && <section id="earth-atlas-panel" data-earth-camera-panel className={styles.friendsPanel} aria-labelledby="earth-atlas-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
       }}>
         <header><h2 id="earth-atlas-title" ref={panelHeading} tabIndex={-1}>Личный атлас</h2>
@@ -279,18 +276,17 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
         <EarthAtlasPanel atlas={atlas} view={atlasView} onFocus={focusAtlasEntry} onDiscover={discoverAtlasEntry}
           recentDiscoveryId={atlasFeedback.discovery?.entry.id} discoveryFeedback={atlasFeedback.discovery} />
       </section>}
-      {(friendsOpen || sharingOpen) && <section id="earth-friends-panel" className={styles.friendsPanel} aria-labelledby="earth-friends-title" onKeyDown={event => {
+      {(friendsOpen || sharingOpen) && <section id="earth-friends-panel" data-earth-camera-panel className={styles.friendsPanel} aria-labelledby="earth-friends-title" onKeyDown={event => {
         if (event.key === "Escape") { event.stopPropagation(); closeFriends(); }
       }}>
-        <header><h2 id="earth-friends-title" ref={panelHeading} tabIndex={-1}>{sharingOpen ? "Моя геопозиция" : "Близкие на карте"}</h2>
+        <header><h2 id="earth-friends-title" ref={panelHeading} tabIndex={-1}>{sharingOpen ? "Моя геопозиция" : selectedCircleIds.length ? "Участники рядом" : "Участники на карте"}</h2>
           <button type="button" data-audio-cue="ui.close" onClick={closeFriends} aria-label={sharingOpen ? "Закрыть настройки геопозиции" : "Закрыть список друзей"}><X size={18} aria-hidden="true" /></button></header>
         {sharingOpen ? !location.allowed ? <div className={styles.locationDetails}>
           <p>Геопозиция отключена. Включи её в «Профиль → Настройки → Геопозиция».</p>
           {(sharing.settings?.mode !== "OFF" || sharing.pendingGhost) && <button className={styles.stopButton} type="button" onClick={off}>Убрать меня с карты у всех</button>}
         </div> : <EarthSharingPanel sharing={sharing} people={people} peopleLoading={peopleLoading} online={isOnline} onShare={share} onGhost={ghost} onOff={off}
-          onSetFrozen={sharing.setFrozen} onRevokeRecipient={sharing.revokeRecipient} />
-          : <>{selectedCircleIds.length > 0 && <button className={styles.allFriends} type="button" data-audio-cue="ui.click" onClick={() => setSelectedCircleIds([])}>Показать всех близких</button>}
-            <EarthFriends people={people} loading={peopleLoading || sharing.loading} error={peopleError || sharing.error} online={isOnline}
+          onSetFrozen={sharing.setFrozen} onRevokeRecipient={sharing.revokeRecipient} onOpenPeople={onOpenPeople} />
+          : <><EarthFriends people={people} loading={peopleLoading || sharing.loading} error={peopleError || sharing.error} online={isOnline}
               locations={sharedPeople} selectedCircleIds={selectedCircleIds} onFocusPerson={focusFriend} onMeetPerson={meetFriend}
               onRefresh={() => { onRefreshPeople(); sharing.refresh(); }} onOpenPeople={onOpenPeople} /></>}
       </section>}
@@ -303,18 +299,16 @@ export function EarthView({ ownerPublicId, active, visible, onReadyChange, camer
           }
         }}
         position={location.status === "active" ? location.position : null} now={now} monotonicNow={monotonicNow} locating={locating} locationAllowed={location.allowed}
-        onLocate={() => { if (location.allowed) { location.locate(); setMeetFocusRequest(value => value + 1); } }}
-        onShowBoth={() => setMeetFocusRequest(value => value + 1)} onClose={() => {
-          setMeetCircleId(null); friendsButton.current?.focus({ preventScroll: true });
-        }} />}
+        onLocate={() => { if (location.allowed) { location.locate(); frameMeeting(); } }}
+        onShowBoth={frameMeeting} onClose={closeMeeting} />}
       <div className={styles.bottomButtons}>
-      <button ref={friendsButton} className={styles.friendsButton} type="button" data-audio-cue={friendsOpen ? "ui.close" : "ui.open"} aria-expanded={friendsOpen} aria-controls="earth-friends-panel" onClick={() => { setSelectedCircleIds([]); setPanel(friendsOpen ? null : "friends"); }}>
-        <span className={styles.friendsIcon}><Users size={18} aria-hidden="true" /></span>Близкие{people ? <span className={styles.friendsCount}>{people.people.length}</span> : null}
-      </button>
+      {sharedPeople.length > 0 && <button ref={friendsButton} className={styles.friendsButton} type="button" aria-label={`Участники на карте: ${sharedPeople.length}`} data-audio-cue={friendsOpen ? "ui.close" : "ui.open"} aria-expanded={friendsOpen} aria-controls="earth-friends-panel" onClick={() => { meetingTrigger.current = null; setSelectedCircleIds([]); setPanel(friendsOpen ? null : "friends"); }}>
+        <Users size={17} aria-hidden="true" /><span>На карте</span><span className={styles.friendsCount}>{sharedPeople.length}</span>
+      </button>}
       <button ref={sharingButton} className={`${styles.sharingButton} ${styles.privacyButton}`} type="button" data-audio-cue={sharingOpen ? "ui.close" : "ui.open"} aria-expanded={sharingOpen} aria-controls="earth-friends-panel"
         aria-label={`Моя геопозиция: ${location.allowed ? sharingSummary(sharing) : "отключена"}`} title={location.allowed ? sharingSummary(sharing) : "Геопозиция отключена"}
         onClick={() => { setPanel(sharingOpen ? null : "sharing"); if (!sharingOpen) { onRefreshPeople(); sharing.refresh(); } }}>
-        <Ghost size={17} aria-hidden="true" /><span>{location.allowed ? sharingSummary(sharing) : "Геопозиция отключена"}</span>
+        <MapPin size={17} aria-hidden="true" /><span>Геопозиция</span>
       </button>
       <button ref={atlasButton} className={`${styles.sharingButton} ${styles.atlasButton}`} type="button" title="Личный атлас" aria-label="Личный атлас"
         data-audio-cue={atlasOpen ? "ui.close" : "ui.open"} aria-expanded={atlasOpen} aria-controls="earth-atlas-panel"

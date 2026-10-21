@@ -9,10 +9,15 @@
   height: 100%;
   overflow: hidden;
   isolation: isolate;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   color: #edf5e7;
   background: #0b252d;
 }
-.stage { position: absolute; inset: 0; }
+.stage { position: absolute; inset: 0; touch-action: none; }
+.view input, .view textarea, .view [contenteditable="true"] { user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; }
+.view button { touch-action: manipulation; }
 .header {
   position: absolute;
   z-index: 4;
@@ -69,22 +74,25 @@
   position: absolute;
   z-index: 5;
   left: var(--earth-overlay-left);
+  right: var(--earth-overlay-right);
   bottom: calc(var(--earth-navigation-clearance, 84px) + 30px);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  width: min(360px, calc(100% - var(--earth-overlay-left) - var(--earth-overlay-right)));
+  width: auto;
   max-height: calc(100% - var(--earth-overlay-top) - 88px - var(--earth-navigation-clearance, 84px));
   pointer-events: none;
 }
 .bottomOverlay > * { pointer-events: auto; }
-.friendsButton { flex-shrink: 0; min-height: 48px; gap: 9px; border-radius: 999px; padding: 6px 13px 6px 7px; box-shadow: 0 5px 20px #001e2430; font-size: 12px; }
+.friendsButton { position: relative; flex-shrink: 0; min-height: 44px; gap: 6px; border-radius: 16px; padding: 8px; box-shadow: 0 5px 20px #001e2430; font-size: 11px; }
 .friendsButton[aria-expanded="true"] { background: #285344; border-color: #c5e3ad7a; }
 .friendsIcon { display: grid; width: 32px; height: 32px; border-radius: 50%; background: #bedda018; color: #d9edbd; place-items: center; }
 .friendsCount { display: grid; min-width: 20px; height: 20px; border-radius: 50%; background: #c8ddae1c; color: #d2e4c2; place-items: center; font-size: 10px; font-weight: 700; }
 .bottomButtons { display: flex; align-items: center; gap: 7px; width: min(100%, calc(100vw - var(--earth-overlay-left) - var(--earth-overlay-right) - 60px)); min-width: 0; }
-.bottomButtons .friendsButton { flex-shrink: 0; gap: 6px; padding-right: 10px; font-size: 11px; }
+.bottomButtons .friendsButton { flex-shrink: 0; width: 44px; padding: 8px; }
+.bottomButtons .friendsButton > span:not(.friendsCount) { display: none; }
+.bottomButtons .friendsCount { position: absolute; right: -3px; top: -4px; min-width: 16px; height: 16px; background: #bed6a9; color: #1c3c30; font-size: 9px; }
 .sharingButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 46px; border: 1px solid #cbdcc33d; border-radius: 16px; padding: 8px 10px; background: #173c33f5; color: #d9e9ce; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
 .sharingButton { max-width: 180px; }
 .sharingButton svg { flex-shrink: 0; }
@@ -92,7 +100,12 @@
 .sharingButton[aria-expanded="true"] { background: #315347; border-color: #c5e3ad7a; }
 .bottomButtons .atlasButton { width: 44px; min-width: 44px; min-height: 46px; flex-shrink: 0; padding: 8px; }
 .notice { position: absolute; z-index: 4; bottom: calc(var(--earth-navigation-clearance, 84px) + 90px); left: var(--earth-overlay-left); max-width: min(340px, calc(100% - var(--earth-overlay-left) - 76px)); margin: 0; border: 1px solid #f1d3a230; border-radius: 15px; background: #263d30f5; color: #f3d9b1; padding: 10px 12px; font-size: 11px; line-height: 1.55; }
-.friendsPanel { width: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 22px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 15px; }
+.friendsPanel { width: min(360px, 100%); min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid #cce1b83d; border-radius: 22px; background: #15372efc; box-shadow: 0 12px 35px #001e2440; padding: 12px; }
+.participants { display: flex; gap: 8px; width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; list-style: none; margin: 6px 0 0; padding: 4px 2px 8px; scrollbar-width: thin; }
+.participants > li { flex: 0 0 76px; scroll-snap-align: start; min-width: 0; }
+.participants button { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; min-height: 68px; padding: 5px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.participants button > span:last-child { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.participants button:hover { background: #c5dfb912; }
 .friendsPanel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .friendsPanel h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
 .friendsPanel header button { min-width: 44px; min-height: 44px; padding: 7px; background: #c5dfb910; }
@@ -120,9 +133,7 @@
 .view button:focus-visible { outline: 2px solid #e4ff9d; outline-offset: 3px; }
 .view button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 380px) {
-  .bottomButtons .privacyButton { width: 44px; min-width: 44px; padding: 8px; }
-  .privacyButton span { display: none; }
-  .bottomButtons .friendsCount { display: none; }
+  .bottomButtons .privacyButton { min-width: 110px; padding: 8px; }
   .header { gap: 8px; }
   .brand { padding-inline: 10px; gap: 6px; font-size: 12px; }
   .brand > svg { width: 19px; }

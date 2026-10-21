@@ -1,7 +1,7 @@
 .marker {
   position: absolute;
   width: 44px;
-  height: 56px;
+  height: 44px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -15,10 +15,10 @@
 .marker::before {
   content: "";
   position: absolute;
-  bottom: 7px;
-  left: 17px;
-  width: 10px;
-  height: 10px;
+  bottom: 8px;
+  left: 18px;
+  width: 8px;
+  height: 8px;
   border-radius: 2px;
   background: #f2f6e8;
   transform: rotate(45deg);
@@ -26,10 +26,10 @@
 .marker::after {
   content: "";
   position: absolute;
-  bottom: 0;
-  left: 18px;
-  width: 8px;
-  height: 4px;
+  bottom: 3px;
+  left: 19px;
+  width: 6px;
+  height: 3px;
   border: 1px solid #f2f6e8;
   border-radius: 50%;
   background: #4b7782;
@@ -38,18 +38,18 @@
 .portrait {
   position: absolute;
   top: 1px;
-  left: 1px;
+  left: 7px;
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 30px;
+  height: 30px;
   box-sizing: border-box;
-  border: 3px solid #f2f6e8;
+  border: 2px solid #f2f6e8;
   border-radius: 50%;
   background: linear-gradient(145deg, #d8e5e8, #87bbc0);
   color: #183e4a;
   box-shadow: 0 1px 0 1px #244c5b66, 0 4px 10px #123d3933;
-  font: 700 15px/1 Arial, sans-serif;
+  font: 700 11px/1 Arial, sans-serif;
 }
 .marker[data-cluster="true"] .portrait { background: #285c6a; color: #f5f7e5; }
 .marker:focus-visible { outline: none; z-index: 2; }

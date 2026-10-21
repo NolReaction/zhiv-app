@@ -41,7 +41,7 @@ function friendLabel(person: EarthMapPerson): string {
 
 /** Current authorized feed only: no requests, storage, avatars or location history. */
 export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeof Marker,
-  onSelect: (circleIds: string[]) => void, environment: Environment = {
+  onSelect: (circleIds: string[], trigger?: HTMLButtonElement) => void, environment: Environment = {
     now: () => performance.now(), schedule: (callback, delay) => window.setTimeout(callback, delay),
     cancel: handle => window.clearTimeout(handle as number),
     reducedMotion: () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
@@ -112,7 +112,7 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
       event.stopPropagation();
       if (disposed || !visible || element.disabled || element.classList.contains("maplibregl-marker-covered")) return;
       const ids = entry.circleIds.filter(id => (people.get(id)?.expiresAtMonotonic ?? -Infinity) > environment.now());
-      if (ids.length) onSelect(ids);
+      if (ids.length) onSelect(ids, element);
       else { purgeExpired(); reconcile(); armExpiry(); }
     };
     const onKeyDown = (event: KeyboardEvent) => {

@@ -45,7 +45,7 @@ test("simple view skips graphics only after the actual saved preference and data
   assert.equal(startupPresentation({ ...input, economyReady: false }).ready, false);
 });
 
-test("account callbacks and invitations do not wait for a scene absent from the selected screen", () => {
+test("a caller without a mounted scene can skip graphics while still requiring game receipts", () => {
   const state = startupPresentation({ ...ready, sceneRequired: false, scene: "loading", modules: "error" });
   assert.equal(state.ready, true);
   assert.equal(startupPresentation({ ...ready, sceneRequired: false, gameReady: false }).ready, false);

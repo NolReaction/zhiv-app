@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import styles from "./check-in-receipt.module.css";
 import glass from "@/components/glass-action.module.css";
 
-export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSending, unconfirmed, isOnline, onRetry, children, gameStatus, gameNotice, gamePending = 0, gameArchived = 0, gameRequestId, onRetryGame }: {
+export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSending, unconfirmed, isOnline, onRetry, children, gameStatus, gameNotice, gamePending = 0, gameArchived = 0, gameRequestId, onRetryGame, active = true }: {
   lastCheckInAt: string | null;
   lastCheckInLabel: string;
   timeZone: string;
@@ -21,6 +21,7 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
   gameArchived?: number;
   gameRequestId?: string;
   onRetryGame?: () => void;
+  active?: boolean;
 }) {
   const titleId = useId();
   const gameIssue = gameStatus === "error" || gameStatus === "blocked" || gameArchived > 0;
@@ -32,9 +33,10 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
   }) : null;
   return <div className={styles.receipt} data-state={state}>
     <div className={styles.row}>
-      <Popover>
+      {/* Reset only the local portal when covered; preserve the world's return-focus button. */}
+      <Popover key={active ? "home" : "covered"}>
         <PopoverTrigger asChild>
-          <button type="button" className={`${glass.button} ${styles.indicator}`} aria-label={`${title}. ${lastCheckInLabel}. Подробнее об отметке`}
+          <button type="button" disabled={!active} className={`${glass.button} ${styles.indicator}`} aria-label={`${title}. ${lastCheckInLabel}. Подробнее об отметке`}
             onPointerDown={event => event.stopPropagation()}>
             <Server size={20} aria-hidden="true" />
             <span className={styles.badge} aria-hidden="true">

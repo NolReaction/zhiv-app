@@ -818,9 +818,9 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
   assert.match(mobileShell, /position:\s*relative;/);
   assert.match(mobileShell, /grid-template-rows:\s*auto minmax\(0, 1fr\);/);
 
-  assert.match(mobileFooter, /position:\s*absolute;/);
-  assert.match(mobileFooter, /right:\s*0;/);
-  assert.match(mobileFooter, /left:\s*0;/);
+  assert.match(mobileFooter, /position:\s*fixed;/);
+  assert.match(mobileFooter, /right:\s*env\(safe-area-inset-right,\s*0px\);/);
+  assert.match(mobileFooter, /left:\s*env\(safe-area-inset-left,\s*0px\);/);
   assert.match(mobileFooter, /width:\s*min\(/);
   assert.match(mobileFooter, /safe-area-inset-left/);
   assert.match(mobileFooter, /safe-area-inset-right/);
@@ -973,6 +973,8 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
   assert.match(globals, /button\s*\{[^}]*touch-action:\s*pan-y;/s);
   assert.match(appStyles, /\.shell\s*\{[^}]*touch-action:\s*pan-y;/s);
   assert.match(appStyles, /\.action\s*\{[^}]*touch-action:\s*pan-y;/s);
+  assert.match(appStyles, /\.shell\[data-active-view="earth"\]\s*\{[^}]*touch-action:\s*manipulation;/s,
+    "Earth overlays allow horizontal native rails while the map canvas owns its gestures");
   assert.match(
     appStyles,
     /\.shell\[data-active-view="check-in"\]\s*\{(?=[^}]*position:\s*fixed;)(?=[^}]*height:\s*100svh;)(?=[^}]*overflow:\s*hidden;)(?=[^}]*overscroll-behavior:\s*none;)(?=[^}]*touch-action:\s*none;)[^}]*\}/s,

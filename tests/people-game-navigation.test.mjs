@@ -104,7 +104,7 @@ test("the People status button describes only my outgoing check-ins and message 
   }
 });
 
-test("People and map rows project one confirmed geolocation handle independently of status sharing", async () => {
+test("People owns recipient controls while the map shows one global state from the same handle", async () => {
   const { EarthSharingPanel } = await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
   const calls = [], sharing = { settings: { mode: "SHARING", revision: 1, precision: "PRECISE", recipientCircleIds: [friend.circleId],
     frozenCircleIds: [], sharingUntil: null, serverTime: data.serverTime }, pendingGhost: false, pendingPrivacyMode: null,
@@ -121,25 +121,32 @@ test("People and map rows project one confirmed geolocation handle independently
     const people = renderToStaticMarkup(createElement(PeopleView, peopleProps));
     const map = renderToStaticMarkup(createElement(EarthSharingPanel, mapProps));
     const peopleButton = people.match(/<button(?=[^>]*aria-pressed=)(?=[^>]*aria-label="Обновлять геопозицию для Мама")[^>]*>/)?.[0];
-    const mapToggle = map.match(/<button(?=[^>]*role="switch")(?=[^>]*aria-label="Обновлять геопозицию для Мама")[^>]*>/)?.[0];
     assert.ok(peopleButton.includes('aria-pressed="' + checked + '"'));
-    assert.ok(mapToggle.includes('aria-checked="' + checked + '"'));
-    for (const html of [people, map]) assert.ok(html.includes(status));
+    assert.ok(people.includes(status));
+    assert.doesNotMatch(map, /Обновлять геопозицию для Мама|earth-friend-access-connected|role="switch"/);
+    assert.match(map, /Обновления для друзей/);
+    assert.match(map, /Доступ у 1/);
+    if (mode === "GHOST") assert.match(map, /На паузе · последнее место/);
+    else if (frozen.length) assert.match(map, /Все на паузе/);
+    else assert.match(map, /Обновление на паузе/);
     assert.doesNotMatch(people, /role="switch"/, "the People card has two named buttons and no slider toggles");
     assert.match(people, /people-geo-access-connected/);
-    assert.match(map, /earth-friend-access-connected/);
+    assert.doesNotMatch(map, /earth-friend-access-connected/);
     if (mode === "GHOST") assert.match(people, /Призрак включён для всех\. Обновления геопозиции выключены/);
   }
   assert.deepEqual(calls, [], "reading either screen never changes consent or starts publication");
 });
 
-test("Earth keeps a compact roster without profile or visit actions", () => {
-  const props = { people: data, loading: false, error: null, online: true, onRefresh() {}, onOpenPeople() {} };
+test("Earth keeps only current map participants in a horizontal picker without profile or visit actions", () => {
+  const props = { locations: [{ circleId: data.people[0].circleId, user: data.people[0].user }], people: data, loading: false, error: null, online: true, onRefresh() {}, onOpenPeople() {} };
   const tree = EarthFriends(props);
   assert.equal(elements(tree).filter(element => element.type === PersonGameActions).length, 0);
   const html = renderToStaticMarkup(tree);
   assert.match(html, /Мама/);
-  assert.doesNotMatch(html, /Игровой профиль|В гости|Подойти к другу/);
+  assert.match(html, /aria-label="Участники на карте"/);
+  assert.doesNotMatch(html, /Игровой профиль|В гости|Подойти к другу|Обновить список|Открыть «Люди»/);
+  const empty = renderToStaticMarkup(EarthFriends({ ...props, locations: [] }));
+  assert.doesNotMatch(empty, /Мама/, "contacts without a map point are not duplicated here");
 });
 
 test("profile tabs support one keyboard stop, arrow wrapping and Home/End without leaving the dialog", () => {

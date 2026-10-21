@@ -386,7 +386,8 @@ export function AppShell() {
 function CheckInContent() {
   const { active: startupActive, report: reportStartup } = useAppStartup();
   const [startupRetry, setStartupRetry] = useState(0);
-  const [sceneLoad, setSceneLoad] = useState<{ owner: string | undefined; state: SceneLoadState }>({ owner: undefined, state: "loading" });
+  const [sceneEntry, setSceneEntry] = useState(0);
+  const [sceneLoad, setSceneLoad] = useState<{ owner: string | undefined; entry: number; state: SceneLoadState }>({ owner: undefined, entry: 0, state: "loading" });
   const [screen, setScreen] = useState<Screen>("loading");
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -426,6 +427,8 @@ function CheckInContent() {
   const { simpleView, appearanceReady, setSimpleView } = useSimpleView();
   const mochlikVisible = appearanceReady && !simpleView;
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
+  const homeControlsActive = screen === "home" && activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen;
+  if (statusOpen && !homeControlsActive) setStatusOpen(false);
   const [friendSelection, setFriendSelection] = useState<ProfileFriendVisit | null>(null);
   const [earthPrivacyRequest, setEarthPrivacyRequest] = useState<{ owner: string; id: number } | null>(null);
   if (earthPrivacyRequest && (screen !== "home" || earthPrivacyRequest.owner !== viewOwner)) setEarthPrivacyRequest(null);
@@ -712,8 +715,9 @@ function CheckInContent() {
     ownerPublicId: me?.user.publicId ?? null,
     nowMs: economy.snapshot ? economy.now : world.now, timeZone: me?.profile.timeZone ?? "UTC" });
   const handleSceneLoadState = useCallback((state: SceneLoadState) => {
-    setSceneLoad(previous => previous.owner === me?.user.publicId && previous.state === state ? previous : { owner: me?.user.publicId, state });
-  }, [me?.user.publicId]);
+    setSceneLoad(previous => previous.entry > sceneEntry || previous.owner === me?.user.publicId && previous.entry === sceneEntry && previous.state === state
+      ? previous : { owner: me?.user.publicId, entry: sceneEntry, state });
+  }, [me?.user.publicId, sceneEntry]);
   const { active: activityActive, mode: activityMode, retryAt: activityRetryAt, retry: retryActivity } = activity;
   const { snapshot: startupWorld, refreshNow: refreshStartupWorld } = world;
   const { snapshot: startupEconomy, refresh: refreshStartupEconomy } = economy;
@@ -731,15 +735,14 @@ function CheckInContent() {
     }
     setStartupRetry(value => value + 1);
   }, [screen, activityActive, retryActivity, startupWorld, refreshStartupWorld, startupEconomy, refreshStartupEconomy, gameStartupReady, refreshStartupGame]);
-  useEffect(() => {
-    if (!startupActive) return;
-    reportStartup(startupPresentation({ screen, online: isOnline, identityError, appearanceReady, simpleView, sceneRequired: activeView === "check-in",
+  useLayoutEffect(() => {
+    reportStartup(startupPresentation({ screen, online: isOnline, identityError, appearanceReady, simpleView, sceneRequired: true,
       activityMode: activity.mode, activityError: activity.error, worldReady: Boolean(world.snapshot), economyReady: Boolean(economy.snapshot),
       gameReady: gameStartupReady, gameFailed: game.status === "error" || game.status === "offline",
-      scene: sceneLoad.owner === me?.user.publicId ? sceneLoad.state : "loading", modules: startupModules,
-    }), retryStartup);
+      scene: sceneLoad.owner === me?.user.publicId && sceneLoad.entry === sceneEntry ? sceneLoad.state : "loading", modules: startupModules,
+    }), retryStartup, screen === "home" && me && activity.mode !== "away" ? `${me.user.publicId}:${sceneEntry}` : null);
   }, [startupActive, reportStartup, retryStartup, screen, isOnline, identityError, appearanceReady, simpleView, activity.mode, activity.error,
-    world.snapshot, economy.snapshot, gameStartupReady, game.status, sceneLoad, me?.user.publicId, startupModules, activeView]);
+    world.snapshot, economy.snapshot, gameStartupReady, game.status, sceneLoad, sceneEntry, me, startupModules]);
   useEffect(() => {
     if (!startupActive || screen !== "home" || activityMode !== "error") return;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -879,6 +882,8 @@ function CheckInContent() {
   }, [loseSession]);
 
   const adoptMe = useCallback((identity: MeResponse) => {
+    setSceneLoad({ owner: undefined, entry: -1, state: "loading" });
+    setSceneEntry(previous => previous + 1);
     identityRecovery.current?.dispose();
     void resolveStartupIncidents(identity.user.publicId);
     identityEpoch.current += 1;
@@ -1661,9 +1666,9 @@ function CheckInContent() {
         calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
         simpleView={simpleView} />}
 
-      <div key={activeView} className={styles.viewTransition} hidden={earthSelected}
-        style={{ "--view-direction": viewDirection, display: earthSelected ? "none" : undefined } as CSSProperties}>
-      {activeView === "check-in" ? (
+      <div key={`home:${me?.user.publicId}:${sceneEntry}`} className={styles.viewTransition} hidden={activeView !== "check-in"}
+        inert={activeView !== "check-in" || undefined} data-home-session-visible={activeView === "check-in"}
+        style={{ "--view-direction": viewDirection, display: activeView !== "check-in" ? "none" : undefined } as CSSProperties}>
         <section
           id="check-in-panel"
           className={styles.action}
@@ -1711,7 +1716,7 @@ function CheckInContent() {
             >
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
-              {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={gameplay.suspended || !mochlikVisible || (worldPortal.open && worldPortal.sceneReady) || calendarOpen || gameOpen || statusOpen}
+              {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={gameplay.suspended || activeView !== "check-in" || !mochlikVisible || (worldPortal.open && worldPortal.sceneReady) || calendarOpen || gameOpen || statusOpen}
                 onLoadState={handleSceneLoadState} retrySignal={startupRetry}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
                 bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} economyResidents={economicResidents} activity={currentActivity} />}
@@ -1849,8 +1854,9 @@ function CheckInContent() {
             </div>
           </div>
 
-          <div className={styles.statusBlock}>
+          {activeView === "check-in" && <div className={styles.statusBlock}>
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
+              active={homeControlsActive}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}
               gameStatus={game.status} gameNotice={gameNotice} gamePending={game.pendingTaps} gameArchived={game.archivedTaps} gameRequestId={game.requestId} onRetryGame={() => void game.refresh()}>
               <button ref={worldEntryButton} type="button" className={`${glass.button} ${styles.mapEntry}`} data-audio-cue="ui.open" data-app-onboarding="world"
@@ -1861,15 +1867,18 @@ function CheckInContent() {
                 <Map size={20} aria-hidden="true" /><span>Войти в мир</span>
               </button>
             </CheckInReceipt>
-            {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} onOpenChange={setStatusOpen} /> : null}
+            {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} open={statusOpen && homeControlsActive} onOpenChange={setStatusOpen} /> : null}
             <span className={styles.srOnly}>
               Рекорд в аккаунте: {game.progress?.bestSeries ?? 0}. Уровень {clickerLevel.level}, {clickerLevel.title}.
               Серверная отметка: {serverStatus}.
             </span>
-          </div>
+          </div>}
         </section>
 
-      ) : activeView === "people" ? (
+      </div>
+      <div key={activeView} className={styles.viewTransition} hidden={earthSelected || activeView === "check-in"}
+        style={{ "--view-direction": viewDirection, display: earthSelected || activeView === "check-in" ? "none" : undefined } as CSSProperties}>
+      {activeView === "people" ? (
         <PeopleView
           key={`people:${me?.user.publicId ?? ""}`}
           ownerPublicId={me?.user.publicId ?? null}

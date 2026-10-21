@@ -89,7 +89,7 @@ test("opening DEV3D removes social/GPS overlays, pauses a live private watch and
   const app = setup();
   try {
     let view = app.render();
-    assert.match(view.text, /Близкие/);
+    assert.match(view.text, /На карте/);
     view.map.onLocate(); app.render();
     app.watches[0].success(fix(1000)); view = app.render();
     assert.equal(view.map.position.timestamp, 1000);
@@ -100,7 +100,7 @@ test("opening DEV3D removes social/GPS overlays, pauses a live private watch and
     assert.equal(view.map.showLocationControl, false);
     assert.equal(view.map.locationDetails, null);
     assert.deepEqual(view.map.friends, []);
-    assert.doesNotMatch(view.text, /Близкие|Ожидаем GPS|Делюсь|Только я/);
+    assert.doesNotMatch(view.text, /На карте|Ожидаем GPS|Делюсь|Только я/);
     assert.deepEqual(app.actions, [], "temporary pause does not revoke publication or consent");
     assert.equal(app.publications.at(-1), null);
     app.watches[0].failure({ code: 3 });
@@ -109,7 +109,7 @@ test("opening DEV3D removes social/GPS overlays, pauses a live private watch and
     assert.equal(app.watches.length, 1, "a late hidden watch error cannot start a fallback");
     view.map.onModelEditorOpenChange(false); view = app.render();
     assert.equal(app.watches.length, 2);
-    assert.match(view.text, /Близкие/);
+    assert.match(view.text, /На карте/);
     assert.equal(view.map.showLocationControl, true);
     assert.equal(view.map.friends.length, 1);
     app.watches[1].success(fix(2000)); view = app.render();
@@ -148,8 +148,8 @@ test("remembered development editor state is private before lazy mounting and pr
     try {
       const view = app.render();
       assert.equal(view.map.showLocationControl, environment === "production");
-      if (environment === "development") assert.doesNotMatch(view.text, /Близкие|Нет сети/);
-      else { assert.match(view.text, /Близкие/); assert.match(view.text, /Нет сети/); }
+      if (environment === "development") assert.doesNotMatch(view.text, /На карте|Нет сети/);
+      else { assert.match(view.text, /На карте/); assert.match(view.text, /Нет сети/); }
       assert.equal(app.watches.length, 0);
     } finally { app.destroy(); }
   }
@@ -264,6 +264,8 @@ test("a single friend marker opens the meeting card, while a grouped marker open
 
 test("selecting a member of a co-located map group opens that meeting without waiting for the marker to split", () => {
   const app = setup();
+  let originFocus = 0;
+  const groupTrigger = { isConnected: true, disabled: false, focus() { originFocus++; } };
   const point = { latitude: 55.75, longitude: 37.62, accuracyMeters: 20, precision: "PRECISE",
     updatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), expiresAtMonotonic: performance.now() + 60_000 };
   app.props.sharing.people = [
@@ -271,22 +273,26 @@ test("selecting a member of a co-located map group opens that meeting without wa
     { ...point, circleId: "friend-two", user: { publicId: "TWO", displayName: "Дима" } },
   ];
   try {
-    let view = app.render(); view.map.onSelectFriends(["friend-one", "friend-two"]); view = app.render();
+    let view = app.render(); view.map.onSelectFriends(["friend-one", "friend-two"], groupTrigger); view = app.render();
     const roster = view.all.find(node => node.type === EarthFriends);
     assert.ok(roster); assert.equal(app.watches.length, 0);
     const member = nodes(EarthFriends(roster.props)).find(node => node.type === "button" && node.props["aria-label"] === "Открыть встречу: Дима");
     assert.ok(member); member.props.onClick(); view = app.render();
     assert.equal(view.all.find(node => node.type === EarthMeetCard).props.person.circleId, "friend-two");
     assert.equal(view.map.meetCircleId, "friend-two");
-    assert.equal(view.map.friendFocusRequest, null, "member selection does not wait for geographic separation");
+    assert.equal(view.map.friendFocusRequest.circleId, "friend-two", "the selected friend is framed above the meeting independently of own GPS");
+    assert.equal(view.map.meetFocusRequest, 0, "a marker tap does not start framing both locations");
     assert.equal(app.watches.length, 1, "own lookup starts only after selecting the member");
     view.all.find(node => node.type === EarthMeetCard).props.onClose(); view = app.render();
-    view.all.find(node => node.type === "button" && text(node).startsWith("Близкие")).props.onClick(); view = app.render();
+    assert.equal(originFocus, 1, "a grouped meeting returns focus to its map marker");
+    view.all.find(node => node.type === "button" && node.props["aria-label"] === "Участники на карте: 2").props.onClick(); view = app.render();
     const fullRoster = view.all.find(node => node.type === EarthFriends);
-    const focus = nodes(EarthFriends(fullRoster.props)).find(node => node.type === "button" && node.props["aria-label"] === "Показать на карте: Лена");
-    assert.ok(focus, "the bottom roster returns to focus-only selection"); focus.props.onClick(); view = app.render();
+    const focus = nodes(EarthFriends(fullRoster.props)).find(node => node.type === "button" && node.props["aria-label"] === "Открыть встречу: Лена");
+    assert.ok(focus, "the compact map picker opens a meeting directly"); focus.props.onClick(); view = app.render();
     assert.equal(view.map.friendFocusRequest.circleId, "friend-one");
-    assert.equal(view.all.some(node => node.type === EarthMeetCard), false);
+    assert.equal(view.all.find(node => node.type === EarthMeetCard).props.person.circleId, "friend-one");
     assert.equal(app.watches.length, 1);
+    view.all.find(node => node.type === EarthMeetCard).props.onClose();
+    assert.equal(originFocus, 1, "a new meeting from the general picker never focuses the previous marker");
   } finally { app.destroy(); }
 });

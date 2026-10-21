@@ -36,7 +36,7 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
   const minutes = person ? Math.max(0, Math.floor((now - Date.parse(person.updatedAt)) / 60_000)) : 0;
   const updated = minutes < 1 ? "Только что" : minutes < 60 ? `${minutes} мин. назад` : `${Math.floor(minutes / 60)} ч. назад`;
 
-  return <section className={styles.card} aria-labelledby="earth-meet-heading" onKeyDown={event => {
+  return <section className={styles.card} data-earth-camera-panel="bottom" aria-labelledby="earth-meet-heading" onKeyDown={event => {
     if (event.key === "Escape") {
       event.stopPropagation();
       playUiCue(getAudioRuntime(), "ui.close");
@@ -45,23 +45,22 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
     }
   }}>
     <header className={styles.header}>
-      <span className={styles.avatar} aria-hidden="true">{Array.from(name?.trim() || "Ж")[0].toLocaleUpperCase("ru-RU")}</span>
-      <div><span className={styles.eyebrow}>Навстречу другу</span><h2 id="earth-meet-heading" ref={heading} tabIndex={-1}>{name || "Друг"}</h2></div>
+      <div><span className={styles.eyebrow}>Навстречу другу{available ? ` · ${updated}` : ""}</span><h2 id="earth-meet-heading" ref={heading} tabIndex={-1}>{name || "Друг"}</h2></div>
       <button type="button" data-audio-cue="ui.close" className={styles.close} onClick={onClose} aria-label="Закрыть встречу"><X size={18} aria-hidden="true" /></button>
     </header>
     {available ? <>
       <div className={styles.distance}>
         <span className={styles.compass} aria-hidden="true">{details?.bearingDegrees !== null && details?.bearingDegrees !== undefined
-          ? <ArrowUp size={28} style={{ transform: `rotate(${details.bearingDegrees}deg)` }} /> : <Footprints size={26} />}</span>
+          ? <ArrowUp size={17} style={{ transform: `rotate(${details.bearingDegrees}deg)` }} /> : <Footprints size={17} />}</span>
         <div>{details ? <><strong>≈ {formatMeetDistance(details.distanceMeters)}</strong><span>по прямой{details.direction ? ` · ${details.direction}` : details.distanceMeters <= details.accuracyMeters ? " · в пределах точности GPS" : " · направление не определено"}</span></>
-          : <><strong>{locating ? "Ищем тебя…" : locationAllowed ? "Где ты сейчас?" : "Геопозиция отключена"}</strong><span>{locationAllowed ? "Найди себя, чтобы увидеть расстояние" : "Включи её в настройках профиля"}</span></>}</div>
+          : <><strong>{locating ? "Ищем тебя…" : locationAllowed ? "Расстояние — после поиска тебя" : "Геопозиция отключена"}</strong>{!locationAllowed && <span>Включи её в настройках профиля</span>}</>}</div>
       </div>
-      <p className={styles.updated}>{person.precision === "APPROXIMATE" ? "Примерный район" : "Последняя точка"} · {updated}</p>
+      {person.precision === "APPROXIMATE" && <p className={styles.updated}>Примерный район</p>}
       <div className={styles.actions}>
         {details ? <button type="button" data-audio-cue="ui.click" onClick={onShowBoth}><MapPinned size={18} aria-hidden="true" />Мы на карте</button>
           : <button type="button" data-audio-cue="ui.click" onClick={() => { if (locationAllowed) onLocate(); }} disabled={locating || !locationAllowed}><LocateFixed size={18} aria-hidden="true" />Найти меня</button>}
         {route && <details ref={routePicker} key={person.circleId} className={styles.routePicker}>
-          <summary data-audio-cue="ui.open"><Footprints size={18} aria-hidden="true" />Пешком<ChevronDown size={14} aria-hidden="true" /></summary>
+          <summary data-audio-cue="ui.open" aria-label="Выбери карты для пешего маршрута"><Footprints size={16} aria-hidden="true" />Маршрут<ChevronDown size={14} aria-hidden="true" /></summary>
           <nav className={styles.routeOptions} aria-label="Выбрать карты для пешего маршрута">
             {WALKING_MAP_SERVICES.map(service => {
               const href = walkingRouteUrl(person, monotonicNow, now, service.id);
@@ -73,8 +72,8 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
           </nav>
         </details>}
       </div>
-      <p className={styles.footnote}>{route ? "Выбери карты — откроется приложение или сайт." : person.precision === "APPROXIMATE"
-        ? "Для пешего маршрута нужна точная геопозиция друга." : "Пеший маршрут появится, когда точка будет свежей и точной."}</p>
+      {!route && <p className={styles.footnote}>{person.precision === "APPROXIMATE"
+        ? "Для пешего маршрута нужна точная геопозиция друга." : "Пеший маршрут появится, когда точка будет свежей и точной."}</p>}
       {onRecordMeeting && locationAllowed && canRecordEarthMeeting(position, person, monotonicNow, now) && <div className={styles.meetingNote}>
         <button type="button" data-audio-cue="ui.click" disabled={meetingRecorded} onClick={() => {
           if (canRecordEarthMeeting(position, person, performance.now(), Date.now())) onRecordMeeting();

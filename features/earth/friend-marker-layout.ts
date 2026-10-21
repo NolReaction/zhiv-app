@@ -2,7 +2,7 @@ export const EARTH_FRIEND_MARKER_LIMIT = 24;
 export const EARTH_FRIEND_MARKER_MIN_ZOOM = -0.2;
 export const EARTH_FRIEND_CLUSTER_RADIUS = 64;
 export const EARTH_FRIEND_MARKER_WIDTH = 44;
-export const EARTH_FRIEND_MARKER_HEIGHT = 56;
+export const EARTH_FRIEND_MARKER_HEIGHT = 44;
 
 export type EarthFriendPoint = { circleId: string; x: number; y: number };
 export type EarthFriendGroup = { anchorId: string; circleIds: string[]; x: number; y: number };
@@ -20,7 +20,7 @@ export function layoutEarthFriends(points: readonly EarthFriendPoint[], viewport
     if (point.x + EARTH_FRIEND_MARKER_WIDTH / 2 <= 0 || point.x - EARTH_FRIEND_MARKER_WIDTH / 2 >= viewport.width
       || point.y <= 0 || point.y - EARTH_FRIEND_MARKER_HEIGHT >= viewport.height) continue;
     // The private GPS pin remains usable even when a friend shares the same fix.
-    // Such friends are still available in the authenticated friends panel.
+    // Such friends remain available in the compact map participant picker.
     if (self && Number.isFinite(self.x) && Number.isFinite(self.y)
       && point.x - EARTH_FRIEND_MARKER_WIDTH / 2 < self.x + 30
       && point.x + EARTH_FRIEND_MARKER_WIDTH / 2 > self.x - 30

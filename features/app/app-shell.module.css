@@ -163,7 +163,7 @@
   gap: 0;
   padding: 0;
   overscroll-behavior: none;
-  touch-action: pan-y;
+  touch-action: manipulation;
 }
 .shell[data-active-view="earth"] > .header { display: none; }
 .shell[data-active-view="earth"] > .footer {
@@ -1185,20 +1185,25 @@
     height: 0;
   }
 
-  .footer {
-    position: absolute;
+  /* Every section uses the same viewport dock, including the app tour. The
+     globe and its loading state must not resize or reposition navigation. */
+  .shell[data-active-view] > footer.footer {
+    position: fixed;
     z-index: 40;
-    right: 0;
+    top: auto;
+    right: env(safe-area-inset-right, 0px);
     bottom: max(10px, calc(env(safe-area-inset-bottom) + 6px));
-    left: 0;
+    left: env(safe-area-inset-left, 0px);
     width: min(
       calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right) - 28px),
       360px
     );
     display: flex;
     justify-content: center;
+    gap: 0;
     border: 0;
     margin-inline: auto;
+    padding: 0;
     background: transparent;
     pointer-events: none;
   }
@@ -1471,8 +1476,8 @@
 .copyIdentity:focus-visible, .levelBadge:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .levelBadge { min-height: 44px; min-width: 44px; cursor: pointer; font-size: 12px; }
 
-/* The tour replaces the identity header with a real top row. The active
-   screen owns the remaining space; navigation stays in its own bottom row. */
+/* The tour replaces the identity header with a real top row. Desktop keeps
+   navigation in a bottom row; phones reserve space for the fixed dock below. */
 .shell:has(> [data-guide-coach="app"]) {
   --floating-nav-clearance: 16px;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -1489,7 +1494,7 @@
   --earth-navigation-clearance: 10px;
   min-height: 280px;
 }
-.shell[data-active-view="earth"]:has(> [data-guide-coach="app"]) { overflow-y: auto; touch-action: pan-y; }
+.shell[data-active-view="earth"]:has(> [data-guide-coach="app"]) { overflow-y: auto; touch-action: manipulation; }
 .shell:has(> [data-guide-coach="app"]) > .footer {
   position: relative;
   inset: auto;
@@ -1501,6 +1506,12 @@
   pointer-events: auto;
 }
 @media (max-width: 700px), (hover: none) and (pointer: coarse) {
+  .shell[data-active-view]:has(> [data-guide-coach="app"]) {
+    /* The dock no longer occupies a tour row; reserve its space in the shell
+       so short-window lessons still scroll above it. */
+    padding-bottom: max(84px, calc(env(safe-area-inset-bottom) + 80px));
+    grid-template-rows: auto minmax(0, 1fr);
+  }
   .shell:has(> [data-guide-coach="app"]) > .footer .bottomNav { width: min(100%, 360px); }
   .shell[data-active-view="check-in"]:has(> [data-guide-coach="app"]) .action {
     overflow-y: auto;

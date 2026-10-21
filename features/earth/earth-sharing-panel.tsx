@@ -1,15 +1,12 @@
 "use client";
 
 import { useState, type MouseEvent } from "react";
-import { ChevronDown, Ghost, MapPin, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { PlayerName } from "@/components/player-name";
+import { ChevronDown, MapPin, Pause, RefreshCw, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { PeopleResponse } from "@/lib/check-in-contract";
-import { personDisplayName } from "@/lib/person-nickname";
 import type { EarthSharingDuration, EarthSharingPrecision, EarthSharingSettings } from "@/lib/earth-sharing-contract";
 import type { useEarthSharing } from "./use-earth-sharing";
-import { EarthFriendSharingControls, EarthSharingToggle } from "./earth-friend-sharing";
 import styles from "./earth-sharing-panel.module.css";
 
 export { EarthSharingToggle } from "./earth-friend-sharing";
@@ -22,6 +19,7 @@ type Props = {
   onShare: (choices: EarthSharingChoices) => Promise<void>; onGhost: () => void; onOff: () => void;
   onSetFrozen: (circleId: string, frozen: boolean) => Promise<boolean | void>;
   onRevokeRecipient: (circleId: string) => Promise<boolean | void>;
+  onOpenPeople?: () => void;
 };
 type Draft = { revision: number | null; precision: EarthSharingPrecision; durationMinutes: EarthSharingDuration };
 function draftFor(settings: EarthSharingSettings | null): Draft {
@@ -51,40 +49,53 @@ export function sharingSummary(sharing: Pick<EarthSharingHandle, "settings" | "p
 }
 
 /** Confirmed sharing state controls every switch; rendering never grants access. */
-export function EarthSharingPanelContent({ sharing, people, peopleLoading, online, onShare, onGhost, onOff, onSetFrozen,
-  onRevokeRecipient, draft, onPrecisionChange, onDurationChange, query, onQueryChange, working = false, localError = null }: Props & {
+export function EarthSharingPanelContent({ sharing, online, onShare, onGhost, onOff, onOpenPeople,
+  draft, onPrecisionChange, onDurationChange, working = false, localError = null }: Props & {
   draft: Draft; onPrecisionChange: (value: EarthSharingPrecision) => void; onDurationChange: (value: EarthSharingDuration) => void;
-  query: string; onQueryChange: (value: string) => void; working?: boolean; localError?: string | null;
+  query?: string; onQueryChange?: (value: string) => void; working?: boolean; localError?: string | null;
 }) {
   const settings = sharing.settings, busy = sharing.saving || working;
   const ghost = sharing.pendingGhost ? sharing.pendingPrivacyMode !== "OFF" : settings?.mode === "GHOST";
   const selected = new Set(settings?.recipientCircleIds ?? []), frozen = new Set(settings?.frozenCircleIds ?? []);
   const liveCount = [...selected].filter(id => !frozen.has(id)).length;
   const canChange = !!settings && online && !busy && !sharing.pendingGhost;
-  const friends = people?.people ?? [], search = query.trim().toLocaleLowerCase("ru-RU");
-  const matching = friends.filter(person => !search || personDisplayName(person).toLocaleLowerCase("ru-RU").includes(search));
-  const displayed = matching.slice(0, 100);
-  const savedChoices = settings ? choicesFor(settings, draftFor(settings)) : null;
+  const active = settings?.mode === "SHARING" && sharing.publishing && !sharing.pendingGhost && liveCount > 0;
+  const emptyGhost = settings?.mode === "GHOST" && selected.size === 0;
+  const frozenGhost = settings?.mode === "GHOST" && selected.size > 0 && liveCount === 0;
+  const needsAudience = !!settings && (settings.mode === "OFF" || selected.size === 0 || liveCount === 0 && settings.mode !== "GHOST");
+  const primaryDisabled = active || emptyGhost ? sharing.pendingGhost : needsAudience
+    ? !onOpenPeople || busy || sharing.pendingGhost : !canChange;
   const resume = () => {
-    if (!canChange || !savedChoices) return;
-    if (savedChoices.recipientCircleIds.length) void onShare(savedChoices); else onOff();
+    if (!canChange || !settings || settings.mode === "OFF" || selected.size === 0) return;
+    void onShare(choicesFor(settings, draftFor(settings)));
   };
   const error = sharing.error || localError;
+  const status = busy ? "Сохраняем…" : sharing.pendingGhost ? sharingSummary(sharing)
+    : ghost ? "На паузе · последнее место" : sharingSummary(sharing);
 
   return <div className={styles.panel}>
-    <section className={styles.ghostCard} data-enabled={ghost || undefined} aria-labelledby="earth-ghost-heading">
-      <div className={styles.ghostRow}>
-        <span className={styles.ghostIcon}><Ghost size={20} aria-hidden="true" /></span>
-        <div className={styles.ghostTitle}><strong id="earth-ghost-heading">Режим призрака</strong>
-          <span role="status"><i className={styles.statusDot} data-live={sharing.publishing && !ghost || undefined} />{busy ? "Сохраняем…" : sharing.pendingGhost ? sharingSummary(sharing) : ghost ? "Включён для всех" : sharingSummary(sharing)}</span></div>
-        <EarthSharingToggle ghost checked={ghost} disabled={ghost && !canChange} label="Режим призрака"
-          description="earth-ghost-hint" onChange={() => { if (ghost) resume(); else onGhost(); }} />
+    <section className={styles.sharingCard} data-live={active || undefined} aria-labelledby="earth-sharing-heading">
+      <div className={styles.sharingRow}>
+        <span className={styles.sharingIcon} aria-hidden="true"><MapPin size={18} /></span>
+        <div className={styles.sharingTitle}><strong id="earth-sharing-heading">Обновления для друзей</strong>
+          <span role="status"><i className={styles.statusDot} data-live={active || undefined} />{status}</span></div>
+        <button type="button" data-audio-cue="ui.click" className={styles.sharingAction} aria-pressed={active}
+          aria-label={active ? "Приостановить обновления геопозиции" : emptyGhost || frozenGhost ? "Выключить режим призрака" : needsAudience ? "Выбрать получателей в Людях" : "Включить обновления геопозиции"}
+          aria-describedby="earth-sharing-hint" disabled={primaryDisabled}
+          onClick={() => {
+            if (primaryDisabled) return;
+            if (active) onGhost();
+            else if (emptyGhost) onOff();
+            else if (needsAudience) onOpenPeople?.();
+            else resume();
+          }}>
+          {active && <Pause size={13} aria-hidden="true" />}{active ? "Приостановить" : emptyGhost ? "Выключить призрака" : frozenGhost ? "Снять паузу" : needsAudience ? "Выбрать" : "Включить"}
+        </button>
       </div>
-      <p id="earth-ghost-hint" className={styles.srOnly}>Последнее место вместо обновлений. Без уведомлений.</p>
+      <p id="earth-sharing-hint" className={styles.sharingHint}>{selected.size === 0 ? "Получатели выбираются в «Людях»."
+        : `Доступ у ${selected.size} · обновления разрешены для ${liveCount}.`}</p>
     </section>
 
-    {settings?.mode === "SHARING" && !sharing.publishing && !sharing.pendingGhost && liveCount > 0 &&
-      <button type="button" data-audio-cue="ui.click" className={styles.resume} disabled={!canChange} onClick={resume}>Возобновить</button>}
     {sharing.pendingGhost && <p className={styles.pending} role="status">{sharing.pendingPrivacyMode === "OFF"
       ? "Удаление доступа ещё не подтверждено сервером."
       : "Передача остановлена на устройстве. Ждём подтверждения сервера."}</p>}
@@ -92,28 +103,9 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
     {error && <div className={styles.error} role="alert"><span>{error}</span>
       <button type="button" data-audio-cue="ui.click" aria-label="Обновить настройки геопозиции" disabled={!online || busy} onClick={sharing.refresh}><RefreshCw size={16} aria-hidden="true" /></button></div>}
     {sharing.loading && !settings && <p role="status">Загружаем настройки…</p>}
-
-    <section className={styles.friends} aria-labelledby="earth-sharing-friends-title">
-      <header><h3 id="earth-sharing-friends-title">Геопозиция для друзей</h3><span>{selected.size} из {friends.length}</span></header>
-      {ghost && friends.length > 0 && <p className={styles.quiet}>Выключи призрака, чтобы делиться.</p>}
-      {friends.length > 8 && <label className={styles.search}><span className={styles.srOnly}>Найти близкого</span>
-        <input type="search" aria-label="Найти близкого" placeholder="Найти близкого" value={query}
-          onChange={event => onQueryChange(event.target.value)} autoComplete="off" /></label>}
-      {peopleLoading && !people && <p role="status">Загружаем близких…</p>}
-      {displayed.length > 0 ? <ul className={styles.recipientList}>
-        {displayed.map(person => {
-          const name = personDisplayName(person);
-          return <li key={person.circleId} className={styles.friend}>
-            <EarthFriendSharingControls person={person} sharing={sharing} online={online} working={working}
-              presentation="compact"
-              heading={<PlayerName name={name} tag={person.user.tag} />}
-              avatar={Array.from(name.trim())[0]?.toLocaleUpperCase("ru-RU") || "Ж"} firstChoices={draft}
-              onShare={onShare} onSetFrozen={onSetFrozen} onRevokeRecipient={onRevokeRecipient} />
-          </li>;
-        })}
-      </ul> : !peopleLoading && <p className={styles.quiet}>{friends.length ? "Никого не нашли." : "Добавьте близких в разделе «Люди»."}</p>}
-      {matching.length > displayed.length && <p className={styles.quiet}>Уточните поиск — показаны первые 100.</p>}
-    </section>
+    {onOpenPeople && <button type="button" data-audio-cue="ui.open" className={styles.peopleLink} onClick={onOpenPeople}>
+      <Users size={16} aria-hidden="true" /><span>Кому доступно — в «Людях»</span>
+    </button>}
 
     <details className={styles.options}>
       <summary onClick={playDisclosureCue}><SlidersHorizontal size={16} aria-hidden="true" /><span>Точность и срок</span>
@@ -137,14 +129,13 @@ export function EarthSharingPanelContent({ sharing, people, peopleLoading, onlin
         <button className={styles.applyButton} type="submit" data-audio-cue="ui.click" disabled={!canChange || ghost || selected.size === 0}><MapPin size={16} aria-hidden="true" />Применить и обновлять</button>
       </form>
       <p className={styles.retention}><ShieldCheck size={15} aria-hidden="true" />Только последнее место, без истории. До 24 часов, в пределах срока доступа.</p>
-      {selected.size > 0 && <button className={styles.revokeAll} type="button" data-audio-cue="ui.click" onClick={onOff}>Убрать меня с карты у всех</button>}
+      {(selected.size > 0 || settings?.mode === "GHOST") && <button className={styles.revokeAll} type="button" data-audio-cue="ui.click" onClick={onOff}>Убрать меня с карты у всех</button>}
     </details>
   </div>;
 }
 
 export function EarthSharingPanel(props: Props) {
   const [draft, setDraft] = useState(() => draftFor(props.sharing.settings));
-  const [query, setQuery] = useState("");
   const [working, setWorking] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   if (props.sharing.settings && draft.revision !== props.sharing.settings.revision) {
@@ -157,7 +148,7 @@ export function EarthSharingPanel(props: Props) {
     catch { setLocalError("Не удалось сохранить. Попробуйте ещё раз."); }
     finally { setWorking(false); }
   };
-  return <EarthSharingPanelContent {...props} draft={draft} query={query} onQueryChange={setQuery} working={working} localError={localError}
+  return <EarthSharingPanelContent {...props} draft={draft} working={working} localError={localError}
     onPrecisionChange={precision => setDraft(value => ({ ...value, precision }))}
     onDurationChange={durationMinutes => setDraft(value => ({ ...value, durationMinutes }))}
     onShare={choices => run(() => props.onShare(choices))}

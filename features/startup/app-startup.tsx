@@ -7,27 +7,39 @@ import { useStartupAudio } from "./use-startup-audio";
 
 type StartupContextValue = {
   active: boolean;
-  report: (value: StartupPresentation, retry: () => void) => void;
+  report: (value: StartupPresentation, retry: () => void, sessionKey?: string | null) => void;
 };
 const StartupContext = createContext<StartupContextValue | null>(null);
 const INITIAL: StartupPresentation = { ready: false, progress: 0, message: "Находим дорогу домой", detail: null, retryAvailable: false };
 
-/** One overlay per document entry. The real screen mounts and loads underneath. */
+/** Account entry may finish before sign-in; a new home session prepares behind the same logo. */
 export function AppStartup({ children }: { children: ReactNode }) {
   const [state, setState] = useState(INITIAL);
   const [phase, setPhase] = useState<"entering" | "loading" | "leaving" | "done">("entering");
   const [logoReady, setLogoReady] = useState(false);
   const [entranceDone, setEntranceDone] = useState(false);
+  const [entry, setEntry] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [visible, setVisible] = useState(true);
   const content = useRef<HTMLDivElement>(null);
   const retry = useRef<() => void>(() => {});
+  const reportedSession = useRef<string | null>(null);
   const active = phase !== "done";
   const audio = useStartupAudio(logoReady, phase === "entering" || phase === "loading");
   const entranceStarted = logoReady && audio.revealReady;
   const ready = state.ready && audio.settled;
-  const report = useCallback((next: StartupPresentation, onRetry: () => void) => {
+  const report = useCallback((next: StartupPresentation, onRetry: () => void, sessionKey: string | null = null) => {
     retry.current = onRetry;
+    if (sessionKey !== reportedSession.current) {
+      reportedSession.current = sessionKey;
+      if (sessionKey && !next.ready) {
+        // The signed-out form can already have dismissed the first splash.
+        // Re-arm before the home frame is painted, including same-owner recovery.
+        setPhase("entering");
+        setEntranceDone(false);
+        setEntry(previous => previous + 1);
+      }
+    }
     setState(previous => Object.keys(next).every(key => previous[key as keyof StartupPresentation] === next[key as keyof StartupPresentation]) ? previous : next);
   }, []);
   const onLogoReady = useCallback(() => setLogoReady(true), []);
@@ -46,7 +58,7 @@ export function AppStartup({ children }: { children: ReactNode }) {
     if (!entranceStarted) return;
     const timer = setTimeout(() => setEntranceDone(true), reducedMotion ? 150 : SPLASH_ENTER_MS);
     return () => clearTimeout(timer);
-  }, [entranceStarted, reducedMotion]);
+  }, [entranceStarted, reducedMotion, entry]);
   useEffect(() => {
     if (!entranceDone || phase === "done") return;
     // Reconnection can be lost during the exit. Keep the gate until it is ready again.
