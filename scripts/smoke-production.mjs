@@ -408,4 +408,16 @@ await api("PUT", "/api/v1/recovery-code", { cookie: restored.cookie, body: { cod
 await api("DELETE", "/api/v1/people/" + circle, { cookie: restored.cookie, expected: 204 });
 await api("DELETE", "/api/v1/groups/" + group, { cookie: restored.cookie, expected: 204 });
 await api("POST", "/api/v1/account-recovery/attempts", { expected: 404 });
+// The relationship/recovery checks above intentionally archive every friend pair.
+// Leave a separate, real API-created fixture for the later deployment/reset
+// rehearsal to prove that active friendships and existing sessions survive.
+const resetKeeper = await profile("CI fresh-start keeper");
+const resetFriend = await profile("CI fresh-start friend");
+const resetRequest = await api("POST", "/api/v1/direct-requests", {
+  cookie: resetKeeper.cookie, body: { publicId: resetFriend.data.user.publicId }, expected: 201,
+});
+await api("POST", "/api/v1/direct-requests/" + resetRequest.data.request.requestId + "/accept", { cookie: resetFriend.cookie });
+await api("POST", "/api/v1/check-ins", { cookie: resetKeeper.cookie });
+assert.equal((await api("GET", "/api/v1/people", { cookie: resetKeeper.cookie })).data.people.length, 1);
+assert.equal((await api("GET", "/api/v1/people", { cookie: resetFriend.cookie })).data.people.length, 1);
 console.log("Production smoke passed: secure cookies, relations/groups, privacy/status/nicknames, forest memory/leases/replays, code recovery, revocation, retirement.");
