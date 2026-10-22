@@ -146,6 +146,7 @@ export function StartupSplash({ phase, progress, message, detail, retryAvailable
           </svg>
           Попробовать сейчас
         </button>}
+        {retryAvailable && <a className={styles.recover} href="/recover.html">Восстановить запуск</a>}
       </div>
     </div>
   </section>;

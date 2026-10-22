@@ -3,6 +3,8 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { ACTIVITY_HEARTBEAT_MS, ACTIVITY_IDLE_MS, type PresenceCommand, type PresenceView } from "./model";
 export type ActivityMode = "connecting" | "active" | "offline" | "away" | "hidden" | "error";
 export type ActivityView = { mode: ActivityMode; error: string | null; retryAt: number; online: boolean; resumeRequired?: boolean };
+/** An intentional, user-facing explanation from the gameplay reconciliation. */
+export class GameplayReconciliationError extends Error {}
 type Options = {
   send: (command: PresenceCommand, signal: AbortSignal) => Promise<PresenceView>;
   reconcile: () => Promise<boolean>;
@@ -69,7 +71,7 @@ export function createActivitySession(options: Options) {
       }
       options.connected(null);
       if (error instanceof ApiError && error.status === 401) options.sessionLost();
-      publish({ mode: online ? "error" : "offline", error: error instanceof ApiError ? error.message : "Не удалось сверить сохранённые действия. Повторите проверку.",
+      publish({ mode: online ? "error" : "offline", error: error instanceof ApiError || error instanceof GameplayReconciliationError ? error.message : "Не удалось сверить сохранённые действия. Повторите проверку.",
         retryAt: now() + (error instanceof ApiError && error.status === 429 ? Math.max(1000, error.retryAfterMs ?? 60_000) : 3000) });
     } finally { if (request === controller) request = null; }
   }

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#101e17">
+  <title>Восстановление загрузки — Я живой</title>
+  <style>
+    :root { color-scheme: dark; font: 17px/1.55 system-ui, sans-serif; background: #101e17; color: #f1f4e7; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: max(28px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom)); }
+    main { max-width: 620px; margin: 6vh auto; }
+    h1 { font-size: clamp(1.7rem, 6vw, 2.2rem); line-height: 1.2; }
+    p { margin: 1em 0; }
+    .hint { color: #bac9b8; }
+    .actions { display: grid; gap: 12px; margin: 28px 0 16px; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { min-height: 52px; padding: 13px 18px; border: 1px solid #64815c; border-radius: 14px; background: #c9df9e; color: #172310; font: inherit; font-weight: 650; cursor: pointer; }
+    button.secondary { background: transparent; color: #e1eccd; }
+    button:disabled { opacity: .6; cursor: wait; }
+    button:focus-visible, a:focus-visible, pre:focus-visible { outline: 3px solid #e7f6bd; outline-offset: 5px; }
+    a { color: #d2e6ae; text-underline-offset: 4px; }
+    #recovery-status { min-height: 3em; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font: .85rem/1.65 ui-monospace, monospace; padding: 16px; border: 1px solid #486044; border-radius: 12px; background: #0c1711; }
+    pre:empty { display: none; }
+    @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+  </style>
+  <script src="/recover.js" defer></script>
+</head>
+<body>
+  <main>
+    <p class="hint">Я живой</p>
+    <h1>Поможем игре загрузиться</h1>
+    <p>Если игра зависла после обновления, можно заново загрузить её файлы.</p>
+    <p><strong>Вход, аккаунт и друзья сохранятся.</strong> Игровые сохранения и настройки на устройстве эта страница не удаляет.</p>
+    <p class="hint">Откройте эту страницу в том браузере, где зависла игра. Во время обновления нужен интернет.</p>
+    <div class="actions">
+      <button id="recover-button" type="button">Обновить файлы и открыть игру</button>
+      <button id="diagnostics-button" class="secondary" type="button">Проверить соединение</button>
+    </div>
+    <p id="recovery-status" role="status" aria-live="polite">Выберите действие. Пока ничего не изменено.</p>
+    <pre id="diagnostics-output" tabindex="0" aria-label="Результат проверки" aria-live="polite"></pre>
+    <p class="hint">Результат проверки можно прислать разработчику. Личные данные здесь не показываются.</p>
+    <p><a href="/">Вернуться в игру</a></p>
+    <noscript><p>Для проверки и обновления файлов нужно разрешить JavaScript в браузере.</p></noscript>
+  </main>
+</body>
+</html>

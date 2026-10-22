@@ -2,3 +2,7 @@
   Cache-Control: no-store
 /app-status.json
   Cache-Control: no-store
+/recover.html
+  Cache-Control: no-store
+/recover.js
+  Cache-Control: no-store
