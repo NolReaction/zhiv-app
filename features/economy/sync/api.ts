@@ -1,6 +1,7 @@
 import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
+import { retryAfterMs } from "@/lib/request-deadline";
 import { economyResultSchema, economyViewSchema, marketCommandSchema, marketViewSchema, type EconomyCommand, type MarketCommand } from "@/features/economy/domain/model";
 import type { EconomyDevCommand } from "@/features/economy/dev/dev-model";
 
@@ -19,12 +20,13 @@ async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unkno
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const error = z.object({ code: z.string(), message: z.string() }).safeParse(body);
-      const retry = response.headers.get("Retry-After");
-      const retryMs = retry == null ? undefined : /^\d+(?:\.\d+)?$/.test(retry) ? Number(retry) * 1000 : Date.parse(retry) - Date.now();
-      reportInactivePresence(error.success ? error.data.code : undefined, presence);
-      throw new ApiError(error.success ? error.data.message : "Не удалось связаться с хозяйством", response.status,
-        error.success ? error.data : undefined, response.headers.get("X-Request-ID"),
-        retryMs != null && Number.isFinite(retryMs) ? Math.max(0, retryMs) : undefined);
+      // Framework/edge throttles can have an empty or plain-text body. The
+      // status still proves a server-requested wait, not a lost connection.
+      const failure = error.success ? error.data : response.status === 429
+        ? { code: "RATE_LIMITED", message: "Сервер попросил сделать паузу перед следующей попыткой." } : undefined;
+      reportInactivePresence(failure?.code, presence);
+      throw new ApiError(failure?.message ?? "Не удалось связаться с хозяйством", response.status,
+        failure, response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
     }
     const parsed = schema.safeParse(body);
     if (!parsed.success) throw new ApiError("Обновите приложение: хозяйство получило новую версию", 502);

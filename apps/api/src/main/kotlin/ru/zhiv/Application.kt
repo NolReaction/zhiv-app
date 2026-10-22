@@ -231,6 +231,7 @@ fun Application.installZhivApi(
     adminPromo: AdminPromoRepository? = null,
     playerMail: MailRepository? = null,
     earthLocations: EarthLocationRepository? = null,
+    rateLimitClock: () -> Long = System::currentTimeMillis,
 ) {
     val metrics = RuntimeMetrics.shared
     val traffic = RequestTraffic()
@@ -252,7 +253,7 @@ fun Application.installZhivApi(
     install(RateLimit) {
         // Bound authentication lookups before the narrower account-specific buckets.
         global {
-            rateLimiter(limit = 12_000, refillPeriod = 1.hours)
+            rateLimiter(limit = 12_000, refillPeriod = 1.hours, clock = rateLimitClock)
             requestKey { call -> clientIpKey(call) }
         }
         for ((name, limit) in listOf(
@@ -264,6 +265,9 @@ fun Application.installZhivApi(
             "game-read" to 1_200,
             "world-read" to 60,
             "world-write" to 120,
+            // Production starts, collection, sales and construction are frequent
+            // gameplay commands, not a shared hour-long account write allowance.
+            "economy-write" to 120,
             "forest-memory-read" to 30,
             "forest-memory-write" to 30,
             "game-session" to 120,
@@ -285,7 +289,11 @@ fun Application.installZhivApi(
             "account-recovery-read" to 600,
         )) {
             register(RateLimitName(name)) {
-                rateLimiter(limit = limit, refillPeriod = if (name in setOf("game-write", "world-read", "forest-memory-read", "forest-memory-write", "promo-write")) kotlin.time.Duration.parse("1m") else 1.hours)
+                rateLimiter(
+                    limit = limit,
+                    refillPeriod = if (name in setOf("game-write", "world-read", "economy-write", "forest-memory-read", "forest-memory-write", "promo-write")) kotlin.time.Duration.parse("1m") else 1.hours,
+                    clock = rateLimitClock,
+                )
                 requestKey { call ->
                     val userId = call.sessionCookie(config)?.let { raw ->
                         identities.findSessionUserId(tokenCodec.hash(raw))
@@ -297,15 +305,15 @@ fun Application.installZhivApi(
             }
         }
         register(RateLimitName("bootstrap")) {
-            rateLimiter(limit = 60, refillPeriod = 1.hours)
+            rateLimiter(limit = 60, refillPeriod = 1.hours, clock = rateLimitClock)
             requestKey { call -> clientIpKey(call) }
         }
         register(RateLimitName("auth-entry")) {
-            rateLimiter(limit = 60, refillPeriod = 1.hours)
+            rateLimiter(limit = 60, refillPeriod = 1.hours, clock = rateLimitClock)
             requestKey { call -> clientIpKey(call) }
         }
         register(RateLimitName("account-recovery-redeem")) {
-            rateLimiter(limit = 120, refillPeriod = 1.hours)
+            rateLimiter(limit = 120, refillPeriod = 1.hours, clock = rateLimitClock)
             requestKey { call -> clientIpKey(call) }
         }
     }

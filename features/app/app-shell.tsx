@@ -1654,6 +1654,7 @@ function CheckInContent() {
 
   const connectionStatus = !startupActive && !gameplay.showGate && activity.mode !== "hidden" ? <ConnectionStatus key={`connection:${me?.user.publicId}`} online={isOnline}
     reconnecting={activity.mode === "connecting"}
+    rateLimited={activity.active && !activity.error && !economy.storageError && economy.rateLimited}
     queuedCount={economy.pendingProductionCount} pending={economy.syncPending || world.uncertain}
     error={activity.error || economy.storageError || economy.syncError || economy.marketSyncError || economy.barterSyncError || world.syncError || (activity.mode === "error" ? "Не удалось восстановить соединение" : null) || (economy.uncertain || economy.retryAt > economy.now ? economy.error : null) || (world.uncertain ? world.error : null)}
     retrySeconds={Math.max(activity.retrySeconds, Math.ceil(Math.max(0, economy.retryAt - economy.now) / 1000))}
