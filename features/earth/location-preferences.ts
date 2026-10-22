@@ -26,7 +26,9 @@ export function createEarthLocationPreferenceStore(
   const key = earthLocationPreferenceKey(owner ?? "");
   const listeners = new Set<() => void>();
   let fallback: EarthLocationPreference | undefined;
-  let lastKnown = owner ? ACTIVE : OFF;
+  // An unreadable persisted OFF must not become an automatic native request.
+  // A successful missing-key read still selects the normal ACTIVE default.
+  let lastKnown = owner ? READY : OFF;
   let removeStorageListener: (() => void) | undefined;
   const read = (): EarthLocationPreference => {
     if (!owner) return OFF;
@@ -69,13 +71,17 @@ export function createEarthLocationPreferenceStore(
     setEnabled(enabled: boolean) {
       if (read().enabled === enabled) return;
       // Re-enabling makes the API available but cannot restart a prior watch.
-      // Only the next deliberate lookup enables passive granted-permission use.
+      // Only the next deliberate lookup enables future automatic private GPS.
       write(enabled ? READY : OFF);
     },
     allowAutomaticStart() {
       if (!read().enabled) return false;
       if (read() !== ACTIVE) write(ACTIVE);
       return true;
+    },
+    suppressAutomaticStart() {
+      const current = read();
+      if (current.enabled && current.automaticStartAllowed) write(READY);
     },
   };
 }

@@ -16,6 +16,32 @@ function device() {
   }), change(key, value) { values.set(key, value); listeners.get(key)?.(); }, listeners };
 }
 
+test("unreadable initial storage suppresses automatic GPS while keeping a manual lookup available", () => {
+  for (const getStorage of [() => undefined, () => ({ getItem() { throw new Error("blocked"); } })]) {
+    const store = createEarthLocationPreferenceStore("unreadable-owner", getStorage, () => () => {});
+    assert.deepEqual(store.getSnapshot(), { enabled: true, automaticStartAllowed: false });
+    assert.equal(store.allowAutomaticStart(), true);
+    assert.deepEqual(store.getSnapshot(), { enabled: true, automaticStartAllowed: true });
+  }
+});
+
+test("a real permission denial persists ready without disabling GPS or overriding OFF", () => {
+  const d = device(), store = d.create("denied-owner");
+  let changes = 0;
+  const unsubscribe = store.subscribe(() => changes++);
+  store.suppressAutomaticStart();
+  assert.deepEqual(d.create("denied-owner").getSnapshot(), { enabled: true, automaticStartAllowed: false });
+  assert.deepEqual([...d.values.values()], ["ready"]);
+  store.suppressAutomaticStart();
+  assert.equal(changes, 1, "duplicate denial does not rewrite the preference");
+  assert.equal(store.allowAutomaticStart(), true);
+  assert.equal(store.getSnapshot().automaticStartAllowed, true);
+  store.setEnabled(false); store.suppressAutomaticStart();
+  assert.deepEqual(store.getSnapshot(), { enabled: false, automaticStartAllowed: false });
+  assert.deepEqual([...d.values.values()], ["off"]);
+  unsubscribe();
+});
+
 test("a device stores only the owner's GPS preference and ON requires another deliberate lookup", () => {
   const d = device(), a = d.create("owner-a"), b = d.create("owner-b");
   assert.equal(a.getSnapshot().enabled, true);

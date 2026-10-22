@@ -4,27 +4,30 @@ import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore } from "rea
 import { createEarthLocationController } from "./location";
 import { getEarthLocationPreferenceStore } from "./location-preferences";
 
-export function useEarthLocation({ ownerPublicId, enabled, autoStartWhenGranted = false }: {
-  ownerPublicId: string; enabled: boolean; autoStartWhenGranted?: boolean | null;
+export function useEarthLocation({ ownerPublicId, enabled, autoStart = false }: {
+  ownerPublicId: string; enabled: boolean; autoStart?: boolean | null;
 }) {
   // A different owner gets a fresh, empty controller before rendering. Layout
   // cleanup retires the former owner's callbacks before the new screen is painted.
-  const controller = useMemo(() => createEarthLocationController(ownerPublicId), [ownerPublicId]);
   const preference = useMemo(() => getEarthLocationPreferenceStore(ownerPublicId), [ownerPublicId]);
+  const controller = useMemo(() => createEarthLocationController(ownerPublicId, undefined, preference.suppressAutomaticStart), [ownerPublicId, preference]);
   const choice = useSyncExternalStore(preference.subscribe, preference.getSnapshot, preference.getServerSnapshot);
   // Read the current preference before activation, including the hydration pass.
-  // This subscription also halts watches synchronously when another control in
-  // this tab switches OFF, before React has painted its next state.
+  // Apply every gate before activation, including Strict Mode effect replay.
+  // Preference notifications also halt OFF/denied watches before React rerenders.
   useLayoutEffect(() => {
-    const changed = () => controller.setAllowed(preference.getSnapshot().enabled);
+    const changed = () => {
+      const current = preference.getSnapshot();
+      // Close a hidden screen first, then set privacy before opening a screen.
+      if (!enabled) controller.setEnabled(false);
+      controller.setAllowed(current.enabled);
+      controller.setAutomaticStartPolicy(current.automaticStartAllowed ? autoStart : false);
+      if (enabled) controller.setEnabled(true);
+    };
     changed();
     return preference.subscribe(changed);
-  }, [controller, preference]);
+  }, [controller, preference, enabled, autoStart]);
   useLayoutEffect(() => controller.activate(), [controller]);
-  useLayoutEffect(() => { controller.setEnabled(enabled); }, [controller, enabled]);
-  useLayoutEffect(() => {
-    controller.setAutomaticStartPolicy(preference.getSnapshot().automaticStartAllowed ? autoStartWhenGranted : false);
-  }, [controller, preference, autoStartWhenGranted, choice.automaticStartAllowed]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getServerSnapshot);
   const start = useCallback(() => { if (preference.allowAutomaticStart()) controller.start(); }, [controller, preference]);
   const locate = useCallback(() => { if (preference.allowAutomaticStart()) controller.locate(); }, [controller, preference]);

@@ -33,6 +33,103 @@ const { useEarthLocation: renderLocationHook } = await vite.ssrLoadModule("/feat
 const { useEarthSharing: renderSharingHook } = await vite.ssrLoadModule("/features/earth/use-earth-sharing.ts");
 const { getEarthLocationPreferenceStore, earthLocationPreferenceKey } = await vite.ssrLoadModule("/features/earth/location-preferences.ts");
 
+function locationDevice(mode = "prompt") {
+  const descriptors = new Map(["window", "document", "navigator"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const values = new Map(), watches = [], cleared = [];
+  const window = new EventTarget(), document = new EventTarget(), permission = new EventTarget();
+  window.isSecureContext = true; document.visibilityState = "visible";
+  permission.state = mode === "denied" || mode === "granted" ? mode : "prompt";
+  window.localStorage = mode === "blocked" ? {
+    getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); },
+  } : { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const navigator = { geolocation: {
+    watchPosition(success, failure) { watches.push({ success, failure }); return watches.length - 1; },
+    clearWatch(id) { cleared.push(id); },
+  } };
+  if (mode !== "missing") navigator.permissions = { query: () => mode === "reject" ? Promise.reject(new Error("unsupported"))
+    : mode === "pending" ? new Promise(() => {}) : Promise.resolve(permission) };
+  for (const [name, value] of Object.entries({ window, document, navigator })) Object.defineProperty(globalThis, name, { value, configurable: true });
+  return { values, watches, cleared, permission, restore() {
+    for (const [name, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; }
+  } };
+}
+
+function mountLocation(props) {
+  const state = hooks.create();
+  return { destroy: () => hooks.destroy(state), render() {
+    let result, passes = 0;
+    do { hooks.begin(state); result = renderLocationHook(props); hooks.flush(state); assert.ok(++passes < 10, "location settles"); } while (state.dirty);
+    return result;
+  } };
+}
+
+const locationFix = (latitude = 55) => ({ coords: { latitude, longitude: 37, accuracy: 40 }, timestamp: 1_000 });
+const settle = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+
+test("cold map mounts and remounts show private GPS despite stale or unavailable Permissions", async () => {
+  for (const mode of ["prompt", "denied", "missing", "reject", "pending"]) {
+    const device = locationDevice(mode), props = { ownerPublicId: `cold-map-${mode}`, enabled: true, autoStart: true };
+    let mount = mountLocation(props);
+    try {
+      mount.render(); await settle();
+      assert.equal(device.watches.length, 1, `${mode}: native GPS starts without a Find me tap`);
+      device.watches[0].success(locationFix());
+      assert.equal(mount.render().position.latitude, 55);
+      mount.destroy(); mount = mountLocation(props); mount.render();
+      assert.equal(device.watches.length, 2, `${mode}: a cold controller restores automatic private GPS`);
+      assert.equal(mount.render().position, null, "coordinates do not survive the prior controller");
+      device.watches[0].success(locationFix(10));
+      assert.equal(mount.render().position, null, "the old owner session cannot populate the new controller");
+      device.watches[1].success(locationFix(56));
+      assert.equal(mount.render().position.latitude, 56);
+      assert.equal(device.values.size, 0, "automatic GPS does not persist coordinates or new flags");
+    } finally { mount.destroy(); device.restore(); }
+  }
+});
+
+test("native denial and live revocation persist READY synchronously and cold reload requires one manual retry", async () => {
+  for (const refusal of ["native", "revocation"]) {
+    const device = locationDevice("granted"), props = { ownerPublicId: `refused-map-${refusal}`, enabled: true, autoStart: true };
+    const key = earthLocationPreferenceKey(props.ownerPublicId);
+    let mount = mountLocation(props);
+    try {
+      mount.render(); await settle(); device.watches[0].success(locationFix());
+      if (refusal === "native") device.watches[0].failure({ code: 1 });
+      else { device.permission.state = "prompt"; device.permission.dispatchEvent(new Event("change")); }
+      assert.equal(device.values.get(key), "ready", "denial is saved before React renders or unmounts");
+      assert.deepEqual(device.cleared, [0]);
+      let location = mount.render();
+      assert.equal(location.status, "denied"); assert.equal(location.position, null);
+      assert.match(location.error, /Разреши геопозицию/, "synchronous preference subscribers preserve the denial error");
+      mount.destroy(); device.permission.state = "granted";
+      mount = mountLocation(props); location = mount.render(); await settle();
+      assert.equal(device.watches.length, 1, "a later lying granted query cannot override the stored refusal");
+      assert.equal(location.allowed, true); assert.equal(location.status, "idle");
+      location.locate();
+      assert.equal(device.watches.length, 2, "a deliberate retry starts exactly one native lookup");
+      device.watches[1].failure({ code: 1 });
+      assert.equal(device.values.get(key), "ready");
+      assert.equal(mount.render().status, "denied");
+      mount.destroy(); mount = mountLocation(props); mount.render();
+      device.watches[0].failure({ code: 1 }); device.watches[1].success(locationFix());
+      assert.equal(device.watches.length, 2); assert.equal(mount.render().position, null);
+      assert.deepEqual([...device.values.values()], ["ready"], "only the device preference is saved");
+    } finally { mount.destroy(); device.restore(); }
+  }
+});
+
+test("an unreadable GPS preference cannot automatically prompt but explicit Find me remains available", () => {
+  const device = locationDevice("blocked"), props = { ownerPublicId: "blocked-map-owner", enabled: true, autoStart: true };
+  const mount = mountLocation(props);
+  try {
+    const location = mount.render();
+    assert.equal(location.allowed, true); assert.equal(device.watches.length, 0);
+    location.locate(); assert.equal(device.watches.length, 1);
+    device.watches[0].success(locationFix());
+    assert.equal(mount.render().position.latitude, 55);
+  } finally { mount.destroy(); device.restore(); }
+});
+
 test("a persisted OFF fences hydration auto-start; shared controls stop GPS before React rerenders and ON stays idle", async () => {
   const descriptors = new Map(["window", "document", "navigator"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   const values = new Map([[earthLocationPreferenceKey("preference-view-owner"), "off"]]);
@@ -45,7 +142,7 @@ test("a persisted OFF fences hydration auto-start; shared controls stop GPS befo
     watchPosition(success, failure) { watches.push({ success, failure }); return watches.length - 1; }, clearWatch(id) { cleared.push(id); },
   } };
   for (const [name, value] of Object.entries({ window, document, navigator })) Object.defineProperty(globalThis, name, { value, configurable: true });
-  const state = hooks.create(), props = { ownerPublicId: "preference-view-owner", enabled: true, autoStartWhenGranted: true };
+  const state = hooks.create(), props = { ownerPublicId: "preference-view-owner", enabled: true, autoStart: true };
   function render() {
     let value, passes = 0;
     do { hooks.begin(state); value = renderLocationHook(props); hooks.flush(state); assert.ok(++passes < 10, "hook settles"); } while (state.dirty);

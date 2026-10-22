@@ -340,11 +340,27 @@ test("an explicit request on an inactive screen waits for visibility and an empt
 
 const settlePermission = async () => { for (let index = 0; index < 6; index++) await Promise.resolve(); };
 
-test("an initial private lookup starts only with known granted permission and never retries after a manual stop", async () => {
+test("cold map entry starts native GPS without waiting for Permissions on iOS", async () => {
+  for (const value of ["prompt", "denied", "missing", "reject", "pending"]) {
+    const s = session(value === "missing" ? { queryPermission: undefined }
+      : value === "reject" ? { queryPermission: () => Promise.reject(new Error("unsupported")) }
+      : value === "pending" ? { queryPermission: () => new Promise(() => {}) } : {});
+    if (value === "prompt" || value === "denied") s.permission.state = value;
+    s.controller.setAutomaticStartPolicy(true);
+    assert.equal(s.watches.length, 1, `${value}: no Find me tap is required`);
+    await settlePermission();
+    s.watches[0].success(fix());
+    assert.equal(s.controller.getSnapshot().status, "active");
+    assert.equal(s.controller.getSnapshot().position.latitude, 55.75);
+    s.deactivate();
+  }
+});
+
+test("an initial private lookup waits for privacy metadata and never retries after a manual stop", async () => {
   const s = session();
   s.permission.state = "granted";
   s.controller.setAutomaticStartPolicy(null); await settlePermission();
-  assert.equal(s.watches.length, 0, "wait for sharing metadata before probing");
+  assert.equal(s.watches.length, 0, "wait for sharing metadata before native GPS");
   s.controller.setAutomaticStartPolicy(true); await settlePermission();
   assert.equal(s.watches.length, 1); assert.equal(s.controller.getSnapshot().status, "requesting");
   s.watches[0].success(fix()); assert.equal(s.controller.getSnapshot().status, "active");
@@ -354,53 +370,77 @@ test("an initial private lookup starts only with known granted permission and ne
   s.deactivate();
 });
 
-test("prompt, denied and unavailable permission APIs never request automatic GPS or a browser prompt", async () => {
-  for (const value of ["prompt", "denied", "missing", "reject"]) {
-    const s = session(value === "missing" ? { queryPermission: undefined }
-      : value === "reject" ? { queryPermission: () => Promise.reject(new Error("unsupported")) } : {});
-    if (value === "prompt" || value === "denied") s.permission.state = value;
-    s.controller.setAutomaticStartPolicy(true); await settlePermission();
-    assert.equal(s.watches.length, 0); assert.equal(s.controller.getSnapshot().status, "idle");
-    assert.equal(s.permissionListeners.size, value === "prompt" || value === "denied" ? 1 : 0,
-      "a passive permission listener can wait for the cold browser to finish restoring its grant");
-    s.controller.start(); assert.equal(s.watches.length, 1, "the explicit private action remains usable");
-    s.deactivate();
-  }
-});
-
-test("a cold permission snapshot becoming granted restores the private marker without a Find me tap", async () => {
+test("an initial stale permission becoming granted does not duplicate the automatic native watch", async () => {
   for (const initial of ["prompt", "denied"]) {
     const s = session(); s.permission.state = initial;
     s.controller.setAutomaticStartPolicy(true); await settlePermission();
-    assert.equal(s.watches.length, 0, "unknown permission cannot trigger a native prompt");
+    assert.equal(s.watches.length, 1);
     assert.equal(s.controller.getSnapshot().error, null);
     s.setPermission("granted"); await settlePermission();
     assert.equal(s.watches.length, 1);
     s.watches[0].success(fix());
     assert.equal(s.controller.getSnapshot().status, "active");
     assert.equal(s.controller.getSnapshot().position.longitude, 37.61);
-    assert.equal(s.permissionListeners.size, 1, "the passive listener is replaced by the live revocation observer");
+    assert.equal(s.permissionListeners.size, 1, "the live observer remains available for later revocation");
     s.deactivate(); assert.equal(s.permissionListeners.size, 0);
   }
 });
 
-test("a cold passive permission listener is retired by privacy and foreground boundaries", async () => {
-  for (const interrupt of [s => s.controller.stop(), s => s.controller.freeze(), s => s.setVisible(false),
-    s => s.controller.setEnabled(false), s => s.controller.setAllowed(false),
+test("stop, freeze, OFF, ghost and teardown retire an automatic lookup and its queued callbacks", async () => {
+  for (const interrupt of [s => s.controller.stop(), s => s.controller.freeze(), s => s.controller.setAllowed(false),
     s => s.controller.setAutomaticStartPolicy(false), s => s.deactivate()]) {
     const s = session();
     s.controller.setAutomaticStartPolicy(true); await settlePermission();
-    assert.equal(s.permissionListeners.size, 1);
+    assert.equal(s.watches.length, 1);
     const queuedChange = [...s.permissionListeners][0];
     interrupt(s);
     assert.equal(s.permissionListeners.size, 0);
     s.permission.state = "granted"; queuedChange();
-    s.setPermission("granted"); s.setVisible(true);
-    s.controller.setEnabled(true); await settlePermission();
-    assert.equal(s.watches.length, 0, "a retired grant observer cannot revive a stopped lookup");
+    s.watches[0].success(fix()); s.watches[0].failure({ code: 1 });
+    s.setVisible(false); s.setVisible(true);
+    s.controller.setEnabled(false); s.controller.setEnabled(true); await settlePermission();
+    assert.equal(s.watches.length, 1, "retired callbacks cannot revive a stopped lookup");
     assert.equal(s.controller.getSnapshot().position, null);
     s.deactivate();
   }
+});
+
+test("hidden and inactive maps defer automatic GPS and pause a previously started watch", () => {
+  for (const boundary of ["visible", "enabled"]) {
+    const s = session();
+    if (boundary === "visible") s.setVisible(false); else s.controller.setEnabled(false);
+    s.controller.setAutomaticStartPolicy(true);
+    assert.equal(s.watches.length, 0);
+    if (boundary === "visible") s.setVisible(true); else s.controller.setEnabled(true);
+    assert.equal(s.watches.length, 1);
+    s.watches[0].success(fix());
+    if (boundary === "visible") s.setVisible(false); else s.controller.setEnabled(false);
+    assert.deepEqual(s.cleared, [0]);
+    s.watches[0].failure({ code: 1 });
+    assert.equal(s.controller.getSnapshot().status, "paused");
+    if (boundary === "visible") s.setVisible(true); else s.controller.setEnabled(true);
+    assert.equal(s.watches.length, 2, "an existing foreground session may resume");
+    s.deactivate();
+  }
+});
+
+test("a later ghost policy freezes automatic coordinates but never cancels an explicit private lookup", () => {
+  const s = session();
+  s.controller.setAutomaticStartPolicy(true); s.watches[0].success(fix());
+  const position = s.controller.getSnapshot().position;
+  s.controller.setAutomaticStartPolicy(false);
+  assert.deepEqual(s.cleared, [0]);
+  assert.equal(s.controller.getSnapshot().status, "paused");
+  assert.equal(s.controller.getSnapshot().position, position);
+  s.watches[0].success(fix({ latitude: 10, timestamp: 2_000 }));
+  assert.equal(s.controller.getSnapshot().position, position);
+  s.controller.locate();
+  s.controller.setAutomaticStartPolicy(false);
+  assert.equal(s.watches.length, 2);
+  assert.deepEqual(s.cleared, [0]);
+  s.watches[1].success(fix({ latitude: 56, timestamp: 3_000 }));
+  assert.equal(s.controller.getSnapshot().position.latitude, 56);
+  s.deactivate();
 });
 
 test("ghost suppresses automatic GPS for this visit but still allows an explicit private lookup", async () => {
@@ -413,28 +453,50 @@ test("ghost suppresses automatic GPS for this visit but still allows an explicit
   s.deactivate();
 });
 
-test("delayed granted probes cannot start after stop, hidden/disabled transition, owner teardown or ghost", async () => {
+test("a privacy policy applied before activation fences replay and later automatic enabling", () => {
+  const platform = browser();
+  const controller = createEarthLocationController("initial-ghost", () => platform.environment);
+  controller.setEnabled(true); controller.setAutomaticStartPolicy(false);
+  const cleanup = controller.activate();
+  controller.setAutomaticStartPolicy(true);
+  assert.equal(platform.watches.length, 0);
+  cleanup();
+  controller.setAutomaticStartPolicy(false);
+  const cleanupAgain = controller.activate();
+  controller.setAutomaticStartPolicy(true);
+  assert.equal(platform.watches.length, 0, "effect replay cannot discard the pre-activation suppression");
+  controller.locate();
+  assert.equal(platform.watches.length, 1);
+  cleanupAgain();
+});
+
+test("late permission queries cannot revive an automatic lookup after lifecycle boundaries", async () => {
   for (const interrupt of [s => s.controller.stop(), s => s.setVisible(false), s => s.controller.setEnabled(false),
     s => s.controller.setAutomaticStartPolicy(false), s => s.deactivate()]) {
     let resolve; const permission = new Promise(accept => { resolve = accept; });
     const s = session({ queryPermission: () => permission });
     s.permission.state = "granted"; s.controller.setAutomaticStartPolicy(true); interrupt(s);
     resolve(s.permission); await settlePermission();
-    assert.equal(s.watches.length, 0); assert.equal(s.permissionListeners.size, 0);
-    s.deactivate();
+    assert.equal(s.watches.length, 1, "permission probes never start native GPS");
+    s.watches[0].success(fix()); s.watches[0].failure({ code: 1 });
+    assert.equal(s.controller.getSnapshot().position, null);
+    assert.notEqual(s.controller.getSnapshot().status, "denied");
+    s.deactivate(); assert.equal(s.permissionListeners.size, 0);
   }
 });
 
-test("strict effect replay fences the first granted probe and starts just one watch from the live activation", async () => {
+test("strict effect replay retires the old native watch and observes only the live activation", async () => {
   const probes = [];
   const s = session({ queryPermission: () => new Promise(resolve => probes.push(resolve)) });
   s.permission.state = "granted"; s.controller.setAutomaticStartPolicy(true);
-  assert.equal(probes.length, 1); s.deactivate();
+  assert.equal(probes.length, 1); assert.equal(s.watches.length, 1); s.deactivate();
   const cleanup = s.controller.activate(); s.controller.setEnabled(true); s.controller.setAutomaticStartPolicy(true);
-  assert.equal(probes.length, 2);
-  probes[0](s.permission); await settlePermission(); assert.equal(s.watches.length, 0);
-  probes[1](s.permission); await settlePermission(); assert.equal(s.watches.length, 1);
-  if (probes[2]) probes[2](s.permission); await settlePermission();
+  assert.equal(probes.length, 2); assert.equal(s.watches.length, 2);
+  assert.deepEqual(s.cleared, [0], "only the new activation owns a live watch");
+  probes[0](s.permission); await settlePermission(); assert.equal(s.permissionListeners.size, 0);
+  s.watches[0].success(fix()); assert.equal(s.controller.getSnapshot().position, null);
+  probes[1](s.permission); await settlePermission(); assert.equal(s.permissionListeners.size, 1);
+  s.watches[1].success(fix()); assert.equal(s.controller.getSnapshot().status, "active");
   cleanup(); assert.equal(s.visibilityListeners.size, 0); assert.equal(s.permissionListeners.size, 0);
 });
 
@@ -601,7 +663,7 @@ test("device-wide OFF clears coordinates, retires late callbacks and blocks expl
   s.deactivate();
 });
 
-test("OFF fences a delayed granted-permission probe and an unmounted disabled controller never starts", async () => {
+test("OFF fences a delayed permission observer and an unmounted disabled controller never starts", async () => {
   const probes = [];
   const s = session({ queryPermission: () => new Promise(resolve => probes.push(resolve)) });
   s.permission.state = "granted";
@@ -609,13 +671,13 @@ test("OFF fences a delayed granted-permission probe and an unmounted disabled co
   assert.equal(probes.length, 1);
   s.controller.setAllowed(false);
   probes[0](s.permission); await settlePermission();
-  assert.equal(s.watches.length, 0);
+  assert.equal(s.watches.length, 1);
   s.deactivate();
   const cleanup = s.controller.activate();
   s.controller.setEnabled(true); s.controller.setAutomaticStartPolicy(true);
   s.controller.start(); s.controller.locate();
   await settlePermission();
-  assert.equal(s.watches.length, 0);
+  assert.equal(s.watches.length, 1);
   assert.equal(probes.length, 1);
   cleanup();
 });

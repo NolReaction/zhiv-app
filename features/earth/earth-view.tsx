@@ -97,7 +97,7 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
   const editingModel = process.env.NODE_ENV === "development" && modelEditorOpen;
   const locationEnabled = active && visible && !editingModel;
   const autoLocate = sharing.pendingGhost ? false : sharing.settings ? sharing.settings.mode !== "GHOST" : null;
-  const location = useEarthLocation({ ownerPublicId, enabled: locationEnabled, autoStartWhenGranted: autoLocate });
+  const location = useEarthLocation({ ownerPublicId, enabled: locationEnabled, autoStart: autoLocate });
   const [focusRequest, setFocusRequest] = useState(0);
   const [focusAfter, setFocusAfter] = useState<number | null>(null);
   const [meetCircleId, setMeetCircleId] = useState<string | null>(null);
