@@ -64,6 +64,7 @@ const nodes = tree => {
   visit(tree); return result;
 };
 const text = node => typeof node === "string" ? node : Array.isArray(node) ? node.map(text).join("") : isValidElement(node) ? text(node.props.children) : "";
+let nextOwner = 0;
 function setup({ rememberedOpen = false, environment = "development", online = true, permissionState = "prompt" } = {}) {
   resetWalking();
   const originalEnv = process.env.NODE_ENV;
@@ -72,6 +73,10 @@ function setup({ rememberedOpen = false, environment = "development", online = t
   const window = new EventTarget(), document = new EventTarget(), permission = new EventTarget();
   window.isSecureContext = true;
   window.sessionStorage = { getItem: () => rememberedOpen ? "1" : "0" };
+  // Each view starts with a readable default-ON preference, independently of
+  // earlier tests and their in-memory fallback after a manual lookup.
+  const values = new Map();
+  window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
   document.visibilityState = "visible"; document.hidden = false; permission.state = permissionState;
   const watches = [], cleared = [], publications = [], actions = [];
   const navigator = { permissions: { query: async () => permission }, geolocation: {
@@ -83,7 +88,7 @@ function setup({ rememberedOpen = false, environment = "development", online = t
     lastPublishedAt: "2026-10-19T00:00:00Z", people: [{ circleId: "friend-one", user: { displayName: "Лена" } }],
     setPosition: value => publications.push(value), stopPublishing: () => actions.push("stopPublishing"),
     ghost: () => actions.push("ghost"), off: () => actions.push("off"), refresh() {}, share: async () => true };
-  const props = { ownerPublicId: "owner-test", active: true, visible: true, sharing, isOnline: online,
+  const props = { ownerPublicId: `owner-test-${++nextOwner}`, active: true, visible: true, sharing, isOnline: online,
     people: null, peopleLoading: false, peopleError: null, onRefreshPeople() {}, onOpenPeople() {}, onOpenWorld() {} };
   let state = hooks.create(), owner = props.ownerPublicId;
   function render() {
@@ -168,7 +173,10 @@ test("remembered development editor state is private before lazy mounting and pr
       assert.equal(view.map.showLocationControl, environment === "production");
       if (environment === "development") assert.doesNotMatch(view.text, /На карте|Нет сети/);
       else { assert.match(view.text, /На карте/); assert.match(view.text, /Нет сети/); }
-      assert.equal(app.watches.length, 0);
+      assert.equal(app.watches.length, environment === "production" ? 1 : 0,
+        "the remembered DEV editor blocks GPS; production opens the normal map and its private lookup");
+      assert.equal(view.map.position, null);
+      assert.ok(app.publications.every(position => position === null), "map entry alone has no fresh coordinate to publish");
     } finally { app.destroy(); }
   }
 });
@@ -221,14 +229,23 @@ test("People privacy requests open and acknowledge once, while acknowledgement r
   app.props.privacyRequest = 1; app.props.onPrivacyRequestHandled = value => acknowledged.push(value);
   try {
     let view = app.render(); assert.ok(sharingPanel(view)); assert.deepEqual(acknowledged, [1]);
+    const entryWatches = app.watches.length;
+    assert.equal(entryWatches, 1, "visible map entry starts its private lookup");
     app.props.privacyRequest = null; view = app.render(); assert.ok(sharingPanel(view), "parent ACK removal does not close the panel");
     view = app.render(); assert.deepEqual(acknowledged, [1]);
     privacyClose(view).props.onClick(); view = app.render(); assert.equal(sharingPanel(view), undefined);
-    app.props.visible = false; app.render(); app.props.visible = true; view = app.render();
+    assert.equal(app.watches.length, entryWatches, "opening, acknowledging and closing settings do not add a GPS lookup");
+    app.props.visible = false; app.render();
+    assert.equal(app.watches.length, entryWatches, "a hidden map cannot start GPS");
+    assert.deepEqual(app.cleared, [0]);
+    app.props.visible = true; view = app.render();
+    const returnedWatches = app.watches.length;
+    assert.equal(returnedWatches, entryWatches + 1, "returning resumes only the earlier private request");
     assert.equal(sharingPanel(view), undefined, "an ordinary map return does not replay the consumed request");
     app.props.privacyRequest = 2; view = app.render(); assert.ok(sharingPanel(view)); assert.deepEqual(acknowledged, [1, 2]);
     app.props.privacyRequest = null; view = app.render(); assert.ok(sharingPanel(view));
-    assert.equal(app.watches.length, 0, "opening settings cannot request GPS");
+    assert.equal(app.watches.length, returnedWatches, "another settings request does not add a GPS lookup");
+    assert.ok(app.publications.every(position => position === null), "read-only settings never publish a coordinate");
   } finally { app.destroy(); }
 });
 
@@ -250,33 +267,65 @@ test("a People privacy request waits for an open DEV3D editor to close before sh
   app.props.onPrivacyRequestHandled = value => acknowledged.push(value);
   try {
     let view = app.render(); assert.equal(view.map.showLocationControl, false);
+    assert.equal(app.watches.length, 0, "the remembered editor blocks GPS before its lazy mount");
     app.props.privacyRequest = 4; view = app.render();
     assert.equal(view.map.showLocationControl, false, "a privacy shortcut never closes an unsaved editor");
     assert.equal(sharingPanel(view), undefined); assert.deepEqual(acknowledged, []);
+    assert.equal(app.watches.length, 0, "a privacy request cannot bypass the open editor's GPS gate");
     view.map.onModelEditorOpenChange(false); view = app.render();
     assert.ok(sharingPanel(view)); assert.deepEqual(acknowledged, [4]);
+    assert.equal(app.watches.length, 1, "closing the editor reveals the map and starts its initial private lookup");
     app.props.privacyRequest = null; view = app.render(); assert.ok(sharingPanel(view));
-    assert.equal(app.watches.length, 0);
+    assert.equal(app.watches.length, 1, "acknowledging settings never starts an additional lookup");
+    assert.ok(app.publications.every(position => position === null));
   } finally { app.destroy(); }
 });
 
 
-test("a single friend marker opens the meeting card, while a grouped marker opens the compact roster without GPS acquisition", () => {
+test("a single friend marker opens the meeting card, while a grouped marker opens the compact roster without another GPS acquisition", () => {
   const app = setup();
   try {
     let view = app.render();
+    const entryWatches = app.watches.length;
+    assert.equal(entryWatches, 1, "visible map entry starts its private lookup");
     view.map.onSelectFriends(["friend-one", "friend-two"]); view = app.render();
     assert.ok(view.all.some(node => node.type === EarthFriends));
     assert.equal(view.all.some(node => node.type === EarthMeetCard), false);
-    assert.equal(app.watches.length, 0, "opening a group does not ask for own location");
+    assert.equal(app.watches.length, entryWatches, "opening a group does not add an own-location lookup");
     view.map.onSelectFriends(["friend-one"]); view = app.render();
     assert.equal(view.all.some(node => node.type === EarthFriends), false);
     const meeting = view.all.find(node => node.type === EarthMeetCard);
     assert.ok(meeting); assert.equal(meeting.props.person.circleId, "friend-one");
     assert.equal(view.map.meetCircleId, "friend-one");
-    assert.equal(app.watches.length, 1, "the explicit friend-marker action starts the private meeting lookup");
+    assert.equal(app.watches.length, entryWatches, "the friend-marker action reuses the pending private lookup");
+    assert.ok(app.publications.every(position => position === null));
     assert.doesNotMatch(view.text, /Игровой профиль|В гости|Подойти к другу/);
   } finally { app.destroy(); }
+});
+
+test("selecting a group member starts one explicit private lookup when GHOST or READY suppresses map auto-start", () => {
+  for (const mode of ["ghost", "ready"]) {
+    const app = setup();
+    if (mode === "ghost") app.props.sharing = { ...app.props.sharing, settings: { ...app.props.sharing.settings, mode: "GHOST" }, publishing: false };
+    else {
+      const preference = getEarthLocationPreferenceStore(app.props.ownerPublicId);
+      preference.setEnabled(false); preference.setEnabled(true);
+    }
+    try {
+      let view = app.render();
+      assert.equal(app.watches.length, 0, `${mode}: map auto-start remains suppressed`);
+      view.map.onSelectFriends(["friend-one", "friend-two"]); view = app.render();
+      assert.ok(view.all.some(node => node.type === EarthFriends));
+      assert.equal(app.watches.length, 0, "opening the roster does not request private GPS");
+      view.map.onSelectFriends(["friend-one"]); view = app.render();
+      assert.equal(view.all.find(node => node.type === EarthMeetCard).props.person.circleId, "friend-one");
+      assert.equal(app.watches.length, 1, "the deliberate meeting selection starts the missing private lookup");
+      view.map.onSelectFriends(["friend-one"]); app.render();
+      assert.equal(app.watches.length, 1, "the pending explicit lookup is reused");
+      assert.deepEqual(app.actions, [], "private lookup does not change sharing consent");
+      assert.ok(app.publications.every(position => position === null));
+    } finally { app.destroy(); }
+  }
 });
 
 
@@ -291,16 +340,19 @@ test("selecting a member of a co-located map group opens that meeting without wa
     { ...point, circleId: "friend-two", user: { publicId: "TWO", displayName: "Дима" } },
   ];
   try {
-    let view = app.render(); view.map.onSelectFriends(["friend-one", "friend-two"], groupTrigger); view = app.render();
+    let view = app.render();
+    const entryWatches = app.watches.length;
+    assert.equal(entryWatches, 1, "visible map entry starts its private lookup");
+    view.map.onSelectFriends(["friend-one", "friend-two"], groupTrigger); view = app.render();
     const roster = view.all.find(node => node.type === EarthFriends);
-    assert.ok(roster); assert.equal(app.watches.length, 0);
+    assert.ok(roster); assert.equal(app.watches.length, entryWatches, "the roster does not add a lookup");
     const member = nodes(EarthFriends(roster.props)).find(node => node.type === "button" && node.props["aria-label"] === "Открыть встречу: Дима");
     assert.ok(member); member.props.onClick(); view = app.render();
     assert.equal(view.all.find(node => node.type === EarthMeetCard).props.person.circleId, "friend-two");
     assert.equal(view.map.meetCircleId, "friend-two");
     assert.equal(view.map.friendFocusRequest.circleId, "friend-two", "the selected friend is framed above the meeting independently of own GPS");
     assert.equal(view.map.meetFocusRequest, 0, "a marker tap does not start framing both locations");
-    assert.equal(app.watches.length, 1, "own lookup starts only after selecting the member");
+    assert.equal(app.watches.length, entryWatches, "selecting a member reuses the map's pending private lookup");
     view.all.find(node => node.type === EarthMeetCard).props.onClose(); view = app.render();
     assert.equal(originFocus, 1, "a grouped meeting returns focus to its map marker");
     view.all.find(node => node.type === "button" && node.props["aria-label"] === "Участники на карте: 2").props.onClick(); view = app.render();
@@ -309,7 +361,8 @@ test("selecting a member of a co-located map group opens that meeting without wa
     assert.ok(focus, "the compact map picker opens a meeting directly"); focus.props.onClick(); view = app.render();
     assert.equal(view.map.friendFocusRequest.circleId, "friend-one");
     assert.equal(view.all.find(node => node.type === EarthMeetCard).props.person.circleId, "friend-one");
-    assert.equal(app.watches.length, 1);
+    assert.equal(app.watches.length, entryWatches, "switching meetings never duplicates the pending lookup");
+    assert.ok(app.publications.every(position => position === null));
     view.all.find(node => node.type === EarthMeetCard).props.onClose();
     assert.equal(originFocus, 1, "a new meeting from the general picker never focuses the previous marker");
   } finally { app.destroy(); }
@@ -393,14 +446,18 @@ test("catalogue reopen preserves the selected place and invalidates covered or s
 test("Explorer Escape closes the place, clears camera intent and returns keyboard focus to the book", () => {
   const app = setup();
   try {
-    let view = app.render(); book(view).props.onClick(); view = app.render();
+    let view = app.render();
+    const entryWatches = app.watches.length;
+    assert.equal(entryWatches, 1, "visible map entry starts its private lookup");
+    book(view).props.onClick(); view = app.render();
     atlasPanel(view).props.onFocus(earthAtlasEntry("landmark:eiffel-tower")); view = app.render();
     let focused = 0, stopped = 0; book(view).props.ref.current = { focus() { focused++; } };
     view.tree.props.onKeyDown({ key: "Escape", stopPropagation() { stopped++; } }); view = app.render();
     assert.equal(explorerCard(view), undefined); assert.equal(view.map.cameraFocusRequest, null);
     assert.equal(focused, 1); assert.equal(stopped, 1);
     book(view).props.onClick(); view = app.render(); assert.equal(atlasPanel(view).props.journeyState, undefined);
-    assert.equal(app.watches.length, 0, "browsing places never starts GPS");
+    assert.equal(app.watches.length, entryWatches, "browsing places never adds a GPS lookup");
+    assert.ok(app.publications.every(position => position === null));
   } finally { app.destroy(); }
 });
 
