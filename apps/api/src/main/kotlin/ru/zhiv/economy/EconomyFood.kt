@@ -115,6 +115,23 @@ object EconomyFood {
         return EconomyJobMeal(spec.itemId, consumer, if (consumer == "hero") spec.heroSpeedBps else spec.builderSpeedBps)
     }
 
+    /** Pending portions still belong to the player; job meals have been consumed. */
+    fun pendingPortions(state: EconomyState): Int = listOfNotNull(state.food.heroMeal, state.food.builderMeal).size
+
+    fun cancelMeal(state: EconomyState, consumer: String, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
+        if (consumer !in setOf("hero", "builder")) invalidEconomy()
+        val itemId = (if (consumer == "hero") state.food.heroMeal else state.food.builderMeal)
+            ?: economyFailure("ECONOMY_MEAL_UNAVAILABLE", "Нет блюда для возврата: оно уже использовано или не выбрано")
+        if (EconomyRules.catalog.food?.meals?.none { it.itemId == itemId } != false)
+            economyFailure("ECONOMY_FOOD", "Не удалось определить сохранённое блюдо")
+        val inventory = EconomyRules.addItems(state.inventory, mapOf(itemId to 1L))
+        EconomyRules.addItems(inventory, reservedItems)
+        val next = state.copy(inventory = inventory,
+            food = if (consumer == "hero") state.food.copy(heroMeal = null) else state.food.copy(builderMeal = null))
+        EconomyRules.assertStorageTransition(state, next, reservedItems)
+        return next to "Неиспользованное блюдо возвращено в кладовую"
+    }
+
     fun eat(state: EconomyState, itemId: String, builder: Boolean, now: Instant): Pair<EconomyState, String> {
         val spec = EconomyRules.catalog.food?.meals?.find { it.itemId == itemId }
             ?: economyFailure("ECONOMY_FOOD", "Выберите готовое блюдо")

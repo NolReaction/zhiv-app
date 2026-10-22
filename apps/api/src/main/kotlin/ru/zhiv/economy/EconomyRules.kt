@@ -18,6 +18,8 @@ fun validateEconomyCommand(command: EconomyCommand) {
     if (parseCanonicalUuidV4(command.requestId) == null || parsePublicId(command.ownerPublicId) != command.ownerPublicId ||
         command.expectedRevision !in 0L until ECONOMY_MAX_REVISION || command.targetId.length !in 1..80 ||
         command.action.length !in 1..40 || command.quantity !in 1L..10_000L || command.totalPrice !in 0L..ECONOMY_MAX_BALANCE) invalidEconomy()
+    if (command.action == "cancel_meal" && (command.targetId !in setOf("hero", "builder") ||
+        command.quantity != 1L || command.totalPrice != 0L || command.fishSelection != null)) invalidEconomy()
     command.fishSelection?.let { selection ->
         if (command.action !in setOf("start_production", "complete_resident_order", "sell", "sell_fish", "create_listing") || selection.size > 100 ||
             selection.keys.any { it.length !in 1..80 }) invalidEconomy()
@@ -152,14 +154,15 @@ object EconomyRules {
         return EconomyStorage(capacity, used, reserved, maxOf(0L, capacity - total), maxOf(0L, total - capacity))
     }
 
-    /** Imported overfull stocks are preserved. Spending or returning an existing escrow is always possible. */
+    /** Pending portions and escrow are already owned: returning them cannot grow the player's stock. */
     fun assertStorageTransition(
         before: EconomyState, next: EconomyState,
         reservedBefore: Map<String, Long> = emptyMap(), reservedAfter: Map<String, Long> = reservedBefore,
     ) {
         val previous = storage(before, reservedBefore)
         val result = storage(next, reservedAfter)
-        if (result.overflow > 0 && result.used + result.reserved > previous.used + previous.reserved)
+        if (result.overflow > 0 && result.used + result.reserved + EconomyFood.pendingPortions(next) >
+            previous.used + previous.reserved + EconomyFood.pendingPortions(before))
             economyFailure("ECONOMY_STORAGE_FULL", "На складе недостаточно места. Продайте припасы или расширьте склад; готовая работа дождётся вас.")
     }
 
@@ -395,6 +398,7 @@ object EconomyRules {
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)
             "eat_food", "feed_builder" -> EconomyFood.eat(state, command.targetId, command.action == "feed_builder", now)
+            "cancel_meal" -> EconomyFood.cancelMeal(state, command.targetId, reservedItems)
             "complete_resident_order", "replace_resident_order" -> when {
                 EconomyTutorialOrders.isTutorialId(command.targetId) -> EconomyTutorialOrders.complete(state, command)
                 EconomyStageOrders.isStageId(command.targetId) -> EconomyStageOrders.complete(state, command, now, reservedItems)

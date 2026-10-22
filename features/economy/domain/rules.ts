@@ -59,14 +59,15 @@ export function economyStorage(state: Pick<EconomyState, "buildings" | "inventor
   const reserved = Object.values(reservedItems).reduce((total, quantity) => total + quantity, 0);
   return { capacity, used, reserved, available: Math.max(0, capacity - used - reserved), overflow: Math.max(0, used + reserved - capacity) };
 }
-/** Escrow occupies storage too. Existing over-capacity inventories can shrink or move, never grow. */
-export function assertEconomyStorageTransition(previous: Pick<EconomyState, "buildings" | "inventory">, next: Pick<EconomyState, "buildings" | "inventory">,
+/** Escrow and pending meals are already owned. Returning them can preserve overflow, never grow stock. */
+export function assertEconomyStorageTransition(previous: Pick<EconomyState, "buildings" | "inventory" | "food">, next: Pick<EconomyState, "buildings" | "inventory" | "food">,
   previousReserved: Record<string, number> = {}, nextReserved: Record<string, number> = previousReserved) {
   const totals = normalizedInventory(next.inventory);
   for (const [item, quantity] of Object.entries(normalizedInventory(nextReserved))) totals[item] = (totals[item] ?? 0) + quantity;
   if (Object.values(totals).some(quantity => quantity > ECONOMY_MAX_ITEMS)) fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
   const before = economyStorage(previous, previousReserved), after = economyStorage(next, nextReserved);
-  if (after.used + after.reserved > after.capacity && after.used + after.reserved > before.used + before.reserved)
+  const pending = (state: Pick<EconomyState, "food">) => Number(Boolean(state.food?.heroMeal)) + Number(Boolean(state.food?.builderMeal));
+  if (after.used + after.reserved > after.capacity && after.used + after.reserved + pending(next) > before.used + before.reserved + pending(previous))
     fail("ECONOMY_STORAGE_FULL", "Склад заполнен. Продайте лишнее, используйте материалы или расширьте склад");
 }
 export function marketUnlocked(state: Pick<EconomyState, "buildings" | "completedExplorations">) {
@@ -395,6 +396,21 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (tutorialWorkshop) state.workshopStarterClaimed = true;
       if (meal) state.food = { ...foodState(state), builderMeal: null };
       return tutorialWorkshop ? "Учебные материалы переданы Шишколапу, строительство мастерской началось" : "Строительство началось";
+    }
+    case "cancel_meal": {
+      if (command.targetId !== "hero" && command.targetId !== "builder")
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выберите Мохлика или Шишколапа", 400);
+      const food = foodState(state), field = command.targetId === "hero" ? "heroMeal" : "builderMeal";
+      const itemId = food[field];
+      if (!itemId) return fail("ECONOMY_MEAL_UNAVAILABLE", "Нет блюда для возврата: оно уже использовано или не выбрано");
+      if (!economyCatalog.food?.meals.some(meal => meal.itemId === itemId))
+        return fail("ECONOMY_FOOD", "Не удалось определить сохранённое блюдо");
+      const next = { ...state, inventory: { ...state.inventory }, food: { ...food, [field]: null } };
+      creditEconomyItems(next, { [itemId]: 1 });
+      assertEconomyStorageTransition(state, next, reservedItems);
+      state.inventory = next.inventory;
+      state.food = next.food;
+      return "Неиспользованное блюдо возвращено в кладовую";
     }
     case "eat_food":
     case "feed_builder": {

@@ -112,6 +112,70 @@ class EconomyFoodTest {
         assertEquals(route.rewards.getValue("fish"), job.rewards.filterKeys { it in fishIds }.values.sum())
     }
 
+    @Test fun `pending portions return once to the pantry independently without granting a bonus`() {
+        val original = stocked().copy(inventory = mapOf("grilled_fish" to 2L, "fish_soup" to 1L))
+        val fed = apply(apply(original, "eat_food", "grilled_fish"), "feed_builder", "fish_soup")
+        val heroReturned = apply(fed, "cancel_meal", "hero")
+        assertEquals(mapOf("grilled_fish" to 2L), heroReturned.inventory)
+        assertEquals(EconomyFoodState(null, "fish_soup"), heroReturned.food)
+        failure("ECONOMY_MEAL_UNAVAILABLE") { apply(heroReturned, "cancel_meal", "hero") }
+        val returned = apply(heroReturned, "cancel_meal", "builder")
+        assertEquals(original.inventory, returned.inventory)
+        assertEquals(EconomyFoodState(), returned.food)
+        assertEquals(original.jobs, returned.jobs)
+        assertEquals(original.wallet, returned.wallet)
+        failure("ECONOMY_MEAL_UNAVAILABLE") { apply(returned, "cancel_meal", "builder") }
+    }
+
+    @Test fun `pending return preserves owned overflow including escrow but cannot grow new stock`() {
+        val original = EconomyRules.initial()
+        val capacity = EconomyRules.storage(original).capacity
+        val reserved = mapOf("stone" to 1L)
+        var state = original.copy(inventory = mapOf("wood" to capacity - 1), food = EconomyFoodState("grilled_fish", "fish_soup"))
+        for (consumer in listOf("hero", "builder")) {
+            val before = state
+            state = EconomyRules.apply(state, command("cancel_meal", consumer), now, reserved).first
+            EconomyRules.assertStorageTransition(before, state, reserved)
+        }
+        assertEquals(2L, EconomyRules.storage(state, reserved).overflow)
+        assertEquals(1L, state.inventory["grilled_fish"])
+        assertEquals(1L, state.inventory["fish_soup"])
+        failure("ECONOMY_STORAGE_FULL") {
+            EconomyRules.assertStorageTransition(state, state.copy(inventory = EconomyRules.addItems(state.inventory, mapOf("wood" to 1L))), reserved)
+        }
+        repeat(3) { state = apply(apply(state, "eat_food", "grilled_fish"), "cancel_meal", "hero") }
+        assertEquals(1L, state.inventory["grilled_fish"])
+        assertEquals(2L, EconomyRules.storage(state, reserved).overflow)
+    }
+
+    @Test fun `refund decoder rejects forged consumer amounts price and fish while capacity errors retain pending meal`() {
+        val request = command("cancel_meal", "hero")
+        fun decode(value: EconomyCommand) = decodeEconomyCommand(economyJson.parseToJsonElement(economyJson.encodeToString(value)))
+        assertEquals(request, decode(request))
+        assertEquals("builder", decode(request.copy(targetId = "builder")).targetId)
+        for (invalid in listOf(request.copy(targetId = "grilled_fish"), request.copy(quantity = 2),
+            request.copy(totalPrice = 1), request.copy(fishSelection = emptyMap()))) {
+            failure("INVALID_ECONOMY_COMMAND") { decode(invalid) }
+        }
+        val state = stocked().copy(inventory = mapOf("grilled_fish" to ECONOMY_MAX_ITEMS), food = EconomyFoodState("grilled_fish", null))
+        failure("ECONOMY_CAPACITY") { apply(state, "cancel_meal", "hero") }
+        failure("ECONOMY_CAPACITY") {
+            EconomyRules.apply(state.copy(inventory = mapOf("grilled_fish" to ECONOMY_MAX_ITEMS - 1)), request, now, mapOf("grilled_fish" to 1))
+        }
+        assertEquals("grilled_fish", state.food.heroMeal)
+        assertEquals(ECONOMY_MAX_ITEMS, state.inventory["grilled_fish"])
+    }
+
+    @Test fun `consumed hero food cannot return after starting or abandoning a boosted trip`() {
+        val fed = apply(stocked(), "eat_food", "grilled_fish")
+        val trip = apply(fed, "start_exploration", "forest")
+        failure("ECONOMY_MEAL_UNAVAILABLE") { apply(trip, "cancel_meal", "hero") }
+        failure("ECONOMY_MEAL_UNAVAILABLE") { apply(trip, "cancel_meal", "hero", Instant.parse(trip.jobs.single().finishesAt)) }
+        val abandoned = apply(trip, "cancel_exploration", trip.jobs.single().id)
+        failure("ECONOMY_MEAL_UNAVAILABLE") { apply(abandoned, "cancel_meal", "hero") }
+        assertEquals(fed.inventory["grilled_fish"], abandoned.inventory["grilled_fish"])
+    }
+
     @Test fun `builder pending meal applies once and errors preserve the paid bonus`() {
         val state = stocked().copy(buildings = stocked().buildings + ("garden" to 1))
         val fed = apply(state, "feed_builder", "grilled_fish")
@@ -141,6 +205,12 @@ class EconomyFoodTest {
         assertEquals(5000, updated.meal?.speedBps)
         assertNull(fed.food.builderMeal)
         failure("ECONOMY_ALREADY_FED") { apply(fed, "feed_builder", "grilled_fish") }
+        failure("ECONOMY_MEAL_UNAVAILABLE") { apply(fed, "cancel_meal", "builder") }
+        failure("ECONOMY_MEAL_UNAVAILABLE") { apply(fed, "cancel_meal", "builder", Instant.parse(updated.finishesAt)) }
+        val legacy = fed.copy(food = EconomyFoodState(builderMeal = "grilled_fish"))
+        val returned = apply(legacy, "cancel_meal", "builder")
+        assertEquals(fed.jobs, returned.jobs, "returning a distinct pending portion cannot alter an applied job bonus")
+        assertEquals((fed.inventory["grilled_fish"] ?: 0L) + 1, returned.inventory["grilled_fish"])
         failure("ECONOMY_JOB_READY") { apply(state, "feed_builder", "grilled_fish", Instant.parse(job.finishesAt)) }
         assertTrue(EconomyRules.constructionSpeedupPrice(updated, now) <= EconomyRules.constructionSpeedupPrice(job, now))
     }

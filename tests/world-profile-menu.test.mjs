@@ -203,10 +203,15 @@ test("the meal card uses saved pending or active work bonuses independently of m
   assert.match(pending.markup, /Пора передохнуть/);
   assert.match(pending.markup, /Еда: \+25% к скорости/);
   assert.match(pending.markup, /Бонус ждёт следующую вылазку/);
+  assert.match(pending.markup, /data-meal-return="hero"/);
+  assert.match(pending.markup, /Забрать блюдо/);
   assert.deepEqual(state, before, "rendering never consumes the pending meal");
   state.food.heroMeal = null;
   state.jobs = [{ kind: "exploration", meal: { itemId: recipeMeal.itemId, consumer: "hero", speedBps: 2500 } }];
-  assert.match(mood({ economy: { snapshot: state } }).markup, /Бонус учтён в текущей вылазке/);
+  const applied = mood({ economy: { snapshot: state } });
+  assert.match(applied.markup, /Бонус учтён в текущей вылазке/);
+  assert.match(applied.markup, /Блюдо уже использовано, вернуть его нельзя/);
+  assert.doesNotMatch(applied.markup, /data-meal-return/);
   state.jobs = [{ kind: "construction", meal: { itemId: recipeMeal.itemId, consumer: "builder", speedBps: 1000 } }];
   const builderOnly = mood({ economy: { snapshot: state } });
   assert.doesNotMatch(builderOnly.markup, /Еда: \+/);

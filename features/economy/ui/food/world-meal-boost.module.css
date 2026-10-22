@@ -2,7 +2,16 @@
 .trigger.trigger.trigger { cursor: pointer; touch-action: manipulation; background: linear-gradient(135deg, #f3edd7, #e5e9cf); }
 .trigger.trigger.trigger:hover:not(:disabled) { border-color: #78905e; background: #e8edd7; }
 .trigger:disabled { cursor: default; opacity: .65; }
-.saved { color: #345b34; border-color: #9aaf7f; background: #e1ebd0; }
+.saved { flex-direction: column; align-items: stretch; color: #345b34; border-color: #9aaf7f; background: #e1ebd0; }
+.savedSummary { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.savedNote { font-size: 10px; line-height: 1.4; color: #55694a; overflow-wrap: anywhere; }
+.returnMeal { display: grid; gap: 6px; min-width: 0; }
+.pendingMeal { display: grid; gap: 2px; padding-top: 7px; border-top: 1px solid #b7c89d; font-size: 10px; }
+.pendingMeal strong { font-size: 12px; overflow-wrap: anywhere; }
+.saved .returnButton { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 44px; padding: 8px; border: 1px solid #91a777; border-radius: 8px; background: #f1f2d9; color: #345b34; font: inherit; font-size: 11px; line-height: 1.4; cursor: pointer; touch-action: manipulation; }
+.saved .returnButton:hover:not(:disabled) { background: #f8f6e7; border-color: #6c8555; }
+.saved .returnButton:disabled { cursor: default; opacity: .6; }
+.saved .returnButton:focus-visible { outline: 2px solid #355e48; outline-offset: 2px; }
 .tileIcon { flex: 0 0 34px; display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid #a8b68b; border-radius: 9px; background: #fbf4dc; }
 .tileIcon > svg { display: block; max-width: 100%; }
 .tileDescription { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }

@@ -4,6 +4,7 @@ import { CircleHelp, Heart, Leaf, Moon, Search, Soup, Sprout } from "lucide-reac
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { pendingMeal } from "@/features/economy/domain/food";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
+import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import type { ForestObservation } from "@/features/world/state/use-forest-observation";
 import styles from "./world-mood-module.module.css";
 
@@ -16,7 +17,7 @@ const feelings = {
 
 type Props = {
   observation: ForestObservation | null;
-  economy: Pick<EconomyController, "snapshot">;
+  economy: EconomyController;
   onCall?: () => void;
   callPulse?: number;
   onOpenHelp?: () => void;
@@ -51,8 +52,9 @@ export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, o
     {snapshot?.catalog.food && <section className={styles.food} aria-label="Бонус от еды">
       <Soup size={18} aria-hidden="true" />
       <div><h3>{speedBps ? `Еда: +${speedBps / 100}% к скорости` : "Еда для вылазки"}</h3>
-        <p>{meal ? "Бонус ждёт следующую вылазку." : jobMeal ? "Бонус учтён в текущей вылазке." : "Блюдо ускоряет одну вылазку. Силы восстанавливаются во время отдыха."}</p></div>
+        <p>{meal ? "Бонус ждёт следующую вылазку." : jobMeal ? "Бонус учтён в текущей вылазке. Блюдо уже использовано, вернуть его нельзя." : "Блюдо ускоряет одну вылазку. Силы восстанавливаются во время отдыха."}</p></div>
       {onOpenExpeditions && <button type="button" className={styles.foodAction} onClick={onOpenExpeditions}>К вылазкам</button>}
+      {meal && <div className={styles.foodMeal}><WorldMealBoost economy={economy} consumer="hero" /></div>}
     </section>}
 
     {(onCall || onOpenHelp) && <div className={styles.actions}>

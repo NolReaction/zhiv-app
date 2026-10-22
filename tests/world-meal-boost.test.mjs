@@ -33,7 +33,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
 });
 after(async () => { await vite.close(); await rm(cacheDir, { recursive: true, force: true }); });
 const hooks = await vite.ssrLoadModule(hookModule);
-const { WorldMealBoost, mealBoostReason, mealBoostSeconds } = await vite.ssrLoadModule("/features/economy/ui/food/world-meal-boost.tsx");
+const { WorldMealBoost, mealBoostReason, mealBoostSeconds, mealReturnReason } = await vite.ssrLoadModule("/features/economy/ui/food/world-meal-boost.tsx");
 const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-builder-dialog.tsx");
@@ -45,7 +45,7 @@ function controller(overrides = {}, flags = {}) {
     inventory: { grilled_fish: 2, legendary_fish: 1, fish: 99 }, buildings: { home: 5, warehouse: 1, workshop: 2, dryer: 5 }, jobs: [], food: { heroMeal: null, builderMeal: null },
     completedExplorations: 0, migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, ...overrides };
   const calls = [];
-  return { snapshot: { ...state, storage: economyStorage(state) }, busy: false, uncertain: false, error: null, now, retryAt: 0, calls,
+  return { snapshot: { ...state, storage: economyStorage(state) }, snapshotConfirmed: true, busy: false, uncertain: false, error: null, now, retryAt: 0, calls,
     act: (...args) => { calls.push(args); return true; }, retry() {}, ...flags };
 }
 function elements(tree) {
@@ -258,7 +258,7 @@ test("closed selector names the food boost and explicit choice for both workers 
   }
 });
 
-test("saved next-route meal names the dish and shows the true time improvement instead of another action", () => {
+test("saved next-route meal names the dish and shows the true time improvement with an explicit return action", () => {
   const economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: null } }); hooks.reset();
   const meal = economy.snapshot.catalog.food.meals.find(value => value.itemId === "grilled_fish");
   const view = render({ economy, consumer: "hero", seconds: 7200 }), html = renderToStaticMarkup(view.tree);
@@ -267,8 +267,131 @@ test("saved next-route meal names the dish and shows the true time improvement i
   assert.match(html, /Для следующей вылазки/);
   const timer = view.nodes.find(node => node.props["data-meal-duration"] !== undefined);
   assert.match(renderToStaticMarkup(timer), /arrow-right/);
-  assert.equal(view.nodes.some(node => node.type === "button"), false);
+  assert.equal(view.nodes.filter(node => node.props["data-meal-return"] === "hero").length, 1);
+  assert.match(html, /Забрать блюдо/);
   assert.deepEqual(economy.calls, []);
+});
+
+test("each unused meal returns exactly once through its consumer command and never changes local stock or food", () => {
+  for (const consumer of ["hero", "builder"]) {
+    const economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: "legendary_fish" } });
+    const before = structuredClone(economy.snapshot), props = { economy, consumer, isOnline: true };
+    hooks.reset(); let view = render(props);
+    const button = view.nodes.find(node => node.props["data-meal-return"] === consumer);
+    assert.equal(button.props.disabled, false); assert.match(renderToStaticMarkup(button), /Забрать блюдо/);
+    button.props.onClick(); button.props.onClick();
+    assert.deepEqual(economy.calls, [["cancel_meal", consumer, 1, 0]]); assert.deepEqual(economy.snapshot, before);
+    view = render(props);
+    assert.equal(view.nodes.find(node => node.props["data-meal-return"] === consumer).props.disabled, true);
+    assert.match(renderToStaticMarkup(view.tree), /Возвращаем/);
+    economy.busy = true; render(props);
+    economy.busy = false; economy.snapshot = { ...economy.snapshot, revision: 2,
+      food: { ...economy.snapshot.food, [consumer === "hero" ? "heroMeal" : "builderMeal"]: null } };
+    view = render(props);
+    assert.equal(view.nodes.some(node => node.props["data-meal-return"]), false);
+    assert.equal(economy.calls.length, 1);
+  }
+});
+
+test("returning an unused meal respects connection, receipt, queue and confirmed snapshot guards", () => {
+  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 1 }, { pendingProductionCount: 1 },
+    { directActionsAvailable: false }, { snapshotConfirmed: false }]) {
+    const economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: null } }, flags);
+    const props = { economy, consumer: "hero", isOnline: true };
+    hooks.reset(); const view = render(props), button = view.nodes.find(node => node.props["data-meal-return"]);
+    assert.ok(mealReturnReason(props)); assert.equal(button.props.disabled, true); button.props.onClick(); assert.deepEqual(economy.calls, []);
+  }
+  const economy = controller({ food: { heroMeal: null, builderMeal: "grilled_fish" } });
+  hooks.reset(); const view = render({ economy, consumer: "builder", isOnline: false });
+  const button = view.nodes.find(node => node.props["data-meal-return"]);
+  assert.equal(button.props.disabled, true); button.props.onClick(); assert.deepEqual(economy.calls, []);
+  assert.match(renderToStaticMarkup(view.tree), /Подключитесь к интернету/);
+});
+
+test("an old return handler cannot return a changed owner, revision, dish or consumer", () => {
+  for (const mutate of [
+    economy => { economy.snapshot.ownerPublicId = "another-owner"; },
+    economy => { economy.snapshot.revision++; },
+    economy => { economy.snapshot.food.heroMeal = "legendary_fish"; },
+    economy => { economy.snapshot.food.heroMeal = null; },
+    economy => { economy.snapshotConfirmed = false; },
+    economy => { economy.busy = true; },
+    economy => { economy.uncertain = true; },
+    economy => { economy.snapshot = null; },
+  ]) {
+    const economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: null } }), props = { economy, consumer: "hero" };
+    hooks.reset(); const button = render(props).nodes.find(node => node.props["data-meal-return"]);
+    mutate(economy); button.props.onClick(); assert.deepEqual(economy.calls, []);
+  }
+  const economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: "legendary_fish" } });
+  hooks.reset(); const stale = render({ economy, consumer: "hero" }).nodes.find(node => node.props["data-meal-return"]);
+  render({ economy, consumer: "builder" }); stale.props.onClick(); assert.deepEqual(economy.calls, []);
+  hooks.reset(); const old = render({ economy, consumer: "hero" }).nodes.find(node => node.props["data-meal-return"]);
+  const replacement = controller({ revision: 2, food: { heroMeal: "legendary_fish", builderMeal: null } });
+  render({ economy: replacement, consumer: "hero" }); old.props.onClick(); assert.deepEqual(replacement.calls, []);
+});
+
+test("refused or rejected meal returns keep the saved portion and allow a later explicit retry", () => {
+  const attempts = [], economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: null } },
+    { act: (...args) => { attempts.push(args); return attempts.length > 1; } });
+  const props = { economy, consumer: "hero" }; hooks.reset();
+  render(props).nodes.find(node => node.props["data-meal-return"]).props.onClick();
+  let view = render(props); assert.match(renderToStaticMarkup(view.tree), /Не удалось отправить возврат блюда/);
+  const button = view.nodes.find(node => node.props["data-meal-return"]); assert.equal(button.props.disabled, false); button.props.onClick();
+  economy.busy = true; render(props); economy.busy = false; economy.error = "Сначала проверьте состояние хозяйства.";
+  render(props); view = render(props);
+  assert.equal(view.nodes.find(node => node.props["data-meal-return"]).props.disabled, false);
+  assert.match(renderToStaticMarkup(view.tree), /Сначала проверьте состояние хозяйства/);
+  assert.equal(economy.snapshot.food.heroMeal, "grilled_fish"); assert.equal(attempts.length, 2);
+});
+
+test("current work meals are used and never returnable even without an explicit construction job id", () => {
+  for (const consumer of ["hero", "builder"]) {
+    const economy = controller({ jobs: [job({ kind: consumer === "hero" ? "exploration" : "construction",
+      meal: { itemId: "grilled_fish", consumer, speedBps: 1000 } })] });
+    hooks.reset(); const view = render({ economy, consumer, seconds: 7200 }), html = renderToStaticMarkup(view.tree);
+    assert.match(html, /Блюдо уже использовано/); assert.match(html, /Вернуть его нельзя/);
+    assert.doesNotMatch(html, /Для следующей|Забрать блюдо/); assert.equal(view.nodes.some(node => node.type === "button"), false);
+    assert.match(renderToStaticMarkup(view.nodes.find(node => node.props["data-meal-duration"] !== undefined)), /2 мин/);
+    assert.deepEqual(economy.calls, []);
+  }
+});
+
+test("legacy pending food beside an applied job stays separate and returns only the unused portion", () => {
+  for (const consumer of ["hero", "builder"]) {
+    const economy = controller({ food: { heroMeal: consumer === "hero" ? "legendary_fish" : null, builderMeal: consumer === "builder" ? "legendary_fish" : null },
+      jobs: [job({ kind: consumer === "hero" ? "exploration" : "construction", meal: { itemId: "grilled_fish", consumer, speedBps: 1000 } })] });
+    hooks.reset(); const view = render({ economy, consumer });
+    assert.equal(view.tree.props["data-meal-applied"], "grilled_fish");
+    assert.equal(view.nodes.find(node => node.props["data-meal-pending"]).props["data-meal-pending"], "legendary_fish");
+    const button = view.nodes.find(node => node.props["data-meal-return"]); assert.equal(button.props.disabled, false);
+    button.props.onClick(); assert.deepEqual(economy.calls, [["cancel_meal", consumer, 1, 0]]);
+    assert.equal(economy.snapshot.jobs[0].meal.itemId, "grilled_fish");
+  }
+});
+
+test("feeding during construction previews remaining work and shows the confirmed bonus on that current job", () => {
+  const economy = controller({ jobs: [job()] }), props = { economy, consumer: "builder", jobId: "construction-1" };
+  let view = choose(props, open(props));
+  assert.ok(view.nodes.some(node => node.type === "p" && node.props.children === "Ускорит оставшееся время"));
+  assert.doesNotMatch(renderToStaticMarkup(view.nodes.find(node => node.props["data-meal-preview"])), /Для следующей/);
+  confirmation(view).props.onClick(); assert.deepEqual(economy.calls, [["feed_builder", "grilled_fish", 1, 0]]);
+  economy.busy = true; render(props);
+  economy.busy = false; economy.snapshot = { ...economy.snapshot, revision: 2,
+    jobs: [job({ finishesAt: new Date(now + 60_000).toISOString(), meal: { itemId: "grilled_fish", consumer: "builder", speedBps: 1000 } })] };
+  view = render(props); const html = renderToStaticMarkup(view.tree);
+  assert.match(html, /текущая стройка/); assert.match(html, /Блюдо уже использовано в этой стройке/);
+  assert.doesNotMatch(html, /Для следующей|Забрать блюдо/);
+  assert.equal(economy.snapshot.food.builderMeal, null);
+});
+
+test("browser connectivity blocks a pending meal return even when the surrounding page has no online prop", t => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine: false } });
+  t.after(() => { if (descriptor) Object.defineProperty(globalThis, "navigator", descriptor); else delete globalThis.navigator; });
+  const economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: null } });
+  hooks.reset(); const view = render({ economy, consumer: "hero" }), button = view.nodes.find(node => node.props["data-meal-return"]);
+  assert.equal(button.props.disabled, true); button.props.onClick(); assert.deepEqual(economy.calls, []);
 });
 
 test("applied builder meal shows its saved speed and remaining timer without speeding the timer a second time", () => {

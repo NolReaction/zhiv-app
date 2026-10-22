@@ -429,6 +429,46 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(2L, economy.snapshot(p.hash).inventory["grilled_fish"])
     }
 
+    @Test fun `pending meal return is owner bound and races or receipt retries refund once even with a full pantry`() = runBlocking<Unit> {
+        val p = player(); val stranger = player(); economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        val stocked = original.copy(inventory = mapOf("wood" to EconomyRules.storage(original).capacity),
+            food = EconomyFoodState("grilled_fish", null))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stocked), p.id)
+        val before = economy.snapshot(p.hash)
+        val request = command(p, before, "cancel_meal", "hero")
+        assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, request) }.code)
+        assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, request.copy(expectedRevision = before.revision + 1))
+        }.code)
+        val requests = listOf(request, request.copy(requestId = UUID.randomUUID().toString()))
+        val attempts = coroutineScope { requests.map { value -> async(Dispatchers.IO) {
+            value to runCatching { economy.command(p.hash, value) }
+        } }.awaitAll() }
+        val winner = attempts.single { it.second.isSuccess }
+        assertEquals("ECONOMY_REVISION_CONFLICT", (attempts.single { it.second.isFailure }.second.exceptionOrNull() as AuthFailure).code)
+        val returned = winner.second.getOrThrow()
+        assertNull(returned.state.food.heroMeal)
+        assertEquals(1L, returned.state.inventory["grilled_fish"])
+        assertEquals(1L, returned.state.storage.overflow)
+        val replay = economy.command(p.hash, winner.first)
+        assertTrue(replay.replayed)
+        assertEquals(returned.acceptedRevision, replay.acceptedRevision)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_meal'", p.id))
+        assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, winner.first.copy(targetId = "builder"))
+        }.code)
+        assertEquals("ECONOMY_MEAL_UNAVAILABLE", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, replay.state, "cancel_meal", "hero"))
+        }.code)
+        val fedAgain = economy.command(p.hash, command(p, economy.snapshot(p.hash), "eat_food", "grilled_fish"))
+        assertTrue(economy.command(p.hash, winner.first).replayed)
+        val current = economy.snapshot(p.hash)
+        assertEquals(fedAgain.state.revision, current.revision)
+        assertEquals("grilled_fish", current.food.heroMeal)
+        assertEquals(0L, current.inventory["grilled_fish"] ?: 0L)
+    }
+
     @Test fun `different building starts race for one builder and finished jobs retain the reservation until claimed`() = runBlocking<Unit> {
         val p = player(); economy.snapshot(p.hash)
         val original = source.connection.use { readEconomyProfile(it, p.id).state }
