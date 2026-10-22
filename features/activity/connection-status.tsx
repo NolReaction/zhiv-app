@@ -3,12 +3,13 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Popover } from "radix-ui";
-import { RefreshCw, Wifi, WifiOff, X } from "lucide-react";
+import { Clock3, RefreshCw, Wifi, WifiOff, X } from "lucide-react";
 import styles from "./connection-status.module.css";
 
 export type ConnectionStatusProps = {
   online: boolean;
   reconnecting?: boolean;
+  rateLimited?: boolean;
   queuedCount?: number;
   pending?: boolean;
   error?: string | null;
@@ -75,8 +76,11 @@ export function connectConnectionStatusHost(host: HTMLElement, fallback: HTMLEle
 /** This reports transport and real unacknowledged work, never optimistic balances. */
 export function ConnectionStatus(props: ConnectionStatusProps) {
   const { online, reconnecting = false, pending = false, error, busy = false, onRetry, className } = props;
+  const limited = online && !reconnecting && props.rateLimited === true;
   const count = Number.isSafeInteger(props.queuedCount) ? Math.max(0, props.queuedCount!) : 0;
   const retrySeconds = Math.max(0, Math.ceil(props.retrySeconds ?? 0));
+  const retryWait = retrySeconds < 60 ? `${retrySeconds} с`
+    : `${Math.floor(retrySeconds / 60)} мин${retrySeconds % 60 ? ` ${retrySeconds % 60} с` : ""}`;
   const [open, setOpen] = useState(false), [retrying, setRetrying] = useState(false);
   const latest = useRef(props), requested = useRef(false), mounted = useRef(true);
   const trigger = useRef<HTMLButtonElement>(null), fallback = useRef<HTMLSpanElement>(null), restoreFocus = useRef(true), titleId = useId();
@@ -90,7 +94,7 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
   }, [browser]);
   useLayoutEffect(() => { latest.current = props; }, [props]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const hasPending = pending || count > 0, transportIssue = !online || reconnecting || Boolean(error);
+  const hasPending = pending || count > 0, transportIssue = !online || reconnecting || Boolean(error) || limited;
   const [pendingDisplay, setPendingDisplay] = useState({ pending: hasPending, visible: hasPending && transportIssue });
   let display = pendingDisplay;
   if (display.pending !== hasPending || hasPending && transportIssue && !display.visible) {
@@ -119,12 +123,12 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
     return connectConnectionStatusHost(portalHost, fallback.current, () => { restoreFocus.current = false; setOpen(false); });
   }, [interactive, portalHost, visible]);
   if (!visible) { if (open) setOpen(false); return null; }
-  const label = !online ? "Нет связи" : reconnecting ? "Восстанавливаем связь" : count > 0 ? `Ожидают подтверждения: ${count}` : pending ? "Действие ждёт подтверждения" : "Нужно проверить соединение";
+  const label = !online ? "Нет связи" : reconnecting ? "Восстанавливаем связь" : limited ? "Сервер просит подождать" : count > 0 ? `Ожидают подтверждения: ${count}` : pending ? "Действие ждёт подтверждения" : "Нужно проверить соединение";
   const disabled = !online || reconnecting || busy || retrying || retrySeconds > 0;
-  const Icon = online ? Wifi : WifiOff;
+  const Icon = limited ? Clock3 : online ? Wifi : WifiOff;
   async function retry() {
     const current = latest.current;
-    if (current.online && !current.reconnecting && !current.pending && !current.error && !(current.queuedCount && current.queuedCount > 0)) return;
+    if (current.online && !current.reconnecting && !current.pending && !current.error && !current.rateLimited && !(current.queuedCount && current.queuedCount > 0)) return;
     if (requested.current || !current.onRetry || !current.online || current.reconnecting || current.busy || (current.retrySeconds ?? 0) > 0) return;
     requested.current = true; setRetrying(true);
     try { await current.onRetry(); }
@@ -132,7 +136,7 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
     finally { requested.current = false; if (mounted.current) setRetrying(false); }
   }
   const content = <>
-    <span className={`${styles.anchor} ${className ?? ""}`} aria-live="polite" data-connection-status data-online={online} data-connection-pending={pending || count > 0 || undefined}>
+    <span className={`${styles.anchor} ${className ?? ""}`} aria-live="polite" data-connection-status data-online={online} data-rate-limited={limited || undefined} data-connection-pending={pending || count > 0 || undefined}>
       {interactive ? <Popover.Trigger asChild><button ref={trigger} type="button" className={styles.indicator} aria-label={label} title={label}
         data-connection-toggle data-unstable={transportIssue || hasPending || undefined}>
         <Icon size={25} aria-hidden="true" />{count > 0 && <span className={styles.count} aria-hidden="true">{count > 9 ? "9+" : count}</span>}
@@ -146,11 +150,12 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
       onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
       onCloseAutoFocus={event => { event.preventDefault(); if (restoreFocus.current && trigger.current?.isConnected && !trigger.current.closest("[inert], [aria-hidden=\"true\"]")) trigger.current.focus({ preventScroll: true }); }}>
       <header><h2 id={titleId}>{label}</h2><Popover.Close asChild><button type="button" className={styles.close} aria-label="Закрыть состояние связи"><X size={16} aria-hidden="true" /></button></Popover.Close></header>
+      {limited && <p>Сервер временно ограничил игровые действия. После паузы продолжим автоматически.</p>}
       {count > 0 ? <p data-connection-queue>В очереди: <strong>{count}</strong>. Эти действия ещё не подтверждены сервером.</p>
         : pending ? <p>Проверяем результат последнего действия. Подтверждение ещё не получено.</p>
-          : <p>{online ? "Проверяем соединение с сервером." : "Игра сохраняет последний полученный прогресс. Ждём восстановления связи."}</p>}
-      {error && <p className={styles.error}>{error}</p>}
-      {onRetry && <button type="button" className={styles.retry} disabled={disabled} onClick={() => void retry()}><RefreshCw size={14} aria-hidden="true" />{retrying || reconnecting ? "Проверяем…" : retrySeconds > 0 ? `Повторить через ${retrySeconds} с` : "Проверить связь"}</button>}
+          : !limited && <p>{online ? "Проверяем соединение с сервером." : "Игра сохраняет последний полученный прогресс. Ждём восстановления связи."}</p>}
+      {error && !limited && <p className={styles.error}>{error}</p>}
+      {onRetry && <button type="button" className={styles.retry} disabled={disabled} onClick={() => void retry()}><RefreshCw size={14} aria-hidden="true" />{retrying || reconnecting ? "Проверяем…" : retrySeconds > 0 ? `Повторить через ${retryWait}` : limited ? "Продолжить" : "Проверить связь"}</button>}
     </Popover.Content></Popover.Portal>}
   </>;
   return <Popover.Root open={open} onOpenChange={next => { if (next) restoreFocus.current = true; setOpen(next); }} modal={false}>

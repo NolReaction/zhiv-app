@@ -207,7 +207,7 @@ test("larger and mixed production outputs retain their actual quantities", () =>
   }
 });
 
-test("locked food cards keep ingredients and bonuses while moving the full prerequisite out of the visible card", () => {
+test("locked food cards show the prerequisite along with ingredients and bonuses", () => {
   const economy = controller({ buildings: { home: 3, dryer: 2, warehouse: 1 }, inventory: { berries: 1 } });
   const recipe = economy.snapshot.catalog.recipes.find(entry => entry.id === "cook_fish_soup");
   let tree;
@@ -216,7 +216,7 @@ test("locked food cards keep ingredients and bonuses while moving the full prere
   const card = elements(tree).find(element => element.type === "button");
   assert.match(card.props.title, /Приготовьте и заберите/);
   const contents = renderToStaticMarkup(createElement("div", null, card.props.children));
-  assert.doesNotMatch(contents, /Приготовьте и заберите/, "the long locked-recipe explanation does not increase card height");
+  assert.match(contents, /data-recipe-access[^>]*>Приготовьте и заберите/, "access is explained without a hover or failed production click");
   assert.match(contents, /data-production-inputs/);
   assert.match(contents, /data-item-icon="fish_common"/);
   assert.match(contents, /data-item-icon="berries"/);

@@ -6,7 +6,7 @@ import { GAME_ACHIEVEMENT_TARGETS } from "./achievement-progress";
 import type { GameAchievementId } from "./game-api";
 import type { AchievementReward, GameReward, GameRewards } from "./game-rewards-api";
 
-const catalog = rawCatalog as unknown as { version: 4; currencyScale: number; pearlScale: number; dailyMinimumHours: number; daily: GameReward[];
+const catalog = rawCatalog as unknown as { version: 5; currencyScale: number; pearlScale: number; dailyMinimumHours: number; daily: GameReward[];
   onboarding: GameReward;
   dailyByHomeLevel: Record<string, GameReward[]>;
   achievementPearls: Record<GameAchievementId, number[]> };
@@ -69,13 +69,13 @@ export function achievementRewardRows(earned: (id: GameAchievementId, level: num
 }
 /** Daily bundles are authoritative and finite; the finale also grants one relic. */
 export function assertProgressionRewardCatalog(): void {
-  if (catalog.version !== 4 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
+  if (catalog.version !== 5 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
   if (catalog.onboarding.coins !== 1_000 || catalog.onboarding.pearls !== 200 || Object.keys(catalog.onboarding.items).length !== 0)
     throw new Error("Invalid onboarding reward");
   if (Object.keys(catalog.dailyByHomeLevel).sort().join() !== "2,3,4,5") throw new Error("Invalid daily home tiers");
   const ids = Object.keys(GAME_ACHIEVEMENT_TARGETS) as GameAchievementId[];
   if (Object.keys(catalog.achievementPearls).length !== ids.length || ids.some(id => catalog.achievementPearls[id].length !== GAME_ACHIEVEMENT_TARGETS[id].length)) throw new Error("Invalid achievement rewards");
-  if (Object.values(catalog.achievementPearls).flat().reduce((sum, value) => sum + value, 0) !== 3_000
+  if (Object.values(catalog.achievementPearls).flat().reduce((sum, value) => sum + value, 0) !== 4_120
     || ids.some(id => catalog.achievementPearls[id].some((value, index, values) => !Number.isSafeInteger(value)
       || value > ECONOMY_MAX_PEARLS || value % 2 !== 0 || (id === "full_collection" ? value !== 0 : value <= 0)
       || (index > 0 && value < values[index - 1])))) throw new Error("Invalid achievement pearl budget");

@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { earthLandmarkView, layoutEarthLandmarks, EARTH_LANDMARK_WIDTH, EARTH_LANDMARK_HEIGHT,
-  EARTH_LANDMARK_FADE_START, EARTH_LANDMARK_MAX_ZOOM } = await vite.ssrLoadModule("/features/earth/landmark-layout.ts");
+  EARTH_LANDMARK_FULL_SIZE_ZOOM, EARTH_LANDMARK_MAX_ZOOM } = await vite.ssrLoadModule("/features/earth/landmark-layout.ts");
 const viewport = { width: 390, height: 844 };
 const candidate = (id, x, y, priority = 1, covered = false) => ({ id, x, y, priority, covered });
 
@@ -29,14 +29,15 @@ test("native miniature size stays compact and strongly zoomed-out globes have no
   }
 });
 
-test("illustrations fade smoothly before street view and invalid zoom never shows a landmark", () => {
-  assert.equal(EARTH_LANDMARK_FADE_START, 3.8);
-  assert.equal(EARTH_LANDMARK_MAX_ZOOM, 5.2);
-  assert.equal(earthLandmarkView(3.8).opacity, 1);
-  assert.ok(Math.abs(earthLandmarkView(4.5).opacity - 0.5) < 1e-12);
-  assert.equal(earthLandmarkView(5.2).opacity, 0);
-  assert.equal(earthLandmarkView(10).opacity, 0);
-  assert.ok(earthLandmarkView(3.81).opacity > 0.999, "fade starts gently, without a brightness jump");
+test("compact city miniatures remain visible up to the physical street handover and reject invalid zoom", () => {
+  assert.equal(EARTH_LANDMARK_FULL_SIZE_ZOOM, 3.8);
+  assert.equal(EARTH_LANDMARK_MAX_ZOOM, 15);
+  for (const zoom of [3.8, 4.5, 5.2, 8, 10, 12, 14.999]) {
+    assert.equal(earthLandmarkView(zoom).opacity, 1);
+    assert.equal(earthLandmarkView(zoom).height, 48);
+    assert.deepEqual([...layoutEarthLandmarks([candidate("tower", 100, 100)], viewport, earthLandmarkView(zoom))], ["tower"]);
+  }
+  assert.equal(earthLandmarkView(15).opacity, 0, "the physical renderer takes over at 15");
   for (const zoom of [NaN, Infinity, -Infinity]) {
     const view = earthLandmarkView(zoom);
     assert.equal(view.opacity, 0);

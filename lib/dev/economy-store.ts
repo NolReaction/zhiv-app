@@ -519,11 +519,11 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
 }
 
 /** Achievement reads must not initialize an economy, mint conversion grants or expose the private cast seed. */
-export function getDevEconomyAchievementState(owner: string): Pick<EconomyState, "completedExplorations" | "buildings" | "fishing" | "progression"> | null {
+export function getDevEconomyAchievementState(owner: string): Pick<EconomyState, "completedExplorations" | "buildings" | "fishing" | "progression" | "residentOrders"> | null {
   const state = store().profiles.get(owner)?.state;
   if (!state) return null;
   return { completedExplorations: state.completedExplorations, buildings: { ...state.buildings }, fishing: structuredClone(fishingState(state)),
-    progression: inheritEconomyCollection(state.progression, getDevCollectionFinds(owner)) };
+    progression: inheritEconomyCollection(state.progression, getDevCollectionFinds(owner)), residentOrders: structuredClone(state.residentOrders) };
 }
 
 /** A verified completed trade, not a listing attempt, qualifies the seller. */

@@ -280,7 +280,15 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   const unsubscribePresence = subscribeGamePresence(resumeAfterPresence);
   return {
     getStatus: () => status,
+    canAdoptSceneWriter: () => isLive() && !active && !busy && view === null && pending === null,
     isSimulationAllowed: () => disabled && status.mode === "disabled" || active && ownsLease() && (status.mode === "synced" || status.mode === "saving"),
+    /** A building-art geometry replacement stays in this page's account writer.
+     * Keep the lease and exact in-flight receipt; only the scene callbacks move. */
+    rebindScene(next: Pick<ForestMemorySyncOptions, "capture" | "apply" | "onStatus">) {
+      preserveLiveScene = false; forgetParkedScene();
+      Object.assign(options, next);
+      options.onStatus?.(status);
+    },
     setActive(value: boolean, preserveCurrentScene = false) {
       if (!value) {
         preserveLiveScene = false;

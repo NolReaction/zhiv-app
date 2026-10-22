@@ -20,8 +20,8 @@ class ProgressionRewardsTest {
         assertFalse(ProgressionRewardRules.onboardingEligible(initial.copy(buildings=initial.buildings+("home" to 5))))
     }
     @Test fun `catalog pays finite achievement pearls and seven valuable bundles`() {
-        assertEquals(3000L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
-        assertEquals(21,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
+        assertEquals(4120L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
+        assertEquals(33,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
         assertEquals(320L,ProgressionRewardRules.daily.sumOf { it.coins })
         assertEquals(1000L,ProgressionRewardRules.daily.sumOf { it.pearls })
         assertEquals(listOf(80L,100L,120L,140L,160L,180L,220L),ProgressionRewardRules.daily.map { it.pearls })
@@ -128,4 +128,24 @@ class ProgressionRewardsTest {
         assertEquals(before.inventory,paid.inventory)
         assertEquals(before.progression,paid.progression)
     }
+    @Test fun `reward catalogs preserve cached clients and reject ambiguous versions`() {
+        assertEquals(4, requestedRewardCatalog(io.ktor.http.Parameters.Empty))
+        assertEquals(5, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "5")))
+        for (parameters in listOf(io.ktor.http.parametersOf("catalog", "6"),
+            io.ktor.http.parametersOf("catalog", listOf("5", "5")),
+            io.ktor.http.Parameters.build { append("catalog", "5"); append("extra", "1") })) {
+            assertFailsWith<AuthFailure> { requestedRewardCatalog(parameters) }
+        }
+        val rows = GameRewards.tiers.flatMap { (id, targets) -> targets.mapIndexed { index, target ->
+            AchievementRewardView(id, index + 1, target, ProgressionRewardRules.achievementPearls.getValue(id)[index], null, null, false, "not_earned")
+        } }
+        val current = ProgressionRewardsView("AAAA-0000-0001", "2026-10-22T12:00:00Z",
+            daily = ProgressionRewardRules.dailyView(DailyRewardsState(), at("2026-10-22T12:00:00Z")), achievementRewards = rows)
+        assertEquals(33, rewardCatalogView(current, 5).achievementRewards.size)
+        val legacy = rewardCatalogView(current, 4)
+        assertEquals(4, legacy.catalogVersion); assertEquals(rows.take(21), legacy.achievementRewards)
+        assertEquals(3000L, legacy.achievementRewards.sumOf { it.pearls })
+        assertEquals(current.daily, legacy.daily)
+    }
+
 }

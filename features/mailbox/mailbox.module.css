@@ -1,5 +1,5 @@
-.scrim { z-index: 92; background: #07130bcc; backdrop-filter: blur(4px); }
-.dialog { position: fixed; z-index: 93; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(580px, calc(100vw - 24px)); max-height: min(760px, calc(100dvh - 32px)); overflow: hidden; border: 1px solid #a9bd8270; border-radius: 23px; background: #17291e; color: #edf0dc; box-shadow: 0 24px 90px #0008; outline: none; }
+.scrim { z-index: 1500; background: #07130bcc; backdrop-filter: blur(4px); }
+.dialog { box-sizing: border-box; position: fixed; z-index: 1501; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(580px, calc(100vw - 24px)); max-height: min(760px, calc(100dvh - 32px)); overflow: hidden; border: 1px solid #a9bd8270; border-radius: 23px; background: #17291e; color: #edf0dc; box-shadow: 0 24px 90px #0008; outline: none; }
 .header { display: flex; align-items: center; gap: 6px; padding: 18px 17px 12px; border-bottom: 1px solid #a9bd822c; }
 .header h2 { display: flex; align-items: center; gap: 10px; flex: 1; margin: 0; font-size: 19px; outline: none; }
 .header h2 > svg { color: #dec48e; }
@@ -44,11 +44,11 @@
 .readStatus { display: flex; align-items: center; gap: 5px; margin-top: 18px; color: #65704b; font: 11px/1.5 system-ui; }
 .letter .error { color: #765235; }
 .letter .error button { border-color: #8d956c66; }
-.notification { display: flex; align-items: flex-start; gap: 12px; width: min(420px, calc(100vw - 32px)); padding: 17px; border: 1px solid #d8c18b80; border-radius: 17px; background: #213222; color: #f2ecd7; box-shadow: 0 12px 35px #0006; }
+.notification { box-sizing: border-box; pointer-events: auto; display: flex; align-items: flex-start; gap: 12px; width: min(420px, calc(100vw - 32px)); padding: 17px; border: 1px solid #d8c18b80; border-radius: 17px; background: #213222; color: #f2ecd7; box-shadow: 0 12px 35px #0006; }
 .notification > svg { flex: 0 0 auto; color: #ddc58c; margin-top: 3px; }
 .notification > div { flex: 1; min-width: 0; }
 .notification p { margin: 6px 0 10px; color: #c1cbb0; font-size: 12px; line-height: 1.5; }
-.notification button { min-height: 36px; padding: 6px 10px; border: 1px solid #dcc18a44; border-radius: 9px; background: #dfc58c12; color: inherit; cursor: pointer; font-size: 12px; }
-.notification > button { flex: 0 0 auto; padding: 6px; background: transparent; border: 0; }
+.notification button { min-height: 44px; padding: 6px 10px; border: 1px solid #dcc18a44; border-radius: 9px; background: #dfc58c12; color: inherit; cursor: pointer; font-size: 12px; }
+.notification > button { min-width: 44px; flex: 0 0 auto; padding: 6px; background: transparent; border: 0; }
 @media (max-width: 380px) { .dialog { width: calc(100vw - 12px); max-height: calc(100dvh - 16px); border-radius: 17px; } .header { padding: 12px; } .description { padding-inline: 16px; } .letter { margin-inline: 8px; padding: 20px 16px; } .inbox { padding-inline: 10px; } }
 @media (prefers-reduced-motion: reduce) { .dialog, .scrim { animation: none !important; transition: none !important; } }

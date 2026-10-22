@@ -141,6 +141,44 @@ test("connection problems appear immediately as an icon without opening their de
   }
 });
 
+test("a server throttle shows waiting instead of a network failure and never bypasses the retry deadline", async () => {
+  hooks.reset(); const calls = [], props = { online: true, rateLimited: true, pending: true, queuedCount: 1,
+    retrySeconds: 2051, error: "Не удалось связаться с хозяйством", onRetry: () => calls.push("retry") };
+  let view = render(ConnectionStatus, props);
+  assert.equal(view.tree.props.open, false);
+  assert.equal(attr(view, "data-connection-toggle").props["aria-label"], "Сервер просит подождать");
+  assert.equal(attr(view, "data-connection-status").props["data-rate-limited"], true);
+  view.tree.props.onOpenChange(true); view = render(ConnectionStatus, props);
+  assert.match(text(view.tree), /После паузы продолжим автоматически/);
+  assert.match(text(view.tree), /В очереди: 1/);
+  assert.doesNotMatch(text(view.tree), /Не удалось связаться|Проверяем соединение/);
+  assert.match(text(button(view)), /34 мин 11 с/);
+  button(view).props.onClick(); assert.deepEqual(calls, []);
+  const staleButton = button(view);
+  for (const [seconds, label] of [[1323, "22 мин 3 с"], [60, "1 мин"], [1, "1 с"]]) {
+    props.retrySeconds = seconds; view = render(ConnectionStatus, props);
+    assert.equal(button(view).props.disabled, true); assert.ok(text(button(view)).includes(label));
+    staleButton.props.onClick(); assert.deepEqual(calls, []);
+  }
+  props.retrySeconds = 0; view = render(ConnectionStatus, props);
+  assert.equal(button(view).props.disabled, false); assert.equal(text(button(view)), "Продолжить");
+  button(view).props.onClick(); await tick(); assert.deepEqual(calls, ["retry"]);
+  props.pending = false; props.queuedCount = 0; props.rateLimited = false; props.error = null;
+  assert.equal(render(ConnectionStatus, props).tree, null);
+});
+
+test("a throttled read is visible and actual offline or reconnecting state takes priority", () => {
+  hooks.reset(); const props = { online: true, rateLimited: true, retrySeconds: 30 };
+  let view = render(ConnectionStatus, props);
+  assert.equal(attr(view, "data-connection-toggle").props["aria-label"], "Сервер просит подождать");
+  props.online = false; view = render(ConnectionStatus, props);
+  assert.equal(attr(view, "data-connection-toggle").props["aria-label"], "Нет связи");
+  assert.equal(attr(view, "data-connection-status").props["data-rate-limited"], undefined);
+  props.online = true; props.reconnecting = true; view = render(ConnectionStatus, props);
+  assert.equal(attr(view, "data-connection-toggle").props["aria-label"], "Восстанавливаем связь");
+  assert.equal(attr(view, "data-connection-status").props["data-rate-limited"], undefined);
+});
+
 test("healthy production acknowledgements under the pending delay never flash a connection indicator", t => {
   t.mock.timers.enable({ apis: ["setTimeout"] }); hooks.reset();
   const props = { online: true, pending: true, queuedCount: 1 };

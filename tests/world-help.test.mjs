@@ -159,19 +159,27 @@ test("a direct topic opens exactly one answer and its related questions without 
 });
 
 test("context advice explains the actual selected recipe and quantity, and only delegates an explicit navigation click", () => {
-  hooks.reset(); const economy = controller({ inventory: { iron_ingot: 1 } }), opened = [], before = structuredClone(economy.snapshot);
-  const props = { economy, context: { intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 }, onNavigate: target => opened.push(target) };
-  const view = help(props);
-  assert.match(view.html, /data-help-advice="missing:wood"/);
-  assert.match(view.html, /Есть 0, нужно 1/);
-  assert.doesNotMatch(view.html, /missing:fiber|missing:iron_ingot/);
-  assert.deepEqual(opened, []);
-  const action = view.nodes.find(node => node.props.action?.target.kind === "station");
-  assert.ok(action);
-  const control = action.type(action.props); assert.equal(control.props.disabled, false);
-  control.props.onClick();
-  assert.deepEqual(opened, [{ kind: "station", stationId: "woodlot", recipeId: "gather_wood" }]);
-  assert.deepEqual(economy.snapshot, before);
+  for (const [woodlot, target] of [
+    [0, { kind: "expeditions", sector: "forest" }],
+    [1, { kind: "station", stationId: "woodlot", recipeId: "gather_wood" }],
+  ]) {
+    hooks.reset(); const economy = controller({ inventory: { iron_ingot: 1 } }), opened = [];
+    economy.snapshot.buildings.woodlot = woodlot;
+    const before = structuredClone(economy.snapshot);
+    const props = { economy, context: { intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 }, onNavigate: target => opened.push(target) };
+    const view = help(props);
+    assert.match(view.html, /data-help-advice="missing:wood"/);
+    assert.match(view.html, /Есть 0, нужно 1/);
+    assert.doesNotMatch(view.html, /missing:fiber|missing:iron_ingot/);
+    assert.deepEqual(opened, []);
+    const action = view.nodes.find(node => node.props.action?.target.kind === target.kind);
+    assert.ok(action);
+    assert.deepEqual(action.props.action.target, target);
+    const control = action.type(action.props); assert.equal(control.props.disabled, false);
+    control.props.onClick();
+    assert.deepEqual(opened, [target]);
+    assert.deepEqual(economy.snapshot, before);
+  }
 });
 
 test("mine material help preserves the exact source route and only opens its review after an explicit click", () => {

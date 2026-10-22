@@ -3,7 +3,7 @@ import { EARTH_LANDMARKS } from "./landmark-catalog";
 import { earthLandmarkView, EARTH_LANDMARK_HEIGHT } from "./landmark-layout";
 import { createEarthLandmarkMesh } from "./landmark-mesh";
 import { browserEarthModelEnvironment, createEarthModelLoader, type EarthModelAssets, type EarthModelEnvironment, type EarthModelLod, type EarthIndexedModel } from "./landmark-model";
-import { EARTH_MODEL_PREVIEW_MIN_ZOOM, earthEiffelStreetOpacity, isEarthEiffelStreetZoom } from "./landmark-model-view";
+import { EARTH_MODEL_PREVIEW_MIN_ZOOM, earthModelDisplayHeight, earthEiffelStreetOpacity, isEarthEiffelStreetZoom } from "./landmark-model-view";
 import { EARTH_MODEL_REGISTRY } from "./landmark-model-registry";
 import { getEarthModelPlacements, subscribeEarthModelPlacements } from "./model-placement";
 import { earthLandmarkOverviewScale, earthLandmarkVertexBounds, type EarthLandmarkBounds } from "./landmark-overview";
@@ -118,6 +118,7 @@ export function createEarthLandmarkMeshLayer(map: LibreMap, options: {
     if (disposed || failed || !context || !visible || !shown.has(id) || !definitionById.has(id)) return null;
     const zoom = map.getZoom();
     if (isPreview(id, zoom)) return "detail";
+    if (previewLandmark && zoom >= EARTH_MODEL_PREVIEW_MIN_ZOOM && !isEarthEiffelStreetZoom(zoom)) return null;
     if (isEarthEiffelStreetZoom(zoom)) return earthEiffelStreetOpacity(zoom) > 0 ? "detail" : null;
     if (earthLandmarkView(zoom).opacity <= 0) return null;
     return id === "eiffel-tower" && zoom >= 1.5 ? "detail" : "overview";
@@ -214,7 +215,10 @@ export function createEarthLandmarkMeshLayer(map: LibreMap, options: {
       }
       if (context) for (const key of importedGpu.keys()) {
         const [id, lod] = key.split(":");
-        if (desired.get(id) !== lod) deleteGpu(context, key);
+        const requested = desired.get(id);
+        const retainedOverview = requested === "detail" && lod === "overview"
+          && !importedGpu.has(keyOf(id, "detail"));
+        if (requested !== lod && !retainedOverview) deleteGpu(context, key);
       }
     } finally { reconciling = false; }
     trimCache(); updateDiagnostics();
@@ -472,19 +476,25 @@ void main() {
         const inspecting = isPreview(range.landmark.id, zoom);
         const physical = street || inspecting;
         const modelOpacity = inspecting ? 1 : opacity;
-        if (!shown.has(range.landmark.id) || modelOpacity <= 0 || physical && !desired.has(range.landmark.id)) continue;
+        if (!shown.has(range.landmark.id) || modelOpacity <= 0 || physical && !desired.has(range.landmark.id)
+          || hasPreview && !street && !inspecting) continue;
         gl.uniform1f(uniforms.u_opacity, modelOpacity);
-        const lod = desired.get(range.landmark.id);
+        const requested = desired.get(range.landmark.id);
+        const loader = imported.get(range.landmark.id);
+        const fallbackOverview = requested === "detail" && (!loader?.get("detail") || gpuFailures.has(keyOf(range.landmark.id, "detail")))
+          && loader?.get("overview");
+        const lod = fallbackOverview ? "overview" : requested;
         const key = lod ? keyOf(range.landmark.id, lod) : null;
-        const model = lod ? imported.get(range.landmark.id)?.get(lod) : null;
+        const model = lod ? loader?.get(lod) : null;
         const previouslyUploaded = key ? importedGpu.has(key) : false, previouslyFailed = key ? gpuFailures.has(key) : false;
         const gpu = model && key ? uploadImported(gl, key, model) : null;
         if (model && key) {
           lastUsed.set(key, ++clock);
           if (previouslyUploaded !== importedGpu.has(key) || previouslyFailed !== gpuFailures.has(key)) modelChanged = true;
         }
-        // A failed/pending street import leaves the existing OSM view intact.
-        if (physical && !gpu) continue;
+        // Detail loading/decoding/allocation must not make the landmark vanish.
+        // The existing procedural buffer supplies a real-size placeholder; only
+        // a successful detailed draw is allowed to mask the native OSM building.
         let data = input.defaultProjectionData;
         let overviewScale = range.overviewScale;
         if (gpu && model) {
@@ -509,7 +519,8 @@ void main() {
         const heading = (placement?.headingDegrees ?? 0) * Math.PI / 180;
         gl.uniform2fv(uniforms.u_heading, [Math.cos(heading), Math.sin(heading)]);
         let elevation = 0;
-        if (physical) {
+        const physicalHeight = placement?.heightMeters ?? definitionById.get(range.landmark.id)?.heightMeters ?? 330;
+        if (physical || zoom >= EARTH_MODEL_PREVIEW_MIN_ZOOM) {
           // Native tile-local coordinates avoid float32 world-position jitter
           // at street zoom. Both tile projection paths accept heights in metres.
           const z = 14, tiles = 2 ** z, extent = 8192;
@@ -519,7 +530,7 @@ void main() {
           const canonicalX = ((x % tiles) + tiles) % tiles, wrap = Math.floor(x / tiles);
           data = input.getProjectionData({ tileID: { canonical: { z, x: canonicalX, y }, wrap }, applyGlobeMatrix: true });
           anchor = [(anchor[0] * tiles - x) * extent, (anchor[1] * tiles - y) * extent];
-          height = placement?.heightMeters ?? definitionById.get(range.landmark.id)?.heightMeters ?? 330;
+          height = physical ? physicalHeight : earthModelDisplayHeight(zoom, scale * meters, physicalHeight);
           scale = height / meters * tiles * extent;
           elevation = placement?.elevationMeters ?? 0;
         }
@@ -533,10 +544,16 @@ void main() {
         // globe prelude expects meters. Convert that matrix column per anchor
         // so a globe/mercator projection transition cannot stretch the model.
         const fallback = new Float32Array(data.fallbackMatrix);
-        if (globe && !physical) for (let index = 8; index < 12; index++) fallback[index] /= meters;
+        if (globe && !physical && zoom < EARTH_MODEL_PREVIEW_MIN_ZOOM) for (let index = 8; index < 12; index++) fallback[index] /= meters;
         gl.uniformMatrix4fv(uniforms.u_projection_fallback_matrix, false, fallback);
         // Prepared LODs reuse their indexed buffers. Until they arrive, the
         // procedural atlas uses its two fixed ranges without duplicate draws.
+        const drawProcedural = () => {
+          gl.uniform1f(uniforms.u_textured, 0); gl.bindVertexArray(vao);
+          gl.drawArrays(gl.TRIANGLES, range.start, zoom < 1.5 ? range.overviewCount : range.count);
+          const draw = physical ? "placeholder" : "procedural";
+          draws.set(range.landmark.id, draw); if (eiffel) lastDraw = draw;
+        };
         if (gpu) {
           gl.bindVertexArray(gpu.vao);
           let restoreTextures: (() => void) | null = null;
@@ -552,20 +569,17 @@ void main() {
             }
             gl.drawElements(gl.TRIANGLES, gpu.count, gl.UNSIGNED_INT, 0);
             if (material && gl.getError() !== gl.NO_ERROR) throw new Error("Earth model draw failed");
-            draws.set(range.landmark.id, "uploaded");
-            if (eiffel) lastDraw = "uploaded";
-            if (physical) streetModels.add(range.landmark.id);
+            const draw = physical && lod !== "detail" ? "placeholder-overview" : "uploaded";
+            draws.set(range.landmark.id, draw);
+            if (eiffel) lastDraw = draw;
+            if (physical && lod === "detail") streetModels.add(range.landmark.id);
           } catch {
             // An unsuccessful draw must leave the native map available.
             if (key) { gpuFailures.add(key); deleteGpu(gl, key); }
             modelChanged = true;
+            drawProcedural();
           } finally { restoreTextures?.(); }
-        }
-        else {
-          gl.uniform1f(uniforms.u_textured, 0); gl.bindVertexArray(vao);
-          gl.drawArrays(gl.TRIANGLES, range.start, zoom < 1.5 ? range.overviewCount : range.count);
-          draws.set(range.landmark.id, "procedural"); if (eiffel) lastDraw = "procedural";
-        }
+        } else drawProcedural();
       }
       gl.bindVertexArray(null);
       if (draws.size) drawnCamera = drawCamera();

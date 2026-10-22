@@ -28,17 +28,18 @@ function completeTutorial(p, now) {
 }
 const row = (p, id, level, now) => rewards.getDevProgressionRewards(p.token, now).achievementRewards.find(r => r.achievementId === id && r.level === level);
 
-test("v4 catalog grants 1500 visible lifetime achievement pearls and 500 visible pearls in one lifetime gift chain", () => {
+test("v5 catalog grants 2060 visible lifetime achievement pearls and 500 visible pearls in one lifetime gift chain", () => {
   const catalog = rules.progressionRewardsCatalog;
-  assert.equal(catalog.version, 4);
+  assert.equal(catalog.version, 5);
   const achievementPearls = Object.values(catalog.achievementPearls).flat().reduce((a, b) => a + b, 0);
-  assert.equal(achievementPearls, 3000);
-  assert.equal(money.pearlDisplayAmount(achievementPearls), 1500);
+  assert.equal(achievementPearls, 4120);
+  assert.equal(money.pearlDisplayAmount(achievementPearls), 2060);
   assert.deepEqual(catalog.achievementPearls, {
     seven_day_streak: [100], thousand_taps: [40], five_friends: [100], ten_thousand_series: [300],
     linked_email: [40], saved_recovery_code: [40], full_collection: [0], first_path: [40], familiar_trails: [100],
     explorer: [60, 160, 400], master_recipes: [100, 200], home_builder: [60, 120, 240, 400],
     river_atlas: [400], first_sale: [60], lucky_find: [40],
+    patient_angler: [40, 80, 160], campfire_cook: [40, 80, 160], helpful_neighbor: [40, 80, 160], generous_garden: [40, 80, 160],
   });
   assert.deepEqual(catalog.daily.reduce((sum, r) => ({ coins: sum.coins + r.coins, pearls: sum.pearls + r.pearls,
     items: sum.items + Object.values(r.items).reduce((a, b) => a + b, 0) }), { coins: 0, pearls: 0, items: 0 }), { coins: 320, pearls: 1000, items: 20 });
@@ -210,7 +211,7 @@ test("opening rewards changes no wallet; seven manual claims finish permanently 
   const initial = economy.getDevEconomy(p.token, now), opened = rewards.getDevProgressionRewards(p.token, now);
   assert.equal(initial.storage.capacity, 50, "the compact cycle fits the starter warehouse");
   assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
-  assert.equal(opened.achievementRewards.length, 21); assert.equal(opened.daily.step, 1);
+  assert.equal(opened.achievementRewards.length, 33); assert.equal(opened.daily.step, 1);
   assert.deepEqual(economy.getDevEconomy(p.token, now).wallet, initial.wallet);
   let last;
   for (let step = 1; step <= 7; step++) {
@@ -290,7 +291,7 @@ test("paid v2 and v3 finales retain their old amounts without opening another gi
     rewardProfile.receipts.set(oldRequest.requestId, structuredClone(oldReceipt));
     const replay = claim(p, oldRequest, now);
     assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, oldClaim);
-    assert.equal(replay.rewards.catalogVersion, 4);
+    assert.equal(replay.rewards.catalogVersion, 5);
     assert.equal(replay.economy.wallet.pearls, oldPearls, "a fresh preview cannot top up an old paid receipt");
     assert.equal(replay.rewards.daily.completed, true);
     assert.throws(() => claim(p, request(p), now), { code: "DAILY_REWARD_COMPLETED" });
@@ -515,4 +516,30 @@ test("completed reward responses cannot advertise another deadline or another cl
   assert.equal(api.gameRewardsSchema.safeParse(data).success, true);
   for (const patch of [{ step: 1 }, { claimable: true }, { nextClaimAt: data.serverTime }, { lastClaimAt: null }])
     assert.equal(api.gameRewardsSchema.safeParse({ ...data, daily: { ...data.daily, ...patch } }).success, false);
+});
+
+test("new activity tiers reconcile saved play and pay once across reload and duplicate claims", () => {
+  const p = player(), now = at("2026-10-22T12:00:00Z");
+  const before = economy.getDevEconomy(p.token, now), state = profile(p).state;
+  state.fishing.catches = { fish: 200 };
+  state.progression.recipes = { cook_grilled_fish: 100, grow_berries: 200 };
+  state.residentOrders.completed = 100;
+  const names = ["patient_angler", "campfire_cook", "helpful_neighbor", "generous_garden"];
+  const opened = rewards.getDevProgressionRewards(p.token, now);
+  assert.equal(opened.catalogVersion, 5);
+  assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
+  assert.equal(opened.achievementRewards.filter(row => names.includes(row.achievementId) && row.eligible).length, 12);
+  assert.equal(economy.getDevEconomy(p.token, now).wallet.pearls, before.wallet.pearls, "reading never pays automatically");
+  let paid = 0;
+  for (const achievementId of names) for (const level of [1, 2, 3]) {
+    const command = request(p, { kind: "achievement", achievementId, level });
+    const result = claim(p, command, now + paid);
+    paid += result.claim.reward.pearls;
+    assert.equal(result.economy.wallet.pearls, before.wallet.pearls + paid);
+    assert.equal(claim(p, command, now + paid + 1).replayed, true);
+    assert.throws(() => claim(p, request(p, { kind: "achievement", achievementId, level }), now + paid + 2),
+      error => error.code === "ACHIEVEMENT_REWARD_CLAIMED");
+  }
+  assert.equal(paid, 1120);
+  assert.equal(rewards.getDevProgressionRewards(p.token, now + 10_000).achievementRewards.filter(row => names.includes(row.achievementId) && row.eligible).length, 0);
 });

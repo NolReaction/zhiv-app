@@ -14,7 +14,7 @@ import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSal
 import { canStartTutorialWorkshop } from "@/features/economy/domain/workshop-starter";
 import { recipeBuildingLevel } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldPlaceForStation, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
+import { worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldPlaceForStation, worldRequirements, worldRecipeAccessReason, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { Requirements, Work, ProductIcon, stationIcons, stationName, number, type StationNavigation } from "@/features/economy/ui/shared/world-economy-parts";
 import { WorldUpgradeDialog } from "@/features/economy/ui/construction/world-upgrade-dialog";
@@ -63,7 +63,9 @@ const placeIcons: Partial<Record<WorldPlace, LucideIcon>> = { house: House, gard
   "leaftail-caravan": Leaf, "lopukh-home": House };
 
 function RecipeCatalog({ economy, recipes, focusedRecipeId, tutorialHarvestActive = false, onHelpContextChange }: { economy: ReadyEconomy; recipes: WorldRecipe[]; focusedRecipeId: string | null; tutorialHarvestActive?: boolean; onHelpContextChange?: (context: WorldHelpContext) => void }) {
-  const available = worldRecipeGroups(economy.snapshot, recipes);
+  const availableKeys = new Set(worldRecipeGroups(economy.snapshot, recipes).map(group => group.key));
+  const available = worldRecipeGroups(economy.snapshot, recipes, { includeFuture: true })
+    .filter(group => availableKeys.has(group.key) || group.methods.some(recipe => recipe.id === focusedRecipeId));
   return available.length ? <section className={styles.recipeGroup} aria-label="Доступные рецепты">
     <h3>Что произвести?</h3>
     <div className={styles.recipeGrid}>{available.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} tutorialHarvestActive={tutorialHarvestActive} focused={group.methods.some(recipe => recipe.id === focusedRecipeId)} onHelpContextChange={onHelpContextChange} />)}</div>
@@ -75,7 +77,7 @@ const cookingSectionIcons: Record<string, LucideIcon> = { fish: Fish, drinks: Cu
 export function CampfireRecipeCatalog({ economy, recipes, focusedRecipeId, onHelpContextChange }: { economy: ReadyEconomy; recipes: WorldRecipe[]; focusedRecipeId: string | null; onHelpContextChange?: (context: WorldHelpContext) => void }) {
   const [selection, setSelection] = useState<{ focus: string | null; filter: CampfireDurationFilter }>({ focus: focusedRecipeId, filter: "all" });
   const basicCampfire = !(economy.snapshot.buildings.dryer > 0);
-  const visibleRecipes = basicCampfire ? recipes.filter(recipe => recipeBuildingLevel(recipe) === 0) : recipes;
+  const visibleRecipes = basicCampfire ? recipes.filter(recipe => recipeBuildingLevel(recipe) === 0 || recipe.id === focusedRecipeId) : recipes;
   const available = worldRecipeGroups(economy.snapshot, visibleRecipes);
   const keys = new Set(available.map(product => product.key));
   const products = worldRecipeGroups(economy.snapshot, visibleRecipes, { includeFuture: true })
@@ -159,8 +161,9 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialH
   const building = state?.catalog.buildings.find(entry => entry.id === stationId);
   const target = building?.levels.find(level => level.level === current + 1);
   const recipes = state?.catalog.recipes.filter(recipe => recipe.buildingId === stationId) ?? [];
-  const focusedRecipe = state ? worldRecipeGroups(state, recipes, { includeFuture: stationId === "dryer" && current > 0 }).find(group => group.methods.some(recipe => recipe.id === recipeId))?.recipe : undefined;
+  const focusedRecipe = state ? worldRecipeGroups(state, recipes, { includeFuture: true }).find(group => group.methods.some(recipe => recipe.id === recipeId))?.recipe : undefined;
   const focusedRecipeId = focusedRecipe?.id;
+  const focusedAccessReason = state && focusedRecipe ? worldRecipeAccessReason(state, focusedRecipe) : null;
   const jobs = state?.jobs.filter(entry => ["production", "construction"].includes(entry.kind) && entry.targetId === stationId) ?? [];
   const construction = jobs.find(entry => entry.kind === "construction");
   const guidedWorkshopSetup = tutorialWorkshop && stationId === "workshop" && !current && state
@@ -258,6 +261,7 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialH
         <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div>
       </> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {!economy.syncError && (economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
+        {needsSetup && focusedRecipe && focusedAccessReason && <p className={styles.hint} data-recipe-access>{focusedRecipe.name}. {focusedAccessReason}</p>}
         {readyEconomy && needsSetup ? !guidedWorkshopSetup && <WorldStationSetup economy={readyEconomy} stationId={stationId} onOpenConstruction={openUpgrade} onOpenPantry={openJobPantry} /> : <>
         {readyEconomy && construction && <Work economy={readyEconomy} job={construction} openPantry={openJobPantry} compact />}
         {readyEconomy && !productionStationSupported(stationId) && (readyJobs.length > 0 || runningJobs.length > 0) && <section className={styles.activeOrders} data-section-guide-target="workshop-queue" data-running-orders={runningJobs.length ? stationId : undefined} aria-label="Текущая работа">

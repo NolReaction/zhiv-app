@@ -72,7 +72,7 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
   const canChange = !!settings && online && !sharing?.saving && !working && !sharing?.pendingGhost;
   const disabled = !locationEnabled || !canChange || ghost || (hasAccess ? !onSetFrozen : !onShare || (settings?.recipientCircleIds.length ?? 0) >= 100);
   const status = !locationEnabled ? "Выключена в настройках" : !settings ? "Загружаем…" : !hasAccess ? "Нет доступа" : sharing?.pendingGhost ? "Ждём подтверждения…"
-    : ghost ? "Последнее место · призрак" : frozen ? "Последнее место" : !sharing?.publishing ? "Обновится на карте"
+    : ghost ? "Последнее место · призрак" : frozen ? "Последнее место" : sharing?.publicationError ? "Ошибка геопозиции" : !sharing?.publishing ? "Обновление на паузе"
       : !sharing.lastPublishedAt ? "Ищем местоположение…" : "Обновляется";
   const id = `${idPrefix}-${person.circleId}`;
   const checked = locationEnabled && hasAccess && !frozen && !ghost;

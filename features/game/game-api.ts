@@ -58,7 +58,7 @@ const gameLeaderboardSchema = z.object({
 });
 
 const gameAchievementIdSchema = z.enum(["seven_day_streak", "thousand_taps", "five_friends", "ten_thousand_series", "linked_email", "saved_recovery_code", "full_collection",
-  "first_path", "familiar_trails", "explorer", "master_recipes", "home_builder", "river_atlas", "first_sale", "lucky_find"]);
+  "first_path", "familiar_trails", "explorer", "master_recipes", "home_builder", "river_atlas", "first_sale", "lucky_find", "patient_angler", "campfire_cook", "helpful_neighbor", "generous_garden"]);
 const gameAchievementTierSchema = z.object({ level: count.positive(), progress: count,
   target: count.positive(), unlockedAt: z.string().datetime().nullable() });
 const gameAchievementSchema = z.object({
@@ -80,11 +80,11 @@ const gameAchievementSchema = z.object({
 export const gameAchievementsSchema = z.object({
   ownerPublicId: owner,
   serverTime: z.string().datetime(),
-  achievements: z.array(gameAchievementSchema).min(3).max(15)
+  achievements: z.array(gameAchievementSchema).min(3).max(19)
     .refine(items => new Set(items.map(item => item.id)).size === items.length
-      && ([3, 6, 7, 15].includes(items.length))
+      && ([3, 6, 7, 15, 19].includes(items.length))
       && items.every((item, index) => item.id === Object.keys(GAME_ACHIEVEMENT_TARGETS)[index])
-      && (items.length === 15 ? items.every(item => !!item.tiers) : items.every(item => !item.tiers))),
+      && (items.length >= 15 ? items.every(item => !!item.tiers) : items.every(item => !item.tiers))),
 });
 
 export type GameProgress = z.infer<typeof gameProgressSchema>;
@@ -155,7 +155,7 @@ export function getGameLeaderboard(scope: GameLeaderboardScope = "global", signa
   return gameRequest(`/api/v1/game/leaderboard?scope=${scope}&metric=${metric}`, gameLeaderboardSchema, "GET", undefined, signal);
 }
 export function getGameAchievements(signal?: AbortSignal): Promise<GameAchievements> {
-  return gameRequest("/api/v1/game/achievements?catalog=5", gameAchievementsSchema, "GET", undefined, signal);
+  return gameRequest("/api/v1/game/achievements?catalog=6", gameAchievementsSchema, "GET", undefined, signal);
 }
 export function updateGameVisibility(body: GameVisibilityRequest, signal?: AbortSignal): Promise<GameProgress> {
   return gameRequest("/api/v1/game/visibility", gameProgressSchema, "PATCH", body, signal);

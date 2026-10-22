@@ -75,3 +75,8 @@ IP-квоты API полагаются на заголовки прокси. В 
 Предварительные целевые TS-наборы: auth 22/22, приватность/админка 67/67, экономика 70/70; они проверяют локальный контракт и не заменяют JDBC-тесты.
 
 Итог: TypeScript, ESLint, world:check, Next/VPS и Sites сборки прошли; полный `npm test` — **2 158/2 158**, без пропусков и падений. После изменения authclient-набор — 18/18. Это не выполнение backend-тестов. Подробности текущего этапа — в `WORK_STATE.md`. Для выпуска обязательны новая миграция на заполненной БД, Ktor/PostgreSQL и production Compose smoke по выпускаемому SHA. В локальной среде доступен только Java17, нет JDK25/Gradle/Docker/PostgreSQL; backend нельзя считать пройденным. Коммит в рабочую ветку не меняет master и Selectel. Новый CI после push по просьбе владельца не ожидается.
+
+
+## Дополнение 22 октября 2026
+
+CI ветки `fix/0.7.1-player-feedback` обнаружил новые critical/high advisory для закреплённого Next 16.3.8. Next и `eslint-config-next` обновлены до **16.4.2**, lockfile обновлён совместно. Основание: [официальное исправление 14 октября](https://nextjs.org/blog/nextjs-security-update-october-14-2026) и [patch 16.4.2](https://github.com/vercel/next.js/releases/tag/v16.4.2). Настройка `npm audit --omit=dev --audit-level=high` сохранена; после обновления production-аудит сообщает 0 уязвимостей. Итоговые сборки и тесты относятся к новому кандидату PR #33, их статус проверяется в CI.

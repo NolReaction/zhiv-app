@@ -163,7 +163,7 @@ class JdbcProgressionRewardsIntegrationTest {
         assertEquals(1,both.count { it.replayed }); assertEquals(both[0].claim,both[1].claim)
         assertEquals(initial.wallet.coins+30,economy.snapshot(p.hash).wallet.coins)
         assertEquals(initial.wallet.pearls+80,economy.snapshot(p.hash).wallet.pearls)
-        assertEquals(4,rewards.snapshot(p.hash).catalogVersion)
+        assertEquals(5,rewards.snapshot(p.hash).catalogVersion)
         assertEquals(initial.revision+1,economy.snapshot(p.hash).revision)
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='daily_reward'",p.id))
         val conflict=assertFailsWith<AuthFailure> { rewards.claim(p.hash,request.copy(kind="achievement",achievementId="first_path",level=1)) }
@@ -373,4 +373,53 @@ class JdbcProgressionRewardsIntegrationTest {
         assertEquals("DAILY_REWARD_COOLDOWN",assertFailsWith<AuthFailure> { rewards.claim(left.hash,command(left)) }.code)
         assertEquals("REWARD_REQUEST_CONFLICT",assertFailsWith<AuthFailure> { rewards.claim(left.hash,command(left,rightClaim.requestId)) }.code)
     }
+    @Test fun `new activity achievements reconcile durable play and each tier pays once`()=runBlocking<Unit> {
+        val p=player(); val before=economy.snapshot(p.hash)
+        val state=source.connection.use { readEconomyProfile(it,p.id).state }
+        val played=state.copy(fishing=state.fishing.copy(catches=mapOf("fish" to 200L)),
+            progression=state.progression.copy(recipes=mapOf("cook_grilled_fish" to 100L,"grow_berries" to 200L)),
+            residentOrders=state.residentOrders.copy(completed=100L))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(played),p.id)
+        val names=setOf("patient_angler","campfire_cook","helpful_neighbor","generous_garden")
+        val opened=rewards.snapshot(p.hash)
+        assertEquals(5,opened.catalogVersion); assertEquals(33,opened.achievementRewards.size)
+        assertEquals(12,opened.achievementRewards.count { it.achievementId in names && it.eligible })
+        assertEquals(before.wallet,economy.snapshot(p.hash).wallet,"Reading achievements never pays automatically")
+        var paid=0L
+        for(id in names) for(level in 1..3) {
+            val request=command(p,achievement=id,level=level)
+            val result=rewards.claim(p.hash,request); paid+=result.claim.reward.pearls
+            assertEquals(before.wallet.pearls+paid,result.economy.wallet.pearls)
+            assertTrue(rewards.claim(p.hash,request).replayed)
+            assertEquals("ACHIEVEMENT_REWARD_CLAIMED",assertFailsWith<AuthFailure> {
+                rewards.claim(p.hash,command(p,achievement=id,level=level)) }.code)
+        }
+        assertEquals(1120L,paid)
+        val restarted=JdbcProgressionRewardsRepository(source)
+        assertEquals(0,restarted.snapshot(p.hash).achievementRewards.count { it.achievementId in names && it.eligible })
+        assertEquals("12",scalar("SELECT count(*) FROM game_achievement_reward_claims WHERE user_id=?",p.id))
+        // V70 retains historical IDs and rejects impossible fourth new tiers.
+        execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'thirty_day_streak','2020-01-01T00:00:00Z')",p.id)
+        assertFailsWith<java.sql.SQLException> {
+            execute("INSERT INTO game_achievement_tiers(user_id,achievement_id,level) VALUES (?,'patient_angler',4)",p.id)
+        }
+        assertFailsWith<java.sql.SQLException> {
+            execute("INSERT INTO game_achievement_reward_claims(user_id,achievement_id,level,pearls,claimed_at) VALUES (?,'patient_angler',4,1,clock_timestamp())",p.id)
+        }
+    }
+
+    @Test fun `former biome ownership and its paid receipt survive the current route condition`()=runBlocking<Unit> {
+        val p=player(); economy.snapshot(p.hash)
+        execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'familiar_trails','2020-01-01T00:00:00Z')",p.id)
+        execute("INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at) VALUES (?,'familiar_trails',1,'2020-01-01T00:00:00Z')",p.id)
+        val request=command(p,achievement="familiar_trails",level=1)
+        val paid=rewards.claim(p.hash,request)
+        assertEquals(100L,paid.claim.reward.pearls)
+        val medal=JdbcGameRepository(source).achievements(p.hash).achievements.single { it.id=="familiar_trails" }
+        assertEquals("2020-01-01T00:00:00Z",medal.unlockedAt); assertEquals(3L,medal.progress)
+        assertEquals(paid.claim,rewards.claim(p.hash,request).claim)
+        assertEquals("ACHIEVEMENT_REWARD_CLAIMED",assertFailsWith<AuthFailure> {
+            rewards.claim(p.hash,command(p,achievement="familiar_trails",level=1)) }.code)
+    }
+
 }

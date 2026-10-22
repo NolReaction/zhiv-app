@@ -5,6 +5,7 @@ import { Popover } from "radix-ui";
 import { ArrowRight, Check, ChevronRight, Clock3, Soup, X } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { availableMealRecipe, mealBlockedReason, visibleMeals, type MealConsumer } from "./meal-availability";
 import { locked } from "@/features/economy/sync/controller-state";
 import { itemName, ProductIcon } from "@/features/economy/ui/shared/world-economy-parts";
@@ -36,6 +37,16 @@ export function mealBoostReason({ economy, consumer, jobId, isOnline }: WorldMea
     if (!jobId && active) return "Строитель занят. Угостить его можно у текущей стройки.";
   }
   return mealBlockedReason({ ...economy, snapshot: state }, consumer);
+}
+
+export function mealReturnReason({ economy, consumer, isOnline }: WorldMealBoostProps) {
+  if (!economy.snapshot || economy.snapshotConfirmed !== true) return "Дождитесь загрузки хозяйства.";
+  if (isOnline === false || typeof navigator !== "undefined" && navigator.onLine === false) return "Подключитесь к интернету, чтобы забрать блюдо.";
+  if (economy.uncertain) return "Сначала подтвердите последнее действие.";
+  if (economy.busy) return "Подтверждаем действие…";
+  if (economy.retryAt > economy.now) return "Дождитесь повторной проверки.";
+  if (locked(economy)) return "Дождитесь подтверждения остальных действий.";
+  return pendingMeal(economy.snapshot, consumer) ? null : "Это блюдо уже использовано.";
 }
 
 /** Whole seconds for display; an active construction divides its remaining milliseconds. */
@@ -72,14 +83,15 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
   else if (submitted && !submitted.observed && (economy.busy || economy.uncertain)) setSubmitted({ ...submitted, observed: true });
   if (!state || !state.catalog.food?.meals.length) return null;
   const meals = visibleMeals(state);
-  const active = jobId ? state.jobs.find(job => job.kind === "construction" && job.id === jobId) : null;
+  const active = consumer === "builder" ? state.jobs.find(job => job.kind === "construction" && (!jobId || job.id === jobId))
+    : state.jobs.find(job => job.kind === "exploration" && !isMinerJob(job) && job.meal?.consumer === "hero");
   const pending = pendingMeal(state, consumer);
   const applied = active?.meal?.consumer === consumer ? active.meal : null;
   const saved = applied ?? (pending ? { itemId: pending.itemId, speedBps: consumer === "hero" ? pending.heroSpeedBps : pending.builderSpeedBps } : null);
   if (!meals.length && !saved) return null;
   const reason = mealBoostReason(props);
   const open = Boolean(quote && quote.owner === state.ownerPublicId && quote.revision === state.revision && quote.consumer === consumer && quote.jobId === jobId && quote.stationId === stationId);
-  const baseSeconds = mealBoostSeconds(props, 0);
+  const baseSeconds = applied && active ? Math.max(0, Math.ceil((Date.parse(active.finishesAt) - economy.now) / 1000)) : mealBoostSeconds(props, 0);
   const selected = meals.find(meal => meal.itemId === selectedItemId && (state.inventory[meal.itemId] ?? 0) > 0);
   const selectedSpeed = selected ? consumer === "hero" ? selected.heroSpeedBps : selected.builderSpeedBps : 0;
   const selectedSeconds = selected ? mealBoostSeconds(props, selectedSpeed) : null;
@@ -108,14 +120,40 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
       setSubmissionError("Обед не отправлен. Попробуйте ещё раз.");
     } else setSubmissionError(null);
   }
+  const returnReason = pending ? mealReturnReason(props) : null;
+  const returnOwner = state.ownerPublicId, returnRevision = state.revision, returnItemId = pending?.itemId;
+  function returnMeal() {
+    const current = latest.current.props, snapshot = current.economy.snapshot;
+    if (!returnItemId || sent.current || mealReturnReason(current) || !snapshot || snapshot.ownerPublicId !== returnOwner
+      || snapshot.revision !== returnRevision || current.consumer !== consumer || current.jobId !== jobId || current.stationId !== stationId
+      || pendingMeal(snapshot, consumer)?.itemId !== returnItemId) return;
+    const attempt = { owner: snapshot.ownerPublicId, revision: snapshot.revision, consumer, jobId, stationId };
+    sent.current = attempt;
+    setSubmitted({ quote: attempt, observed: false, error: current.economy.error });
+    if (current.economy.act("cancel_meal", consumer, 1, 0) === false) {
+      sent.current = null;
+      setSubmitted(null);
+      setSubmissionError("Не удалось отправить возврат блюда. Попробуйте ещё раз.");
+    } else setSubmissionError(null);
+  }
   if (saved) return <span ref={savedBadge} tabIndex={-1} className={styles.saved} data-meal-boost={consumer} data-meal-applied={saved.itemId}
     title={`${itemName(state, saved.itemId)} · ${applied ? "текущая" : "следующая"} ${consumer === "hero" ? "вылазка" : "стройка"}`} aria-label={`${itemName(state, saved.itemId)}: скорость +${saved.speedBps / 100}%`}>
+    <span className={styles.savedSummary}>
     <span className={styles.tileIcon}><ProductIcon state={state} itemId={saved.itemId} size={30} /></span>
     <span className={styles.tileDescription}><span className={styles.tileLabel}>{applied ? "Обед учтён" : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</span><strong>{itemName(state, saved.itemId)}<small>+{saved.speedBps / 100}% скорости</small></strong>
       {baseSeconds !== null && <span className={styles.tileDuration} data-meal-duration><Clock3 size={11} aria-hidden="true" />
         {applied ? duration(baseSeconds) : <>{duration(baseSeconds)}<ArrowRight size={10} aria-hidden="true" /><b>{duration(mealBoostSeconds(props, saved.speedBps) ?? baseSeconds)}</b></>}
       </span>}
     </span><Check className={styles.tileControl} size={17} aria-hidden="true" />
+    </span>
+    {applied && <span className={styles.savedNote} data-meal-used>Блюдо уже использовано в {consumer === "hero" ? "этой вылазке" : "этой стройке"}. Вернуть его нельзя.</span>}
+    {pending && <span className={styles.returnMeal}>
+      {applied && <span className={styles.pendingMeal} data-meal-pending={pending.itemId}><span>Для следующей {consumer === "hero" ? "вылазки" : "стройки"}</span><strong>{itemName(state, pending.itemId)}</strong></span>}
+      <span className={styles.savedNote}>Неиспользованную порцию можно вернуть в кладовую.</span>
+      <button type="button" className={styles.returnButton} data-meal-return={consumer} disabled={Boolean(returnReason) || sending}
+        aria-label={`Забрать блюдо: ${itemName(state, pending.itemId)}`} onClick={returnMeal}>{sending ? "Возвращаем…" : "Забрать блюдо"}</button>
+      {(returnReason ?? submissionError ?? economy.error) && <span className={styles.reason} role="status">{returnReason ?? submissionError ?? economy.error}</span>}
+    </span>}
   </span>;
   return <Popover.Root open={open} onOpenChange={value => {
     if (!value) { selection.current = null; setSelectedItemId(null); setQuote(null); }

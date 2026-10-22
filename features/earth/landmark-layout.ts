@@ -1,10 +1,12 @@
+import { EARTH_MODEL_STREET_MIN_ZOOM } from "./landmark-model-view";
+
 export const EARTH_LANDMARK_WIDTH = 48;
 export const EARTH_LANDMARK_HEIGHT = 48;
 export const EARTH_LANDMARK_MAX_VISIBLE = 9;
 export const EARTH_LANDMARK_MIN_ZOOM = -0.2;
 export const EARTH_LANDMARK_APPEAR_ZOOM = 0.6;
-export const EARTH_LANDMARK_FADE_START = 3.8;
-export const EARTH_LANDMARK_MAX_ZOOM = 5.2;
+export const EARTH_LANDMARK_FULL_SIZE_ZOOM = 3.8;
+export const EARTH_LANDMARK_MAX_ZOOM = EARTH_MODEL_STREET_MIN_ZOOM;
 
 type LandmarkCandidate = {
   id: string;
@@ -19,7 +21,7 @@ type LandmarkView = { scale: number; opacity: number; width: number; height: num
 type Rectangle = { left: number; right: number; top: number; bottom: number };
 const LANDMARK_GAP = 4;
 const SCALE_STOPS = [[EARTH_LANDMARK_MIN_ZOOM, 0.3], [EARTH_LANDMARK_APPEAR_ZOOM, 0.5],
-  [1.5, 0.72], [2.1, 0.85], [EARTH_LANDMARK_FADE_START, 1]] as const;
+  [1.5, 0.72], [2.1, 0.85], [EARTH_LANDMARK_FULL_SIZE_ZOOM, 1]] as const;
 
 /** Tiny globes have no miniatures; their ground origin never leaves its WGS84 anchor. */
 export function earthLandmarkView(zoom: number): LandmarkView {
@@ -36,9 +38,9 @@ export function earthLandmarkView(zoom: number): LandmarkView {
       scale = startScale + (endScale - startScale) * fraction;
       if (zoom <= endZoom) break;
     }
-    const fade = Math.max(0, Math.min(1, (zoom - EARTH_LANDMARK_FADE_START)
-      / (EARTH_LANDMARK_MAX_ZOOM - EARTH_LANDMARK_FADE_START)));
-    opacity *= 1 - fade * fade * (3 - 2 * fade);
+    // Keep a compact landmark visible through city zoom. The mesh blends its
+    // size into real metres before the street layer takes over at the same opacity.
+    if (zoom >= EARTH_LANDMARK_MAX_ZOOM) opacity = 0;
   }
   return { scale, opacity, width: EARTH_LANDMARK_WIDTH * scale, height: EARTH_LANDMARK_HEIGHT * scale,
     // The small catalogue has a fixed budget. Zoom-dependent count caps made

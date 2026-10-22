@@ -8,9 +8,11 @@ import ru.zhiv.economy.EconomyCollectionProgress
 internal fun economyAchievementProgress(state: EconomyState?, confirmedSale: Boolean = false,
     inheritedFinds: List<String> = emptyList()): Map<String, Long> {
     val routes = state?.progression?.routes.orEmpty()
+    fun completedRecipes(building: String, limit: Long): Long = EconomyRules.catalog.recipes.filter { it.buildingId == building }
+        .fold(0L) { total, recipe -> minOf(limit, total + minOf(limit, state?.progression?.recipes?.get(recipe.id) ?: 0L)) }
     return linkedMapOf(
         "first_path" to (state?.completedExplorations ?: 0L),
-        "familiar_trails" to GameRewards.biomes.values.count { ids -> ids.any { (routes[it] ?: 0L) > 0L } }.toLong(),
+        "familiar_trails" to EconomyRules.catalog.explorations.count { (routes[it.id] ?: 0L) > 0L }.toLong(),
         "explorer" to (state?.completedExplorations ?: 0L),
         "master_recipes" to (EconomyRules.catalog.recipes.map { it.id }.toSet() + GameRewards.legacyRecipeIds)
             .count { (state?.progression?.recipes?.get(it) ?: 0L) > 0L }.toLong(),
@@ -18,6 +20,11 @@ internal fun economyAchievementProgress(state: EconomyState?, confirmedSale: Boo
         "river_atlas" to EconomyRules.catalog.fishing?.fish.orEmpty().count { (state?.fishing?.catches?.get(it.itemId) ?: 0L) > 0L }.toLong(),
         "first_sale" to if (confirmedSale) 1L else 0L,
         "lucky_find" to if (state != null && EconomyCollectionProgress.personallyFound(state.progression.collections, inheritedFinds)) 1L else 0L,
+        "patient_angler" to EconomyRules.catalog.fishing?.fish.orEmpty().fold(0L) { total, fish ->
+            minOf(200L, total + minOf(200L, state?.fishing?.catches?.get(fish.itemId) ?: 0L)) },
+        "campfire_cook" to completedRecipes("dryer", 100L),
+        "helpful_neighbor" to (state?.residentOrders?.completed ?: 0L),
+        "generous_garden" to completedRecipes("garden", 200L),
     )
 }
 

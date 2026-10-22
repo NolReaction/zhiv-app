@@ -70,7 +70,7 @@ export function EarthSharingPanelContent({ sharing, online, onShare, onResume, o
   const selected = new Set(settings?.recipientCircleIds ?? []), frozen = new Set(settings?.frozenCircleIds ?? []);
   const liveCount = [...selected].filter(id => !frozen.has(id)).length;
   const canChange = !!settings && online && !busy && !sharing.pendingGhost;
-  const active = settings?.mode === "SHARING" && sharing.publishing && !sharing.pendingGhost && liveCount > 0;
+  const active = settings?.mode === "SHARING" && sharing.publishing && !!sharing.lastPublishedAt && !sharing.publicationError && !sharing.pendingGhost && liveCount > 0;
   const emptyGhost = ghost && selected.size === 0;
   const switchDisabled = !settings || !locationAllowed || sharing.pendingGhost
     || ghost && (emptyGhost ? busy : !canChange);
@@ -85,9 +85,9 @@ export function EarthSharingPanelContent({ sharing, online, onShare, onResume, o
   const accuracy = sourceAccuracy !== null && Number.isFinite(sourceAccuracy) && sourceAccuracy >= 0
     ? sourceAccuracy < 1_000 ? `${Math.max(1, Math.round(sourceAccuracy))} м`
       : `${(sourceAccuracy / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} км` : null;
-  const error = sharing.error || localError;
+  const error = sharing.publicationError || sharing.error || localError;
   const status = !locationAllowed ? "Геопозиция отключена в профиле" : busy ? "Сохраняем…" : sharing.pendingGhost ? sharingSummary(sharing)
-    : ghost ? "На паузе · последнее место" : sharingSummary(sharing);
+    : ghost ? "На паузе · последнее место" : sharing.publicationError ? "Не удалось обновить геопозицию" : sharingSummary(sharing);
 
   return <div className={styles.panel}>
     <section className={styles.sharingCard} data-live={active || undefined} aria-labelledby="earth-sharing-heading">
@@ -118,7 +118,7 @@ export function EarthSharingPanelContent({ sharing, online, onShare, onResume, o
         : saved.durationMinutes === null ? "пока не выключу" : saved.durationMinutes === 480 ? "на 8 часов" : "на 1 час"}</p>
       {published && <p className={styles.lastUpdate}>Друзьям отправлено: <time dateTime={sharing.lastPublishedAt!}>{published}</time></p>}
       {accuracy && <p className={styles.lastUpdate}>Точность GPS: ±{accuracy}</p>}
-      <p className={styles.sharingHint}>Обновляется, пока карта открыта на экране. В фоне остаётся последнее место.</p>
+      <p className={styles.sharingHint}>Обновляется, пока приложение открыто на экране, в том числе во время игры. В фоне остаётся последнее место.</p>
     </section>
     <p className={styles.consentHint}>Своё место вы показываете только выбранным друзьям в «Людях». Чтобы видеть друга, он тоже должен открыть вам доступ.</p>
 

@@ -164,6 +164,7 @@ export function normalizedResidentOrders(state: OrderSource, now: number, catalo
   const replacementCycle = Math.floor(now / (config.replacementWindowSeconds * 1000));
   const resetAt = new Date(cycle * config.refreshSeconds * 1000).toISOString();
   const eligible = eligibleResidentOrderTemplates(state, catalog);
+  const reachable = obtainableResidentOrderItems(state, catalog);
   let recentTemplateIds = cleanHistory(previous.recentTemplateIds ?? [], config.recentLimit);
   const keep = previous.version === 2 && previous.cycle === cycle;
   if (previous.version === 2 && !keep) for (const slot of previous.slots) recentTemplateIds = retire(recentTemplateIds, slot.templateId, config.recentLimit);
@@ -173,7 +174,8 @@ export function normalizedResidentOrders(state: OrderSource, now: number, catalo
     // Legacy v2 cards used fixed catalog quantities; retain those exact terms.
     const savedTemplate = saved?.templateId ? saved.terms ?? config.templates.find(template => template.id === saved.templateId) : undefined;
     const template = savedTemplate ? terms(savedTemplate) : undefined;
-    const valid = template && template.id === saved?.templateId && acceptsResident(index, template) && !usedIds.has(template.id) && !usedCompositions.has(composition(template));
+    const valid = template && template.id === saved?.templateId && acceptsResident(index, template)
+      && Object.keys(template.items).every(id => reachable.has(id)) && !usedIds.has(template.id) && !usedCompositions.has(composition(template));
     if (valid) { usedIds.add(template.id); usedCompositions.add(composition(template)); }
     else if (saved?.templateId) recentTemplateIds = retire(recentTemplateIds, saved.templateId, config.recentLimit);
     return { sequence: saved?.sequence ?? 0, readyAt: resetAt, templateId: valid ? template.id : null, ...(valid ? { terms: terms(template) } : {}) };

@@ -4,7 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Clock3, LockKeyhole } from "lucide-react";
 import { locked, productionLocked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
-import { worldCostShortfalls, worldProductionReason, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
+import { worldCostShortfalls, worldProductionReason, worldRecipeAccessReason, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 import { ProductIcon, itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldRecipeDuration } from "@/features/economy/ui/stations/world-recipe-groups";
 import { fishStockRequirements, fishSelectionMatches, type FishSelection } from "@/features/economy/domain/fish-stock";
@@ -36,6 +36,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
   const firstHarvest = tutorialHarvestActive && canPrepareTutorialHarvest(state, recipe.id);
   const duration = firstHarvest ? "Сразу · первый урожай" : worldRecipeDuration(recipe.seconds);
   const reason = worldProductionReason(state, recipe, 1);
+  const accessReason = worldRecipeAccessReason(state, recipe);
   const costs = [...(recipe.cost.coins > 0 ? [["coins", recipe.cost.coins] as const] : []), ...Object.entries(recipe.cost.items)];
   const hasFish = Object.keys(fishStockRequirements(recipe.cost.items, state.catalog.fishing)).length > 0;
   const durableProduction = !firstHarvest && economy.productionQueueAvailable && !hasFish && !recipe.fishInput;
@@ -116,6 +117,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
       </span>
       <span className={styles.time}><Clock3 size={12} aria-hidden="true" />{duration}{restriction && <LockKeyhole className={styles.lock} size={12} aria-hidden="true" />}</span>
       <span className={styles.details}>
+        {accessReason && <span className={styles.accessReason} data-recipe-access>{accessReason}</span>}
         {costs.length > 0 && <span className={styles.costs} data-production-inputs aria-label="Понадобится">{costs.map(([id, amount]) => {
           const available = id === "coins" ? state.wallet.coins : state.inventory[id] ?? 0;
           const missing = available < amount;

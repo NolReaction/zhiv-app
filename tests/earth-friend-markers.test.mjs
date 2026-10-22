@@ -27,7 +27,7 @@ function fixture({ zoom = 3, width = 1000, height = 600, reduced = false, failMa
     } },
     createElement(tag) {
       const handlers = new Map(), classes = new Set(), writes = [];
-      const element = { tag, attributes: {}, dataset: new Proxy({}, { set(target, key, value) { writes.push(`data:${key}`); target[key] = value; return true; } }), children: [], handlers, classes, writes,
+      const element = { tag, attributes: {}, dataset: new Proxy({}, { set(target, key, value) { writes.push(`data:${key}`); target[key] = value; return true; } }), children: [], handlers, classes, writes, style: { setProperty() {} },
         setAttribute(key, value) { writes.push(`attribute:${key}`); this.attributes[key] = value; },
         getAttribute(key) { return this.attributes[key] ?? null; }, append(...children) { this.children.push(...children); },
         classList: { contains: name => classes.has(name) },
@@ -58,7 +58,8 @@ function fixture({ zoom = 3, width = 1000, height = 600, reduced = false, failMa
     off(type, callback) { listeners.get(type)?.delete(callback); },
   };
   class Marker {
-    constructor(options) { this.options = options; this.positions = []; this.removed = 0; markers.push(this); }
+    constructor(options) { this.options = options; this.positions = []; this.offsets = []; this.removed = 0; markers.push(this); }
+    setOffset(value) { this.offsets.push([...value]); return this; }
     setLngLat(location) { this.positions.push([...location]); return this; }
     addTo(target) { assert.equal(target, map); if (failMarker) throw new Error("attachment failed"); return this; }
     remove() { this.removed++; }
@@ -93,14 +94,14 @@ function fixture({ zoom = 3, width = 1000, height = 600, reduced = false, failMa
   };
 }
 
-test("bounded clustering anchors groups on real members, preserves inputs and reserves private GPS", () => {
+test("bounded clustering preserves real anchors and exposes nearby friends beside private GPS", () => {
   const points = Object.freeze([{ circleId: "b", x: 111, y: 105 }, { circleId: "a", x: 100, y: 100 },
     { circleId: "self-overlap", x: 320, y: 300 }, { circleId: "separate", x: 600, y: 300 }].map(Object.freeze));
   const groups = layoutEarthFriends(points, { width: 800, height: 600 }, { x: 320, y: 300 });
-  assert.equal(groups.length, 2);
+  assert.equal(groups.length, 3);
   const cluster = groups.find(group => group.circleIds.length === 2);
   assert.deepEqual(cluster, { anchorId: "a", circleIds: ["a", "b"], x: 100, y: 100 });
-  assert.equal(groups.some(group => group.circleIds.includes("self-overlap")), false);
+  assert.deepEqual(groups.find(group => group.circleIds.includes("self-overlap")), { anchorId: "self-overlap", circleIds: ["self-overlap"], x: 320, y: 300, offsetX: 70 });
   const many = Array.from({ length: 100 }, (_, index) => ({ circleId: String(index).padStart(3, "0"),
     x: 100 + index % 10 * 100, y: 100 + Math.floor(index / 10) * 100 }));
   const bounded = layoutEarthFriends(many, { width: 1200, height: 1200 }, null);
@@ -118,6 +119,15 @@ test("public globe projection excludes the far hemisphere and handles longitude 
   for (const longitude of [NaN, Infinity, -181, 181]) assert.equal(earthFriendScreenPoint(map, { longitude, latitude: 40 }), null);
   map.getProjection = () => ({ type: "mercator" });
   assert.deepEqual(earthFriendScreenPoint(map, { longitude: 1, latitude: -40 }), { x: 10, y: 20 });
+});
+
+test("separate friends displaced beside the same own pin become one clickable group instead of covering each other", () => {
+  const groups = layoutEarthFriends([{ circleId: "a", x: 145, y: 190 }, { circleId: "b", x: 245, y: 190 }],
+    { width: 390, height: 600 }, { x: 195, y: 200 });
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].circleIds, ["a", "b"]);
+  assert.equal(groups[0].x, 145, "the group remains anchored on its real first member");
+  assert.equal(groups[0].x + groups[0].offsetX, 125);
 });
 
 test("only fresh real feed positions become anchored, labelled pins without remote markup or coordinate attributes", () => {
@@ -194,11 +204,15 @@ test("hidden maps purge coordinates, listeners and timers; returning needs a fre
   f.dispose();
 });
 
-test("tiny globe and private GPS overlap remove only drawing, preserving a valid explicit focus action", () => {
+test("private GPS overlap keeps a visible connected label while tiny globe preserves explicit focus", () => {
   const f = fixture({ reduced: true }); f.show([person("a")]);
   f.renderer.setSelfPosition({ latitude: 0, longitude: 0, accuracy: 10, timestamp: Date.now() });
-  assert.equal(f.current.length, 0);
+  assert.equal(f.current.length, 1);
+  assert.deepEqual(f.current[0].positions.at(-1), [0, 0], "the geographic anchor is never displaced");
+  assert.deepEqual(f.current[0].offsets.at(-1), [-70, 0]);
+  assert.equal(f.current[0].options.element.dataset.besideSelf, "true");
   f.renderer.setSelfPosition(null); assert.equal(f.current.length, 1);
+  assert.deepEqual(f.current[0].offsets.at(-1), [0, 0]);
   f.zoom(-0.2); assert.equal(f.current.length, 0);
   assert.equal(f.renderer.focusFriend("a"), true);
   assert.deepEqual(f.flights[0].center, [0, 0]); assert.equal(f.flights[0].duration, 0); assert.equal(f.flights[0].essential, false);

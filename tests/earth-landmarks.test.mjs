@@ -280,7 +280,7 @@ test("native globe coverage removes a landmark from interaction without overwrit
   assert.equal(tower.style.opacity, "0.73");
   assert.equal(label(tower).hidden, true, "returning from the far hemisphere does not reopen a stale label");
   state.setZoom(4.5);
-  assert.ok(Math.abs(Number(visual(tower).style.opacity) - 0.5) < 0.00001);
+  assert.equal(Number(visual(tower).style.opacity), 1, "city miniatures no longer disappear while zooming in");
   for (const { options: { element } } of state.markers) {
     assert.equal(element.style.opacity, "0.73");
     assert.equal(element.style.transform, "translate(-50%, -100%) translate(100px, 200px)");
@@ -303,7 +303,7 @@ test("hidden scenes, tiny globes and street zoom close labels and remove every m
   assert.deepEqual(openLabels(state), []);
   tower.dispatch("click");
   state.setZoom(5.2);
-  for (const marker of state.markers) assertHidden(marker.options.element);
+  assert.equal(tower.disabled, false, "the city miniature remains accessible");
   state.setZoom(18);
   for (const marker of state.markers) assertHidden(marker.options.element);
   for (const zoom of [-1.5, -1, -0.5, -0.2]) {
@@ -488,7 +488,7 @@ test("street Eiffel loads only when nearby and becomes an accessible target afte
   tower.dispatch("click");
   assert.deepEqual(openLabels(state), ["eiffel-tower"]);
   state.setZoom(8);
-  assertHidden(tower);
+  assert.equal(tower.disabled, false, "the city miniature stays available between globe and street");
   state.setZoom(16);
   state.render();
   assert.equal(tower.disabled, false);
@@ -620,7 +620,7 @@ test("live placement moves the real marker and culling while native buildings ar
     state.render(); assert.notDeepEqual(state.buildingFilter, state.originalFilter);
     assert.notDeepEqual(state.buildingFilter, firstMask, "the exclusion follows the edited location and radius");
     assert.equal(asset.requests.length, 1, "placement editing retains the existing imported model");
-    state.setZoom(15); assert.deepEqual(state.buildingFilter, state.originalFilter, "zero street opacity reveals the native model");
+    state.setZoom(14.9); assert.deepEqual(state.buildingFilter, state.originalFilter, "city miniatures reveal the native model");
     state.setZoom(17); state.render(); assert.notDeepEqual(state.buildingFilter, state.originalFilter);
     landmarks.dispose(); assert.deepEqual(state.buildingFilter, state.originalFilter);
     const writes = state.writes, positions = marker.positions.length;
@@ -668,13 +668,12 @@ test("a selected wide atlas model can be inspected below street zoom without cha
       south: placement.latitude - .02, north: placement.latitude + .02 };
     const state = scene({ zoom: 13, width: 320, height: 600, geographicBounds, modelEnvironment: asset.environment, withGpu: true });
     state.setPoint(id, { x: 160, y: 300 });
-    const landmarks = state.create(); landmarks.setBuildingsEnabled(false); landmarks.setVisible(true);
-    await settleModel(); assert.deepEqual(asset.requests, []); assertHidden(state.element(id));
-    landmarks.setLandmarkPreview(id); await settleModel(); state.render();
+    const landmarks = state.create(); landmarks.setBuildingsEnabled(false); landmarks.setLandmarkPreview(id);
+    landmarks.setVisible(true); await settleModel(); state.render();
     assert.deepEqual(asset.requests, [`/earth/models/${id}/detail.elm`]);
     assert.equal(landmarks.isLandmarkDrawn(id), true); assert.equal(state.element(id).disabled, false);
-    landmarks.setLandmarkPreview(null); assertHidden(state.element(id)); assert.equal(landmarks.isLandmarkDrawn(id), false);
-    state.setZoom(17); await settleModel(); assert.equal(asset.requests.length, 1, "closing inspection preserves the user's OFF preference");
+    landmarks.setVisible(false); landmarks.setLandmarkPreview(null); assertHidden(state.element(id)); assert.equal(landmarks.isLandmarkDrawn(id), false);
+    state.setZoom(17); landmarks.setVisible(true); await settleModel(); assert.equal(asset.requests.length, 1, "closing inspection preserves the user's OFF preference");
     assertHidden(state.element(id));
     landmarks.setLandmarkPreview(id); await settleModel(); state.render(); assert.equal(landmarks.isLandmarkDrawn(id), true);
     landmarks.setVisible(false); assert.equal(landmarks.isLandmarkDrawn(id), false); assertHidden(state.element(id)); landmarks.dispose();

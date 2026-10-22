@@ -11,6 +11,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { economyCatalog: catalog, economyJobSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { applyEconomyCommand, newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { economyAchievementProgress } = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
 const { productionStationSupported, productionSlotOffer } = await vite.ssrLoadModule("/features/economy/domain/production-slots.ts");
 after(() => vite.close());
 const book = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/collections-catalog.json", import.meta.url), "utf8"));
@@ -112,12 +113,11 @@ test("ore prices, processing margins and mandatory project timing remain intact"
   assert.equal(report.fourthStage.constructionSeconds, 96 * 3600);
 });
 
-test("every new mining choice contributes to the same collection and achievement biome", () => {
-  const biomes = Object.values(achievements.biomes).flat();
+test("every new mining choice contributes to the quarry collection and a distinct completed route", () => {
   for (const entry of mines) {
     assert.ok(book.quarry.routes.includes(entry.id), entry.id);
-    assert.ok(achievements.biomes.caves.includes(entry.id), entry.id);
-    assert.equal(biomes.filter(id => id === entry.id).length, 1, entry.id);
+    const state = player(); state.progression.routes = { [entry.id]: 10 };
+    assert.equal(economyAchievementProgress(state).familiar_trails, 1, entry.id);
     if (entry.id.endsWith("_hour") || ["quarry_ore_overnight", "quarry_clay_overnight", "quarry_sand_overnight"].includes(entry.id))
       assert.ok(!achievements.legacyRecipeIds.includes(entry.id), "new exploration IDs cannot become legacy production achievements");
   }

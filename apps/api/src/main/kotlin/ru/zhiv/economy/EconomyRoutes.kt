@@ -35,7 +35,7 @@ fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config
                 call.respond(repository.snapshot(hash))
             }
         }
-        rateLimit(RateLimitName("world-write")) {
+        rateLimit(RateLimitName("economy-write")) {
             post("/commands") {
                 val hash = call.economySession(config, codec, true)
                 call.requireGameplayPresence(presence, hash)

@@ -10,6 +10,7 @@ type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRe
 type Profile = { daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt>; onboardingClaimedAt?: string | null };
 const globalStore = globalThis as typeof globalThis & { __zhivDevProgressionRewards?: Map<string, Profile> };
 const store = () => globalStore.__zhivDevProgressionRewards ??= new Map();
+export const getDevOnboardingClaimedAt = (owner: string) => store().get(owner)?.onboardingClaimedAt ?? null;
 export const resetDevProgressionRewardsForTests = () => { delete globalStore.__zhivDevProgressionRewards; };
 function fail(code: string, message: string, status = 409): never { throw new DevEconomyError(code, message, status); }
 function profile(token: string | undefined, expectedOwner?: string) {
@@ -25,7 +26,7 @@ function profile(token: string | undefined, expectedOwner?: string) {
 function view(token: string | undefined, owner: string, value: Profile, now: number): GameRewards {
   // Reconcile verified progress before reading dates; dates are never inferred from ownership in the browser.
   const economy = getDevEconomy(token, now, owner);
-  const result = getDevGameAchievements(token, now, 5);
+  const result = getDevGameAchievements(token, now, 6);
   if (result.kind !== "ok") fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401);
   return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: progressionRewardsCatalog.version,
     onboarding: { claimedAt: value.onboardingClaimedAt ?? null },

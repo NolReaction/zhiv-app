@@ -126,3 +126,30 @@ test("onboarding reward trusts no client sums skipped states clocks or other own
   assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
   assert.equal((await (await GET(read())).json()).onboarding.claimedAt, null);
 });
+
+test("reward reads negotiate new activity rows while cached clients retain their exact catalog", async () => {
+  const p = player();
+  globalThis.__rewardTestToken = p.token;
+  const legacy = await (await GET(read())).json();
+  const current = await (await GET(read("?catalog=5"))).json();
+  assert.equal(legacy.catalogVersion, 4); assert.equal(legacy.achievementRewards.length, 21);
+  assert.equal(current.catalogVersion, 5); assert.equal(current.achievementRewards.length, 33);
+  assert.deepEqual(current.achievementRewards.slice(0, 21), legacy.achievementRewards);
+  for (const suffix of ["?catalog=6", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
+    assert.equal((await GET(read(suffix))).status, 400);
+  }
+});
+
+test("claim reply negotiation preserves one receipt across old and new cached clients", async () => {
+  const p = player(), request = command(p);
+  const legacy = await (await POST(post(request))).json();
+  const nextRequest = new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=5", post(request));
+  const response = await POST(nextRequest), current = await response.json();
+  assert.equal(response.status, 200); assert.equal(current.replayed, true);
+  assert.deepEqual(current.claim, legacy.claim); assert.deepEqual(current.economy.wallet, legacy.economy.wallet);
+  assert.equal(legacy.rewards.achievementRewards.length, 21);
+  assert.equal(current.rewards.catalogVersion, 5); assert.equal(current.rewards.achievementRewards.length, 33);
+  assert.equal(api.gameRewardResultSchema.safeParse(current).success, true);
+  const bad = await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=5&catalog=5", post(command(p))));
+  assert.equal(bad.status, 400);
+});

@@ -415,14 +415,14 @@ test("days are readable and higher tier recipes explain their actual prerequisit
     inventory: { ...recipe.cost.items }, wallet: { coins: recipe.cost.coins, pearls: 0 } });
   let html = render("production", controller({ snapshot: state }), "workshop");
   assert.match(html, /Будущие рецепты/);
-  assert.match(html, /Мастерская: нужен уровень 2/);
-  assert.match(html, /Печь: нужен уровень 2/);
+  assert.match(html, /Доступно с 2 уровня мастерской/);
+  assert.match(html, /Доступно с 2 уровня печи/);
   assert.equal(productionBlocked(html, "metal_parts"), true);
   assert.doesNotMatch(html, /Способ производства|Размер заказа/);
   state.buildings.workshop = 2;
   html = render("production", controller({ snapshot: state }), "workshop");
   assert.equal(productionBlocked(html, "metal_parts"), true, "the workstation level alone cannot satisfy its furnace prerequisite");
-  assert.match(html, /Печь: нужен уровень 2/);
+  assert.match(html, /Доступно с 2 уровня печи/);
   state.buildings.kiln = 2;
   html = render("production", controller({ snapshot: state }), "workshop");
   assert.equal(productionBlocked(html, "metal_parts"), false, "production opens only after its actual station prerequisites are satisfied");

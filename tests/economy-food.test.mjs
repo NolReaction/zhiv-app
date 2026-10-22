@@ -97,6 +97,56 @@ test("feeding the hero reserves one meal indefinitely and applies it to exactly 
   assert.equal(state.jobs[0].meal, undefined, "cancelled meals are not refundable or repeatable");
 });
 
+test("unused hero and builder portions return exactly once without touching the other meal or jobs", () => {
+  const state = fresh(); state.inventory = { grilled_fish: 2, fish_soup: 1 };
+  apply(state, "eat_food", "grilled_fish"); apply(state, "feed_builder", "fish_soup");
+  const jobs = structuredClone(state.jobs), wallet = structuredClone(state.wallet);
+  apply(state, "cancel_meal", "hero");
+  assert.deepEqual(state.inventory, { grilled_fish: 2 });
+  assert.deepEqual(state.food, { heroMeal: null, builderMeal: "fish_soup" });
+  failWithoutChanges(state, "cancel_meal", "hero", "ECONOMY_MEAL_UNAVAILABLE");
+  apply(state, "cancel_meal", "builder");
+  assert.deepEqual(state.inventory, { grilled_fish: 2, fish_soup: 1 });
+  assert.deepEqual(state.food, { heroMeal: null, builderMeal: null });
+  assert.deepEqual(state.jobs, jobs); assert.deepEqual(state.wallet, wallet);
+  failWithoutChanges(state, "cancel_meal", "builder", "ECONOMY_MEAL_UNAVAILABLE");
+});
+
+test("returning pending meals preserves full-pantry stock and never grants new overflow capacity", () => {
+  const state = fresh(), cap = rules.economyStorage(state).capacity;
+  state.inventory = { wood: cap - 1 }; state.food = { heroMeal: "grilled_fish", builderMeal: "fish_soup" };
+  const reserved = { stone: 1 };
+  for (const consumer of ["hero", "builder"]) {
+    const before = structuredClone(state);
+    rules.applyEconomyCommand(state, command("cancel_meal", consumer), now, crypto.randomUUID, reserved);
+    rules.assertEconomyStorageTransition(before, state, reserved);
+  }
+  assert.equal(rules.economyStorage(state, reserved).overflow, 2);
+  const next = structuredClone(state); next.inventory.wood++;
+  assert.throws(() => rules.assertEconomyStorageTransition(state, next, reserved), { code: "ECONOMY_STORAGE_FULL" });
+  for (let i = 0; i < 3; i++) {
+    apply(state, "eat_food", "grilled_fish"); apply(state, "cancel_meal", "hero");
+  }
+  assert.equal(state.inventory.grilled_fish, 1); assert.equal(state.inventory.fish_soup, 1);
+  assert.equal(rules.economyStorage(state, reserved).overflow, 2);
+});
+
+test("meal return validates target and one-item command fields and preserves pending food on item-cap failure", () => {
+  const state = fresh(); state.food = { heroMeal: "grilled_fish", builderMeal: null };
+  for (const patch of [{ targetId: "grilled_fish" }, { quantity: 2 }, { totalPrice: 1 }, { fishSelection: {} }]) {
+    const before = structuredClone(state);
+    assert.throws(() => rules.applyEconomyCommand(state, { ...command("cancel_meal", "hero"), ...patch }, now, crypto.randomUUID), { code: "INVALID_ECONOMY_COMMAND" });
+    assert.deepEqual(state, before);
+  }
+  state.inventory = { grilled_fish: model.ECONOMY_MAX_ITEMS };
+  failWithoutChanges(state, "cancel_meal", "hero", "ECONOMY_CAPACITY");
+  state.inventory.grilled_fish--;
+  const before = structuredClone(state);
+  assert.throws(() => rules.applyEconomyCommand(state, command("cancel_meal", "hero"), now, crypto.randomUUID,
+    { grilled_fish: 1 }), { code: "ECONOMY_CAPACITY" });
+  assert.deepEqual(state, before);
+});
+
 test("missing food and an occupied hero cannot debit a dish or overwrite active jobs", () => {
   const state = fresh();
   failWithoutChanges(state, "eat_food", "grilled_fish", "ECONOMY_RESOURCES");
@@ -154,6 +204,13 @@ test("feeding an active builder speeds up only remaining milliseconds once and p
   assert.deepEqual(changed.rewards, before.rewards); assert.equal(changed.id, before.id);
   assert.equal(state.inventory.fish_soup, 1); assert.equal(state.food.builderMeal, null);
   failWithoutChanges(state, "feed_builder", "fish_soup", "ECONOMY_ALREADY_FED", at);
+  failWithoutChanges(state, "cancel_meal", "builder", "ECONOMY_MEAL_UNAVAILABLE", at);
+  failWithoutChanges(state, "cancel_meal", "builder", "ECONOMY_MEAL_UNAVAILABLE", Date.parse(changed.finishesAt));
+  state.food.builderMeal = "grilled_fish";
+  const savedJob = structuredClone(state.jobs[0]);
+  apply(state, "cancel_meal", "builder", at);
+  assert.deepEqual(state.jobs[0], savedJob, "a distinct pending portion never refunds or changes the applied boost");
+  assert.equal(state.inventory.grilled_fish, 1);
 });
 
 test("a finished construction cannot eat a meal, and builder food does not affect the hero", () => {
@@ -260,6 +317,35 @@ test("local API validates owner and revision before food or order spending", () 
   assert.deepEqual(read(p), before);
 });
 
+test("local API meal refunds keep receipts ownership and stale-revision protection even with a full pantry", () => {
+  const p = player(), other = player(), saved = row(p);
+  saved.state.inventory = { grilled_fish: 2 }; send(p, "eat_food", "grilled_fish");
+  saved.state.inventory = { wood: rules.economyStorage(saved.state).capacity };
+  const payload = request(p, "cancel_meal", "hero"), before = read(p);
+  assert.equal(model.economyCommandSchema.safeParse(payload).success, true);
+  assert.throws(() => api.commandDevEconomy(other.token, payload, now), { code: "ECONOMY_OWNER_CHANGED" });
+  assert.throws(() => api.commandDevEconomy(p.token, { ...payload, expectedRevision: payload.expectedRevision + 1 }, now), { code: "ECONOMY_REVISION_CONFLICT" });
+  assert.deepEqual(read(p), before);
+  const refunded = api.commandDevEconomy(p.token, payload, now);
+  assert.equal(refunded.state.inventory.grilled_fish, 1); assert.equal(refunded.state.storage.overflow, 1);
+  const replay = api.commandDevEconomy(p.token, payload, now);
+  assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, refunded.acceptedRevision);
+  assert.equal(replay.state.inventory.grilled_fish, 1);
+  assert.throws(() => api.commandDevEconomy(p.token, { ...payload, targetId: "builder" }, now), { code: "ECONOMY_REQUEST_CONFLICT" });
+  assert.throws(() => api.commandDevEconomy(p.token, { ...payload, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
+  assert.throws(() => send(p, "cancel_meal", "hero"), { code: "ECONOMY_MEAL_UNAVAILABLE" });
+  send(p, "eat_food", "grilled_fish");
+  assert.equal(api.commandDevEconomy(p.token, payload, now).replayed, true);
+  assert.equal(read(p).food.heroMeal, "grilled_fish", "old refund receipt cannot cancel a newly selected portion");
+  assert.equal(read(p).inventory.grilled_fish ?? 0, 0);
+  send(p, "start_exploration", "forest");
+  assert.throws(() => send(p, "cancel_meal", "hero"), { code: "ECONOMY_MEAL_UNAVAILABLE" });
+  const trip = read(p).jobs.find(job => job.kind === "exploration");
+  send(p, "cancel_exploration", trip.id);
+  assert.throws(() => send(p, "cancel_meal", "hero"), { code: "ECONOMY_MEAL_UNAVAILABLE" });
+  assert.equal(read(p).inventory.grilled_fish ?? 0, 0, "abandoning the boosted journey never refunds its consumed food");
+});
+
 test("reading a new board cycle is revision-neutral and does not persist normalized slots", () => {
   const p = player(), saved = row(p);
   saved.state.fishingShop.refreshAt = new Date(now + 48 * 3600000).toISOString();
@@ -304,4 +390,28 @@ test("Ktor's explicit null recipe extensions remain readable alongside old catal
   const duration = Number.MAX_SAFE_INTEGER, bps = 2500;
   const expected = Number((BigInt(duration) * 10000n + BigInt(10000 + bps) - 1n) / BigInt(10000 + bps));
   assert.equal(food.mealDuration(duration, bps), expected, "large saved durations retain Kotlin integer-ceiling semantics");
+});
+
+
+test("saved ordinary orders for locked products are replaced freely while reachable accepted terms stay exact", () => {
+  const state = fresh();
+  state.residentOrders = food.normalizedResidentOrders(state, now);
+  state.residentOrders.completed = 7;
+  state.residentOrders.earnedCoins = 1234;
+  state.residentOrders.freeReplacementsUsed = 2;
+  const original = structuredClone(state.residentOrders);
+  const locked = { id: "old_compote", residentId: "plesk", name: "Старый компот", items: { berry_compote: 2 }, coins: 900 };
+  state.residentOrders.slots[0] = { ...state.residentOrders.slots[0], templateId: locked.id, terms: locked };
+  const before = structuredClone(state), wallet = structuredClone(state.wallet);
+  const normalized = food.normalizedResidentOrders(state, now);
+  assert.notEqual(normalized.slots[0].templateId, locked.id);
+  assert.deepEqual(normalized.slots.slice(1), original.slots.slice(1));
+  assert.equal(normalized.freeReplacementsUsed, 2);
+  assert.equal(normalized.completed, 7); assert.equal(normalized.earnedCoins, 1234);
+  assert.deepEqual(state, before); assert.deepEqual(state.wallet, wallet);
+  assert.ok(normalized.recentTemplateIds.includes(locked.id));
+  assert.ok(normalized.slots.every(slot => Object.keys(slot.terms.items).every(id => food.obtainableResidentOrderItems(state).has(id))));
+  state.buildings.dryer = 1; state.buildings.garden = 1;
+  const unlocked = food.normalizedResidentOrders(state, now);
+  assert.deepEqual(unlocked.slots[0].terms, locked, "reachable accepted quantities and payout stay frozen even for retired templates");
 });

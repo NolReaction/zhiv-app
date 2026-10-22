@@ -79,9 +79,7 @@ export function worldMissingRequirements(state: EconomyView, required: Record<st
 }
 export function worldMaterialSource(state: EconomyView, itemId: string) {
   const recipes = state.catalog.recipes.filter(entry => (entry.rewards[itemId] ?? 0) > 0);
-  const recipe = recipes.find(entry => !worldMissingRequirements(state, worldRequirements(entry, entry)).length && !worldRecipeUnlockReason(state, entry))
-    ?? recipes.find(entry => entry.requiredHomeLevel <= (state.buildings.home ?? 1)
-      && worldMissingRequirements(state, worldRequirements(entry, entry)).every(required => required.id === entry.buildingId));
+  const recipe = recipes.find(entry => !worldMissingRequirements(state, worldRequirements(entry, entry)).length && !worldRecipeUnlockReason(state, entry));
   if (recipe) return { kind: "production" as const, stationId: recipe.buildingId, targetId: recipe.id };
   const fish = state.catalog.fishing && fishClassForItem(itemId, state.catalog.fishing);
   const explorations = state.catalog.explorations.filter(entry => ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
@@ -90,7 +88,14 @@ export function worldMaterialSource(state: EconomyView, itemId: string) {
       && entry.requiredHomeLevel <= (state.buildings.home ?? 1)
       && worldMissingRequirements(state, worldRequirements(entry)).every(requirement => requirement.id === "quarry"))
     ?? explorations[0];
-  return exploration ? { kind: "exploration" as const, targetId: exploration.id } : null;
+  if (exploration) return { kind: "exploration" as const, targetId: exploration.id };
+  // A known but locked product still has a destination: explain its real unlock
+  // there instead of dropping a source link or silently opening an empty menu.
+  const future = recipes.find(entry => entry.requiredHomeLevel <= (state.buildings.home ?? 1)
+    && worldMissingRequirements(state, worldRequirements(entry, entry)).every(required => required.id === entry.buildingId))
+    ?? [...recipes].sort((left, right) => left.requiredHomeLevel - right.requiredHomeLevel
+    || recipeBuildingLevel(left) - recipeBuildingLevel(right) || left.seconds - right.seconds)[0];
+  return future ? { kind: "production" as const, stationId: future.buildingId, targetId: future.id } : null;
 }
 export function worldCostShortfalls(state: EconomyView, cost: EconomyCost, quantity = 1) {
   return [
@@ -113,10 +118,22 @@ export function worldRecipeUnlockReason(state: EconomyView, recipe: WorldRecipe)
   const action = first.recipe?.buildingId === "dryer" ? "Приготовьте" : "Произведите";
   return `${action} и заберите: ${recipeResultName(first.id, state.catalog)} (${first.current} / ${first.count})`;
 }
-export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, quantity = 1) {
+/** Explain permanent access separately from temporary stock, queues and wallet limits. */
+export function worldRecipeAccessReason(state: EconomyView, recipe: WorldRecipe) {
   const required = worldMissingRequirements(state, worldRequirements(recipe, recipe));
-  if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
-  const unlockReason = worldRecipeUnlockReason(state, recipe);
+  const names: Record<string, string> = { home: "дома", dryer: "костра", garden: "ягодного куста", workshop: "мастерской",
+    kiln: "печи", warehouse: "кладовой", woodlot: "лесного участка", quarry: "шахты", bridge: "моста", lighthouse: "маяка" };
+  if (required.length) return required.map(({ id, level }) => `Доступно с ${level} уровня ${names[id]
+    ?? `постройки «${state.catalog.buildings.find(building => building.id === id)?.name ?? id}»`}`).join(". ");
+  return worldRecipeUnlockReason(state, recipe);
+}
+export function worldMaterialAccessReason(state: EconomyView, itemId: string) {
+  const source = worldMaterialSource(state, itemId);
+  const recipe = source?.kind === "production" ? state.catalog.recipes.find(entry => entry.id === source.targetId) : undefined;
+  return recipe ? worldRecipeAccessReason(state, recipe) : null;
+}
+export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, quantity = 1) {
+  const unlockReason = worldRecipeAccessReason(state, recipe);
   if (unlockReason) return unlockReason;
   if (recipe.buildingId === "quarry") return "Добыча доступна в вылазках Мохлика";
   if (state.jobs.some(job => job.kind === "construction" && job.targetId === recipe.buildingId)) return "Сначала завершите улучшение";

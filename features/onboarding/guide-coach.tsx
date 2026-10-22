@@ -7,6 +7,7 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { GuideCharacter } from "./guide-character";
 import { guideSpotlightBounds, guideSpotlightTargets, measureGuideSpotlight } from "./guide-spotlight";
 import { worldCoachLayout } from "./guide-coach-layout";
+import { GuideExitPrompt } from "./guide-exit-prompt";
 import styles from "./guide-coach.module.css";
 
 export type GuideCoachProps = {
@@ -32,6 +33,10 @@ export type GuideCoachProps = {
   secondary?: { label: string; onClick: () => void };
   /** Keep essential read-only navigation outside the details disclosure. */
   secondaryVisible?: boolean;
+  /** A visible early explanation, never hidden behind the details disclosure. */
+  notice?: string;
+  /** Main courses confirm pause/skip and explain the exact return path. */
+  exitHelp?: string;
   onPause: () => void;
   onSkip: () => void;
   onBack?: () => void;
@@ -60,10 +65,21 @@ export function GuideCoach(props: GuideCoachProps) {
   const canAdvance = Boolean(!welcome && primary?.advance && !primary.disabled);
   const [layout, setLayout] = useState<CoachLayout | null>(null);
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
+  const [exitChoice, setExitChoice] = useState<{ step: string; action: "pause" | "skip" } | null>(null);
+  const exitWasOpen = useRef(false);
   const layoutKey = `${flow}:${stepId}:${target ?? ""}`;
   const replyKey = `${flow}:${stepId}`;
+  const exitAction = exitChoice?.step === replyKey ? exitChoice.action : null;
+  const requestExit = (action: "pause" | "skip") => {
+    if (props.exitHelp) setExitChoice({ step: replyKey, action });
+    else if (action === "pause") onPause(); else onSkip();
+  };
   const expanded = Boolean(welcome || expandedStep === replyKey);
   const reply = welcome ? text : shortReply(summary ?? text);
+  useEffect(() => {
+    if (open && (exitAction || exitWasOpen.current)) card.current?.querySelector<HTMLButtonElement>("button[data-guide-pause]")?.focus();
+    exitWasOpen.current = Boolean(open && exitAction);
+  }, [open, exitAction]);
   useEffect(() => {
     if (!open) return;
     const root = targetRoot?.current ?? document;
@@ -193,7 +209,9 @@ export function GuideCoach(props: GuideCoachProps) {
   const message = <span className={styles.text}>{reply}</span>;
   const coach = <section ref={card} className={styles.coach} style={position} role="region" aria-labelledby={headingId} aria-describedby={textId}
     data-guide-coach={flow} data-guide-step={stepId} data-compact={Boolean(compact)} data-welcome={Boolean(welcome)} data-inline={embedded} data-expanded={expanded}
-    onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onPause(); } }}>
+    onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (exitAction) setExitChoice(null); else requestExit("pause"); } }}>
+    {exitAction && props.exitHelp ? <GuideExitPrompt action={exitAction} help={props.exitHelp}
+      onCancel={() => setExitChoice(null)} onConfirm={() => { setExitChoice(null); if (exitAction === "pause") onPause(); else onSkip(); }} /> : <>
     <div ref={copy} className={styles.copy}>
       <div className={styles.intro}>
         <GuideCharacter key={stepId} pose={pose} stepId={stepId} onAdvance={next} advanceLabel={primary?.label} />
@@ -204,8 +222,9 @@ export function GuideCoach(props: GuideCoachProps) {
           {canAdvance ? <button type="button" id={textId} className={styles.message} data-guide-advance onClick={next} aria-label={`${reply} ${primary!.label}`}>{message}</button>
             : <p id={textId} className={styles.messageText}>{message}</p>}
         </div>
-        {welcome && <button type="button" className={styles.pause} data-guide-pause onClick={onPause} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>}
+        {welcome && <button type="button" className={styles.pause} data-guide-pause onClick={() => requestExit("pause")} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>}
       </div>
+      {props.notice && <p className={styles.notice}>{props.notice}</p>}
       {children}
       {secondaryVisible && secondary && <div className={styles.actions}><button type="button" className={styles.secondary} onClick={secondary.onClick}>{secondary.label}</button></div>}
       <div id={detailsId} className={styles.details} hidden={!expanded}>
@@ -214,7 +233,7 @@ export function GuideCoach(props: GuideCoachProps) {
         {!welcome && <div className={styles.actions}>
           {onBack && <button type="button" className={styles.back} onClick={onBack} aria-label="Предыдущая подсказка"><ArrowLeft size={18} aria-hidden="true" /></button>}
           {!secondaryVisible && secondary && <button type="button" className={styles.secondary} onClick={secondary.onClick}>{secondary.label}</button>}
-          <button type="button" className={styles.skip} onClick={onSkip}>{flow === "section" ? "Пропустить знакомство" : "Пропустить обучение"}</button>
+          <button type="button" className={styles.skip} onClick={() => requestExit("skip")}>{flow === "section" ? "Пропустить знакомство" : "Пропустить обучение"}</button>
         </div>}
       </div>
       {status && !canAdvance && <p className={styles.status} role="status">{status}</p>}
@@ -222,16 +241,17 @@ export function GuideCoach(props: GuideCoachProps) {
     <footer className={styles.footer}>
       {!welcome && <div className={styles.controls}>
         {progress && <span className={styles.counter} aria-label={`Шаг ${current} из ${progress.total}`}>{current}<span> / {progress.total}</span></span>}
-        <button type="button" className={styles.pause} data-guide-pause onClick={onPause} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>
+        <button type="button" className={styles.pause} data-guide-pause onClick={() => requestExit("pause")} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>
         <button type="button" className={styles.more} aria-label="Подробнее и действия обучения" title="Подробнее и действия" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpandedStep(expanded ? null : replyKey)}><Ellipsis size={19} aria-hidden="true" /></button>
         {canAdvance && <button type="button" className={styles.continue} data-guide-next onClick={next} aria-label={primary!.shortLabel || primary!.label.startsWith("Дальше") ? primary!.label : `Дальше: ${primary!.label}`} title={primary!.label}>{nextLabel}<ArrowRight size={18} aria-hidden="true" /></button>}
       </div>}
       {(welcome || primary && !canAdvance) && <div className={styles.actions}>
         {primary && <button type="button" className={styles.primary} onClick={primary.onClick} disabled={primary.disabled}>{primary.label}<ArrowRight size={17} aria-hidden="true" /></button>}
-        {welcome && <button type="button" className={styles.skip} onClick={onSkip}>Пропустить</button>}
+        {welcome && <button type="button" className={styles.skip} onClick={() => requestExit("skip")}>Пропустить</button>}
       </div>}
     </footer>
     <span className={styles.live} aria-live="polite" aria-atomic="true">{title}. {reply}{canAdvance ? ` ${primary!.label}` : status ? ` ${status}` : ""}</span>
+    </>}
   </section>;
   return dockElement && open ? createPortal(coach, dockElement) : coach;
 }

@@ -34,7 +34,10 @@ export function useEconomy(owner: string | null, onSessionLost: () => void, enab
     const clock = setInterval(() => {
       if (!document.hidden) {
         setNow(session.now());
-        if (navigator.onLine && session.getSnapshot().pendingProductionCount > 0) void session.refreshSoft();
+        if (navigator.onLine) {
+          if (session.getSnapshot().pendingProductionCount > 0) void session.refreshSoft();
+          else void session.retryThrottled();
+        }
       }
     }, 1000);
     const polling = setInterval(refresh, 30_000);

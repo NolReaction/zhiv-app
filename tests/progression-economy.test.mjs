@@ -203,9 +203,9 @@ test("stage budgets derive only required new buildings and preserve the seven da
 
 test("pearl budgets respect visible denomination and distinguish seven gifts from finite achievements", () => {
   assert.equal(economy.pearls.dailyCycle, 500);
-  assert.equal(economy.pearls.achievementLifetime, 1500);
+  assert.equal(economy.pearls.achievementLifetime, 2060);
   assert.deepEqual(plain(economy.pearls.dailyRewards.map(reward => reward.pearls)), [40, 50, 60, 70, 80, 90, 110]);
-  assert.equal(economy.pearls.achievementRewards.flatMap(quest => quest.tiers).reduce((sum, tier) => sum + tier.pearls, 0), 1500);
+  assert.equal(economy.pearls.achievementRewards.flatMap(quest => quest.tiers).reduce((sum, tier) => sum + tier.pearls, 0), 2060);
   assert.ok(economy.pearls.achievementRewards.every(quest => quest.id !== "full_collection"));
   assert.deepEqual(plain(economy.pearls.achievementRewards.find(quest => quest.id === "explorer").tiers),
     [{ level: 1, target: 10, pearls: 30 }, { level: 2, target: 50, pearls: 80 }, { level: 3, target: 200, pearls: 200 }]);

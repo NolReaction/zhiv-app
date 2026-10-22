@@ -119,6 +119,8 @@ export function AppOnboarding(props: Props) {
     {open && guide.notificationOffer && <NotificationOnboardingPrompt owner={props.owner} isOnline={isOnline}
       onSessionLost={props.onSessionLost} onContinue={guide.acknowledgeNotifications} />}
     <GuideCoach {...content} open={open && !guide.notificationOffer} inline
+      exitHelp="Вернуться можно через «Профиль» → «?» → «Продолжить обучение» или «Повторить обучение»."
+      notice={stepId === "welcome" || stepId === "check-in" ? "Подсказки можно скрыть и продолжить позже: «Профиль» → «?». На полянке справка с поиском открывается кнопкой i." : undefined}
       flow="app" stepId={stepId} welcome={stepId === "welcome"} compact={stepId !== "welcome"}
       progress={progress ? { current: APP_ONBOARDING_STEPS.indexOf(progress.stepId) + 1, total: APP_ONBOARDING_STEPS.length } : undefined}
       secondary={stepId === "welcome" ? undefined

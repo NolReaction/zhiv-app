@@ -115,12 +115,19 @@ class EconomyFishStockTest {
         val done = EconomyRules.apply(tutorial, command("complete_resident_order", terms.id, mapOf(epic[1].itemId to 2L)), now).first
         assertEquals(mapOf(epic[0].itemId to 1L), done.fishing.stock)
         assertTrue(done.tutorialOrder.completed)
-        val board = EconomyFood.normalizedOrders(initial, now)
+        // Held epic fish alone does not make ordinary requests sustainable.
+        // Own a rod that can catch this class; the selected rod may stay basic.
+        assertFalse("fish_epic" in EconomyFood.obtainableOrderItems(initial))
+        val fisher = initial.copy(fishing = initial.fishing.copy(ownedRods = initial.fishing.ownedRods + "river_rod"))
+        assertTrue("fish_epic" in EconomyFood.obtainableOrderItems(fisher))
+        val board = EconomyFood.normalizedOrders(fisher, now)
         val residentTerms = terms.copy(id = "saved_fish_order")
-        val normal = initial.copy(residentOrders = board.copy(slots = board.slots.mapIndexed { index, slot ->
+        val normal = fisher.copy(residentOrders = board.copy(slots = board.slots.mapIndexed { index, slot ->
             if (index == 0) slot.copy(templateId = residentTerms.id, terms = residentTerms) else slot
         }))
         val offer = EconomyFood.residentOrderBoard(normal, now).offers.single { it.slot == 0 }
+        assertEquals(residentTerms.id, offer.templateId)
+        assertEquals(residentTerms.items, offer.items)
         val delivered = EconomyRules.apply(normal, command("complete_resident_order", offer.id, mapOf(epic[1].itemId to 2L)), now).first
         assertEquals(mapOf(epic[0].itemId to 1L), delivered.fishing.stock)
         assertEquals(initial.wallet.coins + terms.coins, delivered.wallet.coins)

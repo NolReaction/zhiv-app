@@ -915,7 +915,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     }
   }
 
-  function connect(timestamp = Number.isFinite(options.serverNow) ? options.serverNow! : Date.now(), allowPersistence = true) {
+  function connect(timestamp = Number.isFinite(options.serverNow) ? options.serverNow! : Date.now(), allowPersistence = true, handoffFrom?: object) {
     const timing = forestPerformanceProfiler.begin("ai", options.devRehearsal ? "rehearsal" : "world");
     try {
     const connected = connectForestSession(options.readOnly ? undefined : options.presenceKey, world, options.view ?? "circle",
@@ -925,7 +925,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         updateAudio();
         if (visible()) draw();
         if (ownerChanged) resume();
-      }, { isolated: options.readOnly, persistence: !options.readOnly && allowPersistence && !options.devRehearsal && !forestPersistenceOverridden(dev, levels),
+      }, { isolated: options.readOnly, handoffFrom, persistence: !options.readOnly && allowPersistence && !options.devRehearsal && !forestPersistenceOverridden(dev, levels),
         sync: options.readOnly || options.devRehearsal ? false : undefined,
         awaitBuilderConstruction: options.economyConstruction !== undefined });
     if (options.readOnly || !allowPersistence || options.devRehearsal || forestPersistenceOverridden(dev, levels)) connected.suspendPersistence();
@@ -1239,8 +1239,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           if (persistence) session.saveMemory(); else session.suspendPersistence();
           const production = state.economyProduction, construction = state.economyConstruction, builder = state.builderMind, plesk = state.pleskMind,
             residents = state.economyResidents, villagers = state.villagers, merchant = state.leaftailBoat, facts = state.residentSceneFacts;
-          session.release();
-          session = connect(timestamp, persistence); state = session.state;
+          const previousSession = session;
+          session = connect(timestamp, persistence, previousSession); state = session.state;
+          previousSession.release();
           const freshBuilder = !state.economyConstruction && (!state.builderMind
             || state.builderMind.elapsed === 0 && !state.builderMind.jobKey);
           const freshVillagers = !state.villagers?.confirmed;

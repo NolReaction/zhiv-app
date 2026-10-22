@@ -104,7 +104,7 @@ test("revocation is explicit, separate from freezing, and remains available in g
 
 test("paused GPS, finding a fix and publishing are distinct from a permitted frozen point", () => {
   const paused = view({ sharing: { lastPublishedAt: settings.serverTime } }, active);
-  assert.equal(text(paused.status), "Обновится на карте");
+  assert.equal(text(paused.status), "Обновление на паузе");
   assert.equal(paused.status.props["data-frozen"], undefined);
   const finding = view({ sharing: { publishing: true } }, active);
   assert.equal(text(finding.status), "Ищем местоположение…");
@@ -262,7 +262,7 @@ test("paired buttons preserve the consent, pause and explicit revoke actions wit
   assert.deepEqual(first.calls, [["share", { recipientCircleIds: [person.circleId], frozenCircleIds: [], precision: "PRECISE", durationMinutes: null }]]);
   const live = view({ presentation: "buttons", companionControl }, active);
   assert.equal(live.toggle.props["aria-pressed"], true);
-  assert.equal(text(live.status), "Обновится на карте");
+  assert.equal(text(live.status), "Обновление на паузе");
   assert.equal(live.elements.find(node => node.type === "details").props.open, undefined);
   await live.toggle.props.onClick();
   await live.button("Убрать доступ").props.onClick();

@@ -23,7 +23,7 @@ afterEach(() => { globalThis.fetch = fetchOriginal; });
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", at = "2026-10-05T12:00:00.000Z", clock = Date.parse(at);
 const reward = { coins: 10, pearls: 0, items: {} };
 function view(step = 1, claimable = true, ownerPublicId = owner) {
-  return { ownerPublicId, serverTime: at, catalogVersion: 4,
+  return { ownerPublicId, serverTime: at, catalogVersion: 5,
     daily: { step, completed: false, claimable, nextClaimAt: new Date(clock + (claimable ? 0 : 86_400_000)).toISOString(), lastClaimAt: null, lastClaimDate: null,
       reward, cycle: Array.from({ length: 7 }, (_, index) => ({ step: index + 1, reward: index === 6 ? { ...reward, pearls: 2 } : reward })) },
     achievementRewards: Object.entries(GAME_ACHIEVEMENT_TARGETS).flatMap(([achievementId, targets]) => targets.map((target, index) => ({
@@ -320,14 +320,14 @@ test("client API uses private no-store reads and validates receipt echo payload"
   const calls = [], command = { requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "daily" };
   globalThis.fetch = async (path, options) => { calls.push({ path, options }); return Response.json(options.method === "GET" ? view() : receipt(command)); };
   await api.getGameRewards(); const result = await api.claimGameReward(command);
-  assert.equal(result.requestId, command.requestId); assert.equal(calls[0].path, "/api/v1/game/rewards");
+  assert.equal(result.requestId, command.requestId); assert.equal(calls[0].path, "/api/v1/game/rewards?catalog=5");
   assert.equal(calls[0].options.credentials, "same-origin"); assert.equal(calls[0].options.cache, "no-store");
-  assert.equal(calls[1].path, "/api/v1/game/rewards/claims"); assert.deepEqual(JSON.parse(calls[1].options.body), command);
+  assert.equal(calls[1].path, "/api/v1/game/rewards/claims?catalog=5"); assert.deepEqual(JSON.parse(calls[1].options.body), command);
 });
 
-test("the client accepts frozen v2 and v3 responses alongside current v4 previews without repricing their bundles", () => {
+test("the client accepts frozen v2 and v3 responses alongside current v5 previews without repricing their bundles", () => {
   const current = view();
-  const historical = [2, 3].map(catalogVersion => ({ ...structuredClone(current), catalogVersion,
+  const historical = [2, 3, 4].map(catalogVersion => ({ ...structuredClone(current), catalogVersion, achievementRewards: structuredClone(current.achievementRewards.slice(0, 21)),
     daily: { ...structuredClone(current.daily), reward: { coins: 80, pearls: catalogVersion === 2 ? 8 : 20,
       items: { ancient_core: 1 } } } }));
   for (const snapshot of [...historical, current]) {
@@ -336,7 +336,7 @@ test("the client accepts frozen v2 and v3 responses alongside current v4 preview
     assert.deepEqual(parsed.daily.reward, snapshot.daily.reward);
   }
   assert.equal(api.gameRewardsSchema.safeParse({ ...current, catalogVersion: 1 }).success, false);
-  assert.equal(api.gameRewardsSchema.safeParse({ ...current, catalogVersion: 5 }).success, false);
+  assert.equal(api.gameRewardsSchema.safeParse({ ...current, catalogVersion: 6 }).success, false);
 });
 
 

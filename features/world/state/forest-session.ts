@@ -9,7 +9,7 @@ import { createForestDirector, type ForestDirective } from "@/features/world/sim
 import { createBirdReactions } from "@/features/world/environment/wildlife/forest-bird-reactions";
 import { createForestMemory, forestSceneFingerprint, type ForestMemoryEnvironment, type ForestMemoryStatus } from "@/features/world/state/memory/forest-memory";
 import { forgetForestObservation } from "./forest-observer";
-import { createForestMemorySync, type ForestMemorySyncEnvironment, type ForestMemoryTransport } from "@/features/world/state/memory/forest-memory-sync";
+import { createForestMemorySync, type ForestMemorySyncEnvironment, type ForestMemorySyncOptions, type ForestMemoryTransport } from "@/features/world/state/memory/forest-memory-sync";
 import { createPleskMind, type PleskMind } from "@/features/world/characters/plesk/plesk-mind";
 import { createBuilderMind, rehydrateBuilderMind, type BuilderMind } from "@/features/world/characters/builder/builder-mind";
 import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
@@ -64,8 +64,10 @@ export type ForestSessionState = {
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;
   key: string | undefined; sync?: ReturnType<typeof createForestMemorySync>; removeLifecycle?: () => void;
-  members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object; visibleHandoff?: boolean; retained?: boolean; retentionBlocked?: boolean };
+  syncCallbacks?: Pick<ForestMemorySyncOptions, "capture" | "apply" | "onStatus">;
+  members: Set<Member>; owner: Member | null; events: Map<string, number>; controls?: object; visibleHandoff?: boolean; retained?: boolean; retentionBlocked?: boolean; superseded?: boolean };
 const sessions = new Map<string, Session>();
+const handles = new WeakMap<object, Session>();
 
 function discardSession(identity: string | undefined, session: Session) {
   session.sync?.release(); session.removeLifecycle?.(); session.memory.release();
@@ -83,6 +85,8 @@ export function forgetForestSession(key: string | undefined) {
 }
 
 export type ForestSessionOptions = { /** A visit neither joins, replaces nor persists an account simulation. */ isolated?: boolean; persistence?: boolean; environment?: ForestMemoryEnvironment | null;
+  /** Only an actual renderer geometry replacement can move a mounted writer. */
+  handoffFrom?: object;
   /** Real account scenes wait for their first confirmed economic snapshot. */
   awaitBuilderConstruction?: boolean;
   sync?: false | { transport?: ForestMemoryTransport; environment?: ForestMemorySyncEnvironment } };
@@ -99,12 +103,16 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   options: ForestSessionOptions = {}) {
   if (options.isolated) { key = undefined; options = { ...options, persistence: false, sync: false }; }
   const identity = key ? `account:${key}:${forestSceneFingerprint(scene)}` : undefined;
+  const explicitPrevious = options.handoffFrom ? handles.get(options.handoffFrom) : undefined;
+  const previous = explicitPrevious && explicitPrevious.key === key && !explicitPrevious.retentionBlocked ? explicitPrevious
+    : [...sessions.values()].find(item => item.key === key && !item.members.size && !item.retentionBlocked);
   // Keep at most one unmounted forest, and never reuse another account's or
   // another map geometry's parked routes. Mounted views still share as before.
-  for (const [parkedIdentity, parked] of sessions) if (!options.isolated && !parked.members.size && parkedIdentity !== identity) {
+  for (const [parkedIdentity, parked] of sessions) if (!options.isolated && !parked.members.size && parkedIdentity !== identity && parked !== previous) {
     discardSession(parkedIdentity, parked);
   }
   let shared = identity === undefined ? undefined : sessions.get(identity);
+  if (shared?.superseded) shared = undefined;
   const created = !shared;
   if (!shared) {
     const state: ForestSessionState = { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene),
@@ -122,9 +130,9 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
       && /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/.test(ownerPublicId)
       && (typeof window !== "undefined" || options.sync)) {
       const current = shared;
-      current.sync = createForestMemorySync({ ownerPublicId, ...options.sync,
+      const sceneCallbacks = {
         capture: memory.capture,
-        apply(payload) {
+        apply(payload: Parameters<typeof memory.apply>[0]) {
           // Hydration starts at a safe state: no old paths, encounter participants or forced animations survive it.
           Object.assign(state, { elapsed: 0, wetness: 0, water: undefined,
             clearing: createClearingActivity(scene), life: createForestLife(scene),
@@ -135,11 +143,13 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
           memory.apply(payload);
         },
-        onStatus(status) {
+        onStatus(status: ForestMemoryStatus["sync"]) {
           state.memory.sync = status;
           queueMicrotask(() => { for (const item of current.members) item.changed(true); });
         },
-      });
+      };
+      current.syncCallbacks = sceneCallbacks;
+      current.sync = createForestMemorySync({ ownerPublicId, ...options.sync, ...sceneCallbacks });
       state.memory.sync = current.sync.getStatus();
     }
     if (typeof window !== "undefined") {
@@ -156,6 +166,20 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
       current.removeLifecycle = () => { window.removeEventListener("pagehide", leave); window.removeEventListener("pageshow", resume); };
     }
     if (identity !== undefined) sessions.set(identity, shared);
+  }
+  // A building replacement stays in the same page's writer, including its
+  // exact pending receipt. An unrelated late mount cannot steal an active
+  // geometry's lease. An existing initialized target also keeps its authority.
+  if (previous && previous !== shared && previous.sync && shared.syncCallbacks
+    && shared.sync?.canAdoptSceneWriter() && !shared.retentionBlocked) {
+    const snapshot = previous.memory.capture();
+    previous.memory.suspend(); previous.retentionBlocked = true; previous.superseded = true; previous.owner = null;
+    shared.sync.release(); shared.sync = previous.sync; previous.sync = undefined;
+    shared.memory.apply(snapshot); shared.sync.rebindScene(shared.syncCallbacks);
+    queueMicrotask(() => { for (const item of previous.members) item.changed(true); });
+  }
+  if (previous && previous !== shared && !previous.members.size) {
+    for (const [oldIdentity, parked] of sessions) if (parked === previous) discardSession(oldIdentity, previous);
   }
   // DEV settings can change between mounting the circle and opening the map. They
   // suspend the shared account session; they must never create a second clock.
@@ -176,13 +200,13 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
     queueMicrotask(() => { for (const item of session.members) item.changed(true); });
   }
   session.members.add(member);
-  return {
+  const handle = {
     state: session.state,
     /** Geometry handoffs may seed a new session, never overwrite a joined one. */
     created,
-    isOwner: () => !disposed && session.owner === member && (session.sync?.isSimulationAllowed() ?? true),
-    isSimulationAllowed: () => !disposed && (session.sync?.isSimulationAllowed() ?? true),
-    isObservationOwner: () => !disposed && (session.owner === member || session.owner === null),
+    isOwner: () => !disposed && !session.superseded && session.owner === member && (session.sync?.isSimulationAllowed() ?? true),
+    isSimulationAllowed: () => !disposed && !session.superseded && (session.sync?.isSimulationAllowed() ?? true),
+    isObservationOwner: () => !disposed && !session.superseded && (session.owner === member || session.owner === null),
     configure(nextView: View, active: boolean, retainPausedScene = false) {
       if (disposed) return;
       member.view = nextView; member.active = active; member.retain = retainPausedScene;
@@ -218,4 +242,6 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
       }
     },
   };
+  handles.set(handle, session);
+  return handle;
 }

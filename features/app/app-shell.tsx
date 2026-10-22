@@ -18,6 +18,8 @@ import { rememberEarthSection, restoreEarthSection } from "./earth-navigation-st
 import { earthMapAvailable } from "./earth-map-availability";
 import { useEarthMapRetention } from "./use-earth-map-retention";
 import { useEarthSharing } from "@/features/earth/use-earth-sharing";
+import { useEarthPresence } from "@/features/earth/use-earth-presence";
+import { readEarthModelEditorOpen } from "@/features/earth/dev/earth-model-editor-session";
 import { useEarthLocationPreference } from "@/features/earth/use-location-preferences";
 import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
@@ -708,10 +710,14 @@ function CheckInContent() {
     selected: earthSelected, available: earthAvailable, documentHidden: activity.mode === "hidden" });
   const locationOwner = screen === "home" ? viewOwner : null;
   const locationPreference = useEarthLocationPreference(locationOwner);
+  const [earthModelEditing, setEarthModelEditing] = useState(readEarthModelEditorOpen);
   const earthSharing = useEarthSharing({ ownerPublicId: screen === "home" ? viewOwner : null,
-    visible: screen === "home" && (earthSelected || activeView === "people") && earthAvailable,
-    publicationVisible: screen === "home" && earthSelected && earthAvailable && locationPreference.enabled,
+    visible: screen === "home" && !startupActive,
+    publicationVisible: screen === "home" && !startupActive && locationPreference.enabled,
     isOnline, onSessionLost: loseSession });
+  const earthLocation = useEarthPresence({ ownerPublicId: locationOwner, enabled: screen === "home" && !startupActive,
+    mapVisible: earthSelected && earthAvailable, sharing: earthSharing,
+    temporarilyPaused: process.env.NODE_ENV === "development" && earthSelected && earthModelEditing });
   useEconomyAudioFeedback(economy, screen === "home" && activity.active);
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
@@ -1648,6 +1654,7 @@ function CheckInContent() {
 
   const connectionStatus = !startupActive && !gameplay.showGate && activity.mode !== "hidden" ? <ConnectionStatus key={`connection:${me?.user.publicId}`} online={isOnline}
     reconnecting={activity.mode === "connecting"}
+    rateLimited={activity.active && !activity.error && !economy.storageError && economy.rateLimited}
     queuedCount={economy.pendingProductionCount} pending={economy.syncPending || world.uncertain}
     error={activity.error || economy.storageError || economy.syncError || economy.marketSyncError || economy.barterSyncError || world.syncError || (activity.mode === "error" ? "Не удалось восстановить соединение" : null) || (economy.uncertain || economy.retryAt > economy.now ? economy.error : null) || (world.uncertain ? world.error : null)}
     retrySeconds={Math.max(activity.retrySeconds, Math.ceil(Math.max(0, economy.retryAt - economy.now) / 1000))}
@@ -1920,7 +1927,7 @@ function CheckInContent() {
           isOnline={isOnline}
           updatedAt={peopleUpdatedAt}
           groupsUpdatedAt={groupsUpdatedAt}
-          onRefresh={async () => { await refreshPeople(); }}
+          onRefresh={async () => { await refreshPeople(); earthSharing.refresh(); }}
           onGroupsRefresh={() => refreshGroups()}
           onSessionLost={loseSession}
           onVisitFriend={visitFriend}
@@ -1978,7 +1985,8 @@ function CheckInContent() {
         style={{ display: earthSelected ? undefined : "none" }} data-earth-session-visible={earthSelected}>
         {earthRetention.mounted && me && <EarthView key={`earth:${me.user.publicId}`} ownerPublicId={me.user.publicId}
           devCommandsAvailable={activity.mode === "active"}
-          active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange} cameraSession={earthRetention.cameraSession} sharing={earthSharing}
+          active={earthAvailable} visible={earthSelected} onReadyChange={earthRetention.onReadyChange} cameraSession={earthRetention.cameraSession} sharing={earthSharing} location={earthLocation}
+          onModelEditingChange={setEarthModelEditing}
           privacyRequest={earthPrivacyRequest?.owner === me.user.publicId ? earthPrivacyRequest.id : null}
           onPrivacyRequestHandled={earthPrivacyHandled}
           isOnline={isOnline} people={people} peopleLoading={peopleLoading} peopleError={peopleError}

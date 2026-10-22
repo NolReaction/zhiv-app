@@ -35,7 +35,7 @@ type View = {
   snapshot: EconomyView | null; market: MarketView | null; marketError: string | null;
   barter: BarterView | null; barterError: string | null;
   marketSyncError: string | null; barterSyncError: string | null;
-  error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number;
+  error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number; rateLimited: boolean;
   completedConstructions: readonly ConstructionCompletion[];
   directActionsAvailable: boolean;
   snapshotConfirmed: boolean;
@@ -66,7 +66,7 @@ type ReceiptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 export function createEconomySession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: ReceiptStorage,
   journalOptions?: { storage: JournalStorage; coordinate: JournalCoordinator }) {
   let view: View = { snapshot: null, market: null, marketError: null, barter: null, barterError: null, marketSyncError: null, barterSyncError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0, completedConstructions: [], inventoryGains: [],
-    directActionsAvailable: true, snapshotConfirmed: false, productionSnapshot: null, pendingProductionIds: [], pendingProductionCount: 0, productionQueueAvailable: false, syncPending: false, storageError: null, syncError: null };
+    directActionsAvailable: true, snapshotConfirmed: false, productionSnapshot: null, pendingProductionIds: [], pendingProductionCount: 0, productionQueueAvailable: false, syncPending: false, storageError: null, syncError: null, rateLimited: false };
   let pending: Pending | null = null, active = false, available = true, epoch = 0, readSequence = 0, marketSequence = 0, barterSequence = 0;
   // A reload may recover the command, but must not pretend the player just
   // started it in this course. Keep this intent out of receipt persistence.
@@ -167,7 +167,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
         productionEntries = remaining;
         adopt(result.state);
         failures = 0; blockedUntil = 0;
-        publish({ error: null, syncError: null, notice: result.message, retryAt: 0 });
+        publish({ error: null, syncError: null, notice: result.message, retryAt: 0, rateLimited: false });
         if (!saved) return;
       } catch (error) {
         if (!valid(generation)) return;
@@ -177,7 +177,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
           const remaining = productionEntries.slice(1);
           if (!persistProduction(remaining)) return;
           productionEntries = remaining;
-          publish({ error: error.message, syncError: null });
+          publish({ error: error.message, syncError: null, rateLimited: false });
           const snapshot = await transport.get(request.signal).catch(() => null);
           if (!valid(generation)) return;
           if (!snapshot || !adopt(snapshot)) return;
@@ -186,7 +186,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
             : Math.min(60_000, 2000 * 2 ** Math.min(failures++, 5));
           blockedUntil = performance.now() + delay;
           if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
-          publish({ error: null, syncError: error instanceof ApiError ? error.message : "Действия сохранены на устройстве. Отправим их после подключения.", retryAt: now() + delay });
+          publish({ error: null, syncError: error instanceof ApiError ? error.message : "Действия сохранены на устройстве. Отправим их после подключения.", retryAt: now() + delay,
+            rateLimited: error instanceof ApiError && error.status === 429 });
           if (error instanceof ApiError && error.status === 401) onSessionLost();
           return;
         }
@@ -260,7 +261,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const snapshot = await transport.get(request.signal);
       if (valid(generation) && sequence === readSequence && adopt(snapshot)) {
         failures = 0; blockedUntil = 0;
-        if (!pending && !productionEntries.length) publish({ error: null, syncError: null, retryAt: 0 });
+        if (!pending && !productionEntries.length) publish({ error: null, syncError: null, retryAt: 0, rateLimited: false });
       }
     } catch (error) {
       if (!valid(generation) || sequence !== readSequence) return;
@@ -269,11 +270,16 @@ export function createEconomySession(owner: string | null, transport: Transport,
       blockedUntil = performance.now() + delay;
       if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
       if (error instanceof ApiError && error.status === 401) onSessionLost();
-      else if (!pending) {
+      else if (pending && view.rateLimited && error instanceof ApiError && error.status === 429) {
+        // A poll can win the race with command recovery at the old deadline.
+        // Show its extended wait without replacing the command's receipt/error.
+        publish({ retryAt: now() + delay });
+      } else if (!pending) {
         const message = error instanceof ApiError ? error.message : "Нет связи с хозяйством. Изменения появятся после подключения.";
         const transportFailure = !(error instanceof ApiError) || error.status >= 500 || [408, 425, 429].includes(error.status)
           || error.body?.code === "GAME_SESSION_INACTIVE";
-        publish({ error: productionEntries.length && transportFailure ? null : message, syncError: transportFailure ? message : null, retryAt: now() + delay });
+        publish({ error: productionEntries.length && transportFailure ? null : message, syncError: transportFailure ? message : null, retryAt: now() + delay,
+          rateLimited: error instanceof ApiError && error.status === 429 });
       }
     } finally { requests.delete(request); }
   }
@@ -343,7 +349,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     if (!active || !available || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev) || (value.kind === "barter" && !transport.barterTrade) || (value.kind === "friend_market" && !transport.friendTrade)) return;
     const generation = epoch, request = controller(), before = view.snapshot;
     ++readSequence; ++marketSequence; ++barterSequence; reading = null; marketReading = null; barterReading = null; remember(value);
-    publish({ busy: true, error: null, notice: "", retryAt: 0,
+    publish({ busy: true, error: null, notice: "", retryAt: 0, rateLimited: false,
       ...(value.kind === "economy" && value.command.action === "buy_leaftail_item" ? { localLeaftailPurchase: undefined } : {}),
       ...(localProductionStart ? { productionStarts: productionStarts(value.command.requestId) } : {}) });
     let reloadMarket = false, reloadBarter = false;
@@ -397,11 +403,11 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (throttled) {
         const delay = Math.max(1000, error.retryAfterMs ?? 60_000);
         blockedUntil = performance.now() + delay;
-      if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
+        rateLimitedUntil = blockedUntil;
         publish({ retryAt: now() + delay });
       }
       const message = error instanceof ApiError ? error.message : "Ответ не пришёл. Повторная проверка использует тот же запрос и не спишет ресурсы дважды.";
-      publish({ uncertain: !definitive, error: message, syncError: definitive ? null : message });
+      publish({ uncertain: !definitive, error: message, syncError: definitive ? null : message, rateLimited: throttled });
       if (error instanceof ApiError && error.status === 401) onSessionLost();
       else if (definitive) {
         const snapshot = await transport.get(request.signal).catch(() => null);
@@ -505,6 +511,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (command.success) void execute({ kind: "dev", command: command.data });
     },
     retry: () => pending ? execute(pending) : productionEntries.length ? drainProduction() : refresh(),
+    // A server-requested wait may resume its exact receipt after the deadline.
+    // Other unknown failures still use the ordinary explicit reconciliation.
+    retryThrottled: () => view.rateLimited && pending ? execute(pending) : Promise.resolve(),
     retryGardenCollection() {
       if (pending?.kind !== "economy" || !active || !available || view.busy || performance.now() < blockedUntil) return false;
       const { action, targetId } = pending.command;

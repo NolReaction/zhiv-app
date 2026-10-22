@@ -206,6 +206,8 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     compact: Boolean(props.ordersOpen || props.quickMenu || surface.garden || props.workshopOpen),
     dock: props.ordersOpen ? "[data-guide-coach-slot]" : props.quickMenu ? "#world-quick-menu [data-guide-coach-slot]" : surface.garden || props.workshopOpen ? "[data-place] [data-guide-coach-slot]" : undefined,
     onPause: props.onPause, onSkip: props.onSkip,
+    exitHelp: "Вернуться можно через профиль Мохлика (кнопка уровня) → «?» → «Продолжить обучение» или «Повторить обучение».",
+    notice: !progress || current === "profile" ? "Справка с поиском — под кнопкой i. Скрытое обучение можно продолжить: мой уровень → «?» → «Продолжить обучение»." : undefined,
     primary: { label: "Давай попробуем", onClick: props.onStart },
   };
   if (step) {

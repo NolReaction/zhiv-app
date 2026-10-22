@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "dailyMinimumHours": 20,
   "onboarding": {
     "coins": 1000,
@@ -116,6 +116,26 @@
     ],
     "lucky_find": [
       40
+    ],
+    "patient_angler": [
+      40,
+      80,
+      160
+    ],
+    "campfire_cook": [
+      40,
+      80,
+      160
+    ],
+    "helpful_neighbor": [
+      40,
+      80,
+      160
+    ],
+    "generous_garden": [
+      40,
+      80,
+      160
     ]
   },
   "currencyScale": 10,

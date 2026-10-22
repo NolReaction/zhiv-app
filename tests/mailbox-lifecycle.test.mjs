@@ -105,6 +105,26 @@ test("Strict Mode provisional effects do not consume a toast that never reached 
   } finally { stop(); }
 });
 
+test("the mail notice opens during a polling availability transition, but never after owner disposal", async () => {
+  environment();
+  const session = createMailboxSession(owner, { list: async () => mailPage(), read: async () => assert.fail() }, undefined, window.localStorage);
+  const stop = session.activate();
+  try {
+    await session.refresh();
+    hooks.begin(); MailboxNotifications({ mailbox: { ...session.getSnapshot(), ...session } }); hooks.commitPassive(); await flush();
+    const buttons = [];
+    const visit = node => { if (!isValidElement(node)) return; if (node.type === "button") buttons.push(node); Children.forEach(node.props.children, visit); };
+    visit(toasts.shown[0].render());
+    const open = buttons.find(button => button.props.children === "Открыть почту").props.onClick;
+    session.setAvailable(false); open();
+    assert.equal(session.getSnapshot().opened, true, "a brief unavailable connection must not eat navigation");
+    assert.equal(toasts.dismissed.length, 1);
+    session.close(); stop(); open();
+    assert.equal(session.getSnapshot().opened, false, "an old account's action remains inert");
+    assert.equal(toasts.dismissed.length, 1);
+  } finally { stop(); }
+});
+
 test("the rendered detail effect marks only the letter that is actually open, while inbox rows remain unread", async () => {
   environment(); const reads = [], session = createMailboxSession(owner, { list: async () => mailPage(), read: async messageId => {
     reads.push(messageId); return { ownerPublicId: owner, id: messageId, readAt: time, unreadCount: 0, serverTime: time };
