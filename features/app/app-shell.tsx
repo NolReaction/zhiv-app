@@ -1,6 +1,7 @@
 "use client";
 
 import { useActivity } from "@/features/activity/use-activity";
+import { reconcileGameplaySessions } from "@/features/activity/reconcile-gameplay";
 import { ActivityGate } from "@/features/activity/activity-gate";
 import { ConnectionStatus } from "@/features/activity/connection-status";
 import { gameplayPresentation } from "@/features/activity/gameplay-presentation";
@@ -662,12 +663,12 @@ function CheckInContent() {
 
   const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
   const economy = useEconomy(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
-  const { reconcile: reconcileWorld, setAvailable: setWorldAvailable, setDirectActionsAvailable: setWorldDirectActions } = world;
-  const { reconcile: reconcileEconomy, setAvailable: setEconomyAvailable, setDirectActionsAvailable: setEconomyDirectActions, setLocalActionsAvailable: setLocalEconomyActions } = economy;
-  const reconcileGameplay = useCallback(async () => {
-    const results = await Promise.all([reconcileWorld(), reconcileEconomy()]);
-    return results.every(Boolean);
-  }, [reconcileWorld, reconcileEconomy]);
+  const { reconcile: reconcileWorld, getReconciliationError: worldReconciliationError, setAvailable: setWorldAvailable, setDirectActionsAvailable: setWorldDirectActions } = world;
+  const { reconcile: reconcileEconomy, getReconciliationError: economyReconciliationError, setAvailable: setEconomyAvailable, setDirectActionsAvailable: setEconomyDirectActions, setLocalActionsAvailable: setLocalEconomyActions } = economy;
+  const reconcileGameplay = useCallback(() => reconcileGameplaySessions(
+    { reconcile: reconcileWorld, getReconciliationError: worldReconciliationError },
+    { reconcile: reconcileEconomy, getReconciliationError: economyReconciliationError },
+  ), [reconcileWorld, reconcileEconomy, worldReconciliationError, economyReconciliationError]);
   const [activityPauseVersion, setActivityPauseVersion] = useState(0);
   const pauseGameplay = useCallback(() => {
     setWorldDirectActions(false); setEconomyDirectActions(false);

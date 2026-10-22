@@ -37,6 +37,8 @@ const nextConfig: NextConfig = {
       { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
       { source: "/updates.json", headers: [{ key: "Cache-Control", value: "no-store" }] },
       { source: "/app-status.json", headers: [{ key: "Cache-Control", value: "no-store" }] },
+      { source: "/recover.html", headers: [{ key: "Cache-Control", value: "no-store" }] },
+      { source: "/recover.js", headers: [{ key: "Cache-Control", value: "no-store" }] },
       {
         source: "/",
         headers: securityHeaders,

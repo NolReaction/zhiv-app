@@ -30,6 +30,7 @@ export function GameLoader() {
     <p role="status">{failed ? "Не удалось загрузить приложение" : slow ? "Загрузка занимает больше времени" : "Загружаем полянку…"}</p>
     {(failed || slow) && <><p>Проверьте подключение и повторите попытку. Ваш прогресс остаётся в аккаунте.</p>
       <button type="button" onClick={() => window.location.reload()}>Повторить загрузку</button>
+      <a href="/recover.html">Восстановить запуск</a>
       <a href="/site">На сайт приложения</a></>}
   </main>;
 }

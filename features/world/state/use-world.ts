@@ -24,6 +24,6 @@ export function useWorld(owner: string | null, onSessionLost: () => void, enable
       document.removeEventListener("visibilitychange", refresh); window.removeEventListener("online", refresh);
     };
   }, [session, owner, enabled]);
-  return { ...view, reconcile: session.reconcile, setAvailable: session.setAvailable, setDirectActionsAvailable: session.setDirectActionsAvailable, now, act: session.act, retry: session.retry, refresh: session.refreshSoft, refreshNow: session.refresh };
+  return { ...view, reconcile: session.reconcile, getReconciliationError: session.getReconciliationError, setAvailable: session.setAvailable, setDirectActionsAvailable: session.setDirectActionsAvailable, now, act: session.act, retry: session.retry, refresh: session.refreshSoft, refreshNow: session.refresh };
 }
 export type WorldController = ReturnType<typeof useWorld>;

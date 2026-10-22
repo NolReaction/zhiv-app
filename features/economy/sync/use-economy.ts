@@ -44,6 +44,6 @@ export function useEconomy(owner: string | null, onSessionLost: () => void, enab
       document.removeEventListener("visibilitychange", refresh); window.removeEventListener("online", refresh);
     };
   }, [session, owner]);
-  return { ...view, reconcile: session.reconcile, setAvailable: session.setAvailable, setLocalActionsAvailable: session.setLocalActionsAvailable, setDirectActionsAvailable: session.setDirectActionsAvailable, now: view.snapshot ? session.now() : now, act: session.act, actMarket: session.actMarket, actFriendMarket: session.actFriendMarket, actBarter: session.actBarter, actDev: session.actDev, devAvailable: session.devAvailable, retry: session.retry, retryGardenCollection: session.retryGardenCollection, refresh: session.refresh, refreshMarket: session.refreshMarket, refreshBarter: session.refreshBarter };
+  return { ...view, reconcile: session.reconcile, getReconciliationError: session.getReconciliationError, setAvailable: session.setAvailable, setLocalActionsAvailable: session.setLocalActionsAvailable, setDirectActionsAvailable: session.setDirectActionsAvailable, now: view.snapshot ? session.now() : now, act: session.act, actMarket: session.actMarket, actFriendMarket: session.actFriendMarket, actBarter: session.actBarter, actDev: session.actDev, devAvailable: session.devAvailable, retry: session.retry, retryGardenCollection: session.retryGardenCollection, refresh: session.refresh, refreshMarket: session.refreshMarket, refreshBarter: session.refreshBarter };
 }
 export type EconomyController = ReturnType<typeof useEconomy>;

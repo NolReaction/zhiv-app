@@ -129,6 +129,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   }
   return {
     setAvailable, reconcile,
+    getReconciliationError: () => view.error ?? view.syncError,
     setDirectActionsAvailable(value: boolean) { if (view.directActionsAvailable !== value) publish({ directActionsAvailable: value }); },
     setSessionLost(callback: () => void) { onSessionLost = callback; },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },

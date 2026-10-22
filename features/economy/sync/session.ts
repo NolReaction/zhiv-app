@@ -439,6 +439,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   }
   return {
     setAvailable, reconcile,
+    getReconciliationError: () => view.error ?? view.syncError,
     setLocalActionsAvailable(value: boolean) { if (localActionsAvailable !== value) { localActionsAvailable = value; publish({}); } },
     setDirectActionsAvailable(value: boolean) { if (view.directActionsAvailable !== value) publish({ directActionsAvailable: value }); },
     setSessionLost(callback: () => void) { onSessionLost = callback; },

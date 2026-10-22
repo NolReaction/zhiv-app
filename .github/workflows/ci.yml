@@ -516,6 +516,70 @@ jobs:
             printf '%s=%s\n' "$variable" "${!variable}"
           done > deploy/.env
           chmod 600 deploy/.env
+          read -r FRESH_START_TOKEN FRESH_START_TOKEN_HASH < <(node --input-type=module - <<'NODE'
+          import { createHash, randomBytes } from 'node:crypto';
+          const token = randomBytes(32).toString('base64url');
+          process.stdout.write(token + ' ' + createHash('sha256').update(token).digest('hex') + '\n');
+          NODE
+          )
+          export FRESH_START_TOKEN
+          fresh_start_snapshots() {
+            node --input-type=module - <<'NODE'
+          import assert from 'node:assert/strict';
+          import { randomUUID } from 'node:crypto';
+          import { request } from 'node:https';
+          assert.equal(process.env.CI, 'true');
+          assert.equal(process.env.DOMAIN, 'localhost');
+          assert.match(process.env.COMPOSE_PROJECT_NAME, /^zhiv-ci-[0-9]+$/);
+          assert.ok(process.env.FRESH_START_TOKEN);
+          async function api(path, body) {
+            const payload = body === undefined ? undefined : JSON.stringify(body);
+            return new Promise((resolve, reject) => {
+              const headers = { Cookie: '__Host-zhiv_session=' + process.env.FRESH_START_TOKEN,
+                Origin: 'https://localhost', Accept: 'application/json', 'X-Game-Generation': '1' };
+              if (payload) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = Buffer.byteLength(payload); }
+              const req = request(new URL(path, 'https://localhost'), { method: payload ? 'POST' : 'GET', headers,
+                rejectUnauthorized: false, timeout: 15000 }, res => {
+                const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('error', reject);
+                res.on('end', () => {
+                  try { assert.equal(res.statusCode, 200, path + ' must accept the preserved session');
+                    assert.match(res.headers['content-type'] ?? '', /application\/json/);
+                    resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+                  } catch (error) { reject(error); }
+                });
+              });
+              req.on('error', reject); req.on('timeout', () => req.destroy(new Error('Fresh-start snapshot timeout')));
+              req.end(payload);
+            });
+          }
+          const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+          const count = value => Number.isSafeInteger(value) && value >= 0;
+          const me = await api('/api/v1/me');
+          assert.equal(me.gameplayGeneration, 1); assert.ok(me.user.publicId);
+          const presence = await api('/api/v1/presence', { kind: 'resume', presenceId: randomUUID(), sequence: 0, active: true });
+          assert.equal(presence.status, 'active');
+          const world = await api('/api/v1/world'), economy = await api('/api/v1/economy');
+          for (const snapshot of [world, economy]) {
+            assert.equal(snapshot.ownerPublicId, me.user.publicId); assert.ok(count(snapshot.revision));
+            assert.ok(typeof snapshot.serverTime === 'string' && Number.isFinite(Date.parse(snapshot.serverTime)));
+          }
+          assert.equal(world.state.schemaVersion, 1);
+          for (const key of ['sparks', 'wood', 'stone']) assert.ok(count(world.state.resources[key]));
+          assert.ok(Number.isInteger(world.state.houseLevel) && world.state.houseLevel >= 1 && world.state.houseLevel <= 5);
+          assert.equal(typeof world.state.workshop, 'boolean'); assert.ok(object(world.state.equipment));
+          for (const key of ['inventory', 'collection', 'journeys']) assert.ok(Array.isArray(world.state[key]));
+          assert.equal(typeof world.state.firstJourneyCompleted, 'boolean'); assert.ok(count(world.state.completedJourneys));
+          assert.ok(Array.isArray(world.gifts)); assert.ok(count(world.dailySparksEarned)); assert.ok([1, 2, 3].includes(world.catalogVersion));
+          for (const key of ['coins', 'pearls']) assert.ok(count(economy.wallet[key]));
+          for (const key of ['inventory', 'buildings']) {
+            assert.ok(object(economy[key])); assert.ok(Object.values(economy[key]).every(count));
+          }
+          assert.ok(Array.isArray(economy.jobs)); assert.ok(object(economy.migration)); assert.ok(object(economy.catalog));
+          assert.ok(count(economy.completedExplorations));
+          for (const key of ['capacity', 'used', 'reserved', 'available', 'overflow']) assert.ok(count(economy.storage[key]));
+          console.log('Existing-account presence, world and economy snapshots remain readable after the release reset.');
+          NODE
+          }
           preserved_snapshot() {
             docker compose -f deploy/compose.yml exec -T db psql -X -A -t -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
           SELECT md5(jsonb_build_object(
@@ -528,19 +592,26 @@ jobs:
           )::text);
           SQL
           }
-          docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
+          docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 -v "fresh_token_hash=$FRESH_START_TOKEN_HASH" <<'SQL'
           DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM app_sessions) OR NOT EXISTS (SELECT 1 FROM check_ins)
                 OR NOT EXISTS (SELECT 1 FROM circles WHERE kind = 'DIRECT' AND archived_at IS NULL) THEN
               RAISE EXCEPTION 'Fresh-start rehearsal requires existing signed-in players, history and friends.';
             END IF;
           END $$;
+          INSERT INTO app_sessions (id, user_id, token_hash, expires_at)
+          SELECT '00000000-0000-4000-8000-000000000078', u.id, decode(:'fresh_token_hash', 'hex'), clock_timestamp() + interval '1 day'
+          FROM app_users u WHERE u.deleted_at IS NULL AND u.banned_at IS NULL
+            AND EXISTS (SELECT 1 FROM economy_profiles e WHERE e.user_id = u.id)
+            AND EXISTS (SELECT 1 FROM world_profiles w WHERE w.user_id = u.id)
+          ORDER BY u.id LIMIT 1;
           SQL
           preserved_before="$(preserved_snapshot)"
           bash scripts/deploy-update.sh --reset-game-progress-0.7.1
           test "$(preserved_snapshot)" = "$preserved_before"
           test ! -e deploy/runtime/maintenance
           curl --fail --silent --show-error --insecure --max-time 20 https://localhost/readyz
+          fresh_start_snapshots
           docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
             IF (SELECT generation FROM gameplay_generations) <> 1
@@ -571,6 +642,7 @@ jobs:
           SQL
           test "$(preserved_snapshot)" = "$preserved_before"
           curl --fail --silent --show-error --insecure --max-time 20 https://localhost/readyz
+          fresh_start_snapshots
 
       - name: Verify explicit user reset with a restored backup
         shell: bash
