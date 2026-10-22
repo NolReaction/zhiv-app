@@ -140,3 +140,33 @@ test("positive wire levels remain readable by old clients and only the explicit 
   assert.equal(recipeBuildingLevel(previous.recipes.find(recipe => recipe.id === "cook_grilled_fish")), 1);
   assert.equal(recipeBuildingLevel({ ...wireRecipe, id: "cook_compote" }), 1);
 });
+
+test("production Kotlin nullable campfire flags allow the complete economy response to reconcile", async () => {
+  const player = identities.createDevIdentity("Костёр", crypto.randomUUID());
+  const wire = JSON.parse(JSON.stringify(api.getDevEconomy(player.token, now)));
+  // The initial 0.7.1 API emitted default-null flags with explicitNulls/encodeDefaults.
+  for (const recipe of wire.catalog.recipes) recipe.baseCampfire ??= null;
+  const { getEconomy } = await vite.ssrLoadModule("/features/economy/sync/api.ts");
+  const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async path => {
+    assert.equal(path, "/api/v1/economy");
+    return Response.json(wire);
+  };
+  const session = createEconomySession(wire.ownerPublicId, {
+    get: getEconomy, send: async () => assert.fail("Reconciliation must not invent a command"),
+    market: async () => assert.fail(), trade: async () => assert.fail(),
+  }, () => assert.fail("A valid snapshot must preserve authorization"));
+  const stop = session.activate();
+  try {
+    assert.equal(await session.reconcile(), true);
+    const snapshot = session.getSnapshot().snapshot;
+    assert.equal(snapshot.ownerPublicId, wire.ownerPublicId);
+    for (const recipe of snapshot.catalog.recipes) {
+      assert.equal(recipeBuildingLevel(recipe), recipe.id === "cook_grilled_fish" ? 0 : recipe.buildingLevel);
+      assert.equal(recipe.baseCampfire, recipe.id === "cook_grilled_fish" ? true : undefined);
+    }
+    wire.catalog.recipes.find(recipe => recipe.id === "grow_berries").baseCampfire = false;
+    await assert.rejects(getEconomy(), /хозяйство получило новую версию/);
+  } finally { stop(); globalThis.fetch = fetch; }
+});

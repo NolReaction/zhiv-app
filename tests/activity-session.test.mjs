@@ -49,6 +49,77 @@ test("reconciliation failure leaves a usable retry instead of endless loading", 
   assert.equal(f.session.getSnapshot().mode, "error"); assert.equal(f.connected.at(-1), null);
   f.setTime(4000); await f.session.retry(); assert.equal(f.session.getSnapshot().mode, "active");
 });
+test("persistent reconciliation failure backs off and cannot consume the hourly lease budget through retries", async () => {
+  let elapsed = 0;
+  const attempts = [];
+  const f = fixture({ reconcile: async () => { attempts.push(elapsed); return false; } });
+  const stop = f.session.start(true, true);
+  try {
+    await flush();
+    // An attentive player keeps the page awake and presses either retry button;
+    // both manual requests and the automatic scheduler must obey one deadline.
+    for (elapsed = 1000; elapsed <= 3_600_000; elapsed += 1000) {
+      f.setTime(elapsed); f.session.input(); f.session.check();
+      await f.session.retry(); await f.session.resume();
+      if (f.session.getSnapshot().mode === "connecting") await flush();
+      assert.equal(f.session.getSnapshot().mode, "error");
+      assert.equal(f.connected.at(-1), null);
+    }
+    assert.deepEqual(attempts.slice(0, 7), [0, 3000, 9000, 21000, 45000, 93000, 153000]);
+    assert.ok(attempts.length >= 60 && attempts.length <= 65, `${attempts.length} attempts must stay below 120 leases per hour`);
+    const resumes = f.sent.filter(command => command.kind === "resume");
+    assert.equal(new Set(resumes.map(command => command.presenceId)).size, attempts.length);
+    assert.equal(f.sent.filter(command => command.kind === "suspend").length, resumes.length);
+  } finally { stop(); }
+});
+test("only a reconciled active connection resets consecutive failure backoff", async () => {
+  let ready = false;
+  const f = fixture({ reconcile: async () => ready });
+  const stop = f.session.start(true, true);
+  try {
+    await flush(); assert.equal(f.session.getSnapshot().retryAt, instant + 3000);
+    f.setTime(3000); await f.session.retry();
+    assert.equal(f.session.getSnapshot().retryAt, instant + 9000);
+    ready = true; f.setTime(9000); await f.session.retry();
+    assert.equal(f.session.getSnapshot().mode, "active");
+    ready = false; f.setTime(10_000);
+    f.session.environment(false, true); f.session.environment(true, true); await flush();
+    assert.equal(f.session.getSnapshot().mode, "error");
+    assert.equal(f.session.getSnapshot().retryAt, instant + 13_000);
+  } finally { stop(); }
+});
+test("a server cooldown longer than the client backoff cap survives visibility and manual retry", async () => {
+  let sent = 0;
+  const f = fixture({ send: async () => { sent++; throw new ApiError("Wait", 429, undefined, undefined, 180_000); } });
+  const stop = f.session.start(true, true);
+  try {
+    await flush(); assert.equal(f.session.getSnapshot().retryAt, instant + 180_000);
+    f.setTime(179_999); f.session.environment(true, false); f.session.environment(true, true);
+    f.session.check(); await f.session.retry(); await f.session.resume();
+    assert.equal(sent, 1);
+    f.setTime(180_000); await f.session.retry(); assert.equal(sent, 2);
+  } finally { stop(); }
+});
+test("returning from a hidden page during cooldown automatically reconnects at the deadline", async () => {
+  let attempts = 0;
+  const owner = crypto.randomUUID();
+  const f = fixture({ send: async command => {
+    attempts++;
+    if (attempts === 1) throw new ApiError("Wait", 429, undefined, undefined, 60_000);
+    return commandDevPresence(owner, command, instant + 60_000);
+  } });
+  const stop = f.session.start(true, true);
+  try {
+    await flush(); f.setTime(10_000); f.session.environment(true, false);
+    f.setTime(30_000); f.session.environment(true, true); f.session.check(); await flush();
+    assert.equal(attempts, 1);
+    assert.equal(f.session.getSnapshot().mode, "hidden");
+    f.setTime(59_999); f.session.check(); await flush(); assert.equal(attempts, 1);
+    f.setTime(60_000); f.session.check(); await flush();
+    assert.equal(attempts, 2);
+    assert.equal(f.session.getSnapshot().mode, "active");
+  } finally { stop(); }
+});
 test("a lost resume response retries the identical lease and sequence", async () => {
   const commands = []; let time = instant;
   const owner = crypto.randomUUID();
