@@ -94,12 +94,16 @@ class EconomyCampfireTest {
     }
 
     @Test fun `serialized catalog keeps positive wire levels and only the explicit grilled fish flag opens the base fire`() {
-        val wire = economyJson.parseToJsonElement(economyJson.encodeToString(EconomyRules.catalog)).jsonObject
+        val httpJson = Json { ignoreUnknownKeys = false; explicitNulls = true; encodeDefaults = true }
+        val wire = httpJson.parseToJsonElement(httpJson.encodeToString(EconomyRules.catalog)).jsonObject
         val recipes = wire.getValue("recipes").jsonArray.map { it.jsonObject }
         assertTrue(recipes.all { it.getValue("buildingLevel").jsonPrimitive.int > 0 })
         val grilled = recipes.single { it.getValue("id").jsonPrimitive.content == "cook_grilled_fish" }
         assertEquals(1, grilled.getValue("buildingLevel").jsonPrimitive.int)
         assertEquals(true, grilled.getValue("baseCampfire").jsonPrimitive.boolean)
+        assertTrue(recipes.filter { it.getValue("id").jsonPrimitive.content != "cook_grilled_fish" }
+            .all { "baseCampfire" !in it }, "already loaded clients require ordinary recipes to omit the nullable flag")
+        assertEquals(EconomyRules.catalog, httpJson.decodeFromString<EconomyCatalog>(wire.toString()))
         assertFalse("effectiveBuildingLevel" in grilled, "the computed policy is not serialized over the legacy level")
         assertEquals(0, recipe.copy().effectiveBuildingLevel)
         assertFailsWith<IllegalArgumentException> { recipe.copy(buildingLevel = 0) }

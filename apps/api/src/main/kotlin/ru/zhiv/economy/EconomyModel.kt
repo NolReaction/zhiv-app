@@ -179,13 +179,15 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val requiredBuildings: Map<String, Int> = emptyMap(), val warehouseCapacity: Long? = null,
 )
 @Serializable data class EconomyBuilding(val id: String, val name: String, val description: String, val levels: List<EconomyBuildingLevel>)
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyRecipe(
     val id: String, val name: String, val buildingId: String, val buildingLevel: Int = 1,
     val requiredHomeLevel: Int = 1, val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
     val requiredBuildings: Map<String, Int> = emptyMap(), val collection: EconomyCollectionSpec? = null,
     val maxBatch: Int? = null, val fishInput: EconomyRecipeFishInput? = null,
     val requiredRecipes: Map<String, Long> = emptyMap(),
-    val baseCampfire: Boolean? = null,
+    // Older clients accept an omitted flag, but reject an explicit null.
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val baseCampfire: Boolean? = null,
 ) {
     init {
         require(buildingLevel > 0)

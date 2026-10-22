@@ -371,6 +371,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js for the production response contract
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install the real client response validators
+        run: npm ci --no-audit --no-fund
+
       - name: Create isolated test credentials
         run: node scripts/create-deploy-secrets.mjs
 
@@ -528,6 +537,7 @@ jobs:
           import assert from 'node:assert/strict';
           import { randomUUID } from 'node:crypto';
           import { request } from 'node:https';
+          import { createServer } from 'vite';
           assert.equal(process.env.CI, 'true');
           assert.equal(process.env.DOMAIN, 'localhost');
           assert.match(process.env.COMPOSE_PROJECT_NAME, /^zhiv-ci-[0-9]+$/);
@@ -559,6 +569,24 @@ jobs:
           const presence = await api('/api/v1/presence', { kind: 'resume', presenceId: randomUUID(), sequence: 0, active: true });
           assert.equal(presence.status, 'active');
           const world = await api('/api/v1/world'), economy = await api('/api/v1/economy');
+          // Validate actual Kotlin HTTP serialization with the schemas used by the browser.
+          // Basic field checks alone miss nullable/default fields nested in the catalog.
+          const vite = await createServer({ appType: 'custom', configFile: false, root: process.cwd(),
+            resolve: { alias: { '@': process.cwd() } }, server: { middlewareMode: true, hmr: false, ws: false } });
+          try {
+            const { presenceViewSchema } = await vite.ssrLoadModule('/features/activity/model.ts');
+            const { worldSnapshotSchema } = await vite.ssrLoadModule('/features/world/domain/model.ts');
+            const { economyViewSchema } = await vite.ssrLoadModule('/features/economy/domain/model.ts');
+            presenceViewSchema.parse(presence);
+            worldSnapshotSchema.parse(world);
+            const parsedEconomy = economyViewSchema.parse(economy);
+            assert.equal(parsedEconomy.ownerPublicId, me.user.publicId);
+            assert.ok(economy.catalog.recipes.filter(recipe => recipe.id !== 'cook_grilled_fish')
+              .every(recipe => !Object.hasOwn(recipe, 'baseCampfire')), 'older clients require an omitted nullable flag');
+            assert.equal(parsedEconomy.catalog.recipes.find(recipe => recipe.id === 'cook_grilled_fish').baseCampfire, true);
+            assert.ok(parsedEconomy.catalog.recipes.filter(recipe => recipe.id !== 'cook_grilled_fish')
+              .every(recipe => recipe.baseCampfire === undefined));
+          } finally { await vite.close(); }
           for (const snapshot of [world, economy]) {
             assert.equal(snapshot.ownerPublicId, me.user.publicId); assert.ok(count(snapshot.revision));
             assert.ok(typeof snapshot.serverTime === 'string' && Number.isFinite(Date.parse(snapshot.serverTime)));

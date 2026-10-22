@@ -21,6 +21,7 @@ export function createActivitySession(options: Options) {
   let explicitResumeAttempt = false;
   let lastInput = now(), acknowledgedInput = lastInput - 1, lastBeat = -Infinity;
   let presenceId: string | null = null, sequence = 0, pendingResume: PresenceCommand | null = null;
+  let connectionFailures = 0;
   let request: AbortController | null = null;
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<ActivityView>) => {
@@ -28,6 +29,14 @@ export function createActivitySession(options: Options) {
     view = { ...view, ...patch }; listeners.forEach(listener => listener());
   };
   const idle = () => now() - lastInput >= ACTIVITY_IDLE_MS;
+  function connectionRetryDelay(error?: unknown) {
+    // A failed reconciliation already consumed a lease. Repeated failures must
+    // not exhaust the account's hourly connection budget while the user waits.
+    connectionFailures = Math.min(connectionFailures + 1, 6);
+    const backoff = Math.min(60_000, 3000 * 2 ** (connectionFailures - 1));
+    return error instanceof ApiError && error.status === 429
+      ? Math.max(backoff, 1000, error.retryAfterMs ?? 60_000) : backoff;
+  }
   function disconnect(mode: ActivityMode, notify = true) {
     const previous = presenceId;
     ++generation; request?.abort(); request = null; presenceId = null; pendingResume = null;
@@ -52,7 +61,7 @@ export function createActivitySession(options: Options) {
       if (answer.presenceId !== command.presenceId) throw new Error("Presence owner mismatch");
       if (answer.status !== "active") {
         pendingResume = null;
-        publish({ mode: answer.status === "idle" ? "away" : "error", error: answer.status === "idle" ? null : "Подключение истекло. Повторите вход в игру.", retryAt: answer.status === "idle" ? 0 : now() + 3000 });
+        publish({ mode: answer.status === "idle" ? "away" : "error", error: answer.status === "idle" ? null : "Подключение истекло. Повторите вход в игру.", retryAt: answer.status === "idle" ? 0 : now() + connectionRetryDelay() });
         return;
       }
       presenceId = command.presenceId; sequence = 0; pendingResume = null;
@@ -61,6 +70,7 @@ export function createActivitySession(options: Options) {
       if (!running || epoch !== generation) return;
       if (idle()) { disconnect("away"); return; }
       if (!ready) throw new Error("Не удалось сверить сохранённые действия. Повторите проверку.");
+      connectionFailures = 0;
       explicitResumeAttempt = false;
       publish({ mode: "active", error: null, retryAt: 0, resumeRequired: false });
     } catch (error) {
@@ -72,7 +82,7 @@ export function createActivitySession(options: Options) {
       options.connected(null);
       if (error instanceof ApiError && error.status === 401) options.sessionLost();
       publish({ mode: online ? "error" : "offline", error: error instanceof ApiError || error instanceof GameplayReconciliationError ? error.message : "Не удалось сверить сохранённые действия. Повторите проверку.",
-        retryAt: now() + (error instanceof ApiError && error.status === 429 ? Math.max(1000, error.retryAfterMs ?? 60_000) : 3000) });
+        retryAt: now() + connectionRetryDelay(error) });
     } finally { if (request === controller) request = null; }
   }
   async function heartbeat() {
@@ -108,7 +118,7 @@ export function createActivitySession(options: Options) {
     },
     check() { if (!running) return; if (view.mode !== "away" && idle()) { disconnect("away"); return; }
       if (view.mode === "active" && now() - lastBeat >= ACTIVITY_HEARTBEAT_MS) void heartbeat();
-      else if (online && visible && (view.mode === "error" || view.mode === "offline")
+      else if (online && visible && (view.mode === "error" || view.mode === "offline" || view.mode === "hidden")
         && (!view.resumeRequired || explicitResumeAttempt)) void connect(false);
     },
     environment(isOnline: boolean, isVisible: boolean) {

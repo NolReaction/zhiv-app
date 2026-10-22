@@ -177,7 +177,9 @@ export const economyCatalogSchema = z.object({
     level: z.number().int().min(1).max(100), seconds: count, cost: economyCostSchema, requiredHomeLevel: z.number().int().min(1).max(5),
     requiredBuildings, warehouseCapacity: count.positive().nullish(),
   })).max(100) })).max(100),
-  recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(), baseCampfire: z.literal(true).optional(), requiredHomeLevel: count.positive(),
+  recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(),
+    // The initial 0.7.1 API serialized the absent flag as null; keep omitted-flag semantics.
+    baseCampfire: z.literal(true).nullish().transform(value => value ?? undefined), requiredHomeLevel: count.positive(),
     maxBatch: count.positive().max(100).nullish(),
     fishInput: z.object({ itemIds: z.array(id).min(1).max(100).refine(ids => new Set(ids).size === ids.length) }).nullish(),
     requiredBuildings, requiredRecipes: quantities.default({}), seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
