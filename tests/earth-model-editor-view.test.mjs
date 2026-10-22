@@ -39,7 +39,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     },
     transform(source, id) {
       if (id.endsWith("/features/earth/earth-view.tsx")) source = source.replace('from "./use-earth-walking-route";', `from "${walkingId}";`);
-      if (id.endsWith("/features/earth/earth-view.tsx") || id.endsWith("/features/earth/use-earth-location.ts")
+      if (id.endsWith("/features/earth/earth-view.tsx") || id.endsWith("/features/earth/use-earth-location.ts") || id.endsWith("/features/earth/use-earth-presence.ts")
         || id.endsWith("/features/earth/use-earth-atlas.ts") || id.endsWith("/features/earth/use-earth-atlas-discovery.ts")
         || id.endsWith("/features/earth/use-earth-atlas-explorer.ts"))
         return source.replace('from "react";', `from "${hooksId}";`);
@@ -48,6 +48,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId);
+const { useEarthPresence: renderPresenceHook } = await vite.ssrLoadModule("/features/earth/use-earth-presence.ts");
 const { EarthView, EarthFriends } = await vite.ssrLoadModule("/features/earth/earth-view.tsx");
 const { EarthMeetCard } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
 const { EarthMap } = await vite.ssrLoadModule("/features/earth/earth-map.tsx");
@@ -84,17 +85,18 @@ function setup({ rememberedOpen = false, environment = "development", online = t
     clearWatch(id) { cleared.push(id); },
   } };
   for (const [name, value] of Object.entries({ window, document, navigator })) Object.defineProperty(globalThis, name, { value, configurable: true });
-  const sharing = { settings: { mode: "SHARING", recipientCircleIds: ["friend-one"] }, pendingGhost: false, publishing: true,
+  const sharing = { settings: { mode: "SHARING", recipientCircleIds: ["friend-one"] }, pendingGhost: false, publishing: false,
     lastPublishedAt: "2026-10-19T00:00:00Z", people: [{ circleId: "friend-one", user: { displayName: "Лена" } }],
     setPosition: value => publications.push(value), stopPublishing: () => actions.push("stopPublishing"),
     ghost: () => actions.push("ghost"), off: () => actions.push("off"), refresh() {}, share: async () => true };
   const props = { ownerPublicId: `owner-test-${++nextOwner}`, active: true, visible: true, sharing, isOnline: online,
     people: null, peopleLoading: false, peopleError: null, onRefreshPeople() {}, onOpenPeople() {}, onOpenWorld() {} };
-  let state = hooks.create(), owner = props.ownerPublicId;
+  let state = hooks.create(), owner = props.ownerPublicId, editing = environment === "development" && rememberedOpen;
+  props.onModelEditingChange = value => { editing = value; state.dirty = true; };
   function render() {
     if (owner !== props.ownerPublicId) { hooks.destroy(state); state = hooks.create(); owner = props.ownerPublicId; }
     let tree, passes = 0;
-    do { hooks.begin(state); const session = EarthView(props); tree = session.type(session.props); hooks.flush(state); assert.ok(++passes < 15, "view settles"); } while (state.dirty);
+    do { hooks.begin(state); props.location = renderPresenceHook({ ownerPublicId: props.ownerPublicId, enabled: props.active, mapVisible: props.visible, temporarilyPaused: editing, sharing: props.sharing }); const session = EarthView(props); tree = session.type(session.props); hooks.flush(state); assert.ok(++passes < 15, "view settles"); } while (state.dirty);
     const all = nodes(tree);
     return { tree, all, map: all.find(node => node.type === EarthMap).props, text: text(tree) };
   }
@@ -152,7 +154,7 @@ test("opening DEV3D removes social/GPS overlays, pauses a live private watch and
 });
 
 test("publication expiry during editing does not discard the paused private GPS request", () => {
-  const app = setup();
+  const app = setup(); app.props.sharing.publishing = true;
   try {
     let view = app.render(); view.map.onLocate(); app.render(); app.watches[0].success(fix(1000)); view = app.render();
     view.map.onModelEditorOpenChange(true); app.render();
@@ -205,12 +207,12 @@ test("a retained tab round trip keeps the granted private marker, pauses GPS and
   } catch (error) { app.destroy(); throw error; }
 });
 
-test("stopping public sharing while hidden retains the last private marker without restarting GPS on return", () => {
-  const app = setup();
+test("stopping public sharing outside the map retains its private marker without restarting GPS on return", () => {
+  const app = setup(); app.props.sharing.publishing = true;
   try {
     let view = app.render(); view.map.onLocate(); app.render(); app.watches[0].success(fix(1000)); view = app.render();
     const privatePoint = view.map.position;
-    app.props.visible = false; app.render(); assert.deepEqual(app.actions, ["stopPublishing"]);
+    app.props.visible = false; app.render(); assert.deepEqual(app.actions, [], "app navigation keeps consenting publication alive");
     app.props.sharing = { ...app.props.sharing, publishing: false }; app.render();
     app.props.visible = true; view = app.render();
     assert.equal(view.map.position, privatePoint); assert.equal(app.watches.length, 1);

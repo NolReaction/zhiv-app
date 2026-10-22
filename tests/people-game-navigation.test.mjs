@@ -115,7 +115,7 @@ test("People owns recipient controls while the map shows a single canonical Ghos
     onShareEarth: async () => { calls.push("share"); }, onOpenEarthPrivacy: () => calls.push("map") };
   const mapProps = { sharing, people: data, peopleLoading: false, online: true, onShare: peopleProps.onShareEarth,
     onGhost() {}, onOff() {}, onSetFrozen: sharing.setFrozen, onRevokeRecipient: sharing.revokeRecipient };
-  for (const [mode, frozen, status, checked] of [["SHARING", [], "Обновится на карте", true],
+  for (const [mode, frozen, status, checked] of [["SHARING", [], "Обновление на паузе", true],
     ["SHARING", [friend.circleId], "Последнее место", false], ["GHOST", [], "Последнее место · призрак", false]]) {
     sharing.settings = { ...sharing.settings, mode, frozenCircleIds: frozen };
     const people = renderToStaticMarkup(createElement(PeopleView, peopleProps));

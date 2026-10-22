@@ -62,7 +62,7 @@ test("empty, offline and loading map pickers never recreate a contacts list or r
   for (const state of [{}, { online: false }, { loading: true }, { error: "network" }]) {
     const tree = EarthFriends({ ...defaults, ...state, people, onRefresh: () => calls.push("refresh"), onOpenPeople: () => calls.push("people") });
     const html = renderToStaticMarkup(tree);
-    assert.match(html, /Сейчас на карте никого нет/);
+    assert.match(html, /Пока нет доступных геопозиций/);
     assert.doesNotMatch(html, /Закрытый друг|PRIVATE|Обновить список|Открыть «Люди»/);
     assert.equal(collectButtons(tree).length, 0);
   }
@@ -84,8 +84,16 @@ test("a selected map group has one compact action per member and rejects a click
 
 test("a reused relationship ID cannot attach another person's geographic point to the picker", () => {
   const people = { people: [{ circleId: "same", user: { publicId: "CURRENT", displayName: "Лена" } }] };
-  const locations = [currentPoint("same", { publicId: "FORMER", displayName: "Друг" })];
+  const locations = [currentPoint("same", { publicId: "FORMER", displayName: "Бывший" })];
   const html = renderToStaticMarkup(EarthFriends({ ...defaults, people, locations, onMeetPerson() {} }));
-  assert.match(html, /Сейчас на карте никого нет/);
-  assert.doesNotMatch(html, /Лена|Друг|Открыть встречу|55\.751234|37\.621234|FORMER|CURRENT/);
+  assert.match(html, /Пока нет доступных геопозиций/);
+  assert.doesNotMatch(html, /Лена|Бывший|Открыть встречу|55\.751234|37\.621234|FORMER|CURRENT/);
+});
+
+test("a fresh authorized geographic feed is visible before the slower contacts cache learns a new friend", () => {
+  const locations = [currentPoint("new-friend", { publicId: "NEW", displayName: "Новый друг" })], calls = [];
+  const tree = EarthFriends({ ...defaults, people: { people: [] }, locations, onMeetPerson: id => calls.push(id) });
+  assert.match(renderToStaticMarkup(tree), /Новый друг/);
+  assert.equal(collectButtons(tree).length, 1);
+  collectButtons(tree)[0].props.onClick(); assert.deepEqual(calls, ["new-friend"]);
 });

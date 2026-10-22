@@ -18,7 +18,7 @@ const achievementCatalog = JSON.parse(readFileSync(new URL("../apps/api/src/main
 beforeEach(() => { identities.resetDevStoreForTests(); game.resetDevGameStoreForTests(); });
 after(() => vite.close());
 const player = () => identities.createDevIdentity("Исследователь", crypto.randomUUID());
-function awards(p, now = Date.now(), catalog = 5) { return game.getDevGameAchievements(p.token, now, catalog).value; }
+function awards(p, now = Date.now(), catalog = 6) { return game.getDevGameAchievements(p.token, now, catalog).value; }
 function command(p, action, targetId, now, quantity = 1, totalPrice = 0) {
   return { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, expectedRevision: economy.getDevEconomy(p.token, now).revision,
     action, targetId, quantity, totalPrice };
@@ -26,10 +26,13 @@ function command(p, action, targetId, now, quantity = 1, totalPrice = 0) {
 function issue(p, action, target, now, quantity = 1) { return economy.commandDevEconomy(p.token, command(p, action, target, now, quantity), now); }
 const card = (p, id, now) => awards(p, now).achievements.find(value => value.id === id);
 
-test("catalog5 keeps all15 stable cards and legacy catalog4 remains unchanged", () => {
+test("catalog6 adds current activity cards while catalog5 and catalog4 remain readable", () => {
   const p = player();
   const current = awards(p), legacy = awards(p, Date.now(), 4);
-  assert.equal(current.achievements.length, 15);
+  assert.equal(current.achievements.length, 19);
+  const v5 = awards(p, Date.now(), 5);
+  assert.equal(v5.achievements.length, 15);
+  assert.equal(api.gameAchievementsSchema.safeParse(v5).success, true);
   assert.equal(api.gameAchievementsSchema.safeParse(current).success, true);
   assert.equal(legacy.achievements.length, 7);
   assert.ok(legacy.achievements.every(value => !Object.hasOwn(value, "tiers")));
@@ -76,15 +79,16 @@ test("berries count only after actual collection and repeating one recipe stays 
     now = Date.parse(collecting.collection.finishesAt);
     issue(p, "claim_job", job.id, now);
     assert.equal(card(p, "master_recipes", now).progress, 1);
+    assert.equal(card(p, "generous_garden", now).progress, index + 1);
   }
   assert.equal(card(p, "master_recipes", now).unlockedAt, null);
 });
 
-test("biomes cover exactly the menu directions and known recipe/catch IDs prevent forged progress", () => {
+test("distinct current routes and known recipe/catch IDs prevent forged progress", () => {
   const state = economy.getDevEconomy(player().token);
   state.progression = collection.newEconomyProgression();
   state.progression.routes = { forest: 1, shore: 1, coastal_deposits: 9, invented_cave: 999 };
-  assert.equal(math.economyAchievementProgress(state).familiar_trails, 2);
+  assert.equal(math.economyAchievementProgress(state).familiar_trails, 3);
   state.progression.routes = { forest: 1, coastal_deposits: 1, cave: 1 };
   state.progression.recipes = Object.fromEntries([...model.economyCatalog.recipes.slice(0, 5).map(recipe => [recipe.id, 100]), ["unknown", 999]]);
   state.inventory = Object.fromEntries(model.economyCatalog.fishing.fish.map(fish => [fish.itemId, 99]));
@@ -96,16 +100,16 @@ test("biomes cover exactly the menu directions and known recipe/catch IDs preven
   assert.equal(math.economyAchievementProgress(economy.getDevEconomy(player().token)).explorer, 0);
 });
 
-test("achievement biomes cover every economy route once and recognize the restored far bank", () => {
-  const routes = Object.values(achievementCatalog.biomes).flat();
-  assert.deepEqual(new Set(routes), new Set(model.economyCatalog.explorations.map(route => route.id)));
-  assert.equal(routes.length, new Set(routes).size, "A route belongs to exactly one achievement biome");
+test("familiar trails count different completed routes including restored far bank, never biome labels or invented routes", () => {
   const initial = economy.getDevEconomy(player().token);
-  for (const id of ["far_bank_path", "far_bank_grove", "ancient_ruins"]) {
-    assert.ok(achievementCatalog.biomes.forest.includes(id));
-    const visited = { ...initial, progression: { ...collection.newEconomyProgression(), routes: { [id]: 1 } } };
-    assert.equal(math.economyAchievementProgress(visited).familiar_trails, 1);
+  for (const route of model.economyCatalog.explorations) {
+    const visited = { ...initial, progression: { ...collection.newEconomyProgression(), routes: { [route.id]: 100, invented: 999 } } };
+    assert.equal(math.economyAchievementProgress(visited).familiar_trails, 1, route.id);
   }
+  assert.equal(achievementCatalog.version, 6);
+  const sameFormerBiome = { ...initial, progression: { ...collection.newEconomyProgression(),
+    routes: { forest: 2, forest_camp: 1, old_woodland: 1, invented: 999 } } };
+  assert.equal(math.economyAchievementProgress(sameFormerBiome).familiar_trails, 3);
 });
 
 test("known retired quarry recipes retain historic achievement progress without counting new mining as crafting", () => {
@@ -126,7 +130,7 @@ test("known retired quarry recipes retain historic achievement progress without 
   assert.equal(claimed.progression.routes.quarry_ore, 1);
   assert.equal(claimed.progression.recipes.quarry_ore, undefined);
   assert.equal(card(p, "master_recipes", now).progress, 1);
-  assert.equal(math.economyAchievementProgress(claimed).familiar_trails, 1, "mining discovers the same cave biome");
+  assert.equal(math.economyAchievementProgress(claimed).familiar_trails, 1, "a completed quarry route qualifies");
   const historical = structuredClone(claimed);
   historical.progression.recipes.quarry_sand = 4;
   historical.progression.recipes.quarry_forged = 99;
@@ -191,4 +195,52 @@ test("first sale belongs to seller after confirmed payment, not NPC sales, listi
   economy.commandDevEconomyMarket(buyer.token, buy, now + 1000);
   assert.equal(card(seller, "first_sale", now + 5000).unlockedAt, new Date(now).toISOString());
   assert.equal(card(buyer, "first_sale", now).unlockedAt, null);
+});
+
+test("current activity medals read only verified counters and clamp large cumulative totals safely", () => {
+  const state = economy.getDevEconomy(player().token);
+  state.inventory = { fish: 200, grilled_fish: 100, berries: 500 };
+  let progress = math.economyAchievementProgress(state);
+  for (const id of ["patient_angler", "campfire_cook", "helpful_neighbor", "generous_garden"]) assert.equal(progress[id], 0);
+  state.fishing.catches = { fish: 9, fish_silverfin: 1, forged: Number.MAX_SAFE_INTEGER };
+  state.progression.recipes = { cook_grilled_fish: 3, cook_compote: 2, grow_berries: 9, grow_strawberries: 1, forged: 999, quarry_stone: 100 };
+  state.residentOrders.completed = 5;
+  progress = math.economyAchievementProgress(state);
+  assert.equal(progress.patient_angler, 10);
+  assert.equal(progress.campfire_cook, 5);
+  assert.equal(progress.generous_garden, 10);
+  assert.equal(progress.helpful_neighbor, 5);
+  state.fishing.catches.fish = Number.MAX_SAFE_INTEGER;
+  state.progression.recipes.cook_grilled_fish = Number.MAX_SAFE_INTEGER;
+  state.progression.recipes.grow_berries = Number.MAX_SAFE_INTEGER;
+  progress = math.economyAchievementProgress(state);
+  assert.equal(progress.patient_angler, 200); assert.equal(progress.campfire_cook, 100); assert.equal(progress.generous_garden, 200);
+});
+
+test("an earned former biome medal keeps its timestamp and eligibility after route condition replacement", () => {
+  const p = player(), now = Date.now(), earnedAt = "2026-01-01T12:00:00.000Z";
+  economy.getDevEconomy(p.token, now); awards(p, now);
+  const store = globalThis.__zhivDevStore, ownerId = store.publicIds.get(p.me.user.publicId);
+  store.achievementTierAwards.get(ownerId).set("familiar_trails", new Map([[1, earnedAt]]));
+  store.achievementRewardEligibility.set(ownerId, new Map([["familiar_trails:1", true]]));
+  const restored = card(p, "familiar_trails", now);
+  assert.equal(restored.unlockedAt, earnedAt); assert.equal(restored.progress, 3);
+  assert.equal(identities.getDevAchievementRewardEligibility(p.me.user.publicId, "familiar_trails", 1), true);
+});
+
+test("a campfire batch advances one cooking result only after claim and duplicate receipt cannot count twice", () => {
+  const p = player(); let now = Date.now();
+  economy.getDevEconomy(p.token, now);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  row.state.inventory.fish = 3;
+  row.state.fishing.stock = { fish: 3 };
+  const started = issue(p, "start_production", "cook_grilled_fish", now).state;
+  const job = started.jobs.find(job => job.recipeId === "cook_grilled_fish");
+  assert.equal(card(p, "campfire_cook", now).progress, 0);
+  now = Date.parse(job.finishesAt);
+  const request = command(p, "claim_job", job.id, now);
+  const first = economy.commandDevEconomy(p.token, request, now);
+  assert.equal(first.replayed, false); assert.equal(card(p, "campfire_cook", now).progress, 1);
+  assert.equal(economy.commandDevEconomy(p.token, request, now + 1000).replayed, true);
+  assert.equal(card(p, "campfire_cook", now + 1000).progress, 1);
 });

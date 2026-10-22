@@ -305,3 +305,27 @@ test("Ktor's explicit null recipe extensions remain readable alongside old catal
   const expected = Number((BigInt(duration) * 10000n + BigInt(10000 + bps) - 1n) / BigInt(10000 + bps));
   assert.equal(food.mealDuration(duration, bps), expected, "large saved durations retain Kotlin integer-ceiling semantics");
 });
+
+
+test("saved ordinary orders for locked products are replaced freely while reachable accepted terms stay exact", () => {
+  const state = fresh();
+  state.residentOrders = food.normalizedResidentOrders(state, now);
+  state.residentOrders.completed = 7;
+  state.residentOrders.earnedCoins = 1234;
+  state.residentOrders.freeReplacementsUsed = 2;
+  const original = structuredClone(state.residentOrders);
+  const locked = { id: "old_compote", residentId: "plesk", name: "Старый компот", items: { berry_compote: 2 }, coins: 900 };
+  state.residentOrders.slots[0] = { ...state.residentOrders.slots[0], templateId: locked.id, terms: locked };
+  const before = structuredClone(state), wallet = structuredClone(state.wallet);
+  const normalized = food.normalizedResidentOrders(state, now);
+  assert.notEqual(normalized.slots[0].templateId, locked.id);
+  assert.deepEqual(normalized.slots.slice(1), original.slots.slice(1));
+  assert.equal(normalized.freeReplacementsUsed, 2);
+  assert.equal(normalized.completed, 7); assert.equal(normalized.earnedCoins, 1234);
+  assert.deepEqual(state, before); assert.deepEqual(state.wallet, wallet);
+  assert.ok(normalized.recentTemplateIds.includes(locked.id));
+  assert.ok(normalized.slots.every(slot => Object.keys(slot.terms.items).every(id => food.obtainableResidentOrderItems(state).has(id))));
+  state.buildings.dryer = 1; state.buildings.garden = 1;
+  const unlocked = food.normalizedResidentOrders(state, now);
+  assert.deepEqual(unlocked.slots[0].terms, locked, "reachable accepted quantities and payout stay frozen even for retired templates");
+});

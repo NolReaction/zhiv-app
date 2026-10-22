@@ -129,12 +129,12 @@ test("one fixed GPU buffer serves anchored geometry; hidden, distant and culled 
     "zoom changes drawing scale, never geographic anchors");
   assert.equal(f.uploads, 1, "camera changes never rebuild meshes");
   f.zoom(-0.5); f.render(); assert.equal(f.draws, 4);
-  f.zoom(6); f.render(); assert.equal(f.draws, 4);
-  f.zoom(2.5); f.models.setVisible(false, new Set(["eiffel-tower"])); f.render(); assert.equal(f.draws, 4);
-  f.models.setVisible(true, new Set()); f.render(); assert.equal(f.draws, 4);
+  f.zoom(6); f.render(); assert.equal(f.draws, 6, "city zoom keeps anchored miniatures visible");
+  f.zoom(2.5); f.models.setVisible(false, new Set(["eiffel-tower"])); f.render(); assert.equal(f.draws, 6);
+  f.models.setVisible(true, new Set()); f.render(); assert.equal(f.draws, 6);
   f.models.dispose(); f.models.dispose(); f.models.layer.onRemove(f.map, f.gl);
   for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
-  f.models.setVisible(true, new Set(["eiffel-tower"])); f.render(); assert.equal(f.draws, 4);
+  f.models.setVisible(true, new Set(["eiffel-tower"])); f.render(); assert.equal(f.draws, 6);
 });
 
 test("Eiffel detail changes only the fixed draw count as the globe grows", () => {
@@ -217,27 +217,30 @@ test("hidden or retired scenes cannot upload a late body and context restore reu
   for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
 });
 
-test("street zoom draws only a ready imported Eiffel at its saved height with precise native tile coordinates", async () => {
+test("street zoom retains a placeholder then draws a ready imported Eiffel at its saved height with precise native tile coordinates", async () => {
   const f = importedFixture(); f.models.layer.onAdd(f.map, f.gl); f.zoom(17);
-  f.models.setVisible(true, new Set(["eiffel-tower", "colosseum"])); f.render(); assert.equal(f.draws, 0, "OSM remains the street fallback while the model loads");
+  f.models.setVisible(true, new Set(["eiffel-tower", "colosseum"])); f.render(); assert.equal(f.draws, 1, "a real-size placeholder remains while detail loads");
+  assert.equal(f.container.dataset.earthEiffelModelDraw, "placeholder");
+  assert.equal(f.models.getActiveStreetModelIds().size, 0, "a placeholder does not hide OSM");
   f.response(0); await flushModel(); f.input.shaderData.variantName = "mercator"; f.input.shaderData.define = "";
-  f.render(); assert.equal(f.draws, 1); assert.equal(f.drawKinds.at(-1), "uploaded");
+  f.render(); assert.equal(f.draws, 2); assert.equal(f.drawKinds.at(-1), "uploaded");
   assert.equal(f.uniforms.filter(([name]) => name === "u_height").at(-1)[1], getEarthModelPlacements().find(model => model.id === "eiffel-tower").heightMeters);
   const request = f.projectionRequests.at(-1);
   assert.equal(request.tileID.canonical.z, 14); assert.equal(request.applyGlobeMatrix, true);
   const anchor = f.uniforms.filter(([name]) => name === "u_anchor").at(-1)[1];
   assert.ok(anchor.every(value => value >= 0 && value < 8192), "local tile coordinates retain street precision");
-  f.zoom(10); f.render(); assert.equal(f.draws, 1, "the atlas/street gap never draws a giant model");
-  f.zoom(15); f.render(); assert.equal(f.draws, 1, "street fade begins at zero opacity");
-  f.zoom(15.6); f.render(); assert.equal(f.draws, 2);
-  assert.equal(f.uploads, 5, "returning from a hidden zoom recreates released GPU buffers from cached CPU data"); f.models.dispose();
+  f.zoom(10); f.render(); assert.equal(f.draws, 4, "both compact city miniatures remain visible");
+  f.zoom(15); f.render(); assert.equal(f.draws, 5, "street handover never fades to zero");
+  f.zoom(15.6); f.render(); assert.equal(f.draws, 6);
+  assert.equal(f.uploads, 3, "the city-to-street handover retains decoded detail and GPU buffers"); f.models.dispose();
 });
 
 test("silent WebGL allocation failure releases partial imports and leaves no street target or retry loop", async () => {
   const f = importedFixture(); f.models.layer.onAdd(f.map, f.gl); f.zoom(17);
   f.models.setVisible(true, new Set(["eiffel-tower"])); f.response(0); await flushModel();
   f.failUpload(); f.render();
-  assert.equal(f.draws, 0); assert.equal(f.models.isImportedEiffelReady(), false);
+  assert.equal(f.draws, 1); assert.equal(f.models.isImportedEiffelReady(), false);
+  assert.equal(f.container.dataset.earthEiffelModelDraw, "placeholder");
   assert.equal(f.container.dataset.earthEiffelModelStatus, "error");
   assert.equal(f.live.buffer.size, 1, "the partial imported allocation is released");
   assert.equal(f.live.vao.size, 1);
@@ -299,8 +302,8 @@ test("street replacement eligibility disappears for every fallback and for an un
   f.models.setVisible(false, new Set(["eiffel-tower"])); assert.equal(f.models.getActiveStreetModelIds().size, 0);
   f.models.setVisible(true, new Set(["eiffel-tower"])); f.render(); assert.equal(f.models.getActiveStreetModelIds().size, 1);
   f.models.setVisible(true, new Set()); assert.equal(f.models.getActiveStreetModelIds().size, 0, "geographic culling immediately restores the map");
-  f.models.setVisible(true, new Set(["eiffel-tower"])); f.render(); f.zoom(15); f.render();
-  assert.equal(f.models.getActiveStreetModelIds().size, 0, "zero opacity cannot hide the fallback");
+  f.models.setVisible(true, new Set(["eiffel-tower"])); f.render(); f.zoom(14.9); f.render();
+  assert.equal(f.models.getActiveStreetModelIds().size, 0, "a city miniature cannot hide native buildings");
   f.zoom(17); f.render(); f.models.layer.onRemove(f.map, f.gl);
   assert.equal(f.models.getActiveStreetModelIds().size, 0, "context removal restores the native map");
   f.models.layer.onAdd(f.map, f.gl); f.render(); assert.equal(f.models.getActiveStreetModelIds().size, 1);
@@ -581,9 +584,9 @@ test("atlas failure evidence follows actual loader or GPU errors and yields to v
 
 test("only an explicitly selected landmark uses full-quality physical detail below ordinary street zoom", async () => {
   const ids = ["giza-pyramids", "great-wall-badaling"], f = texturedFixture(ids);
-  f.zoom(13); f.models.layer.onAdd(f.map, f.gl); f.models.setVisible(true, new Set(ids)); await flushModel();
-  assert.equal(f.requests.length, 0, "ordinary atlas/street gap remains dormant");
-  f.render(); assert.equal(f.draws, 0);
+  f.zoom(13); f.models.layer.onAdd(f.map, f.gl);
+  f.models.setLandmarkPreview(ids[0]); f.models.setVisible(true, new Set(ids)); await flushModel();
+  assert.equal(f.requests.length, 1, "only the selected detail starts");
   for (const [index, id] of ids.entries()) {
     f.models.setLandmarkPreview(id); await flushModel();
     assert.equal(f.requests.length, index + 1); assert.ok(f.requests[index].url.includes(`/${id}/detail.elm`));
@@ -596,11 +599,53 @@ test("only an explicitly selected landmark uses full-quality physical detail bel
     assert.equal(uniform("u_scale"), placement.heightMeters / (40_030_228.884 * Math.cos(placement.latitude * Math.PI / 180)) * 2 ** 14 * 8192);
     assert.equal(f.drawKinds.at(-1), "uploaded"); assert.equal(f.draws, index + 1, "unselected models remain hidden at the lower zoom");
   }
-  f.models.setLandmarkPreview(null); f.render(); assert.equal(f.draws, 2);
+  f.models.setVisible(false, new Set()); f.models.setLandmarkPreview(null); f.render(); assert.equal(f.draws, 2);
   assert.equal(f.models.isLandmarkDrawn(ids[1]), false);
-  f.models.setLandmarkPreview("unknown"); f.render(); assert.equal(f.draws, 2); assert.equal(f.requests.length, 2);
-  f.models.setLandmarkPreview(ids[0]); f.zoom(11.9); f.render(); assert.equal(f.draws, 2, "explicit override has a bounded minimum");
-  f.models.setLandmarkPreview(null); f.zoom(17); f.render();
-  assert.equal(f.draws, 4, "ordinary street models resume their unchanged rules after closing inspection");
+  f.models.setLandmarkPreview("unknown"); f.render(); assert.equal(f.draws, 2);
+  f.zoom(17); f.models.setVisible(true, new Set(ids)); f.render();
+  assert.equal(f.draws, 4, "ordinary street models resume after closing inspection");
   assert.equal(f.requests.length, 2, "decoded detail data is reused without prefetching other catalogue entries"); f.models.dispose();
+});
+
+test("continuous zoom keeps a model drawn and blends its city miniature into real street metres", () => {
+  const f = fixture(); f.models.layer.onAdd(f.map, f.gl); f.models.setVisible(true, new Set(["eiffel-tower"]));
+  const height = getEarthModelPlacements().find(model => model.id === "eiffel-tower").heightMeters;
+  const heights = new Map();
+  for (const zoom of [4.5, 5.199, 5.2, 8, 10, 11.9999, 12, 13, 14.9999, 15, 16]) {
+    f.zoom(zoom); const before = f.draws; f.render();
+    assert.equal(f.draws, before + 1, `zoom ${zoom} must not erase the visible landmark`);
+    assert.equal(f.uniforms.filter(([name]) => name === "u_opacity").at(-1)[1], 1);
+    heights.set(zoom, f.uniforms.filter(([name]) => name === "u_height").at(-1)[1]);
+    assert.equal(f.models.getActiveStreetModelIds().size, 0, "procedural art never conceals native buildings");
+  }
+  assert.ok(Math.abs(heights.get(11.9999) - heights.get(12)) / heights.get(12) < .001, "tile-local handover keeps the same size");
+  assert.ok(Math.abs(heights.get(14.9999) - height) < .001, "city miniature converges to the physical size");
+  assert.equal(heights.get(15), height); assert.equal(heights.get(16), height);
+  assert.equal(f.uploads, 1, "zooming does not rebuild the procedural GPU buffer");
+  f.models.dispose();
+});
+
+test("a loaded overview stays visible through slow or failed street detail without claiming detailed readiness", async () => {
+  const f = importedFixture(); f.zoom(1); f.models.layer.onAdd(f.map, f.gl);
+  f.models.setVisible(true, new Set(["eiffel-tower"])); f.response(0); await flushModel(); f.render();
+  assert.equal(f.models.isImportedEiffelReady("overview"), true);
+  const uploads = f.uploads;
+  f.zoom(17); f.render();
+  assert.equal(f.requests.length, 2); assert.ok(f.requests[1].url.includes("/detail.elm?"));
+  assert.equal(f.container.dataset.earthEiffelModelDraw, "placeholder-overview");
+  assert.equal(f.uploads, uploads, "the already resident overview is reused during the transition");
+  assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), false, "Atlas completion still requires the detailed asset");
+  assert.equal(f.models.getActiveStreetModelIds().size, 0);
+  f.requests[1].resolve(new Response("unavailable", { status: 503 })); await flushModel();
+  for (let index = 0; index < 5; index++) f.render();
+  assert.equal(f.container.dataset.earthEiffelModelDraw, "placeholder-overview");
+  assert.equal(f.requests.length, 2, "failed detail never starts a per-frame network retry");
+  assert.equal(f.models.isLandmarkFailed("eiffel-tower"), true, "the failed optional detail is still diagnosable");
+  f.models.setVisible(false, new Set()); f.models.setVisible(true, new Set(["eiffel-tower"]));
+  f.response(2); await flushModel(); f.render();
+  assert.equal(f.container.dataset.earthEiffelModelDraw, "uploaded");
+  assert.equal(f.models.isLandmarkDrawn("eiffel-tower"), true);
+  assert.deepEqual([...f.models.getActiveStreetModelIds()], ["eiffel-tower"]);
+  f.render(); assert.equal(f.models.isImportedEiffelReady("overview"), false, "the fallback GPU copy is freed after detail replaces it");
+  f.models.dispose(); for (const resources of Object.values(f.live)) assert.equal(resources.size, 0);
 });

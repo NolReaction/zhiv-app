@@ -23,7 +23,7 @@ data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null
 @Serializable data class AchievementRewardView(val achievementId: String, val level: Int, val target: Long, val pearls: Long,
     val earnedAt: String?, val claimedAt: String?, val eligible: Boolean, val blockedReason: String?)
 @Serializable data class OnboardingRewardView(val claimedAt: String? = null)
-@Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 4,
+@Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 5,
     val daily: DailyRewardsView, val achievementRewards: List<AchievementRewardView>, val onboarding: OnboardingRewardView = OnboardingRewardView())
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class ProgressionRewardClaim(val requestId: String, val ownerPublicId: String, val kind: String,
@@ -81,13 +81,13 @@ object ProgressionRewardRules {
         return progress.completed || progress.step>0
     }
     init {
-        require(catalog.version==4 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
+        require(catalog.version==5 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
         // One visible pearl is two integral wallet units; this is 100 visible pearls.
         require(onboarding == ProgressionReward(coins=1_000,pearls=200))
         require(catalog.dailyByHomeLevel.keys==setOf("2","3","4","5"))
         require(achievementPearls.keys==GameRewards.tiers.keys && achievementPearls.all { (id,values) ->
             values.size==GameRewards.tiers.getValue(id).size && values.all { it in 0L..ECONOMY_MAX_PEARLS } })
-        require(achievementPearls.values.flatten().sum()==3_000L && achievementPearls.all { (id,values) ->
+        require(achievementPearls.values.flatten().sum()==4_120L && achievementPearls.all { (id,values) ->
             values.all { it%2L==0L && (if(id=="full_collection") it==0L else it>0L) }
                 && values.zipWithNext().all { (before,after) -> after>=before } })
         val itemIds=setOf("wood","stone","fiber","berries","fish","hardwood","resin","planks","rope","bricks","iron_ingot",

@@ -52,5 +52,17 @@
   font: 700 11px/1 Arial, sans-serif;
 }
 .marker[data-cluster="true"] .portrait { background: #285c6a; color: #f5f7e5; }
+.marker[data-beside-self="true"]::before {
+  left: calc(22px - max(0px, var(--earth-friend-offset)));
+  bottom: 4px;
+  width: var(--earth-friend-connector-width);
+  height: 2px;
+  border-radius: 1px;
+  transform: none;
+  background: #edf5e9;
+  box-shadow: 0 1px 2px #183e4a88;
+  pointer-events: none;
+}
+.marker[data-beside-self="true"]::after { transform: translateX(calc(-1 * var(--earth-friend-offset))); }
 .marker:focus-visible { outline: none; z-index: 2; }
 .marker:focus-visible .portrait { outline: 3px solid #b7f0d8; outline-offset: 3px; }

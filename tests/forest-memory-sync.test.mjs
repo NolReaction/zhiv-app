@@ -413,6 +413,137 @@ function deferCommand(remote, action) {
   return () => { assert.ok(resolve, `expected delayed ${action}`); resolve(); };
 }
 
+for (const pendingAction of [null, "acquire", "save"]) test(`building geometry replacement keeps the same writer with ${pendingAction ?? "no"} request in flight`, async () => {
+  const env = clock(), remote = server(env), key = `zhiv:mochlik:presence:${OWNER}`;
+  const options = { environment: null, sync: { environment: env, transport: remote.transport } };
+  const changed = { ...TILED_WORLD, destinations: TILED_WORLD.destinations.map((destination, index) => index
+    ? destination : { ...destination, position: { ...destination.position, x: destination.position.x + 1 } }) };
+  let resolve = pendingAction === "acquire" ? deferCommand(remote, "acquire") : null, next, oldCamera;
+  const first = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, options);
+  try {
+    first.configure("circle", true); await env.advance();
+    first.state.clearing.behavior.mind.needs.energy = .43;
+    // Two mounted cameras may finish loading the new building artwork at
+    // different times. The old geometry must cease writing immediately.
+    oldCamera = connectForestSession(key, TILED_WORLD, "world", 0, 0, () => {}, options);
+    oldCamera.configure("world", true);
+    if (pendingAction === "save") { resolve = deferCommand(remote, "save"); first.saveMemory(); await env.advance(); }
+    const writer = remote.holder;
+    next = connectForestSession(key, changed, "circle", 0, 0, () => {}, { ...options, handoffFrom: first });
+    first.release(); next.configure("circle", true);
+    await env.advance();
+    assert.notEqual(next.state.memory.sync.mode, "other-device", "the replacement cannot mistake its own prior scene for another device");
+    assert.equal(oldCamera.isOwner(), false); assert.equal(oldCamera.isSimulationAllowed(), false);
+    assert.equal(oldCamera.isObservationOwner(), false, "the old canvas cannot overwrite the current status");
+    assert.equal(next.state.clearing.behavior.mind.needs.energy, .43, "safe memory survives even when localStorage is unavailable");
+    resolve?.(); await settle(); await env.advance();
+    assert.equal(next.state.memory.sync.mode, "synced");
+    assert.equal(next.isOwner(), true);
+    assert.equal(remote.holder, writer);
+    assert.equal(remote.calls.filter(command => command.action === "acquire").length, 1);
+    assert.ok(remote.calls.every(command => !command.takeover));
+    oldCamera.release(); await settle();
+    assert.equal(remote.holder, writer, "disposing the obsolete camera cannot release the moved lease");
+    next.state.clearing.behavior.mind.needs.energy = .28; next.saveMemory(); await env.advance();
+    assert.equal(remote.snapshot.mind.needs.energy, .28, "periodic capture now belongs to the replacement scene");
+    assert.equal(remote.snapshot.fingerprint, captureForestMemory(next.state, changed).fingerprint);
+  } finally { first.release(); oldCamera?.release(); next?.release(); await settle(); }
+});
+
+test("building geometry replacement cannot bypass another device's writer", async () => {
+  const env = clock(), remote = server(env), foreign = client(env, remote, .61), key = `zhiv:mochlik:presence:${OWNER}`;
+  const options = { environment: null, sync: { environment: env, transport: remote.transport } };
+  const changed = { ...TILED_WORLD, actor: { ...TILED_WORLD.actor, spawn: { ...TILED_WORLD.actor.spawn, x: TILED_WORLD.actor.spawn.x + 1 } } };
+  let next;
+  foreign.sync.setActive(true); await env.advance();
+  const first = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, options);
+  try {
+    first.configure("circle", true); await env.advance();
+    assert.equal(first.state.memory.sync.mode, "other-device");
+    next = connectForestSession(key, changed, "circle", 0, 0, () => {}, { ...options, handoffFrom: first });
+    first.release(); next.configure("circle", true); await env.advance();
+    assert.equal(next.state.memory.sync.mode, "other-device"); assert.equal(next.isOwner(), false);
+    assert.equal(remote.calls.filter(command => command.action === "acquire").length, 1);
+    assert.ok(remote.calls.every(command => !command.takeover));
+  } finally { first.release(); next?.release(); foreign.sync.release(); await settle(); }
+});
+
+test("a late inactive camera with older geometry cannot reclaim the visible scene's writer", async () => {
+  const env = clock(), remote = server(env), key = `zhiv:mochlik:presence:${OWNER}`;
+  const options = { environment: null, sync: { environment: env, transport: remote.transport } };
+  const changed = { ...TILED_WORLD, actor: { ...TILED_WORLD.actor, spawn: { ...TILED_WORLD.actor.spawn, x: TILED_WORLD.actor.spawn.x + 1 } } };
+  const first = connectForestSession(key, TILED_WORLD, "world", 0, 0, () => {}, options);
+  let current, late;
+  try {
+    first.configure("world", true); await env.advance();
+    current = connectForestSession(key, changed, "world", 0, 0, () => {}, { ...options, handoffFrom: first });
+    current.configure("world", true); first.release(); await env.advance();
+    const writer = remote.holder, count = remote.calls.length;
+    late = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, options);
+    late.configure("circle", false); await env.advance();
+    assert.equal(current.isOwner(), true); assert.equal(remote.holder, writer);
+    assert.equal(remote.calls.length, count, "an inactive stale camera neither saves nor releases the active writer");
+    late.release(); await settle();
+    current.saveMemory(); await env.advance(); assert.equal(current.isOwner(), true);
+  } finally { first.release(); current?.release(); late?.release(); await settle(); }
+});
+
+for (const action of ["save", "release"]) test(`parked geometry replacement retains an in-flight ${action} writer until the new scene resumes`, async () => {
+  const env = clock(), remote = server(env), key = `zhiv:mochlik:presence:${OWNER}`;
+  const options = { environment: null, sync: { environment: env, transport: remote.transport } };
+  const changed = { ...TILED_WORLD, actor: { ...TILED_WORLD.actor, spawn: { ...TILED_WORLD.actor.spawn, x: TILED_WORLD.actor.spawn.x + 1 } } };
+  const first = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, options);
+  let next;
+  try {
+    first.configure("circle", true); await env.advance();
+    const resolve = deferCommand(remote, action);
+    first.release({ retain: true }); await env.advance();
+    next = connectForestSession(key, changed, "world", 0, 0, () => {}, options);
+    next.configure("world", true); await env.advance();
+    assert.notEqual(next.state.memory.sync.mode, "other-device");
+    resolve(); await settle(); await env.advance();
+    assert.equal(next.state.memory.sync.mode, "synced"); assert.equal(next.isOwner(), true);
+    assert.equal(new Set(remote.calls.map(command => command.clientId)).size, 1);
+    assert.ok(remote.calls.every(command => !command.takeover));
+  } finally { first.release(); next?.release(); await settle(); }
+});
+
+for (const action of ["read", "acquire"]) test(`an already starting geometry target keeps its ${action} authority during a late handoff`, async () => {
+  const env = clock(), remote = server(env), key = `zhiv:mochlik:presence:${OWNER}`;
+  const options = { environment: null, sync: { environment: env, transport: remote.transport } };
+  const sourceTimers = [], sourceEnvironment = { ...env,
+    setTimeout(callback, delay) { const timer = env.setTimeout(callback, delay); sourceTimers.push(timer); return timer; } };
+  const changed = { ...TILED_WORLD, actor: { ...TILED_WORLD.actor, spawn: { ...TILED_WORLD.actor.spawn, x: TILED_WORLD.actor.spawn.x + 1 } } };
+  const first = connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {},
+    { ...options, sync: { environment: sourceEnvironment, transport: remote.transport } });
+  let target, joined;
+  try {
+    first.configure("circle", true); await env.advance();
+    // The original controller's timers can be frozen while a target renderer
+    // has already begun its own authority request. Never dispose that request.
+    env.elapseWithoutTimers(91_000);
+    for (const timer of sourceTimers) env.clearTimeout(timer);
+    let resolve;
+    if (action === "acquire") resolve = deferCommand(remote, "acquire");
+    else {
+      const read = remote.transport.read; let used = false;
+      remote.transport.read = async (...args) => {
+        const answer = await read(...args);
+        if (!used) { used = true; await new Promise(done => { resolve = done; }); }
+        return answer;
+      };
+    }
+    target = connectForestSession(key, changed, "world", 0, 0, () => {}, options);
+    target.configure("world", true); await env.advance();
+    const targetClient = remote.reads.at(-1).clientId;
+    joined = connectForestSession(key, changed, "circle", 0, 0, () => {}, { ...options, handoffFrom: first });
+    first.release(); resolve(); await settle(); await env.advance(250);
+    assert.equal(target.state.memory.sync.mode, "synced"); assert.equal(target.isOwner(), true);
+    assert.equal(remote.holder, targetClient, "a late predecessor cannot replace or retire the target's own authority");
+    assert.ok(remote.calls.every(command => !command.takeover));
+  } finally { first.release(); target?.release(); joined?.release(); await settle(); }
+});
+
 for (const action of ["acquire", "save"]) test(`hide while ${action} is in flight releases the writer without a hidden acquisition loop`, async () => {
   const env = clock(), remote = server(env), resolve = deferCommand(remote, action), a = client(env, remote, .62);
   a.sync.setActive(true); await env.advance();

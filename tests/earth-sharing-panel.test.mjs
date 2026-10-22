@@ -125,7 +125,7 @@ test("friend rows distinguish live updates, a permitted last point and no access
   assert.equal(status(live, "two"), "Последнее место");
   assert.equal(status(live, "new"), "Нет доступа");
   const paused = friendView({}, activeSettings);
-  assert.equal(status(paused, "one"), "Обновится на карте");
+  assert.equal(status(paused, "one"), "Обновление на паузе");
   const ghost = friendView({}, { ...activeSettings, mode: "GHOST" });
   assert.equal(sharingSummary(ghost.props.sharing), "Призрак включён");
   assert.equal(status(ghost, "one"), "Последнее место · призрак");
@@ -244,7 +244,7 @@ test("the main sharing card exposes the exact send time, GPS accuracy and direct
   assert.match(cardHtml, /Точная геопозиция.*пока не выключу/);
   assert.match(cardHtml, /<time dateTime="2026-10-18T20:12:37Z">/);
   assert.match(cardHtml, /Точность GPS: ±17 м/);
-  assert.match(cardHtml, /пока карта открыта на экране/);
+  assert.match(cardHtml, /пока приложение открыто на экране/);
   assert.match(result.markup, /только выбранным друзьям в «Людях»/);
   assert.match(result.markup, /он тоже должен открыть вам доступ/);
   assert.ok(result.markup.indexOf("Друзьям отправлено") < result.markup.indexOf("Дополнительные настройки"));

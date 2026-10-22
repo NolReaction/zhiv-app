@@ -8,18 +8,16 @@ import ru.zhiv.economy.*
 import kotlin.test.*
 
 class GameAchievementProgressTest {
-    @Test fun `catalogue covers each route exactly once and matches shore presentation`() {
-        val routes = GameRewards.biomes.values.flatten()
-        assertEquals(EconomyRules.catalog.explorations.map { it.id }.toSet(),routes.toSet())
-        assertEquals(routes.size,routes.toSet().size)
-        assertTrue("coastal_deposits" in GameRewards.biomes.getValue("shore"))
-        for (id in listOf("far_bank_path", "far_bank_grove", "ancient_ruins")) {
-            assertTrue(id in GameRewards.biomes.getValue("forest"))
-            val visited = EconomyRules.initial().copy(progression = EconomyProgression(routes = mapOf(id to 1L)))
-            assertEquals(1L, economyAchievementProgress(visited).getValue("familiar_trails"))
+    @Test fun `distinct current routes replace obsolete biome groups and exclude forged ids`() {
+        for (route in EconomyRules.catalog.explorations) {
+            val visited = EconomyRules.initial().copy(progression = EconomyProgression(routes = mapOf(route.id to 100L, "invented" to 999L)))
+            assertEquals(1L, economyAchievementProgress(visited).getValue("familiar_trails"), route.id)
         }
-        val state = EconomyRules.initial().copy(progression=EconomyProgression(routes=mapOf("forest" to 1,"shore" to 1,"coastal_deposits" to 1)))
-        assertEquals(2L,economyAchievementProgress(state).getValue("familiar_trails"))
+        val state = EconomyRules.initial().copy(progression = EconomyProgression(routes = mapOf("forest" to 2L, "forest_camp" to 1L, "old_woodland" to 1L)))
+        assertEquals(3L, economyAchievementProgress(state).getValue("familiar_trails"))
+        val historic = achievementWithTiers("familiar_trails", 0L, mapOf(1 to "2026-01-01T00:00:00Z"))
+        assertEquals("2026-01-01T00:00:00Z", historic.unlockedAt)
+        assertEquals(3L, historic.progress)
     }
 
     @Test fun `unique completed recipes and personal catch catalogue exclude ownership and arbitrary IDs`() {
@@ -71,4 +69,22 @@ class GameAchievementProgressTest {
         val old=Json.parseToJsonElement(json.encodeToString(partial.copy(tiers=emptyList()))).jsonObject
         assertFalse("tiers" in old,"catalogue1–4 omits new fields even with encodeDefaults")
     }
+    @Test fun `current activity medals use durable personal counters and clamp cumulative values safely`() {
+        val empty = EconomyRules.initial().copy(inventory = mapOf("fish" to 200L, "berries" to 500L, "grilled_fish" to 100L))
+        val names = listOf("patient_angler", "campfire_cook", "helpful_neighbor", "generous_garden")
+        assertTrue(names.all { economyAchievementProgress(empty).getValue(it) == 0L })
+        val state = empty.copy(fishing = empty.fishing.copy(catches = mapOf("fish" to 9L, "fish_silverfin" to 1L, "forged" to Long.MAX_VALUE)),
+            progression = EconomyProgression(recipes = mapOf("cook_grilled_fish" to 3L, "cook_compote" to 2L,
+                "grow_berries" to 9L, "grow_strawberries" to 1L, "quarry_stone" to 100L, "forged" to 999L)),
+            residentOrders = empty.residentOrders.copy(completed = 5L))
+        val progress = economyAchievementProgress(state)
+        assertEquals(10L, progress["patient_angler"]); assertEquals(5L, progress["campfire_cook"])
+        assertEquals(5L, progress["helpful_neighbor"]); assertEquals(10L, progress["generous_garden"])
+        val huge = economyAchievementProgress(state.copy(
+            fishing = state.fishing.copy(catches = mapOf("fish" to Long.MAX_VALUE, "fish_silverfin" to Long.MAX_VALUE)),
+            progression = state.progression.copy(recipes = mapOf("cook_grilled_fish" to Long.MAX_VALUE, "cook_compote" to Long.MAX_VALUE,
+                "grow_berries" to Long.MAX_VALUE, "grow_strawberries" to Long.MAX_VALUE))))
+        assertEquals(200L, huge["patient_angler"]); assertEquals(100L, huge["campfire_cook"]); assertEquals(200L, huge["generous_garden"])
+    }
+
 }

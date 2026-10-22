@@ -248,6 +248,7 @@ object EconomyFood {
         val replacementCycle = Math.floorDiv(now.epochSecond, config.replacementWindowSeconds)
         val start = Instant.ofEpochSecond(cycle * config.refreshSeconds).toString()
         val eligible = eligibleOrderTemplates(state, catalog)
+        val reachable = obtainableOrderItems(state, catalog)
         val byId = config.templates.associateBy { it.id }
         var recent = history(previous.recentTemplateIds, config.recentLimit)
         val keepingSlots = previous.version == 2 && previous.cycle == cycle
@@ -259,6 +260,7 @@ object EconomyFood {
             val old = previous.slots.getOrNull(index)?.takeIf { keepingSlots }
             val template = old?.terms ?: old?.templateId?.let(byId::get)
             val keep = template != null && template.id == old?.templateId && (resident(index) == null || template.residentId == resident(index)) &&
+                template.items.keys.all { it in reachable } &&
                 occupied.none { it.id == template.id || composition(it) == composition(template) }
             if (keep) occupied += checkNotNull(template)
             else old?.templateId?.let { recent = retire(recent, it, config.recentLimit) }

@@ -76,7 +76,7 @@ test("wallet limits preserve denomination while first-two-stage material prices 
   assert.equal(model.economyViewSchema.safeParse(view).success, true);
   view.inventory.wood = model.ECONOMY_MAX_ITEMS + 1; assert.equal(model.economyViewSchema.safeParse(view).success, false);
   assert.equal(rewardRules.progressionRewardsCatalog.pearlScale, 50);
-  assert.equal(Object.values(rewardRules.progressionRewardsCatalog.achievementPearls).flat().reduce((a, b) => a + b), 3000);
+  assert.equal(Object.values(rewardRules.progressionRewardsCatalog.achievementPearls).flat().reduce((a, b) => a + b), 4120);
   assert.equal(money.formatPearls(3000), "1\u00a0500");
 });
 

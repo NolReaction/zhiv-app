@@ -54,6 +54,9 @@ import ru.zhiv.game.gameEventRoutes
 import ru.zhiv.world.WorldRepository
 import ru.zhiv.world.worldRoutes
 import ru.zhiv.db.JdbcWorldRepository
+import ru.zhiv.db.JdbcOnboardingRepository
+import ru.zhiv.onboarding.OnboardingRepository
+import ru.zhiv.onboarding.onboardingRoutes
 import ru.zhiv.db.JdbcProgressionRewardsRepository
 import ru.zhiv.game.ProgressionRewardsRepository
 import ru.zhiv.game.progressionRewardsRoutes
@@ -179,6 +182,7 @@ fun Application.module() {
         worlds = JdbcWorldRepository(dataSource),
         economy = JdbcEconomyRepository(dataSource),
         progressionRewards = JdbcProgressionRewardsRepository(dataSource),
+        onboarding = JdbcOnboardingRepository(dataSource),
         economyMarket = JdbcEconomyMarketRepository(dataSource),
         economyBarter = JdbcEconomyBarterRepository(dataSource),
         forestMemory = JdbcForestMemoryRepository(dataSource),
@@ -217,6 +221,7 @@ fun Application.installZhivApi(
     economy: EconomyRepository? = null,
     economyMarket: EconomyMarketRepository? = null,
     progressionRewards: ProgressionRewardsRepository? = null,
+    onboarding: OnboardingRepository? = null,
     economyBarter: EconomyBarterRepository? = null,
     guestProfiles: GuestProfileRepository? = null,
     guestWorlds: GuestWorldRepository? = null,
@@ -396,6 +401,7 @@ fun Application.installZhivApi(
         economyMarket?.let { economyMarketRoutes(it, tokenCodec, config, presence) }
         economyBarter?.let { economyBarterRoutes(it, tokenCodec, config, presence) }
         forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config, presence) }
+        onboarding?.let { onboardingRoutes(it, tokenCodec, config, presence) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         notifications?.let { notificationRoutes(it, tokenCodec, config) }
         playerMail?.let { mailRoutes(it, tokenCodec, config, presence) }

@@ -451,3 +451,32 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
     }
   } finally { await runtime.close(); }
 });
+
+
+test("first-house compote goal explains the needed fire level before navigating and remains a progression goal", () => {
+  const economy = controller({ buildings: { home: 1, dryer: 0, garden: 1, warehouse: 1 },
+    tutorialOrder: { ...newTutorialOrder(), ingredientsClaimed: true, completed: true } });
+  const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 1);
+  const index = course.orders.findIndex(order => order.items.berry_compote);
+  economy.snapshot.stageOrders = { version: 1, stages: { 1: { step: index, completed: false, terms: course.orders[index] } } };
+  const calls = [], props = { economy, offer: stageResidentOrder(economy.snapshot), onNavigateStation: (...args) => calls.push(args) };
+  const html = render(ResidentOrderCard, props);
+  assert.match(html, /Доступно с 1 уровня костра/);
+  assert.match(html, /data-stage-order="true"/);
+  const card = ResidentOrderCard(props);
+  buttons(card).find(button => button.props["aria-label"]?.startsWith("Где получить для заказа:")).props.onClick();
+  assert.deepEqual(calls, [["dryer", "cook_compote"]]);
+  economy.snapshot.buildings.dryer = 1;
+  assert.doesNotMatch(render(ResidentOrderCard, props), /Доступно с 1 уровня костра/);
+});
+
+
+test("an accessible expedition wins over locked production so raw goods are not falsely labelled unavailable", () => {
+  const economy = controller({ buildings: { home: 1, dryer: 0, garden: 1, woodlot: 0, warehouse: 1 } });
+  const offer = { ...residentOrderBoard(economy.snapshot, now).offers[0], items: { wood: 2 } };
+  const calls = [], props = { economy, offer, onNavigateStation: (...args) => calls.push(args), onNavigateExpeditions: sector => calls.push([sector]) };
+  assert.doesNotMatch(render(ResidentOrderCard, props), /Доступно с 1 уровня лесного участка/);
+  const card = ResidentOrderCard(props);
+  buttons(card).find(button => button.props["aria-label"]?.startsWith("Где получить для заказа:")).props.onClick();
+  assert.deepEqual(calls, [["forest"]]);
+});

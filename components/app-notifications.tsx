@@ -75,6 +75,6 @@ export function AppNotifications() {
   return <Toaster position="top-center" theme="dark" expand visibleToasts={3}
     offset="calc(env(safe-area-inset-top, 0px) + 16px)"
     mobileOffset={{ top: "calc(env(safe-area-inset-top, 0px) + 12px)", left: "16px", right: "16px" }}
-    style={{ "--width": "min(440px, calc(100vw - 32px))", zIndex: 100 } as CSSProperties}
+    style={{ "--width": "min(440px, calc(100vw - 32px))", zIndex: 1600 } as CSSProperties}
     containerAriaLabel="Уведомления" />;
 }

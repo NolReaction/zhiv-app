@@ -5,6 +5,10 @@ import { advanceAppOnboarding, observeAppOnboarding, previousAppOnboarding, star
   type AppOnboardingEvidence } from "./app-onboarding-model";
 import { createAppOnboardingStore } from "./app-onboarding-storage";
 
+import { createOnboardingAccountSync } from "@/features/onboarding/account-sync";
+import { requestOnboardingAccount } from "@/features/onboarding/account-api";
+import { useOnboardingAccountSync } from "@/features/onboarding/use-account-sync";
+
 function browserStorage() {
   try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; }
 }
@@ -12,6 +16,9 @@ function browserStorage() {
 export function useAppOnboarding(owner: string, ready: boolean, evidence: AppOnboardingEvidence) {
   const store = useMemo(() => createAppOnboardingStore(owner, browserStorage()), [owner]);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
+  const account = useMemo(() => createOnboardingAccountSync({ owner, course: "app", local: store,
+    storage: browserStorage(), request: requestOnboardingAccount, adopt: status => store.save({ version: 2, status }) }), [owner, store]);
+  const accountReady = useOnboardingAccountSync(account);
   const { paused } = state;
   useEffect(() => {
     store.restore();
@@ -23,13 +30,13 @@ export function useAppOnboarding(owner: string, ready: boolean, evidence: AppOnb
   const { activeView, lastCheckInAt, nextAllowedAt, nowMs, unconfirmed, isSending, calendarOpen, worldOpen } = evidence;
   useEffect(() => {
     const current = store.getSnapshot();
-    if (!ready || current.paused || !current.loaded) return;
+    if (!ready || !accountReady || current.paused || !current.loaded) return;
     const next = observeAppOnboarding(current.progress,
       { activeView, lastCheckInAt, nextAllowedAt, nowMs, unconfirmed, isSending, calendarOpen, worldOpen });
     if (next !== current.progress) store.save(next);
-  }, [store, state.loaded, state.progress, ready, paused, activeView, lastCheckInAt, nextAllowedAt, nowMs,
+  }, [store, state.loaded, state.progress, ready, accountReady, paused, activeView, lastCheckInAt, nextAllowedAt, nowMs,
     unconfirmed, isSending, calendarOpen, worldOpen]);
-  const running = state.loaded && (state.progress === null || state.progress.status === "started");
+  const running = state.loaded && accountReady && (state.progress === null || state.progress.status === "started");
   return {
     progress: state.progress,
     open: running && !paused,
@@ -42,6 +49,6 @@ export function useAppOnboarding(owner: string, ready: boolean, evidence: AppOnb
     skip: () => store.save({ version: 2, status: "skipped" }),
     pause: () => store.setPaused(true),
     resume: () => store.setPaused(false),
-    replay: () => { store.save(null); store.setPaused(false); },
+    replay: () => { account.replay(); store.save(null); store.setPaused(false); },
   };
 }

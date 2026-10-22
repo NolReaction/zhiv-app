@@ -133,7 +133,7 @@ function markedButton(html, marker, value) {
   return found;
 }
 
-test("ordinary workshop menus hide future recipes while upgrade previews keep them discoverable", () => {
+test("ordinary workshop menus hide future recipes but direct product links show their prerequisites", () => {
   const state = snapshot({ buildings: { home: 2, workshop: 1, warehouse: 1 } });
   const economy = controller({ snapshot: state });
   const next = state.catalog.recipes.find(recipe => recipe.buildingId === "workshop" && recipe.buildingLevel === 2);
@@ -143,7 +143,9 @@ test("ordinary workshop menus hide future recipes while upgrade previews keep th
   assert.doesNotMatch(initial, /Позже|пока закрыто/);
   assert.ok(!initial.includes(`data-recipe="${next.id}"`));
   const stale = render("workshop", economy, { initialRecipeId: next.id });
-  assert.ok(!stale.includes(`data-recipe="${next.id}"`));
+  assert.ok(stale.includes(`data-recipe="${next.id}"`));
+  assert.match(stale, /data-recipe-access/);
+  assert.match(stale, /Доступно с 2 уровня мастерской/);
   assert.ok(renderUpgrade("workshop", economy).includes(`data-recipe="${next.id}"`));
   state.buildings.home = 3;
   state.buildings.workshop = 2;
@@ -267,8 +269,9 @@ test("the basic campfire cooks fish before its paid first improvement at phone a
     assert.match(html, /Уровень 0/);
     assert.match(html, /data-production-slots="dryer"/);
     assert.deepEqual([...html.matchAll(/data-production-slot="(\d+)"/g)].map(match => match[1]), ["1"]);
-    assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_grilled_fish"]);
-    assert.doesNotMatch(html, /data-station-setup=|Сначала постройте|Пока не обустроено|data-cooking-duration=|Обустроить|data-recipe="cook_compote"/);
+    assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_grilled_fish", "cook_compote"]);
+    assert.match(html, /data-recipe-access[^>]*>Доступно с 1 уровня костра/);
+    assert.doesNotMatch(html, /data-station-setup=|Сначала постройте|Пока не обустроено|data-cooking-duration=|Обустроить/);
     assert.equal(disabled(button(html, "Улучшить")), false);
     const upgrade = renderUpgrade("dryer", economy);
     assert.match(upgrade, /Уровень 0/);

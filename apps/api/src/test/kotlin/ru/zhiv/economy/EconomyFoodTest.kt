@@ -481,4 +481,28 @@ class EconomyFoodTest {
         assertEquals(legacy.food, converted.food)
         assertEquals(3L, converted.residentOrders.completed)
     }
+
+    @Test fun `saved unreachable order is replaced without spending quota or changing reachable accepted terms`() {
+        val initial = EconomyRules.initial()
+        val board = EconomyFood.normalizedOrders(initial, now).copy(completed = 7, earnedCoins = 1234, freeReplacementsUsed = 2)
+        val locked = EconomyResidentOrderTemplate("old_compote", "plesk", "Старый компот", items = mapOf("berry_compote" to 2L), coins = 900)
+        val state = initial.copy(residentOrders = board.copy(slots = board.slots.mapIndexed { index, slot ->
+            if (index == 0) slot.copy(templateId = locked.id, terms = locked) else slot
+        }))
+        val before = economyJson.encodeToString(state)
+        val normalized = EconomyFood.normalizedOrders(state, now)
+        assertNotEquals(locked.id, normalized.slots[0].templateId)
+        assertEquals(board.slots.drop(1), normalized.slots.drop(1))
+        assertEquals(2, normalized.freeReplacementsUsed)
+        assertEquals(7L, normalized.completed)
+        assertEquals(1234L, normalized.earnedCoins)
+        assertTrue(locked.id in normalized.recentTemplateIds)
+        val reachable = EconomyFood.obtainableOrderItems(state)
+        assertTrue(normalized.slots.all { slot -> slot.terms!!.items.keys.all { it in reachable } })
+        assertEquals(before, economyJson.encodeToString(state))
+        val unlocked = state.copy(buildings = state.buildings + mapOf("dryer" to 1, "garden" to 1))
+        assertEquals(locked, EconomyFood.normalizedOrders(unlocked, now).slots[0].terms,
+            "retired but reachable accepted terms must retain the exact promised quantities and payout")
+    }
+
 }

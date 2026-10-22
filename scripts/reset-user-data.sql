@@ -18,7 +18,7 @@ DECLARE
         'economy_market_listings', 'economy_market_receipts', 'economy_market_showcases', 'economy_market_daily_turnover',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
         'game_presence_clients', 'game_presence_daily', 'game_presence_accounts',
-        'game_daily_rewards', 'game_reward_claims', 'game_achievement_reward_claims',
+        'game_daily_rewards', 'game_reward_claims', 'game_achievement_reward_claims', 'onboarding_progress',
         'forest_memory', 'forest_memory_receipts',
         'notification_preferences', 'notification_subscriptions', 'notification_events', 'notification_batches',
         'promo_redemptions',
@@ -49,18 +49,19 @@ BEGIN
     -- V66 retains last-known points; they remain account data cleared by this reset.
     -- V67 frozen recipient snapshots are ephemeral account data and are cleared too.
     -- V68 global gameplay generations and completed release resets survive account deletion.
+    -- V69 onboarding progress is cleared; V70 expands achievement constraints without new tables.
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
     -- A known admin-history upgrade can install V50 after V51/V52.
     -- Verify either complete history by version, independently of install order.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 68
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 70
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,68) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,70) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V68. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V70. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

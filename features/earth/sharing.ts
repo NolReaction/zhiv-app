@@ -24,6 +24,7 @@ export type EarthSharingState = {
   settings: EarthSharingSettings | null; people: EarthMapPerson[]; loading: boolean; saving: boolean;
   error: string | null; pendingGhost: boolean; pendingPrivacyMode: "GHOST" | "OFF" | null;
   publishing: boolean; lastPublishedAt: string | null;
+  publicationError: string | null;
   /** A lease counter for requesting a fresh private GPS fix; never exposes its capability. */
   publicationGeneration: number;
 };
@@ -36,7 +37,7 @@ export type EarthSharingEnvironment = {
   createId(): string;
 };
 const EMPTY: EarthSharingState = { settings: null, people: [], loading: false, saving: false, error: null,
-  pendingGhost: false, pendingPrivacyMode: null, publishing: false, lastPublishedAt: null, publicationGeneration: 0 };
+  pendingGhost: false, pendingPrivacyMode: null, publishing: false, lastPublishedAt: null, publicationError: null, publicationGeneration: 0 };
 const pendingKey = (owner: string) => `zhiv:earth:pending-privacy:v1:${owner}`;
 function parsePending(value: unknown): EarthPendingPrivacy | null {
   if (!value || typeof value !== "object") return null;
@@ -162,13 +163,13 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       }).catch(error => { if (active && generation === epochGeneration && !controller.signal.aborted && statusOf(error) === 401) onSessionLost(); })
       .finally(() => stops.delete(controller));
   }
-  function stopPublishing() {
+  function stopPublishing(reason?: string) {
     resumeAttempted = true;
     if (enabling) { enabling.abort.abort(); enabling = null; publish({ saving: privacy !== null || preferences !== null }); }
     if (resuming) { resuming.abort.abort(); resuming = null; publish({ saving: privacy !== null || preferences !== null }); }
-    const previous = publisher; publisher = null; queuedFix = null; minimumFixTime = Infinity; publishedDeadline = Infinity;
+    const previous = publisher; publisher = null; queuedFix = null; minimumFixTime = Infinity;
     upload?.abort.abort(); upload = null; cancelTimer("publish");
-    if (state.publishing || state.lastPublishedAt !== null) publish({ publishing: false, lastPublishedAt: null });
+    if (state.publishing || reason) publish({ publishing: false, ...(reason ? { publicationError: reason } : {}) });
     if (previous) sendStop(previous);
   }
   function expirePeople() {
@@ -240,7 +241,9 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       const settings = state.settings ? { ...state.settings, mode: intent.mode, publicationEpoch: null,
         recipientCircleIds: intent.mode === "OFF" ? [] : state.settings.recipientCircleIds,
         frozenCircleIds: intent.mode === "OFF" ? [] : state.settings.frozenCircleIds } : null;
-      publish({ settings, pendingGhost: true, pendingPrivacyMode: intent.mode });
+      if (intent.mode === "OFF") publishedDeadline = Infinity;
+      publish({ settings, pendingGhost: true, pendingPrivacyMode: intent.mode,
+        ...(intent.mode === "OFF" ? { lastPublishedAt: null, publicationError: null } : {}) });
       void flushPrivacy();
     } else {
       publish({ pendingGhost: false, pendingPrivacyMode: null });
@@ -293,7 +296,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   function adoptPublisher(value: EarthSharingSettings) {
     publisher = value.publicationEpoch;
     sequence = 0; usedFixTime = -Infinity; minimumFixTime = environment!.now(); lastPublishAt = -Infinity; queuedFix = null;
-    publish({ publishing: true, lastPublishedAt: null, publicationGeneration: state.publicationGeneration + 1 });
+    publish({ publishing: true, publicationError: null, publicationGeneration: state.publicationGeneration + 1 });
     expirePeople();
   }
   function maybeResumeAutomatically() {
@@ -451,9 +454,10 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       if (!current(request) || upload !== request || publisher !== epoch || pending) return;
       if (value.ownerPublicId !== owner) throw new Error("Неверный владелец публикации");
       observeServer(value.serverTime, request.started); publishedDeadline = Math.min(now() + EARTH_POSITION_TTL_MS, deadline(value.expiresAt));
-      publish({ lastPublishedAt: value.acceptedAt, error: null }); expirePeople();
+      publish({ lastPublishedAt: value.acceptedAt, publicationError: null, error: null }); expirePeople();
     } catch (error) {
       if (current(request) && upload === request && publisher === epoch) {
+        publish({ publicationError: error instanceof Error ? error.message : "Не удалось отправить геопозицию" });
         failed(error, "Не удалось отправить геопозицию");
         if (statusOf(error) === 409 || statusOf(error) === 401) { stopPublishing(); void readMetadata(); }
       }

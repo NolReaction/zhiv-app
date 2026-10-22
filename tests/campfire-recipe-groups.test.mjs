@@ -142,14 +142,21 @@ test("a locked source recipe can be read while unrelated future dishes stay hidd
   assert.match(preview.html, /data-item-icon="fish_legendary"/);
 });
 
-test("the level-zero campfire offers only its catalog starter recipe, even from a future dish link", () => {
+test("the level-zero campfire keeps a targeted locked dish visible with its building requirement", () => {
   hooks.reset(); const economy = controller({ buildings: { home: 1, dryer: 0, garden: 1, warehouse: 1 } });
   const before = structuredClone(economy.snapshot);
   for (const target of [null, "cook_grilled_fish", "cook_compote", "cook_legendary_fish"]) {
     const view = catalog(economy, target);
-    assert.deepEqual(view.ids, ["cook_grilled_fish"]);
+    const future = target && target !== "cook_grilled_fish";
+    assert.deepEqual(view.ids, future ? ["cook_grilled_fish", target] : ["cook_grilled_fish"]);
     assert.equal(view.cards[0].props.focused, target === "cook_grilled_fish");
-    assert.doesNotMatch(view.html, /data-cooking-duration=|data-cooking-group="drinks"|Сначала обустройте/);
+    if (future) {
+      assert.equal(view.cards.find(card => card.props.recipe.id === target).props.focused, true);
+      assert.match(view.html, /data-recipe-access/);
+      assert.match(view.html, /Доступно с [1-5] уровня костра/);
+      assert.match(view.html, /data-blocked="true"/);
+    }
+    assert.doesNotMatch(view.html, /data-cooking-duration=|Сначала обустройте/);
     assert.match(view.html, /На костре уже можно жарить рыбу/);
   }
   assert.deepEqual(economy.snapshot, before);

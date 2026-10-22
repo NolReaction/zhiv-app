@@ -206,7 +206,8 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("start"), /улучшите уже горящий костёр/);
   assert.match(answer("production"), /монеты и материалы зарезервируются/);
   assert.match(answer("production"), /нехватка выделена рядом с количеством/);
-  assert.match(answer("production"), /Рядом с рисунком указано название предмета, ниже - время и материалы/);
+  assert.match(answer("production"), /видны время и материалы/);
+  assert.match(answer("production"), /У закрытого продукта указан нужный уровень постройки/);
   assert.match(answer("production"), /ячейка займётся сразу/);
   assert.match(answer("production"), /Время начнётся после подтверждения сервера/);
   assert.match(answer("production"), /«Удалить\?» и таймер 5 секунд/);

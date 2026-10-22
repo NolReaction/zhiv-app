@@ -1312,6 +1312,11 @@ test("confirmed construction geometry keeps builder feet through server hydratio
       const beforeHydration = target.state.builderMind;
       await pump(15_000);
       assert.equal(target.state.memory.sync.mode, "synced");
+      assert.equal(target.state.builderMind, beforeHydration, "a geometry replacement keeps its local writer without unnecessary hydration");
+      // A later lost lease still exercises authoritative hydration. Expiry
+      // itself changes no saved data and never proves a foreign device.
+      holder = null; token = null;
+      target.saveMemory(); await pump(250);
       assert.notEqual(target.state.builderMind, beforeHydration, "the regression exercises asynchronous server hydration");
       const current = target.state.builderMind;
       assert.deepEqual(current.position, feet, "server memory has no NPC position and must not teleport him to rest");

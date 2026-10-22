@@ -12,7 +12,7 @@ type Presentation = Pick<EarthMapPerson, "precision" | "accuracyMeters" | "updat
 };
 type Entry = { marker: Marker; element: HTMLButtonElement; portrait: HTMLSpanElement;
   longitude: number; latitude: number; presentation: Presentation | null;
-  circleIds: string[]; removeListeners: () => void };
+  circleIds: string[]; offsetX: number; removeListeners: () => void };
 
 /** Public round-trip projection rejects the far hemisphere before creating DOM. */
 export function earthFriendScreenPoint(map: Pick<LibreMap, "project" | "unproject" | "getProjection">,
@@ -140,7 +140,7 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
     const marker = new MarkerConstructor({ element, anchor: "bottom", pitchAlignment: "viewport",
       rotationAlignment: "viewport", subpixelPositioning: true, opacityWhenCovered: 0 });
     const entry: Entry = { marker, element, portrait, longitude: person.longitude, latitude: person.latitude,
-      presentation: null, circleIds: [...group.circleIds], removeListeners: () => undefined };
+      presentation: null, circleIds: [...group.circleIds], offsetX: 0, removeListeners: () => undefined };
     const stopPointer = (event: Event) => event.stopPropagation();
     const onClick = (event: Event) => {
       event.stopPropagation();
@@ -195,6 +195,14 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
       if (entry.longitude !== person.longitude || entry.latitude !== person.latitude) {
         entry.marker.setLngLat([person.longitude, person.latitude]);
         entry.longitude = person.longitude; entry.latitude = person.latitude;
+      }
+      const offsetX = group.offsetX ?? 0;
+      if (entry.offsetX !== offsetX) {
+        entry.marker.setOffset([offsetX, 0]);
+        entry.element.style.setProperty("--earth-friend-offset", `${offsetX}px`);
+        entry.element.style.setProperty("--earth-friend-connector-width", `${Math.abs(offsetX)}px`);
+        entry.element.dataset.besideSelf = String(offsetX !== 0);
+        entry.offsetX = offsetX;
       }
       synchronizePresentation(entry, person, group.circleIds.length);
     }

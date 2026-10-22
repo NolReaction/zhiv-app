@@ -20,6 +20,7 @@ function belongsToAccount(key: string, owner: string, storage: ResetStorage, act
   const encoded = encodeURIComponent(owner);
   if (accountPrefixes.some(prefix => key === `${prefix}${owner}` || key === `${prefix}${encoded}`)
     || key.startsWith(`zhiv:game-input:v1:${owner}:`)
+    || key.startsWith(`zhiv.onboarding-replay.v1:${owner}:`)
     || key.startsWith(`zhiv.section-guide.v1:${encoded}:`)
     || key === `zhiv:forest-memory:v1:${encodeURIComponent(`zhiv:mochlik:presence:${owner}`)}`) return true;
   if (key === "zhiv.pending-check-in.v1" || key === "zhiv.pending-check-in.v2") {

@@ -40,6 +40,7 @@ import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConf
 import { resetDevWorldStoreForTests, getDevCollectionFinds, getDevGuestWorldAppearance } from "@/lib/dev/world-store";
 import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-rewards-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
+import { resetDevOnboardingState } from "@/lib/dev/onboarding-state";
 import { resetDevMailState } from "@/lib/dev/mail-state";
 import { resetDevEarthSharingState, revokeDevEarthCircle } from "@/lib/dev/earth-sharing-state";
 import { removeDevBotEarthSimulation, resetDevBotEarthSimulation } from "@/lib/dev/bot-earth-state";
@@ -225,6 +226,7 @@ export function resetDevStoreForTests() {
   resetDevBotEarthSimulation();
   resetDevForestMemoryStoreForTests();
   resetDevMailState();
+  resetDevOnboardingState();
   resetDevWorldStoreForTests();
   resetDevEconomyStoreForTests();
   resetDevProgressionRewardsForTests();
@@ -809,7 +811,7 @@ export function getDevAchievements(token: string | undefined, lifetimeTaps: numb
     const unlockedAt = awards?.get(value.id) ?? null;
     return { ...value, progress: unlockedAt ? value.target : Math.min(value.progress, value.target), unlockedAt };
   });
-  const expanded = catalog === 5 ? [...legacy.map(value => ({ ...value, tiers: [{ level: 1, target: value.target, progress: value.progress, unlockedAt: value.unlockedAt }] })),
+  const expanded = catalog >= 5 ? [...legacy.map(value => ({ ...value, tiers: [{ level: 1, target: value.target, progress: value.progress, unlockedAt: value.unlockedAt }] })),
     ...Object.entries(economic).map(([id, progress]) => {
       const typedId = id as GameAchievementId, dates = store().achievementTierAwards.get(user.id)?.get(typedId);
       const targets = GAME_ACHIEVEMENT_TARGETS[typedId];
@@ -822,7 +824,7 @@ export function getDevAchievements(token: string | undefined, lifetimeTaps: numb
   return {
     ownerPublicId: user.publicId,
     serverTime: serverTime.toISOString(),
-    achievements: expanded,
+    achievements: catalog === 5 ? expanded.slice(0, 15) : expanded,
   };
 }
 

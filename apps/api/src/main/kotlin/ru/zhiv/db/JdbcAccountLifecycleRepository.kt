@@ -282,6 +282,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM game_achievements t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id",
             "SELECT to_jsonb(t)::text FROM game_achievement_tiers t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id,level",
             "SELECT to_jsonb(t)::text FROM game_daily_rewards t WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM onboarding_progress t WHERE user_id IN (?,?) ORDER BY user_id,course",
             "SELECT to_jsonb(t)::text FROM game_reward_claims t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
             "SELECT to_jsonb(t)::text FROM game_achievement_reward_claims t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id,level",
             "SELECT to_jsonb(t)::text FROM account_merge_sources t WHERE target_user_id IN (?,?) ORDER BY source_user_id"
@@ -343,6 +344,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
     private fun tombstone(c: Connection,id: UUID) {
         c.update("DELETE FROM game_reward_claims WHERE user_id=?",id)
         c.update("DELETE FROM game_daily_rewards WHERE user_id=?",id)
+        c.update("DELETE FROM onboarding_progress WHERE user_id=?",id)
         c.update("DELETE FROM game_achievement_reward_claims WHERE user_id=?",id)
         removeEconomyProfile(c, id)
         c.update("DELETE FROM economy_market_daily_turnover WHERE user_id=?", id)
@@ -460,6 +462,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         mergeEconomyBarterReceipts(c, id, s.other)
         mergeWorldProfiles(c,id,s.other)
         mergeForestMemory(c,id,s.other)
+        mergeOnboardingProgress(c,id,s.other)
         mergeGameProgress(c,id,s.other)
         mergeGamePresence(c,id,s.other)
         c.update("""

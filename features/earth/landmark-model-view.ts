@@ -12,9 +12,15 @@ export function isEarthModelStreetZoom(zoom: number): boolean {
 }
 
 export function earthModelStreetOpacity(zoom: number): number {
-  if (!isEarthModelStreetZoom(zoom)) return 0;
-  const value = Math.max(0, Math.min(1, (zoom - EARTH_MODEL_STREET_MIN_ZOOM) / .6));
-  return value * value * (3 - 2 * value);
+  return isEarthModelStreetZoom(zoom) ? 1 : 0;
+}
+
+/** Blend the compact city miniature into its real height without a hidden zoom gap. */
+export function earthModelDisplayHeight(zoom: number, miniatureHeightMeters: number, physicalHeightMeters: number): number {
+  const fraction = Math.max(0, Math.min(1, (zoom - EARTH_MODEL_PREVIEW_MIN_ZOOM)
+    / (EARTH_MODEL_STREET_MIN_ZOOM - EARTH_MODEL_PREVIEW_MIN_ZOOM)));
+  const blend = fraction * fraction * (3 - 2 * fraction);
+  return miniatureHeightMeters * (1 - blend) + physicalHeightMeters * blend;
 }
 
 /** Conservative loading bounds, not screen clipping: an offscreen foot can have

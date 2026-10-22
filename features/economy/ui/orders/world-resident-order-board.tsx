@@ -15,7 +15,7 @@ import { explorationActorId } from "@/features/economy/domain/actor-availability
 import { ECONOMY_MAX_BALANCE, formatPearls } from "@/features/economy/domain/money";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { itemName, number, ProductIcon } from "@/features/economy/ui/shared/world-economy-parts";
-import { worldDuration, worldMaterialSource } from "@/features/economy/ui/shared/world-stations";
+import { worldDuration, worldMaterialSource, worldMaterialAccessReason } from "@/features/economy/ui/shared/world-stations";
 import { fishSelectionMatches, fishStockRequirements, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import { orderOfferReady } from "./order-journal-summary";
@@ -165,7 +165,8 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
         <ul className={styles.ingredients} data-guide-order-requirements aria-label="Для заказа">{Object.entries(offer.items).map(([id, quantity]) => {
           const owned = state.inventory[id] ?? 0, short = owned < quantity;
           const source = short ? materialAction(economy, id, navigation) : null;
-          const label = <><ProductIcon state={state} itemId={id} size={23} /><span>{itemName(state, id)}</span><strong>{number(owned)} / {number(quantity)}</strong></>;
+          const accessReason = short ? worldMaterialAccessReason(state, id) : null;
+          const label = <><ProductIcon state={state} itemId={id} size={23} /><span>{itemName(state, id)}{accessReason && <small className={styles.accessReason}>{accessReason}</small>}</span><strong>{number(owned)} / {number(quantity)}</strong></>;
           return <li key={id} data-missing={short || undefined}>{source ? <button type="button" aria-label={`Где получить для заказа: ${itemName(state, id)}`} onClick={source}>{label}</button> : <div>{label}</div>}</li>;
         })}</ul>
         {completionRewards.length > 0 && <div className={styles.completionReward}><p>Награда за завершение этапа</p><ul aria-label="Дополнительная награда за этап">{completionRewards.map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={21} /><span>{itemName(state, id)} × {number(amount)}</span></li>)}</ul></div>}
