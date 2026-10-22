@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { z } from "zod";
 import { gameProgressSchema, gameSessionSchema } from "@/features/game/game-api";
 
@@ -31,7 +32,7 @@ export interface GameJournalStore { read(): GameJournal | null; write(value: Gam
 
 /** Temporary delivery journal only. Account totals always come from the API. */
 export function gameJournalStore(owner: string, storage: Pick<Storage, "getItem" | "setItem"> = localStorage): GameJournalStore {
-  const key = `zhiv:game-outbox:v1:${owner}`;
+  const key = gameplayStorageKey(`zhiv:game-outbox:v1:${owner}`);
   return {
     read() {
       const raw = storage.getItem(key);

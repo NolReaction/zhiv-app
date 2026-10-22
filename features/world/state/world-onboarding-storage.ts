@@ -1,11 +1,12 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { parseWorldOnboarding, type WorldOnboardingProgress } from "@/features/world/domain/world-onboarding";
 
 type OnboardingStorage = Pick<Storage, "getItem" | "setItem">;
 const memory = new Map<string, WorldOnboardingProgress>();
 const pausedMemory = new Map<string, boolean>();
 // Keep the original key so v1 skips/completions remain deliberate choices after an update.
-export const onboardingStorageKey = (owner: string) => `zhiv.world-onboarding.v1:${owner}`;
-export const onboardingPauseStorageKey = (owner: string) => `zhiv.world-onboarding.paused.v1:${encodeURIComponent(owner)}`;
+export const onboardingStorageKey = (owner: string) => gameplayStorageKey(`zhiv.world-onboarding.v1:${owner}`);
+export const onboardingPauseStorageKey = (owner: string) => gameplayStorageKey(`zhiv.world-onboarding.paused.v1:${encodeURIComponent(owner)}`);
 
 export function readWorldOnboarding(owner: string, storage: Pick<Storage, "getItem">): WorldOnboardingProgress | null {
   try { return parseWorldOnboarding(storage.getItem(onboardingStorageKey(owner))); } catch { return null; }

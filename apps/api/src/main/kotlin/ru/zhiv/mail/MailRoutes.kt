@@ -14,6 +14,8 @@ import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.sessionCookie
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayGeneration
 import ru.zhiv.security.TokenCodec
 import java.util.UUID
 
@@ -26,7 +28,7 @@ private fun ApplicationCall.mailSession(config: AppConfig,codec: TokenCodec,writ
 private fun ApplicationCall.parameter(name: String, default: String? = null): String? =
     request.queryParameters.getAll(name)?.let { it.singleOrNull() ?: invalidMail() } ?: default
 
-fun Route.mailRoutes(repository: MailRepository,codec: TokenCodec,config: AppConfig) {
+fun Route.mailRoutes(repository: MailRepository,codec: TokenCodec,config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/mail") {
         install(RequestBodyLimit) { bodyLimit { 1024 } }
         rateLimit(RateLimitName("mail-read")) { get {
@@ -43,6 +45,7 @@ fun Route.mailRoutes(repository: MailRepository,codec: TokenCodec,config: AppCon
         } }
         rateLimit(RateLimitName("mail-write")) { post("/{id}/claim") {
             val hash=call.mailSession(config,codec,writing=true)
+            call.requireGameplayGeneration(presence, hash)
             val id=runCatching { UUID.fromString(call.parameters["id"]) }.getOrNull()
                 ?.takeIf { it.toString()==call.parameters["id"] } ?: invalidMail()
             if(call.request.queryParameters.names().isNotEmpty()) invalidMail()

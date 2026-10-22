@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { gameplayGenerationHeaders, reportGameplayReset } from "./gameplay-generation";
 import { isCalendarMonth } from "./check-in-calendar";
 import { deviceTimeZone } from "./time-zone";
 import { retryAfterMs, withRequestDeadline } from "./request-deadline";
@@ -53,6 +54,7 @@ const profileStateSchema = z.object({
 const userStatusSchema = z.object({ text: z.string().max(240), updatedAt: z.string().datetime(), expiresAt: z.string().datetime().nullable().default(null) });
 
 const meSchema: z.ZodType<MeResponse> = z.object({
+  gameplayGeneration: z.number().int().nonnegative().safe().default(0),
   status: userStatusSchema.nullable().default(null),
   user: userSchema,
   lastCheckInAt: z.string().datetime().nullable(),
@@ -251,6 +253,7 @@ async function request<T>(
   init?: RequestInit,
 ): Promise<T> {
   return withRequestDeadline(8_000, init?.signal, async signal => {
+    const generation = gameplayGenerationHeaders();
     const response = await fetch(path, {
       ...init,
       cache: "no-store",
@@ -258,6 +261,7 @@ async function request<T>(
       signal,
       headers: {
         Accept: "application/json",
+        ...generation,
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...init?.headers,
       },
@@ -269,6 +273,7 @@ async function request<T>(
       : undefined;
 
     if (!response.ok) {
+      reportGameplayReset(errorSchema.safeParse(body).success ? errorSchema.parse(body).code : undefined, generation);
       const knownError = cooldownSchema.safeParse(body).success
         ? cooldownSchema.parse(body)
         : displayNameCooldownSchema.safeParse(body).success
@@ -344,6 +349,7 @@ export function createCheckIn(idempotencyKey: string): Promise<CheckInResponse> 
 
 export async function reportClickerSeries(event: ClickerSeriesEvent): Promise<void> {
   return withRequestDeadline(4_000, undefined, async signal => {
+    const generation = gameplayGenerationHeaders();
     const response = await fetch("/api/v1/game-events", {
       method: "POST",
       cache: "no-store",
@@ -351,12 +357,16 @@ export async function reportClickerSeries(event: ClickerSeriesEvent): Promise<vo
       keepalive: true,
       signal,
       headers: {
+        ...generation,
         Accept: "application/json",
         "Content-Type": "application/json",
       },
       body: JSON.stringify(event),
     });
     if (!response.ok) {
+      const body: unknown = await response.json().catch(() => null);
+      const error = errorSchema.safeParse(body);
+      reportGameplayReset(error.success ? error.data.code : undefined, generation);
       throw new ApiError("Не удалось записать игровое событие", response.status, undefined,
         response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
     }

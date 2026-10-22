@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { z } from "zod";
@@ -75,7 +76,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   let barterBlockedUntil = 0, rateLimitedUntil = 0;
   let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
-  const storageKey = `zhiv:economy:pending:v1:${owner}`;
+  const storageKey = gameplayStorageKey(`zhiv:economy:pending:v1:${owner}`);
   const listeners = new Set<() => void>(), requests = new Set<AbortController>();
   const inventoryReceipts = new Set<string>();
   let productionEntries: ProductionIntent[] = [], journalReady = false, journalInitializing = false, localActionsAvailable = true;

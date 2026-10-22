@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { readTapHintPreference: read, saveTapHintPreference: save, tapHintPreferenceKey: key } = await vite.ssrLoadModule("/features/world/state/tap-hint-preferences.ts");
 function storage() {

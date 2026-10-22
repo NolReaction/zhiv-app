@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import type { EconomyCost, EconomyView } from "@/features/economy/domain/model";
 import { worldMaterialSource, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 
@@ -5,7 +6,7 @@ export type ConstructionGoal = { buildingId: string; targetLevel: number };
 type GoalStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export function constructionGoalStorageKey(owner: string) {
-  return `zhiv:construction-goal:v1:${owner}`;
+  return gameplayStorageKey(`zhiv:construction-goal:v1:${owner}`);
 }
 
 /** A goal is one exact upcoming level, never an instruction to keep upgrading. */

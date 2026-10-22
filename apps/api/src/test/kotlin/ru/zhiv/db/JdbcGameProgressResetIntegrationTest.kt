@@ -22,6 +22,7 @@ import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -52,6 +53,12 @@ class JdbcGameProgressResetIntegrationTest {
         }
     }
 
+    private fun selectedRows(source: DataSource, query: String): String = source.connection.use { connection ->
+        connection.createStatement().use { statement -> statement.executeQuery(query).use { rows ->
+            check(rows.next()); rows.getString(1)
+        } }
+    }
+
     private fun reset(apply: Boolean? = null): org.testcontainers.containers.Container.ExecResult {
         val command = mutableListOf("psql", "-X", "-U", postgres.username, "-d", postgres.databaseName, "-v", "ON_ERROR_STOP=1")
         if (apply != null) command.addAll(listOf("-v", "apply_reset=${if (apply) "on" else "off"}"))
@@ -59,7 +66,7 @@ class JdbcGameProgressResetIntegrationTest {
         return postgres.execInContainer(*command.toTypedArray())
     }
 
-    @Test fun `game reset preserves full identities friends and service rows and rejects pre-reset commands`(): Unit = runBlocking {
+    @Test fun `release reset keeps auth and friends clears history restarts rewards and is idempotent`(): Unit = runBlocking {
         val script = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
             .map { it.resolve("scripts/reset-game-progress.sql") }.first { Files.exists(it) }
         postgres.copyFileToContainer(MountableFile.forHostPath(script), "/tmp/reset-game-progress.sql")
@@ -70,11 +77,22 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO app_users(id,public_id,display_name) VALUES
                   ('10000000-0000-4000-8000-000000000001','0000-0000-0001','First'),
                   ('20000000-0000-4000-8000-000000000002','0000-0000-0002','Friend');
+                INSERT INTO app_users(id,public_id,display_name)
+                  SELECT ('20000000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid,
+                    '0000-0000-' || lpad(n::text,4,'0'),'Friend ' || n FROM generate_series(3,6) n;
+                UPDATE app_users SET last_check_in_at='2026-10-01T12:00:00Z'
+                  WHERE id='10000000-0000-4000-8000-000000000001';
                 INSERT INTO app_sessions(id,user_id,token_hash,expires_at)
                   VALUES ('30000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001',
                     decode(repeat('12',32),'hex'),clock_timestamp()+interval '1 day');
                 INSERT INTO account_login_identities(provider,subject,user_id)
                   VALUES ('email','reset-test@example.invalid','10000000-0000-4000-8000-000000000001');
+                INSERT INTO account_recovery_codes(code_hash,user_id)
+                  VALUES (decode(repeat('56',32),'hex'),'10000000-0000-4000-8000-000000000001');
+                INSERT INTO circles(id,kind,created_by_user_id,direct_user_low_id,direct_user_high_id)
+                  SELECT ('40000000-0000-4000-8000-' || lpad((n+10)::text,12,'0'))::uuid,'DIRECT',
+                    '10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',
+                    ('20000000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid FROM generate_series(3,6) n;
                 INSERT INTO circles(id,kind,created_by_user_id,direct_user_low_id,direct_user_high_id)
                   VALUES ('40000000-0000-4000-8000-000000000004','DIRECT','10000000-0000-4000-8000-000000000001',
                     '10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002');
@@ -100,9 +118,16 @@ class JdbcGameProgressResetIntegrationTest {
                     '20000000-0000-4000-8000-000000000002','90000000-0000-4000-8000-000000000009');
                 UPDATE direct_requests SET status='ACCEPTED',result_circle_id='40000000-0000-4000-8000-000000000004',
                   result_circle_kind='DIRECT',responded_at=clock_timestamp() WHERE id='80000000-0000-4000-8000-000000000008';
-                INSERT INTO check_ins(user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
-                  VALUES ('10000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000003',
-                    '50000000-0000-4000-8000-000000000005','2026-10-01T12:00:00Z','2026-10-01T12:00:30Z','UTC','2026-10-01');
+                INSERT INTO recipient_sharing_preferences(actor_user_id,recipient_user_id,sharing_mode)
+                  VALUES ('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002','LATEST_ONLY');
+                WITH moment AS (SELECT clock_timestamp() AS now)
+                INSERT INTO check_ins(id,user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
+                  SELECT '51000000-0000-4000-8000-000000000005','10000000-0000-4000-8000-000000000001',
+                    '30000000-0000-4000-8000-000000000003','50000000-0000-4000-8000-000000000005',
+                    now,now+interval '30 seconds','UTC',(now AT TIME ZONE 'UTC')::date FROM moment;
+                INSERT INTO check_in_audiences(check_in_id,actor_user_id,circle_id,circle_kind,recipient_user_id)
+                  VALUES ('51000000-0000-4000-8000-000000000005','10000000-0000-4000-8000-000000000001',
+                    '40000000-0000-4000-8000-000000000004','DIRECT','20000000-0000-4000-8000-000000000002');
                 INSERT INTO world_profiles(user_id,revision,state)
                   VALUES ('10000000-0000-4000-8000-000000000001',11,
                     '{"schemaVersion":1,"resources":{"sparks":100,"wood":20,"stone":10},"houseLevel":3}');
@@ -115,7 +140,10 @@ class JdbcGameProgressResetIntegrationTest {
                   VALUES ('10000000-0000-4000-8000-000000000001',5000,100);
                 INSERT INTO game_items(user_id,item_id) VALUES ('10000000-0000-4000-8000-000000000001','flower');
                 INSERT INTO game_achievements(user_id,achievement_id)
-                  VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps');
+                  VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps'),
+                    ('10000000-0000-4000-8000-000000000001','five_friends'),
+                    ('10000000-0000-4000-8000-000000000001','linked_email'),
+                    ('10000000-0000-4000-8000-000000000001','saved_recovery_code');
                 INSERT INTO game_daily_rewards(user_id,next_step,last_claim_at,last_claim_date,completed)
                   VALUES ('10000000-0000-4000-8000-000000000001',7,'2026-10-01T00:00:00Z','2026-10-01',true);
                 INSERT INTO game_reward_claims(user_id,origin_user_id,request_id,signature,kind,daily_date,claim,accepted_revision,claimed_at)
@@ -125,7 +153,8 @@ class JdbcGameProgressResetIntegrationTest {
                     'daily','2026-10-01','{"kind":"daily","step":7,"reward":{"coins":80,"pearls":220,"items":{"ancient_core":1}},"claimedAt":"2026-10-01T00:00:00Z"}',
                     8,'2026-10-01T00:00:00Z');
                 INSERT INTO game_achievement_reward_claims(user_id,achievement_id,level,pearls,claimed_at)
-                  VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps',1,40,'2026-10-01T00:00:00Z');
+                  VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps',1,40,'2026-10-01T00:00:00Z'),
+                    ('10000000-0000-4000-8000-000000000001','linked_email',1,40,'2026-10-01T00:00:00Z');
                 INSERT INTO forest_memory(user_id,revision,snapshot,updated_at)
                   VALUES ('10000000-0000-4000-8000-000000000001',7,'{"oldScene":true}',clock_timestamp());
                 INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price)
@@ -148,6 +177,8 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO promo_redemptions(user_id,origin_user_id,promo_id,request_id,title,reward,accepted_revision)
                   VALUES ('10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','already-used',
                     '70000000-0000-4000-8000-000000000007','Test gift','{}',1);
+                INSERT INTO game_presence_accounts(user_id,credited_until)
+                  VALUES ('10000000-0000-4000-8000-000000000001',clock_timestamp());
                 INSERT INTO game_presence_daily(user_id,day,online_millis)
                   VALUES ('10000000-0000-4000-8000-000000000001','2026-10-01',1000);
             """.trimIndent())
@@ -164,7 +195,21 @@ class JdbcGameProgressResetIntegrationTest {
                   ('10000000-0000-4000-8000-000000000001','checkin:test','checkin',clock_timestamp(),clock_timestamp()),
                   ('10000000-0000-4000-8000-000000000001','mail:b0000000-0000-4000-8000-00000000000b','mail',clock_timestamp(),clock_timestamp()),
                   ('10000000-0000-4000-8000-000000000001','job:test','exploration',clock_timestamp(),clock_timestamp());
+                INSERT INTO notification_batches(id,user_id,reserved_at,state,finished_at) VALUES
+                  ('b1000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',clock_timestamp(),'delivered',clock_timestamp()),
+                  ('b1000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001',clock_timestamp(),'delivered',clock_timestamp());
+                UPDATE notification_events SET state='delivered',batch_id='b1000000-0000-4000-8000-000000000001'
+                  WHERE category='mail';
+                UPDATE notification_events SET state='delivered',batch_id='b1000000-0000-4000-8000-000000000002'
+                  WHERE category='checkin';
             """.trimIndent())
+            val protectedProjections = listOf(
+                "SELECT jsonb_agg(to_jsonb(u)-'last_check_in_at' ORDER BY id)::text FROM app_users u",
+                "SELECT jsonb_agg(to_jsonb(a) ORDER BY user_id,achievement_id)::text FROM game_achievements a WHERE achievement_id IN ('linked_email','saved_recovery_code')",
+                "SELECT jsonb_agg(to_jsonb(a) ORDER BY user_id,achievement_id)::text FROM game_achievement_reward_claims a WHERE achievement_id IN ('linked_email','saved_recovery_code')",
+                "SELECT jsonb_agg(to_jsonb(m) ORDER BY id)::text FROM player_mail_messages m WHERE source_key<>'welcome:v1'",
+                "SELECT jsonb_agg(to_jsonb(b) ORDER BY id)::text FROM notification_batches b WHERE id='b1000000-0000-4000-8000-000000000001'",
+            ).associateWith { selectedRows(source, it) }
             val before = snapshot(source)
             assertNotEquals("[]", before.getValue("earth_frozen_locations"), "The reset fixture includes a frozen recipient snapshot")
             source.connection.use { connection ->
@@ -175,13 +220,13 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='68' WHERE version='67'")
+            execute(source, "UPDATE flyway_schema_history SET version='69' WHERE version='68'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V67"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V68"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='67' WHERE version='68'")
+            execute(source, "UPDATE flyway_schema_history SET version='68' WHERE version='69'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
@@ -213,15 +258,17 @@ class JdbcGameProgressResetIntegrationTest {
             val applied = reset(true)
             assertEquals(0, applied.exitCode, applied.stderr)
             val after = snapshot(source)
+            for ((query, rows) in protectedProjections) assertEquals(rows, selectedRows(source, query), "Only reviewed fields may change")
             val sql = Files.readString(script)
             fun tables(name: String): List<String> = Regex("$name text\\[\\] := ARRAY\\[([\\s\\S]*?)];")
                 .find(sql)!!.groupValues[1].let { body -> Regex("'([a-z_]+)'").findAll(body).map { it.groupValues[1] }.toList() }
             for (table in tables("preserved_tables") + "flyway_schema_history")
                 assertEquals(before.getValue(table), after.getValue(table), "Preserved full contents: $table")
             for (table in tables("cleared_tables")) assertEquals("[]", after.getValue(table), "Cleared: $table")
-            assertTrue(after.getValue("notification_events").contains("checkin:test"))
+            assertTrue(!after.getValue("notification_events").contains("checkin:test"))
             assertTrue(after.getValue("notification_events").contains("mail:b0000000-0000-4000-8000-00000000000b"))
             assertTrue(!after.getValue("notification_events").contains("job:test"))
+            assertTrue(!after.getValue("notification_batches").contains("b1000000-0000-4000-8000-000000000002"))
 
             val user = UUID.fromString("10000000-0000-4000-8000-000000000001")
             source.connection.use { connection ->
@@ -239,16 +286,14 @@ class JdbcGameProgressResetIntegrationTest {
                     }
                 }
             }
-            val retainedGift = mailbox.inbox(hash, "0000-0000-0001").messages.single { it.gift != null }
-            assertEquals(welcome.id, retainedGift.id)
-            assertEquals(gift.gift.claimedAt, retainedGift.gift!!.claimedAt)
-            assertEquals(gift.gift, mailbox.claim(hash, "0000-0000-0001", welcomeId).gift)
-            source.connection.use { connection ->
-                val unchanged = readEconomyProfile(connection, UUID.fromString("10000000-0000-4000-8000-000000000001"))
-                assertEquals(41L, unchanged.revision, "A retained welcome receipt cannot issue a fresh post-reset grant")
-                assertEquals(EconomyRules.initial().wallet, unchanged.state.wallet)
-                assertEquals(1L, connection.economyRows("SELECT count(*) FROM player_mail_messages WHERE source_key=?", WELCOME_MAIL_SOURCE) { it.getLong(1) }.single())
-            }
+            val presence = JdbcPresenceRepository(source)
+            assertEquals(1L, presence.currentGeneration())
+            assertEquals("GAME_PROGRESS_RESET", assertFailsWith<AuthFailure> {
+                presence.requireGeneration(hash, 0)
+            }.code, "An old revisionless reward request must fail at the shared HTTP generation guard")
+            assertEquals("MAIL_NOT_FOUND", assertFailsWith<AuthFailure> {
+                mailbox.claim(hash, "0000-0000-0001", welcomeId)
+            }.code, "The old welcome URL must never claim the new gift")
             for (oldRevision in listOf(0L, 9L, 10L, 40L)) {
                 val old = EconomyCommand(UUID.randomUUID().toString(), "0000-0000-0001", oldRevision, "sell", "wood")
                 assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
@@ -266,11 +311,61 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals("GAME_VISIBILITY_CONFLICT", assertFailsWith<AuthFailure> {
                 JdbcGameRepository(source).setVisibility(hash, true, 0, "0000-0000-0001")
             }.code)
-            assertEquals("DAILY_REWARD_COMPLETED", assertFailsWith<AuthFailure> {
-                JdbcProgressionRewardsRepository(source).claim(hash,ProgressionRewardClaim(
-                    UUID.randomUUID().toString(),"0000-0000-0001","daily"))
-            }.code,"The real operator reset must not start the seven gifts again")
             assertEquals(after, snapshot(source), "Rejected stale retries must not change any fresh or preserved data")
+            source.connection.use { connection ->
+                assertEquals(0L, connection.economyRows("SELECT count(*) FROM app_users WHERE last_check_in_at IS NOT NULL") { it.getLong(1) }.single())
+                assertEquals(setOf("linked_email", "saved_recovery_code"), connection.economyRows(
+                    "SELECT achievement_id FROM game_achievements") { it.getString(1) }.toSet())
+                assertEquals(listOf("linked_email"), connection.economyRows(
+                    "SELECT achievement_id FROM game_achievement_reward_claims") { it.getString(1) })
+                assertEquals(5L, connection.economyRows("SELECT count(*) FROM active_direct_friend_ids(?)", user) { it.getLong(1) }.single())
+                assertEquals(0L, connection.economyRows("SELECT check_in_count FROM account_check_in_summary(?)", user) { it.getLong(1) }.single())
+            }
+            presence.requireGeneration(hash, 1)
+            val rewards = JdbcProgressionRewardsRepository(source)
+            val freshRewards = rewards.snapshot(hash)
+            assertEquals(1, freshRewards.daily.step)
+            assertTrue(freshRewards.daily.claimable && !freshRewards.daily.completed)
+            assertNull(freshRewards.onboarding.claimedAt)
+            assertTrue(freshRewards.achievementRewards.filter { it.earnedAt != null }
+                .all { it.achievementId in setOf("linked_email", "saved_recovery_code") },
+                "Preserved friends must not immediately recreate the old five-friends achievement")
+            assertTrue(freshRewards.achievementRewards.single { it.achievementId == "linked_email" }.claimedAt != null)
+            assertEquals("ONBOARDING_REWARD_UNAVAILABLE", assertFailsWith<AuthFailure> {
+                rewards.claim(hash,ProgressionRewardClaim(UUID.randomUUID().toString(),"0000-0000-0001","onboarding"))
+            }.code, "The old completed course cannot claim until a fresh tutorial order is fulfilled")
+            val freshWelcome = mailbox.inbox(hash, "0000-0000-0001").messages.single { it.gift != null }
+            assertNotEquals(welcome.id, freshWelcome.id)
+            assertNull(freshWelcome.gift!!.claimedAt)
+            val newWelcomeId = UUID.fromString(freshWelcome.id)
+            val newGift = mailbox.claim(hash, "0000-0000-0001", newWelcomeId)
+            val afterWelcome = snapshot(source)
+            assertEquals(newGift.gift, mailbox.claim(hash, "0000-0000-0001", newWelcomeId).gift)
+            assertEquals(afterWelcome, snapshot(source), "Fresh welcome is paid only once")
+            val dailyRequest = ProgressionRewardClaim(UUID.randomUUID().toString(),"0000-0000-0001","daily")
+            val daily = rewards.claim(hash,dailyRequest)
+            assertEquals(1, daily.claim.step)
+            assertEquals(2, daily.rewards.daily.step)
+            assertTrue(rewards.claim(hash,dailyRequest).replayed)
+            assertEquals("DAILY_REWARD_COOLDOWN", assertFailsWith<AuthFailure> {
+                rewards.claim(hash,ProgressionRewardClaim(UUID.randomUUID().toString(),"0000-0000-0001","daily"))
+            }.code)
+            // Satisfy the server's existing tutorial-order predicate and verify
+            // the new course reward has its own one-time receipt after the reset.
+            execute(source, "UPDATE economy_profiles SET state=jsonb_set(state,'{tutorialOrder,step}','1')")
+            val onboardingRequest = ProgressionRewardClaim(UUID.randomUUID().toString(),"0000-0000-0001","onboarding")
+            assertEquals("onboarding", rewards.claim(hash,onboardingRequest).claim.kind)
+            assertTrue(rewards.claim(hash,onboardingRequest).replayed)
+            execute(source, "UPDATE game_profiles SET lifetime_taps=1000")
+            val achievementRequest = ProgressionRewardClaim(UUID.randomUUID().toString(),"0000-0000-0001","achievement","thousand_taps",1)
+            assertEquals("thousand_taps", rewards.claim(hash,achievementRequest).claim.achievementId)
+            assertTrue(rewards.claim(hash,achievementRequest).replayed)
+            val progressed = snapshot(source)
+            val repeated = reset(true)
+            assertEquals(0, repeated.exitCode, repeated.stderr)
+            assertTrue(repeated.stderr.contains("already completed"), repeated.stderr)
+            assertEquals(progressed, snapshot(source), "Repeating release 0.7.1 must preserve every new row and reward")
+            assertEquals(1L, presence.currentGeneration(), "A repeated release does not advance generation")
         }
     }
 }

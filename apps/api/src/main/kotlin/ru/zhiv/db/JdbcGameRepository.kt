@@ -273,7 +273,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
                        WHEN 'linked_email' THEN 0
                        WHEN 'saved_recovery_code' THEN 0
                        WHEN 'thousand_taps' THEN COALESCE((SELECT lifetime_taps FROM game_profiles WHERE user_id=?),0)
-                       ELSE (SELECT count(*) FROM (SELECT user_id FROM active_direct_friend_ids(?) LIMIT 5) friends)
+                       ELSE (SELECT gameplay_friend_count(?))
                    END) END AS progress
             FROM targets t LEFT JOIN game_achievements a ON a.user_id=? AND a.achievement_id=t.id
             ORDER BY t.position

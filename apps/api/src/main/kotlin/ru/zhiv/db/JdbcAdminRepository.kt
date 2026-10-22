@@ -575,7 +575,8 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         }
         // Earlier second buckets were already being purged before V28. Their backfill
         // is useful evidence, but cannot prove that an absent old bucket means zero.
-        val collectionStarted = c.one("SELECT started_at FROM game_tap_collection_metadata WHERE singleton") {
+        val collectionStarted = c.one("""SELECT greatest(m.started_at,g.reset_at)
+            FROM game_tap_collection_metadata m CROSS JOIN gameplay_generations g WHERE m.singleton AND g.singleton""") {
             it.getObject(1, OffsetDateTime::class.java).toInstant()
         } ?: instant
         TapActivityAnalyzer.analyze(targetPublicId,target.second,target.third,instant,samples)

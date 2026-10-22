@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const readYaml = async path => yaml.load(await readFile(join(root, path), "utf8"));
 
 test("all deployment and reset backups exclude ephemeral GPS rows while retaining their schema", async () => {
-  const scripts = ["scripts/deploy-update.sh", "scripts/reset-database.sh", "scripts/reset-user-data.sh", "scripts/reset-game-progress.sh"];
+  const scripts = ["scripts/deploy-update.sh", "scripts/reset-database.sh", "scripts/reset-user-data.sh", "scripts/lib/reset-game-progress.sh"];
   const sources = await Promise.all(scripts.map(script => readFile(join(root, script), "utf8")));
   for (const [index, source] of sources.entries()) {
     const dumps = source.split("\n").filter(line => /\bpg_dump\b/.test(line));

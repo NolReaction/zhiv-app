@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
 
 export type Presence = { seenAt: number; inactiveFor: number; resting: boolean; deepSleep: boolean };
@@ -17,9 +18,9 @@ export function decodePresence(raw: string | null, now: number) {
 }
 
 export function readPresence(key: string | undefined, now: number) {
-  try { return key ? decodePresence(window.localStorage.getItem(key), now) : null; } catch { return null; }
+  try { return key ? decodePresence(window.localStorage.getItem(gameplayStorageKey(key)), now) : null; } catch { return null; }
 }
 
 export function writePresence(key: string | undefined, presence: Presence) {
-  try { if (key) window.localStorage.setItem(key, JSON.stringify(presence)); } catch { /* Optional visual memory. */ }
+  try { if (key) window.localStorage.setItem(gameplayStorageKey(key), JSON.stringify(presence)); } catch { /* Optional visual memory. */ }
 }

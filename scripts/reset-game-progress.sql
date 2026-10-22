@@ -17,13 +17,13 @@ SET LOCAL statement_timeout = '3min';
 DO $$
 DECLARE
     cleared_tables text[] := ARRAY[
-        'earth_latest_locations', 'earth_frozen_locations',
+        'check_in_audiences', 'check_ins', 'earth_latest_locations', 'earth_frozen_locations',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
         'economy_commands',
         'economy_market_daily_turnover', 'economy_market_listings', 'economy_market_receipts',
         'economy_market_showcases', 'forest_memory_receipts',
-        'game_achievement_tiers', 'game_achievements',
-        'game_items', 'game_monthly_scores', 'game_presence_clients',
+        'game_achievement_tiers', 'game_daily_rewards', 'game_reward_claims',
+        'game_items', 'game_monthly_scores', 'game_presence_clients', 'game_presence_accounts', 'game_presence_daily',
         'game_sessions', 'game_tap_activity_minutes',
         'game_tap_activity_seconds', 'world_commands', 'world_ledger'
     ];
@@ -37,19 +37,21 @@ DECLARE
         'account_login_flows', 'account_login_identities', 'account_merge_previews',
         'account_merge_sources', 'account_operation_receipts', 'account_recovery_attempts',
         'account_recovery_codes', 'account_recovery_contact_removals', 'account_recovery_contacts',
-        'account_registration_tickets', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions', 'app_users',
-        'check_in_audiences', 'check_ins', 'circle_invites', 'circle_memberships',
+        'account_registration_tickets', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions',
+        'circle_invites', 'circle_memberships',
         'circle_sharing_preferences', 'circles', 'direct_invite_links', 'direct_invite_redemptions',
         'direct_person_favorites', 'direct_requests', 'earth_sharing_settings', 'earth_sharing_recipients',
-        'game_presence_accounts', 'game_presence_daily',
-        'game_achievement_reward_claims', 'game_daily_rewards', 'game_reward_claims',
-        'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes', 'notification_batches',
+        'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes',
         'notification_preferences', 'notification_subscriptions', 'player_feedback',
-        'player_feedback_actions', 'player_mail_messages', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
+        'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
         'recipient_sharing_preferences', 'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys'
     ];
-    -- Only obsolete gameplay events are removed; check-in reminders stay intact.
-    partial_tables text[] := ARRAY['notification_events'];
+    -- Identity rows change only their obsolete check-in timestamp. Security badges
+    -- and non-welcome service mail are retained exactly; other progress is removed.
+    partial_tables text[] := ARRAY[
+        'app_users', 'game_achievements', 'game_achievement_reward_claims', 'player_mail_messages', 'notification_events', 'notification_batches',
+        'gameplay_generations', 'gameplay_reset_runs'
+    ];
     expected_tables text[];
     actual_tables text[];
     table_name text;
@@ -57,6 +59,15 @@ DECLARE
     fingerprint text;
     preserved_fingerprints jsonb := '{}'::jsonb;
     service_fingerprint text;
+    batch_fingerprint text;
+    account_fingerprint text;
+    security_fingerprint text;
+    security_claim_fingerprint text;
+    mail_fingerprint text;
+    reset_history_fingerprint text;
+    previous_generation bigint;
+    release_reset_id constant text := '0.7.1';
+    reset_time timestamptz;
     apply_mode boolean := current_setting('zhiv.reset_game_progress', true) = 'on';
 BEGIN
     SELECT array_agg(name ORDER BY name COLLATE "C") INTO expected_tables
@@ -66,22 +77,17 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Game reset cancelled; review the schema first.';
     END IF;
-    -- V62 welcome claim timestamps, account mail, broadcast receipts, and pending mail delivery survive gameplay-only resets.
-    -- V63 pending sale proceeds are game wealth, intentionally cleared by this full-world reset like wallets.
-    -- V64 one-time daily gift state and receipts remain in the preserved tables.
-    -- V65 location data is ephemeral; account sharing choices and recipients survive gameplay resets.
-    -- V66 changes retention and source-session fencing; points remain ephemeral and are cleared.
-    -- V67 frozen recipient snapshots are cleared; recipient freeze choices remain preserved.
-    -- Any later migration must be reviewed, including columns on retained tables.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 67
+    -- V68 adds the reset generation and release ledger; migration itself never resets data.
+    -- Every later migration still requires an explicit inventory/policy review.
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 68
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,67) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,68) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V67. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V68. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN
@@ -91,6 +97,18 @@ BEGIN
             SELECT string_agg(format('public.%I', name), ', ')
             FROM unnest(expected_tables || ARRAY['flyway_schema_history']) AS t(name)
         ) || ' IN SHARE MODE';
+    END IF;
+    IF (SELECT count(*) FROM public.gameplay_generations) <> 1
+        OR NOT EXISTS (SELECT 1 FROM public.gameplay_generations WHERE singleton) THEN
+        RAISE EXCEPTION 'Expected the gameplay generation singleton. Game reset cancelled.';
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.gameplay_reset_runs WHERE reset_id = release_reset_id) THEN
+        RAISE NOTICE 'Release % reset already completed. No data changed.', release_reset_id;
+        RETURN;
+    END IF;
+    SELECT generation INTO previous_generation FROM public.gameplay_generations WHERE singleton;
+    IF previous_generation < 0 OR previous_generation >= 9007199254740990 THEN
+        RAISE EXCEPTION 'Invalid or exhausted gameplay generation. Game reset cancelled.';
     END IF;
     FOREACH table_name IN ARRAY cleared_tables LOOP
         EXECUTE format('SELECT count(*) FROM public.%I', table_name) INTO row_count;
@@ -110,18 +128,41 @@ BEGIN
             preserved_fingerprints := preserved_fingerprints || jsonb_build_object(table_name, fingerprint);
         END IF;
     END LOOP;
-    SELECT count(*) INTO row_count FROM public.notification_events WHERE category NOT IN ('checkin','mail');
-    RAISE NOTICE 'CLEAR notification_events except checkin and mail: % rows', row_count;
+    RAISE NOTICE 'RESET check-in timestamps, non-security achievements and welcome mail; retain auth, friends and service mail.';
+    RAISE NOTICE 'Release %, gameplay generation % -> %', release_reset_id, previous_generation, previous_generation + 1;
     IF NOT apply_mode THEN
         RAISE NOTICE 'Preview only. No application data was changed.';
         RETURN;
     END IF;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO service_fingerprint
-    FROM (SELECT md5(to_jsonb(e)::text) AS h FROM public.notification_events e WHERE category IN ('checkin','mail')) rows;
-    -- Profile INSERT invokes source synchronization. Restore these exact rows
-    -- afterwards so reset cannot create/rewrite service reminders as a side effect.
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO account_fingerprint
+    FROM (SELECT md5((to_jsonb(u) - 'last_check_in_at')::text) AS h FROM public.app_users u) rows;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO security_fingerprint
+    FROM (SELECT md5(to_jsonb(a)::text) AS h FROM public.game_achievements a
+        WHERE achievement_id IN ('linked_email','saved_recovery_code')) rows;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO security_claim_fingerprint
+    FROM (SELECT md5(to_jsonb(a)::text) AS h FROM public.game_achievement_reward_claims a
+        WHERE achievement_id IN ('linked_email','saved_recovery_code')) rows;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO mail_fingerprint
+    FROM (SELECT md5(to_jsonb(m)::text) AS h FROM public.player_mail_messages m
+        WHERE source_key <> 'welcome:v1') rows;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO reset_history_fingerprint
+    FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.gameplay_reset_runs r) rows;
+    -- Profile initialization synchronizes notifications. Restore only retained
+    -- service-mail events, never old check-in reminders or welcome-gift messages.
     CREATE TEMP TABLE game_reset_service_events ON COMMIT DROP AS
-    SELECT * FROM public.notification_events WHERE category IN ('checkin','mail');
+    SELECT e.* FROM public.notification_events e WHERE category = 'mail' AND EXISTS (
+        SELECT 1 FROM public.player_mail_messages m WHERE m.user_id=e.user_id
+            AND e.source_key='mail:' || m.id::text AND m.source_key <> 'welcome:v1'
+    );
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO service_fingerprint
+    FROM (SELECT md5(to_jsonb(e)::text) AS h FROM game_reset_service_events e) rows;
+
+    CREATE TEMP TABLE game_reset_service_batches ON COMMIT DROP AS
+    SELECT b.* FROM public.notification_batches b WHERE EXISTS (
+        SELECT 1 FROM game_reset_service_events e WHERE e.batch_id=b.id AND e.user_id=b.user_id
+    );
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO batch_fingerprint
+    FROM (SELECT md5(to_jsonb(b)::text) AS h FROM game_reset_service_batches b) rows;
 
     -- Receipts can outlive an earlier administrative profile reset or a merge.
     -- Include their maxima as well as live revisions, and compute using numeric
@@ -149,6 +190,10 @@ BEGIN
         SELECT string_agg(format('public.%I', name), ', ')
         FROM unnest(cleared_tables || reinitialized_tables) AS t(name)
     ) || ' RESTART IDENTITY RESTRICT';
+    UPDATE public.app_users SET last_check_in_at = NULL WHERE last_check_in_at IS NOT NULL;
+    DELETE FROM public.game_achievements WHERE achievement_id NOT IN ('linked_email','saved_recovery_code');
+    DELETE FROM public.game_achievement_reward_claims WHERE achievement_id NOT IN ('linked_email','saved_recovery_code');
+    DELETE FROM public.player_mail_messages WHERE source_key = 'welcome:v1';
     INSERT INTO public.world_profiles(user_id, revision, state)
     SELECT user_id, (previous_revision + 1)::bigint,
         '{"schemaVersion":1,"resources":{"sparks":0,"wood":0,"stone":0}}'::jsonb
@@ -173,9 +218,9 @@ BEGIN
     SELECT user_id, 'starting-pack:v1', 'starting_pack',
         (state->'wallet'->>'coins')::bigint, (state->'wallet'->>'pearls')::bigint, state->'inventory'
     FROM public.economy_profiles;
-    DELETE FROM public.notification_events WHERE category NOT IN ('checkin','mail');
-    DELETE FROM public.notification_events WHERE category IN ('checkin','mail');
+    DELETE FROM public.notification_events;
     INSERT INTO public.notification_events SELECT * FROM game_reset_service_events;
+    DELETE FROM public.notification_batches WHERE id NOT IN (SELECT id FROM game_reset_service_batches);
 
     IF EXISTS (
         SELECT 1 FROM game_reset_revision_fences f
@@ -207,11 +252,49 @@ BEGIN
         END IF;
     END LOOP;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
-    FROM (SELECT md5(to_jsonb(e)::text) AS h FROM public.notification_events e WHERE category IN ('checkin','mail')) rows;
-    IF fingerprint IS DISTINCT FROM service_fingerprint
-        OR EXISTS (SELECT 1 FROM public.notification_events WHERE category NOT IN ('checkin','mail')) THEN
+    FROM (SELECT md5((to_jsonb(u) - 'last_check_in_at')::text) AS h FROM public.app_users u) rows;
+    IF fingerprint IS DISTINCT FROM account_fingerprint
+        OR EXISTS (SELECT 1 FROM public.app_users WHERE last_check_in_at IS NOT NULL) THEN
+        RAISE EXCEPTION 'Preserved table app_users changed outside the check-in timestamp. Game reset rolled back.';
+    END IF;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
+    FROM (SELECT md5(to_jsonb(a)::text) AS h FROM public.game_achievements a) rows;
+    IF fingerprint IS DISTINCT FROM security_fingerprint THEN
+        RAISE EXCEPTION 'Security achievement preservation invariant failed. Game reset rolled back.';
+    END IF;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
+    FROM (SELECT md5(to_jsonb(a)::text) AS h FROM public.game_achievement_reward_claims a) rows;
+    IF fingerprint IS DISTINCT FROM security_claim_fingerprint THEN
+        RAISE EXCEPTION 'Security reward claim preservation invariant failed. Game reset rolled back.';
+    END IF;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
+    FROM (SELECT md5(to_jsonb(m)::text) AS h FROM public.player_mail_messages m) rows;
+    IF fingerprint IS DISTINCT FROM mail_fingerprint THEN
+        RAISE EXCEPTION 'Service mail preservation invariant failed. Game reset rolled back.';
+    END IF;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
+    FROM (SELECT md5(to_jsonb(e)::text) AS h FROM public.notification_events e) rows;
+    IF fingerprint IS DISTINCT FROM service_fingerprint THEN
         RAISE EXCEPTION 'Notification reset invariant failed. Game reset rolled back.';
     END IF;
-    RAISE NOTICE 'Game progress cleared. Accounts, login sessions, social links and service history are unchanged.';
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
+    FROM (SELECT md5(to_jsonb(b)::text) AS h FROM public.notification_batches b) rows;
+    IF fingerprint IS DISTINCT FROM batch_fingerprint THEN
+        RAISE EXCEPTION 'Service notification batch preservation invariant failed. Game reset rolled back.';
+    END IF;
+    reset_time := clock_timestamp();
+    UPDATE public.gameplay_generations SET generation = previous_generation + 1, reset_at = reset_time WHERE singleton;
+    INSERT INTO public.gameplay_reset_runs(reset_id, generation, completed_at)
+    VALUES (release_reset_id, previous_generation + 1, reset_time);
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
+    FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.gameplay_reset_runs r WHERE reset_id <> release_reset_id) rows;
+    IF fingerprint IS DISTINCT FROM reset_history_fingerprint
+        OR NOT EXISTS (SELECT 1 FROM public.gameplay_generations WHERE singleton
+            AND generation = previous_generation + 1 AND reset_at = reset_time)
+        OR NOT EXISTS (SELECT 1 FROM public.gameplay_reset_runs WHERE reset_id = release_reset_id
+            AND generation = previous_generation + 1 AND completed_at = reset_time) THEN
+        RAISE EXCEPTION 'Reset generation invariant failed. Game reset rolled back.';
+    END IF;
+    RAISE NOTICE 'Release % fresh start completed. Auth, friends and security achievements preserved; gameplay, check-ins and records cleared.', release_reset_id;
 END $$;
 COMMIT;

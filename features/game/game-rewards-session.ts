@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { gameRewardClaimSchema, type GameRewardClaim, type GameRewardResult, type GameRewards } from "./game-rewards-api";
@@ -13,7 +14,7 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
   let view: View = { data: null, loading: false, busy: false, uncertain: false, pending: null, error: "", result: null, retryAt: 0, readVersion: 0 };
   let subscribers = 0, epoch = 0, sequence = 0, read: Promise<void> | null = null;
   let serverClock = Date.now(), localClock = performance.now();
-  const key = `zhiv:game-rewards:pending:v1:${owner}`;
+  const key = gameplayStorageKey(`zhiv:game-rewards:pending:v1:${owner}`);
   const listeners = new Set<() => void>(), authListeners = new Map<() => void, number>(), requests = new Set<AbortController>();
   const publish = (patch: Partial<View>) => { view = { ...view, ...patch }; listeners.forEach(listener => listener()); };
   const valid = (generation: number) => subscribers > 0 && generation === epoch;

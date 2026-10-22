@@ -12,6 +12,7 @@ const val PRESENCE_IDLE_SECONDS = 300L
 const val PRESENCE_LEASE_SECONDS = 90L
 const val PRESENCE_WATCH_MILLIS = 20 * 60 * 60 * 1000L
 const val PRESENCE_HEADER = "X-Game-Presence"
+const val GAMEPLAY_GENERATION_HEADER = "X-Game-Generation"
 
 @Serializable
 data class PresenceRequest(val kind: String, val presenceId: String, val sequence: Long, val active: Boolean)
@@ -27,8 +28,10 @@ data class PresenceView(
 )
 
 interface PresenceRepository {
-    suspend fun update(sessionHash: ByteArray, request: PresenceRequest): PresenceView
-    suspend fun requireActive(sessionHash: ByteArray, presenceId: UUID)
+    suspend fun currentGeneration(): Long
+    suspend fun update(sessionHash: ByteArray, request: PresenceRequest, gameplayGeneration: Long = 0): PresenceView
+    suspend fun requireActive(sessionHash: ByteArray, presenceId: UUID?, gameplayGeneration: Long = 0)
+    suspend fun requireGeneration(sessionHash: ByteArray, gameplayGeneration: Long)
 }
 
 fun validatePresenceRequest(request: PresenceRequest): UUID {

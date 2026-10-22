@@ -1,7 +1,8 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
 const memory = new Map<string, boolean>();
 
-export const sectionGuideLauncherPreferenceKey = (owner: string) => `zhiv.section-guide.launcher.v1:${encodeURIComponent(owner)}`;
+export const sectionGuideLauncherPreferenceKey = (owner: string) => gameplayStorageKey(`zhiv.section-guide.launcher.v1:${encodeURIComponent(owner)}`);
 
 /** Controls manual help launchers without changing saved lesson progress. */
 export function readSectionGuideLauncherPreference(owner: string, storage?: PreferenceStorage): boolean {

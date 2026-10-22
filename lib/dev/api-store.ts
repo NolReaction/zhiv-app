@@ -264,6 +264,7 @@ function asMe(user: UserRecord, serverTime = new Date()): MeResponse {
     ? new Date(Date.parse(user.displayNameChangedAt) + 24 * 60 * 60_000)
     : null;
   return {
+    gameplayGeneration: 0,
     status: activeUserStatus(user.status, serverTime.getTime()),
     user: publicUser(user),
     lastCheckInAt: user.lastCheckInAt,

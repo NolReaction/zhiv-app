@@ -16,6 +16,7 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.http.*
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.toResponse
+import ru.zhiv.presence.PresenceRepository
 import ru.zhiv.security.TokenCodec
 import java.util.Base64
 
@@ -27,7 +28,8 @@ private val rawPattern=Regex("^[A-Za-z0-9_-]{43}$")
 private fun codeValue(value: String): String? =
     value.trim().takeIf { it.startsWith("ZHIV-R1-") }?.removePrefix("ZHIV-R1-")?.takeIf(rawPattern::matches)
 
-fun Route.codeRecoveryRoutes(repository: CodeRecoveryRepository, identities: IdentityRepository, codec: TokenCodec, config: AppConfig) {
+fun Route.codeRecoveryRoutes(repository: CodeRecoveryRepository, identities: IdentityRepository, codec: TokenCodec, config: AppConfig,
+    presence: PresenceRepository? = null) {
     rateLimit(RateLimitName("account-recovery-read")) {
         get("/api/v1/recovery-code") {
             call.response.header(HttpHeaders.CacheControl,"no-store")
@@ -79,7 +81,7 @@ fun Route.codeRecoveryRoutes(repository: CodeRecoveryRepository, identities: Ide
                     call.respond(HttpStatusCode.Unauthorized,ApiErrorResponse("INVALID_CODE","Код неверен, заменён или уже использован")); return@post
                 }
                 call.response.header(HttpHeaders.SetCookie,sessionCookieHeader(config,rawSession))
-                call.respond(user.toResponse())
+                call.respond(user.toResponse(presence?.currentGeneration() ?: 0))
             }
         }
     }

@@ -1,4 +1,5 @@
 "use client";
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { gameJournalStore } from "@/features/game/game-sync-journal";
@@ -30,8 +31,8 @@ export function useGameProgress({ ownerPublicId, isOnline, enabled = true, onSes
     let unlock: (() => void) | undefined;
     let claimTimer: ReturnType<typeof setTimeout> | undefined;
     let drainTimer: ReturnType<typeof setTimeout> | undefined;
-    const leaseKey = `zhiv:game-writer:v1:${ownerPublicId}`;
-    const journalKey = `zhiv:game-outbox:v1:${ownerPublicId}`;
+    const leaseKey = gameplayStorageKey(`zhiv:game-writer:v1:${ownerPublicId}`);
+    const journalKey = gameplayStorageKey(`zhiv:game-outbox:v1:${ownerPublicId}`);
     const leaseId = createUuidV4();
     const inbox = gameTabInbox(ownerPublicId);
     const owns = () => {

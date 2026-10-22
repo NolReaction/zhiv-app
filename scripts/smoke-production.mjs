@@ -7,7 +7,10 @@ import { readFileSync } from "node:fs";
 assert.equal(process.env.CI, "true", "Run only against the isolated CI stack");
 const origin = "https://localhost";
 const presenceByCookie = new Map();
+const generationByCookie = new Map();
 async function resumePresence(cookie) {
+  const me = await api("GET", "/api/v1/me", { cookie });
+  generationByCookie.set(cookie, me.data.gameplayGeneration);
   const presenceId = randomUUID();
   const result = await api("POST", "/api/v1/presence", { cookie, body: { kind: "resume", presenceId, sequence: 0, active: true } });
   assert.equal(result.data.status, "active");
@@ -21,6 +24,7 @@ async function api(method, path, { cookie, body, expected = 200, key = randomUUI
     const headers = { Origin: source, "Idempotency-Key": key };
     if (cookie) headers.Cookie = cookie;
     if (presenceByCookie.has(cookie)) headers["X-Game-Presence"] = presenceByCookie.get(cookie);
+    if (generationByCookie.has(cookie)) headers["X-Game-Generation"] = String(generationByCookie.get(cookie));
     if (payload !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(payload);
@@ -50,6 +54,9 @@ async function profile(name) {
   for (const flag of ["__Host-zhiv_session=", "HttpOnly", "Secure", "SameSite=Lax"]) {
     assert.ok(header.includes(flag), "Missing cookie protection: " + flag);
   }
+  const me = await api("GET", "/api/v1/me", { cookie: result.cookie });
+  assert.ok(Number.isSafeInteger(me.data.gameplayGeneration) && me.data.gameplayGeneration >= 0);
+  generationByCookie.set(result.cookie, me.data.gameplayGeneration);
   return result;
 }
 const owner = await profile("CI owner");
@@ -401,4 +408,16 @@ await api("PUT", "/api/v1/recovery-code", { cookie: restored.cookie, body: { cod
 await api("DELETE", "/api/v1/people/" + circle, { cookie: restored.cookie, expected: 204 });
 await api("DELETE", "/api/v1/groups/" + group, { cookie: restored.cookie, expected: 204 });
 await api("POST", "/api/v1/account-recovery/attempts", { expected: 404 });
+// The relationship/recovery checks above intentionally archive every friend pair.
+// Leave a separate, real API-created fixture for the later deployment/reset
+// rehearsal to prove that active friendships and existing sessions survive.
+const resetKeeper = await profile("CI fresh-start keeper");
+const resetFriend = await profile("CI fresh-start friend");
+const resetRequest = await api("POST", "/api/v1/direct-requests", {
+  cookie: resetKeeper.cookie, body: { publicId: resetFriend.data.user.publicId }, expected: 201,
+});
+await api("POST", "/api/v1/direct-requests/" + resetRequest.data.request.requestId + "/accept", { cookie: resetFriend.cookie });
+await api("POST", "/api/v1/check-ins", { cookie: resetKeeper.cookie });
+assert.equal((await api("GET", "/api/v1/people", { cookie: resetKeeper.cookie })).data.people.length, 1);
+assert.equal((await api("GET", "/api/v1/people", { cookie: resetFriend.cookie })).data.people.length, 1);
 console.log("Production smoke passed: secure cookies, relations/groups, privacy/status/nicknames, forest memory/leases/replays, code recovery, revocation, retirement.");

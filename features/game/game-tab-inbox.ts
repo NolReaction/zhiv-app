@@ -1,3 +1,4 @@
+import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { z } from "zod";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { gameJournalStore } from "@/features/game/game-sync-journal";
@@ -9,7 +10,7 @@ type InboxStorage = Pick<Storage, "getItem" | "setItem" | "removeItem" | "key" |
 
 /** Every key is immutable and unique: two tabs never overwrite each other's taps. */
 export function gameTabInbox(owner: string, storage: InboxStorage = localStorage) {
-  const prefix = `zhiv:game-input:v1:${owner}:`;
+  const prefix = gameplayStorageKey(`zhiv:game-input:v1:${owner}:`);
   const journal = gameJournalStore(owner, storage);
   const list = () => {
     const keys: string[] = [];

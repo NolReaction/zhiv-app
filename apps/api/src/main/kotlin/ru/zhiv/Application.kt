@@ -382,9 +382,10 @@ fun Application.installZhivApi(
         identityRoutes(
             identities, tokenCodec, config,
             allowLegacyBootstrap = !authConfig.vkEnabled && !authConfig.emailEnabled && !authConfig.telegramEnabled,
+            presence = presence,
         )
         auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
-        rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
+        rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config, presence) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         games?.let { gameRoutes(it, tokenCodec, config, presence) }
         presence?.let { presenceRoutes(it, tokenCodec, config) }
@@ -397,7 +398,7 @@ fun Application.installZhivApi(
         forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config, presence) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         notifications?.let { notificationRoutes(it, tokenCodec, config) }
-        playerMail?.let { mailRoutes(it, tokenCodec, config) }
+        playerMail?.let { mailRoutes(it, tokenCodec, config, presence) }
         promo?.let { promoRoutes(it, tokenCodec, config, presence) }
         adminPromo?.let { adminPromoRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
@@ -441,7 +442,7 @@ fun Application.installZhivApi(
         guestWorlds?.let { guestWorldRoutes(it, tokenCodec, config, presence) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
         directInvites?.let { directInviteRoutes(it, tokenCodec, config) }
-        recovery?.let { codeRecoveryRoutes(it, identities, tokenCodec, config) }
+        recovery?.let { codeRecoveryRoutes(it, identities, tokenCodec, config, presence) }
     }
 }
 

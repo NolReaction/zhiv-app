@@ -33,6 +33,7 @@ import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.parseCanonicalUuidV4
 import ru.zhiv.http.sessionCookie
 import ru.zhiv.http.sessionCookieHeader
+import ru.zhiv.presence.PresenceRepository
 import ru.zhiv.security.TokenCodec
 import java.time.Duration
 
@@ -41,6 +42,7 @@ fun Route.identityRoutes(
     tokenCodec: TokenCodec,
     config: AppConfig,
     allowLegacyBootstrap: Boolean = true,
+    presence: PresenceRepository? = null,
 ) {
     rateLimit(RateLimitName("relationships")) {
         route("/api/v1/me/time-zone") {
@@ -68,7 +70,7 @@ fun Route.identityRoutes(
                     return@patch
                 }
                 when (val result = repository.updateTimeZone(tokenCodec.hash(rawToken), timeZone, key)) {
-                    is TimeZoneUpdateResult.Success -> call.respond(result.user.toResponse())
+                    is TimeZoneUpdateResult.Success -> call.respond(result.user.toResponse(presence?.currentGeneration() ?: 0))
                     TimeZoneUpdateResult.Unauthorized -> call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
                     TimeZoneUpdateResult.Invalid -> call.respond(HttpStatusCode.BadRequest, ApiErrorResponse("INVALID_TIME_ZONE", "Выберите часовой пояс из списка"))
                     TimeZoneUpdateResult.IdempotencyConflict -> call.respond(HttpStatusCode.Conflict, ApiErrorResponse("IDEMPOTENCY_CONFLICT", "Ключ уже использован для другого часового пояса"))
@@ -109,7 +111,7 @@ fun Route.identityRoutes(
                     return@put
                 }
                 when (val result = repository.updateStatus(tokenCodec.hash(rawToken), text, key, duration)) {
-                    is DisplayNameUpdateResult.Success -> call.respond(result.user.toResponse())
+                    is DisplayNameUpdateResult.Success -> call.respond(result.user.toResponse(presence?.currentGeneration() ?: 0))
                     DisplayNameUpdateResult.Unauthorized -> call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
                     else -> call.respond(HttpStatusCode.Conflict, ApiErrorResponse("IDEMPOTENCY_CONFLICT", "Повторите сохранение"))
                 }
@@ -150,7 +152,7 @@ fun Route.identityRoutes(
                 val currentToken = call.sessionCookie(config)
                 val currentUser = currentToken?.let { repository.findBySession(tokenCodec.hash(it)) }
                 if (currentUser != null) {
-                    call.respond(currentUser.toResponse())
+                    call.respond(currentUser.toResponse(presence?.currentGeneration() ?: 0))
                     return@post
                 }
 
@@ -189,7 +191,7 @@ fun Route.identityRoutes(
                     return@post
                 }
                 call.response.header(HttpHeaders.SetCookie, sessionCookieHeader(config, token.raw))
-                call.respond(HttpStatusCode.Created, user.toResponse())
+                call.respond(HttpStatusCode.Created, user.toResponse(presence?.currentGeneration() ?: 0))
             }
         }
     }
@@ -227,7 +229,7 @@ fun Route.identityRoutes(
             call.respond(HttpStatusCode.Unauthorized, ApiErrorResponse("UNAUTHORIZED", "Сессия не найдена"))
             return@get
         }
-        call.respond(user.toResponse())
+        call.respond(user.toResponse(presence?.currentGeneration() ?: 0))
     }
     }
 
@@ -312,14 +314,15 @@ fun Route.identityRoutes(
                         )
                     }
 
-                    is DisplayNameUpdateResult.Success -> call.respond(result.user.toResponse())
+                    is DisplayNameUpdateResult.Success -> call.respond(result.user.toResponse(presence?.currentGeneration() ?: 0))
                 }
             }
         }
     }
 }
 
-internal fun UserSnapshot.toResponse() = MeResponse(
+internal fun UserSnapshot.toResponse(gameplayGeneration: Long = 0) = MeResponse(
+    gameplayGeneration = gameplayGeneration,
     status = statusText?.let { text -> statusUpdatedAt?.let { UserStatusDto(text, it.toInstant().toString(), statusExpiresAt?.toInstant()?.toString()) } },
     user = PublicUserDto(publicId = publicId, displayName = displayName, tag = tag),
     lastCheckInAt = lastCheckInAt?.toInstant()?.toString(),

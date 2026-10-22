@@ -114,6 +114,7 @@ import styles from "./app-shell.module.css";
 import glass from "@/components/glass-action.module.css";
 import { notify, TransientNotice } from "@/components/app-notifications";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { GAMEPLAY_RESET_EVENT, gameplayStorageKey, prepareGameplayGeneration } from "@/lib/gameplay-generation";
 import { copyText } from "@/lib/identity-sharing";
 import { createIdentityRecovery, type IdentityRecovery } from "./identity-recovery";
 import { AppStartup, useAppStartup } from "@/features/startup/app-startup";
@@ -275,12 +276,12 @@ function persistPending(storageKey: string, value: PendingBootstrap | PendingChe
 }
 
 function clickerStorageKey(publicId: string, prefix = CLICKER_PROGRESS_STORAGE_PREFIX): string {
-  return `${prefix}:${publicId}`;
+  return gameplayStorageKey(`${prefix}:${publicId}`);
 }
 
 function archiveLocalGame(publicId: string, progress: ClickerRun) {
   try {
-    const key = `zhiv.clicker-archive.v054:${publicId}`;
+    const key = gameplayStorageKey(`zhiv.clicker-archive.v054:${publicId}`);
     const saved = parseClickerProgress(window.localStorage.getItem(key) ?? "", progress.storySeed);
     if (!saved) window.localStorage.setItem(key, serializeClickerProgress(progress));
     const source = saved ?? progress;
@@ -602,8 +603,8 @@ function CheckInContent() {
   const clearPendingCheckIn = useCallback(() => {
     pendingCheckIn.current = null;
     setCheckInUnconfirmed(false);
-    removePending(PENDING_CHECK_IN_STORAGE_KEY);
-    removePending(LEGACY_PENDING_CHECK_IN_STORAGE_KEY);
+    removePending(gameplayStorageKey(PENDING_CHECK_IN_STORAGE_KEY));
+    removePending(gameplayStorageKey(LEGACY_PENDING_CHECK_IN_STORAGE_KEY));
   }, []);
 
   const resetTransientCheckIn = useCallback(() => {
@@ -675,6 +676,29 @@ function CheckInContent() {
     // Reapply the new activity mode even when a repeated network pause keeps the same mode.
     setActivityPauseVersion(value => value + 1);
   }, [setWorldAvailable, setEconomyAvailable, setWorldDirectActions, setEconomyDirectActions, setLocalEconomyActions]);
+  const pauseForReset = useRef(pauseGameplay);
+  useLayoutEffect(() => { pauseForReset.current = pauseGameplay; }, [pauseGameplay]);
+  const resetReloading = useRef(false);
+  const reloadGameplay = useCallback(() => {
+    if (resetReloading.current) return;
+    resetReloading.current = true;
+    // Keep this document's generation fixed until unload. Its final saves cannot
+    // contaminate the new generation, even when another tab already restarted.
+    pauseForReset.current();
+    identityEpoch.current += 1;
+    setScreen("loading");
+    window.location.reload();
+  }, []);
+  const acceptGameplayGeneration = useCallback((identity: MeResponse) => {
+    if (resetReloading.current) return false;
+    if (prepareGameplayGeneration(identity.user.publicId, identity.gameplayGeneration ?? 0)) return true;
+    reloadGameplay();
+    return false;
+  }, [reloadGameplay]);
+  useEffect(() => {
+    window.addEventListener(GAMEPLAY_RESET_EVENT, reloadGameplay);
+    return () => window.removeEventListener(GAMEPLAY_RESET_EVENT, reloadGameplay);
+  }, [reloadGameplay]);
   const activity = useActivity(screen === "home" ? me?.user.publicId ?? null : null, reconcileGameplay, loseSession, pauseGameplay);
   const earthSelected = activeView === "earth";
   const earthAvailable = earthMapAvailable({ mode: activity.mode, startupActive,
@@ -793,6 +817,7 @@ function CheckInContent() {
   useEffect(() => { if (screen === "home" && me) void worldRefresh(); }, [game.progress?.lifetimeTaps, me, screen, worldRefresh]);
 
   const syncMeSnapshot = useCallback((identity: MeResponse) => {
+    if (!acceptGameplayGeneration(identity)) return;
     // A mutation response supersedes a background read that started before it.
     selfRequest.current += 1;
     const pending = pendingCheckIn.current;
@@ -803,7 +828,7 @@ function CheckInContent() {
     setStreak(identity.streak);
     setClockOffsetMs(serverOffset(identity.serverTime));
     setClientNowMs(Date.now());
-  }, [clearPendingCheckIn]);
+  }, [acceptGameplayGeneration, clearPendingCheckIn]);
 
   const refreshPeople = useCallback(async (signal?: AbortSignal) => {
     const epoch = identityEpoch.current;
@@ -882,6 +907,11 @@ function CheckInContent() {
   }, [loseSession]);
 
   const adoptMe = useCallback((identity: MeResponse) => {
+    // No gameplay hook, local journal or onboarding store gets an owner before
+    // the authoritative /me generation has selected its storage namespace.
+    if (!acceptGameplayGeneration(identity)) return;
+    // A storage failure may leave an exact receipt only in this document.
+    pendingCheckIn.current ??= readPending(gameplayStorageKey(PENDING_CHECK_IN_STORAGE_KEY), isPendingCheckIn);
     setSceneLoad({ owner: undefined, entry: -1, state: "loading" });
     setSceneEntry(previous => previous + 1);
     identityRecovery.current?.dispose();
@@ -935,6 +965,7 @@ function CheckInContent() {
     accountReturn.current = false;
     setScreen("home");
   }, [
+    acceptGameplayGeneration,
     closeWorld,
     clearPendingBootstrap,
     clearPendingCheckIn,
@@ -969,13 +1000,7 @@ function CheckInContent() {
       PENDING_BOOTSTRAP_STORAGE_KEY,
       isPendingBootstrap,
     );
-    const restoredCheckIn = readPending(
-      PENDING_CHECK_IN_STORAGE_KEY,
-      isPendingCheckIn,
-    );
-    removePending(LEGACY_PENDING_CHECK_IN_STORAGE_KEY);
     pendingBootstrap.current = restoredBootstrap;
-    pendingCheckIn.current = restoredCheckIn;
 
     const recovery = createIdentityRecovery({
       load: getMe,
@@ -1362,7 +1387,7 @@ function CheckInContent() {
           createdAt,
           expiresAt: createdAt + PENDING_CHECK_IN_TTL_MS,
         };
-        persistPending(PENDING_CHECK_IN_STORAGE_KEY, pendingCheckIn.current);
+        persistPending(gameplayStorageKey(PENDING_CHECK_IN_STORAGE_KEY), pendingCheckIn.current);
       }
 
       const response = await createCheckIn(pendingCheckIn.current.idempotencyKey);
