@@ -166,11 +166,17 @@ test("finished species catches create owned stock once while class-only deliveri
 });
 
 test("ordinary resident orders consume selected fish with the same payment and next order", () => {
-  const state = fisher(); state.residentOrders = food.normalizedResidentOrders(state, now);
+  const state = fisher();
+  assert.equal(food.obtainableResidentOrderItems(state).has("fish_epic"), false, "held fish alone do not unlock ordinary requests");
+  state.fishing.ownedRods.push("river_rod");
+  assert.equal(food.obtainableResidentOrderItems(state).has("fish_epic"), true);
+  state.residentOrders = food.normalizedResidentOrders(state, now);
   const template = model.economyCatalog.food.orders.templates.find(order => order.id === "plesk_river_catch");
   state.residentOrders.slots[0] = { sequence: 12, readyAt: new Date(now).toISOString(), templateId: template.id,
     terms: { ...template, items: { fish_epic: 2 }, coins: 777 } };
   const offer = food.residentOrderBoard(state, now).offers.find(order => order.slot === 0);
+  assert.equal(offer.templateId, template.id);
+  assert.deepEqual(offer.items, { fish_epic: 2 });
   const beforeCoins = state.wallet.coins;
   apply(state, input("complete_resident_order", offer.id, { fishSelection: { fish_mirror_koi: 2 } }));
   assert.equal(state.inventory.fish_epic, 4); assert.equal(state.fishing.stock.fish_mirror_koi, 2);

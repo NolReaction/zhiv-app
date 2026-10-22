@@ -209,8 +209,8 @@ class JdbcSchemaBaselineIntegrationTest {
             assertEquals(mapOf("managed_promo_codes" to "[]", "player_security_observations" to "[]",
                 "player_mail_messages" to "[]", "admin_mail_broadcasts" to "[]",
                 "earth_sharing_settings" to "[]", "earth_sharing_recipients" to "[]", "earth_latest_locations" to "[]", "earth_frozen_locations" to "[]",
-                "gameplay_reset_runs" to "[]"), tableData(source).filterKeys { it !in data && it != "gameplay_generations" },
-                "New campaign configuration, security observations and mail start empty on the historical schema")
+                "gameplay_reset_runs" to "[]", "onboarding_progress" to "[]"), tableData(source).filterKeys { it !in data && it != "gameplay_generations" },
+                "New campaign configuration, security observations, mail and uncompleted onboarding start empty on the historical schema")
             assertEquals("0:true", scalar(source,
                 "SELECT generation::text || ':' || (reset_at IS NULL)::text FROM gameplay_generations WHERE singleton"),
                 "Schema upgrade only prepares the reset mechanism; it does not start a new game")

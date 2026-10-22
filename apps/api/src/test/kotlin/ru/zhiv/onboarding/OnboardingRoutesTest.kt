@@ -33,14 +33,14 @@ class OnboardingRoutesTest {
                 if (decision.course == "world") decision.status else null)
         }
     }
-    private fun ApplicationTestBuilder.setup(repo: Fake) {
+    private fun ApplicationTestBuilder.setup(repo: Fake, appConfig: AppConfig = config) {
         application {
             install(ContentNegotiation) { json(Json { encodeDefaults = true; explicitNulls = true }) }
             install(RateLimit) {
                 listOf("world-read", "world-write").forEach { name -> register(RateLimitName(name)) { rateLimiter(limit = 100, refillPeriod = 1.hours) } }
             }
             install(StatusPages) { exception<AuthFailure> { call, error -> call.respond(HttpStatusCode.fromValue(error.status), ApiErrorResponse(error.code, error.message)) } }
-            routing { onboardingRoutes(repo, TokenCodec(), config) }
+            routing { onboardingRoutes(repo, TokenCodec(), appConfig) }
         }
     }
     private fun HttpRequestBuilder.authorized() {
@@ -53,7 +53,14 @@ class OnboardingRoutesTest {
         assertEquals(HttpStatusCode.Unauthorized, client.get("/api/v1/onboarding?ownerPublicId=$owner").status)
         assertEquals(HttpStatusCode.BadRequest, client.get("/api/v1/onboarding") { authorized() }.status)
         assertEquals(HttpStatusCode.BadRequest, client.get("/api/v1/onboarding?ownerPublicId=$owner&ownerPublicId=$owner") { authorized() }.status)
-        assertEquals(HttpStatusCode.Forbidden, client.post("/api/v1/onboarding") { cookie(config.cookieName, "test"); contentType(ContentType.Application.Json); setBody("{}") }.status)
+        assertEquals(HttpStatusCode.Forbidden, client.post("/api/v1/onboarding") {
+            cookie(config.cookieName, "test"); header(HttpHeaders.Origin, "https://untrusted.example")
+            contentType(ContentType.Application.Json); setBody("""{"ownerPublicId":"$owner","course":"world","status":"completed"}""")
+        }.status)
+        // Development permits absent Origin; the malformed body still fails validation.
+        assertEquals(HttpStatusCode.BadRequest, client.post("/api/v1/onboarding") {
+            cookie(config.cookieName, "test"); contentType(ContentType.Application.Json); setBody("{}")
+        }.status)
         for (body in listOf("{}", """{"ownerPublicId":"$owner","course":"world","status":"started"}""",
             """{"ownerPublicId":"$owner","course":"world","status":"completed","rewardReady":true}""",
             """{"ownerPublicId":"$owner","course":"world","status":1}""")) {
@@ -64,6 +71,28 @@ class OnboardingRoutesTest {
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
         assertContains(response.bodyAsText(), "\"world\":\"completed\"")
+        assertEquals(1, repo.writes)
+    }
+
+    @Test fun `production rejects missing or hostile origin before a valid terminal preference reaches storage`() = testApplication {
+        val production = config.copy(production = true)
+        val repo = Fake(); setup(repo, production)
+        val body = """{"ownerPublicId":"$owner","course":"world","status":"completed"}"""
+        for (origin in listOf(null, "https://untrusted.example")) {
+            val response = client.post("/api/v1/onboarding") {
+                cookie(production.cookieName, "test-session")
+                if (origin != null) header(HttpHeaders.Origin, origin)
+                contentType(ContentType.Application.Json); setBody(body)
+            }
+            assertEquals(HttpStatusCode.Forbidden, response.status)
+            assertContains(response.bodyAsText(), "UNTRUSTED_ORIGIN")
+        }
+        assertEquals(0, repo.writes)
+        val accepted = client.post("/api/v1/onboarding") {
+            cookie(production.cookieName, "test-session"); header(HttpHeaders.Origin, "https://im-alive.ru")
+            contentType(ContentType.Application.Json); setBody(body)
+        }
+        assertEquals(HttpStatusCode.OK, accepted.status)
         assertEquals(1, repo.writes)
     }
 }

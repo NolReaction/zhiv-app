@@ -478,7 +478,7 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(3,json.getValue("achievements").jsonArray.size)
         val legacy=client.get("/api/v1/game/achievements?catalog=2") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(3,Json.parseToJsonElement(legacy.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
-        for (query in listOf("catalog=6","catalog=3&catalog=3"))
+        for (query in listOf("catalog=7","catalog=3&catalog=3","catalog=6&catalog=6"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/achievements?$query") { header(HttpHeaders.Cookie,cookie) }.status)
         val expanded=client.get("/api/v1/game/achievements?catalog=3") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(6,Json.parseToJsonElement(expanded.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
@@ -495,6 +495,24 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(15,cards.size)
         assertTrue(cards.all { it.jsonObject.getValue("tiers").jsonArray.isNotEmpty() })
         assertEquals(4,cards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="home_builder" }.jsonObject.getValue("tiers").jsonArray.size)
+        val activities=client.get("/api/v1/game/achievements?catalog=6") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(HttpStatusCode.OK,activities.status)
+        assertEquals("no-store",activities.headers[HttpHeaders.CacheControl])
+        val activityJson=Json.parseToJsonElement(activities.bodyAsText()).jsonObject
+        assertEquals(p.publicId,activityJson.getValue("ownerPublicId").jsonPrimitive.content)
+        val activityCards=activityJson.getValue("achievements").jsonArray
+        assertEquals(19,activityCards.size)
+        assertEquals(cards.toList(),activityCards.take(15),"catalog5 keeps the same ordered cards and tiers")
+        val newTargets=linkedMapOf("patient_angler" to listOf(10L,50L,200L),"campfire_cook" to listOf(5L,25L,100L),
+            "helpful_neighbor" to listOf(5L,25L,100L),"generous_garden" to listOf(10L,50L,200L))
+        assertEquals(newTargets.keys.toList(),activityCards.drop(15).map { it.jsonObject.getValue("id").jsonPrimitive.content })
+        for (card in activityCards.drop(15)) {
+            val item=card.jsonObject
+            val targets=newTargets.getValue(item.getValue("id").jsonPrimitive.content)
+            val tiers=item.getValue("tiers").jsonArray
+            assertEquals(targets,tiers.map { it.jsonObject.getValue("target").jsonPrimitive.long })
+            assertTrue(tiers.all { it.jsonObject.getValue("progress").jsonPrimitive.long==0L && it.jsonObject.getValue("unlockedAt")==JsonNull })
+        }
         for (query in listOf("metric=unknown","metric=best_series&metric=best_series"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
 
