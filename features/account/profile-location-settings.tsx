@@ -49,7 +49,7 @@ export function ProfileLocationSettingsContent({ enabled, onEnabledChange, locat
     </>}
     <details className={styles.details}>
       <summary>Как работает определение места</summary>
-      <p>При первом поиске браузер спрашивает разрешение. Если оно уже выдано, открытая карта может получить вашу частную позицию автоматически. В скрытой вкладке обновления останавливаются.</p>
+      <p>Открытая карта сама определяет ваше место, если геопозиция включена и призрак выключен. При первом запросе браузер спрашивает разрешение. В скрытой вкладке обновления останавливаются.</p>
       <p>Круг на карте показывает погрешность, которую сообщил браузер. Большой круг означает примерное место: его точность зависит от устройства, Wi-Fi и службы геолокации браузера.</p>
       <p>Если разрешение есть, а поиск не работает, проверьте доступ браузера в системных настройках местоположения. На Mac: «Конфиденциальность и безопасность» → «Службы геолокации».</p>
     </details>
@@ -60,7 +60,7 @@ export function ProfileLocationSettings({ ownerPublicId, visible, privacy }: {
   ownerPublicId: string; visible: boolean; privacy?: LocationPrivacyState;
 }) {
   const preference = useEarthLocationPreference(ownerPublicId);
-  const location = useEarthLocation({ ownerPublicId, enabled: visible, autoStartWhenGranted: false });
+  const location = useEarthLocation({ ownerPublicId, enabled: visible, autoStart: false });
   return <ProfileLocationSettingsContent enabled={preference.enabled} onEnabledChange={preference.setEnabled}
     location={location} onLocate={location.locate} onStop={location.stop} privacy={privacy} />;
 }

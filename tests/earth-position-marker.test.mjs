@@ -76,3 +76,20 @@ test("a device without Canvas2D still gets a labelled location pin", () => {
     canvasAvailable = true;
   }
 });
+
+
+test("ghost presentation outlines only the own marker and preserves the actual capture time", () => {
+  const marker = createEarthPositionMarker();
+  const timestamp = Date.UTC(2026, 9, 22, 10, 15);
+  updateEarthPositionMarkerLabel(marker, 12, { ghost: true, timestamp, active: false });
+  assert.equal(marker.attributes["data-ghost"], "true");
+  assert.match(marker.attributes["aria-label"], /Ваша последняя точка · Призрак · точность ±12 м · обновлено/);
+  const capture = new Date(timestamp).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  assert.ok(marker.title.includes(capture));
+  assert.equal(marker.children[1].textContent, "👻");
+  assert.equal(marker.children[1].attributes["aria-hidden"], "true");
+  updateEarthPositionMarkerLabel(marker, 10, { ghost: false, timestamp: timestamp + 60_000, active: true });
+  assert.equal(marker.attributes["data-ghost"], "false");
+  assert.match(marker.attributes["aria-label"], /^Вы здесь · точность ±10 м/);
+  assert.doesNotMatch(marker.title, /Призрак/);
+});

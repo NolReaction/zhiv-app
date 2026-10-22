@@ -40,6 +40,7 @@ class EarthLocationRoutesTest {
         private fun touch() { calls++;if(limited) throw EarthRateLimited(30) }
         override suspend fun settings(sessionHash: ByteArray): EarthSharingSettings { touch();return EarthSharingSettings("0000-0000-0001","OFF",0,"APPROXIMATE",emptyList(),null,null,now) }
         override suspend fun share(sessionHash: ByteArray,request: EarthSharingWrite): EarthSharingSettings { touch();return EarthSharingSettings(request.expectedOwnerPublicId,request.mode,1,request.precision,request.recipientCircleIds,null,UUID.randomUUID().toString(),now) }
+        override suspend fun resume(sessionHash: ByteArray,request: EarthSharingResume): EarthSharingSettings { touch();return EarthSharingSettings(request.expectedOwnerPublicId,"SHARING",request.expectedRevision+1,"PRECISE",emptyList(),null,UUID.randomUUID().toString(),now) }
         override suspend fun publish(sessionHash: ByteArray,request: EarthPositionWrite): EarthPositionReceipt { touch();return EarthPositionReceipt(request.expectedOwnerPublicId,now,now,now) }
         override suspend fun stop(sessionHash: ByteArray,request: EarthPositionStop): EarthPositionStopped { touch();return EarthPositionStopped(request.expectedOwnerPublicId,now) }
         override suspend fun people(sessionHash: ByteArray): EarthPeopleResponse { touch();return EarthPeopleResponse("0000-0000-0001",emptyList(),now) }
@@ -71,6 +72,7 @@ class EarthLocationRoutesTest {
         assertEquals(0,repo.calls)
         assertEquals(HttpStatusCode.OK,client.get("/api/v1/earth/sharing") { auth() }.status)
         assertEquals(HttpStatusCode.OK,client.put("/api/v1/earth/sharing") { auth();setBody(Json.encodeToString(sharing)) }.status)
+        assertEquals(HttpStatusCode.OK,client.post("/api/v1/earth/sharing/resume") { auth();setBody(Json.encodeToString(EarthSharingResume(owner,1))) }.status)
         assertEquals(HttpStatusCode.OK,client.put("/api/v1/earth/location") { auth();setBody(Json.encodeToString(position)) }.status)
         assertEquals(HttpStatusCode.OK,client.delete("/api/v1/earth/location") { auth();setBody(Json.encodeToString(EarthPositionStop(owner,epoch))) }.status)
     }
@@ -85,6 +87,9 @@ class EarthLocationRoutesTest {
         assertEquals(HttpStatusCode.BadRequest,badPosition.status);assertContains(badPosition.bodyAsText(),"INVALID_EARTH_POSITION")
         assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/earth/people?latitude=55") { auth() }.status)
         assertEquals(HttpStatusCode.BadRequest,client.put("/api/v1/earth/sharing?longitude=37") { auth();setBody(Json.encodeToString(sharing)) }.status)
+        for(body in listOf("{}",Json.encodeToString(EarthSharingResume(owner,-1)),"""{"expectedOwnerPublicId":"$owner","expectedRevision":0,"durationMinutes":null}""")) {
+            assertEquals(HttpStatusCode.BadRequest,client.post("/api/v1/earth/sharing/resume") { auth();setBody(body) }.status)
+        }
         assertEquals(0,repo.calls)
     }
     @Test fun `unknown streamed length is bounded by actual bytes and rate failures stay private`()=testApplication {

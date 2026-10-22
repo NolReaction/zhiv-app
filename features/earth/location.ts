@@ -72,12 +72,13 @@ export function browserEarthLocationEnvironment(): EarthLocationEnvironment {
 
 /**
  * One foreground session belongs to one account and lives only in memory.
- * The optional initial private lookup requires an already granted permission.
- * Explicit start() remains separate from permission probing and friend sharing.
+ * A visible map may request its initial private lookup, including the browser's
+ * native permission prompt. The browser owns permission; friend sharing is separate.
  */
 export function createEarthLocationController(
   ownerPublicId: string,
   getEnvironment: () => EarthLocationEnvironment = browserEarthLocationEnvironment,
+  onPermissionDenied: () => void = () => {},
 ) {
   let state = IDLE;
   const listeners = new Set<() => void>();
@@ -88,15 +89,16 @@ export function createEarthLocationController(
   let requested = false;
   let automaticPolicy: boolean | null = false;
   let automaticAttempted = false;
-  let automaticEpoch = 0;
+  let automaticSuppressed = false;
+  let automaticLookup = false;
   let watchId: number | null = null;
   let watching = false;
   let watchEpoch = 0;
-  let highAccuracyAttempted = false;
+  let fallbackAttempted = false;
+  let freshLookup = false;
   let permissionEpoch = 0;
   let removeVisibilityListener: (() => void) | undefined;
   let removePermissionListener: (() => void) | undefined;
-  let removeAutomaticPermissionListener: (() => void) | undefined;
 
   function publish(next: EarthLocationState) {
     state = next;
@@ -117,16 +119,14 @@ export function createEarthLocationController(
     removePermissionListener = undefined;
   }
 
-  function clearAutomaticPermission() {
-    automaticEpoch += 1;
-    removeAutomaticPermissionListener?.();
-    removeAutomaticPermissionListener = undefined;
-  }
-
   function fail(status: keyof typeof ERRORS) {
     requested = false;
+    automaticLookup = false;
     clearWatch();
     clearPermission();
+    // Persist the refusal before a possible unmount. Retire the request first:
+    // preference subscribers must not replace the real denial with a pause.
+    if (status === "denied") onPermissionDenied();
     // A transient provider failure does not erase the last private fix. Keep its
     // original timestamp: it must never look like a freshly acquired position.
     publish({ position: status === "unavailable" || status === "timeout" ? state.position : null, status, error: ERRORS[status] });
@@ -191,14 +191,14 @@ export function createEarthLocationController(
         // Desktop network positioning and mobile low-power fixes can fail while
         // another device source remains usable. Make one bounded foreground
         // attempt; denial never retries or changes sharing consent.
-        if ((error.code === 2 || error.code === 3) && !highAccuracyAttempted) {
-          highAccuracyAttempted = true;
+        if ((error.code === 2 || error.code === 3) && !fallbackAttempted) {
+          fallbackAttempted = true;
           clearWatch();
           reconcile();
           return;
         }
         fail(error.code === 1 ? "denied" : error.code === 3 ? "timeout" : "unavailable");
-      }, { enableHighAccuracy: highAccuracyAttempted, maximumAge: 15_000, timeout: highAccuracyAttempted ? 30_000 : 20_000 });
+      }, { enableHighAccuracy: !fallbackAttempted, maximumAge: freshLookup ? 0 : 15_000, timeout: fallbackAttempted ? 20_000 : 30_000 });
       // Also handles implementations that invoke their callback synchronously.
       if (epoch !== watchEpoch || !mounted || !requested) geolocation.clearWatch(id);
       else watchId = id;
@@ -209,8 +209,8 @@ export function createEarthLocationController(
 
   function halt(keepPosition: boolean) {
     automaticAttempted = true;
-    clearAutomaticPermission();
     requested = false;
+    automaticLookup = false;
     clearWatch();
     clearPermission();
     publish(keepPosition && state.position ? { ...state, status: "paused", error: null } : IDLE);
@@ -220,54 +220,40 @@ export function createEarthLocationController(
   // survives; an explicit private lookup is still available in ghost mode.
   function freeze() { halt(true); }
 
-  // Permissions.query is passive: an unknown/prompt permission never opens a
-  // browser prompt. A delayed answer cannot revive a stopped/hidden session.
+  // WebKit can report prompt until Geolocation has run in this page. Native
+  // Geolocation owns grant/denial; Permissions only observes later revocation.
   function maybeStartAutomatically() {
     if (automaticPolicy !== true || automaticAttempted || !mounted || !allowed || !enabled || requested
       || !ownerPublicId || !environment?.visible()) return;
     automaticAttempted = true;
-    if (!environment.secure || !environment.geolocation || !environment.queryPermission) return;
-    const epoch = ++automaticEpoch;
-    const currentEnvironment = environment;
-    void environment.queryPermission().then(permission => {
-      const valid = () => mounted && allowed && enabled && !requested && epoch === automaticEpoch && automaticPolicy === true
-        && environment === currentEnvironment && environment.visible();
-      if (!valid()) return;
-      const granted = () => { if (valid() && permission.state === "granted") start(); };
-      if (permission.state === "granted") { granted(); return; }
-      // On a cold PWA launch Permissions may finish restoring its granted
-      // state after this first query. Observe that passively: prompt/denied
-      // never starts Geolocation or opens a native permission dialog.
-      const remove = permission.subscribe(granted);
-      if (!valid()) { remove(); return; }
-      removeAutomaticPermissionListener = remove;
-      granted();
-    }).catch(() => {
-      // Without a reliable permission result, the explicit private GPS button
-      // remains available; never try geolocation just to discover permission.
-    });
+    startLookup(true);
   }
-  function start() {
+  function startLookup(automatically: boolean, fresh = false) {
     if (!mounted || !allowed || !ownerPublicId || requested) return;
     automaticAttempted = true;
-    clearAutomaticPermission();
-    highAccuracyAttempted = false;
+    automaticLookup = automatically;
+    fallbackAttempted = false;
+    freshLookup = fresh;
     requested = true;
     reconcile();
     if (requested) observePermission();
   }
+  function start() { startLookup(false); }
   // A deliberate lookup refreshes a stale watch without changing any sharing
   // permission. Keep the old private marker until a fresh fix arrives.
-  function locate() {
+  function locate({ fresh = false }: { fresh?: boolean } = {}) {
     if (!mounted || !allowed || !ownerPublicId) return;
-    if (!requested) { start(); return; }
-    if (state.status === "requesting") return;
-    highAccuracyAttempted = false;
+    automaticLookup = false;
+    if (!requested) { startLookup(false, fresh); return; }
+    // A newly acquired sharing lease needs a post-consent fix even when the
+    // private entry lookup is still pending. Replace it once with no cache.
+    if (state.status === "requesting" && !fresh) return;
+    fallbackAttempted = false;
+    freshLookup = fresh;
     clearWatch();
     reconcile();
   }
   function visibilityChanged() {
-    if (!environment?.visible()) clearAutomaticPermission();
     reconcile();
     maybeStartAutomatically();
   }
@@ -281,8 +267,7 @@ export function createEarthLocationController(
     },
     activate() {
       mounted = true;
-      automaticAttempted = false;
-      clearAutomaticPermission();
+      automaticAttempted = automaticSuppressed;
       environment = getEnvironment();
       removeVisibilityListener = environment.onVisibilityChange(visibilityChanged);
       maybeStartAutomatically();
@@ -296,7 +281,6 @@ export function createEarthLocationController(
     },
     setEnabled(value: boolean) {
       enabled = value;
-      if (!enabled) clearAutomaticPermission();
       reconcile();
       maybeStartAutomatically();
     },
@@ -306,13 +290,17 @@ export function createEarthLocationController(
       allowed = value;
       if (!allowed) stop();
       // An ON transition only unlocks explicit actions. Never revive the watch
-      // or a pending granted-permission query from before the user's OFF.
-      else { automaticAttempted = true; clearAutomaticPermission(); }
+      // from before the user's OFF.
+      else automaticAttempted = true;
     },
     /** null waits for privacy metadata; false permanently suppresses this mount's auto attempt. */
     setAutomaticStartPolicy(value: boolean | null) {
       automaticPolicy = value;
-      if (value === false) { automaticAttempted = true; clearAutomaticPermission(); }
+      if (value === false) {
+        automaticSuppressed = true;
+        automaticAttempted = true;
+        if (requested && automaticLookup) freeze();
+      }
       maybeStartAutomatically();
     },
     start,

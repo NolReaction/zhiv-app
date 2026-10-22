@@ -48,7 +48,7 @@ function view(overrides = {}, choices = {}) {
     status: elements.find(node => node.props.id === `${props.idPrefix ?? "earth-friend-access"}-${props.person.circleId}`) };
 }
 
-test("a People/map friend starts without location access and first consent is approximate for one hour", async () => {
+test("a People/map friend starts private and explicit first consent is precise until disabled", async () => {
   const result = view();
   assert.equal(result.toggle.props.type, "button");
   assert.equal(result.toggle.props["aria-label"], "Обновлять геопозицию для Лена");
@@ -56,11 +56,11 @@ test("a People/map friend starts without location access and first consent is ap
   assert.equal(result.toggle.props.disabled, false);
   assert.equal(text(result.status), "Нет доступа");
   assert.equal(result.elements.filter(node => node.type === "details").length, 0);
-  assert.equal(result.button("Возобновить на карте"), undefined);
+  assert.equal(result.button("Открыть карту"), undefined);
   assert.deepEqual(result.calls, [], "rendering a People card neither grants access nor starts GPS");
   await result.toggle.props.onClick();
   assert.deepEqual(result.calls, [["share", { recipientCircleIds: [person.circleId], frozenCircleIds: [],
-    precision: "APPROXIMATE", durationMinutes: 60 }]]);
+    precision: "PRECISE", durationMinutes: null }]]);
 });
 
 test("existing live and frozen permissions use only the narrow recipient action", async () => {
@@ -73,7 +73,7 @@ test("existing live and frozen permissions use only the narrow recipient action"
   assert.equal(frozen.toggle.props["aria-checked"], false);
   assert.equal(frozen.status.props["data-frozen"], true);
   assert.equal(text(frozen.status), "Последнее место");
-  assert.equal(frozen.button("Возобновить на карте"), undefined);
+  assert.equal(frozen.button("Открыть карту"), undefined);
   await frozen.toggle.props.onClick();
   assert.deepEqual(frozen.calls, [["frozen", person.circleId, false]], "unfreezing cannot issue broad sharing consent or GPS commands");
 });
@@ -104,7 +104,7 @@ test("revocation is explicit, separate from freezing, and remains available in g
 
 test("paused GPS, finding a fix and publishing are distinct from a permitted frozen point", () => {
   const paused = view({ sharing: { lastPublishedAt: settings.serverTime } }, active);
-  assert.equal(text(paused.status), "Передача на паузе");
+  assert.equal(text(paused.status), "Обновится на карте");
   assert.equal(paused.status.props["data-frozen"], undefined);
   const finding = view({ sharing: { publishing: true } }, active);
   assert.equal(text(finding.status), "Ищем местоположение…");
@@ -117,13 +117,13 @@ test("paused GPS, finding a fix and publishing are distinct from a permitted fro
 
 test("opening the map from a paused permission only navigates and never consents or resumes GPS", async () => {
   const paused = view({}, active);
-  assert.ok(paused.button("Возобновить на карте"));
-  await paused.button("Возобновить на карте").props.onClick();
+  assert.ok(paused.button("Открыть карту"));
+  await paused.button("Открыть карту").props.onClick();
   assert.deepEqual(paused.calls, [["map"]]);
   for (const [overrides, choices] of [
     [{}, settings], [{}, { ...active, mode: "GHOST" }], [{}, { ...active, frozenCircleIds: [person.circleId] }],
     [{ sharing: { publishing: true } }, active], [{ onOpenMap: undefined }, active],
-  ]) assert.equal(view(overrides, choices).button("Возобновить на карте"), undefined);
+  ]) assert.equal(view(overrides, choices).button("Открыть карту"), undefined);
 });
 
 test("only a first consent can apply draft precision and duration; adding friends preserves confirmed choices", async () => {
@@ -136,10 +136,35 @@ test("only a first consent can apply draft precision and duration; adding friend
     frozenCircleIds: ["friend-two"], sharingUntil: "2026-10-20T20:00:00Z" });
   await existing.toggle.props.onClick();
   assert.deepEqual(existing.calls, [["share", { recipientCircleIds: ["friend-two", person.circleId], frozenCircleIds: ["friend-two"],
-    precision: "APPROXIMATE", durationMinutes: 480 }]]);
+    precision: "APPROXIMATE", durationMinutes: 480, preserveSharingUntil: true }]]);
   const narrow = view({ firstChoices }, active);
   await narrow.toggle.props.onClick();
   assert.deepEqual(narrow.calls, [["frozen", person.circleId, true]], "existing consent never applies another friend's hidden draft");
+});
+
+test("an empty audience after earlier consent cannot reset approximate or finite preferences", async () => {
+  const previous = { ...active, revision: 9, recipientCircleIds: [], frozenCircleIds: [], sharingUntil: "2026-10-20T12:37:19Z" };
+  const result = view({ firstChoices: { precision: "PRECISE", durationMinutes: null } }, previous);
+  await result.toggle.props.onClick();
+  assert.deepEqual(result.calls, [["share", { recipientCircleIds: [person.circleId], frozenCircleIds: [],
+    precision: "APPROXIMATE", durationMinutes: 60, preserveSharingUntil: true }]]);
+  const stopped = view({ firstChoices: { precision: "PRECISE", durationMinutes: null } }, { ...settings, revision: 10 });
+  await stopped.toggle.props.onClick();
+  assert.deepEqual(stopped.calls, [["share", { recipientCircleIds: [person.circleId], frozenCircleIds: [],
+    precision: "APPROXIMATE", durationMinutes: 60 }]]);
+});
+
+test("adding a recipient preserves only an existing unexpired consent, including permanent consent", async () => {
+  for (const sharingUntil of [null, "2026-10-20T12:37:19Z"]) {
+    const result = view({}, { ...active, recipientCircleIds: ["friend-two"], frozenCircleIds: [], sharingUntil });
+    await result.toggle.props.onClick();
+    assert.equal(result.calls[0][1].preserveSharingUntil, true);
+    assert.equal(result.calls[0][1].precision, "APPROXIMATE");
+    assert.equal(result.calls[0][1].durationMinutes, sharingUntil === null ? null : 60);
+  }
+  const expired = confirmedEarthChoices({ ...active, sharingUntil: settings.serverTime });
+  assert.equal(expired.preserveSharingUntil, undefined, "expired consent cannot be revived by preservation");
+  assert.equal(confirmedEarthChoices({ ...settings, revision: 4 }).preserveSharingUntil, undefined);
 });
 
 test("offline, saving, pending privacy and local work block mutations in both native and handler contracts", async () => {
@@ -197,7 +222,7 @@ test("confirmed choices clone recipient arrays and preserve privacy, frozen pref
   const original = { ...active, recipientCircleIds: Object.freeze([person.circleId, "friend-two"]), frozenCircleIds: Object.freeze(["friend-two"]),
     precision: "PRECISE", sharingUntil: null };
   const result = confirmedEarthChoices(original);
-  assert.deepEqual(result, { recipientCircleIds: [person.circleId, "friend-two"], frozenCircleIds: ["friend-two"], precision: "PRECISE", durationMinutes: null });
+  assert.deepEqual(result, { recipientCircleIds: [person.circleId, "friend-two"], frozenCircleIds: ["friend-two"], precision: "PRECISE", durationMinutes: null, preserveSharingUntil: true });
   assert.notEqual(result.recipientCircleIds, original.recipientCircleIds);
   assert.notEqual(result.frozenCircleIds, original.frozenCircleIds);
   result.recipientCircleIds.push("new"); result.frozenCircleIds.length = 0;
@@ -206,7 +231,8 @@ test("confirmed choices clone recipient arrays and preserve privacy, frozen pref
   assert.equal(confirmedEarthChoices({ ...active, mode: "GHOST", sharingUntil: null }).durationMinutes, null);
   assert.equal(confirmedEarthChoices(active).durationMinutes, 60);
   assert.equal(confirmedEarthChoices({ ...active, sharingUntil: "2026-10-20T20:00:00Z" }).durationMinutes, 480);
-  assert.equal(confirmedEarthChoices(settings).durationMinutes, 60, "an OFF account defaults to a bounded first consent");
+  assert.equal(confirmedEarthChoices(settings).durationMinutes, null, "untouched first consent lasts until disabled");
+  assert.equal(confirmedEarthChoices(settings).precision, "PRECISE");
   assert.deepEqual(confirmedEarthChoices({ ...settings, frozenCircleIds: undefined }).frozenCircleIds, []);
 });
 
@@ -233,10 +259,10 @@ test("paired buttons preserve the consent, pause and explicit revoke actions wit
   assert.equal(first.elements.filter(node => node.type === "button" && typeof node.props["aria-pressed"] === "boolean").length, 2);
   assert.doesNotMatch(first.markup, /role="switch"/);
   await first.toggle.props.onClick();
-  assert.deepEqual(first.calls, [["share", { recipientCircleIds: [person.circleId], frozenCircleIds: [], precision: "APPROXIMATE", durationMinutes: 60 }]]);
+  assert.deepEqual(first.calls, [["share", { recipientCircleIds: [person.circleId], frozenCircleIds: [], precision: "PRECISE", durationMinutes: null }]]);
   const live = view({ presentation: "buttons", companionControl }, active);
   assert.equal(live.toggle.props["aria-pressed"], true);
-  assert.equal(text(live.status), "Передача на паузе");
+  assert.equal(text(live.status), "Обновится на карте");
   assert.equal(live.elements.find(node => node.type === "details").props.open, undefined);
   await live.toggle.props.onClick();
   await live.button("Убрать доступ").props.onClick();
@@ -281,7 +307,7 @@ test("the People card never adds access disclosures or resume actions when geolo
   for (const choices of [settings, active, { ...active, mode: "GHOST" }, { ...active, frozenCircleIds: [person.circleId] }]) {
     const compact = view({ presentation: "buttons", showDetails: false, showResume: false }, choices);
     assert.equal(compact.elements.filter(node => node.type === "details").length, 0);
-    assert.equal(compact.button("Возобновить на карте"), undefined);
+    assert.equal(compact.button("Открыть карту"), undefined);
     assert.equal(compact.button("Убрать доступ"), undefined, "revocation lives in the person's Connection tab");
     assert.ok(compact.toggle);
   }
@@ -294,7 +320,7 @@ test("global location disable blocks recipient updates but preserves explicit re
   assert.equal(stopped.toggle.props.disabled, true);
   assert.equal(stopped.toggle.props["aria-checked"], false);
   assert.equal(text(stopped.status), "Выключена в настройках");
-  assert.equal(stopped.button("Возобновить на карте"), undefined);
+  assert.equal(stopped.button("Открыть карту"), undefined);
   await stopped.toggle.props.onClick();
   assert.deepEqual(stopped.calls, []);
   assert.equal(stopped.button("Убрать доступ").props.disabled, false);

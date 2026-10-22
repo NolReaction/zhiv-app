@@ -97,7 +97,7 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
   const editingModel = process.env.NODE_ENV === "development" && modelEditorOpen;
   const locationEnabled = active && visible && !editingModel;
   const autoLocate = sharing.pendingGhost ? false : sharing.settings ? sharing.settings.mode !== "GHOST" : null;
-  const location = useEarthLocation({ ownerPublicId, enabled: locationEnabled, autoStartWhenGranted: autoLocate });
+  const location = useEarthLocation({ ownerPublicId, enabled: locationEnabled, autoStart: autoLocate });
   const [focusRequest, setFocusRequest] = useState(0);
   const [focusAfter, setFocusAfter] = useState<number | null>(null);
   const [meetCircleId, setMeetCircleId] = useState<string | null>(null);
@@ -158,7 +158,9 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
   const panelHeading = useRef<HTMLHeadingElement>(null);
   const stopLocation = location.stop;
   const freezeLocation = location.freeze;
-  const { setPosition: setSharedPosition, stopPublishing, pendingGhost, pendingPrivacyMode, publishing } = sharing;
+  const refreshLocation = location.locate;
+  const { setPosition: setSharedPosition, stopPublishing, pendingGhost, pendingPrivacyMode, publishing, publicationGeneration } = sharing;
+  const requestedPublicationFix = useRef({ owner: ownerPublicId, generation: 0 });
   const foreground = useRef(locationEnabled);
   const wasPublishing = useRef(false);
   const pendingPrivacy = useRef<string | null>(null);
@@ -186,7 +188,15 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
     // Closing can briefly retain "paused" until the hook starts its next watch.
     if (!editingModel && (["denied", "unavailable", "timeout", "unsupported", "insecure"].includes(location.status)
       || location.status === "paused" && (!active || !visible))) stopPublishing();
-  }, [active, visible, editingModel, locationEnabled, location.allowed, location.status, location.position, setSharedPosition, stopPublishing]);
+  }, [active, visible, editingModel, locationEnabled, location.allowed, location.status, location.position, publicationGeneration, setSharedPosition, stopPublishing]);
+  useEffect(() => {
+    if (!publishing || !publicationGeneration || requestedPublicationFix.current.owner === ownerPublicId && requestedPublicationFix.current.generation === publicationGeneration
+      || pendingGhost || !locationEnabled || !location.allowed || document.hidden) return;
+    requestedPublicationFix.current = { owner: ownerPublicId, generation: publicationGeneration };
+    // A private fix can arrive before the lease HTTP response. Ask for a new
+    // uncached fix after every accepted lease so a stationary phone publishes too.
+    refreshLocation({ fresh: true });
+  }, [publishing, publicationGeneration, pendingGhost, locationEnabled, location.allowed, refreshLocation, ownerPublicId]);
   useEffect(() => {
     // A GPS failure already cleared its watch. Preserve the reason instead of
     // replacing denied/unavailable/timeout with an unexplained idle state.
@@ -282,7 +292,8 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
     <h3 id="earth-location-heading">Моё местоположение</h3>
     <strong role="status">{location.allowed ? locationSummary(location.status, location.position) : "Геопозиция отключена"}</strong>
     {!location.allowed && <p>Включи её в «Профиль → Настройки → Геопозиция».</p>}
-    {location.position && <p>{age > 0 ? `Обновлено ${age} мин. назад` : "Только что"}</p>}
+    {location.position && <p>Последняя точка: <time dateTime={new Date(location.position.timestamp).toISOString()}>{new Date(location.position.timestamp).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</time>
+      {age > 0 ? ` · ${age} мин. назад` : " · только что"}</p>}
     {location.error && <p className={styles.locationError}>{location.error}</p>}
     <button className={styles.stopButton} type="button" data-audio-cue="ui.click" onClick={locate} disabled={!location.allowed}>Найти меня</button>
     {watching && <button className={styles.stopButton} type="button" data-audio-cue="ui.click" onClick={stopGps}>Приостановить GPS</button>}
@@ -295,7 +306,7 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
   }}>
     <p id="earth-location-privacy" className={styles.srOnly}>«Найти меня» центрирует карту. Доступ друзей к геопозиции не меняется.</p>
     <div className={styles.stage}>
-      <EarthMap position={visible && !editingModel && location.allowed ? location.position : null} active={active} visible={visible} onReadyChange={onReadyChange} cameraSession={cameraSession}
+      <EarthMap position={visible && !editingModel && location.allowed ? location.position : null} locationGhost={pendingPrivacyMode === "GHOST" || sharing.settings?.mode === "GHOST" && pendingPrivacyMode !== "OFF"} active={active} visible={visible} onReadyChange={onReadyChange} cameraSession={cameraSession}
         cameraFocusRequest={explorer.snapshot.request} onAtlasPreviewChange={explorer.setPreview}
         focusRequest={focusRequest} focusWhenReady={focusAfter === null || location.status === "active" && Boolean(location.position && location.position.timestamp >= focusAfter)}
         walkingRoute={locationEnabled && panel === null ? walking.snapshot.route : null}
@@ -346,7 +357,7 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
         <header><h2 id="earth-friends-title" ref={panelHeading} tabIndex={-1}>{sharingOpen ? "Моя геопозиция" : selectedCircleIds.length ? "Участники рядом" : "Участники на карте"}</h2>
           <button type="button" data-audio-cue="ui.close" onClick={closeFriends} aria-label={sharingOpen ? "Закрыть настройки геопозиции" : "Закрыть список друзей"}><X size={18} aria-hidden="true" /></button></header>
         {sharingOpen ? <EarthSharingPanel sharing={sharing} people={people} peopleLoading={peopleLoading} online={isOnline} onShare={share} onGhost={ghost} onOff={off}
-          onSetFrozen={sharing.setFrozen} onRevokeRecipient={sharing.revokeRecipient} locationAllowed={location.allowed} />
+          onSetFrozen={sharing.setFrozen} onRevokeRecipient={sharing.revokeRecipient} locationAllowed={location.allowed} sourceAccuracy={location.status === "active" ? location.position?.accuracy : null} />
           : <><EarthFriends people={people} loading={peopleLoading || sharing.loading} error={peopleError || sharing.error} online={isOnline}
               locations={sharedPeople} selectedCircleIds={selectedCircleIds} onFocusPerson={focusFriend} onMeetPerson={meetFriend}
               onRefresh={() => { onRefreshPeople(); sharing.refresh(); }} onOpenPeople={onOpenPeople} /></>}
@@ -359,7 +370,7 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
             if (entry?.kind === "meeting" && entry.id === EARTH_ATLAS_MEETING_ID) persistAtlasEntry(entry);
           }
         }}
-        position={location.status === "active" ? location.position : null} now={now} monotonicNow={monotonicNow} locating={locating} locationAllowed={location.allowed}
+        position={location.position} locationStatus={location.status} locationError={location.error} online={isOnline} now={now} monotonicNow={monotonicNow} locating={locating} locationAllowed={location.allowed}
         onLocate={() => { if (location.allowed) { location.locate(); frameMeeting(); } }}
         walkingRoute={walking.snapshot} onBuildWalkingRoute={() => { if (walking.request()) frameMeeting(); }} onClearWalkingRoute={walking.clear}
         onShowBoth={frameMeeting} onClose={closeMeeting} />}

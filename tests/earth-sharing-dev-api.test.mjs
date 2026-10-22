@@ -16,6 +16,7 @@ const store = await vite.ssrLoadModule("/lib/dev/earth-sharing-store.ts");
 const { devEarthSharingState } = await vite.ssrLoadModule("/lib/dev/earth-sharing-state.ts");
 const contract = await vite.ssrLoadModule("/lib/earth-sharing-contract.ts");
 const sharing = await vite.ssrLoadModule("/app/api/v1/earth/sharing/route.ts");
+const resumeRoute = await vite.ssrLoadModule("/app/api/v1/earth/sharing/resume/route.ts");
 const location = await vite.ssrLoadModule("/app/api/v1/earth/location/route.ts");
 const people = await vite.ssrLoadModule("/app/api/v1/earth/people/route.ts");
 beforeEach(() => { process.env.NODE_ENV = "test"; identity.resetDevStoreForTests(); delete globalThis.__earthCookieToken; delete globalThis.__earthCookieFail; });
@@ -38,6 +39,10 @@ function write(owner, circleIds, values = {}) {
     recipientCircleIds: circleIds, durationMinutes: 60, ...values };
 }
 function enable(owner, circleIds, values = {}) { return ok(store.putDevEarthSharing(owner.token, write(owner, circleIds, values))); }
+function resume(owner, settings, values = {}) {
+  return store.resumeDevEarthSharing(owner.token, { expectedOwnerPublicId: owner.me.user.publicId,
+    expectedRevision: settings.revision, ...values });
+}
 function position(owner, settings, values = {}) {
   return { expectedOwnerPublicId: owner.me.user.publicId, publicationEpoch: settings.publicationEpoch, sequence: 1,
     latitude: 55.752345, longitude: 37.623123, accuracyMeters: 12, capturedAt: new Date().toISOString(), ...values };
@@ -55,11 +60,111 @@ async function status(response, expected, cache = "private, no-store") {
 test("sharing defaults OFF and loading metadata never grants an epoch or starts a publisher", () => {
   const a = player();
   const first = contract.earthSharingSettingsSchema.parse(ok(store.getDevEarthSharing(a.token)));
-  assert.equal(first.mode, "OFF"); assert.equal(first.precision, "APPROXIMATE"); assert.equal(first.revision, 0);
+  assert.equal(first.mode, "OFF"); assert.equal(first.precision, "PRECISE"); assert.equal(first.revision, 0); assert.equal(first.sharingUntil, null);
   assert.equal(first.publicationEpoch, null); assert.deepEqual(first.recipientCircleIds, []);
   assert.deepEqual(ok(store.getDevEarthPeople(a.token)).people, []);
   error(store.getDevEarthSharing(undefined), 401, "UNAUTHORIZED");
   assert.equal(devEarthSharingState().cleanup, null);
+});
+
+test("first precise permanent consent still needs an explicitly selected friend", () => {
+  const a = player(), b = player(), c = player(), ab = connect(a, b); connect(a, c);
+  const defaults = ok(store.getDevEarthSharing(a.token));
+  error(resume(a, defaults), 409, "EARTH_PUBLICATION_CONFLICT");
+  const grant = enable(a, [ab], { precision: defaults.precision, durationMinutes: null });
+  assert.equal(grant.sharingUntil, null); assert.equal(grant.precision, "PRECISE");
+  ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  assert.equal(ok(store.getDevEarthPeople(b.token)).people[0].latitude, 55.752345);
+  assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, []);
+});
+
+test("publisher resume preserves exact consent deadline, precision, frozen recipients and last known points", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-22T12:00:00Z") });
+  const bootstrap = uuid(), a = player("А", bootstrap), b = player(), c = player(), d = player();
+  const ab = connect(a, b), ac = connect(a, c); connect(a, d);
+  const grant = enable(a, [ab, ac]); ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  const frozen = ok(store.putDevEarthSharing(a.token, write(a, [ab, ac], { frozenOnly: true, frozenCircleIds: [ab] })));
+  const before = ok(store.getDevEarthPeople(b.token)).people;
+  ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: grant.publicationEpoch }));
+  t.mock.timers.tick(10 * 60_000);
+  const secondSession = player("А", bootstrap);
+  const current = contract.earthSharingSettingsSchema.parse(ok(resume(secondSession, frozen)));
+  assert.equal(current.revision, frozen.revision + 1); assert.notEqual(current.publicationEpoch, grant.publicationEpoch);
+  assert.equal(current.sharingUntil, grant.sharingUntil); assert.equal(current.precision, "APPROXIMATE");
+  assert.deepEqual(current.recipientCircleIds, frozen.recipientCircleIds); assert.deepEqual(current.frozenCircleIds, [ab]);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before);
+  assert.equal(ok(store.getDevEarthPeople(c.token)).people[0].updatedAt, before[0].updatedAt, "resume alone retains the original common point");
+  assert.equal(ok(store.getDevEarthSharing(a.token)).publicationEpoch, null);
+  error(resume(a, frozen), 409, "EARTH_REVISION_CONFLICT");
+  error(store.resumeDevEarthSharing(b.token, { expectedOwnerPublicId: a.me.user.publicId, expectedRevision: current.revision }), 409, "EARTH_OWNER_MISMATCH");
+  ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: grant.publicationEpoch }));
+  error(store.putDevEarthPosition(a.token, position(a, current)), 409, "EARTH_PUBLICATION_CONFLICT");
+  ok(store.putDevEarthPosition(secondSession.token, position(a, current, { latitude: 56.2345 })));
+  assert.equal(ok(store.getDevEarthPeople(c.token)).people[0].latitude, 56.23);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before);
+  assert.deepEqual(ok(store.getDevEarthPeople(d.token)).people, []);
+  assert.equal(ok(store.getDevEarthSharing(a.token)).sharingUntil, grant.sharingUntil);
+});
+
+test("resume cannot revive OFF or expired consent and GHOST needs an explicit action", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-22T12:00:00Z") });
+  const a = player(), b = player(), circle = connect(a, b), grant = enable(a, [circle]);
+  const ghost = ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST" })));
+  error(resume(a, ghost), 409, "EARTH_PUBLICATION_CONFLICT");
+  const resumed = ok(resume(a, ghost, { resumeGhost: true }));
+  assert.equal(resumed.mode, "SHARING"); assert.ok(resumed.publicationEpoch);
+  assert.equal(resumed.sharingUntil, grant.sharingUntil); assert.equal(resumed.precision, grant.precision);
+  const off = ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "OFF" })));
+  error(resume(a, resumed), 409, "EARTH_PUBLICATION_CONFLICT");
+  error(resume(a, off, { resumeGhost: true }), 409, "EARTH_PUBLICATION_CONFLICT");
+  const finite = enable(a, [circle]); t.mock.timers.tick(60 * 60_000);
+  error(resume(a, finite, { resumeGhost: true }), 409, "EARTH_PUBLICATION_CONFLICT");
+});
+
+test("all frozen recipients cannot acquire a publisher while explicit ghost exit retains their snapshots", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-22T12:00:00Z") });
+  const a = player(), b = player(), circle = connect(a, b), grant = enable(a, [circle]);
+  ok(store.putDevEarthPosition(a.token, position(a, grant)));
+  const frozen = ok(store.putDevEarthSharing(a.token, write(a, [circle], { frozenOnly: true, frozenCircleIds: [circle] })));
+  const before = ok(store.getDevEarthPeople(b.token)).people;
+  error(resume(a, frozen), 409, "EARTH_PUBLICATION_CONFLICT");
+  const ghost = ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST" })));
+  const resumed = ok(resume(a, ghost, { resumeGhost: true }));
+  assert.equal(resumed.mode, "SHARING"); assert.equal(resumed.publicationEpoch, null);
+  assert.deepEqual(resumed.frozenCircleIds, [circle]); assert.equal(resumed.sharingUntil, grant.sharingUntil);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before);
+  error(resume(a, resumed), 409, "EARTH_PUBLICATION_CONFLICT");
+});
+
+test("adding a friend preserves exact finite consent without treating a legacy duration hint as renewal", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-22T12:00:00Z") });
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c), grant = enable(a, [ab]);
+  ok(store.putDevEarthPosition(a.token, position(a, grant))); t.mock.timers.tick(10 * 60_000);
+  const added = enable(a, [ab, ac], { preserveSharingUntil: true, durationMinutes: 480 });
+  assert.equal(added.sharingUntil, grant.sharingUntil); assert.equal(added.precision, grant.precision);
+  assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, []);
+  error(store.putDevEarthSharing(a.token, write(a, [ab, ac], { preserveSharingUntil: true, precision: "PRECISE" })), 400, "INVALID_EARTH_SHARING");
+  error(store.putDevEarthSharing(a.token, write(a, [ab, ac], { preserveSharingUntil: true, durationMinutes: null })), 400, "INVALID_EARTH_SHARING");
+  error(store.putDevEarthSharing(a.token, write(a, [ac], { preserveSharingUntil: true })), 400, "INVALID_EARTH_SHARING");
+  t.mock.timers.tick(1); ok(store.putDevEarthPosition(a.token, position(a, added)));
+  assert.equal(ok(store.getDevEarthPeople(c.token)).people[0].expiresAt, grant.sharingUntil);
+  t.mock.timers.tick(50 * 60_000);
+  error(store.putDevEarthSharing(a.token, { ...write(a, [ab, ac]), preserveSharingUntil: true }), 400, "INVALID_EARTH_SHARING");
+});
+
+test("adding during GHOST preserves its old point and hides that point from the new recipient until a fresh capture", t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-22T12:00:00Z") });
+  const a = player(), b = player(), c = player(), ab = connect(a, b), ac = connect(a, c);
+  const grant = enable(a, [ab], { precision: "PRECISE", durationMinutes: null });
+  ok(store.putDevEarthPosition(a.token, position(a, grant))); const before = ok(store.getDevEarthPeople(b.token)).people;
+  ok(store.putDevEarthSharing(a.token, write(a, [], { mode: "GHOST" }))); t.mock.timers.tick(60_000);
+  const added = enable(a, [ab, ac], { preserveSharingUntil: true, precision: "PRECISE", durationMinutes: null });
+  assert.equal(added.mode, "GHOST"); assert.equal(added.publicationEpoch, null); assert.equal(added.sharingUntil, null);
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before); assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, []);
+  const resumed = ok(resume(a, added, { resumeGhost: true }));
+  assert.deepEqual(ok(store.getDevEarthPeople(b.token)).people, before); assert.deepEqual(ok(store.getDevEarthPeople(c.token)).people, []);
+  t.mock.timers.tick(1); ok(store.putDevEarthPosition(a.token, position(a, resumed)));
+  assert.equal(ok(store.getDevEarthPeople(c.token)).people.length, 1);
 });
 
 test("explicit DIRECT permission is independent of check-in visibility and never grants outsiders or unselected friends", () => {
@@ -216,9 +321,10 @@ test("privacy commands bypass exhausted enable, read and GPS budgets", () => {
   let shared;
   for (let index = 0; index < 10; index++) shared = enable(a, [circle]);
   error(store.putDevEarthSharing(a.token, write(a, [circle])), 429);
+  error(resume(a, shared), 429, "EARTH_RATE_LIMITED");
   ok(store.putDevEarthPosition(a.token, position(a, shared)));
   error(store.putDevEarthPosition(a.token, position(a, shared, { sequence: 2, capturedAt: new Date(Date.now() + 1).toISOString() })), 429);
-  for (let index = 0; index < 600; index++) store.getDevEarthPeople(a.token);
+  for (let index = 0; index < 1_800; index++) store.getDevEarthPeople(a.token);
   error(store.getDevEarthPeople(a.token), 429);
   ok(store.stopDevEarthPosition(a.token, { expectedOwnerPublicId: a.me.user.publicId, publicationEpoch: shared.publicationEpoch }));
   ok(store.putDevEarthSharing(a.token, { expectedOwnerPublicId: a.me.user.publicId, expectedRevision: 0,
@@ -238,6 +344,7 @@ test("latest positions are physically removed on the bounded cleanup timer and a
 test("private geo routes require auth, owner, idempotency, JSON and exact body shapes", async () => {
   const a = player(), b = player(), circle = connect(a, b), body = write(a, [circle]);
   await status(await sharing.GET(send("GET", "sharing")), 401);
+  await status(await resumeRoute.POST(send("POST", "sharing/resume", {})), 401);
   globalThis.__earthCookieToken = a.token;
   const initial = await (await status(await sharing.GET(send("GET", "sharing")), 200)).json();
   assert.equal(initial.publicationEpoch, null);
@@ -248,7 +355,13 @@ test("private geo routes require auth, owner, idempotency, JSON and exact body s
   await status(await sharing.PUT(send("PUT", "sharing", body, { Origin: "https://evil.test" })), 403, "no-store");
   await status(await sharing.GET(send("GET", "sharing?latitude=55")), 400);
   const settings = await (await status(await sharing.PUT(send("PUT", "sharing", body)), 200)).json();
-  const receipt = await (await status(await location.PUT(send("PUT", "location", position(a, settings))), 200)).json();
+  const resumeBody = { expectedOwnerPublicId: a.me.user.publicId, expectedRevision: settings.revision };
+  await status(await resumeRoute.POST(send("POST", "sharing/resume", resumeBody, { "Idempotency-Key": "invalid" })), 400);
+  await status(await resumeRoute.POST(send("POST", "sharing/resume", { ...resumeBody, durationMinutes: null })), 400);
+  await status(await resumeRoute.POST(send("POST", "sharing/resume?latitude=55", resumeBody)), 400);
+  const resumed = await (await status(await resumeRoute.POST(send("POST", "sharing/resume", resumeBody)), 200)).json();
+  assert.equal(resumed.sharingUntil, settings.sharingUntil); contract.earthSharingSettingsSchema.parse(resumed);
+  const receipt = await (await status(await location.PUT(send("PUT", "location", position(a, resumed))), 200)).json();
   contract.earthPositionReceiptSchema.parse(receipt); assert.equal("latitude" in receipt, false);
   globalThis.__earthCookieToken = b.token;
   contract.earthPeopleResponseSchema.parse(await (await status(await people.GET(send("GET", "people")), 200)).json());
@@ -270,7 +383,7 @@ test("actual streamed 8KiB limit, false Content-Length and malformed UTF-8 fail 
 
 test("all new geo route methods reject production before cookie access and never become public weather exceptions", async () => {
   process.env.NODE_ENV = "production"; globalThis.__earthCookieFail = true;
-  for (const [route, method, path] of [[sharing, "GET", "sharing"], [sharing, "PUT", "sharing"], [location, "PUT", "location"], [location, "DELETE", "location"], [people, "GET", "people"]]) {
+  for (const [route, method, path] of [[sharing, "GET", "sharing"], [sharing, "PUT", "sharing"], [resumeRoute, "POST", "sharing/resume"], [location, "PUT", "location"], [location, "DELETE", "location"], [people, "GET", "people"]]) {
     const response = await status(await route[method](send(method, path, method === "GET" ? undefined : {})), 503, "no-store");
     assert.equal((await response.json()).code, "DEV_API_DISABLED");
   }

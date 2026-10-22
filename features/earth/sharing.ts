@@ -1,20 +1,21 @@
 import { createUuidV4 } from "@/lib/browser-uuid";
 import {
   EARTH_APPROXIMATE_ACCURACY_METERS, EARTH_PEOPLE_POLL_MS, EARTH_POSITION_FUTURE_MS,
-  EARTH_POSITION_MAX_AGE_MS, EARTH_POSITION_PUBLISH_MS, EARTH_POSITION_TTL_MS,
+  EARTH_POSITION_MAX_AGE_MS, EARTH_POSITION_PUBLISH_MS, EARTH_POSITION_TTL_MS, EARTH_SETTINGS_POLL_MS,
   earthPeopleResponseSchema, earthPositionReceiptSchema, earthPositionStoppedSchema,
   earthSharingSettingsSchema, earthSharingWriteSchema, earthSharedCoordinates,
   type EarthMapPerson, type EarthPeopleResponse, type EarthPositionReceipt, type EarthPositionStop,
   type EarthPositionStopped, type EarthPositionWrite, type EarthSharingDuration,
-  type EarthSharingPrecision, type EarthSharingSettings, type EarthSharingWrite,
+  type EarthSharingPrecision, type EarthSharingResume, type EarthSharingSettings, type EarthSharingWrite,
 } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
 
-export type EarthShareOptions = { recipientCircleIds: string[]; frozenCircleIds?: string[]; precision: EarthSharingPrecision; durationMinutes: EarthSharingDuration };
+export type EarthShareOptions = { recipientCircleIds: string[]; frozenCircleIds?: string[]; precision: EarthSharingPrecision; durationMinutes: EarthSharingDuration; preserveSharingUntil?: boolean };
 export type EarthPendingPrivacy = { mode: "GHOST" | "OFF"; key: string };
 export type EarthSharingTransport = {
   getEarthSharing(signal?: AbortSignal): Promise<EarthSharingSettings>;
   updateEarthSharing(write: EarthSharingWrite, key: string, signal?: AbortSignal): Promise<EarthSharingSettings>;
+  resumeEarthSharing(write: EarthSharingResume, key: string, signal?: AbortSignal): Promise<EarthSharingSettings>;
   publishEarthPosition(write: EarthPositionWrite, key: string, signal?: AbortSignal): Promise<EarthPositionReceipt>;
   stopEarthPublication(write: EarthPositionStop, key: string, signal?: AbortSignal): Promise<EarthPositionStopped>;
   getEarthPeople(signal?: AbortSignal): Promise<EarthPeopleResponse>;
@@ -23,6 +24,8 @@ export type EarthSharingState = {
   settings: EarthSharingSettings | null; people: EarthMapPerson[]; loading: boolean; saving: boolean;
   error: string | null; pendingGhost: boolean; pendingPrivacyMode: "GHOST" | "OFF" | null;
   publishing: boolean; lastPublishedAt: string | null;
+  /** A lease counter for requesting a fresh private GPS fix; never exposes its capability. */
+  publicationGeneration: number;
 };
 export type EarthSharingEnvironment = {
   now(): number; monotonicNow(): number;
@@ -33,7 +36,7 @@ export type EarthSharingEnvironment = {
   createId(): string;
 };
 const EMPTY: EarthSharingState = { settings: null, people: [], loading: false, saving: false, error: null,
-  pendingGhost: false, pendingPrivacyMode: null, publishing: false, lastPublishedAt: null };
+  pendingGhost: false, pendingPrivacyMode: null, publishing: false, lastPublishedAt: null, publicationGeneration: 0 };
 const pendingKey = (owner: string) => `zhiv:earth:pending-privacy:v1:${owner}`;
 function parsePending(value: unknown): EarthPendingPrivacy | null {
   if (!value || typeof value !== "object") return null;
@@ -77,40 +80,42 @@ function retryDelay(error: unknown, attempt: number): number {
 }
 type Work = { abort: AbortController; generation: number; started: number };
 
-/** Account-owned sharing; loading consent never acquires a publisher or starts GPS. */
+/** Account-owned sharing resumes only the confirmed audience on a visible map. GPS is separate. */
 export function createEarthSharingController({ ownerPublicId: owner, transport, getEnvironment = browserEarthSharingEnvironment, onSessionLost = () => {} }: {
   ownerPublicId: string | null; transport: EarthSharingTransport;
   getEnvironment?: (owner: string) => EarthSharingEnvironment; onSessionLost?: () => void;
 }) {
   let state = EMPTY, environment: EarthSharingEnvironment | null = null;
   let active = false, visible = false, publicationVisible = false, online = false, authLost = false, generation = 0, visibilityGeneration = 0;
+  let automaticResumeAllowed = true, publicationCycleActive = false, resumeAttempted = false, resumeNotBefore = -Infinity;
+  let readNotBefore = -Infinity;
   let pending: EarthPendingPrivacy | null = null, privacyAttempts = 0;
-  let metadata: Work | null = null, feed: Work | null = null, enabling: Work | null = null, upload: Work | null = null, privacy: Work | null = null, preferences: Work | null = null;
+  let metadata: Work | null = null, feed: Work | null = null, enabling: Work | null = null, resuming: Work | null = null, upload: Work | null = null, privacy: Work | null = null, preferences: Work | null = null;
   const stops = new Set<AbortController>(), listeners = new Set<() => void>();
-  let pollTimer: unknown = null, expiryTimer: unknown = null, publishTimer: unknown = null, privacyTimer: unknown = null;
+  const timers: Record<"poll" | "settings" | "expiry" | "publish" | "privacy", unknown> = { poll: null, settings: null, expiry: null, publish: null, privacy: null };
   let publisher: string | null = null, sequence = 0, minimumFixTime = Infinity, usedFixTime = -Infinity, lastPublishAt = -Infinity;
   let queuedFix: EarthPosition | null = null, sharingDeadline = Infinity, publishedDeadline = Infinity;
-  const timerEpochs = { poll: 0, expiry: 0, publish: 0, privacy: 0 };
+  const timerEpochs = { poll: 0, settings: 0, expiry: 0, publish: 0, privacy: 0 };
   let serverWall = -Infinity, serverMono = 0;
   const now = () => environment!.monotonicNow();
   const foreground = () => active && !authLost && !!owner && visible && online && !!environment?.visible();
   const publicationForeground = () => foreground() && publicationVisible;
   function publish(patch: Partial<EarthSharingState>) { state = { ...state, ...patch }; for (const listener of listeners) listener(); }
-  function cancelTimer(name: "poll" | "expiry" | "publish" | "privacy") {
+  function cancelTimer(name: keyof typeof timers) {
     timerEpochs[name] += 1;
-    const timer = name === "poll" ? pollTimer : name === "expiry" ? expiryTimer : name === "publish" ? publishTimer : privacyTimer;
+    const timer = timers[name];
     if (timer !== null) environment?.cancel(timer);
-    if (name === "poll") pollTimer = null; else if (name === "expiry") expiryTimer = null; else if (name === "publish") publishTimer = null; else privacyTimer = null;
+    timers[name] = null;
   }
-  function schedule(name: "poll" | "expiry" | "publish" | "privacy", delay: number, callback: () => void) {
+  function schedule(name: keyof typeof timers, delay: number, callback: () => void) {
     cancelTimer(name);
     const epoch = generation, visibilityEpoch = visibilityGeneration, timerEpoch = timerEpochs[name];
     const timer = environment!.schedule(() => {
       if (!active || epoch !== generation || timerEpoch !== timerEpochs[name] || name !== "privacy" && visibilityEpoch !== visibilityGeneration) return;
-      if (name === "poll") pollTimer = null; else if (name === "expiry") expiryTimer = null; else if (name === "publish") publishTimer = null; else privacyTimer = null;
+      timers[name] = null;
       callback();
     }, Math.max(1, Math.min(2_147_483_647, delay)));
-    if (name === "poll") pollTimer = timer; else if (name === "expiry") expiryTimer = timer; else if (name === "publish") publishTimer = timer; else privacyTimer = timer;
+    timers[name] = timer;
   }
   function work(): Work { return { abort: new AbortController(), generation, started: now() }; }
   function current(request: Work, requiresForeground = true) {
@@ -158,7 +163,9 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       .finally(() => stops.delete(controller));
   }
   function stopPublishing() {
+    resumeAttempted = true;
     if (enabling) { enabling.abort.abort(); enabling = null; publish({ saving: privacy !== null || preferences !== null }); }
+    if (resuming) { resuming.abort.abort(); resuming = null; publish({ saving: privacy !== null || preferences !== null }); }
     const previous = publisher; publisher = null; queuedFix = null; minimumFixTime = Infinity; publishedDeadline = Infinity;
     upload?.abort.abort(); upload = null; cancelTimer("publish");
     if (state.publishing || state.lastPublishedAt !== null) publish({ publishing: false, lastPublishedAt: null });
@@ -174,18 +181,33 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     const next = Math.min(publisher ? sharingDeadline : Infinity, publishedDeadline, ...people.map(person => person.expiresAtMonotonic));
     if (Number.isFinite(next)) schedule("expiry", next - time, expirePeople);
   }
+  function deferRateLimitedReads(error: unknown) {
+    if (statusOf(error) !== 429) return;
+    const supplied = error && typeof error === "object" && "retryAfterMs" in error ? error.retryAfterMs : undefined;
+    // Both GETs spend the same server bucket. Its Retry-After can cover the
+    // remainder of an hour, so the short write-retry cap must not apply here.
+    const delay = typeof supplied === "number" && Number.isFinite(supplied) && supplied >= 0 ? supplied : 60_000;
+    readNotBefore = Math.max(readNotBefore, now() + Math.max(1_000, delay));
+    schedule("poll", Math.max(EARTH_PEOPLE_POLL_MS, readNotBefore - now()), () => { void readPeople(); });
+    schedule("settings", Math.max(EARTH_SETTINGS_POLL_MS, readNotBefore - now()), () => { void readMetadata(); });
+  }
   async function readMetadata() {
     if (!foreground() || pending || metadata) return;
+    if (now() < readNotBefore) { schedule("settings", readNotBefore - now(), () => { void readMetadata(); }); return; }
     const request = work(); metadata = request; publish({ loading: true });
     try {
       const value = checkedSettings(await transport.getEarthSharing(request.abort.signal));
       if (!current(request) || metadata !== request || pending) return;
-      applySettings(value, request.started); publish({ error: null });
-    } catch (error) { if (current(request) && metadata === request) failed(error, "Не удалось загрузить настройки карты"); }
-    finally { if (metadata === request) { metadata = null; if (active) publish({ loading: false }); } }
+      applySettings(value, request.started); publish({ error: null }); maybeResumeAutomatically();
+    } catch (error) { if (current(request) && metadata === request) { deferRateLimitedReads(error); failed(error, "Не удалось загрузить настройки карты"); } }
+    finally { if (metadata === request) {
+      metadata = null; if (active) publish({ loading: false });
+      if (foreground() && !pending) schedule("settings", Math.max(EARTH_SETTINGS_POLL_MS, readNotBefore - now()), () => { void readMetadata(); });
+    } }
   }
   async function readPeople() {
     if (!foreground() || pending || feed) return;
+    if (now() < readNotBefore) { schedule("poll", readNotBefore - now(), () => { void readPeople(); }); return; }
     const request = work(); feed = request;
     try {
       const response = earthPeopleResponseSchema.parse(await transport.getEarthPeople(request.abort.signal));
@@ -196,17 +218,17 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
         expiresAtMonotonic: Math.min(now() + EARTH_POSITION_TTL_MS, deadline(person.expiresAt)) }))
         .filter(person => person.expiresAtMonotonic > now());
       publish({ people }); expirePeople();
-    } catch (error) { if (current(request) && feed === request) failed(error, "Не удалось обновить близких на карте"); }
+    } catch (error) { if (current(request) && feed === request) { deferRateLimitedReads(error); failed(error, "Не удалось обновить близких на карте"); } }
     finally {
-      if (feed === request) { feed = null; if (foreground() && !pending) schedule("poll", EARTH_PEOPLE_POLL_MS, () => { void readPeople(); void readMetadata(); }); }
+      if (feed === request) { feed = null; if (foreground() && !pending) schedule("poll", Math.max(EARTH_PEOPLE_POLL_MS, readNotBefore - now()), () => { void readPeople(); }); }
     }
   }
   function refresh() { if (pending) void flushPrivacy(); else { void readMetadata(); void readPeople(); } }
   function abortForeground() {
     visibilityGeneration += 1;
-    for (const request of [metadata, feed, enabling, upload]) request?.abort.abort();
-    metadata = feed = enabling = upload = null;
-    for (const name of ["poll", "expiry", "publish"] as const) cancelTimer(name);
+    for (const request of [metadata, feed, enabling, resuming, upload]) request?.abort.abort();
+    metadata = feed = enabling = resuming = upload = null;
+    for (const name of ["poll", "settings", "expiry", "publish"] as const) cancelTimer(name);
     stopPublishing(); publish({ people: [], loading: false, saving: privacy !== null || preferences !== null });
   }
   function receivePending(intent: EarthPendingPrivacy | null) {
@@ -250,7 +272,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     } finally {
       if (privacy === request) {
         privacy = null; if (active) publish({ saving: false });
-        if (active && !authLost && pending && privacyTimer === null && online) void flushPrivacy();
+        if (active && !authLost && pending && timers.privacy === null && online) void flushPrivacy();
         else if (active && !pending && foreground()) refresh();
       }
     }
@@ -261,32 +283,98 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     try { environment!.savePending(intent); } catch { publish({ error: "Не удалось сохранить команду скрытия в браузере; дождитесь подтверждения сервера" }); }
     receivePending(intent);
   }
+  const sameIds = (first: string[], second: string[]) => first.length === second.length && first.every(id => second.includes(id));
+  function hasLiveAudience(settings: EarthSharingSettings) {
+    return settings.recipientCircleIds.some(id => !settings.frozenCircleIds.includes(id));
+  }
+  function consentUnexpired(settings: EarthSharingSettings) {
+    return !settings.sharingUntil || deadline(settings.sharingUntil) > now();
+  }
+  function adoptPublisher(value: EarthSharingSettings) {
+    publisher = value.publicationEpoch;
+    sequence = 0; usedFixTime = -Infinity; minimumFixTime = environment!.now(); lastPublishAt = -Infinity; queuedFix = null;
+    publish({ publishing: true, lastPublishedAt: null, publicationGeneration: state.publicationGeneration + 1 });
+    expirePeople();
+  }
+  function maybeResumeAutomatically() {
+    const settings = state.settings;
+    if (!publicationForeground() || !automaticResumeAllowed || resumeAttempted || pending || publisher || enabling || resuming || preferences
+      || !settings || settings.mode !== "SHARING" || !hasLiveAudience(settings) || !consentUnexpired(settings) || now() < resumeNotBefore) return;
+    resumeAttempted = true;
+    void resumePublication(false, true);
+  }
+  async function resumePublication(resumeGhost = false, automatically = false): Promise<boolean> {
+    const settings = state.settings;
+    if (!foreground() || pending || enabling || resuming || preferences || !settings || !owner || now() < resumeNotBefore
+      || settings.mode === "OFF" || settings.mode === "GHOST" && !resumeGhost || !consentUnexpired(settings)
+      || !hasLiveAudience(settings) && !resumeGhost || automatically && (!publicationForeground() || !automaticResumeAllowed)) return false;
+    stopPublishing();
+    const request = work(); resuming = request; publish({ saving: true, error: null });
+    try {
+      const value = checkedSettings(await transport.resumeEarthSharing({ expectedOwnerPublicId: owner,
+        expectedRevision: settings.revision, resumeGhost }, environment!.createId(), request.abort.signal));
+      if (!current(request) || resuming !== request || pending || automatically && !automaticResumeAllowed
+        || (state.settings?.revision ?? -1) > value.revision) {
+        if (value.mode === "SHARING" && value.publicationEpoch) sendStop(value.publicationEpoch);
+        return false;
+      }
+      if (value.mode !== "SHARING" || value.revision <= settings.revision || value.precision !== settings.precision
+        || value.sharingUntil !== settings.sharingUntil || !sameIds(value.recipientCircleIds, settings.recipientCircleIds)
+        || !sameIds(value.frozenCircleIds, settings.frozenCircleIds) || hasLiveAudience(value) !== !!value.publicationEpoch) {
+        if (value.publicationEpoch) sendStop(value.publicationEpoch);
+        throw new Error("Сервер не подтвердил прежние настройки геопозиции");
+      }
+      sharingDeadline = Infinity;
+      applySettings(value, request.started);
+      if (!consentUnexpired(value)) { if (value.publicationEpoch) sendStop(value.publicationEpoch); throw new Error("Время обмена геопозицией истекло"); }
+      if (publicationForeground() && value.publicationEpoch) adoptPublisher(value);
+      else if (value.publicationEpoch) sendStop(value.publicationEpoch);
+      void readPeople();
+      return true;
+    } catch (error) {
+      if (current(request) && resuming === request) {
+        if (statusOf(error) === 409 || statusOf(error) === 429) resumeNotBefore = now() + Math.max(5_000, retryDelay(error, 4));
+        failed(error, "Не удалось возобновить геопозицию");
+        if (statusOf(error) === 409) void readMetadata();
+      }
+      return false;
+    } finally { if (resuming === request) { resuming = null; if (active) publish({ saving: privacy !== null || preferences !== null || enabling !== null }); } }
+  }
   async function share(options: EarthShareOptions): Promise<boolean> {
     if (!foreground() || pending || enabling || preferences || !state.settings || !owner) return false;
-    const write = earthSharingWriteSchema.safeParse({ ...options, mode: "SHARING", expectedOwnerPublicId: owner, expectedRevision: state.settings.revision });
+    const previous = state.settings;
+    const write = earthSharingWriteSchema.safeParse({ ...options, mode: "SHARING", expectedOwnerPublicId: owner, expectedRevision: previous.revision });
     if (!write.success) { publish({ error: "Выберите близких и допустимые настройки геопозиции" }); return false; }
-    // Consent entered in People cannot become a publisher merely because the
-    // map opens while its response is pending.
-    const requestedPublication = publicationForeground();
     stopPublishing();
     const request = work(); enabling = request; publish({ saving: true, error: null });
     try {
       const value = checkedSettings(await transport.updateEarthSharing(write.data, environment!.createId(), request.abort.signal));
-      if (!current(request) || enabling !== request || pending) {
+      if (!current(request) || enabling !== request || pending || (state.settings?.revision ?? -1) > value.revision) {
         // An aborted transport can still have committed on the server. Retire
         // only its acknowledged epoch; this cannot stop a later explicit share.
         if (value.mode === "SHARING" && value.publicationEpoch) sendStop(value.publicationEpoch);
         return false;
       }
-      if (value.mode !== "SHARING" || !value.publicationEpoch) throw new Error("Сервер не выдал разрешение публикации");
+      const preservedGhost = options.preserveSharingUntil === true && previous.mode === "GHOST";
+      if (options.preserveSharingUntil && (value.mode !== previous.mode || value.precision !== previous.precision
+        || value.sharingUntil !== previous.sharingUntil || !sameIds(value.recipientCircleIds, options.recipientCircleIds)
+        || !sameIds(value.frozenCircleIds, options.frozenCircleIds ?? []))) {
+        if (value.publicationEpoch) sendStop(value.publicationEpoch);
+        throw new Error("Сервер не сохранил прежние настройки геопозиции");
+      }
+      if (preservedGhost ? value.publicationEpoch !== null : value.mode !== "SHARING" || hasLiveAudience(value) && !value.publicationEpoch)
+        throw new Error("Сервер не выдал разрешение публикации");
       sharingDeadline = Infinity;
       applySettings(value, request.started);
-      if (value.sharingUntil && deadline(value.sharingUntil) <= now()) throw new Error("Время обмена геопозицией истекло");
-      if (!requestedPublication || !publicationForeground() || value.recipientCircleIds.every(id => value.frozenCircleIds.includes(id))) {
-        sendStop(value.publicationEpoch); return true;
+      if (value.sharingUntil && deadline(value.sharingUntil) <= now()) {
+        if (value.publicationEpoch) sendStop(value.publicationEpoch);
+        throw new Error("Время обмена геопозицией истекло");
       }
-      publisher = value.publicationEpoch; sequence = 0; usedFixTime = -Infinity; minimumFixTime = environment!.now(); lastPublishAt = -Infinity;
-      publish({ publishing: true, lastPublishedAt: null }); expirePeople();
+      if (preservedGhost || !publicationForeground() || !hasLiveAudience(value)) {
+        if (value.publicationEpoch) sendStop(value.publicationEpoch);
+        void readPeople(); return true;
+      }
+      adoptPublisher(value); void readPeople();
       return true;
     } catch (error) {
       if (current(request) && enabling === request) { failed(error, "Не удалось включить обмен геопозицией"); if (statusOf(error) === 409) void readMetadata(); }
@@ -295,7 +383,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   }
   async function updatePreferences(recipientCircleIds: string[], frozenCircleIds: string[]): Promise<boolean> {
     const settings = state.settings;
-    if (!foreground() || pending || enabling || preferences || !settings || settings.mode === "OFF" || !owner) return false;
+    if (!foreground() || pending || enabling || resuming || preferences || !settings || settings.mode === "OFF" || !owner) return false;
     const write = earthSharingWriteSchema.safeParse({ expectedOwnerPublicId: owner, expectedRevision: settings.revision,
       mode: "SHARING", precision: settings.precision, recipientCircleIds, frozenCircleIds, frozenOnly: true, durationMinutes: null });
     if (!write.success || recipientCircleIds.some(id => !settings.recipientCircleIds.includes(id))) return false;
@@ -306,13 +394,12 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     try {
       const value = checkedSettings(await transport.updateEarthSharing(write.data, environment!.createId(), request.abort.signal));
       if (!current(request, false) || preferences !== request || pending) return false;
-      const sameIds = (first: string[], second: string[]) => first.length === second.length && first.every(id => second.includes(id));
       if (value.publicationEpoch !== null || value.revision <= settings.revision
         || value.mode !== (recipientCircleIds.length ? settings.mode : "OFF") || value.precision !== settings.precision
         || value.sharingUntil !== (recipientCircleIds.length ? settings.sharingUntil : null)
         || !sameIds(value.recipientCircleIds, recipientCircleIds) || !sameIds(value.frozenCircleIds, frozenCircleIds))
         throw new Error("Сервер не подтвердил настройки доступа");
-      applySettings(value, request.started); publish({ error: null });
+      applySettings(value, request.started); publish({ error: null }); void readPeople();
       return true;
     } catch (error) {
       if (current(request, false) && preferences === request) {
@@ -322,14 +409,16 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       return false;
     } finally { if (preferences === request) { preferences = null; if (active) publish({ saving: privacy !== null || enabling !== null }); } }
   }
-  function setFrozen(circleId: string, frozen: boolean) {
+  async function setFrozen(circleId: string, frozen: boolean) {
     const settings = state.settings;
-    if (!settings || settings.mode !== "SHARING" || !foreground() || pending || enabling || preferences
-      || !settings.recipientCircleIds.includes(circleId)) return Promise.resolve(false);
+    if (!settings || settings.mode !== "SHARING" || !foreground() || pending || enabling || resuming || preferences
+      || !settings.recipientCircleIds.includes(circleId)) return false;
     const selected = new Set(settings.frozenCircleIds);
-    if (selected.has(circleId) === frozen) return Promise.resolve(true);
+    if (selected.has(circleId) === frozen) return true;
     if (frozen) selected.add(circleId); else selected.delete(circleId);
-    return updatePreferences([...settings.recipientCircleIds], [...selected]);
+    const accepted = await updatePreferences([...settings.recipientCircleIds], [...selected]);
+    if (accepted && !frozen && publicationForeground() && !publisher) return resumePublication();
+    return accepted;
   }
   function revokeRecipient(circleId: string) {
     const settings = state.settings;
@@ -376,11 +465,22 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     queuedFix = { ...position }; void sendPosition();
   }
   function synchronize() {
+    const nextPublicationCycle = publicationForeground() && automaticResumeAllowed;
+    if (publicationCycleActive !== nextPublicationCycle) {
+      publicationCycleActive = nextPublicationCycle;
+      if (nextPublicationCycle) resumeAttempted = false;
+    }
     if (!foreground()) abortForeground();
     else if (pending) void flushPrivacy(); else refresh();
   }
   return {
     configure(callbacks: { onSessionLost?: () => void }) { onSessionLost = callbacks.onSessionLost ?? (() => {}); },
+    setAutomaticResumeAllowed(value: boolean) {
+      if (automaticResumeAllowed === value) return;
+      automaticResumeAllowed = value;
+      if (!value) stopPublishing();
+      if (active) synchronize();
+    },
     getSnapshot: () => state, getServerSnapshot: () => EMPTY,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     activate() {
@@ -392,23 +492,25 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       return () => {
         if (epoch !== generation) return;
         stopPublishing(); active = false; generation += 1; visibilityGeneration += 1;
-        for (const request of [metadata, feed, enabling, upload, privacy, preferences]) request?.abort.abort();
+        for (const request of [metadata, feed, enabling, resuming, upload, privacy, preferences]) request?.abort.abort();
         for (const controller of stops) controller.abort(); stops.clear();
-        metadata = feed = enabling = upload = privacy = preferences = null;
-        for (const name of ["poll", "expiry", "publish", "privacy"] as const) cancelTimer(name);
+        metadata = feed = enabling = resuming = upload = privacy = preferences = null;
+        for (const name of ["poll", "settings", "expiry", "publish", "privacy"] as const) cancelTimer(name);
         removeVisibility(); removePending(); environment = null; publisher = null; queuedFix = null; pending = null;
-        serverWall = -Infinity; sharingDeadline = publishedDeadline = Infinity; state = EMPTY;
+        serverWall = -Infinity; sharingDeadline = publishedDeadline = Infinity; publicationCycleActive = false; state = EMPTY;
       };
     },
-    setContext(context: { visible: boolean; isOnline: boolean; publicationVisible?: boolean }) {
+    setContext(context: { visible: boolean; isOnline: boolean; publicationVisible?: boolean; automaticResumeAllowed?: boolean }) {
       const nextPublicationVisible = context.publicationVisible ?? context.visible;
-      const changed = visible !== context.visible || online !== context.isOnline || publicationVisible !== nextPublicationVisible;
-      visible = context.visible; online = context.isOnline; publicationVisible = nextPublicationVisible;
+      const nextAutomaticResumeAllowed = context.automaticResumeAllowed ?? true;
+      const changed = visible !== context.visible || online !== context.isOnline || publicationVisible !== nextPublicationVisible || automaticResumeAllowed !== nextAutomaticResumeAllowed;
+      visible = context.visible; online = context.isOnline; publicationVisible = nextPublicationVisible; automaticResumeAllowed = nextAutomaticResumeAllowed;
       if (!active || !changed) return;
-      if (!publicationVisible) stopPublishing();
+      if (!publicationVisible || !automaticResumeAllowed) stopPublishing();
       if (!online) cancelTimer("privacy");
       synchronize(); if (online && pending) void flushPrivacy();
     },
-    share, setFrozen, revokeRecipient, ghost: () => hide("GHOST"), off: () => hide("OFF"), stopPublishing, refresh, setPosition,
+    share, resume: (resumeGhost = false) => resumePublication(resumeGhost), setFrozen, revokeRecipient,
+    ghost: () => hide("GHOST"), off: () => hide("OFF"), stopPublishing, refresh, setPosition,
   };
 }

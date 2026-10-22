@@ -12,12 +12,12 @@ after(() => vite.close());
 const { EarthSharingPanel, EarthSharingPanelContent, EarthSharingToggle, sharingSummary } =
   await vite.ssrLoadModule("/features/earth/earth-sharing-panel.tsx");
 const { EarthFriendSharingControls } = await vite.ssrLoadModule("/features/earth/earth-friend-sharing.tsx");
-const settings = { ownerPublicId: "0000-0000-0001", mode: "OFF", revision: 0, precision: "APPROXIMATE",
+const settings = { ownerPublicId: "0000-0000-0001", mode: "OFF", revision: 0, precision: "PRECISE",
   recipientCircleIds: [], frozenCircleIds: [], sharingUntil: null, publicationEpoch: null, serverTime: "2026-10-18T20:00:00Z" };
 const friends = [{ circleId: "one", user: { publicId: "0000-0000-0002", displayName: "<script>Лена</script>" }, nickname: "Лена" },
   { circleId: "two", user: { publicId: "0000-0000-0003", displayName: "Дима" } },
   { circleId: "new", user: { publicId: "0000-0000-0004", displayName: "Новый друг" } }];
-const activeSettings = { ...settings, mode: "SHARING", revision: 1, recipientCircleIds: ["one", "two"],
+const activeSettings = { ...settings, mode: "SHARING", revision: 1, precision: "APPROXIMATE", recipientCircleIds: ["one", "two"],
   frozenCircleIds: ["two"], sharingUntil: "2026-10-18T21:00:00Z" };
 
 function view(overrides = {}, selection = {}, individual = false) {
@@ -27,9 +27,9 @@ function view(overrides = {}, selection = {}, individual = false) {
     refresh: () => calls.push(["refresh"]), ...overrides.sharing };
   const props = { sharing, people: { people: friends }, peopleLoading: false, online: true,
     onShare: async choices => { calls.push(["share", choices]); }, onGhost: () => calls.push(["ghost"]),
-    onOff: () => calls.push(["off"]), onOpenPeople: () => calls.push(["people"]), onSetFrozen: async (id, frozen) => { calls.push(["frozen", id, frozen]); return true; },
+    onOff: () => calls.push(["off"]), onResume: async ghost => { calls.push(["resume", ghost]); }, onOpenPeople: () => calls.push(["people"]), onSetFrozen: async (id, frozen) => { calls.push(["frozen", id, frozen]); return true; },
     onRevokeRecipient: async id => { calls.push(["revoke", id]); return true; },
-    draft: { revision: sharing.settings?.revision ?? null, precision: sharing.settings?.precision ?? "APPROXIMATE", durationMinutes: 60 },
+    draft: { revision: sharing.settings?.revision ?? null, precision: sharing.settings?.precision ?? "PRECISE", durationMinutes: sharing.settings?.sharingUntil ? 60 : null },
     query: "", onQueryChange: value => calls.push(["query", value]),
     onPrecisionChange: value => calls.push(["precision", value]), onDurationChange: value => calls.push(["duration", value]),
     ...overrides, sharing };
@@ -57,7 +57,7 @@ test("the global panel starts private with a canonical Ghost switch and no Peopl
   assert.equal(result.elements.filter(node => node.type === "li").length, 0);
   assert.match(result.markup, /Геопозиция закрыта|Доступ закрыт/); assert.match(result.markup, /Призрак/);
   assert.doesNotMatch(result.markup, /Кому доступно|Выбрать|<script>|Новый друг|Обновлять геопозицию для/);
-  assert.match(result.markup, /<input(?=[^>]*value="APPROXIMATE")(?=[^>]*checked)[^>]*>/);
+  assert.match(result.markup, /<input(?=[^>]*value="PRECISE")(?=[^>]*checked)[^>]*>/);
   assert.equal(result.elements.find(node => node.type === "button" && node.props.type === "submit").props.disabled, true);
   assert.ok(result.elements.filter(node => node.type === "details").every(node => !node.props.open));
   assert.deepEqual(result.calls, []);
@@ -72,12 +72,12 @@ test("the stateful entry point omits private names and preserves saved precise a
   assert.deepEqual(result.calls, []);
 });
 
-test("a saved paused session resumes only explicitly with the saved audience and frozen preferences", async () => {
+test("the manual recovery resumes the existing grant without rewriting saved consent", async () => {
   const result = view({}, activeSettings);
   assert.match(result.markup, /Обновление на паузе/); assert.match(result.markup, /Доступ у 2 · обновления разрешены для 1/);
   assert.deepEqual(result.calls, []);
   await result.textButton("Возобновить").props.onClick();
-  assert.deepEqual(result.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["two"], precision: "APPROXIMATE", durationMinutes: 60 }]]);
+  assert.deepEqual(result.calls, [["resume", false]]);
 });
 
 test("the Ghost switch hides immediately and explicitly resumes only previously selected friends", async () => {
@@ -87,7 +87,7 @@ test("the Ghost switch hides immediately and explicitly resumes only previously 
   const ghost = view({}, { ...activeSettings, mode: "GHOST" });
   assert.equal(ghost.button("Режим призрака").props["aria-checked"], true);
   await ghost.button("Режим призрака").props.onClick();
-  assert.deepEqual(ghost.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["two"], precision: "APPROXIMATE", durationMinutes: 60 }]]);
+  assert.deepEqual(ghost.calls, [["resume", true]]);
 });
 
 test("empty and fully frozen audiences never invent recipients or jump to People", () => {
@@ -101,7 +101,7 @@ test("empty and fully frozen audiences never invent recipients or jump to People
 test("leaving Ghost preserves individual pauses and an empty Ghost account goes OFF without sharing", async () => {
   const result = view({}, { ...activeSettings, mode: "GHOST", frozenCircleIds: ["one", "two"] });
   await result.button("Режим призрака").props.onClick();
-  assert.deepEqual(result.calls, [["share", { recipientCircleIds: ["one", "two"], frozenCircleIds: ["one", "two"], precision: "APPROXIMATE", durationMinutes: 60 }]]);
+  assert.deepEqual(result.calls, [["resume", true]]);
   const empty = view({}, { mode: "GHOST" }); empty.button("Режим призрака").props.onClick();
   assert.deepEqual(empty.calls, [["off"]]);
 });
@@ -125,7 +125,7 @@ test("friend rows distinguish live updates, a permitted last point and no access
   assert.equal(status(live, "two"), "Последнее место");
   assert.equal(status(live, "new"), "Нет доступа");
   const paused = friendView({}, activeSettings);
-  assert.equal(status(paused, "one"), "Передача на паузе");
+  assert.equal(status(paused, "one"), "Обновится на карте");
   const ghost = friendView({}, { ...activeSettings, mode: "GHOST" });
   assert.equal(sharingSummary(ghost.props.sharing), "Призрак включён");
   assert.equal(status(ghost, "one"), "Последнее место · призрак");
@@ -137,11 +137,11 @@ test("a never-authorized friend gets consent only from their own explicit switch
   const initial = friendView();
   await friendSwitch(initial, "Новый друг").props.onClick();
   assert.deepEqual(initial.calls, [["share", { recipientCircleIds: ["new"], frozenCircleIds: [],
-    precision: "APPROXIMATE", durationMinutes: 60 }]]);
+    precision: "PRECISE", durationMinutes: null }]]);
   const existing = friendView({}, activeSettings);
   await friendSwitch(existing, "Новый друг").props.onClick();
   assert.deepEqual(existing.calls, [["share", { recipientCircleIds: ["one", "two", "new"], frozenCircleIds: ["two"],
-    precision: "APPROXIMATE", durationMinutes: 60 }]]);
+    precision: "APPROXIMATE", durationMinutes: 60, preserveSharingUntil: true }]]);
 });
 
 test("the first consent uses chosen precision and duration without applying an unsaved draft to existing recipients", async () => {
@@ -153,7 +153,7 @@ test("the first consent uses chosen precision and duration without applying an u
   const existing = friendView({ draft }, activeSettings);
   await friendSwitch(existing, "Новый друг").props.onClick();
   assert.deepEqual(existing.calls, [["share", { recipientCircleIds: ["one", "two", "new"], frozenCircleIds: ["two"],
-    precision: "APPROXIMATE", durationMinutes: 60 }]]);
+    precision: "APPROXIMATE", durationMinutes: 60, preserveSharingUntil: true }]]);
 });
 
 test("individual revocation stays in People while the map retains explicit revoke-all", async () => {
@@ -217,6 +217,45 @@ test("secondary accuracy and duration only apply on submit and keep frozen recip
     precision: "PRECISE", durationMinutes: 480 }]]);
 });
 
+test("unchanged advanced choices cannot rewrite consent or restart its finite deadline", async () => {
+  const result = view({}, { ...activeSettings, sharingUntil: "2026-10-18T20:37:19Z" });
+  const action = result.elements.find(node => node.type === "button" && node.props.type === "submit");
+  assert.equal(action.props.disabled, true);
+  await result.elements.find(node => node.type === "form").props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(result.calls, []);
+  assert.match(result.markup, /Сохранение заново отсчитает выбранный срок/);
+});
+
+test("metadata polling across an hour boundary cannot turn an untouched advanced draft into an edit", async () => {
+  const result = view({ draft: { revision: 1, precision: "APPROXIMATE", durationMinutes: 480,
+    initial: { precision: "APPROXIMATE", durationMinutes: 480 } } },
+  { ...activeSettings, sharingUntil: "2026-10-18T21:00:19Z", serverTime: "2026-10-18T20:00:30Z" });
+  assert.equal(result.elements.find(node => node.type === "button" && node.props.type === "submit").props.disabled, true);
+  await result.elements.find(node => node.type === "form").props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(result.calls, []);
+});
+
+test("the main sharing card exposes the exact send time, GPS accuracy and directed consent before advanced settings", () => {
+  const result = view({ sourceAccuracy: 17.4, sharing: { publishing: true, lastPublishedAt: "2026-10-18T20:12:37Z" } },
+    { ...activeSettings, precision: "PRECISE", sharingUntil: null });
+  const card = result.elements.find(node => node.type === "section");
+  const cardHtml = renderToStaticMarkup(card);
+  assert.match(cardHtml, /Моя геопозиция/);
+  assert.match(cardHtml, /Точная геопозиция.*пока не выключу/);
+  assert.match(cardHtml, /<time dateTime="2026-10-18T20:12:37Z">/);
+  assert.match(cardHtml, /Точность GPS: ±17 м/);
+  assert.match(cardHtml, /пока карта открыта на экране/);
+  assert.match(result.markup, /только выбранным друзьям в «Людях»/);
+  assert.match(result.markup, /он тоже должен открыть вам доступ/);
+  assert.ok(result.markup.indexOf("Друзьям отправлено") < result.markup.indexOf("Дополнительные настройки"));
+  assert.deepEqual(result.calls, []);
+});
+
+test("invalid accuracy is omitted rather than presented as a precise GPS fix", () => {
+  for (const sourceAccuracy of [null, -1, Infinity, NaN]) assert.doesNotMatch(view({ sourceAccuracy }).markup, /Точность GPS:/);
+  assert.match(view({ sourceAccuracy: 1800 }).markup, /Точность GPS: ±1,8 км/);
+});
+
 test("pending changes cannot block a privacy stop, while missing settings and global GPS off block resume", () => {
   for (const overrides of [{ sharing: { saving: true } }, { working: true }]) {
     const result = view(overrides, activeSettings), button = result.button("Режим призрака");
@@ -275,11 +314,11 @@ test("a privacy command interrupts an unresolved resume synchronously and failed
     const base = view({}, activeSettings), calls = [];
     let failResume;
     const props = { ...base.props, sharing: { ...base.props.sharing, stopPublishing: () => calls.push("stop") },
-      onShare: () => new Promise((resolve, reject) => { failResume = reject; }),
+      onResume: () => new Promise((resolve, reject) => { failResume = reject; }),
       onGhost: () => { calls.push("ghost"); throw new Error("offline"); }, onOff: async () => { calls.push("off"); throw new Error("retry"); } };
     const render = () => { runtime.begin(); const content = Panel(props); runtime.commit(); return content.props; };
     assert.deepEqual(calls, [], "rendering does not start location or sharing");
-    const resume = render().onShare({ recipientCircleIds: ["one"], frozenCircleIds: [], precision: "APPROXIMATE", durationMinutes: 60 });
+    const resume = render().onResume(false);
     assert.equal(render().working, true);
     const stop = render().onGhost();
     assert.deepEqual(calls, ["stop", "ghost"], "publishing stops before a failed privacy transport can complete");

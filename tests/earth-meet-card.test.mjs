@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import { Children, createElement, isValidElement } from "react";
+import { Children, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -14,7 +14,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
     transform(source, id) { if (id.endsWith("/features/earth/earth-meet-card.tsx")) return source.replace('from "react";', `from "${hooks}";`); },
   }], server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { EarthMeetCard, EarthWalkingRouteOptions, formatMeetDistance } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
+const { EarthMeetCard, EarthWalkingRouteOptions, formatMeetDistance, formatMeetLocationUpdate } = await vite.ssrLoadModule("/features/earth/earth-meet-card.tsx");
 const wall = Date.parse("2026-10-20T12:00:00Z"), mono = 10_000;
 const from = { latitude: 55.751234, longitude: 37.621234, accuracy: 15, timestamp: wall };
 const friend = (extra = {}) => ({ circleId: "shared-friend", user: { publicId: "PRIVATE-FRIEND-ID", displayName: "Друг" },
@@ -78,7 +78,8 @@ test("approximate or old friend points retain honest distance without a fabricat
     assert.match(view.html, /по прямой/);
     assert.equal(view.nodes.some(node => node.type === "a"), false);
     assert.doesNotMatch(view.html, /google\.com|55\.761234|37\.631234|(?:идти|ходьбы|пешком)\s*\d|\d+\s*мин\.?\s*(?:пешком|ходьбы|в пути)/);
-    assert.match(view.html, /Для пешего маршрута нужна точная|точка будет свежей и точной/);
+    assert.match(view.html, /примерным районом|Точка друга старше 5 минут/);
+    assert.equal(control(view, "Внешние карты").props.disabled, true);
   }
 });
 
@@ -95,7 +96,7 @@ test("expired and revoked friend points never keep meeting controls or an extern
 test("missing or stale own GPS requests a private lookup while valid friend routing never embeds an origin", () => {
   for (const position of [null, { ...from, timestamp: wall - 60_001 }]) {
     const view = render({ position });
-    assert.match(view.html, /Расстояние — после поиска тебя/); assert.doesNotMatch(view.html, /по прямой/);
+    assert.match(view.html, position ? /Нужна свежая геопозиция/ : /Расстояние — после поиска тебя/); assert.doesNotMatch(view.html, /по прямой/);
     assert.ok(control(view, "Найти меня")); assert.deepEqual(view.calls, []);
     control(view, "Найти меня").props.onClick(); assert.deepEqual(view.calls, ["locate"]);
     assert.equal(new URL(view.nodes.find(node => node.type === "a" && node.props.children[0] === "Google Карты").props.href).searchParams.has("origin"), false);
@@ -154,12 +155,14 @@ test("the separate chooser handles Escape without forwarding it to the meeting c
   view.tree.props.onKeyDown({ key: "Escape", stopPropagation() {} }); assert.deepEqual(view.calls, ["close"]);
 });
 
-test("a walking route is built only explicitly from the chooser and uses the returned distance and duration", () => {
+test("a walking route has a direct explicit action and uses the returned distance and duration", () => {
   let built = 0, cleared = 0;
   const props = { onBuildWalkingRoute: () => { built++; }, onClearWalkingRoute: () => { cleared++; } };
   const idle = render({ ...props, walkingRoute: { status: "idle", route: null, error: null, canRequest: true } });
   assert.equal(built, 0); assert.match(idle.html, /по прямой/);
   const build = control(idle, "Пешком на этой карте"); assert.ok(build); assert.equal(build.props.disabled, false);
+  const popup = idle.nodes.find(node => typeof node.props.onEscapeKeyDown === "function");
+  assert.equal(elements(popup).includes(build), false, "the action is visible without opening the external-map chooser");
   build.props.onClick(); assert.equal(built, 1);
   const route = { distanceMeters: 2_350, durationSeconds: 1060 };
   const ready = render({ ...props, walkingRoute: { status: "ready", route, error: null, canRequest: true } });
@@ -174,15 +177,74 @@ test("walking-route loading, no self fix and failures stay secondary while exter
   for (const status of ["idle", "loading", "error"]) {
     const result = render({ position: status === "idle" ? null : from, onBuildWalkingRoute: () => { built++; },
       walkingRoute: { status, route: null, canRequest: false, error: status === "error" ? "Сервис маршрутов недоступен" : null } });
-    const build = control(result, status === "loading" ? "Строим маршрут…" : "Пешком на этой карте");
+    const build = control(result, status === "loading" ? "Строим пеший маршрут…" : "Пешком на этой карте");
     assert.equal(build.props.disabled, true); build.props.onClick();
     assert.equal(result.nodes.filter(node => node.type === "a").length, 4);
-    const popup = result.nodes.find(node => typeof node.props.onEscapeKeyDown === "function");
-    const content = renderToStaticMarkup(createElement("div", null, popup.props.children));
-    assert.match(content, /Две точки отправятся OSRM\/FOSSGIS/);
-    if (status === "idle") assert.match(content, /Сначала найди себя/);
+    assert.match(result.html, /две точки отправятся OSRM\/FOSSGIS/);
+    if (status === "idle") assert.match(result.html, /Сначала дождись своей геопозиции/);
     if (status === "loading") assert.match(result.html, /Строим пеший маршрут/);
-    if (status === "error") assert.match(content, /Сервис маршрутов недоступен/);
+    if (status === "error") assert.match(result.html, /Сервис маршрутов недоступен/);
   }
   assert.equal(built, 0);
+});
+
+test("actual capture time, age and GPS accuracy explain a retained friend's point", () => {
+  const capturedAt = wall - 17 * 60_000;
+  const view = render({ person: friend({ updatedAt: new Date(capturedAt).toISOString(), accuracyMeters: 625 }) });
+  const expectedTime = new Date(capturedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  assert.match(view.html, /Последняя точка друга/);
+  assert.ok(view.html.includes(`<time dateTime="${new Date(capturedAt).toISOString()}">${expectedTime}</time>`));
+  assert.match(view.html, /17 мин\. назад/); assert.match(view.html, /±625 м/);
+  assert.match(view.html, /по прямой до последней точки/);
+  assert.equal(formatMeetLocationUpdate(Number.NaN, wall), null);
+  assert.equal(formatMeetLocationUpdate(1e20, wall), null);
+});
+
+test("paused and failed GPS markers are labelled last-known until an active fresh fix arrives", () => {
+  const walkingRoute = { status: "idle", route: null, error: null, canRequest: true };
+  for (const locationStatus of ["paused", "timeout", "unavailable"]) {
+    const view = render({ locationStatus, walkingRoute, onBuildWalkingRoute() {} });
+    assert.match(view.html, /Твоя последняя точка/); assert.match(view.html, /Нужна свежая геопозиция/);
+    assert.doesNotMatch(view.html, /по прямой/);
+    assert.equal(control(view, "Пешком на этой карте").props.disabled, true);
+    assert.equal(control(view, "Внешние карты").props.disabled, false, "destination-only routes do not require our GPS");
+  }
+  const resumed = render({ locationStatus: "active", walkingRoute, onBuildWalkingRoute() {} });
+  assert.match(resumed.html, /по прямой/); assert.doesNotMatch(resumed.html, /Твоя последняя точка/);
+  assert.equal(control(resumed, "Пешком на этой карте").props.disabled, false);
+});
+
+test("coarse, stale and newly fresh GPS updates change route readiness without replacing the selected friend", () => {
+  let built = 0;
+  const base = { walkingRoute: { status: "idle", route: null, error: null, canRequest: true }, onBuildWalkingRoute() { built++; } };
+  for (const [patch, reason] of [[{ accuracyMeters: 700 }, /GPS друга пока неточен/],
+    [{ updatedAt: new Date(wall - 301_000).toISOString() }, /Точка друга старше 5 минут/],
+    [{ precision: "APPROXIMATE" }, /примерным районом/]]) {
+    const blocked = render({ ...base, person: friend(patch) });
+    assert.match(blocked.html, reason); assert.equal(control(blocked, "Пешком на этой карте").props.disabled, true);
+    control(blocked, "Пешком на этой карте").props.onClick();
+  }
+  const ready = render({ ...base, person: friend() });
+  assert.equal(control(ready, "Пешком на этой карте").props.disabled, false);
+  assert.equal(control(ready, "Внешние карты").props.disabled, false);
+  assert.equal(built, 0, "point updates do not request routes");
+  control(ready, "Пешком на этой карте").props.onClick(); assert.equal(built, 1);
+});
+
+test("Kazan to Petersburg explains the local walking distance limit while offering external maps directly", () => {
+  const view = render({ position: { ...from, latitude: 55.796, longitude: 49.106 },
+    person: friend({ latitude: 59.939, longitude: 30.315 }),
+    walkingRoute: { status: "idle", route: null, error: null, canRequest: false }, onBuildWalkingRoute() {} });
+  assert.match(view.html, /по прямой/); assert.match(view.html, /до 20 км по прямой/);
+  assert.equal(control(view, "Пешком на этой карте").props.disabled, true);
+  assert.equal(control(view, "Внешние карты").props.disabled, false);
+  assert.equal(view.nodes.filter(node => node.type === "a").length, 4);
+  assert.doesNotMatch(view.html, /Пешком ·|нужны сеть и свежие/i);
+});
+
+test("offline route status names the missing connection and never starts a provider request", () => {
+  let built = 0;
+  const view = render({ online: false, walkingRoute: { status: "idle", route: null, error: null, canRequest: false }, onBuildWalkingRoute() { built++; } });
+  assert.match(view.html, /Нет сети/); assert.equal(control(view, "Пешком на этой карте").props.disabled, true);
+  control(view, "Пешком на этой карте").props.onClick(); assert.equal(built, 0);
 });

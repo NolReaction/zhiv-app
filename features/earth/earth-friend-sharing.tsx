@@ -13,12 +13,20 @@ import styles from "./earth-friend-sharing.module.css";
 type Friend = Person;
 type Options = { precision: EarthSharingPrecision; durationMinutes: EarthSharingDuration };
 
+function isFirstEarthConsent(settings: EarthSharingSettings) {
+  return settings.revision === 0 && settings.mode === "OFF" && settings.recipientCircleIds.length === 0
+    && (settings.frozenCircleIds?.length ?? 0) === 0 && settings.sharingUntil === null;
+}
+
 /** Confirmed server choices are shared by People and the map; reading never resumes GPS. */
 export function confirmedEarthChoices(settings: EarthSharingSettings): EarthSharingChoices {
-  const durationMinutes = settings.mode !== "OFF" && settings.sharingUntil === null ? null
+  const first = isFirstEarthConsent(settings);
+  const durationMinutes = first || settings.mode !== "OFF" && settings.sharingUntil === null ? null
     : settings.sharingUntil && Date.parse(settings.sharingUntil) - Date.parse(settings.serverTime) > 60 * 60_000 ? 480 : 60;
   return { recipientCircleIds: [...settings.recipientCircleIds], frozenCircleIds: [...(settings.frozenCircleIds ?? [])],
-    precision: settings.precision, durationMinutes };
+    precision: first ? "PRECISE" : settings.precision, durationMinutes,
+    ...(settings.mode !== "OFF" && (settings.sharingUntil === null || Date.parse(settings.sharingUntil) > Date.parse(settings.serverTime))
+      ? { preserveSharingUntil: true } : {}) };
 }
 
 export function EarthSharingToggle({ checked, disabled, label, description, onChange, ghost = false, compact = false }: {
@@ -50,7 +58,7 @@ function playDisclosureCue(event: MouseEvent<HTMLElement>) {
 }
 
 /** One consent action with row and paired-button presentations. No local sharing state. */
-export function EarthFriendSharingControls({ person, sharing, online, working = false, heading = "Геопозиция", avatar,
+export function EarthFriendSharingControls({ person, sharing, online, working = false, heading = "Моя геопозиция", avatar,
   idPrefix = "earth-friend-access", firstChoices, onShare, onSetFrozen, onRevokeRecipient, onOpenMap, presentation = "row", companionControl, showDetails = true, showResume = true, locationEnabled = true }: {
   person: Friend; sharing?: EarthSharingHandle; online: boolean; working?: boolean; heading?: ReactNode; avatar?: ReactNode;
   idPrefix?: string; firstChoices?: Options; onShare?: (choices: EarthSharingChoices) => Promise<void>;
@@ -64,7 +72,7 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
   const canChange = !!settings && online && !sharing?.saving && !working && !sharing?.pendingGhost;
   const disabled = !locationEnabled || !canChange || ghost || (hasAccess ? !onSetFrozen : !onShare || (settings?.recipientCircleIds.length ?? 0) >= 100);
   const status = !locationEnabled ? "Выключена в настройках" : !settings ? "Загружаем…" : !hasAccess ? "Нет доступа" : sharing?.pendingGhost ? "Ждём подтверждения…"
-    : ghost ? "Последнее место · призрак" : frozen ? "Последнее место" : !sharing?.publishing ? "Передача на паузе"
+    : ghost ? "Последнее место · призрак" : frozen ? "Последнее место" : !sharing?.publishing ? "Обновится на карте"
       : !sharing.lastPublishedAt ? "Ищем местоположение…" : "Обновляется";
   const id = `${idPrefix}-${person.circleId}`;
   const checked = locationEnabled && hasAccess && !frozen && !ghost;
@@ -72,7 +80,7 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
     if (!settings || disabled) return;
     if (hasAccess) { void onSetFrozen?.(person.circleId, !frozen); return; }
     const choices = confirmedEarthChoices(settings);
-    const initial = choices.recipientCircleIds.length === 0 && firstChoices
+    const initial = isFirstEarthConsent(settings) && firstChoices
       ? { precision: firstChoices.precision, durationMinutes: firstChoices.durationMinutes } : {};
     void onShare?.({ ...choices, ...initial, recipientCircleIds: [...choices.recipientCircleIds, person.circleId] });
   };
@@ -90,6 +98,7 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
       <EarthSharingToggle checked={checked} disabled={disabled} compact={presentation === "compact"}
         label={"Обновлять геопозицию для " + name} description={id} onChange={change} />
     </div>}
+    {showDetails && presentation !== "buttons" && <p className={styles.directionHint}>Вы показываете своё место этому человеку. Чтобы видеть его, он тоже должен открыть вам доступ.</p>}
     {showDetails && hasAccess && <details className={styles.details}
       onBlur={presentation === "compact" ? event => {
         if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
@@ -110,6 +119,6 @@ export function EarthFriendSharingControls({ person, sharing, online, working = 
       </div>
     </details>}
     {locationEnabled && showResume && onOpenMap && hasAccess && !ghost && !frozen && !sharing?.publishing && <button type="button"
-      className={styles.openMap} onClick={onOpenMap}>Возобновить на карте</button>}
+      className={styles.openMap} onClick={onOpenMap}>Открыть карту</button>}
   </div>;
 }

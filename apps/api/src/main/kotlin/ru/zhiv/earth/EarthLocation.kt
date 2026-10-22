@@ -14,7 +14,10 @@ private const val MAX_SAFE = 9_007_199_254_740_990L
 
 @Serializable data class EarthSharingWrite(val expectedOwnerPublicId: String, val expectedRevision: Long,
     val mode: String, val precision: String, val recipientCircleIds: List<String>, val durationMinutes: Int?,
-    val frozenCircleIds: List<String> = emptyList(), val frozenOnly: Boolean = false)
+    val frozenCircleIds: List<String> = emptyList(), val frozenOnly: Boolean = false,
+    val preserveSharingUntil: Boolean = false)
+@Serializable data class EarthSharingResume(val expectedOwnerPublicId: String, val expectedRevision: Long,
+    val resumeGhost: Boolean = false)
 @Serializable data class EarthPositionWrite(val expectedOwnerPublicId: String, val publicationEpoch: String,
     val sequence: Long, val latitude: Double, val longitude: Double, val accuracyMeters: Double, val capturedAt: String)
 @Serializable data class EarthPositionStop(val expectedOwnerPublicId: String, val publicationEpoch: String)
@@ -30,6 +33,7 @@ private const val MAX_SAFE = 9_007_199_254_740_990L
 interface EarthLocationRepository {
     suspend fun settings(sessionHash: ByteArray): EarthSharingSettings
     suspend fun share(sessionHash: ByteArray, request: EarthSharingWrite): EarthSharingSettings
+    suspend fun resume(sessionHash: ByteArray, request: EarthSharingResume): EarthSharingSettings
     suspend fun publish(sessionHash: ByteArray, request: EarthPositionWrite): EarthPositionReceipt
     suspend fun stop(sessionHash: ByteArray, request: EarthPositionStop): EarthPositionStopped
     suspend fun people(sessionHash: ByteArray): EarthPeopleResponse
@@ -52,6 +56,9 @@ fun validateEarthSharing(value: EarthSharingWrite) {
         value.frozenCircleIds.size>100 || value.frozenCircleIds.distinct().size!=value.frozenCircleIds.size ||
         value.frozenCircleIds.any { parseCanonicalUuid(it)==null || (value.mode=="SHARING" && it !in value.recipientCircleIds) } ||
         (value.mode=="SHARING" && value.recipientCircleIds.isEmpty() && !value.frozenOnly)) invalidEarthSharing()
+}
+fun validateEarthResume(value: EarthSharingResume) {
+    if(parsePublicId(value.expectedOwnerPublicId)!=value.expectedOwnerPublicId || value.expectedRevision !in 0..MAX_SAFE) invalidEarthSharing()
 }
 fun validateEarthPosition(value: EarthPositionWrite): Instant {
     if(parsePublicId(value.expectedOwnerPublicId)!=value.expectedOwnerPublicId || parseCanonicalUuid(value.publicationEpoch)==null ||

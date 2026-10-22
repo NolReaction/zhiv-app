@@ -15,6 +15,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.utils.io.readAvailable
@@ -79,6 +80,10 @@ fun Route.earthLocationRoutes(repository: EarthLocationRepository,codec: TokenCo
         put("/sharing") {
             val hash=call.earthSession(config,codec,true);val request=call.earthBody<EarthSharingWrite>()
             validateEarthSharing(request);call.earthResult { repository.share(hash,request) }
+        }
+        post("/sharing/resume") {
+            val hash=call.earthSession(config,codec,true);val request=call.earthBody<EarthSharingResume>()
+            validateEarthResume(request);call.earthResult { repository.resume(hash,request) }
         }
         put("/location") {
             val hash=call.earthSession(config,codec,true);val request=call.earthBody<EarthPositionWrite>(true)

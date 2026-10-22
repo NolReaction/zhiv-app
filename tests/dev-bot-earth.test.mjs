@@ -52,7 +52,7 @@ test("synthetic drafts default private and explicit sharing reaches only the rea
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-20T12:00:00Z") });
   const owner = player(), outsider = player(), bot = create(owner), privateBot = social.getDevOwnedBots(owner.token)[0];
   connect({ token: privateBot.token, me: social.getDevIdentity(privateBot.token) }, outsider);
-  assert.deepEqual(bot.earth, { mode: "OFF", precision: "APPROXIMATE", sharingUntil: null, position: null,
+  assert.deepEqual(bot.earth, { mode: "OFF", precision: "PRECISE", sharingUntil: null, position: null,
     sharedUpdatedAt: null, sharedExpiresAt: null, nextPublishAt: null });
   move(owner, bot);
   assert.equal(read(owner, bot).earth.position.latitude, 55.752345);
@@ -203,7 +203,7 @@ test("exhausted public read budgets cannot block ghost or revoke, their snapshot
   const presence = uuid(); globalThis.__devBotEarthToken = owner.token;
   commandDevPresence(owner.me.user.publicId, { kind: "resume", presenceId: presence, sequence: 0, active: true }, Date.now(), owner.token);
   for (const token of [owner.token, privateBot.token]) {
-    for (let index = 0; index < 600; index++) earth.getDevEarthSharing(token);
+    for (let index = 0; index < 1800; index++) earth.getDevEarthSharing(token);
     assert.deepEqual(earth.getDevEarthSharing(token), { kind: "error", status: 429, code: "EARTH_RATE_LIMITED", retryAfterSeconds: 3600 });
     assert.equal(earth.getDevEarthPeople(token).status, 429, "the public feed still enforces its normal budget");
   }
