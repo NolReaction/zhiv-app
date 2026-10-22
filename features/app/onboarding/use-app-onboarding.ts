@@ -15,7 +15,8 @@ export function useAppOnboarding(owner: string, ready: boolean, evidence: AppOnb
   const { paused } = state;
   useEffect(() => {
     store.restore();
-    const restore = (event: StorageEvent) => { if (event.key === store.storageKey || event.key === store.pauseStorageKey || event.key === null) store.restore(); };
+    const restore = (event: StorageEvent) => { if (event.key === store.storageKey || event.key === store.pauseStorageKey
+      || event.key === store.notificationStorageKey || event.key === null) store.restore(); };
     window.addEventListener("storage", restore);
     return () => window.removeEventListener("storage", restore);
   }, [store]);
@@ -33,6 +34,8 @@ export function useAppOnboarding(owner: string, ready: boolean, evidence: AppOnb
     progress: state.progress,
     open: running && !paused,
     paused: running && paused,
+    notificationOffer: state.loaded && state.progress === null && !state.notificationOfferSeen,
+    acknowledgeNotifications: store.acknowledgeNotifications,
     start: () => { store.save(startAppOnboarding(lastCheckInAt)); store.setPaused(false); },
     next: () => store.save(advanceAppOnboarding(store.getSnapshot().progress)),
     back: () => store.save(previousAppOnboarding(store.getSnapshot().progress)),

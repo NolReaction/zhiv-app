@@ -1687,6 +1687,7 @@ function CheckInContent() {
       </header>
       {me && <AppOnboarding key={`app-guide:${me.user.publicId}`} owner={me.user.publicId} entryRef={appOnboardingEntry}
         ready={!startupActive && screen === "home"} suspended={gameOpen || statusOpen || !activity.active}
+        onSessionLost={loseSession}
         activeView={activeView} lastCheckInAt={lastCheckInAt} nextAllowedAt={nextAllowedAt}
         nowMs={adjustedNow} unconfirmed={checkInUnconfirmed} isSending={isSending} isOnline={isOnline}
         calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}

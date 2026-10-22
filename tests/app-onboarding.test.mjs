@@ -33,8 +33,9 @@ const vite = await createServer({
 after(() => vite.close());
 const { APP_ONBOARDING_STEPS, parseAppOnboarding, startAppOnboarding, observeAppOnboarding,
   advanceAppOnboarding, previousAppOnboarding } = await vite.ssrLoadModule("/features/app/onboarding/app-onboarding-model.ts");
-const { createAppOnboardingStore, appOnboardingStorageKey } = await vite.ssrLoadModule("/features/app/onboarding/app-onboarding-storage.ts");
+const { createAppOnboardingStore, appOnboardingStorageKey, appOnboardingNotificationStorageKey } = await vite.ssrLoadModule("/features/app/onboarding/app-onboarding-storage.ts");
 const { AppOnboarding } = await vite.ssrLoadModule("/features/app/onboarding/app-onboarding.tsx");
+const { NotificationOnboardingPrompt } = await vite.ssrLoadModule("/features/notifications/notification-onboarding-prompt.tsx");
 const { GuideCoach } = await vite.ssrLoadModule("/features/onboarding/guide-coach.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-08T10:00:00Z");
@@ -152,7 +153,7 @@ test("per-account store preserves resume, skip and restart without changing the 
   restored.restore();
   assert.deepEqual(restored.getSnapshot().progress, started("people"));
   assert.deepEqual(second.getSnapshot().progress, { version: 2, status: "skipped" });
-  assert.deepEqual(restored.getServerSnapshot(), { loaded: false, progress: null, paused: false });
+  assert.deepEqual(restored.getServerSnapshot(), { loaded: false, progress: null, paused: false, notificationOfferSeen: false });
   restored.save(null);
   assert.equal(parseAppOnboarding(values.get(appOnboardingStorageKey("FIRST"))), null);
 });
@@ -183,14 +184,14 @@ test("closing the app welcome or a lesson persists across reload until explicit 
     first.restore(); first.save(progress); first.setPaused(true);
     const reopened = createAppOnboardingStore(owner, disk);
     reopened.restore();
-    assert.deepEqual(reopened.getSnapshot(), { loaded: true, progress, paused: true });
+    assert.deepEqual(reopened.getSnapshot(), { loaded: true, progress, paused: true, notificationOfferSeen: false });
     const other = createAppOnboardingStore(`${owner}-other`, disk);
     other.restore();
     assert.equal(other.getSnapshot().paused, false, "one account cannot silence another account's tutorial");
     reopened.setPaused(false);
     const resumed = createAppOnboardingStore(owner, disk);
     resumed.restore();
-    assert.deepEqual(resumed.getSnapshot(), { loaded: true, progress, paused: false });
+    assert.deepEqual(resumed.getSnapshot(), { loaded: true, progress, paused: false, notificationOfferSeen: false });
   }
 });
 
@@ -217,6 +218,33 @@ test("app pause survives blocked storage, and restored writes allow cross-tab pa
   assert.equal(reopened.getSnapshot().paused, false);
 });
 
+test("notification offer acknowledgement survives reload and tutorial replay separately for each device account", () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const first = createAppOnboardingStore("push-offer-first", storage);
+  first.restore();
+  assert.equal(first.getSnapshot().notificationOfferSeen, false);
+  first.acknowledgeNotifications();
+  assert.equal(first.getSnapshot().progress, null, "acknowledging notifications must not skip or start the course");
+  assert.equal(first.notificationStorageKey, appOnboardingNotificationStorageKey("push-offer-first"));
+  assert.equal(first.notificationStorageKey, "zhiv.notifications-onboarding.v1:push-offer-first");
+  const reloaded = createAppOnboardingStore("push-offer-first", storage);
+  reloaded.restore(); reloaded.save(started("people")); reloaded.save(null);
+  assert.equal(reloaded.getSnapshot().notificationOfferSeen, true);
+  const other = createAppOnboardingStore("push-offer-second", storage);
+  other.restore(); assert.equal(other.getSnapshot().notificationOfferSeen, false);
+  assert.equal(createAppOnboardingStore("push-offer-first", { getItem: () => null, setItem() {} }).notificationStorageKey,
+    first.notificationStorageKey, "the preference key has no gameplay generation or tutorial version");
+});
+
+test("notification offer acknowledgement tolerates blocked storage without repeating in the current app session", () => {
+  const storage = { getItem() { throw Error("blocked"); }, setItem() { throw Error("blocked"); } };
+  const first = createAppOnboardingStore("push-offer-blocked", storage);
+  first.restore(); first.acknowledgeNotifications();
+  const reloaded = createAppOnboardingStore("push-offer-blocked", storage);
+  reloaded.restore(); assert.equal(reloaded.getSnapshot().notificationOfferSeen, true);
+});
+
 function view(stepId, overrides = {}, completed = []) {
   const calls = [];
   const record = name => () => calls.push(name);
@@ -237,6 +265,35 @@ test("welcome starts only the course and never navigates or sends a check-in", (
   assert.equal(result.props.inline, true);
   result.props.primary.onClick();
   assert.deepEqual(result.calls, ["start"]);
+});
+
+test("the notification offer is shown before the welcome and its ordinary skip action", () => {
+  const calls = [];
+  hooks.setDialogOpen(false);
+  hooks.setGuide({ progress: null, open: true, paused: false, notificationOffer: true,
+    acknowledgeNotifications: () => calls.push("notifications-seen"), skip: () => calls.push("skip"),
+    start: () => calls.push("start"), pause() {}, replay() {}, resume() {} });
+  const tree = AppOnboarding({ ...evidence(), owner: "UI-PUSH-PLAYER", ready: true, suspended: false,
+    isOnline: true, calendarAvailable: true, simpleView: false, onSessionLost() {} });
+  const children = Children.toArray(tree.props.children);
+  const offer = children.find(child => isValidElement(child) && child.type === NotificationOnboardingPrompt);
+  assert.ok(offer);
+  assert.equal(children.find(child => isValidElement(child) && child.type === GuideCoach).props.open, false);
+  assert.deepEqual(calls, [], "rendering must not grant permission, subscribe or skip training");
+  offer.props.onContinue();
+  assert.deepEqual(calls, ["notifications-seen"]);
+});
+
+test("notification preparation does not mount underneath startup or modal dialogs", () => {
+  for (const overrides of [{ ready: false }, { suspended: true }, { worldOpen: true }, { calendarOpen: true }, { dialogOpen: true }]) {
+    hooks.setDialogOpen(overrides.dialogOpen === true);
+    hooks.setGuide({ progress: null, open: true, paused: false, notificationOffer: true,
+      acknowledgeNotifications() {}, skip() {}, start() {}, pause() {}, replay() {}, resume() {} });
+    const tree = AppOnboarding({ ...evidence(), owner: "UI-PUSH-HIDDEN", ready: true, suspended: false,
+      isOnline: true, calendarAvailable: true, simpleView: false, onSessionLost() {}, ...overrides });
+    assert.equal(Children.toArray(tree.props.children).some(child => isValidElement(child) && child.type === NotificationOnboardingPrompt), false);
+  }
+  hooks.setDialogOpen(false);
 });
 
 test("check-in asks for the real button; offline and unavailable states still offer skip", () => {
