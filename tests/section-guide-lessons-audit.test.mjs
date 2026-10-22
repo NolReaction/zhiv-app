@@ -10,7 +10,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-section-lesson-audit-${process.pid}`,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { sectionGuideIds, sectionGuideLessons } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
+const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { WorldPantryMenu, PantrySale } = await vite.ssrLoadModule("/features/economy/ui/inventory/world-pantry-menu.tsx");
@@ -116,7 +116,12 @@ test("settings and help describe explicit lesson entry without changing the paus
   assert.match(settings, /checked=\{showSectionGuideLauncher\} onCheckedChange=\{setShowSectionGuideLauncher\}/);
   assert.doesNotMatch(settings, /Новые знакомства.*останутся доступны/);
   const topics = worldHelpTopics(), start = topics.find(entry => entry.id === "start"), plesk = topics.find(entry => entry.id === "plesk");
-  assert.match(start.steps[0], /включает подсказки вручную; при входе они не открываются/);
+  assert.match(start.steps[0], /«Что здесь делать\?» запускает подсказки вручную/);
+  const started = { version: 1, status: "started", stepId: "rod-intro" };
+  for (const progress of [null, started]) {
+    assert.equal(sectionGuideCanOpen(true, true, progress), false, "entering a section must not start or resume its lesson");
+  }
+  assert.equal(sectionGuideCanOpen(true, true, started, true), true, "the explicit help action opens the started lesson");
   assert.match(plesk.steps[2], /в запущенной вами подсказке таблица открывается сама/);
   assert.match(plesk.steps[2], /Открытие не покупает снасть/);
 });
