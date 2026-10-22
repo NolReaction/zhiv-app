@@ -355,7 +355,9 @@ jobs:
 
   compose:
     name: Production Compose smoke test
-    needs: [secrets, web, backend]
+    # This isolated stack builds its own web/API; run it alongside the other gates
+    # so deployment/reset failures are visible before the longest browser suite.
+    needs: [secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
