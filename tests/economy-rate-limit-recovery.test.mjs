@@ -134,6 +134,50 @@ test("a repeated 429 establishes a fresh full wait; a later network failure reta
   assert.equal(sent.length, 3); assert.deepEqual(sent[2], sent[0]);
 });
 
+test("a poll that is throttled at a pending command's deadline publishes the full extended wait and preserves its receipt", async t => {
+  let clock = 0, reads = 0; t.mock.method(performance, "now", () => clock);
+  const sent = [], cache = storage();
+  const session = createEconomySession(owner, transport({
+    get: async () => {
+      if (++reads > 1) throw new ApiError("Пауза чтения", 429, { code: "RATE_LIMITED", message: "Пауза чтения" }, undefined, 1_323_000);
+      return state();
+    },
+    send: async value => { sent.push(structuredClone(value)); if (sent.length === 1) throw limited(2000); return result(state(1)); },
+  }), () => assert.fail(), cache);
+  t.after(session.activate()); await session.refresh(); session.act("start_construction", "home"); await flush();
+  const original = session.getSnapshot(), receipt = [...cache.data.values()][0];
+  clock = 2000; await session.refresh();
+  assert.equal(reads, 2); assert.equal(session.getSnapshot().rateLimited, true);
+  assert.equal(session.getSnapshot().retryAt - session.now(), 1_323_000, "the displayed deadline follows the newly enforced server wait");
+  assert.equal(session.getSnapshot().error, original.error); assert.equal(session.getSnapshot().syncError, original.syncError);
+  assert.equal([...cache.data.values()][0], receipt); assert.equal(session.getSnapshot().uncertain, true);
+  for (let i = 0; i < 10; i++) { await session.retryThrottled(); await session.retry(); }
+  assert.equal(sent.length, 1);
+  clock += 1_322_999; await session.retryThrottled(); assert.equal(sent.length, 1);
+  clock++; await session.retryThrottled();
+  assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+  assert.equal(session.getSnapshot().uncertain, false); assert.equal(session.getSnapshot().rateLimited, false);
+});
+
+test("a throttled GET cannot enable automatic recovery for an ordinary unknown network receipt", async t => {
+  let clock = 0, reads = 0; t.mock.method(performance, "now", () => clock);
+  const sent = [], cache = storage();
+  const session = createEconomySession(owner, transport({
+    get: async () => { if (++reads > 1) throw limited(30_000); return state(); },
+    send: async value => { sent.push(structuredClone(value)); if (sent.length === 1) throw new TypeError("Failed to fetch"); return result(state(1)); },
+  }), () => assert.fail(), cache);
+  t.after(session.activate()); await session.refresh(); session.act("start_construction", "home"); await flush();
+  const original = session.getSnapshot(), receipt = [...cache.data.values()][0];
+  await session.refresh();
+  assert.equal(session.getSnapshot().rateLimited, false); assert.equal(session.getSnapshot().error, original.error);
+  assert.equal([...cache.data.values()][0], receipt); assert.equal(session.getSnapshot().uncertain, true);
+  await session.retryThrottled(); await session.retry(); assert.equal(sent.length, 1, "manual recovery also honors the GET cooldown");
+  clock = 30_000;
+  for (let i = 0; i < 10; i++) await session.retryThrottled();
+  assert.equal(sent.length, 1, "GET throttling cannot turn an unknown write into automatic work");
+  await session.retry(); assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+});
+
 test("429 without a usable server deadline waits a minute; explicit rejection never retries automatically", async t => {
   let clock = 0; t.mock.method(performance, "now", () => clock);
   const sent = [], cache = storage();

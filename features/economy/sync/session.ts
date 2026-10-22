@@ -270,7 +270,11 @@ export function createEconomySession(owner: string | null, transport: Transport,
       blockedUntil = performance.now() + delay;
       if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
       if (error instanceof ApiError && error.status === 401) onSessionLost();
-      else if (!pending) {
+      else if (pending && view.rateLimited && error instanceof ApiError && error.status === 429) {
+        // A poll can win the race with command recovery at the old deadline.
+        // Show its extended wait without replacing the command's receipt/error.
+        publish({ retryAt: now() + delay });
+      } else if (!pending) {
         const message = error instanceof ApiError ? error.message : "Нет связи с хозяйством. Изменения появятся после подключения.";
         const transportFailure = !(error instanceof ApiError) || error.status >= 500 || [408, 425, 429].includes(error.status)
           || error.body?.code === "GAME_SESSION_INACTIVE";
