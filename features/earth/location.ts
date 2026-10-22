@@ -96,6 +96,7 @@ export function createEarthLocationController(
   let permissionEpoch = 0;
   let removeVisibilityListener: (() => void) | undefined;
   let removePermissionListener: (() => void) | undefined;
+  let removeAutomaticPermissionListener: (() => void) | undefined;
 
   function publish(next: EarthLocationState) {
     state = next;
@@ -116,6 +117,12 @@ export function createEarthLocationController(
     removePermissionListener = undefined;
   }
 
+  function clearAutomaticPermission() {
+    automaticEpoch += 1;
+    removeAutomaticPermissionListener?.();
+    removeAutomaticPermissionListener = undefined;
+  }
+
   function fail(status: keyof typeof ERRORS) {
     requested = false;
     clearWatch();
@@ -133,6 +140,7 @@ export function createEarthLocationController(
       let previousState = permission.state;
       const changed = () => {
         if (!mounted || !requested || epoch !== permissionEpoch) return;
+        if (permission.state === previousState) return;
         // A granted permission returning to prompt was revoked in browser settings.
         if (permission.state === "denied" || (previousState === "granted" && permission.state === "prompt")) {
           fail("denied");
@@ -141,7 +149,10 @@ export function createEarthLocationController(
         previousState = permission.state;
       };
       removePermissionListener = permission.subscribe(changed);
-      changed();
+      // A cold browser can initially report a stale permission snapshot. The
+      // real watch owns the result of this request; only later permission
+      // changes can revoke it. In particular, do not cancel the first lookup
+      // with a stale "denied" before Geolocation has answered.
     }).catch(() => {
       // Some browsers expose Permissions but cannot query geolocation. The watch
       // still reports denial through its error callback in those browsers.
@@ -198,7 +209,7 @@ export function createEarthLocationController(
 
   function halt(keepPosition: boolean) {
     automaticAttempted = true;
-    automaticEpoch += 1;
+    clearAutomaticPermission();
     requested = false;
     clearWatch();
     clearPermission();
@@ -219,9 +230,18 @@ export function createEarthLocationController(
     const epoch = ++automaticEpoch;
     const currentEnvironment = environment;
     void environment.queryPermission().then(permission => {
-      if (!mounted || !allowed || !enabled || requested || epoch !== automaticEpoch || automaticPolicy !== true
-        || environment !== currentEnvironment || !environment.visible() || permission.state !== "granted") return;
-      start();
+      const valid = () => mounted && allowed && enabled && !requested && epoch === automaticEpoch && automaticPolicy === true
+        && environment === currentEnvironment && environment.visible();
+      if (!valid()) return;
+      const granted = () => { if (valid() && permission.state === "granted") start(); };
+      if (permission.state === "granted") { granted(); return; }
+      // On a cold PWA launch Permissions may finish restoring its granted
+      // state after this first query. Observe that passively: prompt/denied
+      // never starts Geolocation or opens a native permission dialog.
+      const remove = permission.subscribe(granted);
+      if (!valid()) { remove(); return; }
+      removeAutomaticPermissionListener = remove;
+      granted();
     }).catch(() => {
       // Without a reliable permission result, the explicit private GPS button
       // remains available; never try geolocation just to discover permission.
@@ -230,7 +250,7 @@ export function createEarthLocationController(
   function start() {
     if (!mounted || !allowed || !ownerPublicId || requested) return;
     automaticAttempted = true;
-    automaticEpoch += 1;
+    clearAutomaticPermission();
     highAccuracyAttempted = false;
     requested = true;
     reconcile();
@@ -247,7 +267,7 @@ export function createEarthLocationController(
     reconcile();
   }
   function visibilityChanged() {
-    if (!environment?.visible()) automaticEpoch += 1;
+    if (!environment?.visible()) clearAutomaticPermission();
     reconcile();
     maybeStartAutomatically();
   }
@@ -262,7 +282,7 @@ export function createEarthLocationController(
     activate() {
       mounted = true;
       automaticAttempted = false;
-      automaticEpoch += 1;
+      clearAutomaticPermission();
       environment = getEnvironment();
       removeVisibilityListener = environment.onVisibilityChange(visibilityChanged);
       maybeStartAutomatically();
@@ -276,7 +296,7 @@ export function createEarthLocationController(
     },
     setEnabled(value: boolean) {
       enabled = value;
-      if (!enabled) automaticEpoch += 1;
+      if (!enabled) clearAutomaticPermission();
       reconcile();
       maybeStartAutomatically();
     },
@@ -287,12 +307,12 @@ export function createEarthLocationController(
       if (!allowed) stop();
       // An ON transition only unlocks explicit actions. Never revive the watch
       // or a pending granted-permission query from before the user's OFF.
-      else { automaticAttempted = true; automaticEpoch += 1; }
+      else { automaticAttempted = true; clearAutomaticPermission(); }
     },
     /** null waits for privacy metadata; false permanently suppresses this mount's auto attempt. */
     setAutomaticStartPolicy(value: boolean | null) {
       automaticPolicy = value;
-      if (value === false) { automaticAttempted = true; automaticEpoch += 1; }
+      if (value === false) { automaticAttempted = true; clearAutomaticPermission(); }
       maybeStartAutomatically();
     },
     start,

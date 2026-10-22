@@ -2,6 +2,7 @@
 
 import { useImperativeHandle, type Ref } from "react";
 import { GuideCoach, type GuideCoachProps } from "@/features/onboarding/guide-coach";
+import { NotificationOnboardingPrompt } from "@/features/notifications/notification-onboarding-prompt";
 import { APP_ONBOARDING_STEPS, type AppOnboardingEvidence } from "./app-onboarding-model";
 import { useAppOnboarding } from "./use-app-onboarding";
 import { useAppDialogOpen } from "./use-app-dialog-open";
@@ -17,6 +18,7 @@ type Props = AppOnboardingEvidence & {
   isOnline: boolean;
   calendarAvailable: boolean;
   simpleView: boolean;
+  onSessionLost: () => void;
 };
 
 const target = (name: string) => `[data-app-onboarding="${name}"]`;
@@ -114,7 +116,9 @@ export function AppOnboarding(props: Props) {
   const open = ready && guide.open && !suspended && !worldOpen && !calendarOpen && !dialogOpen;
   useAppGuideTarget(open, content.target, stepId, activeView);
   return <>
-    <GuideCoach {...content} open={open} inline
+    {open && guide.notificationOffer && <NotificationOnboardingPrompt owner={props.owner} isOnline={isOnline}
+      onSessionLost={props.onSessionLost} onContinue={guide.acknowledgeNotifications} />}
+    <GuideCoach {...content} open={open && !guide.notificationOffer} inline
       flow="app" stepId={stepId} welcome={stepId === "welcome"} compact={stepId !== "welcome"}
       progress={progress ? { current: APP_ONBOARDING_STEPS.indexOf(progress.stepId) + 1, total: APP_ONBOARDING_STEPS.length } : undefined}
       secondary={stepId === "welcome" ? undefined

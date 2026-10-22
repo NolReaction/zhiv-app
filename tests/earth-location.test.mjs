@@ -181,6 +181,52 @@ test("a missing Permissions query does not block a valid location", async () => 
   s.deactivate();
 });
 
+test("Find me ignores a stale initial denied Permissions snapshot and succeeds on the first watch", async () => {
+  const s = session();
+  s.permission.state = "denied";
+  s.controller.locate();
+  await settlePermission();
+  assert.equal(s.controller.getSnapshot().status, "requesting");
+  assert.equal(s.controller.getSnapshot().error, null);
+  assert.deepEqual(s.cleared, [], "a passive snapshot cannot cancel a real acquisition");
+  s.setPermission("granted");
+  s.watches[0].success(fix());
+  assert.equal(s.controller.getSnapshot().status, "active");
+  assert.equal(s.controller.getSnapshot().position.latitude, 55.75);
+  assert.equal(s.watches.length, 1, "the player does not need another Find me tap");
+  s.deactivate();
+});
+
+test("a delayed stale permission query cannot erase an already acquired fix", async () => {
+  let resolve;
+  const permission = new Promise(accept => { resolve = accept; });
+  const s = session({ queryPermission: () => permission });
+  s.permission.state = "denied";
+  s.controller.locate(); s.watches[0].success(fix());
+  resolve(s.permission); await settlePermission();
+  assert.equal(s.controller.getSnapshot().status, "active");
+  assert.equal(s.controller.getSnapshot().position.timestamp, 1_000);
+  assert.deepEqual(s.cleared, []);
+  s.setPermission("granted"); s.setPermission("denied");
+  assert.equal(s.controller.getSnapshot().status, "denied", "a later real revocation still clears the acquired fix");
+  assert.equal(s.controller.getSnapshot().position, null);
+  s.deactivate();
+});
+
+test("a real Geolocation denial remains authoritative regardless of its initial permission snapshot", async () => {
+  for (const permission of ["prompt", "denied", "granted"]) {
+    const s = session(); s.permission.state = permission;
+    s.controller.locate(); await settlePermission();
+    s.watches[0].failure({ code: 1 });
+    assert.equal(s.controller.getSnapshot().status, "denied");
+    assert.equal(s.controller.getSnapshot().position, null);
+    assert.match(s.controller.getSnapshot().error, /Разреши геопозицию/);
+    assert.equal(s.watches.length, 1, "a permission refusal never retries GPS");
+    assert.equal(s.permissionListeners.size, 0);
+    s.deactivate();
+  }
+});
+
 test("insecure contexts and unsupported devices fail without opening a watch", () => {
   for (const [options, expected] of [[{ secure: false }, "insecure"], [{ geolocation: null }, "unsupported"]]) {
     const s = session(options); s.controller.start();
@@ -315,8 +361,44 @@ test("prompt, denied and unavailable permission APIs never request automatic GPS
     if (value === "prompt" || value === "denied") s.permission.state = value;
     s.controller.setAutomaticStartPolicy(true); await settlePermission();
     assert.equal(s.watches.length, 0); assert.equal(s.controller.getSnapshot().status, "idle");
-    assert.equal(s.permissionListeners.size, 0);
+    assert.equal(s.permissionListeners.size, value === "prompt" || value === "denied" ? 1 : 0,
+      "a passive permission listener can wait for the cold browser to finish restoring its grant");
     s.controller.start(); assert.equal(s.watches.length, 1, "the explicit private action remains usable");
+    s.deactivate();
+  }
+});
+
+test("a cold permission snapshot becoming granted restores the private marker without a Find me tap", async () => {
+  for (const initial of ["prompt", "denied"]) {
+    const s = session(); s.permission.state = initial;
+    s.controller.setAutomaticStartPolicy(true); await settlePermission();
+    assert.equal(s.watches.length, 0, "unknown permission cannot trigger a native prompt");
+    assert.equal(s.controller.getSnapshot().error, null);
+    s.setPermission("granted"); await settlePermission();
+    assert.equal(s.watches.length, 1);
+    s.watches[0].success(fix());
+    assert.equal(s.controller.getSnapshot().status, "active");
+    assert.equal(s.controller.getSnapshot().position.longitude, 37.61);
+    assert.equal(s.permissionListeners.size, 1, "the passive listener is replaced by the live revocation observer");
+    s.deactivate(); assert.equal(s.permissionListeners.size, 0);
+  }
+});
+
+test("a cold passive permission listener is retired by privacy and foreground boundaries", async () => {
+  for (const interrupt of [s => s.controller.stop(), s => s.controller.freeze(), s => s.setVisible(false),
+    s => s.controller.setEnabled(false), s => s.controller.setAllowed(false),
+    s => s.controller.setAutomaticStartPolicy(false), s => s.deactivate()]) {
+    const s = session();
+    s.controller.setAutomaticStartPolicy(true); await settlePermission();
+    assert.equal(s.permissionListeners.size, 1);
+    const queuedChange = [...s.permissionListeners][0];
+    interrupt(s);
+    assert.equal(s.permissionListeners.size, 0);
+    s.permission.state = "granted"; queuedChange();
+    s.setPermission("granted"); s.setVisible(true);
+    s.controller.setEnabled(true); await settlePermission();
+    assert.equal(s.watches.length, 0, "a retired grant observer cannot revive a stopped lookup");
+    assert.equal(s.controller.getSnapshot().position, null);
     s.deactivate();
   }
 });
