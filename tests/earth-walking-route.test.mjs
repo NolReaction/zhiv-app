@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createEarthWalkingRouteBinding, canUseEarthWalkingRoute, parseEarthWalkingRoute, fetchEarthWalkingRoute,
-  earthWalkingRouteUrl, createEarthWalkingRouteLimiter, EarthWalkingRouteError } = await vite.ssrLoadModule("/features/earth/walking-route.ts");
+  earthWalkingRouteUrl, earthWalkingRouteIssue, createEarthWalkingRouteLimiter, EarthWalkingRouteError } = await vite.ssrLoadModule("/features/earth/walking-route.ts");
 const { createEarthWalkingRouteController } = await vite.ssrLoadModule("/features/earth/use-earth-walking-route.ts");
 const endpoints = { origin: [13.38886, 52.517037], destination: [13.391, 52.518] };
 const provider = () => ({ code: "Ok", waypoints: [{ location: [...endpoints.origin], name: "private name", hint: "private hint" }, { location: [...endpoints.destination] }],
@@ -242,4 +242,36 @@ test("the shared RAM limiter survives cancel, component/controller replacement a
     b.advance(4999); assert.equal(b.controller.request(), false); b.advance(1); assert.equal(b.controller.request(), true); await flush();
     assert.equal(b.calls.length, 1);
   } finally { a.release(); b.release(); }
+});
+
+test("route eligibility names distant endpoints, missing own GPS and actual coarse fixes", () => {
+  const f = fixture();
+  const { position, person } = f.context;
+  assert.equal(earthWalkingRouteIssue(position, person, f.mono, f.wall), null);
+  assert.equal(earthWalkingRouteIssue(null, person, f.mono, f.wall), "self_missing");
+  assert.equal(earthWalkingRouteIssue({ ...position, timestamp: f.wall - 60_000 }, person, f.mono, f.wall), "self_stale");
+  assert.equal(earthWalkingRouteIssue({ ...position, accuracy: 201 }, person, f.mono, f.wall), "self_accuracy");
+  assert.equal(earthWalkingRouteIssue(position, { ...person, accuracyMeters: 201 }, f.mono, f.wall), "friend_accuracy");
+  assert.equal(earthWalkingRouteIssue({ ...position, latitude: 55.796, longitude: 49.106 },
+    { ...person, latitude: 59.939, longitude: 30.315 }, f.mono, f.wall), "distance");
+  f.release();
+});
+
+test("fresh own and friend updates enable the existing route selection without reopening or automatic provider requests", async () => {
+  const f = fixture();
+  const currentPosition = { ...f.context.position }, currentPerson = { ...f.context.person };
+  f.update({ position: null, person: { ...currentPerson, accuracyMeters: 700 } });
+  assert.equal(f.controller.getSnapshot().canRequest, false);
+  f.update({ position: currentPosition });
+  assert.equal(f.controller.getSnapshot().canRequest, false, "own GPS alone cannot route to a coarse destination");
+  f.update({ person: { ...currentPerson, updatedAt: new Date(f.wall - 301_000).toISOString() } });
+  assert.equal(f.controller.getSnapshot().canRequest, false, "receiving an old capture does not make it fresh");
+  f.update({ person: currentPerson });
+  assert.equal(f.controller.getSnapshot().canRequest, true, "the same selected friend becomes ready immediately");
+  assert.equal(f.calls.length, 0);
+  f.advance(1_000);
+  assert.equal(f.calls.length, 0, "readiness timers never send coordinates");
+  assert.equal(f.controller.request(), true); await flush(); assert.equal(f.calls.length, 1);
+  f.resolve(); await flush(); assert.equal(f.controller.getSnapshot().status, "ready");
+  f.release();
 });

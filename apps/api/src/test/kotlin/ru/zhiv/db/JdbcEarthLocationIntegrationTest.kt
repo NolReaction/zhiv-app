@@ -64,6 +64,7 @@ class JdbcEarthLocationIntegrationTest {
             assertEquals(legacy.third,scalar("SELECT updated_at::text || '/' || expires_at::text FROM earth_latest_locations WHERE user_id=?",legacy.first.id),"upgrade preserves the original fix and deadline")
             assertEquals(1,repo.people(legacy.second.hash).people.size)
             assertTrue(repo.settings(legacy.first.hash).frozenCircleIds.isEmpty())
+            assertEquals("APPROXIMATE",repo.settings(legacy.first.hash).precision,"new defaults do not rewrite existing consent")
             assertEquals("0",scalar("SELECT count(*) FROM earth_frozen_locations WHERE owner_user_id=?",legacy.first.id))
             assertEquals("1",scalar("SELECT count(*) FROM earth_latest_locations WHERE user_id=? AND publisher_session_id IS NOT NULL",legacy.first.id))
         }
@@ -100,6 +101,82 @@ class JdbcEarthLocationIntegrationTest {
     private fun allowNextFix(a: Account) = execute(
         "UPDATE earth_sharing_settings SET last_accepted_at=clock_timestamp()-interval '31 seconds' WHERE user_id=?",a.id)
 
+    @Test fun `new consent defaults precise and permanent without automatically selecting friends`()=runBlocking {
+        val a=account();val b=account();val other=account();val circle=direct(a,b);direct(a,other)
+        val defaults=repo.settings(a.hash)
+        assertEquals("OFF",defaults.mode);assertEquals("PRECISE",defaults.precision)
+        assertNull(defaults.sharingUntil);assertNull(defaults.publicationEpoch);assertTrue(defaults.recipientCircleIds.isEmpty())
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.resume(a.hash,EarthSharingResume(a.publicId,defaults.revision)) }
+        val grant=repo.share(a.hash,EarthSharingWrite(a.publicId,defaults.revision,"SHARING",defaults.precision,listOf(circle.toString()),null))
+        repo.publish(a.hash,fix(a,grant))
+        assertEquals(55.75555,repo.people(b.hash).people.single().latitude)
+        assertNull(grant.sharingUntil);assertTrue(repo.people(other.hash).people.isEmpty())
+        val privacyFirst=account()
+        assertEquals("PRECISE",hidden(privacyFirst).precision,"materializing settings does not use the historical SQL default")
+        assertEquals("PRECISE",scalar("SELECT precision FROM earth_sharing_settings WHERE user_id=?",privacyFirst.id))
+    }
+    @Test fun `resume rotates session bound lease without changing finite consent or frozen points`()=runBlocking {
+        val a=account();val b=account();val d=account();val other=account()
+        val ab=direct(a,b);val ad=direct(a,d);direct(a,other)
+        val grant=repo.share(a.hash,EarthSharingWrite(a.publicId,0,"SHARING","APPROXIMATE",listOf(ab.toString(),ad.toString()),60))
+        repo.publish(a.hash,fix(a,grant));val frozen=freeze(a,listOf(ab));val before=repo.people(b.hash).people
+        repo.stop(a.hash,EarthPositionStop(a.publicId,grant.publicationEpoch!!))
+        val secondHash=tokens.issue().hash
+        execute("INSERT INTO app_sessions(user_id,token_hash,expires_at) VALUES (?,?,clock_timestamp()+interval '1 day')",a.id,secondHash)
+        val resumed=repo.resume(secondHash,EarthSharingResume(a.publicId,frozen.revision))
+        assertEquals(frozen.revision+1,resumed.revision);assertNotEquals(grant.publicationEpoch,resumed.publicationEpoch)
+        assertEquals(grant.sharingUntil,resumed.sharingUntil);assertEquals("APPROXIMATE",resumed.precision)
+        assertEquals(frozen.recipientCircleIds,resumed.recipientCircleIds);assertEquals(frozen.frozenCircleIds,resumed.frozenCircleIds)
+        assertEquals(before,repo.people(b.hash).people);assertNull(repo.settings(a.hash).publicationEpoch)
+        assertEquals(before.single().updatedAt,repo.people(d.hash).people.single().updatedAt,"lease rotation retains the original common capture")
+        assertEquals(grant.publicationEpoch,scalar("SELECT publication_epoch::text FROM earth_latest_locations WHERE user_id=?",a.id))
+        rejected("EARTH_REVISION_CONFLICT") { repo.resume(secondHash,EarthSharingResume(a.publicId,frozen.revision)) }
+        rejected("EARTH_OWNER_MISMATCH") { repo.resume(b.hash,EarthSharingResume(a.publicId,resumed.revision)) }
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.publish(a.hash,fix(a,resumed)) }
+        repo.stop(a.hash,EarthPositionStop(a.publicId,grant.publicationEpoch!!))
+        repo.publish(secondHash,fix(a,resumed).copy(latitude=56.2345))
+        assertEquals(56.23,repo.people(d.hash).people.single().latitude);assertEquals(before,repo.people(b.hash).people)
+        assertTrue(repo.people(other.hash).people.isEmpty());assertEquals(grant.sharingUntil,repo.settings(a.hash).sharingUntil)
+    }
+    @Test fun `resume requires unexpired active consent and explicit ghost exit never thaws recipients`()=runBlocking {
+        val a=account();val b=account();val circle=direct(a,b);val grant=enable(a,circle)
+        repo.publish(a.hash,fix(a,grant));val ghost=hidden(a)
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.resume(a.hash,EarthSharingResume(a.publicId,ghost.revision)) }
+        val resumed=repo.resume(a.hash,EarthSharingResume(a.publicId,ghost.revision,true))
+        assertEquals("SHARING",resumed.mode);assertNotNull(resumed.publicationEpoch);assertEquals(grant.sharingUntil,resumed.sharingUntil)
+        val frozen=freeze(a,listOf(circle));val before=repo.people(b.hash).people
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.resume(a.hash,EarthSharingResume(a.publicId,frozen.revision)) }
+        val frozenGhost=hidden(a)
+        val noPublisher=repo.resume(a.hash,EarthSharingResume(a.publicId,frozenGhost.revision,true))
+        assertEquals("SHARING",noPublisher.mode);assertNull(noPublisher.publicationEpoch)
+        assertEquals(listOf(circle.toString()),noPublisher.frozenCircleIds);assertEquals(grant.sharingUntil,noPublisher.sharingUntil)
+        assertEquals(before,repo.people(b.hash).people)
+        val off=hidden(a,"OFF")
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.resume(a.hash,EarthSharingResume(a.publicId,noPublisher.revision,true)) }
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.resume(a.hash,EarthSharingResume(a.publicId,off.revision,true)) }
+        val expired=enable(a,circle)
+        execute("UPDATE earth_sharing_settings SET sharing_until=clock_timestamp()-interval '1 second' WHERE user_id=?",a.id)
+        rejected("EARTH_PUBLICATION_CONFLICT") { repo.resume(a.hash,EarthSharingResume(a.publicId,expired.revision,true)) }
+    }
+    @Test fun `recipient addition preserves exact deadline precision ghost and old point privacy`()=runBlocking {
+        val a=account();val b=account();val d=account();val ab=direct(a,b);val ad=direct(a,d)
+        val grant=enable(a,ab,"PRECISE");repo.publish(a.hash,fix(a,grant));val before=repo.people(b.hash).people
+        val ghost=hidden(a)
+        val add=EarthSharingWrite(a.publicId,ghost.revision,"SHARING","PRECISE",listOf(ab.toString(),ad.toString()),480,preserveSharingUntil=true)
+        val added=repo.share(a.hash,add)
+        assertEquals("GHOST",added.mode);assertNull(added.publicationEpoch);assertEquals(grant.sharingUntil,added.sharingUntil)
+        assertEquals(before,repo.people(b.hash).people);assertTrue(repo.people(d.hash).people.isEmpty())
+        rejected("INVALID_EARTH_SHARING") { repo.share(a.hash,add.copy(expectedRevision=added.revision,precision="APPROXIMATE")) }
+        rejected("INVALID_EARTH_SHARING") { repo.share(a.hash,add.copy(expectedRevision=added.revision,durationMinutes=null)) }
+        rejected("INVALID_EARTH_SHARING") { repo.share(a.hash,add.copy(expectedRevision=added.revision,recipientCircleIds=listOf(ad.toString()))) }
+        val resumed=repo.resume(a.hash,EarthSharingResume(a.publicId,added.revision,true))
+        assertEquals(before,repo.people(b.hash).people);assertTrue(repo.people(d.hash).people.isEmpty(),"restoring old row must not bypass a new recipient capture fence")
+        repo.publish(a.hash,fix(a,resumed,captured=Instant.now().plusMillis(1)))
+        assertEquals(grant.sharingUntil,repo.people(d.hash).people.single().expiresAt)
+        val expired=repo.settings(a.hash)
+        execute("UPDATE earth_sharing_settings SET sharing_until=clock_timestamp()-interval '1 second' WHERE user_id=?",a.id)
+        rejected("INVALID_EARTH_SHARING") { repo.share(a.hash,add.copy(expectedRevision=expired.revision)) }
+    }
     @Test fun `default off explicit recipient approximate storage and private latest only`()=runBlocking {
         val a=account();val b=account();val stranger=account();val circle=direct(a,b);direct(a,stranger)
         assertEquals("OFF",repo.settings(a.hash).mode);assertNull(repo.settings(a.hash).publicationEpoch)

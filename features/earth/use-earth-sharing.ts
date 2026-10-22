@@ -19,7 +19,8 @@ export function useEarthSharing({ ownerPublicId, visible, publicationVisible = v
     const deactivate = controller.activate();
     let previousEnabled: boolean | undefined;
     const changed = () => {
-      const enabled = preference.getSnapshot().enabled;
+      const choice = preference.getSnapshot(), enabled = choice.enabled;
+      controller.setAutomaticResumeAllowed(choice.automaticStartAllowed);
       if (!enabled) {
         // Retire queued uploads and pending enable replies before React renders
         // the disabled UI. OFF uses the controller's durable retry mechanism.
@@ -33,15 +34,17 @@ export function useEarthSharing({ ownerPublicId, visible, publicationVisible = v
     return () => { unsubscribe(); deactivate(); };
   }, [controller, preference, ownerPublicId]);
   useLayoutEffect(() => {
-    controller.setContext({ visible, publicationVisible: publicationVisible && preference.getSnapshot().enabled, isOnline });
-  }, [controller, preference, visible, publicationVisible, isOnline, locationChoice.enabled]);
+    const choice = preference.getSnapshot();
+    controller.setContext({ visible, publicationVisible: publicationVisible && choice.enabled, isOnline, automaticResumeAllowed: choice.automaticStartAllowed });
+  }, [controller, preference, visible, publicationVisible, isOnline, locationChoice.enabled, locationChoice.automaticStartAllowed]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getServerSnapshot);
-  const share = useCallback((options: EarthShareOptions) => preference.getSnapshot().enabled ? controller.share(options) : Promise.resolve(false), [controller, preference]);
-  const setFrozen = useCallback((circleId: string, frozen: boolean) => frozen || preference.getSnapshot().enabled
+  const share = useCallback((options: EarthShareOptions) => preference.allowAutomaticStart() ? controller.share(options) : Promise.resolve(false), [controller, preference]);
+  const resume = useCallback((resumeGhost = false) => preference.allowAutomaticStart() ? controller.resume(resumeGhost) : Promise.resolve(false), [controller, preference]);
+  const setFrozen = useCallback((circleId: string, frozen: boolean) => frozen || preference.allowAutomaticStart()
     ? controller.setFrozen(circleId, frozen) : Promise.resolve(false), [controller, preference]);
   const ghost = useCallback(() => { if (preference.getSnapshot().enabled) controller.ghost(); }, [controller, preference]);
   const setPosition = useCallback((position: EarthPosition | null) => controller.setPosition(preference.getSnapshot().enabled ? position : null), [controller, preference]);
-  return { ...state, share, ghost, off: controller.off,
+  return { ...state, share, resume, ghost, off: controller.off,
     setFrozen, revokeRecipient: controller.revokeRecipient,
     stopPublishing: controller.stopPublishing, refresh: controller.refresh, setPosition };
 }

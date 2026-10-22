@@ -115,7 +115,7 @@ test("People owns recipient controls while the map shows a single canonical Ghos
     onShareEarth: async () => { calls.push("share"); }, onOpenEarthPrivacy: () => calls.push("map") };
   const mapProps = { sharing, people: data, peopleLoading: false, online: true, onShare: peopleProps.onShareEarth,
     onGhost() {}, onOff() {}, onSetFrozen: sharing.setFrozen, onRevokeRecipient: sharing.revokeRecipient };
-  for (const [mode, frozen, status, checked] of [["SHARING", [], "Передача на паузе", true],
+  for (const [mode, frozen, status, checked] of [["SHARING", [], "Обновится на карте", true],
     ["SHARING", [friend.circleId], "Последнее место", false], ["GHOST", [], "Последнее место · призрак", false]]) {
     sharing.settings = { ...sharing.settings, mode, frozenCircleIds: frozen };
     const people = renderToStaticMarkup(createElement(PeopleView, peopleProps));
@@ -127,7 +127,7 @@ test("People owns recipient controls while the map shows a single canonical Ghos
     assert.equal(map.match(/role="switch"/g)?.length, 1, "the map has one global switch instead of duplicating per-friend controls");
     const ghostSwitch = map.match(/<button(?=[^>]*role="switch")(?=[^>]*aria-label="Режим призрака")[^>]*>/)?.[0];
     assert.ok(ghostSwitch?.includes('aria-checked="' + (mode === "GHOST") + '"'));
-    assert.match(map, /<strong id="earth-sharing-heading">Призрак<\/strong>/);
+    assert.match(map, /<strong id="earth-sharing-heading">Моя геопозиция<\/strong>/);
     assert.match(map, /Доступ у 1/);
     if (mode === "GHOST") assert.match(map, /На паузе · последнее место/);
     else if (frozen.length) assert.match(map, /Все на паузе/);
@@ -150,7 +150,7 @@ test("the map resumes Ghost with the same confirmed recipients and individual pa
     recipientCircleIds: [friend.circleId, paused.circleId], frozenCircleIds: [paused.circleId],
     sharingUntil: null, serverTime: data.serverTime }, pendingGhost: false, pendingPrivacyMode: null,
     publishing: false, lastPublishedAt: null, saving: false, loading: false, error: null,
-    refresh() { calls.push("refresh"); }, setFrozen() { calls.push("frozen"); }, revokeRecipient() { calls.push("revoke"); } };
+    refresh() { calls.push("refresh"); }, setFrozen() { calls.push("frozen"); }, revokeRecipient() { calls.push("revoke"); }, resume: async ghost => { calls.push(["resume", ghost]); } };
   const onShare = async choices => { calls.push(["share", choices]); };
   const props = { sharing, people: { ...data, people: [friend, paused, newcomer] }, peopleLoading: false, online: true,
     onShare, onGhost() { calls.push("ghost"); }, onOff() { calls.push("off"); },
@@ -166,8 +166,7 @@ test("the map resumes Ghost with the same confirmed recipients and individual pa
   assert.equal(toggle.props["aria-checked"], true);
   assert.equal(toggle.props.disabled, false);
   await toggle.props.onClick();
-  assert.deepEqual(calls, [["share", { recipientCircleIds: [friend.circleId, paused.circleId],
-    frozenCircleIds: [paused.circleId], precision: "PRECISE", durationMinutes: null }]],
+  assert.deepEqual(calls, [["resume", true]],
   "resume preserves confirmed settings instead of applying a draft or granting a new contact access");
   assert.equal(sharing.settings.mode, "GHOST", "the callback cannot optimistically change confirmed privacy state");
 });

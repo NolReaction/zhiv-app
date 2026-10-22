@@ -180,6 +180,68 @@ test("a persisted OFF fences hydration auto-start; shared controls stop GPS befo
   }
 });
 
+test("the sharing hook gates saved audience resume with READY and resumes once after an explicit GPS retry", async () => {
+  const names = ["window", "document", "fetch", "BroadcastChannel"];
+  const descriptors = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const owner = "ABCD-EFGH-JKMN", circle = "11111111-1111-4111-8111-111111111111";
+  const key = earthLocationPreferenceKey(owner), values = new Map([[key, "ready"]]);
+  const window = new EventTarget(), document = new EventTarget(); document.hidden = false;
+  window.localStorage = { getItem: name => values.get(name) ?? null, setItem: (name, value) => values.set(name, value), removeItem: name => values.delete(name) };
+  const iso = () => new Date().toISOString(), resumes = [], positions = [];
+  const until = new Date(Date.now() + 123_456).toISOString();
+  let server = { ownerPublicId: owner, mode: "SHARING", revision: 1, precision: "APPROXIMATE", recipientCircleIds: [circle],
+    frozenCircleIds: [], sharingUntil: until, publicationEpoch: null, serverTime: iso() };
+  const response = value => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
+  const fetch = async (url, init = {}) => {
+    if (url.endsWith("/people")) return response({ ownerPublicId: owner, people: [], serverTime: iso() });
+    if (url.endsWith("/sharing/resume")) {
+      const write = JSON.parse(init.body); resumes.push(write);
+      assert.equal(init.method, "POST"); assert.equal(write.expectedRevision, server.revision);
+      server = { ...server, revision: server.revision + 1, serverTime: iso() };
+      return response({ ...server, publicationEpoch: `22222222-2222-4222-8222-${String(resumes.length).padStart(12, "0")}` });
+    }
+    if (url.endsWith("/location")) {
+      if (init.method === "DELETE") return response({ ownerPublicId: owner, serverTime: iso() });
+      positions.push(JSON.parse(init.body));
+      return response({ ownerPublicId: owner, acceptedAt: iso(), expiresAt: new Date(Date.now() + 60_000).toISOString(), serverTime: iso() });
+    }
+    return response({ ...server, publicationEpoch: null, serverTime: iso() });
+  };
+  for (const [name, value] of Object.entries({ window, document, fetch, BroadcastChannel: undefined })) Object.defineProperty(globalThis, name, { value, configurable: true });
+  const state = hooks.create(), props = { ownerPublicId: owner, visible: true, publicationVisible: true, isOnline: true };
+  const flush = async () => { for (let i = 0; i < 50; i++) await Promise.resolve(); };
+  function render() {
+    let result, passes = 0;
+    do { hooks.begin(state); result = renderSharingHook(props); hooks.flush(state); assert.ok(++passes < 10, "sharing settles"); } while (state.dirty);
+    return result;
+  }
+  try {
+    render(); await flush(); let sharing = render();
+    assert.equal(resumes.length, 0); assert.equal(sharing.publishing, false);
+    assert.equal(await sharing.resume(), true); await flush(); sharing = render();
+    assert.equal(resumes.length, 1, "an explicit retry cannot race an additional automatic resume");
+    assert.equal(sharing.publicationGeneration, 1); assert.equal(sharing.settings.sharingUntil, until);
+    assert.equal(values.get(key), "active");
+    sharing.setPosition({ latitude: 55, longitude: 37, accuracy: 20, timestamp: Date.now() }); await flush();
+    assert.equal(positions.length, 1);
+    const preference = getEarthLocationPreferenceStore(owner);
+    preference.suppressAutomaticStart();
+    assert.equal(values.get(key), "ready");
+    assert.equal(render().publishing, false, "a native denial retires sharing synchronously before another GPS callback");
+    sharing.setPosition({ latitude: 10, longitude: 20, accuracy: 1, timestamp: Date.now() }); await flush();
+    assert.equal(positions.length, 1);
+    preference.allowAutomaticStart(); await flush(); sharing = render();
+    assert.equal(resumes.length, 2, "same-map GPS retry opens exactly one eligible resume cycle");
+    assert.equal(sharing.publicationGeneration, 2);
+    sharing.stopPublishing(); sharing.refresh(); await flush(); sharing = render();
+    assert.equal(sharing.publishing, false); assert.equal(resumes.length, 2, "manual GPS pause survives polling within that cycle");
+    assert.deepEqual([...values.values()], ["active"], "coordinates and publisher epochs remain out of storage");
+  } finally {
+    hooks.destroy(state);
+    for (const [name, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; }
+  }
+});
+
 test("master OFF synchronously aborts publication, persists one full revoke and fences stale sharing actions", async () => {
   const names = ["window", "document", "fetch", "BroadcastChannel"];
   const descriptors = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
@@ -197,6 +259,10 @@ test("master OFF synchronously aborts publication, persists one full revoke and 
       if (init.method === "DELETE") return response({ ownerPublicId: owner, serverTime: iso() });
       positionCalls.push({ write: JSON.parse(init.body), signal: init.signal });
       return response({ ownerPublicId: owner, acceptedAt: iso(), expiresAt: new Date(Date.now() + 60_000).toISOString(), serverTime: iso() });
+    }
+    if (url.endsWith("/sharing/resume")) {
+      server = { ...server, revision: server.revision + 1, serverTime: iso() };
+      return response({ ...server, publicationEpoch: epoch });
     }
     if (init.method !== "PUT") return response({ ...server, publicationEpoch: null, serverTime: iso() });
     const write = JSON.parse(init.body);

@@ -30,6 +30,6 @@ export function useEarthLocation({ ownerPublicId, enabled, autoStart = false }: 
   useLayoutEffect(() => controller.activate(), [controller]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getServerSnapshot);
   const start = useCallback(() => { if (preference.allowAutomaticStart()) controller.start(); }, [controller, preference]);
-  const locate = useCallback(() => { if (preference.allowAutomaticStart()) controller.locate(); }, [controller, preference]);
+  const locate = useCallback((options?: { fresh?: boolean }) => { if (preference.allowAutomaticStart()) controller.locate(options); }, [controller, preference]);
   return { ...state, allowed: choice.enabled, start, locate, stop: controller.stop, freeze: controller.freeze };
 }

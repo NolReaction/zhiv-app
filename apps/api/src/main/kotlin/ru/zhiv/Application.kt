@@ -254,7 +254,7 @@ fun Application.installZhivApi(
             "profile-read" to 600,
             "check-in-attempt" to 240,
             "relationships" to 2_400,
-            "earth-read" to 600,
+            "earth-read" to 1_800,
             "game-events" to 2_400,
             "game-read" to 1_200,
             "world-read" to 60,

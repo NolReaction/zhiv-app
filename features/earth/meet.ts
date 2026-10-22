@@ -4,8 +4,8 @@ import type { EarthPosition } from "./location";
 
 const EARTH_RADIUS_METERS = 6_371_008.8;
 const RAD = Math.PI / 180;
-const ROUTE_MAX_AGE_MS = 5 * 60_000;
-const ROUTE_MAX_ACCURACY_METERS = 200;
+export const EARTH_WALKING_FRIEND_MAX_AGE_MS = 5 * 60_000;
+export const EARTH_WALKING_MAX_ACCURACY_METERS = 200;
 const DIRECTIONS = ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"] as const;
 
 export type EarthMeetDetails = {
@@ -79,6 +79,21 @@ export const WALKING_MAP_SERVICES = [
 ] as const;
 export type WalkingMapService = typeof WALKING_MAP_SERVICES[number]["id"];
 
+export type EarthFriendWalkingRouteIssue = "friend_unavailable" | "friend_approximate" | "friend_accuracy" | "friend_stale";
+/** Capture freshness is independent of when this point was received or rendered. */
+export const earthWalkingFriendFreshDeadline = (friend: EarthMapPerson) => friend.expiresAtMonotonic
+  - (Date.parse(friend.expiresAt) - Date.parse(friend.updatedAt)) + EARTH_WALKING_FRIEND_MAX_AGE_MS;
+
+export function earthFriendWalkingRouteIssue(friend: EarthMapPerson | null, monotonicNow: number,
+  wallNow = Date.now()): EarthFriendWalkingRouteIssue | null {
+  if (!friend || !validFriend(friend, monotonicNow, wallNow)) return "friend_unavailable";
+  if (friend.precision !== "PRECISE") return "friend_approximate";
+  if (friend.accuracyMeters > EARTH_WALKING_MAX_ACCURACY_METERS) return "friend_accuracy";
+  if (wallNow - Date.parse(friend.updatedAt) > EARTH_WALKING_FRIEND_MAX_AGE_MS
+    || monotonicNow > earthWalkingFriendFreshDeadline(friend)) return "friend_stale";
+  return null;
+}
+
 /** Destination-only links. The chosen map service requests/chooses its own origin.
  * No private origin, contact identity or access state is exported.
  * Google: https://developers.google.com/maps/documentation/urls/get-started
@@ -87,8 +102,7 @@ export type WalkingMapService = typeof WALKING_MAP_SERVICES[number]["id"];
  * Apple: https://developer.apple.com/library/archive/featuredarticles/iPhoneURLScheme_Reference/MapLinks/MapLinks.html
  */
 export function walkingRouteUrl(friend: EarthMapPerson, monotonicNow: number, wallNow = Date.now(), service: WalkingMapService = "google"): string | null {
-  if (!validFriend(friend, monotonicNow, wallNow) || friend.precision !== "PRECISE"
-    || friend.accuracyMeters > ROUTE_MAX_ACCURACY_METERS || wallNow - Date.parse(friend.updatedAt) > ROUTE_MAX_AGE_MS) return null;
+  if (earthFriendWalkingRouteIssue(friend, monotonicNow, wallNow)) return null;
   const destination = `${friend.latitude},${friend.longitude}`;
   if (service === "google") {
     const url = new URL("https://www.google.com/maps/dir/");

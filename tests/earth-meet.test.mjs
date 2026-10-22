@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { canRecordEarthMeeting, earthMeetDetails, walkingRouteUrl } = await vite.ssrLoadModule("/features/earth/meet.ts");
+const { canRecordEarthMeeting, earthMeetDetails, earthFriendWalkingRouteIssue, walkingRouteUrl } = await vite.ssrLoadModule("/features/earth/meet.ts");
 const wall = Date.parse("2026-10-20T12:00:00Z"), mono = 10_000;
 const self = (extra = {}) => ({ latitude: 0, longitude: 0, accuracy: 10, timestamp: wall, ...extra });
 const friend = (extra = {}) => ({ circleId: "circle", user: { publicId: "friend", displayName: "Друг" },
@@ -139,4 +139,15 @@ test("all map choices encode only a fresh destination with each provider's coord
       { expiresAtMonotonic: mono }]) assert.equal(walkingRouteUrl(friend(patch), mono, wall, service), null);
   }
   assert.equal(walkingRouteUrl(to, mono, wall, "untrusted"), null);
+});
+
+test("friend route eligibility explains capture accuracy and age, including a wall-clock rollback", () => {
+  assert.equal(earthFriendWalkingRouteIssue(friend(), mono, wall), null);
+  assert.equal(earthFriendWalkingRouteIssue(friend({ precision: "APPROXIMATE" }), mono, wall), "friend_approximate");
+  assert.equal(earthFriendWalkingRouteIssue(friend({ accuracyMeters: 201 }), mono, wall), "friend_accuracy");
+  assert.equal(earthFriendWalkingRouteIssue(friend({ updatedAt: new Date(wall - 300_001).toISOString() }), mono, wall), "friend_stale");
+  const captured = friend();
+  const laterMono = mono + 300_001;
+  assert.equal(earthFriendWalkingRouteIssue(captured, laterMono, wall), "friend_stale");
+  assert.equal(walkingRouteUrl(captured, laterMono, wall), null, "rolling back wall time cannot export an old destination");
 });

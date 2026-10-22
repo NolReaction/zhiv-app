@@ -33,6 +33,11 @@ export function createEarthPositionMarker(): HTMLButtonElement {
     portrait.append(fallback);
   }
   marker.append(portrait);
+  const ghost = document.createElement("span");
+  ghost.className = styles.ghostBadge;
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.textContent = "👻";
+  marker.append(ghost);
   return marker;
 }
 
@@ -45,13 +50,18 @@ export function paintEarthPositionMarkerPose(marker: HTMLElement, pose: "idle" |
   context.drawImage(pixelSprite(pose, "front", frame), 0, 0);
 }
 
-export function updateEarthPositionMarkerLabel(marker: HTMLElement, accuracy?: number): void {
+export function updateEarthPositionMarkerLabel(marker: HTMLElement, accuracy?: number,
+  state?: { ghost: boolean; timestamp: number; active: boolean }): void {
   const precision = accuracy !== undefined && Number.isFinite(accuracy) && accuracy >= 0
     ? accuracy < 1_000
       ? `${Math.max(1, Math.round(accuracy))} м`
       : `${(accuracy / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} км`
     : null;
-  const label = `Вы здесь${precision ? ` · точность ±${precision}` : ""}`;
+  const captured = state && Number.isFinite(state.timestamp) ? new Date(state.timestamp).toLocaleString("ru-RU", {
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+  }) : null;
+  if (state) marker.setAttribute("data-ghost", String(state.ghost));
+  const label = `${state?.active === false ? "Ваша последняя точка" : "Вы здесь"}${state?.ghost ? " · Призрак" : ""}${precision ? ` · точность ±${precision}` : ""}${captured ? ` · обновлено ${captured}` : ""}`;
   marker.setAttribute("aria-label", `${label}. Поздороваться с Мохликом`);
   marker.title = `${label} · нажмите на Мохлика`;
 }

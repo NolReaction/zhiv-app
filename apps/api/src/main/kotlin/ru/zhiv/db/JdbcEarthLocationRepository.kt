@@ -52,7 +52,7 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
         val circles=c.economyRows("""SELECT g.circle_id,g.frozen FROM earth_sharing_recipients g JOIN circles c ON c.id=g.circle_id
             JOIN app_users u ON u.id=g.recipient_user_id WHERE g.owner_user_id=? AND c.kind='DIRECT' AND c.archived_at IS NULL
             AND u.deleted_at IS NULL AND u.banned_at IS NULL ORDER BY g.circle_id""",actor.id) { it.getObject(1).toString() to it.getBoolean(2) }
-        return EarthSharingSettings(actor.publicId,value?.mode ?: "OFF",value?.revision ?: 0,value?.precision ?: "APPROXIMATE",
+        return EarthSharingSettings(actor.publicId,value?.mode ?: "OFF",value?.revision ?: 0,value?.precision ?: "PRECISE",
             circles.map { it.first },value?.until?.toString(),publishedEpoch?.toString(),now(c).toString(),circles.filter { it.second }.map { it.first })
     }
     override suspend fun settings(sessionHash: ByteArray)=tx { c -> settings(c,actor(c,sessionHash)) }
@@ -106,18 +106,25 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
             // OFF/GHOST always retain their global privacy semantics, even if
             // an outdated client leaves the narrow-edit flag on its request.
             val narrowing=request.mode=="SHARING" && request.frozenOnly
-            val enabling=request.mode=="SHARING" && !narrowing
-            val editing=enabling || narrowing
-            budgets.take(initial.id,if(enabling) "enable" else "privacy")
+            val sharing=request.mode=="SHARING" && !narrowing
+            val preserving=sharing && request.preserveSharingUntil
+            val editing=sharing || narrowing
+            budgets.take(initial.id,if(sharing) "enable" else "privacy")
             val candidates=if(editing) recipients(c,initial.id,request.recipientCircleIds) else emptyMap()
             lockUsers(c,candidates.values.toSet()+initial.id)
             val current=actor(c,sessionHash,true);owner(current,request.expectedOwnerPublicId)
-            c.economyUpdate("INSERT INTO earth_sharing_settings(user_id) VALUES (?) ON CONFLICT DO NOTHING",current.id)
+            c.economyUpdate("INSERT INTO earth_sharing_settings(user_id,precision) VALUES (?,'PRECISE') ON CONFLICT DO NOTHING",current.id)
             val value=state(c,current.id,true)!!
             val time=now(c)
             val selected=if(editing) recipients(c,current.id,request.recipientCircleIds) else emptyMap()
             if(editing && selected.size!=request.recipientCircleIds.size) invalidEarthSharing()
             if(editing && (value.revision!=request.expectedRevision || value.revision>=9_007_199_254_740_990L)) earthFailure("EARTH_REVISION_CONFLICT")
+            val previous=if(preserving) c.economyRows("SELECT circle_id,frozen FROM earth_sharing_recipients WHERE owner_user_id=?",current.id) {
+                it.getObject(1,UUID::class.java) to it.getBoolean(2)
+            }.toMap() else emptyMap()
+            if(preserving && (value.mode=="OFF" || previous.isEmpty() || (value.until!=null && !value.until.isAfter(time)) || value.precision!=request.precision ||
+                (value.until==null)!=(request.durationMinutes==null) || previous.any { (circle,frozen) ->
+                    circle !in selected || frozen!=(circle.toString() in request.frozenCircleIds) })) invalidEarthSharing()
             if(narrowing) {
                 val existing=c.economyRows("SELECT circle_id FROM earth_sharing_recipients WHERE owner_user_id=?",current.id) { it.getObject(1,UUID::class.java) }.toSet()
                 if(selected.keys.any { it !in existing } || value.mode=="OFF" && selected.isNotEmpty()) invalidEarthSharing()
@@ -131,21 +138,70 @@ class JdbcEarthLocationRepository(private val source: DataSource): EarthLocation
             }
             val bucket=if(value.bucket==null || !time.isBefore(value.bucket.plusSeconds(60))) time else value.bucket
             val count=if(bucket==time) 0 else value.count
-            if(enabling && count>=10) throw EarthRateLimited(max(1,ceil((60_000-(time.toEpochMilli()-bucket.toEpochMilli()))/1000.0).toInt()))
-            if(enabling) recipientChoices(c,current,selected,request.frozenCircleIds.map(UUID::fromString).toSet(),time)
+            if(sharing && count>=10) throw EarthRateLimited(max(1,ceil((60_000-(time.toEpochMilli()-bucket.toEpochMilli()))/1000.0).toInt()))
+            if(sharing) recipientChoices(c,current,selected,request.frozenCircleIds.map(UUID::fromString).toSet(),time)
+            if(preserving) for(circle in selected.keys-previous.keys) c.economyUpdate(
+                "UPDATE earth_sharing_recipients SET live_after=? WHERE owner_user_id=? AND circle_id=?",at(time),current.id,circle)
+            val mode=if(preserving) value.mode else request.mode
+            val enabling=sharing && mode=="SHARING"
             val epoch=if(enabling) UUID.randomUUID() else null
-            val precision=if(enabling) request.precision else value.precision
-            val until=if(enabling) request.durationMinutes?.let { time.plusSeconds(it*60L) } else if(request.mode=="GHOST") value.until else null
+            val precision=if(enabling && !preserving) request.precision else value.precision
+            val until=if(preserving) value.until else if(enabling) request.durationMinutes?.let { time.plusSeconds(it*60L) } else if(mode=="GHOST") value.until else null
             c.economyUpdate("""UPDATE earth_sharing_settings SET mode=?,revision=least(revision+1,9007199254740990),precision=?,sharing_until=?,
                 publication_epoch=?,publisher_session_id=?,last_sequence=0,last_captured_at=NULL,last_accepted_at=NULL,
-                enable_bucket_at=?,enable_bucket_count=? WHERE user_id=?""",request.mode,precision,at(until),epoch,
-                if(enabling) current.sessionId else null,at(if(enabling) bucket else value.bucket),if(enabling) count+1 else value.count,current.id)
+                enable_bucket_at=?,enable_bucket_count=? WHERE user_id=?""",mode,precision,at(until),epoch,
+                if(enabling) current.sessionId else null,at(if(sharing) bucket else value.bucket),if(sharing) count+1 else value.count,current.id)
             if(enabling && until!=null) {
                 // A shorter renewed consent permanently tightens old snapshots;
                 // a later longer consent must not reopen their previous lifetime.
                 c.economyUpdate("DELETE FROM earth_frozen_locations WHERE owner_user_id=? AND least(expires_at,?)<=updated_at",current.id,at(until))
                 c.economyUpdate("UPDATE earth_frozen_locations SET expires_at=least(expires_at,?) WHERE owner_user_id=?",at(until),current.id)
             }
+            settings(c,current,epoch)
+        }
+    }
+    override suspend fun resume(sessionHash: ByteArray,request: EarthSharingResume): EarthSharingSettings {
+        validateEarthResume(request)
+        return tx { c ->
+            val initial=actor(c,sessionHash);owner(initial,request.expectedOwnerPublicId)
+            budgets.take(initial.id,"enable")
+            val circles=c.economyRows("SELECT circle_id FROM earth_sharing_recipients WHERE owner_user_id=?",initial.id) { it.getObject(1).toString() }
+            val candidates=recipients(c,initial.id,circles)
+            lockUsers(c,candidates.values.toSet()+initial.id)
+            val current=actor(c,sessionHash,true);owner(current,request.expectedOwnerPublicId)
+            val value=state(c,current.id,true) ?: earthFailure("EARTH_PUBLICATION_CONFLICT")
+            val time=now(c)
+            if((value.mode!="SHARING" && !(value.mode=="GHOST" && request.resumeGhost)) ||
+                (value.until!=null && !value.until.isAfter(time))) earthFailure("EARTH_PUBLICATION_CONFLICT")
+            if(value.revision!=request.expectedRevision || value.revision>=9_007_199_254_740_990L) earthFailure("EARTH_REVISION_CONFLICT")
+            val confirmedCircles=c.economyRows("SELECT circle_id FROM earth_sharing_recipients WHERE owner_user_id=?",current.id) { it.getObject(1).toString() }
+            if(confirmedCircles.toSet()!=circles.toSet()) earthFailure("EARTH_REVISION_CONFLICT")
+            val selected=recipients(c,current.id,circles)
+            val frozen=c.economyRows("SELECT circle_id FROM earth_sharing_recipients WHERE owner_user_id=? AND frozen",current.id) { it.getObject(1,UUID::class.java) }.toSet()
+            val live=selected.keys.any { it !in frozen }
+            if(selected.isEmpty() || (!live && !(value.mode=="GHOST" && request.resumeGhost))) earthFailure("EARTH_PUBLICATION_CONFLICT")
+            val bucket=if(value.bucket==null || !time.isBefore(value.bucket.plusSeconds(60))) time else value.bucket
+            val count=if(bucket==time) 0 else value.count
+            if(count>=10) throw EarthRateLimited(max(1,ceil((60_000-(time.toEpochMilli()-bucket.toEpochMilli()))/1000.0).toInt()))
+            val epoch=if(live) UUID.randomUUID() else null
+            // The released V66 trigger clears the common point on a new epoch.
+            // Snapshot and restore only this original row inside the owner lock;
+            // no capture, expiry or source-session field is renewed.
+            val previousPoint=c.economyRows("""SELECT publication_epoch,publisher_session_id,latitude,longitude,accuracy_meters,precision,
+                updated_at,expires_at,accepted_at FROM earth_latest_locations WHERE user_id=?""",current.id) {
+                arrayOf<Any?>(current.id,it.getObject("publication_epoch",UUID::class.java),it.getObject("publisher_session_id",UUID::class.java),
+                    it.getDouble("latitude"),it.getDouble("longitude"),it.getDouble("accuracy_meters"),it.getString("precision"),
+                    at(it.instant("updated_at")),at(it.instant("expires_at")),at(it.instant("accepted_at")))
+            }.firstOrNull()
+            // A foreground publisher lease is separate from consent: never
+            // reconstruct duration, recipients or frozen snapshots on resume.
+            c.economyUpdate("""UPDATE earth_sharing_settings SET mode='SHARING',revision=revision+1,
+                publication_epoch=?,publisher_session_id=?,last_sequence=0,last_captured_at=NULL,last_accepted_at=NULL,
+                enable_bucket_at=?,enable_bucket_count=? WHERE user_id=?""",epoch,if(live) current.sessionId else null,
+                at(bucket),count+1,current.id)
+            if(previousPoint!=null) c.economyUpdate("""INSERT INTO earth_latest_locations
+                (user_id,publication_epoch,publisher_session_id,latitude,longitude,accuracy_meters,precision,updated_at,expires_at,accepted_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO NOTHING""",*previousPoint)
             settings(c,current,epoch)
         }
     }

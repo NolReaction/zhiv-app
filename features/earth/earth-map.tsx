@@ -69,6 +69,7 @@ type EarthMapProps = {
   locating: boolean;
   locationActive: boolean;
   locationStatus?: EarthLocationStatus;
+  locationGhost?: boolean;
   locationDetails: ReactNode;
   infoOpen: boolean;
   onInfoOpenChange: (open: boolean) => void;
@@ -114,7 +115,7 @@ function flyToPosition(map: LibreMap, position: EarthPosition) {
 
 export function EarthMap({ position, active, visible, onReadyChange, cameraSession, focusRequest, isOnline, onLocate, locating, locationActive,
   locationDetails, infoOpen, onInfoOpenChange, friends = EMPTY_FRIENDS, friendFocusRequest = null, onSelectFriends, showLocationControl = true,
-  onModelEditorOpenChange, onViewChange, cameraFocusRequest = null, onAtlasPreviewChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, walkingRoute = null, locationStatus = "idle" }: EarthMapProps) {
+  onModelEditorOpenChange, onViewChange, cameraFocusRequest = null, onAtlasPreviewChange, focusWhenReady = true, meetCircleId = null, meetFocusRequest = 0, walkingRoute = null, locationStatus = "idle", locationGhost = false }: EarthMapProps) {
   const visibleRef = useRef(visible);
   const foregroundRef = useRef<(() => void) | null>(null);
   const starsRef = useRef<ReturnType<typeof createEarthStars> | null>(null);
@@ -138,6 +139,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [onModelEditorOpenChange]);
   const syncPositionRef = useRef<((value: EarthPosition | null) => void) | null>(null);
   const latestPosition = useRef(position);
+  const latestLocationPresentation = useRef({ ghost: locationGhost, active: locationActive });
   const savedCamera = useRef<EarthCameraSnapshot | null>(null);
   const handledFocus = useRef(0);
   const repairs = useRef<Promise<unknown>>(Promise.resolve());
@@ -352,10 +354,11 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   }, [active]);
 
   useEffect(() => {
+    latestLocationPresentation.current = { ghost: locationGhost, active: locationActive };
     latestPosition.current = position;
     syncPositionRef.current?.(position);
     syncFriendsRef.current?.();
-  }, [position]);
+  }, [position, locationGhost, locationActive]);
 
   useEffect(() => {
     const element = host.current;
@@ -767,7 +770,8 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
             disposeMarkerMotion = bindEarthPositionMarkerMotion(current, marker.getElement());
           }
           marker.setLngLat([value.longitude, value.latitude]);
-          updateEarthPositionMarkerLabel(marker.getElement(), value.accuracy);
+          updateEarthPositionMarkerLabel(marker.getElement(), value.accuracy,
+            { ...latestLocationPresentation.current, timestamp: value.timestamp });
         };
         syncPositionRef.current = syncPosition;
         friendMarkers = createEarthFriendMarkers(current, sdk.Marker, (ids, trigger) => selectFriendsRef.current?.(ids, trigger));

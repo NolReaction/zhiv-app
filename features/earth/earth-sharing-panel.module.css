@@ -4,7 +4,7 @@
 .panel button { cursor: pointer; }
 .panel button:disabled { cursor: default; opacity: .45; }
 .panel button:focus-visible, .panel input:focus-visible, .panel select:focus-visible, .panel summary:focus-visible { outline: 2px solid #d9efab; outline-offset: 3px; }
-.sharingCard { margin: 6px 0 8px; border: 1px solid #d9dff12b; border-radius: 13px; background: #d1deee06; padding: 7px 9px; }
+.sharingCard { margin: 6px 0 8px; border: 1px solid #d9dff12b; border-radius: 13px; background: #d1deee06; padding: 9px 10px; }
 .sharingCard[data-live] { border-color: #bdda9c61; background: #b7d99a0d; }
 .sharingRow { display: flex; align-items: center; gap: 7px; }
 .sharingIcon { display: grid; flex-shrink: 0; width: 22px; place-items: center; color: #cfdfbe; }
@@ -18,6 +18,10 @@
 .switchTrack > span { width: 15px; height: 15px; border-radius: 50%; background: #91aa86; }
 .ghostSwitch[aria-checked="true"] .switchTrack { background: #d0e9b2; border-color: #d0e9b2; }
 .ghostSwitch[aria-checked="true"] .switchTrack > span { margin-left: auto; background: #25422d; }
+.ghostLabel { font-size: 10px; font-weight: 650; }
+.settingSummary { margin-top: 7px !important; color: #d7e6c9; font-size: 11px; }
+.lastUpdate { margin-top: 3px !important; color: #b9ceae; font-size: 10px; }
+.consentHint { color: #a9bda9; font-size: 10px; line-height: 1.5; }
 .hintRow { display: flex; align-items: center; gap: 7px; }
 .hintRow > p { flex: 1; }
 .resumeButton { flex-shrink: 0; min-height: 44px; padding: 4px 6px; border: 0; border-radius: 8px; color: #d3e9b9; background: transparent; font-size: 10px !important; }

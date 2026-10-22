@@ -1,11 +1,12 @@
 import type { LineString } from "geojson";
 import { EARTH_POSITION_MAX_AGE_MS, type EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
-import { earthMeetDetails } from "./meet";
+import { earthFriendWalkingRouteIssue, earthMeetDetails, earthWalkingFriendFreshDeadline,
+  EARTH_WALKING_FRIEND_MAX_AGE_MS, EARTH_WALKING_MAX_ACCURACY_METERS, type EarthFriendWalkingRouteIssue } from "./meet";
 
 export const EARTH_WALKING_ROUTE_COOLDOWN_MS = 5_000;
 export const EARTH_WALKING_ROUTE_TIMEOUT_MS = 10_000;
-const FRIEND_FRESH_MS = 5 * 60_000;
+export const EARTH_WALKING_MAX_DISTANCE_METERS = 20_000;
 const ROUTE_TTL_MS = 2 * 60_000;
 const MAX_BODY_BYTES = 512 * 1024;
 const MAX_POINTS = 10_000;
@@ -45,26 +46,30 @@ export function earthWalkingDistance(first: Coordinate, second: Coordinate) {
   const h = Math.sin((b - a) / 2) ** 2 + Math.cos(a) * Math.cos(b) * Math.sin((second[0] - first[0]) * rad / 2) ** 2;
   return 6_371_008.8 * 2 * Math.asin(Math.sqrt(Math.max(0, Math.min(1, h))));
 }
-function fresh(position: EarthPosition | null, person: EarthMapPerson | null, monotonicNow: number, wallNow: number) {
-  if (!position || !person || !person.circleId || !person.user.publicId || person.precision !== "PRECISE"
-    || position.accuracy > 200 || person.accuracyMeters > 200 || wallNow - position.timestamp >= EARTH_POSITION_MAX_AGE_MS
-    || wallNow - Date.parse(person.updatedAt) >= FRIEND_FRESH_MS
-    || monotonicNow >= friendFreshDeadline(person)) return false;
-  return earthMeetDetails(position, person, monotonicNow, wallNow) !== null;
+export type EarthWalkingRouteIssue = EarthFriendWalkingRouteIssue | "self_missing" | "self_stale" | "self_accuracy" | "distance";
+/** The card and request controller explain and enforce the same endpoint limits. */
+export function earthWalkingRouteIssue(position: EarthPosition | null, person: EarthMapPerson | null,
+  monotonicNow: number, wallNow: number): EarthWalkingRouteIssue | null {
+  const friendIssue = earthFriendWalkingRouteIssue(person, monotonicNow, wallNow);
+  if (friendIssue) return friendIssue;
+  if (!person || !person.circleId || !person.user.publicId) return "friend_unavailable";
+  if (wallNow - Date.parse(person.updatedAt) >= EARTH_WALKING_FRIEND_MAX_AGE_MS
+    || monotonicNow >= earthWalkingFriendFreshDeadline(person)) return "friend_stale";
+  if (!position) return "self_missing";
+  if (wallNow - position.timestamp >= EARTH_POSITION_MAX_AGE_MS
+    || !earthMeetDetails(position, person, monotonicNow, wallNow)) return "self_stale";
+  if (position.accuracy > EARTH_WALKING_MAX_ACCURACY_METERS) return "self_accuracy";
+  return earthWalkingDistance([position.longitude, position.latitude], [person.longitude, person.latitude]) > EARTH_WALKING_MAX_DISTANCE_METERS
+    ? "distance" : null;
 }
-// The existing feed's monotonic access deadline is anchored to server time.
-// Derive the capture deadline from it, so reopening after clock rollback cannot renew an old fix.
-const friendFreshDeadline = (person: EarthMapPerson) => person.expiresAtMonotonic
-  - (Date.parse(person.expiresAt) - Date.parse(person.updatedAt)) + FRIEND_FRESH_MS;
 /** Same fresh points as the meeting UI, with a modest public-service distance cap. */
 export function createEarthWalkingRouteBinding(owner: string | null, position: EarthPosition | null, person: EarthMapPerson | null,
   monotonicNow: number, wallNow: number): EarthWalkingRouteBinding | null {
-  if (!owner || !position || !person || !fresh(position, person, monotonicNow, wallNow)) return null;
+  if (!owner || !position || !person || earthWalkingRouteIssue(position, person, monotonicNow, wallNow)) return null;
   const origin: Coordinate = [position.longitude, position.latitude], destination: Coordinate = [person.longitude, person.latitude];
-  if (earthWalkingDistance(origin, destination) > 20_000) return null;
-  const expiresAt = Math.min(position.timestamp + EARTH_POSITION_MAX_AGE_MS, Date.parse(person.updatedAt) + FRIEND_FRESH_MS,
+  const expiresAt = Math.min(position.timestamp + EARTH_POSITION_MAX_AGE_MS, Date.parse(person.updatedAt) + EARTH_WALKING_FRIEND_MAX_AGE_MS,
     Date.parse(person.expiresAt), wallNow + ROUTE_TTL_MS);
-  const remaining = Math.min(expiresAt - wallNow, person.expiresAtMonotonic - monotonicNow, friendFreshDeadline(person) - monotonicNow);
+  const remaining = Math.min(expiresAt - wallNow, person.expiresAtMonotonic - monotonicNow, earthWalkingFriendFreshDeadline(person) - monotonicNow);
   if (!(remaining > 0)) return null;
   return { ownerPublicId: owner, circleId: person.circleId, friendPublicId: person.user.publicId, origin, destination,
     createdAt: wallNow, createdAtMonotonic: monotonicNow, expiresAt, expiresAtMonotonic: monotonicNow + remaining };
@@ -72,7 +77,7 @@ export function createEarthWalkingRouteBinding(owner: string | null, position: E
 /** Renderer and controller both reject expired access or a moved endpoint. No refresh. */
 export function canUseEarthWalkingRoute(route: EarthWalkingRouteBinding | null, position: EarthPosition | null,
   person: EarthMapPerson | null, monotonicNow: number, wallNow: number): boolean {
-  return Boolean(route && position && person && fresh(position, person, monotonicNow, wallNow)
+  return Boolean(route && position && person && !earthWalkingRouteIssue(position, person, monotonicNow, wallNow)
     && route.circleId === person.circleId && route.friendPublicId === person.user.publicId
     && Number.isFinite(route.createdAtMonotonic) && monotonicNow >= route.createdAtMonotonic
     && Number.isFinite(route.expiresAt) && wallNow < route.expiresAt
@@ -105,7 +110,7 @@ export function parseEarthWalkingRoute(value: unknown, endpoints: EarthWalkingRo
 }
 
 export function earthWalkingRouteUrl(endpoints: EarthWalkingRouteEndpoints) {
-  if (!coordinate(endpoints.origin) || !coordinate(endpoints.destination) || earthWalkingDistance(endpoints.origin, endpoints.destination) > 20_000)
+  if (!coordinate(endpoints.origin) || !coordinate(endpoints.destination) || earthWalkingDistance(endpoints.origin, endpoints.destination) > EARTH_WALKING_MAX_DISTANCE_METERS)
     throw new EarthWalkingRouteError("invalid_response");
   const points = [endpoints.origin, endpoints.destination].map(point => point.map(number => number.toFixed(6)).join(",")).join(";");
   return `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${points}?overview=full&geometries=geojson&steps=false&alternatives=false&generate_hints=false`;

@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { retryAfterMs, withRequestDeadline } from "@/lib/request-deadline";
 import {
   earthPeopleResponseSchema, earthPositionReceiptSchema, earthPositionStoppedSchema, earthSharingSettingsSchema,
-  type EarthPositionStop, type EarthPositionWrite, type EarthSharingWrite,
+  type EarthPositionStop, type EarthPositionWrite, type EarthSharingResume, type EarthSharingWrite,
 } from "@/lib/earth-sharing-contract";
 
 const apiErrorSchema = z.object({ code: z.string(), message: z.string() });
@@ -35,6 +35,12 @@ export function getEarthSharing(signal?: AbortSignal) {
 export function updateEarthSharing(write: EarthSharingWrite, key: string, signal?: AbortSignal) {
   return request("/api/v1/earth/sharing", earthSharingSettingsSchema, {
     method: "PUT", body: JSON.stringify(write), headers: { "Idempotency-Key": key }, signal, keepalive: write.mode !== "SHARING" || write.frozenOnly === true,
+  });
+}
+
+export function resumeEarthSharing(write: EarthSharingResume, key: string, signal?: AbortSignal) {
+  return request("/api/v1/earth/sharing/resume", earthSharingSettingsSchema, {
+    method: "POST", body: JSON.stringify(write), headers: { "Idempotency-Key": key }, signal,
   });
 }
 

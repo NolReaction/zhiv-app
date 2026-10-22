@@ -88,7 +88,7 @@ test("screen activation never requests coordinates; an explicit start opens only
   s.controller.start(); s.controller.start();
   assert.equal(s.watches.length, 1);
   assert.equal(s.controller.getSnapshot().status, "requesting");
-  assert.deepEqual(s.watches[0].options, { enableHighAccuracy: false, maximumAge: 15_000, timeout: 20_000 });
+  assert.deepEqual(s.watches[0].options, { enableHighAccuracy: true, maximumAge: 15_000, timeout: 30_000 });
   s.watches[0].success(fix());
   assert.deepEqual(s.controller.getSnapshot(), {
     position: { latitude: 55.75, longitude: 37.61, accuracy: 30, timestamp: 1_000 }, status: "active", error: null,
@@ -245,7 +245,7 @@ test("denial terminates immediately; provider errors retry once and keep the pri
     const retries = code === 1 ? 0 : 1;
     if (retries) {
       assert.equal(s.controller.getSnapshot().status, "requesting");
-      assert.equal(s.watches[1].options.enableHighAccuracy, true);
+      assert.equal(s.watches[1].options.enableHighAccuracy, false);
       s.watches[1].failure({ code });
     }
     assert.equal(s.controller.getSnapshot().status, expected);
@@ -255,7 +255,7 @@ test("denial terminates immediately; provider errors retry once and keep the pri
     assert.equal(s.watches.length, 1 + retries);
     s.controller.start();
     assert.equal(s.watches.length, 2 + retries);
-    assert.equal(s.watches.at(-1).options.enableHighAccuracy, false);
+    assert.equal(s.watches.at(-1).options.enableHighAccuracy, true);
     s.watches.at(-1).success(fix({ timestamp: 2_000 }));
     assert.equal(s.controller.getSnapshot().status, "active");
     s.deactivate();
@@ -555,13 +555,13 @@ test("an explicit refresh keeps the private marker until a new fix and fences th
   s.deactivate();
 });
 
-test("a provider failure uses one high-accuracy watch and fences the earlier callbacks", () => {
+test("a provider failure uses one balanced fallback watch and fences the earlier callbacks", () => {
   const s = session();
   s.controller.locate(); s.watches[0].success(fix());
   const previous = s.controller.getSnapshot().position;
   s.watches[0].failure({ code: 2 });
   assert.equal(s.watches.length, 2);
-  assert.deepEqual(s.watches[1].options, { enableHighAccuracy: true, maximumAge: 15_000, timeout: 30_000 });
+  assert.deepEqual(s.watches[1].options, { enableHighAccuracy: false, maximumAge: 15_000, timeout: 20_000 });
   assert.equal(s.controller.getSnapshot().position, previous);
   s.watches[0].success(fix({ latitude: 10, timestamp: 999_000 })); s.watches[0].failure({ code: 1 });
   assert.equal(s.controller.getSnapshot().position, previous);
@@ -581,7 +581,7 @@ test("visibility pauses the bounded fallback; stop and teardown retire it withou
     const s = session(); s.controller.locate(); s.watches[0].failure({ code: 3 });
     s.setVisible(false); s.setVisible(true);
     assert.equal(s.watches.length, 3);
-    assert.equal(s.watches[2].options.enableHighAccuracy, true, "visibility does not reset the retry budget");
+    assert.equal(s.watches[2].options.enableHighAccuracy, false, "visibility does not reset the retry budget");
     s.watches[1].failure({ code: 2 });
     assert.equal(s.controller.getSnapshot().status, "requesting");
     end(s);
@@ -601,7 +601,7 @@ test("synchronous unavailable callbacks clear both watch handles and retry only 
   } });
   s.controller.locate();
   assert.equal(options.length, 2);
-  assert.deepEqual(options.map(value => value.enableHighAccuracy), [false, true]);
+  assert.deepEqual(options.map(value => value.enableHighAccuracy), [true, false]);
   assert.deepEqual(cleared.toSorted(), [0, 1]);
   assert.equal(s.controller.getSnapshot().status, "unavailable");
   s.deactivate();
@@ -680,4 +680,25 @@ test("OFF fences a delayed permission observer and an unmounted disabled control
   assert.equal(s.watches.length, 1);
   assert.equal(probes.length, 1);
   cleanup();
+});
+
+
+test("a new publication lease replaces even a pending entry watch with an uncached high-accuracy fix", () => {
+  const s = session();
+  s.controller.start();
+  s.controller.locate({ fresh: true });
+  assert.equal(s.watches.length, 2);
+  assert.deepEqual(s.cleared, [0]);
+  assert.deepEqual(s.watches[1].options, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
+  s.watches[0].success(fix({ timestamp: 9_000 }));
+  assert.equal(s.controller.getSnapshot().position, null, "the replaced pre-consent watch cannot supply the new lease");
+  s.watches[1].success(fix({ timestamp: 10_000 }));
+  assert.equal(s.controller.getSnapshot().position.timestamp, 10_000);
+  s.controller.locate({ fresh: true });
+  assert.equal(s.watches.length, 3, "a later lease also replaces an existing fresh watch");
+  s.watches[2].failure({ code: 2 });
+  assert.equal(s.watches.length, 4);
+  assert.equal(s.watches[3].options.maximumAge, 0, "the bounded fallback cannot return a pre-lease cached fix");
+  assert.equal(s.watches[3].options.enableHighAccuracy, false);
+  s.deactivate();
 });

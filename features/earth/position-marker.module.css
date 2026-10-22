@@ -74,6 +74,28 @@
 
 .fallback { font-size: 27px; line-height: 1; }
 
+.ghostBadge { display: none; }
+.marker[data-ghost="true"] .portrait {
+  border: 3px dashed #6d5294;
+  background: linear-gradient(150deg, #f5edff, #d7c4ef);
+  box-shadow: 0 0 0 3px #f6efff, 0 0 0 5px #6d5294, 0 4px 12px #33244940;
+}
+.marker[data-ghost="true"] .ghostBadge {
+  position: absolute;
+  right: -6px;
+  bottom: 12px;
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 2px solid #f8f2ff;
+  border-radius: 50%;
+  background: #6d5294;
+  font-size: 15px;
+  line-height: 1;
+  box-shadow: 0 2px 5px #33244940;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .portrait, .portrait[data-motion="settling"] { transform: none; transition: none; }
 }

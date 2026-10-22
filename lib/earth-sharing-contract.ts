@@ -6,7 +6,8 @@ export const EARTH_POSITION_TTL_MS = 24 * 60 * 60_000;
 export const EARTH_POSITION_MAX_AGE_MS = 60_000;
 export const EARTH_POSITION_FUTURE_MS = 10_000;
 export const EARTH_POSITION_PUBLISH_MS = 30_000;
-export const EARTH_PEOPLE_POLL_MS = 15_000;
+export const EARTH_PEOPLE_POLL_MS = 5_000;
+export const EARTH_SETTINGS_POLL_MS = 30_000;
 export const EARTH_SHARING_MAX_PEOPLE = 100;
 export const EARTH_APPROXIMATE_ACCURACY_METERS = 1_500;
 
@@ -23,7 +24,7 @@ export type EarthSharingSettings = {
   /** Owner-only preferences; recipients never receive a freeze flag. */
   frozenCircleIds: string[];
   sharingUntil: string | null;
-  /** Only a successful explicit SHARING write grants a publisher epoch. GET returns null. */
+  /** Granted by a SHARING write or a scoped resume; GET always returns null. */
   publicationEpoch: string | null;
   serverTime: string;
 };
@@ -37,7 +38,17 @@ export type EarthSharingWrite = {
   frozenCircleIds?: string[];
   /** Narrow privacy update: preserve the current lease, mode and deadline. */
   frozenOnly?: boolean;
+  /** Add recipients while retaining existing precision, exact deadline and GHOST. */
+  preserveSharingUntil?: boolean;
   durationMinutes: EarthSharingDuration;
+};
+
+/** Acquire a publisher for existing consent without changing its audience or deadline. */
+export type EarthSharingResume = {
+  expectedOwnerPublicId: string;
+  expectedRevision: number;
+  /** Only an explicit user action may leave GHOST. */
+  resumeGhost?: boolean;
 };
 
 export type EarthPositionWrite = {
@@ -89,10 +100,14 @@ export const earthSharingSettingsSchema = z.object({
 
 export const earthSharingWriteSchema = z.object({
   expectedOwnerPublicId: owner, expectedRevision: revision, mode: z.enum(["OFF", "SHARING", "GHOST"]), precision,
-  recipientCircleIds: circleIds, frozenCircleIds: circleIds.default([]), frozenOnly: z.boolean().default(false),
+  recipientCircleIds: circleIds, frozenCircleIds: circleIds.default([]), frozenOnly: z.boolean().default(false), preserveSharingUntil: z.boolean().default(false),
   durationMinutes: z.union([z.literal(60), z.literal(480)]).nullable(),
 }).strict().refine(value => (value.mode !== "SHARING" || value.recipientCircleIds.length > 0 || value.frozenOnly)
   && (value.mode !== "SHARING" || value.frozenCircleIds.every(id => value.recipientCircleIds.includes(id))));
+
+export const earthSharingResumeSchema = z.object({
+  expectedOwnerPublicId: owner, expectedRevision: revision, resumeGhost: z.boolean().default(false),
+}).strict();
 
 export const earthPositionWriteSchema: z.ZodType<EarthPositionWrite> = z.object({
   expectedOwnerPublicId: owner, publicationEpoch: uuid, sequence: z.number().int().positive().safe(),

@@ -1,9 +1,9 @@
 import {
   EARTH_POSITION_FUTURE_MS, EARTH_POSITION_MAX_AGE_MS, EARTH_POSITION_PUBLISH_MS,
   EARTH_POSITION_TTL_MS, EARTH_SHARING_MAX_PEOPLE, earthSharedCoordinates,
-  earthPositionStopSchema, earthPositionWriteSchema, earthSharingWriteSchema,
+  earthPositionStopSchema, earthPositionWriteSchema, earthSharingResumeSchema, earthSharingWriteSchema,
   type EarthPeopleResponse, type EarthPositionReceipt, type EarthPositionStop, type EarthPositionStopped,
-  type EarthPositionWrite, type EarthSharingSettings, type EarthSharingWrite,
+  type EarthPositionWrite, type EarthSharingResume, type EarthSharingSettings, type EarthSharingWrite,
 } from "@/lib/earth-sharing-contract";
 import { getDevIdentity, listDevPeople } from "./api-store";
 import { devEarthSharingState, type DevEarthBudget, type DevEarthOwner } from "./earth-sharing-state";
@@ -18,7 +18,7 @@ function ownerRecord(owner: string): DevEarthOwner {
   const state = devEarthSharingState();
   let record = state.owners.get(owner);
   if (!record) {
-    record = { mode: "OFF", revision: 0, precision: "APPROXIMATE", recipientCircleIds: [], frozenCircleIds: [],
+    record = { mode: "OFF", revision: 0, precision: "PRECISE", recipientCircleIds: [], frozenCircleIds: [],
       frozenPositions: new Map(), awaitingFreshSince: new Map(), sharingUntil: null,
       publicationEpoch: null, publisherSession: null, lastPublisherSession: null, sequence: 0, capturedAt: null, position: null, nextPublishAt: 0 };
     state.owners.set(owner, record);
@@ -115,7 +115,7 @@ function context(token: string | undefined, expectedOwner?: string) {
 
 export function getDevEarthSharing(token: string | undefined): DevEarthResult<EarthSharingSettings> {
   const actor = context(token); if (actor.error) return actor.error;
-  const retry = budget(devEarthSharingState().reads, actor.owner, 600, 3_600_000);
+  const retry = budget(devEarthSharingState().reads, actor.owner, 1_800, 3_600_000);
   if (retry) return error(429, "EARTH_RATE_LIMITED", retry);
   return sharingProjection(actor.owner);
 }
@@ -146,20 +146,29 @@ export function putDevEarthSharing(token: string | undefined, body: EarthSharing
   }
   if (body.mode === "SHARING") {
     if (record.revision !== body.expectedRevision) return error(409, "EARTH_REVISION_CONFLICT");
+    if (body.preserveSharingUntil && (record.mode === "OFF" || !record.recipientCircleIds.length || record.precision !== body.precision
+      || (record.sharingUntil === null) !== (body.durationMinutes === null)
+      || record.recipientCircleIds.some(circle => !body.recipientCircleIds.includes(circle)
+        || record.frozenCircleIds.includes(circle) !== (body.frozenCircleIds ?? []).includes(circle))))
+      return error(400, "INVALID_EARTH_SHARING");
     const people = listDevPeople(actor.token);
     if (people.kind !== "ok") return error(401, "UNAUTHORIZED");
     const direct = new Set(people.value.people.map(person => person.circleId));
     if (body.recipientCircleIds.some(circle => !direct.has(circle))) return error(400, "INVALID_EARTH_SHARING");
     const retry = budget(devEarthSharingState().enables, actor.owner, 10, 60_000);
     if (retry) return error(429, "EARTH_RATE_LIMITED", retry);
+    const previousRecipients = new Set(record.recipientCircleIds), ghost = body.preserveSharingUntil && record.mode === "GHOST";
     updateRecipients(actor.owner, record, body.recipientCircleIds, body.frozenCircleIds ?? [], Date.now());
-    invalidate(record);
-    record.mode = "SHARING"; record.revision++; record.precision = body.precision;
-    record.sharingUntil = body.durationMinutes === null ? null : Date.now() + body.durationMinutes * 60_000;
+    if (ghost) pause(record); else invalidate(record);
+    if (body.preserveSharingUntil) for (const circle of record.recipientCircleIds) {
+      if (!previousRecipients.has(circle)) record.awaitingFreshSince.set(circle, Date.now());
+    }
+    record.mode = ghost ? "GHOST" : "SHARING"; record.revision++; record.precision = body.precision;
+    if (!body.preserveSharingUntil) record.sharingUntil = body.durationMinutes === null ? null : Date.now() + body.durationMinutes * 60_000;
     for (const [circle, point] of record.frozenPositions) record.frozenPositions.set(circle, {
       ...point, expiresAt: Math.min(point.expiresAt, record.sharingUntil ?? Infinity),
     });
-    record.publicationEpoch = crypto.randomUUID(); record.publisherSession = actor.token;
+    if (!ghost) { record.publicationEpoch = crypto.randomUUID(); record.publisherSession = actor.token; }
     return { kind: "ok", value: settings(actor.owner, record, record.publicationEpoch) };
   }
   // Privacy changes have priority over CAS conflicts, enable and GPS quotas.
@@ -167,6 +176,31 @@ export function putDevEarthSharing(token: string | undefined, body: EarthSharing
   else pause(record);
   record.mode = body.mode; record.revision++;
   return { kind: "ok", value: settings(actor.owner, record) };
+}
+
+export function resumeDevEarthSharing(token: string | undefined, body: EarthSharingResume): DevEarthResult<EarthSharingSettings> {
+  const parsed = earthSharingResumeSchema.safeParse(body);
+  if (!parsed.success) return error(400, "INVALID_EARTH_SHARING");
+  body = parsed.data;
+  const actor = context(token, body.expectedOwnerPublicId); if (actor.error) return actor.error;
+  const record = ownerRecord(actor.owner), time = Date.now(); expireConsent(record, time);
+  if (record.mode !== "SHARING" && !(record.mode === "GHOST" && body.resumeGhost))
+    return error(409, "EARTH_PUBLICATION_CONFLICT");
+  if (record.revision !== body.expectedRevision || record.revision >= Number.MAX_SAFE_INTEGER - 1)
+    return error(409, "EARTH_REVISION_CONFLICT");
+  const people = listDevPeople(actor.token);
+  if (people.kind !== "ok") return error(401, "UNAUTHORIZED");
+  const direct = new Set(people.value.people.map(person => person.circleId));
+  const selected = record.recipientCircleIds.filter(circle => direct.has(circle));
+  const live = selected.some(circle => !record.frozenCircleIds.includes(circle));
+  if (!selected.length || !live && !(record.mode === "GHOST" && body.resumeGhost))
+    return error(409, "EARTH_PUBLICATION_CONFLICT");
+  const retry = budget(devEarthSharingState().enables, actor.owner, 10, 60_000);
+  if (retry) return error(429, "EARTH_RATE_LIMITED", retry);
+  // Keep the last published/frozen points and every confirmed consent choice.
+  pause(record); record.mode = "SHARING"; record.revision++;
+  if (live) { record.publicationEpoch = crypto.randomUUID(); record.publisherSession = actor.token; }
+  return { kind: "ok", value: settings(actor.owner, record, record.publicationEpoch) };
 }
 
 export function putDevEarthPosition(token: string | undefined, body: EarthPositionWrite): DevEarthResult<EarthPositionReceipt> {
@@ -202,7 +236,7 @@ export function stopDevEarthPosition(token: string | undefined, body: EarthPosit
 
 export function getDevEarthPeople(token: string | undefined): DevEarthResult<EarthPeopleResponse> {
   const actor = context(token); if (actor.error) return actor.error;
-  const retry = budget(devEarthSharingState().reads, actor.owner, 600, 3_600_000);
+  const retry = budget(devEarthSharingState().reads, actor.owner, 1_800, 3_600_000);
   if (retry) return error(429, "EARTH_RATE_LIMITED", retry);
   return peopleProjection(actor.owner, actor.token);
 }

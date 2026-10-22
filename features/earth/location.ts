@@ -94,7 +94,8 @@ export function createEarthLocationController(
   let watchId: number | null = null;
   let watching = false;
   let watchEpoch = 0;
-  let highAccuracyAttempted = false;
+  let fallbackAttempted = false;
+  let freshLookup = false;
   let permissionEpoch = 0;
   let removeVisibilityListener: (() => void) | undefined;
   let removePermissionListener: (() => void) | undefined;
@@ -190,14 +191,14 @@ export function createEarthLocationController(
         // Desktop network positioning and mobile low-power fixes can fail while
         // another device source remains usable. Make one bounded foreground
         // attempt; denial never retries or changes sharing consent.
-        if ((error.code === 2 || error.code === 3) && !highAccuracyAttempted) {
-          highAccuracyAttempted = true;
+        if ((error.code === 2 || error.code === 3) && !fallbackAttempted) {
+          fallbackAttempted = true;
           clearWatch();
           reconcile();
           return;
         }
         fail(error.code === 1 ? "denied" : error.code === 3 ? "timeout" : "unavailable");
-      }, { enableHighAccuracy: highAccuracyAttempted, maximumAge: 15_000, timeout: highAccuracyAttempted ? 30_000 : 20_000 });
+      }, { enableHighAccuracy: !fallbackAttempted, maximumAge: freshLookup ? 0 : 15_000, timeout: fallbackAttempted ? 20_000 : 30_000 });
       // Also handles implementations that invoke their callback synchronously.
       if (epoch !== watchEpoch || !mounted || !requested) geolocation.clearWatch(id);
       else watchId = id;
@@ -227,11 +228,12 @@ export function createEarthLocationController(
     automaticAttempted = true;
     startLookup(true);
   }
-  function startLookup(automatically: boolean) {
+  function startLookup(automatically: boolean, fresh = false) {
     if (!mounted || !allowed || !ownerPublicId || requested) return;
     automaticAttempted = true;
     automaticLookup = automatically;
-    highAccuracyAttempted = false;
+    fallbackAttempted = false;
+    freshLookup = fresh;
     requested = true;
     reconcile();
     if (requested) observePermission();
@@ -239,12 +241,15 @@ export function createEarthLocationController(
   function start() { startLookup(false); }
   // A deliberate lookup refreshes a stale watch without changing any sharing
   // permission. Keep the old private marker until a fresh fix arrives.
-  function locate() {
+  function locate({ fresh = false }: { fresh?: boolean } = {}) {
     if (!mounted || !allowed || !ownerPublicId) return;
     automaticLookup = false;
-    if (!requested) { start(); return; }
-    if (state.status === "requesting") return;
-    highAccuracyAttempted = false;
+    if (!requested) { startLookup(false, fresh); return; }
+    // A newly acquired sharing lease needs a post-consent fix even when the
+    // private entry lookup is still pending. Replace it once with no cache.
+    if (state.status === "requesting" && !fresh) return;
+    fallbackAttempted = false;
+    freshLookup = fresh;
     clearWatch();
     reconcile();
   }
