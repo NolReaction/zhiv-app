@@ -65,12 +65,15 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       }
       export function useWorldRewardPromptGate() { return false; }
       export function useForestObservation() { return guideContext.observation ?? null; }
+      const refreshRewards = () => Promise.resolve();
+      export function useGameRewards() { return { data: guideContext.rewards ?? null, refresh: refreshRewards }; }
     `; },
     transform(source, id) {
       if (id.endsWith("/features/world/state/use-world-market-sales.ts") || id.endsWith("/features/world/audio/use-market-audio.ts") || id.endsWith("/features/world/ui/hud/world-selected-object-menu.tsx") || id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-resident-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
         return source.replace('from "react";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-forest-observation";', `from "${hookModule}";`)
+          .replace('from "@/features/game/use-game-rewards";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/onboarding-reward-gate";', `from "${hookModule}";`);
       }
     },
@@ -211,6 +214,28 @@ function guideNavigation(context = {}) {
   hooks.setGuideContext(context);
   return nav;
 }
+
+test("confirmed achievement rewards light the world profile and open claims there without leaking across accounts", () => {
+  const nav = guideNavigation({ rewards: { ownerPublicId: "characters-test", achievementRewards: [
+    { eligible: true, pearls: 20, claimedAt: null, blockedReason: null },
+  ] } });
+  try {
+    const trigger = nav.find(element => element.props["data-world-quick"] === "profile");
+    assert.equal(trigger.props["data-achievements-ready"], true);
+    assert.match(trigger.props["aria-label"], /Есть награды за достижения/);
+    trigger.props.onClick();
+    const claims = nav.component("WorldProfileMenu").props.achievements;
+    assert.equal(claims.type.name, "GameAchievementsButton");
+    assert.equal(claims.props.ownerPublicId, nav.props.ownerPublicId);
+    assert.equal(claims.props.inWorld, true);
+    claims.props.onRewardsClaimed();
+    assert.equal(nav.refreshes, 1);
+    nav.props.ownerPublicId = "other-owner";
+    const next = nav.find(element => element.props["data-world-quick"] === "profile");
+    assert.equal(next.props["data-achievements-ready"], undefined);
+    assert.doesNotMatch(next.props["aria-label"], /Есть награды/);
+  } finally { nav.restore(); }
+});
 
 test("WorldView keeps every explicit key unique among its real siblings across loaded surfaces", () => {
   const nav = guideNavigation();
@@ -1538,6 +1563,72 @@ test("confirmed bridge claim frames the map market, actual map tap completes its
   }
 });
 
+test("a fresh device restores an established market and residents without replaying their unlock guides", () => {
+  const pointer = pointerNavigation(), { nav } = pointer;
+  const values = new Map();
+  window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  nav.props.ownerPublicId = "historical-unlocks-fresh-device";
+  nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+  nav.props.economy.snapshot.buildings = { home: 3, warehouse: 1, bridge: 1, woodlot: 1, quarry: 1, workshop: 2 };
+  nav.props.economy.snapshot.completedExplorations = 0;
+  try {
+    pointer.render(); pointer.render();
+    assert.equal(nav.component("MarketUnlockOnboarding").props.open, false, "cached access is not a confirmed baseline");
+    assert.equal(values.size, 0);
+    nav.props.economy.snapshotConfirmed = true;
+    nav.props.economy.snapshot.ownerPublicId = "previous-owner";
+    pointer.render(); pointer.render();
+    assert.equal(values.size, 0, "a foreign snapshot cannot prepare this account's guides");
+    nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+    nav.props.economy.busy = true;
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    pointer.render(); pointer.render(); pointer.render();
+    nav.props.economy.busy = false;
+    nav.find(element => element.props["aria-label"] === "Закрыть: Кладовая").props.onClick();
+    pointer.render(); pointer.render();
+    assert.equal(nav.component("MarketUnlockOnboarding").props.open, false, "first confirmed existing access stays historical even behind another menu/busy state");
+    assert.notEqual(nav.component("WorldScene").props.guidePlace, "market");
+    for (const name of ["LopukhArrivalOnboarding", "MinerArrivalOnboarding", "LeaftailArrivalOnboarding"]) {
+      assert.equal(nav.component(name).props.open, false, `${name}: no historical coach`);
+    }
+    for (const name of ["lopukhArrival", "residentArrival", "merchantArrival"]) {
+      assert.equal(nav.component("WorldScene").props[name].seen, true, `${name}: existing resident restored`);
+      assert.equal(nav.component("WorldScene").props[name].enabled, false, `${name}: no historical animation`);
+    }
+    assert.equal(nav.component("WorldCharacters").props.leaftailAvailable, true);
+    assert.deepEqual(JSON.parse(values.get(`zhiv.market-unlock-onboarding.v1:${nav.props.ownerPublicId}`)), { version: 1, status: "dismissed" });
+    assert.equal(nav.refreshes, 0, "restoring guides never claims, builds or trades");
+  } finally { pointer.restore(); }
+});
+
+test("switching accounts cannot turn the previous account's locked market into a new unlock", () => {
+  const pointer = pointerNavigation(), { nav } = pointer;
+  const values = new Map();
+  window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  nav.props.ownerPublicId = "market-baseline-account-a";
+  nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+  nav.props.economy.snapshotConfirmed = true;
+  nav.props.economy.snapshot.buildings = { home: 2, bridge: 0 };
+  nav.props.economy.snapshot.completedExplorations = 0;
+  try {
+    pointer.render(); pointer.render();
+    const oldGuide = nav.component("MarketUnlockOnboarding");
+    nav.props.ownerPublicId = "market-baseline-account-b";
+    pointer.render(); pointer.render();
+    assert.equal(nav.component("MarketUnlockOnboarding").props.open, false);
+    nav.props.economy.snapshotConfirmed = false;
+    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: nav.props.ownerPublicId, buildings: { home: 2, bridge: 1 } };
+    pointer.render(); pointer.render();
+    assert.equal(nav.component("MarketUnlockOnboarding").props.open, false);
+    nav.props.economy.snapshotConfirmed = true;
+    pointer.render(); pointer.render(); pointer.render();
+    assert.equal(nav.component("MarketUnlockOnboarding").props.open, false, "the new owner's first confirmed market is historical");
+    oldGuide.props.onDismiss();
+    assert.equal(values.has("zhiv.market-unlock-onboarding.v1:market-baseline-account-a"), false, "retained callbacks cannot alter the previous owner's guide");
+    assert.equal(nav.refreshes, 0);
+  } finally { pointer.restore(); }
+});
+
 test("market discovery waits for confirmed access, current owner and a free map, then dismisses without repeating", () => {
   const pointer = pointerNavigation();
   const { nav } = pointer;
@@ -1545,7 +1636,7 @@ test("market discovery waits for confirmed access, current owner and a free map,
   window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
   nav.props.ownerPublicId = "market-confirmation-gates";
   nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
-  nav.props.economy.snapshot.buildings.bridge = 1;
+  nav.props.economy.snapshot.buildings.bridge = 0;
   nav.props.economy.snapshot.completedExplorations = 0;
   try {
     pointer.render(); pointer.render();
@@ -1555,7 +1646,9 @@ test("market discovery waits for confirmed access, current owner and a free map,
     pointer.render();
     assert.equal(nav.component("MarketUnlockOnboarding").props.open, false);
     nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+    pointer.render(); pointer.render();
     nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    nav.props.economy.snapshot.buildings.bridge = 1;
     pointer.render();
     assert.equal(nav.component("MarketUnlockOnboarding").props.open, false, "another open menu delays the notice without consuming it");
     nav.find(element => element.props["aria-label"] === "Закрыть: Кладовая").props.onClick();
@@ -1564,7 +1657,9 @@ test("market discovery waits for confirmed access, current owner and a free map,
     nav.component("MarketUnlockOnboarding").props.onDismiss();
     pointer.render();
     assert.equal(nav.component("MarketUnlockOnboarding").props.open, false);
-    assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [{ version: 1, status: "dismissed" }]);
+    assert.deepEqual(JSON.parse(values.get(`zhiv.market-unlock-onboarding.v1:${nav.props.ownerPublicId}`)), { version: 1, status: "dismissed" });
+    assert.deepEqual(JSON.parse(values.get(`zhiv.leaftail-arrival.v1:${nav.props.ownerPublicId}`)),
+      { version: 1, arrived: true, dismissed: true }, "the existing home restores its historical merchant without consuming the market lesson");
     assert.equal(nav.component("EconomyPanel"), undefined);
     assert.equal(nav.refreshes, 0);
   } finally { pointer.restore(); }
@@ -1644,8 +1739,10 @@ test("merchant map and gallery activation wait for physical arrival and ignore a
   nav.props.ownerPublicId = "merchant-gallery-physical";
   nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
   nav.props.economy.snapshotConfirmed = true;
+  nav.props.economy.snapshot.buildings.home = 2;
   try {
     pointer.render(); pointer.render();
+    nav.props.economy.snapshot.buildings.home = 3; pointer.render();
     assert.equal(nav.component("WorldCharacters").props.leaftailUnlocked, true);
     assert.equal(nav.component("WorldCharacters").props.leaftailAvailable, false);
     assert.equal(nav.component("WorldScene").props.merchantArrival.enabled, true);
@@ -1701,6 +1798,7 @@ test("restoring a known merchant keeps his card openable only for the confirmed 
     nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
     nav.props.economy.snapshot.buildings.home = 2;
     nav.props.economy.snapshot.jobs = [{ kind: "construction", targetId: "home", targetLevel: 3, finishesAt: "2000-01-01T00:00:00Z" }];
+    pointer.render();
     assert.equal(card().props.leaftailAvailable, false, "a finished timer still needs the real building claim"); attempt();
     nav.props.economy.snapshot.buildings.home = 3;
     assert.equal(card().props.leaftailAvailable, true);
@@ -1710,10 +1808,12 @@ test("restoring a known merchant keeps his card openable only for the confirmed 
     assert.equal(card().props.leaftailAvailable, true, "restoring this account does not replay a completed boat route");
     assert.equal(nav.component("WorldScene").props.merchantArrival.enabled, false);
     nav.props.ownerPublicId = "merchant-gallery-new-owner";
+    pointer.render();
+    assert.equal(card().props.leaftailAvailable, false, "the old account's snapshot cannot restore the new account's merchant");
     nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: nav.props.ownerPublicId };
-    pointer.render(); pointer.render();
-    assert.equal(card().props.leaftailAvailable, false, "the next account has its own unseen arrival");
-    attempt();
+    pointer.render(); pointer.render(); pointer.render();
+    assert.equal(card().props.leaftailAvailable, true, "a confirmed existing home restores this account's own historical merchant without replay");
+    assert.equal(nav.component("WorldScene").props.merchantArrival.enabled, false);
   } finally { pointer.restore(); }
 });
 
@@ -1744,11 +1844,14 @@ test("the real miner arrival hook keeps the physical run separate from coach dis
   window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
   nav.props.ownerPublicId = "miner-hook-physical";
   nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+  nav.props.economy.snapshot.buildings.home = 1;
   nav.props.economy.snapshot.buildings.quarry = 1;
   try {
     pointer.render(); pointer.render();
     assert.equal(nav.component("MinerArrivalOnboarding").props.open, false, "a cached quarry cannot trigger arrival");
+    nav.props.economy.snapshot.buildings.quarry = 0;
     nav.props.economy.snapshotConfirmed = true; pointer.render();
+    nav.props.economy.snapshot.buildings.quarry = 1; pointer.render();
     let scene = nav.component("WorldScene"), coach = nav.component("MinerArrivalOnboarding");
     assert.equal(scene.props.residentArrival.enabled, true);
     assert.equal(scene.props.residentArrival.seen, false);
@@ -1780,9 +1883,11 @@ test("route completion leaves the new miner greeting until Meet opens his own co
   window.localStorage = { getItem() { return null; }, setItem() {} };
   nav.props.ownerPublicId = "miner-hook-greeting";
   nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
-  nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.quarry = 1;
+  nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.home = 1;
+  nav.props.economy.snapshot.buildings.quarry = 0;
   try {
     pointer.render(); pointer.render();
+    nav.props.economy.snapshot.buildings.quarry = 1; pointer.render();
     nav.component("WorldScene").props.residentArrival.onComplete(); pointer.render();
     assert.equal(nav.component("MinerArrivalOnboarding").props.open, true);
     assert.equal(nav.component("MinerArrivalOnboarding").props.arrived, true);
@@ -1800,17 +1905,21 @@ test("an old scene arrival callback cannot complete or dismiss the next account'
   window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
   nav.props.ownerPublicId = "miner-old-owner";
   nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
-  nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.quarry = 1;
+  nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.home = 1;
+  nav.props.economy.snapshot.buildings.quarry = 0;
   try {
     pointer.render(); pointer.render();
+    nav.props.economy.snapshot.buildings.quarry = 1; pointer.render();
     const finishOldRoute = nav.component("WorldScene").props.residentArrival.onComplete;
     const dismissOldCoach = nav.component("MinerArrivalOnboarding").props.onDismiss;
     nav.props.ownerPublicId = "miner-new-owner";
     pointer.render(); pointer.render();
     assert.equal(nav.component("WorldScene").props.economyResidents, null, "foreign economics cannot configure map residents");
     assert.equal(nav.component("WorldScene").props.residentArrival.enabled, false);
-    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: nav.props.ownerPublicId };
+    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: nav.props.ownerPublicId,
+      buildings: { ...nav.props.economy.snapshot.buildings, quarry: 0 } };
     pointer.render(); pointer.render();
+    nav.props.economy.snapshot.buildings.quarry = 1; pointer.render();
     assert.equal(nav.component("MinerArrivalOnboarding").props.open, true);
     finishOldRoute(); dismissOldCoach(); pointer.render();
     assert.equal(nav.component("WorldScene").props.residentArrival.seen, false);
@@ -1916,9 +2025,10 @@ test("Lopukh arrival callbacks and saved introduction remain fenced to the curre
   nav.props.ownerPublicId = "lopukh-owner-one";
   nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
   nav.props.economy.snapshotConfirmed = true;
-  nav.props.economy.snapshot.buildings = { ...nav.props.economy.snapshot.buildings, home: 1, woodlot: 1 };
+  nav.props.economy.snapshot.buildings = { ...nav.props.economy.snapshot.buildings, home: 1, woodlot: 0 };
   try {
     pointer.render(); pointer.render();
+    nav.props.economy.snapshot.buildings.woodlot = 1; pointer.render();
     const oldComplete = nav.component("WorldScene").props.lopukhArrival.onComplete;
     const oldDismiss = nav.component("LopukhArrivalOnboarding").props.onDismiss;
     nav.props.ownerPublicId = "lopukh-owner-two";
@@ -1926,8 +2036,10 @@ test("Lopukh arrival callbacks and saved introduction remain fenced to the curre
     oldComplete(); oldDismiss(); pointer.render();
     assert.equal(values.size, 0);
     assert.equal(nav.component("WorldCharacters").props.lopukhAvailable, false);
-    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: nav.props.ownerPublicId };
+    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: nav.props.ownerPublicId,
+      buildings: { ...nav.props.economy.snapshot.buildings, woodlot: 0 } };
     pointer.render(); pointer.render();
+    nav.props.economy.snapshot.buildings.woodlot = 1; pointer.render();
     oldComplete(); oldDismiss(); pointer.render();
     assert.equal(values.size, 0, "old callbacks cannot complete the next owner’s route");
     assert.equal(nav.component("WorldScene").props.lopukhArrival.enabled, true);
@@ -1963,9 +2075,11 @@ test("resident arrival coaches run one at a time and the first course does not r
   nav.props.ownerPublicId = "lopukh-coach-order";
   nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
   nav.props.economy.snapshotConfirmed = true;
-  nav.props.economy.snapshot.buildings = { ...nav.props.economy.snapshot.buildings, woodlot: 1, quarry: 1, home: 3 };
+  nav.props.economy.snapshot.buildings = { ...nav.props.economy.snapshot.buildings, woodlot: 0, quarry: 0, home: 1 };
   try {
     pointer.render(); pointer.render();
+    nav.props.economy.snapshot.buildings = { ...nav.props.economy.snapshot.buildings, woodlot: 1, quarry: 1, home: 3 };
+    pointer.render();
     assert.equal(nav.component("WorldScene").props.lopukhArrival.enabled, false);
     assert.equal(nav.component("WorldOnboardingSession").props.open, true, "the unfinished first course keeps its own neighbor lesson");
     nav.find(element => element.props["data-world-quick"] === "more").props.onClick();

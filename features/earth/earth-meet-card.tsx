@@ -8,8 +8,9 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthLocationStatus, EarthPosition } from "./location";
 import { earthWalkingRouteIssue, type EarthWalkingRouteIssue, type EarthWalkingRouteState } from "./walking-route";
-import { canRecordEarthMeeting, earthFriendWalkingRouteIssue, earthMeetDetails, earthWalkingFriendFreshDeadline,
+import { canRecordEarthMeeting, earthFriendWalkingRouteIssue, earthLastKnownMeetDetails,
   EARTH_WALKING_FRIEND_MAX_AGE_MS, walkingRouteUrl, WALKING_MAP_SERVICES, type WalkingMapService } from "./meet";
+import { formatMeetLocationUpdate } from "./location-update";
 import styles from "./earth-meet-card.module.css";
 
 export function formatMeetDistance(meters: number): string {
@@ -17,26 +18,14 @@ export function formatMeetDistance(meters: number): string {
     : `${(meters / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: meters < 10_000 ? 1 : 0 })} км`;
 }
 
-export function formatMeetLocationUpdate(timestamp: number, now: number) {
-  if (!Number.isFinite(timestamp) || !Number.isFinite(now) || timestamp < 0 || !Number.isFinite(new Date(timestamp).getTime())) return null;
-  const minutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
-  return { time: new Date(timestamp).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
-    age: minutes < 1 ? "Только что" : minutes < 60 ? `${minutes} мин. назад`
-      : minutes < 1_440 ? `${Math.floor(minutes / 60)} ч. назад` : `${Math.floor(minutes / 1_440)} дн. назад`,
-    dateTime: new Date(timestamp).toISOString() };
-}
+export { formatMeetLocationUpdate };
 
 const formatAccuracy = (meters: number) => meters < 1_000 ? `${Math.max(1, Math.ceil(meters))} м` : formatMeetDistance(meters);
 
 const ROUTE_ISSUES: Record<EarthWalkingRouteIssue, string> = {
   friend_unavailable: "Геопозиция друга больше недоступна.",
-  friend_approximate: "Друг делится примерным районом. Для маршрута нужна точная геопозиция.",
-  friend_accuracy: "GPS друга пока неточен: нужна погрешность не более 200 м. Маршрут станет доступен после точного обновления.",
-  friend_stale: "Точка друга старше 5 минут. Кнопки маршрута станут доступны после обновления геопозиции.",
   self_missing: "Сначала дождись своей геопозиции или нажми «Найти меня».",
-  self_stale: "Твоя точка устарела. Для маршрута нужно обновление не старше минуты.",
-  self_accuracy: "Твой GPS пока неточен: нужна погрешность не более 200 м.",
-  distance: "Пеший маршрут на этой карте доступен до 20 км по прямой. Для дальней поездки открой внешние карты.",
+  self_invalid: "Не удалось прочитать твою точку. Нажми «Найти меня».",
 };
 
 function openWalkingRoute(event: MouseEvent<HTMLAnchorElement>, person: EarthMapPerson | null, service: WalkingMapService) {
@@ -72,16 +61,18 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
   const [picker, setPicker] = useState<{ circleId: string | null; open: boolean }>({ circleId: null, open: false });
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [person?.circleId]);
   const available = person && person.expiresAtMonotonic > monotonicNow && Date.parse(person.expiresAt) > now;
-  const livePosition = locationAllowed && (locationStatus ?? (position ? "active" : "idle")) === "active" ? position : null;
-  const details = available ? earthMeetDetails(livePosition, person, monotonicNow, now) : null;
+  const livePosition = locationAllowed ? position : null;
+  const meetingPosition = !locationStatus || locationStatus === "active" ? livePosition : null;
+  const selfLastKnown = Boolean(position && (locationStatus && locationStatus !== "active" || now - position.timestamp > 60_000));
+  const details = available ? earthLastKnownMeetDetails(livePosition, person, monotonicNow, now) : null;
   const routing = walkingRoute?.status === "loading";
   const friendIssue = earthFriendWalkingRouteIssue(person, monotonicNow, now);
   const routeIssue = earthWalkingRouteIssue(livePosition, person, monotonicNow, now);
   const path = details && !routeIssue && walkingRoute?.status === "ready" ? walkingRoute.route : null;
   const friendUpdate = person ? formatMeetLocationUpdate(Date.parse(person.updatedAt), now) : null;
   const selfUpdate = position ? formatMeetLocationUpdate(position.timestamp, now) : null;
-  const friendStale = person && (now - Date.parse(person.updatedAt) >= EARTH_WALKING_FRIEND_MAX_AGE_MS
-    || monotonicNow >= earthWalkingFriendFreshDeadline(person));
+  const friendStale = person && now - Date.parse(person.updatedAt) >= EARTH_WALKING_FRIEND_MAX_AGE_MS;
+  const routeEstimate = Boolean(friendStale || selfLastKnown || person && (person.precision === "APPROXIMATE" || person.accuracyMeters > 200) || position && position.accuracy > 200);
   const selfHint = !locationAllowed ? "Включи её в настройках профиля" : locationError
     ?? (position && !livePosition ? "На карте сохранена последняя точка. Ждём обновления GPS."
       : position && !details ? "На карте сохранена последняя точка. Обнови геопозицию." : null);
@@ -114,11 +105,11 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
         <div>{details ? <><strong>≈ {formatMeetDistance(path?.distanceMeters ?? details.distanceMeters)}</strong><span>{path
           ? `Пешком · ≈${Math.max(1, Math.ceil(path.durationSeconds / 60))} мин`
           : `по прямой${friendStale ? " до последней точки" : ""}${details.direction ? ` · ${details.direction}` : details.distanceMeters <= details.accuracyMeters ? " · в пределах точности GPS" : " · направление не определено"}`}</span></>
-          : <><strong>{locating ? "Ищем тебя…" : !locationAllowed ? "Геопозиция отключена" : position ? "Нужна свежая геопозиция" : "Расстояние — после поиска тебя"}</strong>
+          : <><strong>{locating ? "Ищем тебя…" : !locationAllowed ? "Геопозиция отключена" : position ? "Не удалось прочитать геопозицию" : "Расстояние — после поиска тебя"}</strong>
             {selfHint && <span>{selfHint}</span>}</>}</div>
       </div>
-      {selfUpdate && locationAllowed && <p className={styles.updated} data-stale={!details || undefined}>
-        {details ? "Ты" : "Твоя последняя точка"} · <time dateTime={selfUpdate.dateTime}>{selfUpdate.time}</time> · {selfUpdate.age}
+      {selfUpdate && locationAllowed && <p className={styles.updated} data-stale={selfLastKnown || !details || undefined}>
+        {details && !selfLastKnown ? "Ты" : "Твоя последняя точка"} · <time dateTime={selfUpdate.dateTime}>{selfUpdate.time}</time> · {selfUpdate.age}
         {position && Number.isFinite(position.accuracy) && <> · ±{formatAccuracy(position.accuracy)}</>}
       </p>}
       <div className={styles.actions}>
@@ -144,12 +135,13 @@ export function EarthMeetCard({ person, name, position, now, monotonicNow, locat
         </div>
         <p className={styles.routeDisclosure}>По нажатию две точки отправятся OSRM/FOSSGIS</p>
       </div>}
+      {routeEstimate && <p className={styles.estimate}>Маршрут до последней полученной точки. Положение могло измениться; учитывай погрешность GPS.</p>}
       {(routeHint || walkingRoute?.status === "error") && <p className={styles.footnote} role="status">
         {routeHint}{walkingRoute?.status === "error" && <>{routeHint ? " " : ""}{walkingRoute.error}</>}
       </p>}
-      {onRecordMeeting && locationAllowed && canRecordEarthMeeting(livePosition, person, monotonicNow, now) && <div className={styles.meetingNote}>
+      {onRecordMeeting && locationAllowed && canRecordEarthMeeting(meetingPosition, person, monotonicNow, now) && <div className={styles.meetingNote}>
         <button type="button" data-audio-cue="ui.click" disabled={meetingRecorded} onClick={() => {
-          if (canRecordEarthMeeting(livePosition, person, performance.now(), Date.now())) onRecordMeeting();
+          if (canRecordEarthMeeting(meetingPosition, person, performance.now(), Date.now())) onRecordMeeting();
         }}>{meetingRecorded ? "Встреча отмечена в атласе" : "Отметить встречу в атласе"}</button>
         {!meetingRecorded && <span>Вы рядом. Отметь, если встретились.</span>}
       </div>}

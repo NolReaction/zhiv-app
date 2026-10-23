@@ -173,6 +173,48 @@ test("resume conflicts and rate limits do not spin, honor cooldown and permit a 
   }
 });
 
+test("a temporary startup resume failure retries once using fresh confirmed settings and the same audience", async t => {
+  const s = fixture({ initial: { mode: "SHARING", revision: 4, recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
+  const original = s.transport.resumeEarthSharing; let first = true;
+  s.transport.resumeEarthSharing = (write, key, signal) => {
+    if (!first) return original(write, key, signal);
+    first = false; s.calls.resumes.push({ write, key, signal });
+    return Promise.reject(new TypeError("temporary connection failure"));
+  };
+  await s.start();
+  assert.equal(s.controller.getSnapshot().publishing, false);
+  s.setServer({ revision: 5 });
+  await s.clock.advance(29_999); assert.equal(s.calls.resumes.length, 1);
+  await s.clock.advance(1);
+  assert.equal(s.calls.resumes.length, 2); assert.equal(s.calls.resumes[1].write.expectedRevision, 5);
+  assert.equal(s.controller.getSnapshot().publishing, true);
+  assert.deepEqual(s.controller.getSnapshot().settings.recipientCircleIds, [CIRCLE]);
+  assert.equal(s.calls.updates.length, 0, "recovery cannot add recipients or issue a new consent write");
+});
+
+test("a continuously failing startup resume stops after its single automatic recovery attempt", async t => {
+  const s = fixture({ initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
+  s.transport.resumeEarthSharing = async (write, key, signal) => {
+    s.calls.resumes.push({ write, key, signal });
+    throw Object.assign(new Error("server unavailable"), { status: 503 });
+  };
+  await s.start(); await s.clock.advance(180_000);
+  assert.equal(s.calls.resumes.length, 2);
+  assert.equal(s.controller.getSnapshot().publishing, false);
+});
+
+test("privacy and a deliberate GPS pause retire a pending temporary-failure recovery", async t => {
+  for (const interrupt of [s => s.controller.stopPublishing(), s => s.controller.ghost(), s => s.controller.off()]) {
+    const s = fixture({ initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
+    s.transport.resumeEarthSharing = async (write, key, signal) => {
+      s.calls.resumes.push({ write, key, signal }); throw new TypeError("connection lost");
+    };
+    await s.start(); interrupt(s); await flush(); await s.clock.advance(90_000);
+    assert.equal(s.calls.resumes.length, 1);
+    assert.equal(s.controller.getSnapshot().publishing, false);
+  }
+});
+
 test("a delayed resume lease rejects pre-ACK coordinates and advances the public generation only after its ACK", async t => {
   const s = fixture({ publicationVisible: false, initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
   await s.start(); const ack = deferred(), original = s.transport.resumeEarthSharing;

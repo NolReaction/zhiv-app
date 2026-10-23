@@ -21,7 +21,8 @@
 .pickerHeading p, .note { margin: 4px 0 0; color: #5a664e; font-size: 10px; line-height: 1.4; }
 .picker button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
 .pickerHeading button { display: grid; place-items: center; flex: 0 0 44px; min-height: 44px; padding: 0; border: 0; border-radius: 8px; background: transparent; }
-.options { display: grid; gap: 6px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* The scroller may shrink; cards must keep the height of their class/species details. */
+.options { flex: 1 1 auto; display: grid; grid-auto-rows: max-content; align-content: start; gap: 6px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .option { display: flex; align-items: center; gap: 9px; min-width: 0; width: 100%; min-height: 79px; padding: 8px; border: 1px solid #c6c4a3; border-radius: 10px; background: #f7edd5; text-align: left; }
 .option:hover:not(:disabled), .option[data-selected="true"] { background: #e2e9cf; border-color: #91a584; }
 .option:disabled { opacity: .55; cursor: default; }

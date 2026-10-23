@@ -1,0 +1,16 @@
+.odds { display: grid; gap: 7px; min-width: 0; padding: 10px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 10px; background: color-mix(in srgb, var(--forest-paper-light, #f0e6ca) 85%, transparent); font-size: .75rem; line-height: 1.5; }
+.oddsHeading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 3px 8px; }
+.oddsHeading strong { font-weight: 600; }
+.oddsHeading small { color: var(--forest-muted, #59624d); font-size: .625rem; }
+.rarityOdds { display: grid; gap: 3px; margin: 0; min-width: 0; }
+.rarityOdds > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; min-width: 0; min-height: 34px; padding: 5px 7px; border-radius: 7px; }
+.rarityOdds > div:nth-child(even) { background: color-mix(in srgb, var(--forest-primary, #466347) 4%, transparent); }
+.rarityOdds > [data-target="true"] { background: color-mix(in srgb, var(--forest-primary, #466347) 10%, transparent); box-shadow: inset 2px 0 var(--forest-primary, #466347); }
+.rarityOdds dt { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.rarityOdds dt > svg { flex-shrink: 0; }
+.rarityOdds dd { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 5px; margin: 0 0 0 auto; max-width: 100%; color: var(--forest-ink, #394d3e); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.rarityOdds dd strong { font-weight: 600; white-space: nowrap; }
+.previousOdds { display: inline-flex; align-items: center; gap: 5px; color: var(--forest-muted, #59624d); font-size: .6875rem; white-space: nowrap; }
+.previousOdds svg { flex-shrink: 0; }
+.loadout { margin: 0; min-width: 0; color: var(--forest-muted, #59624d); font-size: .625rem; line-height: 1.5; overflow-wrap: anywhere; }
+@container (max-width: 280px) { .rarityOdds dt > svg { display: none; } .rarityOdds dd { font-size: .6875rem; } .previousOdds { font-size: .625rem; } }

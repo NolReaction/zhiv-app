@@ -29,7 +29,7 @@ export function StarterOffer({ state, previewId }: { state: EconomyView | null; 
     <ul className={styles.starterItems} aria-label="Предметы в наборе">{Object.entries(offer.rewards.items).map(([itemId, quantity]) => {
       const name = state.catalog.items.find(item => item.id === itemId)?.name ?? itemId;
       const meal = state.catalog.food?.meals.find(entry => entry.itemId === itemId);
-      return <li key={itemId}><span className={styles.rewardIcon}><ItemIcon itemId={itemId} size={34} /></span><span><strong>{name}</strong>{meal && <small>Вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}%</small>}</span><b>×{quantity}</b></li>;
+      return <li key={itemId}><span className={styles.rewardIcon}><ItemIcon itemId={itemId} size={34} /></span><span><strong>{name}</strong>{meal && <small>Скорость: вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}%</small>}</span><b>×{quantity}</b></li>;
     })}</ul>
     <p className={styles.foodNote}>Блюдо ускоряет одну вылазку Мохлика или стройку. Бонусы еды не складываются.</p>
     <button className={styles.offerPrice} type="button" disabled aria-describedby={previewId}><span>{number(offer.priceRub)} ₽</span><small>Скоро</small></button>

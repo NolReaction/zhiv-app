@@ -126,7 +126,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
             <span>{id === "coins" ? "Монеты" : itemName(state, id)}</span><b>{missing ? `${number(available)} / ${number(amount)}` : `×${number(amount)}`}</b>
           </span>;
         })}</span>}
-        {meal && <span className={styles.benefits}><span>Вылазка +{number(meal.heroSpeedBps / 100)}%</span><span>Стройка +{number(meal.builderSpeedBps / 100)}%</span></span>}
+        {meal && <span className={styles.benefits}><span>Вылазка +{number(meal.heroSpeedBps / 100)}% скорости</span><span>Стройка +{number(meal.builderSpeedBps / 100)}% скорости</span></span>}
       </span>
     </button>
     {description && <span id={detailId} className={styles.accessible}>{description}</span>}

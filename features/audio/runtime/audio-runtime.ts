@@ -6,6 +6,7 @@ import { createAudioAssetTransport } from "./audio-asset-transport";
 import { createAudioParameterSmoother } from "./audio-parameter-smoother";
 import { createMusicLoopEnvelope } from "./music-loop-envelope";
 import { AUDIO_VISIBILITY_RELEASE_SECONDS, createAudioReleaseClock } from "./audio-release-clock";
+import { createAudioInterruptionRecovery } from "./audio-interruption-recovery";
 
 const MAX_VOICES = 24;
 const MAX_LOOPS = 10;
@@ -113,6 +114,12 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   const pendingMusic = new Map<string, Promise<void>>();
   const preparationControllers = new Set<AbortController>();
   let preparationAutoplayAttempted = false;
+  const interruptionRecovery = createAudioInterruptionRecovery({
+    allowed: () => !disposed && everUnlocked && visible && settings.enabled && settings.master > 0
+      && Boolean(context && context.state !== "closed") && !visibilityDrain && !visibilitySuspension,
+    running: contextIsRunning,
+    resume: unlock,
+  });
   const cache = createAudioAssetCache({ context: () => context, fetchAsset: transport.fetch, now,
     maxDecodedBytes: options.maxDecodedBytes, changed: publish,
     isInUse: id => (bufferClaims.get(id) ?? 0) > 0 || [...voices.values(), ...retiring.values()].some(voice => voice.assetId === id),
@@ -647,8 +654,12 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
           // outstanding suspend request; releasing that fence can let the old
           // request cut a newly resumed foreground song a moment later.
           if (context?.state === "suspended" || context?.state === "closed") visibilitySuspension?.finish();
+          interruptionRecovery.schedule();
         }
-        else if (everUnlocked && visible && settings.enabled && !visibilityDrain && !visibilitySuspension) { updateMix(); reconcile(); }
+        else {
+          interruptionRecovery.cancel();
+          if (everUnlocked && visible && settings.enabled && !visibilityDrain && !visibilitySuspension) { updateMix(); reconcile(); }
+        }
         publish();
       };
       unavailable = false;
@@ -676,14 +687,18 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
         if (!disposed && contextIsRunning()) void context!.suspend().catch(() => {});
         return false;
       }
-      everUnlocked = contextIsRunning();
-      if (everUnlocked) {
+      const running = contextIsRunning();
+      // Authorization survives an OS interruption. Safari can resolve resume()
+      // while still interrupted; losing this latch would prevent later recovery.
+      if (running) {
+        everUnlocked = true;
         // A new gesture is allowed to retry blocked media playback immediately.
         for (const id of blockedStreams) failedStreams.delete(id);
         blockedStreams.clear(); updateMix(); reconcile();
       }
-      publish(); return everUnlocked;
-    } catch { publish(); return false; }
+      if (!running) interruptionRecovery.schedule();
+      publish(); return running;
+    } catch { interruptionRecovery.schedule(); publish(); return false; }
   }
 
   function prepareMusic(asset: AudioAsset): Promise<void> {
@@ -780,7 +795,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const previous = settings;
       settings = mergeAudioSettings(settings, patch);
       if (JSON.stringify(previous) === JSON.stringify(settings)) { settings = previous; return; }
-      if (!settings.enabled || settings.master === 0) invalidate();
+      if (!settings.enabled || settings.master === 0) { interruptionRecovery.cancel(); invalidate(); }
       else {
         if (AUDIO_BUSES.some(bus => previous.buses[bus] > 0 && settings.buses[bus] === 0)) { generation++; pendingLoops.clear(); pendingEvents.clear(); }
         for (const voice of [...voices.values(), ...retiring.values()]) if (settings.buses[voice.cue.bus] === 0 || !feedbackAudible(voice.feedbackBus)) {
@@ -915,9 +930,15 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       source.stop(context!.currentTime + .25); publish();
     },
     setVisible(nextVisible) {
-      if (disposed || visible === nextVisible) return;
+      if (disposed) return;
+      // Calls can interrupt audio without hiding the page. Focus/pageshow must
+      // also recover an already-visible authorized context.
+      if (visible === nextVisible) {
+        if (nextVisible) interruptionRecovery.restart();
+        return;
+      }
       visible = nextVisible;
-      if (!visible) drainForVisibility();
+      if (!visible) { interruptionRecovery.cancel(); drainForVisibility(); }
       else if (everUnlocked && settings.enabled) void unlock();
       updateMix(); publish();
     },
@@ -926,6 +947,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     dispose() {
       if (disposed) return;
       disposed = true; frame = null;
+      interruptionRecovery.cancel();
       visibilityDrain?.finish(); visibilitySuspension?.finish();
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
       invalidate(true); cache.dispose(); transport.dispose();

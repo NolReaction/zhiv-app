@@ -8,7 +8,7 @@ export function productionStationSupported(stationId: string): boolean {
   return stationId !== "quarry" && economyCatalog.recipes.some(recipe => recipe.buildingId === stationId);
 }
 
-/** Unclaimed results continue to occupy their slot; only claim_job releases it. */
+/** Unclaimed results occupy their slot until an individual or station claim. */
 export function productionSlotCount(state: SlotState, stationId: string): number {
   if (!productionStationSupported(stationId)) return 1;
   const count = state.productionSlots?.[stationId];

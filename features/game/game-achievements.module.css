@@ -1,10 +1,14 @@
 .trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; width: fit-content; padding: 6px 9px; border: 1px solid rgba(227,205,143,.22); border-radius: 11px; background: rgba(227,205,143,.06); color: #e0cc9b; font: inherit; font-size: 14px; cursor: pointer; }
 .trigger > span { font-size: 12px; font-variant-numeric: tabular-nums; opacity: .85; }
 .trigger:hover { background: rgba(227,205,143,.12); }
+.trigger[data-achievements-ready] { border-color: #e7cb86; box-shadow: 0 0 0 2px #e7cb8620; }
+.trigger .triggerReward { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; opacity: 1; }
 .trigger:focus-visible, .summary button:focus-visible, .questDetails summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .dialog[class] { display: block; width: min(740px, calc(100vw - 28px)); max-width: min(740px, calc(100vw - 28px)); min-width: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
 .dialog > * + :not([data-slot="dialog-close"]) { margin-top: 16px; }
 .dialog > * { min-width: 0; }
+.worldScrim[data-slot="dialog-overlay"] { z-index: 110; background: #07191099; }
+.worldDialog[data-slot="dialog-content"] { z-index: 120; }
 .description { margin: 0; font-size: 14px; line-height: 1.5; color: #b9c6ad; }
 .summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; border: 1px solid rgba(225,204,142,.15); border-radius: 16px; background: rgba(225,204,142,.035); }
 .summaryText { display: grid; gap: 3px; min-width: 0; }
@@ -21,6 +25,7 @@
 .quest { display: grid; width: 100%; min-width: 0; grid-template-columns: 58px minmax(0, 1fr); align-content: start; column-gap: 11px; row-gap: 10px; padding: 14px; border: 1px solid rgba(198,214,184,.12); border-radius: 18px; background: linear-gradient(145deg, rgba(219,235,201,.045), rgba(9,17,7,.16)); }
 .quest[data-unlocked] { border-color: rgba(207,219,152,.27); background: radial-gradient(ellipse at 0 0, rgba(213,209,124,.09), transparent 75%), rgba(189,213,158,.03); }
 .quest[data-complete] { border-color: rgba(216,201,137,.35); }
+.quest[data-ready] { border-color: #dec47d; }
 .art { position: relative; align-self: start; padding-top: 2px; }
 .medal { display: block; width: 58px; height: 58px; filter: grayscale(1); opacity: .5; transition: filter 400ms ease, opacity 400ms ease; }
 .art > span { position: absolute; right: 0; bottom: 0; display: grid; min-width: 21px; height: 21px; padding: 0 3px; place-items: center; border-radius: 50%; border: 1px solid #687461; background: #263020; color: #b9c6ad; font-size: 10px; font-weight: 700; }

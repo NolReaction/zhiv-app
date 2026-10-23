@@ -15,6 +15,7 @@ import { ConstructionRequirements } from "./construction-requirements";
 import { UpgradeBenefitCarousel, type UpgradeBenefitCard } from "./upgrade-benefit-carousel";
 import { WorldHomeFinale } from "./world-home-finale";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
+import { mealSpeedDescription } from "@/features/economy/ui/food/meal-speed-description";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
 import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
 import { explorationActorId } from "@/features/economy/domain/actor-availability";
@@ -245,7 +246,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>{`Сыт · скорость +${meal.builderSpeedBps / 100}%`}</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>{`Сыт · ${mealSpeedDescription(meal.builderSpeedBps)}`}</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{homeFinale ? "В лес!" : state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

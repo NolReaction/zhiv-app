@@ -1,6 +1,7 @@
 import { fishClassForItem, fishClassInventory } from "./fishing";
 import { isMinerJob } from "./actor-availability";
 import { hasGardenBerryReward } from "./garden-berries";
+import { productionCollectionRewards } from "./production-collection";
 import { leaftailOfferTarget, leaftailShopOffers } from "./leaftail-shop";
 import type { EconomyCommand, EconomyJob, EconomyResult, EconomyView, MarketCommand } from "./model";
 
@@ -68,6 +69,12 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     for (const job of jobs) for (const [itemId, quantity] of Object.entries(job.rewards)) allowed[itemId] = (allowed[itemId] ?? 0) + quantity;
     source = "claim";
     if (after.catalog.buildings.some(station => station.id === "garden")) stationId = "garden";
+  } else if (command.action === "claim_production") {
+    const jobs = before.jobs.filter(job => job.kind === "production" && job.targetId === command.targetId
+      && !job.collection && !(job.targetId === "garden" && hasGardenBerryReward(job.rewards)) && !after.jobs.some(item => item.id === job.id));
+    if (!jobs.length) return null;
+    allowed = productionCollectionRewards(jobs); source = "claim";
+    if (after.catalog.buildings.some(station => station.id === command.targetId)) stationId = command.targetId;
   } else if (command.action === "claim_job") {
     const job = before.jobs.find(item => item.id === command.targetId);
     if (!job || job.kind === "construction" || after.jobs.some(item => item.id === job.id)) return null;

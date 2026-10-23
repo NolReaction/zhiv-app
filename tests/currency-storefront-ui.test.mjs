@@ -53,7 +53,7 @@ test("general store entry shows the current starter, its exact contents and disa
   assert.ok(html.includes(pack.name));
   assert.ok(html.includes(`${pack.priceRub} ₽`));
   assert.match(html, /350<\/strong>/);
-  assert.match(html, /Вылазка \+10% · стройка \+10%/);
+  assert.match(html, /Скорость: вылазка \+10% · стройка \+10%/);
   for (const [itemId, quantity] of Object.entries(pack.rewards.items)) {
     assert.ok(html.includes(economyCatalog.items.find(item => item.id === itemId).name));
     assert.ok(html.includes(`×${quantity}`));

@@ -1,0 +1,1000 @@
+{
+  "policy": "npc-value-plus-manufacturing-time",
+  "npcValueMultiplierNumerator": 3,
+  "npcValueMultiplierDenominator": 2,
+  "manufacturingCoinsPerMinute": 1,
+  "roundingCoins": 10,
+  "orders": [
+    {
+      "templateId": "plesk_river_catch",
+      "home": 1,
+      "items": {
+        "fish_common": 3
+      },
+      "previousCoins": 180,
+      "npcValue": 120,
+      "manufacturingSeconds": 0,
+      "coins": 180
+    },
+    {
+      "templateId": "plesk_silver_catch",
+      "home": 1,
+      "items": {
+        "fish_common": 2
+      },
+      "previousCoins": 120,
+      "npcValue": 80,
+      "manufacturingSeconds": 0,
+      "coins": 120
+    },
+    {
+      "templateId": "plesk_morning_assortment",
+      "home": 1,
+      "items": {
+        "fish_common": 2,
+        "fish_uncommon": 1
+      },
+      "previousCoins": 230,
+      "npcValue": 150,
+      "manufacturingSeconds": 0,
+      "coins": 230
+    },
+    {
+      "templateId": "plesk_net_patch",
+      "home": 2,
+      "items": {
+        "fiber": 6,
+        "wood": 2
+      },
+      "previousCoins": 180,
+      "npcValue": 120,
+      "manufacturingSeconds": 0,
+      "coins": 180
+    },
+    {
+      "templateId": "builder_wood_supply",
+      "home": 1,
+      "items": {
+        "wood": 2
+      },
+      "previousCoins": 90,
+      "npcValue": 60,
+      "manufacturingSeconds": 0,
+      "coins": 90
+    },
+    {
+      "templateId": "builder_stone_foundation",
+      "home": 2,
+      "items": {
+        "stone": 8
+      },
+      "previousCoins": 480,
+      "npcValue": 320,
+      "manufacturingSeconds": 0,
+      "coins": 480
+    },
+    {
+      "templateId": "builder_foundation_mix",
+      "home": 2,
+      "items": {
+        "wood": 6,
+        "stone": 4
+      },
+      "previousCoins": 510,
+      "npcValue": 340,
+      "manufacturingSeconds": 0,
+      "coins": 510
+    },
+    {
+      "templateId": "builder_binding_fiber",
+      "home": 2,
+      "items": {
+        "fiber": 8
+      },
+      "previousCoins": 120,
+      "npcValue": 80,
+      "manufacturingSeconds": 0,
+      "coins": 120
+    },
+    {
+      "templateId": "builder_light_supports",
+      "home": 2,
+      "items": {
+        "wood": 4,
+        "fiber": 4
+      },
+      "previousCoins": 240,
+      "npcValue": 160,
+      "manufacturingSeconds": 0,
+      "coins": 240
+    },
+    {
+      "templateId": "builder_plank_brace",
+      "home": 2,
+      "items": {
+        "planks": 4,
+        "rope": 2
+      },
+      "previousCoins": 330,
+      "npcValue": 220,
+      "manufacturingSeconds": 840,
+      "coins": 350
+    },
+    {
+      "templateId": "builder_grilled_lunch",
+      "home": 1,
+      "items": {
+        "grilled_fish": 2
+      },
+      "previousCoins": 170,
+      "npcValue": 110,
+      "manufacturingSeconds": 360,
+      "coins": 180
+    },
+    {
+      "templateId": "plesk_grilled_dinner",
+      "home": 1,
+      "items": {
+        "grilled_fish": 1,
+        "berries": 2
+      },
+      "previousCoins": 120,
+      "npcValue": 75,
+      "manufacturingSeconds": 180,
+      "coins": 120
+    },
+    {
+      "templateId": "plesk_reed_catch",
+      "home": 1,
+      "items": {
+        "fish_uncommon": 2
+      },
+      "previousCoins": 210,
+      "npcValue": 140,
+      "manufacturingSeconds": 0,
+      "coins": 210
+    },
+    {
+      "templateId": "plesk_camp_provisions",
+      "home": 3,
+      "items": {
+        "smoked_fish": 1,
+        "dried_berries": 2
+      },
+      "previousCoins": 510,
+      "npcValue": 340,
+      "manufacturingSeconds": 7200,
+      "coins": 630
+    },
+    {
+      "templateId": "plesk_warm_lunch",
+      "home": 3,
+      "items": {
+        "fish_soup": 1,
+        "berry_fish": 1
+      },
+      "previousCoins": 780,
+      "npcValue": 520,
+      "manufacturingSeconds": 3720,
+      "coins": 850
+    },
+    {
+      "templateId": "builder_fasteners",
+      "home": 3,
+      "items": {
+        "metal_parts": 2,
+        "planks": 2
+      },
+      "previousCoins": 1500,
+      "npcValue": 1000,
+      "manufacturingSeconds": 7680,
+      "coins": 1630
+    },
+    {
+      "templateId": "builder_brick_stack",
+      "home": 2,
+      "items": {
+        "bricks": 4,
+        "rope": 2
+      },
+      "previousCoins": 690,
+      "npcValue": 460,
+      "manufacturingSeconds": 1560,
+      "coins": 720
+    },
+    {
+      "templateId": "builder_iron_fittings",
+      "home": 3,
+      "items": {
+        "iron_ingot": 3
+      },
+      "previousCoins": 1530,
+      "npcValue": 1020,
+      "manufacturingSeconds": 5760,
+      "coins": 1630
+    },
+    {
+      "templateId": "plesk_mooncatch",
+      "home": 3,
+      "items": {
+        "fish_rare": 1
+      },
+      "previousCoins": 170,
+      "npcValue": 110,
+      "manufacturingSeconds": 0,
+      "coins": 170
+    },
+    {
+      "templateId": "plesk_pike_catch",
+      "home": 3,
+      "items": {
+        "fish_uncommon": 1,
+        "fish_rare": 1
+      },
+      "previousCoins": 270,
+      "npcValue": 180,
+      "manufacturingSeconds": 0,
+      "coins": 270
+    },
+    {
+      "templateId": "plesk_hearty_table",
+      "home": 3,
+      "items": {
+        "hearty_fish": 1
+      },
+      "previousCoins": 750,
+      "npcValue": 500,
+      "manufacturingSeconds": 3600,
+      "coins": 810
+    },
+    {
+      "templateId": "builder_stone_cut",
+      "home": 3,
+      "items": {
+        "cut_stone": 6,
+        "beams": 2
+      },
+      "previousCoins": 3960,
+      "npcValue": 2640,
+      "manufacturingSeconds": 23760,
+      "coins": 4360
+    },
+    {
+      "templateId": "builder_window_materials",
+      "home": 3,
+      "items": {
+        "cloth": 4,
+        "glass": 2
+      },
+      "previousCoins": 2160,
+      "npcValue": 1440,
+      "manufacturingSeconds": 15960,
+      "coins": 2430
+    },
+    {
+      "templateId": "plesk_golden_sturgeon",
+      "home": 4,
+      "items": {
+        "fish_epic": 1
+      },
+      "previousCoins": 270,
+      "npcValue": 180,
+      "manufacturingSeconds": 0,
+      "coins": 270
+    },
+    {
+      "templateId": "plesk_epic_dinner",
+      "home": 4,
+      "items": {
+        "epic_fish": 1
+      },
+      "previousCoins": 1200,
+      "npcValue": 800,
+      "manufacturingSeconds": 5640,
+      "coins": 1300
+    },
+    {
+      "templateId": "builder_tools",
+      "home": 4,
+      "items": {
+        "tools": 2,
+        "beams": 2
+      },
+      "previousCoins": 4800,
+      "npcValue": 3200,
+      "manufacturingSeconds": 26640,
+      "coins": 5250
+    },
+    {
+      "templateId": "builder_reinforced",
+      "home": 4,
+      "items": {
+        "reinforced_parts": 2,
+        "tools": 1
+      },
+      "previousCoins": 6900,
+      "npcValue": 4600,
+      "manufacturingSeconds": 39180,
+      "coins": 7560
+    },
+    {
+      "templateId": "plesk_shadow_catch",
+      "home": 4,
+      "items": {
+        "fish_legendary": 1
+      },
+      "previousCoins": 480,
+      "npcValue": 320,
+      "manufacturingSeconds": 0,
+      "coins": 480
+    },
+    {
+      "templateId": "plesk_legendary_dinner",
+      "home": 5,
+      "items": {
+        "legendary_fish": 1
+      },
+      "previousCoins": 1800,
+      "npcValue": 1200,
+      "manufacturingSeconds": 7440,
+      "coins": 1930
+    },
+    {
+      "templateId": "builder_final_fittings",
+      "home": 5,
+      "items": {
+        "reinforced_parts": 4,
+        "glass": 6
+      },
+      "previousCoins": 12960,
+      "npcValue": 8640,
+      "manufacturingSeconds": 76200,
+      "coins": 14230
+    },
+    {
+      "templateId": "builder_ore_delivery",
+      "home": 3,
+      "items": {
+        "ore": 8
+      },
+      "previousCoins": 720,
+      "npcValue": 480,
+      "manufacturingSeconds": 0,
+      "coins": 720
+    },
+    {
+      "templateId": "builder_clay_delivery",
+      "home": 2,
+      "items": {
+        "clay": 4
+      },
+      "previousCoins": 180,
+      "npcValue": 120,
+      "manufacturingSeconds": 0,
+      "coins": 180
+    },
+    {
+      "templateId": "builder_sand_delivery",
+      "home": 3,
+      "items": {
+        "sand": 12
+      },
+      "previousCoins": 540,
+      "npcValue": 360,
+      "manufacturingSeconds": 0,
+      "coins": 540
+    },
+    {
+      "templateId": "builder_charcoal_delivery",
+      "home": 2,
+      "items": {
+        "charcoal": 2
+      },
+      "previousCoins": 150,
+      "npcValue": 100,
+      "manufacturingSeconds": 240,
+      "coins": 160
+    },
+    {
+      "templateId": "builder_hardwood_delivery",
+      "home": 3,
+      "items": {
+        "hardwood": 8
+      },
+      "previousCoins": 1200,
+      "npcValue": 800,
+      "manufacturingSeconds": 0,
+      "coins": 1200
+    },
+    {
+      "templateId": "builder_resin_delivery",
+      "home": 4,
+      "items": {
+        "resin": 8
+      },
+      "previousCoins": 720,
+      "npcValue": 480,
+      "manufacturingSeconds": 0,
+      "coins": 720
+    },
+    {
+      "templateId": "plesk_berry_basket",
+      "home": 2,
+      "items": {
+        "berries": 10
+      },
+      "previousCoins": 150,
+      "npcValue": 100,
+      "manufacturingSeconds": 0,
+      "coins": 150
+    },
+    {
+      "templateId": "repeat3_wood_fiber",
+      "home": 3,
+      "items": {
+        "wood": 3,
+        "fiber": 4
+      },
+      "previousCoins": 200,
+      "npcValue": 130,
+      "manufacturingSeconds": 0,
+      "coins": 200
+    },
+    {
+      "templateId": "repeat3_stone_clay",
+      "home": 3,
+      "items": {
+        "stone": 4,
+        "clay": 2
+      },
+      "previousCoins": 330,
+      "npcValue": 220,
+      "manufacturingSeconds": 0,
+      "coins": 330
+    },
+    {
+      "templateId": "repeat3_plank_rope",
+      "home": 3,
+      "items": {
+        "planks": 3,
+        "rope": 2
+      },
+      "previousCoins": 270,
+      "npcValue": 180,
+      "manufacturingSeconds": 720,
+      "coins": 290
+    },
+    {
+      "templateId": "repeat3_berries",
+      "home": 3,
+      "items": {
+        "berries": 4,
+        "strawberries": 2
+      },
+      "previousCoins": 180,
+      "npcValue": 120,
+      "manufacturingSeconds": 0,
+      "coins": 180
+    },
+    {
+      "templateId": "repeat3_compote",
+      "home": 3,
+      "items": {
+        "berry_compote": 3
+      },
+      "previousCoins": 140,
+      "npcValue": 90,
+      "manufacturingSeconds": 540,
+      "coins": 150
+    },
+    {
+      "templateId": "repeat3_brick_charcoal",
+      "home": 3,
+      "items": {
+        "bricks": 3,
+        "charcoal": 2
+      },
+      "previousCoins": 600,
+      "npcValue": 400,
+      "manufacturingSeconds": 1140,
+      "coins": 620
+    },
+    {
+      "templateId": "repeat3_iron_planks",
+      "home": 3,
+      "items": {
+        "iron_ingot": 2,
+        "planks": 2
+      },
+      "previousCoins": 1140,
+      "npcValue": 760,
+      "manufacturingSeconds": 4080,
+      "coins": 1210
+    },
+    {
+      "templateId": "repeat3_metal_cloth",
+      "home": 3,
+      "items": {
+        "metal_parts": 1,
+        "cloth": 1
+      },
+      "previousCoins": 1050,
+      "npcValue": 700,
+      "manufacturingSeconds": 6300,
+      "coins": 1160
+    },
+    {
+      "templateId": "repeat3_soup",
+      "home": 3,
+      "items": {
+        "fish_soup": 2
+      },
+      "previousCoins": 660,
+      "npcValue": 440,
+      "manufacturingSeconds": 3840,
+      "coins": 730
+    },
+    {
+      "templateId": "repeat3_river_table",
+      "home": 3,
+      "items": {
+        "fish_common": 3,
+        "fish_uncommon": 1
+      },
+      "previousCoins": 290,
+      "npcValue": 190,
+      "manufacturingSeconds": 0,
+      "coins": 290
+    },
+    {
+      "templateId": "repeat3_grilled_compote",
+      "home": 3,
+      "items": {
+        "grilled_fish": 2,
+        "berry_compote": 1
+      },
+      "previousCoins": 210,
+      "npcValue": 140,
+      "manufacturingSeconds": 540,
+      "coins": 220
+    },
+    {
+      "templateId": "repeat3_smoked_berries",
+      "home": 3,
+      "items": {
+        "smoked_fish": 1,
+        "dried_berries": 1
+      },
+      "previousCoins": 380,
+      "npcValue": 250,
+      "manufacturingSeconds": 4500,
+      "coins": 450
+    },
+    {
+      "templateId": "builder_trail_supplies",
+      "home": 4,
+      "items": {
+        "trail_ration": 1,
+        "rope": 2
+      },
+      "previousCoins": 630,
+      "npcValue": 420,
+      "manufacturingSeconds": 8640,
+      "coins": 780
+    },
+    {
+      "templateId": "builder_research_tools",
+      "home": 4,
+      "items": {
+        "research_gear": 1,
+        "tools": 1
+      },
+      "previousCoins": 3900,
+      "npcValue": 2600,
+      "manufacturingSeconds": 29220,
+      "coins": 4390
+    },
+    {
+      "templateId": "plesk_trail_table",
+      "home": 4,
+      "items": {
+        "trail_ration": 2,
+        "fish_common": 2
+      },
+      "previousCoins": 1200,
+      "npcValue": 800,
+      "manufacturingSeconds": 16560,
+      "coins": 1480
+    },
+    {
+      "templateId": "builder_survey_camp",
+      "home": 4,
+      "items": {
+        "research_gear": 1,
+        "trail_ration": 1
+      },
+      "previousCoins": 2940,
+      "npcValue": 1960,
+      "manufacturingSeconds": 27960,
+      "coins": 3410
+    },
+    {
+      "templateId": "starter_fresh_berries",
+      "home": 1,
+      "items": {
+        "berries": 3,
+        "strawberries": 2
+      },
+      "previousCoins": 170,
+      "npcValue": 110,
+      "manufacturingSeconds": 0,
+      "coins": 170
+    },
+    {
+      "templateId": "starter_strawberry_drink",
+      "home": 1,
+      "items": {
+        "strawberry_compote": 1
+      },
+      "previousCoins": 170,
+      "npcValue": 110,
+      "manufacturingSeconds": 360,
+      "coins": 180
+    },
+    {
+      "templateId": "blueberry_harvest",
+      "home": 2,
+      "items": {
+        "blueberries": 4,
+        "strawberries": 1
+      },
+      "previousCoins": 180,
+      "npcValue": 120,
+      "manufacturingSeconds": 0,
+      "coins": 180
+    },
+    {
+      "templateId": "blueberry_drink",
+      "home": 2,
+      "items": {
+        "blueberry_compote": 2
+      },
+      "previousCoins": 210,
+      "npcValue": 140,
+      "manufacturingSeconds": 720,
+      "coins": 230
+    },
+    {
+      "templateId": "currant_harvest",
+      "home": 3,
+      "items": {
+        "currants": 3,
+        "blueberries": 2
+      },
+      "previousCoins": 380,
+      "npcValue": 250,
+      "manufacturingSeconds": 0,
+      "coins": 380
+    },
+    {
+      "templateId": "currant_jelly",
+      "home": 3,
+      "items": {
+        "currant_jelly": 1
+      },
+      "previousCoins": 330,
+      "npcValue": 220,
+      "manufacturingSeconds": 1380,
+      "coins": 360
+    },
+    {
+      "templateId": "blackberry_harvest",
+      "home": 4,
+      "items": {
+        "blackberries": 2,
+        "currants": 2
+      },
+      "previousCoins": 690,
+      "npcValue": 460,
+      "manufacturingSeconds": 0,
+      "coins": 690
+    },
+    {
+      "templateId": "blackberry_preserve",
+      "home": 4,
+      "items": {
+        "blackberry_preserve": 1
+      },
+      "previousCoins": 960,
+      "npcValue": 640,
+      "manufacturingSeconds": 5520,
+      "coins": 1060
+    },
+    {
+      "templateId": "cranberry_harvest",
+      "home": 5,
+      "items": {
+        "cranberries": 2,
+        "blackberries": 2
+      },
+      "previousCoins": 1320,
+      "npcValue": 880,
+      "manufacturingSeconds": 0,
+      "coins": 1320
+    },
+    {
+      "templateId": "cranberry_glaze",
+      "home": 5,
+      "items": {
+        "cranberry_glaze": 1
+      },
+      "previousCoins": 1430,
+      "npcValue": 950,
+      "manufacturingSeconds": 6780,
+      "coins": 1540
+    },
+    {
+      "templateId": "plesk_berry_break",
+      "home": 1,
+      "items": {
+        "berries": 4
+      },
+      "previousCoins": 60,
+      "npcValue": 40,
+      "manufacturingSeconds": 0,
+      "coins": 60
+    },
+    {
+      "templateId": "plesk_catch_and_berries",
+      "home": 1,
+      "items": {
+        "fish_common": 1,
+        "berries": 2
+      },
+      "previousCoins": 90,
+      "npcValue": 60,
+      "manufacturingSeconds": 0,
+      "coins": 90
+    },
+    {
+      "templateId": "plesk_compote_break",
+      "home": 1,
+      "items": {
+        "berry_compote": 1,
+        "berries": 2
+      },
+      "previousCoins": 80,
+      "npcValue": 50,
+      "manufacturingSeconds": 180,
+      "coins": 80
+    },
+    {
+      "templateId": "plesk_picnic_lunch",
+      "home": 1,
+      "items": {
+        "grilled_fish": 1,
+        "berry_compote": 1
+      },
+      "previousCoins": 130,
+      "npcValue": 85,
+      "manufacturingSeconds": 360,
+      "coins": 140
+    },
+    {
+      "templateId": "plesk_evening_basket",
+      "home": 1,
+      "items": {
+        "fish_common": 2,
+        "berry_compote": 1
+      },
+      "previousCoins": 170,
+      "npcValue": 110,
+      "manufacturingSeconds": 180,
+      "coins": 170
+    },
+    {
+      "templateId": "plesk_strawberry_lunch",
+      "home": 1,
+      "items": {
+        "grilled_fish": 1,
+        "strawberry_compote": 1
+      },
+      "previousCoins": 250,
+      "npcValue": 165,
+      "manufacturingSeconds": 540,
+      "coins": 260
+    },
+    {
+      "templateId": "builder_small_repair",
+      "home": 1,
+      "items": {
+        "wood": 2,
+        "stone": 1
+      },
+      "previousCoins": 150,
+      "npcValue": 100,
+      "manufacturingSeconds": 0,
+      "coins": 150
+    },
+    {
+      "templateId": "builder_bench_repair",
+      "home": 1,
+      "items": {
+        "planks": 1,
+        "wood": 1
+      },
+      "previousCoins": 110,
+      "npcValue": 70,
+      "manufacturingSeconds": 120,
+      "coins": 110
+    },
+    {
+      "templateId": "builder_drink_and_firewood",
+      "home": 1,
+      "items": {
+        "berry_compote": 1,
+        "wood": 1
+      },
+      "previousCoins": 90,
+      "npcValue": 60,
+      "manufacturingSeconds": 180,
+      "coins": 100
+    },
+    {
+      "templateId": "plesk_blueberry_lunch",
+      "home": 2,
+      "items": {
+        "grilled_fish": 1,
+        "blueberry_compote": 1
+      },
+      "previousCoins": 190,
+      "npcValue": 125,
+      "manufacturingSeconds": 540,
+      "coins": 200
+    },
+    {
+      "templateId": "plesk_berry_assortment",
+      "home": 2,
+      "items": {
+        "berries": 3,
+        "blueberries": 2
+      },
+      "previousCoins": 110,
+      "npcValue": 70,
+      "manufacturingSeconds": 0,
+      "coins": 110
+    },
+    {
+      "templateId": "builder_blueberry_snack",
+      "home": 2,
+      "items": {
+        "grilled_fish": 1,
+        "blueberries": 2
+      },
+      "previousCoins": 150,
+      "npcValue": 95,
+      "manufacturingSeconds": 180,
+      "coins": 150
+    },
+    {
+      "templateId": "plesk_soup_and_compote",
+      "home": 3,
+      "items": {
+        "fish_soup": 1,
+        "berry_compote": 1
+      },
+      "previousCoins": 380,
+      "npcValue": 250,
+      "manufacturingSeconds": 2100,
+      "coins": 410
+    },
+    {
+      "templateId": "plesk_berry_sauce_lunch",
+      "home": 3,
+      "items": {
+        "berry_fish": 1,
+        "blueberry_compote": 1
+      },
+      "previousCoins": 560,
+      "npcValue": 370,
+      "manufacturingSeconds": 2160,
+      "coins": 600
+    },
+    {
+      "templateId": "plesk_smoked_currants",
+      "home": 3,
+      "items": {
+        "smoked_fish": 1,
+        "currants": 2
+      },
+      "previousCoins": 450,
+      "npcValue": 300,
+      "manufacturingSeconds": 1800,
+      "coins": 480
+    },
+    {
+      "templateId": "plesk_catch_and_jelly",
+      "home": 3,
+      "items": {
+        "fish_common": 2,
+        "currant_jelly": 1
+      },
+      "previousCoins": 450,
+      "npcValue": 300,
+      "manufacturingSeconds": 1380,
+      "coins": 480
+    },
+    {
+      "templateId": "builder_trail_snack",
+      "home": 3,
+      "items": {
+        "dried_berries": 1,
+        "rope": 1
+      },
+      "previousCoins": 180,
+      "npcValue": 120,
+      "manufacturingSeconds": 2880,
+      "coins": 230
+    },
+    {
+      "templateId": "plesk_blackberry_feast",
+      "home": 4,
+      "items": {
+        "epic_fish": 1,
+        "blackberries": 1
+      },
+      "previousCoins": 1440,
+      "npcValue": 960,
+      "manufacturingSeconds": 5640,
+      "coins": 1540
+    },
+    {
+      "templateId": "plesk_preserve_and_catch",
+      "home": 4,
+      "items": {
+        "blackberry_preserve": 1,
+        "fish_common": 2
+      },
+      "previousCoins": 1080,
+      "npcValue": 720,
+      "manufacturingSeconds": 5520,
+      "coins": 1180
+    },
+    {
+      "templateId": "plesk_path_provisions",
+      "home": 4,
+      "items": {
+        "trail_ration": 1,
+        "blueberry_compote": 1
+      },
+      "previousCoins": 650,
+      "npcValue": 430,
+      "manufacturingSeconds": 8640,
+      "coins": 790
+    },
+    {
+      "templateId": "plesk_cranberry_dinner",
+      "home": 5,
+      "items": {
+        "berry_fish": 1,
+        "cranberries": 1
+      },
+      "previousCoins": 870,
+      "npcValue": 580,
+      "manufacturingSeconds": 1800,
+      "coins": 900
+    },
+    {
+      "templateId": "plesk_winter_table",
+      "home": 5,
+      "items": {
+        "fish_common": 2,
+        "cranberry_glaze": 1
+      },
+      "previousCoins": 1550,
+      "npcValue": 1030,
+      "manufacturingSeconds": 6780,
+      "coins": 1660
+    }
+  ]
+}

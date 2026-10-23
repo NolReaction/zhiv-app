@@ -62,12 +62,12 @@ test("meeting draws an ephemeral direct line and frames both locations only once
   assert.equal(h.sources.size, 0); assert.equal(h.layers.size, 0); assert.equal(h.timers.size, 0);
 });
 
-test("a meeting waits for fresh private GPS and respects reduced motion", () => {
+test("a meeting accepts retained private GPS and respects reduced motion", () => {
   const h = harness(true);
   h.overlay.setSnapshot(null, friend(), 1);
   assert.equal(h.fits.length, 0); assert.equal(h.data().features.length, 0);
   h.overlay.setSnapshot(self({ timestamp: WALL - 60_001 }), friend(), 1);
-  assert.equal(h.fits.length, 0);
+  assert.equal(h.fits.length, 1);
   h.overlay.setSnapshot(self(), friend(), 1);
   assert.equal(h.fits.length, 1); assert.equal(h.fits[0].options.duration, 0);
   h.overlay.dispose();
@@ -87,13 +87,13 @@ test("the date-line connection splits safely while camera takes the short interv
   assert.equal(earthMeetLine(self(), friend()).features[0].geometry.coordinates.length, 1);
 });
 
-test("expiry, missing grants and stale own GPS remove line without waiting for a poll", () => {
+test("expiry and missing grants remove line while a retained own point stays usable without waiting for a poll", () => {
   for (const target of [friend({ expiresAtMonotonic: 1_000 }), friend({ expiresAt: new Date(WALL + 1_000).toISOString() })]) {
     const h = harness(); h.overlay.setSnapshot(self(), target, 1); h.tick(1_001);
     assert.equal(h.data().features.length, 0); assert.equal(h.timers.size, 0); h.overlay.dispose();
   }
   const h = harness(); h.overlay.setSnapshot(self(), friend(), 1); h.tick(60_001);
-  assert.equal(h.data().features.length, 0);
+  assert.equal(h.data().features.length, 1);
   h.overlay.setSnapshot(self({ timestamp: WALL + 60_001 }), friend(), 2);
   assert.equal(h.data().features.length, 1);
   h.overlay.setSnapshot(self(), null, 2);
@@ -114,11 +114,13 @@ test("backgrounding clears coordinates and cannot restore them or replay camera 
   assert.equal(h.sources.size, 0);
 });
 
-test("wall-clock rollback cannot extend an unchanged private fix", () => {
-  const h = harness(); h.overlay.setSnapshot(self(), friend(), 1); h.tick(30_000); h.rollback(10_000);
-  h.overlay.setSnapshot(self(), friend(), 1); h.tick(30_001);
+test("wall-clock rollback cannot extend the friend's independent access deadline", () => {
+  const h = harness(); h.overlay.setSnapshot(self(), friend({ expiresAtMonotonic: 60_000 }), 1);
+  h.tick(30_000); h.rollback(10_000);
+  h.overlay.setSnapshot(self(), friend({ expiresAtMonotonic: 60_000 }), 1); h.tick(30_001);
   assert.equal(h.data().features.length, 0); h.overlay.dispose();
 });
+
 
 test("style replacement recreates the empty layers without duplicating a camera request", () => {
   const h = harness(); h.overlay.setSnapshot(self(), friend(), 1);
@@ -144,8 +146,8 @@ test("unchanged and empty meeting snapshots avoid worker writes while focus, coo
   h.sources.clear(); h.layers.clear(); h.overlay.install();
   assert.equal(h.writes.length, firstLineWrites + 2, "the same geometry is republished to a new style's source");
   h.tick(60_001);
-  assert.equal(h.writes.length, firstLineWrites + 3);
-  assert.equal(h.data().features.length, 0, "private GPS expiry clears the last uploaded coordinates");
+  assert.equal(h.writes.length, firstLineWrites + 2);
+  assert.equal(h.data().features.length, 1, "capture age does not remove a planned last-known connection");
   h.overlay.setSnapshot(null, null, 2);
   h.overlay.setVisible(false); h.overlay.setVisible(true);
   assert.equal(h.writes.length, firstLineWrites + 3, "repeated revocation and hiding do not repeat an already empty upload");

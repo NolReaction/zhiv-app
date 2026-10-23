@@ -71,17 +71,18 @@ test("fresh meeting card describes straight-line distance and offers a closed ma
   control(view, "Мы на карте").props.onClick(); assert.deepEqual(view.calls, ["both"]);
 });
 
-test("approximate or old friend points retain honest distance without a fabricated walking route or ETA", () => {
+test("approximate or old friend points offer explicit routes with honest last-known uncertainty", () => {
   for (const person of [friend({ precision: "APPROXIMATE", accuracyMeters: 1500 }),
     friend({ updatedAt: new Date(wall - 15 * 60_000).toISOString() })]) {
-    const view = render({ person });
-    assert.match(view.html, /по прямой/);
-    assert.equal(view.nodes.some(node => node.type === "a"), false);
-    assert.doesNotMatch(view.html, /google\.com|55\.761234|37\.631234|(?:идти|ходьбы|пешком)\s*\d|\d+\s*мин\.?\s*(?:пешком|ходьбы|в пути)/);
-    assert.match(view.html, /примерным районом|Точка друга старше 5 минут/);
-    assert.equal(control(view, "Внешние карты").props.disabled, true);
+    const view = render({ person, walkingRoute: { status: "idle", route: null, error: null, canRequest: true }, onBuildWalkingRoute() {} });
+    assert.match(view.html, /по прямой/); assert.match(view.html, /Маршрут до последней полученной точки/);
+    assert.equal(view.nodes.filter(node => node.type === "a").length, 4);
+    assert.equal(control(view, "Внешние карты").props.disabled, false);
+    assert.equal(control(view, "Пешком на этой карте").props.disabled, false);
+    assert.doesNotMatch(view.html, /Пешком ·|\d+\s*мин\.?\s*(?:пешком|ходьбы|в пути)/);
   }
 });
+
 
 test("expired and revoked friend points never keep meeting controls or an external destination", () => {
   for (const person of [null, friend({ expiresAtMonotonic: mono }), friend({ expiresAt: new Date(wall).toISOString() })]) {
@@ -93,17 +94,18 @@ test("expired and revoked friend points never keep meeting controls or an extern
   }
 });
 
-test("missing or stale own GPS requests a private lookup while valid friend routing never embeds an origin", () => {
-  for (const position of [null, { ...from, timestamp: wall - 60_001 }]) {
-    const view = render({ position });
-    assert.match(view.html, position ? /Нужна свежая геопозиция/ : /Расстояние — после поиска тебя/); assert.doesNotMatch(view.html, /по прямой/);
-    assert.ok(control(view, "Найти меня")); assert.deepEqual(view.calls, []);
-    control(view, "Найти меня").props.onClick(); assert.deepEqual(view.calls, ["locate"]);
-    assert.equal(new URL(view.nodes.find(node => node.type === "a" && node.props.children[0] === "Google Карты").props.href).searchParams.has("origin"), false);
-  }
+test("missing own GPS requests a lookup while a retained fix stays usable for explicit planning", () => {
+  const missing = render({ position: null });
+  assert.match(missing.html, /Расстояние — после поиска тебя/);
+  control(missing, "Найти меня").props.onClick(); assert.deepEqual(missing.calls, ["locate"]);
+  const retained = render({ position: { ...from, timestamp: wall - 60_001 } });
+  assert.match(retained.html, /Твоя последняя точка/); assert.match(retained.html, /по прямой/);
+  assert.ok(control(retained, "Мы на карте"));
+  assert.equal(new URL(retained.nodes.find(node => node.type === "a" && node.props.children[0] === "Google Карты").props.href).searchParams.has("origin"), false);
   const requesting = render({ position: null, locating: true });
   assert.match(requesting.html, /Ищем тебя/); assert.equal(control(requesting, "Найти меня").props.disabled, true);
 });
+
 
 test("sleeping-tab route clicks revalidate wall and monotonic deadlines before exporting a destination", t => {
   const view = render();
@@ -112,7 +114,7 @@ test("sleeping-tab route clicks revalidate wall and monotonic deadlines before e
   t.mock.method(Date, "now", () => now); t.mock.method(performance, "now", () => clock);
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
   for (const anchor of anchors) { const fresh = event(); anchor.props.onClick(fresh); assert.equal(fresh.prevented, false); }
-  now = wall + 300_001;
+  now = wall + 3_600_000;
   for (const anchor of anchors) { const stale = event(); anchor.props.onClick(stale); assert.equal(stale.prevented, true); }
   now = wall; clock = mono + 3_600_000;
   for (const anchor of anchors) { const expired = event(); anchor.props.onClick(expired); assert.equal(expired.prevented, true); }
@@ -200,47 +202,44 @@ test("actual capture time, age and GPS accuracy explain a retained friend's poin
   assert.equal(formatMeetLocationUpdate(1e20, wall), null);
 });
 
-test("paused and failed GPS markers are labelled last-known until an active fresh fix arrives", () => {
+test("paused and failed GPS markers expose last-known planning without claiming a current fix", () => {
   const walkingRoute = { status: "idle", route: null, error: null, canRequest: true };
   for (const locationStatus of ["paused", "timeout", "unavailable"]) {
     const view = render({ locationStatus, walkingRoute, onBuildWalkingRoute() {} });
-    assert.match(view.html, /Твоя последняя точка/); assert.match(view.html, /Нужна свежая геопозиция/);
-    assert.doesNotMatch(view.html, /по прямой/);
-    assert.equal(control(view, "Пешком на этой карте").props.disabled, true);
-    assert.equal(control(view, "Внешние карты").props.disabled, false, "destination-only routes do not require our GPS");
+    assert.match(view.html, /Твоя последняя точка/); assert.match(view.html, /Маршрут до последней полученной точки/);
+    assert.match(view.html, /по прямой/);
+    assert.equal(control(view, "Пешком на этой карте").props.disabled, false);
+    assert.equal(control(view, "Внешние карты").props.disabled, false);
   }
   const resumed = render({ locationStatus: "active", walkingRoute, onBuildWalkingRoute() {} });
   assert.match(resumed.html, /по прямой/); assert.doesNotMatch(resumed.html, /Твоя последняя точка/);
-  assert.equal(control(resumed, "Пешком на этой карте").props.disabled, false);
 });
 
-test("coarse, stale and newly fresh GPS updates change route readiness without replacing the selected friend", () => {
+
+test("coarse and older captures remain routable with uncertainty while updates do not send coordinates", () => {
   let built = 0;
   const base = { walkingRoute: { status: "idle", route: null, error: null, canRequest: true }, onBuildWalkingRoute() { built++; } };
-  for (const [patch, reason] of [[{ accuracyMeters: 700 }, /GPS друга пока неточен/],
-    [{ updatedAt: new Date(wall - 301_000).toISOString() }, /Точка друга старше 5 минут/],
-    [{ precision: "APPROXIMATE" }, /примерным районом/]]) {
-    const blocked = render({ ...base, person: friend(patch) });
-    assert.match(blocked.html, reason); assert.equal(control(blocked, "Пешком на этой карте").props.disabled, true);
-    control(blocked, "Пешком на этой карте").props.onClick();
+  for (const patch of [{ accuracyMeters: 700 }, { updatedAt: new Date(wall - 301_000).toISOString() }, { precision: "APPROXIMATE" }]) {
+    const view = render({ ...base, person: friend(patch) });
+    assert.match(view.html, /Маршрут до последней полученной точки/);
+    assert.equal(control(view, "Пешком на этой карте").props.disabled, false);
+    assert.equal(control(view, "Внешние карты").props.disabled, false);
   }
-  const ready = render({ ...base, person: friend() });
-  assert.equal(control(ready, "Пешком на этой карте").props.disabled, false);
-  assert.equal(control(ready, "Внешние карты").props.disabled, false);
-  assert.equal(built, 0, "point updates do not request routes");
-  control(ready, "Пешком на этой карте").props.onClick(); assert.equal(built, 1);
+  assert.equal(built, 0);
+  control(render(base), "Пешком на этой карте").props.onClick(); assert.equal(built, 1);
 });
 
-test("Kazan to Petersburg explains the local walking distance limit while offering external maps directly", () => {
+
+test("Kazan to Petersburg has no arbitrary distance block and still offers external maps", () => {
   const view = render({ position: { ...from, latitude: 55.796, longitude: 49.106 },
     person: friend({ latitude: 59.939, longitude: 30.315 }),
-    walkingRoute: { status: "idle", route: null, error: null, canRequest: false }, onBuildWalkingRoute() {} });
-  assert.match(view.html, /по прямой/); assert.match(view.html, /до 20 км по прямой/);
-  assert.equal(control(view, "Пешком на этой карте").props.disabled, true);
-  assert.equal(control(view, "Внешние карты").props.disabled, false);
+    walkingRoute: { status: "idle", route: null, error: null, canRequest: true }, onBuildWalkingRoute() {} });
+  assert.match(view.html, /по прямой/); assert.doesNotMatch(view.html, /до 20 км/);
+  assert.equal(control(view, "Пешком на этой карте").props.disabled, false);
   assert.equal(view.nodes.filter(node => node.type === "a").length, 4);
-  assert.doesNotMatch(view.html, /Пешком ·|нужны сеть и свежие/i);
+  assert.doesNotMatch(view.html, /Пешком ·/);
 });
+
 
 test("offline route status names the missing connection and never starts a provider request", () => {
   let built = 0;

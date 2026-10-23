@@ -47,8 +47,20 @@ test("buying raw fish and immediately submitting orders cannot mint coins", () =
   assert.throws(() => auditFoodEconomy(data), /excessive order premium/);
 });
 
+test("even the union of all NPC supplies cannot profitably fill a complete manufactured order", () => {
+  const purchasable = report.templates.filter(row => row.completeNpcPurchaseCoins !== null);
+  assert.equal(purchasable.length, 16);
+  assert(purchasable.every(row => row.instantNpcPurchaseProfitCoins < 0));
+  const snack = purchasable.find(row => row.id === "builder_trail_snack");
+  assert.equal(snack.manufacturingMinutes, 48);
+  assert.equal(snack.rewardCoins, 230); assert.equal(snack.completeNpcPurchaseCoins, 240);
+  assert.equal(snack.instantNpcPurchaseProfitCoins, -10);
+  const data = catalog(); data.leaftailShop.supplyOffers.find(offer => offer.itemId === "dried_berries").unitPriceCoins = 140;
+  assert.throws(() => auditFoodEconomy(data), /instant NPC purchase-to-order arbitrage/);
+});
+
 test("cooking ceilings account for extra inventory, real production and full NPC opportunity value", () => {
-  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [120]);
+  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [210]);
   const cooked = report.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
   assert.deepEqual(cooked.orderCounts, { plesk_smoked_currants: 3 });
   assert.deepEqual(cooked.otherOwnedInputs, { wood: 3, currants: 6 });
@@ -56,11 +68,11 @@ test("cooking ceilings account for extra inventory, real production and full NPC
   assert.equal(cooked.productionMinutes, 90);
   assert.equal(cooked.netCoins, cooked.rewardCoins - cooked.purchaseCoins - cooked.productionCoinCost - cooked.otherOwnedInputsSaleCoins);
   const expanded = report.shopDeliveryBudgets[0].matchingOrdersWithAdditionalRawIngredientsCeiling;
-  assert.deepEqual(expanded.orderCounts, { plesk_winter_table: 3 });
-  assert.deepEqual(expanded.otherOwnedInputs, { cranberries: 6, currants: 6, berries: 6 });
-  assert.equal(expanded.otherOwnedInputsSaleCoins, 2160);
-  assert.equal(expanded.productionMinutes, 339);
-  assert.equal(expanded.netCoins, 1770);
+  assert.deepEqual(expanded.orderCounts, { plesk_trail_table: 3 });
+  assert.deepEqual(expanded.otherOwnedInputs, { wood: 6, fish_common: 12, berries: 48 });
+  assert.equal(expanded.otherOwnedInputsSaleCoins, 1140);
+  assert.equal(expanded.productionMinutes, 828);
+  assert.equal(expanded.netCoins, 2580);
   assert.equal(expanded.netCoins, expanded.rewardCoins - expanded.purchaseCoins - expanded.productionCoinCost - expanded.otherOwnedInputsSaleCoins);
 });
 

@@ -1,17 +1,18 @@
 import type { Map as LibreMap, Marker } from "maplibre-gl";
 import { EARTH_POSITION_TTL_MS, EARTH_SHARING_MAX_PEOPLE, type EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
+import { formatMeetLocationUpdate } from "./location-update";
 import { positionZoom } from "./map-style";
 import { EARTH_FRIEND_MARKER_MIN_ZOOM, layoutEarthFriends, type EarthFriendGroup } from "./friend-marker-layout";
 import styles from "./friend-markers.module.css";
 
 type Environment = { now: () => number; schedule: (callback: () => void, delay: number) => unknown;
-  cancel: (handle: unknown) => void; reducedMotion: () => boolean };
+  cancel: (handle: unknown) => void; wallNow?: () => number; reducedMotion: () => boolean };
 type Presentation = Pick<EarthMapPerson, "precision" | "accuracyMeters" | "updatedAt"> & {
   displayName: string; count: number;
 };
-type Entry = { marker: Marker; element: HTMLButtonElement; portrait: HTMLSpanElement;
-  longitude: number; latitude: number; presentation: Presentation | null;
+type Entry = { marker: Marker; element: HTMLButtonElement; portrait: HTMLSpanElement; updated: HTMLSpanElement;
+  longitude: number; latitude: number; presentation: Presentation | null; updatedMinute: number;
   circleIds: string[]; offsetX: number; removeListeners: () => void };
 
 /** Public round-trip projection rejects the far hemisphere before creating DOM. */
@@ -89,7 +90,7 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
     timer = environment.schedule(() => {
       if (disposed || !visible || generation !== timerGeneration) return;
       timer = null; purgeExpired(); reconcile(); armExpiry();
-    }, Math.max(0, Math.min(EARTH_POSITION_TTL_MS, deadline - environment.now())));
+    }, Math.max(0, Math.min(60_000, EARTH_POSITION_TTL_MS, deadline - environment.now())));
   }
   function synchronizeAccessibility() {
     for (const entry of entries.values()) {
@@ -115,6 +116,15 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
   }
   function synchronizePresentation(entry: Entry, person: EarthMapPerson, count: number) {
     const previous = entry.presentation;
+    const wall = environment.wallNow?.() ?? Date.now(), minute = Math.floor(wall / 60_000);
+    if (previous?.updatedAt !== person.updatedAt || entry.updatedMinute !== minute) {
+      const update = formatMeetLocationUpdate(Date.parse(person.updatedAt), wall);
+      const timestamp = update ? `${update.time} · ${update.age}` : "Последняя отметка";
+      if (entry.updated.textContent !== timestamp) entry.updated.textContent = timestamp;
+      entry.updatedMinute = minute;
+    }
+    const detail = String(count === 1 && map.getZoom() >= 12);
+    if (entry.element.dataset.detail !== detail) entry.element.dataset.detail = detail;
     if (previous?.count === count && previous.displayName === person.user.displayName
       && previous.precision === person.precision && previous.accuracyMeters === person.accuracyMeters
       && previous.updatedAt === person.updatedAt) return;
@@ -136,11 +146,13 @@ export function createEarthFriendMarkers(map: LibreMap, MarkerConstructor: typeo
     element.setAttribute("aria-hidden", "true");
     const portrait = owner.createElement("span");
     portrait.className = styles.portrait; portrait.setAttribute("aria-hidden", "true");
-    element.append(portrait);
+    const updated = owner.createElement("span");
+    updated.className = styles.updated; updated.setAttribute("aria-hidden", "true");
+    element.append(portrait, updated);
     const marker = new MarkerConstructor({ element, anchor: "bottom", pitchAlignment: "viewport",
       rotationAlignment: "viewport", subpixelPositioning: true, opacityWhenCovered: 0 });
-    const entry: Entry = { marker, element, portrait, longitude: person.longitude, latitude: person.latitude,
-      presentation: null, circleIds: [...group.circleIds], offsetX: 0, removeListeners: () => undefined };
+    const entry: Entry = { marker, element, portrait, updated, longitude: person.longitude, latitude: person.latitude,
+      presentation: null, updatedMinute: NaN, circleIds: [...group.circleIds], offsetX: 0, removeListeners: () => undefined };
     const stopPointer = (event: Event) => event.stopPropagation();
     const onClick = (event: Event) => {
       event.stopPropagation();

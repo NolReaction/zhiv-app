@@ -106,7 +106,7 @@ test("pending builder food quotes the server speed formula without spending or a
   for (let render = 0; render < 2; render++) {
     nodes = content(controller);
     assert.equal(value(nodes), expected);
-    assert.equal(elements(quote(nodes)).find(element => element.type === "small").props.children, "Сыт · скорость +10%");
+    assert.equal(elements(quote(nodes)).find(element => element.type === "small").props.children, "Сыт · +10% скорости · время ≈ −9,1%");
     assert.equal(startButton(nodes).props.disabled, false);
   }
   assert.deepEqual(controller.snapshot, before, "previewing food never consumes it or mutates the base duration");

@@ -4300,7 +4300,7 @@
             "planks": 4,
             "rope": 2
           },
-          "coins": 330
+          "coins": 350
         },
         {
           "id": "builder_grilled_lunch",
@@ -4314,7 +4314,7 @@
           "items": {
             "grilled_fish": 2
           },
-          "coins": 170
+          "coins": 180
         },
         {
           "id": "plesk_grilled_dinner",
@@ -4356,7 +4356,7 @@
             "smoked_fish": 1,
             "dried_berries": 2
           },
-          "coins": 510
+          "coins": 630
         },
         {
           "id": "plesk_warm_lunch",
@@ -4375,7 +4375,7 @@
             "fish_soup": 1,
             "berry_fish": 1
           },
-          "coins": 780
+          "coins": 850
         },
         {
           "id": "builder_fasteners",
@@ -4392,7 +4392,7 @@
             "metal_parts": 2,
             "planks": 2
           },
-          "coins": 1500
+          "coins": 1630
         },
         {
           "id": "builder_brick_stack",
@@ -4409,7 +4409,7 @@
             "bricks": 4,
             "rope": 2
           },
-          "coins": 690
+          "coins": 720
         },
         {
           "id": "builder_iron_fittings",
@@ -4424,7 +4424,7 @@
           "items": {
             "iron_ingot": 3
           },
-          "coins": 1530
+          "coins": 1630
         },
         {
           "id": "plesk_mooncatch",
@@ -4463,7 +4463,7 @@
           "items": {
             "hearty_fish": 1
           },
-          "coins": 750
+          "coins": 810
         },
         {
           "id": "builder_stone_cut",
@@ -4479,7 +4479,7 @@
             "cut_stone": 6,
             "beams": 2
           },
-          "coins": 3960
+          "coins": 4360
         },
         {
           "id": "builder_window_materials",
@@ -4496,7 +4496,7 @@
             "cloth": 4,
             "glass": 2
           },
-          "coins": 2160
+          "coins": 2430
         },
         {
           "id": "plesk_golden_sturgeon",
@@ -4524,7 +4524,7 @@
           "items": {
             "epic_fish": 1
           },
-          "coins": 1200
+          "coins": 1300
         },
         {
           "id": "builder_tools",
@@ -4542,7 +4542,7 @@
             "tools": 2,
             "beams": 2
           },
-          "coins": 4800
+          "coins": 5250
         },
         {
           "id": "builder_reinforced",
@@ -4560,7 +4560,7 @@
             "reinforced_parts": 2,
             "tools": 1
           },
-          "coins": 6900
+          "coins": 7560
         },
         {
           "id": "plesk_shadow_catch",
@@ -4588,7 +4588,7 @@
           "items": {
             "legendary_fish": 1
           },
-          "coins": 1800
+          "coins": 1930
         },
         {
           "id": "builder_final_fittings",
@@ -4606,7 +4606,7 @@
             "reinforced_parts": 4,
             "glass": 6
           },
-          "coins": 12960
+          "coins": 14230
         },
         {
           "id": "builder_ore_delivery",
@@ -4662,7 +4662,7 @@
           "items": {
             "charcoal": 2
           },
-          "coins": 150
+          "coins": 160
         },
         {
           "id": "builder_hardwood_delivery",
@@ -4743,7 +4743,7 @@
             "planks": 3,
             "rope": 2
           },
-          "coins": 270,
+          "coins": 290,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "workshop": 1
@@ -4773,7 +4773,7 @@
           "items": {
             "berry_compote": 3
           },
-          "coins": 140,
+          "coins": 150,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 1
@@ -4788,7 +4788,7 @@
             "bricks": 3,
             "charcoal": 2
           },
-          "coins": 600,
+          "coins": 620,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "kiln": 1,
@@ -4806,7 +4806,7 @@
             "iron_ingot": 2,
             "planks": 2
           },
-          "coins": 1140,
+          "coins": 1210,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "kiln": 2,
@@ -4824,7 +4824,7 @@
             "metal_parts": 1,
             "cloth": 1
           },
-          "coins": 1050,
+          "coins": 1160,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "workshop": 2,
@@ -4841,7 +4841,7 @@
           "items": {
             "fish_soup": 2
           },
-          "coins": 660,
+          "coins": 730,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 1,
@@ -4873,7 +4873,7 @@
             "grilled_fish": 2,
             "berry_compote": 1
           },
-          "coins": 210,
+          "coins": 220,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 1
@@ -4888,7 +4888,7 @@
             "smoked_fish": 1,
             "dried_berries": 1
           },
-          "coins": 380,
+          "coins": 450,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 2
@@ -4908,7 +4908,7 @@
             "trail_ration": 1,
             "rope": 2
           },
-          "coins": 630
+          "coins": 780
         },
         {
           "id": "builder_research_tools",
@@ -4926,7 +4926,7 @@
             "research_gear": 1,
             "tools": 1
           },
-          "coins": 3900
+          "coins": 4390
         },
         {
           "id": "plesk_trail_table",
@@ -4941,7 +4941,7 @@
             "trail_ration": 2,
             "fish_common": 2
           },
-          "coins": 1200
+          "coins": 1480
         },
         {
           "id": "builder_survey_camp",
@@ -4961,7 +4961,7 @@
             "research_gear": 1,
             "trail_ration": 1
           },
-          "coins": 2940
+          "coins": 3410
         },
         {
           "id": "starter_fresh_berries",
@@ -4992,7 +4992,7 @@
           "items": {
             "strawberry_compote": 1
           },
-          "coins": 170
+          "coins": 180
         },
         {
           "id": "blueberry_harvest",
@@ -5023,7 +5023,7 @@
           "items": {
             "blueberry_compote": 2
           },
-          "coins": 210
+          "coins": 230
         },
         {
           "id": "currant_harvest",
@@ -5054,7 +5054,7 @@
           "items": {
             "currant_jelly": 1
           },
-          "coins": 330
+          "coins": 360
         },
         {
           "id": "blackberry_harvest",
@@ -5087,7 +5087,7 @@
           "items": {
             "blackberry_preserve": 1
           },
-          "coins": 960
+          "coins": 1060
         },
         {
           "id": "cranberry_harvest",
@@ -5117,7 +5117,7 @@
           "items": {
             "cranberry_glaze": 1
           },
-          "coins": 1430
+          "coins": 1540
         },
         {
           "id": "plesk_berry_break",
@@ -5177,7 +5177,7 @@
             "grilled_fish": 1,
             "berry_compote": 1
           },
-          "coins": 130
+          "coins": 140
         },
         {
           "id": "plesk_evening_basket",
@@ -5208,7 +5208,7 @@
             "grilled_fish": 1,
             "strawberry_compote": 1
           },
-          "coins": 250
+          "coins": 260
         },
         {
           "id": "builder_small_repair",
@@ -5251,7 +5251,7 @@
             "berry_compote": 1,
             "wood": 1
           },
-          "coins": 90
+          "coins": 100
         },
         {
           "id": "plesk_blueberry_lunch",
@@ -5267,7 +5267,7 @@
             "grilled_fish": 1,
             "blueberry_compote": 1
           },
-          "coins": 190
+          "coins": 200
         },
         {
           "id": "plesk_berry_assortment",
@@ -5314,7 +5314,7 @@
             "fish_soup": 1,
             "berry_compote": 1
           },
-          "coins": 380
+          "coins": 410
         },
         {
           "id": "plesk_berry_sauce_lunch",
@@ -5330,7 +5330,7 @@
             "berry_fish": 1,
             "blueberry_compote": 1
           },
-          "coins": 560
+          "coins": 600
         },
         {
           "id": "plesk_smoked_currants",
@@ -5346,7 +5346,7 @@
             "smoked_fish": 1,
             "currants": 2
           },
-          "coins": 450
+          "coins": 480
         },
         {
           "id": "plesk_catch_and_jelly",
@@ -5362,7 +5362,7 @@
             "fish_common": 2,
             "currant_jelly": 1
           },
-          "coins": 450
+          "coins": 480
         },
         {
           "id": "builder_trail_snack",
@@ -5378,7 +5378,7 @@
             "dried_berries": 1,
             "rope": 1
           },
-          "coins": 180
+          "coins": 230
         },
         {
           "id": "plesk_blackberry_feast",
@@ -5396,7 +5396,7 @@
             "epic_fish": 1,
             "blackberries": 1
           },
-          "coins": 1440
+          "coins": 1540
         },
         {
           "id": "plesk_preserve_and_catch",
@@ -5414,7 +5414,7 @@
             "blackberry_preserve": 1,
             "fish_common": 2
           },
-          "coins": 1080
+          "coins": 1180
         },
         {
           "id": "plesk_path_provisions",
@@ -5430,7 +5430,7 @@
             "trail_ration": 1,
             "blueberry_compote": 1
           },
-          "coins": 650
+          "coins": 790
         },
         {
           "id": "plesk_cranberry_dinner",
@@ -5446,7 +5446,7 @@
             "berry_fish": 1,
             "cranberries": 1
           },
-          "coins": 870
+          "coins": 900
         },
         {
           "id": "plesk_winter_table",
@@ -5462,7 +5462,7 @@
             "fish_common": 2,
             "cranberry_glaze": 1
           },
-          "coins": 1550
+          "coins": 1660
         }
       ],
       "progression": {

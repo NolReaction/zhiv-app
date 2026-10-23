@@ -45,7 +45,7 @@ test("provider DTO keeps only copied geometry, distance and duration, with fixed
   const url = new URL(observed.url);
   assert.equal(url.origin, "https://routing.openstreetmap.de");
   assert.equal(url.pathname, "/routed-foot/route/v1/foot/13.388860,52.517037;13.391000,52.518000");
-  assert.deepEqual(Object.fromEntries(url.searchParams), { overview: "full", geometries: "geojson", steps: "false", alternatives: "false", generate_hints: "false" });
+  assert.deepEqual(Object.fromEntries(url.searchParams), { overview: "simplified", geometries: "geojson", steps: "false", alternatives: "false", generate_hints: "false" });
   for (const [key, value] of Object.entries({ credentials: "omit", cache: "no-store", redirect: "error", mode: "cors", referrerPolicy: "strict-origin" })) assert.equal(observed.options[key], value);
   const input = provider(), parsed = parseEarthWalkingRoute(input, endpoints); input.routes[0].geometry.coordinates[0][0] = 0;
   assert.equal(parsed.geometry.coordinates[0][0], 13.38886, "provider-owned arrays cannot mutate the accepted geometry");
@@ -66,7 +66,7 @@ test("provider schema rejects partial, oversized, nonfinite and far-snapped data
     assert.throws(() => parseEarthWalkingRoute(value, endpoints), isError("invalid_response"));
   }
   assert.throws(() => parseEarthWalkingRoute({ code: "NoRoute", message: "secret" }, endpoints), isError("no_route"));
-  assert.throws(() => earthWalkingRouteUrl({ ...endpoints, destination: [0, 0] }), isError("invalid_response"));
+  assert.throws(() => earthWalkingRouteUrl({ ...endpoints, destination: [0, 91] }), isError("invalid_response"));
 });
 
 test("provider handles 429, bad status, malformed/oversized bodies and network exceptions with sanitized errors", async () => {
@@ -88,21 +88,23 @@ test("timeout bounds fetch and streamed body even if the provider ignores cancel
   abort.abort(); await assert.rejects(promise, isError("cancelled"));
 });
 
-test("binding requires precise fresh points, finite accuracy <=200m and a straight distance <=20km", () => {
+test("binding accepts old, coarse, approximate and distant points but rejects invalid or unauthorized ones", () => {
   const f = fixture();
   try {
     const { position, person } = f.context;
-    assert.ok(createEarthWalkingRouteBinding("owner", position, person, f.mono, f.wall));
+    for (const [self, friend] of [[position, person], [{ ...position, accuracy: 201 }, person],
+      [position, { ...person, accuracyMeters: 201 }], [position, { ...person, precision: "APPROXIMATE", accuracyMeters: 1500 }],
+      [{ ...position, timestamp: f.wall - 60001 }, person],
+      [position, { ...person, updatedAt: new Date(f.wall - 300000).toISOString() }], [position, { ...person, longitude: 0, latitude: 0 }]])
+      assert.ok(createEarthWalkingRouteBinding("owner", self, friend, f.mono, f.wall));
     for (const [self, friend] of [[null, person], [position, null], [{ ...position, accuracy: NaN }, person],
-      [{ ...position, accuracy: 201 }, person], [position, { ...person, accuracyMeters: 201 }],
-      [position, { ...person, precision: "APPROXIMATE" }], [{ ...position, timestamp: f.wall - 60001 }, person],
       [{ ...position, timestamp: f.wall + 10001 }, person], [position, { ...person, updatedAt: new Date(f.wall + 10001).toISOString() }],
-      [position, { ...person, updatedAt: new Date(f.wall - 300000).toISOString() }],
-      [position, { ...person, longitude: 0, latitude: 0 }], [position, { ...person, expiresAtMonotonic: f.mono }]])
+      [position, { ...person, expiresAtMonotonic: f.mono }]])
       assert.equal(createEarthWalkingRouteBinding("owner", self, friend, f.mono, f.wall), null);
     assert.equal(createEarthWalkingRouteBinding(null, position, person, f.mono, f.wall), null);
   } finally { f.release(); }
 });
+
 
 test("renderer freshness binds circle+public identity, movement and both monotonic/wall expiry", () => {
   const f = fixture();
@@ -150,14 +152,15 @@ test("clear, friend switch and owner retirement abort in-flight work and reject 
   }
 });
 
-test("fresh availability is rechecked before accepting a response even before its browser event is delivered", async () => {
+test("access expiry is rechecked before accepting a response even before its browser event is delivered", async () => {
   const f = fixture();
   try {
     f.controller.request(); await flush();
-    f.context.position.timestamp = f.wall - 59000; f.update(); f.advance(1000); f.resolve(); await flush();
+    f.context.person.expiresAtMonotonic = f.mono + 1000; f.update(); f.advance(1000); f.resolve(); await flush();
     assert.equal(f.controller.getSnapshot().route, null); assert.equal(f.calls[0].signal.aborted, true);
   } finally { f.release(); }
 });
+
 
 test("movement beyond50m invalidates a ready path with no automatic refresh", async () => {
   for (const endpoint of ["self", "friend"]) {
@@ -172,18 +175,20 @@ test("movement beyond50m invalidates a ready path with no automatic refresh", as
   }
 });
 
-test("self freshness and friend access deadlines bound ready routes and cannot be extended by a wall clock rollback", async () => {
-  for (const expiry of ["self", "friend", "clock"]) {
+test("route TTL and friend access deadlines bound ready routes independently of capture freshness", async () => {
+  for (const expiry of ["ttl", "friend", "clock"]) {
     const f = fixture();
     try {
-      if (expiry === "self") f.update({ position: { ...f.context.position, timestamp: f.wall - 59000 } });
-      if (expiry === "friend") f.update({ person: { ...f.context.person, expiresAt: new Date(f.wall + 1000).toISOString(), expiresAtMonotonic: f.mono + 1000 } });
+      const lifetime = expiry === "friend" ? 1000 : 600000;
+      f.update({ position: { ...f.context.position, timestamp: f.wall - 3600000 }, person: { ...f.context.person,
+        expiresAt: new Date(f.wall + lifetime).toISOString(), expiresAtMonotonic: f.mono + lifetime } });
       f.controller.request(); await flush(); f.resolve(); await flush(); assert.ok(f.controller.getSnapshot().route);
-      f.advance(expiry === "clock" ? 60000 : 1000, expiry === "clock" ? -1000 : 1000);
+      f.advance(expiry === "friend" ? 1000 : 120000, expiry === "clock" ? -1000 : expiry === "friend" ? 1000 : 120000);
       assert.equal(f.controller.getSnapshot().route, null, expiry); assert.equal(f.calls.length, 1);
     } finally { f.release(); }
   }
 });
+
 
 test("a stuck provider is retired at timeout and cannot replace a newer explicit request", async () => {
   const f = fixture();
@@ -196,33 +201,31 @@ test("a stuck provider is retired at timeout and cannot replace a newer explicit
   } finally { f.release(); }
 });
 
-test("clock rollback cannot renew a previously observed self fix through clear, hidden or a new explicit request", async () => {
+test("an explicit new route can use the same retained origin after an earlier route expires", async () => {
   const f = fixture();
   try {
-    const position = { ...f.context.position }, observedMono = f.mono;
     f.update({ person: { ...f.context.person, expiresAt: new Date(f.wall + 600000).toISOString(), expiresAtMonotonic: f.mono + 600000 } });
-    f.advance(55000, 25000); f.controller.clear(); f.availability({ visible: false });
-    f.update({ position: null }); f.update({ position }); f.availability({ visible: true });
+    f.controller.request(); await flush(); f.resolve(); await flush();
+    f.advance(120000); assert.equal(f.controller.getSnapshot().route, null);
     assert.equal(f.controller.request(), true); await flush(); f.resolve(); await flush();
-    assert.equal(f.controller.getSnapshot().route.expiresAtMonotonic, observedMono + 60000);
-    f.advance(5000); assert.equal(f.controller.getSnapshot().route, null); assert.equal(f.controller.request(), false);
-    f.update({ position: { ...position, timestamp: f.wall } }); assert.equal(f.controller.getSnapshot().canRequest, true, "a genuinely newer fix remains usable");
+    assert.ok(f.controller.getSnapshot().route); assert.equal(f.calls.length, 2);
   } finally { f.release(); }
 });
 
-test("friend freshness derives from the existing monotonic feed deadline despite a rolled-back wall clock and reopened selection", async () => {
+
+test("old friend points support planning but reopening and rollback never extend the original access deadline", async () => {
   const f = fixture();
   try {
-    const originalMono = f.mono;
-    f.update({ person: { ...f.context.person, expiresAt: new Date(f.wall + 86400000).toISOString(), expiresAtMonotonic: f.mono + 86400000 } });
-    const person = { ...f.context.person };
-    f.advance(295000, 265000); f.update({ person: null });
-    f.update({ person, position: { ...f.context.position, timestamp: f.wall } });
-    assert.equal(f.controller.request(), true); await flush(); f.resolve(); await flush();
-    assert.equal(f.controller.getSnapshot().route.expiresAtMonotonic, originalMono + 300000);
+    const accessDeadline = f.mono + 300000;
+    f.update({ person: { ...f.context.person, updatedAt: new Date(f.wall - 3600000).toISOString(),
+      expiresAt: new Date(f.wall + 300000).toISOString(), expiresAtMonotonic: accessDeadline } });
+    f.advance(295000, 265000); const person = { ...f.context.person }; f.update({ person: null });
+    f.update({ person }); assert.equal(f.controller.request(), true); await flush(); f.resolve(); await flush();
+    assert.equal(f.controller.getSnapshot().route.expiresAtMonotonic, accessDeadline);
     f.advance(5000); assert.equal(f.controller.getSnapshot().route, null); assert.equal(f.controller.request(), false);
   } finally { f.release(); }
 });
+
 
 test("service errors are sanitized, never retried automatically and do not follow a changed friend", async () => {
   const f = fixture();
@@ -244,18 +247,15 @@ test("the shared RAM limiter survives cancel, component/controller replacement a
   } finally { a.release(); b.release(); }
 });
 
-test("route eligibility names distant endpoints, missing own GPS and actual coarse fixes", () => {
-  const f = fixture();
-  const { position, person } = f.context;
-  assert.equal(earthWalkingRouteIssue(position, person, f.mono, f.wall), null);
+test("route eligibility only requires valid available endpoints, with no age, accuracy or distance block", () => {
+  const f = fixture(), { position, person } = f.context;
   assert.equal(earthWalkingRouteIssue(null, person, f.mono, f.wall), "self_missing");
-  assert.equal(earthWalkingRouteIssue({ ...position, timestamp: f.wall - 60_000 }, person, f.mono, f.wall), "self_stale");
-  assert.equal(earthWalkingRouteIssue({ ...position, accuracy: 201 }, person, f.mono, f.wall), "self_accuracy");
-  assert.equal(earthWalkingRouteIssue(position, { ...person, accuracyMeters: 201 }, f.mono, f.wall), "friend_accuracy");
-  assert.equal(earthWalkingRouteIssue({ ...position, latitude: 55.796, longitude: 49.106 },
-    { ...person, latitude: 59.939, longitude: 30.315 }, f.mono, f.wall), "distance");
+  assert.equal(earthWalkingRouteIssue({ ...position, timestamp: NaN }, person, f.mono, f.wall), "self_invalid");
+  assert.equal(earthWalkingRouteIssue({ ...position, timestamp: f.wall - 3600000, accuracy: 3400 },
+    { ...person, accuracyMeters: 1500, precision: "APPROXIMATE", latitude: 59.939, longitude: 30.315 }, f.mono, f.wall), null);
   f.release();
 });
+
 
 test("fresh own and friend updates enable the existing route selection without reopening or automatic provider requests", async () => {
   const f = fixture();
@@ -263,9 +263,9 @@ test("fresh own and friend updates enable the existing route selection without r
   f.update({ position: null, person: { ...currentPerson, accuracyMeters: 700 } });
   assert.equal(f.controller.getSnapshot().canRequest, false);
   f.update({ position: currentPosition });
-  assert.equal(f.controller.getSnapshot().canRequest, false, "own GPS alone cannot route to a coarse destination");
+  assert.equal(f.controller.getSnapshot().canRequest, true, "a coarse destination is available for explicit planning");
   f.update({ person: { ...currentPerson, updatedAt: new Date(f.wall - 301_000).toISOString() } });
-  assert.equal(f.controller.getSnapshot().canRequest, false, "receiving an old capture does not make it fresh");
+  assert.equal(f.controller.getSnapshot().canRequest, true, "old capture stays last-known without blocking planning");
   f.update({ person: currentPerson });
   assert.equal(f.controller.getSnapshot().canRequest, true, "the same selected friend becomes ready immediately");
   assert.equal(f.calls.length, 0);

@@ -53,6 +53,9 @@ function grant(a, circle) {
 }
 function device() {
   const descriptors = new Map(["window", "document", "navigator"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const originalNow = Date.now;
+  let wallNow = originalNow();
+  Date.now = () => wallNow;
   const values = new Map(), watches = [], cleared = [];
   const window = new EventTarget(), document = new EventTarget();
   window.isSecureContext = true; document.hidden = false; document.visibilityState = "visible";
@@ -64,8 +67,14 @@ function device() {
   for (const [name, value] of Object.entries({ window, document, navigator })) Object.defineProperty(globalThis, name, { value, configurable: true });
   return { values, watches, cleared, document,
     hide(value) { document.hidden = value; document.visibilityState = value ? "hidden" : "visible"; document.dispatchEvent(new Event("visibilitychange")); },
-    fix(index, latitude = 55.75) { watches[index].success({ coords: { latitude, longitude: 37.62, accuracy: 12 }, timestamp: Date.now() }); },
-    restore() { for (const [name, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; } },
+    fix(index, latitude = 55.75, timestamp = wallNow + 1) {
+      // A synthetic new measurement advances capture time even when the whole
+      // hide/resume scenario executes within one real clock millisecond.
+      wallNow = Math.max(wallNow, timestamp);
+      watches[index].success({ coords: { latitude, longitude: 37.62, accuracy: 12 }, timestamp });
+      return timestamp;
+    },
+    restore() { Date.now = originalNow; for (const [name, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; } },
   };
 }
 function sharing(a, device) {
@@ -164,7 +173,7 @@ test("backgrounding stops publishing and native GPS while return reacquires one 
   const s = sharing(a, d), m = mountPresence(a, s);
   try {
     m.render(); await tick(); m.render(); const first = d.watches.length - 1;
-    d.fix(first); m.render(); await tick();
+    const firstCapture = d.fix(first); m.render(); await tick();
     const published = s.controller.getSnapshot().lastPublishedAt;
     d.hide(true); m.render(); await tick();
     assert.ok(d.cleared.includes(first)); assert.equal(s.controller.getSnapshot().publishing, false);
@@ -172,7 +181,13 @@ test("backgrounding stops publishing and native GPS while return reacquires one 
     d.fix(first, 1); m.render(); assert.equal(s.calls.uploads.length, 1);
     d.hide(false); m.render(); await tick(); m.render();
     assert.equal(s.calls.resumes.length, 2); assert.equal(d.watches.at(-1).options.maximumAge, 0);
-    d.fix(d.watches.length - 1, 57); m.render(); await tick();
+    const resumed = d.watches.length - 1;
+    d.fix(resumed, 57, firstCapture); m.render(); await tick();
+    assert.equal(s.calls.uploads.length, 1, "the fresh lease cannot republish a duplicate captured timestamp");
+    assert.equal(m.render().status, "requesting");
+    assert.equal(m.render().position.timestamp, firstCapture, "waiting for a new capture cannot refresh the old point's time");
+    d.fix(resumed, 57); m.render(); await tick();
+    assert.equal(s.calls.uploads.length, 2);
     assert.equal(unwrap(store.getDevEarthPeople(b.token)).people[0].latitude, 57);
   } finally { m.destroy(); s.stop(); d.restore(); }
 });

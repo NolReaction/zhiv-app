@@ -66,3 +66,17 @@
 .marker[data-beside-self="true"]::after { transform: translateX(calc(-1 * var(--earth-friend-offset))); }
 .marker:focus-visible { outline: none; z-index: 2; }
 .marker:focus-visible .portrait { outline: 3px solid #b7f0d8; outline-offset: 3px; }
+.updated {
+  position: absolute; top: 44px; left: 22px;
+  padding: 5px 8px; border: 1px solid #e9f2dfb3; border-radius: 10px;
+  background: #163c33ed; color: #f0f5df; box-shadow: 0 3px 12px #102f3030;
+  font: 600 10px/1.3 Arial, sans-serif; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, 3px); pointer-events: none;
+  transition: opacity 180ms ease, transform 220ms ease;
+}
+.marker[data-detail="true"] .updated { opacity: 1; transform: translate(-50%, 0); }
+.portrait { animation: friendArrive 280ms cubic-bezier(.2, .8, .2, 1); transition: transform 180ms ease, box-shadow 180ms ease; }
+.marker:active .portrait { transform: scale(.9); }
+@media (hover: hover) { .marker:hover .portrait { transform: translateY(-3px); box-shadow: 0 5px 14px #123d3950; } }
+@keyframes friendArrive { from { opacity: 0; transform: translateY(5px) scale(.75); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .portrait { animation: none; transition: none; } .updated { transition: none; } .marker:active .portrait, .marker:hover .portrait { transform: none; } }

@@ -11,6 +11,7 @@
 .shop.shop .tabs button[aria-selected="true"] { color: #fff3cc; background: #466347; border-color: #738561; }
 .offers { display: flex; flex-direction: column; gap: 7px; }
 .offer { padding: 9px; border: 1px solid #b8be98; border-radius: 11px; background: #ede5c9; }
+.offer > [data-fishing-catch-odds] { margin-top: 8px; }
 .item { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .item > div { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
 .item strong { font-size: 12px; overflow-wrap: anywhere; }

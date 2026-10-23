@@ -99,6 +99,42 @@ test("two mounted views share an arrival immediately while other owners and comp
 }));
 
 for (const [resident, useArrival] of [["leaftail", useLeaftailArrival], ["miner", useMinerArrival], ["lopukh", useLopukhArrival]]) {
+  test(`${resident}: an established confirmed world never replays historical arrivals on a new browser or reload`, () => browser(({ render, data }) => {
+    const owner = `${resident}-existing-world`, options = { ...opts, confirmed: false, unlocked: false };
+    render(owner, options); let value = render(owner, options);
+    assert.equal(value.enabled, false); assert.equal(value.loaded, false, "cached building levels cannot start a cutscene");
+    const confirmed = { ...opts, confirmed: true };
+    value = render(owner, confirmed); assert.equal(value.enabled, false, "first confirmed snapshot is adopted before the scene can run");
+    render(owner, confirmed); value = render(owner, confirmed);
+    assert.equal(value.seen, true); assert.equal(value.enabled, false); assert.equal(value.open, false); assert.equal(value.completionNotice, false);
+    assert.deepEqual(JSON.parse(data.get(`zhiv.${resident}-arrival.v1:${owner}`)), { version: 1, arrived: true, dismissed: true });
+    hooks.reset(); render(owner, confirmed); render(owner, confirmed); value = render(owner, confirmed);
+    assert.equal(value.seen, true); assert.equal(value.enabled, false); assert.equal(value.open, false);
+  }, useArrival));
+
+  test(`${resident}: a new unlock after the confirmed baseline still presents and completes once`, () => browser(({ render }) => {
+    const owner = `${resident}-new-confirmed-unlock`, locked = { ...opts, confirmed: true, unlocked: false };
+    render(owner, locked); render(owner, locked); let value = render(owner, locked);
+    assert.equal(value.loaded, true); assert.equal(value.seen, false); assert.equal(value.enabled, false);
+    const before = structuredClone(opts.onboarding);
+    value = render(owner, { ...opts, confirmed: true });
+    assert.equal(value.enabled, true); assert.equal(value.seen, false); assert.equal(value.open, true);
+    value.complete(); value = render(owner, { ...opts, confirmed: true });
+    assert.equal(value.seen, true); assert.equal(value.enabled, false);
+    assert.deepEqual(opts.onboarding, before, "arrival leaves the replayable main tutorial unchanged");
+  }, useArrival));
+
+  test(`${resident}: historical arrival adoption is scoped to the confirmed account`, () => browser(({ render }) => {
+    const options = { ...opts, confirmed: true };
+    render(`${resident}-baseline-old`, options); render(`${resident}-baseline-old`, options);
+    const old = render(`${resident}-baseline-old`, options);
+    const owner = `${resident}-baseline-new`, locked = { ...options, unlocked: false };
+    render(owner, locked); render(owner, locked); let value = render(owner, locked);
+    old.complete(); old.dismiss(); value = render(owner, locked);
+    assert.equal(value.seen, false); assert.equal(value.open, false);
+    value = render(owner, options); assert.equal(value.enabled, true);
+  }, useArrival));
+
   test(`${resident}: an open coach owns the arrival finale without a second notice`, () => browser(({ render }) => {
     const owner = `${resident}-open-coach`;
     render(owner); let value = render(owner);

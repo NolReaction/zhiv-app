@@ -89,6 +89,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   let state = EMPTY, environment: EarthSharingEnvironment | null = null;
   let active = false, visible = false, publicationVisible = false, online = false, authLost = false, generation = 0, visibilityGeneration = 0;
   let automaticResumeAllowed = true, publicationCycleActive = false, resumeAttempted = false, resumeNotBefore = -Infinity;
+  let automaticResumeRetries = 0;
   let readNotBefore = -Infinity;
   let pending: EarthPendingPrivacy | null = null, privacyAttempts = 0;
   let metadata: Work | null = null, feed: Work | null = null, enabling: Work | null = null, resuming: Work | null = null, upload: Work | null = null, privacy: Work | null = null, preferences: Work | null = null;
@@ -337,6 +338,16 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     } catch (error) {
       if (current(request) && resuming === request) {
         if (statusOf(error) === 409 || statusOf(error) === 429) resumeNotBefore = now() + Math.max(5_000, retryDelay(error, 4));
+        // One temporary connection/server failure on app startup must not leave
+        // a consenting stationary player unpublished for the whole session.
+        // Retry once through the ordinary metadata poll; conflicts and limits
+        // remain fenced so two devices cannot continually steal a publisher.
+        const status = statusOf(error);
+        if (automatically && (status === undefined || status >= 500) && automaticResumeRetries < 1) {
+          automaticResumeRetries += 1;
+          resumeNotBefore = now() + EARTH_SETTINGS_POLL_MS;
+          resumeAttempted = false;
+        }
         failed(error, "Не удалось возобновить геопозицию");
         if (statusOf(error) === 409) void readMetadata();
       }
@@ -472,7 +483,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     const nextPublicationCycle = publicationForeground() && automaticResumeAllowed;
     if (publicationCycleActive !== nextPublicationCycle) {
       publicationCycleActive = nextPublicationCycle;
-      if (nextPublicationCycle) resumeAttempted = false;
+      if (nextPublicationCycle) { resumeAttempted = false; automaticResumeRetries = 0; }
     }
     if (!foreground()) abortForeground();
     else if (pending) void flushPrivacy(); else refresh();

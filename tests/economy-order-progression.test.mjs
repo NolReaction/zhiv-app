@@ -11,6 +11,7 @@ const { economyCatalog: catalog, economyResidentOrdersSchema } = await vite.ssrL
 const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/orders-progression-vectors.json", import.meta.url), "utf8"));
+const balanceVectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/resident-order-balance-vectors.json", import.meta.url), "utf8"));
 const now = Date.parse("2026-10-07T12:00:00Z");
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
 
@@ -26,6 +27,16 @@ test("shared Kotlin vectors keep compact requests and mixed-item premiums identi
     const actual = food.progressedResidentOrderTemplate(template, home);
     assert.deepEqual(actual.items, template.items, `${template.id}@${home}: higher houses keep the accepted quantity compact`);
     assert.equal(actual.coins, template.coins, `${template.id}@${home}: the authored premium is preserved`);
+  }
+});
+
+test("all shared manufacturing quotes match Kotlin at every house level", () => {
+  assert.equal(balanceVectors.orders.length, 85);
+  for (const expected of balanceVectors.orders) for (let home = 1; home <= 5; home++) {
+    const template = catalog.food.orders.templates.find(template => template.id === expected.templateId);
+    const actual = food.progressedResidentOrderTemplate(template, home);
+    assert.deepEqual(actual.items, expected.items, `${expected.templateId}@${home}`);
+    assert.equal(actual.coins, expected.coins, `${expected.templateId}@${home}`);
   }
 });
 
@@ -83,6 +94,27 @@ test("the first-stage update keeps a saved 400-coin delivery exact and quotes ne
   assert.equal(state.residentOrders.earnedCoins, 400);
   const next = food.residentOrderBoard(state, now).offers.find(offer => offer.slot === 1);
   assert.equal(next.coins, catalog.food.orders.templates.find(template => template.id === next.templateId).coins);
+});
+
+test("the manufacturing rebalance retains an accepted 180-coin snack and quotes its next card at 230", () => {
+  const state = fresh(), template = catalog.food.orders.templates.find(template => template.id === "builder_trail_snack");
+  state.buildings = { home: 3, warehouse: 1, garden: 2, workshop: 1, woodlot: 1, dryer: 1 };
+  state.residentOrders = food.normalizedResidentOrders(state, now);
+  state.residentOrders.slots[1] = { sequence: 3, readyAt: new Date(now).toISOString(), templateId: template.id,
+    terms: { ...template, coins: 180 } };
+  const accepted = food.residentOrderBoard(state, now).offers.find(offer => offer.slot === 1);
+  state.residentOrders = economyResidentOrdersSchema.parse(JSON.parse(JSON.stringify(state.residentOrders)));
+  assert.deepEqual(food.residentOrderBoard(state, now + 1000).offers.find(offer => offer.slot === 1), accepted);
+  assert.equal(accepted.coins, 180); assert.equal(template.coins, 230);
+  const fixture = structuredClone(catalog); fixture.food.orders.templates = [template];
+  const replaced = food.advanceResidentOrder(state, 1, now, fixture);
+  const next = food.residentOrderBoard({ ...state, residentOrders: replaced }, now, fixture).offers.find(offer => offer.slot === 1);
+  assert.equal(next.templateId, accepted.templateId); assert.equal(next.coins, 230);
+  assert.deepEqual(next.items, accepted.items); assert.notEqual(next.id, accepted.id);
+  const beforeCoins = state.wallet.coins; state.inventory = { ...accepted.items };
+  rules.applyEconomyCommand(state, { requestId: crypto.randomUUID(), ownerPublicId: "0123-4567-89AB", expectedRevision: 0,
+    action: "complete_resident_order", targetId: accepted.id, quantity: 1, totalPrice: 0 }, now, () => crypto.randomUUID());
+  assert.equal(state.wallet.coins, beforeCoins + 180, "accepted terms pay their original exact amount");
 });
 
 test("legacy v2 terms migrate at their old unscaled quote; next cards use the current level", () => {

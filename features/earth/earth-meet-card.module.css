@@ -43,3 +43,10 @@
 .meetingNote button { min-height: 44px; padding: 7px 0; border: 0; background: transparent; color: #d4eab7; font: inherit; font-size: 11px; text-align: left; text-decoration: underline; cursor: pointer; }
 .meetingNote button:disabled { opacity: .8; cursor: default; text-decoration: none; }
 .meetingNote span { display: block; color: #a7bea0; font-size: 10px; }
+.card { animation: meetReveal 240ms cubic-bezier(.2, .8, .2, 1); }
+.card button, .routeOptions a { transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease; }
+.card button:not(:disabled):active, .routeOptions a:active { transform: scale(.97); }
+.compass svg, .routeTrigger > svg:last-child { transition: transform 240ms ease; }
+.estimate { margin: 7px 0 0; color: #e0c78d; font-size: 10px; line-height: 1.45; }
+@keyframes meetReveal { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .card { animation: none; } .card button, .routeOptions a, .compass svg, .routeTrigger > svg:last-child { transition: none; } .card button:not(:disabled):active, .routeOptions a:active { transform: none; } }

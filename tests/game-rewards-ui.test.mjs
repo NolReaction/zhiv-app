@@ -10,7 +10,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { createDailyRewardEntryPrompt } = await vite.ssrLoadModule("/features/game/daily-reward-entry.ts");
 const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
-const { claimDailyWithAudio } = await vite.ssrLoadModule("/features/game/game-rewards-audio.ts");
+const { claimDailyWithAudio, claimAchievementWithAudio } = await vite.ssrLoadModule("/features/game/game-rewards-audio.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
 const { DailyRewardsPanel, dailyRewardWait, RewardContents } = await vite.ssrLoadModule("/features/game/daily-rewards.tsx");
 const { AchievementCard } = await vite.ssrLoadModule("/features/game/game-achievements.tsx");
@@ -126,6 +126,40 @@ test("optional daily audio failures cannot prevent callers from refreshing a con
   const result = await claimDailyWithAudio(owner, session, () => { throw Error("Audio device unavailable"); });
   assert.ok(result); assert.equal(result.claim.kind, "daily");
   assert.equal(session.getSnapshot().pending, null); assert.equal(session.getSnapshot().uncertain, false); stop();
+});
+
+test("achievement pearls sound once after a matching manual claim, while reads, duplicate clicks and replayed receipts stay silent", async () => {
+  for (const replayed of [false, true]) {
+    const wait = deferred(), events = []; let command, writes = 0;
+    const session = createGameRewardsSession(owner, transport({ send: body => { command = body; writes++; return wait.promise; } }));
+    const stop = session.activate(); await session.refresh();
+    const collect = () => claimAchievementWithAudio(owner, session, "explorer", 1, event => events.push(event), () => clock);
+    const accepted = collect(); await collect(); await collect();
+    assert.equal(writes, 1); assert.deepEqual(events, []);
+    const data = view(); data.achievementRewards.find(row => row.achievementId === "explorer" && row.level === 1).eligible = false;
+    wait.resolve(receipt(command, data, replayed)); await accepted;
+    assert.deepEqual(events, replayed ? [] : [{ id: `achievement-reward:${owner}:${command.requestId}`, cueId: "ui.reward", occurredAt: clock }]);
+    await collect(); assert.equal(events.length, Number(!replayed)); stop();
+  }
+});
+
+test("late or foreign achievement receipts cannot sound and optional audio failure cannot block confirmed pearls", async () => {
+  for (const mode of ["deactivated", "foreign-owner", "request-mismatch", "audio-failure"]) {
+    const wait = deferred(), events = []; let command;
+    const session = createGameRewardsSession(owner, transport({ send: body => { command = body; return wait.promise; } }));
+    const stop = session.activate(); await session.refresh();
+    const accepted = claimAchievementWithAudio(owner, session, "explorer", 1, event => {
+      if (mode === "audio-failure") throw Error("Audio device unavailable");
+      events.push(event);
+    });
+    if (mode === "deactivated") stop();
+    const result = receipt(command, view(2, false, mode === "foreign-owner" ? other : owner));
+    if (mode === "request-mismatch") result.requestId = crypto.randomUUID();
+    wait.resolve(result);
+    const confirmed = await accepted;
+    assert.equal(Boolean(confirmed), mode === "audio-failure"); assert.deepEqual(events, [], mode);
+    if (mode !== "deactivated") stop();
+  }
 });
 test("daily gift appears before its calendar and reports space without inventing historical tier rewards", () => {
   const data = view(3);

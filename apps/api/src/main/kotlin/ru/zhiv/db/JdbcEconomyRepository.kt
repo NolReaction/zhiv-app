@@ -129,6 +129,10 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
 internal fun economyLedgerContext(before: EconomyState, command: EconomyCommand, now: Instant? = null, after: EconomyState? = null): Map<String, String> {
     if (command.action == "start_production" || command.action == "start_tutorial_harvest")
         return mapOf("targetId" to command.targetId.substringBefore('@'))
+    // A station delivery can contain several different recipes. Keep the
+    // public station attribution within the existing bounded context schema.
+    if (command.action == "claim_production")
+        return mapOf("originAction" to "start_production", "targetId" to command.targetId)
     if (command.action == "start_garden_collection" || command.action == "claim_garden_collection") {
         val batchId = if (command.action == "start_garden_collection") command.requestId else command.targetId
         val jobs = (if (command.action == "start_garden_collection") after ?: before else before).jobs.filter { it.collection?.batchId == batchId }

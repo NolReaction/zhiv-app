@@ -22,6 +22,10 @@
 .moodPreview strong { font-size: .75rem; line-height: 1.35; font-weight: 600; }
 .moodPreview:hover { background: #d1dcb7; }
 .stats { display: grid; gap: 9px; margin: 0; font-size: .75rem; }
+.achievements > button { display: flex; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #b8c09e; border-radius: 12px; color: #394d3e; background: #dce2c6; font-size: .75rem; }
+.achievements > button:hover { background: #d1dcb7; }
+.achievements > button[data-achievements-ready] { border-color: #947638; background: #f0e1ae; box-shadow: 0 0 0 2px #b59b5320; }
+.achievements > button > span { margin-left: auto; }
 .stats > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .stats dt { min-width: 0; color: var(--forest-muted, #59624d); }
 .stats dd { flex-shrink: 0; margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }

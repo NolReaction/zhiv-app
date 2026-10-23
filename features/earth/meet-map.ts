@@ -1,8 +1,8 @@
 import type { GeoJSONSource, Map as LibreMap, PaddingOptions } from "maplibre-gl";
 import type { FeatureCollection, LineString, MultiLineString } from "geojson";
-import { EARTH_POSITION_MAX_AGE_MS, type EarthMapPerson } from "@/lib/earth-sharing-contract";
+import { type EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
-import { earthMeetDetails } from "./meet";
+import { earthLastKnownMeetDetails } from "./meet";
 import { canUseEarthWalkingRoute, type EarthWalkingRoute } from "./walking-route";
 
 export const EARTH_MEET_SOURCE = "earth-meet-line";
@@ -69,7 +69,6 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
   let focusRequest = 0;
   let handledFocus = 0;
   let walkingFocusRequest = 0;
-  let selfDeadline = -Infinity;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let cameraPadding: PaddingOptions | null = null;
   let prepareCamera: (() => void) | undefined;
@@ -95,8 +94,8 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
     cancelTimer();
     const now = environment.now();
     const wall = environment.wallNow();
-    if (disposed || !visible || !position || !friend || now >= selfDeadline
-      || !earthMeetDetails(position, friend, now, wall)) { clearLine(); return; }
+    if (disposed || !visible || !position || !friend
+      || !earthLastKnownMeetDetails(position, friend, now, wall)) { clearLine(); return; }
     const source = map.getSource<GeoJSONSource>(EARTH_MEET_SOURCE);
     if (!source) return;
     const route = canUseEarthWalkingRoute(walkingRoute, position, friend, now, wall) ? walkingRoute : null;
@@ -123,7 +122,7 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
         if (route) walkingFocusRequest = 0;
       }
     }
-    const remaining = Math.min(selfDeadline - now, friend.expiresAtMonotonic - now, Date.parse(friend.expiresAt) - wall,
+    const remaining = Math.min(friend.expiresAtMonotonic - now, Date.parse(friend.expiresAt) - wall,
       route ? route.expiresAtMonotonic - now : Infinity, route ? route.expiresAt - wall : Infinity);
     timer = environment.setTimeout(reconcile, Math.max(1, remaining + 1));
   }
@@ -141,8 +140,6 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
     },
     setSnapshot(nextPosition: EarthPosition | null, nextFriend: EarthMapPerson | null, request: number, route: EarthWalkingRoute | null = null) {
       if (disposed || !visible) return;
-      const deadline = nextPosition ? environment.now() + nextPosition.timestamp + EARTH_POSITION_MAX_AGE_MS - environment.wallNow() : -Infinity;
-      selfDeadline = nextPosition && position?.timestamp === nextPosition.timestamp ? Math.min(selfDeadline, deadline) : deadline;
       position = nextPosition ? { ...nextPosition } : null;
       friend = nextFriend ? { ...nextFriend } : null;
       walkingRoute = route;
@@ -157,7 +154,7 @@ export function createEarthMeetMap(map: MeetMap, environment: Environment = {
       if (disposed || visible === value) return;
       visible = value;
       if (!value) {
-        position = null; friend = null; walkingRoute = null; selfDeadline = -Infinity;
+        position = null; friend = null; walkingRoute = null;
         handledFocus = Math.max(handledFocus, focusRequest); walkingFocusRequest = 0;
       }
       reconcile();

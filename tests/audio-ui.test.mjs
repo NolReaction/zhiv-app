@@ -129,6 +129,17 @@ test("lifecycle waits for a trusted gesture, preserves muted preference and deta
   } finally { if (saved) Object.defineProperty(globalThis, "KeyboardEvent", saved); else delete globalThis.KeyboardEvent; }
 });
 
+test("focus after a phone call forwards foreground state even when document visibility never changed", () => {
+  const page = eventSurface(), surface = eventSurface(), visibility = [];
+  const cleanup = attachAudioLifecycle({ setVisible: value => visibility.push(value) }, page, surface);
+  surface.emit("focus");
+  assert.deepEqual(visibility, [true, true]);
+  page.hidden = true; surface.emit("focus");
+  assert.equal(visibility.at(-1), false, "a background focus notification cannot make the mixer visible");
+  cleanup(); surface.emit("focus");
+  assert.equal(page.count() + surface.count(), 0);
+});
+
 test("touch and pen unlock synchronously on trusted release, with touchend fallback and no press-time attempt", () => {
   const saved = Object.getOwnPropertyDescriptor(globalThis, "KeyboardEvent");
   Object.defineProperty(globalThis, "KeyboardEvent", { value: class KeyboardEvent {}, configurable: true });

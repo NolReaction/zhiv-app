@@ -99,7 +99,7 @@ test("invalid coordinates, times and uncertainty radii cannot produce a distance
   }
 });
 
-test("external walking directions name Google Maps and export only a fresh precise destination, never a private origin or identity", () => {
+test("external walking directions name Google Maps and export only an authorized destination, never a private origin or identity", () => {
   const to = friend({ latitude: 55.75, longitude: 37.62 });
   const before = structuredClone(to), url = new URL(route(to));
   assert.equal(url.origin, "https://www.google.com"); assert.equal(url.pathname, "/maps/dir/");
@@ -110,17 +110,17 @@ test("external walking directions name Google Maps and export only a fresh preci
   assert.deepEqual(to, before);
 });
 
-test("walking directions require precise location within five minutes and 200 meters even while stale last-known points support distance", () => {
+test("walking directions accept authorized last-known and approximate points while preserving capture metadata", () => {
   assert.ok(route(friend({ accuracyMeters: 200, updatedAt: new Date(wall - 300_000).toISOString() })));
   for (const patch of [{ precision: "APPROXIMATE", accuracyMeters: 1500 }, { accuracyMeters: 201 },
     { updatedAt: new Date(wall - 300_001).toISOString() }]) {
     const to = friend(patch);
-    assert.ok(details(self(), to)); assert.equal(route(to), null);
+    assert.ok(details(self(), to)); assert.ok(route(to));
   }
 });
 
 
-test("all map choices encode only a fresh destination with each provider's coordinate order and pedestrian mode", () => {
+test("all map choices encode only an authorized destination with each provider's coordinate order and pedestrian mode", () => {
   const to = friend({ latitude: 55.751234, longitude: -37.621234 });
   const routes = Object.fromEntries(["yandex", "2gis", "google", "apple"].map(service => [service, new URL(walkingRouteUrl(to, mono, wall, service))]));
   assert.equal(routes.yandex.origin, "https://yandex.ru");
@@ -136,18 +136,17 @@ test("all map choices encode only a fresh destination with each provider's coord
   for (const [service, url] of Object.entries(routes)) {
     assert.doesNotMatch(url.toString(), /friend|circle|publicId|origin|saddr|rstart|source|55,37/);
     for (const patch of [{ precision: "APPROXIMATE" }, { accuracyMeters: 201 }, { updatedAt: new Date(wall - 300_001).toISOString() },
-      { expiresAtMonotonic: mono }]) assert.equal(walkingRouteUrl(friend(patch), mono, wall, service), null);
+      { expiresAtMonotonic: mono }]) assert.equal(Boolean(walkingRouteUrl(friend(patch), mono, wall, service)), patch.expiresAtMonotonic !== mono);
   }
   assert.equal(walkingRouteUrl(to, mono, wall, "untrusted"), null);
 });
 
-test("friend route eligibility explains capture accuracy and age, including a wall-clock rollback", () => {
-  assert.equal(earthFriendWalkingRouteIssue(friend(), mono, wall), null);
-  assert.equal(earthFriendWalkingRouteIssue(friend({ precision: "APPROXIMATE" }), mono, wall), "friend_approximate");
-  assert.equal(earthFriendWalkingRouteIssue(friend({ accuracyMeters: 201 }), mono, wall), "friend_accuracy");
-  assert.equal(earthFriendWalkingRouteIssue(friend({ updatedAt: new Date(wall - 300_001).toISOString() }), mono, wall), "friend_stale");
-  const captured = friend();
-  const laterMono = mono + 300_001;
-  assert.equal(earthFriendWalkingRouteIssue(captured, laterMono, wall), "friend_stale");
-  assert.equal(walkingRouteUrl(captured, laterMono, wall), null, "rolling back wall time cannot export an old destination");
+test("friend route eligibility accepts old coarse captures but keeps independent access deadlines", () => {
+  for (const patch of [{}, { precision: "APPROXIMATE", accuracyMeters: 1500 }, { accuracyMeters: 201 },
+    { updatedAt: new Date(wall - 300_001).toISOString() }]) {
+    assert.equal(earthFriendWalkingRouteIssue(friend(patch), mono, wall), null);
+    assert.ok(route(friend(patch)));
+  }
+  assert.equal(earthFriendWalkingRouteIssue(friend(), mono + 3_600_000, wall), "friend_unavailable");
+  assert.equal(route(friend(), mono, wall + 3_600_000), null);
 });

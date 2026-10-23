@@ -8,19 +8,20 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
 import { ECONOMY_MAX_BALANCE, type EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { fishClassForItem, fishClassInventory, fishingClassOdds, fishingState } from "@/features/economy/domain/fishing";
+import { fishClassForItem, fishClassInventory, fishingState } from "@/features/economy/domain/fishing";
 import { fishSelectionMatches, fishStockEntries, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { canRefreshFishingShop, fishingShopRefreshPrice } from "@/features/economy/domain/fishing-shop";
 import { formatPearls } from "@/features/economy/domain/money";
 import { residentOrderBoard } from "@/features/economy/domain/food";
-import { FishRarityBadge, FISH_RARITY_NAMES, type FishRarity } from "./fish-rarity";
+import { FishRarityBadge } from "./fish-rarity";
 import { PantrySale } from "@/features/economy/ui/inventory/world-pantry-menu";
 import { locked } from "@/features/economy/sync/controller-state";
 import { listenForSectionGuideNavigation } from "@/features/onboarding/section-guide-navigation";
 import { itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { useFishingCommand } from "./use-fishing-command";
 import { PleskFishingCollection } from "./plesk-fishing-book";
-import { FishingSpeciesFocus, FishingSpeciesOdds } from "./fishing-species-odds";
+import { FishingCatchOdds as PleskCatchOdds } from "./fishing-catch-odds";
+export { FishingCatchOdds as PleskCatchOdds } from "./fishing-catch-odds";
 import { WorldFishStockList } from "./world-fish-stock-list";
 import { WorldFishSelection } from "./world-fish-selection";
 import { FishTapFeedbackQuantity, useFishTapFeedback, type FishTapFeedback } from "./fish-tap-feedback";
@@ -36,36 +37,9 @@ const tabs = [{ id: "tackle", name: "Лавка", icon: Store }, { id: "fish", n
 function Price({ value, pearls = false }: { value: number; pearls?: boolean }) {
   return <span className={styles.price}>{pearls ? formatPearls(value) : number(value)}<ItemIcon itemId={pearls ? "pearls" : "coins"} size={16} /></span>;
 }
-const probabilityFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 });
-const percent = (probability: number) => `${probabilityFormat.format(probability * 100)}%`;
 function offerFor(state: EconomyView, itemId: string) { return state.fishingShop?.offers.find(offer => offer.itemId === itemId); }
 function offerLive(state: EconomyView, now: number, offer?: Offer) {
   return !!offer && offer.remaining > 0 && Date.parse(state.fishingShop?.refreshAt ?? "") > now;
-}
-
-/** Class probabilities describe every fish; species remain a separate collection. */
-export function PleskCatchOdds({ state, catalog, override, preview = false, targetRarity }: { state: EconomyView; catalog: FishingCatalog;
-  override?: Parameters<typeof fishingClassOdds>[2]; preview?: boolean; targetRarity?: FishRarity }) {
-  const odds = fishingClassOdds(state, catalog, override);
-  const currentOdds = preview ? fishingClassOdds(state, catalog) : odds;
-  return <section className={styles.odds} data-guide-plesk-odds aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
-    <div className={styles.oddsHeading}><strong>Шансы улова</strong><small>{preview ? "Сейчас → с этой снастью" : "На одну рыбу"}</small></div>
-    <dl className={styles.rarityOdds} aria-label="Шансы по классам">{odds.map(({ rarity, itemId, probability }) => {
-      const current = currentOdds.find(odd => odd.rarity === rarity)?.probability ?? probability;
-      const changed = preview && Math.abs(current - probability) > 1e-10;
-      const description = changed ? `Сейчас ${percent(current)} → с этой снастью ${percent(probability)}` : percent(probability);
-      return <div key={rarity} data-fish-class-odds={itemId} data-target={rarity === targetRarity || undefined}
-        data-fishing-target={rarity === targetRarity ? itemId : undefined} data-odds-change={changed ? probability > current ? "increase" : "decrease" : undefined}>
-        <dt><ItemIcon itemId={itemId} size={24} /><FishRarityBadge rarity={rarity} /></dt>
-        <dd aria-label={`${FISH_RARITY_NAMES[rarity]} рыба: ${description}`}>
-          {changed && <span className={styles.previousOdds} aria-hidden="true">{percent(current)}<ArrowRight size={12} /></span>}
-          <strong data-catch-probability={itemId} aria-hidden="true">{percent(probability)}</strong>
-        </dd>
-      </div>;
-    })}</dl>
-    <FishingSpeciesFocus state={state} override={override} />
-    <FishingSpeciesOdds state={state} override={override} />
-  </section>;
 }
 
 export function fishingTradeLimits(state: EconomyView, itemId: string) {
