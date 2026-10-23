@@ -6,8 +6,9 @@ import { residentOrderPricing } from "../scripts/lib/resident-order-pricing.mjs"
 const catalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
 const vectors = JSON.parse(readFileSync(new URL("../apps/api/src/test/resources/world/resident-order-balance-vectors.json", import.meta.url), "utf8"));
 
-test("all 85 authored repeatable rewards pay for manufacturing with one rounding and retain their quantities", () => {
-  const price = residentOrderPricing(catalog), templates = catalog.food.orders.templates;
+test("the original 85 repeatable rewards retain their promised quantities and manufacturing payouts", () => {
+  const price = residentOrderPricing(catalog), baselineIds = new Set(vectors.orders.map(row => row.templateId));
+  const templates = catalog.food.orders.templates.filter(template => baselineIds.has(template.id));
   assert.equal(templates.length, 85); assert.equal(vectors.orders.length, templates.length);
   assert.equal(new Set(vectors.orders.map(row => row.templateId)).size, templates.length);
   let changed = 0, raw = 0, processing = 0;

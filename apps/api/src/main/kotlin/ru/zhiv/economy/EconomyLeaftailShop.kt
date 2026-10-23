@@ -150,7 +150,9 @@ object EconomyLeaftailShops {
             if (command.quantity != 1L) invalidEconomy()
         }
         if (offer.unitPrice > ECONOMY_MAX_BALANCE / command.quantity) invalidEconomy()
-        val price = offer.unitPrice * command.quantity
+        val unitPrice = EconomyTradeRelations.discount(state, "leaftail", offer.unitPrice,
+            offer.currency == "coins" && offer.kind in setOf("rod", "hook", "bait", "wardrobe"))
+        val price = unitPrice * command.quantity
         if (command.totalPrice != price)
             economyFailure("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена изменилась. Проверьте стоимость товара")
         val purchased = stock.purchased[offer.id] ?: 0
@@ -176,7 +178,7 @@ object EconomyLeaftailShops {
             EconomyRules.addItems(inventory, reservedItems)
             EconomyRules.assertStorageTransition(state, next, reservedItems)
         }
-        return next to when (offer.kind) {
+        return EconomyTradeRelations.awardPurchase(next, "leaftail", price, now) to when (offer.kind) {
             "wardrobe" -> "Покупка у Листохвоста добавлена в гардероб"
             "rod" -> "Удочка у Листохвоста добавлена в коллекцию"
             "hook" -> "Крючок у Листохвоста добавлен в коллекцию"

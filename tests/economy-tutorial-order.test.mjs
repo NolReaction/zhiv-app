@@ -40,7 +40,7 @@ test("one ripe raspberry completes the only teaching request without a gift or a
   assert.equal(before.tutorialOrder.version, 3); assert.equal(before.tutorialOrder.step, 0);
   assert.equal(before.tutorialOrder.ingredientsClaimed, true); assert.equal(stages.stageResidentOrder(before), null);
   tutorial.tutorialOrderProgress(before); assert.deepEqual(before, snapshot); assert.deepEqual(read(p), snapshot);
-  assert.equal(food.residentOrderBoard(before, now).offers.length, 3);
+  assert.equal(food.residentOrderBoard(before, now).offers.length, 2, "new players see only introduced residents");
   assert.throws(() => send(p, "claim_tutorial_order"), { code: "ECONOMY_TUTORIAL_ORDER_CLAIMED" });
   assert.throws(() => send(p), { code: "ECONOMY_RESOURCES" }); assert.deepEqual(read(p), snapshot);
   row(p).state.inventory.berries = 1;
@@ -48,6 +48,7 @@ test("one ripe raspberry completes the only teaching request without a gift or a
   assert.equal(finished.tutorialOrder.completed, true); assert.equal(finished.tutorialOrder.step, 1);
   assert.equal(tutorial.tutorialResidentOrder(finished), null); assert.equal(stages.stageResidentOrder(finished).id, "stage1_wood_order");
   assert.equal(finished.stageOrders.stages["1"].step, 0); assert.equal(finished.wallet.coins, 115);
+  assert.deepEqual(finished.tradeRelations.reputation, {}, "teaching rewards cannot grant retroactive resident reputation");
 });
 
 test("three separate house requests spend real goods, pay 300 and preserve the ordinary board", () => {

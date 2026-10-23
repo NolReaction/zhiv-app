@@ -382,7 +382,7 @@ test("stage and pearl summaries distinguish guaranteed project gates from chance
   assert.match(value, /Всего обязательного ожидания: 6 дн\. 17 ч; затем стройка дома 1 дн\./);
   assert.match(value, /Жемчуг не сокращает интервалы поставок/);
   assert.match(value, /Гарантированная награда за весь проект Живая смола ×1/);
-  assert.ok(value.includes(`${economyCatalog.food.orders.templates.length} шаблонов · 3 активные карточки`));
+  assert.ok(value.includes(`${economyCatalog.food.orders.templates.length} шаблонов · до ${economyCatalog.food.orders.slots} просьб, по одной у жителя`));
   assert.match(value, /5 бесплатных мест, максимум 10/);
   assert.match(value, /Все расширения вместе: 680 жемчужин/);
   assert.match(value, /За 7 полученных подарков 500/);
@@ -393,6 +393,18 @@ test("stage and pearl summaries distinguish guaranteed project gates from chance
   assert.doesNotMatch(value, /Предварительный баланс/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);
   assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 315 − 380 = 35 монет/);
+});
+
+test("legacy board summary keeps its supplied capacity without promising one request per resident", () => {
+  const original = { ...data.orderBoard };
+  try {
+    Object.assign(data.orderBoard, { slots: 3, perResident: false });
+    const value = text(renderToStaticMarkup(harness(EconomyPanel).render()));
+    assert.match(value, /до 3 активных карточек/);
+    assert.doesNotMatch(value, /по одной у жителя|3 активные карточки/);
+  } finally {
+    Object.assign(data.orderBoard, original);
+  }
 });
 
 test("branch shop shows the disabled preview and current visible amounts alongside clean recipe prerequisites", () => {

@@ -81,6 +81,45 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `weekly acceptance and one delivery persist once across owner revision races and repository reload`() = runBlocking<Unit> {
+        val p = player(); val stranger = player(); economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        val catalog = EconomyRules.catalog
+        val unlocked = original.copy(buildings = catalog.buildings.associate { it.id to it.levels.last().level },
+            progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 100L }))
+        val choice = EconomyTradeRelations.weeklyBoard(unlocked, Instant.now()).offers.single { it.residentId == "builder" }
+        val seeded = unlocked.copy(inventory = choice.stages.first().items)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(seeded), p.id)
+        val before = economy.snapshot(p.hash)
+        val accept = command(p, before, "accept_weekly_order", choice.id)
+        assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, accept) }.code)
+        val accepted = economy.command(p.hash, accept)
+        assertTrue(JdbcEconomyRepository(source).command(p.hash, accept).replayed)
+        assertEquals(before.wallet, accepted.state.wallet)
+        assertEquals(before.revision + 1, accepted.state.revision)
+        val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
+        val stage = EconomyTradeRelations.weeklyBoard(persisted, Instant.now()).active!!
+        val deliver = command(p, accepted.state, "complete_resident_order", stage.id)
+        val responses = coroutineScope { List(2) { async(Dispatchers.IO) {
+            JdbcEconomyRepository(source).command(p.hash, deliver)
+        } }.awaitAll() }
+        assertEquals(1, responses.count { it.replayed })
+        val after = JdbcEconomyRepository(source).snapshot(p.hash)
+        assertEquals(accepted.state.revision + 1, after.revision)
+        assertEquals(before.wallet.coins + stage.coins, after.wallet.coins)
+        assertEquals(stage.reputationXp!!.toLong(), after.tradeRelations.reputation["builder"])
+        assertEquals(1, after.tradeRelations.weekly!!.stage)
+        assertTrue(after.tradeRelations.dailyOrderXp.isEmpty())
+        assertTrue(JdbcEconomyRepository(source).command(p.hash, deliver).replayed)
+        assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, deliver.copy(requestId = UUID.randomUUID().toString()))
+        }.code)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(accept.requestId)))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(deliver.requestId)))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${deliver.requestId}"))
+        assertEquals(after.tradeRelations, JdbcEconomyRepository(source).snapshot(p.hash).tradeRelations)
+    }
+
     @Test fun `fish sales sign explicit species canonically and invalid choices leave no receipt`() = runBlocking<Unit> {
         for (action in listOf("sell", "sell_fish")) {
             val p = player(); economy.snapshot(p.hash)

@@ -4,7 +4,12 @@ import test from "node:test";
 import { auditFoodEconomy } from "../scripts/audit-food-economy.mjs";
 
 const catalog = () => JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
+const baseline = JSON.parse(readFileSync(new URL("../apps/api/src/test/resources/world/resident-order-balance-vectors.json", import.meta.url), "utf8"));
+const baselineIds = new Set(baseline.orders.map(row => row.templateId));
 const report = auditFoodEconomy(catalog());
+const baselineCatalog = catalog();
+baselineCatalog.food.orders.templates = baselineCatalog.food.orders.templates.filter(order => baselineIds.has(order.id));
+const baselineReport = auditFoodEconomy(baselineCatalog);
 
 test("exact fish classes and full cooking batches preserve their actual sale value", () => {
   const data = catalog();
@@ -49,7 +54,8 @@ test("buying raw fish and immediately submitting orders cannot mint coins", () =
 
 test("even the union of all NPC supplies cannot profitably fill a complete manufactured order", () => {
   const purchasable = report.templates.filter(row => row.completeNpcPurchaseCoins !== null);
-  assert.equal(purchasable.length, 16);
+  assert.equal(purchasable.filter(row => baselineIds.has(row.id)).length, 16, "the original 85 baskets keep their purchase comparison");
+  assert.equal(purchasable.length, 20, "the expanded catalog audits all four additional purchasable baskets");
   assert(purchasable.every(row => row.instantNpcPurchaseProfitCoins < 0));
   const snack = purchasable.find(row => row.id === "builder_trail_snack");
   assert.equal(snack.manufacturingMinutes, 48);
@@ -60,8 +66,8 @@ test("even the union of all NPC supplies cannot profitably fill a complete manuf
 });
 
 test("cooking ceilings account for extra inventory, real production and full NPC opportunity value", () => {
-  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [210]);
-  const cooked = report.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
+  assert.deepEqual(baselineReport.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [210]);
+  const cooked = baselineReport.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
   assert.deepEqual(cooked.orderCounts, { plesk_smoked_currants: 3 });
   assert.deepEqual(cooked.otherOwnedInputs, { wood: 3, currants: 6 });
   assert.equal(cooked.otherOwnedInputsSaleCoins, 510);
@@ -74,6 +80,18 @@ test("cooking ceilings account for extra inventory, real production and full NPC
   assert.equal(expanded.productionMinutes, 828);
   assert.equal(expanded.netCoins, 2580);
   assert.equal(expanded.netCoins, expanded.rewardCoins - expanded.purchaseCoins - expanded.productionCoinCost - expanded.otherOwnedInputsSaleCoins);
+});
+
+test("new mixed requests count the opportunity cost of already manufactured tools in cooking comparisons", () => {
+  const cooked = report.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
+  assert.deepEqual(cooked.orderCounts, { kamneshmyg_hot_shift: 3 });
+  assert.deepEqual(cooked.otherOwnedInputs, { tools: 3, berries: 3, charcoal: 3 });
+  assert.equal(cooked.otherOwnedInputsSaleCoins, 3180);
+  assert.equal(cooked.productionMinutes, 90, "only the newly cooked fish is timed in this stocked-input comparison");
+  assert.equal(cooked.rewardCoins, 6090);
+  assert.equal(cooked.purchaseCoins, 720);
+  assert.equal(cooked.netCoins, 2190);
+  assert.equal(cooked.netCoins, cooked.rewardCoins - cooked.purchaseCoins - cooked.productionCoinCost - cooked.otherOwnedInputsSaleCoins);
 });
 
 test("a fresh account has diverse themed orders with unique compositions and no completion delay", () => {

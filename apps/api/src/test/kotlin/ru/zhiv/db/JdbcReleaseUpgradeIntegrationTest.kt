@@ -107,7 +107,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             val before = legacyData(source, retainedTables)
             val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=52"
             val oldHistory = scalar(source, historySql)
-            val listingsSql = """SELECT jsonb_agg(to_jsonb(l)-'sale_owner_id'-'sale_proceeds_coins'-'sale_buyer_public_id'-'sale_buyer_name'-'sale_claimed_at' ORDER BY id)::text
+            val listingsSql = """SELECT jsonb_agg(to_jsonb(l)-'sale_owner_id'-'sale_proceeds_coins'-'sale_buyer_public_id'-'sale_buyer_name'-'sale_claimed_at'-'sale_buyer_character_id' ORDER BY id)::text
                 FROM economy_market_listings l"""
             val listingsBefore = scalar(source, listingsSql)
             migrateWithLegacyAdminHistory(source)
@@ -120,6 +120,8 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(oldHistory, scalar(source, historySql), "Published master migration metadata remains exact")
             assertEquals(before, legacyData(source, retainedTables), "Accounts, wallets, inventory, jobs and paid receipts survive")
             assertEquals(listingsBefore, scalar(source, listingsSql), "Old market lots keep their price, stock and ownership")
+            assertEquals("0", scalar(source, "SELECT count(*) FROM economy_market_listings WHERE sale_buyer_character_id IS NOT NULL"),
+                "Adding the world character cannot reclassify historical player sales or active listings")
             assertEquals("42", scalar(source, "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'"))
             assertEquals("true", scalar(source, "SELECT (sale_claimed_at=closed_at AND sale_proceeds_coins IS NULL)::text FROM economy_market_listings WHERE id='$soldId'"))
             assertEquals("true", scalar(source, "SELECT (status='active' AND sale_claimed_at IS NULL)::text FROM economy_market_listings WHERE id='$activeId'"))

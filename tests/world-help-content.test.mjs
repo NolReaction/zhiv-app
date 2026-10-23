@@ -292,7 +292,7 @@ test("food, building speed and orders are distinct and use current catalog numbe
   assert.match(answer("builder-food"), /только один раз/);
   assert.match(answer("resident-orders"), /Обычные заказы дают монеты, не сытость/);
   assert.match(answer("resident-orders"), /не резервируются/);
-  assert.ok(answer("resident-orders").includes(`${food.orders.slots} заказа`));
+  assert.ok(answer("resident-orders").includes(`${food.orders.slots} ${food.orders.slots === 5 ? "заказов" : "заказа"}`));
   assert.ok(answer("resident-orders").includes(`${food.orders.refreshSeconds / 3600} ч`));
   assert.ok(answer("resident-orders").includes(`${food.orders.freeReplacements} замены`));
   assert.ok(answer("resident-orders").includes(`${food.orders.replacementWindowSeconds / 3600} ч`));
@@ -303,6 +303,25 @@ test("food, building speed and orders are distinct and use current catalog numbe
   assert.doesNotMatch(answer("resident-orders"), /через 30|ждёт 60/);
   assert.match(answer("campfire"), /Рыба другого класса автоматически не подставляется/);
   assert.match(answer("campfire"), /Сытный ужин требует редкую рыбу/);
+});
+
+test("relationship guidance explains the actual limits, scoped benefits and preserved weekly stages", () => {
+  const relations = economyCatalog.tradeRelations;
+  const friendship = answer("trade-relations"), weekly = answer("weekly-orders"), preparation = answer("order-preparation");
+  assert.ok(friendship.includes(`до ${relations.dailyOrderXpCap} в сутки`));
+  assert.ok(friendship.includes(`до ${relations.dailyPurchaseXpCap} в сутки у торговца`));
+  assert.ok(friendship.includes(`${relations.maxBonusBps / 100}%`));
+  for (const resident of ["Шишколап", "Лопоух", "Камнешмыг", "Плёски", "Листохвоста"]) assert.ok(friendship.includes(resident));
+  assert.match(friendship, /Припасы, рыба и жемчуг без этой скидки/);
+  assert.match(friendship, /Учебные и этапные просьбы репутацию не дают/);
+  assert.match(weekly, /все три этапа/);
+  assert.match(weekly, /семь суток после принятия/);
+  assert.match(weekly, /уже полученные награды сохранятся/);
+  assert.match(weekly, /условия|Условия/);
+  assert.match(preparation, /подготовка без собственных запасов/);
+  assert.match(preparation, /Одновременно занятые места/);
+  assert.match(preparation, /не гарантирует нужный класс рыбы/);
+  for (const id of ["trade-relations", "weekly-orders", "order-preparation"]) assert.deepEqual(topic(id).action.target, { kind: "orders" });
 });
 
 test("fish-of-the-day guidance explains the actual discount and separates delivery profit from resale", () => {

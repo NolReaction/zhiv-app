@@ -119,6 +119,7 @@ object EconomyRules {
             require(catalog.explorations.all { it.seconds < rare.minSeconds })
         }
         EconomyFood.validateCatalog(catalog)
+        EconomyTradeRelations.validateCatalog(catalog)
     }
 
     /** Square-root conversion preserves a modest head start without importing beta-scale balances. */
@@ -395,11 +396,16 @@ object EconomyRules {
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
+            "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)
             "eat_food", "feed_builder" -> EconomyFood.eat(state, command.targetId, command.action == "feed_builder", now)
             "cancel_meal" -> EconomyFood.cancelMeal(state, command.targetId, reservedItems)
             "complete_resident_order", "replace_resident_order" -> when {
+                command.targetId.startsWith("weekly1_") -> {
+                    if (command.action != "complete_resident_order") economyFailure("ECONOMY_WEEKLY_CHANGED", "Эта поставка уже выполнена или поручение изменилось")
+                    EconomyTradeRelations.complete(state, command, now)
+                }
                 EconomyTutorialOrders.isTutorialId(command.targetId) -> EconomyTutorialOrders.complete(state, command)
                 EconomyStageOrders.isStageId(command.targetId) -> EconomyStageOrders.complete(state, command, now, reservedItems)
                 else -> EconomyFood.order(state, command.targetId, command.action == "replace_resident_order", now, command.totalPrice, fishSelection = command.fishSelection)
@@ -433,11 +439,12 @@ object EconomyRules {
                 val beforeStock = EconomyFishStock.normalized(state).orEmpty()
                 val afterStock = EconomyFishStock.normalized(spent).orEmpty()
                 val fishStockCost = beforeStock.mapValues { (id, amount) -> amount - (afterStock[id] ?: 0L) }.filterValues { it > 0L }
+                val tradeSpeed = if (recipe.buildingId == "woodlot") EconomyTradeRelations.bonusBps(state, "lopukh") else 0
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
-                    startedAt = now.toString(), finishesAt = (if (firstHarvest) now.plusMillis(1) else now.plusSeconds(recipe.seconds * command.quantity)).toString(),
+                    startedAt = now.toString(), finishesAt = (if (firstHarvest) now.plusMillis(1) else now.plusSeconds(EconomyFood.workDuration(recipe.seconds * command.quantity, 0, tradeSpeed))).toString(),
                     rewards = recipe.rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version,
                     collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) },
-                    fishStockCost = fishStockCost.takeIf { it.isNotEmpty() })
+                    fishStockCost = fishStockCost.takeIf { it.isNotEmpty() }, tradeSpeedBps = tradeSpeed)
                 requireRewardCapacity(state, job.rewards)
                 spent.copy(jobs = state.jobs + job, tutorialOrder = spent.tutorialOrder.copy(
                     firstHarvestPrepared = spent.tutorialOrder.firstHarvestPrepared || firstHarvest)) to
@@ -521,7 +528,8 @@ object EconomyRules {
                     catches.forEach { fishId -> rewards[fishId] = (rewards[fishId] ?: 0) + 1 }
                 }
                 val meal = if (mining) null else EconomyFood.pendingMeal(state, "hero")
-                val tripSeconds = EconomyFood.mealDuration(exploration.seconds, meal?.speedBps ?: 0)
+                val tradeSpeed = if (mining) EconomyTradeRelations.bonusBps(state, "kamneshmyg") else 0
+                val tripSeconds = EconomyFood.workDuration(exploration.seconds, meal?.speedBps ?: 0, tradeSpeed)
                 val rare = catalog.rareDrops?.takeIf { (state.buildings["home"] ?: 1) >= it.requiredHomeLevel }
                     ?.let { EconomyRareDrops.prepare(if (mining) state.minerRareDropState else state.rareDropState, tripSeconds, it) }
                 rare?.let { rewards.putAll(it.rewards) }
@@ -530,7 +538,7 @@ object EconomyRules {
                 val job = EconomyJob(id, "exploration", exploration.id, startedAt = now.toString(),
                     finishesAt = now.plusSeconds(tripSeconds).toString(), rewards = rewards.filterValues { it > 0 }, cost = cost,
                     catalogVersion = catalog.version, fishing = fishingCatch, rareDrop = rare?.delivery, meal = meal,
-                    actorId = if (mining) "miner" else "mochlik")
+                    actorId = if (mining) "miner" else "mochlik", tradeSpeedBps = tradeSpeed)
                 requireRewardCapacity(state, job.rewards)
                 spend(state, cost).copy(jobs = state.jobs + job, fishingCastSeed = seed,
                     food = if (meal == null) state.food else state.food.copy(heroMeal = null),
@@ -588,9 +596,10 @@ object EconomyRules {
                 requireJobCapacity(state)
                 val meal = EconomyFood.pendingMeal(state, "builder")
                 val cost = if (tutorialWorkshop) EconomyCost(0, emptyMap()) else upgrade.cost
+                val tradeSpeed = EconomyTradeRelations.bonusBps(state, "builder")
                 val job = EconomyJob(command.requestId, "construction", building.id, targetLevel = next,
-                    startedAt = now.toString(), finishesAt = now.plusSeconds(EconomyFood.mealDuration(upgrade.seconds, meal?.speedBps ?: 0)).toString(),
-                    cost = cost, catalogVersion = catalog.version, meal = meal)
+                    startedAt = now.toString(), finishesAt = now.plusSeconds(EconomyFood.workDuration(upgrade.seconds, meal?.speedBps ?: 0, tradeSpeed)).toString(),
+                    cost = cost, catalogVersion = catalog.version, meal = meal, tradeSpeedBps = tradeSpeed)
                 // The aid is earmarked for this job, without changing inventory,
                 // reserved market stock or a legacy negative coin balance.
                 val funded = if (tutorialWorkshop) state else spend(state, cost)
@@ -690,7 +699,8 @@ object EconomyRules {
                 if (rod != null && rod.id in state.fishing.ownedRods) economyFailure("ECONOMY_FISHING_OWNED", "Эта удочка уже есть в коллекции")
                 if (hook != null && hook.id in state.fishing.ownedHooks) economyFailure("ECONOMY_FISHING_OWNED", "Этот крючок уже есть в коллекции")
                 if (command.quantity > offer.remaining) economyFailure("ECONOMY_FISHING_STOCK", "Плёска уже продала эту партию. Дождитесь новых предложений")
-                val price = offer.unitPrice * command.quantity
+                val price = EconomyTradeRelations.discount(state, "plesk", offer.unitPrice,
+                    offer.kind in setOf("rod", "hook", "bait")) * command.quantity
                 if (price > command.totalPrice) economyFailure("ECONOMY_FISHING_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Плёски")
                 val spent = spend(state, EconomyCost(coins = price))
                 val next = if (rod != null) spent.copy(fishing = state.fishing.copy(ownedRods = state.fishing.ownedRods + rod.id))
@@ -698,9 +708,9 @@ object EconomyRules {
                     else spent.copy(inventory = addItems(spent.inventory, mapOf(offer.itemId to command.quantity)))
                 addItems(next.inventory, reservedItems)
                 assertStorageTransition(state, next, reservedItems)
-                next.copy(fishingShop = shop.copy(offers = shop.offers.map {
+                EconomyTradeRelations.awardPurchase(next.copy(fishingShop = shop.copy(offers = shop.offers.map {
                     if (it.id == offer.id) it.copy(remaining = it.remaining - command.quantity) else it
-                })) to if (rod != null) "Удочка добавлена в коллекцию" else if (hook != null) "Крючок добавлен в коллекцию" else "Покупка у Плёски отправлена на склад"
+                })), "plesk", price, now) to if (rod != null) "Удочка добавлена в коллекцию" else if (hook != null) "Крючок добавлен в коллекцию" else "Покупка у Плёски отправлена на склад"
             }
             "equip_fishing_rod" -> {
                 if (catalog.fishing?.rods?.none { it.id == command.targetId } != false || command.targetId !in state.fishing.ownedRods)

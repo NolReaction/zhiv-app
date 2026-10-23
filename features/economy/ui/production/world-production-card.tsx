@@ -9,6 +9,7 @@ import { ProductIcon, itemName, number } from "@/features/economy/ui/shared/worl
 import { worldRecipeDuration } from "@/features/economy/ui/stations/world-recipe-groups";
 import { fishStockRequirements, fishSelectionMatches, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { canPrepareTutorialHarvest } from "@/features/economy/domain/tutorial-order";
+import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import styles from "./world-production-card.module.css";
 
@@ -34,7 +35,9 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
   const results = Object.entries(recipe.rewards);
   const title = results.length === 1 ? itemName(state, results[0][0]) : recipe.name.split(" · ")[0];
   const firstHarvest = tutorialHarvestActive && canPrepareTutorialHarvest(state, recipe.id);
-  const duration = firstHarvest ? "Сразу · первый урожай" : worldRecipeDuration(recipe.seconds);
+  const tradeSpeedBps = recipe.buildingId === "woodlot" ? tradeRelationBonusBps(state, "lopukh", state.catalog) : 0;
+  const duration = firstHarvest ? "Сразу · первый урожай" : worldRecipeDuration(recipe.buildingId === "woodlot"
+    ? tradeWorkDuration(state, recipe.seconds, "lopukh", 0, state.catalog) : recipe.seconds);
   const reason = worldProductionReason(state, recipe, 1);
   const accessReason = worldRecipeAccessReason(state, recipe);
   const costs = [...(recipe.cost.coins > 0 ? [["coins", recipe.cost.coins] as const] : []), ...Object.entries(recipe.cost.items)];
@@ -118,6 +121,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
       <span className={styles.time}><Clock3 size={12} aria-hidden="true" />{duration}{restriction && <LockKeyhole className={styles.lock} size={12} aria-hidden="true" />}</span>
       <span className={styles.details}>
         {accessReason && <span className={styles.accessReason} data-recipe-access>{accessReason}</span>}
+        {tradeSpeedBps > 0 && <span className={styles.benefits} data-production-trade-bonus>Лопоух: +{number(tradeSpeedBps / 100)}% к скорости</span>}
         {costs.length > 0 && <span className={styles.costs} data-production-inputs aria-label="Понадобится">{costs.map(([id, amount]) => {
           const available = id === "coins" ? state.wallet.coins : state.inventory[id] ?? 0;
           const missing = available < amount;

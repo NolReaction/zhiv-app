@@ -72,8 +72,9 @@ class EconomyOrderProgressionTest {
                 assertRecipeAvailable(dependency, buildings, label, active + recipe.id)
             }
         }
-        assertEquals(85, templates.size)
-        assertEquals(templates.keys, balance.orders.map { it.templateId }.toSet())
+        val baselineIds = balance.orders.map { it.templateId }.toSet()
+        assertEquals(85, baselineIds.size, "The original balance contract still covers all 85 existing templates")
+        assertEquals(baselineIds, templates.keys.intersect(baselineIds))
         assertEquals(85, balance.orders.size)
         balance.orders.forEach { expected ->
             val source = templates.getValue(expected.templateId)

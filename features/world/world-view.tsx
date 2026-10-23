@@ -125,7 +125,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     setPantryFishSale(previous => value ? previous?.owner === ownerPublicId && previous.open ? previous : { owner: ownerPublicId, open: true }
       : previous?.owner === ownerPublicId ? null : previous);
   }, [ownerPublicId]);
-  const [orderEntry, setOrderEntry] = useState<{ residentId?: "plesk" | "builder"; request: number }>({ request: 0 });
+  const [orderEntry, setOrderEntry] = useState<{ residentId?: WorldResidentId; request: number }>({ request: 0 });
   const [helpEntry, setHelpEntry] = useState<{ context?: WorldHelpContext; topicId?: string; request: number }>({ request: 0 });
   const [profileEntry, setProfileEntry] = useState<{ tab: WorldProfileDestination; request: number }>({ tab: "profile", request: 0 });
   const lastHelpContext = useRef<WorldHelpContext | undefined>(undefined);
@@ -400,7 +400,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     panelReturnKind.current = next;
     setPanel(next);
   }, [panel, quickMenu, clearObject, ownerPublicId]);
-  const openOrders = useCallback((residentId?: "plesk" | "builder", trigger?: HTMLElement) => {
+  const openOrders = useCallback((residentId?: WorldResidentId, trigger?: HTMLElement) => {
     if (economy.snapshot && economy.snapshot.ownerPublicId !== ownerPublicId) return;
     const source = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setOrderEntry(value => ({ residentId, request: value.request + 1 }));
@@ -571,7 +571,8 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const locked = busy || uncertain;
   const ownedGifts = new Set([...snapshot.gifts, ...(items ?? []), ...naturalItems(bestStreakDays)]);
   const quickSection = quickMenu === "pantry" || quickMenu === "expeditions" ? quickMenu : null;
-  const orders = economy.snapshot?.ownerPublicId === ownerPublicId ? orderJournalSummary(economy.snapshot, economy.now, undefined, mainCourseActive) : { total: 0, ready: 0 };
+  const introducedResidents: WorldResidentId[] = ["builder", "plesk", ...(lopukhAvailable ? ["lopukh" as const] : []), ...(quarryBuilt ? ["kamneshmyg" as const] : []), ...(leaftailAvailable ? ["leaftail" as const] : [])];
+  const orders = economy.snapshot?.ownerPublicId === ownerPublicId ? orderJournalSummary(economy.snapshot, economy.now, undefined, mainCourseActive, introducedResidents) : { total: 0, ready: 0 };
   const quickGuideEnabled = sectionsReady && !mainCourseActive && !panel && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen;
   const warehouseState = economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot : null;
   const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : "Ещё";
@@ -670,7 +671,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
         if (dailyTrigger.current?.isConnected) dailyTrigger.current.focus({ preventScroll: true });
         else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="profile"]')?.focus({ preventScroll: true });
       }} />
-    <WorldCharacters open={charactersOpen} onClose={closeCharacters} onResident={openCharacterResident} quarryBuilt={quarryBuilt} lopukhAvailable={lopukhAvailable} lopukhUnlocked={woodlotBuilt} leaftailAvailable={leaftailAvailable} leaftailUnlocked={merchantUnlocked} focusedCharacter={focusedCharacter}
+    <WorldCharacters open={charactersOpen} onClose={closeCharacters} onResident={openCharacterResident} quarryBuilt={quarryBuilt} lopukhAvailable={lopukhAvailable} lopukhUnlocked={woodlotBuilt} leaftailAvailable={leaftailAvailable} leaftailUnlocked={merchantUnlocked} focusedCharacter={focusedCharacter} economy={economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot : null}
       onCloseAutoFocus={event => {
         event.preventDefault();
         if (leavingCharacters.current) { leavingCharacters.current = false; return; }
@@ -707,6 +708,10 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     {residentId !== "plesk" && residentId !== "builder" && <WorldVillagerDialog key={`${ownerPublicId}:${residentId}`} id={residentId as NewVillagerId}
       open={residentOpen && residentOwner === ownerPublicId && worldResidentAvailable(residentId, quarryBuilt, leaftailAvailable, lopukhAvailable)} ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline !== false} quarryBuilt={quarryBuilt} lopukhAvailable={lopukhAvailable}
       onClose={closeResident} onBack={residentFromCharacters ? closeResident : undefined}
+      onOpenOrders={() => {
+        if (currentOwner.current !== ownerPublicId || residentOwner !== ownerPublicId) return;
+        leaveResident(() => openOrders(residentId));
+      }}
       onOpenStation={stationId => {
         if (currentOwner.current !== ownerPublicId || residentOwner !== ownerPublicId) return;
         leaveResident(() => openStation(stationId));
@@ -762,7 +767,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
         {open && panel === "orders" && <SectionGuide key={`${ownerPublicId}:orders`} owner={ownerPublicId} section="orders" enabled={sectionsReady && !mainCourseActive} targetRoot={panelRoot} />}
         {open && panel === "economy" && economyTab === "market" && <SectionGuide key={`${ownerPublicId}:market`} owner={ownerPublicId} section="market" enabled={sectionsReady && playerMarketUnlocked} targetRoot={panelRoot} />}
         <div className={styles.sheetBody}>
-          {panel === "orders" && <WorldOrderJournal tutorialOnly={mainCourseActive} key={`${ownerPublicId}:${orderEntry.request}`} economy={economy} residentId={orderEntry.residentId} onNavigateExpeditions={openExpeditions} onNavigateStation={openStation} />}
+          {panel === "orders" && <WorldOrderJournal tutorialOnly={mainCourseActive} key={`${ownerPublicId}:${orderEntry.request}`} economy={economy} residentId={orderEntry.residentId} introducedResidents={introducedResidents} onNavigateExpeditions={openExpeditions} onNavigateStation={openStation} />}
           {panel === "help" && <WorldHelp key={`${ownerPublicId}:${helpEntry.request}`} economy={economy} world={world} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} isOnline={isOnline} context={helpEntry.context} initialTopicId={helpEntry.topicId} onNavigate={navigateHelp} onReplayTutorial={replayOnboarding} />}
           {panel === "shop" && <CurrencyShopPanel key={`${ownerPublicId}:${shopPage}`} state={economy.snapshot} initialPage={shopPage} onRedeemed={economy.reconcile} />}
           {panel === "economy" && <EconomyPanel key={`${economyTab}:${economyFocusId ?? ""}`} economy={economy} initialTab={economyTab} initialFocusId={economyFocusId} standalone onNavigate={openEconomy} onOpenNeighbor={openNeighbor} />}

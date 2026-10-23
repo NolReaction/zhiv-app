@@ -2,6 +2,8 @@ import { economyCatalog, type EconomyFishingShop, type EconomyState } from "./mo
 import { remainingTimePearlPrice } from "./time-price";
 import { fishingState } from "./fishing";
 import { secureRareInteger, type RareRandomInteger } from "./rare-drops";
+import { tradePurchaseUnitPrice } from "./trade-pricing";
+import type { EconomyCatalog } from "./model";
 
 // Keep integer selection and replacement eligibility identical to EconomyFishingShop.kt.
 // Draws happen only on the authenticated server; a persisted receipt owns the result.
@@ -11,6 +13,12 @@ const rarityWeight: Record<Rarity, number> = { common: 100, uncommon: 60, rare: 
 type ShopState = Pick<EconomyState, "buildings" | "fishing" | "fishingShop">;
 type Candidate = Omit<EconomyFishingShop["offers"][number], "id"> & { rarity: Rarity; weight: number };
 type Kind = Candidate["kind"];
+/** The stored offer retains its base quote; reputation is resolved once at buy. */
+export function fishingOfferUnitPrice(state: Pick<EconomyState, "tradeRelations">,
+  offer: Pick<EconomyFishingShop["offers"][number], "kind" | "unitPrice">,
+  catalog: EconomyCatalog = economyCatalog): number {
+  return tradePurchaseUnitPrice(state, "plesk", offer.kind, offer.unitPrice, "coins", catalog);
+}
 const categories: Kind[] = ["rod", "hook", "bait", "fish"];
 function candidates(state: ShopState): Candidate[] {
   const catalog = economyCatalog.fishing!;

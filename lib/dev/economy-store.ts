@@ -21,6 +21,7 @@ import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order"
 import { ensureStageOrders, stageOrdersProgress } from "@/features/economy/domain/stage-orders";
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "@/features/economy/domain/item-unlocks";
 import { foodState } from "@/features/economy/domain/food";
+import { tradeRelationsState } from "@/features/economy/domain/trade-relations";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
@@ -98,6 +99,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   state.jobs = state.jobs.map(job => publicEconomyJob(job, now));
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
+    tradeRelations: tradeRelationsState(state),
     marketSlots: marketSlotCount(state), unlockedItems,
     productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, leaftailShop: state.leaftailShop ?? { cycle: -1, purchased: {} }, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }

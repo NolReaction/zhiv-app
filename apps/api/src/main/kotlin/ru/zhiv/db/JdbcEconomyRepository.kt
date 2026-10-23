@@ -118,7 +118,7 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
     val s = EconomyStageOrders.pin(row.state, now=now)
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map { EconomyPublicJobs.project(it, now) }, s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
-        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders,
+        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders, tradeRelations = s.tradeRelations,
         workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder, stageOrders = s.stageOrders,
         marketSlots = s.marketSlots, unlockedItems = s.unlockedItems, leaftailShop = s.leaftailShop)
 }
@@ -138,6 +138,12 @@ internal fun economyLedgerContext(before: EconomyState, command: EconomyCommand,
         val jobs = (if (command.action == "start_garden_collection") after ?: before else before).jobs.filter { it.collection?.batchId == batchId }
         return mapOf("originAction" to "start_production", "targetId" to "garden", "batchId" to batchId,
             "jobIds" to jobs.joinToString(",") { it.id }, "recipeIds" to jobs.mapNotNull { it.recipeId }.joinToString(","))
+    }
+    if (now != null && command.action == "accept_weekly_order") {
+        EconomyTradeRelations.weeklyBoard(before, now).offers.find { it.id == command.targetId }?.let { return mapOf("targetId" to it.templateId) }
+    }
+    if (now != null && command.action == "complete_resident_order" && command.targetId.startsWith("weekly1_")) {
+        EconomyTradeRelations.weeklyBoard(before, now).progress?.let { return mapOf("targetId" to it.templateId) }
     }
     if (command.action in setOf("complete_resident_order", "replace_resident_order") && now != null) {
         val offer = EconomyFood.residentOrderBoard(before, now).offers.find { it.id == command.targetId }

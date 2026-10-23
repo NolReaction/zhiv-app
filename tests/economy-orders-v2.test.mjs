@@ -126,7 +126,7 @@ test("completion is immediately repeatable with new goods and never consumes rep
   const state = fresh(); state.wallet.pearls = 10;
   const templates = [];
   for (let index = 0; index < 12; index++) {
-    const offer = board(state).offers[index % 3]; templates.push(offer.templateId);
+    const offer = board(state).offers[index % board(state).offers.length]; templates.push(offer.templateId);
     const neighbours = board(state).offers.filter(entry => entry.slot !== offer.slot);
     state.inventory = { ...offer.items };
     const beforeCoins = state.wallet.coins;
@@ -168,7 +168,7 @@ test("legacy cooldowns migrate without spending or state writes and old offer ID
   assert.deepEqual(state, previous);
   failWithoutChanges(state, "complete_resident_order", "order_82934_0_0_plesk_river_catch", "ECONOMY_ORDER_CHANGED");
   apply(state, "replace_resident_order", actual.offers[0].id);
-  assert.equal(state.residentOrders.version, 2); assert.equal(state.residentOrders.completed, 7); assert.equal(state.residentOrders.earnedCoins, 1234);
+  assert.equal(state.residentOrders.version, 3); assert.equal(state.residentOrders.completed, 7); assert.equal(state.residentOrders.earnedCoins, 1234);
 });
 
 test("unlocking a building does not reroll initial cards even before the first order command", () => {
@@ -176,7 +176,7 @@ test("unlocking a building does not reroll initial cards even before the first o
   state.jobs.push({ id: crypto.randomUUID(), kind: "construction", targetId: "home", recipeId: null, targetLevel: 5,
     startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now).toISOString(), rewards: {}, cost: { coins: 0, items: {} }, catalogVersion: 3 });
   apply(state, "claim_job", state.jobs[0].id);
-  assert.equal(state.buildings.home, 5); assert.equal(state.residentOrders.version, 2);
+  assert.equal(state.buildings.home, 5); assert.equal(state.residentOrders.version, 3);
   assert.deepEqual(board(state).offers, before.offers);
 });
 

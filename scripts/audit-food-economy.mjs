@@ -25,7 +25,7 @@ export function auditFoodEconomy(catalog) {
   assert.equal(mealIds.size, food.meals.length, "Duplicate meal");
   const positiveInt = value => Number.isSafeInteger(value) && value > 0;
   const orders = food.orders;
-  assert.equal(orders.slots, 3);
+  assert.equal(orders.slots, 5);
   for (const key of ["refreshSeconds", "replacementWindowSeconds", "freeReplacements", "replacementPricePearls", "recentLimit"])
     assert(positiveInt(orders[key]), `Invalid ${key}`);
   for (const key of ["replacementSeconds", "completionSeconds"]) assert.equal(orders[key], 0, "Completed and replaced orders have no cooldown");
@@ -156,7 +156,7 @@ export function auditFoodEconomy(catalog) {
       sevenDayBuildSeconds: duration(604800, meal.builderSpeedBps), fishingReturn };
   });
   const templates = orders.templates.map(order => {
-    assert(["plesk", "builder"].includes(order.residentId), `${order.id}: unknown resident`);
+    assert(["plesk", "builder", "lopukh", "kamneshmyg", "leaftail"].includes(order.residentId), `${order.id}: unknown resident`);
     assert(positiveInt(order.coins) && order.coins % scale === 0, `${order.id}: invalid coin reward`);
     assert(Object.keys(order.items).length > 0, `${order.id}: empty order`);
     const guaranteedBuildings = { home: order.requiredHomeLevel, garden: 1, warehouse: 1, ...order.requiredBuildings };

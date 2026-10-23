@@ -1,6 +1,7 @@
 import { economyCatalog, type EconomyCatalog, type EconomyLeaftailShop, type EconomyState } from "./model";
+import { tradePurchaseUnitPrice } from "./trade-pricing";
 
-type ShopState = Pick<EconomyState, "buildings" | "leaftailShop"> & Partial<Pick<EconomyState, "fishing" | "wardrobe">> & { ownerPublicId?: string };
+type ShopState = Pick<EconomyState, "buildings" | "leaftailShop"> & Partial<Pick<EconomyState, "fishing" | "wardrobe" | "tradeRelations">> & { ownerPublicId?: string };
 
 export const leaftailTravelMessage = (requiredHomeLevel: number) =>
   `Листохвост в путешествии. Вернётся, когда дом достигнет ${requiredHomeLevel}-го уровня.`;
@@ -102,7 +103,11 @@ export function leaftailShopView(state: ShopState, now: number, catalog: Economy
       const owned = kind === "wardrobe" ? Boolean(state.wardrobe?.includes(offer.itemId))
         : kind === "rod" ? Boolean(state.fishing?.ownedRods.includes(offer.itemId))
         : kind === "hook" ? Boolean(state.fishing?.ownedHooks.includes(offer.itemId)) : false;
-      return { ...offer, kind, targetId: leaftailOfferTarget(catalog, stock.cycle, offer.id),
+      const unitPrice = tradePurchaseUnitPrice(state, "leaftail", kind, offer.unitPrice, offer.currency, catalog);
+      return { ...offer, baseUnitPrice: offer.unitPrice, unitPrice,
+        priceCoins: offer.currency === "coins" ? unitPrice : 0,
+        pricePearls: offer.currency === "pearls" ? unitPrice : 0,
+        kind, targetId: leaftailOfferTarget(catalog, stock.cycle, offer.id),
         requiredHomeLevel, unlocked: (state.buildings.home ?? 1) >= requiredHomeLevel, owned,
         section: kind === "wardrobe" ? "wardrobe" as const : kind !== "item" ? "tackle" as const
           : catalog.items.find(item => item.id === offer.itemId)?.category === "special" ? "finds" as const : "supplies" as const,
