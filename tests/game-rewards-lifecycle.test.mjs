@@ -266,6 +266,36 @@ test("confirmed actions use the latest callback and suppress replies to a hook t
   }
 });
 
+for (const kind of ["daily", "achievement"]) test(`keyed ${kind} unmount revokes confirmation before a shared session disconnects`, async () => {
+  audio.events.length = 0;
+  const wait = deferred(); let command, currentOwner, callbacks = 0;
+  const app = browser((call, initialOwner) => {
+    if (call.options.method === "GET") {
+      const data = view(currentOwner ?? initialOwner);
+      Object.assign(data.achievementRewards.find(row => row.achievementId === "explorer" && row.level === 1),
+        { eligible: true, earnedAt: at, blockedReason: null });
+      return Response.json(data);
+    }
+    command = JSON.parse(call.options.body); return wait.promise;
+  });
+  try {
+    const keyed = app.mount({ confirmed: () => callbacks++ }), world = app.mount(); await app.settle();
+    const claim = kind === "daily" ? keyed.controller.claimDaily() : keyed.controller.claimAchievement("explorer", 1);
+    await app.settle();
+    assert.equal(app.writes.length, 1);
+    // Both profile achievement entries are keyed by owner. The world HUD updates
+    // in place, retaining the old session until its passive disconnect runs.
+    currentOwner = `SWAP-${String(++nextOwner).padStart(4, "0")}-AAAA`;
+    world.props.owner = currentOwner; app.render(world, false);
+    app.close(keyed);
+    assert.equal(app.writes[0].options.signal.aborted, false, "the shared session must remain active to exercise the retired hook fence");
+    wait.resolve(Response.json(receipt(command)));
+    assert.equal(await claim, undefined, "a retired control cannot return a confirmation for the new account");
+    assert.equal(audio.events.length, 0, "a retired old-owner control cannot sound for the new account");
+    assert.equal(callbacks, 0, "a retired control cannot refresh old economy or achievement state");
+  } finally { app.restore(); }
+});
+
 test("polling and remounting preserve an uncertain receipt without repeating a claim", async () => {
   let attempted = 0;
   const app = browser((call, owner) => {

@@ -25,7 +25,12 @@ export function useGameRewards(owner: string | null, isOnline: boolean, onSessio
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const [now, setNow] = useState(() => session.now());
   const confirmed = useRef({ owner, callback: onConfirmed });
-  useLayoutEffect(() => { confirmed.current = { owner, callback: onConfirmed }; }, [owner, onConfirmed]);
+  useLayoutEffect(() => {
+    confirmed.current = { owner, callback: onConfirmed };
+    // Keyed profile entries unmount on account changes before shared sessions
+    // disconnect in passive effects. Retire their pending confirmations now.
+    return () => { confirmed.current = { owner: null, callback: undefined }; };
+  }, [owner, onConfirmed]);
   useEffect(() => onSessionLost ? session.onSessionLost(onSessionLost) : undefined, [session, onSessionLost]);
   useEffect(() => {
     if (!owner || !isOnline) return;
