@@ -619,6 +619,17 @@ object EconomyRules {
                 assertStorageTransition(state, projected, reservedItems)
                 jobs.fold(state) { next, job -> claimJob(next, job, now, reservedItems) } to "Весь собранный урожай доставлен на склад"
             }
+            "claim_production" -> {
+                if (!productionStationSupported(command.targetId)) economyFailure("ECONOMY_PRODUCTION_STATION", "В этом месте нет производства")
+                val jobs = state.jobs.filter { it.kind == "production" && it.targetId == command.targetId && it.collection == null &&
+                    !(it.targetId == "garden" && it.rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L }) &&
+                    !now.isBefore(Instant.parse(it.finishesAt)) }
+                if (jobs.isEmpty()) economyFailure("ECONOMY_JOB_NOT_READY", "Пока нет готовой продукции")
+                val projected = state.copy(inventory = jobs.fold(state.inventory) { inventory, job -> addItems(inventory, job.rewards) })
+                addItems(projected.inventory, reservedItems)
+                assertStorageTransition(state, projected, reservedItems)
+                jobs.fold(state) { next, job -> claimJob(next, job, now, reservedItems) } to "Вся готовая продукция доставлена в кладовую"
+            }
             "claim_job" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
                 if (job.collection?.batchId != null) economyFailure("ECONOMY_COLLECTION_BATCH_REQUIRED", "Заберите весь собранный урожай вместе")

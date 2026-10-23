@@ -12,7 +12,7 @@ export const analyticsActions: Record<string, string> = {
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя", cancel_meal: "Возврат обеда",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   start_production: "Начало производства", cancel_production: "Отмена производства", buy_production_slot: "Место производства", buy_market_slot: "Место прилавка", start_collection: "Начало сбора",
-  start_garden_collection: "Сбор всех созревших ягод", claim_garden_collection: "Получение корзины урожая",
+  start_garden_collection: "Сбор всех созревших ягод", claim_garden_collection: "Получение корзины урожая", claim_production: "Сбор готового производства",
   start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки", start_construction: "Начало стройки",
   speedup_construction: "Ускорение стройки", claim_job: "Получение результата", sell: "Продажа припасов",
   buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы",

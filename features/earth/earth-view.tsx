@@ -233,7 +233,7 @@ function EarthViewSession({ ownerPublicId, active, visible, onReadyChange, camer
   };
   const meetPerson = sharedPeople.find(person => person.circleId === meetCircleId) ?? null;
   const walking = useEarthWalkingRoute({ owner: ownerPublicId, foreground: locationEnabled && panel === null,
-    online: isOnline, allowed: location.allowed, position: location.status === "active" ? location.position : null, person: meetPerson });
+    online: isOnline, allowed: location.allowed, position: location.position, person: meetPerson });
   const prepareAtlasSelection = () => {
     setMeetCircleId(null);
     setMeetFocusTarget(null);

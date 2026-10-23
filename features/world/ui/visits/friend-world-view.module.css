@@ -19,6 +19,8 @@
 .visit .objectHeading button { flex: 0 0 44px; width: 44px; padding: 0; color: var(--visit-ink); background: #596b4310; border-color: #8e9b7650; }
 .visit .objectHeading button:hover { color: var(--visit-ink); background: #596b4320; border-color: #8e9b76; }
 .buildingLevel { margin: 5px 0 0; color: #5a6e50; font-size: 13px; }
+.station { margin-top: 11px; padding-top: 10px; border-top: 1px solid #83936b3b; }
+.stationName { margin: 0; font-size: 14px; font-weight: 600; }
 .jobs { display: grid; gap: 8px; list-style: none; margin: 11px 0 0; padding: 0; }
 .jobs li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 12px; border-top: 1px solid #83936b3b; padding-top: 8px; font-size: 13px; }
 .jobs strong { font-size: 12px; font-weight: 500; color: #50673f; font-variant-numeric: tabular-nums; }

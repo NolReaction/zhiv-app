@@ -150,3 +150,20 @@ test("four keyboard-accessible departments expose only this delivery and a real 
   h.economy.snapshot.catalog.leaftailShop.travelOffers = [];
   h.switchTo("Одежда"); assert.match(h.render().html(), /data-leaftail-empty/);
 });
+
+test("Leaf-tail tackle keeps its named class visible on cards and purchase confirmation", () => {
+  const h = harness(); h.switchTo("Снасти");
+  const rendered = h.render(), offers = view(h.economy.snapshot).offers.filter(offer => offer.section === "tackle");
+  assert.ok(offers.some(offer => offer.kind === "rod"));
+  for (const offer of offers) {
+    const gear = offer.kind === "rod" ? h.economy.snapshot.catalog.fishing.rods.find(item => item.id === offer.itemId)
+      : offer.kind === "hook" ? h.economy.snapshot.catalog.fishing.hooks.find(item => item.id === offer.itemId)
+        : h.economy.snapshot.catalog.fishing.baits.find(item => item.itemId === offer.itemId);
+    const card = rendered.nodes.find(node => node.props["data-leaftail-item"] === offer.itemId);
+    assert.match(renderToStaticMarkup(card), new RegExp(`data-fish-rarity="${gear.rarity}"`), `${offer.itemId} shows its catalog class without hover`);
+  }
+  const rod = offers.find(offer => offer.kind === "rod");
+  h.buy(rod.itemId).props.onClick();
+  const rarity = h.economy.snapshot.catalog.fishing.rods.find(item => item.id === rod.itemId).rarity;
+  assert.match(h.render().html(), new RegExp(`data-fish-rarity="${rarity}"`));
+});

@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
-import { EARTH_POSITION_MAX_AGE_MS, type EarthMapPerson } from "@/lib/earth-sharing-contract";
+import { type EarthMapPerson } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
 import { canUseEarthWalkingRoute, createEarthWalkingRouteBinding, earthWalkingRouteErrorMessage, earthWalkingRouteLimiter,
   EARTH_WALKING_ROUTE_TIMEOUT_MS, EarthWalkingRouteError, fetchEarthWalkingRoute,
@@ -38,7 +38,6 @@ function browserEnvironment(): RouteEnvironment {
 export function createEarthWalkingRouteController(owner: string | null, getEnvironment: () => RouteEnvironment = browserEnvironment) {
   let snapshot = EMPTY, context = DISABLED, environment: RouteEnvironment | null = null, active = false, activation = 0;
   let generation = 0, controller: AbortController | null = null, binding: EarthWalkingRouteBinding | null = null;
-  let selfFreshness: { timestamp: number; deadline: number } | null = null;
   let cancelTimer: (() => void) | undefined, removeAvailability: (() => void) | undefined;
   const listeners = new Set<() => void>();
   const publish = (next: EarthWalkingRouteState) => {
@@ -47,22 +46,9 @@ export function createEarthWalkingRouteController(owner: string | null, getEnvir
   };
   const retire = () => { generation++; controller?.abort(); controller = null; binding = null; };
   const eligible = () => Boolean(active && owner && environment && context.foreground && context.allowed && context.online && environment.visible() && environment.online());
-  function selfDeadline() {
-    if (!environment || !context.position || !Number.isFinite(context.position.timestamp)) return -Infinity;
-    const timestamp = context.position.timestamp;
-    const deadline = environment.monotonicNow() + Math.min(EARTH_POSITION_MAX_AGE_MS, timestamp + EARTH_POSITION_MAX_AGE_MS - environment.wallNow());
-    if (!selfFreshness || timestamp > selfFreshness.timestamp) selfFreshness = { timestamp, deadline };
-    else selfFreshness.deadline = Math.min(selfFreshness.deadline, deadline);
-    return selfFreshness.deadline;
-  }
-  const currentBinding = () => {
-    if (!eligible() || !environment) return null;
-    const deadline = selfDeadline();
-    if (environment.monotonicNow() >= deadline) return null;
-    const value = createEarthWalkingRouteBinding(owner, context.position, context.person, environment.monotonicNow(), environment.wallNow());
-    return value ? { ...value, expiresAtMonotonic: Math.min(value.expiresAtMonotonic, deadline) } : null;
-  };
-  const validBinding = (value: EarthWalkingRouteBinding | null) => eligible() && environment && environment.monotonicNow() < selfDeadline()
+  const currentBinding = () => eligible() && environment
+    ? createEarthWalkingRouteBinding(owner, context.position, context.person, environment.monotonicNow(), environment.wallNow()) : null;
+  const validBinding = (value: EarthWalkingRouteBinding | null) => eligible() && environment
     && canUseEarthWalkingRoute(value, context.position, context.person, environment.monotonicNow(), environment.wallNow());
   function schedule() {
     cancelTimer?.(); cancelTimer = undefined;
@@ -116,7 +102,7 @@ export function createEarthWalkingRouteController(owner: string | null, getEnvir
       return () => {
         if (lease !== activation) return;
         active = false; retire(); cancelTimer?.(); cancelTimer = undefined; removeAvailability?.(); removeAvailability = undefined;
-        context = DISABLED; selfFreshness = null; snapshot = EMPTY;
+        context = DISABLED; snapshot = EMPTY;
       };
     },
     update(value: EarthWalkingRouteContext) {

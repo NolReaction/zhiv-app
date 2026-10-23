@@ -149,10 +149,15 @@ test("external walking audio follows the live route guard, including middle clic
   anchor.props.onAuxClick(event({ button: 1 }));
   assert.deepEqual(cueIds(), ["ui.open", "ui.open"]);
   now = wall + 300_001;
-  const stale = event(); anchor.props.onClick(stale); assert.equal(stale.prevented, true);
-  const middle = event({ button: 1 }); anchor.props.onAuxClick(middle); assert.equal(middle.prevented, true);
+  const stale = event(); anchor.props.onClick(stale); assert.equal(stale.prevented, false);
+  const middle = event({ button: 1 }); anchor.props.onAuxClick(middle); assert.equal(middle.prevented, false);
+  assert.deepEqual(cueIds(), ["ui.open", "ui.open", "ui.open", "ui.open"], "authorized last-known destinations remain available");
+  now = wall + 3_600_000;
+  const wallExpired = event(); anchor.props.onClick(wallExpired); assert.equal(wallExpired.prevented, true);
+  const wallMiddle = event({ button: 1 }); anchor.props.onAuxClick(wallMiddle); assert.equal(wallMiddle.prevented, true);
   now = wall; clock = mono + 3_600_000;
   const expired = event(); anchor.props.onClick(expired); assert.equal(expired.prevented, true);
+  const expiredMiddle = event({ button: 1 }); anchor.props.onAuxClick(expiredMiddle); assert.equal(expiredMiddle.prevented, true);
   anchor.props.onAuxClick(event({ button: 2 })); anchor.props.onClick(event({ defaultPrevented: true }));
-  assert.deepEqual(cueIds(), ["ui.open", "ui.open"], "rejected routes never produce success feedback");
+  assert.deepEqual(cueIds(), ["ui.open", "ui.open", "ui.open", "ui.open"], "rejected routes never produce success feedback");
 });

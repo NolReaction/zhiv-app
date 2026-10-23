@@ -1,6 +1,8 @@
 import { pixelSprite } from "@/features/mochlik/pixel-sprite";
+import { formatMeetLocationUpdate } from "./location-update";
 import styles from "./position-marker.module.css";
 
+const updates = new WeakMap<HTMLElement, HTMLSpanElement>();
 const portraits = new WeakMap<HTMLElement, HTMLCanvasElement>();
 
 /** A screen-sized pin: MapLibre owns its placement and globe occlusion. */
@@ -38,6 +40,9 @@ export function createEarthPositionMarker(): HTMLButtonElement {
   ghost.setAttribute("aria-hidden", "true");
   ghost.textContent = "👻";
   marker.append(ghost);
+  const updated = document.createElement("span");
+  updated.className = styles.updated; updated.setAttribute("aria-hidden", "true");
+  marker.append(updated); updates.set(marker, updated);
   return marker;
 }
 
@@ -60,6 +65,9 @@ export function updateEarthPositionMarkerLabel(marker: HTMLElement, accuracy?: n
   const captured = state && Number.isFinite(state.timestamp) ? new Date(state.timestamp).toLocaleString("ru-RU", {
     day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
   }) : null;
+  const update = state ? formatMeetLocationUpdate(state.timestamp, Date.now()) : null;
+  const updated = updates.get(marker);
+  if (updated) updated.textContent = update ? `Отметка · ${update.time}` : "";
   if (state) marker.setAttribute("data-ghost", String(state.ghost));
   const label = `${state?.active === false ? "Ваша последняя точка" : "Вы здесь"}${state?.ghost ? " · Призрак" : ""}${precision ? ` · точность ±${precision}` : ""}${captured ? ` · обновлено ${captured}` : ""}`;
   marker.setAttribute("aria-label", `${label}. Поздороваться с Мохликом`);

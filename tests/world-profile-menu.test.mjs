@@ -84,6 +84,13 @@ test("gifts and call stay in the default profile, and the mood preview opens a d
   assert.match(profile({ initialTab: "mood", rewards: "Подарки" }).markup, />Подарки</);
 });
 
+test("the world profile exposes achievement claims directly without leaving the game", () => {
+  const view = profile({ achievements: createElement("button", { type: "button", "aria-haspopup": "dialog", "data-achievements-ready": true }, "Достижения · 20 жемчужин") });
+  assert.match(view.markup, /Достижения · 20 жемчужин/);
+  assert.match(view.markup, /data-achievements-ready="true"/);
+  assert.doesNotMatch(profile({ activeTab: "friends", achievements: "Достижения · 20 жемчужин" }).markup, /Достижения · 20 жемчужин/);
+});
+
 test("tabs activate with arrows, Home and End, move focus and do not consume unrelated keys", () => {
   const view = profile();
   const tabs = view.elements.filter(element => element.props.role === "tab");

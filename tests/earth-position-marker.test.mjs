@@ -93,3 +93,15 @@ test("ghost presentation outlines only the own marker and preserves the actual c
   assert.match(marker.attributes["aria-label"], /^Вы здесь · точность ±10 м/);
   assert.doesNotMatch(marker.title, /Призрак/);
 });
+
+
+test("own close-up timestamp preserves the capture clock while status changes", () => {
+  const marker = createEarthPositionMarker(), timestamp = Date.UTC(2026, 9, 23, 10, 15);
+  updateEarthPositionMarkerLabel(marker, 3000, { ghost: false, timestamp, active: false });
+  const time = new Date(timestamp).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  assert.equal(marker.children[2].textContent, `Отметка · ${time}`);
+  assert.equal(marker.children[2].attributes["aria-hidden"], "true");
+  assert.match(marker.attributes["aria-label"], /Ваша последняя точка/);
+  updateEarthPositionMarkerLabel(marker, 3000, { ghost: false, timestamp, active: true });
+  assert.equal(marker.children[2].textContent, `Отметка · ${time}`, "status cannot pretend capture time advanced");
+});

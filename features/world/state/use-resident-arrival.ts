@@ -9,12 +9,15 @@ function browserStorage() {
   try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; }
 }
 
-export function useResidentArrival(storageKey: string, options: { unlocked: boolean; enabled: boolean; onboarding: MarketUnlockOnboardingCourse }) {
+export type ResidentArrivalOptions = { unlocked: boolean; enabled: boolean; confirmed?: boolean; onboarding: MarketUnlockOnboardingCourse };
+
+export function useResidentArrival(storageKey: string, options: ResidentArrivalOptions) {
   const store = useMemo(() => createResidentArrivalStore(storageKey, browserStorage()), [storageKey]);
   // This belongs to the live arrival, never to restored presentation preferences.
   const [completionNotice, setCompletionNotice] = useState<object | null>(null);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
-  const allowed = residentArrivalCanStart({ loaded: state.loaded, ...options });
+  const prepared = options.confirmed === undefined || state.prepared;
+  const allowed = prepared && residentArrivalCanStart({ loaded: state.loaded, ...options });
   const current = useRef({ store, allowed, unlocked: options.unlocked });
   useLayoutEffect(() => { current.current = { store, allowed, unlocked: options.unlocked }; }, [store, allowed, options.unlocked]);
   useEffect(() => {
@@ -23,6 +26,13 @@ export function useResidentArrival(storageKey: string, options: { unlocked: bool
     window.addEventListener("storage", restore);
     return () => window.removeEventListener("storage", restore);
   }, [store]);
+  useEffect(() => {
+    if (options.confirmed !== true || !state.loaded || state.prepared) return;
+    // The first confirmed snapshot establishes this page's baseline. Only a
+    // later locked -> unlocked transition owns a new physical arrival. Loading
+    // an established world on another device must not replay old residents.
+    store.prepare(options.unlocked);
+  }, [store, state.loaded, state.prepared, options.confirmed, options.unlocked]);
   const complete = useCallback(() => {
     if (current.current.store === store && current.current.unlocked && store.complete()) setCompletionNotice(store);
   }, [store]);
@@ -31,7 +41,7 @@ export function useResidentArrival(storageKey: string, options: { unlocked: bool
     if (current.current.store === store && current.current.allowed) setCompletionNotice(null);
   }, [store]);
   const seen = Boolean(state.progress?.arrived);
-  return { loaded: state.loaded, seen, enabled: allowed && !seen,
+  return { loaded: state.loaded && prepared, seen, enabled: allowed && !seen,
     open: allowed && !state.progress?.dismissed, complete, dismiss,
     completionNotice: allowed && seen && completionNotice === store, dismissCompletion };
 }

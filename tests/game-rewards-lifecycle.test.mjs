@@ -12,13 +12,15 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   plugins: [{ name: "rewards-lifecycle-hooks", enforce: "pre",
     resolveId(id) { if ([hooksId, audioId].includes(id)) return `\0${id}`; },
     load(id) {
-      if (id === `\0${audioId}`) return "export const getAudioRuntime = () => ({ play() {} });";
+      if (id === `\0${audioId}`) return "export const events = []; export const getAudioRuntime = () => ({ play(event) { events.push(event); } });";
       if (id === `\0${hooksId}`) return `
         let current, cursor = 0;
         function slot(create) { const index = cursor++; if (!(index in current.slots)) current.slots[index] = create(); return current.slots[index]; }
-        export function create() { return { slots: [], effects: new Set(), pending: new Map(), dirty: false }; }
+        export function create() { return { slots: [], effects: new Set(), pending: new Map(), layoutPending: new Map(), dirty: false }; }
         export function begin(root) { current = root; cursor = 0; root.dirty = false; }
-        export function flush(root) { const work = [...root.pending]; root.pending.clear(); for (const [effect, callback] of work) { effect.cleanup?.(); effect.callback = callback; effect.cleanup = callback(); } }
+        function run(pending) { const work = [...pending]; pending.clear(); for (const [effect, callback] of work) { effect.cleanup?.(); effect.callback = callback; effect.cleanup = callback(); } }
+        export function flushLayout(root) { run(root.layoutPending); }
+        export function flush(root) { flushLayout(root); run(root.pending); }
         export function replay(root) { for (const effect of root.effects) effect.cleanup?.(); for (const effect of root.effects) effect.cleanup = effect.callback?.(); }
         export function destroy(root) { for (const effect of root.effects) effect.cleanup?.(); root.effects.clear(); }
         export function useRef(value) { return slot(() => ({ current: value })); }
@@ -26,6 +28,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         export function useMemo(create, dependencies) { const memo = slot(() => ({ dependencies: undefined, value: undefined })); if (!memo.dependencies || dependencies.some((value, index) => !Object.is(value, memo.dependencies[index]))) { memo.dependencies = dependencies; memo.value = create(); } return memo.value; }
         export function useCallback(callback, dependencies) { return useMemo(() => callback, dependencies); }
         export function useEffect(callback, dependencies) { const root = current, effect = slot(() => ({ dependencies: undefined, cleanup: undefined })); root.effects.add(effect); if (!effect.dependencies || dependencies.some((value, index) => !Object.is(value, effect.dependencies[index]))) { effect.dependencies = dependencies; root.pending.set(effect, callback); } }
+        export function useLayoutEffect(callback, dependencies) { const root = current, effect = slot(() => ({ dependencies: undefined, cleanup: undefined })); root.effects.add(effect); if (!effect.dependencies || dependencies.some((value, index) => !Object.is(value, effect.dependencies[index]))) { effect.dependencies = dependencies; root.layoutPending.set(effect, callback); } }
         export function useSyncExternalStore(subscribe, getSnapshot) { const root = current; useEffect(() => subscribe(() => { root.dirty = true; }), [subscribe, getSnapshot]); return getSnapshot(); }
       `;
     },
@@ -37,6 +40,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId);
+const audio = await vite.ssrLoadModule(audioId);
 const { useGameRewards: renderRewardsHook } = await vite.ssrLoadModule("/features/game/use-game-rewards.ts");
 const { DailyRewardsDialog, DailyRewardsPanel } = await vite.ssrLoadModule("/features/game/daily-rewards.tsx");
 const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
@@ -54,7 +58,9 @@ function view(ownerPublicId, claimable = true) {
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function receipt(command) {
   return { requestId: command.requestId, rewards: view(command.ownerPublicId, false), acceptedRevision: 1, replayed: false,
-    claim: { kind: "daily", step: 1, reward, claimedAt: at }, message: "Награда получена",
+    claim: command.kind === "achievement"
+      ? { kind: "achievement", achievementId: command.achievementId, level: command.level, reward: { ...reward, pearls: 1 }, claimedAt: at }
+      : { kind: "daily", step: 1, reward, claimedAt: at }, message: "Награда получена",
     economy: { ownerPublicId: command.ownerPublicId, revision: 1, serverTime: at, wallet: { coins: 10, pearls: 1 }, inventory: {},
       buildings: { home: 1 }, storage: { capacity: 200, used: 0, reserved: 0, available: 200, overflow: 0 }, jobs: [],
       migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: economyCatalog, completedExplorations: 0 } };
@@ -83,7 +89,7 @@ function browser(transport) {
     setTimeout: (callback, delay) => schedule(callback, delay), clearTimeout: id => timers.delete(id),
     setInterval: (callback, delay) => schedule(callback, delay, delay), clearInterval: id => timers.delete(id) };
   for (const [name, value] of Object.entries(globals)) Object.defineProperty(globalThis, name, { value, configurable: true });
-  function render(app) {
+  function render(app, passive = true) {
     hooks.begin(app.hooks);
     if (app.dialog) {
       const tree = DailyRewardsDialog({ ownerPublicId: app.props.owner, isOnline: app.props.online, onSessionLost: app.props.lost,
@@ -95,7 +101,7 @@ function browser(transport) {
       };
       visit(tree);
     } else app.controller = renderRewardsHook(app.props.owner, app.props.online, app.props.lost, app.props.confirmed);
-    hooks.flush(app.hooks); return app.controller;
+    hooks.flushLayout(app.hooks); if (passive) hooks.flush(app.hooks); return app.controller;
   }
   function advance(ms) {
     const until = time + ms;
@@ -228,23 +234,33 @@ test("account switches abort stale reads, suppress old callbacks and isolate the
 });
 
 test("confirmed actions use the latest callback and suppress replies to a hook that changed account", async () => {
-  for (const switched of [false, true]) {
+  for (const kind of ["daily", "achievement"]) for (const switched of [false, true]) {
+    audio.events.length = 0;
     const wait = deferred(); let command, currentOwner, previous = 0, latest = 0;
     const app = browser((call, initialOwner) => {
-      if (call.options.method === "GET") return Response.json(view(currentOwner ?? initialOwner));
+      if (call.options.method === "GET") {
+        const data = view(currentOwner ?? initialOwner);
+        const row = data.achievementRewards.find(row => row.achievementId === "explorer" && row.level === 1);
+        Object.assign(row, { eligible: true, earnedAt: at, blockedReason: null });
+        return Response.json(data);
+      }
       command = JSON.parse(call.options.body); return wait.promise;
     });
     try {
       const dialog = app.mount({ confirmed: () => previous++ }); await app.settle();
       // Another panel keeps the old session valid, so the hook itself must fence its callback.
       app.mount(); await app.settle();
-      const claim = dialog.controller.claimDaily(); await app.settle();
+      const claim = kind === "daily" ? dialog.controller.claimDaily() : dialog.controller.claimAchievement("explorer", 1); await app.settle();
       dialog.props.confirmed = () => latest++;
       if (switched) { currentOwner = `SWAP-${String(++nextOwner).padStart(4, "0")}-AAAA`; dialog.props.owner = currentOwner; }
-      app.render(dialog); await app.settle();
-      wait.resolve(Response.json(receipt(command))); const result = await claim; await app.settle();
+      // Commit the new owner/callback, but deliberately delay passive effects:
+      // a receipt can settle in that browser turn before old hook cleanup.
+      app.render(dialog, false);
+      wait.resolve(Response.json(receipt(command))); const result = await claim;
       assert.equal(previous, 0); assert.equal(latest, switched ? 0 : 1);
       assert.equal(Boolean(result), !switched);
+      assert.equal(audio.events.length, switched ? 0 : 1, `${kind}: an old session retained by another panel cannot sound for a new account`);
+      await app.settle();
       assert.equal(dialog.controller.data.ownerPublicId, switched ? currentOwner : app.owner);
     } finally { app.restore(); }
   }

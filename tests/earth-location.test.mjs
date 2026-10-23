@@ -15,6 +15,8 @@ function browser(overrides = {}) {
   const cleared = [];
   const visibilityListeners = new Set();
   const permissionListeners = new Set();
+  const timers = new Map();
+  let timerSequence = 0;
   const permission = {
     state: "prompt",
     subscribe(listener) {
@@ -33,11 +35,13 @@ function browser(overrides = {}) {
       visibilityListeners.add(listener);
       return () => visibilityListeners.delete(listener);
     },
+    schedule(callback, delay) { const id = ++timerSequence; timers.set(id, { callback, delay }); return id; },
+    cancel: id => timers.delete(id),
     queryPermission: async () => permission,
     ...overrides,
   };
   return {
-    environment, watches, cleared, visibilityListeners, permissionListeners, permission,
+    environment, watches, cleared, visibilityListeners, permissionListeners, permission, timers,
     setVisible(value) { visible = value; for (const listener of visibilityListeners) listener(); },
     setPermission(value) { permission.state = value; for (const listener of permissionListeners) listener(); },
   };
@@ -570,7 +574,9 @@ test("a provider failure uses one balanced fallback watch and fences the earlier
   assert.equal(s.controller.getSnapshot().status, "active");
   assert.equal(s.controller.getSnapshot().position.latitude, 56);
   s.watches[1].failure({ code: 2 });
-  assert.equal(s.watches.length, 2, "a successful retry does not create an endless fallback budget");
+  assert.equal(s.watches.length, 3, "a later outage gets its own bounded retry after an actual new fix");
+  s.watches[2].failure({ code: 2 });
+  assert.equal(s.watches.length, 3, "a continuously failing provider cannot retry indefinitely");
   assert.equal(s.controller.getSnapshot().position.timestamp, 2_000);
   assert.match(s.controller.getSnapshot().error, /настройках устройства и браузера/);
   s.deactivate();
@@ -700,5 +706,66 @@ test("a new publication lease replaces even a pending entry watch with an uncach
   assert.equal(s.watches.length, 4);
   assert.equal(s.watches[3].options.maximumAge, 0, "the bounded fallback cannot return a pre-lease cached fix");
   assert.equal(s.watches[3].options.enableHighAccuracy, false);
+  s.deactivate();
+});
+
+test("a stationary foreground device asks for a real new fix without refreshing the old timestamp", () => {
+  const s = session();
+  s.controller.start(); s.watches[0].success(fix());
+  const position = s.controller.getSnapshot().position;
+  const [id, timer] = [...s.timers][0];
+  assert.equal(timer.delay, 30_000);
+  s.timers.delete(id); timer.callback();
+  assert.equal(s.watches.length, 2, "a silent watch is replaced even when the player does not move");
+  assert.deepEqual(s.cleared, [0]);
+  assert.equal(s.watches[1].options.maximumAge, 0);
+  assert.equal(s.controller.getSnapshot().position, position);
+  assert.equal(s.controller.getSnapshot().position.timestamp, 1_000);
+  s.watches[0].success(fix({ latitude: 1, timestamp: 99_000 }));
+  assert.equal(s.controller.getSnapshot().position, position, "late retired callbacks cannot impersonate the new lookup");
+  s.watches[1].success(fix({ timestamp: 31_000 }));
+  assert.equal(s.controller.getSnapshot().status, "active");
+  assert.equal(s.controller.getSnapshot().position.timestamp, 31_000);
+  assert.equal(s.timers.size, 1, "each new fix keeps one bounded foreground freshness timer");
+  s.deactivate(); assert.equal(s.timers.size, 0);
+});
+
+test("new GPS measurements postpone refresh while duplicate cached fixes cannot keep a silent watch alive", () => {
+  const s = session(); s.controller.start(); s.watches[0].success(fix());
+  const firstTimer = [...s.timers.keys()][0];
+  const retiredCallback = s.timers.get(firstTimer).callback;
+  s.watches[0].success(fix());
+  assert.equal([...s.timers.keys()][0], firstTimer, "an identical provider timestamp is not an update");
+  s.watches[0].success(fix({ timestamp: 2_000 }));
+  assert.equal(s.timers.has(firstTimer), false);
+  assert.equal(s.timers.size, 1); assert.equal(s.watches.length, 1, "normal watch updates do not restart GPS");
+  retiredCallback();
+  assert.equal(s.watches.length, 1, "a canceled timer queued before a real fix cannot restart its watch");
+  assert.equal(s.timers.size, 1);
+  s.deactivate();
+});
+
+test("foreground refresh timers cannot survive privacy, backgrounding, disabled screens or owner teardown", () => {
+  for (const interrupt of [s => s.controller.stop(), s => s.controller.freeze(), s => s.controller.setAllowed(false),
+    s => s.setVisible(false), s => s.controller.setEnabled(false), s => s.deactivate()]) {
+    const s = session(); s.controller.start(); s.watches[0].success(fix());
+    const timer = [...s.timers.values()][0];
+    interrupt(s);
+    assert.equal(s.timers.size, 0);
+    timer.callback();
+    assert.equal(s.watches.length, 1, "an already queued timer cannot revive native GPS");
+    s.deactivate();
+  }
+});
+
+test("recovery from one provider outage restores the bounded fallback for a later independent outage", () => {
+  const s = session(); s.controller.start(); s.watches[0].success(fix());
+  s.watches[0].failure({ code: 2 });
+  s.watches[1].success(fix({ timestamp: 2_000 }));
+  s.watches[1].failure({ code: 3 });
+  assert.equal(s.watches.length, 3, "one old outage cannot spend the retry for the rest of the application session");
+  assert.equal(s.watches[2].options.enableHighAccuracy, false);
+  s.watches[2].failure({ code: 3 });
+  assert.equal(s.controller.getSnapshot().status, "timeout", "a continuously failing provider still stops after its one fallback");
   s.deactivate();
 });

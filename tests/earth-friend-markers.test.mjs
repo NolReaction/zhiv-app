@@ -65,7 +65,7 @@ function fixture({ zoom = 3, width = 1000, height = 600, reduced = false, failMa
     remove() { this.removed++; }
   }
   const renderer = createEarthFriendMarkers(map, Marker, ids => selected.push(ids), {
-    now: () => now, schedule(callback, delay) { const id = ++sequence; timers.set(id, { callback, due: now + delay }); return id; },
+    now: () => now, wallNow: () => Date.parse("2026-10-18T18:30:00Z") + now - 1_000, schedule(callback, delay) { const id = ++sequence; timers.set(id, { callback, due: now + delay }); return id; },
     cancel: id => timers.delete(id), reducedMotion: () => reduced,
   });
   const emit = type => { for (const callback of listeners.get(type) ?? []) callback(); };
@@ -138,9 +138,9 @@ test("only fresh real feed positions become anchored, labelled pins without remo
   assert.equal(f.current.length, 1);
   const marker = f.current[0], element = marker.options.element;
   assert.deepEqual(marker.positions.at(-1), [12.3, 25.5]);
-  assert.deepEqual(element.dataset, { earthFriend: "true", cluster: "false" });
+  assert.deepEqual(element.dataset, { earthFriend: "true", cluster: "false", detail: "false" });
   assert.equal(element.tag, "button"); assert.equal(element.disabled, false); assert.equal(element.tabIndex, 0);
-  assert.equal(element.children.length, 1); assert.equal(element.children[0].tag, "span");
+  assert.equal(element.children.length, 2); assert.equal(element.children[0].tag, "span");
   assert.equal(element.children[0].innerHTML, undefined); assert.match(element.attributes["aria-label"], /<img src=x>/);
   assert.match(element.attributes["aria-label"], /примерное местоположение ±1,5 км/);
   assert.doesNotMatch(JSON.stringify(element.attributes), /12\.3|25\.5/);
@@ -328,5 +328,21 @@ test("occlusion and panning still revoke hit targets while observers retain only
   f.pan(0); assert.equal(f.current.length, 1); assert.notEqual(f.current[0], marker);
   assert.deepEqual([...observer.targets], [f.current[0].options.element]);
   assert.equal(observer.disconnects, disconnects + 2);
+  f.dispose();
+});
+
+
+test("close-up single pins show capture time and aging without renewing access or labeling groups", () => {
+  const f = fixture({ zoom: 12 }); f.show([person("a")]);
+  const element = f.current[0].options.element;
+  const time = new Date("2026-10-18T18:30:00Z").toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  assert.equal(element.dataset.detail, "true");
+  assert.equal(element.children[1].textContent, `${time} · Только что`);
+  f.advance(60_000);
+  assert.equal(element.children[1].textContent, `${time} · 1 мин. назад`);
+  f.zoom(11); assert.equal(element.dataset.detail, "false");
+  f.zoom(12); f.renderer.setSnapshot([person("a"), person("b")]);
+  assert.equal(element.dataset.cluster, "true"); assert.equal(element.dataset.detail, "false");
+  f.advance(60_000); assert.equal(f.current.length, 0, "relative labels never extend original expiry");
   f.dispose();
 });

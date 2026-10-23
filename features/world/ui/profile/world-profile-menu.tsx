@@ -31,6 +31,7 @@ type Props = {
   bestStreakDays: number;
   onCall?: () => void;
   rewards?: ReactNode;
+  achievements?: ReactNode;
   initialTab?: WorldProfileDestination;
   friends?: WorldFriendsState;
   onOpenPeople?: () => void;
@@ -100,7 +101,7 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
 
 /** Pure contents keep map focus ownership separate from data subscriptions. */
 export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver,
-  rewards, callPulse = 0, initialTab = "profile", activeTab = initialTab === "mood" ? "profile" : initialTab, onTabChange, idPrefix = "world-profile",
+  rewards, achievements, callPulse = 0, initialTab = "profile", activeTab = initialTab === "mood" ? "profile" : initialTab, onTabChange, idPrefix = "world-profile",
   friends, onOpenPeople, onVisitFriend, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef, tapHintSetting }: Omit<Props, "presenceKey" | "ownerPublicId"> & {
   observation: ForestObservation | null;
   guideOpen?: boolean;
@@ -167,6 +168,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
           <Leaf size={18} aria-hidden="true" /><span><small>{observation?.paused ? "Полянка на паузе" : "Как Мохлик?"}</small>
             <strong>{observation?.mood ?? "Полянка загружается"}</strong></span><ChevronRight size={16} aria-hidden="true" />
         </button>
+        {achievements && <div className={styles.achievements}>{achievements}</div>}
         <dl className={styles.stats} aria-label="Достижения Мохлика">
           <div><dt>Дом</dt><dd>{houseLevel === undefined ? "-" : `${houseLevel} ур.`}</dd></div>
           <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? "-"}</dd></div>

@@ -8,6 +8,9 @@ import { formatDayCount } from "@/lib/daily-streak";
 import type { WorldPortalProps } from "./world-portal";
 import { worldNotificationDestination } from "./notification-destination";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
+import { GameAchievementsButton } from "@/features/game/game-achievements";
+import { useGameRewards } from "@/features/game/use-game-rewards";
+import { achievementRewardSummary } from "@/features/game/achievement-reward-summary";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WorldScene } from "@/features/world/scene/world-scene";
@@ -74,6 +77,17 @@ const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
 export default function WorldView({ open, suspended = false, world, economy, mailbox, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onVisitFriend, onDevBotsChanged, onDevVisitBot, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const currentOwner = useRef(ownerPublicId);
+  const achievementRewards = useGameRewards(ownerPublicId, open && !suspended && isOnline !== false, onSessionLost);
+  const availableAchievements = achievementRewardSummary(achievementRewards.data, ownerPublicId);
+  const refreshAchievementRewards = achievementRewards.refresh;
+  const economyRevision = economy.snapshot?.ownerPublicId === ownerPublicId && economy.snapshotConfirmed ? economy.snapshot.revision : null;
+  useEffect(() => {
+    if (!open || suspended || isOnline === false || economyRevision === null) return;
+    // Coalesce confirmed production/order/build changes before asking the server
+    // which medals may be claimed; wallet changes alone never grant a reward.
+    const timer = setTimeout(() => { if (!document.hidden) void refreshAchievementRewards(); }, 750);
+    return () => clearTimeout(timer);
+  }, [open, suspended, isOnline, economyRevision, refreshAchievementRewards]);
   const mailUnread = mailbox?.ownerPublicId === ownerPublicId ? mailbox.unreadCount : 0;
   useLayoutEffect(() => { currentOwner.current = ownerPublicId; }, [ownerPublicId]);
   const constructionGoal = useConstructionGoal(ownerPublicId, economy.snapshot);
@@ -158,6 +172,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const woodlotBuilt = Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId
     && (economy.snapshot.buildings.woodlot ?? 0) >= 1);
   const lopukhArrival = useLopukhArrival(ownerPublicId, {
+    confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: woodlotBuilt,
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !economy.busy && !economy.uncertain
@@ -170,6 +185,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const quarryBuilt = Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId
     && (economy.snapshot.buildings.quarry ?? 0) >= 1);
   const minerArrival = useMinerArrival(ownerPublicId, {
+    confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: quarryBuilt,
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled && !economy.busy && !economy.uncertain
@@ -179,6 +195,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const merchantUnlocked = Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId
     && (economy.snapshot.buildings.home ?? 0) >= 3);
   const merchantArrival = useLeaftailArrival(ownerPublicId, {
+    confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: merchantUnlocked,
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled && !minerArrival.open && !minerArrival.enabled
@@ -565,9 +582,10 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       <div className={hudStyles.headerRow}>
         <div className={hudStyles.leftControls}>
           <button id="world-exit" className={hudStyles.iconButton} onClick={onClose} aria-label="Вернуться к отметке Я живой" data-audio-cue="ui.close"><ArrowLeft size={19} /></button>
-          <button className={hudStyles.level} data-audio-cue={quickMenu === "profile" ? "ui.close" : "ui.open"} data-world-quick="profile" aria-haspopup="dialog" aria-expanded={quickMenu === "profile"} aria-controls={quickMenu === "profile" ? "world-quick-menu" : undefined}
-            onClick={() => toggleQuick("profile")} aria-label={`Профиль Мохлика. ${displayName}, уровень ${level}`}>
+          <button className={hudStyles.level} data-achievements-ready={availableAchievements.count > 0 || undefined} data-audio-cue={quickMenu === "profile" ? "ui.close" : "ui.open"} data-world-quick="profile" aria-haspopup="dialog" aria-expanded={quickMenu === "profile"} aria-controls={quickMenu === "profile" ? "world-quick-menu" : undefined}
+            onClick={() => toggleQuick("profile")} aria-label={`Профиль Мохлика. ${displayName}, уровень ${level}${availableAchievements.count > 0 ? ". Есть награды за достижения" : ""}`}>
             <GameLevelIcon level={level} size={21} /><span><small>Уровень</small><strong>{level}</strong></span>
+            {availableAchievements.count > 0 && <span className={hudStyles.achievementDot} aria-hidden="true">{availableAchievements.count}</span>}
           </button>
         </div>
         <div className={hudStyles.rightControls}>
@@ -612,6 +630,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
         {quickMenu === "expeditions" && economy.snapshot && <ConstructionGoalSummary state={economy.snapshot} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} compact />}
         {quickMenu === "profile" && <WorldProfileMenu key={`${ownerPublicId}:${profileEntry.request}`} ownerPublicId={ownerPublicId} initialTab={profileEntry.tab} onOpenOnboarding={replayOnboarding} onboardingStatus={onboarding.progress?.status ?? null} friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onOpenHelp={() => openContextHelp(undefined, "mochlik-life")} onOpenExpeditions={() => openExpeditions()} world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
+          achievements={<GameAchievementsButton inWorld key={ownerPublicId} ownerPublicId={ownerPublicId} isOnline={isOnline !== false} onSessionLost={onSessionLost} onRewardsClaimed={() => { void economy.refresh(); }} />}
           rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onFishSaleOpenChange={onFishSaleOpenChange} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: openStation, explore: () => openQuick("expeditions") }} onReturnToGift={giftPantryOwner === ownerPublicId ? returnToGift : undefined} onExplore={() => openQuick("expeditions")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={() => openResident("plesk")} />}

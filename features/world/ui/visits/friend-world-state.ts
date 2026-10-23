@@ -48,6 +48,11 @@ export function friendWorldStation(place: string) {
   return ({ house: "home", garden: "garden", campfire: "dryer", "lopukh-home": "woodlot" } as Record<string, string>)[place] ?? place;
 }
 
+/** The kiln lives inside the workshop artwork, so guests inspect both stations. */
+export function friendWorldStations(place: string): readonly string[] {
+  return place === "workshop" ? ["workshop", "kiln"] : [friendWorldStation(place)];
+}
+
 export function friendWorldJobName(job: GuestWorld["world"]["jobs"][number]) {
   if (job.kind === "construction") return `Улучшение до уровня ${job.targetLevel}`;
   return job.kind === "exploration" ? economyCatalog.explorations.find(route => route.id === job.targetId)?.name ?? "Вылазка"

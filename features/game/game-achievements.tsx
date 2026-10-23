@@ -14,6 +14,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import type { AchievementReward, GameRewards, GameRewardClaim } from "./game-rewards-api";
 import { useGameRewards } from "./use-game-rewards";
 import { RewardRecovery } from "./daily-rewards";
+import { achievementRewardSummary } from "./achievement-reward-summary";
 
 const roman = ["I", "II", "III", "IV"];
 
@@ -50,7 +51,7 @@ export function AchievementCard({ quest, state, rewardRows = [], claimBlocked = 
   const claiming = pending?.kind === "achievement" && pending.achievementId === quest.id;
   const stage = view.complete ? "Все ступени получены" : multi && view.unlocked ? `Далее · ступень ${roman[(view.next?.level ?? 1) - 1]}`
     : view.unlocked ? "Получено" : state ? "В процессе" : "Нет данных";
-  return <article className={styles.quest} data-achievement-id={quest.id} data-unlocked={view.unlocked || undefined} data-complete={view.complete || undefined}>
+  return <article className={styles.quest} data-achievement-id={quest.id} data-ready={Boolean(nextReward) || undefined} data-unlocked={view.unlocked || undefined} data-complete={view.complete || undefined}>
     <div className={styles.art} aria-hidden="true">
       <AchievementMedal id={quest.id} level={view.earned} className={styles.medal} />
       <span>{view.unlocked ? multi ? roman[view.earned - 1] : <Check size={12} /> : <LockKeyhole size={11} />}</span>
@@ -95,7 +96,9 @@ export function GameAchievementsList({ data, loading = false, rewards, claimBloc
     {([{ id: "world", title: "Мир и хозяйство" }, { id: "personal", title: "Ритм и связи" }] as const).map(group => <section className={styles.group} key={group.id} aria-label={group.title}>
       <h3 className={styles.groupTitle}>{group.title}</h3>
       <ol className={styles.quests} aria-label={`Достижения: ${group.title}`}>
-        {VISIBLE_GAME_ACHIEVEMENTS.filter(quest => quest.category === group.id).map(quest => <li key={quest.id}>
+        {VISIBLE_GAME_ACHIEVEMENTS.filter(quest => quest.category === group.id).sort((a, b) =>
+          Number(Boolean(rewards?.achievementRewards.some(row => row.achievementId === b.id && row.eligible)))
+          - Number(Boolean(rewards?.achievementRewards.some(row => row.achievementId === a.id && row.eligible)))).map(quest => <li key={quest.id}>
           <AchievementCard quest={quest} state={data?.achievements.find(item => item.id === quest.id)} rewardRows={rewards?.achievementRewards.filter(row => row.achievementId === quest.id)}
             claimBlocked={claimBlocked} pending={pending} onClaim={onClaim ? level => onClaim(quest.id, level) : undefined} />
         </li>)}
@@ -111,8 +114,8 @@ export async function loadGameAchievements(ownerPublicId: string, signal: AbortS
   return result;
 }
 
-export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost, onRewardsClaimed }: {
-  ownerPublicId: string; isOnline: boolean; onSessionLost: () => void; onRewardsClaimed?: () => void;
+export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost, onRewardsClaimed, className, inWorld = false }: {
+  ownerPublicId: string; isOnline: boolean; onSessionLost?: () => void; onRewardsClaimed?: () => void; className?: string; inWorld?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<GameAchievements | null>(null);
@@ -131,7 +134,7 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost,
       setData(result); setError("");
     }).catch(cause => {
       if (!active) return;
-      if (cause instanceof ApiError && cause.status === 401) { setData(null); setError(""); onSessionLost(); }
+      if (cause instanceof ApiError && cause.status === 401) { setData(null); setError(""); onSessionLost?.(); }
       else setError("Не удалось обновить достижения. Попробуйте ещё раз.");
     }).finally(() => { if (active) setCompletedLoad({ ownerPublicId, reload }); });
     return () => { active = false; controller.abort(); };
@@ -155,17 +158,19 @@ export function GameAchievementsButton({ ownerPublicId, isOnline, onSessionLost,
   const loading = isOnline && (completedLoad?.ownerPublicId !== ownerPublicId || completedLoad?.reload !== reload);
   const visibleError = completedLoad?.ownerPublicId === ownerPublicId ? error : "";
   const summary = achievementSummary(visible);
-  const claimablePearls = rewards.data?.achievementRewards.reduce((sum, row) => sum + (row.eligible ? row.pearls : 0), 0) ?? 0;
+  const { count: claimableCount, pearls: claimablePearls } = achievementRewardSummary(rewards.data, ownerPublicId);
   const claimBlocked = !isOnline || rewards.loading || rewards.busy || rewards.pending !== null || rewards.uncertain || rewards.retryAt > rewards.now;
   const refresh = () => { if (isOnline && !loading) setReload(value => value + 1); };
   return <>
-    <button type="button" ref={trigger} className={styles.trigger} aria-haspopup="dialog"
+    <button type="button" ref={trigger} className={`${styles.trigger} ${className ?? ""}`} aria-haspopup="dialog" data-achievements-ready={claimableCount > 0 || undefined}
+      aria-label={claimableCount > 0 ? `Достижения. Можно забрать ${formatPearls(claimablePearls)} жемчужин` : "Достижения"}
       onClick={() => { if (isOnline) { setReload(value => value + 1); void rewards.refresh(); } setOpen(true); }}>
       <Award size={17} aria-hidden="true" />Достижения
-      {visible && <span>{summary.earned}/{summary.total}</span>}
+      {claimableCount > 0 ? <span className={styles.triggerReward}><ItemIcon itemId="pearls" size={15} />{formatPearls(claimablePearls)}</span>
+        : visible && <span>{summary.earned}/{summary.total}</span>}
     </button>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className={`${boardStyles.dialog} ${styles.dialog}`} onCloseAutoFocus={event => {
+      <DialogContent overlayClassName={inWorld ? styles.worldScrim : undefined} className={`${boardStyles.dialog} ${styles.dialog} ${inWorld ? styles.worldDialog : ""}`} onCloseAutoFocus={event => {
         event.preventDefault(); trigger.current?.focus({ preventScroll: true });
       }}>
         <DialogHeader>

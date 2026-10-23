@@ -25,10 +25,15 @@ export type EarthLocationEnvironment = {
   geolocation: Pick<Geolocation, "watchPosition" | "clearWatch"> | null;
   visible: () => boolean;
   onVisibilityChange: (listener: () => void) => () => void;
+  schedule(callback: () => void, delay: number): unknown;
+  cancel(timer: unknown): void;
   queryPermission?: () => Promise<LocationPermission>;
 };
 
 const IDLE: EarthLocationState = { position: null, status: "idle", error: null };
+// A stationary device may never emit another watchPosition callback. Ask the
+// provider for a real new measurement before the previous fix becomes old.
+const FOREGROUND_REFRESH_MS = 30_000;
 const ERRORS = {
   denied: "Разреши геопозицию для этого сайта в браузере и доступ к местоположению в настройках устройства. Затем нажми «Найти меня».",
   unavailable: "Браузер не смог получить геопозицию. Проверь доступ к местоположению в настройках устройства и браузера, затем нажми «Найти меня».",
@@ -55,8 +60,11 @@ export function browserEarthLocationEnvironment(): EarthLocationEnvironment {
     visible: () => document.visibilityState === "visible",
     onVisibilityChange(listener) {
       document.addEventListener("visibilitychange", listener);
-      return () => document.removeEventListener("visibilitychange", listener);
+      window.addEventListener("pageshow", listener);
+      return () => { document.removeEventListener("visibilitychange", listener); window.removeEventListener("pageshow", listener); };
     },
+    schedule: (callback, delay) => setTimeout(callback, delay),
+    cancel: timer => clearTimeout(timer as ReturnType<typeof setTimeout>),
     queryPermission: navigator.permissions?.query ? async () => {
       const permission = await navigator.permissions.query({ name: "geolocation" });
       return {
@@ -96,6 +104,8 @@ export function createEarthLocationController(
   let watchEpoch = 0;
   let fallbackAttempted = false;
   let freshLookup = false;
+  let refreshTimer: unknown = null;
+  let refreshEpoch = 0;
   let permissionEpoch = 0;
   let removeVisibilityListener: (() => void) | undefined;
   let removePermissionListener: (() => void) | undefined;
@@ -105,12 +115,34 @@ export function createEarthLocationController(
     for (const listener of listeners) listener();
   }
 
+  function clearRefresh() {
+    refreshEpoch += 1;
+    if (refreshTimer !== null) environment?.cancel(refreshTimer);
+    refreshTimer = null;
+  }
   function clearWatch() {
+    clearRefresh();
     watchEpoch += 1;
     watching = false;
     const previousId = watchId;
     watchId = null;
     if (previousId !== null) environment?.geolocation?.clearWatch(previousId);
+  }
+
+  function refreshStationaryWatch() {
+    if (refreshTimer !== null || !environment || !watching) return;
+    const epoch = watchEpoch, refresh = ++refreshEpoch;
+    refreshTimer = environment.schedule(() => {
+      if (epoch !== watchEpoch || refresh !== refreshEpoch) return;
+      refreshTimer = null;
+      if (!mounted || !allowed || !requested || !enabled || !environment?.visible()) return;
+      // Keep the original marker and timestamp while waiting. Reusing the old
+      // coordinates with a new timestamp would falsely claim a GPS update.
+      freshLookup = true;
+      fallbackAttempted = false;
+      clearWatch();
+      reconcile();
+    }, FOREGROUND_REFRESH_MS);
   }
 
   function clearPermission() {
@@ -184,8 +216,11 @@ export function createEarthLocationController(
         if (!canAccept()) return;
         const position = readEarthPosition(value);
         if (!position) { fail("unavailable"); return; }
-        if (state.position && position.timestamp < state.position.timestamp) return;
+        if (state.position && position.timestamp <= state.position.timestamp) { refreshStationaryWatch(); return; }
+        clearRefresh();
+        fallbackAttempted = false;
         publish({ position, status: "active", error: null });
+        refreshStationaryWatch();
       }, error => {
         if (!canAccept()) return;
         // Desktop network positioning and mobile low-power fixes can fail while

@@ -13,8 +13,26 @@ const { GAME_ACHIEVEMENTS, VISIBLE_GAME_ACHIEVEMENTS } = await vite.ssrLoadModul
 const { AchievementCard, GameAchievementsList, achievementPresentation, achievementSummary, loadGameAchievements } =
   await vite.ssrLoadModule("/features/game/game-achievements.tsx");
 const { gameAchievementsSchema } = await vite.ssrLoadModule("/features/game/game-api.ts");
+const { achievementRewardSummary } = await vite.ssrLoadModule("/features/game/achievement-reward-summary.ts");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
+
+test("reward badges only use unclaimed confirmed rewards for the current account", () => {
+  const row = { eligible: true, pearls: 20, claimedAt: null, blockedReason: null };
+  const rewards = { ownerPublicId: "me", achievementRewards: [row, { ...row, eligible: false },
+    { ...row, claimedAt: "2026-10-23T00:00:00Z" }, { ...row, blockedReason: "admin_grant" }, { ...row, pearls: 0 }] };
+  assert.deepEqual(achievementRewardSummary(rewards, "me"), { count: 1, pearls: 20 });
+  assert.deepEqual(achievementRewardSummary(rewards, "other"), { count: 0, pearls: 0 });
+  assert.deepEqual(achievementRewardSummary(null, "me"), { count: 0, pearls: 0 });
+});
+
+test("claimable achievements come first in their section with the displayed pearl amount", () => {
+  const rewards = { achievementRewards: [{ achievementId: "explorer", level: 1, pearls: 20, eligible: true, claimedAt: null, blockedReason: null }] };
+  const html = renderToStaticMarkup(createElement(GameAchievementsList, { data: null, rewards, onClaim() {} }));
+  assert.ok(html.indexOf('data-achievement-id="explorer"') < html.indexOf('data-achievement-id="first_path"'));
+  assert.match(html, /data-ready="true"/);
+  assert.match(html, /Получить 10 жемчужин/);
+});
 const owner = "7K3P-2Q9M-W8ZR", stranger = "7K3P-2Q9M-W8ZS";
 const at = "2026-10-05T14:00:00Z";
 const quest = id => GAME_ACHIEVEMENTS.find(item => item.id === id);

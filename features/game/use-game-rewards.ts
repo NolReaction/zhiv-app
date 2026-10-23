@@ -1,10 +1,10 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { claimGameReward, getGameRewards, type GameRewardResult } from "./game-rewards-api";
 import type { GameAchievementId } from "./game-api";
 import { createGameRewardsSession } from "./game-rewards-session";
-import { claimDailyWithAudio } from "./game-rewards-audio";
+import { claimDailyWithAudio, claimAchievementWithAudio } from "./game-rewards-audio";
 import { createGameRewardsRefresh } from "./game-rewards-refresh";
 
 type RewardsService = { session: ReturnType<typeof createGameRewardsSession>; connect: () => () => void };
@@ -25,7 +25,7 @@ export function useGameRewards(owner: string | null, isOnline: boolean, onSessio
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const [now, setNow] = useState(() => session.now());
   const confirmed = useRef({ owner, callback: onConfirmed });
-  useEffect(() => { confirmed.current = { owner, callback: onConfirmed }; }, [owner, onConfirmed]);
+  useLayoutEffect(() => { confirmed.current = { owner, callback: onConfirmed }; }, [owner, onConfirmed]);
   useEffect(() => onSessionLost ? session.onSessionLost(onSessionLost) : undefined, [session, onSessionLost]);
   useEffect(() => {
     if (!owner || !isOnline) return;
@@ -39,9 +39,13 @@ export function useGameRewards(owner: string | null, isOnline: boolean, onSessio
     confirmed.current.callback?.(result);
     return result;
   }, []);
-  const claimDaily = useCallback(() => confirm(() => claimDailyWithAudio(owner, session, event => getAudioRuntime().play(event))), [confirm, owner, session]);
+  const claimDaily = useCallback(() => confirm(() => claimDailyWithAudio(owner, session, event => {
+    if (confirmed.current.owner === owner) getAudioRuntime().play(event);
+  })), [confirm, owner, session]);
   const claimOnboarding = useCallback(() => confirm(session.claimOnboarding), [confirm, session]);
-  const claimAchievement = useCallback((achievementId: GameAchievementId, level: number) => confirm(() => session.claimAchievement(achievementId, level)), [confirm, session]);
+  const claimAchievement = useCallback((achievementId: GameAchievementId, level: number) => confirm(() => claimAchievementWithAudio(owner, session, achievementId, level, event => {
+    if (confirmed.current.owner === owner) getAudioRuntime().play(event);
+  })), [confirm, owner, session]);
   const retry = useCallback(() => confirm(session.retry), [confirm, session]);
   return { ...view, now: view.data ? session.now() : now,
     refresh: session.refresh, claimDaily, claimOnboarding, claimAchievement, retry };

@@ -1429,6 +1429,68 @@ test("native audio interruption restores the current mix without another scene f
   f.runtime.dispose();
 });
 
+test("a visible phone interruption retains authorization and retries after resume resolves before the device is ready", async t => {
+  const f = fixture([cue("theme", "music"), cue("tap")]);
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "theme")])); await flush();
+    f.media[0].currentTime = 36;
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let ready = false;
+    f.context.resume = async () => {
+      f.context.resumes++;
+      if (ready) { f.context.state = "running"; f.context.onstatechange(); }
+    };
+    f.context.state = "interrupted"; f.context.onstatechange();
+    f.runtime.play({ id: "missed-during-call", cueId: "tap" });
+    t.mock.timers.tick(250); await flush();
+    assert.equal(f.context.resumes, 2);
+    assert.equal(f.runtime.getDiagnostics().state, "suspended", "authorization is retained even when native resume is not ready");
+    ready = true; f.context.state = "suspended"; f.context.onstatechange();
+    t.mock.timers.tick(1000); await flush();
+    assert.equal(f.context.resumes, 3);
+    assert.equal(f.runtime.getDiagnostics().state, "running");
+    assert.equal(f.media.length, 2); assert.equal(f.media[1].currentTime, 36);
+    assert.equal(f.context.started.length, 0, "missed actions are consumed, not replayed after the call");
+    t.mock.timers.tick(60_000); await flush();
+    assert.equal(f.context.resumes, 3, "healthy playback cancels recovery work");
+  } finally { f.runtime.dispose(); }
+});
+
+test("interruption recovery is bounded and a foreground notification reopens the retry window without changing settings", async t => {
+  const f = fixture([cue("theme", "music")]);
+  try {
+    await f.runtime.unlock(); t.mock.timers.enable({ apis: ["setTimeout"] });
+    f.context.resume = async () => { f.context.resumes++; throw Error("Call still owns the device"); };
+    f.context.state = "interrupted"; f.context.onstatechange();
+    for (const delay of [250, 1000, 2500, 5000, 60_000]) { t.mock.timers.tick(delay); await flush(); }
+    assert.equal(f.context.resumes, 5, "one interruption cannot poll the device forever");
+    f.context.resume = async () => { f.context.resumes++; f.context.state = "running"; f.context.onstatechange(); };
+    const settings = f.runtime.getSettings();
+    f.runtime.setVisible(true); t.mock.timers.tick(250); await flush();
+    assert.equal(f.context.resumes, 6); assert.equal(f.runtime.getDiagnostics().state, "running");
+    assert.equal(f.runtime.getSettings(), settings);
+  } finally { f.runtime.dispose(); }
+});
+
+test("muting or hiding cancels pending interruption recovery and foreground cannot acquire initial permission", async t => {
+  for (const action of ["locked", "mute", "master-zero", "hidden", "dispose"]) {
+    const f = fixture();
+    try {
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      if (action !== "locked") {
+        await f.runtime.unlock(); f.context.state = "interrupted"; f.context.onstatechange();
+      }
+      if (action === "mute") f.runtime.setSettings({ enabled: false });
+      if (action === "master-zero") f.runtime.setSettings({ master: 0 });
+      if (action === "hidden") f.runtime.setVisible(false);
+      if (action === "dispose") f.runtime.dispose();
+      if (action !== "hidden") f.runtime.setVisible(true);
+      t.mock.timers.tick(60_000); await flush();
+      assert.equal(f.context.resumes, action === "locked" ? 0 : 1, action);
+    } finally { f.runtime.dispose(); t.mock.timers.reset(); }
+  }
+});
+
 test("preparation warms every small UI variant without waiting for autoplay permission", async () => {
   const f = fixture([cue("tap", "one-shot", { bus: "ui", assets: ["tap-a", "tap-b", "tap-c"] })]);
   const permission = deferred(); f.context.resume = () => permission.promise;

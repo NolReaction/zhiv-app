@@ -5,7 +5,6 @@ import type { EarthPosition } from "./location";
 const EARTH_RADIUS_METERS = 6_371_008.8;
 const RAD = Math.PI / 180;
 export const EARTH_WALKING_FRIEND_MAX_AGE_MS = 5 * 60_000;
-export const EARTH_WALKING_MAX_ACCURACY_METERS = 200;
 const DIRECTIONS = ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"] as const;
 
 export type EarthMeetDetails = {
@@ -34,13 +33,12 @@ function validFriend(friend: EarthMapPerson, monotonicNow: number, wallNow: numb
     && Number.isFinite(friend.expiresAtMonotonic) && friend.expiresAtMonotonic > monotonicNow;
 }
 
-/** Local calculation only. Sharing mode and publication permissions are untouched. */
-export function earthMeetDetails(position: EarthPosition | null, friend: EarthMapPerson,
+/** Local last-known estimate. Access expiry still applies; capture age is displayed by the UI. */
+export function earthLastKnownMeetDetails(position: EarthPosition | null, friend: EarthMapPerson,
   monotonicNow: number, wallNow = Date.now()): EarthMeetDetails | null {
   if (!position || !validFriend(friend, monotonicNow, wallNow)
     || !validCoordinates(position.latitude, position.longitude, position.accuracy)
     || !Number.isFinite(position.timestamp) || position.timestamp < 0
-    || wallNow - position.timestamp > EARTH_POSITION_MAX_AGE_MS
     || position.timestamp - wallNow > EARTH_POSITION_FUTURE_MS) return null;
 
   const latitude = position.latitude * RAD, targetLatitude = friend.latitude * RAD;
@@ -62,6 +60,13 @@ export function earthMeetDetails(position: EarthPosition | null, friend: EarthMa
     direction: bearingDegrees === null ? null : DIRECTIONS[Math.round(bearingDegrees / 45) % 8] };
 }
 
+/** Fresh proximity is reserved for atlas notes, independently of route planning. */
+export function earthMeetDetails(position: EarthPosition | null, friend: EarthMapPerson,
+  monotonicNow: number, wallNow = Date.now()): EarthMeetDetails | null {
+  return !position || wallNow - position.timestamp > EARTH_POSITION_MAX_AGE_MS
+    ? null : earthLastKnownMeetDetails(position, friend, monotonicNow, wallNow);
+}
+
 /** Enables a personal, explicit atlas note; proximity is not proof of attendance. */
 export function canRecordEarthMeeting(position: EarthPosition | null, friend: EarthMapPerson,
   monotonicNow: number, wallNow = Date.now()): boolean {
@@ -79,19 +84,12 @@ export const WALKING_MAP_SERVICES = [
 ] as const;
 export type WalkingMapService = typeof WALKING_MAP_SERVICES[number]["id"];
 
-export type EarthFriendWalkingRouteIssue = "friend_unavailable" | "friend_approximate" | "friend_accuracy" | "friend_stale";
-/** Capture freshness is independent of when this point was received or rendered. */
-export const earthWalkingFriendFreshDeadline = (friend: EarthMapPerson) => friend.expiresAtMonotonic
-  - (Date.parse(friend.expiresAt) - Date.parse(friend.updatedAt)) + EARTH_WALKING_FRIEND_MAX_AGE_MS;
+export type EarthFriendWalkingRouteIssue = "friend_unavailable";
 
+/** A route may target any currently authorized point, including an old or approximate one. */
 export function earthFriendWalkingRouteIssue(friend: EarthMapPerson | null, monotonicNow: number,
   wallNow = Date.now()): EarthFriendWalkingRouteIssue | null {
-  if (!friend || !validFriend(friend, monotonicNow, wallNow)) return "friend_unavailable";
-  if (friend.precision !== "PRECISE") return "friend_approximate";
-  if (friend.accuracyMeters > EARTH_WALKING_MAX_ACCURACY_METERS) return "friend_accuracy";
-  if (wallNow - Date.parse(friend.updatedAt) > EARTH_WALKING_FRIEND_MAX_AGE_MS
-    || monotonicNow > earthWalkingFriendFreshDeadline(friend)) return "friend_stale";
-  return null;
+  return !friend || !validFriend(friend, monotonicNow, wallNow) ? "friend_unavailable" : null;
 }
 
 /** Destination-only links. The chosen map service requests/chooses its own origin.

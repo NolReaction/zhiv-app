@@ -351,6 +351,22 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals(context, economyJson.decodeFromString<Map<String, String>>(savedContext))
     }
 
+    @Test fun `station production collection is attributed to its station and records the first completed work`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val crafter = user("Лопоух")
+        created(crafter, LocalDate.parse("2020-01-02"))
+        analyticsEntry(crafter, "start_production", "2020-01-02T12:20:00Z", target = "gather_wood")
+        val at = Instant.parse("2020-01-02T12:21:00Z")
+        val claimId = analyticsEntry(crafter, "claim_production", at.toString(), items = mapOf("wood" to 2L), target = "woodlot")
+        val command = EconomyCommand(claimId.toString(), crafter.publicId, 1, "claim_production", "woodlot")
+        val context = economyLedgerContext(EconomyRules.initial(), command, at)
+        assertEquals(mapOf("originAction" to "start_production", "targetId" to "woodlot"), context)
+        execute("UPDATE economy_ledger SET context=?::jsonb WHERE user_id=? AND source_key=?", economyJson.encodeToString(context), crafter.id, "command:$claimId")
+        val report = repository(admin).analytics(admin.hash, AdminAnalyticsQuery(from = "2020-01-02", to = "2020-01-02", q = crafter.publicId))
+        assertEquals(0L, report.coverage.unattributedEvents)
+        assertTrue(report.actions.any { it.kind == "claim_production" && it.targetId == "woodlot" && it.events == 1L })
+        assertEquals(1L, assertNotNull(report.progression).cohort.stages.single { it.id == "first_work_claimed" }.players)
+    }
+
     @Test fun `garden basket analytics attribute both actions and the first collected work without changing saved grouped context`() = runBlocking<Unit> {
         val admin = user("Администратор"); val gardener = user("Садовник")
         created(gardener, LocalDate.parse("2020-01-02"))

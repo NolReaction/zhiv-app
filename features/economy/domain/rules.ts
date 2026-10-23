@@ -1,6 +1,7 @@
 import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features/world/domain/wardrobe";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, recipeBuildingLevel, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
+import { productionCollectionRewards, readyProductionJobs } from "./production-collection";
 import { recipeResultName } from "./recipe-prerequisites";
 
 import { refreshFishingShop, fishingShopExpired, fishingShopRefreshPrice } from "./fishing-shop";
@@ -552,6 +553,20 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       state.jobs = state.jobs.filter(job => !ids.has(job.id));
       state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...Object.entries(rewards).filter(([, quantity]) => quantity > 0).map(([item]) => item)])];
       return "Весь собранный урожай доставлен на склад";
+    }
+    case "claim_production": {
+      if (!productionStationSupported(command.targetId)) return fail("ECONOMY_PRODUCTION_STATION", "В этом месте нет производства");
+      const jobs = readyProductionJobs(state.jobs, command.targetId, now);
+      if (!jobs.length) return fail("ECONOMY_JOB_NOT_READY", "Пока нет готовой продукции");
+      const rewards = productionCollectionRewards(jobs), inventory = { ...state.inventory };
+      for (const [item, quantity] of Object.entries(rewards)) inventory[item] = (inventory[item] ?? 0) + quantity;
+      assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+      creditEconomyItems(state, rewards);
+      for (const job of jobs) state.progression = advanceEconomyProgression(state.progression, job);
+      const ids = new Set(jobs.map(job => job.id));
+      state.jobs = state.jobs.filter(job => !ids.has(job.id));
+      state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...Object.entries(rewards).filter(([, quantity]) => quantity > 0).map(([item]) => item)])];
+      return "Вся готовая продукция доставлена в кладовую";
     }
     case "claim_job": {
       const job = state.jobs.find(item => item.id === command.targetId);

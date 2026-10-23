@@ -67,6 +67,7 @@ export function bindEarthPositionMarkerMotion(map: MarkerMap, marker: HTMLElemen
   };
   const syncAvailability = () => {
     const distant = map.getZoom() <= -0.2;
+    marker.setAttribute("data-detail", String(map.getZoom() >= 12));
     marker.style.visibility = distant ? "hidden" : "";
     const unavailable = distant || !visible() || covered();
     marker.toggleAttribute("disabled", unavailable);

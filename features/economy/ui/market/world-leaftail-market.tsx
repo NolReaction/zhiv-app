@@ -13,6 +13,7 @@ import type { WorldState } from "@/features/world/domain/model";
 import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
 import { marketRefreshAvailable, watchMarketRefreshAvailability } from "@/features/economy/ui/shared/market-refresh-availability";
 import { FishingSpeciesFocus } from "@/features/economy/ui/fishing/fishing-species-odds";
+import { FishRarityBadge } from "@/features/economy/ui/fishing/fish-rarity";
 import { MarketRefreshProgress } from "@/features/economy/ui/shared/market-refresh-progress";
 import { WardrobePreview } from "@/features/world/ui/wardrobe/world-wardrobe";
 import styles from "./world-leaftail-market.module.css";
@@ -54,7 +55,7 @@ function presentation(state: EconomyView, itemId: string, kind: Offer["kind"]) {
   const clothing = kind === "wardrobe" ? wardrobeItems.find(item => item.id === itemId) : null;
   const name = clothing?.name ?? (gear && "name" in gear ? gear.name : undefined)
     ?? state.catalog.items.find(item => item.id === itemId)?.name ?? itemId;
-  return { name, description: gear?.description ?? descriptions[itemId] ?? "Для развития поселения.", clothing };
+  return { name, description: gear?.description ?? descriptions[itemId] ?? "Для развития поселения.", clothing, rarity: gear?.rarity };
 }
 // A full stop inside a multiplier (1.3) is not a sentence boundary.
 const shortDescription = (description: string) => description.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? description;
@@ -196,6 +197,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
         }}><entry.Icon size={15} aria-hidden="true" />{entry.label}</button>)}</div>
       {confirming && quote ? <section className={styles.confirmation} role="tabpanel" id={`${tabsId}-offers`} aria-labelledby={headingId}>
         <h3 id={headingId} ref={heading} tabIndex={-1}>Купить {selected?.name ?? quote.itemId}?</h3>
+        {selected?.rarity && <FishRarityBadge rarity={selected.rarity} />}
         {selected && (quote.kind === "rod" || quote.kind === "hook" || quote.kind === "bait") && <p className={styles.hint}>{selected.description}</p>}
         {preview && <div className={styles.fitting}><WardrobePreview appearance={preview} /><div><strong>Примерка</strong><p>{selected?.description}</p><small>Покупка добавит вещь в гардероб. Образ можно поменять позже.</small></div></div>}
         <p>{quote.kind === "wardrobe" ? "Вещь навсегда в гардероб" : quote.kind === "rod" || quote.kind === "hook" ? "Снасть навсегда в вашу коллекцию" : `${number(quote.itemQuantity)} шт. в кладовую`} за <strong>{money(quote.price, quote.currency)} {currencyName(quote.currency)}</strong>.</p>
@@ -209,10 +211,10 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
           const limit = leaftailPurchaseLimit(state, offer), requested = quantities[offer.targetId] ?? 1;
           const quantity = Math.max(1, Math.min(requested, Math.max(1, limit))), nextQuote = leaftailPurchaseQuote(state, offer, quantity);
           const disabledReason = deliveryExpired ? "Проверяем новую поставку." : leaftailPurchaseReason(economy, nextQuote, isOnline);
-          const { name, description } = presentation(state, offer.itemId, offer.kind);
+          const { name, description, rarity } = presentation(state, offer.itemId, offer.kind);
           const adjustable = !permanent(offer.kind) && offer.stock > 1;
           return <article className={styles.offer} key={offer.id} data-leaftail-item={offer.itemId} data-leaftail-kind={offer.kind} data-leaftail-currency={offer.currency} data-leaftail-quantity={nextQuote.itemQuantity}>
-            <div className={styles.item}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={40} /> : <ItemIcon itemId={offer.itemId} size={section === "wardrobe" ? 40 : 36} />}<div><strong>{name}</strong>{section !== "wardrobe" && <small>{section === "tackle" ? shortDescription(description) : description}</small>}</div>{!permanent(offer.kind) && <span className={styles.stock}>Осталось {number(offer.remaining * offer.quantity)} шт.</span>}</div>
+            <div className={styles.item}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={40} /> : <ItemIcon itemId={offer.itemId} size={section === "wardrobe" ? 40 : 36} />}<div><strong>{name}</strong>{rarity && <FishRarityBadge rarity={rarity} />}{section !== "wardrobe" && <small>{section === "tackle" ? shortDescription(description) : description}</small>}</div>{!permanent(offer.kind) && <span className={styles.stock}>Осталось {number(offer.remaining * offer.quantity)} шт.</span>}</div>
             {offer.kind === "rod" && <FishingSpeciesFocus state={state} override={{ rodId: offer.itemId, hookId: "bare_hook", baitId: null }} />}
             {adjustable && <div className={styles.quantityRow}><span>{money(offer.unitPrice, offer.currency)} {currencyName(offer.currency)} / {offer.quantity === 1 ? "шт." : `${number(offer.quantity)} шт.`}</span><div className={styles.quantity} role="group" aria-label={`Количество: ${name}`}>
               <button type="button" aria-label={`Уменьшить количество: ${name}`} disabled={quantity <= 1 || Boolean(disabledReason)} onClick={() => setQuantities(previous => ({ ...previous, [offer.targetId]: quantity - 1 }))}><Minus size={14} aria-hidden="true" /></button>

@@ -9,8 +9,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { friendWorldScene, friendWorldJobStatus } = await vite.ssrLoadModule("/features/world/ui/visits/friend-world-state.ts");
-const { FriendWorldView } = await vite.ssrLoadModule("/features/world/ui/visits/friend-world-view.tsx");
+const { friendWorldScene, friendWorldJobStatus, friendWorldStations } = await vite.ssrLoadModule("/features/world/ui/visits/friend-world-state.ts");
+const { FriendWorldView, FriendWorldStationInfo } = await vite.ssrLoadModule("/features/world/ui/visits/friend-world-view.tsx");
 const { WorldScene } = await vite.ssrLoadModule("/features/world/scene/world-scene.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { connectForestSession, forgetForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
@@ -107,6 +107,30 @@ test("guest map has no economy controller or owner callbacks and routes the shop
   const html = renderToStaticMarkup(tree);
   assert.match(html, /Мир Лесной друг/); assert.match(html, /Лавка игрока/);
   assert.doesNotMatch(html, /Завершить:|Ускорить|Собрать|Купить слот|Выдать/);
+});
+
+test("a workshop visit exposes separate read-only workbench and kiln details from the host snapshot", () => {
+  const visit = fixture(), recipe = economyCatalog.recipes.find(entry => entry.buildingId === "kiln");
+  visit.world.buildings.kiln = 2;
+  visit.world.jobs.push(job("kiln-ready", "production", "kiln", { recipeId: recipe.id, finishesAt: iso(now - 1) }),
+    job("kiln-upgrade", "construction", "kiln", { targetLevel: 3 }));
+  const before = structuredClone(visit);
+  assert.deepEqual(friendWorldStations("workshop"), ["workshop", "kiln"]);
+  for (const [place, station] of [["house", "home"], ["campfire", "dryer"], ["lopukh-home", "woodlot"], ["quarry", "quarry"]])
+    assert.deepEqual(friendWorldStations(place), [station]);
+  const html = friendWorldStations("workshop").map(stationId => renderToStaticMarkup(createElement(FriendWorldStationInfo, { visit, stationId, now, titled: true }))).join("");
+  assert.match(html, /aria-label="Верстак"/);
+  assert.match(html, /data-guest-station="kiln"/);
+  assert.match(html, /aria-label="Печь"/);
+  assert.match(html, /Уровень 2/);
+  assert.match(html, new RegExp(recipe.name));
+  assert.match(html, /Готово/);
+  assert.match(html, /Улучшение до уровня 3/);
+  assert.doesNotMatch(html, /<button|Собрать|Ускорить|Завершить стройку/);
+  assert.deepEqual(visit, before, "inspection never claims a host job or adopts its target level");
+  visit.world.jobs = []; delete visit.world.buildings.kiln;
+  const empty = renderToStaticMarkup(createElement(FriendWorldStationInfo, { visit, stationId: "kiln", now, titled: true }));
+  assert.match(empty, /Печь/); assert.match(empty, /Ещё не построено/);
 });
 
 test("an isolated visit neither borrows nor evicts the parked own forest and has zero storage or remote writes", () => {

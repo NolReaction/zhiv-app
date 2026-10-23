@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { CloudUpload, LockKeyhole, Plus } from "lucide-react";
+import { Check, CloudUpload, LockKeyhole, Plus } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "@/features/economy/domain/production-slots";
+import { productionCollectionRewards, readyProductionJobs } from "@/features/economy/domain/production-collection";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { formatPearls } from "@/features/economy/domain/money";
 import { ProductIcon, itemName, Work } from "@/features/economy/ui/shared/world-economy-parts";
@@ -21,9 +22,14 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   const purchaseTrigger = useRef<HTMLButtonElement | null>(null);
   const wasConfirming = useRef(false);
   const purchasePending = useRef<{ owner: string; revision: number } | null>(null);
+  const claimPending = useRef<{ owner: string; revision: number } | null>(null);
+  const [claimFeedback, setClaimFeedback] = useState<string | null>(null);
   const state = economy.productionSnapshot ?? economy.snapshot;
   const capacity = productionSlotCount(state, stationId), offer = productionSlotOffer(state, stationId);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === stationId);
+  const readyJobs = readyProductionJobs(economy.snapshot.jobs, stationId, economy.now);
+  const claimQuantity = Object.values(productionCollectionRewards(readyJobs)).reduce((sum, quantity) => sum + quantity, 0);
+  const claimShortfall = Math.max(0, claimQuantity - economy.snapshot.storage.available);
   const construction = state.jobs.some(job => job.kind === "construction" && job.targetId === stationId);
   const basicCampfire = stationId === "dryer" && !(state.buildings[stationId] > 0);
   const unavailable = construction || !basicCampfire && !(state.buildings[stationId] > 0);
@@ -47,6 +53,10 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
     const pending = purchasePending.current;
     if (pending && (pending.owner !== state.ownerPublicId || pending.revision !== state.revision || economy.error)) purchasePending.current = null;
   }, [state.ownerPublicId, state.revision, economy.error]);
+  useEffect(() => {
+    const pending = claimPending.current;
+    if (pending && (pending.owner !== state.ownerPublicId || pending.revision !== state.revision || economy.error)) claimPending.current = null;
+  }, [state.ownerPublicId, state.revision, economy.error]);
   if (!productionStationSupported(stationId) || unavailable) return null;
   function cancelPurchase() {
     setConfirmation(null);
@@ -56,6 +66,20 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   return <section ref={slotsSection} tabIndex={-1} className={`${styles.slots} ${compact ? styles.compact : ""}`} aria-label="Места производства" data-production-slots={stationId}
     data-section-guide-target="workshop-queue" data-running-orders={jobs.some(job => !economy.pendingProductionIds?.includes(job.id) && !worldJobProgress(state, job, economy.now).ready) ? stationId : undefined}>
     <header className={styles.heading}><h3>Производство</h3><span aria-live="polite" aria-atomic="true">Свободно {free} из {capacity}</span></header>
+    {readyJobs.length > 1 && <div className={styles.collectAll}>
+      <button type="button" data-collect-production={stationId} disabled={locked(economy) || claimShortfall > 0} onClick={() => {
+        if (locked(economy) || claimPending.current || economy.snapshot.ownerPublicId !== state.ownerPublicId || economy.snapshot.revision !== state.revision) return;
+        const current = readyProductionJobs(economy.snapshot.jobs, stationId, economy.now);
+        const quantity = Object.values(productionCollectionRewards(current)).reduce((sum, amount) => sum + amount, 0);
+        if (current.length < 2 || quantity > economy.snapshot.storage.available) return;
+        claimPending.current = { owner: state.ownerPublicId, revision: state.revision };
+        const accepted = economy.act("claim_production", stationId);
+        if (accepted === false) claimPending.current = null;
+        setClaimFeedback(accepted === false ? "Сбор не отправлен. Попробуйте ещё раз." : null);
+      }}><Check size={15} aria-hidden="true" />Собрать всё ({readyJobs.length})</button>
+      {claimShortfall > 0 && <p role="status">Освободите {claimShortfall.toLocaleString("ru-RU")} мест в кладовой.{openPantry && <button type="button" onClick={openPantry}>Открыть кладовую</button>}</p>}
+      {claimFeedback && <p role="status">{claimFeedback}</p>}
+    </div>}
     <div className={styles.track} data-slot-columns={basicCampfire ? capacity : 3}>{Array.from({ length: basicCampfire ? capacity : 3 }, (_, index) => {
       const job = jobs[index], opened = index < capacity;
       const queued = Boolean(job && economy.pendingProductionIds?.includes(job.id));

@@ -58,6 +58,7 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
   };
   visible();
   page.addEventListener("visibilitychange", visible);
+  surface.addEventListener("focus", visible);
   surface.addEventListener("pagehide", hide);
   surface.addEventListener("pageshow", show);
   page.addEventListener("freeze", freeze);
@@ -69,6 +70,7 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
   page.addEventListener("click", click, true);
   return () => {
     page.removeEventListener("visibilitychange", visible);
+    surface.removeEventListener("focus", visible);
     surface.removeEventListener("pagehide", hide);
     surface.removeEventListener("pageshow", show);
     page.removeEventListener("freeze", freeze);
