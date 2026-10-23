@@ -17,6 +17,7 @@ const { WorldPantryMenu, PantrySale } = await vite.ssrLoadModule("/features/econ
 const { WorldOrderJournal } = await vite.ssrLoadModule("/features/economy/ui/orders/world-order-journal.tsx");
 const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { WorldProductionSlots } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-slots.tsx");
+const { PleskCatchOdds } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
 const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-builder-dialog.tsx");
 const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 const { worldHelpTopics } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
@@ -36,12 +37,18 @@ test("all seven active sections target attributes still emitted by their current
   const surfaces = {
     pantry: ["features/economy/ui/inventory/world-pantry-menu.tsx"],
     market: ["features/economy/ui/market/player-market.tsx", "features/economy/ui/market/market-sale-card.tsx"],
-    plesk: ["features/economy/ui/fishing/plesk-fishing-shop.tsx"],
+    plesk: ["features/economy/ui/fishing/plesk-fishing-shop.tsx", "features/economy/ui/fishing/fishing-catch-odds.tsx"],
     orders: ["features/economy/ui/orders/world-order-journal.tsx", "features/economy/ui/orders/world-resident-order-board.tsx"],
     expeditions: ["features/economy/ui/expeditions/world-expeditions-menu.tsx"],
     workshop: ["features/economy/ui/stations/world-object-menu.tsx", "features/economy/ui/production/world-production-card.tsx", "features/economy/ui/production/world-production-slots.tsx"],
     builder: ["features/world/ui/characters/world-builder-dialog.tsx"],
   };
+  // The odds marker moved into a shared child; it must still be wired into the shop.
+  const plesk = await source(surfaces.plesk[0]);
+  assert.match(plesk, /import\s*\{\s*FishingCatchOdds\s+as\s+PleskCatchOdds\s*\}\s*from\s*["']\.\/fishing-catch-odds["']/);
+  assert.match(plesk, /<PleskCatchOdds\s/);
+  const state = controller().snapshot;
+  assert.match(render(PleskCatchOdds, { state, catalog: state.catalog.fishing }), /data-guide-plesk-odds=/);
   assert.deepEqual(sectionGuideIds, Object.keys(surfaces));
   for (const [section, files] of Object.entries(surfaces)) {
     const jsx = (await Promise.all(files.map(source))).join("\n");

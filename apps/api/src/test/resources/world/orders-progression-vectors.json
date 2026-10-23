@@ -47,7 +47,7 @@
         "planks": 4,
         "rope": 2
       },
-      "coins": 330
+      "coins": 350
     },
     {
       "templateId": "builder_final_fittings",
@@ -56,7 +56,7 @@
         "reinforced_parts": 4,
         "glass": 6
       },
-      "coins": 12960
+      "coins": 14230
     },
     {
       "templateId": "plesk_river_catch",
@@ -81,7 +81,7 @@
       "items": {
         "legendary_fish": 1
       },
-      "coins": 1800
+      "coins": 1930
     }
   ],
   "availability": [

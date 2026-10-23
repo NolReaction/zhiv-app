@@ -162,6 +162,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const playerMarketUnlocked = Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId
     && economyMarketUnlocked(economy.snapshot, economy.snapshot.catalog));
   const marketGuide = useMarketUnlockOnboarding(ownerPublicId, {
+    confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: playerMarketUnlocked,
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !economy.busy && !economy.uncertain

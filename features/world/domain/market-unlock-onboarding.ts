@@ -21,14 +21,15 @@ export function parseMarketUnlockOnboarding(raw: string | null): MarketUnlockOnb
   return null;
 }
 
-export function marketUnlockOnboardingCanOpen({ loaded, progress, unlocked, enabled, onboarding }: {
+export function marketUnlockOnboardingCanOpen({ loaded, prepared, progress, unlocked, enabled, onboarding }: {
   loaded: boolean;
+  prepared: boolean;
   progress: MarketUnlockOnboardingProgress | null;
   /** Confirmed building access, never a ready but unclaimed construction job. */
   unlocked: boolean;
   enabled: boolean;
   onboarding: MarketUnlockOnboardingCourse;
 }) {
-  return loaded && progress === null && unlocked && enabled && onboarding.loaded
+  return loaded && prepared && progress === null && unlocked && enabled && onboarding.loaded
     && (onboarding.isPaused || Boolean(onboarding.progress && onboarding.progress.status !== "started"));
 }

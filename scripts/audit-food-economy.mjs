@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { economicMath, recipeBuildingLevel } from "./lib/economy-math.mjs";
+import { residentOrderPricing } from "./lib/resident-order-pricing.mjs";
 import { auditEconomyProgression } from "./audit-economy-progression.mjs";
 
 const rounded = value => Number(value.toFixed(3));
@@ -15,6 +16,7 @@ const duration = (seconds, bps) => Math.ceil(seconds * 10000 / (10000 + bps));
  * through the production helper: there is no second copy of its rotation here. */
 export function auditFoodEconomy(catalog) {
   const food = catalog.food, math = economicMath(catalog), scale = catalog.currencyScale;
+  const priceOrder = residentOrderPricing(catalog);
   assert(food?.meals.length >= 6, "The six-tier meal catalog is required");
   const items = new Map(catalog.items.map(item => [item.id, item]));
   const fish = new Map([...catalog.fishing.fish, ...catalog.fishing.classes].map(item => [item.itemId, item]));
@@ -30,6 +32,11 @@ export function auditFoodEconomy(catalog) {
   assert.equal(new Set(orders.templates.map(order => order.id)).size, orders.templates.length, "Duplicate order template");
   assert.equal(new Set(orders.templates.map(order => signature(order.items))).size, orders.templates.length, "Duplicate order composition");
   const shopPrice = id => Math.ceil(fish.get(id).buyPrice * catalog.fishing.shop.fishPriceBps / 10000);
+  // Relax personal rotation and stock: even the union of every coin NPC supply
+  // must not let a player buy a complete order and instantly mint coins.
+  const npcBuyPrices = new Map((catalog.leaftailShop?.supplyOffers ?? []).map(offer => [offer.itemId, offer.unitPriceCoins]));
+  for (const group of catalog.fishing.classes.filter(group => group.rarity === "common")) npcBuyPrices.set(group.itemId, shopPrice(group.itemId));
+  for (const [itemId, price] of npcBuyPrices) assert(price > math.liquidation({ [itemId]: 1 }), `${itemId}: instant NPC buy-sell arbitrage`);
   const defaultProducer = id => catalog.recipes.find(recipe => recipe.rewards[id] > 0 && Object.keys(recipe.rewards).length === 1);
   const hasRequirements = (definition, buildings) => (buildings.home ?? 1) >= definition.requiredHomeLevel
     && Object.entries(definition.requiredBuildings ?? {}).every(([id, level]) => (buildings[id] ?? 0) >= level)
@@ -165,10 +172,18 @@ export function auditFoodEconomy(catalog) {
     const referenceValue = valueOf(items, order.items), saleValue = math.liquidation(order.items);
     assert(order.coins > referenceValue, `${order.id}: orders must reward more than full reference item value`);
     assert(order.coins <= referenceValue * 2, `${order.id}: excessive order premium`);
+    const pricing = priceOrder(order);
+    assert.equal(pricing.npcValue, saleValue, `${order.id}: manufacturing premium must use the actual full NPC buyback value`);
+    assert.equal(order.coins, pricing.coins, `${order.id}: repeatable order must include its exact rounded manufacturing premium`);
+    const completeNpcPurchaseCoins = Object.keys(order.items).every(id => npcBuyPrices.has(id))
+      ? sum(Object.entries(order.items).map(([id, count]) => npcBuyPrices.get(id) * count)) : null;
+    if (completeNpcPurchaseCoins !== null) assert(order.coins < completeNpcPurchaseCoins, `${order.id}: instant NPC purchase-to-order arbitrage`);
     const allPurchasable = Object.keys(order.items).every(id => fish.get(id)?.rarity === "common");
     const directBuyCost = allPurchasable ? sum(Object.entries(order.items).map(([id, count]) => shopPrice(id) * count)) : null;
     return { id: order.id, residentId: order.residentId, homeLevel: order.requiredHomeLevel, items: order.items, rewardCoins: order.coins,
       itemReferenceCoins: referenceValue, basePremiumPercent: rounded((order.coins / referenceValue - 1) * 100),
+      manufacturingMinutes: pricing.manufacturingSeconds / 60, completeNpcPurchaseCoins,
+      instantNpcPurchaseProfitCoins: completeNpcPurchaseCoins === null ? null : order.coins - completeNpcPurchaseCoins,
       directSaleCoins: saleValue, extraOverDirectSaleCoins: order.coins - saleValue,
       actualDiscountedPurchaseCoins: directBuyCost, boughtFishOrderProfitCoins: directBuyCost === null ? null : order.coins - directBuyCost,
       byHome: Array.from({ length: 6 - order.requiredHomeLevel }, (_, index) => progressedOrder(order, index + order.requiredHomeLevel)) };
