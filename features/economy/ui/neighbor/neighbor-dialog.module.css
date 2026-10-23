@@ -17,11 +17,20 @@
 .worldFooter > * { pointer-events: auto; }
 .worldFooter > button { min-height: 49px; min-width: min(300px, 100%); max-width: 100%; box-shadow: 0 3px 20px #152c1780; }
 .worldFooter > button span { margin-left: 3px; padding: 3px 6px; border-radius: 7px; background: #fff2; font-size: 10px; }
-.station { width: min(400px, 100%); padding: 13px; border: 1px solid #c8c9a6; border-radius: 15px; background: #f8f1df; color: #3d5037; box-shadow: 0 8px 24px #14251655; }
+.station { width: min(400px, 100%); max-height: min(44dvh, 340px); overflow-y: auto; overscroll-behavior: contain; padding: 13px; border: 1px solid #c8c9a6; border-radius: 15px; background: #f8f1df; color: #3d5037; box-shadow: 0 8px 24px #14251655; }
 .station > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .station strong { font-size: 13px; }
 .station button { width: 44px; padding: 0; background: transparent; border: 0; }
 .station p { margin: 6px 0; font-size: 12px; }
+.station:focus-visible { outline: 3px solid #92a667; outline-offset: 2px; }
+.stationDetails { border-top: 1px solid #cfd5b8; padding-top: 10px; margin-top: 9px; }
+.stationDetails h3 { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; margin: 0; font-size: 14px; }
+.stationDetails h3 > span { font-size: 11px; font-weight: 450; color: #7b8666; }
+.station .capability { color: #778362; font-size: 10px; line-height: 1.5; }
+.products { display: grid; gap: 8px; padding: 0; margin: 9px 0; list-style: none; }
+.products li { display: flex; flex-direction: column; gap: 3px; }
+.products strong { font-size: 12px; font-weight: 600; }
+.products span { color: #6c7956; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 .shop { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .wallet { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px 20px; background: #e8ecda; border-block: 1px solid #d6ddc2; }
 .wallet > span { display: flex; align-items: center; gap: 5px; font-size: 12px; }

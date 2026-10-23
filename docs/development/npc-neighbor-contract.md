@@ -45,10 +45,18 @@
 
 Только production Ktor с существующей проверкой администратора. Web/DEV/Sites не симулируют административную авторизацию и отвечают 503.
 
-- `GET /api/v1/admin/neighbor?publicId=...`: `{ serverTime, settings, version, pausedReason, player: null | { publicId, name }, receipt: null, usage: { usedLots, spentCoins, globalSpentCoins }, pending: [{ id, sellerPublicId, sellerName, itemId, quantity, totalPrice, proceedsCoins, feeCoins, createdAt, eligible, reason }], history: [{ id, listingId, sellerPublicId, itemId, quantity, totalPrice, proceedsCoins, createdAt, source }] }`. Параметр publicId необязателен; без него список выбранного игрока пуст. До 100 ожидающих лотов и 50 событий; `source` — `auto` или `manual`. Ответ мутации содержит `receipt: {requestId, replayed}`.
+- `GET /api/v1/admin/neighbor?publicId=...`: `{ serverTime, settings, version, pausedReason, player: null | { publicId, name }, receipt: null, usage: { usedLots, spentCoins, globalSpentCoins }, pending: [{ id, sellerPublicId, sellerName, itemId, quantity, totalPrice, proceedsCoins, createdAt, eligible, reason }], history: [{ id, listingId, sellerPublicId, itemId, quantity, totalPrice, proceedsCoins, createdAt, source }] }`. Параметр publicId необязателен; без него список выбранного игрока пуст. До 100 ожидающих лотов и 50 событий; `source` — `auto` или `manual`. Комиссия равна `totalPrice - proceedsCoins`; клиент также допускает необязательный `feeCoins`. Ответ мутации содержит `receipt: {requestId, replayed}`.
 - `POST /api/v1/admin/neighbor/settings`: `{ requestId: UUID, expectedVersion: number, reason: string, settings: NeighborSettings }`.
 - `POST /api/v1/admin/neighbor/buy`: `{ requestId: UUID, listingId: UUID, playerPublicId, expectedTotalPrice, reason: string }`. Цена и продавец привязаны к подтверждению администратора. Ручная покупка не обходит дневные бюджеты и правила автоматического покупателя. Причина обоих действий содержит 8–240 символов.
 
 `NeighborSettings` — полный объект из общего JSON: `enabled`, `autoBuyEnabled`, `name`, `description`, `buildings`, `equipment`, `offerSlots`, `offerQuantity`, `allowedItemIds`, `sellPriceBps`, `buyPriceBps`, `firstDelaySeconds`, `staleAfterSeconds`, `maxLotsPerDay`, `dailyBudgetCoins`, `maxLotCoins`, `globalDailyBudgetCoins`, `activeFromHourUtc`, `activeUntilHourUtc`. Сутки и часы в UTC, конец интервала исключён; 0–24 означает весь день. Ночной интервал разрешён через переход полуночи.
 
 Клиентские схемы: `features/economy/domain/neighbor-model.ts`; чистые правила: `neighbor-rules.ts`. Контракт не меняет каталог экономики и награды просьб жителей.
+
+## Эксплуатация и объединение веток
+
+Миграция `V71__world_neighbor.sql` не создаёт пользователя. Она сохраняет признак прежней продажи у существующих продавцов; дальнейшие продажи человеку или Бересту также закрывают льготный первый выкуп. Лимиты, купленные предложения и история выкупов переживают сброс игрового прогресса. История содержит снимок UUID лота и не зависит от его последующего удаления. Полное удаление аккаунта удаляет его персональные данные.
+
+Ktor запускает обработчик каждые 30 секунд, до 40 кандидатов за проход. Курсор проходит очередь дальше, даже если старые лоты не подходят. После трёх последовательных ошибок обработчик сохраняет защитную паузу с объяснением в админке; после проверки сервера сохранение настроек снимает её. Дополнительный cron не требуется.
+
+Перед объединением с параллельными изменениями `work/0.7.2` проверить уникальность версии V71 и обновлённые allowlist схемы в reset/CI. Применённую миграцию не переписывать. Репутация жителей и её награды от этого контракта не зависят.

@@ -132,7 +132,7 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
             saveEconomyProfile(c,a.id,next); addEconomyTradeUsage(c,a.id,at,buys=tradeValue)
             c.economyUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,items) VALUES (?,?,'neighbor_buy_offer',?,?::jsonb)",
                 a.id,"neighbor:offer:${offer.id}",-offer.totalPrice,economyJson.encodeToString(mapOf(offer.itemId to offer.quantity)))
-            val view=economyView(c,a.id,a.publicId,at); val message="Партия куплена у ${s.name}"
+            val view=economyView(c,a.id,a.publicId,at); val message="Партия куплена в лавке соседа"
             c.economyUpdate("INSERT INTO neighbor_receipts(user_id,request_id,signature,message,accepted_revision) VALUES (?,?,?,?,?)",a.id,request,signature,message,view.revision)
             c.economyUpdate("INSERT INTO economy_market_receipts(user_id,request_id,signature,message,accepted_revision) VALUES (?,?,?,?,?)",a.id,request,signature,message,view.revision)
             EconomyResult(view,message,view.revision)

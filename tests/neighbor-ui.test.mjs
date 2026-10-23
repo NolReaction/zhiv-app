@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { Children, isValidElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url)), hooksId = "virtual:neighbor-test-hooks";
 const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -24,8 +25,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   }],
 });
 after(() => vite.close());
-const { NeighborShop } = await vite.ssrLoadModule("/features/economy/ui/neighbor/neighbor-dialog.tsx");
+const { NeighborShop, NeighborStationInfo } = await vite.ssrLoadModule("/features/economy/ui/neighbor/neighbor-dialog.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { neighborStationProducts } = await vite.ssrLoadModule("/features/economy/ui/neighbor/neighbor-station-products.ts");
 const { readOnlyWorldScene } = await vite.ssrLoadModule("/features/world/ui/visits/friend-world-state.ts");
 const hooks = await vite.ssrLoadModule(hooksId), now = Date.parse("2026-10-23T12:00:00Z");
 function fixture() {
@@ -47,7 +49,7 @@ const confirm = view => view.nodes.find(node=>node.type==="button"&&node.props["
 
 test("the server's renamed NPC stays explicitly labeled, and choosing needs a second explicit full-lot confirmation",()=>{
   const p=fixture(), calls=[], h=harness(p);p.economy.actNeighbor=(...args)=>{calls.push(args);return true;};
-  const first=h.render();assert.ok(first.nodes.some(n=>n.type==="h3"&&n.props.children.join("")==="Лавка Дубок"));
+  const first=h.render();assert.ok(first.nodes.some(n=>n.type==="h3"&&n.props.children.join("")==="Лавка: Дубок"));
   assert.ok(first.nodes.some(n=>n.type==="span"&&n.props.children==="Персонаж мира"));
   assert.ok(first.nodes.some(n=>n.type==="strong"&&typeof n.props.children==="string"&&n.props.children.startsWith("03:00")), "refresh clock follows the supplied profile timezone");
   choose(first).props.onClick();assert.deepEqual(calls,[]);const view=h.render();assert.match(confirm(view).props["aria-label"],/3 шт. за 30 монет/);
@@ -86,4 +88,37 @@ test("NPC projection uses its scene namespace without a publicId and never chang
   const before=structuredClone(world),scene=readOnlyWorldScene(world,"world-character:berest",new Date(now).toISOString());
   assert.equal(scene.state.houseLevel,5);assert.equal(scene.residents.ownerPublicId,"world-character:berest");assert.deepEqual(scene.state.inventory,[]);
   scene.buildings.home=2;assert.deepEqual(world,before);assert.equal("user"in world,false);assert.equal("publicId"in world,false);
+});
+
+
+test("station capabilities follow the neighbor's actual home, own station and dependency levels",()=>{
+  const world={buildings:{home:3,workshop:2,kiln:1,dryer:1,garden:2,woodlot:2,quarry:2},equipment:{palette:"moss",head:null,neck:null,rod:null},gifts:[],hiddenGifts:[],jobs:[]};
+  const before=structuredClone(world),work=neighborStationProducts(world,"workshop"),kiln=neighborStationProducts(world,"kiln");
+  assert.ok(work.some(p=>p.outputs.some(o=>o.itemId==="planks"&&o.quantity===1)));
+  assert.ok(work.some(p=>p.outputs.some(o=>o.itemId==="rope")));
+  assert.equal(work.some(p=>p.outputs.some(o=>o.itemId==="metal_parts")),false,"kiln2 dependency is not met");
+  assert.ok(kiln.some(p=>p.outputs.some(o=>o.itemId==="charcoal")));
+  assert.equal(kiln.some(p=>p.outputs.some(o=>o.itemId==="iron_ingot")),false,"kiln level is too low");
+  assert.equal(neighborStationProducts({...world,buildings:{...world.buildings,home:1}},"workshop").some(p=>p.outputs.some(o=>o.itemId==="rope")),false);
+  assert.equal(neighborStationProducts({...world,buildings:{...world.buildings,kiln:0}},"kiln").length,0);
+  const garden=neighborStationProducts(world,"garden");assert.equal(garden.filter(p=>p.outputs.some(o=>o.itemId==="berries")).length,1,"alternate methods of identical output stay one entry");
+  assert.ok(neighborStationProducts(world,"quarry").length>0,"mine exposes real routes rather than invented production");
+  assert.deepEqual(world,before,"inspecting capabilities never changes levels or creates work");
+});
+
+test("station preview renders bounded real outputs and explains recipe learning without inventing ongoing jobs",()=>{
+  const world={buildings:Object.fromEntries(economyCatalog.buildings.map(b=>[b.id,b.levels.at(-1).level])),equipment:{palette:"moss",head:null,neck:null,rod:null},gifts:[],hiddenGifts:[],jobs:[]};
+  for(const stationId of ["workshop","kiln","dryer","quarry"]){
+    const all=neighborStationProducts(world,stationId),html=renderToStaticMarkup(NeighborStationInfo({world,stationId}));
+    assert.equal((html.match(/<li>/g)??[]).length,Math.min(4,all.length));
+    for(const product of all.slice(0,4))for(const output of product.outputs)assert.ok(html.includes(`${output.name} × ${output.quantity}`));
+    if(all.length>4)assert.match(html,/Ещё вариантов:/);
+    assert.doesNotMatch(html,/Осталось|Готово|Ожидает хозяина|<button|claim_job|start_production/);
+  }
+  const cook=renderToStaticMarkup(NeighborStationInfo({world:{...world,buildings:{...world.buildings,dryer:1,home:3}},stationId:"dryer"}));
+  assert.match(cook,/Для некоторых блюд сначала осваивают предыдущие рецепты/);
+  const baseFire=renderToStaticMarkup(NeighborStationInfo({world:{...world,buildings:{...world.buildings,dryer:0}},stationId:"dryer"}));
+  assert.match(baseFire,/Обычный костёр/);assert.match(baseFire,/Пожарить рыбу/);assert.doesNotMatch(baseFire,/Ещё не построено/);
+  assert.match(renderToStaticMarkup(NeighborStationInfo({world,stationId:"workshop"})),/Верстак/);
+  assert.match(renderToStaticMarkup(NeighborStationInfo({world,stationId:"kiln"})),/Печь/);
 });

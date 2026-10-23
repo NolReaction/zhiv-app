@@ -147,6 +147,9 @@ jobs:
         run: |
           ./gradlew --no-daemon test \
             --tests ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest \
+            --tests ru.zhiv.db.JdbcNeighborRepositoryIntegrationTest \
+            --tests ru.zhiv.economy.NeighborRulesTest \
+            --tests ru.zhiv.economy.NeighborRoutesTest \
             --tests ru.zhiv.economy.EconomyMarketRulesTest \
             --tests ru.zhiv.db.JdbcLeaftailV12IntegrationTest \
             --tests ru.zhiv.db.JdbcCollectionV12IntegrationTest \
@@ -164,7 +167,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest', 'ru.zhiv.world.WorldRulesTest', 'ru.zhiv.economy.EconomyWardrobeTest', 'ru.zhiv.db.JdbcPremiumCostumesIntegrationTest'):
+          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.db.JdbcNeighborRepositoryIntegrationTest', 'ru.zhiv.economy.NeighborRulesTest', 'ru.zhiv.economy.NeighborRoutesTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest', 'ru.zhiv.world.WorldRulesTest', 'ru.zhiv.economy.EconomyWardrobeTest', 'ru.zhiv.db.JdbcPremiumCostumesIntegrationTest'):
               path = Path('apps/api/build/test-results/test') / f'TEST-{name}.xml'
               report = ET.parse(path).getroot()
               count = int(report.get('tests', '0'))
@@ -183,6 +186,9 @@ jobs:
           name: market-sales-test-reports-${{ github.run_attempt }}
           path: |
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborRepositoryIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.NeighborRulesTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.NeighborRoutesTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyMarketRulesTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcLeaftailV12IntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcCollectionV12IntegrationTest.xml
@@ -319,7 +325,7 @@ jobs:
             echo "Security observations must run with real PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest; do
+          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest JdbcNeighborRepositoryIntegrationTest; do
             mail_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${mail_report}"
             grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${mail_report}"

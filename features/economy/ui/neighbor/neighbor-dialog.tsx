@@ -11,6 +11,7 @@ import { WorldScene } from "@/features/world/scene/world-scene";
 import { readOnlyWorldScene, friendWorldStations } from "@/features/world/ui/visits/friend-world-state";
 import type { WorldPlace } from "@/features/world/scene/map-engine";
 import { createNeighborQuote, neighborQuoteReason, type NeighborQuote } from "./neighbor-quote";
+import { neighborStationProducts } from "./neighbor-station-products";
 import worldStyles from "@/features/world/world.module.css";
 import styles from "./neighbor-dialog.module.css";
 
@@ -88,11 +89,28 @@ function NeighborWorld({ neighbor, now, timeZone, onShop }: { neighbor: Neighbor
       onPlace={onPlace} topHud={top} bottomHud={bottom} hideJourneyStatus />
     <header ref={top} className={styles.worldHeader} data-world-hud><span><House size={16} aria-hidden="true" />Дом {scene.state.houseLevel}</span><span>В гостях у лесного соседа</span></header>
     <footer ref={bottom} className={styles.worldFooter} data-world-hud>
-      {selected && <aside className={styles.station}><div><strong>Хозяйство: {neighbor.character.name}</strong><button type="button" onClick={() => setSelected(null)} aria-label="Закрыть осмотр"><X size={16} aria-hidden="true" /></button></div>
-        {stations.map(id => <p key={id}>{economyCatalog.buildings.find(building => building.id === id)?.name ?? "Лесная полянка"} · уровень {scene.buildings[id] ?? 0}</p>)}</aside>}
-      <button type="button" className={styles.primary} onClick={onShop}><Store size={19} aria-hidden="true" />Лавка {neighbor.character.name}<span>{neighbor.shop.offers.length} партии</span></button>
+      {selected && <aside className={styles.station} tabIndex={0} aria-label="Осмотр построек соседа"><div><strong>Хозяйство: {neighbor.character.name}</strong><button type="button" onClick={() => setSelected(null)} aria-label="Закрыть осмотр"><X size={16} aria-hidden="true" /></button></div>
+        {stations.map(id => <NeighborStationInfo key={id} world={neighbor.character.world} stationId={id} />)}</aside>}
+      <button type="button" className={styles.primary} onClick={onShop}><Store size={19} aria-hidden="true" />Лавка: {neighbor.character.name}<span>{neighbor.shop.offers.length} партии</span></button>
     </footer>
   </div>;
+}
+
+/** Visible building levels expose their catalog capabilities, without starting somebody else's work. */
+export function NeighborStationInfo({ world, stationId }: { world: NeighborView["character"]["world"]; stationId: string }) {
+  const building = economyCatalog.buildings.find(item => item.id === stationId), level = world.buildings[stationId] ?? 0;
+  const products = neighborStationProducts(world, stationId), visible = products.slice(0, 4);
+  const name = stationId === "workshop" ? "Верстак" : building?.name ?? "Лесная полянка";
+  return <section className={styles.stationDetails} data-neighbor-station={stationId} aria-label={name}>
+    <h3>{name}<span>{level > 0 ? `Уровень ${level}` : stationId === "dryer" ? "Обычный костёр" : "Ещё не построено"}</span></h3>
+    {products.length ? <>
+      <p className={styles.capability}>{stationId === "quarry" ? "Маршруты добычи этого уровня" : "Рецепты этого уровня"}</p>
+      <ul className={styles.products}>{visible.map(product => <li key={product.id}><strong>{product.name}</strong>
+        <span>{product.outputs.map(output => `${output.name} × ${output.quantity}`).join(", ")}</span></li>)}</ul>
+      {products.length > visible.length && <p className={styles.capability}>Ещё вариантов: {products.length - visible.length}</p>}
+      {visible.some(product => product.needsRecipeLearning) && <p className={styles.capability}>Для некоторых блюд сначала осваивают предыдущие рецепты.</p>}
+    </> : <p>{building?.description ?? "Тихое место на лесной полянке."}</p>}
+  </section>;
 }
 
 export function NeighborShop({ neighbor, economy, timeZone, refreshing = false, onRefresh }: { neighbor: NeighborView; economy: EconomyController; timeZone?: string; refreshing?: boolean; onRefresh: () => void }) {
@@ -132,10 +150,10 @@ export function NeighborShop({ neighbor, economy, timeZone, refreshing = false, 
   };
   const refreshTime = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZoneName: "short", timeZone }).format(new Date(neighbor.shop.refreshAt));
   const expired = economy.now >= Date.parse(neighbor.shop.refreshAt);
-  return <section className={styles.shop} aria-label={`Лавка ${neighbor.character.name}`}>
+  return <section className={styles.shop} aria-label={`Лавка: ${neighbor.character.name}`}>
     <div className={styles.wallet}><span><ItemIcon itemId="coins" size={20} /><strong>{state ? number(state.wallet.coins) : "…"}</strong> монет</span><span><Package size={18} aria-hidden="true" />{state?.storage.available ?? "…"} мест</span></div>
     <div className={styles.body}>
-      <div className={styles.shopHeading}><h3>Лавка {neighbor.character.name}</h3><span>Персонаж мира</span></div>
+      <div className={styles.shopHeading}><h3>Лавка: {neighbor.character.name}</h3><span>Персонаж мира</span></div>
       <p className={styles.muted}>Небольшая поставка для вас. Каждую партию можно купить один раз; новая поставка ежедневно в {refreshTime}.</p>
       {!neighbor.shop.available && <p className={styles.reason} role="status">{neighbor.shop.reason === "market_locked"
         ? "Лавка откроется, когда вы откроете рынок в своём лесу. Пока можно осмотреть полянку соседа."

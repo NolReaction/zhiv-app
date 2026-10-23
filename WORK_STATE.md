@@ -1,6 +1,6 @@
 # Лесной сосед: work/0.7.2-bot
 
-База: work/0.7.2, 9b12b92b092a011525a72333ecc09bc1cca27c27. Ветка work/0.7.2-bot создана локально и на GitHub. Пользователь поручил NPC-соседа; репутация жителей разрабатывается отдельно. Версия приложения остаётся 0.7.1. Merge и deploy не запрошены.
+База: work/0.7.2, 9b12b92b092a011525a72333ecc09bc1cca27c27. Ветка work/0.7.2-bot опубликована; PR #35 в work/0.7.2. Первый кандидат: 18afd3513011309f29a9eb07c7bd5e97adb99a65. Пользователь поручил NPC-соседа; репутация жителей разрабатывается отдельно. Версия приложения остаётся 0.7.1. Merge и deploy не запрошены.
 
 ## Реализовано
 
@@ -13,6 +13,6 @@
 
 ## Проверки и следующий шаг
 
-Node24/JDK25: compileKotlin и compileTestKotlin PASS. Целевые клиентские73, DEV/domain/API24, существующие market12, admin/audit12, reset11 тестов PASS. Typecheck/lint/architecture/world/security предварительно PASS. Chromium153: реальная полянка, лавка и подтверждение на320/1280,0 ошибок; дополнительные проверки продолжаются. Docker локально отсутствует. Полные npm test и Kotlin rules/routes запускаются; PostgreSQL проверяется в CI.
+Node24/JDK25: compileKotlin и compileTestKotlin PASS. Целевые клиентские73, DEV/domain/API24, существующие market12, admin/audit12, reset11 тестов PASS. Typecheck/lint/architecture/world/security предварительно PASS. Chromium153: 22 сценария PASS,0 ошибок: реальная полянка, лавка, покупка, повтор, фокус/клавиатура, закрытая лавка, admin и осмотр производства на320/1280. Осмотр показывает реальные рецепты и маршруты из каталога, без вымышленных работ. Docker локально отсутствует. Kotlin rules/routes/market16/16 PASS. CI первого кандидата: оба web build, markets92, engine и secrets PASS; PostgreSQL NPC9/9, neighbor rules/routes11/11, reset/baseline3/3 PASS. Все14 падений полного backend1058 — старые ожидания схемы70 вместо71; исправлены в6 testfiles. Новый CI guard требует NPC suites без skips. Полный локальный npm test пока без ошибок; финальный CI проверит исправленные ожидания.
 
-Далее: завершить полный npm test (Sites build уже PASS), затем VPS build, финальные статические проверки и backend/JDK25/PostgreSQL CI. Проверить номер новой миграции при объединении с параллельной репутацией. Публиковать только work/0.7.2-bot.
+Далее: завершить полный npm test (Sites build уже PASS), затем VPS build, финальные статические проверки и CI следующего кандидата. Текущие эксплуатационные документы согласованы с V71,23 baseline records,82 personal+6 service таблицами reset; исторические документы сохранены. Проверить номер новой миграции при объединении с параллельной репутацией. Публиковать только work/0.7.2-bot.
