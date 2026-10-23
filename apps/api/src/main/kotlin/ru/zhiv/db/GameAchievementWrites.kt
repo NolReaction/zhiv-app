@@ -76,7 +76,9 @@ internal fun readEconomyAchievementProgress(connection: Connection, userId: UUID
     val inherited = connection.economyRows("SELECT state->'collection' FROM world_profiles WHERE user_id=?",userId) {
         ru.zhiv.economy.economyJson.decodeFromString<List<String>>(it.getString(1) ?: "[]")
     }.firstOrNull().orEmpty()
-    val sold = connection.economyRows("SELECT EXISTS(SELECT 1 FROM economy_market_listings WHERE status='sold' AND seller_id IN (SELECT user_id FROM account_history_user_ids(?)))",userId) { it.getBoolean(1) }.single()
+    val hasNeighborColumn=connection.economyRows("SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='economy_market_listings'::regclass AND attname='sale_buyer_character_id' AND NOT attisdropped)") { it.getBoolean(1) }.single()
+    val realPlayer=if(hasNeighborColumn) "AND sale_buyer_character_id IS NULL" else ""
+    val sold = connection.economyRows("SELECT EXISTS(SELECT 1 FROM economy_market_listings WHERE status='sold' $realPlayer AND seller_id IN (SELECT user_id FROM account_history_user_ids(?)))",userId) { it.getBoolean(1) }.single()
     return ru.zhiv.game.economyAchievementProgress(current,sold,inherited)
 }
 

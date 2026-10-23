@@ -15,7 +15,7 @@ test("the destructive reset explicitly reviews the latest migration", () => {
   assert.equal(reviewedVersion, latestVersion, "Review the new schema and update reset-user-data.sql before release");
   assert.doesNotMatch(reset, /ORDER BY installed_rank DESC LIMIT 1/,
     "An admin compatibility upgrade can apply V50 after V52; installation order cannot identify the schema version");
-  assert.match(reset, /generate_series\(1,70\)/);
+  assert.match(reset, /generate_series\(1,71\)/);
   assert.match(reset, /49:SQL_BASELINE/);
   assert.match(reset, /WHERE NOT success/);
 });
@@ -58,8 +58,13 @@ test("the reset inventory covers every migrated user table and preserves global 
       createdTables.push(...[...sql.matchAll(/^\s*CREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:public\.)?(\w+)\s*\(/gim)].map(match => match[1]));
     }
     assert.equal(new Set(createdTables).size, createdTables.length, `${path.name}: duplicate table definitions`);
-    assert.deepEqual([...cleared, "game_tap_collection_metadata", "managed_promo_codes", "gameplay_generations", "gameplay_reset_runs"].sort(), createdTables.sort(),
+    assert.deepEqual([...cleared, "game_tap_collection_metadata", "managed_promo_codes", "gameplay_generations", "gameplay_reset_runs",
+      "neighbor_settings", "neighbor_global_usage"].sort(), createdTables.sort(),
       `${path.name}: every table must be reviewed; collection metadata and global campaigns are preserved`);
   }
   assert.match(reset, /IF promo_configuration IS DISTINCT FROM/);
+  assert.match(reset, /IF neighbor_configuration IS DISTINCT FROM/);
+  assert.match(reset, /neighbor_global_budget IS DISTINCT FROM/);
+  for (const table of ["neighbor_shop_cycles", "neighbor_identity", "neighbor_daily_usage", "neighbor_receipts", "neighbor_purchases"])
+    assert.ok(cleared.includes(table), `${table}: account deletion clears personal neighbor history`);
 });

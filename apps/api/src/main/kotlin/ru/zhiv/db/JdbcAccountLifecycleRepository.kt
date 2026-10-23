@@ -275,6 +275,11 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM economy_ledger t WHERE user_id IN (?,?) ORDER BY user_id,source_key",
             "SELECT to_jsonb(t)::text FROM economy_market_listings t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM economy_market_daily_turnover t WHERE user_id IN (?,?) ORDER BY user_id,trade_day",
+            "SELECT to_jsonb(t)::text FROM neighbor_identity t WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM neighbor_daily_usage t WHERE user_id IN (?,?) ORDER BY user_id,trade_day",
+            "SELECT to_jsonb(t)::text FROM neighbor_shop_cycles t WHERE user_id IN (?,?) ORDER BY user_id,cycle_day",
+            "SELECT to_jsonb(t)::text FROM neighbor_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
+            "SELECT to_jsonb(t)::text FROM neighbor_purchases t WHERE user_id IN (?,?) ORDER BY user_id,id",
             "SELECT to_jsonb(t)::text FROM economy_market_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
             "SELECT to_jsonb(t)::text FROM economy_barter_offers t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM economy_barter_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
@@ -458,6 +463,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         mergePromoRedemptions(c, id, s.other)
         mergeEconomyProfiles(c, id, s.other)
         mergeEconomyTradeUsage(c, id, s.other)
+        mergeNeighborState(c, id, s.other)
         mergeEconomyMarketReceipts(c, id, s.other)
         mergeEconomyBarterReceipts(c, id, s.other)
         mergeWorldProfiles(c,id,s.other)

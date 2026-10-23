@@ -32,7 +32,7 @@ const userSchema = z.object({
 const usersSchema = z.object({ ...page, users: z.array(userSchema).max(100) });
 const auditSchema = z.object({ ...page, events: z.array(z.object({
   requestId: z.string().uuid(), actorPublicId: publicId, targetPublicId: publicId,
-  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "grant_economy", "adjust_economy", "mail_broadcast", "promo_create", "promo_update", "promo_delete", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
+  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "grant_economy", "adjust_economy", "mail_broadcast", "promo_create", "promo_update", "promo_delete", "neighbor_settings", "neighbor_buy", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
 })).max(100) });
 const metric = z.number().finite().nullable();
 const monitoringSchema = z.object({

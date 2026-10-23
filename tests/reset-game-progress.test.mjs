@@ -43,12 +43,13 @@ test("game reset reviews every table and the latest migration without clearing i
   for (const name of ["app_sessions", "account_login_identities", "account_recovery_codes",
     "circles", "circle_memberships", "direct_requests", "admin_actions", "promo_redemptions", "managed_promo_codes",
     "notification_subscriptions", "notification_preferences", "admin_mail_broadcasts", "player_security_observations",
-    "earth_sharing_settings", "earth_sharing_recipients"]) assert.ok(preserved.includes(name), name);
+    "earth_sharing_settings", "earth_sharing_recipients", "neighbor_settings", "neighbor_shop_cycles", "neighbor_identity",
+    "neighbor_daily_usage", "neighbor_global_usage", "neighbor_receipts", "neighbor_purchases"]) assert.ok(preserved.includes(name), name);
   for (const table of ["earth_latest_locations", "earth_frozen_locations", "check_ins", "check_in_audiences",
     "game_presence_daily", "game_presence_accounts", "game_daily_rewards", "game_reward_claims"])
     assert.ok(cleared.includes(table), `${table}: release reset discards old activity and gameplay`);
   assert.deepEqual(partial, ["app_users", "game_achievements", "game_achievement_reward_claims", "player_mail_messages",
-    "notification_events", "notification_batches", "gameplay_generations", "gameplay_reset_runs"]);
+    "notification_events", "notification_batches", "gameplay_generations", "gameplay_reset_runs", "economy_market_listings", "economy_market_receipts"]);
   for (const name of ["economy_profiles", "world_profiles", "forest_memory", "game_profiles"])
     assert.ok(reinitialized.includes(name), `${name}: preserve a monotonic revision fence`);
   assert.doesNotMatch(sql, /\bCASCADE\b|DISABLE\s+TRIGGER|DROP\s+(TABLE|SCHEMA|DATABASE)/i);
@@ -62,6 +63,11 @@ test("game reset reviews every table and the latest migration without clearing i
   assert.match(sql, /INSERT INTO public\.notification_events SELECT \* FROM game_reset_service_events/);
   assert.match(sql, /previous_revision >= 9007199254740990/);
   assert.match(sql, /\(previous_revision \+ 1\)::bigint/);
+  assert.match(sql, /UNION ALL SELECT user_id, accepted_revision::numeric FROM public\.neighbor_receipts/);
+  assert.match(sql, /DELETE FROM public\.economy_market_listings WHERE status<>'sold'/);
+  assert.match(sql, /fingerprint IS DISTINCT FROM sold_market_fingerprint/);
+  assert.match(sql, /INSERT INTO public\.economy_market_receipts\(user_id,request_id,signature,message,accepted_revision,created_at\)/);
+  assert.match(sql, /fingerprint IS DISTINCT FROM neighbor_market_receipt_fingerprint/);
 });
 
 async function sandbox(run) {

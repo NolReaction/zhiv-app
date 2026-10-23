@@ -34,6 +34,7 @@ private val canonicalTailScripts = mapOf(
     68 to "V68__gameplay_generations.sql",
     69 to "V69__onboarding_account_progress.sql",
     70 to "V70__current_activity_achievements.sql",
+    71 to "V71__world_neighbor.sql",
 )
 
 private data class AdminMigrationHistoryRow(

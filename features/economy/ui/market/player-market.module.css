@@ -116,3 +116,8 @@
 @container (max-width: 310px) { .marketSign { gap: 8px; }.market .subnav button { flex-direction: column; gap: 5px; font-size: .6875rem; }.badge { position: absolute; top: 5px; right: 6px; }.offerCard { padding: 9px; }.shopGrid { gap: 8px; }.showcaseInfo strong { font-size: .75rem; }.showcaseInfo span { font-size: .5625rem; }.market .showcaseInfo button { padding-inline: 6px; }.shopHeading { gap: 7px; } }
 @media (prefers-reduced-motion: reduce) { .market *, .market *::before { animation: none !important; transition: none !important; } }
 @media (forced-colors: active) { .marketSign, .subnav, .card, .soldStamp, .avatar, .composer, .empty, .market .emptyStall, .capacityDetails { border-color: ButtonText; }.market .subnav button[aria-pressed='true'] { border-color: Highlight; }.marketSign::before { background: CanvasText; }.badge { border: 1px solid ButtonText; } }
+.neighborEntry { display: flex; align-items: center; gap: 11px; width: 100%; padding: 13px; border: 1px solid #cbd5b6; border-radius: 16px; background: #edf0df; color: #4b633b; text-align: left; }
+.neighborEntry > span { flex: 1; min-width: 0; }
+.neighborEntry strong, .neighborEntry small { display: block; overflow-wrap: anywhere; }
+.neighborEntry strong { font-size: 13px; }
+.neighborEntry small { margin-top: 3px; font-size: 10px; font-weight: 400; color: #7c8968; line-height: 1.5; }

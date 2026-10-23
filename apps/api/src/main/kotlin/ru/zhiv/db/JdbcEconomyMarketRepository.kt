@@ -106,6 +106,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         val sale = if (owned && saleOwner != null) EconomyMarketSale(
             buyerPublicId = result.getString("sale_buyer_public_id"), buyerName = result.getString("sale_buyer_name"),
             proceedsCoins = result.getLong("sale_proceeds_coins"),
+            buyerKind = if (result.getString("sale_buyer_character_id") == null) "player" else "world_character",
+            buyerCharacterId = result.getString("sale_buyer_character_id"),
             claimedAt = result.getObject("sale_claimed_at", OffsetDateTime::class.java)?.toInstant()?.toString(),
         ) else null
         return ListingRow(seller, EconomyMarketListing(
@@ -356,6 +358,10 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             sale_owner_id=seller_id,sale_proceeds_coins=?,sale_buyer_public_id=?,sale_buyer_name=? WHERE id=?""",
             user, sellerProceeds, buyer.publicId, buyer.displayName, UUID.fromString(lot.id))
         saveEconomyProfile(c, user, next)
+        // A real peer sale permanently consumes newcomer relief, independent of
+        // mutable game profiles or later market-history cleanup.
+        if(c.economyRows("SELECT to_regclass('public.neighbor_identity') IS NOT NULL") { it.getBoolean(1) }.single())
+            c.economyUpdate("INSERT INTO neighbor_identity(user_id,first_buy_consumed) VALUES (?,true) ON CONFLICT(user_id) DO UPDATE SET first_buy_consumed=true",row.seller)
         saveEconomyProfile(c, row.seller, EconomyFishStock.release(seller, lot.id))
         addEconomyTradeUsage(c, user, at, buys=tradeValue)
         addEconomyTradeUsage(c, row.seller, at, sales=tradeValue)

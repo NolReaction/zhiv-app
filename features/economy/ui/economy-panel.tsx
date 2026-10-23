@@ -428,7 +428,7 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
 
 
 /** Account-owned controller survives closing this body; the caller owns the accessible dialog. */
-export function EconomyPanel({ economy, initialTab = "overview", initialFocusId, standalone = false, onNavigate }: { economy: EconomyController; initialTab?: EconomyTab; initialFocusId?: string; standalone?: boolean; onNavigate?: Navigate }) {
+export function EconomyPanel({ economy, initialTab = "overview", initialFocusId, standalone = false, onNavigate, onOpenNeighbor }: { economy: EconomyController; initialTab?: EconomyTab; initialFocusId?: string; standalone?: boolean; onNavigate?: Navigate; onOpenNeighbor?: () => void }) {
   const [tab, setTab] = useState<EconomyTab>(initialTab);
   const [focusId, setFocusId] = useState<string | undefined>(initialFocusId);
   const panel = useRef<HTMLElement>(null);
@@ -455,7 +455,7 @@ export function EconomyPanel({ economy, initialTab = "overview", initialFocusId,
         {tab === "production" && <Production economy={controller} navigate={navigate} focusId={focusId} />}
         {tab === "exploration" && <Exploration economy={controller} navigate={navigate} focusId={focusId} />}
         {tab === "inventory" && <Inventory economy={controller} navigate={navigate} focusId={focusId} />}
-        {tab === "market" && <Market economy={controller} navigate={navigate} />}
+        {tab === "market" && <Market economy={controller} navigate={navigate} onOpenNeighbor={onOpenNeighbor} />}
         {tab === "barter" && <BarterMarket economy={controller} onMarket={() => navigate("market")} onHome={() => navigate("buildings", "home")} />}
       </div>}
   </section>;
