@@ -17,6 +17,7 @@ DECLARE
         'economy_profiles', 'economy_commands', 'economy_ledger', 'economy_conversion_audit',
         'economy_market_listings', 'economy_market_receipts', 'economy_market_showcases', 'economy_market_daily_turnover',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
+        'neighbor_shop_cycles', 'neighbor_identity', 'neighbor_daily_usage', 'neighbor_receipts', 'neighbor_purchases',
         'game_presence_clients', 'game_presence_daily', 'game_presence_accounts',
         'game_daily_rewards', 'game_reward_claims', 'game_achievement_reward_claims', 'onboarding_progress',
         'forest_memory', 'forest_memory_receipts',
@@ -35,9 +36,12 @@ DECLARE
     promo_configuration jsonb;
     gameplay_generation jsonb;
     gameplay_resets jsonb;
+    neighbor_configuration jsonb;
+    neighbor_global_budget jsonb;
 BEGIN
     SELECT array_agg(name ORDER BY name COLLATE "C") INTO expected_tables
-    FROM unnest(user_tables || ARRAY['game_tap_collection_metadata', 'managed_promo_codes', 'gameplay_generations', 'gameplay_reset_runs']) AS t(name);
+    FROM unnest(user_tables || ARRAY['game_tap_collection_metadata', 'managed_promo_codes', 'gameplay_generations', 'gameplay_reset_runs',
+        'neighbor_settings', 'neighbor_global_usage']) AS t(name);
     SELECT array_agg(tablename::text ORDER BY tablename COLLATE "C") INTO actual_tables
     FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'flyway_schema_history';
     IF actual_tables IS DISTINCT FROM expected_tables THEN
@@ -50,18 +54,19 @@ BEGIN
     -- V67 frozen recipient snapshots are ephemeral account data and are cleared too.
     -- V68 global gameplay generations and completed release resets survive account deletion.
     -- V69 onboarding progress is cleared; V70 expands achievement constraints without new tables.
+    -- V71 clears personal neighbor data while retaining managed settings and the global spending fence.
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
     -- A known admin-history upgrade can install V50 after V51/V52.
     -- Verify either complete history by version, independently of install order.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 70
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 71
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,70) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,71) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V70. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V71. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;
@@ -76,6 +81,8 @@ BEGIN
 
     SELECT jsonb_agg(to_jsonb(g) ORDER BY singleton) INTO gameplay_generation FROM public.gameplay_generations g;
     SELECT jsonb_agg(to_jsonb(r) ORDER BY reset_id) INTO gameplay_resets FROM public.gameplay_reset_runs r;
+    SELECT jsonb_agg(to_jsonb(s) ORDER BY singleton) INTO neighbor_configuration FROM public.neighbor_settings s;
+    SELECT jsonb_agg(to_jsonb(b) ORDER BY trade_day) INTO neighbor_global_budget FROM public.neighbor_global_usage b;
 
     EXECUTE 'TRUNCATE TABLE ' || (
         SELECT string_agg(format('public.%I', name), ', ') FROM unnest(user_tables) AS t(name)
@@ -105,6 +112,10 @@ BEGIN
     IF gameplay_generation IS DISTINCT FROM (SELECT jsonb_agg(to_jsonb(g) ORDER BY singleton) FROM public.gameplay_generations g)
         OR gameplay_resets IS DISTINCT FROM (SELECT jsonb_agg(to_jsonb(r) ORDER BY reset_id) FROM public.gameplay_reset_runs r) THEN
         RAISE EXCEPTION 'Global gameplay reset state changed. Reset rolled back.';
+    END IF;
+    IF neighbor_configuration IS DISTINCT FROM (SELECT jsonb_agg(to_jsonb(s) ORDER BY singleton) FROM public.neighbor_settings s)
+        OR neighbor_global_budget IS DISTINCT FROM (SELECT jsonb_agg(to_jsonb(b) ORDER BY trade_day) FROM public.neighbor_global_usage b) THEN
+        RAISE EXCEPTION 'Neighbor configuration or global spending fence changed. Reset rolled back.';
     END IF;
     RAISE NOTICE 'All % user-data tables are empty. Migration history, collection metadata and promo configuration are preserved.', cardinality(user_tables);
 END $$;

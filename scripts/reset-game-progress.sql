@@ -20,7 +20,7 @@ DECLARE
         'check_in_audiences', 'check_ins', 'earth_latest_locations', 'earth_frozen_locations',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
         'economy_commands',
-        'economy_market_daily_turnover', 'economy_market_listings', 'economy_market_receipts',
+        'economy_market_daily_turnover',
         'economy_market_showcases', 'forest_memory_receipts',
         'game_achievement_tiers', 'game_daily_rewards', 'game_reward_claims', 'onboarding_progress',
         'game_items', 'game_monthly_scores', 'game_presence_clients', 'game_presence_accounts', 'game_presence_daily',
@@ -42,6 +42,8 @@ DECLARE
         'circle_sharing_preferences', 'circles', 'direct_invite_links', 'direct_invite_redemptions',
         'direct_person_favorites', 'direct_requests', 'earth_sharing_settings', 'earth_sharing_recipients',
         'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes',
+        'neighbor_settings', 'neighbor_shop_cycles', 'neighbor_identity', 'neighbor_daily_usage',
+        'neighbor_global_usage', 'neighbor_receipts', 'neighbor_purchases',
         'notification_preferences', 'notification_subscriptions', 'player_feedback',
         'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
         'recipient_sharing_preferences', 'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys'
@@ -50,7 +52,7 @@ DECLARE
     -- and non-welcome service mail are retained exactly; other progress is removed.
     partial_tables text[] := ARRAY[
         'app_users', 'game_achievements', 'game_achievement_reward_claims', 'player_mail_messages', 'notification_events', 'notification_batches',
-        'gameplay_generations', 'gameplay_reset_runs'
+        'gameplay_generations', 'gameplay_reset_runs', 'economy_market_listings', 'economy_market_receipts'
     ];
     expected_tables text[];
     actual_tables text[];
@@ -65,6 +67,8 @@ DECLARE
     security_claim_fingerprint text;
     mail_fingerprint text;
     reset_history_fingerprint text;
+    sold_market_fingerprint text;
+    neighbor_market_receipt_fingerprint text;
     previous_generation bigint;
     release_reset_id constant text := '0.7.1';
     reset_time timestamptz;
@@ -79,16 +83,17 @@ BEGIN
     END IF;
     -- V68 adds the reset generation and release ledger; migration itself never resets data.
     -- V69 onboarding progress is cleared; V70 expands achievement constraints without new tables.
+    -- V71 preserves neighbor configuration, lifetime/daily fences and confirmed sales, including unclaimed proceeds.
     -- Every later migration still requires an explicit inventory/policy review.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 70
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 71
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,70) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,71) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V70. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V71. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN
@@ -148,6 +153,10 @@ BEGIN
         WHERE source_key <> 'welcome:v1') rows;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO reset_history_fingerprint
     FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.gameplay_reset_runs r) rows;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO sold_market_fingerprint
+    FROM (SELECT md5(to_jsonb(l)::text) AS h FROM public.economy_market_listings l WHERE status='sold') rows;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO neighbor_market_receipt_fingerprint
+    FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.neighbor_receipts r) rows;
     -- Profile initialization synchronizes notifications. Restore only retained
     -- service-mail events, never old check-in reminders or welcome-gift messages.
     CREATE TEMP TABLE game_reset_service_events ON COMMIT DROP AS
@@ -177,6 +186,7 @@ BEGIN
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_commands
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_market_receipts
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_barter_receipts
+        UNION ALL SELECT user_id, accepted_revision::numeric FROM public.neighbor_receipts
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.game_reward_claims
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.promo_redemptions
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.forest_memory_receipts
@@ -187,10 +197,18 @@ BEGIN
         RAISE EXCEPTION 'Invalid or exhausted revision fence. Game reset rolled back.';
     END IF;
 
+    -- Retain confirmed sale snapshots and outstanding proceeds. Active escrow
+    -- belongs to the old game and is removed without granting it to the fresh stock.
+    DELETE FROM public.economy_market_listings WHERE status<>'sold';
     EXECUTE 'TRUNCATE TABLE ' || (
         SELECT string_agg(format('public.%I', name), ', ')
         FROM unnest(cleared_tables || reinitialized_tables) AS t(name)
     ) || ' RESTART IDENTITY RESTRICT';
+    -- Retain the cross-endpoint UUID fences for neighbor purchases. They are
+    -- receipts only and never transfer old stock, currency or proceeds again.
+    DELETE FROM public.economy_market_receipts;
+    INSERT INTO public.economy_market_receipts(user_id,request_id,signature,message,accepted_revision,created_at)
+    SELECT user_id,request_id,signature,message,accepted_revision,created_at FROM public.neighbor_receipts;
     UPDATE public.app_users SET last_check_in_at = NULL WHERE last_check_in_at IS NOT NULL;
     DELETE FROM public.game_achievements WHERE achievement_id NOT IN ('linked_email','saved_recovery_code');
     DELETE FROM public.game_achievement_reward_claims WHERE achievement_id NOT IN ('linked_email','saved_recovery_code');
@@ -252,6 +270,16 @@ BEGIN
             RAISE EXCEPTION 'Preserved table % changed. Game reset rolled back.', table_name;
         END IF;
     END LOOP;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
+    FROM (SELECT md5(to_jsonb(l)::text) AS h FROM public.economy_market_listings l) rows;
+    IF fingerprint IS DISTINCT FROM sold_market_fingerprint THEN
+        RAISE EXCEPTION 'Confirmed market sale preservation invariant failed. Game reset rolled back.';
+    END IF;
+    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
+    FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.economy_market_receipts r) rows;
+    IF fingerprint IS DISTINCT FROM neighbor_market_receipt_fingerprint THEN
+        RAISE EXCEPTION 'Neighbor cross-endpoint receipt preservation invariant failed. Game reset rolled back.';
+    END IF;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
     FROM (SELECT md5((to_jsonb(u) - 'last_check_in_at')::text) AS h FROM public.app_users u) rows;
     IF fingerprint IS DISTINCT FROM account_fingerprint

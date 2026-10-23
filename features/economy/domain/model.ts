@@ -351,7 +351,13 @@ export const economyMarketListingSchema = z.object({
   sale: z.object({
     buyerPublicId: z.string().min(1).max(40).nullable(), buyerName: z.string().min(1).max(100),
     buyerAvatarUrl: z.string().url().nullable(), proceedsCoins: balance, claimedAt: z.string().datetime().nullable(),
-  }).strict().nullish(),
+    buyerKind: z.enum(["player", "world_character"]).optional(), buyerCharacterId: z.literal("berest").nullable().optional(),
+  }).strict().superRefine((sale, context) => {
+    if (sale.buyerKind === "world_character" && (sale.buyerCharacterId !== "berest" || sale.buyerPublicId !== null || sale.buyerAvatarUrl !== null))
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["buyerCharacterId"], message: "World characters cannot impersonate a player" });
+    if (sale.buyerKind !== "world_character" && sale.buyerCharacterId != null)
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["buyerCharacterId"], message: "Player sales cannot name a world character" });
+  }).nullish(),
 });
 export const marketViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40),
