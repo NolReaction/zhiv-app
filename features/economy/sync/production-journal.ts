@@ -3,6 +3,7 @@ import { z } from "zod";
 import { economyCommandSchema, economyViewSchema, recipeBuildingLevel, type EconomyCommand, type EconomyView } from "@/features/economy/domain/model";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { fishClassForItem } from "@/features/economy/domain/fishing";
+import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 
 export const PRODUCTION_JOURNAL_LIMIT = 12;
 export type ProductionIntent = { requestId: string; targetId: string; command?: EconomyCommand };
@@ -50,7 +51,9 @@ export function reserveProduction(state: EconomyView, entry: ProductionIntent): 
     || Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) > state.storage.capacity
     || state.wallet.coins < recipe.cost.coins
     || Object.entries(recipe.cost.items).some(([id, count]) => (state.inventory[id] ?? 0) < count)) return null;
-  const finishTime = Date.parse(state.serverTime) + recipe.seconds * 1000;
+  const tradeSpeedBps = recipe.buildingId === "woodlot" ? tradeRelationBonusBps(state, "lopukh", state.catalog) : 0;
+  const seconds = recipe.buildingId === "woodlot" ? tradeWorkDuration(state, recipe.seconds, "lopukh", 0, state.catalog) : recipe.seconds;
+  const finishTime = Date.parse(state.serverTime) + seconds * 1000;
   if (!Number.isFinite(finishTime) || Math.abs(finishTime) > 8_640_000_000_000_000) return null;
   const inventory = { ...state.inventory };
   for (const [id, count] of Object.entries(recipe.cost.items)) {
@@ -62,7 +65,7 @@ export function reserveProduction(state: EconomyView, entry: ProductionIntent): 
     storage: { ...state.storage, used, available: Math.max(0, state.storage.capacity - used - state.storage.reserved),
       overflow: Math.max(0, used + state.storage.reserved - state.storage.capacity) },
     jobs: [...state.jobs, { id: entry.requestId, kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null,
-      startedAt: state.serverTime, finishesAt: new Date(finishTime).toISOString(),
+      startedAt: state.serverTime, finishesAt: new Date(finishTime).toISOString(), tradeSpeedBps,
       rewards: { ...recipe.rewards }, cost: { coins: recipe.cost.coins, items: { ...recipe.cost.items } }, catalogVersion: state.catalog.version,
       ...(recipe.collection ? { collection: { ...recipe.collection, startedAt: null, finishesAt: null } } : {}) }] };
 }

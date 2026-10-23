@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Axe, Pickaxe, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Axe, ClipboardList, Pickaxe, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -25,9 +25,9 @@ const villagers = {
 };
 
 /** The live resident and his useful action share one conversation. */
-export function WorldVillagerDialog({ id, open, ownerPublicId, economy, isOnline, quarryBuilt, lopukhAvailable = false, onClose, onBack, onCloseAutoFocus, onOpenStation }: {
+export function WorldVillagerDialog({ id, open, ownerPublicId, economy, isOnline, quarryBuilt, lopukhAvailable = false, onClose, onBack, onCloseAutoFocus, onOpenStation, onOpenOrders }: {
   id: NewVillagerId; open: boolean; ownerPublicId: string; economy: EconomyController; isOnline: boolean; quarryBuilt: boolean; lopukhAvailable?: boolean;
-  onClose: () => void; onBack?: () => void; onCloseAutoFocus: (event: Event) => void; onOpenStation: (stationId: string) => void;
+  onClose: () => void; onBack?: () => void; onCloseAutoFocus: (event: Event) => void; onOpenStation: (stationId: string) => void; onOpenOrders?: () => void;
 }) {
   const { name, role, Portrait, greeting, description } = villagers[id];
   const currentOwner = economy.snapshot?.ownerPublicId === ownerPublicId;
@@ -53,6 +53,9 @@ export function WorldVillagerDialog({ id, open, ownerPublicId, economy, isOnline
                 {id === "lopukh" ? "За древесиной" : "К добыче"}<ArrowRight size={17} aria-hidden="true" />
               </button>
             </>}
+            {onOpenOrders && <button type="button" className={styles.action} disabled={!currentOwner} onClick={onOpenOrders}>
+              <ClipboardList size={18} aria-hidden="true" />Отношения и заказы<ArrowRight size={17} aria-hidden="true" />
+            </button>}
           </>}
         </div>
       </DialogPrimitive.Content>

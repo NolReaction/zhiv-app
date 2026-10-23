@@ -1,0 +1,18 @@
+.strip { position: sticky; top: -1px; z-index: 2; display: flex; align-items: stretch; gap: 5px; min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #8d98705c transparent; padding: 3px 2px 6px; scroll-padding-inline: 3px; background: #ede6cb; border-bottom: 1px solid #b7bd9355; }
+.strip > button { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 0 0 58px; gap: 4px; min-width: 0; min-height: 66px; padding: 5px 3px 4px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #5c684d; cursor: pointer; font: inherit; transition: background-color .15s, border-color .15s; }
+.strip > button:hover:not(:disabled) { border-color: #9ca47d80; background: #e2e5cb80; }
+.strip > button[aria-selected="true"] { border-color: var(--resident-accent, #70825b); background: var(--resident-tint, #dce3c5); color: var(--resident-ink, #3c5439); box-shadow: inset 0 -2px var(--resident-accent, #70825b); }
+.strip > button:focus-visible { outline: 2px solid #4c764a; outline-offset: -2px; }
+.strip > button:disabled { opacity: .6; cursor: default; }
+.photo { position: relative; display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 37px; overflow: visible; color: var(--resident-ink, #526746); border: 1px solid var(--resident-accent, #a0ac83); border-radius: 4px; background: linear-gradient(145deg, #ffffff80, var(--resident-tint, #d9dfc5)); box-shadow: 1px 2px 0 #84906620; }
+.portrait { display: block; width: 36px; height: 36px; image-rendering: pixelated; }
+.name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; font-weight: 650; line-height: 1.3; }
+.count { position: absolute; top: -5px; right: -5px; display: grid; place-items: center; min-width: 15px; height: 15px; padding-inline: 3px; box-sizing: border-box; color: #fff8df; border: 1px solid #ebe7cf; border-radius: 8px; background: var(--resident-ink, #526746); font-size: 8px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.strip [data-resident-theme="builder"] { --resident-accent: #a58a58; --resident-ink: #705737; --resident-tint: #e9dbc0; }
+.strip [data-resident-theme="lopukh"] { --resident-accent: #82945b; --resident-ink: #536e37; --resident-tint: #dce6c9; }
+.strip [data-resident-theme="kamneshmyg"] { --resident-accent: #87999c; --resident-ink: #4d6970; --resident-tint: #dce4df; }
+.strip [data-resident-theme="plesk"] { --resident-accent: #7baba1; --resident-ink: #3c716d; --resident-tint: #d7e8db; }
+.strip [data-resident-theme="leaftail"] { --resident-accent: #b79358; --resident-ink: #856035; --resident-tint: #eddfbc; }
+@container (min-width: 620px) { .strip { gap: 8px; } .strip > button { flex-basis: 65px; } .name { font-size: 10px; } }
+@media (prefers-reduced-motion: reduce) { .strip > button { transition: none; } }
+@media (forced-colors: active) { .strip > button, .photo, .count { border-color: ButtonText; } .strip > button[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; } }

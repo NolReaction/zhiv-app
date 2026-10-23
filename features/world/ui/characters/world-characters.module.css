@@ -1,4 +1,5 @@
 .scrim[data-slot="dialog-overlay"] { z-index: 90; background: #07191099; }
+.relationship { color: #46623e; font-size: 11px; line-height: 1.4; font-weight: 600; }
 .dialog[data-slot="dialog-content"] { position: fixed; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #9aab7b; border-radius: 24px; padding: 24px; color: var(--forest-ink, #394d3e); background: var(--forest-paper, #e6d9b7); box-shadow: 0 20px 70px #020b0788; outline: none; scrollbar-width: thin; scrollbar-color: #788260 transparent; }
 .header { display: flex; align-items: flex-start; gap: 16px; margin: -24px -24px 20px; padding: 20px 24px; border-bottom: 1px solid #9caf7760; background: linear-gradient(125deg, #2d4632, #213629); }
 .header > div { flex: 1; min-width: 0; }

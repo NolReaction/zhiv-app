@@ -104,7 +104,7 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
         val it = EconomyStageOrders.pin(raw.copy(unlockedItems=EconomyItemUnlocks.project(raw,history)), now=time)
         EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs.map { job -> EconomyPublicJobs.project(job, time) },it.migration,
             EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing,
-            wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders,
+            wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders, tradeRelations=it.tradeRelations,
             stageOrders=it.stageOrders, tutorialOrder=it.tutorialOrder, workshopStarterClaimed=it.workshopStarterClaimed,
             marketSlots=it.marketSlots, unlockedItems=it.unlockedItems)
     }

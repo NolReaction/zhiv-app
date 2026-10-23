@@ -281,14 +281,15 @@ class EconomyFoodTest {
         val state = EconomyRules.initial().copy(residentOrders = old)
         val before = economyJson.encodeToString(state)
         val board = EconomyFood.residentOrderBoard(state, now)
-        assertEquals(3, board.offers.size)
+        assertEquals(setOf("plesk", "builder"), board.offers.map { it.residentId }.toSet())
+        assertEquals(2, board.offers.size)
         assertEquals(9L, board.completed)
         assertEquals(42L, board.earnedCoins)
         assertEquals(3, board.freeReplacementsRemaining)
         assertTrue(board.offers.all { !Instant.parse(it.availableAt).isAfter(now) })
         assertEquals(before, economyJson.encodeToString(state))
         val mutated = apply(state, "replace_resident_order", board.offers.first().id)
-        assertEquals(2, mutated.residentOrders.version)
+        assertEquals(3, mutated.residentOrders.version)
         assertEquals(1, mutated.residentOrders.freeReplacementsUsed)
     }
 
@@ -325,7 +326,7 @@ class EconomyFoodTest {
             EconomyResidentOrderTemplate("plesk_b", "plesk", "B", items = mapOf("fish_common" to 2), coins = 20),
             EconomyResidentOrderTemplate("builder_a", "builder", "A", items = mapOf("wood" to 1), coins = 10),
             EconomyResidentOrderTemplate("builder_b", "builder", "B", items = mapOf("wood" to 2), coins = 20))
-        val catalog = EconomyRules.catalog.copy(food = EconomyRules.catalog.food!!.copy(orders = EconomyRules.catalog.food!!.orders.copy(templates = templates)))
+        val catalog = EconomyRules.catalog.copy(tradeRelations = null, food = EconomyRules.catalog.food!!.copy(orders = EconomyRules.catalog.food!!.orders.copy(slots = 3, templates = templates)))
         val initial = EconomyRules.initial()
         val board = EconomyFood.normalizedOrders(initial, now, catalog)
         val current = board.slots[0].templateId!!
@@ -390,7 +391,7 @@ class EconomyFoodTest {
         assertTrue(board.offers.all { it.id.startsWith("order2_41467_") && it.id.length <= 80 })
         assertEquals("plesk", board.offers[0].residentId)
         assertEquals("builder", board.offers[1].residentId)
-        assertEquals(3, board.offers.map { it.templateId }.distinct().size)
+        assertEquals(2, board.offers.map { it.templateId }.distinct().size)
         val next = EconomyFood.residentOrderBoard(state, Instant.parse(board.refreshAt))
         assertTrue(next.offers.all { it.id.startsWith("order2_41468_") })
         assertEquals(before, economyJson.encodeToString(state))
@@ -408,7 +409,7 @@ class EconomyFoodTest {
         assertEquals(2, state.residentOrders.freeReplacementsUsed, "reading new periods never changes persisted usage")
     }
 
-    @Test fun `orders pay only coins and replace immediately while untouched cards remain stable`() {
+    @Test fun `orders pay promised coins and replace immediately while untouched cards remain stable`() {
         val state = stocked().copy(food = EconomyFoodState("grilled_fish", "fish_soup"))
         val board = EconomyFood.residentOrderBoard(state, now)
         val offer = board.offers.first()
@@ -477,7 +478,7 @@ class EconomyFoodTest {
             val retired = before.offers[slot]
             val next = apply(state, "replace_resident_order", retired.id, totalPrice = before.replacementPricePearls)
             val after = EconomyFood.residentOrderBoard(next, now)
-            assertEquals(3, after.offers.map { it.templateId }.distinct().size)
+            assertEquals(4, after.offers.map { it.templateId }.distinct().size)
             assertNotEquals(retired.templateId, after.offers[slot].templateId)
             before.offers.filter { it.slot != slot }.forEach { old -> assertEquals(old, after.offers.single { it.slot == old.slot }) }
             assertTrue(next.residentOrders.recentTemplateIds.size <= 6)
@@ -485,7 +486,9 @@ class EconomyFoodTest {
         }
         val lockedIn = EconomyFood.residentOrderBoard(state, now).offers
         val upgraded = state.copy(buildings = stocked().buildings)
-        assertEquals(lockedIn, EconomyFood.residentOrderBoard(upgraded, now).offers)
+        val upgradedOffers = EconomyFood.residentOrderBoard(upgraded, now).offers
+        lockedIn.forEach { old -> assertEquals(old, upgradedOffers.single { it.id == old.id }) }
+        assertEquals(tradeResidentIds.toSet(), upgradedOffers.map { it.residentId }.toSet())
     }
 
     @Test fun `first building claim locks in already displayed legacy board before unlocking templates`() {
@@ -496,9 +499,9 @@ class EconomyFoodTest {
         val displayed = EconomyFood.residentOrderBoard(initial, now)
         val upgraded = apply(initial, "claim_job", home.id)
         assertEquals(3, upgraded.buildings["home"])
-        assertEquals(2, upgraded.residentOrders.version)
+        assertEquals(3, upgraded.residentOrders.version)
         assertEquals(displayed.offers, EconomyFood.residentOrderBoard(upgraded, now).offers)
-        assertEquals(3, upgraded.residentOrders.slots.size)
+        assertEquals(5, upgraded.residentOrders.slots.size)
         assertEquals(0, upgraded.residentOrders.freeReplacementsUsed)
     }
 
@@ -582,7 +585,7 @@ class EconomyFoodTest {
         assertEquals(1234L, normalized.earnedCoins)
         assertTrue(locked.id in normalized.recentTemplateIds)
         val reachable = EconomyFood.obtainableOrderItems(state)
-        assertTrue(normalized.slots.all { slot -> slot.terms!!.items.keys.all { it in reachable } })
+        assertTrue(normalized.slots.mapNotNull { it.terms }.all { terms -> terms.items.keys.all { it in reachable } })
         assertEquals(before, economyJson.encodeToString(state))
         val unlocked = state.copy(buildings = state.buildings + mapOf("dryer" to 1, "garden" to 1))
         assertEquals(locked, EconomyFood.normalizedOrders(unlocked, now).slots[0].terms,

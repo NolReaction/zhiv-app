@@ -37,12 +37,14 @@ function elements(tree) {
 }
 const buttons = tree => elements(tree).filter(element => element.type === "button");
 const submissionControls = tree => elements(tree).filter(element => element.props["data-guide-order-submit"] !== undefined || element.type?.name === "FishOrderAction");
+const ordinaryCount = economy => residentOrderBoard(economy.snapshot, economy.now).offers.length;
 
-test("board offers three real portraits and an initial NPC filter without mixing meals into feeding", () => {
+test("board offers five resident tabs and an initial NPC filter without mixing meals into feeding", () => {
   const economy = controller({}, { act() { assert.fail("rendering cannot change an order"); } });
   const all = render(ResidentOrderBoard, { economy });
-  assert.equal((all.match(/data-order-id=/g) ?? []).length, 3);
-  assert.equal((all.match(/<canvas /g) ?? []).length, 3);
+  assert.equal((all.match(/data-order-id=/g) ?? []).length, 5);
+  assert.equal((all.match(/role="tab"/g) ?? []).length, 6);
+  for (const id of ["builder", "plesk", "lopukh", "kamneshmyg", "leaftail"]) assert.match(all, new RegExp(`data-resident="${id}"`));
   assert.match(all, /Бесплатных замен: <strong>3 \/ 3/);
   assert.match(all, /затем 5 жемчужин/);
   assert.doesNotMatch(all, /Угостить Шишколапа|Съесть:|Доступен через|новый заказ ждёт/);
@@ -70,7 +72,7 @@ test("educational order appears only after its activation, respects the resident
   economy.snapshot.inventory = { ...terms.items };
   const markup = render(ResidentOrderBoard, { economy });
   assert.match(markup, /data-tutorial-order="true"/);
-  assert.equal((markup.match(/data-order-id=/g) ?? []).length, 4);
+  assert.equal((markup.match(/data-order-id=/g) ?? []).length, 1 + ordinaryCount(economy));
   assert.ok(markup.indexOf(`data-order-id="${TUTORIAL_ORDER_ID}"`) < markup.indexOf('data-order-chapter="repeatable"'), "the practice request has its own chapter before repeatable requests");
   assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-tutorial-order/);
   assert.match(render(ResidentOrderBoard, { economy, residentId: "builder" }), /data-tutorial-order/);
@@ -95,7 +97,7 @@ test("house-two course pins one nonreplaceable request before repeatable request
   assert.match(markup, /data-stage-order="true"/);
   assert.match(markup, /К дому 3 · 1 \/ 7/);
   assert.equal((markup.match(/data-stage-order=/g) ?? []).length, 1);
-  assert.equal((markup.match(/data-order-id=/g) ?? []).length, 4);
+  assert.equal((markup.match(/data-order-id=/g) ?? []).length, 1 + ordinaryCount(economy));
   assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('data-order-chapter="repeatable"'));
   assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-stage-order/);
   assert.match(render(ResidentOrderBoard, { economy, residentId: "builder" }), /data-stage-order/);
@@ -325,7 +327,7 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
     tree = board();
     assert.ok(cards(tree).every(card => card.props.offer.id !== initialId));
     assert.match(renderToStaticMarkup(tree), /Заказ выполнен ·/);
-    assert.equal(cards(tree).length, 3, "the confirmed replacement appears immediately without an empty slot");
+    assert.equal(cards(tree).length, 5, "the confirmed replacement preserves one request for each unlocked resident");
     economy.uncertain = true;
     assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ выполнен ·/);
 
@@ -343,7 +345,7 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       tutorialOrder: { ...economy.snapshot.tutorialOrder, completed: true }, inventory: {} };
     economy.notice = "Учебный заказ выполнен";
     tree = board();
-    assert.equal(cards(tree).length, 3);
+    assert.equal(cards(tree).length, ordinaryCount(economy));
     assert.match(renderToStaticMarkup(tree), new RegExp(`Учебный заказ выполнен · \\+${terms.coins} монет`));
     economy.uncertain = true;
     assert.doesNotMatch(renderToStaticMarkup(board()), /Учебный заказ выполнен ·/);
@@ -366,7 +368,7 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       economy.notice = "Учебный заказ выполнен";
       tree = board();
       assert.match(renderToStaticMarkup(tree), new RegExp(`Учебный заказ выполнен · \\+${terms.coins} монет`));
-      assert.equal(cards(tree).length, 3);
+      assert.equal(cards(tree).length, ordinaryCount(economy));
       first.props.onComplete(first.props.offer);
       assert.equal(calls.length, 1, "a stale tutorial card cannot submit the next pinned request");
     }
@@ -393,7 +395,7 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       economy.notice = "Заказ выполнен";
       tree = board();
       assert.match(renderToStaticMarkup(tree), new RegExp(`Заказ этапа выполнен · \\+${terms.coins.toLocaleString("ru-RU")} монет`));
-      assert.equal(cards(tree).length, step === course.orders.length - 1 ? 3 : 4);
+      assert.equal(cards(tree).length, ordinaryCount(economy) + (step === course.orders.length - 1 ? 0 : 1));
       if (step < course.orders.length - 1) assert.equal(cards(tree)[0].props.offer.id, course.orders[step + 1].id);
       else assert.match(renderToStaticMarkup(tree), /Все просьбы этого этапа выполнены/);
       first.props.onComplete(first.props.offer);
@@ -442,7 +444,7 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
         assert.match(renderToStaticMarkup(tree), /data-stage-order-wait/);
         assert.doesNotMatch(renderToStaticMarkup(tree), /Следующая просьба уже на доске|Получено:/);
       } else {
-        assert.equal(cards(tree).length, 3);
+        assert.equal(cards(tree).length, ordinaryCount(economy));
         assert.match(renderToStaticMarkup(tree), /Все просьбы этого этапа выполнены/);
         assert.match(renderToStaticMarkup(tree), /Получено: Живая смола × 1/);
         economy.uncertain = true;

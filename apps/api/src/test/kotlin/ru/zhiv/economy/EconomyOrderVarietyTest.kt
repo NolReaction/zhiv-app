@@ -24,13 +24,16 @@ class EconomyOrderVarietyTest {
         scenarios().forEach { scenario ->
             // Buying future ingredients must not open an unavailable supply chain.
             val state = state(scenario).copy(inventory = catalog.items.associate { it.id to 100L })
-            val ids = EconomyFood.eligibleOrderTemplates(state).map { it.id }.toSet()
+            val eligible = EconomyFood.eligibleOrderTemplates(state)
+            val ids = eligible.map { it.id }.toSet()
+            val expectedResidents = eligible.map { it.residentId }.toSet()
             scenario.present.forEach { assertTrue(it in ids, "${scenario.label}: expected $it") }
             scenario.missing.forEach { assertFalse(it in ids, "${scenario.label}: unexpected $it") }
             repeat(24) { cycle ->
                 val board = EconomyFood.residentOrderBoard(state, now.plusSeconds(cycle * catalog.food!!.orders.refreshSeconds))
-                assertEquals(3, board.offers.size, scenario.label)
-                assertEquals(3, board.offers.map { it.items }.distinct().size, scenario.label)
+                assertEquals(expectedResidents.size, board.offers.size, scenario.label)
+                assertEquals(expectedResidents, board.offers.map { it.residentId }.toSet(), scenario.label)
+                assertEquals(board.offers.size, board.offers.map { it.items }.distinct().size, scenario.label)
                 board.offers.forEach { assertTrue(it.templateId in ids, "${scenario.label}: unavailable ${it.templateId}") }
             }
         }

@@ -8,6 +8,7 @@ import ru.zhiv.economy.ECONOMY_MAX_ITEMS
 import ru.zhiv.economy.EconomyState
 import ru.zhiv.economy.EconomyTutorialOrders
 import ru.zhiv.economy.EconomyStageOrders
+import ru.zhiv.economy.EconomyTradeRelations
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
@@ -118,6 +119,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
         food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal),
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
+        tradeRelations=EconomyTradeRelations.merge(a.tradeRelations,b.tradeRelations,now),
         workshopStarterClaimed=a.workshopStarterClaimed || b.workshopStarterClaimed,
         tutorialOrder=EconomyTutorialOrders.merge(a.tutorialOrder,b.tutorialOrder),
         stageOrders=EconomyStageOrders.merge(a.stageOrders,b.stageOrders),

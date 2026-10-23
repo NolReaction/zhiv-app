@@ -1,5 +1,7 @@
 "use client";
 
+import { tradeRelationBonusBps } from "@/features/economy/domain/trade-relations";
+
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Check, Fish, Gem, Leaf, LockKeyhole, Minus, Package, Plus, RefreshCw, Shirt } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -116,6 +118,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
   useLayoutEffect(() => { latest.current = { economy, quote, isOnline, introduced }; }, [economy, quote, isOnline, introduced]);
   const state = economy.snapshot;
   // Keep the accepted delivery on screen until the next server snapshot arrives.
+  const friendshipDiscount = state ? tradeRelationBonusBps(state, "leaftail", state.catalog) / 100 : 0;
   const acceptedAt = Date.parse(state?.serverTime ?? "");
   const shop = state ? leaftailShopView(state, Number.isFinite(acceptedAt) ? acceptedAt : economy.now, state.catalog) : null;
   const deliveryExpired = Boolean(shop && economy.now >= shop.refreshAt);
@@ -179,6 +182,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
       : !state ? <>{recovery}<p role="status">Проверяем ваши запасы…</p></> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p>
       : !shop.unlocked ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{leaftailTravelMessage(shop.requiredHomeLevel)}</span></p> : <>
       <p className={styles.intro}><Leaf size={18} aria-hidden="true" /><span>«Товар занятный. Только узлы не развязывай.»</span></p>
+      {friendshipDiscount > 0 && <p className={styles.hint} data-trade-discount="leaftail">Скидка за отношения: {number(friendshipDiscount)}% на одежду, снасти и наживку.</p>}
       {recovery}
       <div className={styles.delivery}>
         <MarketRefreshProgress refreshAt={shop.refreshAt} refreshSeconds={state.catalog.leaftailShop?.refreshSeconds ?? 86400} now={economy.now} label="Новая поставка" pendingLabel="Проверяем новую поставку" />

@@ -242,7 +242,7 @@ test("a finished construction cannot eat a meal, and builder food does not affec
 
 test("order board is deterministic, replacement changes template, and locked kitchens cannot generate unreachable food orders", () => {
   const state = fresh(), frozen = structuredClone(state), first = food.residentOrderBoard(state, now);
-  assert.equal(first.offers.length, 3); assert.deepEqual(food.residentOrderBoard(state, now + 1000), first);
+  assert.equal(first.offers.length, 2, "only the two introduced starting residents have cards"); assert.deepEqual(food.residentOrderBoard(state, now + 1000), first);
   assert.ok(first.offers.every(offer => /^order2_[0-9]+_[0-2]_0_[0-9]+$/.test(offer.id)));
   assert.equal(first.offers[0].residentId, "plesk"); assert.equal(first.offers[1].residentId, "builder");
   assert.deepEqual(state, frozen, "deriving the board cannot mutate a save");
@@ -427,7 +427,7 @@ test("saved ordinary orders for locked products are replaced freely while reacha
   assert.equal(normalized.completed, 7); assert.equal(normalized.earnedCoins, 1234);
   assert.deepEqual(state, before); assert.deepEqual(state.wallet, wallet);
   assert.ok(normalized.recentTemplateIds.includes(locked.id));
-  assert.ok(normalized.slots.every(slot => Object.keys(slot.terms.items).every(id => food.obtainableResidentOrderItems(state).has(id))));
+  assert.ok(normalized.slots.filter(slot => slot.terms).every(slot => Object.keys(slot.terms.items).every(id => food.obtainableResidentOrderItems(state).has(id))));
   state.buildings.dryer = 1; state.buildings.garden = 1;
   const unlocked = food.normalizedResidentOrders(state, now);
   assert.deepEqual(unlocked.slots[0].terms, locked, "reachable accepted quantities and payout stay frozen even for retired templates");

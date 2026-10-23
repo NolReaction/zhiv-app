@@ -3,16 +3,20 @@ import { residentOrderBoard, type ResidentOrderOffer } from "@/features/economy/
 import { tutorialOrderProgress, tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
 import { stageResidentOrder } from "@/features/economy/domain/stage-orders";
 import { ECONOMY_MAX_BALANCE } from "@/features/economy/domain/money";
+import { weeklyOrderBoard } from "@/features/economy/domain/trade-relations";
+import type { OrderResidentId } from "./order-residents";
 
 export type OrderJournalOffer = ResidentOrderOffer & {
   completionRewards?: Record<string, number>;
   requiredBuildings?: Record<string, number> | null;
   requiredExplorations?: Record<string, number> | null;
+  weekly?: boolean;
+  expiresAt?: string;
 };
 
 /** Transport locks do not change whether the saved goods and reward can be handed over. */
 export function orderOfferReady(state: EconomyView, offer: OrderJournalOffer, now: number): boolean {
-  if (Date.parse(offer.availableAt) > now || state.wallet.coins > ECONOMY_MAX_BALANCE - offer.coins
+  if (Date.parse(offer.availableAt) > now || offer.expiresAt && Date.parse(offer.expiresAt) <= now || state.wallet.coins > ECONOMY_MAX_BALANCE - offer.coins
     || Object.entries(offer.items).some(([id, quantity]) => (state.inventory[id] ?? 0) < quantity)
     || Object.entries(offer.requiredBuildings ?? {}).some(([id, level]) => (state.buildings[id] ?? 0) < level)
     || Object.entries(offer.requiredExplorations ?? {}).some(([id, count]) => (state.progression?.routes[id] ?? 0) < count)) return false;
@@ -22,11 +26,12 @@ export function orderOfferReady(state: EconomyView, offer: OrderJournalOffer, no
 }
 
 /** One readiness definition serves the journal heading, card markers and dock badge. */
-export function orderJournalSummary(state: EconomyView, now: number, residentId?: "plesk" | "builder", tutorialOnly = false): { total: number; ready: number } {
+export function orderJournalSummary(state: EconomyView, now: number, residentId?: OrderResidentId, tutorialOnly = false, introducedResidents?: readonly OrderResidentId[]): { total: number; ready: number } {
   if (!state.catalog.food) return { total: 0, ready: 0 };
   const tutorial = tutorialOrderProgress(state).ingredientsClaimed ? tutorialResidentOrder(state) : null;
-  const offers = tutorialOnly ? [tutorial] : [tutorial, stageResidentOrder(state), ...residentOrderBoard(state, now, state.catalog).offers];
+  const offers = tutorialOnly ? [tutorial] : [tutorial, stageResidentOrder(state), ...residentOrderBoard(state, now, state.catalog).offers, weeklyOrderBoard(state, now, state.catalog).active];
   const matching = offers
-    .filter((offer): offer is OrderJournalOffer => Boolean(offer && (!residentId || offer.residentId === residentId)));
+    .filter((offer): offer is OrderJournalOffer => Boolean(offer && (!residentId || offer.residentId === residentId)
+      && (tutorialOnly || !introducedResidents || introducedResidents.includes(offer.residentId))));
   return { total: matching.length, ready: matching.filter(offer => orderOfferReady(state, offer, now)).length };
 }

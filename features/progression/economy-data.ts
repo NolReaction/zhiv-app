@@ -400,6 +400,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
         Math.max(0, ...building.levels.map(level => level.level))])) }).at(-1)?.coins ?? 0 },
     fishingShop: fish ? { refreshSeconds: fish.shop.refreshSeconds, maximumRefreshPearls: pearlDisplayAmount(fish.shop.refreshPricePearls) } : null,
     orderBoard: { templates: catalog.food?.orders.templates.length ?? 0, slots: catalog.food?.orders.slots ?? 0,
+      perResident: Boolean(catalog.tradeRelations),
       refreshSeconds: catalog.food?.orders.refreshSeconds ?? 0, freeReplacements: catalog.food?.orders.freeReplacements ?? 0,
       replacementPricePearls: pearlDisplayAmount(catalog.food?.orders.replacementPricePearls ?? 0) },
   };

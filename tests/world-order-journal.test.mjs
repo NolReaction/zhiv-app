@@ -39,13 +39,13 @@ function fill(economy, offers) {
 
 test("journal readiness counts only actual activated offers and customer filters include the permanent chapter", () => {
   const economy = controller(), state = economy.snapshot;
-  assert.deepEqual(orderJournalSummary(state, now), { total: 3, ready: 0 });
+  assert.deepEqual(orderJournalSummary(state, now), { total: 5, ready: 0 });
   state.tutorialOrder = newTutorialOrder(state.catalog);
   const tutorial = tutorialResidentOrder(state);
   state.inventory = { ...tutorial.items };
   const normal = residentOrderBoard(state, now).offers;
   const expected = [tutorial, ...normal];
-  assert.deepEqual(orderJournalSummary(state, now), { total: 4, ready: expected.filter(offer => orderOfferReady(state, offer, now)).length });
+  assert.deepEqual(orderJournalSummary(state, now), { total: 6, ready: expected.filter(offer => orderOfferReady(state, offer, now)).length });
   for (const residentId of ["plesk", "builder"]) {
     const matching = expected.filter(offer => offer.residentId === residentId);
     assert.deepEqual(orderJournalSummary(state, now, residentId), { total: matching.length, ready: matching.filter(offer => orderOfferReady(state, offer, now)).length });
@@ -158,13 +158,14 @@ test("changing the customer keeps the contextual heading and readiness in sync w
   try {
     const hooks = await runtime.ssrLoadModule(id), { WorldOrderJournal: Journal } = await runtime.ssrLoadModule("/features/economy/ui/orders/world-order-journal.tsx");
     const { ResidentOrderBoard: Board } = await runtime.ssrLoadModule("/features/economy/ui/orders/world-resident-order-board.tsx");
+    const { OrderResidentTabs: Tabs } = await runtime.ssrLoadModule("/features/economy/ui/orders/order-resident-tabs.tsx");
     const economy = controller(); economy.snapshot.tutorialOrder = newTutorialOrder(economy.snapshot.catalog);
     economy.snapshot.inventory = { ...tutorialResidentOrder(economy.snapshot).items };
     const journal = (extra = {}) => { hooks.frame("journal"); return Journal({ economy, ...extra }); };
     const board = tree => { hooks.frame("board"); return Board(elements(tree).find(entry => entry.type === Board).props); };
     let tree = journal();
     let boardTree = board(tree);
-    const filter = value => elements(boardTree).find(entry => entry.props["data-order-filter"] === value).props.onClick();
+    const filter = value => elements(boardTree).find(entry => entry.type === Tabs).props.onSelect(value);
     filter("plesk"); tree = journal(); boardTree = board(tree);
     assert.ok(elements(tree).some(entry => entry.type === "h2" && entry.props.children === "Просьбы Плёски"));
     const summary = orderJournalSummary(economy.snapshot, now, "plesk");

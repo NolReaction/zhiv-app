@@ -16,7 +16,8 @@ import { UpgradeBenefitCarousel, type UpgradeBenefitCard } from "./upgrade-benef
 import { WorldHomeFinale } from "./world-home-finale";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { mealSpeedDescription } from "@/features/economy/ui/food/meal-speed-description";
-import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
+import { pendingMeal } from "@/features/economy/domain/food";
+import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
 import { explorationActorId } from "@/features/economy/domain/actor-availability";
 import { stageOrderProgress } from "@/features/economy/domain/stage-orders";
@@ -125,7 +126,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
     const ActivityIcon = mining ? Pickaxe : Compass;
     cards.push({ id: `route:${route.id}`, label: route.name, details: requirementDetails(worldRequirements(route), mining ? "Для этой добычи" : "Для этого маршрута"), content: <>
       <span className={styles.benefitArt} data-kind="route">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={42} />)}<ActivityIcon size={20} className={styles.benefitArtBadge} aria-hidden="true" /></span>
-      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(route.seconds)}</span><strong className={styles.benefitTitle}>{route.name.replace(/ · \d+ ч$/, "")}</strong>
+      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(mining ? tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog) : route.seconds)}</span><strong className={styles.benefitTitle}>{route.name.replace(/ · \d+ ч$/, "")}</strong>
       <span className={styles.benefitRewards} role="list" aria-label="Находки маршрута">{rewards.map(([id, amount]) => <span role="listitem" key={id}>{itemName(state, id)} <b>×{number(amount)}</b></span>)}</span>
       {requirements(worldRequirements(route))}
       {mining && <span className={styles.benefitDescription}>Шахта работает независимо от Мохлика.</span>}
@@ -142,7 +143,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
       content: <>
       <span className={styles.benefitArt} data-kind="recipe">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={44} />)}</span>
       <span className={styles.benefitKind}>Новый рецепт{stationId === "home" ? ` · ${stationName(state, entry.buildingId)}` : ""}</span><strong className={styles.benefitTitle}>{title}</strong>
-      <span className={styles.benefitDescription}>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.seconds)}</span>
+      <span className={styles.benefitDescription}>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.buildingId === "woodlot" ? tradeWorkDuration(state, entry.seconds, "lopukh", 0, state.catalog) : entry.seconds)}</span>
       {meal && <span className={styles.benefitDescription}>Вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}% скорости</span>}
       {missing.length > 0 && <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>}
     </> });
@@ -197,6 +198,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
   const homeFinale = stationId === "home" && maximum > 0 && current >= maximum && !target && !construction;
   const builder = state ? economyBuilderStatus(state, economy.now) : null;
   const meal = state ? pendingMeal(state, "builder") : null;
+  const tradeSpeedBps = state ? tradeRelationBonusBps(state, "builder", state.catalog) : 0;
   const builderElsewhere = !construction && target && builder;
   const readyEconomy: ReadyEconomy | null = state ? { ...economy, snapshot: state } : null;
   const reason = state && target ? worldConstructionReason(state, stationId, target) : null;
@@ -246,7 +248,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>{`Сыт · ${mealSpeedDescription(meal.builderSpeedBps)}`}</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(tradeWorkDuration(state, target.seconds, "builder", meal?.builderSpeedBps ?? 0, state.catalog))}</strong>{meal && <small>{`Сыт · ${mealSpeedDescription(meal.builderSpeedBps, tradeSpeedBps)}`}</small>}{tradeSpeedBps > 0 && <small data-construction-trade-bonus>Шишколап: +{tradeSpeedBps / 100}% к скорости</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{homeFinale ? "В лес!" : state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

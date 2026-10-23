@@ -216,10 +216,22 @@ test("pearl budgets respect visible denomination and distinguish seven gifts fro
   assert.deepEqual(plain(economy.pearls.construction), { stepPearls: 1, curved: true,
     prices: [{ seconds: 60, pearls: 1 }, { seconds: 3600, pearls: 20 }, { seconds: 21600, pearls: 73 },
       { seconds: 43200, pearls: 135 }, { seconds: 86400, pearls: 260 }, { seconds: 172800, pearls: 384 }, { seconds: 604800, pearls: 1000 }] });
-  assert.equal(economy.orderBoard.templates, catalog.food.orders.templates.length);
-  assert.equal(economy.orderBoard.slots, 3);
-  assert.equal(economy.orderBoard.replacementPricePearls, 5);
   assert.deepEqual(plain(economy.fishingShop), { refreshSeconds: 21600, maximumRefreshPearls: 50 });
+});
+
+test("resident board reference follows the five-resident catalog while older catalogs keep their own capacity", () => {
+  assert.equal(economy.orderBoard.templates, catalog.food.orders.templates.length);
+  assert.equal(economy.orderBoard.slots, catalog.food.orders.slots);
+  assert.equal(economy.orderBoard.slots, new Set(catalog.food.orders.templates.map(order => order.residentId)).size);
+  assert.equal(economy.orderBoard.perResident, true);
+  assert.equal(economy.orderBoard.replacementPricePearls, 5);
+  const legacy = structuredClone(catalog);
+  delete legacy.tradeRelations;
+  legacy.food.orders.slots = 3;
+  const board = buildProgressionEconomy(legacy).orderBoard;
+  assert.equal(board.slots, 3);
+  assert.equal(board.perResident, false);
+  assert.equal(board.templates, legacy.food.orders.templates.length);
 });
 
 test("currency shop reference uses visible pearls and home quotes, excluding storage from production bonuses", () => {

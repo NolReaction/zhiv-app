@@ -174,6 +174,30 @@ test("food and resident orders are active optional uses rather than future progr
   assert(!getPrerequisiteIds(graph, "b:home:5").has("meals"));
 });
 
+test("orders reference explains all five relationships and the separate reviewed weekly choice", () => {
+  const description = node("orders").description;
+  assert.ok(description.includes(`До ${catalog.food.orders.slots} обычных просьб, по одной у доступного жителя`));
+  for (const name of ["Плёске", "Шишколапу", "Лопоуху", "Камнешмыгу", "Листохвосту"]) assert.ok(description.includes(name), name);
+  assert.match(description, /Маленькие портреты.*вкладка «Все»/);
+  assert.ok(description.includes(`до ${catalog.tradeRelations.dailyOrderXpCap} очков у каждого жителя в сутки UTC`));
+  assert.match(description, /Репутация не падает, учебные и проектные поставки её не дают/);
+  assert.ok(description.includes(`Максимальная выгода ${catalog.tradeRelations.maxBonusBps / 100}%`));
+  assert.match(description, /Рыба, обычные материалы и припасы, жемчуг и обновление лавки без скидки/);
+  assert.ok(description.includes(`одно большое поручение на аккаунт на ${catalog.tradeRelations.weekly.durationSeconds / 86400} дней с принятия`));
+  assert.match(description, /все три этапа видны до подтверждения и оплачиваются по очереди/);
+  assert.match(description, /уже полученные награды сохраняются/);
+  assert.match(description, /базовую добычу и переработку с нуля; работы могут идти параллельно, случайный улов не гарантирует срок/);
+});
+
+test("older catalogs retain their board description without invented reputation or weekly contracts", () => {
+  const legacy = structuredClone(catalog);
+  delete legacy.tradeRelations;
+  legacy.food.orders.slots = 3;
+  const description = buildProgressionGraph(legacy).nodes.find(value => value.id === "orders").description;
+  assert.match(description, /До 3 обычных просьб с именами заказчиков: Плёске нужен улов и блюда, Шишколапу материалы/);
+  assert.doesNotMatch(description, /репутаци|Репутаци|большое поручение|Маленькие портреты|Лопоуху|Камнешмыгу|Листохвосту/);
+});
+
 test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {
   assert.equal(node("daily_rewards").status, "active");
   const dailyPearls = moneyContext.exports.formatPearls(progressionRewards.daily.reduce((sum, reward) => sum + reward.pearls, 0));

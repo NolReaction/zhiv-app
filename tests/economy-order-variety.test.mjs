@@ -31,8 +31,10 @@ for (const scenario of scenarios) test(`shared order variety/availability: ${sce
   for (const id of scenario.missing) assert(!ids.has(id), `unexpected ${id}`);
   for (let cycle = 0; cycle < 24; cycle++) {
     const board = food.residentOrderBoard(state, now + cycle * catalog.food.orders.refreshSeconds * 1000);
-    assert.equal(board.offers.length, 3);
-    assert.equal(new Set(board.offers.map(offer => JSON.stringify(Object.entries(offer.items).sort()))).size, 3);
+    const expectedResidents = new Set(eligible.map(offer => offer.residentId));
+    assert.equal(board.offers.length, expectedResidents.size);
+    assert.deepEqual(new Set(board.offers.map(offer => offer.residentId)), expectedResidents);
+    assert.equal(new Set(board.offers.map(offer => JSON.stringify(Object.entries(offer.items).sort()))).size, board.offers.length);
     for (const offer of board.offers) assert(ids.has(offer.templateId), `cycle ${cycle}: unavailable ${offer.templateId}`);
   }
 });

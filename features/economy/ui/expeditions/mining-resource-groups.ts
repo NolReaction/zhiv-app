@@ -9,7 +9,7 @@ export const miningDurationFilters = [
 ] as const;
 export type MiningDurationFilter = typeof miningDurationFilters[number]["id"];
 
-/** Filter quotes, not catalog timers: only hero-owned legacy routes can use food. */
+/** Filter the quoted work time, including the miner's earned speed bonus. */
 export function miningDurationMatches(seconds: number, filter: MiningDurationFilter) {
   return filter === "all" || (filter === "short" && seconds <= 900)
     || (filter === "medium" && seconds > 900 && seconds <= 3600)

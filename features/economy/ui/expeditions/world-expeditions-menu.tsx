@@ -8,6 +8,7 @@ import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { WorldStationSetup } from "@/features/economy/ui/construction/world-station-setup";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
+import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -58,7 +59,9 @@ const routeName = (name: string) => name.replace(/ · \d+ ч$/, "");
 const routeIcon = (id: string): LucideIcon => expeditionSectors.find(sector => sector.id === expeditionSector(id))!.icon;
 const isFishingRoute = (state: EconomyView, route: Route) => state.catalog.fishing?.routeIds.includes(route.id) ?? false;
 const expeditionCost = (state: EconomyView, route: Route) => isFishingRoute(state, route) ? fishingTripCost(route.cost, state) : route.cost;
-const routeSeconds = (state: EconomyView, route: Route) => explorationActorId(route) === "miner" ? route.seconds : mealDuration(route.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0);
+const routeSeconds = (state: EconomyView, route: Route) => explorationActorId(route) === "miner"
+  ? tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog)
+  : mealDuration(route.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0);
 const displayedRouteDuration = (state: EconomyView, route: Route) => expeditionSector(route.id) === "caves" ? miningDurationLabel(routeSeconds(state, route)) : worldDuration(routeSeconds(state, route));
 const canPrepare = (state: EconomyView, route: Route) => worldMissingRequirements(state, worldRequirements(route)).length === 0 && countRewards(route.rewards) <= state.storage.capacity && worldCostShortfalls(state, expeditionCost(state, route)).length === 0;
 const hasActiveRoute = (state: EconomyView, routeId: string | null) => routeId !== null && state.jobs.some(job =>
@@ -201,9 +204,11 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
   if (sectorId === "caves" && (!(state.buildings.quarry > 0) || state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry"))) return <WorldStationSetup economy={{ ...economy, snapshot: state }} stationId="quarry" onOpenPantry={onOpenPantry} onOpenConstruction={onUpgradeQuarry ?? (onNavigateStation ? () => onNavigateStation("quarry") : undefined)} />;
   const selected = routes.find(route => route.id === selectedRoute && !hasActiveRoute(state, route.id));
   const selectedSeconds = selected ? routeSeconds(state, selected) : 0;
+  const tradeSpeedBps = selected && explorationActorId(selected) === "miner" ? tradeRelationBonusBps(state, "kamneshmyg", state.catalog) : 0;
   if (selected) return <section className={styles.preparation} data-section-guide-target="expedition-preparation" data-guide-spotlight-group aria-label={`Подготовка: ${routeName(selected.name)}`} data-sector={sectorId} data-route={selected.id} data-route-preparation="true">
     <button type="button" className={styles.back} onClick={() => { if (sectorId === "caves" && !miningDurationMatches(selectedSeconds, durationFilter)) setDurationFilter("all"); onSelectRoute(null); }}><ArrowLeft size={15} aria-hidden="true" />{sectorId === "caves" ? "Вся добыча" : "Все маршруты"}<span>{sector.name}</span></button>
     <header className={styles.preparationHeading} data-activity={sectorId}><span className={styles.preparationArt}><ExpeditionActivityArt sector={sectorId} /></span><h3 tabIndex={-1} data-route-heading>{routeName(selected.name)}</h3><span className={styles.routeDuration}><Clock3 size={13} aria-hidden="true" />{displayedRouteDuration(state, selected)}</span></header>
+    {tradeSpeedBps > 0 && <p className={styles.caption} data-mining-trade-bonus>Камнешмыг: +{tradeSpeedBps / 100}% к скорости добычи уже учтено</p>}
     {explorationActorId(selected) !== "miner" && <div className={styles.preparationBoost}><WorldMealBoost key={selected.id} economy={economy} consumer="hero" seconds={selected.seconds} isOnline={isOnline} onNavigateStation={onNavigateStation} /></div>}
     <ExpeditionRouteDetails key={selected.id} route={selected} state={state} economy={economy} exploring={exploring} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />
   </section>;

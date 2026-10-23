@@ -9,6 +9,8 @@ import { LopukhPortrait } from "@/features/world/characters/lopukh/lopukh-portra
 import { KamneshmygPortrait } from "@/features/world/characters/kamneshmyg/kamneshmyg-portrait";
 import { LeaftailPortrait } from "@/features/world/characters/leaftail/leaftail-portrait";
 import { WORLD_CHARACTERS, worldResidentAvailable, type WorldCharacterId, type WorldResidentId } from "@/features/world/characters/world-characters-model";
+import type { EconomyView } from "@/features/economy/domain/model";
+import { tradeRelationProgress } from "@/features/economy/domain/trade-relations";
 import styles from "./world-characters.module.css";
 
 const portraits = { builder: BuilderPortrait, plesk: PleskPortrait, lopukh: LopukhPortrait, kamneshmyg: KamneshmygPortrait, leaftail: LeaftailPortrait };
@@ -24,10 +26,10 @@ function UnknownResident() {
 }
 
 /** Only introduced residents expose their portrait, name and conversation. */
-export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false, lopukhAvailable = false, lopukhUnlocked = false, leaftailAvailable = false, leaftailUnlocked = false, onCloseAutoFocus, focusedCharacter }: {
+export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false, lopukhAvailable = false, lopukhUnlocked = false, leaftailAvailable = false, leaftailUnlocked = false, onCloseAutoFocus, focusedCharacter, economy }: {
   open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void; quarryBuilt?: boolean; lopukhAvailable?: boolean; lopukhUnlocked?: boolean;
   leaftailAvailable?: boolean; leaftailUnlocked?: boolean;
-  onCloseAutoFocus: (event: Event) => void; focusedCharacter?: WorldCharacterId;
+  onCloseAutoFocus: (event: Event) => void; focusedCharacter?: WorldCharacterId; economy?: EconomyView | null;
 }) {
   return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <DialogPortal>
@@ -47,6 +49,7 @@ export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false
         <ul className={styles.grid} aria-label="Персонажи леса">
           {WORLD_CHARACTERS.map(character => {
             const available = worldResidentAvailable(character.id, quarryBuilt, leaftailAvailable, lopukhAvailable), Portrait = portraits[character.id];
+            const relationship = available && economy ? tradeRelationProgress(economy, character.id, economy.catalog) : null;
             const arrivalHint = character.id === "lopukh" ? lopukhUnlocked ? "Дождитесь прибытия" : "Откройте лесной участок"
               : character.id === "kamneshmyg" ? "Постройте каменоломню"
               : leaftailUnlocked ? "Дождитесь прибытия" : "Дом 3-го уровня";
@@ -57,6 +60,7 @@ export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false
                 onClick={() => { if (available) onResident(character.id); }}>
                 <span className={styles.stage}>{available ? <Portrait animated className={styles.portrait} /> : <UnknownResident />}</span>
                 <strong>{available ? character.name : "Незнакомый житель"}</strong><small>{available ? character.role : "Вы ещё не встречались"}</small>
+                {relationship && <small className={styles.relationship} data-resident-reputation={character.id}>{relationship.rank.name} · {relationship.xp.toLocaleString("ru-RU")} опыта</small>}
                 <span className={styles.visit}>{available ? <>Заглянуть <ArrowRight size={15} aria-hidden="true" /></> : <><LockKeyhole size={15} aria-hidden="true" />{arrivalHint}</>}</span>
               </button>
             </li>;

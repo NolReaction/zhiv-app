@@ -141,10 +141,13 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val rewards: Map<String, Long> = emptyMap(), val cost: EconomyCost = EconomyCost(), val catalogVersion: Int = 1,
     val collection: EconomyCollection? = null, val fishing: EconomyFishingCatch? = null, val rareDrop: EconomyRareDropDelivery? = null,
     val meal: EconomyJobMeal? = null, val actorId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val tradeSpeedBps: Int = 0,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val fishStockCost: Map<String, Long>? = null,
 ) {
     init {
         require(actorId == null || kind == "exploration" && actorId in setOf("mochlik", "miner"))
+        require(tradeSpeedBps in 0..1000)
+        require(tradeSpeedBps == 0 || kind == "construction" || kind == "production" && targetId == "woodlot" || kind == "exploration" && actorId == "miner")
         require(collection == null || kind == "production" && targetId == "garden" &&
             rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L })
         require(rareDrop == null || kind == "exploration" && (rareDrop.itemId == null || rewards[rareDrop.itemId] == 1L))
@@ -168,6 +171,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 1, val pearlScale: Int? = null,
     val productionSlots: Map<String, Int> = emptyMap(),
     val food: EconomyFoodState = EconomyFoodState(), val residentOrders: EconomyResidentOrders = EconomyResidentOrders(),
+    val tradeRelations: EconomyTradeRelationsState = EconomyTradeRelationsState(),
     val workshopStarterClaimed: Boolean = false, val tutorialOrder: EconomyTutorialOrder = EconomyTutorialOrder(),
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
     val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(), val itemUnlockVersion: Int = 0,
@@ -234,6 +238,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val food: EconomyFoodCatalog? = null, val onboarding: EconomyOnboardingCatalog? = null,
     val stageOrders: List<EconomyStageOrderCourse> = emptyList(),
     val leaftailShop: EconomyLeaftailShopConfig? = null,
+    val tradeRelations: EconomyTradeRelationsCatalog? = null,
 )
 @Serializable data class EconomyStorage(
     val capacity: Long, val used: Long, val reserved: Long, val available: Long, val overflow: Long,
@@ -246,6 +251,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val progression: EconomyProgression = EconomyProgression(), val wardrobe: List<String> = listOf("moss", "amber_scarf"), val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
     val productionSlots: Map<String, Int> = emptyMap(),
     val food: EconomyFoodState = EconomyFoodState(), val residentOrders: EconomyResidentOrders = EconomyResidentOrders(),
+    val tradeRelations: EconomyTradeRelationsState = EconomyTradeRelationsState(),
     val workshopStarterClaimed: Boolean = false, val tutorialOrder: EconomyTutorialOrder = EconomyTutorialOrder(),
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
     val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(),

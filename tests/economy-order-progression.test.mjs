@@ -127,7 +127,9 @@ test("legacy v2 terms migrate at their old unscaled quote; next cards use the cu
   ], completed: 11, earnedCoins: 8000, replacementCycle: cycle, freeReplacementsUsed: 2 };
   const board = food.residentOrderBoard(state, now), preserved = board.offers.find(offer => offer.slot === 1);
   assert.deepEqual(preserved.items, original.items); assert.equal(preserved.coins, original.coins);
-  assert.equal(preserved.id, `order2_${cycle}_1_3_${food.residentOrderFingerprint(original)}`);
+  const legacyTerms = { id: original.id, residentId: original.residentId, name: original.name, items: original.items, coins: original.coins };
+  assert.equal(preserved.id, `order2_${cycle}_1_3_${food.residentOrderFingerprint(legacyTerms)}`);
+  assert.equal(preserved.reputationXp, undefined, "legacy cards without saved metadata cannot gain retroactive reputation");
   state.residentOrders = food.normalizedResidentOrders(state, now);
   assert.equal(state.residentOrders.completed, 11); assert.equal(state.residentOrders.earnedCoins, 8000);
   assert.equal(state.residentOrders.freeReplacementsUsed, 2);

@@ -20,6 +20,7 @@ const ledgerLabels: Record<string, string> = {
   start_tutorial_harvest: "Первый учебный урожай",
   onboarding_reward: "Награда за основное обучение",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя", cancel_meal: "Возврат обеда",
+  accept_weekly_order: "Выбор недельного поручения",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",
   buy_production_slot: "Открытие места производства", buy_market_slot: "Открытие места прилавка", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
