@@ -1,0 +1,40 @@
+name: Archive completed branches 23.10.2026
+
+on:
+  push:
+    branches:
+      - 'maintenance/archive-2026-10-23-9b12b92b092a'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: archive-completed-branches-2026-10-23
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    if: >-
+      github.repository == 'NolReaction/zhiv-app' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/maintenance/archive-2026-10-23-9b12b92b092a' &&
+      github.event.deleted == false &&
+      github.event.forced == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact maintenance push
+        # actions/checkout v4.2.2. Token stays in runner's Git transport.
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: '${{ github.sha }}'
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Validate and archive exact branch tips atomically
+        env:
+          ARCHIVE_EXECUTION_CONFIRMATION: archive-2026-10-23-after-pr-34
+        run: >-
+          python3 scripts/maintenance/archive-branches-2026-10-23.py
+          --manifest scripts/maintenance/archive-branches-2026-10-23.json
+          --execute
+

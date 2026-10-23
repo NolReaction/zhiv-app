@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "repository": "NolReaction/zhiv-app",
+  "archive_date": "2026-10-23",
+  "release_pr": 34,
+  "release_commit_sha": "9b12b92b092a011525a72333ecc09bc1cca27c27",
+  "final_task_head_sha": "ec300cfdabefcaece6140563db3b8ffcab2fc7d4",
+  "expected_release_tree_sha": "b6dbbc15046047ba95e70e7a7c6cdc165abc96dd",
+  "maintenance_branch": "maintenance/archive-2026-10-23-9b12b92b092a",
+  "archive_maintenance_branch": true,
+  "retained_branches": [
+    "master",
+    "work/admin-operations",
+    "work/0.6.8-unity"
+  ],
+  "archive_branches": [
+    {
+      "branch": "0.6.9-economy",
+      "sha": "0d709357cac9628facf56311195fa6602e9a75ce"
+    },
+    {
+      "branch": "0.6.9-light",
+      "sha": "e8d5b43286722b0135fc61c163b7575b5c4930ff"
+    },
+    {
+      "branch": "0.7.1v2",
+      "sha": "3b5f1964888aa39d709bf96afd1f6206f963a1fa"
+    },
+    {
+      "branch": "earth",
+      "sha": "59ff59708671e39ae4fc9511b0a8c3126c503d3f"
+    },
+    {
+      "branch": "engine",
+      "sha": "69fd268c9dd7fb5062a0cce5c0d036f17257054e"
+    },
+    {
+      "branch": "feature/mochlik-grid-world",
+      "sha": "325fccd2a8718319f8650b702f284a4eb12279f0"
+    },
+    {
+      "branch": "feature/mochlik-tiled-world",
+      "sha": "bb52823ff6b7a1175b86d59f4d0af4a4470f8089"
+    },
+    {
+      "branch": "fix/0.7.1-auto-location",
+      "sha": "6ddf39e89c0a11c308b8efa8f960492116defee5"
+    },
+    {
+      "branch": "fix/0.7.1-earth-sharing",
+      "sha": "9ed7380c554f7e5a1aa46bc7b914e93281d6e563"
+    },
+    {
+      "branch": "fix/0.7.1-economy-startup",
+      "sha": "76be903c4dd9b9e8dcd8c52ea3d7419421670023"
+    },
+    {
+      "branch": "fix/0.7.1-fresh-start",
+      "sha": "d41cbe89cb31f6d30d52f01b5b84c5ef8ddeee60"
+    },
+    {
+      "branch": "fix/0.7.1-location-onboarding",
+      "sha": "dfaf4f6c923e9c0a1df76cfc401d51cb22a0c268"
+    },
+    {
+      "branch": "fix/0.7.1-player-feedback",
+      "sha": "73ac8d0e2fa5cf2493d778dc7fab102d17aff74a"
+    },
+    {
+      "branch": "fix/0.7.1-startup-recovery",
+      "sha": "d8d350e7a967db4a1eb757f220a28db5cce714d5"
+    },
+    {
+      "branch": "release/0.7.1v2",
+      "sha": "b7ef929a55915a2911e45c5cdde044193d107b28"
+    },
+    {
+      "branch": "work/lighting-studio",
+      "sha": "30c9b9c6499438bf3eb21acc1d4b03528807263c"
+    },
+    {
+      "branch": "work/site-pwa",
+      "sha": "2a9a26cca19c18997c8aa5abd18ba89cc55ca44e"
+    },
+    {
+      "branch": "work/0.6.6",
+      "sha": "dbc1e5a7c6874707cf156507b1d8f9e0551d2c82"
+    },
+    {
+      "branch": "work/0.6.7-building-levels",
+      "sha": "31d7ade60cbdbda993cc5068c5a65ce2a8204e09"
+    },
+    {
+      "branch": "work/0.6.7",
+      "sha": "e8952c09660905646871109a6be25d5a1983ae89"
+    },
+    {
+      "branch": "work/0.6.8-onboarding",
+      "sha": "d76004011ef188d41b26b1373642b7c0f571d9a0"
+    },
+    {
+      "branch": "work/0.6.8-phaser",
+      "sha": "06975b9662f617c048fd0502e79ddc13fa8fd836"
+    },
+    {
+      "branch": "work/0.6.8-unified",
+      "sha": "49954454bfef45a07be35120adb3867736aab1e9"
+    },
+    {
+      "branch": "work/0.6.8",
+      "sha": "5d535087c864e2a6efecd7c924fa88d5c84e3e03"
+    },
+    {
+      "branch": "work/0.7.1",
+      "sha": "9b659479b2a200d5df9045ed483071b2216b77da"
+    },
+    {
+      "branch": "work/0.7.2-map-world-fixes",
+      "sha": "ec300cfdabefcaece6140563db3b8ffcab2fc7d4"
+    }
+  ]
+}
+
