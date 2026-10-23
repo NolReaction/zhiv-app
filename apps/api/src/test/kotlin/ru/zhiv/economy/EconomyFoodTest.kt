@@ -215,6 +215,20 @@ class EconomyFoodTest {
         assertTrue(EconomyRules.constructionSpeedupPrice(updated, now) <= EconomyRules.constructionSpeedupPrice(job, now))
     }
 
+    @Test fun `six hour workshop upgrade at 25 percent extra speed takes 4h48m and saves 1h12m`() {
+        val upgrade = EconomyRules.catalog.buildings.single { it.id == "workshop" }.levels.single { it.level == 2 }
+        assertEquals(6 * 3600L, upgrade.seconds)
+        val state = stocked().copy(buildings = stocked().buildings + ("workshop" to 1))
+        val started = apply(apply(state, "feed_builder", "fish_soup"), "start_construction", "workshop")
+        val job = started.jobs.single()
+        assertEquals(now.plusSeconds(4 * 3600 + 48 * 60L), Instant.parse(job.finishesAt))
+        assertEquals(72 * 60L, upgrade.seconds - java.time.Duration.between(now, Instant.parse(job.finishesAt)).seconds)
+        assertEquals(EconomyJobMeal("fish_soup", "builder", 2500), job.meal)
+        assertEquals(upgrade.cost, job.cost)
+        assertEquals(state.wallet.coins - upgrade.cost.coins, started.wallet.coins)
+        assertEquals((state.inventory["fish_soup"] ?: 0L) - 1, started.inventory["fish_soup"])
+    }
+
     @Test fun `duration calculation is exact speed division with ceiling and no floating point drift`() {
         assertEquals(1000L, EconomyFood.mealDuration(1100, 1000))
         assertEquals(1001L, EconomyFood.mealDuration(1101, 1000))

@@ -190,6 +190,23 @@ test("pending builder food survives rejected construction and shortens one paid 
   assert.equal(state.jobs[0].meal.consumer, "builder");
 });
 
+test("a six-hour workshop upgrade with 25 percent extra speed takes 4h48m and saves 1h12m", () => {
+  const state = fresh(), level = catalog.buildings.find(item => item.id === "workshop").levels.find(item => item.level === 2);
+  assert.equal(level.seconds, 6 * 3600);
+  state.buildings.workshop = 1;
+  state.buildings.home = level.requiredHomeLevel;
+  Object.assign(state.buildings, level.requiredBuildings);
+  state.wallet.coins = level.cost.coins; state.inventory = { ...level.cost.items, fish_soup: 1 };
+  apply(state, "feed_builder", "fish_soup");
+  apply(state, "start_construction", "workshop");
+  const boostedSeconds = (Date.parse(state.jobs[0].finishesAt) - now) / 1000;
+  assert.equal(boostedSeconds, 4 * 3600 + 48 * 60);
+  assert.equal(level.seconds - boostedSeconds, 72 * 60, "25% more work per second saves 20% of the time");
+  assert.deepEqual(state.jobs[0].meal, { itemId: "fish_soup", consumer: "builder", speedBps: 2500 });
+  assert.equal(state.inventory.fish_soup, undefined);
+  assert.deepEqual(state.jobs[0].cost, level.cost);
+});
+
 test("feeding an active builder speeds up only remaining milliseconds once and preserves paid job fields", () => {
   const state = fresh(), level = catalog.buildings.find(item => item.id === "workshop").levels[0];
   state.wallet.coins = level.cost.coins; state.inventory = { ...level.cost.items, fish_soup: 2 };

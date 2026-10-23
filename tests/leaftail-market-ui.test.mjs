@@ -12,6 +12,8 @@ const root = fileURLToPath(new URL("..", import.meta.url)), cacheDir = await mkd
 const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { leaftailShopView } = await vite.ssrLoadModule("/features/economy/domain/leaftail-shop.ts");
+const { fishingClassOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
+const { FishingCatchOdds } = await vite.ssrLoadModule("/features/economy/ui/fishing/fishing-catch-odds.tsx");
 const { WorldLeaftailMarket, leaftailPurchaseQuote, leaftailPurchaseReason, leaftailPurchaseLimit } = await vite.ssrLoadModule("/features/economy/ui/market/world-leaftail-market.tsx");
 const hooksId = "virtual:leaftail-market-hooks";
 const runtime = await createServer({ appType: "custom", configFile: false, root, cacheDir: `${cacheDir}/hooks`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
@@ -166,4 +168,53 @@ test("Leaf-tail tackle keeps its named class visible on cards and purchase confi
   h.buy(rod.itemId).props.onClick();
   const rarity = h.economy.snapshot.catalog.fishing.rods.find(item => item.id === rod.itemId).rarity;
   assert.match(h.render().html(), new RegExp(`data-fish-rarity="${rarity}"`));
+});
+
+test("Leaf-tail rods, hooks and bait compare all class chances with the other equipped gear on cards and confirmation", () => {
+  const state = snapshot();
+  state.fishing = economyFishingSchema.parse({ ownedRods: ["reed_rod", "starfall_rod"], equippedRodId: "starfall_rod",
+    ownedHooks: ["bare_hook", "silver_hook"], equippedHookId: "silver_hook", equippedBaitId: "glow_bait" });
+  state.inventory.glow_bait = 3;
+  const before = structuredClone(state), offers = view(state).offers.filter(offer => offer.section === "tackle");
+  assert.deepEqual(new Set(offers.map(offer => offer.kind)), new Set(["rod", "hook", "bait"]));
+  const percent = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(value * 100)}%`;
+  const displayedOdds = html => new Map([...html.matchAll(/data-catch-probability="([^"]+)"[^>]*>([^<]+)<\/strong>/g)].map(match => [match[1], match[2]]));
+  for (const offer of offers) {
+    const h = harness(controller(state)); h.switchTo("Снасти");
+    const override = offer.kind === "rod" ? { rodId: offer.itemId } : offer.kind === "hook" ? { hookId: offer.itemId } : { baitId: offer.itemId };
+    const expected = new Map(fishingClassOdds(state, state.catalog.fishing, override).map(odd => [odd.itemId, percent(odd.probability)]));
+    if (offer.kind === "rod") assert.notDeepEqual(expected,
+      new Map(fishingClassOdds(state, state.catalog.fishing, { ...override, hookId: "bare_hook", baitId: null }).map(odd => [odd.itemId, percent(odd.probability)])),
+      "The saved hook and bait materially affect the displayed rod preview");
+    const card = h.render().nodes.find(node => node.props["data-leaftail-item"] === offer.itemId), cardHtml = renderToStaticMarkup(card);
+    assert.deepEqual(displayedOdds(cardHtml), expected, `${offer.kind} card uses the actual single-item replacement`);
+    assert.match(cardHtml, /Сейчас → с этой снастью/);
+    assert.match(cardHtml, /data-odds-loadout/);
+    const rodId = override.rodId ?? state.fishing.equippedRodId, hookId = override.hookId ?? state.fishing.equippedHookId, baitId = override.baitId ?? state.fishing.equippedBaitId;
+    for (const name of [state.catalog.fishing.rods.find(item => item.id === rodId).name,
+      state.catalog.fishing.hooks.find(item => item.id === hookId).name, state.catalog.items.find(item => item.id === baitId).name])
+      assert.ok(cardHtml.includes(name), `${offer.kind} names every item used for the preview`);
+    assert.match(cardHtml, /data-fishing-species-odds/);
+    h.buy(offer.itemId).props.onClick();
+    assert.deepEqual(displayedOdds(h.render().html()), expected, `${offer.kind} confirmation retains the same odds`);
+  }
+  assert.deepEqual(state, before, "Reading cards and confirming a selection do not equip or consume tackle");
+});
+
+test("rod previews disclose bait removed by the equip rule and bait previews explain an unavailable class", () => {
+  const state = snapshot();
+  state.fishing = economyFishingSchema.parse({ ownedRods: ["reed_rod", "starfall_rod"], equippedRodId: "starfall_rod",
+    ownedHooks: ["bare_hook", "silver_hook"], equippedHookId: "silver_hook", equippedBaitId: "star_bait" });
+  const before = structuredClone(state), catalog = state.catalog.fishing;
+  const rodHtml = renderToStaticMarkup(React.createElement(FishingCatchOdds, { state, catalog, override: { rodId: "reed_rod" }, preview: true, showLoadout: true }));
+  assert.match(rodHtml, /data-odds-loadout[^>]*>Для расчёта: Камышовая удочка · Серебряный крючок · без наживки\./);
+  assert.match(rodHtml, /data-odds-bait-removed[^>]*>.*не подходит к этой удочке и будет снята при её выборе/);
+  assert.deepEqual(state, before, "Previewing a rod never changes equipped gear");
+  state.fishing.equippedRodId = "reed_rod"; state.fishing.equippedBaitId = null;
+  const beforeBait = structuredClone(state);
+  const baitHtml = renderToStaticMarkup(React.createElement(FishingCatchOdds, { state, catalog, override: { baitId: "firefly_bait" },
+    targetRarity: "epic", preview: true, showLoadout: true }));
+  assert.match(baitHtml, /Выбранная удочка пока не ловит этот класс рыбы/);
+  assert.match(baitHtml, /data-fishing-target="fish_epic"/);
+  assert.deepEqual(state, beforeBait, "Previewing an incompatible bait never changes equipped gear");
 });

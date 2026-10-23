@@ -206,6 +206,33 @@ test("speed previews divide duration, preserve remaining millisecond precision a
   assert.equal(historical.nodes.some(node => node.type === "button"), false);
 });
 
+test("25 percent speed preview explains the six-hour duration and actual saving before spending", () => {
+  const economy = controller({ inventory: { fish_soup: 1 } });
+  const props = { economy, consumer: "builder", seconds: 6 * 3600 };
+  const view = choose(props, open(props), "fish_soup");
+  const preview = view.nodes.find(node => node.props["data-meal-preview"] === "fish_soup");
+  const markup = renderToStaticMarkup(preview);
+  assert.match(markup, /\+25% скорости · время −20%/);
+  assert.match(markup, /6 ч/);
+  assert.match(markup, /4 ч 48 мин/);
+  assert.match(markup, /Экономия 1 ч 12 мин/);
+  assert.deepEqual(economy.calls, [], "the true time and saving are shown before confirmation");
+});
+
+test("active builder preview shows the saving on the remaining time rather than the original duration", () => {
+  const economy = controller({ inventory: { fish_soup: 1 }, jobs: [job({
+    startedAt: new Date(now - 3600_000).toISOString(), finishesAt: new Date(now + 5 * 3600_000).toISOString(),
+  })] });
+  const props = { economy, consumer: "builder", jobId: "construction-1" };
+  const view = choose(props, open(props), "fish_soup");
+  const preview = view.nodes.find(node => node.props["data-meal-preview"] === "fish_soup");
+  const markup = renderToStaticMarkup(preview);
+  assert.match(markup, /5 ч/);
+  assert.match(markup, />4 ч</);
+  assert.match(markup, /Экономия 1 ч</);
+  assert.deepEqual(economy.calls, []);
+});
+
 test("confirmed feeding closes the picker and exposes the saved bonus without auto-starting a job", () => {
   const economy = controller(), props = { economy, consumer: "hero", seconds: 7200 };
   const view = choose(props, open(props)); confirmation(view).props.onClick();
