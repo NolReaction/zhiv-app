@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { TradeShipPreview } from "@/features/world/dev/trade-ship-preview";
 
 export const metadata: Metadata = {
-  title: "Пароход из кода · Мохлик",
+  title: "Торговый пароход · Мохлик",
   robots: { index: false, follow: false },
 };
 

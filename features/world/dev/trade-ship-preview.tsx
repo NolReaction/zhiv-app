@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, Moon, Pause, Play, Sun } from "lucide-react";
-import { drawTradeShip, type TradeShipFrame } from "@/features/world/objects/trade-ship/trade-ship-painter";
-import { TRADE_SHIP_ART } from "@/features/world/objects/trade-ship/trade-ship-art";
+import { loadHabitatImage } from "@/features/mochlik/assets";
+import { drawTradeShipSprite, TRADE_SHIP_SPRITE, type TradeShipSpriteFrame } from "@/features/world/objects/trade-ship/trade-ship-sprite";
 import { advanceTradeShipMotion, createTradeShipMotion, sampleTradeShipMotion, TRADE_SHIP_VOYAGE } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import runtimeArt from "@/features/world/runtime-art.json";
 import { advanceTradeShipPreviewClock, commandTradeShipPreview, tradeShipPreviewCrop, tradeShipPreviewLayout, tradeShipPreviewMapSource, type TradeShipPreviewMode } from "./trade-ship-preview-model";
@@ -47,7 +47,8 @@ export function TradeShipPreview() {
   const [revision, setRevision] = useState(0);
   const [mode, setMode] = useState<TradeShipPreviewMode>("detail");
   const [night, setNight] = useState(false), [playing, setPlaying] = useState(true);
-  const [gate, setGate] = useState(0), [ramp, setRamp] = useState(0), [cargo, setCargo] = useState(0);
+  const [shipImage, setShipImage] = useState<HTMLImageElement | null>(null);
+  const [shipError, setShipError] = useState(false), [shipRetry, setShipRetry] = useState(0);
   const [mapImage, setMapImage] = useState<HTMLImageElement | null>(null);
   const [mapError, setMapError] = useState(false), [mapRetry, setMapRetry] = useState(0);
   const [exportNotice, setExportNotice] = useState("");
@@ -56,7 +57,7 @@ export function TradeShipPreview() {
   const reducedMotion = useSyncExternalStore(subscribeMotion, reducedSnapshot, reducedServerSnapshot);
   const canvas = useRef<HTMLCanvasElement>(null), stage = useRef<HTMLDivElement>(null);
   const elapsed = useRef(0), lifetime = useRef(0);
-  const moving = playing && visible && !reducedMotion;
+  const moving = playing && visible && !reducedMotion && Boolean(shipImage);
   const atSea = voyage.phase !== "docked";
   const voyageStatus = { arriving: "Подходит к берегу", docked: "У берега", departing: "Отходит кормой", departed: "Ушёл в море" }[voyage.phase];
 
@@ -80,13 +81,23 @@ export function TradeShipPreview() {
   }, []);
 
   useEffect(() => {
+    if (shipImage) return;
+    let active = true;
+    void loadHabitatImage(TRADE_SHIP_SPRITE.src).then(image => {
+      if (!active) return;
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) { setShipImage(image); setShipError(false); }
+      else setShipError(true);
+    }).catch(() => { if (active) setShipError(true); });
+    return () => { active = false; };
+  }, [shipImage, shipRetry]);
+
+  useEffect(() => {
     if (mode === "detail" || mapImage) return;
     let active = true;
-    const image = new Image();
-    image.onload = () => { if (active) { setMapImage(image); setMapError(false); } };
-    image.onerror = () => { if (active) setMapError(true); };
-    image.src = runtimeArt.map;
-    return () => { active = false; image.onload = null; image.onerror = null; };
+    void loadHabitatImage(runtimeArt.map, "low").then(image => {
+      if (active) { setMapImage(image); setMapError(false); }
+    }).catch(() => { if (active) setMapError(true); });
+    return () => { active = false; };
   }, [mode, mapImage, mapRetry]);
 
   useEffect(() => {
@@ -122,10 +133,10 @@ export function TradeShipPreview() {
         context.scale(layout.scale, layout.scale);
       }
       const sailing = motion.current, position = mode === "voyage" ? sailing : layout.ship;
-      if (mode !== "voyage" || sailing.visible) drawTradeShip(context, { ...position, facing: "left", water: true,
+      if (shipImage && (mode !== "voyage" || sailing.visible)) drawTradeShipSprite(context, shipImage, { ...position, facing: "left", water: true,
         heading: mode === "voyage" ? sailing.heading : 0,
         velocityX: mode === "voyage" ? sailing.velocityX : 0, velocityY: mode === "voyage" ? sailing.velocityY : 0,
-        time: elapsed.current, night: Number(night), gate: gate / 100, ramp: ramp / 100, cargo, still: !moving });
+        time: elapsed.current, night: Number(night), still: !moving });
       context.restore();
     };
     paint();
@@ -144,33 +155,36 @@ export function TradeShipPreview() {
     };
     scheduled = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(scheduled);
-  }, [viewport, mode, night, gate, ramp, cargo, moving, playing, reducedMotion, mapImage, revision]);
+  }, [viewport, mode, night, moving, playing, reducedMotion, mapImage, shipImage, revision]);
 
   function voyageCommand(command: "arrive" | "depart" | "dock") {
+    if (!shipImage) return;
     const current = motion.current, next = commandTradeShipPreview(current, command);
     if (next === current) return;
     motion.current = next; setVoyage(next); setLeg(command === "depart" ? "departing" : "arriving");
-    setGate(0); setRamp(0); setMode("voyage"); setRevision(value => value + 1);
+    setMode("voyage"); setRevision(value => value + 1);
     if (command !== "dock") setPlaying(true);
   }
 
   function seekVoyage(progress: number) {
+    if (!shipImage) return;
     const duration = leg === "arriving" ? TRADE_SHIP_VOYAGE.arrivalDuration : TRADE_SHIP_VOYAGE.departureDuration;
     const next = sampleTradeShipMotion(leg, progress / 100 * duration, motion.current.berth);
     motion.current = next; setVoyage(next); setPlaying(false); setMode("voyage");
-    setGate(0); setRamp(0); setRevision(value => value + 1);
+    setRevision(value => value + 1);
   }
 
   function downloadPng() {
+    if (!shipImage) return;
     const owner = lifetime.current;
     const surface = document.createElement("canvas");
-    surface.width = TRADE_SHIP_ART.width * 2; surface.height = TRADE_SHIP_ART.height * 2;
+    surface.width = TRADE_SHIP_SPRITE.width * 2; surface.height = TRADE_SHIP_SPRITE.height * 2;
     const context = surface.getContext("2d");
     if (!context) { setExportNotice("Не удалось подготовить PNG."); return; }
-    const frame: TradeShipFrame = { x: 0, y: 0, width: surface.width, time: elapsed.current,
-      night: Number(night), gate: gate / 100, ramp: ramp / 100, cargo, still: true, facing: "left", water: false };
+    const frame: TradeShipSpriteFrame = { x: 0, y: 0, width: surface.width, time: elapsed.current,
+      night: Number(night), still: true, facing: "left", water: false };
     try {
-      drawTradeShip(context, frame);
+      drawTradeShipSprite(context, shipImage, frame);
       surface.toBlob(blob => {
         if (lifetime.current !== owner) return;
         if (!blob) { setExportNotice("Не удалось подготовить PNG."); return; }
@@ -185,8 +199,8 @@ export function TradeShipPreview() {
   return <main className={styles.page}>
     <header className={styles.header}>
       <Link href="/" prefetch={false} className={styles.back} aria-label="Вернуться в приложение"><ArrowLeft size={20} aria-hidden /></Link>
-      <div><p className={styles.eyebrow}>Мастерская мира · DEV</p><h1>Пароход из кода</h1></div>
-      <span className={styles.badge}>Ракурс и движение</span>
+      <div><p className={styles.eyebrow}>Мастерская мира · DEV</p><h1>Торговый пароход</h1></div>
+      <span className={styles.badge}>PNG · пробный рейс</span>
     </header>
     <div className={styles.layout}>
       <section className={styles.preview} aria-label="Предпросмотр парохода">
@@ -200,7 +214,7 @@ export function TradeShipPreview() {
             <button type="button" aria-pressed={night} aria-label={night ? "Показать день" : "Показать ночь"} onClick={() => setNight(value => !value)}>
               {night ? <Moon size={17} aria-hidden /> : <Sun size={17} aria-hidden />}{night ? "Ночь" : "День"}
             </button>
-            <button type="button" disabled={reducedMotion} aria-pressed={moving} onClick={() => setPlaying(value => !value)}>
+            <button type="button" disabled={reducedMotion || !shipImage} aria-pressed={moving} onClick={() => setPlaying(value => !value)}>
               {moving ? <Pause size={17} aria-hidden /> : <Play size={17} aria-hidden />}{moving ? "Пауза" : "Воспроизвести"}
             </button>
           </div>
@@ -208,39 +222,37 @@ export function TradeShipPreview() {
         <div className={`${styles.stage} ${mode !== "detail" ? styles.mapStage : ""}`} ref={stage}
           style={mode === "detail" ? undefined : { aspectRatio: `${tradeShipPreviewCrop(mode).width} / ${tradeShipPreviewCrop(mode).height}` }}>
           <canvas ref={canvas} className={styles.canvas} width={800} height={500} role="img"
-            aria-label={`Торговый пароход: ${night ? "ночь" : "день"}, калитка ${gate}%, трап ${ramp}%, грузовых ящиков ${cargo}`}>
+            aria-label={`Торговый пароход: ${night ? "ночь" : "день"}, ${voyageStatus}`}>
             Для просмотра парохода нужен браузер с поддержкой Canvas 2D.
           </canvas>
+          {!shipImage && <div className={`${styles.mapNotice} ${styles.shipNotice}`} role={shipError ? "alert" : "status"}>
+            <span>{shipError ? "Корабль не загрузился." : "Загружаем корабль…"}</span>
+            {shipError && <button type="button" onClick={() => { setShipError(false); setShipRetry(value => value + 1); }}>Загрузить корабль</button>}
+          </div>}
           {mode !== "detail" && !mapImage && <div className={styles.mapNotice} role={mapError ? "alert" : "status"}>
             <span>{mapError ? "Фон карты не загрузился." : "Загружаем южную бухту…"}</span>
             {mapError && <button type="button" onClick={() => { setMapError(false); setMapRetry(value => value + 1); }}>Повторить</button>}
           </div>}
         </div>
-        <footer className={styles.previewFooter}><span>{mode === "voyage" ? `Пробный маршрут · ${voyageStatus}` : mode === "map" ? "Примерка у южного берега" : "Корпус, каюта и детали нарисованы кодом"}</span>
+        <footer className={styles.previewFooter}><span>{mode === "voyage" ? `Пробный маршрут · ${voyageStatus}` : mode === "map" ? "Примерка у южного берега" : "Корабль из PNG · нос влево"}</span>
           <span>{reducedMotion ? "Меньше движения" : moving ? "Движение включено" : "Рисунок на паузе"}</span></footer>
       </section>
       <aside className={styles.controls} aria-label="Настройки парохода">
         <section className={styles.voyageControls} aria-label="Управление рейсом">
           <div className={styles.voyageHeading}><h2>Рейс</h2><span role="status">{voyageStatus}</span></div>
           <div className={styles.voyageActions}>
-            <button type="button" disabled={voyage.phase === "arriving" || voyage.phase === "departing"} onClick={() => voyageCommand("arrive")}>Приплыть</button>
-            <button type="button" disabled={atSea} onClick={() => voyageCommand("depart")}>Отойти</button>
-            <button type="button" onClick={() => voyageCommand("dock")}>В порт</button>
+            <button type="button" disabled={!shipImage || voyage.phase === "arriving" || voyage.phase === "departing"} onClick={() => voyageCommand("arrive")}>Приплыть</button>
+            <button type="button" disabled={!shipImage || atSea} onClick={() => voyageCommand("depart")}>Отойти</button>
+            <button type="button" disabled={!shipImage} onClick={() => voyageCommand("dock")}>В порт</button>
           </div>
           <label className={styles.field} htmlFor="trade-ship-voyage"><span>{leg === "arriving" ? "Прибытие" : "Отход"}<output>{Math.round(voyage.progress * 100)}%</output></span>
-            <input id="trade-ship-voyage" type="range" min={0} max={100} step={1} value={Math.round(voyage.progress * 100)} onChange={event => seekVoyage(Number(event.target.value))} /></label>
+            <input id="trade-ship-voyage" disabled={!shipImage} type="range" min={0} max={100} step={1} value={Math.round(voyage.progress * 100)} onChange={event => seekVoyage(Number(event.target.value))} /></label>
           <p className={styles.note}>Заход справа снизу, остановка у берега. Обратно — кормой, затем вниз.</p>
         </section>
-        <h2>Детали</h2>
-        <label className={styles.field} htmlFor="trade-ship-gate"><span>Калитка<output>{gate === 0 ? "Закрыта" : gate === 100 ? "Открыта" : `${gate}%`}</output></span>
-          <input id="trade-ship-gate" disabled={atSea} type="range" min={0} max={100} step={1} value={gate} onChange={event => { const value = Number(event.target.value); setGate(value); if (value < 100) setRamp(0); }} /></label>
-        <label className={styles.field} htmlFor="trade-ship-ramp"><span>Трап<output>{ramp === 0 ? "Убран" : ramp === 100 ? "Опущен" : `${ramp}%`}</output></span>
-          <input id="trade-ship-ramp" disabled={atSea} type="range" min={0} max={100} step={1} value={ramp} onChange={event => { const value = Number(event.target.value); setRamp(value); if (value > 0) setGate(100); }} /></label>
-        <label className={styles.field} htmlFor="trade-ship-cargo"><span>Грузовые ящики</span><select id="trade-ship-cargo" value={cargo} onChange={event => setCargo(Number(event.target.value))}>
-          {[0, 1, 2, 3].map(value => <option key={value} value={value}>{value === 0 ? "Пустая палуба" : `${value} ${value === 1 ? "ящик" : "ящика"}`}</option>)}
-        </select></label>
-        <button type="button" className={styles.download} onClick={downloadPng}><Download size={18} aria-hidden />Скачать PNG</button>
-        <p className={styles.note}>Калитка поворачивается на петлях, трап выдвигается отдельно. Пробный маршрут ещё не связан с торговлей и маяком.</p>
+        <h2>Изображение</h2>
+        <button type="button" className={styles.download} disabled={!shipImage} onClick={downloadPng}><Download size={18} aria-hidden />Скачать PNG</button>
+        <p className={styles.note}>Корпус и дверь — одно изображение. Калитку и трап добавим отдельными деталями.</p>
+        <p className={styles.note}>Пробный маршрут ещё не связан с торговлей и маяком.</p>
         {reducedMotion && <p className={styles.note}>В системе уменьшено движение. Рейс можно просмотреть ползунком. Автоматическое движение остановлено.</p>}
         <p className={styles.exportNotice} role="status">{exportNotice}</p>
       </aside>

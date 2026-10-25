@@ -1,4 +1,4 @@
-import { TRADE_SHIP_ART } from "@/features/world/objects/trade-ship/trade-ship-art";
+import { TRADE_SHIP_SPRITE } from "@/features/world/objects/trade-ship/trade-ship-sprite";
 import { createTradeShipMotion, departTradeShip, type TradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 
 export type TradeShipPreviewMode = "detail" | "map" | "voyage";
@@ -40,7 +40,7 @@ export function tradeShipPreviewLayout(width: number, height: number, mode: Trad
     return { scale, x: (w - crop.width * scale) / 2, y: (h - crop.height * scale) / 2,
       ship: { ...TRADE_SHIP_PREVIEW_BERTH } };
   }
-  const shipWidth = Math.min(w * .94, h * .94 * TRADE_SHIP_ART.width / TRADE_SHIP_ART.height);
+  const shipWidth = Math.min(w * .94, h * .94 * TRADE_SHIP_SPRITE.width / TRADE_SHIP_SPRITE.height);
   return { scale: 1, x: 0, y: 0,
-    ship: { x: (w - shipWidth) / 2, y: (h - shipWidth * TRADE_SHIP_ART.height / TRADE_SHIP_ART.width) / 2, width: shipWidth } };
+    ship: { x: (w - shipWidth) / 2, y: (h - shipWidth * TRADE_SHIP_SPRITE.height / TRADE_SHIP_SPRITE.width) / 2, width: shipWidth } };
 }

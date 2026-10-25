@@ -228,6 +228,16 @@ test("water DEV controls separate wildlife, surface, breeze and wind without aff
   assert.deepEqual(view.calls.actions, []);
 });
 
+test("PNG ship inspection changes only the visual toggle and links to its independent workshop", () => {
+  const view = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true } });
+  const ship = view.elements.find(element => element.props.label === "Торговый корабль (PNG)");
+  assert.equal(ship.props.checked, true);
+  ship.props.onChange(false);
+  assert.deepEqual(view.calls.patches, [{ tradeShipPreview: false }]);
+  assert.deepEqual(view.calls.actions, []);
+  assert.match(view.markup, /href="\/prototype\/trade-ship"/);
+});
+
 test("lighting page offers an A/B shadow switch and a night campfire through the existing local scenario", () => {
   const view = panel("lighting", { state: { ...WORLD_DEV_DEFAULTS, lightShadows: false, lightTestLamp: true } });
   const controls = view.elements.find(element => element.type === WorldDevLighting);

@@ -646,6 +646,8 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, m
         onChange={waterFish => change({ waterFish })} />
       <Toggle label="Бриз на воде" checked={state.waterBreeze} onChange={waterBreeze => change({ waterBreeze })} />
       <Toggle label="Течение и блики" checked={state.waterSurface} onChange={waterSurface => change({ waterSurface })} />
+      <Toggle label="Торговый корабль (PNG)" checked={state.tradeShipPreview} onChange={tradeShipPreview => change({ tradeShipPreview })} />
+      {state.tradeShipPreview && <p className={styles.hint}>Корабль у южного берега. <a href="/prototype/trade-ship">Открыть примерку и пробный рейс ↗</a></p>}
       <Select label="Ветер над водой" value={state.waterWind}
         values={[["auto", "По погоде"], ["calm", "Штиль"], ["breeze", "Лёгкий ветер"], ["windy", "Сильный ветер"]]}
         onChange={waterWind => change({ waterWind })} />
@@ -719,7 +721,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, m
         {([["Большая карта", onOpenWorld], ["Календарь", onOpenCalendar], ["Игра и рейтинг", onOpenGame], ["Мой статус", onOpenStatus], ["Гардероб", onOpenWardrobe], ["Коллекции", onOpenCollection]] as const)
           .filter(([, callback]) => callback).map(([label, callback]) => <button key={label} type="button" onClick={() => { if (callback) shortcut(callback); }}>{label}</button>)}
         <a href="/prototype/tiled-world">Карта и маршруты ↗</a>
-        <a href="/prototype/trade-ship">Пароход из кода ↗</a>
+        <a href="/prototype/trade-ship">Торговый пароход · PNG ↗</a>
       </div>
       <Section title="О DEV и ограничениях">
         <p className={styles.scope}>Настройки вида действуют в этой вкладке и сбрасываются при перезагрузке. «Читы» меняют ресурсы и постройки тестового профиля на сервере. Сброс вида не отменяет читы и не удаляет память Мохлика.</p>

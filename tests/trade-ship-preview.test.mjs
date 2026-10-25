@@ -60,17 +60,24 @@ test("map placement is independent of canvas resolution and uses one southern cr
   }
 });
 
-test("the initial workshop exposes labelled controls and a real transparent PNG export action", () => {
+test("the PNG workshop waits for its ship asset and exposes only real voyage controls", () => {
   const html = renderToStaticMarkup(createElement(TradeShipPreview));
-  assert.match(html, /Пароход из кода/);
+  assert.match(html, /Торговый пароход/);
+  assert.match(html, /PNG · пробный рейс/);
+  assert.match(html, /Загружаем корабль/);
   assert.match(html, /Предпросмотр парохода/);
   assert.match(html, /Крупно/); assert.match(html, /На карте/); assert.match(html, /Рейс/);
   assert.match(html, /Приплыть/); assert.match(html, /Отойти/); assert.match(html, /В порт/);
-  assert.match(html, /Калитка/); assert.match(html, /Трап/); assert.match(html, /Грузовые ящики/);
-  assert.match(html, /Пустая палуба/); assert.match(html, /Скачать PNG/);
+  assert.match(html, /Скачать PNG/);
+  const buttons = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
+  for (const action of ["Приплыть", "Отойти", "В порт", "Скачать PNG"]) {
+    const button = buttons.find(match => match[2].includes(action));
+    assert.ok(button?.[1].includes('disabled=""'), `${action} cannot run before the image loads`);
+  }
+  for (const id of ["trade-ship-gate", "trade-ship-ramp", "trade-ship-cargo"]) assert.ok(!html.includes(`id="${id}"`));
   assert.match(html, /role="img"/);
-  assert.equal((html.match(/type="range"/g) ?? []).length, 3);
-  for (const id of ["trade-ship-gate", "trade-ship-ramp", "trade-ship-cargo", "trade-ship-voyage"]) {
+  assert.equal((html.match(/type="range"/g) ?? []).length, 1);
+  for (const id of ["trade-ship-voyage"]) {
     assert.ok(html.includes(`for="${id}"`), `explicit label remains attached to ${id}, not its nested output`);
     assert.ok(html.includes(`id="${id}"`));
   }

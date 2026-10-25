@@ -105,6 +105,9 @@ import { drawResidentHomeIndicator } from "@/features/world/characters/resident-
 import { drawLopukhWoodpile } from "@/features/world/characters/lopukh/lopukh-woodpile-painter";
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 import { drawLeaftailBoatArrival } from "@/features/world/characters/leaftail/leaftail-boat-painter";
+import { drawTradeShipSprite, TRADE_SHIP_SPRITE } from "@/features/world/objects/trade-ship/trade-ship-sprite";
+import { createTradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
+import { createTradeShipPreviewArtwork } from "@/features/world/dev/trade-ship-preview-artwork";
 import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-diagnostics";
 import { forestPerformanceProfiler } from "@/features/world/dev/forest-performance-profiler";
 import { residentScenePresentation } from "./resident-scene-presentation";
@@ -179,6 +182,7 @@ export type NewMapPaintPreview = {
   builderSleeping?: ReturnType<typeof builderSleepIndicator>;
   residentPresentation?: ReturnType<typeof residentScenePresentation>;
   merchantBoat?: ReturnType<typeof leaftailBoatArrivalFrame>;
+  tradeShipImage?: HTMLImageElement | null;
 };
 
 function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
@@ -348,6 +352,11 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
       if (preview?.water && dev?.waterSurface !== false) {
         drawForestWaterDynamics(ground, world, preview.water, { dusk: weather.dusk, reducedMotion: still });
       }
+      if (WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview && preview?.tradeShipImage) {
+        // Shared atmosphere below handles night; tinting the sprite here would darken it twice.
+        drawTradeShipSprite(ground, preview.tradeShipImage, { ...createTradeShipMotion().berth,
+          time: elapsed, night: 0, still, water: true });
+      }
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
         groundExclusions });
@@ -449,6 +458,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
   if (WORLD_DEV_ENABLED && !options.readOnly) worldLightingEditorStore.hydrate();
   let dev = WORLD_DEV_ENABLED && !options.readOnly ? worldDevStore.getSnapshot() : undefined;
+  const shipArtworkError = "Не удалось загрузить PNG корабля. Выключите его предпросмотр и включите снова.";
+  const tradeShipArtwork = createTradeShipPreviewArtwork(
+    () => loadHabitatImage(TRADE_SHIP_SPRITE.src, "low"),
+    () => {
+      if (worldDevStore.getSnapshot().artError === shipArtworkError) worldDevStore.reportArtError(null);
+      if (visible()) draw();
+    },
+    () => worldDevStore.reportArtError(shipArtworkError),
+  );
   let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
     { merchantArrived: options.merchantArrival?.seen }));
   let trees = createForestTreeInteractions(world);
@@ -978,6 +996,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       builderSleeping: builderSleepIndicator(state.builderMind, world),
       residentPresentation: residentScenePresentation(state, world),
       merchantBoat: state.leaftailBoat ? leaftailBoatArrivalFrame(state.leaftailBoat) : null,
+      tradeShipImage: tradeShipArtwork.getImage(),
       mining: forestJourneyMiningFrame(state,world,reducedMotion(options,dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),
@@ -1199,6 +1218,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   document.addEventListener("visibilitychange", visibilityChanged);
   function dispose() {
     if (disposed) return;
+    tradeShipArtwork.dispose();
     artworkPreparation?.dispose(); artworkPreparation = null;
     disposed = true; artworkVersion++; stop(); clearForestTreeInteractions(trees); unsubscribe(); unsubscribeAudioDebug(); unsubscribeLightingEditor(); audio.dispose(); observer.disconnect(); art = null;
     residentDiagnosticsStore.clear(options.presenceKey ?? "forest", residentDiagnosticsOwner);
@@ -1302,6 +1322,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (disposed) return;
     const before = dev!;
     dev = worldDevStore.getSnapshot();
+    tradeShipArtwork.setEnabled(Boolean(!options.readOnly && dev.tradeShipPreview));
     if (forestPersistenceOverridden(dev, levels)) session.suspendPersistence();
     if (session.consumeControls(dev)) {
       if ((dev.animation?.id !== before.animation?.id && dev.animation || dev.pose !== before.pose && dev.pose !== "auto")
@@ -1363,6 +1384,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (dev.levels !== before.levels || dev.previewBuildings !== before.previewBuildings) prepareArtwork();
     resume();
   });
+  tradeShipArtwork.setEnabled(Boolean(WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview));
   prepareArtwork();
   void loadForestSpeechFont().then(loaded => {
     // A still scene has no RAF: repaint once when its actual glyph metrics arrive.
@@ -1445,6 +1467,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (disposed) return;
       const identityChanged = next.presenceKey !== options.presenceKey;
       options = { ...next }; stop();
+      tradeShipArtwork.setEnabled(Boolean(WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview));
       if (identityChanged) {
         clearForestTreeInteractions(trees);
         artworkPreparation?.dispose(); artworkPreparation = null;

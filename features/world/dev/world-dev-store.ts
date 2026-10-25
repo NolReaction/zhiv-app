@@ -54,6 +54,7 @@ export type WorldDevState = Readonly<{
   waterFish: "auto" | "on" | "off";
   waterBreeze: boolean;
   waterSurface: boolean;
+  tradeShipPreview: boolean;
   waterWind: "auto" | "calm" | "breeze" | "windy";
   lightShadows: boolean;
   lightAzimuth: number;
@@ -107,7 +108,7 @@ export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   residentDirection: "front", residentPreview: null, cookingPreview: null,
   builderDirection: "front", builderPreview: null,
   showHero: true, showBuildings: true, heroShadow: true, buildingShadow: true,
-  previewBuildings: false,
+  previewBuildings: false, tradeShipPreview: false,
   debug: false, debugWater: false, debugNavigation: false, debugFauna: false,
   levels: Object.freeze(initialPreviewLevels(TILED_WORLD)), equipment: null,
   animation: null, lifeEvent: null, birdEvent: 0, scenarioEvent: null, cameraEvent: null, scenePreview: null, artError: null,
@@ -126,7 +127,7 @@ const enumValues = {
   residentDirection: ["front", "back", "left", "right"],
   builderDirection: ["front", "back", "left", "right"],
 } as const;
-const booleanKeys = ["paused", "autoLife", "puddles", "waterBreeze", "waterSurface", "lightShadows", "lightDebug", "lightTestLamp", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
+const booleanKeys = ["paused", "autoLife", "puddles", "waterBreeze", "waterSurface", "tradeShipPreview", "lightShadows", "lightDebug", "lightTestLamp", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
 const numericBounds = {
   heroScale: [.5, 2], lightAzimuth: [0, 360], lightElevation: [10, 80],
   lightLampX: [0, 1254], lightLampY: [0, 1254], lightLampHeight: [8, 150],

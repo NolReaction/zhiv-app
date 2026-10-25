@@ -26,6 +26,7 @@
 .mapStage .canvas { position: absolute; inset: 0; }
 .canvas { display: block; width: 100%; height: 100%; }
 .mapNotice { position: absolute; left: 14px; bottom: 14px; max-width: calc(100% - 28px); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--ship-line); border-radius: 12px; padding: 10px 14px; background: #152a23ed; font-size: 13px; }
+.shipNotice { top: 14px; bottom: auto; }
 .mapNotice button { min-height: 36px; border: 0; border-radius: 8px; padding: 5px 10px; color: var(--ship-ink); background: #405a39; }
 .previewFooter { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 18px; padding: 13px 16px; color: var(--ship-muted); font-size: 12px; }
 .controls { min-width: 0; border: 1px solid var(--ship-line); border-radius: 18px; background: var(--ship-panel); padding: 20px; }
@@ -43,6 +44,7 @@
 .field output { color: #d4dcb4; font-size: 12px; font-variant-numeric: tabular-nums; }
 .field input { display: block; width: 100%; height: 24px; accent-color: #c6d393; cursor: pointer; }
 .field select { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid #617251; border-radius: 10px; background: #243d2d; color: var(--ship-ink); font: inherit; }
+.download:disabled { opacity: .4; cursor: default; }
 .download { width: 100%; min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #b3c186; border-radius: 11px; background: #d3dfa8; color: #203326; font-size: 14px; font-weight: 600; }
 .note { margin: 16px 0 0; color: var(--ship-muted); font-size: 12px; line-height: 1.6; }
 .exportNotice { min-height: 18px; margin: 12px 0 0; color: #dce9ad; font-size: 12px; line-height: 1.5; }

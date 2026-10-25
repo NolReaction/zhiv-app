@@ -1,12 +1,10 @@
-import { shipPoint } from "./trade-ship-art";
-
 /** Water belongs to the scene, never the transparent ship asset. Velocities use the art camera's axes. */
 export function drawTradeShipWater(ctx: CanvasRenderingContext2D, frame: {
   time: number; night: number; velocityX: number; velocityY: number;
 }) {
-  const centre = shipPoint(0, 20, -61);
+  const centre = { x: 400, y: 377 };
   ctx.save();
-  ctx.translate(centre.x, centre.y); ctx.rotate(-.2);
+  ctx.translate(centre.x, centre.y); ctx.rotate(.03);
   const shadow = ctx.createRadialGradient(0, 0, 8, 0, 0, 325);
   shadow.addColorStop(0, "rgba(9, 34, 33, .35)");
   shadow.addColorStop(.8, "rgba(9, 34, 33, .22)");
@@ -36,9 +34,9 @@ export function drawTradeShipWater(ctx: CanvasRenderingContext2D, frame: {
   }
   ctx.globalAlpha = strength * .27; ctx.lineWidth = 1.5;
   for (const side of [-1, 1]) {
-    const start = shipPoint(260, side * 31, -22);
-    const middle = shipPoint(30, side * 94, -63);
-    const end = shipPoint(-270, side * 53, -49);
+    const start = { x: 694, y: 335 + side * 7 };
+    const middle = { x: 400, y: 395 + side * 10 };
+    const end = { x: 120, y: 324 + side * 6 };
     ctx.beginPath(); ctx.moveTo(start.x, start.y);
     ctx.quadraticCurveTo(middle.x, middle.y, end.x, end.y); ctx.stroke();
   }
