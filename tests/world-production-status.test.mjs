@@ -218,7 +218,8 @@ test("split workshop placement reserves its actual height and clears the measure
   const object = { id: "workshop", place: "workshop", hitArea: [{ x: 100, y: 200 }, { x: 220, y: 280 }] };
   const camera = { x: 160, y: 240, zoom: 1 }, view = { width: 320, height: 480 };
   assert.ok(projectConstructionAnchor(object, camera, view, { top: 130, bottom: 90 }));
-  assert.equal(projectConstructionAnchor(object, camera, view, { top: 130, bottom: 90 }, productionMarkerHeight(shared)), null);
+  const split = projectConstructionAnchor(object, camera, view, { top: 130, bottom: 90 }, productionMarkerHeight(shared));
+  assert.equal(split.y - productionMarkerHeight(shared), 138, "the full shared badge fits below the HUD");
   assert.ok(projectConstructionAnchor(object, camera, view, { top: 90, bottom: 90 }, productionMarkerHeight(shared)));
   assert.equal(projectConstructionAnchor(object, { ...camera, x: 900 }, view, { top: 0, bottom: 0 }, 88), null);
 });

@@ -564,7 +564,8 @@ test("shared workshop marker height refreshes paused anchors without repaint or 
     engine.update({ ...options, paused: true });
     const painted = canvas.calls.length, frames = env.frames.size;
     markerHeight = 88; engine.refreshObjectAnchors();
-    assert.deepEqual(samples.at(-1), [], "adding the second section cannot extend behind the HUD");
+    const expanded = { ...original, y: top.offsetHeight + 8 + 88 };
+    assert.deepEqual(samples.at(-1), [expanded], "adding the second section keeps the full badge below the HUD");
     markerHeight = 44; engine.refreshObjectAnchors();
     assert.deepEqual(samples.at(-1), [original], "a completed queue restores the smaller badge immediately while paused");
     assert.equal(canvas.calls.length, painted, "a footprint change projects UI anchors without repainting or moving the forest");
@@ -573,7 +574,7 @@ test("shared workshop marker height refreshes paused anchors without repaint or 
     engine.refreshObjectAnchors(); assert.equal(samples.length, notifications, "unchanged anchors remain deduplicated");
     env.visibility(true); markerHeight = 88; engine.refreshObjectAnchors();
     assert.equal(samples.length, notifications, "a hidden view buffers the footprint change");
-    env.visibility(false); assert.deepEqual(samples.at(-1), [], "the visible view adopts the buffered height before presenting its badge");
+    env.visibility(false); assert.deepEqual(samples.at(-1), [expanded], "the visible view adopts the buffered height before presenting its badge");
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
@@ -947,11 +948,13 @@ test("stationary camera invalidates construction projections when badge height o
     engine.control("home"); engine.refreshObjectAnchors();
     assert.equal(samples.length, before, "unchanged camera and markers do not republish the overlay");
     markerHeight = 88; engine.refreshObjectAnchors();
-    assert.deepEqual(samples.at(-1), [], "a taller shared production badge cannot overlap the HUD");
+    assert.equal(samples.at(-1)[0].y - markerHeight, top.offsetHeight + 8,
+      "a taller shared production badge moves below the HUD without disappearing");
     markerHeight = 44; engine.refreshObjectAnchors();
     assert.equal(samples.at(-1)[0].objectId, "home", "a compact badge returns without moving the camera");
     top.offsetHeight = 80; env.resize(top);
-    assert.deepEqual(samples.at(-1), [], "measured HUD resize invalidates stationary projections");
+    assert.equal(samples.at(-1)[0].y - markerHeight, top.offsetHeight + 8,
+      "measured HUD resize repositions the full stationary marker");
     top.offsetHeight = 40; env.resize(top);
     assert.equal(samples.at(-1)[0].objectId, "home");
     worldDevStore.patch({ showBuildings: false });

@@ -568,8 +568,8 @@ test("another device owning the forest suppresses quick and modal section introd
   } finally { nav.restore(); }
 });
 
-test("world exit immediately unmounts all seven manual guides even before the closing animation ends", () => {
-  for (const section of ["pantry", "expeditions", "orders", "market", "workshop", "plesk", "builder"]) {
+test("world exit immediately unmounts all six manual guides even before the closing animation ends", () => {
+  for (const section of ["pantry", "expeditions", "market", "workshop", "plesk", "builder"]) {
     const nav = guideNavigation();
     const guide = () => section === "plesk" ? nav.component("WorldResidentDialog").props.guide
       : section === "builder" ? nav.component("WorldBuilderDialog").props.guide
@@ -578,7 +578,6 @@ test("world exit immediately unmounts all seven manual guides even before the cl
       if (section === "plesk" || section === "builder") nav.component("WorldScene").props.onResident(section);
       else if (section === "workshop") nav.component("WorldScene").props.onPlace("workshop",
         { place: "workshop", objectId: "workshop", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
-      else if (section === "orders") nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
       else {
         nav.find(element => element.props["data-world-quick"] === (section === "market" ? "pantry" : section)).props.onClick();
         if (section === "market") nav.component("WorldScene").props.onPlace("market");
@@ -593,17 +592,17 @@ test("world exit immediately unmounts all seven manual guides even before the cl
   }
 });
 
-test("the standalone journal has its own lesson and preserves filters through ordinary snapshots", () => {
+test("the standalone journal has no manual guide and preserves filters through ordinary snapshots", () => {
   const nav = guideNavigation();
   try {
     nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
     const journal = nav.component("WorldOrderJournal"), key = journal.key;
-    assert.equal(nav.component("SectionGuide").props.section, "orders");
-    assert.equal(nav.component("SectionGuide").props.enabled, true);
+    assert.equal(nav.component("SectionGuide"), undefined, "the journal opens without an extra help button or coach");
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
     assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true);
     nav.props.economy.snapshot = { ...nav.props.economy.snapshot, revision: 2 };
     assert.equal(nav.component("WorldOrderJournal").key, key, "stock refreshes preserve the live journal's selection");
+    assert.equal(nav.component("SectionGuide"), undefined);
     nav.find(element => ["Закрыть панель", "Закрыть журнал заказов"].includes(element.props["aria-label"])).props.onClick();
     assert.equal(nav.component("WorldOrderJournal"), undefined);
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);

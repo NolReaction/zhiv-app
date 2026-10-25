@@ -81,6 +81,19 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let framing: MapFraming = retainedViewport?.framing ?? "world";
   let guidePlace: MapObjectPlace | null = null, guideBottomInset = 0;
   let followedArrival = false;
+  // Menus and temporary scene suspension can clear/reapply the same guide.
+  // A manual camera gesture releases that introduction, not just one frame.
+  const releasedArrivals = new Map<MapObjectPlace, () => void>();
+  function arrivalPresentation(place: MapObjectPlace | null) {
+    const arrival = place === "lopukh-home" ? options.lopukhArrival
+      : place === "quarry" ? options.residentArrival : place === "leaftail-caravan" ? options.merchantArrival : undefined;
+    return arrival && (arrival.enabled || arrival.open) ? arrival : undefined;
+  }
+  function releaseArrivalFollow() {
+    const arrival = arrivalPresentation(guidePlace);
+    if (guidePlace && arrival) releasedArrivals.set(guidePlace, arrival.onComplete);
+    followedArrival = false;
+  }
   const guideInsets = () => ({ ...cameraInsets, bottom: Math.max(cameraInsets.bottom, guideBottomInset) });
   let inView = true;
   const home = document.createElement("canvas");
@@ -223,7 +236,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const changed = place !== guidePlace;
     guidePlace = place; guideBottomInset = bottomInset;
     const object = currentGuideTarget();
-    if (object && (changed || framing === "guide")) {
+    const arrival = arrivalPresentation(place);
+    const released = Boolean(place && arrival && releasedArrivals.get(place) === arrival.onComplete);
+    if (released && framing === "guide") framing = "manual";
+    if (!released && object && (changed || framing === "guide")) {
       framing = "guide";
       camera = mapGuideCamera(object, view, bounds, guideInsets());
     } else if (!place && framing === "guide") framing = "manual";
@@ -542,6 +558,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     // light masks. Coalesce high-rate pointer packets before doing that work.
     if (touch.editor) { pendingEditorMove = screenToWorld(p, camera, view); touch.position = p; requestDraw(); return; }
     const oldCenter = pointers.size >= 2 ? midpoint() : null;
+    releaseArrivalFollow();
     framing = "manual";
     travelled = Math.max(travelled, Math.hypot(p.x - touch.initial.x, p.y - touch.initial.y));
     touch.position = p;
@@ -605,8 +622,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
     if (panSurface.active) draw(); else requestDraw();
   }
-  function wheel(event: WheelEvent) { event.preventDefault(); pendingEditorMove = null; lightingEditor.cancel(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
+  function wheel(event: WheelEvent) { event.preventDefault(); pendingEditorMove = null; lightingEditor.cancel(); releaseArrivalFollow(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
   function control(action: MapAction) {
+    releaseArrivalFollow();
     framing = action === "home" || action === "overview" ? action : "manual";
     if (action === "plesk" || action === "builder" || action === "fishing") {
       const target = habitat.inspectPoint?.(action);
@@ -621,7 +639,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (event.isComposing || target?.isContentEditable || target?.closest?.("input,textarea,select,[contenteditable=true]")) return;
     if (WORLD_DEV_ENABLED && lightingEditor.key(event)) { event.preventDefault(); requestDraw(); return; }
     const delta = { ArrowUp: [0, -40], ArrowDown: [0, 40], ArrowLeft: [-40, 0], ArrowRight: [40, 0] }[event.key];
-    if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view, bounds, cameraInsets); draw(); }
+    if (delta) { event.preventDefault(); releaseArrivalFollow(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view, bounds, cameraInsets); draw(); }
     else if (["+", "=", "-", "Home"].includes(event.key)) { event.preventDefault(); control(event.key === "Home" ? "pet" : event.key === "-" ? "out" : "in"); }
   }
   function keyUp(event: KeyboardEvent) { if (lightingEditor.keyUp(event)) { event.preventDefault(); requestDraw(); } }

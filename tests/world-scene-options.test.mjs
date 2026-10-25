@@ -18,6 +18,8 @@ test("UI option wrappers are equal only while game inputs and arrival callbacks 
   const wrapped = () => ({ ...initial, residentArrival: { ...initial.residentArrival }, merchantArrival: { ...initial.merchantArrival } });
   assert.equal(sameSceneOptions(initial, wrapped()), true);
   assert.equal(sameSceneOptions(initial, { ...wrapped(), items: undefined }), true, "omitted optional values have no scene effect");
+  assert.equal(sameSceneOptions(initial, { ...wrapped(), merchantArrival: { ...initial.merchantArrival, open: false } }), true,
+    "an omitted greeting flag is the same closed presentation");
   for (const patch of [
     { paused: true }, { backgrounded: true }, { reducedMotion: true }, { lampOn: true }, { dusk: true },
     { presenceKey: "account-b" }, { serverNow: 200_000 }, { view: "circle" }, { tutorialActive: false },
@@ -25,7 +27,9 @@ test("UI option wrappers are equal only while game inputs and arrival callbacks 
     { residentArrival: { ...initial.residentArrival, onComplete() {} } },
     { residentArrival: { ...initial.residentArrival, seen: true } },
     { residentArrival: { ...initial.residentArrival, enabled: false } },
+    { residentArrival: { ...initial.residentArrival, open: true } },
     { merchantArrival: { ...initial.merchantArrival, onComplete() {} } },
+    { merchantArrival: { ...initial.merchantArrival, open: true } },
     { merchantArrival: undefined },
   ]) assert.equal(sameSceneOptions(initial, { ...wrapped(), ...patch }), false, Object.keys(patch).join(", "));
 });

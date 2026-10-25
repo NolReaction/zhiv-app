@@ -35,7 +35,6 @@ export function OrderResidentTabs({ selected, available, counts, panelId, onSele
       return <button key={customer} type="button" role="tab" id={`${panelId}-tab-${customer}`} aria-controls={panelId}
         aria-selected={chosen} aria-label={`${label}${unlocked ? `, заказов: ${count}` : `. ${orderResidentUnlockHints[customer as OrderResidentId]}`}`}
         tabIndex={chosen ? 0 : -1} disabled={!unlocked} data-order-filter={customer} data-resident-theme={customer}
-        title={!unlocked ? orderResidentUnlockHints[customer] : label}
         onKeyDown={move} onClick={() => { if (unlocked) onSelect(customer); }}>
         <span className={styles.photo} aria-hidden="true">{customer === "all" ? <Mail size={20} strokeWidth={1.5} />
           : unlocked && resident ? <resident.Portrait className={styles.portrait} /> : <LockKeyhole size={17} />}

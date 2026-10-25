@@ -13,6 +13,7 @@ const { constructionMapPlace, projectConstructionAnchor } = await vite.ssrLoadMo
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
 const { initialPreviewLevels, previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { default: authoredWorld } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
+const { overviewCamera } = await vite.ssrLoadModule("/features/world/scene/camera.ts");
 
 const now = Date.parse("2026-10-03T12:00:00Z");
 const construction = { id: "saved-construction", kind: "construction", targetId: "home", targetLevel: 2,
@@ -80,7 +81,10 @@ test("construction marker clears measured HUD bounds and disappears when its roo
   const object = { id: "home", place: "house", hitArea: [{ x: 100, y: 200 }, { x: 220, y: 280 }] };
   const view = { width: 320, height: 480 }, camera = { x: 160, y: 240, zoom: 1 };
   assert.ok(projectConstructionAnchor(object, camera, view, { top: 130, bottom: 90 }));
-  assert.equal(projectConstructionAnchor(object, camera, view, { top: 150, bottom: 90 }), null);
+  const underHud = projectConstructionAnchor(object, camera, view, { top: 150, bottom: 90 });
+  assert.equal(underHud.y - 44, 158, "a visible roof keeps its full timer below the HUD");
+  assert.equal(projectConstructionAnchor(object, camera, view, { top: 200, bottom: 90 }), null,
+    "a roof itself covered by the HUD never gains a floating marker");
   assert.equal(projectConstructionAnchor(object, camera, view, { top: 0, bottom: 300 }), null);
   assert.equal(projectConstructionAnchor(object, { ...camera, x: 321 }, view), null);
   assert.equal(projectConstructionAnchor(object, { ...camera, x: -161 }, view), null);
@@ -89,6 +93,23 @@ test("construction marker clears measured HUD bounds and disappears when its roo
   const nearEdge = projectConstructionAnchor(object, { ...camera, x: 300 }, view);
   assert.equal(nearEdge.x, 57, "keep the fixed-size button fully inside the viewport");
   assert.equal(nearEdge.x + nearEdge.pointerOffset, 20, "its pointer still identifies the visible roof");
+});
+
+test("quarry and Lopukh timers remain visible at the authored map's maximum zoom out", () => {
+  const scene = previewWorldScene(authoredWorld, { ...initialPreviewLevels(authoredWorld), quarry: 1, "lopukh-home": 1 });
+  const hosts = interactiveMapObjects(scene).filter(object => ["quarry", "lopukh-home"].includes(object.place));
+  assert.equal(hosts.length, 2);
+  for (const view of [{ width: 320, height: 600 }, { width: 961, height: 959 }, { width: 1024, height: 768 }]) {
+    const camera = overviewCamera(view, scene), insets = { top: view.width === 1024 ? 40 : 80, bottom: 50 };
+    for (const host of hosts) {
+      const before = structuredClone(host), anchor = projectConstructionAnchor(host, camera, view, insets);
+      assert.ok(anchor, `${host.place} has a timer at ${view.width}×${view.height}`);
+      assert.ok(anchor.y - 44 >= insets.top + 8, "the complete touch target clears the measured top HUD");
+      assert.ok(anchor.y <= view.height - insets.bottom - 8);
+      assert.ok(anchor.x - 49 >= 8 && anchor.x + 49 <= view.width - 8);
+      assert.deepEqual(host, before, "timer placement never moves the authored building");
+    }
+  }
 });
 
 test("camera movement reuses immutable roof geometry while a replacement contour takes effect immediately", () => {

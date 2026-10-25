@@ -197,7 +197,7 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
         {completionRewards.length > 0 && <div className={styles.completionReward}><p>Награда за завершение этапа</p><ul aria-label="Дополнительная награда за этап">{completionRewards.map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={21} /><span>{itemName(state, id)} × {number(amount)}</span></li>)}</ul></div>}
       </div>
     </div>
-    {bonus > 0 && !permanent && <p className={styles.premium} title="Рыбу можно продать Плёске, другие товары местному скупщику.">На {number(bonus)} монет больше продажи</p>}
+    {bonus > 0 && !permanent && <p className={styles.premium}>На {number(bonus)} монет больше продажи</p>}
     {confirmation ?? <div className={styles.actions}>
       {hasFish ? <FishOrderAction economy={economy} offer={offer} disabled={submitDisabled} onSubmit={complete} />
         : <button type="button" className={styles.primary} data-guide-order-submit disabled={submitDisabled} onClick={() => complete()}>{waitSeconds > 0 ? `Доступно через ${waiting(waitSeconds)}` : "Отдать заказ"}</button>}
@@ -376,22 +376,20 @@ export function ResidentOrderBoard({ economy, residentId, introducedResidents, t
     {!tutorialOnly && <OrderResidentTabs selected={filter} available={available} panelId={panelId}
       counts={{ all: offers.length, ...Object.fromEntries(orderResidentIds.map(id => [id, offers.filter(offer => offer.residentId === id).length])) }} onSelect={changeFilter} />}
     <div className={styles.content} role={tutorialOnly ? undefined : "tabpanel"} id={panelId} aria-labelledby={tutorialOnly ? undefined : `${panelId}-tab-${filter}`}>
-    {!tutorialOnly && (filter !== "all" && economy.snapshot.catalog.tradeRelations
-      ? <OrderResidentRelations residentId={filter} reputation={orderReputationPresentation(economy.snapshot, filter, economy.now)} />
-      : <p className={styles.lore}>{filter === "all" ? "Выбери жителя, чтобы посмотреть отношения и его просьбы. Здесь собраны все доступные заказы." : residents[filter].role}</p>)}
+    {!tutorialOnly && filter !== "all" && economy.snapshot.catalog.tradeRelations && <OrderResidentRelations residentId={filter} reputation={orderReputationPresentation(economy.snapshot, filter, economy.now)} />}
     {confirmed && <p className={styles.success} role="status" ref={success} tabIndex={-1}><Check size={15} aria-hidden="true" /><span>{isTutorialOrderId(attempt.offerId, economy.snapshot.catalog) ? `Учебный заказ выполнен · +${number(attempt.coins)} монет. ${tutorialOnly ? "Продолжай обучение, к остальным просьбам можно вернуться позже." : "Теперь можно выполнять просьбы для улучшения дома."}`
       : isStageOrderId(attempt.offerId, economy.snapshot.catalog) ? `Заказ этапа выполнен · +${number(attempt.coins)} монет. ${acceptedStage?.completed ? "Все просьбы этого этапа выполнены." : nextStageWait > 0 ? `Следующая поставка через ${waiting(nextStageWait)}.` : "Следующая просьба уже на доске."}${Object.entries(attempt.completionRewards).map(([id, count]) => ` Получено: ${itemName(economy.snapshot, id)} × ${number(count)}.`).join("")}`
       : attempt.weekly ? `Этап большого поручения выполнен · +${number(attempt.coins)} монет. ${tradeRelationsState(economy.snapshot).completedWeekly > attempt.completedWeekly ? "Поручение завершено. Репутация и награды сохранены." : "Следующий этап уже открыт."}`
       : attempt.action === "complete_resident_order" ? `Заказ выполнен · +${number(attempt.coins)} монет. Новая просьба уже на доске.` : attempt.retiring ? "Прежняя просьба убрана бесплатно. Остальные заказы этого жителя остаются на доске." : "Заказ заменён. Новая просьба уже на доске."}</span><button type="button" aria-label="Скрыть результат заказа" onClick={() => setAttempt(null)}><X size={14} aria-hidden="true" /></button></p>}
     {(tutorialVisible || stageVisible) && <section className={styles.chapter} data-order-chapter="progression" aria-labelledby={`${headingId}-progression`}>
-      <header className={styles.chapterHeading}><span className={styles.chapterNumber} aria-hidden="true">I</span><div><h3 id={`${headingId}-progression`}>Путь хозяйства</h3><p>Особые просьбы для следующего шага</p></div></header>
+      <header className={styles.chapterHeading}><span className={styles.chapterNumber} aria-hidden="true">I</span><div><h3 id={`${headingId}-progression`}>Путь хозяйства</h3></div></header>
       <div className={styles.permanentCards}>
         {tutorialVisible && tutorial && <ResidentOrderCard economy={economy} offer={tutorial} {...navigation} onComplete={(entry, selection) => send(entry, "complete_resident_order", 0, selection)} />}
         {stageVisible && stage && <ResidentOrderCard economy={economy} offer={stage} {...navigation} onComplete={(entry, selection) => send(entry, "complete_resident_order", 0, selection)} />}
       </div>
     </section>}
     {!tutorialOnly && <section className={styles.chapter} data-order-chapter="repeatable" aria-labelledby={headingId}>
-      <header className={styles.chapterHeading}><span className={styles.chapterNumber} aria-hidden="true">{tutorialVisible || stageVisible ? "II" : "I"}</span><div><h3 id={headingId}>Просьбы жителей</h3><p>После сдачи появится новая просьба</p></div><span className={styles.chapterCount}>{matching.length}</span></header>
+      <header className={styles.chapterHeading}><span className={styles.chapterNumber} aria-hidden="true">{tutorialVisible || stageVisible ? "II" : "I"}</span><div><h3 id={headingId}>Просьбы жителей</h3></div><span className={styles.chapterCount}>{matching.length}</span></header>
       <div className={styles.boardSummary}><p><Clock3 size={13} aria-hidden="true" />Обновление через <strong>{waiting(remaining(board.refreshAt, economy.now))}</strong></p><p>Бесплатных замен: <strong>{board.freeReplacementsRemaining} / {config.freeReplacements}</strong></p></div>
       {board.replacementPricePearls > economy.snapshot.wallet.pearls && <p className={styles.warning}>На замену не хватает {formatPearls(board.replacementPricePearls - economy.snapshot.wallet.pearls)} жемчужин.</p>}
       <div className={styles.orders}>{matching.map(offer => <ResidentOrderCard key={offer.id} economy={economy} offer={offer} {...navigation} onComplete={(entry, selection) => send(entry, "complete_resident_order", 0, selection)} onReplace={replace}
@@ -407,8 +405,6 @@ export function ResidentOrderBoard({ economy, residentId, introducedResidents, t
     </section>}
     {tutorialOnly && !tutorial && !confirmed && <p className={styles.empty} role="status" data-order-tutorial-result>{tutorialOrderProgress(economy.snapshot).completed ? "Учебный заказ выполнен. Продолжай обучение, к остальным просьбам можно вернуться позже." : "Здесь появится учебный заказ. Продолжай по подсказке."}</p>}
     {!tutorialOnly && !matching.length && !tutorialVisible && !stageVisible && <p className={styles.empty}><ClipboardList size={20} aria-hidden="true" />{offers.length ? "Сейчас просьб от этого жителя нет. Посмотрите все заказы." : "Просьбы жителей пока недоступны."}{offers.length > 0 && <button type="button" onClick={() => changeFilter("all")}>Все заказы</button>}</p>}
-    {!tutorialOnly && <details className={styles.rules}><summary>Обновление и замена просьб</summary><p className={styles.footnote}>После сдачи обычной просьбы новый заказ появится сразу. Ещё {board.freeReplacementsRemaining} замен бесплатно, затем {formatPearls(config.replacementPricePearls)} жемчужин за замену. Бесплатные замены восстановятся через {waiting(remaining(board.replacementsResetAt, economy.now))}.</p></details>}
-    {!tutorialOnly && economy.snapshot.catalog.tradeRelations && <details className={styles.rules}><summary>Репутация и время подготовки</summary><p className={styles.footnote}>За более трудоёмкую просьбу дают больше репутации. Дневной предел обычных просьб указан у каждого жителя; недельное поручение учитывается отдельно. Репутация сохраняется без ежедневного входа, а преимущество дружбы не превышает 10%.</p><p className={styles.footnote}>Подготовка с нуля учитывает добычу и изготовление ингредиентов. Это объём работы: разные производства могут работать одновременно, а готовые запасы сократят подготовку. Рыбалка зависит от случайного улова.</p></details>}
     </div>
   </div>;
 }

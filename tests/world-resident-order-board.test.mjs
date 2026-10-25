@@ -46,7 +46,7 @@ test("board offers five resident tabs and an initial NPC filter without mixing m
   assert.equal((all.match(/role="tab"/g) ?? []).length, 6);
   for (const id of ["builder", "plesk", "lopukh", "kamneshmyg", "leaftail"]) assert.match(all, new RegExp(`data-resident="${id}"`));
   assert.match(all, /Бесплатных замен: <strong>3 \/ 3/);
-  assert.match(all, /затем 5 жемчужин/);
+  assert.doesNotMatch(all, /<details|Обновление и замена просьб|Репутация и время подготовки/);
   assert.doesNotMatch(all, /Угостить Шишколапа|Съесть:|Доступен через|новый заказ ждёт/);
   const builder = render(ResidentOrderBoard, { economy, residentId: "builder" });
   assert.match(builder, /Материалы и инструменты/);

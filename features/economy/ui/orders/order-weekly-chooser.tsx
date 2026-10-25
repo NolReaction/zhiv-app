@@ -62,7 +62,6 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
   return <div className={styles.chooser} data-weekly-chooser>
     {!selected ? <>
       {expired && <p className={styles.expired} role="status">Срок прошлого поручения закончился. Репутация и награды за сданные этапы сохранены.</p>}
-      <p className={styles.intro}>Выбери, кому помочь на этой неделе. Одновременно можно взять одно поручение. На три этапа будет семь дней с момента подтверждения.</p>
       <div className={styles.choices}>{candidates.map(offer => {
         const resident = orderResidents[offer.residentId];
         return <article className={styles.choice} key={offer.id} data-weekly-choice={offer.residentId}>
@@ -72,7 +71,7 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
           <button type="button" disabled={locked(economy) || pending} onClick={() => review(offer)} aria-label={`Посмотреть поручение: ${offer.name}, ${resident.name}`}>Посмотреть три этапа</button>
         </article>;
       })}</div>
-      {!candidates.length && <p className={styles.intro}>У этого жителя пока нет доступного большого поручения. Развивай хозяйство, чтобы открыть нужные товары.</p>}
+      {!candidates.length && <p className={styles.intro}>У этого жителя пока нет доступного большого поручения.</p>}
     </> : <section className={styles.review} aria-labelledby={titleId} data-weekly-review>
       <button type="button" className={styles.back} disabled={pending} onClick={() => setQuote(null)}><ArrowLeft size={14} aria-hidden="true" />К выбору поручения</button>
       <header><p>{orderResidents[selected.residentId].name} · большое поручение</p><h4 id={titleId} ref={heading} tabIndex={-1}>{selected.name}</h4>{selected.description && <p>{selected.description}</p>}</header>
@@ -83,7 +82,6 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
         <div className={styles.stageReward}><span><ItemIcon itemId="coins" size={14} />{number(stage.coins)}</span><span>+{number(stage.reputationXp ?? 0)} репутации</span><span>≈ {worldDuration(stage.effortSeconds ?? 0)} работы</span></div>
       </li>)}</ol>
       <p className={styles.promise}><CalendarDays size={16} aria-hidden="true" /><span>Семь дней на все этапы. Каждый этап оплачивается отдельно; уже полученные награды сохранятся, даже если срок закончится.</span></p>
-      <p className={styles.note}>Время рассчитано для подготовки без запасов. Разные производства могут работать одновременно.{selected.fishingUncertain ? " Время рыбалки зависит от улова." : ""}</p>
       {reason && <p className={styles.warning} role="status">{reason}</p>}
       <button type="button" className={styles.accept} disabled={Boolean(reason) || pending} onClick={accept}><Check size={16} aria-hidden="true" />{pending ? "Подтверждаем…" : "Взять поручение на 7 дней"}</button>
     </section>}

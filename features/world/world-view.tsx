@@ -181,8 +181,8 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     onboarding,
   });
   const lopukhAvailable = Boolean(woodlotBuilt && lopukhArrival.loaded && lopukhArrival.seen);
-  const lopukhPresentation = useMemo(() => ({ seen: lopukhArrival.seen, enabled: lopukhArrival.enabled, onComplete: lopukhArrival.complete }),
-    [lopukhArrival.seen, lopukhArrival.enabled, lopukhArrival.complete]);
+  const lopukhPresentation = useMemo(() => ({ seen: lopukhArrival.seen, enabled: lopukhArrival.enabled, open: lopukhArrival.open, onComplete: lopukhArrival.complete }),
+    [lopukhArrival.seen, lopukhArrival.enabled, lopukhArrival.open, lopukhArrival.complete]);
   const quarryBuilt = Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId
     && (economy.snapshot.buildings.quarry ?? 0) >= 1);
   const minerArrival = useMinerArrival(ownerPublicId, {
@@ -205,10 +205,10 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     onboarding,
   });
   const leaftailAvailable = Boolean(merchantUnlocked && merchantArrival.loaded && merchantArrival.seen);
-  const minerPresentation = useMemo(() => ({ seen: minerArrival.seen, enabled: minerArrival.enabled, onComplete: minerArrival.complete }),
-    [minerArrival.seen, minerArrival.enabled, minerArrival.complete]);
-  const merchantPresentation = useMemo(() => ({ seen: merchantArrival.seen, enabled: merchantArrival.enabled, onComplete: merchantArrival.complete }),
-    [merchantArrival.seen, merchantArrival.enabled, merchantArrival.complete]);
+  const minerPresentation = useMemo(() => ({ seen: minerArrival.seen, enabled: minerArrival.enabled, open: minerArrival.open, onComplete: minerArrival.complete }),
+    [minerArrival.seen, minerArrival.enabled, minerArrival.open, minerArrival.complete]);
+  const merchantPresentation = useMemo(() => ({ seen: merchantArrival.seen, enabled: merchantArrival.enabled, open: merchantArrival.open, onComplete: merchantArrival.complete }),
+    [merchantArrival.seen, merchantArrival.enabled, merchantArrival.open, merchantArrival.complete]);
   const dailyAutoPromptAllowed = useWorldRewardPromptGate(ownerPublicId, onboarding,
     Boolean(!open || panel || quickMenu || selection || quickUpgrade || residentOpen || charactersOpen
       || marketGuide.open || lopukhArrival.open || lopukhArrival.enabled || minerArrival.open || minerArrival.enabled || merchantArrival.open || merchantArrival.enabled || economy.busy || economy.uncertain || world.busy || world.uncertain), worldElement);
@@ -747,7 +747,6 @@ export default function WorldView({ open, suspended = false, world, economy, mai
         </div>
         <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите короткий ответ через поиск или выберите раздел." : panel === "orders" ? "Просьбы жителей и путь хозяйства. Проверьте припасы и награду, затем отдайте выбранный заказ." : panel === "economy" && economyTab === "market" ? "Объявления других игроков и ваш прилавок. Покупка и продажа товаров между игроками." : panel === "shop" ? "Наборы для текущего уровня дома, особые костюмы, жемчуг и золото. Покупки и обмен пока недоступны." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
         {panel === "orders" && <div data-guide-coach-slot />}
-        {open && panel === "orders" && <SectionGuide key={`${ownerPublicId}:orders`} owner={ownerPublicId} section="orders" enabled={sectionsReady && !mainCourseActive} targetRoot={panelRoot} />}
         {open && panel === "economy" && economyTab === "market" && <SectionGuide key={`${ownerPublicId}:market`} owner={ownerPublicId} section="market" enabled={sectionsReady && playerMarketUnlocked} targetRoot={panelRoot} />}
         <div className={styles.sheetBody}>
           {panel === "orders" && <WorldOrderJournal tutorialOnly={mainCourseActive} key={`${ownerPublicId}:${orderEntry.request}`} economy={economy} residentId={orderEntry.residentId} introducedResidents={introducedResidents} onNavigateExpeditions={openExpeditions} onNavigateStation={openStation} />}

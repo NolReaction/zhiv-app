@@ -132,12 +132,22 @@ try {
     assert.equal(await tabs.count(), 6, `${label}: All and five residents stay available`);
     const geometry = await tabs.evaluateAll(elements => elements.map(element => {
       const box = element.getBoundingClientRect(), photo = element.firstElementChild.getBoundingClientRect();
-      return { width: box.width, height: box.height, photoWidth: photo.width, photoHeight: photo.height };
+      return { left: box.left, right: box.right, width: box.width, height: box.height, photoWidth: photo.width, photoHeight: photo.height };
     }));
+    const strip = await page.locator('[data-order-resident-tabs]').evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return { left: box.left, right: box.right, width: box.width, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
+    });
+    assert.ok(strip.scrollWidth <= strip.clientWidth + 1, `${label}: all six tabs fit without horizontal scrolling`);
+    assert.ok(Math.abs(geometry[0].left - strip.left) <= 1 && Math.abs(geometry.at(-1).right - strip.right) <= 1,
+      `${label}: character tabs fill the entire row`);
     for (const box of geometry) {
       assert.ok(box.width >= 44 && box.height >= 44, `${label}: portrait tabs need usable touch targets`);
-      assert.ok(box.photoWidth <= 40 && box.photoHeight <= 40, `${label}: portraits must remain small`);
+      assert.ok(Math.abs(box.width - geometry[0].width) <= 1, `${label}: all tabs share the row evenly`);
+      assert.ok(box.photoWidth >= (size.width >= 620 ? 72 : size.width >= 390 ? 40 : 34), `${label}: portraits use the available column width`);
+      assert.ok(box.photoWidth <= box.width - 4 && box.photoHeight <= box.height - 12, `${label}: portraits stay inside their tabs`);
     }
+    assert.equal(await page.locator('[data-order-journal] details').count(), 0, `${label}: journal has no instruction disclosures`);
     const colors = new Set();
     for (const resident of residents) {
       await page.locator(`[data-order-filter="${resident}"]`).click();
