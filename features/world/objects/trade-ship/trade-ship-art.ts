@@ -7,11 +7,11 @@ export type ShipArtOptions = { time: number; night: number; still: boolean; carg
 /** Orthographic projection shared by hull, cabin, gate, crane and cargo. */
 export function shipPoint(length: number, depth: number, height = 0): ShipPoint {
   return { x: TRADE_SHIP_ART.originX + length - depth * .45,
-    y: TRADE_SHIP_ART.originY + depth * .5 + length * .075 - height };
+    y: TRADE_SHIP_ART.originY + depth * .57 - length * .20 - height };
 }
 
 export function shipPolygon(ctx: CanvasRenderingContext2D, points: readonly ShipPoint[],
-  fill: string | CanvasGradient, stroke = "#352c20", lineWidth = 1.6) {
+  fill: string | CanvasGradient, stroke = "#30392f", lineWidth = 1.2) {
   if (!points.length) return;
   ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
@@ -20,7 +20,7 @@ export function shipPolygon(ctx: CanvasRenderingContext2D, points: readonly Ship
 }
 
 export function shipFace(ctx: CanvasRenderingContext2D, vertices: readonly ShipVertex[],
-  fill: string | CanvasGradient, stroke = "#352c20", lineWidth = 1.6) {
+  fill: string | CanvasGradient, stroke = "#30392f", lineWidth = 1.2) {
   shipPolygon(ctx, vertices.map(([x, d, h]) => shipPoint(x, d, h)), fill, stroke, lineWidth);
 }
 
@@ -58,13 +58,13 @@ function shade(hex: string, night: number) {
 
 export function shipColors(night = 0) {
   return {
-    outline: shade("#302c20", night), wood: shade("#b57737", night), woodLight: shade("#e2ad62", night),
-    woodDark: shade("#74502c", night), deck: shade("#d5a15c", night), deckLight: shade("#efd08b", night),
-    green: shade("#456b3a", night), greenLight: shade("#76934d", night), greenDark: shade("#294b34", night),
-    copper: shade("#b87d3a", night), copperLight: shade("#edbd63", night), copperDark: shade("#77512e", night),
-    iron: shade("#38484a", night), ironLight: shade("#71817b", night), glass: shade("#284e59", night),
-    glassLight: shade("#74a4a6", night), rope: shade("#b49458", night), ropeLight: shade("#ead19a", night),
-    ropeDark: shade("#6f613d", night), linen: shade("#d9c89d", night), linenDark: shade("#aa9773", night),
+    outline: shade("#26332e", night), wood: shade("#94704a", night), woodLight: shade("#c4a573", night),
+    woodDark: shade("#5b4734", night), deck: shade("#af9369", night), deckLight: shade("#d5bf91", night),
+    green: shade("#3d6252", night), greenLight: shade("#718773", night), greenDark: shade("#243d35", night),
+    copper: shade("#99683f", night), copperLight: shade("#ceb17c", night), copperDark: shade("#5a4433", night),
+    iron: shade("#293b3b", night), ironLight: shade("#6a7a73", night), glass: shade("#23454c", night),
+    glassLight: shade("#719595", night), rope: shade("#95866a", night), ropeLight: shade("#c7b795", night),
+    ropeDark: shade("#5b5845", night), linen: shade("#c9bea3", night), linenDark: shade("#948973", night),
   };
 }
 

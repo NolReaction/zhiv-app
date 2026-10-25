@@ -11,8 +11,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { default: TradeShipPage, metadata } = await vite.ssrLoadModule("/app/prototype/trade-ship/page.tsx");
 const { TradeShipPreview } = await vite.ssrLoadModule("/features/world/dev/trade-ship-preview.tsx");
-const { advanceTradeShipPreviewClock, tradeShipPreviewLayout, TRADE_SHIP_MAP_CROP, TRADE_SHIP_PREVIEW_BERTH } =
+const { advanceTradeShipPreviewClock, tradeShipPreviewLayout, TRADE_SHIP_MAP_CROP, TRADE_SHIP_VOYAGE_CROP, TRADE_SHIP_PREVIEW_BERTH, tradeShipPreviewMapSource, commandTradeShipPreview } =
   await vite.ssrLoadModule("/features/world/dev/trade-ship-preview-model.ts");
+
+const { createTradeShipMotion, sampleTradeShipMotion, TRADE_SHIP_VOYAGE } = await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
 
 test("ship workshop is available only in development and stays out of search indexing", () => {
   const saved = process.env.NODE_ENV;
@@ -62,13 +64,60 @@ test("the initial workshop exposes labelled controls and a real transparent PNG 
   const html = renderToStaticMarkup(createElement(TradeShipPreview));
   assert.match(html, /Пароход из кода/);
   assert.match(html, /Предпросмотр парохода/);
-  assert.match(html, /Крупно/); assert.match(html, /На карте/);
+  assert.match(html, /Крупно/); assert.match(html, /На карте/); assert.match(html, /Рейс/);
+  assert.match(html, /Приплыть/); assert.match(html, /Отойти/); assert.match(html, /В порт/);
   assert.match(html, /Калитка/); assert.match(html, /Трап/); assert.match(html, /Грузовые ящики/);
   assert.match(html, /Пустая палуба/); assert.match(html, /Скачать PNG/);
   assert.match(html, /role="img"/);
-  assert.equal((html.match(/type="range"/g) ?? []).length, 2);
-  for (const id of ["trade-ship-gate", "trade-ship-ramp", "trade-ship-cargo"]) {
+  assert.equal((html.match(/type="range"/g) ?? []).length, 3);
+  for (const id of ["trade-ship-gate", "trade-ship-ramp", "trade-ship-cargo", "trade-ship-voyage"]) {
     assert.ok(html.includes(`for="${id}"`), `explicit label remains attached to ${id}, not its nested output`);
     assert.ok(html.includes(`id="${id}"`));
   }
+});
+
+
+test("voyage canvas includes open sea while map sampling stays inside the actual image", () => {
+  for (const [width, height] of [[298, 330], [1000, 600]]) {
+    const layout = tradeShipPreviewLayout(width, height, "voyage");
+    const crop = TRADE_SHIP_VOYAGE_CROP, source = tradeShipPreviewMapSource("voyage");
+    assert.ok(crop.y + crop.height > crop.worldSize);
+    assert.ok(source.x >= 0 && source.y >= 0 && source.width > 0 && source.height > 0);
+    assert.ok(source.x + source.width <= crop.worldSize);
+    assert.ok(source.y + source.height <= crop.worldSize);
+    assert.ok(layout.x >= 0 && layout.y >= 0);
+    assert.ok(layout.x + crop.width * layout.scale <= width + 1e-7);
+    assert.ok(layout.y + crop.height * layout.scale <= height + 1e-7);
+  }
+  assert.deepEqual(tradeShipPreviewMapSource("map"), { x: 640, y: 1020, width: 420, height: 234 });
+});
+
+test("map and voyage aspect ratios put their crop at the visible canvas boundary", () => {
+  for (const mode of ["map", "voyage"]) {
+    const crop = mode === "map" ? TRADE_SHIP_MAP_CROP : TRADE_SHIP_VOYAGE_CROP;
+    for (const width of [298, 933]) {
+      const height = width * crop.height / crop.width;
+      const layout = tradeShipPreviewLayout(width, height, mode);
+      assert.ok(Math.abs(layout.x) < 1e-7 && Math.abs(layout.y) < 1e-7);
+      assert.ok(Math.abs(crop.width * layout.scale - width) < 1e-7);
+      assert.ok(Math.abs(crop.height * layout.scale - height) < 1e-7);
+    }
+  }
+  assert.equal(TRADE_SHIP_VOYAGE_CROP.x + TRADE_SHIP_VOYAGE_CROP.width, TRADE_SHIP_VOYAGE_CROP.worldSize);
+});
+
+test("preview commands cannot restart or reverse a moving ship and reset is explicit", () => {
+  const docked = createTradeShipMotion();
+  const arriving = commandTradeShipPreview(docked, "arrive");
+  assert.equal(arriving.phase, "arriving");
+  for (const command of ["arrive", "depart"]) assert.equal(commandTradeShipPreview(arriving, command), arriving);
+  const departed = sampleTradeShipMotion("departing", TRADE_SHIP_VOYAGE.departureDuration);
+  assert.equal(commandTradeShipPreview(departed, "depart"), departed);
+  assert.equal(commandTradeShipPreview(departed, "arrive").phase, "arriving");
+  const departing = commandTradeShipPreview(docked, "depart");
+  assert.equal(departing.phase, "departing");
+  assert.equal(commandTradeShipPreview(departing, "arrive"), departing);
+  const reset = commandTradeShipPreview(departing, "dock");
+  assert.equal(reset.phase, "docked"); assert.equal(reset.speed, 0);
+  assert.deepEqual(reset.berth, departing.berth);
 });

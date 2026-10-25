@@ -13,7 +13,7 @@ const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8,
 // Invert the art camera to measure physical lengths, rather than screen widths.
 function unproject(point, height = 0) {
   const x = point.x - 400, y = point.y - 300 + height;
-  const depth = (y - .075 * x) / .53375;
+  const depth = (y + .20 * x) / .48;
   return { length: x + .45 * depth, depth };
 }
 
@@ -111,4 +111,20 @@ test("drawing needs no DOM or image source and restores the caller's state even 
   const canvas = recordingCanvas("scale");
   assert.throws(() => drawTradeShip(canvas.ctx, frame()), /recording failure/);
   assert.equal(canvas.depth(), 0); assert.deepEqual(canvas.snapshot(), canvas.original);
+});
+
+test("left-facing voyage keeps finite course corrections and water out of default PNG art", () => {
+  const left = drawing();
+  assert.deepEqual(left, drawing({ facing: "left", heading: 0 }));
+  assert.ok(left.some(call => call[0] === "scale" && call[1] === -1));
+  assert.ok(!drawing({ facing: "right" }).some(call => call[0] === "scale" && call[1] === -1));
+  assert.deepEqual(drawing({ heading: Infinity }), left);
+  assert.deepEqual(drawing({ heading: 4 }), drawing({ heading: .3 }));
+  assert.deepEqual(drawing({ heading: -4 }), drawing({ heading: -.3 }));
+  assert.deepEqual(drawing({ velocityX: 40, velocityY: 20 }), left, "velocity alone cannot leak water into PNG export");
+  const afloat = drawing({ water: true });
+  assert.notDeepEqual(afloat, left);
+  assert.deepEqual(drawing({ water: true, velocityX: NaN, velocityY: Infinity }), afloat);
+  assert.notDeepEqual(drawing({ water: true, velocityX: -40, velocityY: -10 }),
+    drawing({ water: true, velocityX: 40, velocityY: 10 }), "wash follows the direction of actual movement in reverse");
 });

@@ -2,11 +2,16 @@ import { TRADE_SHIP_ART, shipColors, shipFace, shipLine, shipPoint, type ShipArt
 import { drawTradeShipHull, drawTradeShipFrontRail } from "./trade-ship-hull";
 import { drawTradeShipCabin } from "./trade-ship-cabin";
 import { drawTradeShipProps, drawTradeShipFenders } from "./trade-ship-props";
+import { drawTradeShipWater } from "./trade-ship-water";
 
 export type TradeShipFrame = {
   /** Top-left of the 800 × 500 illustration box, in the caller's coordinates. */
   x: number; y: number; width: number;
   time?: number; night?: number; gate?: number; ramp?: number; cargo?: number; still?: boolean;
+  /** Left is the harbour approach. Heading is a small screen-space course correction. */
+  facing?: "left" | "right"; heading?: number;
+  /** Optional scene-only contact shadow and speed-dependent wash; omitted from PNG exports. */
+  water?: boolean; velocityX?: number; velocityY?: number;
 };
 const unit = (value: number | undefined) => Number.isFinite(value) ? Math.max(0, Math.min(1, value!)) : 0;
 
@@ -69,7 +74,18 @@ export function drawTradeShip(ctx: CanvasRenderingContext2D, frame: TradeShipFra
   ctx.save();
   try {
     ctx.translate(frame.x, frame.y); const scale = frame.width / TRADE_SHIP_ART.width; ctx.scale(scale, scale);
+    const heading = Number.isFinite(frame.heading) ? Math.max(-.3, Math.min(.3, frame.heading!)) : 0;
+    ctx.translate(400, 350); ctx.rotate(heading); ctx.translate(-400, -350);
+    const facing = frame.facing === "right" ? 1 : -1;
+    if (facing < 0) { ctx.translate(TRADE_SHIP_ART.width, 0); ctx.scale(-1, 1); }
     ctx.lineJoin = "round"; ctx.lineCap = "round";
+    if (frame.water) {
+      const vx = Number.isFinite(frame.velocityX) ? frame.velocityX! : 0;
+      const vy = Number.isFinite(frame.velocityY) ? frame.velocityY! : 0;
+      drawTradeShipWater(ctx, { time: options.time, night: options.night,
+        velocityX: (vx * Math.cos(heading) + vy * Math.sin(heading)) * facing,
+        velocityY: -vx * Math.sin(heading) + vy * Math.cos(heading) });
+    }
     if (!options.still) ctx.translate(0, Math.sin(options.time * 1.7) * 1.1);
     drawRamp(ctx, options.night, unit(frame.ramp));
     drawTradeShipHull(ctx, options);

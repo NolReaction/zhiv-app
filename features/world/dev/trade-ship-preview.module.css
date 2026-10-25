@@ -22,12 +22,22 @@
 .toolbar button[aria-pressed="true"] { color: var(--ship-ink); border-color: #778463; background: #344d35; }
 .toolbar button:disabled { opacity: .5; cursor: default; }
 .stage { position: relative; height: clamp(360px, 65dvh, 740px); background: #9ac9c0; }
+.stage.mapStage { height: auto; min-height: 0; }
+.mapStage .canvas { position: absolute; inset: 0; }
 .canvas { display: block; width: 100%; height: 100%; }
 .mapNotice { position: absolute; left: 14px; bottom: 14px; max-width: calc(100% - 28px); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--ship-line); border-radius: 12px; padding: 10px 14px; background: #152a23ed; font-size: 13px; }
 .mapNotice button { min-height: 36px; border: 0; border-radius: 8px; padding: 5px 10px; color: var(--ship-ink); background: #405a39; }
 .previewFooter { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 18px; padding: 13px 16px; color: var(--ship-muted); font-size: 12px; }
 .controls { min-width: 0; border: 1px solid var(--ship-line); border-radius: 18px; background: var(--ship-panel); padding: 20px; }
 .controls h2 { margin: 0 0 24px; font-size: 17px; font-weight: 600; }
+.voyageControls { grid-column: 1 / -1; border-bottom: 1px solid var(--ship-line); padding-bottom: 20px; margin-bottom: 24px; }
+.voyageHeading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.voyageHeading h2 { margin: 0; }
+.voyageHeading > span { font-size: 12px; color: #d4dcb4; }
+.voyageActions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+.voyageActions button { flex: 1 0 auto; min-height: 44px; border: 1px solid #617251; border-radius: 9px; padding: 8px 9px; color: var(--ship-ink); background: #344d35; font-size: 12px; }
+.voyageActions button:disabled, .field input:disabled { cursor: default; opacity: .4; }
+.voyageControls .field { margin-bottom: 0; }
 .field { display: block; margin-bottom: 25px; color: var(--ship-ink); font-size: 14px; }
 .field > span { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .field output { color: #d4dcb4; font-size: 12px; font-variant-numeric: tabular-nums; }

@@ -1,6 +1,8 @@
 import { shipColors, shipFace, shipGrain, shipLine, shipPoint, shipPolygon } from "./trade-ship-art";
 import type { ShipArtOptions, ShipColors, ShipPoint, ShipVertex } from "./trade-ship-art";
 
+const DECK_ANGLE = Math.atan2(shipPoint(1, 0).y - shipPoint(0, 0).y, shipPoint(1, 0).x - shipPoint(0, 0).x);
+
 function ellipse(ctx: CanvasRenderingContext2D, p: ShipPoint, rx: number, ry: number,
   fill: string | CanvasGradient, stroke: string, width = 1.5, rotation = 0) {
   ctx.beginPath(); ctx.ellipse(p.x, p.y, rx, ry, rotation, 0, Math.PI * 2);
@@ -17,7 +19,7 @@ function bolt(ctx: CanvasRenderingContext2D, p: ShipPoint, c: ShipColors, radius
 function shadow(ctx: CanvasRenderingContext2D, p: ShipPoint, rx: number, ry: number) {
   const fill = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rx);
   fill.addColorStop(0, "rgba(48,35,19,.25)"); fill.addColorStop(1, "rgba(48,35,19,0)");
-  ellipse(ctx, p, rx, ry, fill, "", 0, .075);
+  ellipse(ctx, p, rx, ry, fill, "", 0, DECK_ANGLE);
 }
 
 function curvePoints(start: ShipPoint, control: ShipPoint, end: ShipPoint, steps = 18) {
@@ -31,7 +33,7 @@ function curvePoints(start: ShipPoint, control: ShipPoint, end: ShipPoint, steps
 /** A fixed braid follows the rope, rather than producing random detail each frame. */
 function rope(ctx: CanvasRenderingContext2D, points: readonly ShipPoint[], width: number, c: ShipColors) {
   ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
-  shipLine(ctx, points, c.outline, width + 1.8);
+  shipLine(ctx, points, c.outline, width + .85);
   shipLine(ctx, points, c.ropeDark, width);
   shipLine(ctx, points.map(p => ({ x: p.x - .55, y: p.y - .5 })), c.rope, width * .78);
   let distance = 0, next = 2;
@@ -45,7 +47,7 @@ function rope(ctx: CanvasRenderingContext2D, points: readonly ShipPoint[], width
       shipLine(ctx, [{ x: x - nx * width * .34 - tx, y: y - ny * width * .34 - ty },
         { x: x + nx * width * .34 + tx, y: y + ny * width * .34 + ty }], c.ropeDark, .85);
       shipLine(ctx, [{ x: x - nx * width * .24 - tx * 1.7, y: y - ny * width * .24 - ty * 1.7 },
-        { x: x + nx * width * .2, y: y + ny * width * .2 }], c.ropeLight, .8);
+        { x: x + nx * width * .2, y: y + ny * width * .2 }], c.rope, .65);
       next += width * .95 + 1.3;
     }
     distance += length;
@@ -55,36 +57,36 @@ function rope(ctx: CanvasRenderingContext2D, points: readonly ShipPoint[], width
 
 function woodFace(ctx: CanvasRenderingContext2D, vertices: readonly ShipVertex[],
   fill: string | CanvasGradient, c: ShipColors, seed: number) {
-  shipFace(ctx, vertices, fill, c.outline, 1.6);
-  shipGrain(ctx, vertices.map(([x, d, h]) => shipPoint(x, d, h)), seed, .16);
+  shipFace(ctx, vertices, fill, c.outline, 1.1);
+  shipGrain(ctx, vertices.map(([x, d, h]) => shipPoint(x, d, h)), seed, .1);
 }
 
 function crane(ctx: CanvasRenderingContext2D, c: ShipColors) {
   const base = shipPoint(235, 20), foot = shipPoint(235, 20, 9);
   shadow(ctx, { x: base.x + 4, y: base.y + 3 }, 32, 11);
   // A low shoe and one timber mast keep the little loading crane readable.
-  ellipse(ctx, base, 19, 10, c.copperDark, c.outline, 2, .075);
-  shipFace(ctx, [[217, 20, 1], [253, 20, 1], [253, 20, 10], [217, 20, 10]], c.copper, c.outline);
-  ellipse(ctx, foot, 19, 9, c.copperLight, c.outline, 1.7, .075);
+  ellipse(ctx, base, 19, 10, c.iron, c.outline, 1.4, DECK_ANGLE);
+  shipFace(ctx, [[217, 20, 1], [253, 20, 1], [253, 20, 10], [217, 20, 10]], c.iron, c.outline);
+  ellipse(ctx, foot, 19, 9, c.ironLight, c.outline, 1.1, DECK_ANGLE);
   const mastFill = ctx.createLinearGradient(base.x - 8, 0, base.x + 8, 0);
-  mastFill.addColorStop(0, c.woodDark); mastFill.addColorStop(.36, c.woodLight); mastFill.addColorStop(1, c.wood);
+  mastFill.addColorStop(0, c.woodDark); mastFill.addColorStop(.36, c.wood); mastFill.addColorStop(1, c.woodDark);
   woodFace(ctx, [[228, 13, 9], [242, 13, 9], [242, 13, 140], [228, 13, 140]], mastFill, c, 71);
   woodFace(ctx, [[242, 13, 9], [242, 27, 9], [242, 27, 140], [242, 13, 140]], c.woodDark, c, 72);
   shipFace(ctx, [[228, 13, 140], [242, 13, 140], [242, 27, 140], [228, 27, 140]], c.woodLight, c.outline);
-  shipLine(ctx, [shipPoint(230, 14, 20), shipPoint(230, 14, 126)], c.deckLight, 1.2);
+  shipLine(ctx, [shipPoint(230, 14, 20), shipPoint(230, 14, 126)], c.woodLight, .7);
   for (const h of [19, 128]) {
-    shipFace(ctx, [[227, 12, h], [243, 12, h], [243, 12, h + 8], [227, 12, h + 8]], c.copperDark, c.outline, 1);
-    shipLine(ctx, [shipPoint(228, 12, h + 7), shipPoint(242, 12, h + 7)], c.copperLight, 1);
+    shipFace(ctx, [[227, 12, h], [243, 12, h], [243, 12, h + 8], [227, 12, h + 8]], c.iron, c.outline, 1);
+    shipLine(ctx, [shipPoint(228, 12, h + 7), shipPoint(242, 12, h + 7)], c.ironLight, .7);
     bolt(ctx, shipPoint(235, 12, h + 4), c, 1.5);
   }
   // Tapered horizontal boom: its depth faces make it a beam rather than a line.
   woodFace(ctx, [[235, 13, 126], [104, -18, 164], [104, -18, 176], [235, 13, 143]], c.wood, c, 73);
   woodFace(ctx, [[235, 13, 143], [104, -18, 176], [104, -6, 176], [235, 27, 143]], c.woodLight, c, 74);
   shipFace(ctx, [[104, -18, 164], [104, -6, 164], [104, -6, 176], [104, -18, 176]], c.copperDark, c.outline, 1.2);
-  shipLine(ctx, [shipPoint(231, 14, 140), shipPoint(108, -17, 172)], c.deckLight, 1.5);
+  shipLine(ctx, [shipPoint(231, 14, 140), shipPoint(108, -17, 172)], c.woodLight, .8);
   const pivot = shipPoint(237, 30, 134);
-  ellipse(ctx, pivot, 10, 11, c.copperDark, c.outline, 2);
-  ellipse(ctx, { x: pivot.x - 1, y: pivot.y - 1 }, 7.1, 8, c.copper, c.copperLight, 1);
+  ellipse(ctx, pivot, 10, 11, c.iron, c.outline, 1.3);
+  ellipse(ctx, { x: pivot.x - 1, y: pivot.y - 1 }, 7.1, 8, c.ironLight, c.iron, .8);
   bolt(ctx, pivot, c, 3.2);
   const pulley = shipPoint(105, -9, 169);
   ellipse(ctx, pulley, 6.4, 7.2, c.iron, c.outline, 1.7);
@@ -134,8 +136,8 @@ function barrel(ctx: CanvasRenderingContext2D, c: ShipColors) {
     ctx.strokeStyle = c.iron; ctx.lineWidth = 1.1; ctx.stroke();
     bolt(ctx, { x: p.x + 10, y: y + 6 }, c, 1.1);
   }
-  ellipse(ctx, top, 17, 8, c.ironLight, c.outline, 2, .075);
-  ellipse(ctx, { x: top.x, y: top.y - .7 }, 13.8, 5.7, c.deck, c.woodDark, 1.2, .075);
+  ellipse(ctx, top, 17, 8, c.ironLight, c.outline, 2, DECK_ANGLE);
+  ellipse(ctx, { x: top.x, y: top.y - .7 }, 13.8, 5.7, c.deck, c.woodDark, 1.2, DECK_ANGLE);
   for (const x of [-6, 1, 8]) shipLine(ctx, [{ x: top.x + x - 2, y: top.y - 5 },
     { x: top.x + x + 1, y: top.y + 4 }], c.woodDark, .9);
   shipLine(ctx, [{ x: top.x - 12, y: top.y - 3.4 }, { x: top.x + 8, y: top.y - 4 }], c.deckLight, .8);
@@ -206,7 +208,7 @@ function cargoCrate(ctx: CanvasRenderingContext2D, x: number, index: number, c: 
     [x + offset + 2.5, d + s, h], [x + offset - 2.5, d + s, h]], c.woodLight, c.woodDark, .9);
   // Three different, restrained shipping marks, without UI-like labels on deck.
   const mark = shipPoint(x + 5, d + s, 19);
-  ctx.save(); ctx.translate(mark.x, mark.y); ctx.rotate(.075);
+  ctx.save(); ctx.translate(mark.x, mark.y); ctx.rotate(DECK_ANGLE);
   ctx.strokeStyle = c.greenDark; ctx.fillStyle = c.greenDark; ctx.lineWidth = 1.4;
   if (index === 0) {
     ctx.beginPath(); ctx.moveTo(-3, 2); ctx.lineTo(0, -5); ctx.lineTo(3, 2); ctx.moveTo(0, -5); ctx.lineTo(0, 5); ctx.stroke();
@@ -273,32 +275,31 @@ export function drawTradeShipProps(ctx: CanvasRenderingContext2D, options: ShipA
 }
 
 function fender(ctx: CanvasRenderingContext2D, x: number, c: ShipColors) {
-  const p = shipPoint(x, 84, -35), tie = shipPoint(x, 80, 20);
-  // The knot hangs over the cap rail; the round woven body sits against the hull.
-  ellipse(ctx, { x: tie.x - .6, y: tie.y + 1 }, 5, 4.2, c.iron, c.outline, 1.3, -.4);
-  ellipse(ctx, { x: tie.x - 1, y: tie.y }, 2.7, 2.4, c.ironLight, c.outline, .7, -.4);
-  rope(ctx, curvePoints({ x: tie.x - 1, y: tie.y - 1 },
-    { x: tie.x - 8, y: tie.y + 8 }, { x: p.x - 1, y: p.y - 17 }), 5.7, c);
-  const fill = ctx.createRadialGradient(p.x - 5, p.y - 8, 2, p.x + 4, p.y + 2, 26);
-  fill.addColorStop(0, c.ropeLight); fill.addColorStop(.55, c.rope); fill.addColorStop(1, c.ropeDark);
-  ellipse(ctx, { x: p.x + 2, y: p.y + 1 }, 19.5, 22, c.outline, c.outline, 1.2, .05);
-  ellipse(ctx, p, 18.5, 21.5, fill, c.outline, 1.5, .05);
-  ctx.save(); ctx.beginPath(); ctx.ellipse(p.x, p.y, 18, 21, .05, 0, Math.PI * 2); ctx.clip();
-  for (let row = -2; row <= 2; row++) {
-    const y = p.y + row * 8;
-    for (let col = -2; col <= 2; col++) {
-      const offset = (row & 1) ? 4.5 : 0, px = p.x + col * 9 + offset;
-      const tilt = ((col + row) & 1) ? -.65 : .65;
-      ellipse(ctx, { x: px, y }, 6.4, 4.1, row < 0 ? c.rope : c.ropeDark, c.ropeDark, 1.1, tilt);
-      ctx.beginPath(); ctx.ellipse(px - 1, y - .8, 4.8, 2.7, tilt, Math.PI * 1.05, Math.PI * 1.93);
-      ctx.strokeStyle = c.ropeLight; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.beginPath(); ctx.ellipse(px + .7, y + 1.1, 4.9, 2.8, tilt, .03, Math.PI * .8);
-      ctx.strokeStyle = c.rope; ctx.lineWidth = 1.3; ctx.stroke();
-    }
+  const p = shipPoint(x, 84, -31), tie = shipPoint(x, 80, 20);
+  ellipse(ctx, { x: tie.x, y: tie.y }, 3.9, 3.2, c.iron, c.outline, .8, -.3);
+  rope(ctx, curvePoints({ x: tie.x, y: tie.y - 1 },
+    { x: tie.x - 5, y: tie.y + 8 }, { x: p.x - 1, y: p.y - 22 }), 3.7, c);
+  // A heavy cylindrical rope fender, with close horizontal turns, not a fruit-like braid.
+  const fill = ctx.createLinearGradient(p.x - 12, p.y, p.x + 13, p.y);
+  fill.addColorStop(0, c.ropeDark); fill.addColorStop(.3, c.rope);
+  fill.addColorStop(.54, c.ropeLight); fill.addColorStop(1, c.ropeDark);
+  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(.09);
+  ctx.beginPath(); ctx.moveTo(-11, -18);
+  ctx.bezierCurveTo(-12, -25, 12, -25, 12, -18);
+  ctx.lineTo(13, 19); ctx.bezierCurveTo(13, 27, -12, 27, -12, 19); ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = c.outline; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.clip();
+  for (let y = -19; y < 24; y += 3.3) {
+    ctx.beginPath(); ctx.moveTo(-14, y - 2);
+    ctx.bezierCurveTo(-7, y + 3, 6, y + 5, 15, y - 1);
+    ctx.strokeStyle = c.ropeDark; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-9, y - .4);
+    ctx.bezierCurveTo(-4, y + 1.5, 2, y + 2, 7, y + .7);
+    ctx.strokeStyle = c.rope; ctx.lineWidth = .8; ctx.stroke();
   }
   ctx.restore();
-  rope(ctx, curvePoints({ x: p.x - 4, y: p.y - 20 },
-    { x: p.x - 1, y: p.y - 27 }, { x: p.x + 3, y: p.y - 18 }), 4.5, c);
+  rope(ctx, curvePoints({ x: p.x - 3, y: p.y - 23 },
+    { x: p.x, y: p.y - 29 }, { x: p.x + 3, y: p.y - 22 }), 2.8, c);
 }
 
 /** Separate pass: these must cover the near rail, never disappear behind it. */

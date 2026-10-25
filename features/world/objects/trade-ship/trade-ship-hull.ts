@@ -69,44 +69,62 @@ function edgeStroke(ctx: CanvasRenderingContext2D, height: number, color: string
 
 function drawHullBody(ctx: CanvasRenderingContext2D, colors: ShipColors) {
   ctx.save();
-  const timber = ctx.createLinearGradient(0, 318, 0, 420);
-  timber.addColorStop(0, colors.woodLight); timber.addColorStop(.38, colors.wood);
-  timber.addColorStop(1, colors.outline);
-  hullBand(ctx, 0, -63, timber, colors.outline, 4.5);
-  const paint = ctx.createLinearGradient(0, 335, 0, 401);
-  paint.addColorStop(0, colors.greenLight); paint.addColorStop(.44, colors.green);
-  paint.addColorStop(1, colors.greenDark);
-  hullBand(ctx, -10, -43, paint, colors.outline, 2.2);
-  hullBand(ctx, -46, -55, colors.woodDark, colors.outline, 1.2);
-  hullBand(ctx, -56, -63, colors.iron, colors.outline, 1.8);
-  edgeStroke(ctx, -13, colors.greenLight, 1.5);
-  edgeStroke(ctx, -29, colors.greenDark, 1.5);
-  edgeStroke(ctx, -31, colors.greenLight, .7);
-  edgeStroke(ctx, -44, colors.woodLight, 2.4);
-  edgeStroke(ctx, -55, colors.outline, 1.4);
+  // The gradient follows the raked strakes instead of cutting horizontally
+  // across the new camera angle. A broad dark belly gives the hull weight.
+  const top = shipPoint(0, 82, 1), bottom = shipPoint(16, 82, -78);
+  const paint = ctx.createLinearGradient(top.x, top.y, bottom.x, bottom.y);
+  paint.addColorStop(0, colors.greenLight); paint.addColorStop(.17, colors.green);
+  paint.addColorStop(.58, colors.greenDark); paint.addColorStop(1, colors.outline);
+  hullBand(ctx, 0, -79, paint, colors.outline, 2.5);
+  hullBand(ctx, -4, -9, colors.woodDark, colors.outline, .8);
+  edgeStroke(ctx, -5, colors.woodLight, 1.2);
+  hullBand(ctx, -30, -35, colors.iron, colors.outline, 1.1);
+  edgeStroke(ctx, -30, colors.ironLight, .85);
+  hullBand(ctx, -65, -79, colors.iron, colors.outline, 1.1);
+  edgeStroke(ctx, -65, colors.woodDark, 2.4);
+  edgeStroke(ctx, -76, colors.outline, 2);
 
-  // Long brushed marks follow the strakes; all positions are fixed in the timber.
-  ctx.beginPath(); const start = hullPoint(-304, 31, -11); ctx.moveTo(start.x, start.y);
-  nearEdge(ctx, -11); nearEdge(ctx, -55, true); ctx.closePath(); ctx.clip();
-  for (let row = 0; row < 8; row++) {
-    for (let i = 0; i < 13; i++) {
-      const x = -280 + i * 47 + Math.sin(i * 9.7 + row * 6) * 14;
-      const h = -16 - row * 5;
-      const length = 13 + ((i * 17 + row * 23) % 29);
+  // Subtle overlapping planks, with broad light variation and no gold stripes.
+  for (const height of [-17, -29, -43, -55]) {
+    edgeStroke(ctx, height, colors.greenDark, 1.4);
+    ctx.globalAlpha = .28; edgeStroke(ctx, height - 1.4, colors.greenLight, 1);
+    ctx.globalAlpha = 1;
+  }
+  ctx.beginPath(); const start = hullPoint(-304, 31, -10); ctx.moveTo(start.x, start.y);
+  nearEdge(ctx, -10); nearEdge(ctx, -66, true); ctx.closePath(); ctx.clip();
+  const rounding = ctx.createLinearGradient(80, 380, 715, 255);
+  rounding.addColorStop(0, "rgba(9,22,22,.54)");
+  rounding.addColorStop(.2, "rgba(18,31,27,.04)");
+  rounding.addColorStop(.64, "rgba(188,191,143,.09)");
+  rounding.addColorStop(.86, "rgba(18,31,27,.10)");
+  rounding.addColorStop(1, "rgba(9,22,22,.48)");
+  ctx.fillStyle = rounding; ctx.fillRect(30, 180, 720, 290);
+  for (let row = 0; row < 10; row++) {
+    for (let i = 0; i < 15; i++) {
+      const x = -282 + i * 41 + Math.sin(i * 9.7 + row * 6) * 12;
+      const h = -12 - row * 5.4;
+      const length = 13 + ((i * 17 + row * 23) % 41);
       const a = hullPoint(x, 82, h), b = hullPoint(x + length, 82, h + .6);
-      ctx.globalAlpha = row > 5 ? .23 : .16;
-      shipLine(ctx, [a, { x: a.x + length * .48, y: a.y + .5 }, b],
-        i % 3 === 0 ? colors.outline : colors.greenLight, .7);
+      ctx.globalAlpha = row > 6 ? .12 : .08;
+      shipLine(ctx, [a, { x: a.x + (b.x - a.x) * .48, y: a.y + (b.y - a.y) * .48 - .5 }, b],
+        i % 3 === 0 ? colors.outline : colors.greenLight, i % 4 === 0 ? 1.7 : .65);
     }
   }
-  ctx.globalAlpha = .4;
-  for (const [length, height] of [[-245, -26], [-140, -43], [-12, -26], [101, -43], [211, -26]] as const) {
-    const a = hullPoint(length, 83, height + 11), b = hullPoint(length + 1.5, 83, height - 2);
-    shipLine(ctx, [a, b], colors.outline, 1.1);
-    for (const offset of [-1, 8]) {
+  ctx.globalAlpha = .34;
+  for (const [length, height] of [[-245, -25], [-140, -53], [-12, -25], [101, -53], [211, -25]] as const) {
+    const a = hullPoint(length, 83, height + 8), b = hullPoint(length + 1.5, 83, height - 2);
+    shipLine(ctx, [a, b], colors.outline, .8);
+    for (const offset of [-1, 6]) {
       const nail = hullPoint(length + 4, 83, height + offset);
-      ctx.beginPath(); ctx.arc(nail.x, nail.y, .8, 0, Math.PI * 2); ctx.fillStyle = colors.outline; ctx.fill();
+      ctx.beginPath(); ctx.arc(nail.x, nail.y, .7, 0, Math.PI * 2); ctx.fillStyle = colors.outline; ctx.fill();
     }
+  }
+  // Worn patches are small, fixed strokes in the paint, never frame noise.
+  ctx.globalAlpha = .2;
+  for (const length of [-241, -184, -71, 45, 128, 205, 245]) {
+    const height = -12 - Math.abs(length * 7 % 43);
+    const a = hullPoint(length, 82, height), b = hullPoint(length + 8, 82, height + .4);
+    shipLine(ctx, [a, b], colors.woodLight, 1.3);
   }
   ctx.restore();
 }
@@ -114,10 +132,10 @@ function drawHullBody(ctx: CanvasRenderingContext2D, colors: ShipColors) {
 function drawDeck(ctx: CanvasRenderingContext2D, colors: ShipColors) {
   ctx.save();
   const honey = ctx.createLinearGradient(160, 240, 540, 380);
-  honey.addColorStop(0, colors.wood); honey.addColorStop(.33, colors.deckLight);
+  honey.addColorStop(0, colors.wood); honey.addColorStop(.33, colors.deck);
   honey.addColorStop(.7, colors.deck); honey.addColorStop(1, colors.wood);
   deckPath(ctx); ctx.fillStyle = honey; ctx.fill();
-  ctx.strokeStyle = colors.outline; ctx.lineWidth = 4.3; ctx.stroke(); ctx.clip();
+  ctx.strokeStyle = colors.outline; ctx.lineWidth = 2.4; ctx.stroke(); ctx.clip();
 
   for (let row = 0; row < 10; row++) {
     const depth = -79 + row * 16;
@@ -125,8 +143,8 @@ function drawDeck(ctx: CanvasRenderingContext2D, colors: ShipColors) {
     shipFace(ctx, [[-330, depth], [330, depth], [330, depth + 16], [-330, depth + 16]],
       row % 3 === 0 ? colors.woodLight : colors.deckLight, colors.deck, 0);
     ctx.globalAlpha = 1;
-    shipLine(ctx, [shipPoint(-330, depth), shipPoint(330, depth)], colors.woodDark, 1.2);
-    shipLine(ctx, [shipPoint(-330, depth + 1.6), shipPoint(330, depth + 1.6)], colors.deckLight, .85);
+    shipLine(ctx, [shipPoint(-330, depth), shipPoint(330, depth)], colors.woodDark, .85);
+    shipLine(ctx, [shipPoint(-330, depth + 1.6), shipPoint(330, depth + 1.6)], colors.deckLight, .5);
     for (let joint = 0; joint < 3; joint++) {
       const x = -264 + joint * 196 + ((row * 83) % 141);
       shipLine(ctx, [shipPoint(x, depth + 1), shipPoint(x, depth + 15)], colors.woodDark, .9);
@@ -141,7 +159,7 @@ function drawDeck(ctx: CanvasRenderingContext2D, colors: ShipColors) {
       }
     }
     // Wispy, unequal grain, with no frame-dependent random source.
-    ctx.globalAlpha = .23;
+    ctx.globalAlpha = .17;
     for (let grain = 0; grain < 15; grain++) {
       const x = -312 + grain * 43 + Math.sin(row * 8.1 + grain * 2.8) * 15;
       const d = depth + 4 + ((grain * 13 + row * 7) % 8);
@@ -156,7 +174,7 @@ function drawDeck(ctx: CanvasRenderingContext2D, colors: ShipColors) {
 
   for (const [x, depth] of [[-130, -25], [-33, 49], [164, 11], [234, -36]] as const) {
     const knot = shipPoint(x, depth);
-    ctx.save(); ctx.translate(knot.x, knot.y); ctx.rotate(.075); ctx.globalAlpha = .43;
+    ctx.save(); ctx.translate(knot.x, knot.y); ctx.rotate(-.1974); ctx.globalAlpha = .43;
     ctx.strokeStyle = colors.woodDark; ctx.lineWidth = .75;
     for (const size of [1.7, 5, 9]) {
       ctx.beginPath(); ctx.ellipse(0, 0, size, size * .2, 0, 0, Math.PI * 2); ctx.stroke();
@@ -166,7 +184,7 @@ function drawDeck(ctx: CanvasRenderingContext2D, colors: ShipColors) {
 
   // A fine, warm inlaid margin keeps the planks inside a solid timber rim.
   ctx.globalAlpha = .55; ctx.strokeStyle = colors.woodDark; ctx.lineWidth = 11; deckPath(ctx); ctx.stroke();
-  ctx.globalAlpha = .9; ctx.strokeStyle = colors.deckLight; ctx.lineWidth = 2; deckPath(ctx); ctx.stroke();
+  ctx.globalAlpha = .6; ctx.strokeStyle = colors.deckLight; ctx.lineWidth = 1; deckPath(ctx); ctx.stroke();
   ctx.restore();
 }
 
@@ -218,7 +236,7 @@ function railShadow(ctx: CanvasRenderingContext2D, points: readonly DeckPoint[],
   const fall = [...points].reverse().map(([x, d]) => shipPoint(x + 5, d + 23));
   ctx.beginPath(); ctx.moveTo(edge[0].x, edge[0].y);
   for (const point of [...edge.slice(1), ...fall]) ctx.lineTo(point.x, point.y);
-  ctx.closePath(); ctx.globalAlpha = .17; ctx.fillStyle = colors.outline; ctx.fill();
+  ctx.closePath(); ctx.globalAlpha = .26; ctx.fillStyle = colors.outline; ctx.fill();
   ctx.restore();
 }
 
@@ -245,21 +263,21 @@ export function drawTradeShipFrontRail(ctx: CanvasRenderingContext2D, options: S
     [-145, 81], [-65, 81], [15, 81], [95, 81], [150, 80], [191, 74],
     [228, 60], [261, 42], [286, 21], [306, 2],
   ];
-  // A low green bulwark, with a thick golden cap and visible front bevel.
+  // A low green bulwark, with a worn oak cap and visible front bevel.
   const green = ctx.createLinearGradient(0, 290, 0, 362);
   green.addColorStop(0, colors.greenLight); green.addColorStop(1, colors.greenDark);
-  ribbon(ctx, near, 0, 23, 0, green, colors, 2.2);
+  ribbon(ctx, near, 0, 23, 0, green, colors, 1.5);
   shipLine(ctx, near.map(([x, d]) => shipPoint(x, d, 9)), colors.greenDark, 1.3);
   const cap = ctx.createLinearGradient(0, 297, 0, 333);
   cap.addColorStop(0, colors.woodLight); cap.addColorStop(.5, colors.wood); cap.addColorStop(1, colors.woodDark);
-  ribbon(ctx, near, 19, 27, 4, cap, colors, 2.4);
+  ribbon(ctx, near, 19, 27, 4, cap, colors, 1.4);
   const top = near.map(([x, d]) => shipPoint(x, d + 4, 27));
   const inner = [...near].reverse().map(([x, d]) => shipPoint(x, d - 7, 27));
   ctx.beginPath(); ctx.moveTo(top[0].x, top[0].y);
   for (const point of [...top.slice(1), ...inner]) ctx.lineTo(point.x, point.y);
-  ctx.closePath(); ctx.fillStyle = colors.woodLight; ctx.fill();
-  ctx.strokeStyle = colors.outline; ctx.lineWidth = 2.4; ctx.stroke();
-  shipLine(ctx, near.map(([x, d]) => shipPoint(x, d + 1, 28)), colors.deckLight, 1.4);
+  ctx.closePath(); ctx.fillStyle = colors.wood; ctx.fill();
+  ctx.strokeStyle = colors.outline; ctx.lineWidth = 1.3; ctx.stroke();
+  shipLine(ctx, near.map(([x, d]) => shipPoint(x, d + 1, 28)), colors.woodLight, .9);
   shipLine(ctx, near.map(([x, d]) => shipPoint(x, d - 4.5, 26.7)), colors.wood, .7);
 
   for (const [x, depth] of [[-283, 52], [-233, 79], [-174, 81], [-114, 81], [-54, 81],
