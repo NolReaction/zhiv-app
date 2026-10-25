@@ -9,6 +9,7 @@ import java.sql.ResultSet
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.UUID
 
 private const val technicalKinds = "'legacy_conversion','starting_pack','account_merge','merged_receipt','dev_grant_currency','dev_grant_item','dev_set_building_level','grant_economy','admin_adjustment'"
 private const val jobKinds = "'claim_job','claim_garden_collection','claim_production','speedup_construction','start_collection','start_garden_collection','cancel_production','cancel_exploration'"
@@ -216,32 +217,72 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
                 period.flows.size>maxAnalyticsGroups,period.actions.size>maxAnalyticsGroups,period.orders.size>maxAnalyticsGroups), period.gameplay,period.meals,period.orders.take(maxAnalyticsGroups),readPresence(reads,window),readAdminProgression(reads,now))
     }
 
-internal fun readAdminAnalyticsEvents(c: Connection, window: AdminAnalyticsWindow, query: AdminAnalyticsEventsQuery,
-    admins: Set<String>, now: Instant): AdminAnalyticsEvents = AnalyticsReads(c, window, admins).use { reads ->
+private data class AnalyticsEventSelection(val sql: String, val values: Array<Any?>)
+
+private fun analyticsEventSelection(kind: String, resource: String, direction: String): AnalyticsEventSelection {
     // Compare the selected resource directly on each row. Re-scanning a shared
     // legs CTE for every journal event would turn a long period into quadratic work.
-    val comparison = when (query.direction) { "in" -> ">0"; "out" -> "<0"; else -> "<>0" }
-    val movement = if (query.resource.isNotEmpty())
+    val comparison = when (direction) { "in" -> ">0"; "out" -> "<0"; else -> "<>0" }
+    val movement = if (resource.isNotEmpty())
         "(CASE ? WHEN 'coins' THEN e.coins WHEN 'pearls' THEN e.pearls ELSE coalesce((e.items->>?)::bigint,0) END)$comparison"
-    else if (query.direction == "all") "true"
+    else if (direction == "all") "true"
     else "(e.coins$comparison OR e.pearls$comparison OR EXISTS(SELECT 1 FROM jsonb_each_text(e.items) WHERE value::bigint$comparison))"
     val filtered = """
         , filtered_events AS (
             SELECT * FROM events e WHERE (?='' OR kind=?) AND $movement
         )
     """.trimIndent()
-    val values = if (query.resource.isEmpty()) arrayOf<Any?>(query.kind,query.kind)
-        else arrayOf<Any?>(query.kind,query.kind,query.resource,query.resource)
+    val values = if (resource.isEmpty()) arrayOf<Any?>(kind, kind) else arrayOf<Any?>(kind, kind, resource, resource)
+    return AnalyticsEventSelection(filtered, values)
+}
+
+private fun ResultSet.analyticsEvent() = AdminAnalyticsEvent(
+    getString("public_id") + ":" + getString("source_key"), getString("public_id"), getString("display_name"),
+    analyticsTime("created_at")!!, getString("kind"), getString("target_id"), getObject("quantity", java.lang.Long::class.java)?.toLong(),
+    !getBoolean("needs_context") || getString("target_id") != null, getString("category"), getLong("coins"), getLong("pearls"),
+    economyJson.decodeFromString<Map<String, Long>>(getString("items")),
+)
+
+internal fun readAdminAnalyticsEvents(c: Connection, window: AdminAnalyticsWindow, query: AdminAnalyticsEventsQuery,
+    admins: Set<String>, now: Instant): AdminAnalyticsEvents = AnalyticsReads(c, window, admins).use { reads ->
+    val (filtered, values) = analyticsEventSelection(query.kind, query.resource, query.direction)
     val total = reads.period(filtered + " SELECT count(*) FROM filtered_events", *values) { it.getLong(1) }.single()
     val events = reads.period(filtered + " SELECT * FROM filtered_events ORDER BY created_at DESC,user_id,source_key LIMIT ? OFFSET ?",
-        *arrayOf(*values,query.limit,query.offset)) { r ->
-        AdminAnalyticsEvent(r.getString("public_id") + ":" + r.getString("source_key"),r.getString("public_id"),r.getString("display_name"),
-            r.analyticsTime("created_at")!!,r.getString("kind"),r.getString("target_id"),r.getObject("quantity",java.lang.Long::class.java)?.toLong(),
-            !r.getBoolean("needs_context") || r.getString("target_id") != null,r.getString("category"),r.getLong("coins"),r.getLong("pearls"),
-            economyJson.decodeFromString<Map<String,Long>>(r.getString("items")))
-    }
+        *arrayOf(*values,query.limit,query.offset)) { it.analyticsEvent() }
     AdminAnalyticsEvents(now.toString(),window.from.toString(),window.to.toString(),window.startAt.toString(),window.endAt.toString(),window.q,window.scope,
         query.kind,query.resource,query.direction,query.at,query.offset,query.limit,total,events)
+}
+
+/** Each page is a read-only snapshot. The fixed time fence and keyset prevent
+ * new actions from shifting pages; callers verify the final count to detect
+ * deletion/reset during a multi-request export rather than save a partial file. */
+internal fun readAdminAnalyticsEventsExport(c: Connection, resolved: ResolvedAdminAnalyticsExport, query: AdminAnalyticsExportQuery,
+    admins: Set<String>, now: Instant): AdminAnalyticsEventsExport = AnalyticsReads(c, resolved.window, admins).use { reads ->
+    val (filtered, values) = analyticsEventSelection(query.kind, query.resource, query.direction)
+    val previous = resolved.previous
+    val total = previous?.total ?: reads.period(filtered + " SELECT count(*) FROM filtered_events", *values) { it.getLong(1) }.single()
+    check(total in 0..9_007_199_254_740_991L) { "Export count exceeds exact JSON integer range" }
+    val after = if (previous == null) "" else """
+        WHERE created_at < ? OR (created_at = ? AND (user_id > ? OR (user_id = ? AND source_key > ?)))
+    """.trimIndent()
+    val afterValues = previous?.let {
+        val at = Instant.parse(it.createdAt).sqlTime()
+        arrayOf<Any?>(at, at, UUID.fromString(it.userId), UUID.fromString(it.userId), it.sourceKey)
+    } ?: emptyArray()
+    data class Row(val event: AdminAnalyticsEvent, val userId: String, val sourceKey: String)
+    val rows = reads.period(filtered + " SELECT * FROM filtered_events $after ORDER BY created_at DESC,user_id,source_key LIMIT ?",
+        *arrayOf(*values, *afterValues, query.limit + 1)) {
+        Row(it.analyticsEvent(), it.getObject("user_id", UUID::class.java).toString(), it.getString("source_key"))
+    }
+    val page = rows.take(query.limit)
+    val next = page.lastOrNull()?.takeIf { rows.size > query.limit }?.let {
+        encodeAdminAnalyticsExportCursor(AdminAnalyticsExportCursor(snapshotAt = resolved.snapshotAt.toString(), context = resolved.context,
+            total = total, createdAt = it.event.createdAt, userId = it.userId, sourceKey = it.sourceKey))
+    }
+    val window = resolved.window
+    AdminAnalyticsEventsExport(now.toString(), window.from.toString(), window.to.toString(), window.startAt.toString(), window.endAt.toString(),
+        window.q, window.scope, query.kind, query.resource, query.direction, query.allTime, resolved.snapshotAt.toString(), query.limit,
+        total, page.map { it.event }, next)
 }
 
 @Serializable private data class PresenceSummary(val players: Long, val onlineSeconds: Long, val flaggedPlayers: Long,

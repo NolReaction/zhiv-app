@@ -10,7 +10,6 @@
 .filters button[aria-pressed="true"] { color: #f5efd7; border-color: #4a6548; background: #4a6548; font-weight: 650; box-shadow: 0 2px 4px #3b4b291a; }
 .filters button span { display: grid; place-items: center; min-width: 18px; height: 18px; padding-inline: 3px; border-radius: 50%; background: #6f775817; font-size: 10px; font-variant-numeric: tabular-nums; }
 .filters button[aria-pressed="true"] span { background: #fff5d924; }
-.lore { color: #6c7359; font-size: 11px; line-height: 1.5; }
 .chapter { display: grid; gap: 9px; min-width: 0; padding-top: 3px; }
 .chapter + .chapter { margin-top: 1px; padding-top: 12px; border-top: 1px solid #bdb58c66; }
 .chapterHeading { display: flex; align-items: center; gap: 9px; min-width: 0; }
@@ -88,11 +87,7 @@
 .success button { flex: 0 0 44px; border: 0; background: transparent; }
 .empty { display: grid; justify-items: center; gap: 8px; padding: 18px 12px; text-align: center; font-size: 12px; color: #626a50; border: 1px dashed #c8bd98; border-radius: 5px; }
 .empty button { border-color: #b0b789; }
-.repeatableEmpty, .footnote { color: #73785c; font-size: 10px; line-height: 1.5; }
-.rules { min-width: 0; border-top: 1px solid #c6be9855; }
-.rules summary { width: fit-content; min-height: 44px; padding-block: 13px; color: #61704e; font-size: 11px; cursor: pointer; }
-.rules summary:focus-visible { outline: 2px solid #4c764a; outline-offset: 2px; border-radius: 3px; }
-.footnote { padding: 0 0 5px; }
+.repeatableEmpty { color: #73785c; font-size: 10px; line-height: 1.5; }
 @container (min-width: 620px) {
   .orders { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .permanentCards .order { gap: 8px; }

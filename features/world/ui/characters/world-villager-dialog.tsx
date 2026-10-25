@@ -53,7 +53,7 @@ export function WorldVillagerDialog({ id, open, ownerPublicId, economy, isOnline
                 {id === "lopukh" ? "За древесиной" : "К добыче"}<ArrowRight size={17} aria-hidden="true" />
               </button>
             </>}
-            {onOpenOrders && <button type="button" className={styles.action} disabled={!currentOwner} onClick={onOpenOrders}>
+            {onOpenOrders && <button type="button" className={`${styles.action} ${styles.orders}`} disabled={!currentOwner} onClick={onOpenOrders}>
               <ClipboardList size={18} aria-hidden="true" />Отношения и заказы<ArrowRight size={17} aria-hidden="true" />
             </button>}
           </>}

@@ -63,14 +63,15 @@ const analyticsSchema = z.object({ ...shared,
     matchingPlayers: count, initializedPlayers: count, flowsTruncated: z.boolean(), actionsTruncated: z.boolean(), ordersTruncated: z.boolean() }),
   progression: progressionSchema.nullish(),
 });
-const eventsSchema = z.object({ ...shared, kind: z.string().max(100), resource: z.string().max(100),
-  direction: z.enum(["all", "in", "out"]), at: instant.nullable(), offset: count,
-  limit: z.number().int().min(1).max(100), total: count,
-  events: z.array(z.object({ id: z.string().min(1).max(512),
+export const adminAnalyticsEventSchema = z.object({ id: z.string().min(1).max(512),
     publicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/), displayName: z.string(),
     createdAt: instant, kind: identifier, targetId: identifier.nullable(), quantity: signed.nullable(),
     contextKnown: z.boolean(), category, coins: signed, pearls: signed,
-    items: z.record(z.string().min(1).max(100), signed) })).max(100),
+    items: z.record(z.string().min(1).max(100), signed) });
+const eventsSchema = z.object({ ...shared, kind: z.string().max(100), resource: z.string().max(100),
+  direction: z.enum(["all", "in", "out"]), at: instant.nullable(), offset: count,
+  limit: z.number().int().min(1).max(100), total: count,
+  events: z.array(adminAnalyticsEventSchema).max(100),
 });
 
 export type AdminAnalytics = z.infer<typeof analyticsSchema>;

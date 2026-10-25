@@ -1,6 +1,6 @@
 # Лесной сосед: work/0.7.2-bot
 
-База текущей доработки: 8113aaeb (PR #35 → work/0.7.2). Предыдущий кандидат проверен полным CI: backend1099, market102, migrations51, web7327 PASS (+1 optional audio-tool skip), Compose PASS. Репутация жителей из67b1afc сохранена. Версия приложения0.7.1; публикация только в work/0.7.2-bot.
+База текущей доработки: 8113aaeb (PR #35 → work/0.7.2). Подтянута work/0.7.2 ef97b05: правки разговоров/портретов/рабочего места Лопуха и полный экспорт административных журналов CSV/JSON. Их реализация сохранена; новые миграции отсутствуют. Предыдущий кандидат проверен полным CI: backend1099, market102, migrations51, web7327 PASS (+1 optional audio-tool skip), Compose PASS. Репутация жителей из67b1afc сохранена. Версия приложения0.7.1; публикация только в work/0.7.2-bot.
 
 ## Задание25 октября
 
@@ -17,4 +17,4 @@ LAN-admin: случайный код в терминале dev:lan/dev:local, se
 
 Проверки: UI75, wardrobe/render24, local-admin28 и финальные API/local21 целевых тестов PASS (наборы частично пересекаются). Kotlin compileKotlin/compileTestKotlin и NeighborRules7+Routes5 PASS безskip. Typecheck, полныйlint, architecture1068, world и secret scan PASS; последние затронутые TS файлы дополнительноeslint PASS. Обе сборки Sites/VPS PASS. Chromium:26 UI сценариев320/1280 на реальной WorldScene; actualNext профиль→Берест→полныйвизит→своймир; actualNextadmin unlock/manualbuy30(fee2)/settings/revoke PASS,320px безoverflow. На HTTP privateIPorigin через локальныйtransportproxy проверены обычная web-security иOrigin/успешныйunlock; настоящий внешнийLANинтерфейс этой среде недоступен.
 
-Публикуется в work/0.7.2-bot, PR #35. Далее проверить полный CI нового коммита. Контракт: docs/development/npc-neighbor-contract.md; запуск и локальныйкод: docs/development/local-development.md.
+ee265e2 опубликован в work/0.7.2-bot, PR #35. Его CI остановил web на npm audit: существующий zod3.x подпадает под GHSA-mrhx-c7xc-m3w5. Реальное исправление требует миграции на v4 runtime; импорт zod/v3 из нового пакета проблему не исправляет (upstream #6653). Аудит не ослаблялся, зависимости в этой задаче не менялись. После объединения с ef97 повторно PASS: typecheck, architecture/world,86 интеграционных TS-тестов, обе сборки Sites/VPS; Kotlin compile/test18 (Neighbor7+5 и export-input6), без пропусков. Полный lint и secret scan PASS. Результаты браузера выше относятся к ee265e2, интеграция сохраняет тот же NPC-код и обновлённую карту основной ветки. Контракт: docs/development/npc-neighbor-contract.md; запуск и локальныйкод: docs/development/local-development.md.

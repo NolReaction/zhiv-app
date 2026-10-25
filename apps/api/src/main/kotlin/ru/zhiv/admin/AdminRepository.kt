@@ -70,6 +70,7 @@ interface AdminRepository {
     suspend fun adjustEconomy(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminEconomyAdjustmentRequest): AdminEconomyGrantReceipt = throw UnsupportedOperationException()
     suspend fun analytics(sessionHash: ByteArray, query: AdminAnalyticsQuery = AdminAnalyticsQuery()): AdminAnalytics = throw UnsupportedOperationException()
     suspend fun analyticsEvents(sessionHash: ByteArray, query: AdminAnalyticsEventsQuery = AdminAnalyticsEventsQuery()): AdminAnalyticsEvents = throw UnsupportedOperationException()
+    suspend fun analyticsEventsExport(sessionHash: ByteArray, query: AdminAnalyticsExportQuery = AdminAnalyticsExportQuery()): AdminAnalyticsEventsExport = throw UnsupportedOperationException()
     suspend fun economy(sessionHash: ByteArray, query: String, sort: String, offset: Int, limit: Int): AdminEconomy = throw UnsupportedOperationException()
     suspend fun economyPlayer(sessionHash: ByteArray, targetPublicId: String): AdminEconomyDetail = throw UnsupportedOperationException()
     suspend fun player(sessionHash: ByteArray, targetPublicId: String): AdminPlayer = throw UnsupportedOperationException()

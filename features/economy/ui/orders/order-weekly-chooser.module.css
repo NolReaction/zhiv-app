@@ -1,6 +1,6 @@
 .chooser { display: grid; gap: 10px; min-width: 0; }
 .chooser p, .chooser h4, .chooser h5, .waiting p { margin: 0; }
-.intro, .note { color: #6a7359; font-size: 11px; line-height: 1.5; }
+.intro { color: #6a7359; font-size: 11px; line-height: 1.5; }
 .expired { padding: 9px; border: 1px solid #c4b58a; border-radius: 5px; background: #ece3c8; color: #79613c; font-size: 11px; line-height: 1.5; }
 .choices { display: grid; gap: 9px; min-width: 0; }
 .choice { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 12px; border: 1px solid #b6be91; border-radius: 7px; background: linear-gradient(120deg, #f7f4e2, #e8edd4); }

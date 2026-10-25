@@ -34,7 +34,7 @@ export function analyticsTarget(id: string | null) {
   if (id === "fishing_shop") return "Лавка Плёски";
   const order = economyCatalog.onboarding?.residentOrder.id === id ? economyCatalog.onboarding.residentOrder
     : economyCatalog.food?.orders.templates.find(order => order.id === id);
-  if (order) return `${order.name} · ${order.residentId === "plesk" ? "Плёска" : "Шишколап"}`;
+  if (order) return `${order.name} · ${{ plesk: "Плёска", builder: "Шишколап", lopukh: "Лопоух", kamneshmyg: "Камнешмыг", leaftail: "Листохвост" }[order.residentId]}`;
   return [...economyCatalog.buildings, ...economyCatalog.recipes, ...economyCatalog.explorations, ...economyCatalog.items,
     ...(economyCatalog.fishing?.rods ?? []), ...(economyCatalog.fishing?.hooks ?? []), ...worldCatalog.items].find(item => item.id === id.split("@")[0])?.name ?? id;
 }

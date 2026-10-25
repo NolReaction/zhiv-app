@@ -35,7 +35,7 @@ function elements(tree) {
   visit(tree); return result;
 }
 
-test("orders retain All and five compact character tabs without exposing residents before their introduction", () => {
+test("orders retain All and five character tabs without exposing residents before their introduction", () => {
   const economy = controller();
   let html = render(WorldOrderJournal, { economy, introducedResidents: ids });
   assert.equal((html.match(/role="tab"/g) ?? []).length, 6);
@@ -44,6 +44,7 @@ test("orders retain All and five compact character tabs without exposing residen
   for (const id of ids) assert.match(html, new RegExp(`data-order-filter="${id}"`));
   assert.match(html, /data-order-chapter="repeatable"/);
   assert.match(html, /data-order-chapter="weekly"/);
+  assert.doesNotMatch(html, /<details|Обновление и замена просьб|Репутация и время подготовки|Выбери жителя|Выбери, кому помочь|Разные производства могут работать одновременно/);
   html = render(WorldOrderJournal, { economy, introducedResidents: ["builder", "plesk"], residentId: "lopukh" });
   assert.match(html, /Все просьбы/);
   assert.doesNotMatch(html, /Лопоух|Камнешмыг|Листохвост|data-order-relations=/);
