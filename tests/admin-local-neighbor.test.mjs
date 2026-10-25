@@ -175,3 +175,28 @@ test("local neighbor inspection never initializes another player's economy and u
   assert.equal((await get("neighbor?unknown=value")).status, 400);
   assert.equal((await get("monitoring")).status, 503); assert.equal((await post("users/someone/manage", {})).status, 503);
 });
+
+
+test("admin saves and applies a 3000-coin lot with increased budgets without replaying settlement", async () => {
+  const owner = player(); await unlock(owner);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(owner.me.user.publicId);
+  row.state.buildings.home = 5; row.state.inventory = { wood: 99 };
+  const initial = await (await get("neighbor")).json();
+  const settingsCommand = { requestId: crypto.randomUUID(), expectedVersion: initial.version, reason: "Расширение ручного выкупа",
+    settings: { ...initial.settings, maxLotsPerDay: 20, dailyBudgetCoins: 100000, maxLotCoins: 3000,
+      globalDailyBudgetCoins: 1000000, firstDelaySeconds: 0, staleAfterSeconds: 0, buyPriceBps: 20000 } };
+  const saved = await post("neighbor/settings", settingsCommand);
+  assert.equal(saved.status, 200); assert.equal((await saved.json()).settings.maxLotCoins, 3000);
+  const view = economy.getDevEconomy(owner.token);
+  const lot = economy.commandDevEconomyMarket(owner.token, { requestId: crypto.randomUUID(), ownerPublicId: owner.me.user.publicId,
+    expectedRevision: view.revision, action: "create_listing", targetId: "wood", quantity: 99, totalPrice: 3000 }).listing;
+  const command = { requestId: crypto.randomUUID(), listingId: lot.id, playerPublicId: owner.me.user.publicId,
+    expectedTotalPrice: 3000, reason: "Проверка большого лота" };
+  const response = await post("neighbor/buy", command), first = await response.json();
+  assert.equal(response.status, 200); assert.equal(first.history.length, 1);
+  assert.equal(first.history[0].totalPrice, 3000); assert.equal(first.history[0].proceedsCoins, 2850);
+  const replay = await (await post("neighbor/buy", command)).json();
+  assert.equal(replay.receipt.replayed, true); assert.equal(replay.history.length, 1);
+  const state = await (await get("neighbor?publicId=" + owner.me.user.publicId)).json();
+  assert.equal(state.usage.spentCoins, 3000); assert.equal(state.usage.usedLots, 1);
+});

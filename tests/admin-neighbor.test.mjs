@@ -18,9 +18,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export const useLayoutEffect=useEffect;
       export function commit(){const pending=effects;effects=[];for(const{i,callback,deps}of pending){slots[i]?.cleanup?.();slots[i]={deps,cleanup:callback()};}}
     `; },
-    transform(source, id) { if (id.endsWith("/features/admin/admin-neighbor-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+    transform(source, id) { if ((id.endsWith("/features/admin/admin-neighbor-panel.tsx") || id.endsWith("/features/admin/admin-neighbor-settings.tsx"))) return source.replace('from "react";', `from "${hookModule}";`); },
   }] });
 after(() => vite.close());
+const { AdminNeighborSettingsForm } = await vite.ssrLoadModule("/features/admin/admin-neighbor-settings.tsx");
 const { AdminNeighborPanel } = await vite.ssrLoadModule("/features/admin/admin-neighbor-panel.tsx");
 const { loadAdminNeighbor, writeAdminNeighbor, definitiveNeighborFailure } = await vite.ssrLoadModule("/features/admin/admin-neighbor-api.ts");
 const { readNeighborAttempt, saveNeighborAttempt } = await vite.ssrLoadModule("/features/admin/admin-neighbor-journal.ts");
@@ -151,4 +152,25 @@ test("uncertain reply keeps journal on explicit retry and account switch hides p
   assert.equal(button(tree, "Проверить тот же запрос"), undefined);
   assert.equal(readNeighborAttempt(actor).body.requestId, requestId);
   assert.equal(readNeighborAttempt(other), null);
+});
+
+
+test("settings form permits independent large prices and budgets without browser hard caps", () => {
+  hooks.reset();
+  const reviewed = [], initial = structuredClone(neighborDefaultSettings);
+  const render = () => { hooks.begin(); return AdminNeighborSettingsForm({ settings: initial, disabled: false,
+    onReview: (...args) => reviewed.push(args) }); };
+  let tree = render();
+  const field = (tree, label) => nodes(tree).find(node => node.type === "label" && text(node.props.children).includes(label))?.props.children.find(child => isValidElement(child) && child.type === "input");
+  for (const label of ["Предложений в день", "Предметов в предложении", "Цена лавки, базисные пункты", "Предел выкупа, базисные пункты",
+    "Первая покупка: ожидание", "Залежавшийся лот: ожидание", "Лотов у игрока", "Бюджет на игрока", "Предельная цена лота", "Общий бюджет"]) {
+    const input = field(tree, label); assert.ok(input, label); assert.equal(input.props.max, undefined, label);
+  }
+  field(tree, "Предельная цена лота").props.onChange({ target: { value: "3000" } });
+  tree = render();
+  const reason = nodes(tree).find(node => node.type === "textarea" && node.props.placeholder === "Для внутреннего журнала, от 8 символов");
+  reason.props.onChange({ target: { value: "Ручная настройка предела" } }); tree = render();
+  tree.props.onSubmit({ preventDefault() {} });
+  assert.equal(reviewed.length, 1); assert.equal(reviewed[0][0].maxLotCoins, 3000);
+  assert.equal(reviewed[0][0].dailyBudgetCoins, initial.dailyBudgetCoins, "A higher per-lot ceiling does not force a different day budget");
 });

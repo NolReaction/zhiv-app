@@ -91,7 +91,7 @@ export function NeighborShop({ neighbor, economy, timeZone, refreshing = false, 
     <div className={styles.wallet}><span><ItemIcon itemId="coins" size={20} /><strong>{state ? number(state.wallet.coins) : "…"}</strong> монет</span><span><Package size={18} aria-hidden="true" />{state?.storage.available ?? "…"} мест</span></div>
     <div className={styles.body}>
       <div className={styles.shopHeading}><h3>Лавка: {neighbor.character.name}</h3><span>Персонаж мира</span></div>
-      <p className={styles.muted}>Небольшая поставка для вас. Каждую партию можно купить один раз; новая поставка ежедневно в {refreshTime}.</p>
+      <p className={styles.muted}>Поставка из открытых вам товаров. Каждую партию можно купить один раз; новая поставка ежедневно в {refreshTime}. Новые открытия попадут в следующую поставку.</p>
       {!neighbor.shop.available && <p className={styles.reason} role="status">{neighbor.shop.reason === "market_locked"
         ? "Лавка откроется, когда вы откроете рынок в своём лесу. Пока можно осмотреть полянку соседа."
         : "Лавка временно закрыта. Полянка соседа остаётся открытой для гостей."}</p>}

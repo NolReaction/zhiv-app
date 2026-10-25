@@ -26,7 +26,7 @@ fun validateEconomyCommand(command: EconomyCommand) {
     }
 }
 
-fun decodeEconomyCommand(element: JsonElement): EconomyCommand {
+fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Unit = ::validateEconomyCommand): EconomyCommand {
     val value = element as? JsonObject ?: invalidEconomy()
     val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection")
     if (value.keys.any { it !in fields }) invalidEconomy()
@@ -45,7 +45,7 @@ fun decodeEconomyCommand(element: JsonElement): EconomyCommand {
             if (id.length !in 1..80 || primitive.isString || primitive.longOrNull == null) invalidEconomy()
         }
     }
-    return try { economyJson.decodeFromJsonElement<EconomyCommand>(value).also(::validateEconomyCommand) }
+    return try { economyJson.decodeFromJsonElement<EconomyCommand>(value).also(validator) }
     catch (_: SerializationException) { invalidEconomy() }
 }
 

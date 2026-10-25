@@ -116,12 +116,21 @@ class NeighborRoutesTest {
             valid.replace("\"totalPrice\":20", "\"totalPrice\":\"20\""),
             economyJson.encodeToString(input.copy(action = "create_listing")),
             economyJson.encodeToString(input.copy(targetId = "berries")),
-            economyJson.encodeToString(input.copy(quantity = 6)),
-            economyJson.encodeToString(input.copy(totalPrice = 0)),
+            economyJson.encodeToString(input.copy(quantity = ECONOMY_MAX_ITEMS+1)),
+            economyJson.encodeToString(input.copy(totalPrice = -1)),
         )) assertEquals(HttpStatusCode.BadRequest, client.post("/api/v1/economy/neighbor/commands") {
             authorized(); setBody(bad)
         }.status, bad)
         assertEquals(0, repository.purchases)
+    }
+
+    @Test fun `explicit free large stock quote reaches the neighbor repository`() = testApplication {
+        val repository = FakeNeighbor(); setup(repository)
+        val input = command().copy(quantity=20000,totalPrice=0)
+        assertEquals(HttpStatusCode.Conflict,client.post("/api/v1/economy/neighbor/commands") {
+            authorized(); setBody(economyJson.encodeToString(input))
+        }.status)
+        assertEquals(input,repository.received)
     }
 
     @Test fun `neighbor writes have a bounded rate independent of shop reads`() = testApplication {
@@ -143,6 +152,7 @@ class NeighborRoutesTest {
         val repository = FakeNeighbor(); setup(repository)
         val settings = economyJson.encodeToString(NeighborSettingsCommand(UUID.randomUUID().toString(), 0,
             "Проверка настроек соседа", NeighborRules.defaults))
+        val home = NeighborRules.defaults.buildings.getValue("home")
         assertEquals(HttpStatusCode.Unauthorized, client.get("/api/v1/admin/neighbor").status)
         assertEquals(0, repository.adminReads)
         assertEquals(HttpStatusCode.Forbidden, client.post("/api/v1/admin/neighbor/settings") {
@@ -152,7 +162,7 @@ class NeighborRoutesTest {
             settings.replace("\"expectedVersion\":0", "\"expectedVersion\":\"0\""),
             settings.replace("\"dailyBudgetCoins\":300", "\"dailyBudgetCoins\":\"300\""),
             settings.replace("\"enabled\":true", "\"enabled\":\"true\""),
-            settings.replace("\"home\":3", "\"home\":\"3\""),
+            settings.replace("\"home\":$home", "\"home\":\"$home\""),
             settings.dropLast(1) + ",\"mintCoins\":999}",
         )) assertEquals(HttpStatusCode.BadRequest, client.post("/api/v1/admin/neighbor/settings") {
             authorized(); setBody(bad)

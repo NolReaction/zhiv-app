@@ -3,7 +3,7 @@ import defaults from "@/apps/api/src/main/resources/world/neighbor-catalog.json"
 import wardrobeCatalog from "@/apps/api/src/main/resources/world/catalog.json";
 import exclusiveWardrobe from "@/apps/api/src/main/resources/world/neighbor-wardrobe.json";
 import { hasUserTextControls } from "@/lib/user-text";
-import { ECONOMY_MAX_BALANCE, economyCatalog, economyResultSchema } from "./model";
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyResultSchema } from "./model";
 
 const count = z.number().int().nonnegative().safe();
 const clock = z.string().datetime();
@@ -20,7 +20,7 @@ export const neighborEquipmentSchema = z.object({
   palette: clothing("palette"), head: clothing("head").nullable(), neck: clothing("neck").nullable(),
   rod: clothing("rod").nullable(),
 }).strict();
-export const neighborBuildingsSchema = z.record(z.string().refine(id => buildingIds.has(id)), count.max(100))
+export const neighborBuildingsSchema = z.record(z.string().refine(id => buildingIds.has(id)), count)
   .refine(buildings => Object.entries(buildings).every(([id, level]) => level <= buildingIds.get(id)!), "Уровень постройки вне каталога");
 
 /** Relics, individual fish species and legacy fish aliases cannot enter the NPC stock. */
@@ -32,16 +32,14 @@ export const neighborSettingsSchema = z.object({
   name: z.string().min(1).max(40).refine(value => value === value.trim() && !hasUserTextControls(value)),
   description: z.string().min(1).max(240).refine(value => value.trim().length > 0 && !hasUserTextControls(value)),
   buildings: neighborBuildingsSchema, equipment: neighborEquipmentSchema,
-  offerSlots: count.min(1).max(3), offerQuantity: count.min(1).max(5),
-  allowedItemIds: z.array(itemId.refine(id => stockIds.has(id), "Этот предмет недоступен соседу")).min(1).max(100)
+  offerSlots: count, offerQuantity: count.min(1).max(ECONOMY_MAX_ITEMS),
+  allowedItemIds: z.array(itemId.refine(id => stockIds.has(id), "Этот предмет недоступен соседу")).max(stockIds.size)
     .refine(items => new Set(items).size === items.length, "Предметы не должны повторяться"),
-  sellPriceBps: count.min(10000).max(20000), buyPriceBps: count.min(5000).max(10000),
-  firstDelaySeconds: count.min(180).max(86400), staleAfterSeconds: count.min(21600).max(604800),
-  maxLotsPerDay: count.max(2), dailyBudgetCoins: count.max(300), maxLotCoins: count.max(150), globalDailyBudgetCoins: count.max(10000),
+  sellPriceBps: count, buyPriceBps: count,
+  firstDelaySeconds: count, staleAfterSeconds: count,
+  maxLotsPerDay: count, dailyBudgetCoins: count, maxLotCoins: count.max(ECONOMY_MAX_BALANCE), globalDailyBudgetCoins: count,
   activeFromHourUtc: count.max(23), activeUntilHourUtc: count.min(1).max(24),
 }).strict().superRefine((settings, context) => {
-  if (settings.maxLotCoins > settings.dailyBudgetCoins)
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["maxLotCoins"], message: "Цена лота больше дневного бюджета" });
   if (settings.activeFromHourUtc === settings.activeUntilHourUtc)
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["activeUntilHourUtc"], message: "Начало и конец интервала должны отличаться" });
   if ((settings.buildings.home ?? 0) < 2 || (settings.buildings.bridge ?? 0) < 1)
@@ -52,7 +50,7 @@ export const neighborSettingsSchema = z.object({
 export type NeighborSettings = z.infer<typeof neighborSettingsSchema>;
 export const neighborDefaultSettings: NeighborSettings = neighborSettingsSchema.parse(defaults);
 
-export const neighborOfferSchema = z.object({ id: uuid, itemId, quantity: count.min(1).max(99), totalPrice: count.positive(), purchased: z.boolean() }).strict();
+export const neighborOfferSchema = z.object({ id: uuid, itemId, quantity: count.min(1).max(ECONOMY_MAX_ITEMS), totalPrice: count.max(ECONOMY_MAX_BALANCE), purchased: z.boolean() }).strict();
 export const neighborWorldSchema = z.object({
   buildings: neighborBuildingsSchema, equipment: neighborEquipmentSchema, gifts: z.array(itemId).max(100),
   hiddenGifts: z.array(z.enum(["flower", "leaf_bed", "keepsakes", "leaf_garland"])).max(4), jobs: z.array(z.never()).max(0),
@@ -60,7 +58,7 @@ export const neighborWorldSchema = z.object({
 export const neighborViewSchema = z.object({
   ownerPublicId: publicId, serverTime: clock,
   character: z.object({ id: z.literal("berest"), kind: z.literal("world_character"), name: z.string().min(1).max(40), description: z.string().max(240), world: neighborWorldSchema }).strict(),
-  shop: z.object({ cycleId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), refreshAt: clock, available: z.boolean(), reason: z.string().nullable(), offers: z.array(neighborOfferSchema).max(3) }).strict(),
+  shop: z.object({ cycleId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), refreshAt: clock, available: z.boolean(), reason: z.string().nullable(), offers: z.array(neighborOfferSchema).max(stockIds.size) }).strict(),
   buying: z.object({ enabled: z.boolean(), firstDelaySeconds: count, staleAfterSeconds: count,
     maxLotsPerDay: count, dailyBudgetCoins: count, maxLotCoins: count, usedLots: count, spentCoins: count }).strict(),
 }).strict().superRefine((value, context) => {
@@ -73,7 +71,7 @@ export type NeighborView = z.infer<typeof neighborViewSchema>;
 export type NeighborOffer = z.infer<typeof neighborOfferSchema>;
 export const neighborCommandSchema = z.object({
   requestId: uuid, ownerPublicId: publicId, expectedRevision: count.max(Number.MAX_SAFE_INTEGER - 1),
-  action: z.literal("buy_offer"), targetId: uuid, quantity: count.min(1).max(5), totalPrice: count.positive().max(ECONOMY_MAX_BALANCE),
+  action: z.literal("buy_offer"), targetId: uuid, quantity: count.min(1).max(ECONOMY_MAX_ITEMS), totalPrice: count.max(ECONOMY_MAX_BALANCE),
 }).strict();
 export const neighborResultSchema = economyResultSchema;
 export type NeighborCommand = z.infer<typeof neighborCommandSchema>;

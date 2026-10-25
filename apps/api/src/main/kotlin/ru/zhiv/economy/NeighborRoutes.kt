@@ -72,7 +72,7 @@ fun Route.neighborRoutes(repository: NeighborRepository,codec: TokenCodec,config
             post("/commands") {
                 val hash=call.neighborSession(config,codec,true)
                 call.requireGameplayPresence(presence,hash)
-                val command=decodeEconomyCommand(call.receive<JsonElement>())
+                val command=decodeEconomyCommand(call.receive<JsonElement>(),NeighborRules::validatePurchase)
                 NeighborRules.validatePurchase(command)
                 call.respond(repository.purchase(hash,command))
             }

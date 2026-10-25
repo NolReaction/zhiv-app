@@ -166,7 +166,7 @@ def main():
                           AND m.started_at=h.installed_on::timestamptz))
                     OR (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
                         FROM flyway_schema_history h ORDER BY h.installed_rank)
-                        = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true','67:SQL:true','68:SQL:true','69:SQL:true','70:SQL:true','71:SQL:true']
+                        = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true','67:SQL:true','68:SQL:true','69:SQL:true','70:SQL:true','71:SQL:true','72:SQL:true']
                       AND m.started_at BETWEEN to_timestamp({reset_started_epoch}) AND clock_timestamp())
                   )) FROM game_tap_collection_metadata m""") == "t"
     assert sql("SELECT count(*)=1 AND bool_and(singleton AND generation=0 AND reset_at IS NULL) FROM gameplay_generations") == "t"

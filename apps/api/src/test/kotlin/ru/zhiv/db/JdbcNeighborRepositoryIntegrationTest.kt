@@ -80,7 +80,7 @@ class JdbcNeighborRepositoryIntegrationTest {
         val first = repository.neighbor(p.hash)
         assertEquals("berest", first.character.id)
         assertEquals("world_character", first.character.kind)
-        assertEquals(3, first.character.world.buildings["home"])
+        assertEquals(5, first.character.world.buildings["home"])
         assertTrue(first.shop.available)
         assertEquals(3, first.shop.offers.size)
         assertTrue(first.shop.offers.none { it.itemId in setOf("ore", "tools", "reinforced_parts") })

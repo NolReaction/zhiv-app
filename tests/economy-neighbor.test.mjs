@@ -231,9 +231,10 @@ test("manual purchase bypasses waiting only, while pause, hours, price and budge
   assert.equal(economy.buyDevNeighborListing(lot.id, { now, manual: true }), false);
 });
 
-test("settings enforce hard subsidy ceilings, minimum delays, known geometry and ordinary stock", () => {
-  for (const change of [{ maxLotsPerDay: 3 }, { dailyBudgetCoins: 301 }, { maxLotCoins: 151 }, { globalDailyBudgetCoins: 10001 },
-    { firstDelaySeconds: 179 }, { staleAfterSeconds: 21599 }, { allowedItemIds: ["ancient_core"] }, { allowedItemIds: ["fish_common"] },
+test("settings accept administrator tuning while preserving integral values known geometry and ordinary stock", () => {
+  for (const change of [{ maxLotsPerDay: -1 }, { dailyBudgetCoins: -1 }, { maxLotCoins: -1 }, { globalDailyBudgetCoins: -1 },
+    { firstDelaySeconds: -1 }, { staleAfterSeconds: -1 }, { maxLotCoins: 10000000001 },
+    { dailyBudgetCoins: Number.MAX_SAFE_INTEGER + 1 }, { offerQuantity: 0 }, { allowedItemIds: ["ancient_core"] }, { allowedItemIds: ["fish_common"] },
     { buildings: { home: 99, bridge: 1 } }, { activeFromHourUtc: 9, activeUntilHourUtc: 9 },
     { equipment: { palette: "unknown", head: null, neck: null, rod: null } }])
     assert.equal(model.neighborSettingsSchema.safeParse(settings(change)).success, false, JSON.stringify(change));
@@ -278,4 +279,45 @@ test("a prior human sale remains experienced after reset deletes its sold listin
   assert.equal(economy.getDevConfirmedMarketSales(seller.me.user.publicId), 0, "reset has actually removed the historical sold listing");
   assert.equal(economy.buyDevNeighborListing(next.id, { now: now + 180001 }), false);
   assert.equal(economy.buyDevNeighborListing(next.id, { now: now + sixHours + 1 }), true);
+});
+
+
+test("admin tuning accepts large caps independent budgets zero delays and finite catalog-sized stock", () => {
+  const owner = player(5);
+  row(owner).state.unlockedItems = economyCatalog.items.map(item => item.id);
+  configure({ offerSlots: Number.MAX_SAFE_INTEGER, offerQuantity: 6, maxLotsPerDay: 20, dailyBudgetCoins: 100000,
+    maxLotCoins: 3000, globalDailyBudgetCoins: 1000000, firstDelaySeconds: 0, staleAfterSeconds: 0,
+    allowedItemIds: model.neighborStockItems.map(item => item.id) });
+  const view = shop(owner);
+  assert.ok(view.shop.offers.length > 3);
+  assert.ok(view.shop.offers.length <= model.neighborStockItems.length);
+  assert.ok(view.shop.offers.every(offer => offer.quantity === 6));
+  assert.equal(model.neighborViewSchema.safeParse(view).success, true);
+  assert.equal(model.neighborSettingsSchema.safeParse(settings({ maxLotCoins: 3000, dailyBudgetCoins: 300 })).success, true);
+  assert.equal(model.neighborSettingsSchema.safeParse(settings({ offerSlots: 0, allowedItemIds: [] })).success, true);
+});
+
+test("an intentionally free six-item offer commits once without debiting coins", () => {
+  const owner = player(5, {});
+  configure({ allowedItemIds: ["wood"], offerQuantity: 6, sellPriceBps: 0 });
+  const offer = shop(owner).shop.offers[0], before = read(owner), request = buyCommand(owner, offer);
+  assert.equal(offer.totalPrice, 0);
+  assert.equal(model.neighborCommandSchema.safeParse(request).success, true);
+  const result = economy.commandDevEconomyNeighbor(owner.token, request, now);
+  assert.equal(result.state.wallet.coins, before.wallet.coins);
+  assert.equal(result.state.inventory.wood, 6);
+  assert.equal(economy.commandDevEconomyNeighbor(owner.token, request, now).replayed, true);
+  assert.equal(read(owner).inventory.wood, 6);
+});
+
+test("extreme multipliers do not overflow or produce invalid public quotes", () => {
+  const owner = player(5), extreme = settings({ sellPriceBps: Number.MAX_SAFE_INTEGER, buyPriceBps: Number.MAX_SAFE_INTEGER,
+    offerQuantity: 1000000000, allowedItemIds: ["wood"] });
+  neighborStore.configureDevNeighbor(extreme);
+  assert.equal(rules.neighborOfferPrice("wood", extreme.offerQuantity, extreme), Infinity);
+  assert.equal(rules.neighborBuyPriceCeiling("wood", extreme.offerQuantity, extreme), 10000000000);
+  const view = shop(owner);
+  assert.deepEqual(view.shop.offers, []);
+  assert.equal(model.neighborViewSchema.safeParse(view).success, true);
+  assert.equal(rules.neighborOfferPrice("wood", 1000000000, settings({ sellPriceBps: 0 })), 0);
 });

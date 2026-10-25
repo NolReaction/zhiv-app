@@ -7,19 +7,19 @@ import { MochlikPortrait } from "@/features/mochlik/mochlik-portrait";
 import { validAdminReason } from "./admin-input";
 import styles from "./admin-neighbor-panel.module.css";
 
-const numericFields: { key: keyof NeighborSettings; label: string; min: number; max: number; step?: number }[] = [
-  { key: "offerSlots", label: "Предложений в день", min: 1, max: 3 },
-  { key: "offerQuantity", label: "Предметов в предложении", min: 1, max: 5 },
-  { key: "sellPriceBps", label: "Цена лавки, базисные пункты", min: 10000, max: 20000, step: 100 },
-  { key: "buyPriceBps", label: "Предел выкупа, базисные пункты", min: 5000, max: 10000, step: 100 },
-  { key: "firstDelaySeconds", label: "Первая покупка: ожидание, секунд", min: 180, max: 86400 },
-  { key: "staleAfterSeconds", label: "Залежавшийся лот: ожидание, секунд", min: 21600, max: 604800 },
+const numericFields: { key: keyof NeighborSettings; label: string; min: number; max?: number; step?: number }[] = [
+  { key: "offerSlots", label: "Предложений в день", min: 0 },
+  { key: "offerQuantity", label: "Предметов в предложении", min: 1 },
+  { key: "sellPriceBps", label: "Цена лавки, базисные пункты", min: 0 },
+  { key: "buyPriceBps", label: "Предел выкупа, базисные пункты", min: 0 },
+  { key: "firstDelaySeconds", label: "Первая покупка: ожидание, секунд", min: 0 },
+  { key: "staleAfterSeconds", label: "Залежавшийся лот: ожидание, секунд", min: 0 },
   { key: "activeFromHourUtc", label: "Начало работы, час UTC", min: 0, max: 23 },
   { key: "activeUntilHourUtc", label: "Конец работы, час UTC", min: 1, max: 24 },
-  { key: "maxLotsPerDay", label: "Лотов у игрока в сутки", min: 0, max: 2 },
-  { key: "dailyBudgetCoins", label: "Бюджет на игрока, монет в сутки", min: 0, max: 300 },
-  { key: "maxLotCoins", label: "Предельная цена лота, монет", min: 0, max: 150 },
-  { key: "globalDailyBudgetCoins", label: "Общий бюджет, монет в сутки", min: 0, max: 10000 },
+  { key: "maxLotsPerDay", label: "Лотов у игрока в сутки", min: 0 },
+  { key: "dailyBudgetCoins", label: "Бюджет на игрока, монет в сутки", min: 0 },
+  { key: "maxLotCoins", label: "Предельная цена лота, монет", min: 0 },
+  { key: "globalDailyBudgetCoins", label: "Общий бюджет, монет в сутки", min: 0 },
 ];
 const equipmentLabels = { palette: "Окрас", head: "Головной убор", neck: "Шарф", rod: "Удочка на витрине" };
 const itemName = (id: string) => economyCatalog.items.find(item => item.id === id)?.name ?? id;
@@ -61,6 +61,10 @@ export function AdminNeighborSettingsForm({ settings, disabled, onReview }: {
         <label><input type="checkbox" checked={draft.enabled} onChange={event => change("enabled", event.target.checked)} />Сосед и лавка включены</label>
         <label><input type="checkbox" checked={draft.autoBuyEnabled} onChange={event => change("autoBuyEnabled", event.target.checked)} />Автоматический выкуп включён</label>
       </div>
+      <div className={styles.actions}><button type="button" className={styles.button}
+        onClick={() => change("buildings", Object.fromEntries(economyCatalog.buildings.map(building => [building.id, Math.max(...building.levels.map(level => level.level))])))}>
+        Максимальное поселение
+      </button><p className={styles.hint}>Выставить все постройки на максимальный уровень. Применится после проверки и сохранения настроек.</p></div>
       <div className={styles.appearance}><MochlikPortrait appearance={draft.equipment} label={`Предпросмотр: ${draft.name}`} /><p className={styles.hint}>Предпросмотр внешности. Особые вещи Береста отмечены в списке; они принадлежат персонажу мира.</p></div>
       <div className={styles.grid}>
         <label className={styles.field}>Имя персонажа<input value={draft.name} maxLength={40} onChange={event => change("name", event.target.value)} /></label>
@@ -81,12 +85,12 @@ export function AdminNeighborSettingsForm({ settings, disabled, onReview }: {
     </fieldset>
     <fieldset disabled={disabled} className={styles.fieldset}>
       <legend>Лавка, цены и выкуп</legend>
-      <p className={styles.hint}>10 000 базисных пунктов = 100%. Цена лавки не ниже предела обратного выкупа; округление и комиссию учитывает сервер. Действующий ассортимент игрока сохраняется до следующего дня; запрещённый товар перестаёт продаваться.</p>
+      <p className={styles.hint}>10 000 базисных пунктов = 100%. Тарифы задаются напрямую: 0% делает поставку бесплатной. Округление и комиссию учитывает сервер. Действующий ассортимент игрока сохраняется до следующего дня; запрещённый товар перестаёт продаваться.</p>
       <div className={styles.grid}>{numericFields.map(field => <label key={field.key} className={styles.field}>{field.label}
         <input type="number" min={field.min} max={field.max} step={field.step ?? 1} value={Number.isNaN(draft[field.key]) ? "" : String(draft[field.key])}
           onChange={event => change(field.key, event.target.value === "" ? Number.NaN : Number(event.target.value))} />
       </label>)}</div>
-      <p className={styles.hint}>0–24 означает весь день. Если начало позже конца, интервал проходит через полночь. Выручка продавца рассчитывается с обычной комиссией рынка.</p>
+      <p className={styles.hint}>0–24 означает весь день. Если начало позже конца, интервал проходит через полночь. Выручка продавца рассчитывается с обычной комиссией рынка. Выкуп ограничен одновременно ценой лота и оставшимися бюджетами, даже если предел цены выше бюджета.</p>
       <details><summary>Разрешённые товары ({draft.allowedItemIds.length})</summary><div className={styles.catalog}>
         {neighborStockItems.map(item => <label key={item.id}>
           <input type="checkbox" checked={draft.allowedItemIds.includes(item.id)} onChange={event => change("allowedItemIds", event.target.checked

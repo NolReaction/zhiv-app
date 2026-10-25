@@ -66,7 +66,10 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
         val selected = NeighborRules.eligibleItems(state,s).sortedBy { item ->
             java.security.MessageDigest.getInstance("SHA-256").digest("$user:${economyTradeDay(at)}:${item.id}".toByteArray())
                 .joinToString("") { "%02x".format(it) }
-        }.take(s.offerSlots).map { NeighborOffer(UUID.randomUUID().toString(),it.id,s.offerQuantity,NeighborRules.sellPrice(maxOf(it.baseSellPrice,EconomyRules.localSellPrice(it.baseSellPrice,itemId=it.id)),s.offerQuantity,s)) }
+        }.map { item -> item to NeighborRules.sellPrice(maxOf(item.baseSellPrice,EconomyRules.localSellPrice(item.baseSellPrice,itemId=item.id)),s.offerQuantity,s) }
+            .filter { (_,price) -> price in 0..ECONOMY_MAX_BALANCE }
+            .let { candidates -> candidates.take(minOf(s.offerSlots,candidates.size.toLong()).toInt()) }
+            .map { (item,price) -> NeighborOffer(UUID.randomUUID().toString(),item.id,s.offerQuantity,price) }
         c.economyUpdate("INSERT INTO neighbor_shop_cycles(user_id,cycle_day,offers) VALUES (?,?,?::jsonb)",user,economyTradeDay(at),economyJson.encodeToString(selected))
         return selected
     }
@@ -83,11 +86,14 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
         val state=readEconomyProfile(c,a.id).state
         val available=cfg.settings.enabled && EconomyMarketRules.unlocked(state)
         val stock=if(available) snapshotOffers(c,a.id,state,at,cfg.settings) else offers(c,a.id,at).orEmpty()
+        // Keep the stored day and purchase fences intact; hide goods the player can no longer access.
+        val visibleItems=NeighborRules.eligibleItems(state,cfg.settings).map { it.id }.toSet()
+        val visibleStock=stock.filter { it.itemId in visibleItems }
         val u=usage(c,a.id,at); val s=cfg.settings
         NeighborView(a.publicId,at.toString(),NeighborCharacter(name=s.name,description=s.description,
             world=GuestWorldScene(s.buildings,s.equipment,emptyList(),emptyList(),emptyList())),
             NeighborShop(economyTradeDay(at).toString(),economyTradeResetsAt(at),available,
-                if(!s.enabled) "paused" else if(!available) "market_locked" else null,stock),
+                if(!s.enabled) "paused" else if(!available) "market_locked" else null,visibleStock),
             NeighborBuying(s.enabled && s.autoBuyEnabled && cfg.pause==null && NeighborRules.active(at,s),s.firstDelaySeconds,s.staleAfterSeconds,
                 s.maxLotsPerDay,s.dailyBudgetCoins,s.maxLotCoins,u.usedLots,u.spentCoins))
     }
@@ -119,8 +125,6 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
             if(offer.quantity!=command.quantity || command.totalPrice<offer.totalPrice) fail("NEIGHBOR_QUOTE_CHANGED","Проверьте состав и цену партии")
             if(NeighborRules.eligibleItems(row.state,s).none { it.id==offer.itemId }) fail("NEIGHBOR_OFFER_UNAVAILABLE","Предмет ещё не открыт или его продажа приостановлена")
             val definition=EconomyRules.catalog.items.single { it.id==offer.itemId }
-            if(offer.totalPrice < EconomyRules.localSellPrice(definition.baseSellPrice,offer.quantity,itemId=offer.itemId))
-                fail("NEIGHBOR_OFFER_UNAVAILABLE","Тариф предмета изменился. Дождитесь следующей поставки.")
             val tradeValue=definition.baseSellPrice*offer.quantity
             EconomyMarketRules.assertTradeBudget(readEconomyTradeUsage(c,a.id,at).buys,tradeValue,EconomyMarketRules.dailyTradeLimit(row.state.buildings["home"] ?: 1))
             if(row.state.wallet.coins<offer.totalPrice) fail("ECONOMY_RESOURCES","Недостаточно монет")
@@ -262,7 +266,7 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
     }
     override suspend fun buy(sessionHash: ByteArray, command: NeighborBuyCommand): NeighborAdminView {
         if(parseCanonicalUuidV4(command.requestId)==null || parseCanonicalUuidV4(command.listingId)==null ||
-            parsePublicId(command.playerPublicId)!=command.playerPublicId || command.expectedTotalPrice !in 1L..150L || !validAdminReason(command.reason))
+            parsePublicId(command.playerPublicId)!=command.playerPublicId || command.expectedTotalPrice !in 1L..ECONOMY_MAX_BALANCE || !validAdminReason(command.reason))
             fail("INVALID_NEIGHBOR_BUY","Проверьте партию и причину",400)
         return tx { c ->
             lock(c); val a=actor(c,sessionHash,true); val request=UUID.fromString(command.requestId); val payload=economyJson.encodeToJsonElement(command)
@@ -286,10 +290,10 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
             if(!cfg.settings.autoBuyEnabled || cfg.pause!=null || !NeighborRules.active(at,cfg.settings)) return@tx emptyList<UUID>()
             val cursor=scanAfter
             val after=if(cursor==null) "" else "AND (created_at,id)>(?,?)"
-            val params=mutableListOf<Any>(cfg.settings.maxLotCoins,OffsetDateTime.ofInstant(at.minusSeconds(minOf(cfg.settings.firstDelaySeconds,cfg.settings.staleAfterSeconds)),java.time.ZoneOffset.UTC))
+            val params=mutableListOf<Any>(cfg.settings.maxLotCoins,OffsetDateTime.ofInstant(NeighborRules.candidateCutoff(at,cfg.settings),java.time.ZoneOffset.UTC))
             if(cursor!=null) { params.add(OffsetDateTime.ofInstant(cursor.first,java.time.ZoneOffset.UTC));params.add(cursor.second) }
             params.add(limit)
-            val rows=c.economyRows("SELECT id,created_at FROM economy_market_listings WHERE status='active' AND total_price<=150 AND total_price<=? AND created_at<=? $after ORDER BY created_at,id LIMIT ?",*params.toTypedArray()) {
+            val rows=c.economyRows("SELECT id,created_at FROM economy_market_listings WHERE status='active' AND total_price<=? AND created_at<=? $after ORDER BY created_at,id LIMIT ?",*params.toTypedArray()) {
                 it.getObject(1,UUID::class.java) to it.getObject(2,OffsetDateTime::class.java).toInstant()
             }
             scanAfter=if(rows.size<limit) null else rows.last().let { it.second to it.first }
@@ -316,8 +320,8 @@ internal fun mergeNeighborState(c: Connection,target: UUID,source: UUID) {
     c.economyUpdate("""INSERT INTO neighbor_daily_usage(user_id,trade_day,used_lots,spent_coins)
         SELECT ?,trade_day,used_lots,spent_coins FROM neighbor_daily_usage WHERE user_id=?
         ON CONFLICT(user_id,trade_day) DO UPDATE SET
-        used_lots=LEAST(10000000000,neighbor_daily_usage.used_lots+EXCLUDED.used_lots),
-        spent_coins=LEAST(10000000000,neighbor_daily_usage.spent_coins+EXCLUDED.spent_coins)""",target,source)
+        used_lots=LEAST(9007199254740991,neighbor_daily_usage.used_lots+EXCLUDED.used_lots),
+        spent_coins=LEAST(9007199254740991,neighbor_daily_usage.spent_coins+EXCLUDED.spent_coins)""",target,source)
     c.economyUpdate("""INSERT INTO neighbor_shop_cycles(user_id,cycle_day,offers,purchased_items,created_at)
         SELECT ?,cycle_day,offers,purchased_items,created_at FROM neighbor_shop_cycles WHERE user_id=?
         ON CONFLICT(user_id,cycle_day) DO UPDATE SET purchased_items=COALESCE((SELECT jsonb_agg(DISTINCT value)

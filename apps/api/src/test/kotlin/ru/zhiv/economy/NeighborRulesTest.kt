@@ -1,6 +1,7 @@
 package ru.zhiv.economy
 
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.encodeToJsonElement
 import org.junit.jupiter.api.Test
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.world.WorldEquipment
@@ -31,12 +32,12 @@ class NeighborRulesTest {
     @Test fun `shipped neighbor is a developed world character with bounded support rather than unlimited market liquidity`() {
         val config = NeighborRules.validate(settings)
         assertEquals("Берест", config.name)
-        assertEquals(3, config.buildings["home"])
-        assertEquals(3, config.offerSlots)
+        assertEquals(EconomyRules.catalog.buildings.single { it.id=="home" }.levels.maxOf { it.level }, config.buildings["home"])
+        assertEquals(3L, config.offerSlots)
         assertEquals(1L, config.offerQuantity.toLong())
         assertEquals(180L, config.firstDelaySeconds.toLong())
         assertEquals(21600L, config.staleAfterSeconds.toLong())
-        assertEquals(2, config.maxLotsPerDay)
+        assertEquals(2L, config.maxLotsPerDay)
         assertEquals(300L, config.dailyBudgetCoins)
         assertEquals(150L, config.maxLotCoins)
         assertEquals(10000L, config.globalDailyBudgetCoins)
@@ -45,17 +46,14 @@ class NeighborRulesTest {
 
     @Test fun `managed settings reject unsafe prices budgets schedule quantities and unrecognised world content`() {
         val invalid = listOf(
-            settings.copy(offerSlots = 0), settings.copy(offerSlots = 4),
-            settings.copy(offerQuantity = 0), settings.copy(offerQuantity = 6),
-            settings.copy(maxLotsPerDay = -1), settings.copy(maxLotsPerDay = 3),
-            settings.copy(dailyBudgetCoins = -1), settings.copy(dailyBudgetCoins = 301),
-            settings.copy(maxLotCoins = -1), settings.copy(maxLotCoins = 151),
-            settings.copy(globalDailyBudgetCoins = -1), settings.copy(globalDailyBudgetCoins = 10001),
-            settings.copy(dailyBudgetCoins = 100, maxLotCoins = 150),
-            settings.copy(buyPriceBps = 4999), settings.copy(buyPriceBps = 10001),
-            settings.copy(sellPriceBps = 9999), settings.copy(sellPriceBps = 20001),
-            settings.copy(firstDelaySeconds = 179), settings.copy(firstDelaySeconds = 86401),
-            settings.copy(staleAfterSeconds = 21599), settings.copy(staleAfterSeconds = 604801),
+            settings.copy(offerSlots = -1), settings.copy(offerSlots = NeighborRules.MAX_SAFE_SETTING+1),
+            settings.copy(offerQuantity = 0), settings.copy(offerQuantity = ECONOMY_MAX_ITEMS+1),
+            settings.copy(maxLotsPerDay = -1), settings.copy(maxLotsPerDay = NeighborRules.MAX_SAFE_SETTING+1),
+            settings.copy(dailyBudgetCoins = -1), settings.copy(dailyBudgetCoins = NeighborRules.MAX_SAFE_SETTING+1),
+            settings.copy(maxLotCoins = -1), settings.copy(maxLotCoins = ECONOMY_MAX_BALANCE+1),
+            settings.copy(globalDailyBudgetCoins = -1), settings.copy(globalDailyBudgetCoins = NeighborRules.MAX_SAFE_SETTING+1),
+            settings.copy(buyPriceBps = -1), settings.copy(sellPriceBps = -1),
+            settings.copy(firstDelaySeconds = -1), settings.copy(staleAfterSeconds = -1),
             settings.copy(activeFromHourUtc = -1), settings.copy(activeFromHourUtc = 24),
             settings.copy(activeUntilHourUtc = 0), settings.copy(activeUntilHourUtc = 25),
             settings.copy(activeFromHourUtc = 12, activeUntilHourUtc = 12),
@@ -104,6 +102,24 @@ class NeighborRulesTest {
         }
     }
 
+    @Test fun `administrator values are independent and use exact overflow safe prices`() {
+        val large = settings.copy(offerSlots=50,offerQuantity=20,maxLotsPerDay=50,dailyBudgetCoins=100000,
+            maxLotCoins=3000,globalDailyBudgetCoins=1000000,firstDelaySeconds=0,staleAfterSeconds=0,
+            sellPriceBps=1000,buyPriceBps=50000)
+        NeighborRules.validate(large)
+        NeighborRules.validate(large.copy(maxLotCoins=3000,dailyBudgetCoins=300,offerSlots=0,allowedItemIds=emptyList()))
+        assertEquals(30L,NeighborRules.sellPrice(30,10,large))
+        assertEquals(1500L,NeighborRules.buyCap(30,10,large))
+        assertEquals(0L,NeighborRules.sellPrice(30,10,large.copy(sellPriceBps=0)))
+        val extreme=large.copy(sellPriceBps=NeighborRules.MAX_SAFE_SETTING,buyPriceBps=NeighborRules.MAX_SAFE_SETTING)
+        assertEquals(ECONOMY_MAX_BALANCE+1,NeighborRules.sellPrice(1000000,ECONOMY_MAX_ITEMS,extreme))
+        assertEquals(ECONOMY_MAX_BALANCE,NeighborRules.buyCap(1000000,ECONOMY_MAX_ITEMS,extreme))
+        assertEquals(Instant.EPOCH,NeighborRules.candidateCutoff(Instant.parse("2026-10-25T10:00:00Z"),
+            extreme.copy(firstDelaySeconds=NeighborRules.MAX_SAFE_SETTING,staleAfterSeconds=NeighborRules.MAX_SAFE_SETTING)))
+        val command=EconomyCommand(UUID.randomUUID().toString(),"ABCD-EFGH-JKMP",0,"buy_offer",UUID.randomUUID().toString(),quantity=20000,totalPrice=0)
+        assertEquals(command,decodeEconomyCommand(economyJson.encodeToJsonElement(command),NeighborRules::validatePurchase))
+    }
+
     @Test fun `UTC schedule is inclusive at opening exclusive at closing and respects global disable`() {
         val opening = Instant.parse("2026-10-23T08:00:00Z")
         val config = settings.copy(activeFromHourUtc = 8, activeUntilHourUtc = 20)
@@ -143,7 +159,7 @@ class NeighborRulesTest {
         NeighborRules.validatePurchase(command)
         for (bad in listOf(command.copy(requestId = "bad"), command.copy(ownerPublicId = ""),
             command.copy(action = "buy_listing"), command.copy(targetId = "berries"),
-            command.copy(quantity = 0), command.copy(quantity = 6), command.copy(totalPrice = 0),
+            command.copy(quantity = 0), command.copy(quantity = ECONOMY_MAX_ITEMS+1), command.copy(totalPrice = -1),
             command.copy(totalPrice = ECONOMY_MAX_BALANCE + 1), command.copy(expectedRevision = -1),
             command.copy(fishSelection = mapOf("fish_carp" to 1)))) {
             assertFailsWith<AuthFailure>(bad.toString()) { NeighborRules.validatePurchase(bad) }

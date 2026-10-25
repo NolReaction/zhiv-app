@@ -8,6 +8,7 @@ import ru.zhiv.identity.hasUserTextControls
 import ru.zhiv.relationships.GuestWorldScene
 import ru.zhiv.world.WorldEquipment
 import ru.zhiv.world.WorldRules
+import java.math.BigInteger
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -15,10 +16,10 @@ import java.time.ZoneOffset
     val enabled: Boolean = true, val autoBuyEnabled: Boolean = true,
     val name: String = "Берест", val description: String = "Лесной сосед и персонаж мира.",
     val buildings: Map<String, Int> = emptyMap(), val equipment: WorldEquipment = WorldEquipment(),
-    val offerSlots: Int = 3, val offerQuantity: Long = 1, val allowedItemIds: List<String> = emptyList(),
-    val sellPriceBps: Int = 12500, val buyPriceBps: Int = 10000,
+    val offerSlots: Long = 3, val offerQuantity: Long = 1, val allowedItemIds: List<String> = emptyList(),
+    val sellPriceBps: Long = 12500, val buyPriceBps: Long = 10000,
     val firstDelaySeconds: Long = 180, val staleAfterSeconds: Long = 21600,
-    val maxLotsPerDay: Int = 2, val dailyBudgetCoins: Long = 300, val maxLotCoins: Long = 150,
+    val maxLotsPerDay: Long = 2, val dailyBudgetCoins: Long = 300, val maxLotCoins: Long = 150,
     val globalDailyBudgetCoins: Long = 10000, val activeFromHourUtc: Int = 0, val activeUntilHourUtc: Int = 24,
 )
 @Serializable data class NeighborGarment(val id: String, val name: String, val slot: String, val description: String)
@@ -28,7 +29,7 @@ import java.time.ZoneOffset
 @Serializable data class NeighborShop(val cycleId: String, val refreshAt: String, val available: Boolean,
     val reason: String? = null, val offers: List<NeighborOffer>)
 @Serializable data class NeighborBuying(val enabled: Boolean, val firstDelaySeconds: Long, val staleAfterSeconds: Long,
-    val maxLotsPerDay: Int, val dailyBudgetCoins: Long, val maxLotCoins: Long, val usedLots: Long, val spentCoins: Long)
+    val maxLotsPerDay: Long, val dailyBudgetCoins: Long, val maxLotCoins: Long, val usedLots: Long, val spentCoins: Long)
 @Serializable data class NeighborView(val ownerPublicId: String, val serverTime: String, val character: NeighborCharacter,
     val shop: NeighborShop, val buying: NeighborBuying)
 @Serializable data class NeighborAdminPlayer(val publicId: String, val name: String)
@@ -54,6 +55,7 @@ interface NeighborRepository {
 }
 
 object NeighborRules {
+    const val MAX_SAFE_SETTING = 9_007_199_254_740_991L
     val exclusiveWardrobe: List<NeighborGarment> by lazy {
         NeighborRules::class.java.getResourceAsStream("/world/neighbor-wardrobe.json")!!.bufferedReader().use {
             economyJson.decodeFromString<List<NeighborGarment>>(it.readText())
@@ -68,13 +70,14 @@ object NeighborRules {
     fun validate(s: NeighborSettings): NeighborSettings {
         if (s.name.isBlank() || s.name != s.name.trim() || s.name.length > 40 || hasUserTextControls(s.name) ||
             s.description.isBlank() || s.description.length > 240 || hasUserTextControls(s.description) ||
-            s.offerSlots !in 1..3 || s.offerQuantity !in 1L..5L || s.allowedItemIds.size !in 1..100 ||
+            s.offerSlots !in 0..MAX_SAFE_SETTING || s.offerQuantity !in 1L..ECONOMY_MAX_ITEMS ||
+            s.allowedItemIds.size > EconomyRules.catalog.items.size ||
             s.allowedItemIds.distinct().size != s.allowedItemIds.size ||
             s.allowedItemIds.any { id -> EconomyRules.catalog.items.none { it.id == id && it.tradable && it.baseSellPrice > 0 && !it.id.startsWith("fish") && it.category != "special" } } ||
-            s.sellPriceBps !in 10000..20000 || s.buyPriceBps !in 5000..10000 || s.sellPriceBps < s.buyPriceBps ||
-            s.firstDelaySeconds !in 180L..86400L || s.staleAfterSeconds !in 21600L..604800L ||
-            s.maxLotsPerDay !in 0..2 || s.dailyBudgetCoins !in 0L..300L || s.maxLotCoins !in 0L..150L ||
-            s.globalDailyBudgetCoins !in 0L..10000L || s.maxLotCoins > s.dailyBudgetCoins ||
+            s.sellPriceBps !in 0..MAX_SAFE_SETTING || s.buyPriceBps !in 0..MAX_SAFE_SETTING ||
+            s.firstDelaySeconds !in 0..MAX_SAFE_SETTING || s.staleAfterSeconds !in 0..MAX_SAFE_SETTING ||
+            s.maxLotsPerDay !in 0..MAX_SAFE_SETTING || s.dailyBudgetCoins !in 0..MAX_SAFE_SETTING || s.maxLotCoins !in 0..ECONOMY_MAX_BALANCE ||
+            s.globalDailyBudgetCoins !in 0..MAX_SAFE_SETTING ||
             (s.buildings["home"] ?: 0)<2 || (s.buildings["bridge"] ?: 0)<1 || s.activeFromHourUtc !in 0..23 ||
             s.activeUntilHourUtc !in 1..24 || s.activeFromHourUtc == s.activeUntilHourUtc ||
             s.buildings.keys != EconomyRules.catalog.buildings.map { it.id }.toSet() ||
@@ -85,13 +88,22 @@ object NeighborRules {
             exclusiveWardrobe.none { it.id == id && it.slot == slot } }) invalid()
         return s
     }
-    fun sellPrice(base: Long, quantity: Long, settings: NeighborSettings): Long {
-        require(base in 1L..1_000_000L && quantity in 1L..99L)
-        return ((base * quantity * settings.sellPriceBps + 99999L) / 100000L) * 10L
+    private fun quoted(base: Long, quantity: Long, bps: Long, roundUp: Boolean): BigInteger? {
+        if(base < 0 || quantity !in 1..ECONOMY_MAX_ITEMS || bps !in 0..MAX_SAFE_SETTING) return null
+        val product = BigInteger.valueOf(base).multiply(BigInteger.valueOf(quantity)).multiply(BigInteger.valueOf(bps))
+        return product.add(BigInteger.valueOf(if(roundUp) 99999 else 0)).divide(BigInteger.valueOf(100000)).multiply(BigInteger.TEN)
     }
-    fun buyCap(base: Long, quantity: Long, settings: NeighborSettings): Long = minOf(
-        ((base * quantity * settings.buyPriceBps) / 100000L) * 10L,
-        sellPrice(base, 1, settings) * quantity)
+    /** Invalid or unrepresentable stock is filtered before constructing a public offer. */
+    fun sellPrice(base: Long, quantity: Long, settings: NeighborSettings): Long {
+        val value = quoted(base,quantity,settings.sellPriceBps,true) ?: return ECONOMY_MAX_BALANCE+1
+        return if(value > BigInteger.valueOf(ECONOMY_MAX_BALANCE)) ECONOMY_MAX_BALANCE+1 else value.toLong()
+    }
+    fun buyCap(base: Long, quantity: Long, settings: NeighborSettings): Long =
+        (quoted(base,quantity,settings.buyPriceBps,false) ?: BigInteger.ZERO)
+            .min(BigInteger.valueOf(ECONOMY_MAX_BALANCE)).toLong()
+    /** A broad, PostgreSQL-safe scan cutoff; the final exact age check remains authoritative. */
+    fun candidateCutoff(at: Instant, settings: NeighborSettings): Instant =
+        at.minusSeconds(minOf(settings.firstDelaySeconds,settings.staleAfterSeconds,maxOf(0L,at.epochSecond)))
     fun active(at: Instant, settings: NeighborSettings): Boolean {
         val hour = at.atOffset(ZoneOffset.UTC).hour
         return settings.enabled && if(settings.activeFromHourUtc < settings.activeUntilHourUtc)
@@ -103,9 +115,9 @@ object NeighborRules {
         return EconomyRules.catalog.items.filter { it.tradable && it.baseSellPrice > 0 && !it.id.startsWith("fish") && it.category != "special" && it.id in settings.allowedItemIds && it.id in opened }
     }
     fun validatePurchase(command: EconomyCommand) {
-        validateEconomyCommand(command)
+        validateEconomyCommand(command.copy(quantity=1))
         if (command.action != "buy_offer" || parseCanonicalUuidV4(command.targetId) == null ||
-            command.quantity !in 1L..5L || command.totalPrice !in 1L..ECONOMY_MAX_BALANCE || command.fishSelection != null)
+            command.quantity !in 1L..ECONOMY_MAX_ITEMS || command.totalPrice !in 0L..ECONOMY_MAX_BALANCE || command.fishSelection != null)
             throw AuthFailure("INVALID_ECONOMY_COMMAND", "Некорректная покупка у соседа", 400)
     }
 }

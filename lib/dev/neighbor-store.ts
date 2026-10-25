@@ -79,7 +79,7 @@ export function removeDevNeighborOwner(owner: string, deleteHistory = false): vo
 export function mergeDevNeighborOwners(source: string, target: string, now = Date.now()): void {
   if (source === target) return;
   const saved = data(), first = devNeighborUsage(source, now), second = devNeighborUsage(target, now);
-  saved.usage.set(target, { day: marketDay(now), usedLots: first.usedLots + second.usedLots, spentCoins: first.spentCoins + second.spentCoins });
+  saved.usage.set(target, { day: marketDay(now), usedLots: Math.min(Number.MAX_SAFE_INTEGER, first.usedLots + second.usedLots), spentCoins: Math.min(Number.MAX_SAFE_INTEGER, first.spentCoins + second.spentCoins) });
   if (saved.experienced.has(source)) saved.experienced.add(target);
   const ids = [...new Set([...devNeighborBoughtItems(source, now), ...devNeighborBoughtItems(target, now)])];
   saved.boughtItems.set(target, { day: marketDay(now), ids });

@@ -555,12 +555,15 @@ export function getDevEconomyNeighbor(token: string | undefined, now = Date.now(
     cycle = saveDevNeighborCycle(owner, now, ids.map(itemId => ({ id: crypto.randomUUID(), itemId, quantity: settings.offerQuantity,
       totalPrice: neighborOfferPrice(itemId, settings.offerQuantity, settings), purchased: false })));
   }
+  // A frozen cycle is never replenished, but unavailable goods must not remain visible after a reset or admin restriction.
+  const visibleItems = new Set(settings.allowedItemIds.filter(itemId => marketItemUnlocked(known, itemId)));
+  const offers = cycle?.offers.filter(offer => visibleItems.has(offer.itemId)) ?? [];
   const usage = devNeighborUsage(owner, now);
   return {
     ownerPublicId: owner, serverTime: new Date(now).toISOString(),
     character: { id: "berest", kind: "world_character", name: settings.name, description: settings.description,
       world: { buildings: { ...settings.buildings }, equipment: { ...settings.equipment }, gifts: [], hiddenGifts: [], jobs: [] } },
-    shop: { cycleId: day, refreshAt: marketBudgetReset(now), available: reason === null, reason, offers: structuredClone(cycle?.offers ?? []) },
+    shop: { cycleId: day, refreshAt: marketBudgetReset(now), available: reason === null, reason, offers: structuredClone(offers) },
     buying: { enabled: settings.enabled && settings.autoBuyEnabled && neighborActiveHour(settings, now), firstDelaySeconds: settings.firstDelaySeconds,
       staleAfterSeconds: settings.staleAfterSeconds, maxLotsPerDay: settings.maxLotsPerDay, dailyBudgetCoins: settings.dailyBudgetCoins,
       maxLotCoins: settings.maxLotCoins, usedLots: usage.usedLots, spentCoins: usage.spentCoins },
@@ -588,10 +591,6 @@ export function commandDevEconomyNeighbor(token: string | undefined, input: Neig
   if (turnover.buysUsed + traded > marketDailyLimit(next.buildings.home ?? 1))
     return fail("ECONOMY_MARKET_DAILY_LIMIT", "Дневной объём покупок исчерпан. Он обновится в 00:00 UTC");
   if (next.wallet.coins < offer.totalPrice) return fail("ECONOMY_RESOURCES", "Не хватает монет");
-  // A live local-buyer price change cannot turn frozen daily stock into an arbitrage source.
-  const localPrice = economyCatalog.localBuyer?.unitPrices?.[offer.itemId] ?? 0;
-  if (offer.totalPrice < Math.max(traded, localPrice * offer.quantity))
-    return fail("NEIGHBOR_OFFER_UNAVAILABLE", "Предложение временно недоступно");
   creditEconomyItems(next, { [offer.itemId]: offer.quantity });
   assertEconomyStorageTransition(value.state, next, escrowItems(owner));
   next.wallet.coins -= offer.totalPrice;
