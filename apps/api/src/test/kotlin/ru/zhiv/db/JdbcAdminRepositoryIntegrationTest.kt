@@ -19,6 +19,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.admin.AdminConfig
 import ru.zhiv.admin.AdminAnalyticsQuery
 import ru.zhiv.admin.AdminAnalyticsEventsQuery
+import ru.zhiv.admin.AdminAnalyticsExportQuery
 import ru.zhiv.admin.AdminPlayerCommand
 import ru.zhiv.economy.*
 import ru.zhiv.identity.PlayerTag
@@ -615,11 +616,79 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals("0",scalar("SELECT count(*) FROM economy_conversion_audit"))
     }
 
+    @Test fun `export keysets traverse every event across equal timestamps and keep their first cutoff`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val player = user("Игрок А"); val other = user("Игрок Б")
+        val today = LocalDate.now(ZoneOffset.UTC).toString()
+        val at = "${today}T00:00:00.000001Z"
+        repeat(235) { index ->
+            analyticsEntry(if (index % 2 == 0) player else other, if (index % 3 == 0) "start_production" else "sell", at,
+                coins = if (index % 3 == 0) 0 else index.toLong() + 1, target = "wood")
+        }
+        analyticsEntry(admin, "sell", at, coins = 999, target = "wood")
+        analyticsEntry(player, "legacy_conversion", at, coins = 999)
+        val repo = repository(admin)
+        val query = AdminAnalyticsExportQuery(AdminAnalyticsQuery(today, today), limit = 37)
+        val first = repo.analyticsEventsExport(admin.hash, query)
+        assertEquals(235L, first.total); assertEquals(37, first.events.size); assertNotNull(first.nextCursor)
+        val late = analyticsEntry(player, "sell", Instant.parse(first.snapshotAt).plusNanos(1000).toString(), coins = 777)
+        val before = scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id,source_key)::text FROM economy_ledger e")
+        val events = first.events.toMutableList()
+        var page = first
+        while (page.nextCursor != null) {
+            page = repo.analyticsEventsExport(admin.hash, query.copy(cursor = page.nextCursor))
+            assertEquals(first.total, page.total); assertEquals(first.snapshotAt, page.snapshotAt)
+            assertEquals(first.startAt, page.startAt); assertEquals(first.endAt, page.endAt)
+            events += page.events
+            assertTrue(events.size <= first.total)
+        }
+        assertEquals(235, events.size); assertEquals(235, events.map { it.id }.distinct().size)
+        assertTrue(events.any { it.kind == "start_production" && it.coins == 0L }, "zero-resource operations also belong to the export")
+        assertFalse(events.any { it.id == "${player.publicId}:command:$late" || it.publicId == admin.publicId || it.kind == "legacy_conversion" })
+        val expected = listOf(0, 100, 200).flatMap { offset -> repo.analyticsEvents(admin.hash,
+            AdminAnalyticsEventsQuery(query.query, offset = offset, limit = 100, at = first.snapshotAt)).events }
+        assertEquals(expected, events, "UUID and source-key ties preserve exactly the journal's SQL ordering")
+        assertEquals(before, scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id,source_key)::text FROM economy_ledger e"))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_profiles"))
+        assertEquals(403, assertFailsWith<AuthFailure> { repo.analyticsEventsExport(player.hash, query.copy(limit = 0)) }.status)
+        execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?", admin.hash)
+        assertEquals(401, assertFailsWith<AuthFailure> { repo.analyticsEventsExport(admin.hash, query.copy(cursor = first.nextCursor)) }.status)
+    }
+
+    @Test fun `all-history export includes old selected-player events while retaining exact filters and scope`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val player = user("Мохлик"); val other = user("Мохлик похожий")
+        val today = LocalDate.now(ZoneOffset.UTC).toString()
+        analyticsEntry(player, "sell", "2020-01-02T12:00:00Z", coins = -3, items = mapOf("wood" to 1L), target = "wood")
+        analyticsEntry(player, "sell", "2020-01-03T12:00:00Z", coins = 2, target = "wood")
+        analyticsEntry(other, "sell", "2020-01-02T12:00:00Z", coins = -99, target = "wood")
+        analyticsEntry(admin, "sell", "2020-01-02T12:00:00Z", coins = 7, target = "wood")
+        val repo = repository(admin)
+        val query = AdminAnalyticsExportQuery(AdminAnalyticsQuery(today, today, player.publicId, "all"), allTime = true, limit = 1)
+        val first = repo.analyticsEventsExport(admin.hash, query)
+        assertEquals("0001-01-01", first.from); assertEquals(today, first.to)
+        assertEquals("0001-01-01T00:00:00Z", first.startAt); assertEquals(first.snapshotAt, first.endAt)
+        assertEquals(2L, first.total); assertEquals(player.publicId, first.events.single().publicId)
+        val last = repo.analyticsEventsExport(admin.hash, query.copy(cursor = first.nextCursor))
+        assertNull(last.nextCursor); assertEquals(2L, last.total)
+        assertEquals(listOf(2L, -3L), (first.events + last.events).map { it.coins })
+        val expense = repo.analyticsEventsExport(admin.hash, query.copy(kind = "sell", resource = "coins", direction = "out", limit = 1000))
+        assertEquals(1L, expense.total); assertEquals(-3L, expense.events.single().coins)
+        assertEquals(0L, repo.analyticsEventsExport(admin.hash, query.copy(allTime = false)).total)
+        assertEquals(400, assertFailsWith<AuthFailure> {
+            repo.analyticsEventsExport(admin.hash, query.copy(query = query.query.copy(q = "Мохлик")))
+        }.status)
+        assertEquals(400, assertFailsWith<AuthFailure> {
+            repo.analyticsEventsExport(admin.hash, query.copy(query = query.query.copy(q = other.publicId), cursor = first.nextCursor))
+        }.status)
+        assertEquals(0L, repo.analyticsEventsExport(admin.hash, query.copy(query = query.query.copy(q = admin.publicId, scope = "players"))).total)
+        assertEquals(1L, repo.analyticsEventsExport(admin.hash, query.copy(query = query.query.copy(q = admin.publicId, scope = "all"))).total)
+        assertEquals("0", scalar("SELECT count(*) FROM economy_profiles"))
+    }
+
     @Test fun `HTTP analytics authorize before reads and reject duplicate invalid or oversized filters`() = testApplication {
         val admin = user(); val visitor = user(); val repo = repository(admin)
         application { installZhivApi(identities,identities,config,admin=repo) }
         val cookie = "${config.cookieName}=${admin.raw}"
-        for (path in listOf("/api/v1/admin/analytics","/api/v1/admin/analytics/events")) {
+        for (path in listOf("/api/v1/admin/analytics","/api/v1/admin/analytics/events","/api/v1/admin/analytics/events/export")) {
             assertEquals(HttpStatusCode.Unauthorized,client.get(path) { header("X-Role","admin") }.status)
             assertEquals(HttpStatusCode.Forbidden,client.get(path) {
                 header(HttpHeaders.Cookie,"${config.cookieName}=${visitor.raw}"); header("X-Admin-Public-Id",admin.publicId)
@@ -644,9 +713,16 @@ class JdbcAdminRepositoryIntegrationTest {
                 header(HttpHeaders.Cookie,cookie)
             }.status,filter)
         }
+        for (filter in listOf("kind=sell&kind=claim_job", "resource=wood&resource=coins", "direction=in&direction=out",
+            "cursor=a&cursor=b", "allTime=true&allTime=false", "limit=1&limit=2", "limit=1001", "limit=0", "allTime=1",
+            "cursor=bad", "allTime=true&q=Мохлик", "kind=bad%20kind", "resource=bad%20resource")) {
+            assertEquals(HttpStatusCode.BadRequest, client.get("/api/v1/admin/analytics/events/export?$filter") {
+                header(HttpHeaders.Cookie, cookie)
+            }.status, filter)
+        }
         assertEquals("0",scalar("SELECT count(*) FROM economy_profiles"))
         execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",admin.hash)
-        for (path in listOf("/api/v1/admin/analytics","/api/v1/admin/analytics/events"))
+        for (path in listOf("/api/v1/admin/analytics","/api/v1/admin/analytics/events","/api/v1/admin/analytics/events/export"))
             assertEquals(HttpStatusCode.Unauthorized,client.get(path) { header(HttpHeaders.Cookie,cookie) }.status)
         assertEquals(403,assertFailsWith<AuthFailure> { repository().analytics(visitor.hash,AdminAnalyticsQuery()) }.status)
         assertEquals(401,assertFailsWith<AuthFailure> { repo.analyticsEvents(tokens.issue().hash,AdminAnalyticsEventsQuery()) }.status)

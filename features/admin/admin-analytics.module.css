@@ -105,6 +105,17 @@
 .deltas li[data-sign="negative"] strong { color: #e9bb7e; }
 .pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 18px; color: #b1bdab; font-size: 14px; }
 .pagination > div { display: flex; gap: 8px; }
+.exportPanel { display: grid; gap: 12px; margin-block: 18px; padding: 16px; border: 1px solid #46513e; border-radius: 12px; background: #171e16; }
+.exportHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.exportHeading > div { flex: 1 1 250px; min-width: 0; }
+.exportHeading > .field { flex: 0 1 260px; width: 100%; margin: 0; }
+.exportPanel .note { margin: 0; overflow-wrap: anywhere; }
+.exportHeading strong { display: block; margin-bottom: 7px; }
+.exportActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.exportActions > button { min-width: 0; }
+.exportActions > button:disabled { opacity: .45; cursor: default; }
+.exportProgress { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #b1bdab; font-size: 14px; }
+.exportProgress progress { flex: 1 1 180px; height: 8px; accent-color: #bedc9f; }
 .workspace :is(button, input, select, summary, [tabindex]):focus-visible { outline: 2px solid #e1d87f; outline-offset: 3px; }
 @media (max-width: 1000px) { .filterGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .twoColumns { grid-template-columns: 1fr; } }
 @media (max-width: 650px) {
