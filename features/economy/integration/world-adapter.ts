@@ -9,7 +9,7 @@ import type { EconomySceneResidents } from "@/features/world/state/economy/econo
 /** A scene click selects existing economy UI; it never upgrades a local site. */
 export function economyBuildingDestination(buildingId: string, economy: EconomyView | null | undefined): { tab: "buildings" | "production"; focusId: string } {
   const producing = (economy?.buildings[buildingId] ?? 0) > 0
-    && economy?.catalog.recipes.some(recipe => recipe.buildingId === buildingId)
+    && economy?.catalog.recipes.some(recipe => !recipe.retired && recipe.buildingId === buildingId)
     && !economy.jobs.some(job => job.kind === "construction" && job.targetId === buildingId);
   return { tab: producing ? "production" : "buildings", focusId: buildingId };
 }

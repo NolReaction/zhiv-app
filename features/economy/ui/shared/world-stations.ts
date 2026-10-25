@@ -78,13 +78,13 @@ export function worldMissingRequirements(state: EconomyView, required: Record<st
   return Object.entries(required).filter(([id, level]) => (state.buildings[id] ?? 0) < level).map(([id, level]) => ({ id, level, current: state.buildings[id] ?? 0 }));
 }
 export function worldMaterialSource(state: EconomyView, itemId: string) {
-  const recipes = state.catalog.recipes.filter(entry => (entry.rewards[itemId] ?? 0) > 0);
+  const recipes = state.catalog.recipes.filter(entry => !entry.retired && (entry.rewards[itemId] ?? 0) > 0);
   const recipe = recipes.find(entry => !worldMissingRequirements(state, worldRequirements(entry, entry)).length && !worldRecipeUnlockReason(state, entry));
   if (recipe) return { kind: "production" as const, stationId: recipe.buildingId, targetId: recipe.id };
   const fish = state.catalog.fishing && fishClassForItem(itemId, state.catalog.fishing);
-  const explorations = state.catalog.explorations.filter(entry => ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
+  const explorations = state.catalog.explorations.filter(entry => !entry.retired && ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
   const exploration = explorations.find(entry => explorationActorId(entry) === "miner")
-    ?? state.catalog.explorations.find(entry => (entry.rewards[itemId] ?? 0) > 0 && explorationActorId(entry) === "miner"
+    ?? state.catalog.explorations.find(entry => !entry.retired && (entry.rewards[itemId] ?? 0) > 0 && explorationActorId(entry) === "miner"
       && entry.requiredHomeLevel <= (state.buildings.home ?? 1)
       && worldMissingRequirements(state, worldRequirements(entry)).every(requirement => requirement.id === "quarry"))
     ?? explorations[0];
@@ -120,6 +120,7 @@ export function worldRecipeUnlockReason(state: EconomyView, recipe: WorldRecipe)
 }
 /** Explain permanent access separately from temporary stock, queues and wallet limits. */
 export function worldRecipeAccessReason(state: EconomyView, recipe: WorldRecipe) {
+  if (recipe.retired) return "Этот способ больше недоступен. Выберите действующий рецепт";
   const required = worldMissingRequirements(state, worldRequirements(recipe, recipe));
   const names: Record<string, string> = { home: "дома", dryer: "костра", garden: "ягодного куста", workshop: "мастерской",
     kiln: "печи", warehouse: "кладовой", woodlot: "лесного участка", quarry: "шахты", bridge: "моста", lighthouse: "маяка" };

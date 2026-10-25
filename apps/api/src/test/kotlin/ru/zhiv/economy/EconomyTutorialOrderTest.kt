@@ -33,7 +33,7 @@ class EconomyTutorialOrderTest {
         assertTrue(fresh.tutorialOrder.ingredientsClaimed); assertFalse(fresh.tutorialOrder.completed)
         assertEquals(EconomyRules.catalog.onboarding!!.residentOrder, fresh.tutorialOrder.terms)
         assertEquals(mapOf("berries" to 1L), fresh.tutorialOrder.terms!!.items)
-        assertEquals(15L, fresh.tutorialOrder.terms!!.coins)
+        assertEquals(13L, fresh.tutorialOrder.terms!!.coins)
         assertNull(EconomyStageOrders.offer(fresh))
         assertEquals(50L, EconomyRules.storage(fresh).capacity)
         fails("ECONOMY_TUTORIAL_ORDER_CLAIMED") { claim(fresh) }
@@ -63,12 +63,12 @@ class EconomyTutorialOrderTest {
         assertEquals(before.jobs, after.jobs); assertEquals(before.buildings, after.buildings)
     }
 
-    @Test fun `one teaching request opens three independent house deliveries paying 315 altogether`() {
+    @Test fun `one teaching request opens three independent house deliveries paying 338 altogether`() {
         var state = EconomyRules.initial().copy(inventory = mapOf("berries" to 1L, "wood" to 2L, "berry_compote" to 2L, "planks" to 2L))
         val board = EconomyFood.residentOrderBoard(state, now)
         state = complete(state)
         assertTrue(state.tutorialOrder.completed); assertEquals(1, state.tutorialOrder.step)
-        assertEquals(115L, state.wallet.coins)
+        assertEquals(113L, state.wallet.coins)
         assertEquals("stage1_wood_order", EconomyStageOrders.offer(state)!!.id)
         fails("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE") { complete(state) }
         for ((index, request) in course.orders.withIndex()) {
@@ -81,8 +81,8 @@ class EconomyTutorialOrderTest {
             assertEquals(index == course.orders.lastIndex, EconomyStageOrders.progress(state).completed)
             fails("ECONOMY_STAGE_ORDER_UNAVAILABLE") { EconomyRules.apply(state, command("complete_resident_order", request.id), now) }
         }
-        assertTrue(state.inventory.isEmpty()); assertEquals(415L, state.wallet.coins)
-        assertEquals(4L, state.residentOrders.completed); assertEquals(315L, state.residentOrders.earnedCoins)
+        assertTrue(state.inventory.isEmpty()); assertEquals(438L, state.wallet.coins)
+        assertEquals(4L, state.residentOrders.completed); assertEquals(338L, state.residentOrders.earnedCoins)
         assertEquals(board.offers, EconomyFood.residentOrderBoard(state, now).offers)
         assertNull(EconomyStageOrders.offer(state)); fails("ECONOMY_TUTORIAL_ORDER_CLAIMED") { claim(state) }
     }
@@ -135,7 +135,7 @@ class EconomyTutorialOrderTest {
     @Test fun `missing resources and wallet overflow preserve tutorial progress`() {
         val missing = EconomyRules.initial()
         fails("ECONOMY_RESOURCES") { complete(missing) }
-        val full = missing.copy(inventory = mapOf("berries" to 1L), wallet = EconomyWallet(ECONOMY_MAX_BALANCE - 14))
+        val full = missing.copy(inventory = mapOf("berries" to 1L), wallet = EconomyWallet(ECONOMY_MAX_BALANCE - 12))
         fails("ECONOMY_CAPACITY") { complete(full) }
         assertEquals(0, full.tutorialOrder.step); assertFalse(full.tutorialOrder.completed)
         fails("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE") { EconomyRules.apply(missing, command("replace_resident_order"), now) }
@@ -144,7 +144,7 @@ class EconomyTutorialOrderTest {
     }
 
     @Test fun `home two needs the tutorial then three house deliveries while older courses stay completed`() {
-        val before = EconomyRules.initial().copy(wallet = EconomyWallet(250), inventory = mapOf("wood" to 3L, "stone" to 2L, "planks" to 2L))
+        val before = EconomyRules.initial().copy(wallet = EconomyWallet(300), inventory = mapOf("wood" to 3L, "stone" to 2L, "planks" to 2L))
         fails("ECONOMY_TUTORIAL_REQUIRED") { EconomyRules.apply(before, command("start_construction", "home"), now) }
         val built = before.copy(buildings = before.buildings + mapOf("woodlot" to 1, "dryer" to 1, "workshop" to 1),
             tutorialOrder = before.tutorialOrder.copy(step = 1, completed = true))

@@ -269,7 +269,7 @@ test("paid purchases grant limited XP only after a successful debit", () => {
 
 test("work estimates include raw inputs and upstream processing and flag random catches", () => {
   const state = developed(), mixed = effort.orderEffort(state, { dried_berries: 1, rope: 1 });
-  assert.equal(mixed.obtainable, true); assert.equal(mixed.manufacturingSeconds, 2880);
+  assert.equal(mixed.obtainable, true); assert.equal(mixed.manufacturingSeconds, 900);
   assert(mixed.effortSeconds > mixed.manufacturingSeconds); assert(mixed.criticalPathSeconds < mixed.effortSeconds);
   const fish = effort.orderEffort(state, { fish_legendary: 1 });
   assert.equal(fish.obtainable, true); assert.equal(fish.fishingUncertain, true); assert(fish.effortSeconds > 0);

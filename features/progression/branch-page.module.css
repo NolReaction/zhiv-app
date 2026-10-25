@@ -1,6 +1,6 @@
 .page { --branch-panel: #182119; --branch-muted: #afbeaa; --branch-line: #c5dbac26; height: 100dvh; min-height: 380px; width: 100%; overflow: hidden; display: flex; flex-direction: column; color: #edf3e5; background: #111910; }
 .page * { box-sizing: border-box; }
-.page button, .page input, .page select { font: inherit; }
+:where(.page) button, :where(.page) input, :where(.page) select { font: inherit; }
 .page button, .page select, .page a { -webkit-tap-highlight-color: transparent; }
 .page button { cursor: pointer; }
 .page button:disabled { opacity: .45; cursor: default; }

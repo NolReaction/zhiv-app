@@ -192,6 +192,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val requiredRecipes: Map<String, Long> = emptyMap(),
     // Older clients accept an omitted flag, but reject an explicit null.
     @EncodeDefault(EncodeDefault.Mode.NEVER) val baseCampfire: Boolean? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val retired: Boolean = false,
 ) {
     init {
         require(buildingLevel > 0)
@@ -201,10 +202,12 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     }
     val effectiveBuildingLevel: Int get() = if (baseCampfire == true) 0 else buildingLevel
 }
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyExploration(
     val id: String, val name: String, val description: String, val requiredHomeLevel: Int = 1,
     val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
     val requiredBuildings: Map<String, Int> = emptyMap(), val activity: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val retired: Boolean = false,
 ) { init { require(activity == null || activity == "mining") } }
 @Serializable data class EconomyMarketConfig(val requiredHomeLevel: Int = 2, val requiredExplorations: Long = 1, val maxListings: Int = 10, val maxLotQuantity: Long = 99, val maxPriceMultiplier: Long = 2, val feeBps: Int = 500,
     val showcaseSlots: Int = 12, val showcasePerSeller: Int = 2, val showcaseRefreshSeconds: Long = 300,
@@ -228,6 +231,18 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
 @Serializable data class EconomyProductionSlots(val upgrades: List<EconomyProductionSlotUpgrade> = emptyList()) {
     init { require(upgrades.size <= 2 && upgrades.withIndex().all { (index, upgrade) -> upgrade.slots == index + 2 }) }
 }
+/** Reference technologies price occupied work, independently of the player's bonuses. */
+@Serializable data class EconomyTimeEconomy(
+    val version: Int, val coinsPerMinute: Long, val constructionCoinsPerMinute: Long, val orderBonusBps: Int,
+    val baselineRecipes: Map<String, String>, val baselineExplorations: Map<String, String>,
+    val externalPrices: Map<String, Long>,
+) {
+    init {
+        require(version == 1 && coinsPerMinute in 1L..1_000_000L && constructionCoinsPerMinute in 1L..1_000_000L && orderBonusBps in 0..10_000)
+        require(externalPrices.values.all { it in 0L..ECONOMY_MAX_BALANCE })
+    }
+}
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyCatalog(
     val version: Int, val maxBatch: Int, val items: List<EconomyItem>, val buildings: List<EconomyBuilding>,
     val recipes: List<EconomyRecipe>, val explorations: List<EconomyExploration>, val market: EconomyMarketConfig = EconomyMarketConfig(),
@@ -239,6 +254,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val stageOrders: List<EconomyStageOrderCourse> = emptyList(),
     val leaftailShop: EconomyLeaftailShopConfig? = null,
     val tradeRelations: EconomyTradeRelationsCatalog? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val timeEconomy: EconomyTimeEconomy? = null,
 )
 @Serializable data class EconomyStorage(
     val capacity: Long, val used: Long, val reserved: Long, val available: Long, val overflow: Long,

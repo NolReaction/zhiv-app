@@ -25,15 +25,15 @@ function fixture({ pearls = 1000, remaining = 900_000, kind = "construction", ta
   row.state.jobs = [job];
   return { player, row, job, read: (at = now) => economy.getDevEconomy(player.token, at) };
 }
-const command = (f, price = 12, extra = {}) => ({ requestId: crypto.randomUUID(), ownerPublicId: f.player.me.user.publicId,
+const command = (f, price = 6, extra = {}) => ({ requestId: crypto.randomUUID(), ownerPublicId: f.player.me.user.publicId,
   expectedRevision: f.read().revision, action: "speedup_construction", targetId: f.job.id, quantity: 1, totalPrice: price, ...extra });
 const issue = (f, c, at = now) => economy.commandDevEconomy(f.player.token, c, at);
 
-test("construction quotes use the shared curve and explicitly retain legacy linear fallback", () => {
-  assert.equal(model.economyCatalog.constructionSpeedup.secondsPerPearl, 15000);
+test("construction quotes cost one visible pearl per five minutes and explicitly retain legacy fallback", () => {
+  assert.equal(model.economyCatalog.constructionSpeedup.secondsPerPearl, 300);
   const f = fixture();
-  for (const [remaining, price] of [[-1, 0], [0, 0], [1, 1], [60000, 1], [60001, 2], [600000, 4], [900000, 6],
-    [3600000, 20], [3600001, 21], [86400000, 260], [172800000, 384]]) {
+  for (const [remaining, price] of [[-1, 0], [0, 0], [1, 1], [60000, 1], [60001, 1], [300000, 1], [300001, 2], [600000, 2], [900000, 3],
+    [3600000, 12], [3600001, 13], [86400000, 288], [172800000, 576]]) {
     assert.equal(rules.constructionSpeedupPrice({ ...f.job, finishesAt: new Date(now + remaining).toISOString() }, now), price * 2);
   }
   assert.equal(rules.constructionSpeedupPrice(f.job, now, { secondsPerPearl: 600, priceStepPearls: 2 }), 76, "the UI may quote the server-supplied policy");
@@ -46,7 +46,7 @@ test("speedup spends only current pearls and atomically completes the paid const
   const f = fixture();
   const before = f.read();
   const result = issue(f, command(f, 20));
-  assert.equal(result.state.wallet.pearls, 988, "accepted quote is an upper limit, not a client-controlled debit");
+  assert.equal(result.state.wallet.pearls, 994, "accepted quote is an upper limit, not a client-controlled debit");
   assert.equal(result.state.wallet.coins, 710);
   assert.deepEqual(result.state.inventory, before.inventory);
   assert.equal(result.state.buildings.home, 2);
@@ -57,7 +57,7 @@ test("speedup spends only current pearls and atomically completes the paid const
 
 test("delayed confirmation pays a lower price and ready construction is completed free", () => {
   const cheaper = fixture();
-  assert.equal(issue(cheaper, command(cheaper, 12), now + 300_000).state.wallet.pearls, 992);
+  assert.equal(issue(cheaper, command(cheaper, 6), now + 300_000).state.wallet.pearls, 996);
   for (const at of [now + 900_000, now + 900_001]) {
     const ready = fixture({ pearls: 0 });
     const completed = issue(ready, command(ready, 3), at).state;
@@ -68,7 +68,7 @@ test("delayed confirmation pays a lower price and ready construction is complete
 });
 
 test("insufficient pearls and unaccepted higher quotes leave job wallet revision and receipts untouched", () => {
-  for (const [pearls, price, code] of [[11, 12, "ECONOMY_PEARLS"], [1000, 10, "ECONOMY_SPEEDUP_PRICE_CHANGED"], [1000, 0, "ECONOMY_SPEEDUP_PRICE_CHANGED"]]) {
+  for (const [pearls, price, code] of [[5, 6, "ECONOMY_PEARLS"], [1000, 4, "ECONOMY_SPEEDUP_PRICE_CHANGED"], [1000, 0, "ECONOMY_SPEEDUP_PRICE_CHANGED"]]) {
     const f = fixture({ pearls });
     const before = f.read(), c = command(f, price);
     assert.throws(() => issue(f, c), { code });
@@ -98,7 +98,7 @@ test("lost response retry spends once and a second device cannot finish or pay a
   const replay = issue(f, accepted, now + 1_000_000);
   assert.equal(replay.replayed, true);
   assert.equal(replay.acceptedRevision, first.acceptedRevision);
-  assert.equal(replay.state.wallet.pearls, 988);
+  assert.equal(replay.state.wallet.pearls, 994);
   assert.equal(replay.state.revision, first.state.revision);
   assert.throws(() => issue(f, { ...accepted, totalPrice: 40 }), { code: "ECONOMY_REQUEST_CONFLICT" });
   assert.throws(() => issue(f, command(f)), { code: "ECONOMY_JOB_GONE" });

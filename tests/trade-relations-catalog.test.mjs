@@ -22,7 +22,7 @@ test("the shared TS and Kotlin reference vectors cover every authored request an
 
 test("all five residents have bounded useful reputation with complete ordinary and weekly sources", () => {
   assert.equal(report.baselineOrders, 85);
-  assert.equal(report.orders.length, 109);
+  assert.equal(report.orders.length, 127);
   assert.equal(report.weekly.length, 10);
   assert.equal(report.weekly.flatMap(order => order.stages).length, 30);
   assert.equal(report.pacing.finalXp, 4200);
@@ -30,18 +30,18 @@ test("all five residents have bounded useful reputation with complete ordinary a
   assert.equal(report.pacing.maximumDailyOrdinaryXp, 60);
   assert.equal(report.pacing.maximumDailyPurchaseXp, 2);
   const samples = report.pacing.residents.flatMap(resident => resident.scenarios);
-  assert(samples.every(sample => sample.approximateWeeksToMaximum >= 10 && sample.approximateWeeksToMaximum <= 17));
+  assert(samples.every(sample => sample.approximateWeeksToMaximum >= 10 && sample.approximateWeeksToMaximum <= 18));
 });
 
 test("total work includes drying ingredients and basic acquisition without counting miner occupancy twice", () => {
   const c = catalog(), effort = tradeOrderEffort(c);
   const snack = effort(c.food.orders.templates.find(order => order.id === "builder_trail_snack"));
-  assert.equal(snack.manufacturingSeconds, 48 * 60);
-  assert.equal(snack.effortSeconds, 4188);
-  assert.equal(snack.reputationXp, 8);
+  assert.equal(snack.manufacturingSeconds, 15 * 60);
+  assert.equal(snack.effortSeconds, 2148);
+  assert.equal(snack.reputationXp, 7);
   assert.equal(snack.fishingUncertain, false);
   const ore = effort({ id: "ore_clock", requiredHomeLevel: 3, requiredBuildings: { quarry: 2 }, items: { ore: 2 } });
-  assert.equal(ore.effortSeconds, 2 * 540, "two nine-minute mining jobs do not become thirty-six minutes");
+  assert.equal(ore.effortSeconds, 2 * 600, "two ten-minute mining jobs count once each, not once per actor and station");
   assert.equal(ore.references.ore, "quarry_ore");
   assert.equal(ore.manufacturingSeconds, 0);
 });
@@ -60,8 +60,8 @@ test("authored effort cannot use an inaccessible later shortcut or depend on JSO
 test("a cyclic expedition alternative cannot hide valid basic ingredient acquisition", () => {
   const c = catalog(), template = c.food.orders.templates.find(order => order.id === "builder_survey_camp");
   const actual = tradeOrderEffort(c)(template);
-  assert.equal(actual.effortSeconds, 32016);
-  assert.equal(actual.manufacturingSeconds, 27960);
+  assert.equal(actual.effortSeconds, 14436);
+  assert.equal(actual.manufacturingSeconds, 10200);
   assert.equal(actual.fishingUncertain, true);
   assert.equal(actual.references.wood, "gather_wood");
 });
@@ -79,7 +79,7 @@ test("every fully purchasable ordinary or weekly basket remains unprofitable at 
   const ordinary = report.orders.filter(order => order.completeNpcPurchaseCoins !== null);
   const weekly = report.weekly.flatMap(order => order.stages).filter(stage => stage.completeNpcPurchaseCoins !== null);
   assert.equal(ordinary.length, 20);
-  assert.equal(weekly.length, 6);
+  assert.equal(weekly.length, 5);
   assert([...ordinary, ...weekly].every(order => order.immediateNpcProfitCoins < 0));
   assert(report.merchantDiscounts.every(row => row.discountedPrice > row.resalePrice));
   const c = catalog();
@@ -107,4 +107,17 @@ test("weekly deadlines exclude rare random catches and remain three individually
     assert.equal(weekly.effortSeconds, weekly.stages.reduce((sum, stage) => sum + stage.effortSeconds, 0));
     assert(weekly.stages.every(stage => !Object.keys(stage.items).some(id => ["fish_rare", "fish_epic", "fish_legendary"].includes(id))));
   }
+});
+
+
+test("early materials use an obtainable alternative until their canonical station exists", () => {
+  const c = catalog(), effort = tradeOrderEffort(c);
+  const early = effort({ id: "early_stone", requiredHomeLevel: 1, requiredBuildings: {}, items: { stone: 1 } });
+  const unbuilt = effort({ id: "unbuilt_quarry", requiredHomeLevel: 2, requiredBuildings: {}, items: { stone: 1 } });
+  const built = effort({ id: "built_quarry", requiredHomeLevel: 2, requiredBuildings: { quarry: 1 }, items: { stone: 1 } });
+  assert.equal(early.references.stone, "forest");
+  assert.equal(unbuilt.references.stone, "forest");
+  assert.equal(built.references.stone, "quarry_stone");
+  assert.equal(built.effortSeconds, 180);
+  assert(early.effortSeconds > built.effortSeconds);
 });

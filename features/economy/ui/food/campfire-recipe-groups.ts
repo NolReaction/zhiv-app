@@ -11,9 +11,9 @@ export type CampfireRecipeSection = { id: string; label: string; recipes: WorldR
 
 const sections = [
   { id: "fish", label: "Рыбные блюда", items: ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish"] },
-  { id: "drinks", label: "Напитки", items: ["berry_compote", "strawberry_compote", "blueberry_compote"] },
-  { id: "desserts", label: "Ягодные десерты", items: ["currant_jelly", "blackberry_preserve", "cranberry_glaze"] },
-  { id: "provisions", label: "Походные припасы", items: ["dried_berries", "smoked_fish", "trail_ration"] },
+  { id: "drinks", label: "Напитки", items: ["berry_compote", "strawberry_compote", "blueberry_compote", "bottled_compote"] },
+  { id: "desserts", label: "Ягодные десерты", items: ["currant_jelly", "blackberry_preserve", "cranberry_glaze", "berry_gift"] },
+  { id: "provisions", label: "Походные припасы", items: ["dried_berries", "smoked_fish", "trail_ration", "packed_berries"] },
 ] as const;
 
 export function campfireDurationMatches(seconds: number, filter: CampfireDurationFilter) {

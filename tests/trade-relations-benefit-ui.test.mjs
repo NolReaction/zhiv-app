@@ -101,7 +101,7 @@ test("woodlot production displays the same role-specific shortened duration as i
 
 test("mine list, preparation and saved extraction agree without consuming hero food", () => {
   const state = fresh({ builder: 4200, lopukh: 4200, kamneshmyg: 4200 });
-  const route = economyCatalog.explorations.find(route => route.id === "cave");
+  const route = economyCatalog.explorations.find(route => route.id === "quarry_stone");
   const expected = Math.ceil(route.seconds / 1.1), economy = controller(state);
   state.food = { heroMeal: "fish_soup", builderMeal: null };
   economy.snapshot.food = state.food;

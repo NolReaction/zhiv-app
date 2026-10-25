@@ -17,7 +17,9 @@ class EconomyItemUnlocksTest {
     @Test fun `knowledge follows real source chains and remains after goods and buildings disappear`() {
         val initial = EconomyRules.initial()
         assertEquals(1, initial.itemUnlockVersion)
-        val source = initial.copy(buildings = initial.buildings + mapOf("home" to 3, "quarry" to 1))
+        val shallowQuarry = initial.copy(buildings = initial.buildings + mapOf("home" to 3, "quarry" to 1))
+        assertFalse("ore" in EconomyItemUnlocks.project(shallowQuarry), "Retired cave routes cannot unlock ore at quarry level one")
+        val source = shallowQuarry.copy(buildings = shallowQuarry.buildings + ("quarry" to 2))
         val before = economyJson.encodeToString(source)
         assertTrue("ore" in EconomyItemUnlocks.project(source))
         assertEquals(before, economyJson.encodeToString(source), "Projection never persists or mutates a profile")

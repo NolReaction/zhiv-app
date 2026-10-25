@@ -20,7 +20,14 @@ const issue = (player, action, targetId, now = at) => economy.commandDevEconomy(
 const job = (route, seconds, kind = "exploration", recipeId = null, catalogVersion = 2) => ({ id: crypto.randomUUID(), kind, targetId: route, recipeId,
   targetLevel: null, startedAt: new Date(at).toISOString(), finishesAt: new Date(at + seconds * 1000).toISOString(),
   rewards: {}, cost: { coins: 0, items: {} }, catalogVersion });
-const currentJob = (route, seconds, kind = "exploration", recipeId = null) => job(route, seconds, kind, recipeId, 12);
+const currentJob = (route, seconds, kind = "exploration", recipeId = null) => job(route, seconds, kind, recipeId, 13);
+function restorePaidCamp(player, version = 12) {
+  read(player);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(player.me.user.publicId);
+  row.state.jobs = [{ ...job("forest_camp", 28800, "exploration", null, version),
+    rewards: { wood: 12, stone: 8, fiber: 12 } }];
+  return read(player);
+}
 
 test("old snapshots default empty audited counters and contain no consumable rare items", () => {
   const p = account(), view = read(p); delete view.progression;
@@ -100,13 +107,11 @@ test("inherited finds are kept and the next interval reveals a missing entry", (
 });
 
 test("legacy far bank expeditions retain their saved travel time and forest pages", () => {
-  for (const id of ["far_bank_path", "far_bank_grove", "ancient_ruins"]) {
-    const route = model.economyCatalog.explorations.find(entry => entry.id === id);
-    assert.ok(route);
-    const completed = progress.advanceEconomyProgression(undefined, job(id, route.seconds));
-    const forest = progress.advanceEconomyProgression(undefined, job("forest", route.seconds));
+  for (const [id, paidSeconds] of [["far_bank_path", 14400], ["far_bank_grove", 28800], ["ancient_ruins", 36000]]) {
+    const completed = progress.advanceEconomyProgression(undefined, job(id, paidSeconds));
+    const forest = progress.advanceEconomyProgression(undefined, job("forest", paidSeconds));
     assert.deepEqual(completed.routes, { [id]: 1 });
-    assert.equal(completed.collections.travelSeconds, route.seconds);
+    assert.equal(completed.collections.travelSeconds, paidSeconds);
     assert.equal(completed.collections.quarrySeconds, 0);
     assert.deepEqual(completed.collections, forest.collections);
     assert.ok(completed.collections.finds.length > 0);
@@ -125,26 +130,26 @@ test("legacy quarry productions and cave routes retain saved durations and separ
 
 test("start cancel and abandoned finish do not count work or award finds", () => {
   const p = account(), before = read(p).progression;
-  const started = issue(p, "start_exploration", "forest_camp").state;
+  const started = issue(p, "start_exploration", "forest").state;
   assert.deepEqual(started.progression, before);
   assert.deepEqual(issue(p, "cancel_exploration", started.jobs[0].id, at + 28800000).state.progression, before);
 });
 
 test("successful claim records once and waiting after completion cannot inflate elapsed work", () => {
-  const p = account(), started = issue(p, "start_exploration", "forest_camp").state;
+  const p = account(), started = issue(p, "start_exploration", "forest").state;
   const collectAt = at + 7 * 86400000, claim = command(p, "claim_job", started.jobs[0].id, collectAt);
   const first = economy.commandDevEconomy(p.token, claim, collectAt);
   const replay = economy.commandDevEconomy(p.token, claim, collectAt + 1000);
   assert.equal(replay.replayed, true); assert.deepEqual(replay.state.progression, first.state.progression);
-  assert.equal(started.jobs[0].catalogVersion, 12);
-  assert.equal(first.state.progression.collections.travelSeconds, 7200);
-  assert.equal(first.state.progression.collections.finds.length, 1);
-  assert.deepEqual(first.state.progression.routes, { forest_camp: 1 });
+  assert.equal(started.jobs[0].catalogVersion, 13);
+  assert.equal(first.state.progression.collections.travelSeconds, 1680);
+  assert.equal(first.state.progression.collections.finds.length, 0);
+  assert.deepEqual(first.state.progression.routes, { forest: 1 });
   assert.throws(() => issue(p, "claim_job", started.jobs[0].id, collectAt + 1000), { code: "ECONOMY_JOB_GONE" });
 });
 
 test("full warehouse prevents both rewards and collection progress until a successful claim", () => {
-  const p = account(), started = issue(p, "start_exploration", "forest_camp").state;
+  const p = account(), started = restorePaidCamp(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.inventory = { wood: 300 };
   const finish = Date.parse(started.jobs[0].finishesAt), before = read(p, finish);
@@ -155,9 +160,7 @@ test("full warehouse prevents both rewards and collection progress until a succe
 });
 
 test("an already paid old job claims its promised pages exactly once after reload", () => {
-  const p = account(), started = issue(p, "start_exploration", "forest_camp").state;
-  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.jobs[0].catalogVersion = 11;
+  const p = account(), started = restorePaidCamp(p, 11);
   const claimAt = Date.parse(started.jobs[0].finishesAt) + 7 * 86400000;
   const restored = read(p, claimAt);
   assert.equal(restored.jobs[0].catalogVersion, 11);

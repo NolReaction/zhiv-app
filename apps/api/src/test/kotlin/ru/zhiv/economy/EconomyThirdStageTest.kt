@@ -118,7 +118,7 @@ class EconomyThirdStageTest {
         val job = soup.jobs.single()
         assertEquals(mapOf("fish_common" to 2L, "berries" to 1L, "charcoal" to 1L), job.cost.items)
         assertEquals(mapOf("fish_soup" to 1L), job.rewards)
-        assertEquals(1800L, Instant.parse(job.finishesAt).epochSecond - Instant.parse(job.startedAt).epochSecond)
+        assertEquals(480L, Instant.parse(job.finishesAt).epochSecond - Instant.parse(job.startedAt).epochSecond)
         assertEquals(1, soup.buildings["dryer"]); assertEquals(1, soup.buildings["warehouse"])
         val served = apply(soup, "claim_job", job.id, Instant.parse(job.finishesAt))
         assertTrue("fish_soup" in served.unlockedItems)

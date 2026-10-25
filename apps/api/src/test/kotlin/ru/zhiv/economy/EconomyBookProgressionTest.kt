@@ -13,7 +13,10 @@ class EconomyBookProgressionTest {
     private fun job(target: String, seconds: Long, kind: String = "exploration", recipe: String? = null) =
         EconomyJob(UUID.randomUUID().toString(), kind, target, recipe, startedAt = now.toString(), finishesAt = now.plusSeconds(seconds).toString())
     private fun currentJob(target: String, seconds: Long, kind: String = "exploration", recipe: String? = null) =
-        job(target, seconds, kind, recipe).copy(catalogVersion = 12)
+        job(target, seconds, kind, recipe).copy(catalogVersion = EconomyRules.catalog.version)
+
+    private fun savedCamp(version: Int = 12) = EconomyRules.initial().copy(jobs = listOf(
+        job("forest_camp", 28800).copy(catalogVersion = version, rewards = mapOf("wood" to 12L, "stone" to 8L, "fiber" to 12L))))
 
     @Test fun `old saved economy defaults empty book and verified counters`() {
         val json = economyJson.encodeToJsonElement(EconomyRules.initial()).jsonObject
@@ -94,11 +97,11 @@ class EconomyBookProgressionTest {
 
     @Test fun `legacy far bank expeditions retain saved travel duration and forest finds without quarry time`() {
         for (id in listOf("far_bank_path", "far_bank_grove", "ancient_ruins")) {
-            val route = EconomyRules.catalog.explorations.single { it.id == id }
-            val completed = EconomyCollectionProgress.advance(EconomyProgression(), job(id, route.seconds))
-            val forest = EconomyCollectionProgress.advance(EconomyProgression(), job("forest", route.seconds))
+            val savedSeconds = mapOf("far_bank_path" to 14400L, "far_bank_grove" to 28800L, "ancient_ruins" to 36000L).getValue(id)
+            val completed = EconomyCollectionProgress.advance(EconomyProgression(), job(id, savedSeconds))
+            val forest = EconomyCollectionProgress.advance(EconomyProgression(), job("forest", savedSeconds))
             assertEquals(mapOf(id to 1L), completed.routes)
-            assertEquals(route.seconds, completed.collections.travelSeconds)
+            assertEquals(savedSeconds, completed.collections.travelSeconds)
             assertEquals(0L, completed.collections.quarrySeconds)
             assertEquals(forest.collections, completed.collections)
             assertTrue(completed.collections.finds.isNotEmpty())
@@ -118,14 +121,14 @@ class EconomyBookProgressionTest {
 
     @Test fun `start cancel and unclaimed completion never award book progress`() {
         val initial = EconomyRules.initial()
-        val started = EconomyRules.apply(initial, command("start_exploration", "forest_camp"), now).first
+        val started = EconomyRules.apply(initial, command("start_exploration", "forest"), now).first
         assertEquals(initial.progression, started.progression)
         val cancelled = EconomyRules.apply(started, command("cancel_exploration", started.jobs.single().id), now.plusSeconds(28800)).first
         assertEquals(initial.progression, cancelled.progression)
     }
 
     @Test fun `claim records the saved duration once even when the player waits a week`() {
-        val started = EconomyRules.apply(EconomyRules.initial(), command("start_exploration", "forest_camp"), now).first
+        val started = savedCamp()
         val claim = command("claim_job", started.jobs.single().id)
         val next = EconomyRules.apply(started, claim, now.plusSeconds(7L * 86400)).first
         assertEquals(12, started.jobs.single().catalogVersion)
@@ -136,7 +139,7 @@ class EconomyBookProgressionTest {
     }
 
     @Test fun `failed warehouse delivery leaves the immutable old progress unchanged`() {
-        val started = EconomyRules.apply(EconomyRules.initial(), command("start_exploration", "forest_camp"), now).first
+        val started = savedCamp()
             .copy(inventory = mapOf("wood" to 300L))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(started, command("claim_job", started.jobs.single().id), now.plusSeconds(28800))
@@ -147,7 +150,7 @@ class EconomyBookProgressionTest {
     }
 
     @Test fun `already paid old work keeps original rewards and cannot be claimed twice`() {
-        val started = EconomyRules.apply(EconomyRules.initial(), command("start_exploration", "forest_camp"), now).first
+        val started = savedCamp()
         val restored = started.copy(jobs = started.jobs.map { it.copy(catalogVersion = 11) })
         val claim = command("claim_job", restored.jobs.single().id)
         val claimAt = now.plusSeconds(7L * 86400)

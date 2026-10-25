@@ -33,7 +33,7 @@ export function parseProductionJournal(raw: string | null, owner: string): Produ
 
 export function safeProductionRecipe(state: EconomyView, targetId: string) {
   const recipe = state.catalog.recipes.find(entry => entry.id === targetId);
-  if (!recipe || recipe.buildingId === "quarry" || recipe.fishInput || targetId.includes("@")
+  if (!recipe || recipe.retired || recipe.buildingId === "quarry" || recipe.fishInput || targetId.includes("@")
     || Object.keys(recipe.cost.items).some(itemId => itemId === "fish" || itemId.startsWith("fish_")
       || state.catalog.fishing && fishClassForItem(itemId, state.catalog.fishing))) return null;
   return recipe;

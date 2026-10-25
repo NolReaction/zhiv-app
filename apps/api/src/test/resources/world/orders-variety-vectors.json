@@ -1,96 +1,355 @@
 [
   {
     "label": "first-berries-before-building-a-kitchen",
-    "buildings": { "home": 1, "garden": 1, "warehouse": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_berry_break", "plesk_catch_and_berries", "builder_small_repair"],
-    "missing": ["plesk_picnic_lunch", "plesk_strawberry_lunch", "builder_bench_repair", "plesk_blueberry_lunch"]
+    "buildings": {
+      "home": 1,
+      "garden": 1,
+      "warehouse": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_berry_break",
+      "plesk_catch_and_berries",
+      "builder_small_repair"
+    ],
+    "missing": [
+      "plesk_picnic_lunch",
+      "plesk_strawberry_lunch",
+      "builder_bench_repair",
+      "plesk_blueberry_lunch"
+    ]
   },
   {
     "label": "campfire-without-the-first-compote",
-    "buildings": { "home": 1, "garden": 1, "warehouse": 1, "dryer": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_compote_break", "plesk_picnic_lunch", "plesk_evening_basket", "builder_drink_and_firewood"],
-    "missing": ["plesk_strawberry_lunch", "starter_fresh_berries", "plesk_blueberry_lunch"]
+    "buildings": {
+      "home": 1,
+      "garden": 1,
+      "warehouse": 1,
+      "dryer": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_compote_break",
+      "plesk_picnic_lunch",
+      "plesk_evening_basket",
+      "builder_drink_and_firewood"
+    ],
+    "missing": [
+      "plesk_strawberry_lunch",
+      "starter_fresh_berries",
+      "plesk_blueberry_lunch"
+    ]
   },
   {
     "label": "first-compote-opens-the-strawberry-menu",
-    "buildings": { "home": 1, "garden": 1, "warehouse": 1, "dryer": 1, "workshop": 1 },
-    "recipes": { "cook_compote": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_strawberry_lunch", "starter_fresh_berries", "builder_bench_repair"],
-    "missing": ["plesk_blueberry_lunch", "plesk_smoked_currants", "plesk_soup_and_compote"]
+    "buildings": {
+      "home": 1,
+      "garden": 1,
+      "warehouse": 1,
+      "dryer": 1,
+      "workshop": 1
+    },
+    "recipes": {
+      "cook_compote": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_strawberry_lunch",
+      "starter_fresh_berries",
+      "builder_bench_repair"
+    ],
+    "missing": [
+      "plesk_blueberry_lunch",
+      "plesk_smoked_currants",
+      "plesk_soup_and_compote"
+    ]
   },
   {
     "label": "house-two-does-not-upgrade-the-bush",
-    "buildings": { "home": 2, "garden": 1, "warehouse": 1, "dryer": 1 },
-    "recipes": { "cook_compote": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_picnic_lunch", "plesk_strawberry_lunch"],
-    "missing": ["plesk_blueberry_lunch", "plesk_berry_assortment", "builder_blueberry_snack"]
+    "buildings": {
+      "home": 2,
+      "garden": 1,
+      "warehouse": 1,
+      "dryer": 1
+    },
+    "recipes": {
+      "cook_compote": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_picnic_lunch",
+      "plesk_strawberry_lunch"
+    ],
+    "missing": [
+      "plesk_blueberry_lunch",
+      "plesk_berry_assortment",
+      "builder_blueberry_snack"
+    ]
   },
   {
     "label": "upgraded-bush-opens-blueberry-combinations",
-    "buildings": { "home": 2, "garden": 2, "warehouse": 1, "dryer": 1 },
-    "recipes": { "cook_compote": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_blueberry_lunch", "plesk_berry_assortment", "builder_blueberry_snack"],
-    "missing": ["plesk_soup_and_compote", "plesk_berry_sauce_lunch", "plesk_blackberry_feast"]
+    "buildings": {
+      "home": 2,
+      "garden": 2,
+      "warehouse": 1,
+      "dryer": 1
+    },
+    "recipes": {
+      "cook_compote": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_blueberry_lunch",
+      "plesk_berry_assortment",
+      "builder_blueberry_snack"
+    ],
+    "missing": [
+      "plesk_soup_and_compote",
+      "plesk_berry_sauce_lunch",
+      "plesk_blackberry_feast"
+    ]
   },
   {
     "label": "new-house-without-charcoal-or-grilling-experience",
-    "buildings": { "home": 3, "garden": 3, "warehouse": 1, "dryer": 2 },
-    "recipes": { "cook_compote": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_smoked_currants", "plesk_catch_and_jelly", "plesk_berry_sauce_lunch"],
-    "missing": ["plesk_soup_and_compote", "plesk_blackberry_feast", "plesk_path_provisions"]
+    "buildings": {
+      "home": 3,
+      "garden": 3,
+      "warehouse": 1,
+      "dryer": 2
+    },
+    "recipes": {
+      "cook_compote": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_smoked_currants",
+      "plesk_berry_sauce_lunch"
+    ],
+    "missing": [
+      "plesk_catch_and_jelly",
+      "plesk_soup_and_compote",
+      "plesk_blackberry_feast",
+      "plesk_path_provisions"
+    ]
   },
   {
     "label": "kiln-does-not-replace-the-first-grilled-meal",
-    "buildings": { "home": 3, "garden": 3, "warehouse": 1, "dryer": 2, "kiln": 1 },
-    "recipes": { "cook_compote": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_smoked_currants", "plesk_catch_and_jelly"],
-    "missing": ["plesk_soup_and_compote"]
+    "buildings": {
+      "home": 3,
+      "garden": 3,
+      "warehouse": 1,
+      "dryer": 2,
+      "kiln": 1
+    },
+    "recipes": {
+      "cook_compote": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_smoked_currants"
+    ],
+    "missing": [
+      "plesk_catch_and_jelly",
+      "plesk_soup_and_compote"
+    ]
   },
   {
     "label": "cooking-experience-and-charcoal-open-soup",
-    "buildings": { "home": 3, "garden": 3, "warehouse": 1, "dryer": 2, "kiln": 1, "workshop": 1 },
-    "recipes": { "cook_compote": 1, "cook_grilled_fish": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_soup_and_compote", "builder_trail_snack", "plesk_smoked_currants"],
-    "missing": ["plesk_blackberry_feast", "plesk_path_provisions", "plesk_preserve_and_catch"]
+    "buildings": {
+      "home": 3,
+      "garden": 3,
+      "warehouse": 1,
+      "dryer": 2,
+      "kiln": 1,
+      "workshop": 1
+    },
+    "recipes": {
+      "cook_compote": 1,
+      "cook_grilled_fish": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_soup_and_compote",
+      "builder_trail_snack",
+      "plesk_smoked_currants"
+    ],
+    "missing": [
+      "plesk_blackberry_feast",
+      "plesk_path_provisions",
+      "plesk_preserve_and_catch"
+    ]
   },
   {
     "label": "house-four-without-epic-tackle-or-sand",
-    "buildings": { "home": 4, "garden": 4, "warehouse": 1, "dryer": 4, "kiln": 3, "woodlot": 3 },
-    "recipes": { "cook_compote": 1, "cook_grilled_fish": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook", "leviathan_hook"],
-    "present": ["plesk_path_provisions", "plesk_smoked_currants"],
-    "missing": ["plesk_blackberry_feast", "plesk_preserve_and_catch", "plesk_cranberry_dinner", "plesk_legendary_dinner"]
+    "buildings": {
+      "home": 4,
+      "garden": 4,
+      "warehouse": 1,
+      "dryer": 4,
+      "kiln": 3,
+      "woodlot": 3
+    },
+    "recipes": {
+      "cook_compote": 1,
+      "cook_grilled_fish": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook",
+      "leviathan_hook"
+    ],
+    "present": [
+      "plesk_path_provisions",
+      "plesk_smoked_currants"
+    ],
+    "missing": [
+      "plesk_blackberry_feast",
+      "plesk_preserve_and_catch",
+      "plesk_cranberry_dinner",
+      "plesk_legendary_dinner"
+    ]
   },
   {
     "label": "complete-house-four-with-epic-tackle",
-    "buildings": { "home": 4, "garden": 4, "warehouse": 1, "dryer": 4, "kiln": 3, "woodlot": 3, "quarry": 2 },
-    "recipes": { "cook_compote": 1, "cook_grilled_fish": 1 },
-    "ownedRods": ["reed_rod", "tide_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_blackberry_feast", "plesk_preserve_and_catch", "plesk_path_provisions"],
-    "missing": ["plesk_cranberry_dinner", "plesk_winter_table", "plesk_legendary_dinner"]
+    "buildings": {
+      "home": 4,
+      "garden": 4,
+      "warehouse": 1,
+      "dryer": 4,
+      "kiln": 3,
+      "woodlot": 3,
+      "quarry": 2
+    },
+    "recipes": {
+      "cook_compote": 1,
+      "cook_grilled_fish": 1
+    },
+    "ownedRods": [
+      "reed_rod",
+      "tide_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_blackberry_feast",
+      "plesk_path_provisions"
+    ],
+    "missing": [
+      "plesk_preserve_and_catch",
+      "plesk_cranberry_dinner",
+      "plesk_winter_table",
+      "plesk_legendary_dinner"
+    ]
   },
   {
     "label": "house-five-desserts-without-a-legendary-rod",
-    "buildings": { "home": 5, "garden": 5, "warehouse": 1, "dryer": 5, "kiln": 3, "woodlot": 4, "quarry": 2, "workshop": 4 },
-    "recipes": { "cook_compote": 1, "cook_grilled_fish": 1 },
-    "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook", "leviathan_hook"],
-    "present": ["plesk_cranberry_dinner", "plesk_winter_table", "plesk_soup_and_compote"],
-    "missing": ["plesk_blackberry_feast", "plesk_legendary_dinner", "plesk_shadow_catch"]
+    "buildings": {
+      "home": 5,
+      "garden": 5,
+      "warehouse": 1,
+      "dryer": 5,
+      "kiln": 3,
+      "woodlot": 4,
+      "quarry": 2,
+      "workshop": 4
+    },
+    "recipes": {
+      "cook_compote": 1,
+      "cook_grilled_fish": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook",
+      "leviathan_hook"
+    ],
+    "present": [
+      "plesk_cranberry_dinner",
+      "plesk_winter_table",
+      "plesk_soup_and_compote"
+    ],
+    "missing": [
+      "plesk_blackberry_feast",
+      "plesk_legendary_dinner",
+      "plesk_shadow_catch"
+    ]
   },
   {
     "label": "owned-starfall-rod-opens-all-cooking-tiers",
-    "buildings": { "home": 5, "garden": 5, "warehouse": 1, "dryer": 5, "kiln": 3, "woodlot": 4, "quarry": 2, "workshop": 4 },
-    "recipes": { "cook_compote": 1, "cook_grilled_fish": 1 },
-    "ownedRods": ["reed_rod", "starfall_rod"], "ownedHooks": ["bare_hook"],
-    "present": ["plesk_blackberry_feast", "plesk_preserve_and_catch", "plesk_cranberry_dinner", "plesk_winter_table", "plesk_legendary_dinner", "plesk_shadow_catch"],
-    "missing": []
+    "buildings": {
+      "home": 5,
+      "garden": 5,
+      "warehouse": 1,
+      "dryer": 5,
+      "kiln": 3,
+      "woodlot": 4,
+      "quarry": 2,
+      "workshop": 4
+    },
+    "recipes": {
+      "cook_compote": 1,
+      "cook_grilled_fish": 1
+    },
+    "ownedRods": [
+      "reed_rod",
+      "starfall_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_blackberry_feast",
+      "plesk_cranberry_dinner",
+      "plesk_winter_table",
+      "plesk_legendary_dinner",
+      "plesk_shadow_catch"
+    ],
+    "missing": [
+      "plesk_preserve_and_catch"
+    ]
   }
 ]

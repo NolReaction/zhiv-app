@@ -92,7 +92,8 @@ export function progressedResidentOrderTemplate(template: OrderTemplate, homeLev
   const value = (goods: Record<string, number>) => Object.entries(goods).reduce((sum, [id, count]) =>
     sum + BigInt(count) * BigInt(catalog.items.find(item => item.id === id)?.baseSellPrice ?? 0), BigInt(0));
   const originalValue = value(template.items), nextValue = value(items);
-  const payment = originalValue ? (BigInt(template.coins) * nextValue + originalValue * BigInt(10) - BigInt(1)) / (originalValue * BigInt(10)) * BigInt(10) : BigInt(template.coins);
+  const quantum = BigInt(catalog.version >= 13 ? 1 : 10);
+  const payment = originalValue ? (BigInt(template.coins) * nextValue + originalValue * quantum - BigInt(1)) / (originalValue * quantum) * quantum : BigInt(template.coins);
   if (payment > BigInt(ECONOMY_MAX_BALANCE)) throw new RangeError("Order payout exceeds wallet capacity");
   const coins = Number(payment);
   return { ...template, items, coins };
@@ -145,6 +146,7 @@ export function normalizedResidentOrders(state: OrderSource, now: number, catalo
   const replacementCycle = Math.floor(now / (config.replacementWindowSeconds * 1000));
   const resetAt = new Date(cycle * config.refreshSeconds * 1000).toISOString();
   const eligible = eligibleResidentOrderTemplates(state, catalog), reachable = obtainableResidentOrderItems(state, catalog);
+  const knownItems = new Set(catalog.items.map(item => item.id));
   let recentTemplateIds = cleanHistory(previous.recentTemplateIds ?? [], config.recentLimit);
   const keep = previous.version >= 2 && previous.cycle === cycle;
   if (previous.version >= 2 && !keep) for (const slot of previous.slots) recentTemplateIds = retire(recentTemplateIds, slot.templateId, config.recentLimit);
@@ -160,9 +162,13 @@ export function normalizedResidentOrders(state: OrderSource, now: number, catalo
         ...(template.description ? { description: template.description } : {}), items: template.items, coins: template.coins };
     }
     const residentId = relations ? saved?.residentId ?? template?.residentId ?? TRADE_RESIDENT_IDS[index] : undefined;
+    // Serialized terms are an existing promise. A catalogue update may retire
+    // their source or raise its unlock gate; owned goods can still fulfil them.
+    const promised = Boolean(saved?.terms);
     const valid = !saved?.retired && template && template.id === saved?.templateId
-      && acceptsResident(index, template, residentId) && (!relations || tradeResidentAvailable(state, template.residentId, catalog))
-      && Object.keys(template.items).every(id => reachable.has(id)) && !usedIds.has(template.id) && !usedCompositions.has(composition(template));
+      && acceptsResident(index, template, residentId) && (promised || !relations || tradeResidentAvailable(state, template.residentId, catalog))
+      && Object.keys(template.items).every(id => promised ? knownItems.has(id) : reachable.has(id))
+      && !usedIds.has(template.id) && !usedCompositions.has(composition(template));
     if (valid && template) { usedIds.add(template.id); usedCompositions.add(composition(template)); }
     else if (saved?.templateId) recentTemplateIds = retire(recentTemplateIds, saved.templateId, config.recentLimit);
     return { sequence: saved?.sequence ?? 0, readyAt: valid ? saved!.readyAt : resetAt,

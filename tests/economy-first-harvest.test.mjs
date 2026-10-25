@@ -69,9 +69,9 @@ test("older progress, legacy terms, already owned fruit and other crops retain o
     assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 60_000);
   }
   const p = player(), saved = row(p).state;
-  saved.buildings.garden = 2; saved.buildings.home = 3;
-  const started = send(p, "start_production", "grow_berries_large"), job = started.jobs[0];
-  assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 45_000);
+  saved.buildings.garden = 2; saved.buildings.home = 3; saved.progression.recipes.cook_compote = 1;
+  const started = send(p, "start_production", "grow_strawberries"), job = started.jobs[0];
+  assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 300_000);
   assert.equal(started.tutorialOrder.firstHarvestPrepared, false);
 });
 

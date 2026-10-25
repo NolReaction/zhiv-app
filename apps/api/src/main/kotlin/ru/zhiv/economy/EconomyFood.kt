@@ -220,14 +220,14 @@ object EconomyFood {
             buildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level }
         do {
             val before = reachable.size
-            catalog.explorations.forEach { route ->
+            catalog.explorations.filterNot { it.retired }.forEach { route ->
                 if (unlocked(route.requiredHomeLevel, route.requiredBuildings) && route.cost.items.keys.all { it in reachable }) {
                     reachable += if (route.id in (fishing?.routeIds ?: emptyList())) route.rewards.filter { (id, count) -> id != "fish" && count > 0 }.keys
                         else EconomyFishInventory.items(route.rewards, catalog).filterValues { it > 0 }.keys
                     if (route.id in (fishing?.routeIds ?: emptyList())) reachable += catchable
                 }
             }
-            catalog.recipes.forEach { recipe ->
+            catalog.recipes.filterNot { it.retired }.forEach { recipe ->
                 val options = recipe.fishInput?.itemIds
                 if (unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) && (state.buildings[recipe.buildingId] ?: 0) >= recipe.effectiveBuildingLevel &&
                     recipe.requiredRecipes.all { (id, amount) -> (state.progression.recipes[id] ?: 0L) >= amount } &&
@@ -256,9 +256,12 @@ object EconomyFood {
             sum + count.toBigInteger() * (byId[id]?.baseSellPrice ?: 0L).toBigInteger()
         }
         val originalValue = value(template.items)
-        val divisor = originalValue * BigInteger.TEN
+        // New quotes are rounded once to a coin; old catalog policies used tens.
+        // Frozen slot terms never pass through this scaling calculation again.
+        val quantum = if (catalog.version >= 13) BigInteger.ONE else BigInteger.TEN
+        val divisor = originalValue * quantum
         val payment = if (originalValue == BigInteger.ZERO) template.coins.toBigInteger()
-            else (template.coins.toBigInteger() * value(items) + divisor - BigInteger.ONE) / divisor * BigInteger.TEN
+            else (template.coins.toBigInteger() * value(items) + divisor - BigInteger.ONE) / divisor * quantum
         require(payment <= ECONOMY_MAX_BALANCE.toBigInteger()) { "Order payout exceeds wallet capacity" }
         val coins = payment.longValueExact()
         return template.copy(items = items, coins = coins)
@@ -301,6 +304,7 @@ object EconomyFood {
         val start = Instant.ofEpochSecond(cycle * config.refreshSeconds).toString()
         val eligible = eligibleOrderTemplates(state, catalog)
         val reachable = obtainableOrderItems(state, catalog)
+        val knownItems = catalog.items.map { it.id }.toSet()
         val byId = config.templates.associateBy { it.id }
         var recent = history(previous.recentTemplateIds, config.recentLimit)
         val keepingSlots = previous.version >= 2 && previous.cycle == cycle
@@ -318,8 +322,10 @@ object EconomyFood {
             val requiredResident = residentId ?: resident(index)
             val keep = old?.retired != true && template != null && template.id == old?.templateId &&
                 (requiredResident == null || template.residentId == requiredResident) &&
-                (!relations || EconomyTradeRelations.available(state, template.residentId, catalog)) &&
-                template.items.keys.all { it in reachable } && occupied.none { it.id == template.id || composition(it) == composition(template) }
+                template.items.keys.all { it in knownItems } &&
+                (old?.terms != null || ((!relations || EconomyTradeRelations.available(state, template.residentId, catalog)) &&
+                    template.items.keys.all { it in reachable })) &&
+                occupied.none { it.id == template.id || composition(it) == composition(template) }
             if (keep) occupied += checkNotNull(template)
             else old?.templateId?.let { recent = retire(recent, it, config.recentLimit) }
             EconomyResidentOrderSlot(old?.sequence ?: 0, if (keep) old.readyAt else start,

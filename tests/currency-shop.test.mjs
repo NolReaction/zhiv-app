@@ -213,7 +213,7 @@ test("pearl spending examples use actual catalog prices and retain the visible/r
   const examples = shop.currencyShopPearlBenchmarks(economyCatalog);
   assert.equal(examples.find(item => item.id === "relic").pearls, 300);
   assert.equal(examples.find(item => item.id === "slot").pearls, 200);
-  assert.equal(examples.find(item => item.id === "construction").pearls, 40);
+  assert.equal(examples.find(item => item.id === "construction").pearls, 24);
   assert.equal(formatPearls(examples.find(item => item.id === "relic").pearls), "150");
   const changed = structuredClone(economyCatalog);
   changed.leaftailShop.pearlOffers[0].pricePearls = 400;

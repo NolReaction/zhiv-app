@@ -275,7 +275,7 @@ class EconomyRulesTest {
         complete("start_exploration", "forest")
         collect("gather_wood", "wood", 5)
         repeat(2) { complete("start_production", "make_planks") }
-        earn(250)
+        earn(EconomyRules.catalog.buildings.single { it.id == "home" }.levels.single { it.level == 2 }.cost.coins)
         assertEquals(0, state.buildings["quarry"])
         assertEquals(0, state.buildings["kiln"])
         complete("start_construction", "home")
@@ -492,13 +492,13 @@ class EconomyRulesTest {
         cost = EconomyCost(1500, mapOf("wood" to 20L)), catalogVersion = 2)
 
     @Test fun `construction quote uses one visible pearl steps with exact subsecond readiness`() {
-        assertEquals(15000L, EconomyRules.catalog.constructionSpeedup.secondsPerPearl)
+        assertEquals(300L, EconomyRules.catalog.constructionSpeedup.secondsPerPearl)
         for ((milliseconds, price) in listOf(-1L to 0L, 0L to 0L, 1L to 1L, 59_999L to 1L, 60_000L to 1L,
-            60_001L to 2L, 900_000L to 6L, 3_600_000L to 20L, 3_600_001L to 21L,
-            86_400_000L to 260L, 86_400_001L to 261L, 172_800_000L to 384L,
-            604_800_000L to 1000L, 604_800_001L to 1001L))
+            60_001L to 1L, 300_000L to 1L, 300_001L to 2L, 900_000L to 3L, 3_600_000L to 12L, 3_600_001L to 13L,
+            86_400_000L to 288L, 86_400_001L to 289L, 172_800_000L to 576L,
+            604_800_000L to 2016L, 604_800_001L to 2017L))
             assertEquals(price * 2, EconomyRules.constructionSpeedupPrice(construction(milliseconds), now))
-        assertEquals(4L, EconomyRules.constructionSpeedupPrice(construction(60_000), now.minusNanos(1)))
+        assertEquals(4L, EconomyRules.constructionSpeedupPrice(construction(300_000), now.minusNanos(1)))
         assertEquals(2L, EconomyRules.constructionSpeedupPrice(construction(0), now.minusNanos(1)))
         for (kind in listOf("production", "exploration"))
             assertEquals(0L, EconomyRules.constructionSpeedupPrice(construction().copy(kind = kind), now))
@@ -509,12 +509,12 @@ class EconomyRulesTest {
         val before = EconomyRules.initial().copy(wallet = EconomyWallet(710, 1000), inventory = mapOf("berries" to 8L), jobs = listOf(job))
         val request = command("speedup_construction", job.id).copy(totalPrice = 500)
         val result = EconomyRules.apply(before, request, now).first
-        assertEquals(EconomyWallet(710, 988), result.wallet)
+        assertEquals(EconomyWallet(710, 994), result.wallet)
         assertEquals(before.inventory, result.inventory)
         assertEquals(2, result.buildings["home"])
         assertTrue(result.jobs.isEmpty())
         assertEquals(0L, result.completedExplorations)
-        assertEquals(992L, EconomyRules.apply(before, request, now.plusSeconds(300)).first.wallet.pearls)
+        assertEquals(996L, EconomyRules.apply(before, request, now.plusSeconds(300)).first.wallet.pearls)
         // Waiting for readiness never costs pearls, even when a former nonzero quote is submitted.
         val ready = EconomyRules.apply(before.copy(wallet = EconomyWallet()), request, Instant.parse(job.finishesAt)).first
         assertEquals(0L, ready.wallet.pearls)
@@ -523,16 +523,16 @@ class EconomyRulesTest {
 
     @Test fun `speedup rejects inadequate quote insufficient currency and other job kinds without mutation`() {
         val job = construction()
-        val before = EconomyRules.initial().copy(wallet = EconomyWallet(710, 11), jobs = listOf(job))
-        val request = command("speedup_construction", job.id).copy(totalPrice = 12)
+        val before = EconomyRules.initial().copy(wallet = EconomyWallet(710, 5), jobs = listOf(job))
+        val request = command("speedup_construction", job.id).copy(totalPrice = 6)
         assertEquals("ECONOMY_PEARLS", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request, now) }.code)
-        assertEquals("ECONOMY_SPEEDUP_PRICE_CHANGED", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request.copy(totalPrice = 11), now) }.code)
+        assertEquals("ECONOMY_SPEEDUP_PRICE_CHANGED", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request.copy(totalPrice = 5), now) }.code)
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request.copy(targetId = UUID.randomUUID().toString()), now) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request.copy(quantity = 2), now) }.code)
         for (kind in listOf("production", "exploration")) assertEquals("ECONOMY_SPEEDUP_KIND", assertFailsWith<AuthFailure> {
             EconomyRules.apply(before.copy(jobs = listOf(job.copy(kind = kind))), request, now)
         }.code)
-        assertEquals(EconomyWallet(710, 11), before.wallet)
+        assertEquals(EconomyWallet(710, 5), before.wallet)
         assertEquals(listOf(job), before.jobs)
         assertEquals(1, before.buildings["home"])
     }
@@ -544,11 +544,11 @@ class EconomyRulesTest {
         EconomyRules.assertStorageTransition(before, result)
         assertEquals(before.inventory, result.inventory)
         assertEquals(EconomyStorage(100, 90, 0, 10, 0), EconomyRules.storage(result))
-        assertEquals(0L, result.wallet.pearls)
+        assertEquals(6L, result.wallet.pearls)
     }
 
     @Test fun `home and station unlocks are authoritative and insufficient costs leave input state intact`() {
-        assertEquals("ECONOMY_HOME_REQUIRED", assertFailsWith<AuthFailure> { apply(stocked(), "start_exploration", "cave") }.code)
+        assertEquals("ECONOMY_HOME_REQUIRED", assertFailsWith<AuthFailure> { apply(stocked(), "start_exploration", "quarry_stone") }.code)
         assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> { apply(stocked(), "start_production", "make_planks") }.code)
         val upgrade = EconomyRules.catalog.buildings.single { it.id == "home" }.levels.single { it.level == 2 }
         val poor = requirements(EconomyRules.initial().copy(wallet = EconomyWallet(), inventory = emptyMap()), upgrade.requiredHomeLevel, upgrade.requiredBuildings)
@@ -650,7 +650,7 @@ class EconomyRulesTest {
         val specialistFish = EconomyRules.catalog.fishing?.classes?.map { it.itemId }?.toSet().orEmpty()
         fun cashValue(items: Map<String, Long>) = items.entries.sumOf { (id, quantity) ->
             if (id in specialistFish) itemPrices.getValue(id) * quantity else EconomyRules.localSellPrice(itemPrices.getValue(id), quantity, itemId = id) }
-        for (recipe in EconomyRules.catalog.recipes) {
+        for (recipe in EconomyRules.catalog.recipes.filterNot { it.retired }) {
             assertTrue(recipe.buildingId in buildingIds)
             assertTrue(recipe.seconds > 0)
             assertTrue(recipe.cost.items.keys.all { it in itemIds })
@@ -664,7 +664,7 @@ class EconomyRulesTest {
         val merchantItems = fishingMerchantItems()
         var available = setOf<String>()
         repeat(10) {
-            for (expedition in EconomyRules.catalog.explorations) {
+            for (expedition in EconomyRules.catalog.explorations.filterNot { it.retired }) {
                 if (!available.containsAll(expedition.cost.items.keys)) continue
                 available = available + expedition.rewards.keys
                 // This source-only graph ignores levels, but requires a repeatable, affordable journey.
@@ -674,7 +674,7 @@ class EconomyRulesTest {
                     available = available + fishing.fish.map { it.itemId } + fishing.classes.map { it.itemId }
                 }
             }
-            for (recipe in EconomyRules.catalog.recipes)
+            for (recipe in EconomyRules.catalog.recipes.filterNot { it.retired })
                 if (recipe.cost.items.keys.all { it in available }) available = available + recipe.rewards.keys
             if (EconomyRules.catalog.items.any { it.tradable && it.id in available }) available = available + merchantItems
         }
@@ -754,7 +754,7 @@ class EconomyRulesTest {
     }
 
     @Test fun `recipes and explorations enforce auxiliary building dependencies`() {
-        val recipe = EconomyRules.catalog.recipes.first { it.requiredBuildings.isNotEmpty() }
+        val recipe = EconomyRules.catalog.recipes.first { !it.retired && it.requiredBuildings.isNotEmpty() }
         val recipeState = requirements(stocked(), recipe.requiredHomeLevel,
             recipe.requiredBuildings + (recipe.buildingId to recipe.buildingLevel))
         val recipeDependency = recipe.requiredBuildings.entries.first()
@@ -762,7 +762,7 @@ class EconomyRulesTest {
         assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> { apply(lockedRecipe, "start_production", recipe.id) }.code)
         assertEquals(recipe.id, apply(recipeState, "start_production", recipe.id).jobs.single().recipeId)
 
-        val exploration = EconomyRules.catalog.explorations.first { it.requiredBuildings.isNotEmpty() }
+        val exploration = EconomyRules.catalog.explorations.first { !it.retired && it.requiredBuildings.isNotEmpty() }
         val explorationState = requirements(stocked(), exploration.requiredHomeLevel, exploration.requiredBuildings)
         val explorationDependency = exploration.requiredBuildings.entries.first()
         val lockedExploration = explorationState.copy(buildings = explorationState.buildings + (explorationDependency.key to explorationDependency.value - 1))
@@ -779,13 +779,13 @@ class EconomyRulesTest {
         fun unlocked(home: Int, required: Map<String, Int>) = (buildings["home"] ?: 1) >= home && required.all { (id, level) -> (buildings[id] ?: 0) >= level }
         repeat(100) {
             val reachableExplorations = mutableSetOf<String>()
-            for (exploration in EconomyRules.catalog.explorations) {
+            for (exploration in EconomyRules.catalog.explorations.filterNot { it.retired }) {
                 if (unlocked(exploration.requiredHomeLevel, exploration.requiredBuildings) && items.containsAll(exploration.cost.items.keys)) {
                     reachableExplorations.add(exploration.id)
                     items.addAll(exploration.rewards.keys)
                 }
             }
-            for (recipe in EconomyRules.catalog.recipes) {
+            for (recipe in EconomyRules.catalog.recipes.filterNot { it.retired }) {
                 if ((buildings[recipe.buildingId] ?: 0) >= recipe.buildingLevel && unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) &&
                     items.containsAll(recipe.cost.items.keys) && completedRecipes.containsAll(recipe.requiredRecipes.keys)) {
                     items.addAll(recipe.rewards.keys)

@@ -42,7 +42,7 @@ test("invalid progression levels fail closed in the shared market helpers", () =
 });
 
 test("all houses from 2 through 5 trade in one pool while retaining their own daily limits", () => {
-  assert.deepEqual(catalog.market.dailyTradeValueByHome, [0, 2400, 4800, 9600, 14400]);
+  assert.deepEqual(catalog.market.dailyTradeValueByHome, [0, 6000, 12000, 24000, 36000]);
   for (const sellerHome of [2, 3, 4, 5]) for (const buyerHome of [2, 3, 4, 5]) {
     identities.resetDevStoreForTests();
     const seller = player(sellerHome), buyer = player(buyerHome, {}), lot = offer(seller);
@@ -65,43 +65,43 @@ test("seller or buyer upgrading from house 3 to 4 keeps an already selected comm
 });
 
 test("buyer daily volume uses catalog value, not a chosen price; replay and F5 do not replenish it", () => {
-  const sellers = [player(), player(), player()], buyer = player(2, {});
-  const lots = [offer(sellers[0], 40, 2), offer(sellers[1], 40), offer(sellers[2])];
+  const sellers = [player(), player(), player(), player()], buyer = player(2, {});
+  const lots = [offer(sellers[0], 99, 2), offer(sellers[1], 99), offer(sellers[2], 2), offer(sellers[3])];
   shelf(buyer);
   const request = command(buyer, "buy_listing", lots[0].id, lots[0].quantity, lots[0].totalPrice);
-  economy.commandDevEconomyMarket(buyer.token, request, now); buy(buyer, lots[1]);
+  economy.commandDevEconomyMarket(buyer.token, request, now); buy(buyer, lots[1]); buy(buyer, lots[2]);
   const used = shelf(buyer).tradeBudget;
-  assert.equal(used.buysUsed, 2400); assert.equal(used.salesUsed, 0); assert.equal(used.limit, 2400);
+  assert.equal(used.buysUsed, 6000); assert.equal(used.salesUsed, 0); assert.equal(used.limit, 6000);
   assert.equal(used.resetsAt, new Date(tomorrow).toISOString());
   assert.equal(marketViewSchema.safeParse(shelf(buyer)).success, true);
-  const before = [read(buyer), read(sellers[2])];
-  assert.throws(() => buy(buyer, lots[2]), { code: "ECONOMY_MARKET_DAILY_LIMIT" });
-  assert.deepEqual([read(buyer), read(sellers[2])], before);
+  const before = [read(buyer), read(sellers[3])];
+  assert.throws(() => buy(buyer, lots[3]), { code: "ECONOMY_MARKET_DAILY_LIMIT" });
+  assert.deepEqual([read(buyer), read(sellers[3])], before);
   assert.equal(economy.commandDevEconomyMarket(buyer.token, request, tomorrow).replayed, true);
   assert.equal(shelf(buyer, tomorrow).tradeBudget.buysUsed, 0, "old receipt does not spend tomorrow's quota");
-  buy(buyer, lots[2], tomorrow);
+  buy(buyer, lots[3], tomorrow);
   assert.equal(shelf(buyer, tomorrow).tradeBudget.buysUsed, 30);
 });
 
 test("one seller shares a daily sales budget across different buyers, independently of purchases", () => {
-  const seller = player(), buyers = [player(2, {}), player(2, {}), player(2, {})];
-  const lots = [offer(seller, 40), offer(seller, 40), offer(seller)];
+  const seller = player(2, { wood: 201 }), buyers = [player(2, {}), player(2, {}), player(2, {}), player(2, {})];
+  const lots = [offer(seller, 99), offer(seller, 99), offer(seller, 2), offer(seller)];
   for (let i = 0; i < buyers.length; i++) {
     const selected = shelf(buyers[i]);
-    // A persisted subset models three separately scheduled viewers, each legitimately selected.
+    // A persisted subset models separately scheduled viewers, each legitimately selected.
     globalThis.__zhivDevEconomyStore.showcases.get(buyers[i].me.user.publicId).ids = [lots[i].id];
     assert.ok(selected);
   }
-  buy(buyers[0], lots[0]); buy(buyers[1], lots[1]);
-  assert.equal(shelf(seller).tradeBudget.salesUsed, 2400);
-  const before = [read(seller), read(buyers[2])];
-  assert.throws(() => buy(buyers[2], lots[2]), { code: "ECONOMY_MARKET_SELLER_DAILY_LIMIT" });
-  assert.deepEqual([read(seller), read(buyers[2])], before);
+  buy(buyers[0], lots[0]); buy(buyers[1], lots[1]); buy(buyers[2], lots[2]);
+  assert.equal(shelf(seller).tradeBudget.salesUsed, 6000);
+  const before = [read(seller), read(buyers[3])];
+  assert.throws(() => buy(buyers[3], lots[3]), { code: "ECONOMY_MARKET_SELLER_DAILY_LIMIT" });
+  assert.deepEqual([read(seller), read(buyers[3])], before);
   const otherSeller = player(), incoming = offer(otherSeller);
   globalThis.__zhivDevEconomyStore.showcases.get(seller.me.user.publicId).ids = [incoming.id];
   buy(seller, incoming);
   assert.equal(shelf(seller).tradeBudget.buysUsed, 30);
-  assert.equal(shelf(seller).tradeBudget.salesUsed, 2400);
+  assert.equal(shelf(seller).tradeBudget.salesUsed, 6000);
 });
 
 test("fee is charged once, rounded upward, and does not disappear through lot splitting", () => {
@@ -131,11 +131,15 @@ test("legacy zero-fee quotes survive, over-ceiling quotes are kept refundable bu
 });
 
 test("an unfillable new lot is refused without escrow and a higher-house daily budget permits it", () => {
-  const low = player(), before = read(low);
-  assert.throws(() => offer(low, 81), { code: "ECONOMY_MARKET_DAILY_LOT_LIMIT" });
+  const low = player(2, { bricks: 99 });
+  Object.assign(row(low).state.buildings, { woodlot: 1, workshop: 1, quarry: 2, kiln: 1 });
+  const before = read(low);
+  assert.throws(() => trade(low, "create_listing", "bricks", 55, 6050), { code: "ECONOMY_MARKET_DAILY_LOT_LIMIT" });
   assert.deepEqual(read(low), before);
-  assert.equal(offer(low, 80).quantity, 80);
-  const high = player(3); assert.equal(offer(high, 99).quantity, 99);
+  assert.equal(trade(low, "create_listing", "bricks", 54, 5940).listing.quantity, 54);
+  const high = player(3, { bricks: 99 });
+  Object.assign(row(high).state.buildings, { woodlot: 1, workshop: 1, quarry: 2, kiln: 1 });
+  assert.equal(trade(high, "create_listing", "bricks", 99, 10890).listing.quantity, 99);
 });
 
 test("failed funds or capacity validation does not consume either daily budget", () => {
@@ -151,7 +155,7 @@ test("failed funds or capacity validation does not consume either daily budget",
 test("profile reset does not refund daily volume and a house upgrade only changes the cap", () => {
   const seller = player(), buyer = player(2, {}), lot = offer(seller, 80); shelf(buyer); buy(buyer, lot);
   row(buyer).state.buildings.home = 3;
-  assert.equal(shelf(buyer).tradeBudget.buysUsed, 2400); assert.equal(shelf(buyer).tradeBudget.limit, 4800);
+  assert.equal(shelf(buyer).tradeBudget.buysUsed, 2400); assert.equal(shelf(buyer).tradeBudget.limit, 12000);
   economy.removeDevEconomyOwner(buyer.me.user.publicId); read(buyer);
   row(buyer).state.buildings.home = 2; row(buyer).state.buildings.bridge = 1; row(buyer).state.completedExplorations = 1;
   assert.equal(shelf(buyer).tradeBudget.buysUsed, 2400);

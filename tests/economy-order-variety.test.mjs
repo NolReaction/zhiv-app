@@ -11,7 +11,7 @@ const { economyCatalog: catalog } = await vite.ssrLoadModule("/features/economy/
 const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const scenarios = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/orders-variety-vectors.json", import.meta.url), "utf8"));
-const balanceVectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/resident-order-balance-vectors.json", import.meta.url), "utf8"));
+const balanceVectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/time-economy-order-vectors.json", import.meta.url), "utf8"));
 const now = Date.parse("2026-10-16T09:00:00Z");
 const make = scenario => {
   const state = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });

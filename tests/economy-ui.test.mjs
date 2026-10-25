@@ -107,7 +107,7 @@ test("fresh players can grow and explore without coins; expensive buildings expl
   assert.match(construction, /Камень: 0 \/ 2/);
   assert.match(construction, /Доска: 0 \/ 2/);
   assert.ok(button(construction, "Где взять недостающие материалы?"));
-  assert.match(construction, /10 мин/);
+  assert.match(construction, /30 мин/);
 });
 
 test("construction checks materials together with coins and only opens when the full cost is available", () => {
@@ -172,7 +172,8 @@ test("production hub uses one automatic product per crop and focuses source link
   assert.equal((html.match(/data-production-product="berries"/g) ?? []).length, 1);
   assert.equal((html.match(/data-production-product="strawberries"/g) ?? []).length, 1);
   assert.equal(productionBlocked(html, "berries"), false);
-  assert.match(html, /data-recipe="garden_season"/);
+  assert.match(html, /data-recipe="grow_berries"/);
+  assert.doesNotMatch(html, /data-recipe="garden_season"/);
   assert.doesNotMatch(html, /Способ производства|Вырастить малину на ухоженном кусте|<option value="garden_season"/);
   const base = render("production", controller({ snapshot: state }), "gather_hardwood");
   assert.equal((base.match(/data-production-product="hardwood"/g) ?? []).length, 1);
@@ -283,7 +284,7 @@ test("a personal showcase explains its fixed window and disables stale quotes un
 });
 
 test("stale offers stay hidden until personal discovery and cannot bypass the NPC resale price floor", () => {
-  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "tools", quantity: 1, totalPrice: 1000,
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "tools", quantity: 1, totalPrice: 1030,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
   const state = snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2, bridge: 1 }, completedExplorations: 0 });
   assert.equal(buttons(renderBrowse(controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false);
@@ -292,7 +293,7 @@ test("stale offers stay hidden until personal discovery and cannot bypass the NP
     "The house alone cannot open an unavailable producer");
   state.unlockedItems = ["tools"];
   assert.equal(disabled(button(renderBrowse(controller({ snapshot: state, market })), "Купить весь лот")), false);
-  market.listings[0].totalPrice = 990;
+  market.listings[0].totalPrice = 1020;
   assert.equal(disabled(button(renderBrowse(controller({ snapshot: state, market })), "Предложение недоступно")), true);
 });
 
@@ -479,7 +480,7 @@ test("inventory guide and sale consistently show the actual discounted payout", 
 });
 
 test("generic inventory quotes the fixed NPC price without discounting or rounding a single item", () => {
-  for (const [id, coins] of [["berries", 10], ["wood", 30], ["grilled_fish", 55]]) {
+  for (const [id, coins] of [["berries", 10], ["wood", 30], ["grilled_fish", 70]]) {
     const state = snapshot({ inventory: { [id]: 1 } });
     const html = render("inventory", controller({ snapshot: state }), id);
     assert.equal(disabled(button(html, `Продать 1 шт. за ${coins} монет`)), false);

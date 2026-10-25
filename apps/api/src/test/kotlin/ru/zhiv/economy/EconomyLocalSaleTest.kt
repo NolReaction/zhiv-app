@@ -26,22 +26,15 @@ class EconomyLocalSaleTest {
     }
 
     @Test fun `first and second stage item quotes use fixed unit payouts without packet rounding`() {
-        val prices = mapOf("berries" to 10L, "strawberries" to 40L, "wood" to 30L, "stone" to 40L,
-            "planks" to 40L, "berry_compote" to 30L, "grilled_fish" to 55L,
-            "fiber" to 10L, "rope" to 30L, "clay" to 30L, "charcoal" to 50L, "bricks" to 100L)
+        val prices = mapOf("berries" to 10L, "strawberries" to 50L, "wood" to 30L, "stone" to 30L,
+            "planks" to 50L, "berry_compote" to 50L, "grilled_fish" to 70L,
+            "fiber" to 10L, "rope" to 50L, "clay" to 30L, "charcoal" to 50L, "bricks" to 110L)
         assertEquals(prices, EconomyRules.catalog.localBuyer.unitPrices.filterKeys { it in prices })
-        // Existing travelling baits use the catalog fallback rather than an explicit full-price quote.
-        val fallbackItems = setOf("spice_bait", "dusk_bait")
-        assertEquals(fallbackItems, EconomyRules.catalog.items.filter { it.tradable }.map { it.id }.toSet() -
-            EconomyRules.catalog.localBuyer.unitPrices.keys)
-        assertEquals(EconomyRules.catalog.items.filter { it.tradable && it.id !in fallbackItems }.associate { it.id to it.baseSellPrice },
+        // Every current tradable item has an explicit quote, including travelling baits.
+        assertEquals(EconomyRules.catalog.items.filter { it.tradable }.associate { it.id to it.baseSellPrice },
             EconomyRules.catalog.localBuyer.unitPrices)
         val items = EconomyRules.catalog.items.associateBy { it.id }
-        for (id in fallbackItems) for (quantity in listOf(1L, 9L, 10000L)) {
-            val base = items.getValue(id).baseSellPrice
-            assertEquals(EconomyRules.localSellPrice(base, quantity), EconomyRules.localSellPrice(base, quantity, itemId = id))
-        }
-        for ((id, price) in prices) for (quantity in listOf(1L, 2L, 3L, 9999L, 10000L)) {
+        for ((id, price) in EconomyRules.catalog.localBuyer.unitPrices) for (quantity in listOf(1L, 2L, 3L, 9999L, 10000L)) {
             val base = items.getValue(id).baseSellPrice
             val total = EconomyRules.localSellPrice(base, quantity, itemId = id)
             assertEquals(price * quantity, total, id)

@@ -24,9 +24,9 @@ class EconomyWarehouseTest {
         assertEquals((1..10).toList(), warehouse.levels.map { it.level })
         assertEquals(capacities, warehouse.levels.map { it.warehouseCapacity })
         val third = warehouse.levels[2]
-        assertEquals(EconomyCost(1000, mapOf("planks" to 6L, "bricks" to 6L, "iron_ingot" to 2L, "cloth" to 2L)), third.cost)
+        assertEquals(EconomyCost(600, mapOf("planks" to 6L, "bricks" to 6L, "iron_ingot" to 2L, "cloth" to 2L)), third.cost)
         warehouse.levels.forEach { target ->
-            assertEquals(if (target.level == 2) 2 else 1, target.requiredHomeLevel); assertTrue(target.requiredBuildings.isEmpty())
+            assertEquals(if (target.level in 2..3) target.level else 1, target.requiredHomeLevel); assertTrue(target.requiredBuildings.isEmpty())
         }
         warehouse.levels.take(3).forEach { target -> assertTrue(relicIds.none { it in target.cost.items }) }
         warehouse.levels.drop(3).forEachIndexed { index, target ->
@@ -36,19 +36,25 @@ class EconomyWarehouseTest {
         }
     }
 
-    @Test fun `ordinary warehouse upgrades from one to three require house two and no built workshop`() {
+    @Test fun `ordinary warehouse upgrades follow house tiers without requiring a built workshop`() {
         val targets = warehouse.levels.filter { it.level in 2..3 }
         val supplies = buildMap<String, Long> {
             targets.forEach { target -> target.cost.items.forEach { (id, amount) -> put(id, (get(id) ?: 0L) + amount) } }
             put("wood", 2L)
         }
-        var state = initial(1).copy(wallet = EconomyWallet(targets.sumOf { it.cost.coins }, 77), inventory = supplies)
+        val base = initial(1)
+        var state = base.copy(buildings = base.buildings + ("home" to 3),
+            wallet = EconomyWallet(targets.sumOf { it.cost.coins }, 77), inventory = supplies)
         val originalBuildings = state.buildings
-        assertEquals(2, state.buildings["home"]); assertEquals(0, state.buildings["workshop"])
+        assertEquals(3, state.buildings["home"]); assertEquals(0, state.buildings["workshop"])
         assertEquals((supplies.values.sum() - capacities.first()).coerceAtLeast(0), EconomyRules.storage(state).overflow)
         var at = now
         for (target in targets) {
             val before = state
+            val belowGate = before.copy(buildings = before.buildings + ("home" to target.requiredHomeLevel - 1))
+            assertEquals("ECONOMY_HOME_REQUIRED", assertFailsWith<AuthFailure> {
+                apply(belowGate, "start_construction", "warehouse", at)
+            }.code)
             state = apply(state, "start_construction", "warehouse", at)
             val job = state.jobs.single()
             assertEquals(target.level, job.targetLevel); assertEquals(target.cost, job.cost)

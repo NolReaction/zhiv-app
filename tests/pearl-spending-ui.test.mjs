@@ -39,7 +39,7 @@ const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/cha
 const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-06T12:00:00Z");
-// The current curve quotes 25 visible pearls for this remaining duration.
+// At one visible pearl per five minutes, 85 minutes cost 17 visible pearls.
 const constructionRemainingMs = 85 * 60_000;
 function harness(Component = PleskMerchantHeader) {
   hooks.reset();
@@ -109,11 +109,11 @@ test("lack of replacement and uncertain balances have distinct explanations", ()
 
 test("construction confirmation displays halved prices and balance but sends the original maximum quote", () => {
   const h = harness(ConstructionSpeedup); let view = h.render();
-  view.button("Завершить сейчас за 25 жемчужин").props.onClick(); assert.deepEqual(h.calls, []);
-  view = h.render(); assert.match(view.html, />50</); assert.match(view.html, /<strong>25<\/strong>/);
-  view.button("Подтвердить завершение за 25 жемчужин").props.onClick();
-  view.button("Подтвердить завершение за 25 жемчужин").props.onClick();
-  assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 50]]);
+  view.button("Завершить сейчас за 17 жемчужин").props.onClick(); assert.deepEqual(h.calls, []);
+  view = h.render(); assert.match(view.html, />50</); assert.match(view.html, /<strong>33<\/strong>/);
+  view.button("Подтвердить завершение за 17 жемчужин").props.onClick();
+  view.button("Подтвердить завершение за 17 жемчужин").props.onClick();
+  assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 34]]);
   assert.equal(h.state.wallet.pearls, 100);
 });
 
@@ -131,20 +131,20 @@ test("construction confirmation rechecks the job, owner, revision, wallet, time 
     h => { h.economy.retryAt = now + 1000; },
   ]) {
     const h = harness(ConstructionSpeedup);
-    h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
-    const confirm = h.render().button("Подтвердить завершение за 25 жемчужин");
+    h.render().button("Завершить сейчас за 17 жемчужин").props.onClick();
+    const confirm = h.render().button("Подтвердить завершение за 17 жемчужин");
     change(h); confirm.props.onClick(); assert.deepEqual(h.calls, []);
   }
 });
 
 test("construction quotes cannot cross rendered revisions or replaced jobs, and elapsed work has no pearl control", () => {
   const h = harness(ConstructionSpeedup);
-  h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
-  const previous = h.render().button("Подтвердить завершение за 25 жемчужин");
+  h.render().button("Завершить сейчас за 17 жемчужин").props.onClick();
+  const previous = h.render().button("Подтвердить завершение за 17 жемчужин");
   h.economy.snapshot = { ...h.state, revision: 2 };
   let view = h.render();
   assert.match(view.html, /Данные обновились/);
-  assert.equal(view.button("Подтвердить завершение за 25 жемчужин").props.disabled, true);
+  assert.equal(view.button("Подтвердить завершение за 17 жемчужин").props.disabled, true);
   previous.props.onClick(); assert.deepEqual(h.calls, []);
   h.job.id = "another-house-job";
   view = h.render(); assert.doesNotMatch(view.html, /Подтвердить завершение/);
@@ -155,15 +155,15 @@ test("construction quotes cannot cross rendered revisions or replaced jobs, and 
 
 test("a definitive construction failure allows confirmation again while uncertainty preserves the send latch", () => {
   const h = harness(ConstructionSpeedup);
-  h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
-  h.render().button("Подтвердить завершение за 25 жемчужин").props.onClick();
+  h.render().button("Завершить сейчас за 17 жемчужин").props.onClick();
+  h.render().button("Подтвердить завершение за 17 жемчужин").props.onClick();
   h.economy.busy = true; h.render();
   h.economy.busy = false; h.economy.uncertain = true; h.economy.error = "Нет связи";
-  h.render().button("Подтвердить завершение за 25 жемчужин").props.onClick();
+  h.render().button("Подтвердить завершение за 17 жемчужин").props.onClick();
   assert.equal(h.calls.length, 1);
   h.economy.uncertain = false; h.economy.error = "Улучшение не выполнено";
   h.render();
-  h.render().button("Подтвердить завершение за 25 жемчужин").props.onClick();
+  h.render().button("Подтвердить завершение за 17 жемчужин").props.onClick();
   assert.equal(h.calls.length, 2);
 });
 
@@ -181,10 +181,10 @@ test("both the builder and building expose the same confirmation bound to the ac
       assert.equal(control.props.job, props.job);
       return ConstructionSpeedup(control.props);
     });
-    h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
+    h.render().button("Завершить сейчас за 17 жемчужин").props.onClick();
     assert.deepEqual(h.calls, [], "opening the quote is free");
-    h.render().button("Подтвердить завершение за 25 жемчужин").props.onClick();
-    assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 50]]);
+    h.render().button("Подтвердить завершение за 17 жемчужин").props.onClick();
+    assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 34]]);
     assert.equal(h.state.wallet.pearls, 100, "only the server may debit the wallet");
   }
 });
@@ -234,9 +234,9 @@ test("resynchronized higher shop quote needs new consent and expired confirmatio
 
 test("construction quote counts down inside the open confirmation and uses the cheaper charge", () => {
   const h = harness(ConstructionSpeedup);
-  h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
+  h.render().button("Завершить сейчас за 17 жемчужин").props.onClick();
   h.economy.now += 57 * 60_000;
-  const view = h.render(); assert.match(view.html, /Подтвердить завершение за 10 жемчужин/);
-  view.button("Подтвердить завершение за 10 жемчужин").props.onClick();
-  assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 20]]);
+  const view = h.render(); assert.match(view.html, /Подтвердить завершение за 6 жемчужин/);
+  view.button("Подтвердить завершение за 6 жемчужин").props.onClick();
+  assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 12]]);
 });

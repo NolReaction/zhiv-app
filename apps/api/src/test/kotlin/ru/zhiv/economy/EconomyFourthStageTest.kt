@@ -80,7 +80,7 @@ class EconomyFourthStageTest {
 
     @Test fun `starting cancelling and reading a ruin job do not satisfy the final expedition requirement`() {
         val route = EconomyRules.catalog.explorations.single { it.id == "ancient_ruins" }
-        assertEquals(36000L, route.seconds)
+        assertEquals(3480L, route.seconds)
         assertTrue(route.requiredBuildings["bridge"] == 1 && route.requiredBuildings["lighthouse"] == 1)
         val start = atStep(player().copy(inventory = route.cost.items), course.orders.lastIndex)
         val travelling = apply(start, "start_exploration", route.id)
@@ -93,8 +93,8 @@ class EconomyFourthStageTest {
         fails("ECONOMY_JOB_NOT_READY") { apply(travelling, "claim_job", job.id, end.minusNanos(1)) }
         val claimed = apply(travelling, "claim_job", job.id, end)
         assertEquals(1L, claimed.progression.routes[route.id])
-        assertEquals(7200L, claimed.progression.collections.travelSeconds)
-        assertEquals(1, claimed.progression.collections.finds.size)
+        assertEquals(3480L, claimed.progression.collections.travelSeconds)
+        assertTrue(claimed.progression.collections.finds.isEmpty(), "A 58-minute route does not fill the two-hour collection clock")
         assertTrue(claimed.inventory.values.sum() <= 50L, "One complete route fits the free warehouse")
         fails("ECONOMY_JOB_GONE") { apply(claimed, "claim_job", job.id, end) }
         val delivered = apply(claimed.copy(inventory = course.orders.last().items), "complete_resident_order", course.orders.last().id, end)
@@ -117,7 +117,7 @@ class EconomyFourthStageTest {
             fails("ECONOMY_HOME_REQUIRED") { apply(early, "start_construction", id) }
             val started = apply(supplied, "start_construction", id)
             assertEquals(upgrade.cost, started.jobs.single().cost)
-            assertEquals(12, started.jobs.single().catalogVersion)
+            assertEquals(13, started.jobs.single().catalogVersion)
             assertEquals(EconomyWallet(), started.wallet)
             assertTrue(started.inventory.isEmpty())
             assertEquals(0, started.buildings[id] ?: 0)

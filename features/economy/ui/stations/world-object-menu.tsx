@@ -160,7 +160,7 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialH
   const landmark = stationId === "bridge" || stationId === "lighthouse";
   const building = state?.catalog.buildings.find(entry => entry.id === stationId);
   const target = building?.levels.find(level => level.level === current + 1);
-  const recipes = state?.catalog.recipes.filter(recipe => recipe.buildingId === stationId) ?? [];
+  const recipes = state?.catalog.recipes.filter(recipe => !recipe.retired && recipe.buildingId === stationId) ?? [];
   const focusedRecipe = state ? worldRecipeGroups(state, recipes, { includeFuture: true }).find(group => group.methods.some(recipe => recipe.id === recipeId))?.recipe : undefined;
   const focusedRecipeId = focusedRecipe?.id;
   const focusedAccessReason = state && focusedRecipe ? worldRecipeAccessReason(state, focusedRecipe) : null;
@@ -279,7 +279,7 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialH
             </>}
             {stationId === "lighthouse" && <p className={styles.small}>Свет маяка отмечает причал. Пароход с крупными заказами появится в будущем обновлении.</p>}
             <h3>Маршруты экспедиций</h3>
-            {state.catalog.explorations.filter(route => Boolean(route.requiredBuildings[stationId])).map(route => <section key={route.id} className={styles.detail}>
+            {state.catalog.explorations.filter(route => !route.retired && Boolean(route.requiredBuildings[stationId])).map(route => <section key={route.id} className={styles.detail}>
               <h4>{route.name}</h4><p className={styles.small}>{route.description} · {worldDuration(route.seconds)}</p>
               <Requirements state={state} required={worldRequirements(route)} navigation={navigation} />
             </section>)}

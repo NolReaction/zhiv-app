@@ -63,8 +63,8 @@ test("campfire sections include every selected product once and leave the catalo
   const economy = controller(), products = worldRecipeGroups(economy.snapshot, recipes(economy)), before = structuredClone(products);
   const groups = campfireRecipeGroups(products, "all");
   assert.deepEqual(groups.map(group => group.id), ["fish", "drinks", "desserts", "provisions"]);
-  assert.equal(products.length, 15);
-  assert.deepEqual(groups.map(group => group.recipes.length), [6, 3, 3, 3]);
+  assert.equal(products.length, 18);
+  assert.deepEqual(groups.map(group => group.recipes.length), [6, 4, 4, 4]);
   assert.deepEqual(groups.flatMap(group => group.recipes.map(product => product.key)).sort(), products.map(product => product.key).sort());
   for (const group of groups) assert.deepEqual(group.recipes.map(product => product.recipe.seconds), group.recipes.map(product => product.recipe.seconds).toSorted((left, right) => left - right));
   assert.deepEqual(products, before);
@@ -92,15 +92,16 @@ test("cooking filters show logical blocks and exact current product cards", () =
   assert.equal(view.filter("all").props["aria-pressed"], true);
   for (const name of ["Рыбные блюда", "Напитки", "Ягодные десерты", "Походные припасы"]) assert.ok(view.html.includes(name));
   view.filter("short").props.onClick(); view = catalog(economy);
-  assert.deepEqual(view.ids, ["cook_grilled_fish", "cook_compote", "cook_strawberry_compote", "cook_blueberry_compote"]);
-  assert.doesNotMatch(view.html, /data-cooking-group="desserts"|data-cooking-group="provisions"/);
+  assert.deepEqual(view.ids.toSorted(), recipes(economy).filter(recipe => recipe.seconds <= 900).map(recipe => recipe.id).toSorted());
+  assert.match(view.html, /data-cooking-group="desserts"/);
+  assert.match(view.html, /data-cooking-group="provisions"/);
   view.filter("medium").props.onClick(); view = catalog(economy);
   assert.ok(view.ids.includes("cook_hearty_fish")); assert.ok(view.ids.includes("prepare_trail_ration"));
-  assert.ok(!view.ids.includes("cook_epic_fish"));
+  assert.ok(view.ids.includes("cook_epic_fish"));
   view.filter("long").props.onClick(); view = catalog(economy);
-  assert.deepEqual(view.ids, ["cook_epic_fish", "cook_legendary_fish", "cook_cranberry_glaze"]);
+  assert.deepEqual(view.ids, []);
   view.filter("all").props.onClick(); view = catalog(economy);
-  assert.equal(view.ids.length, 15); assert.equal(new Set(view.ids).size, 15);
+  assert.equal(view.ids.length, 18); assert.equal(new Set(view.ids).size, 18);
   assert.deepEqual(economy.snapshot, before);
 });
 
@@ -111,12 +112,12 @@ test("a changed source target reveals its recipe outside the filter without cons
   assert.equal(view.filter("all").props["aria-pressed"], true);
   const focused = view.cards.find(card => card.props.recipe.id === "cook_legendary_fish");
   assert.equal(focused.props.focused, true);
-  view.filter("medium").props.onClick(); view = catalog(economy, "cook_legendary_fish");
-  assert.equal(view.filter("medium").props["aria-pressed"], true);
+  view.filter("short").props.onClick(); view = catalog(economy, "cook_legendary_fish");
+  assert.equal(view.filter("short").props["aria-pressed"], true);
   assert.ok(!view.ids.includes("cook_legendary_fish"), "a player can intentionally filter after source navigation");
-  view = catalog(economy, "cook_compote");
+  view = catalog(economy, "cook_hearty_fish");
   assert.equal(view.filter("all").props["aria-pressed"], true);
-  assert.equal(view.cards.find(card => card.props.recipe.id === "cook_compote").props.focused, true);
+  assert.equal(view.cards.find(card => card.props.recipe.id === "cook_hearty_fish").props.focused, true);
 });
 
 test("a target already inside the chosen filter keeps that filter and rejects foreign IDs", () => {

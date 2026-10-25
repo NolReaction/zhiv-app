@@ -124,7 +124,7 @@ test("several growing crops share one collecting hero while mining retains its o
   const beforeSecondCollection = read(p, ripe);
   assert.throws(() => issue(p, "start_collection", growing.jobs[1].id, ripe), { code: "ECONOMY_COLLECTOR_BUSY" });
   assert.deepEqual(read(p, ripe), beforeSecondCollection);
-  const miner = issue(p, "start_exploration", "cave", ripe).state.jobs.find(job => job.targetId === "cave");
+  const miner = issue(p, "start_exploration", "quarry_stone", ripe).state.jobs.find(job => job.targetId === "quarry_stone");
   assert.equal(miner.actorId, "miner");
   const beforeSecondMining = read(p, ripe);
   assert.throws(() => issue(p, "start_exploration", "quarry_stone", ripe), { code: "ECONOMY_MINER_BUSY" });

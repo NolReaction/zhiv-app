@@ -78,9 +78,10 @@ test("a real committed start with a lost ACK replays its frozen envelope after r
   assert.equal(restored.getSnapshot().pendingProductionCount, 0); deactivate();
 });
 
-test("a persisted catalog v10 queue survives v12 deployment and a lost replay ACK without adopting cached prices or rewards", async () => {
+test("a persisted catalog v10 queue survives v13 deployment and a lost replay ACK without adopting cached prices or rewards", async () => {
   const f = fixture(), legacy = structuredClone(f.read()), head = f.command("start_production", "make_planks");
   legacy.catalog.version = 10;
+  delete legacy.catalog.timeEconomy;
   const oldRecipe = legacy.catalog.recipes.find(recipe => recipe.id === "make_planks");
   oldRecipe.cost.items = {}; oldRecipe.rewards = { planks: 99 }; oldRecipe.seconds = 1;
   const tail = { requestId: crypto.randomUUID(), targetId: "make_planks" };
@@ -106,9 +107,9 @@ test("a persisted catalog v10 queue survives v12 deployment and a lost replay AC
     for (const job of f.read().jobs) {
       assert.deepEqual(job.cost.items, { wood: 1 }); assert.deepEqual(job.rewards, { planks: 1 });
       assert.equal(Date.parse(job.finishesAt), instant + 120_000);
-      assert.equal(job.catalogVersion, 12);
+      assert.equal(job.catalogVersion, 13);
     }
-    assert.equal(restored.getSnapshot().snapshot.catalog.version, 12);
+    assert.equal(restored.getSnapshot().snapshot.catalog.version, 13);
     assert.deepEqual(f.saved().entries, []);
   } finally { deactivate(); }
 });

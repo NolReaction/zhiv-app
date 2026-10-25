@@ -326,7 +326,7 @@ test("HTTP rejects every mining route at an unbuilt quarry without spending or i
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await POST(post(cmd));
       assert.equal(response.status, 409, route.id);
-      assert.equal((await response.json()).code, "ECONOMY_BUILDING_REQUIRED", route.id);
+      assert.equal((await response.json()).code, route.retired ? "ECONOMY_SOURCE_RETIRED" : "ECONOMY_BUILDING_REQUIRED", route.id);
     }
     const after = await (await GET(read())).json();
     assert.equal(after.revision, before.revision);
@@ -337,7 +337,7 @@ test("HTTP rejects every mining route at an unbuilt quarry without spending or i
   }
 });
 
-test("HTTP gates warehouse two at home two and keeps warehouse three independent while preserving paid costs and one builder", async () => {
+test("HTTP gates warehouse tiers two and three at their home levels and preserves paid costs and one builder", async () => {
   const p = player();
   economy.getDevEconomy(p.token);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
@@ -346,13 +346,14 @@ test("HTTP gates warehouse two at home two and keeps warehouse three independent
   for (const target of targets) {
     row.state.inventory = { ...target.cost.items, wood: 2 };
     row.state.wallet = { coins: target.cost.coins, pearls: 0 };
-    if (target.level === 2) {
+    row.state.buildings.home = target.requiredHomeLevel - 1;
+    {
       const before = structuredClone(row.state), revision = row.revision, receipts = row.receipts.size;
       const blocked = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
       assert.equal(blocked.status, 409); assert.equal((await blocked.json()).code, "ECONOMY_HOME_REQUIRED");
       assert.deepEqual(row.state, before); assert.equal(row.revision, revision); assert.equal(row.receipts.size, receipts);
     }
-    row.state.buildings.home = target.level === 2 ? 2 : 1;
+    row.state.buildings.home = target.requiredHomeLevel;
     const buildings = structuredClone(row.state.buildings);
     const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
     const response = await POST(post(order));

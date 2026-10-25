@@ -29,7 +29,9 @@ const currencyShop = load("../features/economy/domain/currency-shop.ts", {
   "./money": money, "./time-price": timePrice, "./storefront": { storefrontCatalog },
 });
 const gameRewards = load("../features/game/game-rewards.ts");
+const sources = load("../features/progression/economy-sources.ts", { "@/features/economy/domain/model": { economyCatalog: catalog, recipeBuildingLevel } });
 const model = load("../features/progression/economy-data.ts", {
+  "./economy-sources": sources,
   "@/features/economy/domain/model": { economyCatalog: catalog, recipeBuildingLevel },
   "@/features/economy/domain/money": money,
   "@/features/economy/domain/currency-shop": currencyShop,
@@ -41,6 +43,8 @@ const model = load("../features/progression/economy-data.ts", {
   "@/apps/api/src/main/resources/world/progression-rewards-catalog.json": { default: rewards },
 });
 const { progressionEconomy: economy, calculateRecipePlan, buildProgressionEconomy } = model;
+const activeRecipes = catalog.recipes.filter(recipe => !recipe.retired);
+const activeRoutes = catalog.explorations.filter(route => !route.retired);
 const recipe = id => economy.recipes.find(value => value.id === id);
 const item = id => economy.items.find(value => value.id === id);
 const queue = (plan, id) => plan.queues.find(value => value.buildingId === id);
@@ -58,10 +62,10 @@ test("recipe references show the functional level-zero fire while leaving its wi
 
 test("economy reference covers every actual item and recipe, with sources and reverse uses", () => {
   assert.equal(economy.items.length, catalog.items.length);
-  assert.equal(economy.recipes.length, catalog.recipes.length);
+  assert.equal(economy.recipes.length, activeRecipes.length);
   assert.equal(new Set(economy.items.map(value => value.id)).size, catalog.items.length);
   for (const value of economy.items) assert.ok(value.sources.length, `No source for ${value.id}`);
-  for (const value of catalog.recipes) {
+  for (const value of activeRecipes) {
     assert.deepEqual(plain(recipe(value.id).cost), value.cost);
     assert.deepEqual(plain(recipe(value.id).rewards), value.rewards);
     assert.equal(Object.values(value.rewards).reduce((sum, count) => sum + count, 0), 1);
@@ -96,7 +100,7 @@ test("fish species remain collection records, and no fishing route promises comm
 test("source costs and prerequisites are complete catalog copies, including the recipe's own station", () => {
   const before = JSON.stringify(catalog);
   const reference = buildProgressionEconomy(catalog);
-  for (const recipe of catalog.recipes) {
+  for (const recipe of activeRecipes) {
     const source = reference.items.find(item => item.id === Object.keys(recipe.rewards)[0]).sources.find(source => source.recipeId === recipe.id);
     assert.deepEqual(plain(source.cost), recipe.cost);
     assert.deepEqual(plain(source.requiredBuildings), { ...recipe.requiredBuildings,
@@ -105,7 +109,7 @@ test("source costs and prerequisites are complete catalog copies, including the 
     source.cost.coins += 1;
     source.requiredBuildings[recipe.buildingId] += 1;
   }
-  for (const route of catalog.explorations.filter(route => !catalog.fishing.routeIds.includes(route.id))) {
+  for (const route of activeRoutes.filter(route => !catalog.fishing.routeIds.includes(route.id))) {
     const source = reference.items.find(item => item.id === Object.keys(route.rewards)[0]).sources.find(source => source.routeId === route.id);
     assert.deepEqual(plain(source.cost), route.cost);
     assert.deepEqual(plain(source.requiredBuildings), route.requiredBuildings);
@@ -122,16 +126,16 @@ test("source costs and prerequisites are complete catalog copies, including the 
 });
 
 test("direct processing math uses current NPC prices; timer rate excludes collection and ingredients", () => {
-  assert.equal(recipe("make_beams").inputNpcValue, 430);
-  assert.equal(recipe("make_beams").outputNpcValue, 600);
-  assert.equal(recipe("make_beams").addedNpcValue, 170);
-  assert.equal(recipe("weave_cloth").inputNpcValue, 80);
-  assert.equal(recipe("weave_cloth").addedNpcValue, 160);
+  assert.equal(recipe("make_beams").inputNpcValue, 450);
+  assert.equal(recipe("make_beams").outputNpcValue, 650);
+  assert.equal(recipe("make_beams").addedNpcValue, 200);
+  assert.equal(recipe("weave_cloth").inputNpcValue, 100);
+  assert.equal(recipe("weave_cloth").addedNpcValue, 120);
   assert.equal(recipe("cook_fish_soup").inputNpcValue, 140);
   assert.equal(recipe("cook_fish_soup").outputNpcValue, 220);
   assert.equal(recipe("cook_fish_soup").addedNpcValue, 80);
-  assert.equal(recipe("cook_fish_soup").unitsPerHour, 2);
-  assert.equal(recipe("cook_fish_soup").grossNpcPerHour, 440);
+  assert.equal(recipe("cook_fish_soup").unitsPerHour, 7.5);
+  assert.equal(recipe("cook_fish_soup").grossNpcPerHour, 1650);
   assert.equal(recipe("grow_berries").unitsPerHour, 60);
   assert.equal(recipe("grow_berries").collectionSeconds, 8);
 });
@@ -140,7 +144,7 @@ test("two beams recursively require eight hardwood and four fibre with shared wo
   const plan = calculateRecipePlan("make_beams", 2);
   assert.deepEqual(plain(plan.rawInputs), { hardwood: 8, fiber: 4 });
   assert.equal(queue(plan, "woodlot").seconds, 8 * 600 + 4 * 60);
-  assert.equal(queue(plan, "workshop").seconds, 2 * 3600 + 2 * 180);
+  assert.equal(queue(plan, "workshop").seconds, 2 * 1200 + 2 * 180);
   assert.ok(plan.steps.some(step => step.recipeId === "gather_hardwood" && step.runs === 8));
   assert.ok(!plan.steps.some(step => step.recipeId === "hardwood_shift"));
   assert.equal(plan.uncertainItemIds.length, 0);
@@ -152,23 +156,23 @@ test("cloth expands its rope ingredient and soup explicitly leaves fish acquisit
   const cloth = calculateRecipePlan("weave_cloth");
   assert.deepEqual(plain(cloth.rawInputs), { fiber: 7 });
   assert.equal(queue(cloth, "woodlot").seconds, 420);
-  assert.equal(queue(cloth, "workshop").seconds, 2400 + 180);
+  assert.equal(queue(cloth, "workshop").seconds, 720 + 180);
   assert.deepEqual(plain(cloth.steps.map(step => step.recipeId)), ["gather_fiber", "make_rope", "weave_cloth"]);
   const soup = calculateRecipePlan("cook_fish_soup");
   assert.deepEqual(plain(soup.rawInputs), { fish_common: 2, berries: 1, wood: 1 });
   assert.deepEqual(plain(soup.uncertainItemIds), ["fish_common"]);
   assert.equal(queue(soup, "garden").seconds, 60);
   assert.equal(queue(soup, "garden").collectionSeconds, 8);
-  assert.equal(queue(soup, "dryer").seconds, 1800);
+  assert.equal(queue(soup, "dryer").seconds, 480);
   assert.ok(!soup.queues.some(value => value.buildingId === "fishing"));
 });
 
 test("unit mining is counted independently without choosing a multi-output expedition", () => {
   const plan = calculateRecipePlan("smelt_iron");
   assert.deepEqual(plain(plan.rawInputs), { ore: 3, wood: 1 });
-  assert.equal(queue(plan, "quarry").seconds, 3 * 540);
+  assert.equal(queue(plan, "quarry").seconds, 3 * 600);
   assert.deepEqual(plain(plan.miningSteps), [{ routeId: "quarry_ore", runs: 3 }]);
-  assert.equal(queue(plan, "kiln").seconds, 1800 + 120);
+  assert.equal(queue(plan, "kiln").seconds, 900 + 120);
   assert.equal(queue(plan, "woodlot").seconds, 180);
   assert.equal(plan.uncertainItemIds.length, 0);
   const stone = calculateRecipePlan("cut_stone");
@@ -177,26 +181,26 @@ test("unit mining is counted independently without choosing a multi-output exped
 
 test("stage budgets derive only required new buildings and preserve the seven daily gates", () => {
   const first = economy.stages.find(stage => stage.homeLevel === 1);
-  assert.equal(first.buildingCoins, 380);
-  assert.equal(first.orderCoins, 315);
+  assert.equal(first.buildingCoins, 400);
+  assert.equal(first.orderCoins, 338);
   assert.equal(first.orders.length, 4);
   assert.deepEqual(plain(economy.starter), { coins: 100, pearls: 0, items: { wood: 3, stone: 5 } });
-  assert.equal(economy.starter.coins + first.orderCoins - first.buildingCoins, 35);
+  assert.equal(economy.starter.coins + first.orderCoins - first.buildingCoins, 38);
   assert.deepEqual(plain(economy.storage.map(level => level.capacity)), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
   const second = economy.stages.find(stage => stage.homeLevel === 2);
-  assert.equal(second.buildingCoins, 1050);
-  assert.equal(second.orderCoins, 1990);
+  assert.equal(second.buildingCoins, 1550);
+  assert.equal(second.orderCoins, 1738);
   assert.equal(second.orders.length, 7);
   const third = economy.stages.find(stage => stage.homeLevel === 3);
-  assert.equal(third.buildingCoins, 20600);
-  assert.equal(third.orderCoins, 14840);
+  assert.equal(third.buildingCoins, 11400);
+  assert.equal(third.orderCoins, 13301);
   assert.equal(third.orders.length, 8);
   assert.equal(third.intervalSeconds, 23 * 3600);
   assert.equal(third.minimumGateSeconds, 7 * 23 * 3600);
-  assert.equal(third.buildings.find(value => value.id === "home").seconds, 86400);
+  assert.equal(third.buildings.find(value => value.id === "home").seconds, 8 * 3600);
   assert.deepEqual(plain(third.completionRewards), { living_resin: 1 });
-  assert.equal(third.orders[0].inputNpcValue, 380);
-  assert.equal(third.orders[0].addedNpcValue, 190);
+  assert.equal(third.orders[0].inputNpcValue, 420);
+  assert.equal(third.orders[0].addedNpcValue, 105);
   assert.ok(economy.stages.every(stage => !stage.buildings.some(value => value.id === "warehouse")));
   assert.equal(economy.stages.find(stage => stage.homeLevel === 4).preliminary, false);
 });
@@ -213,9 +217,9 @@ test("pearl budgets respect visible denomination and distinguish seven gifts fro
   assert.deepEqual(plain(economy.pearls.marketSlotPrices), [50, 80, 120, 180, 250]);
   assert.equal(economy.pearls.marketTotal, 680);
   assert.deepEqual(plain(economy.pearls.productionSlots), [{ slots: 2, pearls: 100 }, { slots: 3, pearls: 250 }]);
-  assert.deepEqual(plain(economy.pearls.construction), { stepPearls: 1, curved: true,
-    prices: [{ seconds: 60, pearls: 1 }, { seconds: 3600, pearls: 20 }, { seconds: 21600, pearls: 73 },
-      { seconds: 43200, pearls: 135 }, { seconds: 86400, pearls: 260 }, { seconds: 172800, pearls: 384 }, { seconds: 604800, pearls: 1000 }] });
+  assert.deepEqual(plain(economy.pearls.construction), { stepPearls: 1, curved: false, secondsPerVisiblePearl: 300,
+    prices: [{ seconds: 60, pearls: 1 }, { seconds: 3600, pearls: 12 }, { seconds: 21600, pearls: 72 },
+      { seconds: 43200, pearls: 144 }, { seconds: 86400, pearls: 288 }, { seconds: 172800, pearls: 576 }, { seconds: 604800, pearls: 2016 }] });
   assert.deepEqual(plain(economy.fishingShop), { refreshSeconds: 21600, maximumRefreshPearls: 50 });
 });
 
@@ -267,16 +271,16 @@ test("branch references all five stage packs and cosmetic prices without turning
 
 test("house four has a separate twelve-delivery course, restored landmarks and guaranteed home-five relics", () => {
   const fourth = economy.stages.find(stage => stage.homeLevel === 4);
-  assert.equal(fourth.buildingCoins, 70500);
-  assert.equal(fourth.buildSeconds, 96 * 3600, "one builder's queue excludes delivery waits and resource preparation");
+  assert.equal(fourth.buildingCoins, 34800);
+  assert.equal(fourth.buildSeconds, 58 * 3600, "one builder's queue excludes delivery waits and resource preparation");
   assert.equal(fourth.orders.length, 12);
-  assert.equal(fourth.orderCoins, 50000);
+  assert.equal(fourth.orderCoins, 14965);
   assert.equal(fourth.intervalSeconds, 23 * 3600);
   assert.equal(fourth.minimumGateSeconds, 11 * 23 * 3600);
   assert.deepEqual(plain(fourth.completionRewards), { ancient_core: 1, moon_crystal: 1 });
   assert.equal(fourth.preliminary, false, "the command route is verified; its runtime is not a guarantee for every visit pattern");
   for (const id of ["bridge", "lighthouse"]) assert.ok(fourth.buildings.some(building => building.id === id && building.level === 1));
-  assert.equal(fourth.buildings.find(building => building.id === "home").seconds, 48 * 3600);
+  assert.equal(fourth.buildings.find(building => building.id === "home").seconds, 24 * 3600);
   const final = fourth.orders.find(order => order.id === "stage4_completion_order");
   assert.deepEqual(plain(final.requiredBuildings), { bridge: 1, lighthouse: 1 });
   assert.deepEqual(plain(final.requiredExplorations), { ancient_ruins: 1 });
@@ -292,7 +296,7 @@ test("rations and research equipment add NPC value and expand the actual depende
   const ration = recipe("prepare_trail_ration"), gear = recipe("make_research_gear");
   assert.deepEqual(plain(ration.cost.items), { smoked_fish: 1, dried_berries: 1, berry_compote: 1 });
   assert.deepEqual(plain(gear.cost.items), { tools: 1, cloth: 1, rope: 2 });
-  for (const [entry, input, output, added] of [[ration, 280, 360, 80], [gear, 1300, 1600, 300]]) {
+  for (const [entry, input, output, added] of [[ration, 490, 690, 200], [gear, 1350, 1750, 400]]) {
     assert.equal(entry.inputNpcValue, input);
     assert.equal(entry.outputNpcValue, output);
     assert.equal(entry.addedNpcValue, added);
@@ -302,15 +306,15 @@ test("rations and research equipment add NPC value and expand the actual depende
   const rationPlan = calculateRecipePlan(ration.id);
   assert.deepEqual(plain(rationPlan.rawInputs), { wood: 1, fish_common: 2, berries: 8 });
   assert.deepEqual(plain(rationPlan.uncertainItemIds), ["fish_common"]);
-  assert.equal(queue(rationPlan, "dryer").seconds, 8280);
+  assert.equal(queue(rationPlan, "dryer").seconds, 3000);
   assert.equal(queue(rationPlan, "garden").collectionSeconds, 64);
   const gearPlan = calculateRecipePlan(gear.id);
   assert.deepEqual(plain(gearPlan.rawInputs), { ore: 3, wood: 4, fiber: 13 });
   assert.equal(gearPlan.uncertainItemIds.length, 0);
-  assert.equal(queue(gearPlan, "workshop").seconds, 17760);
-  assert.equal(queue(gearPlan, "quarry").seconds, 1620);
-  assert.equal(queue(gearPlan, "kiln").seconds, 1920);
-  for (const [itemId, routeId] of [["trail_ration", "far_bank_path"], ["research_gear", "ancient_ruins"]]) {
+  assert.equal(queue(gearPlan, "workshop").seconds, 6180);
+  assert.equal(queue(gearPlan, "quarry").seconds, 1800);
+  assert.equal(queue(gearPlan, "kiln").seconds, 1020);
+  for (const [itemId, routeId] of [["trail_ration", "far_bank_path"], ["field_kit", "ancient_ruins"]]) {
     assert.ok(item(itemId).uses.some(use => use.id === `route:${routeId}`));
     assert.ok(item(itemId).sources.some(source => source.kind === "recipe" && source.guaranteed));
   }
@@ -347,8 +351,8 @@ test("unlock overview follows changed station gates and owns its copies while ea
   const fourth = economy.stages.find(stage => stage.homeLevel === 4);
   const landmarks = fourth.buildings.filter(building => ["bridge", "lighthouse"].includes(building.id));
   assert.deepEqual(plain(landmarks.map(building => [building.id, building.availableHomeLevel])), [["bridge", 2], ["lighthouse", 3]]);
-  assert.equal(fourth.buildingCoins - landmarks.reduce((sum, building) => sum + building.cost.coins, 0), 64300);
-  assert.equal(fourth.buildSeconds - landmarks.reduce((sum, building) => sum + building.seconds, 0), 86 * 3600);
+  assert.equal(fourth.buildingCoins - landmarks.reduce((sum, building) => sum + building.cost.coins, 0), 31800);
+  assert.equal(fourth.buildSeconds - landmarks.reduce((sum, building) => sum + building.seconds, 0), 53 * 3600);
   custom.homeUnlocks.find(unlock => unlock.homeLevel === 2).landmarks[0].cost.items.rope = 100;
   custom.items.find(item => item.id === "currant_jelly").meal.heroSpeedBps = 9999;
   custom.market.requiredBuildings.bridge = 100;
@@ -358,7 +362,7 @@ test("unlock overview follows changed station gates and owns its copies while ea
 test("builders and calculations do not mutate the source catalog, and reject invalid requests", () => {
   const before = JSON.stringify(catalog);
   buildProgressionEconomy(catalog);
-  for (const value of catalog.recipes) calculateRecipePlan(value.id, 3, catalog);
+  for (const value of activeRecipes) calculateRecipePlan(value.id, 3, catalog);
   assert.equal(JSON.stringify(catalog), before);
   for (const quantity of [0, 1000, 1.5, NaN, Infinity]) assert.throws(() => calculateRecipePlan("make_beams", quantity), /Quantity/);
   assert.throws(() => calculateRecipePlan("nonexistent"), /Unknown recipe/);
@@ -370,10 +374,10 @@ test("changing a catalog price or timer flows into recipe values, stage rewards 
   changed.recipes.find(value => value.id === "gather_wood").seconds = 321;
   const updated = buildProgressionEconomy(changed);
   assert.equal(updated.recipes.find(value => value.id === "make_planks").inputNpcValue, 100);
-  assert.equal(updated.recipes.find(value => value.id === "make_planks").addedNpcValue, -60);
+  assert.equal(updated.recipes.find(value => value.id === "make_planks").addedNpcValue, -50);
   const timberOrder = updated.stages[0].orders.find(value => value.id === "stage1_wood_order");
   assert.equal(timberOrder.inputNpcValue, 200);
-  assert.equal(timberOrder.addedNpcValue, -110);
+  assert.equal(timberOrder.addedNpcValue, -125);
   assert.equal(queue(calculateRecipePlan("make_planks", 2, changed), "woodlot").seconds, 642);
   assert.equal(recipe("make_planks").inputNpcValue, 30);
 });

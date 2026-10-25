@@ -63,10 +63,10 @@ const routeSeconds = (state: EconomyView, route: Route) => explorationActorId(ro
   ? tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog)
   : mealDuration(route.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0);
 const displayedRouteDuration = (state: EconomyView, route: Route) => expeditionSector(route.id) === "caves" ? miningDurationLabel(routeSeconds(state, route)) : worldDuration(routeSeconds(state, route));
-const canPrepare = (state: EconomyView, route: Route) => worldMissingRequirements(state, worldRequirements(route)).length === 0 && countRewards(route.rewards) <= state.storage.capacity && worldCostShortfalls(state, expeditionCost(state, route)).length === 0;
+const canPrepare = (state: EconomyView, route: Route) => !route.retired && worldMissingRequirements(state, worldRequirements(route)).length === 0 && countRewards(route.rewards) <= state.storage.capacity && worldCostShortfalls(state, expeditionCost(state, route)).length === 0;
 const hasActiveRoute = (state: EconomyView, routeId: string | null) => routeId !== null && state.jobs.some(job =>
   (job.kind === "exploration" && job.targetId === routeId) || (isQuarryProduction(job) && job.recipeId === routeId));
-const sectorRoutes = (state: EconomyView, sectorId: SectorId) => state.catalog.explorations.filter(route => (isFishingRoute(state, route) ? "shore" : expeditionSector(route.id)) === sectorId
+const sectorRoutes = (state: EconomyView, sectorId: SectorId) => state.catalog.explorations.filter(route => !route.retired && (isFishingRoute(state, route) ? "shore" : expeditionSector(route.id)) === sectorId
   && worldMissingRequirements(state, worldRequirements(route)).every(requirement => explorationActorId(route) === "miner" && requirement.id === "quarry")
   && !(route.id === "quarry_shift" && (state.buildings.quarry ?? 0) >= 4)
   && !(route.id === "quarry_deep_face" && (state.buildings.quarry ?? 0) >= 5));
@@ -197,6 +197,7 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
 export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, economy, state, exploring, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, isOnline }: WorldExpeditionsMenuProps & { sectorId: SectorId; selectedRoute: string | null; onSelectRoute: (id: string | null) => void; state: EconomyView; exploring: boolean }) {
   const descriptionPrefix = useId();
   const [durationFilter, setDurationFilter] = useState<MiningDurationFilter>("all");
+  const singleResourceMining = state.catalog.version >= 13;
   const routes = sectorRoutes(state, sectorId);
   const readyRoutes = routes.filter(route => canPrepare(state, route));
   const laterRoutes = routes.filter(route => !canPrepare(state, route));
@@ -213,9 +214,9 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
     <ExpeditionRouteDetails key={selected.id} route={selected} state={state} economy={economy} exploring={exploring} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />
   </section>;
   if (sectorId === "caves") {
-    const groups = miningResourceGroups(routes, durationFilter, route => routeSeconds(state, route));
+    const groups = miningResourceGroups(routes, singleResourceMining ? "all" : durationFilter, route => routeSeconds(state, route));
     return <section className={`${styles.routes} ${styles.miningRoutes}`} data-section-guide-target="expedition-routes" data-guide-spotlight-group aria-label="Добыча по ресурсам" data-sector="caves">
-      <div className={styles.miningFilters} role="group" aria-label="Время добычи">{miningDurationFilters.map(filter => <button type="button" key={filter.id} aria-pressed={durationFilter === filter.id} data-mining-duration={filter.id} onClick={() => setDurationFilter(filter.id)}>{filter.label}</button>)}</div>
+      {!singleResourceMining && <div className={styles.miningFilters} role="group" aria-label="Время добычи">{miningDurationFilters.map(filter => <button type="button" key={filter.id} aria-pressed={durationFilter === filter.id} data-mining-duration={filter.id} onClick={() => setDurationFilter(filter.id)}>{filter.label}</button>)}</div>}
       {groups.map(group => {
         const mixed = group.itemId === null;
         const title = group.itemId ? itemName(state, group.itemId) : "Смешанная добыча";

@@ -56,7 +56,8 @@ object EconomyRules {
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
         EconomyStageOrders.validateCatalog(catalog)
-        require(catalog.version == 12 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        require(catalog.version in 10..13 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        validateTimeEconomy(catalog)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.localBuyer.unitPrices.all { (id, amount) -> amount in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == id && it.tradable } })
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
@@ -120,6 +121,21 @@ object EconomyRules {
         }
         EconomyFood.validateCatalog(catalog)
         EconomyTradeRelations.validateCatalog(catalog)
+    }
+
+    internal fun validateTimeEconomy(catalog: EconomyCatalog) {
+        require(catalog.version < 13 || catalog.timeEconomy != null)
+        val policy = catalog.timeEconomy ?: return
+        val items = catalog.items.associateBy { it.id }
+        val priced = policy.baselineRecipes.keys + policy.baselineExplorations.keys + policy.externalPrices.keys
+        require(priced.size == policy.baselineRecipes.size + policy.baselineExplorations.size + policy.externalPrices.size)
+        require(priced.all { it in items })
+        require(policy.baselineRecipes.all { (item, id) -> catalog.recipes.any {
+            !it.retired && it.id == id && (it.rewards[item] ?: 0L) > 0L
+        } })
+        require(policy.baselineExplorations.all { (item, id) -> catalog.explorations.any {
+            !it.retired && it.id == id && (it.rewards[item] ?: 0L) > 0L
+        } })
     }
 
     /** Square-root conversion preserves a modest head start without importing beta-scale balances. */
@@ -334,7 +350,7 @@ object EconomyRules {
         if (collection) economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите текущий сбор припасов")
     }
 
-    fun productionStationSupported(stationId: String): Boolean = stationId != "quarry" && catalog.recipes.any { it.buildingId == stationId }
+    fun productionStationSupported(stationId: String): Boolean = stationId != "quarry" && catalog.recipes.any { !it.retired && it.buildingId == stationId }
 
     fun productionSlotCount(state: EconomyState, stationId: String): Int =
         if (productionStationSupported(stationId)) (state.productionSlots[stationId] ?: 1).coerceIn(1, 3) else 1
@@ -419,6 +435,7 @@ object EconomyRules {
                 if (command.quantity > catalog.maxBatch) invalidEconomy()
                 val parts = command.targetId.split('@')
                 val baseRecipe = catalog.recipes.find { it.id == parts.first() } ?: economyFailure("ECONOMY_RECIPE", "Рецепт не найден")
+                if (baseRecipe.retired) economyFailure("ECONOMY_SOURCE_RETIRED", "Этот способ больше недоступен. Выберите действующий рецепт или добычу")
                 if (parts.size > 2 || parts.getOrNull(1) == "") economyFailure("ECONOMY_RECIPE_FISH", "Эта рыба не подходит для выбранного блюда")
                 val recipe = EconomyFood.recipeWithFish(baseRecipe, parts.getOrNull(1))
                 if (command.quantity > (recipe.maxBatch ?: catalog.maxBatch)) invalidEconomy()
@@ -493,6 +510,7 @@ object EconomyRules {
             }
             "start_exploration", "start_fishing" -> {
                 val exploration = catalog.explorations.find { it.id == command.targetId } ?: economyFailure("ECONOMY_EXPLORATION", "Место исследования не найдено")
+                if (exploration.retired) economyFailure("ECONOMY_SOURCE_RETIRED", "Этот способ больше недоступен. Выберите действующий рецепт или добычу")
                 requireHome(state, exploration.requiredHomeLevel)
                 requireBuildings(state, exploration.requiredBuildings)
                 if (exploration.requiredBuildings.containsKey("quarry") && state.jobs.any { it.kind == "construction" && it.targetId == "quarry" })

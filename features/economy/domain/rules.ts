@@ -209,6 +209,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const [recipeId, fishItemId, extra] = command.targetId.split("@");
       const source = economyCatalog.recipes.find(item => item.id === recipeId);
       if (!source) return fail("ECONOMY_RECIPE", "Рецепт не найден");
+      if (source.retired) return fail("ECONOMY_SOURCE_RETIRED", "Этот способ больше недоступен. Выберите действующий рецепт или добычу");
       if (extra !== undefined || command.targetId.includes("@") && (!fishItemId || !source.fishInput?.itemIds.includes(fishItemId)
         || !economyCatalog.fishing?.fish.some(fish => fish.itemId === fishItemId)))
         return fail("ECONOMY_RECIPE_FISH", "Эта рыба не подходит для рецепта");
@@ -277,6 +278,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     case "start_exploration": {
       const route = economyCatalog.explorations.find(item => item.id === command.targetId);
       if (!route) return fail("ECONOMY_EXPLORATION", "Место исследования не найдено");
+      if (route.retired) return fail("ECONOMY_SOURCE_RETIRED", "Этот способ больше недоступен. Выберите действующий рецепт или добычу");
       requireHome(state, route.requiredHomeLevel);
       requireBuildings(state, route.requiredBuildings);
       if (route.requiredBuildings.quarry && state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry"))

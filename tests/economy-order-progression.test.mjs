@@ -12,6 +12,7 @@ const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/orders-progression-vectors.json", import.meta.url), "utf8"));
 const balanceVectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/resident-order-balance-vectors.json", import.meta.url), "utf8"));
+const currentVectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/time-economy-order-vectors.json", import.meta.url), "utf8"));
 const now = Date.parse("2026-10-07T12:00:00Z");
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
 
@@ -30,13 +31,34 @@ test("shared Kotlin vectors keep compact requests and mixed-item premiums identi
   }
 });
 
-test("all shared manufacturing quotes match Kotlin at every house level", () => {
-  assert.equal(balanceVectors.orders.length, 85);
-  for (const expected of balanceVectors.orders) for (let home = 1; home <= 5; home++) {
+test("all current shared time-value quotes match Kotlin at every house level", () => {
+  assert.equal(currentVectors.catalogVersion, catalog.version);
+  assert.equal(currentVectors.orders.length, catalog.food.orders.templates.length);
+  for (const expected of currentVectors.orders) for (let home = 1; home <= 5; home++) {
     const template = catalog.food.orders.templates.find(template => template.id === expected.templateId);
     const actual = food.progressedResidentOrderTemplate(template, home);
     assert.deepEqual(actual.items, expected.items, `${expected.templateId}@${home}`);
     assert.equal(actual.coins, expected.coins, `${expected.templateId}@${home}`);
+  }
+});
+
+test("every historical v12 manufacturing quote remains payable at its saved price", () => {
+  assert.equal(balanceVectors.orders.length, 85);
+  for (const expected of balanceVectors.orders) {
+    const state = fresh(), template = catalog.food.orders.templates.find(template => template.id === expected.templateId);
+    assert(template);
+    state.residentOrders = food.normalizedResidentOrders(state, now);
+    const index = template.residentId === "plesk" ? 0 : 1;
+    state.residentOrders.slots[index] = { ...state.residentOrders.slots[index], templateId: template.id,
+      residentId: template.residentId, terms: { ...template, items: expected.items, coins: expected.coins } };
+    const saved = food.residentOrderBoard(state, now).offers.find(offer => offer.slot === index);
+    assert.deepEqual(saved.items, expected.items); assert.equal(saved.coins, expected.coins);
+    const coins = state.wallet.coins;
+    state.inventory = { ...expected.items };
+    rules.applyEconomyCommand(state, { requestId: crypto.randomUUID(), ownerPublicId: "0123-4567-89AB", expectedRevision: 0,
+      action: "complete_resident_order", targetId: saved.id, quantity: 1, totalPrice: 0 }, now, () => crypto.randomUUID());
+    assert.equal(state.wallet.coins, coins + expected.coins, expected.templateId);
+    assert.deepEqual(state.inventory, {}, expected.templateId);
   }
 });
 
@@ -78,9 +100,9 @@ test("saved cards keep IDs goods and payouts through home upgrades catalog edits
   assert.deepEqual(changed.offers.filter(offer => offer.slot !== 1), before.offers.filter(offer => offer.slot !== 1));
 });
 
-test("the first-stage update keeps a saved 400-coin delivery exact and quotes new wood at 90", () => {
+test("the first-stage update keeps a saved 400-coin delivery exact and quotes new wood at 75", () => {
   const state = fresh(), template = catalog.food.orders.templates.find(template => template.id === "builder_wood_supply");
-  assert.equal(template.coins, 90);
+  assert.equal(template.coins, 75);
   state.residentOrders = food.normalizedResidentOrders(state, now);
   state.residentOrders.slots[1] = { sequence: 3, readyAt: new Date(now).toISOString(), templateId: template.id,
     terms: { ...template, items: { wood: 8 }, coins: 400 } };
@@ -96,7 +118,7 @@ test("the first-stage update keeps a saved 400-coin delivery exact and quotes ne
   assert.equal(next.coins, catalog.food.orders.templates.find(template => template.id === next.templateId).coins);
 });
 
-test("the manufacturing rebalance retains an accepted 180-coin snack and quotes its next card at 230", () => {
+test("the time-value rebalance retains an accepted 180-coin snack and quotes its next card at 288", () => {
   const state = fresh(), template = catalog.food.orders.templates.find(template => template.id === "builder_trail_snack");
   state.buildings = { home: 3, warehouse: 1, garden: 2, workshop: 1, woodlot: 1, dryer: 1 };
   state.residentOrders = food.normalizedResidentOrders(state, now);
@@ -105,11 +127,11 @@ test("the manufacturing rebalance retains an accepted 180-coin snack and quotes 
   const accepted = food.residentOrderBoard(state, now).offers.find(offer => offer.slot === 1);
   state.residentOrders = economyResidentOrdersSchema.parse(JSON.parse(JSON.stringify(state.residentOrders)));
   assert.deepEqual(food.residentOrderBoard(state, now + 1000).offers.find(offer => offer.slot === 1), accepted);
-  assert.equal(accepted.coins, 180); assert.equal(template.coins, 230);
+  assert.equal(accepted.coins, 180); assert.equal(template.coins, 288);
   const fixture = structuredClone(catalog); fixture.food.orders.templates = [template];
   const replaced = food.advanceResidentOrder(state, 1, now, fixture);
   const next = food.residentOrderBoard({ ...state, residentOrders: replaced }, now, fixture).offers.find(offer => offer.slot === 1);
-  assert.equal(next.templateId, accepted.templateId); assert.equal(next.coins, 230);
+  assert.equal(next.templateId, accepted.templateId); assert.equal(next.coins, 288);
   assert.deepEqual(next.items, accepted.items); assert.notEqual(next.id, accepted.id);
   const beforeCoins = state.wallet.coins; state.inventory = { ...accepted.items };
   rules.applyEconomyCommand(state, { requestId: crypto.randomUUID(), ownerPublicId: "0123-4567-89AB", expectedRevision: 0,

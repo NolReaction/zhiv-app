@@ -399,9 +399,9 @@ test("campfire and mining guidance matches compact categories, duration filters 
     assert.ok(answer("campfire").includes(`«${label}»`));
   assert.match(answer("campfire"), /работы остаются видны при любом фильтре/);
   assert.match(answer("campfire"), /Рыбный рецепт сначала откроет выбор видов.*«Готовить»/);
-  assert.match(answer("mining"), /В блоке каждого ресурса выберите время и количество/);
-  assert.match(answer("mining"), /короткие, часовые и длинные смены/);
-  assert.match(answer("mining"), /Смешанные смены раскрываются отдельно/);
+  assert.match(answer("mining"), /Выберите нужный ресурс.*один запуск даёт один предмет/);
+  assert.match(answer("mining"), /часовых и ночных партий больше нет/);
+  assert.match(answer("mining"), /Улучшения открывают новые материалы/);
   assert.match(answer("fishing"), /три ячейки: удочка, крючок, наживка/);
   assert.match(answer("fishing"), /Тап по снасти выбирает её, без покупки и отправления/);
 });
@@ -416,7 +416,7 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
   assert.match(answer("production-slots"), /Третье до покупки второго показывает только замок/);
   assert.match(answer("production-slots"), /три одинаковых места/);
   assert.match(answer("production-slots"), /обе очереди.*в общей плашке видны «Верстак» и «Печь».*нажатие строки откроет нужное производство/);
-  for (const [label, seconds] of [["1 мин", 60], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
+  for (const [label, seconds] of [["5 мин", 300], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
     assert.ok(answer("pearls").includes(`${label} - ${formatPearls(constructionTimePearlPrice(seconds))} жемчужин`));
   }
   assert.doesNotMatch(answer("pearls"), /Тариф: .* минут ожидания стоят/);
@@ -460,10 +460,9 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.match(answer("mining"), /одну отдельную очередь без платных слотов/);
   assert.match(answer("mining"), /Мохлик может гулять, рыбачить и собирать ягоды одновременно/);
   assert.match(answer("mining"), /Обед Мохлика не ускоряет шахту/);
-  assert.match(answer("mining"), /В блоке каждого ресурса выберите время и количество/);
-  for (const label of ["Все", "До 15 мин", "15 мин - 1 ч", "Дольше 1 ч"]) assert.ok(answer("mining").includes(`«${label}»`));
-  assert.match(answer("mining"), /Текущая добыча видна при любом фильтре/);
-  assert.match(answer("mining"), /проверить припасы перед запуском/);
+  assert.match(answer("mining"), /Выберите нужный ресурс.*один запуск даёт один предмет/);
+  assert.doesNotMatch(answer("mining"), /Дольше 1 ч|Смешанные смены/);
+  assert.match(answer("mining"), /Текущая добыча всегда видна над списком ресурсов/);
   assert.match(answer("mining"), /У начатой работы видны добыча и оставшееся время/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
 });
@@ -475,7 +474,8 @@ test("house-three guidance explains seven full waits, guaranteed resin and optio
   assert.match(answer("third-house-stage"), /Первая из 8.*доступна сразу/);
   assert.match(answer("third-house-stage"), /через 23 ч/);
   assert.match(answer("third-house-stage"), /с передачи товаров.*не со смены суток UTC/);
-  assert.match(answer("third-house-stage"), /Без ускорений.*минимум 185 ч/);
+  const home = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4);
+  assert.ok(answer("third-house-stage").includes(`минимум ${((course.orders.length - 1) * course.intervalSeconds + home.seconds) / 3600} ч`));
   assert.match(answer("third-house-stage"), /гарантированно.*Живая смола × 1/);
   assert.match(answer("third-house-stage"), /Жемчуг и обеды не сокращают интервалы/);
   assert.match(answer("third-house-stage"), /не истекают и не заменяются/);
@@ -560,7 +560,7 @@ test("intro help separates its only raspberry order from the house-two course", 
   const intro = answer("tutorial-order"), construction = answer("construction");
   assert.match(intro, /Учебный заказ один/);
   assert.match(intro, /Малина × 1/);
-  assert.match(intro, /15 монет/);
+  assert.match(intro, /13 монет/);
   assert.match(intro, /3 небольшие просьбы для дома 2/);
   assert.match(construction, /один учебный заказ и 3 просьбы этапа/);
   assert.doesNotMatch([intro, answer("start"), construction, answer("workshop-starter")].join(" "), /четыре учебных|четвёртого заказа|трёх учебных/);

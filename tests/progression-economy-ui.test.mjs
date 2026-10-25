@@ -133,7 +133,7 @@ test("ingredient browser contains every real item, filters without changing pric
   assert.equal(listItems(tree).filter(node => node.props["aria-pressed"]).length, 1);
   field(tree, "Найти ингредиент").props.onChange({ target: { value: "балка" } });
   tree = h.render(); assert.deepEqual(listItems(tree).map(node => node.props["data-item-id"]), ["beams"]);
-  assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.npcSellPrice, 600);
+  assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.npcSellPrice, 650);
   field(tree, "Уровень дома для справочника").props.onChange({ target: { value: "1" } });
   assert.equal(listItems(h.render()).length, 0);
   field(h.render(), "Найти ингредиент").props.onChange({ target: { value: "неизвестный ингредиент" } });
@@ -256,12 +256,12 @@ test("two beams show exact NPC value added, expanded raw inputs and separate pro
   const h = harness(RecipeCalculator, { recipe: recipe("make_beams"), onSelect() {} });
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "2" } });
   const html = renderToStaticMarkup(h.render()), value = text(html);
-  assert.match(value, /Стоимость ингредиентов у NPC 860 монет/);
-  assert.match(value, /Выкуп готового товара NPC 1 200 монет/);
-  assert.match(value, /Прирост стоимости переработки \+340 монет/);
-  assert.match(value, /Таймер выбранного производства 2 ч/);
+  assert.match(value, /Стоимость ингредиентов у NPC 900 монет/);
+  assert.match(value, /Выкуп готового товара NPC 1 300 монет/);
+  assert.match(value, /Прирост стоимости переработки \+400 монет/);
+  assert.match(value, /Таймер выбранного производства 40 мин/);
   assert.match(value, /Крепкое бревно ×8/); assert.match(value, /Растительное волокно ×4/);
-  assert.match(value, /Верстак 2 ч 6 мин/);
+  assert.match(value, /Верстак 46 мин/);
   assert.match(value, /Лесозаготовки 1 ч 24 мин/);
   assert.match(value, /не длительность прохождения/);
   assert.match(value, /Один запуск занимает одно место; следующий запускается вручную/);
@@ -274,12 +274,12 @@ test("soup quantity scales sale and intermediate inputs without inventing fishin
   assert.match(value, /Стоимость ингредиентов у NPC 420 монет/);
   assert.match(value, /Выкуп готового товара NPC 660 монет/);
   assert.match(value, /Прирост стоимости переработки \+240 монет/);
-  assert.match(value, /Таймер выбранного производства 1 ч 30 мин/);
+  assert.match(value, /Таймер выбранного производства 24 мин/);
   assert.match(value, /Обычная рыба ×6/); assert.match(value, /Малина ×3/); assert.match(value, /Бревно ×3/);
   assert.match(value, /Ягодный куст 3 мин \+ 24 с сбора/);
   assert.match(value, /Отдельно получить: Обычная рыба/);
   assert.match(value, /Время случайного улова или находки не подставляется/);
-  assert.match(value, /2 предметов · 440 монет за час/);
+  assert.match(value, /7,5 предметов · 1 650 монет за час/);
   assert.match(value, /это валовая выручка/);
 });
 
@@ -288,12 +288,12 @@ test("two trail rations include every prepared ingredient and uncertain fish acq
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "2" } });
   const html = renderToStaticMarkup(h.render()), value = text(html);
   assert.match(value, /Копчёная рыба ×2 Сушёные ягоды ×2 Малиновый компот ×2 Походный паёк ×2/);
-  assert.match(value, /Стоимость ингредиентов у NPC 560 монет/);
-  assert.match(value, /Выкуп готового товара NPC 720 монет/);
-  assert.match(value, /Прирост стоимости переработки \+160 монет/);
-  assert.match(value, /Таймер выбранного производства 2 ч/);
+  assert.match(value, /Стоимость ингредиентов у NPC 980 монет/);
+  assert.match(value, /Выкуп готового товара NPC 1 380 монет/);
+  assert.match(value, /Прирост стоимости переработки \+400 монет/);
+  assert.match(value, /Таймер выбранного производства 40 мин/);
   assert.match(value, /Бревно ×2/); assert.match(value, /Обычная рыба ×4/); assert.match(value, /Малина ×16/);
-  assert.match(value, /Костёр 4 ч 36 мин/);
+  assert.match(value, /Костёр 1 ч 40 мин/);
   assert.match(value, /Ягодный куст 16 мин \+ 2 мин 8 с сбора/);
   assert.match(value, /Лесозаготовки 6 мин/);
   assert.match(value, /Отдельно получить: Обычная рыба/);
@@ -306,20 +306,20 @@ test("two research gear units expand tools, cloth and all ropes with independent
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "2" } });
   const value = text(renderToStaticMarkup(h.render()));
   assert.match(value, /Инструменты ×2 Полотно ×2 Верёвка ×4 Снаряжение исследователя ×2/);
-  assert.match(value, /Стоимость ингредиентов у NPC 2 600 монет/);
-  assert.match(value, /Выкуп готового товара NPC 3 200 монет/);
-  assert.match(value, /Прирост стоимости переработки \+600 монет/);
-  assert.match(value, /Таймер выбранного производства 4 ч/);
+  assert.match(value, /Стоимость ингредиентов у NPC 2 700 монет/);
+  assert.match(value, /Выкуп готового товара NPC 3 500 монет/);
+  assert.match(value, /Прирост стоимости переработки \+800 монет/);
+  assert.match(value, /Таймер выбранного производства 1 ч 20 мин/);
   assert.match(value, /Железная руда ×6/); assert.match(value, /Бревно ×8/); assert.match(value, /Растительное волокно ×26/);
-  assert.match(value, /Верстак 9 ч 52 мин/);
-  assert.match(value, /Печь 1 ч 4 мин/);
-  assert.match(value, /Шахта 54 мин/);
+  assert.match(value, /Верстак 3 ч 26 мин/);
+  assert.match(value, /Печь 34 мин/);
+  assert.match(value, /Шахта 1 ч/);
   assert.match(value, /Лесозаготовки 50 мин/);
   assert.match(value, /Единичная добыча шахтёра включена в очередь шахты/);
   assert.doesNotMatch(value, /Отдельно получить:|Время случайного улова или находки не подставляется/);
 });
 
-test("stone defaults to unit mining and ten stones require ten jobs, thirty minutes and 400 NPC coins", () => {
+test("stone defaults to unit mining and ten stones require ten jobs, thirty minutes and 300 NPC coins", () => {
   const detail = harness(ItemDetails, { item: item("stone"), home: 0, onSelect() {} }).render();
   const calculator = elements(detail).find(node => node.type === SourceCalculator);
   assert.ok(calculator); assert.equal(calculator.props.source.routeId, "quarry_stone");
@@ -331,8 +331,8 @@ test("stone defaults to unit mining and ten stones require ten jobs, thirty minu
   assert.match(value, /весь гарантированный набор: Камень ×10/);
   assert.match(value, /Очередь выбранного маршрута 30 мин/);
   assert.match(value, /Стоимость затрат у NPC 0 монет/);
-  assert.match(value, /Выкуп гарантированного набора NPC 400 монет/);
-  assert.match(value, /Прирост стоимости \+400 монет/);
+  assert.match(value, /Выкуп гарантированного набора NPC 300 монет/);
+  assert.match(value, /Прирост стоимости \+300 монет/);
   for (const quantity of ["0", "2.5", "1000"]) {
     field(h.render(), "Нужное количество материала").props.onChange({ target: { value: quantity } });
     const tree = h.render(), html = renderToStaticMarkup(tree);
@@ -342,25 +342,25 @@ test("stone defaults to unit mining and ten stones require ten jobs, thirty minu
   }
 });
 
-test("thirty-one stones from the deep cave round up to two full routes and retain every guaranteed output and cost", () => {
-  const source = item("stone").sources.find(value => value.routeId === "deep_cave");
+test("seven stones from the forest round up to three routes and retain every guaranteed output", () => {
+  const source = item("stone").sources.find(value => value.routeId === "forest");
   assert.ok(source);
-  const detail = harness(ItemDetails, { item: item("stone"), home: 3, onSelect() {} });
+  assert.ok(!item("stone").sources.some(value => value.routeId === "deep_cave"), "Retired bulk routes are not new choices");
+  const detail = harness(ItemDetails, { item: item("stone"), home: 1, onSelect() {} });
   field(detail.render(), "Маршрут добычи").props.onChange({ target: { value: source.id } });
   const calculator = elements(detail.render()).find(node => node.type === SourceCalculator);
-  assert.ok(calculator); assert.equal(calculator.props.source.routeId, "deep_cave");
+  assert.ok(calculator); assert.equal(calculator.props.source.routeId, "forest");
   assert.equal(calculator.key, source.id);
   const h = harness(SourceCalculator, calculator.props);
-  field(h.render(), "Нужное количество материала").props.onChange({ target: { value: "31" } });
+  field(h.render(), "Нужное количество материала").props.onChange({ target: { value: "7" } });
   const html = renderToStaticMarkup(h.render()), value = text(html);
-  assert.match(value, /Цель: Камень ×31\. Запусков маршрута: 2/);
-  assert.match(value, /Камень ×60 Железная руда ×30/);
-  assert.match(value, /Потребуется Сушёные ягоды ×2 Копчёная рыба ×2/);
-  assert.match(value, /Очередь выбранного маршрута 8 ч/);
-  assert.match(value, /Стоимость затрат у NPC 500 монет/);
-  assert.match(value, /Выкуп гарантированного набора NPC 4 200 монет/);
-  assert.match(value, /Прирост стоимости \+3 700 монет/);
-  assert.deepEqual(new Set([...html.matchAll(/data-item-icon="([^"]+)"/g)].map(match => match[1])), new Set(["stone", "ore", "dried_berries", "smoked_fish"]));
+  assert.match(value, /Цель: Камень ×7\. Запусков маршрута: 3/);
+  assert.match(value, /Бревно ×15 Камень ×9 Растительное волокно ×12/);
+  assert.match(value, /Очередь выбранного маршрута 1 ч 24 мин/);
+  assert.match(value, /Стоимость затрат у NPC 0 монет/);
+  assert.match(value, /Выкуп гарантированного набора NPC 840 монет/);
+  assert.match(value, /Прирост стоимости \+840 монет/);
+  assert.deepEqual(new Set([...html.matchAll(/data-item-icon="([^"]+)"/g)].map(match => match[1])), new Set(["stone", "wood", "fiber"]));
   assert.match(value, /Случайные находки и улов не прибавлены/);
 });
 
@@ -374,12 +374,12 @@ test("invalid quantities suppress calculations and recover with valid integral i
     assert.doesNotMatch(html, /Выкуп готового товара NPC|Вся цепочка до сырья|NaN|Infinity/);
   }
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "1" } });
-  assert.match(text(renderToStaticMarkup(h.render())), /Выкуп готового товара NPC 600 монет/);
+  assert.match(text(renderToStaticMarkup(h.render())), /Выкуп готового товара NPC 650 монет/);
 });
 
 test("stage and pearl summaries distinguish guaranteed project gates from chance rewards and optional warehouse", () => {
   const value = text(renderToStaticMarkup(harness(EconomyPanel).render()));
-  assert.match(value, /Всего обязательного ожидания: 6 дн\. 17 ч; затем стройка дома 1 дн\./);
+  assert.match(value, /Всего обязательного ожидания: 6 дн\. 17 ч; затем стройка дома 8 ч/);
   assert.match(value, /Жемчуг не сокращает интервалы поставок/);
   assert.match(value, /Гарантированная награда за весь проект Живая смола ×1/);
   assert.ok(value.includes(`${economyCatalog.food.orders.templates.length} шаблонов · до ${economyCatalog.food.orders.slots} просьб, по одной у жителя`));
@@ -389,10 +389,10 @@ test("stage and pearl summaries distinguish guaranteed project gates from chance
   assert.match(value, /Все достижения однократно 2 060/);
   assert.match(value, /Жемчуг за каждый полученный подарок/);
   assert.match(value, /Цели и жемчуг за каждую ступень/);
-  assert.match(value, /Ускорение стройки считается по оставшемуся времени и кривой цен/);
+  assert.match(value, /Ускорение стройки считается по оставшемуся времени/);
   assert.doesNotMatch(value, /Предварительный баланс/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);
-  assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 315 − 380 = 35 монет/);
+  assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 338 − 400 = 38 монет/);
 });
 
 test("legacy board summary keeps its supplied capacity without promising one request per resident", () => {
@@ -437,26 +437,26 @@ test("house-four project displays one-time funding, actual restoration costs and
   const tree = harness(StageCard, { stage, onSelect() {} }).render();
   const value = text(renderToStaticMarkup(tree));
   assert.equal(stage.preliminary, false);
-  assert.match(value, /Обязательные стройки 70 500 монет/);
-  assert.match(value, /Поставки этапа 12 · \+50 000 монет/);
-  assert.match(value, /Заказы минус стройки -20 500 монет/);
-  assert.match(value, /Очередь одного строителя 4 дн\./);
+  assert.match(value, /Обязательные стройки 34 800 монет/);
+  assert.match(value, /Поставки этапа 12 · \+14 965 монет/);
+  assert.match(value, /Заказы минус стройки -19 835 монет/);
+  assert.match(value, /Очередь одного строителя 2 дн\. 10 ч/);
   assert.match(value, /Между поставками: 23 ч/);
-  assert.match(value, /Всего обязательного ожидания: 10 дн\. 13 ч; затем стройка дома 2 дн\./);
+  assert.match(value, /Всего обязательного ожидания: 10 дн\. 13 ч; затем стройка дома 1 дн\./);
   assert.match(value, /разовое финансирование развития дальнего берега и хозяйства/);
   assert.match(value, /Для покрытия разницы нужны повторяемые заказы или продажа товаров NPC/);
   assert.match(value, /Мост \(доступен с дома 2\) и Маяк \(доступен с дома 3\)/);
-  assert.match(value, /на этом этапе нужно на 6 200 монет и 10 ч стройки меньше/);
+  assert.match(value, /на этом этапе нужно на 3 000 монет и 5 ч стройки меньше/);
   assert.match(value, /Повторной оплаты нет/);
-  assert.match(value, /Мост на дальний берег 1 1 200 монет · 4 ч/);
-  assert.match(value, /Лесной маяк 1 5 000 монет · 6 ч/);
+  assert.match(value, /Мост на дальний берег 1 600 монет · 1 ч/);
+  assert.match(value, /Лесной маяк 1 2 400 монет · 4 ч/);
   const list = elements(tree).find(node => node.type === "ol");
   const deliveries = Children.toArray(list.props.children);
   assert.equal(deliveries.length, 12);
   const final = text(renderToStaticMarkup(deliveries.at(-1)));
   assert.match(final, /Возвращение из древних руин/);
   assert.match(final, /Сначала улучшить: Мост 1 · Маяк 1/);
-  assert.match(final, /Получить результат вылазки: Древние руины · 10 ч ×1/);
+  assert.match(final, /Получить результат вылазки: Древние руины ×1/);
   assert.match(final, /Запуск или отмена не засчитываются/);
   assert.match(value, /Гарантированная награда за весь проект Древнее ядро ×1 Лунный кристалл ×1/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);
@@ -479,7 +479,7 @@ test("every house's berry and processing unlock is visible and opens its actual 
   }
   const bridge = text(renderToStaticMarkup(HomeUnlockCard(cards[1].props)));
   const lighthouse = text(renderToStaticMarkup(HomeUnlockCard(cards[2].props)));
-  assert.match(bridge, /1 200 монет · 4 ч/);
+  assert.match(bridge, /600 монет · 1 ч/);
   assert.match(bridge, /После получения восстановления открывается рынок игроков/);
   assert.match(lighthouse, /Пароход с большими заказами запланирован; сейчас его нет/);
 });
@@ -494,8 +494,8 @@ test("new meals expose their real effects and premium examples agree with the li
   }
   const html = renderToStaticMarkup(harness(EconomyPanel).render()), value = text(html);
   assert.match(html, /<caption>Примеры ускорения одной стройки<\/caption>/);
-  assert.match(value, /1 мин 1 1 ч 20/);
-  assert.match(value, /1 дн\. 260 2 дн\. 384 7 дн\. 1 000/);
+  assert.match(value, /1 мин 1 1 ч 12/);
+  assert.match(value, /1 дн\. 288 2 дн\. 576 7 дн\. 2 016/);
   assert.match(value, /Таймеры разных строек нельзя складывать для расчёта/);
   assert.match(value, /Дом 2 · Мост 1/);
   assert.doesNotMatch(value, /жемчужина за начатые 10 мин/);

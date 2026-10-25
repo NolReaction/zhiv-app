@@ -58,27 +58,27 @@ test("even the union of all NPC supplies cannot profitably fill a complete manuf
   assert.equal(purchasable.length, 20, "the expanded catalog audits all four additional purchasable baskets");
   assert(purchasable.every(row => row.instantNpcPurchaseProfitCoins < 0));
   const snack = purchasable.find(row => row.id === "builder_trail_snack");
-  assert.equal(snack.manufacturingMinutes, 48);
-  assert.equal(snack.rewardCoins, 230); assert.equal(snack.completeNpcPurchaseCoins, 240);
-  assert.equal(snack.instantNpcPurchaseProfitCoins, -10);
-  const data = catalog(); data.leaftailShop.supplyOffers.find(offer => offer.itemId === "dried_berries").unitPriceCoins = 140;
+  assert.equal(snack.manufacturingMinutes, 15);
+  assert.equal(snack.rewardCoins, 288); assert.equal(snack.completeNpcPurchaseCoins, 460);
+  assert.equal(snack.instantNpcPurchaseProfitCoins, -172);
+  const data = catalog(); data.leaftailShop.supplyOffers.find(offer => offer.itemId === "dried_berries").unitPriceCoins = 187;
   assert.throws(() => auditFoodEconomy(data), /instant NPC purchase-to-order arbitrage/);
 });
 
 test("cooking ceilings account for extra inventory, real production and full NPC opportunity value", () => {
-  assert.deepEqual(baselineReport.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [210]);
+  assert.deepEqual(baselineReport.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [345]);
   const cooked = baselineReport.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
   assert.deepEqual(cooked.orderCounts, { plesk_smoked_currants: 3 });
   assert.deepEqual(cooked.otherOwnedInputs, { wood: 3, currants: 6 });
-  assert.equal(cooked.otherOwnedInputsSaleCoins, 510);
-  assert.equal(cooked.productionMinutes, 90);
+  assert.equal(cooked.otherOwnedInputsSaleCoins, 810);
+  assert.equal(cooked.productionMinutes, 45);
   assert.equal(cooked.netCoins, cooked.rewardCoins - cooked.purchaseCoins - cooked.productionCoinCost - cooked.otherOwnedInputsSaleCoins);
   const expanded = report.shopDeliveryBudgets[0].matchingOrdersWithAdditionalRawIngredientsCeiling;
-  assert.deepEqual(expanded.orderCounts, { plesk_trail_table: 3 });
-  assert.deepEqual(expanded.otherOwnedInputs, { wood: 6, fish_common: 12, berries: 48 });
-  assert.equal(expanded.otherOwnedInputsSaleCoins, 1140);
-  assert.equal(expanded.productionMinutes, 828);
-  assert.equal(expanded.netCoins, 2580);
+  assert.deepEqual(expanded.orderCounts, { plesk_berry_gift: 6 });
+  assert.deepEqual(expanded.otherOwnedInputs, { glass_bottle: 6, blackberries: 12, glass: 6, trade_crate: 6 });
+  assert.equal(expanded.otherOwnedInputsSaleCoins, 8280);
+  assert.equal(expanded.productionMinutes, 240);
+  assert.equal(expanded.netCoins, 4650);
   assert.equal(expanded.netCoins, expanded.rewardCoins - expanded.purchaseCoins - expanded.productionCoinCost - expanded.otherOwnedInputsSaleCoins);
 });
 
@@ -86,11 +86,11 @@ test("new mixed requests count the opportunity cost of already manufactured tool
   const cooked = report.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
   assert.deepEqual(cooked.orderCounts, { kamneshmyg_hot_shift: 3 });
   assert.deepEqual(cooked.otherOwnedInputs, { tools: 3, berries: 3, charcoal: 3 });
-  assert.equal(cooked.otherOwnedInputsSaleCoins, 3180);
-  assert.equal(cooked.productionMinutes, 90, "only the newly cooked fish is timed in this stocked-input comparison");
-  assert.equal(cooked.rewardCoins, 6090);
+  assert.equal(cooked.otherOwnedInputsSaleCoins, 3270);
+  assert.equal(cooked.productionMinutes, 24, "only the newly cooked fish is timed in this stocked-input comparison");
+  assert.equal(cooked.rewardCoins, 4689);
   assert.equal(cooked.purchaseCoins, 720);
-  assert.equal(cooked.netCoins, 2190);
+  assert.equal(cooked.netCoins, 699);
   assert.equal(cooked.netCoins, cooked.rewardCoins - cooked.purchaseCoins - cooked.productionCoinCost - cooked.otherOwnedInputsSaleCoins);
 });
 
@@ -138,7 +138,7 @@ test("fishing ROI subtracts the consumed dish and exposes expensive short-trip m
   const legendary = report.meals.find(meal => meal.itemId === "legendary_fish");
   const short = legendary.fishingReturn.find(row => row.routeId === "shore").best;
   assert(short.withFoodNetCoinsPerHour < 0);
-  assert.equal(short.dishOpportunityCoins, 1200);
+  assert.equal(short.dishOpportunityCoins, 1150);
   const long = legendary.fishingReturn.find(row => row.routeId === "shore_camp").best;
   assert(long.withFoodNetCoinsPerHour < long.withoutFoodNetCoinsPerHour);
   assert(long.compatibleFishExpectedPerJob > 1, "the arcade legendary kit can replenish a dish on average");

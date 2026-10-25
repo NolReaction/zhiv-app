@@ -89,7 +89,7 @@ class EconomyProductionSlotsTest {
         val ripe = state.jobs.maxOf { Instant.parse(it.finishesAt) }
         state = apply(state, "start_collection", state.jobs[0].id, ripe)
         failure("ECONOMY_COLLECTOR_BUSY") { apply(state, "start_collection", state.jobs[1].id, ripe) }
-        assertEquals("miner", apply(state, "start_exploration", "cave", ripe).jobs.last().actorId)
+        assertEquals("miner", apply(state, "start_exploration", "quarry_stone", ripe).jobs.last().actorId)
         val done = Instant.parse(state.jobs[0].collection!!.finishesAt)
         state = apply(state, "claim_job", state.jobs[0].id, done)
         assertNotNull(apply(state, "start_collection", state.jobs.single().id, done).jobs.single().collection?.startedAt)

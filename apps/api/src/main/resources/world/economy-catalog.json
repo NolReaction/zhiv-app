@@ -1,5 +1,5 @@
 {
-  "version": 12,
+  "version": 13,
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
@@ -30,7 +30,7 @@
         "id": "stone_bundle",
         "itemId": "stone",
         "quantity": 10,
-        "priceCoins": 800,
+        "priceCoins": 600,
         "stock": 1
       },
       {
@@ -237,7 +237,7 @@
       {
         "id": "stone_each",
         "itemId": "stone",
-        "unitPriceCoins": 80,
+        "unitPriceCoins": 60,
         "stock": 20,
         "requiredHomeLevel": 3
       },
@@ -251,14 +251,14 @@
       {
         "id": "planks_each",
         "itemId": "planks",
-        "unitPriceCoins": 80,
+        "unitPriceCoins": 100,
         "stock": 10,
         "requiredHomeLevel": 3
       },
       {
         "id": "rope_each",
         "itemId": "rope",
-        "unitPriceCoins": 60,
+        "unitPriceCoins": 100,
         "stock": 10,
         "requiredHomeLevel": 3
       },
@@ -272,14 +272,14 @@
       {
         "id": "dried_berries_each",
         "itemId": "dried_berries",
-        "unitPriceCoins": 180,
+        "unitPriceCoins": 360,
         "stock": 5,
         "requiredHomeLevel": 3
       },
       {
         "id": "grilled_fish_each",
         "itemId": "grilled_fish",
-        "unitPriceCoins": 110,
+        "unitPriceCoins": 140,
         "stock": 5,
         "requiredHomeLevel": 3
       }
@@ -309,24 +309,16 @@
     ]
   },
   "constructionSpeedup": {
-    "secondsPerPearl": 15000,
+    "secondsPerPearl": 300,
     "priceStepPearls": 2,
     "pricingPoints": [
       {
-        "seconds": 60,
+        "seconds": 300,
         "pearls": 2
       },
       {
-        "seconds": 3600,
-        "pearls": 40
-      },
-      {
-        "seconds": 86400,
-        "pearls": 520
-      },
-      {
-        "seconds": 604800,
-        "pearls": 2000
+        "seconds": 600,
+        "pearls": 4
       }
     ]
   },
@@ -349,14 +341,14 @@
       "id": "stone",
       "name": "Камень",
       "category": "material",
-      "baseSellPrice": 40,
+      "baseSellPrice": 30,
       "tradable": true
     },
     {
       "id": "ore",
       "name": "Железная руда",
       "category": "material",
-      "baseSellPrice": 60,
+      "baseSellPrice": 100,
       "tradable": true
     },
     {
@@ -412,35 +404,35 @@
       "id": "planks",
       "name": "Доска",
       "category": "crafted",
-      "baseSellPrice": 40,
+      "baseSellPrice": 50,
       "tradable": true
     },
     {
       "id": "rope",
       "name": "Верёвка",
       "category": "crafted",
-      "baseSellPrice": 30,
+      "baseSellPrice": 50,
       "tradable": true
     },
     {
       "id": "metal_parts",
       "name": "Металлическая деталь",
       "category": "crafted",
-      "baseSellPrice": 460,
+      "baseSellPrice": 630,
       "tradable": true
     },
     {
       "id": "dried_berries",
       "name": "Сушёные ягоды",
       "category": "provisions",
-      "baseSellPrice": 90,
+      "baseSellPrice": 180,
       "tradable": true
     },
     {
       "id": "smoked_fish",
       "name": "Копчёная рыба",
       "category": "provisions",
-      "baseSellPrice": 160,
+      "baseSellPrice": 260,
       "tradable": true
     },
     {
@@ -454,7 +446,7 @@
       "id": "sand",
       "name": "Песок",
       "category": "material",
-      "baseSellPrice": 30,
+      "baseSellPrice": 50,
       "tradable": true
     },
     {
@@ -468,21 +460,21 @@
       "id": "iron_ingot",
       "name": "Железный слиток",
       "category": "crafted",
-      "baseSellPrice": 340,
+      "baseSellPrice": 500,
       "tradable": true
     },
     {
       "id": "bricks",
       "name": "Кирпич",
       "category": "crafted",
-      "baseSellPrice": 100,
+      "baseSellPrice": 110,
       "tradable": true
     },
     {
       "id": "glass",
       "name": "Стекло",
       "category": "crafted",
-      "baseSellPrice": 240,
+      "baseSellPrice": 250,
       "tradable": true
     },
     {
@@ -503,35 +495,35 @@
       "id": "cloth",
       "name": "Полотно",
       "category": "crafted",
-      "baseSellPrice": 240,
+      "baseSellPrice": 220,
       "tradable": true
     },
     {
       "id": "beams",
       "name": "Балка",
       "category": "crafted",
-      "baseSellPrice": 600,
+      "baseSellPrice": 650,
       "tradable": true
     },
     {
       "id": "tools",
       "name": "Инструменты",
       "category": "crafted",
-      "baseSellPrice": 1000,
+      "baseSellPrice": 1030,
       "tradable": true
     },
     {
       "id": "reinforced_parts",
       "name": "Усиленные узлы",
       "category": "crafted",
-      "baseSellPrice": 1800,
+      "baseSellPrice": 2230,
       "tradable": true
     },
     {
       "id": "cut_stone",
       "name": "Тёсаный камень",
       "category": "crafted",
-      "baseSellPrice": 240,
+      "baseSellPrice": 210,
       "tradable": true
     },
     {
@@ -671,7 +663,7 @@
       "id": "grilled_fish",
       "name": "Жареная рыба",
       "category": "provisions",
-      "baseSellPrice": 55,
+      "baseSellPrice": 70,
       "tradable": true
     },
     {
@@ -685,119 +677,119 @@
       "id": "berry_fish",
       "name": "Рыба с ягодным соусом",
       "category": "provisions",
-      "baseSellPrice": 300,
+      "baseSellPrice": 260,
       "tradable": true
     },
     {
       "id": "hearty_fish",
       "name": "Сытный рыбный ужин",
       "category": "provisions",
-      "baseSellPrice": 500,
+      "baseSellPrice": 410,
       "tradable": true
     },
     {
       "id": "epic_fish",
       "name": "Праздничная рыба",
       "category": "provisions",
-      "baseSellPrice": 800,
+      "baseSellPrice": 740,
       "tradable": true
     },
     {
       "id": "legendary_fish",
       "name": "Легендарное рыбное жаркое",
       "category": "provisions",
-      "baseSellPrice": 1200,
+      "baseSellPrice": 1150,
       "tradable": true
     },
     {
       "id": "strawberries",
       "name": "Клубника",
       "category": "produce",
-      "baseSellPrice": 40,
+      "baseSellPrice": 50,
       "tradable": true
     },
     {
       "id": "berry_compote",
       "name": "Малиновый компот",
       "category": "provisions",
-      "baseSellPrice": 30,
+      "baseSellPrice": 50,
       "tradable": true
     },
     {
       "id": "trail_ration",
       "name": "Походный паёк",
       "category": "provisions",
-      "baseSellPrice": 360,
+      "baseSellPrice": 690,
       "tradable": true
     },
     {
       "id": "research_gear",
       "name": "Снаряжение исследователя",
       "category": "crafted",
-      "baseSellPrice": 1600,
+      "baseSellPrice": 1750,
       "tradable": true
     },
     {
       "id": "blueberries",
       "name": "Черника",
       "category": "produce",
-      "baseSellPrice": 20,
+      "baseSellPrice": 30,
       "tradable": true
     },
     {
       "id": "currants",
       "name": "Смородина",
       "category": "produce",
-      "baseSellPrice": 70,
+      "baseSellPrice": 120,
       "tradable": true
     },
     {
       "id": "blackberries",
       "name": "Ежевика",
       "category": "produce",
-      "baseSellPrice": 160,
+      "baseSellPrice": 300,
       "tradable": true
     },
     {
       "id": "cranberries",
       "name": "Клюква",
       "category": "produce",
-      "baseSellPrice": 280,
+      "baseSellPrice": 600,
       "tradable": true
     },
     {
       "id": "strawberry_compote",
       "name": "Клубничный компот",
       "category": "provisions",
-      "baseSellPrice": 110,
+      "baseSellPrice": 160,
       "tradable": true
     },
     {
       "id": "blueberry_compote",
       "name": "Черничный компот",
       "category": "provisions",
-      "baseSellPrice": 70,
+      "baseSellPrice": 120,
       "tradable": true
     },
     {
       "id": "currant_jelly",
       "name": "Смородиновое желе",
       "category": "provisions",
-      "baseSellPrice": 220,
+      "baseSellPrice": 570,
       "tradable": true
     },
     {
       "id": "blackberry_preserve",
       "name": "Ежевичное варенье",
       "category": "provisions",
-      "baseSellPrice": 640,
+      "baseSellPrice": 1100,
       "tradable": true
     },
     {
       "id": "cranberry_glaze",
       "name": "Клюквенный десерт",
       "category": "provisions",
-      "baseSellPrice": 950,
+      "baseSellPrice": 2170,
       "tradable": true
     },
     {
@@ -812,6 +804,90 @@
       "name": "Сумеречная мушка",
       "category": "fishing",
       "baseSellPrice": 30,
+      "tradable": true
+    },
+    {
+      "id": "quartz",
+      "name": "Кварц",
+      "category": "material",
+      "baseSellPrice": 150,
+      "tradable": true
+    },
+    {
+      "id": "limestone",
+      "name": "Известняк",
+      "category": "material",
+      "baseSellPrice": 200,
+      "tradable": true
+    },
+    {
+      "id": "ceramic_jar",
+      "name": "Керамическая банка",
+      "category": "crafted",
+      "baseSellPrice": 160,
+      "tradable": true
+    },
+    {
+      "id": "mortar",
+      "name": "Строительная смесь",
+      "category": "crafted",
+      "baseSellPrice": 340,
+      "tradable": true
+    },
+    {
+      "id": "glass_bottle",
+      "name": "Стеклянная бутылка",
+      "category": "crafted",
+      "baseSellPrice": 300,
+      "tradable": true
+    },
+    {
+      "id": "lens",
+      "name": "Линза",
+      "category": "crafted",
+      "baseSellPrice": 550,
+      "tradable": true
+    },
+    {
+      "id": "packed_berries",
+      "name": "Ягодный запас",
+      "category": "provisions",
+      "baseSellPrice": 420,
+      "tradable": true
+    },
+    {
+      "id": "trade_crate",
+      "name": "Торговый ящик",
+      "category": "crafted",
+      "baseSellPrice": 230,
+      "tradable": true
+    },
+    {
+      "id": "field_kit",
+      "name": "Полевой комплект",
+      "category": "crafted",
+      "baseSellPrice": 2000,
+      "tradable": true
+    },
+    {
+      "id": "stone_tile",
+      "name": "Облицовочная плитка",
+      "category": "crafted",
+      "baseSellPrice": 850,
+      "tradable": true
+    },
+    {
+      "id": "bottled_compote",
+      "name": "Компот в дорогу",
+      "category": "provisions",
+      "baseSellPrice": 400,
+      "tradable": true
+    },
+    {
+      "id": "berry_gift",
+      "name": "Ягодный подарок",
+      "category": "provisions",
+      "baseSellPrice": 1750,
       "tradable": true
     }
   ],
@@ -833,9 +909,9 @@
         },
         {
           "level": 2,
-          "seconds": 600,
+          "seconds": 1800,
           "cost": {
-            "coins": 250,
+            "coins": 300,
             "items": {
               "wood": 3,
               "stone": 2,
@@ -851,9 +927,9 @@
         },
         {
           "level": 3,
-          "seconds": 1200,
+          "seconds": 7200,
           "cost": {
-            "coins": 600,
+            "coins": 1200,
             "items": {
               "planks": 6,
               "bricks": 6,
@@ -870,9 +946,9 @@
         },
         {
           "level": 4,
-          "seconds": 86400,
+          "seconds": 28800,
           "cost": {
-            "coins": 6000,
+            "coins": 4800,
             "items": {
               "beams": 2,
               "cut_stone": 2,
@@ -892,9 +968,9 @@
         },
         {
           "level": 5,
-          "seconds": 172800,
+          "seconds": 86400,
           "cost": {
-            "coins": 25000,
+            "coins": 14400,
             "items": {
               "beams": 2,
               "cut_stone": 2,
@@ -937,7 +1013,7 @@
           "level": 2,
           "seconds": 1800,
           "cost": {
-            "coins": 350,
+            "coins": 300,
             "items": {
               "wood": 4,
               "stone": 4,
@@ -953,11 +1029,11 @@
           "level": 3,
           "seconds": 7200,
           "cost": {
-            "coins": 2000,
+            "coins": 1200,
             "items": {
-              "planks": 4,
-              "clay": 4,
-              "rope": 3,
+              "planks": 3,
+              "ceramic_jar": 2,
+              "rope": 2,
               "cloth": 1
             }
           },
@@ -970,7 +1046,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 6000,
+            "coins": 2400,
             "items": {
               "beams": 1,
               "bricks": 2,
@@ -987,7 +1063,7 @@
           "level": 5,
           "seconds": 28800,
           "cost": {
-            "coins": 12000,
+            "coins": 4800,
             "items": {
               "beams": 2,
               "bricks": 2,
@@ -1012,7 +1088,7 @@
           "level": 1,
           "seconds": 120,
           "cost": {
-            "coins": 30,
+            "coins": 20,
             "items": {
               "wood": 1,
               "stone": 1
@@ -1023,9 +1099,9 @@
         },
         {
           "level": 2,
-          "seconds": 21600,
+          "seconds": 3600,
           "cost": {
-            "coins": 1200,
+            "coins": 600,
             "items": {
               "planks": 4,
               "stone": 4,
@@ -1039,9 +1115,9 @@
         },
         {
           "level": 3,
-          "seconds": 21600,
+          "seconds": 10800,
           "cost": {
-            "coins": 3200,
+            "coins": 1800,
             "items": {
               "planks": 4,
               "iron_ingot": 2,
@@ -1057,7 +1133,7 @@
           "level": 4,
           "seconds": 21600,
           "cost": {
-            "coins": 6000,
+            "coins": 3600,
             "items": {
               "beams": 1,
               "cut_stone": 1,
@@ -1072,9 +1148,9 @@
         },
         {
           "level": 5,
-          "seconds": 28800,
+          "seconds": 43200,
           "cost": {
-            "coins": 12000,
+            "coins": 7200,
             "items": {
               "beams": 2,
               "tools": 1,
@@ -1092,13 +1168,13 @@
     {
       "id": "quarry",
       "name": "Каменоломня",
-      "description": "Камень и глина для хозяйства. У шахты собственная очередь добычи: Мохлик может заниматься другими делами.",
+      "description": "Один запуск даёт один ресурс: камень, глину, руду, песок, кварц или известняк. Улучшения открывают новые материалы; шахтёр работает независимо от Мохлика.",
       "levels": [
         {
           "level": 1,
           "seconds": 300,
           "cost": {
-            "coins": 100,
+            "coins": 50,
             "items": {
               "wood": 2,
               "planks": 2
@@ -1111,7 +1187,7 @@
         },
         {
           "level": 2,
-          "seconds": 600,
+          "seconds": 1200,
           "cost": {
             "coins": 200,
             "items": {
@@ -1127,9 +1203,9 @@
         },
         {
           "level": 3,
-          "seconds": 21600,
+          "seconds": 7200,
           "cost": {
-            "coins": 2400,
+            "coins": 1200,
             "items": {
               "planks": 3,
               "iron_ingot": 2,
@@ -1146,7 +1222,7 @@
           "level": 4,
           "seconds": 21600,
           "cost": {
-            "coins": 6500,
+            "coins": 3600,
             "items": {
               "beams": 1,
               "cut_stone": 1,
@@ -1161,9 +1237,9 @@
         },
         {
           "level": 5,
-          "seconds": 36000,
+          "seconds": 43200,
           "cost": {
-            "coins": 15000,
+            "coins": 7200,
             "items": {
               "beams": 2,
               "reinforced_parts": 1,
@@ -1181,13 +1257,13 @@
     {
       "id": "workshop",
       "name": "Мастерская",
-      "description": "Доски и верёвки становятся полотном, балками, инструментами и усиленными узлами для больших построек.",
+      "description": "Доски и верёвки связывают хозяйство с торговлей и исследованиями: ящики, линзы, инструменты и полевые комплекты.",
       "levels": [
         {
           "level": 1,
           "seconds": 300,
           "cost": {
-            "coins": 60,
+            "coins": 50,
             "items": {
               "wood": 2,
               "stone": 1
@@ -1198,9 +1274,9 @@
         },
         {
           "level": 2,
-          "seconds": 21600,
+          "seconds": 3600,
           "cost": {
-            "coins": 2200,
+            "coins": 600,
             "items": {
               "planks": 4,
               "bricks": 4,
@@ -1215,9 +1291,9 @@
         },
         {
           "level": 3,
-          "seconds": 28800,
+          "seconds": 10800,
           "cost": {
-            "coins": 4000,
+            "coins": 1800,
             "items": {
               "planks": 4,
               "bricks": 4,
@@ -1233,9 +1309,9 @@
         },
         {
           "level": 4,
-          "seconds": 28800,
+          "seconds": 21600,
           "cost": {
-            "coins": 9000,
+            "coins": 3600,
             "items": {
               "beams": 1,
               "metal_parts": 1,
@@ -1253,12 +1329,13 @@
           "level": 5,
           "seconds": 43200,
           "cost": {
-            "coins": 18000,
+            "coins": 7200,
             "items": {
-              "reinforced_parts": 2,
+              "reinforced_parts": 1,
               "tools": 1,
               "beams": 2,
-              "glass": 2
+              "lens": 1,
+              "trade_crate": 1
             }
           },
           "requiredHomeLevel": 5,
@@ -1278,7 +1355,7 @@
           "level": 1,
           "seconds": 180,
           "cost": {
-            "coins": 40,
+            "coins": 30,
             "items": {
               "wood": 1,
               "stone": 1
@@ -1289,9 +1366,9 @@
         },
         {
           "level": 2,
-          "seconds": 7200,
+          "seconds": 3600,
           "cost": {
-            "coins": 1800,
+            "coins": 600,
             "items": {
               "planks": 2,
               "stone": 3,
@@ -1305,14 +1382,14 @@
         },
         {
           "level": 3,
-          "seconds": 14400,
+          "seconds": 7200,
           "cost": {
-            "coins": 4000,
+            "coins": 1200,
             "items": {
               "planks": 2,
               "bricks": 2,
               "iron_ingot": 1,
-              "glass": 1
+              "glass_bottle": 1
             }
           },
           "requiredHomeLevel": 3,
@@ -1322,9 +1399,9 @@
         },
         {
           "level": 4,
-          "seconds": 21600,
+          "seconds": 14400,
           "cost": {
-            "coins": 6000,
+            "coins": 2400,
             "items": {
               "beams": 1,
               "bricks": 2,
@@ -1341,7 +1418,7 @@
           "level": 5,
           "seconds": 28800,
           "cost": {
-            "coins": 12000,
+            "coins": 4800,
             "items": {
               "reinforced_parts": 1,
               "beams": 1,
@@ -1359,13 +1436,13 @@
     {
       "id": "kiln",
       "name": "Печь",
-      "description": "Из бревна получается древесный уголь, а из глины и угля — кирпич. Металл и стекло открываются позже.",
+      "description": "Уголь и кирпич, керамические банки, металл, стекло и облицовочная плитка. Каждый запуск занимает одну ячейку и даёт один предмет.",
       "levels": [
         {
           "level": 1,
           "seconds": 600,
           "cost": {
-            "coins": 150,
+            "coins": 100,
             "items": {
               "planks": 2,
               "stone": 4,
@@ -1380,9 +1457,9 @@
         },
         {
           "level": 2,
-          "seconds": 14400,
+          "seconds": 3600,
           "cost": {
-            "coins": 1600,
+            "coins": 600,
             "items": {
               "planks": 4,
               "stone": 6,
@@ -1397,9 +1474,9 @@
         },
         {
           "level": 3,
-          "seconds": 14400,
+          "seconds": 7200,
           "cost": {
-            "coins": 4000,
+            "coins": 1200,
             "items": {
               "planks": 2,
               "bricks": 2,
@@ -1414,9 +1491,9 @@
         },
         {
           "level": 4,
-          "seconds": 28800,
+          "seconds": 21600,
           "cost": {
-            "coins": 8000,
+            "coins": 3600,
             "items": {
               "beams": 1,
               "cut_stone": 1,
@@ -1432,9 +1509,9 @@
         },
         {
           "level": 5,
-          "seconds": 36000,
+          "seconds": 43200,
           "cost": {
-            "coins": 15000,
+            "coins": 7200,
             "items": {
               "reinforced_parts": 1,
               "bricks": 2,
@@ -1470,7 +1547,7 @@
           "level": 2,
           "seconds": 600,
           "cost": {
-            "coins": 150,
+            "coins": 100,
             "items": {
               "planks": 3,
               "stone": 2,
@@ -1483,9 +1560,9 @@
         },
         {
           "level": 3,
-          "seconds": 14400,
+          "seconds": 3600,
           "cost": {
-            "coins": 1000,
+            "coins": 600,
             "items": {
               "planks": 6,
               "bricks": 6,
@@ -1493,7 +1570,7 @@
               "cloth": 2
             }
           },
-          "requiredHomeLevel": 1,
+          "requiredHomeLevel": 3,
           "requiredBuildings": {},
           "warehouseCapacity": 150
         },
@@ -1611,9 +1688,9 @@
       "levels": [
         {
           "level": 1,
-          "seconds": 14400,
+          "seconds": 3600,
           "cost": {
-            "coins": 1200,
+            "coins": 600,
             "items": {
               "planks": 8,
               "rope": 6,
@@ -1637,15 +1714,15 @@
       "levels": [
         {
           "level": 1,
-          "seconds": 21600,
+          "seconds": 14400,
           "cost": {
-            "coins": 5000,
+            "coins": 2400,
             "items": {
-              "cut_stone": 4,
-              "bricks": 6,
-              "glass": 4,
-              "cloth": 2,
-              "iron_ingot": 2
+              "glass": 2,
+              "glass_bottle": 1,
+              "beams": 2,
+              "metal_parts": 1,
+              "rope": 2
             }
           },
           "requiredHomeLevel": 3,
@@ -1699,7 +1776,8 @@
         "kind": "berry_harvest",
         "seconds": 8
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "retired": true
     },
     {
       "id": "garden_fiber",
@@ -1708,7 +1786,7 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 45,
+      "seconds": 60,
       "cost": {
         "coins": 0,
         "items": {}
@@ -1737,7 +1815,8 @@
         "kind": "berry_harvest",
         "seconds": 8
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "retired": true
     },
     {
       "id": "garden_supply",
@@ -1761,7 +1840,8 @@
       "maxBatch": 1,
       "requiredRecipes": {
         "cook_compote": 1
-      }
+      },
+      "retired": true
     },
     {
       "id": "garden_abundance",
@@ -1785,7 +1865,8 @@
       "maxBatch": 1,
       "requiredRecipes": {
         "cook_compote": 1
-      }
+      },
+      "retired": true
     },
     {
       "id": "gather_wood",
@@ -1842,7 +1923,7 @@
       "id": "gather_hardwood",
       "name": "Заготовить крепкое бревно",
       "buildingId": "woodlot",
-      "buildingLevel": 3,
+      "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
       "seconds": 600,
@@ -1907,7 +1988,8 @@
       "rewards": {
         "resin": 1
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "retired": true
     },
     {
       "id": "woodland_supply",
@@ -1973,7 +2055,7 @@
       "requiredBuildings": {
         "kiln": 2
       },
-      "seconds": 1800,
+      "seconds": 600,
       "cost": {
         "coins": 0,
         "items": {
@@ -1993,7 +2075,7 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 2400,
+      "seconds": 720,
       "cost": {
         "coins": 0,
         "items": {
@@ -2015,7 +2097,7 @@
       "requiredBuildings": {
         "woodlot": 3
       },
-      "seconds": 3600,
+      "seconds": 1200,
       "cost": {
         "coins": 0,
         "items": {
@@ -2035,7 +2117,7 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 2700,
+      "seconds": 720,
       "cost": {
         "coins": 0,
         "items": {
@@ -2054,7 +2136,7 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
-      "seconds": 5400,
+      "seconds": 1500,
       "cost": {
         "coins": 0,
         "items": {
@@ -2077,7 +2159,7 @@
       "requiredBuildings": {
         "woodlot": 4
       },
-      "seconds": 7200,
+      "seconds": 2400,
       "cost": {
         "coins": 0,
         "items": {
@@ -2118,7 +2200,7 @@
       "buildingLevel": 1,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 1800,
+      "seconds": 480,
       "cost": {
         "coins": 0,
         "items": {
@@ -2142,7 +2224,7 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 1800,
+      "seconds": 720,
       "cost": {
         "coins": 0,
         "items": {
@@ -2163,7 +2245,7 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 3600,
+      "seconds": 1200,
       "cost": {
         "coins": 0,
         "items": {
@@ -2187,7 +2269,7 @@
         "woodlot": 3,
         "kiln": 1
       },
-      "seconds": 5400,
+      "seconds": 1800,
       "cost": {
         "coins": 0,
         "items": {
@@ -2212,7 +2294,7 @@
         "woodlot": 3,
         "kiln": 1
       },
-      "seconds": 7200,
+      "seconds": 2700,
       "cost": {
         "coins": 0,
         "items": {
@@ -2234,7 +2316,7 @@
       "buildingLevel": 1,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 2700,
+      "seconds": 720,
       "cost": {
         "coins": 0,
         "items": {
@@ -2253,7 +2335,7 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 1800,
+      "seconds": 900,
       "cost": {
         "coins": 0,
         "items": {
@@ -2312,7 +2394,7 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 1800,
+      "seconds": 900,
       "cost": {
         "coins": 0,
         "items": {
@@ -2332,11 +2414,11 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "seconds": 2700,
+      "seconds": 600,
       "cost": {
         "coins": 0,
         "items": {
-          "sand": 3,
+          "sand": 2,
           "charcoal": 1
         }
       },
@@ -2400,7 +2482,7 @@
       "requiredRecipes": {
         "make_reinforced_parts": 10
       },
-      "seconds": 5400,
+      "seconds": 1800,
       "cost": {
         "coins": 0,
         "items": {
@@ -2420,15 +2502,17 @@
       "buildingId": "kiln",
       "buildingLevel": 4,
       "requiredHomeLevel": 4,
-      "requiredBuildings": {},
+      "requiredBuildings": {
+        "quarry": 4
+      },
       "requiredRecipes": {
         "make_glass": 10
       },
-      "seconds": 1800,
+      "seconds": 240,
       "cost": {
         "coins": 0,
         "items": {
-          "sand": 3,
+          "quartz": 1,
           "charcoal": 1
         }
       },
@@ -2447,7 +2531,7 @@
       "requiredRecipes": {
         "smelt_iron": 10
       },
-      "seconds": 1200,
+      "seconds": 600,
       "cost": {
         "coins": 0,
         "items": {
@@ -2467,7 +2551,7 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
-      "seconds": 3600,
+      "seconds": 1200,
       "cost": {
         "coins": 0,
         "items": {
@@ -2488,7 +2572,7 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
-      "seconds": 7200,
+      "seconds": 2400,
       "cost": {
         "coins": 0,
         "items": {
@@ -2638,14 +2722,16 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {
-        "garden": 3
+        "garden": 3,
+        "kiln": 1
       },
-      "seconds": 1200,
+      "seconds": 720,
       "cost": {
         "coins": 0,
         "items": {
           "currants": 2,
-          "berry_compote": 1
+          "berry_compote": 1,
+          "ceramic_jar": 1
         }
       },
       "rewards": {
@@ -2663,7 +2749,7 @@
         "garden": 4,
         "kiln": 3
       },
-      "seconds": 2700,
+      "seconds": 1500,
       "cost": {
         "coins": 0,
         "items": {
@@ -2685,7 +2771,7 @@
       "requiredBuildings": {
         "garden": 5
       },
-      "seconds": 5400,
+      "seconds": 2400,
       "cost": {
         "coins": 0,
         "items": {
@@ -2697,15 +2783,239 @@
         "cranberry_glaze": 1
       },
       "maxBatch": 1
+    },
+    {
+      "id": "make_ceramic_jar",
+      "name": "Обжечь керамическую банку",
+      "buildingId": "kiln",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 300,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "clay": 2,
+          "charcoal": 1
+        }
+      },
+      "rewards": {
+        "ceramic_jar": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "mix_mortar",
+      "name": "Приготовить строительную смесь",
+      "buildingId": "workshop",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "quarry": 5
+      },
+      "seconds": 360,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "limestone": 1,
+          "clay": 1,
+          "sand": 1
+        }
+      },
+      "rewards": {
+        "mortar": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "make_glass_bottle",
+      "name": "Выдуть стеклянную бутылку",
+      "buildingId": "kiln",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 300,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "glass": 1
+        }
+      },
+      "rewards": {
+        "glass_bottle": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "grind_lens",
+      "name": "Отшлифовать линзу",
+      "buildingId": "workshop",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "quarry": 4,
+        "kiln": 3
+      },
+      "seconds": 900,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "quartz": 1,
+          "glass": 1
+        }
+      },
+      "rewards": {
+        "lens": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "pack_berries",
+      "name": "Упаковать ягодный запас",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "kiln": 1
+      },
+      "seconds": 480,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "dried_berries": 1,
+          "ceramic_jar": 1
+        }
+      },
+      "rewards": {
+        "packed_berries": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "make_trade_crate",
+      "name": "Собрать торговый ящик",
+      "buildingId": "workshop",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 480,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "planks": 2,
+          "rope": 1
+        }
+      },
+      "rewards": {
+        "trade_crate": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "assemble_field_kit",
+      "name": "Собрать полевой комплект",
+      "buildingId": "workshop",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "quarry": 4,
+        "kiln": 3
+      },
+      "seconds": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "tools": 1,
+          "cloth": 1,
+          "lens": 1
+        }
+      },
+      "rewards": {
+        "field_kit": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "fire_stone_tile",
+      "name": "Обжечь облицовочную плитку",
+      "buildingId": "kiln",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "quarry": 5,
+        "workshop": 4
+      },
+      "seconds": 600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "limestone": 1,
+          "cut_stone": 1,
+          "mortar": 1
+        }
+      },
+      "rewards": {
+        "stone_tile": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "bottle_compote",
+      "name": "Подготовить компот в дорогу",
+      "buildingId": "dryer",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "kiln": 3
+      },
+      "seconds": 300,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "glass_bottle": 1,
+          "berry_compote": 1
+        }
+      },
+      "rewards": {
+        "bottled_compote": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "pack_berry_gift",
+      "name": "Собрать ягодный подарок",
+      "buildingId": "dryer",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "kiln": 3,
+        "workshop": 2,
+        "garden": 4
+      },
+      "seconds": 720,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "glass_bottle": 1,
+          "blackberry_preserve": 1,
+          "trade_crate": 1
+        }
+      },
+      "rewards": {
+        "berry_gift": 1
+      },
+      "maxBatch": 1
     }
   ],
   "explorations": [
     {
       "id": "forest",
       "name": "Лесная разведка",
-      "description": "Бесплатная вылазка: древесина, камни и волокно всегда помогут начать снова.",
+      "description": "Свободная вылазка за небольшим набором материалов. Помогает начать хозяйство и восстановить недостающие запасы.",
       "requiredHomeLevel": 1,
-      "seconds": 1800,
+      "seconds": 1680,
       "cost": {
         "coins": 0,
         "items": {}
@@ -2749,7 +3059,8 @@
       "requiredBuildings": {
         "quarry": 1
       },
-      "activity": "mining"
+      "activity": "mining",
+      "retired": true
     },
     {
       "id": "deep_cave",
@@ -2771,7 +3082,8 @@
       "requiredBuildings": {
         "quarry": 1
       },
-      "activity": "mining"
+      "activity": "mining",
+      "retired": true
     },
     {
       "id": "forest_camp",
@@ -2788,7 +3100,8 @@
         "wood": 12,
         "stone": 8,
         "fiber": 12
-      }
+      },
+      "retired": true
     },
     {
       "id": "shore_camp",
@@ -2807,72 +3120,69 @@
     },
     {
       "id": "old_woodland",
-      "name": "Старый лес · 8 ч",
-      "description": "Крепкая древесина и смола для мастерской. На дорогу понадобятся верёвки и сухие припасы.",
+      "name": "Старый лес",
+      "description": "Небольшая вылазка с подготовленными припасами. Материалы гарантированы, время зависит от состава маршрута; готовая добыча ждёт получения.",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "dryer": 1,
         "workshop": 2
       },
-      "seconds": 28800,
+      "seconds": 1920,
       "cost": {
         "coins": 0,
         "items": {
-          "dried_berries": 3,
-          "rope": 2
+          "dried_berries": 1,
+          "rope": 1
         }
       },
       "rewards": {
-        "hardwood": 18,
-        "resin": 6,
-        "wood": 18
+        "hardwood": 4,
+        "resin": 2,
+        "wood": 1
       }
     },
     {
       "id": "coastal_deposits",
-      "name": "Прибрежные отложения · 10 ч",
-      "description": "Песок, глина и руда для печи. Мохлик приносит гарантированный набор материалов.",
+      "name": "Прибрежные отложения",
+      "description": "Небольшая вылазка с подготовленными припасами. Материалы гарантированы, время зависит от состава маршрута; готовая добыча ждёт получения.",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "dryer": 2,
         "kiln": 2
       },
-      "seconds": 36000,
+      "seconds": 1680,
       "cost": {
         "coins": 0,
         "items": {
-          "smoked_fish": 3,
-          "dried_berries": 3
-        }
-      },
-      "rewards": {
-        "clay": 16,
-        "sand": 18,
-        "ore": 9
-      }
-    },
-    {
-      "id": "uplands",
-      "name": "Лесное нагорье · 12 ч",
-      "description": "Крепкая древесина и богатые жилы. Для дальнего похода нужны готовые инструменты.",
-      "requiredHomeLevel": 4,
-      "requiredBuildings": {
-        "workshop": 4
-      },
-      "seconds": 43200,
-      "cost": {
-        "coins": 0,
-        "items": {
-          "tools": 1,
-          "dried_berries": 1,
           "smoked_fish": 1
         }
       },
       "rewards": {
-        "hardwood": 15,
-        "ore": 11,
-        "resin": 6,
-        "stone": 11
+        "clay": 3,
+        "sand": 3,
+        "ore": 3
+      }
+    },
+    {
+      "id": "uplands",
+      "name": "Лесное нагорье",
+      "description": "Небольшая вылазка с подготовленными припасами. Материалы гарантированы, время зависит от состава маршрута; готовая добыча ждёт получения.",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "workshop": 4
+      },
+      "seconds": 1980,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "tools": 1
+        }
+      },
+      "rewards": {
+        "hardwood": 4,
+        "ore": 6,
+        "resin": 4,
+        "stone": 4
       }
     },
     {
@@ -2892,12 +3202,13 @@
       "rewards": {
         "ore": 48
       },
-      "activity": "mining"
+      "activity": "mining",
+      "retired": true
     },
     {
       "id": "quarry_stone",
       "name": "Добыть камень",
-      "description": "Шахтёр работает в собственной очереди. Мохлик свободен; добычу нужно получить, освободив место в кладовой.",
+      "description": "Один запуск — один ресурс. Шахтёр работает отдельно от Мохлика; готовая добыча ждёт получения.",
       "activity": "mining",
       "requiredHomeLevel": 2,
       "requiredBuildings": {
@@ -2928,18 +3239,19 @@
       },
       "rewards": {
         "stone": 48
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_ore",
       "name": "Добыть руду",
-      "description": "Шахтёр работает в собственной очереди. Мохлик свободен; добычу нужно получить, освободив место в кладовой.",
+      "description": "Один запуск — один ресурс. Шахтёр работает отдельно от Мохлика; готовая добыча ждёт получения.",
       "activity": "mining",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "quarry": 2
       },
-      "seconds": 540,
+      "seconds": 600,
       "cost": {
         "coins": 0,
         "items": {}
@@ -2951,7 +3263,7 @@
     {
       "id": "quarry_clay",
       "name": "Добыть глину",
-      "description": "Шахтёр работает в собственной очереди. Мохлик свободен; добычу нужно получить, освободив место в кладовой.",
+      "description": "Один запуск — один ресурс. Шахтёр работает отдельно от Мохлика; готовая добыча ждёт получения.",
       "activity": "mining",
       "requiredHomeLevel": 2,
       "requiredBuildings": {
@@ -2969,13 +3281,13 @@
     {
       "id": "quarry_sand",
       "name": "Просеять песок",
-      "description": "Шахтёр работает в собственной очереди. Мохлик свободен; добычу нужно получить, освободив место в кладовой.",
+      "description": "Один запуск — один ресурс. Шахтёр работает отдельно от Мохлика; готовая добыча ждёт получения.",
       "activity": "mining",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
-        "quarry": 2
+        "quarry": 3
       },
-      "seconds": 270,
+      "seconds": 300,
       "cost": {
         "coins": 0,
         "items": {}
@@ -3003,7 +3315,8 @@
         "ore": 12,
         "clay": 12,
         "sand": 12
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_deep_face",
@@ -3024,7 +3337,8 @@
         "ore": 20,
         "clay": 9,
         "sand": 9
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_supply",
@@ -3045,7 +3359,8 @@
         "ore": 28,
         "clay": 6,
         "sand": 6
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_stone_hour",
@@ -3063,7 +3378,8 @@
       },
       "rewards": {
         "stone": 16
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_ore_hour",
@@ -3081,7 +3397,8 @@
       },
       "rewards": {
         "ore": 6
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_ore_overnight",
@@ -3099,7 +3416,8 @@
       },
       "rewards": {
         "ore": 36
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_clay_hour",
@@ -3117,7 +3435,8 @@
       },
       "rewards": {
         "clay": 16
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_clay_overnight",
@@ -3135,7 +3454,8 @@
       },
       "rewards": {
         "clay": 48
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_sand_hour",
@@ -3153,7 +3473,8 @@
       },
       "rewards": {
         "sand": 10
-      }
+      },
+      "retired": true
     },
     {
       "id": "quarry_sand_overnight",
@@ -3171,17 +3492,18 @@
       },
       "rewards": {
         "sand": 40
-      }
+      },
+      "retired": true
     },
     {
       "id": "far_bank_path",
-      "name": "Тропа дальнего берега · 2 ч",
-      "description": "После восстановления моста Мохлик может исследовать дальний берег. Походный паёк расходуется при старте; обычные материалы гарантированы после получения.",
+      "name": "Тропа дальнего берега",
+      "description": "Небольшая вылазка с подготовленными припасами. Материалы гарантированы, время зависит от состава маршрута; готовая добыча ждёт получения.",
       "requiredHomeLevel": 4,
       "requiredBuildings": {
         "bridge": 1
       },
-      "seconds": 7200,
+      "seconds": 1140,
       "cost": {
         "coins": 0,
         "items": {
@@ -3189,59 +3511,100 @@
         }
       },
       "rewards": {
-        "wood": 8,
-        "fiber": 6,
-        "hardwood": 4,
+        "wood": 4,
+        "fiber": 4,
+        "hardwood": 6,
         "stone": 4
       }
     },
     {
       "id": "far_bank_grove",
-      "name": "Роща за рекой · 6 ч",
-      "description": "Дальний поход через восстановленный мост. Два пайка расходуются при старте; древесина и материалы для печи входят в гарантированную поставку.",
+      "name": "Роща за рекой",
+      "description": "Небольшая вылазка с подготовленными припасами. Материалы гарантированы, время зависит от состава маршрута; готовая добыча ждёт получения.",
       "requiredHomeLevel": 4,
       "requiredBuildings": {
-        "bridge": 1
+        "bridge": 1,
+        "kiln": 1,
+        "dryer": 2
       },
-      "seconds": 21600,
+      "seconds": 3300,
       "cost": {
         "coins": 0,
         "items": {
-          "trail_ration": 2
+          "packed_berries": 1
         }
       },
       "rewards": {
-        "wood": 4,
-        "hardwood": 8,
-        "ore": 8,
-        "sand": 8,
-        "clay": 6
+        "hardwood": 4,
+        "ore": 3,
+        "sand": 3,
+        "clay": 4
       }
     },
     {
       "id": "ancient_ruins",
-      "name": "Древние руины · 10 ч",
-      "description": "Свет восстановленного маяка помогает найти руины. Паёк и снаряжение расходуются при старте. Маршрут гарантирует материалы; случайная реликвия не нужна для завершения проекта.",
+      "name": "Древние руины",
+      "description": "Небольшая вылазка с подготовленными припасами. Материалы гарантированы, время зависит от состава маршрута; готовая добыча ждёт получения.",
       "requiredHomeLevel": 4,
       "requiredBuildings": {
         "bridge": 1,
         "lighthouse": 1,
-        "workshop": 3
+        "workshop": 4,
+        "quarry": 4,
+        "kiln": 3,
+        "dryer": 2
       },
-      "seconds": 36000,
+      "seconds": 3480,
       "cost": {
         "coins": 0,
         "items": {
-          "trail_ration": 1,
-          "research_gear": 1
+          "field_kit": 1,
+          "trail_ration": 1
         }
       },
       "rewards": {
-        "wood": 8,
+        "wood": 2,
         "hardwood": 10,
-        "ore": 12,
+        "ore": 10,
         "sand": 8,
-        "resin": 4
+        "resin": 6,
+        "quartz": 3
+      }
+    },
+    {
+      "id": "quarry_quartz",
+      "name": "Добыть кварц",
+      "description": "Один запуск — один ресурс. Материал нужен для дальнейшей переработки и заказов жителей.",
+      "activity": "mining",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "quarry": 4
+      },
+      "seconds": 900,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "quartz": 1
+      }
+    },
+    {
+      "id": "quarry_limestone",
+      "name": "Добыть известняк",
+      "description": "Один запуск — один ресурс. Материал нужен для дальнейшей переработки и заказов жителей.",
+      "activity": "mining",
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "quarry": 5
+      },
+      "seconds": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "limestone": 1
       }
     }
   ],
@@ -3254,10 +3617,10 @@
     "feeBps": 500,
     "dailyTradeValueByHome": [
       0,
-      2400,
-      4800,
-      9600,
-      14400
+      6000,
+      12000,
+      24000,
+      36000
     ],
     "showcaseSlots": 12,
     "showcasePerSeller": 2,
@@ -4029,49 +4392,42 @@
     "payoutBps": 6000,
     "unitPrices": {
       "berries": 10,
-      "strawberries": 40,
       "wood": 30,
-      "stone": 40,
-      "planks": 40,
-      "berry_compote": 30,
-      "grilled_fish": 55,
+      "stone": 30,
+      "ore": 100,
       "fiber": 10,
-      "rope": 30,
-      "clay": 30,
-      "charcoal": 50,
-      "bricks": 100,
-      "ore": 60,
-      "fish": 40,
-      "metal_parts": 460,
-      "dried_berries": 90,
-      "smoked_fish": 160,
-      "sand": 30,
-      "iron_ingot": 340,
-      "glass": 240,
-      "hardwood": 100,
-      "resin": 60,
-      "cloth": 240,
-      "beams": 600,
-      "tools": 1000,
-      "reinforced_parts": 1800,
-      "cut_stone": 240,
-      "crumb_bait": 10,
-      "worm_bait": 10,
-      "glow_bait": 20,
-      "firefly_bait": 30,
-      "star_bait": 40,
-      "berry_fish": 300,
-      "hearty_fish": 500,
-      "epic_fish": 800,
-      "legendary_fish": 1200,
       "fish_common": 40,
       "fish_uncommon": 70,
       "fish_rare": 110,
       "fish_epic": 180,
       "fish_legendary": 320,
+      "fish": 40,
+      "planks": 50,
+      "rope": 50,
+      "metal_parts": 630,
+      "dried_berries": 180,
+      "smoked_fish": 260,
+      "clay": 30,
+      "sand": 50,
+      "charcoal": 50,
+      "iron_ingot": 500,
+      "bricks": 110,
+      "glass": 250,
+      "hardwood": 100,
+      "resin": 60,
+      "cloth": 220,
+      "beams": 650,
+      "tools": 1030,
+      "reinforced_parts": 2230,
+      "cut_stone": 210,
       "fish_silverfin": 40,
       "fish_reedperch": 70,
       "fish_mooncarp": 110,
+      "crumb_bait": 10,
+      "worm_bait": 10,
+      "glow_bait": 20,
+      "firefly_bait": 30,
+      "star_bait": 40,
       "fish_rudd": 40,
       "fish_dace": 70,
       "fish_bream": 70,
@@ -4080,18 +4436,39 @@
       "fish_sturgeon": 180,
       "fish_mirror_koi": 180,
       "fish_shark": 320,
+      "grilled_fish": 70,
       "fish_soup": 220,
-      "trail_ration": 360,
-      "research_gear": 1600,
-      "blueberries": 20,
-      "currants": 70,
-      "blackberries": 160,
-      "cranberries": 280,
-      "strawberry_compote": 110,
-      "blueberry_compote": 70,
-      "currant_jelly": 220,
-      "blackberry_preserve": 640,
-      "cranberry_glaze": 950
+      "berry_fish": 260,
+      "hearty_fish": 410,
+      "epic_fish": 740,
+      "legendary_fish": 1150,
+      "strawberries": 50,
+      "berry_compote": 50,
+      "trail_ration": 690,
+      "research_gear": 1750,
+      "blueberries": 30,
+      "currants": 120,
+      "blackberries": 300,
+      "cranberries": 600,
+      "strawberry_compote": 160,
+      "blueberry_compote": 120,
+      "currant_jelly": 570,
+      "blackberry_preserve": 1100,
+      "cranberry_glaze": 2170,
+      "spice_bait": 20,
+      "dusk_bait": 30,
+      "quartz": 150,
+      "limestone": 200,
+      "ceramic_jar": 160,
+      "mortar": 340,
+      "glass_bottle": 300,
+      "lens": 550,
+      "packed_berries": 420,
+      "trade_crate": 230,
+      "field_kit": 2000,
+      "stone_tile": 850,
+      "bottled_compote": 400,
+      "berry_gift": 1750
     }
   },
   "rareDrops": {
@@ -4185,7 +4562,7 @@
           "items": {
             "fish_common": 3
           },
-          "coins": 180,
+          "coins": 150,
           "effortSeconds": 318,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -4201,7 +4578,7 @@
           "items": {
             "fish_common": 2
           },
-          "coins": 120,
+          "coins": 100,
           "effortSeconds": 212,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -4218,7 +4595,7 @@
             "fish_common": 2,
             "fish_uncommon": 1
           },
-          "coins": 230,
+          "coins": 188,
           "effortSeconds": 962,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -4235,8 +4612,8 @@
             "fiber": 6,
             "wood": 2
           },
-          "coins": 180,
-          "effortSeconds": 3420,
+          "coins": 150,
+          "effortSeconds": 3192,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 7
@@ -4251,8 +4628,8 @@
           "items": {
             "wood": 2
           },
-          "coins": 90,
-          "effortSeconds": 720,
+          "coins": 75,
+          "effortSeconds": 672,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 5
@@ -4267,8 +4644,8 @@
           "items": {
             "stone": 8
           },
-          "coins": 480,
-          "effortSeconds": 4800,
+          "coins": 300,
+          "effortSeconds": 4480,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 8
@@ -4284,8 +4661,8 @@
             "wood": 6,
             "stone": 4
           },
-          "coins": 510,
-          "effortSeconds": 4560,
+          "coins": 375,
+          "effortSeconds": 4256,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 8
@@ -4300,8 +4677,8 @@
           "items": {
             "fiber": 8
           },
-          "coins": 120,
-          "effortSeconds": 3600,
+          "coins": 100,
+          "effortSeconds": 3360,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 7
@@ -4317,8 +4694,8 @@
             "wood": 4,
             "fiber": 4
           },
-          "coins": 240,
-          "effortSeconds": 3240,
+          "coins": 200,
+          "effortSeconds": 3024,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 7
@@ -4336,8 +4713,8 @@
             "planks": 4,
             "rope": 2
           },
-          "coins": 350,
-          "effortSeconds": 4080,
+          "coins": 375,
+          "effortSeconds": 3864,
           "manufacturingSeconds": 840,
           "fishingUncertain": false,
           "reputationXp": 8
@@ -4354,7 +4731,7 @@
           "items": {
             "grilled_fish": 2
           },
-          "coins": 180,
+          "coins": 175,
           "effortSeconds": 572,
           "manufacturingSeconds": 360,
           "fishingUncertain": true,
@@ -4367,13 +4744,14 @@
           "description": "Хочется горячей рыбы и немного свежих ягод после дня у воды.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
-            "dryer": 1
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "grilled_fish": 1,
             "berries": 2
           },
-          "coins": 120,
+          "coins": 113,
           "effortSeconds": 422,
           "manufacturingSeconds": 180,
           "fishingUncertain": true,
@@ -4389,7 +4767,7 @@
           "items": {
             "fish_uncommon": 2
           },
-          "coins": 210,
+          "coins": 175,
           "effortSeconds": 1500,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -4402,17 +4780,18 @@
           "description": "Возьму копчёную рыбу и сушёные ягоды: у воды могу задержаться надолго.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {
-            "dryer": 2
+            "dryer": 2,
+            "garden": 1
           },
           "items": {
             "smoked_fish": 1,
             "dried_berries": 2
           },
-          "coins": 630,
-          "effortSeconds": 8588,
-          "manufacturingSeconds": 7200,
+          "coins": 775,
+          "effortSeconds": 3704,
+          "manufacturingSeconds": 2340,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 7
         },
         {
           "id": "plesk_warm_lunch",
@@ -4425,17 +4804,18 @@
             "kiln": 1,
             "quarry": 2,
             "woodlot": 1,
-            "workshop": 1
+            "workshop": 1,
+            "garden": 1
           },
           "items": {
             "fish_soup": 1,
             "berry_fish": 1
           },
-          "coins": 850,
-          "effortSeconds": 5382,
-          "manufacturingSeconds": 3720,
+          "coins": 600,
+          "effortSeconds": 2982,
+          "manufacturingSeconds": 1320,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "builder_fasteners",
@@ -4446,15 +4826,15 @@
           "requiredBuildings": {
             "workshop": 2,
             "kiln": 2,
-            "quarry": 1
+            "quarry": 2
           },
           "items": {
             "metal_parts": 2,
             "planks": 2
           },
-          "coins": 1630,
-          "effortSeconds": 15240,
-          "manufacturingSeconds": 7680,
+          "coins": 1700,
+          "effortSeconds": 9096,
+          "manufacturingSeconds": 3480,
           "fishingUncertain": false,
           "reputationXp": 9
         },
@@ -4473,8 +4853,8 @@
             "bricks": 4,
             "rope": 2
           },
-          "coins": 720,
-          "effortSeconds": 5520,
+          "coins": 675,
+          "effortSeconds": 5304,
           "manufacturingSeconds": 1560,
           "fishingUncertain": false,
           "reputationXp": 8
@@ -4487,14 +4867,14 @@
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "kiln": 2,
-            "quarry": 1
+            "quarry": 2
           },
           "items": {
             "iron_ingot": 3
           },
-          "coins": 1630,
-          "effortSeconds": 14940,
-          "manufacturingSeconds": 5760,
+          "coins": 1875,
+          "effortSeconds": 9468,
+          "manufacturingSeconds": 3060,
           "fishingUncertain": false,
           "reputationXp": 9
         },
@@ -4508,7 +4888,7 @@
           "items": {
             "fish_rare": 1
           },
-          "coins": 170,
+          "coins": 138,
           "effortSeconds": 3000,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -4525,7 +4905,7 @@
             "fish_uncommon": 1,
             "fish_rare": 1
           },
-          "coins": 270,
+          "coins": 225,
           "effortSeconds": 3750,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -4538,16 +4918,17 @@
           "description": "После долгой рыбалки хочется готового сытного ужина.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {
-            "dryer": 3
+            "dryer": 3,
+            "garden": 1
           },
           "items": {
             "hearty_fish": 1
           },
-          "coins": 810,
-          "effortSeconds": 7592,
-          "manufacturingSeconds": 3600,
+          "coins": 513,
+          "effortSeconds": 5144,
+          "manufacturingSeconds": 1200,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "builder_stone_cut",
@@ -4563,11 +4944,11 @@
             "cut_stone": 6,
             "beams": 2
           },
-          "coins": 4360,
-          "effortSeconds": 39540,
-          "manufacturingSeconds": 23760,
+          "coins": 3200,
+          "effortSeconds": 22200,
+          "manufacturingSeconds": 7080,
           "fishingUncertain": false,
-          "reputationXp": 11
+          "reputationXp": 10
         },
         {
           "id": "builder_window_materials",
@@ -4578,17 +4959,17 @@
           "requiredBuildings": {
             "workshop": 2,
             "kiln": 3,
-            "quarry": 2
+            "quarry": 3
           },
           "items": {
             "cloth": 4,
             "glass": 2
           },
-          "coins": 2430,
-          "effortSeconds": 30900,
-          "manufacturingSeconds": 15960,
+          "coins": 1725,
+          "effortSeconds": 18672,
+          "manufacturingSeconds": 5040,
           "fishingUncertain": false,
-          "reputationXp": 11
+          "reputationXp": 10
         },
         {
           "id": "plesk_golden_sturgeon",
@@ -4600,7 +4981,7 @@
           "items": {
             "fish_epic": 1
           },
-          "coins": 270,
+          "coins": 225,
           "effortSeconds": 9000,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -4615,16 +4996,17 @@
           "requiredBuildings": {
             "dryer": 4,
             "woodlot": 3,
-            "kiln": 1
+            "kiln": 1,
+            "garden": 1
           },
           "items": {
             "epic_fish": 1
           },
-          "coins": 1300,
-          "effortSeconds": 16008,
-          "manufacturingSeconds": 5640,
+          "coins": 925,
+          "effortSeconds": 12408,
+          "manufacturingSeconds": 2040,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 9
         },
         {
           "id": "builder_tools",
@@ -4636,17 +5018,17 @@
             "workshop": 4,
             "woodlot": 3,
             "kiln": 2,
-            "quarry": 1
+            "quarry": 2
           },
           "items": {
             "tools": 2,
             "beams": 2
           },
-          "coins": 5250,
-          "effortSeconds": 38640,
-          "manufacturingSeconds": 26640,
+          "coins": 4200,
+          "effortSeconds": 20160,
+          "manufacturingSeconds": 9840,
           "fishingUncertain": false,
-          "reputationXp": 11
+          "reputationXp": 10
         },
         {
           "id": "builder_reinforced",
@@ -4658,15 +5040,15 @@
             "workshop": 4,
             "woodlot": 4,
             "kiln": 2,
-            "quarry": 1
+            "quarry": 2
           },
           "items": {
             "reinforced_parts": 2,
             "tools": 1
           },
-          "coins": 7560,
-          "effortSeconds": 60990,
-          "manufacturingSeconds": 39180,
+          "coins": 6863,
+          "effortSeconds": 32940,
+          "manufacturingSeconds": 15180,
           "fishingUncertain": false,
           "reputationXp": 11
         },
@@ -4680,7 +5062,7 @@
           "items": {
             "fish_legendary": 1
           },
-          "coins": 480,
+          "coins": 400,
           "effortSeconds": 300,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -4695,16 +5077,17 @@
           "requiredBuildings": {
             "dryer": 5,
             "woodlot": 3,
-            "kiln": 1
+            "kiln": 1,
+            "garden": 1
           },
           "items": {
             "legendary_fish": 1
           },
-          "coins": 1930,
-          "effortSeconds": 9844,
-          "manufacturingSeconds": 7440,
+          "coins": 1438,
+          "effortSeconds": 5344,
+          "manufacturingSeconds": 2940,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "builder_final_fittings",
@@ -4716,15 +5099,15 @@
             "workshop": 4,
             "woodlot": 4,
             "kiln": 3,
-            "quarry": 2
+            "quarry": 3
           },
           "items": {
             "reinforced_parts": 4,
             "glass": 6
           },
-          "coins": 14230,
-          "effortSeconds": 110100,
-          "manufacturingSeconds": 76200,
+          "coins": 13025,
+          "effortSeconds": 62520,
+          "manufacturingSeconds": 27600,
           "fishingUncertain": false,
           "reputationXp": 12
         },
@@ -4735,13 +5118,13 @@
           "description": "Подготовлю запас руды для прочных металлических креплений.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {
-            "quarry": 1
+            "quarry": 2
           },
           "items": {
             "ore": 8
           },
-          "coins": 720,
-          "effortSeconds": 7200,
+          "coins": 1000,
+          "effortSeconds": 4800,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 8
@@ -4758,7 +5141,7 @@
           "items": {
             "clay": 4
           },
-          "coins": 180,
+          "coins": 150,
           "effortSeconds": 720,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -4771,13 +5154,13 @@
           "description": "Разровняю песчаную подушку под будущую постройку.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {
-            "quarry": 2
+            "quarry": 3
           },
           "items": {
             "sand": 12
           },
-          "coins": 540,
-          "effortSeconds": 3240,
+          "coins": 750,
+          "effortSeconds": 3600,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 7
@@ -4794,8 +5177,8 @@
           "items": {
             "charcoal": 2
           },
-          "coins": 160,
-          "effortSeconds": 960,
+          "coins": 125,
+          "effortSeconds": 912,
           "manufacturingSeconds": 240,
           "fishingUncertain": false,
           "reputationXp": 6
@@ -4812,7 +5195,7 @@
           "items": {
             "hardwood": 8
           },
-          "coins": 1200,
+          "coins": 1000,
           "effortSeconds": 4800,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -4830,8 +5213,8 @@
           "items": {
             "resin": 8
           },
-          "coins": 720,
-          "effortSeconds": 2400,
+          "coins": 600,
+          "effortSeconds": 2880,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 7
@@ -4848,7 +5231,7 @@
           "items": {
             "berries": 10
           },
-          "coins": 150,
+          "coins": 125,
           "effortSeconds": 680,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -4863,10 +5246,10 @@
             "wood": 3,
             "fiber": 4
           },
-          "coins": 200,
+          "coins": 163,
           "requiredHomeLevel": 3,
           "requiredBuildings": {},
-          "effortSeconds": 2880,
+          "effortSeconds": 2688,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 7
@@ -4880,7 +5263,7 @@
             "stone": 4,
             "clay": 2
           },
-          "coins": 330,
+          "coins": 225,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "quarry": 2
@@ -4899,12 +5282,12 @@
             "planks": 3,
             "rope": 2
           },
-          "coins": 290,
+          "coins": 313,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "workshop": 1
           },
-          "effortSeconds": 3600,
+          "effortSeconds": 3408,
           "manufacturingSeconds": 720,
           "fishingUncertain": false,
           "reputationXp": 7
@@ -4918,7 +5301,7 @@
             "berries": 4,
             "strawberries": 2
           },
-          "coins": 180,
+          "coins": 175,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "garden": 1,
@@ -4937,10 +5320,11 @@
           "items": {
             "berry_compote": 3
           },
-          "coins": 150,
+          "coins": 188,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
-            "dryer": 1
+            "dryer": 1,
+            "garden": 1
           },
           "effortSeconds": 948,
           "manufacturingSeconds": 540,
@@ -4956,7 +5340,7 @@
             "bricks": 3,
             "charcoal": 2
           },
-          "coins": 620,
+          "coins": 538,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "kiln": 1,
@@ -4978,7 +5362,7 @@
             "iron_ingot": 2,
             "planks": 2
           },
-          "coins": 1210,
+          "coins": 1375,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "kiln": 2,
@@ -4986,10 +5370,10 @@
             "woodlot": 1,
             "workshop": 1
           },
-          "effortSeconds": 8040,
-          "manufacturingSeconds": 4080,
+          "effortSeconds": 6600,
+          "manufacturingSeconds": 2280,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "repeat3_metal_cloth",
@@ -5000,7 +5384,7 @@
             "metal_parts": 1,
             "cloth": 1
           },
-          "coins": 1160,
+          "coins": 1063,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "workshop": 2,
@@ -5008,10 +5392,10 @@
             "woodlot": 1,
             "quarry": 2
           },
-          "effortSeconds": 8700,
-          "manufacturingSeconds": 6300,
+          "effortSeconds": 5100,
+          "manufacturingSeconds": 2520,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "repeat3_soup",
@@ -5021,19 +5405,20 @@
           "items": {
             "fish_soup": 2
           },
-          "coins": 730,
+          "coins": 550,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 1,
             "kiln": 1,
             "quarry": 2,
             "woodlot": 1,
-            "workshop": 1
+            "workshop": 1,
+            "garden": 1
           },
-          "effortSeconds": 4760,
-          "manufacturingSeconds": 3840,
+          "effortSeconds": 2120,
+          "manufacturingSeconds": 1200,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "repeat3_river_table",
@@ -5044,7 +5429,7 @@
             "fish_common": 3,
             "fish_uncommon": 1
           },
-          "coins": 290,
+          "coins": 238,
           "requiredHomeLevel": 3,
           "requiredBuildings": {},
           "effortSeconds": 1068,
@@ -5061,10 +5446,11 @@
             "grilled_fish": 2,
             "berry_compote": 1
           },
-          "coins": 220,
+          "coins": 238,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
-            "dryer": 1
+            "dryer": 1,
+            "garden": 1
           },
           "effortSeconds": 888,
           "manufacturingSeconds": 540,
@@ -5080,15 +5466,16 @@
             "smoked_fish": 1,
             "dried_berries": 1
           },
-          "coins": 450,
+          "coins": 550,
           "requiredHomeLevel": 3,
           "requiredBuildings": {
-            "dryer": 2
+            "dryer": 2,
+            "garden": 1
           },
-          "effortSeconds": 5480,
-          "manufacturingSeconds": 4500,
+          "effortSeconds": 2576,
+          "manufacturingSeconds": 1620,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "builder_trail_supplies",
@@ -5098,17 +5485,18 @@
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "dryer": 2,
-            "workshop": 1
+            "workshop": 1,
+            "garden": 1
           },
           "items": {
             "trail_ration": 1,
             "rope": 2
           },
-          "coins": 780,
-          "effortSeconds": 11556,
-          "manufacturingSeconds": 8640,
+          "coins": 988,
+          "effortSeconds": 6132,
+          "manufacturingSeconds": 3360,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "builder_research_tools",
@@ -5126,11 +5514,11 @@
             "research_gear": 1,
             "tools": 1
           },
-          "coins": 4390,
-          "effortSeconds": 34800,
-          "manufacturingSeconds": 29220,
+          "coins": 3475,
+          "effortSeconds": 16680,
+          "manufacturingSeconds": 10740,
           "fishingUncertain": false,
-          "reputationXp": 11
+          "reputationXp": 10
         },
         {
           "id": "plesk_trail_table",
@@ -5139,17 +5527,18 @@
           "description": "Соберу припасы и свежий улов для тех, кто собирается за реку. Это обычная повторяемая просьба.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {
-            "dryer": 2
+            "dryer": 2,
+            "garden": 1
           },
           "items": {
             "trail_ration": 2,
             "fish_common": 2
           },
-          "coins": 1480,
-          "effortSeconds": 19004,
-          "manufacturingSeconds": 16560,
+          "coins": 1825,
+          "effortSeconds": 8396,
+          "manufacturingSeconds": 6000,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 9
         },
         {
           "id": "builder_survey_camp",
@@ -5163,17 +5552,18 @@
             "bridge": 1,
             "kiln": 2,
             "quarry": 2,
-            "woodlot": 1
+            "woodlot": 1,
+            "garden": 1
           },
           "items": {
             "research_gear": 1,
             "trail_ration": 1
           },
-          "coins": 3410,
-          "effortSeconds": 32016,
-          "manufacturingSeconds": 27960,
+          "coins": 3050,
+          "effortSeconds": 14436,
+          "manufacturingSeconds": 10200,
           "fishingUncertain": true,
-          "reputationXp": 11
+          "reputationXp": 9
         },
         {
           "id": "starter_fresh_berries",
@@ -5189,7 +5579,7 @@
             "berries": 3,
             "strawberries": 2
           },
-          "coins": 170,
+          "coins": 163,
           "effortSeconds": 820,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -5208,7 +5598,7 @@
           "items": {
             "strawberry_compote": 1
           },
-          "coins": 180,
+          "coins": 200,
           "effortSeconds": 976,
           "manufacturingSeconds": 360,
           "fishingUncertain": false,
@@ -5228,7 +5618,7 @@
             "blueberries": 4,
             "strawberries": 1
           },
-          "coins": 180,
+          "coins": 213,
           "effortSeconds": 1060,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -5247,7 +5637,7 @@
           "items": {
             "blueberry_compote": 2
           },
-          "coins": 230,
+          "coins": 300,
           "effortSeconds": 1472,
           "manufacturingSeconds": 720,
           "fishingUncertain": false,
@@ -5267,7 +5657,7 @@
             "currants": 3,
             "blueberries": 2
           },
-          "coins": 380,
+          "coins": 525,
           "effortSeconds": 2560,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -5281,14 +5671,16 @@
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "garden": 3,
-            "dryer": 2
+            "dryer": 2,
+            "kiln": 1,
+            "quarry": 2
           },
           "items": {
             "currant_jelly": 1
           },
-          "coins": 360,
-          "effortSeconds": 2912,
-          "manufacturingSeconds": 1380,
+          "coins": 713,
+          "effortSeconds": 3608,
+          "manufacturingSeconds": 1320,
           "fishingUncertain": false,
           "reputationXp": 7
         },
@@ -5305,7 +5697,7 @@
             "blackberries": 2,
             "currants": 2
           },
-          "coins": 690,
+          "coins": 1050,
           "effortSeconds": 5072,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -5321,17 +5713,17 @@
             "garden": 4,
             "dryer": 3,
             "kiln": 3,
-            "quarry": 2,
+            "quarry": 3,
             "woodlot": 1
           },
           "items": {
             "blackberry_preserve": 1
           },
-          "coins": 1060,
-          "effortSeconds": 10126,
-          "manufacturingSeconds": 5520,
+          "coins": 1375,
+          "effortSeconds": 6616,
+          "manufacturingSeconds": 2220,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "cranberry_harvest",
@@ -5346,7 +5738,7 @@
             "cranberries": 2,
             "blackberries": 2
           },
-          "coins": 1320,
+          "coins": 2250,
           "effortSeconds": 10832,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -5360,16 +5752,18 @@
           "requiredHomeLevel": 5,
           "requiredBuildings": {
             "garden": 5,
-            "dryer": 4
+            "dryer": 4,
+            "kiln": 1,
+            "quarry": 2
           },
           "items": {
             "cranberry_glaze": 1
           },
-          "coins": 1540,
-          "effortSeconds": 15528,
-          "manufacturingSeconds": 6780,
+          "coins": 2713,
+          "effortSeconds": 13224,
+          "manufacturingSeconds": 3720,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 9
         },
         {
           "id": "plesk_berry_break",
@@ -5383,7 +5777,7 @@
           "items": {
             "berries": 4
           },
-          "coins": 60,
+          "coins": 50,
           "effortSeconds": 272,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -5402,7 +5796,7 @@
             "fish_common": 1,
             "berries": 2
           },
-          "coins": 90,
+          "coins": 75,
           "effortSeconds": 242,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
@@ -5422,7 +5816,7 @@
             "berry_compote": 1,
             "berries": 2
           },
-          "coins": 80,
+          "coins": 88,
           "effortSeconds": 452,
           "manufacturingSeconds": 180,
           "fishingUncertain": false,
@@ -5435,13 +5829,14 @@
           "description": "Возьму готовую рыбу и компот. Хочется спокойно пообедать у воды.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
-            "dryer": 1
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "grilled_fish": 1,
             "berry_compote": 1
           },
-          "coins": 140,
+          "coins": 150,
           "effortSeconds": 602,
           "manufacturingSeconds": 360,
           "fishingUncertain": true,
@@ -5454,13 +5849,14 @@
           "description": "Приготовлю ужин из свежего улова, а компот уже можно поставить на стол.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
-            "dryer": 1
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "fish_common": 2,
             "berry_compote": 1
           },
-          "coins": 170,
+          "coins": 163,
           "effortSeconds": 528,
           "manufacturingSeconds": 180,
           "fishingUncertain": true,
@@ -5480,7 +5876,7 @@
             "grilled_fish": 1,
             "strawberry_compote": 1
           },
-          "coins": 260,
+          "coins": 288,
           "effortSeconds": 1262,
           "manufacturingSeconds": 540,
           "fishingUncertain": true,
@@ -5497,8 +5893,8 @@
             "wood": 2,
             "stone": 1
           },
-          "coins": 150,
-          "effortSeconds": 1320,
+          "coins": 113,
+          "effortSeconds": 1232,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
           "reputationXp": 6
@@ -5516,8 +5912,8 @@
             "planks": 1,
             "wood": 1
           },
-          "coins": 110,
-          "effortSeconds": 840,
+          "coins": 100,
+          "effortSeconds": 792,
           "manufacturingSeconds": 120,
           "fishingUncertain": false,
           "reputationXp": 5
@@ -5529,14 +5925,15 @@
           "description": "Подброшу дров и выпью компот перед следующей работой.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
-            "dryer": 1
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "berry_compote": 1,
             "wood": 1
           },
           "coins": 100,
-          "effortSeconds": 676,
+          "effortSeconds": 652,
           "manufacturingSeconds": 180,
           "fishingUncertain": false,
           "reputationXp": 5
@@ -5555,7 +5952,7 @@
             "grilled_fish": 1,
             "blueberry_compote": 1
           },
-          "coins": 200,
+          "coins": 238,
           "effortSeconds": 1022,
           "manufacturingSeconds": 540,
           "fishingUncertain": true,
@@ -5574,7 +5971,7 @@
             "berries": 3,
             "blueberries": 2
           },
-          "coins": 110,
+          "coins": 113,
           "effortSeconds": 580,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -5594,7 +5991,7 @@
             "grilled_fish": 1,
             "blueberries": 2
           },
-          "coins": 150,
+          "coins": 163,
           "effortSeconds": 662,
           "manufacturingSeconds": 180,
           "fishingUncertain": true,
@@ -5608,17 +6005,18 @@
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 1,
-            "kiln": 1
+            "kiln": 1,
+            "garden": 1
           },
           "items": {
             "fish_soup": 1,
             "berry_compote": 1
           },
-          "coins": 410,
-          "effortSeconds": 2876,
-          "manufacturingSeconds": 2100,
+          "coins": 338,
+          "effortSeconds": 1532,
+          "manufacturingSeconds": 780,
           "fishingUncertain": true,
-          "reputationXp": 7
+          "reputationXp": 6
         },
         {
           "id": "plesk_berry_sauce_lunch",
@@ -5634,11 +6032,11 @@
             "berry_fish": 1,
             "blueberry_compote": 1
           },
-          "coins": 600,
-          "effortSeconds": 3858,
-          "manufacturingSeconds": 2160,
+          "coins": 475,
+          "effortSeconds": 2814,
+          "manufacturingSeconds": 1080,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "plesk_smoked_currants",
@@ -5654,11 +6052,11 @@
             "smoked_fish": 1,
             "currants": 2
           },
-          "coins": 480,
-          "effortSeconds": 3828,
-          "manufacturingSeconds": 1800,
+          "coins": 625,
+          "effortSeconds": 2904,
+          "manufacturingSeconds": 900,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "plesk_catch_and_jelly",
@@ -5668,17 +6066,19 @@
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 2,
-            "garden": 3
+            "garden": 3,
+            "kiln": 1,
+            "quarry": 2
           },
           "items": {
             "fish_common": 2,
             "currant_jelly": 1
           },
-          "coins": 480,
-          "effortSeconds": 3124,
-          "manufacturingSeconds": 1380,
+          "coins": 813,
+          "effortSeconds": 3820,
+          "manufacturingSeconds": 1320,
           "fishingUncertain": true,
-          "reputationXp": 7
+          "reputationXp": 8
         },
         {
           "id": "builder_trail_snack",
@@ -5688,17 +6088,18 @@
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 1,
-            "workshop": 1
+            "workshop": 1,
+            "garden": 1
           },
           "items": {
             "dried_berries": 1,
             "rope": 1
           },
-          "coins": 230,
-          "effortSeconds": 4188,
-          "manufacturingSeconds": 2880,
+          "coins": 288,
+          "effortSeconds": 2148,
+          "manufacturingSeconds": 900,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "plesk_blackberry_feast",
@@ -5716,11 +6117,11 @@
             "epic_fish": 1,
             "blackberries": 1
           },
-          "coins": 1540,
-          "effortSeconds": 17636,
-          "manufacturingSeconds": 5640,
+          "coins": 1300,
+          "effortSeconds": 14216,
+          "manufacturingSeconds": 2040,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 9
         },
         {
           "id": "plesk_preserve_and_catch",
@@ -5732,17 +6133,17 @@
             "dryer": 3,
             "garden": 4,
             "kiln": 3,
-            "quarry": 2
+            "quarry": 3
           },
           "items": {
             "blackberry_preserve": 1,
             "fish_common": 2
           },
-          "coins": 1180,
-          "effortSeconds": 10518,
-          "manufacturingSeconds": 5520,
+          "coins": 1475,
+          "effortSeconds": 6984,
+          "manufacturingSeconds": 2220,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "plesk_path_provisions",
@@ -5758,11 +6159,11 @@
             "trail_ration": 1,
             "blueberry_compote": 1
           },
-          "coins": 790,
-          "effortSeconds": 10012,
-          "manufacturingSeconds": 8640,
+          "coins": 1013,
+          "effortSeconds": 4828,
+          "manufacturingSeconds": 3360,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "plesk_cranberry_dinner",
@@ -5778,9 +6179,9 @@
             "berry_fish": 1,
             "cranberries": 1
           },
-          "coins": 900,
-          "effortSeconds": 6670,
-          "manufacturingSeconds": 1800,
+          "coins": 1075,
+          "effortSeconds": 5686,
+          "manufacturingSeconds": 720,
           "fishingUncertain": true,
           "reputationXp": 8
         },
@@ -5792,17 +6193,19 @@
           "requiredHomeLevel": 5,
           "requiredBuildings": {
             "dryer": 4,
-            "garden": 5
+            "garden": 5,
+            "kiln": 1,
+            "quarry": 2
           },
           "items": {
             "fish_common": 2,
             "cranberry_glaze": 1
           },
-          "coins": 1660,
-          "effortSeconds": 15740,
-          "manufacturingSeconds": 6780,
+          "coins": 2813,
+          "effortSeconds": 13436,
+          "manufacturingSeconds": 3720,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 9
         },
         {
           "id": "lopukh_woodpile_roof",
@@ -5818,7 +6221,7 @@
             "wood": 2,
             "berries": 3
           },
-          "coins": 140,
+          "coins": 113,
           "effortSeconds": 564,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
@@ -5838,7 +6241,7 @@
             "planks": 2,
             "wood": 1
           },
-          "coins": 170,
+          "coins": 163,
           "effortSeconds": 780,
           "manufacturingSeconds": 240,
           "fishingUncertain": false,
@@ -5859,7 +6262,7 @@
             "rope": 2,
             "berries": 4
           },
-          "coins": 160,
+          "coins": 175,
           "effortSeconds": 872,
           "manufacturingSeconds": 360,
           "fishingUncertain": false,
@@ -5881,7 +6284,7 @@
             "blueberry_compote": 1,
             "blueberries": 3
           },
-          "coins": 290,
+          "coins": 350,
           "effortSeconds": 1586,
           "manufacturingSeconds": 540,
           "fishingUncertain": true,
@@ -5896,17 +6299,18 @@
           "requiredBuildings": {
             "woodlot": 1,
             "dryer": 1,
-            "workshop": 1
+            "workshop": 1,
+            "garden": 1
           },
           "items": {
             "dried_berries": 1,
             "rope": 2
           },
-          "coins": 280,
-          "effortSeconds": 3708,
-          "manufacturingSeconds": 3060,
+          "coins": 350,
+          "effortSeconds": 1728,
+          "manufacturingSeconds": 1080,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 6
         },
         {
           "id": "lopukh_canopy_braces",
@@ -5922,11 +6326,11 @@
             "beams": 1,
             "cloth": 1
           },
-          "coins": 1370,
-          "effortSeconds": 9165,
-          "manufacturingSeconds": 6360,
+          "coins": 1088,
+          "effortSeconds": 5220,
+          "manufacturingSeconds": 2280,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "lopukh_resin_tools",
@@ -5944,11 +6348,11 @@
             "resin": 3,
             "tools": 1
           },
-          "coins": 1930,
-          "effortSeconds": 12870,
-          "manufacturingSeconds": 9540,
+          "coins": 1513,
+          "effortSeconds": 7260,
+          "manufacturingSeconds": 3540,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "lopukh_long_shift_kit",
@@ -5961,18 +6365,19 @@
             "workshop": 3,
             "kiln": 2,
             "quarry": 2,
-            "dryer": 2
+            "dryer": 2,
+            "garden": 1
           },
           "items": {
             "trail_ration": 1,
             "research_gear": 1,
             "rope": 1
           },
-          "coins": 3460,
-          "effortSeconds": 32316,
-          "manufacturingSeconds": 28140,
+          "coins": 3113,
+          "effortSeconds": 14736,
+          "manufacturingSeconds": 10380,
           "fishingUncertain": true,
-          "reputationXp": 11
+          "reputationXp": 9
         },
         {
           "id": "kamneshmyg_timber_posts",
@@ -5989,7 +6394,7 @@
             "wood": 3,
             "planks": 1
           },
-          "coins": 200,
+          "coins": 175,
           "effortSeconds": 840,
           "manufacturingSeconds": 120,
           "fishingUncertain": false,
@@ -6010,7 +6415,7 @@
             "berry_compote": 2,
             "berries": 3
           },
-          "coins": 150,
+          "coins": 163,
           "effortSeconds": 836,
           "manufacturingSeconds": 360,
           "fishingUncertain": false,
@@ -6032,7 +6437,7 @@
             "charcoal": 2,
             "rope": 1
           },
-          "coins": 210,
+          "coins": 188,
           "effortSeconds": 900,
           "manufacturingSeconds": 420,
           "fishingUncertain": false,
@@ -6053,9 +6458,9 @@
             "cloth": 1,
             "rope": 2
           },
-          "coins": 500,
-          "effortSeconds": 3600,
-          "manufacturingSeconds": 2940,
+          "coins": 400,
+          "effortSeconds": 1920,
+          "manufacturingSeconds": 1260,
           "fishingUncertain": false,
           "reputationXp": 7
         },
@@ -6074,8 +6479,8 @@
             "ore": 4,
             "charcoal": 2
           },
-          "coins": 520,
-          "effortSeconds": 2760,
+          "coins": 625,
+          "effortSeconds": 3000,
           "manufacturingSeconds": 240,
           "fishingUncertain": false,
           "reputationXp": 7
@@ -6096,11 +6501,11 @@
             "beams": 1,
             "iron_ingot": 1
           },
-          "coins": 1510,
-          "effortSeconds": 9990,
-          "manufacturingSeconds": 5700,
+          "coins": 1438,
+          "effortSeconds": 6900,
+          "manufacturingSeconds": 2400,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "kamneshmyg_hot_shift",
@@ -6113,17 +6518,18 @@
             "woodlot": 1,
             "workshop": 3,
             "kiln": 2,
-            "dryer": 1
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "tools": 1,
             "fish_soup": 1
           },
-          "coins": 2030,
-          "effortSeconds": 14380,
-          "manufacturingSeconds": 11460,
+          "coins": 1563,
+          "effortSeconds": 7240,
+          "manufacturingSeconds": 4140,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "kamneshmyg_survey_lenses",
@@ -6132,7 +6538,7 @@
           "description": "Камнешмыг собирает прочную оснастку для наблюдений за глубокой выработкой.",
           "requiredHomeLevel": 5,
           "requiredBuildings": {
-            "quarry": 2,
+            "quarry": 3,
             "woodlot": 4,
             "workshop": 4,
             "kiln": 3
@@ -6141,9 +6547,9 @@
             "reinforced_parts": 1,
             "glass": 2
           },
-          "coins": 3770,
-          "effortSeconds": 29430,
-          "manufacturingSeconds": 20460,
+          "coins": 3413,
+          "effortSeconds": 16380,
+          "manufacturingSeconds": 7260,
           "fishingUncertain": false,
           "reputationXp": 10
         },
@@ -6156,13 +6562,14 @@
           "requiredBuildings": {
             "woodlot": 1,
             "workshop": 1,
-            "dryer": 1
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "rope": 3,
             "berry_compote": 2
           },
-          "coins": 240,
+          "coins": 313,
           "effortSeconds": 1532,
           "manufacturingSeconds": 900,
           "fishingUncertain": false,
@@ -6182,11 +6589,11 @@
             "dried_berries": 2,
             "berries": 4
           },
-          "coins": 420,
-          "effortSeconds": 6488,
-          "manufacturingSeconds": 5400,
+          "coins": 500,
+          "effortSeconds": 2528,
+          "manufacturingSeconds": 1440,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "leaftail_cloth_wrapping",
@@ -6202,11 +6609,11 @@
             "cloth": 2,
             "rope": 2
           },
-          "coins": 910,
-          "effortSeconds": 6600,
-          "manufacturingSeconds": 5520,
+          "coins": 675,
+          "effortSeconds": 3240,
+          "manufacturingSeconds": 2160,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "leaftail_boat_patch",
@@ -6224,11 +6631,11 @@
             "charcoal": 1,
             "cloth": 1
           },
-          "coins": 670,
-          "effortSeconds": 4200,
-          "manufacturingSeconds": 3060,
+          "coins": 525,
+          "effortSeconds": 2520,
+          "manufacturingSeconds": 1380,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "leaftail_river_lunch",
@@ -6245,11 +6652,11 @@
             "smoked_fish": 2,
             "blueberry_compote": 1
           },
-          "coins": 660,
-          "effortSeconds": 5120,
-          "manufacturingSeconds": 3960,
+          "coins": 800,
+          "effortSeconds": 3320,
+          "manufacturingSeconds": 2160,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 7
         },
         {
           "id": "leaftail_camp_supplies",
@@ -6260,17 +6667,18 @@
           "requiredBuildings": {
             "woodlot": 1,
             "workshop": 1,
-            "dryer": 2
+            "dryer": 2,
+            "garden": 1
           },
           "items": {
             "trail_ration": 2,
             "rope": 2
           },
-          "coins": 1460,
-          "effortSeconds": 19032,
-          "manufacturingSeconds": 16920,
+          "coins": 1850,
+          "effortSeconds": 8472,
+          "manufacturingSeconds": 6360,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 9
         },
         {
           "id": "leaftail_display_crates",
@@ -6282,18 +6690,18 @@
             "woodlot": 1,
             "workshop": 2,
             "kiln": 3,
-            "quarry": 2
+            "quarry": 3
           },
           "items": {
             "glass": 2,
             "cloth": 2,
             "planks": 2
           },
-          "coins": 1750,
-          "effortSeconds": 14220,
-          "manufacturingSeconds": 11040,
+          "coins": 1300,
+          "effortSeconds": 6240,
+          "manufacturingSeconds": 3480,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 8
         },
         {
           "id": "leaftail_explorer_order",
@@ -6311,11 +6719,421 @@
             "research_gear": 1,
             "reinforced_parts": 1
           },
-          "coins": 5680,
-          "effortSeconds": 44415,
-          "manufacturingSeconds": 34500,
+          "coins": 4975,
+          "effortSeconds": 23880,
+          "manufacturingSeconds": 13020,
           "fishingUncertain": false,
-          "reputationXp": 11
+          "reputationXp": 10
+        },
+        {
+          "id": "builder_ceramic_storage",
+          "residentId": "builder",
+          "name": "Посуда для нового дома",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "kiln": 1,
+            "quarry": 2,
+            "woodlot": 1,
+            "workshop": 1
+          },
+          "items": {
+            "ceramic_jar": 2,
+            "planks": 1
+          },
+          "coins": 463,
+          "effortSeconds": 2220,
+          "manufacturingSeconds": 960,
+          "fishingUncertain": false,
+          "reputationXp": 7
+        },
+        {
+          "id": "builder_delivery_crates",
+          "residentId": "builder",
+          "name": "Ящики для стройки",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "workshop": 2,
+            "woodlot": 2,
+            "kiln": 2,
+            "quarry": 2
+          },
+          "items": {
+            "trade_crate": 2,
+            "bricks": 2
+          },
+          "coins": 850,
+          "effortSeconds": 4080,
+          "manufacturingSeconds": 2400,
+          "fishingUncertain": false,
+          "reputationXp": 8
+        },
+        {
+          "id": "builder_finishing_mortar",
+          "residentId": "builder",
+          "name": "Смесь для отделки",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "workshop": 4,
+            "quarry": 5,
+            "woodlot": 4,
+            "kiln": 4
+          },
+          "items": {
+            "mortar": 2,
+            "cut_stone": 1
+          },
+          "coins": 1113,
+          "effortSeconds": 5340,
+          "manufacturingSeconds": 1440,
+          "fishingUncertain": false,
+          "reputationXp": 8
+        },
+        {
+          "id": "builder_tile_order",
+          "residentId": "builder",
+          "name": "Облицовка мастерской",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "kiln": 5,
+            "quarry": 5,
+            "workshop": 4,
+            "woodlot": 4
+          },
+          "items": {
+            "stone_tile": 2,
+            "glass": 1
+          },
+          "coins": 2438,
+          "effortSeconds": 11700,
+          "manufacturingSeconds": 4080,
+          "fishingUncertain": false,
+          "reputationXp": 9
+        },
+        {
+          "id": "lopukh_pantry_jars",
+          "residentId": "lopukh",
+          "name": "Банки для лесной кладовой",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "woodlot": 1,
+            "kiln": 1,
+            "quarry": 2,
+            "workshop": 1
+          },
+          "items": {
+            "ceramic_jar": 1,
+            "rope": 1
+          },
+          "coins": 263,
+          "effortSeconds": 1260,
+          "manufacturingSeconds": 600,
+          "fishingUncertain": false,
+          "reputationXp": 6
+        },
+        {
+          "id": "lopukh_berry_reserve",
+          "residentId": "lopukh",
+          "name": "Припасы лесоруба",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "woodlot": 1,
+            "dryer": 2,
+            "kiln": 1,
+            "quarry": 2,
+            "workshop": 1,
+            "garden": 1
+          },
+          "items": {
+            "packed_berries": 1,
+            "planks": 2
+          },
+          "coins": 650,
+          "effortSeconds": 3168,
+          "manufacturingSeconds": 1860,
+          "fishingUncertain": false,
+          "reputationXp": 7
+        },
+        {
+          "id": "lopukh_bottled_compote",
+          "residentId": "lopukh",
+          "name": "Напиток к лесной работе",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "woodlot": 2,
+            "dryer": 3,
+            "kiln": 3,
+            "quarry": 3,
+            "workshop": 2,
+            "garden": 1
+          },
+          "items": {
+            "bottled_compote": 1,
+            "cloth": 1
+          },
+          "coins": 775,
+          "effortSeconds": 3736,
+          "manufacturingSeconds": 2400,
+          "fishingUncertain": false,
+          "reputationXp": 8
+        },
+        {
+          "id": "kamneshmyg_quartz_lens",
+          "residentId": "kamneshmyg",
+          "name": "Светлая жила",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "quarry": 4,
+            "workshop": 3,
+            "kiln": 3,
+            "woodlot": 3
+          },
+          "items": {
+            "quartz": 2,
+            "lens": 1
+          },
+          "coins": 1063,
+          "effortSeconds": 5100,
+          "manufacturingSeconds": 1620,
+          "fishingUncertain": false,
+          "reputationXp": 8
+        },
+        {
+          "id": "kamneshmyg_field_kit",
+          "residentId": "kamneshmyg",
+          "name": "Оснащение геолога",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "quarry": 4,
+            "workshop": 4,
+            "kiln": 4,
+            "woodlot": 4,
+            "dryer": 2,
+            "garden": 1
+          },
+          "items": {
+            "field_kit": 1,
+            "packed_berries": 1
+          },
+          "coins": 3025,
+          "effortSeconds": 14568,
+          "manufacturingSeconds": 8880,
+          "fishingUncertain": false,
+          "reputationXp": 9
+        },
+        {
+          "id": "kamneshmyg_limestone",
+          "residentId": "kamneshmyg",
+          "name": "Проверка известняка",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "quarry": 5,
+            "workshop": 4,
+            "woodlot": 4,
+            "kiln": 4
+          },
+          "items": {
+            "limestone": 2,
+            "mortar": 1
+          },
+          "coins": 925,
+          "effortSeconds": 4440,
+          "manufacturingSeconds": 360,
+          "fishingUncertain": false,
+          "reputationXp": 8
+        },
+        {
+          "id": "kamneshmyg_tile_path",
+          "residentId": "kamneshmyg",
+          "name": "Дорожка у карьера",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "quarry": 5,
+            "kiln": 5,
+            "workshop": 4,
+            "woodlot": 4
+          },
+          "items": {
+            "stone_tile": 1,
+            "mortar": 1
+          },
+          "coins": 1488,
+          "effortSeconds": 7140,
+          "manufacturingSeconds": 2040,
+          "fishingUncertain": false,
+          "reputationXp": 8
+        },
+        {
+          "id": "plesk_ceramic_table",
+          "residentId": "plesk",
+          "name": "Посуда у реки",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "kiln": 1,
+            "quarry": 2,
+            "woodlot": 1,
+            "workshop": 1
+          },
+          "items": {
+            "ceramic_jar": 1,
+            "grilled_fish": 1
+          },
+          "coins": 288,
+          "effortSeconds": 1246,
+          "manufacturingSeconds": 600,
+          "fishingUncertain": true,
+          "reputationXp": 6
+        },
+        {
+          "id": "plesk_bottled_drinks",
+          "residentId": "plesk",
+          "name": "Напитки на причале",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 3,
+            "kiln": 3,
+            "quarry": 3,
+            "workshop": 2,
+            "woodlot": 2,
+            "garden": 1
+          },
+          "items": {
+            "bottled_compote": 2,
+            "fish_common": 2
+          },
+          "coins": 1100,
+          "effortSeconds": 5044,
+          "manufacturingSeconds": 3000,
+          "fishingUncertain": true,
+          "reputationXp": 8
+        },
+        {
+          "id": "plesk_berry_gift",
+          "residentId": "plesk",
+          "name": "Подарок речным соседям",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 3,
+            "kiln": 3,
+            "workshop": 3,
+            "garden": 4,
+            "quarry": 3,
+            "woodlot": 3
+          },
+          "items": {
+            "berry_gift": 1,
+            "grilled_fish": 1
+          },
+          "coins": 2275,
+          "effortSeconds": 10802,
+          "manufacturingSeconds": 5040,
+          "fishingUncertain": true,
+          "reputationXp": 9
+        },
+        {
+          "id": "leaftail_packed_berries",
+          "residentId": "leaftail",
+          "name": "Ягодный груз",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 2,
+            "kiln": 2,
+            "workshop": 2,
+            "quarry": 2,
+            "woodlot": 2,
+            "garden": 1
+          },
+          "items": {
+            "packed_berries": 2,
+            "trade_crate": 1
+          },
+          "coins": 1338,
+          "effortSeconds": 6516,
+          "manufacturingSeconds": 4140,
+          "fishingUncertain": false,
+          "reputationXp": 8
+        },
+        {
+          "id": "leaftail_glassware",
+          "residentId": "leaftail",
+          "name": "Хрупкий товар",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "kiln": 3,
+            "workshop": 2,
+            "quarry": 3,
+            "woodlot": 2
+          },
+          "items": {
+            "glass_bottle": 2,
+            "trade_crate": 1
+          },
+          "coins": 1038,
+          "effortSeconds": 4980,
+          "manufacturingSeconds": 2940,
+          "fishingUncertain": false,
+          "reputationXp": 8
+        },
+        {
+          "id": "leaftail_field_kit",
+          "residentId": "leaftail",
+          "name": "Снаряжение в дорогу",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 4,
+            "quarry": 4,
+            "kiln": 4,
+            "woodlot": 4
+          },
+          "items": {
+            "field_kit": 1,
+            "lens": 1
+          },
+          "coins": 3188,
+          "effortSeconds": 15300,
+          "manufacturingSeconds": 8880,
+          "fishingUncertain": false,
+          "reputationXp": 10
+        },
+        {
+          "id": "leaftail_berry_presents",
+          "residentId": "leaftail",
+          "name": "Подарочная поставка",
+          "description": "Подготовь товары для жителя. Награда учитывает ингредиенты, время всей цепочки и надбавку за заказ.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 3,
+            "kiln": 3,
+            "workshop": 3,
+            "garden": 4,
+            "quarry": 3,
+            "woodlot": 3
+          },
+          "items": {
+            "berry_gift": 1,
+            "bottled_compote": 1
+          },
+          "coins": 2688,
+          "effortSeconds": 12932,
+          "manufacturingSeconds": 6360,
+          "fishingUncertain": false,
+          "reputationXp": 9
         }
       ],
       "progression": {
@@ -6360,7 +7178,7 @@
       "items": {
         "berries": 1
       },
-      "coins": 15
+      "coins": 13
     },
     "residentOrders": [
       {
@@ -6371,7 +7189,7 @@
         "items": {
           "berries": 1
         },
-        "coins": 15
+        "coins": 13
       }
     ]
   },
@@ -6383,71 +7201,71 @@
           "id": "stage2_rope_order",
           "residentId": "builder",
           "name": "Верёвки для шахты",
-          "description": "Собери растительное волокно и сплети две верёвки. Награда поможет восстановить шахту.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "rope": 2
           },
-          "coins": 90
+          "coins": 125
         },
         {
           "id": "stage2_stone_order",
           "residentId": "builder",
           "name": "Камень для хозяйства",
-          "description": "Получи шесть камней в собственной очереди шахты. Мохлик в это время свободен.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "stone": 6
           },
-          "coins": 360
+          "coins": 225
         },
         {
           "id": "stage2_clay_order",
           "residentId": "builder",
           "name": "Первая глина",
-          "description": "Улучши шахту и добудь четыре глины. Теперь можно строить печь.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "clay": 4
           },
-          "coins": 180
+          "coins": 150
         },
         {
           "id": "stage2_charcoal_order",
           "residentId": "builder",
           "name": "Топливо для обжига",
-          "description": "Построй печь и преврати два бревна в две единицы древесного угля.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "charcoal": 2
           },
-          "coins": 150
+          "coins": 125
         },
         {
           "id": "stage2_bricks_order",
           "residentId": "builder",
           "name": "Первые кирпичи",
-          "description": "Обожги четыре кирпича. Затем подготовь улов и обед для будущей стройки.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "bricks": 4
           },
-          "coins": 600
+          "coins": 550
         },
         {
           "id": "stage2_fish_order",
           "residentId": "plesk",
           "name": "Первый улов для прилавка",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "fish_common": 6
           },
-          "coins": 360
+          "coins": 300
         },
         {
           "id": "stage2_fish_meal_order",
           "residentId": "builder",
           "name": "Обеды для новоселья",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "grilled_fish": 3
           },
-          "coins": 250
+          "coins": 263
         }
       ]
     },
@@ -6462,92 +7280,94 @@
           "id": "stage3_foundation_order",
           "residentId": "builder",
           "name": "Разметка будущего дома",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "planks": 4,
             "rope": 2,
             "stone": 4
           },
-          "coins": 570
+          "coins": 525
         },
         {
           "id": "stage3_furnace_order",
           "residentId": "builder",
           "name": "Запас для новой печи",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
-            "charcoal": 4,
-            "bricks": 4
+            "charcoal": 2,
+            "bricks": 2,
+            "ceramic_jar": 2
           },
-          "coins": 900
+          "coins": 800
         },
         {
           "id": "stage3_iron_order",
           "residentId": "builder",
           "name": "Железо для креплений",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "iron_ingot": 3,
             "clay": 6
           },
-          "coins": 1800
+          "coins": 2100
         },
         {
           "id": "stage3_fittings_order",
           "residentId": "builder",
           "name": "Крепёж и полотно",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
-            "metal_parts": 2,
-            "cloth": 2
+            "metal_parts": 1,
+            "cloth": 1,
+            "trade_crate": 1
           },
-          "coins": 2100
+          "coins": 1350
         },
         {
           "id": "stage3_timber_order",
           "residentId": "builder",
           "name": "Крепкие опоры",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "hardwood": 4,
             "rope": 3
           },
-          "coins": 740
+          "coins": 688
         },
         {
           "id": "stage3_walls_order",
           "residentId": "builder",
           "name": "Балки и ровный камень",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "beams": 2,
             "cut_stone": 3
           },
-          "coins": 2880
+          "coins": 2413
         },
         {
           "id": "stage3_interior_order",
           "residentId": "builder",
           "name": "Последняя поставка для стен",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "beams": 2,
             "cloth": 2,
             "metal_parts": 2,
             "bricks": 4
           },
-          "coins": 4500
+          "coins": 4300
         },
         {
           "id": "stage3_table_order",
           "residentId": "plesk",
           "name": "Стол для новоселья",
-          "description": "Подготовь небольшую поставку для хозяйства. Принятые условия сохраняются.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "fish_common": 6,
             "fish_soup": 3
           },
-          "coins": 1350
+          "coins": 1125
         }
       ]
     },
@@ -6563,54 +7383,54 @@
           "id": "stage4_survey_order",
           "residentId": "builder",
           "name": "Разметка дальнего берега",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "planks": 2,
             "rope": 2
           },
-          "coins": 2000
+          "coins": 250
         },
         {
           "id": "stage4_hearth_order",
           "residentId": "builder",
           "name": "Запасы для походов",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "bricks": 2,
             "charcoal": 2
           },
-          "coins": 2500
+          "coins": 400
         },
         {
           "id": "stage4_first_ration_order",
           "residentId": "plesk",
           "name": "Первый походный паёк",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "trail_ration": 1
           },
-          "coins": 3000
+          "coins": 863
         },
         {
           "id": "stage4_tools_order",
           "residentId": "builder",
           "name": "Инструменты для восстановления",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "tools": 1
           },
-          "coins": 4000
+          "coins": 1288
         },
         {
           "id": "stage4_bridge_order",
           "residentId": "builder",
           "name": "Опоры дальнего берега",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "beams": 1,
             "cut_stone": 1
           },
-          "coins": 4000,
+          "coins": 1075,
           "requiredBuildings": {
             "bridge": 1
           }
@@ -6619,11 +7439,12 @@
           "id": "stage4_glass_order",
           "residentId": "builder",
           "name": "Свет для маяка",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
-            "glass": 2
+            "glass": 1,
+            "lens": 1
           },
-          "coins": 4500,
+          "coins": 1000,
           "requiredBuildings": {
             "bridge": 1
           }
@@ -6632,12 +7453,12 @@
           "id": "stage4_materials_order",
           "residentId": "builder",
           "name": "Материалы для исследования",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "wood": 8,
             "ore": 6
           },
-          "coins": 5000,
+          "coins": 1050,
           "requiredBuildings": {
             "bridge": 1
           }
@@ -6646,12 +7467,12 @@
           "id": "stage4_river_meals_order",
           "residentId": "plesk",
           "name": "Улов и обеды для похода",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "fish_common": 6,
             "grilled_fish": 2
           },
-          "coins": 3000,
+          "coins": 475,
           "requiredBuildings": {
             "bridge": 1
           }
@@ -6660,12 +7481,12 @@
           "id": "stage4_grove_order",
           "residentId": "builder",
           "name": "Древесина для защиты построек",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "hardwood": 4,
             "resin": 4
           },
-          "coins": 4500,
+          "coins": 800,
           "requiredBuildings": {
             "bridge": 1
           }
@@ -6674,11 +7495,13 @@
           "id": "stage4_provisions_order",
           "residentId": "plesk",
           "name": "Припасы для дальней дороги",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
-            "trail_ration": 2
+            "trail_ration": 1,
+            "packed_berries": 1,
+            "bottled_compote": 1
           },
-          "coins": 5000,
+          "coins": 1888,
           "requiredBuildings": {
             "bridge": 1
           }
@@ -6687,11 +7510,11 @@
           "id": "stage4_reinforcement_order",
           "residentId": "builder",
           "name": "Крепление новой пристройки",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "reinforced_parts": 1
           },
-          "coins": 5500,
+          "coins": 2788,
           "requiredBuildings": {
             "bridge": 1
           }
@@ -6700,13 +7523,13 @@
           "id": "stage4_completion_order",
           "residentId": "builder",
           "name": "Возвращение из древних руин",
-          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "cloth": 1,
-            "glass": 2,
-            "trail_ration": 1
+            "glass": 1,
+            "field_kit": 1
           },
-          "coins": 7000,
+          "coins": 3088,
           "requiredBuildings": {
             "bridge": 1,
             "lighthouse": 1
@@ -6724,31 +7547,31 @@
           "id": "stage1_wood_order",
           "residentId": "builder",
           "name": "Брёвна для первых построек",
-          "description": "Принеси два бревна. Одно можно взять из стартового запаса, другое заготовить на лесном участке.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "wood": 2
           },
-          "coins": 90
+          "coins": 75
         },
         {
           "id": "stage1_compote_order",
           "residentId": "plesk",
           "name": "Малиновый компот",
-          "description": "Приготовь на костре два компота. Для каждого нужны две малины.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "berry_compote": 2
           },
-          "coins": 90
+          "coins": 125
         },
         {
           "id": "stage1_planks_order",
           "residentId": "builder",
           "name": "Первые доски",
-          "description": "Изготовь в мастерской две доски. Каждая доска получается из одного бревна.",
+          "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
           "items": {
             "planks": 2
           },
-          "coins": 120
+          "coins": 125
         }
       ],
       "intervalSeconds": 0,
@@ -6812,26 +7635,26 @@
             {
               "id": "week_builder_shelter_1",
               "name": "Подготовить основу",
-              "description": "Собери брёвна и камень для основания.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "wood": 6,
                 "stone": 3
               },
-              "coins": 450,
+              "coins": 338,
               "reputationXp": 30,
-              "effortSeconds": 2880,
+              "effortSeconds": 2760,
               "manufacturingSeconds": 0,
               "fishingUncertain": false
             },
             {
               "id": "week_builder_shelter_2",
               "name": "Сделать деревянные детали",
-              "description": "Подготовь доски и пару запасных брёвен.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "planks": 3,
                 "wood": 2
               },
-              "coins": 280,
+              "coins": 263,
               "reputationXp": 30,
               "effortSeconds": 1260,
               "manufacturingSeconds": 360,
@@ -6840,12 +7663,12 @@
             {
               "id": "week_builder_shelter_3",
               "name": "Обед для строителя",
-              "description": "Пора сделать перерыв с рыбой и компотом.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "grilled_fish": 2,
                 "berry_compote": 2
               },
-              "coins": 270,
+              "coins": 300,
               "reputationXp": 30,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
@@ -6862,50 +7685,50 @@
           "requiredBuildings": {
             "woodlot": 3,
             "workshop": 3,
-            "kiln": 2,
-            "quarry": 2
+            "kiln": 3,
+            "quarry": 4
           },
           "stages": [
             {
               "id": "week_builder_crossing_1",
               "name": "Крепления и кирпич",
-              "description": "Приготовь первую партию материалов для опор.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "bricks": 4,
-                "rope": 3
+                "trade_crate": 1,
+                "cut_stone": 2
               },
-              "coins": 770,
+              "coins": 813,
               "reputationXp": 45,
-              "effortSeconds": 3450,
-              "manufacturingSeconds": 1740,
+              "effortSeconds": 3900,
+              "manufacturingSeconds": 2340,
               "fishingUncertain": false
             },
             {
               "id": "week_builder_crossing_2",
               "name": "Каменные и деревянные опоры",
-              "description": "Собери обтёсанный камень и крепкую балку.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "cut_stone": 3,
-                "beams": 1
+                "lens": 1,
+                "glass": 2
               },
-              "coins": 2180,
+              "coins": 1313,
               "reputationXp": 45,
-              "effortSeconds": 15990,
-              "manufacturingSeconds": 11880,
+              "effortSeconds": 6300,
+              "manufacturingSeconds": 3060,
               "fishingUncertain": false
             },
             {
               "id": "week_builder_crossing_3",
               "name": "Завершить рабочий комплект",
-              "description": "Передай детали и инструмент для окончательной сборки.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "metal_parts": 2,
                 "tools": 1
               },
-              "coins": 3170,
+              "coins": 2863,
               "reputationXp": 50,
-              "effortSeconds": 23370,
-              "manufacturingSeconds": 16980,
+              "effortSeconds": 13740,
+              "manufacturingSeconds": 6780,
               "fishingUncertain": false
             }
           ]
@@ -6926,12 +7749,12 @@
             {
               "id": "week_lopukh_camp_1",
               "name": "Ягоды и дрова",
-              "description": "Подготовь дрова и ягоды для первого привала.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "berries": 8,
                 "wood": 3
               },
-              "coins": 260,
+              "coins": 213,
               "reputationXp": 30,
               "effortSeconds": 1084,
               "manufacturingSeconds": 0,
@@ -6940,12 +7763,12 @@
             {
               "id": "week_lopukh_camp_2",
               "name": "Лавочки у навеса",
-              "description": "Лопоух ждёт готовые доски для небольших лавочек.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "planks": 3,
                 "wood": 1
               },
-              "coins": 240,
+              "coins": 225,
               "reputationXp": 30,
               "effortSeconds": 1080,
               "manufacturingSeconds": 360,
@@ -6954,12 +7777,12 @@
             {
               "id": "week_lopukh_camp_3",
               "name": "Обед под деревьями",
-              "description": "Собери горячую рыбу и компот для лесной смены.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "grilled_fish": 2,
                 "berry_compote": 2
               },
-              "coins": 270,
+              "coins": 300,
               "reputationXp": 35,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
@@ -6976,51 +7799,52 @@
           "requiredBuildings": {
             "woodlot": 3,
             "workshop": 3,
-            "kiln": 2,
-            "quarry": 2,
-            "dryer": 2
+            "kiln": 3,
+            "quarry": 3,
+            "dryer": 3,
+            "garden": 1
           },
           "stages": [
             {
               "id": "week_lopukh_far_shift_1",
               "name": "Подготовить укрытие",
-              "description": "Собери верёвки и плотное полотно.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "rope": 4,
-                "cloth": 1
+                "trade_crate": 1,
+                "beams": 1
               },
-              "coins": 600,
+              "coins": 1100,
               "reputationXp": 40,
-              "effortSeconds": 3975,
-              "manufacturingSeconds": 3300,
+              "effortSeconds": 5280,
+              "manufacturingSeconds": 2280,
               "fishingUncertain": false
             },
             {
               "id": "week_lopukh_far_shift_2",
               "name": "Укрепить рабочее место",
-              "description": "Подготовь инструмент и крепкую балку.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "tools": 1,
-                "beams": 1
+                "packed_berries": 2,
+                "bottled_compote": 1
               },
-              "coins": 2630,
+              "coins": 1550,
               "reputationXp": 45,
-              "effortSeconds": 18240,
-              "manufacturingSeconds": 13320,
+              "effortSeconds": 7552,
+              "manufacturingSeconds": 4740,
               "fishingUncertain": false
             },
             {
               "id": "week_lopukh_far_shift_3",
               "name": "Припасы для долгой смены",
-              "description": "Передай пайки и немного сушёных ягод.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "trail_ration": 2,
                 "dried_berries": 1
               },
-              "coins": 1540,
+              "coins": 1950,
               "reputationXp": 45,
-              "effortSeconds": 21540,
-              "manufacturingSeconds": 19260,
+              "effortSeconds": 9000,
+              "manufacturingSeconds": 6720,
               "fishingUncertain": true
             }
           ]
@@ -7043,12 +7867,12 @@
             {
               "id": "week_kamneshmyg_entry_1",
               "name": "Деревянные подпорки",
-              "description": "Принеси брёвна и доски для входа.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "wood": 4,
                 "planks": 2
               },
-              "coins": 310,
+              "coins": 275,
               "reputationXp": 30,
               "effortSeconds": 1320,
               "manufacturingSeconds": 240,
@@ -7057,12 +7881,12 @@
             {
               "id": "week_kamneshmyg_entry_2",
               "name": "Топливо и завязки",
-              "description": "Подготовь уголь и верёвки для рабочих мешков.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "charcoal": 3,
                 "rope": 3
               },
-              "coins": 380,
+              "coins": 375,
               "reputationXp": 30,
               "effortSeconds": 1800,
               "manufacturingSeconds": 900,
@@ -7071,12 +7895,12 @@
             {
               "id": "week_kamneshmyg_entry_3",
               "name": "Обед каменной смены",
-              "description": "Передай рыбу и черничный компот.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "grilled_fish": 2,
                 "blueberry_compote": 1
               },
-              "coins": 290,
+              "coins": 325,
               "reputationXp": 40,
               "effortSeconds": 1308,
               "manufacturingSeconds": 720,
@@ -7091,53 +7915,54 @@
           "description": "Камнешмыг обследует дальнюю часть шахты. Помоги оснастить рабочее место.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {
-            "quarry": 2,
+            "quarry": 4,
             "woodlot": 3,
-            "workshop": 3,
-            "kiln": 2,
-            "dryer": 1
+            "workshop": 4,
+            "kiln": 3,
+            "dryer": 2,
+            "garden": 1
           },
           "stages": [
             {
               "id": "week_kamneshmyg_survey_1",
               "name": "Укрытие для снаряжения",
-              "description": "Собери крепкую балку и полотно.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "beams": 1,
-                "cloth": 1
+                "quartz": 2,
+                "lens": 1
               },
-              "coins": 1370,
+              "coins": 1063,
               "reputationXp": 45,
-              "effortSeconds": 9165,
-              "manufacturingSeconds": 6360,
+              "effortSeconds": 5100,
+              "manufacturingSeconds": 1620,
               "fishingUncertain": false
             },
             {
               "id": "week_kamneshmyg_survey_2",
               "name": "Оснастка для укрепления",
-              "description": "Подготовь слитки и обтёсанный камень.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "iron_ingot": 2,
-                "cut_stone": 3
+                "field_kit": 1,
+                "packed_berries": 1
               },
-              "coins": 2300,
+              "coins": 3025,
               "reputationXp": 45,
-              "effortSeconds": 17160,
-              "manufacturingSeconds": 11940,
+              "effortSeconds": 14568,
+              "manufacturingSeconds": 8880,
               "fishingUncertain": false
             },
             {
               "id": "week_kamneshmyg_survey_3",
               "name": "Инструмент и горячий обед",
-              "description": "Заверши подготовку инструментом и ухой.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "tools": 1,
                 "fish_soup": 2
               },
-              "coins": 2390,
+              "coins": 1838,
               "reputationXp": 50,
-              "effortSeconds": 16730,
-              "manufacturingSeconds": 13380,
+              "effortSeconds": 8300,
+              "manufacturingSeconds": 4740,
               "fishingUncertain": true
             }
           ]
@@ -7156,12 +7981,12 @@
             {
               "id": "week_plesk_picnic_1",
               "name": "Свежий улов к столу",
-              "description": "Принеси обычную рыбу и малину.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "fish_common": 4,
                 "berries": 4
               },
-              "coins": 300,
+              "coins": 250,
               "reputationXp": 30,
               "effortSeconds": 696,
               "manufacturingSeconds": 0,
@@ -7170,12 +7995,12 @@
             {
               "id": "week_plesk_picnic_2",
               "name": "Горячая часть пикника",
-              "description": "Пожарь рыбу и свари малиновый компот.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "grilled_fish": 2,
                 "berry_compote": 2
               },
-              "coins": 270,
+              "coins": 300,
               "reputationXp": 30,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
@@ -7184,12 +8009,12 @@
             {
               "id": "week_plesk_picnic_3",
               "name": "Угощение для поздних гостей",
-              "description": "Оставь немного обычной рыбы и клубничного компота.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "fish_common": 3,
                 "strawberry_compote": 2
               },
-              "coins": 530,
+              "coins": 550,
               "reputationXp": 35,
               "effortSeconds": 2270,
               "manufacturingSeconds": 720,
@@ -7205,50 +8030,53 @@
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "woodlot": 1,
-            "garden": 3,
-            "dryer": 2
+            "garden": 4,
+            "dryer": 3,
+            "kiln": 3,
+            "quarry": 3,
+            "workshop": 2
           },
           "stages": [
             {
               "id": "week_plesk_river_table_1",
               "name": "Улов и ягодный напиток",
-              "description": "Передай необычную рыбу и черничный компот.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "fish_uncommon": 3,
-                "blueberry_compote": 2
+                "fish_uncommon": 2,
+                "bottled_compote": 1
               },
-              "coins": 540,
+              "coins": 675,
               "reputationXp": 40,
-              "effortSeconds": 3722,
-              "manufacturingSeconds": 720,
+              "effortSeconds": 3916,
+              "manufacturingSeconds": 1500,
               "fishingUncertain": true
             },
             {
               "id": "week_plesk_river_table_2",
               "name": "Припасы к вечернему столу",
-              "description": "Подготовь копчёную рыбу и смородиновое желе.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "smoked_fish": 2,
                 "currant_jelly": 1
               },
-              "coins": 900,
+              "coins": 1363,
               "reputationXp": 45,
-              "effortSeconds": 7296,
-              "manufacturingSeconds": 4980,
+              "effortSeconds": 6036,
+              "manufacturingSeconds": 3120,
               "fishingUncertain": true
             },
             {
               "id": "week_plesk_river_table_3",
               "name": "Рыба с ягодным соусом",
-              "description": "Собери готовое блюдо и небольшой запас необычного улова.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "berry_fish": 1,
+                "berry_gift": 1,
                 "fish_uncommon": 2
               },
-              "coins": 690,
+              "coins": 2363,
               "reputationXp": 45,
-              "effortSeconds": 4382,
-              "manufacturingSeconds": 1800,
+              "effortSeconds": 12016,
+              "manufacturingSeconds": 4860,
               "fishingUncertain": true
             }
           ]
@@ -7262,49 +8090,52 @@
           "requiredBuildings": {
             "woodlot": 1,
             "workshop": 2,
-            "dryer": 2
+            "dryer": 3,
+            "kiln": 3,
+            "garden": 1,
+            "quarry": 3
           },
           "stages": [
             {
               "id": "week_leaftail_provisions_1",
               "name": "Перевязать дорожные тюки",
-              "description": "Собери верёвки и запасные брёвна для креплений.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "rope": 2,
-                "wood": 2
+                "trade_crate": 1,
+                "rope": 2
               },
-              "coins": 190,
+              "coins": 413,
               "reputationXp": 35,
-              "effortSeconds": 960,
-              "manufacturingSeconds": 360,
+              "effortSeconds": 1980,
+              "manufacturingSeconds": 1260,
               "fishingUncertain": false
             },
             {
               "id": "week_leaftail_provisions_2",
               "name": "Упаковать сухие припасы",
-              "description": "Передай полотно и сушёные ягоды.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
                 "cloth": 1,
-                "dried_berries": 1
+                "packed_berries": 1
               },
-              "coins": 590,
+              "coins": 800,
               "reputationXp": 35,
-              "effortSeconds": 6108,
-              "manufacturingSeconds": 5280,
+              "effortSeconds": 3888,
+              "manufacturingSeconds": 2520,
               "fishingUncertain": false
             },
             {
               "id": "week_leaftail_provisions_3",
               "name": "Еда для речного пути",
-              "description": "Подготовь копчёную рыбу и компот.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "smoked_fish": 1,
-                "berry_compote": 1
+                "bottled_compote": 1,
+                "smoked_fish": 1
               },
-              "coins": 320,
+              "coins": 825,
               "reputationXp": 35,
-              "effortSeconds": 2508,
-              "manufacturingSeconds": 1980,
+              "effortSeconds": 3708,
+              "manufacturingSeconds": 2400,
               "fishingUncertain": true
             }
           ]
@@ -7317,57 +8148,148 @@
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "woodlot": 1,
-            "workshop": 3,
+            "workshop": 4,
             "kiln": 3,
-            "quarry": 2,
-            "dryer": 2
+            "quarry": 4,
+            "dryer": 3,
+            "garden": 4
           },
           "stages": [
             {
               "id": "week_leaftail_expedition_1",
               "name": "Подготовить дорожные ящики",
-              "description": "Собери инструмент и доски.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "tools": 1,
-                "planks": 2
+                "trade_crate": 2,
+                "tools": 1
               },
-              "coins": 1790,
+              "coins": 1863,
               "reputationXp": 45,
-              "effortSeconds": 12600,
-              "manufacturingSeconds": 9780,
+              "effortSeconds": 8940,
+              "manufacturingSeconds": 5340,
               "fishingUncertain": false
             },
             {
               "id": "week_leaftail_expedition_2",
               "name": "Упаковать хрупкий груз",
-              "description": "Передай полотно и стекло.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "cloth": 2,
-                "glass": 1
+                "glass_bottle": 2,
+                "cloth": 1
               },
-              "coins": 1220,
+              "coins": 1025,
               "reputationXp": 45,
-              "effortSeconds": 9810,
-              "manufacturingSeconds": 7980,
+              "effortSeconds": 4920,
+              "manufacturingSeconds": 2940,
               "fishingUncertain": false
             },
             {
               "id": "week_leaftail_expedition_3",
               "name": "Снарядить дальнюю поездку",
-              "description": "Подготовь пайки и снаряжение исследователя.",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
               "items": {
-                "trail_ration": 2,
-                "research_gear": 1
+                "field_kit": 1,
+                "berry_gift": 1
               },
-              "coins": 4090,
+              "coins": 4688,
               "reputationXp": 50,
-              "effortSeconds": 41232,
-              "manufacturingSeconds": 36240,
-              "fishingUncertain": true
+              "effortSeconds": 22516,
+              "manufacturingSeconds": 12120,
+              "fishingUncertain": false
             }
           ]
         }
       ]
+    }
+  },
+  "timeEconomy": {
+    "version": 1,
+    "coinsPerMinute": 10,
+    "orderBonusBps": 2500,
+    "constructionCoinsPerMinute": 10,
+    "baselineRecipes": {
+      "berries": "grow_berries",
+      "fiber": "gather_fiber",
+      "wood": "gather_wood",
+      "hardwood": "gather_hardwood",
+      "resin": "gather_resin",
+      "planks": "make_planks",
+      "rope": "make_rope",
+      "metal_parts": "make_metal_parts",
+      "cloth": "weave_cloth",
+      "beams": "make_beams",
+      "cut_stone": "cut_stone",
+      "tools": "make_tools",
+      "reinforced_parts": "make_reinforced_parts",
+      "grilled_fish": "cook_grilled_fish",
+      "fish_soup": "cook_fish_soup",
+      "berry_fish": "cook_berry_fish",
+      "hearty_fish": "cook_hearty_fish",
+      "epic_fish": "cook_epic_fish",
+      "legendary_fish": "cook_legendary_fish",
+      "dried_berries": "dry_berries",
+      "smoked_fish": "smoke_fish",
+      "charcoal": "make_charcoal",
+      "bricks": "fire_bricks",
+      "iron_ingot": "smelt_iron",
+      "glass": "make_glass",
+      "strawberries": "grow_strawberries",
+      "berry_compote": "cook_compote",
+      "trail_ration": "prepare_trail_ration",
+      "research_gear": "make_research_gear",
+      "blueberries": "grow_blueberries",
+      "currants": "grow_currants",
+      "blackberries": "grow_blackberries",
+      "cranberries": "grow_cranberries",
+      "strawberry_compote": "cook_strawberry_compote",
+      "blueberry_compote": "cook_blueberry_compote",
+      "currant_jelly": "cook_currant_jelly",
+      "blackberry_preserve": "cook_blackberry_preserve",
+      "cranberry_glaze": "cook_cranberry_glaze",
+      "ceramic_jar": "make_ceramic_jar",
+      "mortar": "mix_mortar",
+      "glass_bottle": "make_glass_bottle",
+      "lens": "grind_lens",
+      "packed_berries": "pack_berries",
+      "trade_crate": "make_trade_crate",
+      "field_kit": "assemble_field_kit",
+      "stone_tile": "fire_stone_tile",
+      "bottled_compote": "bottle_compote",
+      "berry_gift": "pack_berry_gift"
+    },
+    "baselineExplorations": {
+      "stone": "quarry_stone",
+      "clay": "quarry_clay",
+      "ore": "quarry_ore",
+      "sand": "quarry_sand",
+      "quartz": "quarry_quartz",
+      "limestone": "quarry_limestone"
+    },
+    "externalPrices": {
+      "fish_common": 40,
+      "fish_uncommon": 70,
+      "fish_rare": 110,
+      "fish_epic": 180,
+      "fish_legendary": 320,
+      "fish": 40,
+      "fish_silverfin": 40,
+      "fish_reedperch": 70,
+      "fish_mooncarp": 110,
+      "crumb_bait": 10,
+      "worm_bait": 10,
+      "glow_bait": 20,
+      "firefly_bait": 30,
+      "star_bait": 40,
+      "fish_rudd": 40,
+      "fish_dace": 70,
+      "fish_bream": 70,
+      "fish_pike": 110,
+      "fish_eel": 110,
+      "fish_sturgeon": 180,
+      "fish_mirror_koi": 180,
+      "fish_shark": 320,
+      "spice_bait": 20,
+      "dusk_bait": 30
     }
   }
 }

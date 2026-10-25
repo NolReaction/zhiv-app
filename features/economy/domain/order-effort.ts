@@ -18,6 +18,7 @@ export function obtainableResidentOrderItems(state: OrderEffortSource, catalog =
   while (changed) {
     const before = reachable.size;
     for (const source of [...catalog.explorations, ...catalog.recipes]) {
+      if (source.retired) continue;
       if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < recipeBuildingLevel(source)) continue;
       if ("requiredRecipes" in source && Object.entries(source.requiredRecipes).some(([id, count]) => (state.progression?.recipes[id] ?? 0) < count)) continue;
       const fishInput = "fishInput" in source ? source.fishInput?.itemIds : undefined;
@@ -43,14 +44,16 @@ export function orderEffort(state: OrderEffortSource, items: Record<string, numb
   type Plan = { work: number; manufacturing: number; critical: number; uncertain: boolean };
   const sourceUnlocked = (source: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }) =>
     (state.buildings.home ?? 1) >= source.requiredHomeLevel && Object.entries(source.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
-  const recipes = catalog.recipes.filter(recipe => sourceUnlocked(recipe) && (state.buildings[recipe.buildingId] ?? 0) >= recipeBuildingLevel(recipe)
+  const recipes = catalog.recipes.filter(recipe => !recipe.retired && sourceUnlocked(recipe) && (state.buildings[recipe.buildingId] ?? 0) >= recipeBuildingLevel(recipe)
     && Object.entries(recipe.requiredRecipes).every(([id, count]) => (state.progression?.recipes[id] ?? 0) >= count));
-  const routes = catalog.explorations.filter(sourceUnlocked);
+  const routes = catalog.explorations.filter(route => !route.retired && sourceUnlocked(route));
   const memo = new Map<string, Plan | null>();
   function plan(itemId: string, quantity: number, path: string[]): Plan | null {
     if (quantity <= 0) return { work: 0, manufacturing: 0, critical: 0, uncertain: false };
     if (path.includes(itemId) || !reachable.has(itemId)) return null;
-    const key = `${itemId}:${quantity}`;
+    // Alternatives can revisit an ancestor through provisions or packaging.
+    // A plan rejected inside that path is not unavailable to another target.
+    const key = JSON.stringify([itemId, quantity, [...path].sort()]);
     if (memo.has(key)) return memo.get(key) ?? null;
     const choices: Plan[] = [];
     for (const source of [...recipes, ...routes]) {

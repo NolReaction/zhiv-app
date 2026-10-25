@@ -36,7 +36,7 @@ after(() => vite.close());
 test("one ripe raspberry completes the only teaching request without a gift or automatic house progress", () => {
   const p = player(), before = read(p), snapshot = structuredClone(before);
   assert.deepEqual(before.wallet, { coins: 100, pearls: 0 }); assert.deepEqual(before.inventory, { wood: 3, stone: 5 });
-  assert.deepEqual(offer(p).items, { berries: 1 }); assert.equal(offer(p).coins, 15);
+  assert.deepEqual(offer(p).items, { berries: 1 }); assert.equal(offer(p).coins, 13);
   assert.equal(before.tutorialOrder.version, 3); assert.equal(before.tutorialOrder.step, 0);
   assert.equal(before.tutorialOrder.ingredientsClaimed, true); assert.equal(stages.stageResidentOrder(before), null);
   tutorial.tutorialOrderProgress(before); assert.deepEqual(before, snapshot); assert.deepEqual(read(p), snapshot);
@@ -47,14 +47,14 @@ test("one ripe raspberry completes the only teaching request without a gift or a
   const finished = send(p).state;
   assert.equal(finished.tutorialOrder.completed, true); assert.equal(finished.tutorialOrder.step, 1);
   assert.equal(tutorial.tutorialResidentOrder(finished), null); assert.equal(stages.stageResidentOrder(finished).id, "stage1_wood_order");
-  assert.equal(finished.stageOrders.stages["1"].step, 0); assert.equal(finished.wallet.coins, 115);
+  assert.equal(finished.stageOrders.stages["1"].step, 0); assert.equal(finished.wallet.coins, 113);
   assert.deepEqual(finished.tradeRelations.reputation, {}, "teaching rewards cannot grant retroactive resident reputation");
 });
 
-test("three separate house requests spend real goods, pay 300 and preserve the ordinary board", () => {
+test("three separate house requests spend real goods, pay 325 and preserve the ordinary board", () => {
   const p = player(), initial = read(p), board = food.residentOrderBoard(initial, now);
-  const expected = [["tutorial_first_order", { berries: 1 }, 15], ["stage1_wood_order", { wood: 2 }, 90],
-    ["stage1_compote_order", { berry_compote: 2 }, 90], ["stage1_planks_order", { planks: 2 }, 120]];
+  const expected = [["tutorial_first_order", { berries: 1 }, 13], ["stage1_wood_order", { wood: 2 }, 75],
+    ["stage1_compote_order", { berry_compote: 2 }, 125], ["stage1_planks_order", { planks: 2 }, 125]];
   let total = 0;
   for (const [index, [id, items, coins]] of expected.entries()) {
     const current = offer(p); assert.equal(current.id, id); assert.deepEqual(current.items, items); assert.equal(current.coins, coins);
@@ -67,7 +67,7 @@ test("three separate house requests spend real goods, pay 300 and preserve the o
     assert.equal(model.economyResultSchema.safeParse({ requestId: crypto.randomUUID(), acceptedRevision: after.revision, replayed: false, message: "ok", state: after }).success, true);
     assert.throws(() => send(p, "complete_resident_order", { targetId: current.id }), { code: index === 0 ? "ECONOMY_TUTORIAL_ORDER_UNAVAILABLE" : "ECONOMY_STAGE_ORDER_UNAVAILABLE" });
   }
-  assert.equal(total, 315); assert.equal(offer(p), null); assert.equal(read(p).stageOrders.stages["1"].completed, true);
+  assert.equal(total, 338); assert.equal(offer(p), null); assert.equal(read(p).stageOrders.stages["1"].completed, true);
 });
 
 test("completed receipts replay after the first house request and stale clients cannot pay twice", () => {
@@ -78,7 +78,7 @@ test("completed receipts replay after the first house request and stale clients 
   const replay = economy.commandDevEconomy(p.token, submit, now);
   assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, completed.acceptedRevision); assert.deepEqual(replay.state, latest);
   assert.throws(() => economy.commandDevEconomy(p.token, { ...submit, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
-  assert.equal(next.tutorialOrder.step, 1); assert.equal(next.stageOrders.stages["1"].step, 1); assert.equal(next.wallet.coins, 205);
+  assert.equal(next.tutorialOrder.step, 1); assert.equal(next.stageOrders.stages["1"].step, 1); assert.equal(next.wallet.coins, 188);
   assert.throws(() => send(p, "claim_tutorial_order", { targetId: tutorial.TUTORIAL_ORDER_ID }), { code: "ECONOMY_TUTORIAL_ORDER_CLAIMED" });
   assert.deepEqual(read(p), latest);
 });
@@ -90,7 +90,7 @@ test("new pinned terms survive rotation, JSON serialization and catalog preview 
   assert.deepEqual(tutorial.tutorialResidentOrder(preview).items, original.items);
   assert.equal(tutorial.tutorialResidentOrder(preview).coins, original.coins);
   const result = economy.commandDevEconomy(p.token, request(p), now + 30 * 86400000).state;
-  assert.equal(result.tutorialOrder.step, 1); assert.equal(result.wallet.coins, 115);
+  assert.equal(result.tutorialOrder.step, 1); assert.equal(result.wallet.coins, 113);
 });
 
 test("v2 active first request needs one berry while preserving its promised reward and original receipt", () => {
@@ -168,7 +168,7 @@ test("sales cannot replenish gifts and overflow rejects completion without consu
   const before = read(p);
   assert.throws(() => send(p), { code: "ECONOMY_RESOURCES" }); assert.throws(() => send(p, "claim_tutorial_order"), { code: "ECONOMY_TUTORIAL_ORDER_CLAIMED" });
   assert.deepEqual(read(p), before);
-  row(p).state.inventory.berries = 1; row(p).state.wallet.coins = model.ECONOMY_MAX_BALANCE - 14;
+  row(p).state.inventory.berries = 1; row(p).state.wallet.coins = model.ECONOMY_MAX_BALANCE - 12;
   const nearLimit = read(p); assert.throws(() => send(p), { code: "ECONOMY_CAPACITY" }); assert.deepEqual(read(p), nearLimit);
 });
 
@@ -187,7 +187,7 @@ test("malformed commands cannot complete or replace a legacy request and account
 
 test("home two needs the teaching request and three small stage deliveries while older paid courses remain complete", () => {
   const p = player(), saved = row(p);
-  const ready = () => { saved.state.wallet.coins = 250; saved.state.inventory = { wood: 3, stone: 2, planks: 2 };
+  const ready = () => { saved.state.wallet.coins = 300; saved.state.inventory = { wood: 3, stone: 2, planks: 2 };
     Object.assign(saved.state.buildings, { woodlot: 1, dryer: 1, workshop: 1 }); };
   ready(); assert.throws(() => send(p, "start_construction", { targetId: "home" }), { code: "ECONOMY_TUTORIAL_REQUIRED" });
   saved.state.inventory.berries = 1; send(p); ready();
@@ -195,7 +195,7 @@ test("home two needs the teaching request and three small stage deliveries while
   saved.state.stageOrders.stages["1"] = { ...saved.state.stageOrders.stages["1"], step: 3, completed: true };
   assert.equal(send(p, "start_construction", { targetId: "home" }).state.jobs[0].targetLevel, 2);
   for (const version of [1, 2]) {
-    const other = player(), previous = row(other); previous.state.wallet.coins = 250;
+    const other = player(), previous = row(other); previous.state.wallet.coins = 300;
     previous.state.inventory = { wood: 3, stone: 2, planks: 2 };
     Object.assign(previous.state.buildings, { woodlot: 1, dryer: 1, workshop: 1 });
     previous.state.tutorialOrder = { version, step: version === 2 ? 4 : 0, ingredientsClaimed: true, completed: true, terms: null };

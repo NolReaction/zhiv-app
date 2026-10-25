@@ -87,7 +87,7 @@ class EconomyFoodTest {
 
     @Test fun `failed starts preserve the pending meal and running hero jobs reject another dish`() {
         val fed = apply(stocked(), "eat_food", "grilled_fish")
-        val route = EconomyRules.catalog.explorations.first { it.cost.items.isNotEmpty() }
+        val route = EconomyRules.catalog.explorations.first { !it.retired && it.cost.items.isNotEmpty() }
         val poor = fed.copy(inventory = emptyMap())
         failure("ECONOMY_RESOURCES") { apply(poor, "start_exploration", route.id) }
         assertEquals("grilled_fish", poor.food.heroMeal)
@@ -215,14 +215,14 @@ class EconomyFoodTest {
         assertTrue(EconomyRules.constructionSpeedupPrice(updated, now) <= EconomyRules.constructionSpeedupPrice(job, now))
     }
 
-    @Test fun `six hour workshop upgrade at 25 percent extra speed takes 4h48m and saves 1h12m`() {
+    @Test fun `one hour workshop upgrade at 25 percent extra speed takes 48m and saves 12m`() {
         val upgrade = EconomyRules.catalog.buildings.single { it.id == "workshop" }.levels.single { it.level == 2 }
-        assertEquals(6 * 3600L, upgrade.seconds)
+        assertEquals(3600L, upgrade.seconds)
         val state = stocked().copy(buildings = stocked().buildings + ("workshop" to 1))
         val started = apply(apply(state, "feed_builder", "fish_soup"), "start_construction", "workshop")
         val job = started.jobs.single()
-        assertEquals(now.plusSeconds(4 * 3600 + 48 * 60L), Instant.parse(job.finishesAt))
-        assertEquals(72 * 60L, upgrade.seconds - java.time.Duration.between(now, Instant.parse(job.finishesAt)).seconds)
+        assertEquals(now.plusSeconds(48 * 60L), Instant.parse(job.finishesAt))
+        assertEquals(12 * 60L, upgrade.seconds - java.time.Duration.between(now, Instant.parse(job.finishesAt)).seconds)
         assertEquals(EconomyJobMeal("fish_soup", "builder", 2500), job.meal)
         assertEquals(upgrade.cost, job.cost)
         assertEquals(state.wallet.coins - upgrade.cost.coins, started.wallet.coins)
@@ -233,6 +233,7 @@ class EconomyFoodTest {
         assertEquals(1000L, EconomyFood.mealDuration(1100, 1000))
         assertEquals(1001L, EconomyFood.mealDuration(1101, 1000))
         assertEquals(1L, EconomyFood.mealDuration(1, 2500))
+        assertEquals(4 * 3600 + 48 * 60L, EconomyFood.mealDuration(6 * 3600, 2500))
         assertEquals(31536000L, EconomyFood.mealDuration(31536000, 0))
         assertEquals(500L, EconomyFood.mealDuration(1000, 10000))
         assertEquals(501L, EconomyFood.mealDuration(1001, 10000))
@@ -569,7 +570,7 @@ class EconomyFoodTest {
         assertEquals(3L, converted.residentOrders.completed)
     }
 
-    @Test fun `saved unreachable order is replaced without spending quota or changing reachable accepted terms`() {
+    @Test fun `saved order remains payable from owned goods when its source is no longer reachable`() {
         val initial = EconomyRules.initial()
         val board = EconomyFood.normalizedOrders(initial, now).copy(completed = 7, earnedCoins = 1234, freeReplacementsUsed = 2)
         val locked = EconomyResidentOrderTemplate("old_compote", "plesk", "Старый компот", items = mapOf("berry_compote" to 2L), coins = 900)
@@ -578,15 +579,23 @@ class EconomyFoodTest {
         }))
         val before = economyJson.encodeToString(state)
         val normalized = EconomyFood.normalizedOrders(state, now)
-        assertNotEquals(locked.id, normalized.slots[0].templateId)
+        assertEquals(locked.id, normalized.slots[0].templateId)
+        assertEquals(locked, normalized.slots[0].terms)
         assertEquals(board.slots.drop(1), normalized.slots.drop(1))
         assertEquals(2, normalized.freeReplacementsUsed)
         assertEquals(7L, normalized.completed)
         assertEquals(1234L, normalized.earnedCoins)
-        assertTrue(locked.id in normalized.recentTemplateIds)
+        assertFalse(locked.id in normalized.recentTemplateIds)
         val reachable = EconomyFood.obtainableOrderItems(state)
-        assertTrue(normalized.slots.mapNotNull { it.terms }.all { terms -> terms.items.keys.all { it in reachable } })
+        assertFalse("berry_compote" in reachable)
+        assertTrue(EconomyFood.eligibleOrderTemplates(state).all { terms -> terms.items.keys.all { it in reachable } })
         assertEquals(before, economyJson.encodeToString(state))
+        val supplied = state.copy(inventory = locked.items)
+        val offer = EconomyFood.residentOrderBoard(supplied, now).offers.single { it.templateId == locked.id }
+        val completed = apply(supplied, "complete_resident_order", offer.id)
+        assertEquals(state.wallet.coins + 900, completed.wallet.coins)
+        assertTrue(completed.inventory.isEmpty())
+        failure("ECONOMY_ORDER_CHANGED") { apply(completed, "complete_resident_order", offer.id) }
         val unlocked = state.copy(buildings = state.buildings + mapOf("dryer" to 1, "garden" to 1))
         assertEquals(locked, EconomyFood.normalizedOrders(unlocked, now).slots[0].terms,
             "retired but reachable accepted terms must retain the exact promised quantities and payout")

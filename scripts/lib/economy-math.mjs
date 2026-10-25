@@ -38,6 +38,8 @@ export function createLiquidation(catalog) {
  * reported separately; their sale is not silently deducted from an input cost.
  */
 export function economicMath(catalog) {
+  // Retained definitions only exist to settle historical jobs, never to plan new work.
+  catalog = { ...catalog, recipes: catalog.recipes.filter(source => !source.retired), explorations: catalog.explorations.filter(source => !source.retired) };
   const items = new Map(catalog.items.map(i => [i.id, i]));
   const buildings = new Map(catalog.buildings.map(b => [b.id, b]));
   const fish = new Set([...(catalog.fishing?.fish ?? []), ...(catalog.fishing?.classes ?? [])].map(f => f.itemId));

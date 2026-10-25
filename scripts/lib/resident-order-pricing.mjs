@@ -12,7 +12,7 @@ export function residentOrderPricing(catalog) {
   const items = new Map(catalog.items.map(item => [item.id, item]));
   const allRecipes = new Map(catalog.recipes.map(recipe => [recipe.id, recipe]));
   const recipes = new Map();
-  for (const recipe of catalog.recipes.filter(recipe => Object.keys(recipe.cost.items).length > 0)) {
+  for (const recipe of catalog.recipes.filter(recipe => !recipe.retired && Object.keys(recipe.cost.items).length > 0)) {
     assert.equal(Object.keys(recipe.rewards).length, 1, `${recipe.id}: pricing needs an explicit allocation for joint outputs`);
     const itemId = Object.keys(recipe.rewards)[0];
     recipes.set(itemId, [...(recipes.get(itemId) ?? []), recipe]);
@@ -32,7 +32,9 @@ export function residentOrderPricing(catalog) {
       assert(items.has(itemId), `Unknown order item ${itemId}`);
       assert(!path.includes(itemId), `Order manufacturing cycle: ${[...path, itemId].join(" -> ")}`);
       if (cache.has(itemId)) return cache.get(itemId);
-      const candidates = recipes.get(itemId) ?? [], baselineId = residentOrderBaseRecipes[itemId];
+      const candidates = recipes.get(itemId) ?? [];
+      const policyBaseline = catalog.timeEconomy?.baselineRecipes[itemId];
+      const baselineId = candidates.length ? policyBaseline ?? residentOrderBaseRecipes[itemId] : undefined;
       assert(baselineId || candidates.length <= 1, `${itemId}: alternative manufacturing needs an explicit baseline recipe`);
       const recipe = baselineId ? candidates.find(recipe => recipe.id === baselineId) : candidates[0];
       if (baselineId) assert(recipe, `${itemId}: missing baseline recipe ${baselineId}`);
@@ -52,8 +54,12 @@ export function residentOrderPricing(catalog) {
       return total + items.get(itemId).baseSellPrice * quantity;
     }, 0);
     const seconds = Object.entries(template.items).reduce((total, [itemId, quantity]) => total + manufacturingSeconds(itemId) * quantity, 0);
-    // 1.5 × NPC value + one coin per manufacturing minute, rounded ONCE to 10.
-    const coins = Math.ceil((npcValue * 90 + seconds) / 600) * 10;
+    // v13 item prices already include every upstream operation. Pay the visible
+    // order bonus once; adding manufacturing time again would double-charge it.
+    // Retain the old policy for historical fixtures and frozen old catalogues.
+    const coins = catalog.timeEconomy
+      ? Math.ceil(npcValue * (10000 + catalog.timeEconomy.orderBonusBps) / 10000)
+      : Math.ceil((npcValue * 90 + seconds) / 600) * 10;
     return { npcValue, manufacturingSeconds: seconds, coins };
   };
 }

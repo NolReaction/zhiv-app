@@ -44,8 +44,8 @@ export type WorldUpgradeDialogProps = {
 export function worldUpgradeUnlocks(state: EconomyView, stationId: string, target: WorldBuildingLevel) {
   const usesLevel = (value: Parameters<typeof worldRequirements>[0], recipe?: Parameters<typeof worldRequirements>[1]) => worldRequirements(value, recipe)[stationId] === target.level;
   return {
-    recipes: state.catalog.recipes.filter(recipe => usesLevel(recipe, recipe)),
-    routes: state.catalog.explorations.filter(route => usesLevel(route)),
+    recipes: state.catalog.recipes.filter(recipe => !recipe.retired && usesLevel(recipe, recipe)),
+    routes: state.catalog.explorations.filter(route => !route.retired && usesLevel(route)),
     upgrades: state.catalog.buildings.flatMap(building => building.id === stationId ? [] : building.levels.filter(level => usesLevel(level)).map(level => ({ stationId: building.id, name: building.name, level: level.level }))),
     market: stationId === "home" && target.level === state.catalog.market.requiredHomeLevel
       || state.catalog.market.requiredBuildings[stationId] === target.level,

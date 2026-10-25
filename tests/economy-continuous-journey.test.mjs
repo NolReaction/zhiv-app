@@ -49,7 +49,7 @@ function completeJourney(regularActiveMinutes) {
   const currentCourse = () => tutorial.tutorialResidentOrder(state) ?? stages.stageResidentOrder(state);
   const held = items => Object.entries(items).every(([id, count]) => (state.inventory[id] ?? 0) >= count);
   const buildingOpen = requirements => Object.entries(requirements ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
-  const sourceOpen = source => state.buildings.home >= source.requiredHomeLevel && buildingOpen(source.requiredBuildings)
+  const sourceOpen = source => !source.retired && state.buildings.home >= source.requiredHomeLevel && buildingOpen(source.requiredBuildings)
     && (!source.buildingId || (state.buildings[source.buildingId] ?? 0) >= source.buildingLevel);
   // Maximum interval and living resin are fixed trusted server entropy. Neither
   // core nor crystal can be supplied by this sampler, so the chapter must supply both.
@@ -144,8 +144,8 @@ function completeJourney(regularActiveMinutes) {
       makeRoom(Object.values(job.rewards).reduce((sum, count) => sum + count, 0));
       apply("claim_job", job.id); changed = true;
       if (incomeJobs.delete(job.id)) {
-        // Keep eight useful raw materials and sell the rest by actual NPC
-        // commands. A new 48/49-item shift fits without buying storage.
+        // Keep a small working reserve and sell the claimed single item
+        // through an actual NPC command when it exceeds that reserve.
         const reserve = { stone: 3, ore: 3, clay: 1, sand: 1 };
         for (const id of Object.keys(job.rewards).filter(id => !catalog.rareDrops.itemIds.includes(id))) {
           const surplus = Math.max(0, (state.inventory[id] ?? 0) - (reserve[id] ?? 0));
@@ -163,7 +163,8 @@ function completeJourney(regularActiveMinutes) {
   const pending = id => state.jobs.reduce((sum, job) => sum + (job.rewards[id] ?? 0), 0);
   const sources = id => [...catalog.recipes, ...catalog.explorations.filter(route => !catalog.fishing.routeIds.includes(route.id))]
     .filter(source => source.rewards[id] > 0 && sourceOpen(source))
-    .sort((a, b) => a.seconds / a.rewards[id] - b.seconds / b.rewards[id]);
+    .sort((a, b) => Number(Object.keys(a.cost.items).length > 0) - Number(Object.keys(b.cost.items).length > 0)
+      || a.seconds / a.rewards[id] - b.seconds / b.rewards[id]);
   function run(source, ancestors = []) {
     if (!sourceOpen(source)) return false;
     if (ancestors.includes(source.id)) throw new Error(`Acquisition cycle: ${ancestors.join(" -> ")} -> ${source.id}`);
@@ -189,19 +190,9 @@ function completeJourney(regularActiveMinutes) {
       apply("start_fishing", "shore"); production.shore = (production.shore ?? 0) + 1; return true;
     }
     if (catalog.rareDrops.itemIds.includes(id)) return false;
-    const choices = sources(id);
-    let source = choices[0];
-    if (source?.activity === "mining" && clock + source.seconds * 1000 > activeEnd) {
-      // A player leaving for eight hours can prepare the next actual crafting
-      // bundle, rather than return to a single three-minute piece of clay.
-      const desired = Math.max(count, rawDemand(currentCourse()?.items, id), rawDemand(buildDefinition(nextConstruction())?.cost.items, id));
-      const missing = Math.max(1, desired - (state.inventory[id] ?? 0) - pending(id));
-      const nextVisitEnd = activeStart + 8 * hour + regularActiveMinutes * 60000;
-      const batches = choices.filter(choice => choice.activity === "mining" && Object.keys(choice.rewards).length === 1
-        && choice.seconds >= 3600 && clock + choice.seconds * 1000 <= nextVisitEnd);
-      source = batches.sort((a, b) => Math.ceil(missing / a.rewards[id]) - Math.ceil(missing / b.rewards[id])
-        || a.rewards[id] - b.rewards[id] || a.seconds - b.seconds)[0] ?? source;
-    }
+    // Every active extraction yields one item; a return after eight hours never
+    // silently substitutes the removed overnight bundle.
+    const source = sources(id)[0];
     return source ? run(source, ancestors) : false;
   }
   function bundle(items) {
@@ -211,17 +202,7 @@ function completeJourney(regularActiveMinutes) {
   const nextConstruction = () => chapters[state.buildings.home].find(([id, level]) => (state.buildings[id] ?? 0) < level
     && !state.jobs.some(job => job.kind === "construction" && job.targetId === id && job.targetLevel >= level));
   const buildDefinition = entry => entry && catalog.buildings.find(building => building.id === entry[0]).levels.find(level => level.level === entry[1]);
-  function rawDemand(items, wanted, path = []) {
-    return Object.entries(items ?? {}).reduce((sum, [id, quantity]) => {
-      if (id === wanted) return sum + quantity;
-      if (path.includes(id)) return sum;
-      const missing = Math.max(0, quantity - (state.inventory[id] ?? 0) - pending(id));
-      const recipe = sources(id).find(source => source.buildingId);
-      if (!missing || !recipe) return sum;
-      const runs = Math.ceil(missing / recipe.rewards[id]);
-      return sum + rawDemand(Object.fromEntries(Object.entries(recipe.cost.items).map(([item, count]) => [item, count * runs])), wanted, [...path, id]);
-    }, 0);
-  }
+
   function estimatedEffort(id, path = []) {
     if (path.includes(id)) return Infinity;
     if (catalog.fishing.classes.some(group => group.itemId === id)) return id === "fish_common" ? 100 : 1500;
@@ -273,10 +254,10 @@ function completeJourney(regularActiveMinutes) {
       if (run(source)) return true;
     }
     if (next && state.wallet.coins < definition.cost.coins) {
-      // Choose the best free eight-hour sale delivery actually unlocked for the
-      // next visit. Focused ore can fund a build without selling unrelated goods.
+      // Choose a valuable single extraction for spare miner time.
+      // Finished income jobs are sold only after the real claim command.
       const saleValue = items => Object.entries(items).reduce((sum, [id, quantity]) => sum + quantity * catalog.localBuyer.unitPrices[id], 0);
-      const shift = catalog.explorations.filter(route => route.activity === "mining" && route.seconds === 8 * 3600 && sourceOpen(route)
+      const shift = catalog.explorations.filter(route => route.activity === "mining" && sourceOpen(route)
         && route.cost.coins === 0 && !Object.keys(route.cost.items).length)
         .sort((a, b) => saleValue(b.rewards) - saleValue(a.rewards))[0];
       if (shift) {
@@ -284,7 +265,8 @@ function completeJourney(regularActiveMinutes) {
           incomeJobs.add(state.jobs.find(job => job.actorId === "miner").id);
           return true;
         }
-      } else if (ordinaryIncome(definition.cost.coins)) return true;
+      }
+      if (ordinaryIncome(definition.cost.coins)) return true;
     }
     if (next && bundle(definition.cost.items)) return true;
     return false;
@@ -344,13 +326,13 @@ for (const [minutes, maximumDays] of [[30, 46], [15, 57]]) test(`a single fresh 
   assert.equal(state.tutorialOrder.completed, true);
   const teaching = courses.filter(course => course.id === tutorial.TUTORIAL_ORDER_ID);
   assert.equal(teaching.length, 1, "only the first ripe raspberry is an instructional request");
-  assert.deepEqual(teaching[0].items, { berries: 1 }); assert.equal(teaching[0].coins, 15);
+  assert.deepEqual(teaching[0].items, { berries: 1 }); assert.equal(teaching[0].coins, 13);
   const firstProject = courses.filter(course => course.id.startsWith("stage1_"));
-  assert.deepEqual(firstProject.map(course => [course.id, course.items, course.coins]), [
-    ["stage1_wood_order", { wood: 2 }, 90], ["stage1_compote_order", { berry_compote: 2 }, 90], ["stage1_planks_order", { planks: 2 }, 120],
-  ]);
+  assert.deepEqual(firstProject.map(course => [course.id, course.items, course.coins]),
+    catalog.stageOrders.find(stage => stage.homeLevel === 1).orders.map(order => [order.id, order.items, order.coins]));
   assert.equal(courses.length, 1 + 3 + 7 + 8 + 12);
-  assert.equal(result.courseCoins, 315 + 1990 + 14840 + 50000);
+  assert.equal(result.courseCoins, teaching[0].coins + catalog.stageOrders.reduce((sum, stage) =>
+    sum + stage.orders.reduce((total, order) => total + order.coins, 0), 0));
   for (const [home, count] of [[1, 3], [2, 7], [3, 8], [4, 12]]) {
     assert.equal(state.stageOrders.stages[String(home)].step, count); assert.equal(state.stageOrders.stages[String(home)].completed, true);
     const chapter = courses.filter(course => course.id.startsWith(`stage${home}_`));
@@ -360,9 +342,15 @@ for (const [minutes, maximumDays] of [[30, 46], [15, 57]]) test(`a single fresh 
   assert.deepEqual(builds.map(build => `${build.target}:${build.level}`), constructionSequence.map(([id, level]) => `${id}:${level}`));
   for (const action of ["buy_market_slot", "buy_production_slot", "claim_tutorial_order", "claim_workshop_starter", "speedup_construction", "eat_food", "feed_builder", "buy", "buy_fish"])
     assert.equal(actions[action], undefined, `${action} is not needed for free progress`);
-  assert.equal(result.constructionCoins, 118880);
-  assert.equal(result.constructionCoins - 26350, 92530, "the optional garden upgrades and dryer 4 cost 26,350 beyond mandatory house 5 builds");
-  assert(Object.entries(result.production).some(([id, count]) => id.endsWith("_hour") && count > 0), "the route really uses the new hourly mining batches before a long absence");
+  assert.equal(result.constructionCoins, constructionSequence.reduce((sum, [id, level]) =>
+    sum + catalog.buildings.find(building => building.id === id).levels.find(spec => spec.level === level).cost.coins, 0));
+  const mineJobs = Object.entries(result.production).filter(([id]) => catalog.explorations.find(route => route.id === id)?.activity === "mining");
+  assert(mineJobs.length > 0, "the real route uses independent mining");
+  for (const [id] of mineJobs) {
+    const route = catalog.explorations.find(route => route.id === id);
+    assert(!route.retired, `${id}: no retired overnight batches`);
+    assert.equal(Object.values(route.rewards).reduce((sum, count) => sum + count, 0), 1, `${id}: one item per extraction`);
+  }
   for (const id of ["ancient_core", "moon_crystal"]) {
     assert.equal(flow[id].received, 1); assert.equal(flow[id].consumed, 1); assert.equal(flow[id].sold, 0);
   }

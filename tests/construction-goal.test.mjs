@@ -34,13 +34,13 @@ test("home target reads current catalog, deficits and craft ingredients without 
   const view = state(), before = structuredClone(view);
   const details = constructionGoalDetails(view, goal);
   assert.equal(details.name, "Дом Мохлика");
-  assert.deepEqual(details.missing, { coins: 150, items: { stone: 1, planks: 1 } });
+  assert.deepEqual(details.missing, { coins: 200, items: { stone: 1, planks: 1 } });
   assert.deepEqual(details.keepItems, { wood: 4, stone: 2, planks: 2 });
   assert.deepEqual(details.excessItems, { wood: 0, stone: 0, planks: 0, fiber: 10 });
   assert.equal(details.reservesComplete, true);
   assert.deepEqual(view, before);
   view.inventory.planks = 2; view.inventory.stone = 2;
-  view.wallet.coins = 250;
+  view.wallet.coins = 300;
   assert.deepEqual(constructionGoalDetails(view, goal).missing, { coins: 0, items: {} });
   assert.equal(constructionGoalDetails(view, goal).keepItems.wood, 3);
   assert.equal(constructionGoalDetails(view, goal).keepItems.fiber, undefined);

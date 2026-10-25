@@ -43,7 +43,7 @@ test("active and ready fishing trips can be abandoned with no reward or completi
 
 test("abandoning a supplied trip never refunds its consumed provisions or historic paid costs", () => {
   const p = player(); read(p);
-  const route = economyCatalog.explorations.find(item => item.id === "deep_cave");
+  const route = economyCatalog.explorations.find(item => item.id === "old_woodland");
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.buildings.home = route.requiredHomeLevel;
   Object.assign(row.state.buildings, route.requiredBuildings);

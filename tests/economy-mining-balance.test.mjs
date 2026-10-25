@@ -16,7 +16,7 @@ const { productionStationSupported, productionSlotOffer } = await vite.ssrLoadMo
 after(() => vite.close());
 const book = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/collections-catalog.json", import.meta.url), "utf8"));
 const achievements = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/achievements-catalog.json", import.meta.url), "utf8"));
-const mines = catalog.explorations.filter(route => route.activity === "mining");
+const mines = catalog.explorations.filter(route => route.activity === "mining" && !route.retired);
 const cash = createLiquidation(catalog);
 const net = route => cash(route.rewards) - cash(route.cost.items) - route.cost.coins;
 const now = Date.parse("2026-10-15T09:00:00Z");
@@ -36,81 +36,59 @@ const command = (action, targetId) => ({ requestId: crypto.randomUUID(), action,
 const apply = (state, action, targetId, time = now) => applyEconomyCommand(state, command(action, targetId), time,
   () => crypto.randomUUID(), {}, maximum => maximum - 1);
 
-test("each mine resource has a bounded choice of short, hourly and overnight extraction", () => {
-  for (const [item, shortSeconds, expectedCount] of [["stone", 180, 3], ["ore", 540, 4], ["clay", 180, 3], ["sand", 270, 3]]) {
+test("each mine resource has one fixed unit timer with no unattended bulk choices", () => {
+  for (const [item, seconds] of [["stone", 180], ["ore", 600], ["clay", 180], ["sand", 300], ["quartz", 900], ["limestone", 1200]]) {
     const choices = focused(item);
-    assert.equal(choices.length, expectedCount, `${item}: keep the catalog concise`);
-    assert.equal(choices[0].seconds, shortSeconds); assert.equal(choices[0].rewards[item], 1);
-    assert.ok(choices.some(entry => entry.seconds === 3600), `${item}: an hourly return must be available`);
-    assert.ok(choices.some(entry => entry.seconds === 28800), `${item}: an overnight return must be available`);
-    for (let index = 1; index < choices.length; index++) {
-      const previous = choices[index - 1], current = choices[index];
-      assert.ok(current.seconds > previous.seconds, `${item}: no duplicate timer choice`);
-      assert.ok(current.rewards[item] > previous.rewards[item], `${item}: staying away longer must bring a larger stack`);
-      assert.ok(net(current) > net(previous), `${item}: a longer single visit must not pay less in total`);
-      assert.ok(net(current) / current.seconds <= net(previous) / previous.seconds,
-        `${item}: frequent returns retain their production advantage`);
-    }
+    assert.equal(choices.length, 1, `${item}: exactly one active extraction method`);
+    assert.equal(choices[0].seconds, seconds); assert.deepEqual(choices[0].rewards, { [item]: 1 });
+    assert.equal(net(choices[0]), seconds / 60 * 10, `${item}: each productive minute has the common value`);
   }
-  assert.equal(mines.length, 18, "thirteen focused choices and five existing mixed routes");
+  assert.equal(mines.length, 6);
 });
 
-test("all mining batches fit the original warehouse even when a relic is due", () => {
+test("one mineral and an optional relic fit the original warehouse", () => {
   const capacity = catalog.buildings.find(building => building.id === "warehouse").levels[0].warehouseCapacity;
   for (const entry of mines) {
+    assert.equal(total(entry.rewards), 1, entry.id);
     assert.ok(total(entry.rewards) + 1 <= capacity, entry.id);
     assert.equal(entry.requiredBuildings.warehouse, undefined, entry.id);
     assert.ok(net(entry) > 0, entry.id);
-    assert.ok(Object.keys(entry.rewards).every(id => ["stone", "ore", "clay", "sand"].includes(id)), entry.id);
+    assert.ok(Object.keys(entry.rewards).every(id => ["stone", "ore", "clay", "sand", "quartz", "limestone"].includes(id)), entry.id);
   }
 });
 
-test("early free stone and clay survive while upgrades open longer targeted choices", () => {
-  for (const [id, quarry] of [["quarry_stone", 1], ["quarry_clay", 2]]) {
+test("every quarry level opens an additional usable resource", () => {
+  for (const [id, quarry, home] of [["quarry_stone", 1, 2], ["quarry_clay", 2, 2], ["quarry_ore", 2, 3],
+    ["quarry_sand", 3, 3], ["quarry_quartz", 4, 4], ["quarry_limestone", 5, 5]]) {
     const entry = route(id);
-    assert.equal(entry.requiredHomeLevel, 2); assert.deepEqual(entry.requiredBuildings, { quarry });
+    assert.equal(entry.requiredHomeLevel, home); assert.deepEqual(entry.requiredBuildings, { quarry });
     assert.deepEqual(entry.cost, { coins: 0, items: {} });
-  }
-  for (const id of ["quarry_stone_hour", "quarry_clay_hour"]) {
-    assert.equal(route(id).requiredHomeLevel, 2); assert.deepEqual(route(id).requiredBuildings, { quarry: 2 });
-  }
-  for (const id of ["quarry_ore_hour", "quarry_clay_overnight", "quarry_sand_hour"])
-    assert.deepEqual(route(id).requiredBuildings, { quarry: 3 });
-  for (const id of ["quarry_ore_overnight", "quarry_sand_overnight"])
-    assert.deepEqual(route(id).requiredBuildings, { quarry: 4 });
-  assert.equal(route("abandoned_quarry").requiredBuildings.quarry, 5);
-  assert.deepEqual(route("abandoned_quarry").cost, { coins: 0, items: {} }, "the longest ore stack requires time, not a consumed tool");
-});
-
-test("successive mixed shifts give substantially more ore and a visible total-value improvement", () => {
-  const shifts = ["quarry_shift", "quarry_deep_face", "quarry_supply"].map(route);
-  assert.deepEqual(shifts.map(entry => net(entry)), [1920, 2140, 2360]);
-  assert.deepEqual(shifts.map(entry => entry.rewards.ore), [12, 20, 28]);
-  for (let index = 0; index < shifts.length; index++) {
-    const current = shifts[index];
-    assert.equal(current.seconds, 28800); assert.equal(current.requiredBuildings.quarry, index + 3);
-    assert.equal(total(current.rewards), 48); assert.deepEqual(current.cost, { coins: 0, items: {} });
-    if (!index) continue;
-    assert.ok(net(current) >= net(shifts[index - 1]) * 1.09);
-    assert.ok(current.rewards.ore >= shifts[index - 1].rewards.ore * 1.3);
+    const item = Object.keys(entry.rewards)[0];
+    assert(catalog.recipes.some(recipe => !recipe.retired && recipe.cost.items[item]), `${item}: has a downstream recipe`);
   }
 });
 
-test("ore prices, processing margins and mandatory project timing remain intact", () => {
-  const ingot = catalog.recipes.find(recipe => recipe.id === "smelt_iron");
-  const late = catalog.recipes.find(recipe => recipe.id === "smelt_tempered_iron");
-  const part = catalog.recipes.find(recipe => recipe.id === "make_metal_parts");
-  assert.equal(catalog.items.find(item => item.id === "ore").baseSellPrice, 60);
-  assert.equal(catalog.localBuyer.unitPrices.ore, 60);
-  assert.equal(catalog.localBuyer.unitPrices.iron_ingot, 340);
-  assert.deepEqual(ingot.cost.items, { ore: 3, charcoal: 1 }); assert.equal(ingot.seconds, 1800);
-  assert.deepEqual(late.cost.items, ingot.cost.items); assert.equal(late.seconds, 1200);
-  assert.equal(cash(ingot.rewards) - cash(ingot.cost.items), 110);
-  assert.equal(cash(part.rewards) - cash(part.cost.items), 90);
+test("saved bulk mining definitions remain readable but all new starts are rejected atomically", () => {
+  const retired = catalog.explorations.filter(entry => entry.activity === "mining" && entry.retired);
+  assert(retired.length > 0);
+  assert(retired.some(entry => entry.id === "quarry_shift"));
+  for (const entry of retired) {
+    const state = player(); state.inventory = { ...entry.cost.items }; const before = structuredClone(state);
+    assert.throws(() => apply(state, "start_exploration", entry.id), { code: "ECONOMY_SOURCE_RETIRED" });
+    assert.deepEqual(state, before, entry.id);
+  }
+});
+
+test("reference processing pays for inputs plus time and projects retain separate waits", () => {
+  assert.equal(catalog.localBuyer.unitPrices.ore, 100);
+  for (const id of ["smelt_iron", "make_metal_parts"]) {
+    const recipe = catalog.recipes.find(entry => entry.id === id);
+    assert.equal(cash(recipe.rewards) - cash(recipe.cost.items) - recipe.cost.coins, recipe.seconds / 60 * 10, id);
+  }
   const report = auditEconomyProgression(readEconomyCatalog());
   assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 7 * 23 * 3600);
   assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 11 * 23 * 3600);
-  assert.equal(report.fourthStage.constructionSeconds, 96 * 3600);
+  assert.equal(report.fourthStage.constructionSeconds, 58 * 3600);
 });
 
 test("every new mining choice contributes to the quarry collection and a distinct completed route", () => {
@@ -118,7 +96,7 @@ test("every new mining choice contributes to the quarry collection and a distinc
     assert.ok(book.quarry.routes.includes(entry.id), entry.id);
     const state = player(); state.progression.routes = { [entry.id]: 10 };
     assert.equal(economyAchievementProgress(state).familiar_trails, 1, entry.id);
-    if (entry.id.endsWith("_hour") || ["quarry_ore_overnight", "quarry_clay_overnight", "quarry_sand_overnight"].includes(entry.id))
+    if (["quarry_quartz", "quarry_limestone"].includes(entry.id))
       assert.ok(!achievements.legacyRecipeIds.includes(entry.id), "new exploration IDs cannot become legacy production achievements");
   }
 });

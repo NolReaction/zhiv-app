@@ -27,6 +27,7 @@ export function miningDurationLabel(seconds: number) {
 export function miningResourceGroups(routes: readonly MiningRoute[], filter: MiningDurationFilter, seconds: (route: MiningRoute) => number) {
   const groups = new Map<string, { id: string; itemId: string | null; routes: MiningRoute[] }>();
   for (const route of routes) {
+    if (route.retired) continue;
     if (!miningDurationMatches(seconds(route), filter)) continue;
     const items = Object.keys(route.rewards).filter(id => route.rewards[id] > 0);
     const itemId = items.length === 1 ? items[0] : null, id = itemId ?? "mixed";

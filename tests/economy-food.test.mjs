@@ -165,7 +165,7 @@ test("failed paid departure preserves the hero meal; fishing receives the same o
   const route = catalog.explorations.find(route => catalog.fishing.routeIds.includes(route.id));
   Object.assign(state.buildings, route.requiredBuildings);
   state.wallet.coins = 0;
-  const failed = catalog.explorations.find(item => item.cost.coins > 0 || Object.keys(item.cost.items).length > 0);
+  const failed = catalog.explorations.find(item => !item.retired && (item.cost.coins > 0 || Object.keys(item.cost.items).length > 0));
   Object.assign(state.buildings, failed.requiredBuildings);
   failWithoutChanges(state, "start_exploration", failed.id, "ECONOMY_RESOURCES");
   state.wallet.coins = route.cost.coins; state.inventory = { ...route.cost.items };
@@ -190,9 +190,9 @@ test("pending builder food survives rejected construction and shortens one paid 
   assert.equal(state.jobs[0].meal.consumer, "builder");
 });
 
-test("a six-hour workshop upgrade with 25 percent extra speed takes 4h48m and saves 1h12m", () => {
+test("a one-hour workshop upgrade with 25 percent extra speed takes 48m and saves 12m", () => {
   const state = fresh(), level = catalog.buildings.find(item => item.id === "workshop").levels.find(item => item.level === 2);
-  assert.equal(level.seconds, 6 * 3600);
+  assert.equal(level.seconds, 3600);
   state.buildings.workshop = 1;
   state.buildings.home = level.requiredHomeLevel;
   Object.assign(state.buildings, level.requiredBuildings);
@@ -200,8 +200,9 @@ test("a six-hour workshop upgrade with 25 percent extra speed takes 4h48m and sa
   apply(state, "feed_builder", "fish_soup");
   apply(state, "start_construction", "workshop");
   const boostedSeconds = (Date.parse(state.jobs[0].finishesAt) - now) / 1000;
-  assert.equal(boostedSeconds, 4 * 3600 + 48 * 60);
-  assert.equal(level.seconds - boostedSeconds, 72 * 60, "25% more work per second saves 20% of the time");
+  assert.equal(boostedSeconds, 48 * 60);
+  assert.equal(level.seconds - boostedSeconds, 12 * 60, "25% more work per second saves 20% of the time");
+  assert.equal(food.mealDuration(6 * 3600, 2500), 4 * 3600 + 48 * 60, "historic six-hour jobs follow the same speed rule");
   assert.deepEqual(state.jobs[0].meal, { itemId: "fish_soup", consumer: "builder", speedBps: 2500 });
   assert.equal(state.inventory.fish_soup, undefined);
   assert.deepEqual(state.jobs[0].cost, level.cost);
@@ -410,7 +411,7 @@ test("Ktor's explicit null recipe extensions remain readable alongside old catal
 });
 
 
-test("saved ordinary orders for locked products are replaced freely while reachable accepted terms stay exact", () => {
+test("saved ordinary orders retain their promise when the current product source is locked", () => {
   const state = fresh();
   state.residentOrders = food.normalizedResidentOrders(state, now);
   state.residentOrders.completed = 7;
@@ -421,13 +422,21 @@ test("saved ordinary orders for locked products are replaced freely while reacha
   state.residentOrders.slots[0] = { ...state.residentOrders.slots[0], templateId: locked.id, terms: locked };
   const before = structuredClone(state), wallet = structuredClone(state.wallet);
   const normalized = food.normalizedResidentOrders(state, now);
-  assert.notEqual(normalized.slots[0].templateId, locked.id);
+  assert.equal(normalized.slots[0].templateId, locked.id);
+  assert.deepEqual(normalized.slots[0].terms, locked);
   assert.deepEqual(normalized.slots.slice(1), original.slots.slice(1));
   assert.equal(normalized.freeReplacementsUsed, 2);
   assert.equal(normalized.completed, 7); assert.equal(normalized.earnedCoins, 1234);
   assert.deepEqual(state, before); assert.deepEqual(state.wallet, wallet);
-  assert.ok(normalized.recentTemplateIds.includes(locked.id));
-  assert.ok(normalized.slots.filter(slot => slot.terms).every(slot => Object.keys(slot.terms.items).every(id => food.obtainableResidentOrderItems(state).has(id))));
+  assert.ok(!normalized.recentTemplateIds.includes(locked.id));
+  assert.equal(food.obtainableResidentOrderItems(state).has("berry_compote"), false);
+  assert.ok(food.eligibleResidentOrderTemplates(state).every(template => Object.keys(template.items).every(id => food.obtainableResidentOrderItems(state).has(id))));
+  const supplied = structuredClone(state); supplied.inventory = { ...locked.items };
+  const offer = food.residentOrderBoard(supplied, now).offers.find(offer => offer.templateId === locked.id);
+  apply(supplied, "complete_resident_order", offer.id);
+  assert.equal(supplied.wallet.coins, state.wallet.coins + 900);
+  assert.deepEqual(supplied.inventory, {});
+  failWithoutChanges(supplied, "complete_resident_order", offer.id, "ECONOMY_ORDER_CHANGED");
   state.buildings.dryer = 1; state.buildings.garden = 1;
   const unlocked = food.normalizedResidentOrders(state, now);
   assert.deepEqual(unlocked.slots[0].terms, locked, "reachable accepted quantities and payout stay frozen even for retired templates");

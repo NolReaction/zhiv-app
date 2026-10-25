@@ -41,7 +41,9 @@
       "quarry_clay_hour",
       "quarry_clay_overnight",
       "quarry_sand_hour",
-      "quarry_sand_overnight"
+      "quarry_sand_overnight",
+      "quarry_quartz",
+      "quarry_limestone"
     ],
     "productionBuilding": "quarry",
     "finds": [

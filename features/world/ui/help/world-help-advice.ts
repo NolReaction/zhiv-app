@@ -127,7 +127,7 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
   if (!context) return null;
   if (context.intent === "expedition") {
     const route = state.catalog.explorations.find(route => route.id === context.routeId);
-    if (!route) return null;
+    if (!route || route.retired) return null;
     const conflict = explorationActorId(route) === "miner" ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now);
     if (conflict) return jobAdvice(state, conflict.job, now);
     const requirement = requirementAdvice(state, worldRequirements(route), now);
@@ -194,7 +194,7 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
   const fishId = context.fishItemId ?? encodedFishId;
   const quantity = context.quantity ?? 1;
   const original = state.catalog.recipes.find(recipe => recipe.id === recipeId);
-  if (!original || context.stationId && original.buildingId !== context.stationId || extra !== undefined
+  if (!original || original.retired || context.stationId && original.buildingId !== context.stationId || extra !== undefined
     || fishId !== undefined && !original.fishInput?.itemIds.includes(fishId)
     || !Number.isSafeInteger(quantity) || quantity < 1) return null;
   const recipe = recipeWithFish(original, fishId);
@@ -267,7 +267,7 @@ export function worldHelpAdvice({ economy, world, observation, context, isOnline
     const conflict = economyActorConflict(state.jobs, "departure", now);
     if (conflict) add(jobAdvice(state, conflict.job, now));
     else {
-      const route = state.catalog.explorations.find(route => sector(route.id) === "forest" && freeCost(route.cost)
+      const route = state.catalog.explorations.find(route => !route.retired && sector(route.id) === "forest" && freeCost(route.cost)
         && !worldMissingRequirements(state, worldRequirements(route)).length && itemCount(route.rewards) <= state.storage.capacity);
       if (route) add({ id: "start:free-forest", title: "Припасы можно добыть бесплатно", message: `${route.name}: материалы без монет и припасов на дорогу. После возвращения заберите находки.`,
         topicId: "start", severity: "next", action: { label: "Открыть лесные вылазки", target: { kind: "expeditions", sector: "forest" } } });

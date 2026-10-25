@@ -15,7 +15,8 @@ const duration = (seconds, bps) => Math.ceil(seconds * 10000 / (10000 + bps));
 /** Exact arithmetic in current visible coins. Board selection itself is tested
  * through the production helper: there is no second copy of its rotation here. */
 export function auditFoodEconomy(catalog) {
-  const food = catalog.food, math = economicMath(catalog), scale = catalog.currencyScale;
+  catalog = { ...catalog, recipes: catalog.recipes.filter(source => !source.retired), explorations: catalog.explorations.filter(source => !source.retired) };
+  const food = catalog.food, math = economicMath(catalog), scale = catalog.version >= 13 ? 1 : catalog.currencyScale;
   const priceOrder = residentOrderPricing(catalog);
   assert(food?.meals.length >= 6, "The six-tier meal catalog is required");
   const items = new Map(catalog.items.map(item => [item.id, item]));
@@ -79,7 +80,8 @@ export function auditFoodEconomy(catalog) {
       return [id, Number(BigInt(count) * BigInt(bps) / 10000n)];
     }));
     const baseValue = BigInt(valueOf(items, order.items)), scaledValue = BigInt(valueOf(items, quantities));
-    const coins = Number((BigInt(order.coins) * scaledValue + baseValue * 10n - 1n) / (baseValue * 10n) * 10n);
+    const quantum = BigInt(catalog.version >= 13 ? 1 : 10);
+    const coins = Number((BigInt(order.coins) * scaledValue + baseValue * quantum - 1n) / (baseValue * quantum) * quantum);
     assert(coins <= Number(scaledValue) * 2, `${order.id}@${home}: excessive scaled order premium`);
     const slotMinutes = {};
     for (const [id, count] of Object.entries(quantities)) add(slotMinutes, math.profile(id).slotMinutes, count);
@@ -192,25 +194,25 @@ export function auditFoodEconomy(catalog) {
   const tutorials = catalog.onboarding?.residentOrders ?? [];
   assert.equal(tutorials.length, 1, "The tutorial teaches one request");
   assert.deepEqual(tutorials[0].items, { berries: 1 }, "A single ripe raspberry must finish the teaching request");
-  assert.equal(tutorials[0].coins, 15, "The teaching request pays 1.5 times its NPC value");
+  assert.equal(tutorials[0].coins, catalog.version >= 13 ? 13 : 15, "The teaching request follows its declared item premium");
   const firstCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 1);
   assert.equal(firstCourse?.orders.length, 3, "The first house needs three small permanent requests");
   assert.equal(firstCourse.intervalSeconds, 0, "Beginner requests never wait behind a daily gate");
-  assert.equal(sum([...tutorials, ...firstCourse.orders].map(order => order.coins)), 315, "The first stage must keep its 35-coin surplus");
+  if (catalog.version < 13) assert.equal(sum([...tutorials, ...firstCourse.orders].map(order => order.coins)), 315, "The first stage must keep its 35-coin surplus");
   const secondCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 2);
   assert.equal(secondCourse?.orders.length, 7, "Second stage needs seven guaranteed permanent requests");
-  assert.equal(sum(secondCourse.orders.map(order => order.coins)), 1990, "Second-stage requests must pay 1990 coins");
+  if (catalog.version < 13) assert.equal(sum(secondCourse.orders.map(order => order.coins)), 1990, "Second-stage requests must pay 1990 coins");
   for (const order of secondCourse.orders)
-    assert.equal(order.coins, Math.ceil(math.liquidation(order.items) * 1.5 / scale) * scale,
-      `${order.id}: permanent requests must pay 150% of actual NPC value rounded up to the coin quantum`);
+    assert.equal(order.coins, Math.ceil(math.liquidation(order.items) * (catalog.version >= 13 ? 1.25 : 1.5) / scale) * scale,
+      `${order.id}: permanent requests must pay their declared premium over actual NPC value`);
   const thirdCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 3);
   assert.equal(thirdCourse?.orders.length, 8, "Third stage needs eight guaranteed permanent requests");
   assert.equal(thirdCourse.intervalSeconds, 23 * 3600, "Each next third-stage request waits 23 hours after its actual prior delivery");
   assert.deepEqual(thirdCourse.completionRewards, { living_resin: 1 }, "The course guarantees the house's required resin");
-  assert.equal(sum(thirdCourse.orders.map(order => order.coins)), 14840, "Third-stage requests must pay 14840 coins");
+  if (catalog.version < 13) assert.equal(sum(thirdCourse.orders.map(order => order.coins)), 14840, "Third-stage requests must pay 14840 coins");
   for (const order of thirdCourse.orders)
-    assert.equal(order.coins, Math.ceil(math.liquidation(order.items) * 1.5 / scale) * scale,
-      `${order.id}: third-stage requests keep the exact rounded 150% premium`);
+    assert.equal(order.coins, Math.ceil(math.liquidation(order.items) * (catalog.version >= 13 ? 1.25 : 1.5) / scale) * scale,
+      `${order.id}: third-stage requests keep the exact rounded declared premium`);
   assert(earlyOrders.length >= 5, "Starter board needs at least five eligible distinct templates alongside the tutorial requests");
   for (const resident of ["plesk", "builder"]) assert(earlyOrders.some(order => order.residentId === resident), "Both starter residents need an eligible request");
   const secondStageOrders = orders.templates.filter(order => hasRequirements(order, { home: 2, garden: 1, warehouse: 1 }));

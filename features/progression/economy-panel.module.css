@@ -1,5 +1,5 @@
 .panel { height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-color: #71875d #111910; padding: 28px clamp(14px, 3vw, 44px) 40px; color: #e5eddc; }
-.panel button, .panel input, .panel select { font: inherit; }
+:where(.panel) button, :where(.panel) input, :where(.panel) select { font: inherit; }
 .panel button { cursor: pointer; }
 .panel button:focus-visible, .panel a:focus-visible, .panel input:focus-visible, .panel select:focus-visible, .panel summary:focus-visible, .panel section[tabindex]:focus-visible, .itemDetail:focus-visible { outline: 2px solid #eee59b; outline-offset: 3px; }
 .intro { display: flex; align-items: center; justify-content: space-between; gap: 30px; padding-bottom: 25px; }

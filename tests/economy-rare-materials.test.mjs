@@ -51,7 +51,7 @@ test('request DTO cannot accept rewards private clock or a client random source'
 
 test('home one and two do not initialize or accumulate the private clock; production never advances it', () => {
   for (const home of [1, 2]) {
-    const p = player(home), job = issue(p, 'start_exploration', 'forest_camp').state.jobs[0];
+    const p = player(home), job = issue(p, 'start_exploration', 'forest').state.jobs[0];
     assert.equal(job.rareDrop, undefined); assert.equal(saved(p).rareDropState, undefined);
     issue(p, 'claim_job', job.id, Date.parse(job.finishesAt));
     assert.equal(saved(p).rareDropState, undefined);
@@ -66,12 +66,12 @@ test('home one and two do not initialize or accumulate the private clock; produc
 
 test('private state never appears in views and cancelling repeated starts or changing routes cannot reroll it', () => {
   const p = player();
-  const first = issue(p, 'start_exploration', 'forest_camp').state;
+  const first = issue(p, 'start_exploration', 'forest').state;
   assert.equal(first.rareDropState, undefined);
   const fixed = structuredClone(saved(p).rareDropState);
   assert.ok(fixed.remainingSeconds >= spec.minSeconds && fixed.remainingSeconds <= spec.maxSeconds);
   issue(p, 'cancel_exploration', first.jobs[0].id);
-  for (const route of ['forest', 'shore', 'forest_camp']) {
+  for (const route of ['forest', 'shore', 'shore_camp']) {
     const job = issue(p, 'start_exploration', route).state.jobs[0];
     assert.deepEqual(saved(p).rareDropState, fixed); assert.equal(job.rareDrop.itemId, null);
     issue(p, 'cancel_exploration', job.id);
@@ -79,14 +79,21 @@ test('private state never appears in views and cancelling repeated starts or cha
   assert.equal(economy.getDevEconomyAchievementState(p.me.user.publicId).rareDropState, undefined);
 });
 
-test('eight-hour preview cannot be rerolled by completing a cheap half-hour trip', () => {
-  const p = player(); saved(p).rareDropState = clock(9 * 3600);
-  const preview = issue(p, 'start_exploration', 'forest_camp').state.jobs[0];
+test('a longer route preview cannot be rerolled by completing a shorter trip', () => {
+  const previewRoute = model.economyCatalog.explorations.find(route => route.id === 'ancient_ruins');
+  const shortRoute = model.economyCatalog.explorations.find(route => route.id === 'forest');
+  assert.ok(!previewRoute.retired && !shortRoute.retired && previewRoute.seconds > shortRoute.seconds);
+  const p = player(4), state = saved(p);
+  state.buildings = Object.fromEntries(model.economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level]));
+  state.rareDropState = clock(9 * 3600);
+  state.inventory = Object.fromEntries(Object.entries(previewRoute.cost.items).map(([item, count]) => [item, count * 2]));
+  const preview = issue(p, 'start_exploration', previewRoute.id).state.jobs[0];
   assert.equal(preview.rareDrop.itemId, null); issue(p, 'cancel_exploration', preview.id);
-  const short = issue(p, 'start_exploration', 'forest').state.jobs[0];
+  assert.deepEqual(saved(p).rareDropState, clock(9 * 3600));
+  const short = issue(p, 'start_exploration', shortRoute.id).state.jobs[0];
   const end = Date.parse(short.finishesAt); issue(p, 'claim_job', short.id, end);
-  assert.deepEqual(saved(p).rareDropState, clock(8.5 * 3600));
-  const again = issue(p, 'start_exploration', 'forest_camp', end).state.jobs[0];
+  assert.deepEqual(saved(p).rareDropState, clock(9 * 3600 - shortRoute.seconds));
+  const again = issue(p, 'start_exploration', previewRoute.id, end).state.jobs[0];
   assert.equal(again.rareDrop.itemId, null);
 });
 
@@ -104,7 +111,8 @@ test('saved rare delivery is credited once, late collection adds no time, and ov
   const claim = request(p, 'claim_job', job.id, end), first = economy.commandDevEconomy(p.token, claim, end);
   const nextClock = structuredClone(saved(p).rareDropState);
   assert.equal(first.state.inventory.ancient_core, 1);
-  assert.ok(nextClock.remainingSeconds >= spec.minSeconds - 900 && nextClock.remainingSeconds <= spec.maxSeconds - 900);
+  const overshootSeconds = (Date.parse(job.finishesAt) - Date.parse(job.startedAt)) / 1000 - 900;
+  assert.ok(nextClock.remainingSeconds >= spec.minSeconds - overshootSeconds && nextClock.remainingSeconds <= spec.maxSeconds - overshootSeconds);
   assert.equal(economy.commandDevEconomy(p.token, claim, end + 1000).replayed, true);
   assert.equal(read(p).inventory.ancient_core, 1); assert.deepEqual(saved(p).rareDropState, nextClock);
 });

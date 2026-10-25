@@ -53,24 +53,25 @@ test("whole-stack NPC rounding and minimum quantities are exactly old proceeds t
 
 test("construction quotes the new tariff in stored units without redenominating saved money", () => {
   const now = Date.parse("2026-10-05T12:00:00Z"), interval = model.economyCatalog.constructionSpeedup.secondsPerPearl * 1000;
-  assert.equal(interval, 15000000);
+  assert.equal(interval, 300000);
   assert.equal(model.economyCatalog.constructionSpeedup.priceStepPearls, 2);
-  assert.equal(money.formatPearls(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + 600000).toISOString() }, now)), "4");
-  for (const [remaining, price] of [[0, 0], [1, 2], [60000, 2], [3600000, 40], [86400000, 520], [172800000, 768]]) {
+  assert.equal(money.formatPearls(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + 600000).toISOString() }, now)), "2");
+  for (const [remaining, price] of [[0, 0], [1, 2], [60000, 2], [300000, 2], [300001, 4], [3600000, 24], [86400000, 576], [172800000, 1152]]) {
     assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now), price);
   }
   const legacyPolicy = { secondsPerPearl: 15000, priceStepPearls: 2, pricingPoints: [] };
-  for (const remaining of [0, 1, interval - 1, interval, interval + 1, 8 * 3600000, 72 * 3600000]) {
-    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now, legacyPolicy), Math.ceil(remaining * 50 / interval / 2) * 2);
+  const legacyInterval = 15000000;
+  for (const remaining of [0, 1, legacyInterval - 1, legacyInterval, legacyInterval + 1, 8 * 3600000, 72 * 3600000]) {
+    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now, legacyPolicy), Math.ceil(remaining * 50 / legacyInterval / 2) * 2);
   }
 });
 
 test("wallet limits preserve denomination while first-two-stage material prices follow the new catalog", () => {
   assert.equal(model.ECONOMY_MAX_PEARLS, 50_000_000_000); assert.equal(model.ECONOMY_MAX_BALANCE, 10_000_000_000); assert.equal(model.ECONOMY_MAX_ITEMS, 1_000_000_000);
-  for (const [id, base] of Object.entries({ berries: 1, wood: 3, stone: 4, fiber: 1, rope: 3, clay: 3, charcoal: 5, bricks: 10 }))
+  for (const [id, base] of Object.entries({ berries: 1, wood: 3, stone: 3, fiber: 1, rope: 5, clay: 3, charcoal: 5, bricks: 11 }))
     assert.equal(model.economyCatalog.items.find(item => item.id === id).baseSellPrice, base * 10);
   assert.equal(model.economyCatalog.items.find(item => item.id === "fish_common").baseSellPrice, 40);
-  assert.equal(model.economyCatalog.buildings.find(item => item.id === "home").levels[1].cost.coins, 250);
+  assert.equal(model.economyCatalog.buildings.find(item => item.id === "home").levels[1].cost.coins, 300);
   assert.deepEqual(rules.convertLegacyEconomy({ sparks: 1_000_000, wood: 100, stone: 400 }), { version: 1, coinsGranted: 5000, woodGranted: 10, stoneGranted: 20 });
   const p = player(), view = economy.getDevEconomy(p.token); view.wallet.coins = model.ECONOMY_MAX_BALANCE;
   assert.equal(model.economyViewSchema.safeParse(view).success, true);

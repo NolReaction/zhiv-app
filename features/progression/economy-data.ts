@@ -5,6 +5,7 @@ import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
 import { currencyShopGoldOffers, GOLD_SHOP_PACKAGES, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { storefrontCatalog } from "@/features/economy/domain/storefront";
 import { VISIBLE_GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
+import { sourceRetired, timeEconomyPolicy } from "./economy-sources";
 import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
 export type EconomyItemSource = {
@@ -26,7 +27,7 @@ export type EconomyItemSource = {
 };
 export type EconomyItemUse = {
   id: string;
-  kind: "recipe" | "building" | "order" | "project" | "meal" | "fishing" | "exploration";
+  kind: "recipe" | "building" | "order" | "weekly" | "project" | "meal" | "fishing" | "exploration";
   name: string;
   quantity: number;
   homeLevel: number;
@@ -109,8 +110,9 @@ function npcValue(catalog: EconomyCatalog, items: Record<string, number>): numbe
 
 /** Stable baseline: the earliest recipe, before optional mastery variants. */
 function baselineRecipe(catalog: EconomyCatalog, itemId: string) {
-  return catalog.recipes.filter(recipe => (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
-    a.requiredHomeLevel - b.requiredHomeLevel || recipeBuildingLevel(a) - recipeBuildingLevel(b)
+  const baseline = timeEconomyPolicy(catalog)?.baselineRecipes[itemId];
+  return catalog.recipes.filter(recipe => !sourceRetired(recipe) && (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
+    Number(b.id === baseline) - Number(a.id === baseline) || a.requiredHomeLevel - b.requiredHomeLevel || recipeBuildingLevel(a) - recipeBuildingLevel(b)
     || Object.keys(a.requiredRecipes ?? {}).length - Object.keys(b.requiredRecipes ?? {}).length
     || a.id.localeCompare(b.id))[0];
 }
@@ -176,7 +178,7 @@ function buildHomeUnlocks(catalog: EconomyCatalog, recipes: EconomyRecipe[]): Ec
  */
 export function calculateRecipePlan(recipeId: string, quantity = 1, catalog: EconomyCatalog = economyCatalog): RecipePlan {
   if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) throw new RangeError("Quantity must be an integer from 1 to 999");
-  const chosen = catalog.recipes.find(recipe => recipe.id === recipeId);
+  const chosen = catalog.recipes.find(recipe => recipe.id === recipeId && !sourceRetired(recipe));
   if (!chosen) throw new RangeError(`Unknown recipe: ${recipeId}`);
   const rawInputs: Record<string, number> = {}, runsByRecipe = new Map<string, number>();
   const miningRuns = new Map<string, number>();
@@ -204,7 +206,7 @@ export function calculateRecipePlan(recipeId: string, quantity = 1, catalog: Eco
     const recipe = baselineRecipe(catalog, itemId);
     if (!recipe) {
       addCounts(rawInputs, { [itemId]: count });
-      const mining = catalog.explorations.filter(route => route.activity === "mining" && route.rewards[itemId] === 1
+      const mining = catalog.explorations.filter(route => !sourceRetired(route) && route.activity === "mining" && route.rewards[itemId] === 1
         && Object.keys(route.rewards).length === 1 && route.cost.coins === 0 && !Object.keys(route.cost.items).length)
         .sort((a, b) => a.requiredHomeLevel - b.requiredHomeLevel || a.seconds - b.seconds || a.id.localeCompare(b.id))[0];
       if (mining) {
@@ -285,7 +287,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
   const addSource = (id: string, source: EconomyItemSource) => byId.get(id)?.sources.push(source);
   const addUse = (id: string, use: EconomyItemUse) => byId.get(id)?.uses.push(use);
   const unlockHomes = recipeUnlockHomes(catalog);
-  const recipes: EconomyRecipe[] = catalog.recipes.map(recipe => {
+  const recipes: EconomyRecipe[] = catalog.recipes.filter(recipe => !sourceRetired(recipe)).map(recipe => {
     const inputNpcValue = npcValue(catalog, recipe.cost.items), outputNpcValue = npcValue(catalog, recipe.rewards);
     const count = Object.values(recipe.rewards).reduce((sum, value) => sum + value, 0);
     return { ...recipe, buildingLevel: recipeBuildingLevel(recipe), cost: copyCost(recipe.cost), rewards: { ...recipe.rewards }, requiredBuildings: { ...recipe.requiredBuildings }, requiredRecipes: { ...recipe.requiredRecipes },
@@ -306,7 +308,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
     for (const [id, quantity] of Object.entries(recipe.cost.items)) addUse(id,
       { id: `recipe:${recipe.id}`, kind: "recipe", name: recipe.name, quantity, homeLevel: recipe.unlockHomeLevel });
   }
-  for (const route of catalog.explorations) {
+  for (const route of catalog.explorations.filter(route => !sourceRetired(route))) {
     const isFishing = fish?.routeIds.includes(route.id);
     // Route reward `fish` denotes random catches, never guaranteed common fish.
     for (const [id, quantity] of Object.entries(route.rewards)) {
@@ -347,6 +349,8 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
   }
   for (const order of catalog.food?.orders.templates ?? []) for (const [id, quantity] of Object.entries(order.items)) addUse(id,
     { id: `order:${order.id}`, kind: "order", name: order.name, quantity, homeLevel: order.requiredHomeLevel });
+  for (const weekly of catalog.tradeRelations?.weekly.templates ?? []) for (const stage of weekly.stages) for (const [id, quantity] of Object.entries(stage.items)) addUse(id,
+    { id: `weekly:${weekly.id}:${stage.id}`, kind: "weekly", name: `${weekly.name}: ${stage.name}`, quantity, homeLevel: weekly.requiredHomeLevel });
   for (const meal of catalog.food?.meals ?? []) {
     const item = byId.get(meal.itemId);
     if (item) item.meal = { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps };
@@ -368,6 +372,8 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
   }
   const marketSlotPrices = catalog.market.slotPricesPearls.map(pearlDisplayAmount);
   const step = catalog.constructionSpeedup.priceStepPearls;
+  const points = catalog.constructionSpeedup.pricingPoints ?? [];
+  const proportional = points.length >= 2 && points.every(point => point.pearls * points[0].seconds === points[0].pearls * point.seconds);
   return { catalogVersion: catalog.version, items, recipes, stages, homeUnlocks: buildHomeUnlocks(catalog, recipes),
     market: { homeLevel: catalog.market.requiredHomeLevel, requiredBuildings: { ...catalog.market.requiredBuildings },
       requiredExplorations: catalog.market.requiredExplorations },
@@ -384,7 +390,8 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
       dailyMinimumHours: progressionRewards.dailyMinimumHours, dailyCycleLength: progressionRewards.daily.length,
       marketBaseSlots: catalog.market.baseSlots, marketSlotPrices, marketTotal: marketSlotPrices.reduce((sum, value) => sum + value, 0),
       productionSlots: catalog.productionSlots.upgrades.map(upgrade => ({ slots: upgrade.slots, pearls: pearlDisplayAmount(upgrade.pricePearls) })),
-      construction: { stepPearls: pearlDisplayAmount(step), curved: (catalog.constructionSpeedup.pricingPoints?.length ?? 0) >= 2,
+      construction: { stepPearls: pearlDisplayAmount(step), curved: points.length >= 2 && !proportional,
+        secondsPerVisiblePearl: proportional ? points[0].seconds / pearlDisplayAmount(points[0].pearls) : null,
         prices: [60, 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400].map(seconds => ({ seconds,
           pearls: pearlDisplayAmount(constructionTimePearlPrice(seconds, catalog.constructionSpeedup)) })) } },
     currencyShop: { preview: true,

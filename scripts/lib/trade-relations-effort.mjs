@@ -11,7 +11,7 @@ export function tradeGuaranteedBuildings(template) {
   return { home: template.requiredHomeLevel, garden: 1, warehouse: 1, ...template.requiredBuildings };
 }
 
-const levelsPermit = (definition, buildings) => buildings.home >= definition.requiredHomeLevel
+const levelsPermit = (definition, buildings) => !definition.retired && buildings.home >= definition.requiredHomeLevel
   && Object.entries(definition.requiredBuildings ?? {}).every(([id, level]) => (buildings[id] ?? 0) >= level)
   && (!definition.buildingId || (buildings[definition.buildingId] ?? 0) >= recipeBuildingLevel(definition));
 
@@ -67,8 +67,13 @@ export function tradeOrderEffort(catalog) {
         || Object.keys(source.cost.items).some(id => !reachable.items.has(id))) continue;
       for (const [itemId, output] of Object.entries(source.rewards)) {
         if (!known.has(itemId) || fish.has(itemId) || output <= 0) continue;
-        const baseline = residentOrderBaseRecipes[itemId] ?? acquisitionBaselines[itemId];
-        if (baseline && source.id !== baseline) continue;
+        const baseline = catalog.timeEconomy?.baselineRecipes[itemId] ?? catalog.timeEconomy?.baselineExplorations[itemId]
+          ?? residentOrderBaseRecipes[itemId] ?? acquisitionBaselines[itemId];
+        const reference = baseline && [...catalog.recipes, ...catalog.explorations].find(candidate => candidate.id === baseline);
+        const baselineAvailable = reference && levelsPermit(reference, buildings)
+          && Object.keys(reference.requiredRecipes ?? {}).every(id => reachable.recipes.has(id))
+          && Object.keys(reference.cost.items).every(id => reachable.items.has(id));
+        if (baselineAvailable && source.id !== baseline) continue;
         candidates.push({ itemId, id: source.id, output, seconds: source.seconds + (source.collection?.seconds ?? 0),
           inputs: source.cost.items, fishingUncertain: false });
       }

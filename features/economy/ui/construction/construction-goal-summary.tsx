@@ -34,7 +34,7 @@ export function ConstructionGoalSummary({ state, constructionGoal, onOpenGoal, n
       const name = id === "coins" ? "Монеты" : itemName(state, id);
       const source = id === "coins" ? null : worldMaterialSource(state, id);
       // An unopened workshop can still explain the recipe and its requirements.
-      const lockedRecipe = !source && id !== "coins" ? state.catalog.recipes.find(recipe => (recipe.rewards[id] ?? 0) > 0) : undefined;
+      const lockedRecipe = !source && id !== "coins" ? state.catalog.recipes.find(recipe => !recipe.retired && (recipe.rewards[id] ?? 0) > 0) : undefined;
       const rareFind = state.catalog.rareDrops?.itemIds.includes(id) && (state.buildings.home ?? 1) >= state.catalog.rareDrops.requiredHomeLevel;
       const production = source?.kind === "production" ? { stationId: source.stationId, recipeId: source.targetId } : lockedRecipe ? { stationId: lockedRecipe.buildingId, recipeId: lockedRecipe.id } : undefined;
       const mining = source?.kind === "exploration" && state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");

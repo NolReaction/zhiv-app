@@ -82,7 +82,7 @@ test("a real one-slot 50-place house-three route earns its costs and project res
     const job = state.jobs.find(job => job.kind === "construction");
     assert(job, "a locked source must have an actual in-progress required upgrade"); advance(Date.parse(job.finishesAt));
   }
-  const sourceOpen = source => state.buildings.home >= source.requiredHomeLevel
+  const sourceOpen = source => !source.retired && state.buildings.home >= source.requiredHomeLevel
     && Object.entries(source.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
     && (!source.buildingId || (state.buildings[source.buildingId] ?? 0) >= source.buildingLevel);
   const recipeOpen = source => Object.entries(source.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
@@ -177,10 +177,13 @@ test("a real one-slot 50-place house-three route earns its costs and project res
   bundle(home.cost.items); earn(home.cost.coins); bundle(home.cost.items); apply("start_construction", "home"); waitBuilder();
 
   assert.equal(state.buildings.home, 4); assert.equal(state.buildings.warehouse, 1); assert.equal(state.jobs.length, 0);
-  assert.equal(courses.length, 8); assert.equal(courseCoins, 14840); assert.equal(constructionCoins, 20600);
+  assert.equal(courses.length, 8);
+  assert.equal(courseCoins, catalog.stageOrders.find(stage => stage.homeLevel === 3).orders.reduce((sum, order) => sum + order.coins, 0));
+  assert.equal(constructionCoins, builds.reduce((sum, build) => sum + catalog.buildings.find(entry => entry.id === build.target)
+    .levels.find(level => level.level === build.level).cost.coins, 0));
   for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 23 * hour);
   assert(courses.at(-1).at - courses[0].at >= 161 * hour);
-  assert(clock - courses.at(-1).at >= 24 * hour, "the final house still takes its real builder day");
+  assert(clock - courses.at(-1).at >= home.seconds * 1000, "the final house waits for its full current builder timer");
   assert(clock - epoch < 10 * 24 * hour, JSON.stringify({ elapsedHours: (clock - epoch) / hour,
     deliveryHours: courses.map(offer => (offer.at - epoch) / hour), builds: builds.map(build => ({ target: build.target, level: build.level, hours: (build.startedAt - epoch) / hour })), peak,
     message: "the concrete route fits ten days with one worker and original storage" }));

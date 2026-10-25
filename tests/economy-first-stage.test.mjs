@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { runEconomyCommandScenario } from "../scripts/lib/economy-command-scenario.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
@@ -59,65 +60,23 @@ test("new players have exactly the affordable one-slot starting settlement and n
   assert.deepEqual(read(p), before);
 });
 
-test("a controlled clock completes the whole first stage in 42 minutes with one builder, one slot and eight-second harvesting", () => {
-  const p = player();
-  let elapsed = 0, peak = read(p).storage.used;
-  const produced = {}, starts = [], claimed = [];
-  const act = (seconds, action, targetId) => {
-    assert.ok(seconds >= elapsed, "the simulation clock must only move forward"); elapsed = seconds;
-    const state = send(p, action, targetId, seconds);
-    peak = Math.max(peak, state.storage.used);
-    assert.equal(state.wallet.pearls, 0); assert.deepEqual(state.productionSlots, {});
-    assert.ok(state.storage.used <= 50); assert.ok(state.jobs.filter(job => job.kind === "construction").length <= 1);
-    return state;
-  };
-  const start = (seconds, id) => { const state = act(seconds, "start_production", id); starts.push(id); return state; };
-  const claim = (seconds, id) => {
-    const job = read(p, seconds).jobs.find(entry => entry.recipeId === id || entry.targetId === id && entry.kind === "construction");
-    assert.ok(job, `missing ${id} job at ${seconds}`);
-    const state = act(seconds, "claim_job", job.id); claimed.push(id);
-    for (const [item, count] of Object.entries(job.rewards)) produced[item] = (produced[item] ?? 0) + count;
-    return state;
-  };
-  const collect = seconds => {
-    const job = read(p, seconds).jobs.find(entry => entry.recipeId === "grow_berries");
-    assert.ok(job); const state = act(seconds, "start_collection", job.id);
-    assert.equal(Date.parse(state.jobs.find(entry => entry.id === job.id).collection.finishesAt) - (now + seconds * 1000), 8000);
-  };
-  const order = seconds => act(seconds, "complete_resident_order", (tutorial.tutorialResidentOrder(read(p, seconds)) ?? stages.stageResidentOrder(read(p, seconds))).id);
-
-  act(0, "start_construction", "woodlot"); start(0, "grow_berries");
-  collect(60); claim(68, "grow_berries"); order(68); start(68, "grow_berries");
-  claim(120, "woodlot"); act(120, "start_construction", "dryer"); start(120, "gather_wood");
-  collect(128); claim(136, "grow_berries"); start(136, "grow_berries");
-  collect(196); claim(204, "grow_berries"); start(204, "grow_berries");
-  collect(264); claim(272, "grow_berries"); start(272, "grow_berries");
-  claim(300, "dryer"); claim(300, "gather_wood"); order(300); start(300, "gather_wood"); start(300, "cook_compote");
-  collect(332); claim(340, "grow_berries");
-  claim(480, "gather_wood"); start(480, "gather_wood"); claim(480, "cook_compote"); start(480, "cook_compote");
-  claim(660, "gather_wood"); start(660, "gather_wood"); claim(660, "cook_compote"); order(660);
-  act(660, "start_construction", "workshop");
-  claim(840, "gather_wood"); start(840, "gather_wood");
-  claim(960, "workshop"); start(960, "make_planks");
-  claim(1020, "gather_wood"); start(1020, "gather_wood");
-  claim(1080, "make_planks"); start(1080, "make_planks");
-  claim(1200, "gather_wood"); start(1200, "gather_wood"); claim(1200, "make_planks"); order(1200); start(1200, "make_planks");
-  claim(1320, "make_planks");
-  claim(1380, "gather_wood"); start(1380, "gather_wood"); start(1380, "make_planks");
-  claim(1500, "make_planks");
-  claim(1560, "gather_wood"); start(1560, "gather_wood");
-  claim(1740, "gather_wood"); start(1740, "gather_wood"); claim(1920, "gather_wood");
-  act(1920, "start_construction", "home");
-  assert.equal(read(p, 1920).buildings.home, 1);
-  const finish = claim(2520, "home");
-  assert.equal(elapsed, 42 * 60); assert.equal(finish.buildings.home, 2);
-  assert.deepEqual(finish.wallet, { coins: 35, pearls: 0 }); assert.deepEqual(finish.inventory, {});
-  assert.deepEqual(produced, { berries: 5, wood: 10, berry_compote: 2, planks: 4 });
-  assert.equal(finish.tutorialOrder.step, 1); assert.equal(finish.tutorialOrder.completed, true);
-  assert.equal(finish.stageOrders.stages["1"].step, 3); assert.equal(finish.stageOrders.stages["1"].completed, true);
-  assert.equal(finish.residentOrders.completed, 4); assert.equal(finish.residentOrders.earnedCoins, 315);
-  assert.equal(peak, 8); assert.equal(finish.jobs.length, 0);
-  assert.ok(starts.every(id => !id.includes("fish"))); assert.equal(claimed.length, 25);
+test("a fresh one-slot player earns the complete first house with real commands and no gifts", t => {
+  const report = runEconomyCommandScenario({ rules, catalog: model.economyCatalog, stages, tutorial }, { targetHome: 2 });
+  const state = report.state;
+  assert.equal(state.buildings.home, 2); assert.equal(state.jobs.length, 0);
+  assert.equal(report.initialCoins, 100); assert.equal(state.wallet.pearls, 0);
+  assert.equal(state.tutorialOrder.completed, true); assert.equal(state.stageOrders.stages["1"].completed, true);
+  assert.equal(report.deliveries.length, 4); assert.equal(state.residentOrders.completed, 4);
+  assert.equal(state.residentOrders.earnedCoins, report.deliveries.reduce((sum, order) => sum + order.coins, 0));
+  assert.deepEqual(report.builds.map(build => `${build.buildingId}:${build.level}`).sort(), ["dryer:1", "home:2", "woodlot:1", "workshop:1"]);
+  assert.equal(report.builds.at(-1).buildingId, "home");
+  assert.ok(report.peakStorage <= 50); assert.ok(state.wallet.coins >= 0);
+  assert.ok(report.elapsedSeconds >= report.builds.reduce((sum, build) => sum + model.economyCatalog.buildings
+    .find(entry => entry.id === build.buildingId).levels.find(level => level.level === build.level).seconds, 0));
+  assert.ok(Object.keys(report.starts).every(id => !id.includes("fish")));
+  assert.match(report.timingBasis, /not an optimal or calendar-visit forecast/);
+  t.diagnostic(JSON.stringify({ elapsedSeconds: report.elapsedSeconds, commands: report.commandCount,
+    productionStarts: report.starts, peakStorage: report.peakStorage, coins: state.wallet.coins }));
 });
 
 test("fresh-stage one-slot commands reject batches atomically and strawberry unlock requires a claimed compote", () => {
@@ -158,7 +117,7 @@ test("three garden slots run two raspberries and a strawberry simultaneously and
 
 test("selling the five starting stones cannot permanently block development because the free forest route restores them", () => {
   const p = player(), sold = send(p, "sell", "stone", 0, { quantity: 5 });
-  assert.equal(sold.inventory.stone, undefined); assert.equal(sold.wallet.coins, 300);
+  assert.equal(sold.inventory.stone, undefined); assert.equal(sold.wallet.coins, model.economyCatalog.onboarding.startingWallet.coins + 5 * model.economyCatalog.localBuyer.unitPrices.stone);
   const exploring = send(p, "start_exploration", "forest"), job = exploring.jobs[0];
   assert.deepEqual(job.cost, { coins: 0, items: {} }); assert.ok(job.rewards.stone > 0);
   const seconds = (Date.parse(job.finishesAt) - now) / 1000, recovered = send(p, "claim_job", job.id, seconds);

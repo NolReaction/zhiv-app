@@ -7,7 +7,7 @@ import { worldMissingRequirements, worldRecipeUnlockReason, worldRequirements } 
 export type MealConsumer = "hero" | "builder";
 
 export function availableMealRecipe(state: EconomyView, itemId: string) {
-  return state.catalog.recipes.find(recipe => (recipe.rewards[itemId] ?? 0) > 0
+  return state.catalog.recipes.find(recipe => !recipe.retired && (recipe.rewards[itemId] ?? 0) > 0
     && !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length
     && !worldRecipeUnlockReason(state, recipe));
 }
