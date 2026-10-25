@@ -66,8 +66,10 @@ for (const level of [1, 2]) test(`Tiled home level ${level}: both work spots del
 test("moving the authored work/storage/rest points changes actual walking and final log targets", () => {
   const scene = structuredClone(sceneAt());
   const work = authoredPosition(scene, "lopukh-work-tree-1"), storage = authoredPosition(scene, "lopukh-delivery"),
-    rest = authoredPosition(scene, "lopukh-rest"), shifted = point => ({ x: point.x - 4, y: point.y + 3 });
-  for (const marker of scene.destinations.filter(stop => marked(stop.id))) { marker.position.x -= 4; marker.position.y += 3; }
+    rest = authoredPosition(scene, "lopukh-rest"), shifted = point => ({ x: point.x + 4, y: point.y });
+  // The left work stop is near a ground contour; shift along its valid ground,
+  // rather than below that contour, while moving storage beyond its 3px radius.
+  for (const marker of scene.destinations.filter(stop => marked(stop.id))) marker.position.x += 4;
   const { state, rabbit, places } = setup(scene);
   assert.deepEqual(places.home.position, shifted(rest));
   assert.equal(beginWoodcutterCycle(rabbit, places, [], { chopSeconds: 0 }), true);
@@ -75,6 +77,25 @@ test("moving the authored work/storage/rest points changes actual walking and fi
   assert.ok(advance(state, scene, () => rabbit.woodwork.completedCycles === 1));
   assert.deepEqual(rabbit.woodwork.lastDelivery.position, shifted(storage));
   assert.equal(woodcutterSafeDrop(scene, places.navigation, storage, size), false);
+});
+
+test("authored side-of-house work stops keep Lopukh available without moving the edited markers", () => {
+  const scene = sceneAt(), before = structuredClone(scene), { state, rabbit, places } = setup(scene);
+  const house = scene.sites.find(site => site.id === "lopukh-home"), legacyFront = house.bounds.y + house.bounds.height + size * 45 / 48 + 2;
+  const markers = scene.destinations.filter(stop => marked(stop.id));
+  assert.equal(markers.length, 4);
+  assert.ok(markers.every(stop => stop.position.y < legacyFront), "the current authored zone intentionally stands beside the house");
+  assert.ok(places?.woodcutting);
+  assert.equal(rabbit.available, true, "an introduced rabbit must not disappear when valid work markers move to the side");
+  assert.deepEqual(places.home.position, authoredPosition(scene, "lopukh-rest"));
+  for (const stop of [...places.woodcutting.work, ...places.woodcutting.delivery, ...places.woodcutting.rest]) {
+    assert.deepEqual(stop.position, authoredPosition(scene, stop.id));
+    assert.ok(isWalkable(places.navigation, stop.position));
+  }
+  assert.equal(beginWoodcutterCycle(rabbit, places, [], { chopSeconds: 0 }), true);
+  assert.ok(advance(state, scene, () => rabbit.woodwork.completedCycles === 1));
+  assert.deepEqual(rabbit.woodwork.lastDelivery.position, authoredPosition(scene, "lopukh-delivery"));
+  assert.deepEqual(scene, before);
 });
 
 for (const prefix of ["lopukh-work", "lopukh-delivery", "lopukh-rest"]) {
@@ -120,6 +141,9 @@ test("a legacy map with no work-zone markers retains its safe outdoor work and d
   const { places } = setup(scene);
   assert.ok(places?.woodcutting.work.length); assert.ok(places.woodcutting.delivery.length);
   assert.ok(places.woodcutting.delivery.every(stop => stop.id.startsWith("lopukh-delivery:")));
+  const house = scene.sites.find(site => site.id === "lopukh-home"), front = house.bounds.y + house.bounds.height + size * 45 / 48 + 2;
+  assert.ok([...places.woodcutting.work, ...places.woodcutting.delivery, ...places.woodcutting.rest]
+    .every(stop => stop.position.y >= front), "only generated legacy targets keep the conservative front-yard heuristic");
   assert.equal(woodcutterSafeDrop(scene, places.navigation, places.woodcutting.work[0].position, size), true);
 });
 
