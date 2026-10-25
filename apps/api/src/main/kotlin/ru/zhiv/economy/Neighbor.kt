@@ -21,6 +21,7 @@ import java.time.ZoneOffset
     val maxLotsPerDay: Int = 2, val dailyBudgetCoins: Long = 300, val maxLotCoins: Long = 150,
     val globalDailyBudgetCoins: Long = 10000, val activeFromHourUtc: Int = 0, val activeUntilHourUtc: Int = 24,
 )
+@Serializable data class NeighborGarment(val id: String, val name: String, val slot: String, val description: String)
 @Serializable data class NeighborOffer(val id: String, val itemId: String, val quantity: Long, val totalPrice: Long, val purchased: Boolean = false)
 @Serializable data class NeighborCharacter(val id: String = "berest", val name: String, val description: String,
     val kind: String = "world_character", val world: GuestWorldScene)
@@ -53,6 +54,11 @@ interface NeighborRepository {
 }
 
 object NeighborRules {
+    val exclusiveWardrobe: List<NeighborGarment> by lazy {
+        NeighborRules::class.java.getResourceAsStream("/world/neighbor-wardrobe.json")!!.bufferedReader().use {
+            economyJson.decodeFromString<List<NeighborGarment>>(it.readText())
+        }
+    }
     val defaults: NeighborSettings by lazy {
         NeighborRules::class.java.getResourceAsStream("/world/neighbor-catalog.json")!!.bufferedReader().use {
             validate(economyJson.decodeFromString<NeighborSettings>(it.readText()))
@@ -74,7 +80,9 @@ object NeighborRules {
             s.buildings.keys != EconomyRules.catalog.buildings.map { it.id }.toSet() ||
             s.buildings.any { (id, level) -> level !in (if (id == "home") 1 else 0)..EconomyRules.catalog.buildings.single { it.id == id }.levels.maxOf { it.level } }) invalid()
         val clothes = mapOf("palette" to s.equipment.palette, "head" to s.equipment.head, "neck" to s.equipment.neck, "rod" to s.equipment.rod)
-        if (clothes.any { (slot, id) -> id != null && WorldRules.catalog.items.none { it.id == id && it.slot == slot } }) invalid()
+        if (clothes.any { (slot, id) -> id != null &&
+            WorldRules.catalog.items.none { it.id == id && it.slot == slot } &&
+            exclusiveWardrobe.none { it.id == id && it.slot == slot } }) invalid()
         return s
     }
     fun sellPrice(base: Long, quantity: Long, settings: NeighborSettings): Long {

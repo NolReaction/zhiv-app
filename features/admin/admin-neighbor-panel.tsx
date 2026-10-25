@@ -10,9 +10,18 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { validAdminReason } from "./admin-input";
 import { definitiveNeighborFailure, loadAdminNeighbor, writeAdminNeighbor, type AdminNeighborView } from "./admin-neighbor-api";
 import { readNeighborAttempt, saveNeighborAttempt, type NeighborAttempt } from "./admin-neighbor-journal";
+import { AdminNeighborPlayers } from "./admin-neighbor-players";
 import { AdminNeighborSettingsForm, AdminNeighborSettingsSummary } from "./admin-neighbor-settings";
 import adminStyles from "./admin-dashboard.module.css";
 import styles from "./admin-neighbor-panel.module.css";
+
+const neighborReason = (value: string | null) => value ? ({
+  paused: "Сосед отключён", auto_paused: "Автоматический выкуп на паузе", outside_hours: "Вне расписания работы",
+  not_active: "Лот уже закрыт", market_locked: "Рынок игрока не открыт", item_unavailable: "Товар недоступен для выкупа",
+  shop_resale: "Этот товар уже куплен в лавке соседа сегодня", price_too_high: "Цена выше разрешённого предела",
+  invalid_age: "Некорректное время выставления", too_early: "Пока рано для автоматического выкупа",
+  lots_limit: "Дневной лимит лотов исчерпан", daily_budget: "Дневной бюджет на игрока исчерпан", global_budget: "Общий дневной бюджет исчерпан",
+} as Record<string, string>)[value] ?? value : null;
 
 const publicIdPattern = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/;
 const itemName = (id: string) => economyCatalog.items.find(item => item.id === id)?.name ?? id;
@@ -22,8 +31,8 @@ const time = (value: string) => new Intl.DateTimeFormat("ru-RU", {
 const isDenied = (error: unknown): error is ApiError => error instanceof ApiError && (error.status === 401 || error.status === 403);
 const message = (error: unknown) => error instanceof ApiError ? error.message : "Ответ не получен. Проверьте соединение и повторите запрос.";
 
-export function AdminNeighborPanel({ actorPublicId, onAccessLost }: {
-  actorPublicId: string; onAccessLost: (error: ApiError) => void;
+export function AdminNeighborPanel({ actorPublicId, onAccessLost, local = false }: {
+  local?: boolean; actorPublicId: string; onAccessLost: (error: ApiError) => void;
 }) {
   const [data, setData] = useState<AdminNeighborView | null>(null);
   const [verified, setVerified] = useState(false);
@@ -121,7 +130,7 @@ export function AdminNeighborPanel({ actorPublicId, onAccessLost }: {
       {readError && <p className={styles.error} role="alert">{readError}</p>}
       {loading && <p className={styles.hint} role="status">Получаем настройки и журнал…</p>}
       {verified && data && <>
-        <p className={styles.hint}>Снимок {time(data.serverTime)} UTC · версия {data.version}. {data.pausedReason ?? "Автоматический выкуп работает по расписанию."}</p>
+        <p className={styles.hint}>Снимок {time(data.serverTime)} UTC · версия {data.version}. {data.pausedReason ?? (!data.settings.enabled ? "Сосед отключён." : !data.settings.autoBuyEnabled ? "Автоматический выкуп на паузе. Ручная покупка доступна по лимитам и расписанию." : "Автоматический выкуп работает по расписанию.")}</p>
         <p className={styles.hint}>Сегодня выкуплено на {data.usage.globalSpentCoins} из {data.settings.globalDailyBudgetCoins} монет общего бюджета.</p>
         <details><summary>Действующие настройки</summary><AdminNeighborSettingsSummary settings={data.settings} /></details>
       </>}
@@ -143,6 +152,7 @@ export function AdminNeighborPanel({ actorPublicId, onAccessLost }: {
         </section>
         <section className={adminStyles.panel}>
           <div className={styles.heading}><div><h3>Выкупить лот игрока</h3><p>Ручной выкуп пропускает ожидание. Цена, комиссия, дневные лимиты и бюджет проверяются сервером.</p></div></div>
+          <AdminNeighborPlayers actorPublicId={actorPublicId} local={local} disabled={searchLocked} onSelect={id => { setQuery(id); setTarget(id); setReload(value => value + 1); }} />
           <form className={styles.search} onSubmit={event => { event.preventDefault(); if (!searchLocked && publicIdPattern.test(query.trim())) { setTarget(query.trim()); setReload(value => value + 1); } }}>
             <label className={styles.field}>Публичный ID игрока<input value={query} placeholder="XXXX-XXXX-XXXX" maxLength={14} autoCapitalize="characters" spellCheck={false} disabled={searchLocked} onChange={event => setQuery(event.target.value.toUpperCase())} /></label>
             <button type="submit" className={styles.button} disabled={searchLocked || !publicIdPattern.test(query.trim())}>Найти лоты</button>
@@ -156,7 +166,7 @@ export function AdminNeighborPanel({ actorPublicId, onAccessLost }: {
               <TableBody>{data.pending.map(lot => <TableRow key={lot.id}>
                 <TableCell><strong>{itemName(lot.itemId)} × {lot.quantity}</strong><small>{time(lot.createdAt)} UTC</small><small>{lot.id}</small></TableCell>
                 <TableCell>{lot.totalPrice} монет<small>Продавцу: {lot.proceedsCoins ?? "не подтверждено"}</small></TableCell>
-                <TableCell>{lot.reason ?? (lot.eligible ? "Можно выкупить вручную" : "Выкуп недоступен")}</TableCell>
+                <TableCell>{neighborReason(lot.reason) ?? (lot.eligible ? "Можно выкупить вручную" : "Выкуп недоступен")}</TableCell>
                 <TableCell><button type="button" className={styles.button} disabled={locked || !lot.eligible || lot.proceedsCoins === undefined || !validAdminReason(reason)} onClick={() => {
                   if (lot.proceedsCoins === undefined) return;
                   openReview({ kind: "buy", body: { requestId: createUuidV4(), listingId: lot.id, playerPublicId: lot.sellerPublicId, expectedTotalPrice: lot.totalPrice, reason: reason.trim() },

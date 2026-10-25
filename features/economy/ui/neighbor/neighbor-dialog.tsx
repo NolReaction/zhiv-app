@@ -1,99 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
-import { ArrowLeft, Check, House, Leaf, Package, RefreshCw, Store, X } from "lucide-react";
+import { ArrowLeft, Check, Package, RefreshCw, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { NeighborView } from "@/features/economy/domain/neighbor-model";
 import { economyCatalog } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { WorldScene } from "@/features/world/scene/world-scene";
-import { readOnlyWorldScene, friendWorldStations } from "@/features/world/ui/visits/friend-world-state";
-import type { WorldPlace } from "@/features/world/scene/map-engine";
 import { createNeighborQuote, neighborQuoteReason, type NeighborQuote } from "./neighbor-quote";
 import { neighborStationProducts } from "./neighbor-station-products";
-import worldStyles from "@/features/world/world.module.css";
 import styles from "./neighbor-dialog.module.css";
 
-const settledArrival = { enabled: false, seen: true, onComplete() {} };
 const number = (value: number) => value.toLocaleString("ru-RU");
-type Props = { open: boolean; ownerPublicId: string; economy: EconomyController; timeZone: string; isOnline: boolean;
-  onClose: () => void; onReturnFocus?: () => void };
+type ShopProps = { open: boolean; neighbor: NeighborView; economy: EconomyController; timeZone: string;
+  refreshing: boolean; onRefresh: () => void; onClose: () => void; onReturnFocus: () => void };
 
-export function NeighborDialog({ open, ownerPublicId, economy, timeZone, isOnline, onClose, onReturnFocus }: Props) {
+/** The same nested storefront flow used while visiting a player's full-screen world. */
+export function NeighborShopDialog({ open, neighbor, economy, timeZone, refreshing, onRefresh, onClose, onReturnFocus }: ShopProps) {
   return <Dialog.Root open={open} onOpenChange={value => { if (!value) onClose(); }}>
     <Dialog.Portal><Dialog.Overlay className={styles.overlay} />
       <Dialog.Content className={styles.dialog} data-neighbor-dialog onEscapeKeyDown={event => event.stopPropagation()}
-        onCloseAutoFocus={event => { event.preventDefault(); onReturnFocus?.(); }}>
-        <NeighborContents key={ownerPublicId} ownerPublicId={ownerPublicId} economy={economy} timeZone={timeZone} isOnline={isOnline} onClose={onClose} />
+        onCloseAutoFocus={event => { event.preventDefault(); onReturnFocus(); }}>
+        <header className={styles.header}>
+          <button type="button" onClick={onClose} aria-label="К полянке соседа"><ArrowLeft size={20} aria-hidden="true" /></button>
+          <div><span className={styles.eyebrow}>Персонаж мира</span><Dialog.Title className={styles.title}>Лавка: {neighbor.character.name}</Dialog.Title></div>
+          <button type="button" data-neighbor-close onClick={onClose} aria-label="Закрыть лавку"><X size={20} aria-hidden="true" /></button>
+        </header>
+        <Dialog.Description className={styles.description}>Личная поставка лесного соседа. Покупки попадают в вашу кладовую.</Dialog.Description>
+        <NeighborShop key={neighbor.shop.cycleId} neighbor={neighbor} economy={economy} timeZone={timeZone} refreshing={refreshing} onRefresh={onRefresh} />
       </Dialog.Content>
     </Dialog.Portal>
   </Dialog.Root>;
-}
-
-function NeighborContents({ ownerPublicId, economy, timeZone, isOnline, onClose }: Omit<Props, "open" | "onReturnFocus">) {
-  const [page, setPage] = useState<"world" | "shop">("world");
-  const neighbor = economy.neighbor?.ownerPublicId === ownerPublicId ? economy.neighbor : null;
-  const refresh = economy.refreshNeighbor;
-  const [refreshing, setRefreshing] = useState(false);
-  const active = useRef(true), lastExpired = useRef<string | null>(null);
-  useLayoutEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
-  const load = useCallback(async () => {
-    if (!isOnline || !active.current) return;
-    setRefreshing(true);
-    try { await refresh(); } finally { if (active.current) setRefreshing(false); }
-  }, [refresh, isOnline]);
-  useEffect(() => {
-    if (!isOnline) return;
-    const kickoff = setTimeout(() => { void load(); }, 0);
-    const visible = () => { if (!document.hidden) void load(); };
-    window.addEventListener("focus", visible); document.addEventListener("visibilitychange", visible);
-    return () => { clearTimeout(kickoff); window.removeEventListener("focus", visible); document.removeEventListener("visibilitychange", visible); };
-  }, [isOnline, load]);
-  useEffect(() => {
-    if (!neighbor || !isOnline || refreshing || economy.busy || economy.uncertain || document.hidden
-      || economy.now < Date.parse(neighbor.shop.refreshAt) || lastExpired.current === neighbor.shop.cycleId) return;
-    lastExpired.current = neighbor.shop.cycleId;
-    void load();
-  }, [neighbor, isOnline, refreshing, economy.busy, economy.uncertain, economy.now, load]);
-  return <>
-    <header className={styles.header}>
-      <button type="button" onClick={page === "shop" ? () => setPage("world") : onClose} aria-label={page === "shop" ? "К полянке соседа" : "Вернуться в свой лес"}><ArrowLeft size={20} aria-hidden="true" /></button>
-      <div><span className={styles.eyebrow}>Персонаж мира</span><Dialog.Title className={styles.title}>{neighbor?.character.name ?? "Лесной сосед"}</Dialog.Title></div>
-      <button type="button" data-neighbor-close onClick={onClose} aria-label="Вернуться в свой лес"><X size={20} aria-hidden="true" /></button>
-    </header>
-    <Dialog.Description className={styles.description}>{neighbor?.character.description ?? "Лесной сосед с обжитой полянкой и небольшой лавкой."}</Dialog.Description>
-    {!isOnline ? <div className={styles.empty} role="status"><Leaf size={36} aria-hidden="true" /><h3>К соседу — после подключения</h3><p>Нужен интернет, чтобы увидеть его полянку и свежие товары.</p></div>
-      : !neighbor ? <div className={styles.empty} role="status"><Leaf size={36} aria-hidden="true" /><h3>{economy.neighborError ? "Не удалось зайти в гости" : "Идём к соседу…"}</h3><p>{economy.neighborError ?? "Скоро покажется лесная полянка."}</p><button type="button" disabled={refreshing} onClick={() => void load()}><RefreshCw size={16} aria-hidden="true" />Повторить</button></div>
-        : <>
-          {economy.neighborError && <p className={styles.error} role="alert">{economy.neighborError}</p>}
-          {page === "world" ? <NeighborWorld neighbor={neighbor} now={economy.now} timeZone={timeZone} onShop={() => setPage("shop")} />
-            : <NeighborShop key={neighbor.shop.cycleId} neighbor={neighbor} economy={economy} timeZone={timeZone} refreshing={refreshing} onRefresh={load} />}
-        </>}
-  </>;
-}
-
-function NeighborWorld({ neighbor, now, timeZone, onShop }: { neighbor: NeighborView; now: number; timeZone: string; onShop: () => void }) {
-  const scene = useMemo(() => readOnlyWorldScene(neighbor.character.world, `world-character:${neighbor.character.id}`, neighbor.serverTime), [neighbor]);
-  const top = useRef<HTMLElement>(null), bottom = useRef<HTMLElement>(null);
-  const [selected, setSelected] = useState<WorldPlace | null>(null);
-  const onPlace = useCallback((place: WorldPlace) => {
-    if (place === "market") onShop(); else setSelected(place);
-  }, [onShop]);
-  const stations = selected ? friendWorldStations(selected) : [];
-  return <div className={`${worldStyles.world} ${styles.world}`} data-neighbor-world={neighbor.character.id} aria-label={`Полянка: ${neighbor.character.name}`}>
-    <WorldScene readOnly state={scene.state} gifts={scene.gifts} economyBuildings={scene.buildings} economyProduction={scene.production}
-      economyConstruction={scene.construction} economyResidents={scene.residents} economyGarden={scene.garden}
-      residentArrival={settledArrival} merchantArrival={settledArrival} lopukhArrival={settledArrival}
-      owner={`world-character:${neighbor.character.id}`} now={now} timeZone={timeZone} bestStreakDays={0} wakeSignal={0}
-      onPlace={onPlace} topHud={top} bottomHud={bottom} hideJourneyStatus />
-    <header ref={top} className={styles.worldHeader} data-world-hud><span><House size={16} aria-hidden="true" />Дом {scene.state.houseLevel}</span><span>В гостях у лесного соседа</span></header>
-    <footer ref={bottom} className={styles.worldFooter} data-world-hud>
-      {selected && <aside className={styles.station} tabIndex={0} aria-label="Осмотр построек соседа"><div><strong>Хозяйство: {neighbor.character.name}</strong><button type="button" onClick={() => setSelected(null)} aria-label="Закрыть осмотр"><X size={16} aria-hidden="true" /></button></div>
-        {stations.map(id => <NeighborStationInfo key={id} world={neighbor.character.world} stationId={id} />)}</aside>}
-      <button type="button" className={styles.primary} onClick={onShop}><Store size={19} aria-hidden="true" />Лавка: {neighbor.character.name}<span>{neighbor.shop.offers.length} партии</span></button>
-    </footer>
-  </div>;
 }
 
 /** Visible building levels expose their catalog capabilities, without starting somebody else's work. */

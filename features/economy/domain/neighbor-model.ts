@@ -1,6 +1,7 @@
 import { z } from "zod";
 import defaults from "@/apps/api/src/main/resources/world/neighbor-catalog.json";
 import wardrobeCatalog from "@/apps/api/src/main/resources/world/catalog.json";
+import exclusiveWardrobe from "@/apps/api/src/main/resources/world/neighbor-wardrobe.json";
 import { hasUserTextControls } from "@/lib/user-text";
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyResultSchema } from "./model";
 
@@ -10,7 +11,10 @@ const uuid = z.string().uuid().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89a
 const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
 const itemId = z.string().min(1).max(128);
 const buildingIds = new Map(economyCatalog.buildings.map(building => [building.id, Math.max(...building.levels.map(level => level.level))]));
-const clothing = (slot: string) => z.string().refine(id => wardrobeCatalog.items.some(item => item.id === id && item.slot === slot), "Неизвестный предмет гардероба");
+/** These pieces belong to the world character; they never enter player shops or loot. */
+export const neighborExclusiveWardrobeItems = exclusiveWardrobe;
+export const neighborWardrobeItems = [...wardrobeCatalog.items, ...neighborExclusiveWardrobeItems];
+const clothing = (slot: string) => z.string().refine(id => neighborWardrobeItems.some(item => item.id === id && item.slot === slot), "Неизвестный предмет гардероба");
 
 export const neighborEquipmentSchema = z.object({
   palette: clothing("palette"), head: clothing("head").nullable(), neck: clothing("neck").nullable(),

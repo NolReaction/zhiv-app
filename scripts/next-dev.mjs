@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -44,8 +45,11 @@ async function main() {
   const { nextBin } = checkNextDevDependencies(projectRoot);
   await prepareEarthAssets(projectRoot);
   await writeAppBuildStatus(projectRoot, "development");
+  const localAdminPassword = process.env.DEV_ADMIN_PASSWORD?.trim() || randomBytes(18).toString("base64url");
+  if (localAdminPassword.length < 16) throw new Error("DEV_ADMIN_PASSWORD must contain at least 16 characters.");
+  console.info(`\nLocal administration: /admin\nLocal access code (this development process only): ${localAdminPassword}\n`);
   const child = spawn(process.execPath, [nextBin, ...nextDevArguments(process.argv.slice(2))], {
-    cwd: projectRoot, env: { ...process.env, NODE_ENV: "development", APP_BUILD_ID: "development", NEXT_PUBLIC_APP_BUILD_ID: "development" }, stdio: "inherit",
+    cwd: projectRoot, env: { ...process.env, DEV_ADMIN_PASSWORD: localAdminPassword, NODE_ENV: "development", APP_BUILD_ID: "development", NEXT_PUBLIC_APP_BUILD_ID: "development" }, stdio: "inherit",
   });
   const forwardInterrupt = () => child.kill("SIGINT");
   const forwardTermination = () => child.kill("SIGTERM");

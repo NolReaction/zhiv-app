@@ -1,35 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, LoaderCircle, RefreshCw, WifiOff } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { FriendWorldMarket } from "@/features/economy/ui/market/friend-world-market";
 import { FriendWorldView } from "@/features/world/ui/visits/friend-world-view";
 import type { GuestWorldTarget } from "./guest-world-model";
 import { useMarketAudio } from "@/features/world/audio/use-market-audio";
 import { useGuestWorld } from "./use-guest-world";
-import styles from "./guest-world-visit.module.css";
+import { WorldVisitStatus as VisitStatus } from "@/features/world/ui/visits/world-visit-status";
+import styles from "@/features/world/ui/visits/world-visit-shell.module.css";
 
 export type GuestWorldVisitProps = {
   ownerPublicId: string; target: GuestWorldTarget; economy: EconomyController;
   isOnline?: boolean; onSessionLost?: () => void; suspended?: boolean; timeZone: string;
   onReturn: () => void; onSceneReady?: () => void;
 };
-
-function VisitStatus({ text, loading = false, offline = false, onReturn, onRetry }: {
-  text: string; loading?: boolean; offline?: boolean; onReturn: () => void; onRetry?: () => void;
-}) {
-  return <div className={styles.status} data-guest-world-status>
-    <div className={styles.card}>
-      {loading ? <LoaderCircle className={styles.spinner} size={30} aria-hidden="true" /> : offline ? <WifiOff size={30} aria-hidden="true" /> : null}
-      <p role="status">{text}</p>
-      <div className={styles.actions}>
-        <button type="button" data-guest-return onClick={onReturn}><ArrowLeft size={17} aria-hidden="true" />В свой лес</button>
-        {onRetry && <button type="button" onClick={onRetry}><RefreshCw size={17} aria-hidden="true" />Попробовать ещё раз</button>}
-      </div>
-    </div>
-  </div>;
-}
 
 function LoadedGuestWorld({ ownerPublicId, target, economy, onSessionLost, timeZone, onReturn, onSceneReady }: GuestWorldVisitProps) {
   const visit = useGuestWorld(ownerPublicId, target, onSessionLost);

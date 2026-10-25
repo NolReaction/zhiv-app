@@ -14,7 +14,7 @@ import type { WorldController } from "@/features/world/state/use-world";
 import { useForestObservation, type ForestObservation } from "@/features/world/state/use-forest-observation";
 import { takeOverForestSession } from "@/features/world/state/forest-session";
 import { WorldMoodDialog } from "./world-mood-dialog";
-import { WorldProfileFriends, type WorldFriendsState } from "./world-profile-friends";
+import { WorldProfileFriends, type WorldFriendsState, type NeighborFriend } from "./world-profile-friends";
 import { WorldTapHintSetting } from "./world-tap-hint-setting";
 import styles from "./world-profile-menu.module.css";
 
@@ -36,6 +36,8 @@ type Props = {
   friends?: WorldFriendsState;
   onOpenPeople?: () => void;
   onVisitFriend?: (person: Person) => void;
+  onVisitNeighbor?: () => void;
+  neighbor?: NeighborFriend;
   onOpenHelp?: () => void;
   onOpenOnboarding?: () => void;
   onboardingStatus?: "started" | "completed" | "skipped" | null;
@@ -73,6 +75,13 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
   const observation = useForestObservation(presenceKey);
   const [activeTab, setActiveTab] = useState<WorldProfileTab>(props.initialTab === "mood" ? "profile" : props.initialTab ?? "profile");
   const [moodOpen, setMoodOpen] = useState(props.initialTab === "mood");
+  const readNeighbor = activeTab === "friends" && Boolean(props.onVisitNeighbor) && props.friends?.isOnline !== false;
+  const refreshNeighbor = props.economy.refreshNeighbor;
+  useEffect(() => {
+    if (!readNeighbor) return;
+    const timer = setTimeout(() => { void refreshNeighbor(); }, 0);
+    return () => clearTimeout(timer);
+  }, [readNeighbor, refreshNeighbor, ownerPublicId]);
   const [guideOpen, setGuideOpen] = useState(false);
   const moodTrigger = useRef<HTMLButtonElement>(null);
   const [callPulse, setCallPulse] = useState(0);
@@ -102,7 +111,7 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
 /** Pure contents keep map focus ownership separate from data subscriptions. */
 export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver,
   rewards, achievements, callPulse = 0, initialTab = "profile", activeTab = initialTab === "mood" ? "profile" : initialTab, onTabChange, idPrefix = "world-profile",
-  friends, onOpenPeople, onVisitFriend, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef, tapHintSetting }: Omit<Props, "presenceKey" | "ownerPublicId"> & {
+  friends, onOpenPeople, onVisitFriend, onVisitNeighbor, neighbor, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef, tapHintSetting }: Omit<Props, "presenceKey" | "ownerPublicId"> & {
   observation: ForestObservation | null;
   guideOpen?: boolean;
   onToggleGuide?: () => void;
@@ -182,7 +191,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
           </button>}
         </div>}
       </>}
-      {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} />}
+      {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onVisitNeighbor={onVisitNeighbor} neighbor={neighbor} />}
       {activeTab === "settings" && <><AudioSettingsPanel tone="forest" />{tapHintSetting}</>}
     </div>
     {!memoryWarning && memory}

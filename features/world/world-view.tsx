@@ -70,13 +70,12 @@ import { WorldOnboardingReward } from "@/features/world/ui/onboarding/world-onbo
 import { useMarketUnlockOnboarding } from "@/features/world/state/use-market-unlock-onboarding";
 import { MarketUnlockOnboarding } from "@/features/world/ui/onboarding/market-unlock-onboarding";
 import { useWorldMarketSales } from "@/features/world/state/use-world-market-sales";
-import { NeighborDialog } from "@/features/economy/ui/neighbor/neighbor-dialog";
 
 type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "help" | "shop" | "orders";
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
-export default function WorldView({ open, suspended = false, world, economy, mailbox, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onVisitFriend, onDevBotsChanged, onDevVisitBot, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+export default function WorldView({ open, suspended = false, world, economy, mailbox, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onVisitFriend, onOpenNeighbor, onDevBotsChanged, onDevVisitBot, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const currentOwner = useRef(ownerPublicId);
   const achievementRewards = useGameRewards(ownerPublicId, open && !suspended && isOnline !== false, onSessionLost);
   const availableAchievements = achievementRewardSummary(achievementRewards.data, ownerPublicId);
@@ -97,9 +96,6 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const sectionsReady = Boolean(open && economy.snapshot && onboarding.loaded && observation?.memory.sync?.mode !== "other-device");
   const mainCourseActive = onboarding.loaded && !onboarding.isPaused && (!onboarding.progress || onboarding.progress.status === "started");
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [neighborOwner, setNeighborOwner] = useState<string | null>(null);
-  const neighborOpen = neighborOwner === ownerPublicId && open && !suspended;
-  const neighborReturn = useRef<HTMLElement | null>(null);
   const [shopPage, setShopPage] = useState<CurrencyShopPage>("starters");
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const marketOpen = panel === "economy" && (economyTab === "market" || economyTab === "barter");
@@ -214,7 +210,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const merchantPresentation = useMemo(() => ({ seen: merchantArrival.seen, enabled: merchantArrival.enabled, onComplete: merchantArrival.complete }),
     [merchantArrival.seen, merchantArrival.enabled, merchantArrival.complete]);
   const dailyAutoPromptAllowed = useWorldRewardPromptGate(ownerPublicId, onboarding,
-    Boolean(!open || panel || quickMenu || selection || quickUpgrade || residentOpen || charactersOpen || neighborOpen
+    Boolean(!open || panel || quickMenu || selection || quickUpgrade || residentOpen || charactersOpen
       || marketGuide.open || lopukhArrival.open || lopukhArrival.enabled || minerArrival.open || minerArrival.enabled || merchantArrival.open || merchantArrival.enabled || economy.busy || economy.uncertain || world.busy || world.uncertain), worldElement);
   const replayOnboarding = () => {
     navigatingHelp.current = panel === "help";
@@ -247,8 +243,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const clearObject = useCallback(() => { selectedId.current = null; selectionPosition.publish(null); setSelection(null); setShopGalleryOwner(null); }, [selectionPosition]);
   const openNeighbor = () => {
     if (currentOwner.current !== ownerPublicId) return;
-    neighborReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(false); setNeighborOwner(ownerPublicId);
+    clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(false); onOpenNeighbor?.();
   };
   const openMailbox = () => {
     if (currentOwner.current !== ownerPublicId || mailbox?.ownerPublicId !== ownerPublicId) return;
@@ -330,7 +325,6 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     escapeHandlerRef.current = () => {
       if (document.querySelector("[data-activity-gate]")) return true;
       if (pauseFocusedGuide()) return true;
-      if (neighborOpen) { setNeighborOwner(null); return true; }
       const moodClose = document.querySelector<HTMLButtonElement>("[data-world-mood-close]");
       if (moodClose) { moodClose.click(); return true; }
       const audioClose = document.querySelector<HTMLButtonElement>("[data-audio-settings-close]");
@@ -348,7 +342,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       return false;
     };
     return () => { escapeHandlerRef.current = null; };
-  }, [escapeHandlerRef, quickMenu, selection, closeObject, closeQuick, dailyOpen, ownerPublicId, neighborOpen]);
+  }, [escapeHandlerRef, quickMenu, selection, closeObject, closeQuick, dailyOpen, ownerPublicId]);
   const onObjectSelection = useCallback((next: MapObjectSelection | null) => {
     if (next === null) { selectedId.current = null; selectionPosition.publish(null); setSelection(null); }
     else if (selectedId.current === next.objectId) selectionPosition.publish(next);
@@ -579,7 +573,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? economyTab === "market" ? Store : Package : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene tutorialActive={Boolean(open && !suspended && !neighborOpen && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended || neighborOpen} audioSuppressed={marketOpen || neighborOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} audioSuppressed={marketOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest} guidePlace={guidePlace}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
@@ -641,13 +635,12 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       {open && quickSection && <SectionGuide key={`${ownerPublicId}:${quickSection}`} owner={ownerPublicId} section={quickSection} enabled={quickGuideEnabled && !pantryFishSaleOpen} targetRoot={quickFrame} />}
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
         {quickMenu === "expeditions" && economy.snapshot && <ConstructionGoalSummary state={economy.snapshot} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} compact />}
-        {quickMenu === "profile" && <WorldProfileMenu key={`${ownerPublicId}:${profileEntry.request}`} ownerPublicId={ownerPublicId} initialTab={profileEntry.tab} onOpenOnboarding={replayOnboarding} onboardingStatus={onboarding.progress?.status ?? null} friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onOpenHelp={() => openContextHelp(undefined, "mochlik-life")} onOpenExpeditions={() => openExpeditions()} world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
+        {quickMenu === "profile" && <WorldProfileMenu key={`${ownerPublicId}:${profileEntry.request}`} ownerPublicId={ownerPublicId} initialTab={profileEntry.tab} onOpenOnboarding={replayOnboarding} onboardingStatus={onboarding.progress?.status ?? null} friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onVisitNeighbor={onOpenNeighbor ? openNeighbor : undefined} neighbor={economy.neighbor?.ownerPublicId === ownerPublicId ? { name: economy.neighbor.character.name, equipment: economy.neighbor.character.world.equipment } : undefined} onOpenHelp={() => openContextHelp(undefined, "mochlik-life")} onOpenExpeditions={() => openExpeditions()} world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
           achievements={<GameAchievementsButton inWorld key={ownerPublicId} ownerPublicId={ownerPublicId} isOnline={isOnline !== false} onSessionLost={onSessionLost} onRewardsClaimed={() => { void economy.refresh(); }} />}
           rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onFishSaleOpenChange={onFishSaleOpenChange} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: openStation, explore: () => openQuick("expeditions") }} onReturnToGift={giftPantryOwner === ownerPublicId ? returnToGift : undefined} onExplore={() => openQuick("expeditions")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
-          <button type="button" data-neighbor-world-entry aria-haspopup="dialog" onClick={openNeighbor}><Leaf size={18} aria-hidden="true" /><span className={styles.moreLabel}>Лесной сосед<small>Персонаж мира · полянка и лавка</small></span></button>
           {mailbox?.ownerPublicId === ownerPublicId && <button type="button" data-world-mailbox-trigger aria-haspopup="dialog" onClick={openMailbox}>
             <Mail size={18} aria-hidden="true" /><span className={styles.moreLabel}>Почта<small>{mailUnread > 0 ? `Непрочитанных: ${mailUnread}` : "Письма автора и события"}</small></span></button>}
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
@@ -658,12 +651,6 @@ export default function WorldView({ open, suspended = false, world, economy, mai
         </div>}
       </div>
     </section>}
-    <NeighborDialog key={`neighbor:${ownerPublicId}`} open={neighborOpen} ownerPublicId={ownerPublicId} economy={economy} timeZone={timeZone} isOnline={isOnline !== false}
-      onClose={() => setNeighborOwner(null)} onReturnFocus={() => {
-        if (currentOwner.current !== ownerPublicId) return;
-        if (neighborReturn.current?.isConnected) neighborReturn.current.focus({ preventScroll: true });
-        else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="more"]')?.focus({ preventScroll: true });
-      }} />
     <DailyRewardsDialog key={`daily-rewards:${ownerPublicId}`} ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline} onSessionLost={onSessionLost}
       autoPromptAllowed={dailyAutoPromptAllowed}
       open={dailyOpen} onOpenChange={setDailyOpen} onOpenPantry={openGiftPantry} onReturnFocus={() => {

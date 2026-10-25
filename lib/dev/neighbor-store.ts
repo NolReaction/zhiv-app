@@ -3,16 +3,16 @@ import { marketDay } from "@/features/economy/domain/market-rules";
 import { freshNeighborUsage, type NeighborUsage } from "@/features/economy/domain/neighbor-rules";
 
 type Cycle = { day: string; offers: NeighborOffer[]; boughtItemIds: string[] };
-type NeighborHistory = { id: string; listingId: string; sellerPublicId: string; itemId: string; quantity: number; totalPrice: number; proceedsCoins: number; createdAt: string; source: "auto" | "manual" };
+type NeighborHistory = { id: string; listingId: string; sellerPublicId: string; itemId: string; quantity: number; totalPrice: number; proceedsCoins: number; createdAt: string; source: "auto" | "manual"; requestId?: string };
 type NeighborData = {
-  settings: NeighborSettings; cycles: Map<string, Cycle>; usage: Map<string, NeighborUsage>;
+  settings: NeighborSettings; version: number; cycles: Map<string, Cycle>; usage: Map<string, NeighborUsage>;
   globalUsage: NeighborUsage; experienced: Set<string>; boughtItems: Map<string, { day: string; ids: string[] }>;
   history: NeighborHistory[]; timer?: ReturnType<typeof setInterval>;
   scanCursor?: string;
 };
 const host = globalThis as typeof globalThis & { __zhivDevNeighborStore?: NeighborData };
 function data(): NeighborData {
-  return host.__zhivDevNeighborStore ??= { settings: structuredClone(neighborDefaultSettings), cycles: new Map(), usage: new Map(),
+  return host.__zhivDevNeighborStore ??= { settings: structuredClone(neighborDefaultSettings), version: 0, cycles: new Map(), usage: new Map(),
     globalUsage: freshNeighborUsage(Date.now()), experienced: new Set(), boughtItems: new Map(), history: [] };
 }
 export function resetDevNeighborStoreForTests() {
@@ -20,8 +20,14 @@ export function resetDevNeighborStoreForTests() {
   delete host.__zhivDevNeighborStore;
 }
 export function devNeighborSettings(): NeighborSettings { return structuredClone(data().settings); }
-/** Local trusted test/QA adapter; web administrative routes deliberately never expose it. */
-export function configureDevNeighbor(settings: NeighborSettings): void { data().settings = neighborSettingsSchema.parse(settings); }
+/** The local admin route authenticates before this shared test/DEV settings adapter. */
+export function configureDevNeighbor(settings: NeighborSettings): void {
+  const value = data(); value.settings = neighborSettingsSchema.parse(settings); value.version = (value.version ?? 0) + 1;
+}
+export function devNeighborVersion(): number { return data().version ?? 0; }
+export function devNeighborHistory(owner?: string): NeighborHistory[] {
+  return structuredClone(data().history.filter(row => !owner || row.sellerPublicId === owner).slice(-50).reverse());
+}
 export function devNeighborCycle(owner: string, now: number): Cycle | undefined {
   const cycle = data().cycles.get(owner);
   return cycle?.day === marketDay(now) ? cycle : undefined;

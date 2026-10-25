@@ -656,6 +656,11 @@ export function getDevIdentity(token: string | undefined): MeResponse | null {
   return user ? asMe(user) : null;
 }
 
+/** Server-only directory for the explicitly unlocked local administrator. Never includes session tokens. */
+export function getDevAdminDirectory() {
+  return [...store().users.values()].map(user => ({ publicId: user.publicId, displayName: user.displayName }));
+}
+
 /** Private server credentials; never serialize this record into a DEV/API response. */
 export function getDevOwnedBots(token: string | undefined): readonly OwnedDevBot[] {
   if (process.env.NODE_ENV !== "development") return [];

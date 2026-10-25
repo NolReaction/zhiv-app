@@ -17,6 +17,8 @@ import { AdminIncidentsPanel } from "./admin-incidents-panel";
 import { AdminRequestTrafficPanel } from "./admin-request-traffic-panel";
 import { AdminApiUsagePanel } from "./admin-api-usage-panel";
 import { AdminNeighborPanel } from "./admin-neighbor-panel";
+import { AdminLocalUnlock } from "./admin-local-unlock";
+import { AdminLocalDashboard } from "./admin-local-dashboard";
 import Link from "next/link";
 import { AdminRewardsDialog } from "./admin-rewards-dialog";
 import { GAME_ITEMS, GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
@@ -459,6 +461,8 @@ export function AdminDashboard() {
   const currentTime = currentData?.serverTime;
   const validConfirmation = Boolean(revocation && revocation.confirmation.trim() === revocation.target.publicId && validAdminReason(revocation.reason));
 
+  if (accessStatus === "allowed" && access?.mode === "local") return <AdminLocalDashboard access={access} onAccessLost={closeAccess} />;
+
   if (accessStatus !== "allowed" || !access) return (
     <main className={styles.shell}><div className={styles.accessGate}>
       <Link href="/" className={styles.backLink}><ArrowLeft size={18} />В приложение</Link>
@@ -466,6 +470,7 @@ export function AdminDashboard() {
       <p className={styles.eyebrow}>Я живой / Управление</p>
       <h1>{accessStatus === "loading" ? "Проверяем доступ" : accessStatus === "signed-out" ? "Войдите в свой аккаунт" : accessStatus === "forbidden" ? "Доступ закрыт" : "Панель временно недоступна"}</h1>
       <p>{accessStatus === "loading" ? "Подключаемся к панели управления…" : accessStatus === "signed-out" ? "Откройте приложение, войдите в аккаунт администратора и вернитесь на /admin в этом же браузере." : accessStatus === "forbidden" ? "У этого аккаунта нет прав на просмотр панели управления." : loadError}</p>
+      {process.env.NODE_ENV === "development" && accessStatus === "forbidden" && <AdminLocalUnlock onUnlocked={requestRefresh} />}
       <div className={styles.gateActions}>{accessStatus === "signed-out" && <Link className={styles.primaryButton} href="/">Открыть приложение<ArrowUpRight size={18} /></Link>}{accessStatus !== "loading" && <button type="button" className={styles.button} onClick={requestRefresh}><Activity size={18} />Проверить снова</button>}</div>
     </div></main>
   );

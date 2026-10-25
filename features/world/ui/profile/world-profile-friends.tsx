@@ -2,6 +2,8 @@
 
 import { useId, useState } from "react";
 import { ChevronRight, RefreshCw, Search, Star, UserRoundPlus, Users, X } from "lucide-react";
+import { MochlikPortrait } from "@/features/mochlik/mochlik-portrait";
+import { neighborDefaultSettings, type NeighborSettings } from "@/features/economy/domain/neighbor-model";
 import { PlayerName } from "@/components/player-name";
 import type { PeopleResponse, Person } from "@/lib/check-in-contract";
 import { matchesPersonSearch } from "@/lib/people-search";
@@ -17,10 +19,14 @@ export type WorldFriendsState = {
   onRefresh: () => void | Promise<void>;
 };
 
+export type NeighborFriend = { name: string; equipment: NeighborSettings["equipment"] };
+
 type FriendsProps = {
   friends?: WorldFriendsState;
   onOpenPeople?: () => void;
   onVisitFriend?: (person: Person) => void;
+  onVisitNeighbor?: () => void;
+  neighbor?: NeighborFriend;
 };
 
 function loadedAt(value: number | null | undefined): string | null {
@@ -52,7 +58,7 @@ export function profileFriends(people: readonly Person[], query: string): Person
 }
 
 /** Controlled content keeps all network state and refreshes with the existing People controller. */
-export function WorldProfileFriendsContent({ friends, onOpenPeople, onVisitFriend, query, onQueryChange, searchId }: FriendsProps & {
+export function WorldProfileFriendsContent({ friends, onOpenPeople, onVisitFriend, onVisitNeighbor, neighbor = neighborDefaultSettings, query, onQueryChange, searchId }: FriendsProps & {
   query: string;
   onQueryChange: (value: string) => void;
   searchId: string;
@@ -60,12 +66,16 @@ export function WorldProfileFriendsContent({ friends, onOpenPeople, onVisitFrien
   const data = friends?.data;
   const people = data?.people ?? [];
   const filtered = profileFriends(people, query);
+  const count = people.length + Number(Boolean(onVisitNeighbor));
+  const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("ru-RU").replaceAll("ё", "е").trim();
+  const neighborVisible = Boolean(onVisitNeighbor && normalize(query).split(/\s+/).filter(Boolean)
+    .every(word => normalize(`${neighbor.name} лесной сосед персонаж мира`).includes(word)));
   const status = friendStatus(friends);
   const incoming = data?.incomingRequests.length ?? 0;
   const outgoing = data?.outgoingRequests.length ?? 0;
   return <section className={styles.friends} aria-label="Друзья">
     <header className={styles.header}>
-      <h3><Users size={18} aria-hidden="true" />Друзья{data && <span className={styles.count}>{people.length}</span>}</h3>
+      <h3><Users size={18} aria-hidden="true" />Друзья{(data || onVisitNeighbor) && <span className={styles.count}>{count}</span>}</h3>
       {friends && <button type="button" className={styles.refresh} disabled={friends.loading || friends.isOnline === false}
         onClick={() => void friends.onRefresh()} aria-label="Обновить список друзей" title="Обновить список друзей">
         <RefreshCw size={17} aria-hidden="true" />
@@ -74,7 +84,7 @@ export function WorldProfileFriendsContent({ friends, onOpenPeople, onVisitFrien
 
     {status && <p className={styles.status} role="status" data-warning={Boolean(friends?.error) || friends?.isOnline === false || undefined}>{status}</p>}
 
-    {data && people.length > 0 && <>
+    {((data && people.length > 0) || onVisitNeighbor) && <>
       <div className={styles.search}>
         <label className={styles.searchLabel} htmlFor={searchId}>Поиск по имени или вашей подписи</label>
         <div className={styles.searchField}>
@@ -86,7 +96,16 @@ export function WorldProfileFriendsContent({ friends, onOpenPeople, onVisitFrien
           </button>}
         </div>
       </div>
-      {filtered.length > 0 ? <ul className={styles.list} aria-label="Список друзей">
+      {filtered.length > 0 || neighborVisible ? <ul className={styles.list} aria-label="Список друзей">
+        {neighborVisible && <li className={`${styles.person} ${styles.neighbor}`} data-world-neighbor-friend="berest">
+          <button type="button" className={styles.visit} disabled={friends?.isOnline === false}
+            aria-label={`В гости к ${neighbor.name}`} onClick={onVisitNeighbor} data-audio-cue="ui.open">
+            <span className={`${styles.avatar} ${styles.neighborAvatar}`}><MochlikPortrait appearance={neighbor.equipment} className={styles.portrait} /></span>
+            <span className={styles.names}><strong>{neighbor.name}</strong><span>Персонаж мира · Лесной сосед</span>
+              <small>{friends?.isOnline === false ? "Нужен интернет" : "В гости"}</small></span>
+            <ChevronRight className={styles.arrow} size={17} aria-hidden="true" />
+          </button>
+        </li>}
         {filtered.map(person => {
           const name = personDisplayName(person);
           const hasNickname = Boolean(person.nickname && person.nickname !== person.user.displayName);
@@ -110,7 +129,7 @@ export function WorldProfileFriendsContent({ friends, onOpenPeople, onVisitFrien
       </ul> : <p className={styles.empty} role="status">Никого не нашли. Попробуйте имя или вашу подпись.</p>}
     </>}
 
-    {data && people.length === 0 && <p className={styles.empty}>Друзей пока нет. Добавьте человека по ID или приглашению в разделе «Люди».</p>}
+    {data && people.length === 0 && !onVisitNeighbor && <p className={styles.empty}>Друзей пока нет. Добавьте человека по ID или приглашению в разделе «Люди».</p>}
     {(incoming > 0 || outgoing > 0) && <p className={styles.requests}>
       {incoming > 0 && <span>Входящих заявок: {incoming}</span>}
       {outgoing > 0 && <span>Отправлено заявок: {outgoing}</span>}

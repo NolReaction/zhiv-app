@@ -4,12 +4,29 @@ import kotlinx.serialization.encodeToString
 import org.junit.jupiter.api.Test
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.world.WorldEquipment
+import ru.zhiv.world.WorldRules
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.*
 
 class NeighborRulesTest {
     private val settings get() = NeighborRules.defaults
+
+    @Test fun `personal neighbor outfit is valid but never enters player clothing or reward catalogs`() {
+        val outfit = settings.equipment
+        assertEquals("berest_birch_moss", outfit.palette)
+        assertEquals("berest_trail_hat", outfit.head)
+        assertEquals("berest_lantern_scarf", outfit.neck)
+        assertEquals(setOf("palette", "head", "neck"), NeighborRules.exclusiveWardrobe.map { it.slot }.toSet())
+        NeighborRules.validate(settings)
+        NeighborRules.validate(settings.copy(equipment = WorldEquipment(palette = "moss", head = "leaf_cap", neck = "amber_scarf")))
+        for (item in NeighborRules.exclusiveWardrobe) {
+            assertTrue(WorldRules.catalog.items.none { it.id == item.id }, "NPC things are not player wardrobe items")
+            assertTrue(EconomyRules.catalog.items.none { it.id == item.id }, "NPC things are not economic items")
+        }
+        assertFailsWith<AuthFailure> { NeighborRules.validate(settings.copy(equipment = outfit.copy(head = outfit.neck))) }
+        assertFailsWith<AuthFailure> { NeighborRules.validate(settings.copy(equipment = outfit.copy(rod = outfit.head))) }
+    }
 
     @Test fun `shipped neighbor is a developed world character with bounded support rather than unlimited market liquidity`() {
         val config = NeighborRules.validate(settings)

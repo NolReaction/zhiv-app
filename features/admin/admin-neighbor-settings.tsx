@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { economyCatalog } from "@/features/economy/domain/model";
-import { neighborSettingsSchema, neighborStockItems, type NeighborSettings } from "@/features/economy/domain/neighbor-model";
-import { worldCatalog } from "@/features/world/domain/model";
+import { neighborSettingsSchema, neighborStockItems, neighborWardrobeItems, type NeighborSettings } from "@/features/economy/domain/neighbor-model";
+import { MochlikPortrait } from "@/features/mochlik/mochlik-portrait";
 import { validAdminReason } from "./admin-input";
 import styles from "./admin-neighbor-panel.module.css";
 
@@ -24,7 +24,7 @@ const numericFields: { key: keyof NeighborSettings; label: string; min: number; 
 const equipmentLabels = { palette: "Окрас", head: "Головной убор", neck: "Шарф", rod: "Удочка на витрине" };
 const itemName = (id: string) => economyCatalog.items.find(item => item.id === id)?.name ?? id;
 const buildingName = (id: string) => economyCatalog.buildings.find(building => building.id === id)?.name ?? id;
-const garmentName = (id: string | null) => worldCatalog.items.find(item => item.id === id)?.name ?? id ?? "Не выбрано";
+const garmentName = (id: string | null) => neighborWardrobeItems.find(item => item.id === id)?.name ?? id ?? "Не выбрано";
 
 export function AdminNeighborSettingsSummary({ settings }: { settings: NeighborSettings }) {
   return <dl className={styles.summary}>
@@ -61,13 +61,14 @@ export function AdminNeighborSettingsForm({ settings, disabled, onReview }: {
         <label><input type="checkbox" checked={draft.enabled} onChange={event => change("enabled", event.target.checked)} />Сосед и лавка включены</label>
         <label><input type="checkbox" checked={draft.autoBuyEnabled} onChange={event => change("autoBuyEnabled", event.target.checked)} />Автоматический выкуп включён</label>
       </div>
+      <div className={styles.appearance}><MochlikPortrait appearance={draft.equipment} label={`Предпросмотр: ${draft.name}`} /><p className={styles.hint}>Предпросмотр внешности. Особые вещи Береста отмечены в списке; они принадлежат персонажу мира.</p></div>
       <div className={styles.grid}>
         <label className={styles.field}>Имя персонажа<input value={draft.name} maxLength={40} onChange={event => change("name", event.target.value)} /></label>
         <label className={styles.field}>Описание<textarea value={draft.description} maxLength={240} onChange={event => change("description", event.target.value)} /></label>
         {(Object.keys(equipmentLabels) as (keyof typeof equipmentLabels)[]).map(slot => <label className={styles.field} key={slot}>{equipmentLabels[slot]}
           <select value={draft.equipment[slot] ?? ""} onChange={event => change("equipment", { ...draft.equipment, [slot]: event.target.value || null })}>
             {slot !== "palette" && <option value="">Не выбрано</option>}
-            {worldCatalog.items.filter(item => item.slot === slot).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {neighborWardrobeItems.filter(item => item.slot === slot).map(item => <option key={item.id} value={item.id}>{item.name}{item.id.startsWith("berest_") ? " · Особая вещь Береста" : ""}</option>)}
           </select>
         </label>)}
         {economyCatalog.buildings.map(building => <label key={building.id} className={styles.field}>{building.name}

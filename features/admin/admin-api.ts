@@ -11,7 +11,7 @@ const count = z.number().int().nonnegative().safe();
 const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
 const instant = z.string().datetime();
 const page = { serverTime: instant, total: count, offset: count, limit: z.number().int().min(1).max(100) };
-const accessSchema = z.object({ publicId, displayName: z.string(), serverTime: instant });
+const accessSchema = z.object({ publicId, displayName: z.string(), serverTime: instant, mode: z.literal("local").optional() });
 const retentionSchema = z.object({ eligible: count, returned: count, rate: z.number().min(0).max(100).nullable() });
 const overviewSchema = z.object({
   serverTime: instant, days: z.union([z.literal(7), z.literal(30), z.literal(90)]),
@@ -62,7 +62,7 @@ export async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTy
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
     const response = await fetch(`/api/v1/admin/${path}`, {
-      method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
+      method: body ? "POST" : "GET", mode: "same-origin", credentials: "same-origin", cache: "no-store", signal: controller.signal,
       headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });

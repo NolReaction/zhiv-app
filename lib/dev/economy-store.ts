@@ -25,11 +25,11 @@ import { tradeRelationsState } from "@/features/economy/domain/trade-relations";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
-import { neighborCommandSchema, type NeighborCommand, type NeighborView } from "@/features/economy/domain/neighbor-model";
+import { neighborCommandSchema, type NeighborCommand, type NeighborView, type NeighborAdminView } from "@/features/economy/domain/neighbor-model";
 import { neighborActiveHour, neighborListingReason, neighborOfferItems, neighborOfferPrice, neighborShopReason } from "@/features/economy/domain/neighbor-rules";
 import { devNeighborSettings, devNeighborCycle, saveDevNeighborCycle, markDevNeighborOfferBought, devNeighborBoughtItems, devNeighborUsage,
   devNeighborGlobalSpent, devNeighborExperienced, markDevNeighborExperienced, recordDevNeighborSale, removeDevNeighborOwner,
-  resetDevNeighborStoreForTests, ensureDevNeighborTimer, devNeighborScanCursor, saveDevNeighborScanCursor } from "./neighbor-store";
+  resetDevNeighborStoreForTests, ensureDevNeighborTimer, devNeighborScanCursor, saveDevNeighborScanCursor, devNeighborHistory, devNeighborVersion } from "./neighbor-store";
 
 type Receipt = { signature: string; message: string; acceptedRevision: number; action?: ReceiptCommand["action"] };
 type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand | NeighborCommand;
@@ -602,7 +602,7 @@ export function commandDevEconomyNeighbor(token: string | undefined, input: Neig
 }
 
 /** One bounded synchronous transaction per lot, shared by scheduled and trusted manual callers. */
-export function buyDevNeighborListing(listingId: string, options: { now?: number; manual?: boolean; expectedTotalPrice?: number; playerPublicId?: string } = {}): boolean {
+export function buyDevNeighborListing(listingId: string, options: { now?: number; manual?: boolean; expectedTotalPrice?: number; playerPublicId?: string; requestId?: string } = {}): boolean {
   const now = options.now ?? Date.now(), listing = store().listings.get(listingId.toLowerCase());
   if (!listing) return false;
   if (options.playerPublicId && listing.sellerPublicId !== options.playerPublicId) return false;
@@ -628,9 +628,36 @@ export function buyDevNeighborListing(listingId: string, options: { now?: number
   store().turnover.set(listing.sellerPublicId, { ...turnover, salesUsed: turnover.salesUsed + traded });
   recordDevNeighborSale({ id: crypto.randomUUID(), listingId: listing.id, sellerPublicId: listing.sellerPublicId,
     itemId: listing.itemId, quantity: listing.quantity, totalPrice: listing.totalPrice, proceedsCoins: proceeds,
-    createdAt: new Date(now).toISOString(), source: options.manual ? "manual" : "auto" }, now);
+    createdAt: new Date(now).toISOString(), source: options.manual ? "manual" : "auto", ...(options.requestId ? { requestId: options.requestId } : {}) }, now);
   awardDevMarketSale(listing.sellerPublicId, now);
   return true;
+}
+
+/** Read existing local state only; listing settlement remains shared with the automatic worker. */
+export function getDevAdminNeighbor(token: string, target?: string, now = Date.now()): NeighborAdminView {
+  const settings = devNeighborSettings(), user = target ? lookupDevUser(token, target) : null;
+  if (target && user?.kind !== "ok") fail("NEIGHBOR_PLAYER_NOT_FOUND", "Профиль не найден", 404);
+  const usage = target ? devNeighborUsage(target, now) : { usedLots: 0, spentCoins: 0 };
+  const globalSpentCoins = devNeighborGlobalSpent(now), saved = store(), seller = target ? saved.profiles.get(target) : undefined;
+  const pending = [...saved.listings.values()].filter(row => row.status === "active" && row.sellerPublicId === target)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)).slice(0, 100).map(listing => {
+      let reason = !seller ? "Хозяйство не открыто" : neighborListingReason(listing, knownMarketState(target!, seller.state), settings, {
+        now, manual: true, firstSale: !devNeighborExperienced(target!), usage: devNeighborUsage(target!, now),
+        globalSpentCoins, boughtItemIds: devNeighborBoughtItems(target!, now),
+      });
+      if (!reason && seller && (seller.revision >= Number.MAX_SAFE_INTEGER
+        || tradeTurnover(target!, now).salesUsed + marketMinimumPrice(listing.itemId, listing.quantity) > marketDailyLimit(seller.state.buildings.home ?? 1)))
+        reason = "Рыночный лимит игрока исчерпан";
+      const feeCoins = marketSaleFee(listing.totalPrice, listing.feeBps ?? 0);
+      return { id: listing.id, sellerPublicId: listing.sellerPublicId, sellerName: user?.kind === "ok" ? user.value.user.displayName : "Житель леса",
+        itemId: listing.itemId, quantity: listing.quantity, totalPrice: listing.totalPrice, proceedsCoins: listing.totalPrice - feeCoins,
+        feeCoins, createdAt: listing.createdAt, eligible: reason === null, reason };
+    });
+  return { serverTime: new Date(now).toISOString(), settings, version: devNeighborVersion(), receipt: null,
+    pausedReason: !settings.enabled ? "Сосед отключён" : !settings.autoBuyEnabled ? "Автоматический выкуп на паузе"
+      : !neighborActiveHour(settings, now) ? "Вне времени работы" : globalSpentCoins >= settings.globalDailyBudgetCoins ? "Общий дневной бюджет исчерпан" : null,
+    player: user?.kind === "ok" ? { publicId: user.value.user.publicId, name: user.value.user.displayName } : null,
+    usage: { usedLots: usage.usedLots, spentCoins: usage.spentCoins, globalSpentCoins }, pending, history: devNeighborHistory(target) };
 }
 
 export function runDevNeighborTick(now = Date.now()): number {

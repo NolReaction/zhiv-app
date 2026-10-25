@@ -38,3 +38,8 @@
   .summary div { grid-template-columns: 1fr; gap: 2px; }
   .search .button, .dialogActions > button { flex: 1; }
 }
+
+.unlock { display: grid; gap: 14px; width: min(100%, 440px); margin: 24px auto 0; text-align: left; }
+.appearance { display: flex; align-items: center; gap: 18px; margin-top: 16px; flex-wrap: wrap; }
+.appearance canvas { width: 112px; height: 112px; image-rendering: pixelated; flex-shrink: 0; background: #263321; border-radius: 18px; }
+.appearance p { flex: 1; min-width: min(180px, 100%); }

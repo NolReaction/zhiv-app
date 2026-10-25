@@ -166,3 +166,39 @@ test("missing snapshots are not shown as an empty friend list and pending reques
   assert.match(unavailable.markup, /Список друзей пока недоступен/);
   assert.equal(unavailable.elements.filter(element => element.type === "button").length, 0);
 });
+
+test("the world neighbor is permanently present for a player with no human friends, before or after People loads", () => {
+  for (const friends of [undefined, { data: { ...data, people: [] }, loading: false, error: null, onRefresh() {} },
+    { data: null, loading: false, error: "offline", isOnline: false, onRefresh() {} }]) {
+    const visited = [], result = view({ friends, onVisitNeighbor: () => visited.push("berest") });
+    assert.match(result.markup, /data-world-neighbor-friend="berest"/);
+    assert.match(result.markup, /Персонаж мира/);
+    assert.match(result.markup, />Друзья<span[^>]*>1<\/span>/);
+    assert.doesNotMatch(result.markup, /Друзей пока нет|В сети|Был в сети/);
+    assert.deepEqual(visited, []);
+    const card = result.elements.find(element => element.props["aria-label"] === "В гости к Берест");
+    assert.ok(card);
+    assert.equal(card.props.disabled, friends?.isOnline === false);
+    if (!card.props.disabled) { card.props.onClick(); assert.deepEqual(visited, ["berest"]); }
+  }
+});
+
+test("the neighbor participates in game-only counts and name search without becoming a Person", () => {
+  const before = JSON.stringify(data), onVisitNeighbor = () => {};
+  const all = view({ onVisitNeighbor });
+  assert.match(all.markup, />Друзья<span[^>]*>4<\/span>/);
+  assert.equal(all.elements.filter(element => element.type === "li").length, 4);
+  const onlyNeighbor = view({ onVisitNeighbor, query: "бЕРест" });
+  assert.equal(onlyNeighbor.elements.filter(element => element.type === "li").length, 1);
+  assert.match(onlyNeighbor.markup, /data-world-neighbor-friend/);
+  assert.doesNotMatch(view({ onVisitNeighbor, query: "мама" }).markup, /data-world-neighbor-friend/);
+  assert.match(view({ onVisitNeighbor, query: "неизвестный" }).markup, /Никого не нашли/);
+  assert.equal(JSON.stringify(data), before, "the main People data is never supplemented with a pretend account");
+});
+
+test("the friend card follows the server's character name and exclusive appearance", () => {
+  const result = view({ onVisitNeighbor() {}, neighbor: { name: "Дубок", equipment: { palette: "berest_birch_moss", head: "berest_trail_hat", neck: "berest_lantern_scarf", rod: null } } });
+  assert.match(result.markup, /Дубок/);
+  assert.doesNotMatch(result.markup, /Берест/);
+  assert.ok(result.elements.some(element => element.props.appearance?.head === "berest_trail_hat"));
+});
