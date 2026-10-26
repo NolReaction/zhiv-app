@@ -2,12 +2,12 @@
 
 import { PromoCodeForm } from "@/features/promo/promo-code-form";
 import { useId, useRef, useState } from "react";
-import { ArrowRight, Coins, Gem, Gift, House, Shirt, Sprout } from "lucide-react";
+import { ArrowRight, Coins, Gem, Gift, Shirt } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EconomyView } from "@/features/economy/domain/model";
-import { currencyShopDevelopment, currencyShopGoldOffers, HOME_BONUS_PERCENT, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
+import { currencyShopGoldOffers, BASE_COINS_PER_PEARL, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { formatPearls } from "@/features/economy/domain/money";
 import { CostumeOffers, StarterOffer } from "./currency-shop-offers";
 import styles from "./currency-shop-panel.module.css";
@@ -27,7 +27,6 @@ function CurrencyPile({ kind, tier }: { kind: "pearls" | "coins"; tier: number }
 export function CurrencyShopPanel({ state, onRedeemed, initialPage = "starters" }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown>; initialPage?: CurrencyShopPage }) {
   const [page, setPage] = useState<CurrencyShopPage>(initialPage);
   const id = useId(), tabs = useRef<Array<HTMLButtonElement | null>>([]);
-  const development = state ? currencyShopDevelopment(state) : null;
   function changePage(next: CurrencyShopPage) {
     if (next === page) return;
     playUiCue(getAudioRuntime(), "ui.tab");
@@ -62,22 +61,19 @@ export function CurrencyShopPanel({ state, onRedeemed, initialPage = "starters" 
           <button type="button" disabled aria-describedby={`${id}-preview`}><span>{number(pack.priceRub)} ₽</span><small>Скоро</small></button>
         </article>)}</div>
       </> : page === "gold" ? <>
-        <div className={styles.heading}><h3>Золото за жемчуг</h3><p>Чем больше полянка, тем щедрее обмен</p></div>
-        {state && development ? <>
+        <div className={styles.heading}><h3>Золото за жемчуг</h3><p>Одинаковый курс на всех уровнях дома</p></div>
+        {state ? <>
           <div className={styles.development}>
-            <strong>Ваш бонус <span>+{development.bonusPercent}%</span></strong>
-            <div><span><House size={15} aria-hidden="true" />Дом {development.homeLevel} ур. <b>+{development.homeBonusPercent}%</b></span>
-              <span><Sprout size={15} aria-hidden="true" />Производства <b>+{development.buildingBonusPercent}%</b></span></div>
-            <details><summary>Как растёт бонус</summary><p>За дом: +{HOME_BONUS_PERCENT.join(" / ")}% на уровнях 1-{HOME_BONUS_PERCENT.length}. За завершённые уровни производств: ещё до +{MAX_BUILDING_BONUS_PERCENT}%. Сейчас {development.completedLevels} из {development.totalLevels}. Кладовая, мост и маяк бонус не увеличивают. Бонусы складываются; стройка в процессе пока не учитывается.</p></details>
+            <strong>1 жемчужина <span>= {BASE_COINS_PER_PEARL * 2} монет</span></strong>
+            <p>Цена пяти минут базовой работы. Размер пакета и уровень построек не меняют курс.</p>
           </div>
           <div className={styles.packages} data-gold="true">{currencyShopGoldOffers(state).map((pack, index) => <article className={styles.package} key={pack.id} data-shop-offer={`gold-${pack.id}`}>
             <CurrencyPile kind="coins" tier={index + 1} /><h4>{pack.name}</h4>
             <strong className={styles.amount}><ItemIcon itemId="coins" size={22} />{number(pack.coins)}</strong>
-            <small className={styles.bonus}>{number(pack.baseCoins)} + {number(pack.bonusCoins)} бонус</small>
             <div className={styles.exchange}><ItemIcon itemId="pearls" size={18} /><span>{formatPearls(pack.pearls)}</span><ArrowRight size={14} aria-hidden="true" /><span>золото</span></div>
             <button type="button" disabled aria-describedby={`${id}-preview`}>Обмен скоро</button>
           </article>)}</div>
-        </> : <p className={styles.loading} role="status">Загружаем полянку, чтобы рассчитать ваш бонус…</p>}
+        </> : <p className={styles.loading} role="status">Загружаем полянку…</p>}
       </> : null}
     </div>
     <div className={styles.promo}><PromoCodeForm key={state?.ownerPublicId ?? "loading"} state={state} onRedeemed={onRedeemed} /></div>

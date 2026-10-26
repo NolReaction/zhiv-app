@@ -1,16 +1,20 @@
 package ru.zhiv.economy
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 
 @Serializable data class EconomyOnboardingCatalog(
     val startingWallet: EconomyWallet, val startingItems: Map<String, Long>, val residentOrder: EconomyResidentOrderTemplate,
     val residentOrders: List<EconomyResidentOrderTemplate> = emptyList(),
 )
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyTutorialOrder(
     val ingredientsClaimed: Boolean = false, val completed: Boolean = false, val terms: EconomyResidentOrderTemplate? = null,
     val version: Int = 1, val step: Int = 0,
     val firstHarvestPrepared: Boolean = false,
-) { init { require(version in 1..3 && step in 0..4) } }
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val rewardVersion: Int = 5,
+) { init { require(version in 1..3 && step in 0..4 && rewardVersion in 5..6) } }
 
 /** A single teaching request, followed by the separate first-house course. */
 object EconomyTutorialOrders {
@@ -102,18 +106,19 @@ object EconomyTutorialOrders {
     /** Merging never reopens rewarded progress, including an already accepted legacy request. */
     fun merge(a: EconomyTutorialOrder, b: EconomyTutorialOrder): EconomyTutorialOrder {
         val firstHarvestPrepared = a.firstHarvestPrepared || b.firstHarvestPrepared
+        val rewardVersion = minOf(a.rewardVersion, b.rewardVersion)
         val legacy = listOf(a, b).filter { it.version == 1 && (it.ingredientsClaimed || it.completed) }
         if (legacy.isNotEmpty()) {
             val chosen = legacy.firstOrNull { it.completed } ?: legacy.first()
             return chosen.copy(ingredientsClaimed = true, completed = legacy.any { it.completed },
-                firstHarvestPrepared = firstHarvestPrepared,
+                firstHarvestPrepared = firstHarvestPrepared, rewardVersion = rewardVersion,
                 terms = chosen.terms ?: legacy.firstNotNullOfOrNull { it.terms })
         }
         if (a.version >= 2 || b.version >= 2) {
             val current = listOf(a, b).filter { it.version >= 2 }
             val chosen = current.maxWith(compareBy<EconomyTutorialOrder> { it.completed }.thenBy { it.step })
-            return chosen.copy(ingredientsClaimed = true, completed = current.any { it.completed }, firstHarvestPrepared = firstHarvestPrepared)
+            return chosen.copy(ingredientsClaimed = true, completed = current.any { it.completed }, firstHarvestPrepared = firstHarvestPrepared, rewardVersion = rewardVersion)
         }
-        return a.copy(terms = a.terms ?: b.terms, firstHarvestPrepared = firstHarvestPrepared)
+        return a.copy(terms = a.terms ?: b.terms, firstHarvestPrepared = firstHarvestPrepared, rewardVersion = rewardVersion)
     }
 }

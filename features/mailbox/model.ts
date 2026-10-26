@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const owner = z.string().min(1).max(40), instant = z.string().datetime({ offset: true });
 const quantities = z.record(z.string().min(1).max(80), z.number().int().nonnegative().safe());
-export const mailGiftSchema = z.object({ pearls: z.literal(100), claimedAt: instant.nullable() });
+export const mailGiftSchema = z.object({ pearls: z.union([z.literal(30), z.literal(100)]), claimedAt: instant.nullable() });
 export const mailAttachmentsSchema = z.object({
   coins: z.number().int().safe(), pearls: z.number().finite().refine(value => Number.isSafeInteger(value * 2)),
   items: quantities.default({}), buildings: quantities.default({}),

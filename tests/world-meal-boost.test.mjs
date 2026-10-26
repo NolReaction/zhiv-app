@@ -310,7 +310,7 @@ test("each unused meal returns exactly once through its consumer command and nev
     assert.deepEqual(economy.calls, [["cancel_meal", consumer, 1, 0]]); assert.deepEqual(economy.snapshot, before);
     view = render(props);
     assert.equal(view.nodes.find(node => node.props["data-meal-return"] === consumer).props.disabled, true);
-    assert.match(renderToStaticMarkup(view.tree), /Возвращаем/);
+    assert.match(renderToStaticMarkup(view.tree), /Подтверждаем/);
     economy.busy = true; render(props);
     economy.busy = false; economy.snapshot = { ...economy.snapshot, revision: 2,
       food: { ...economy.snapshot.food, [consumer === "hero" ? "heroMeal" : "builderMeal"]: null } };
@@ -377,9 +377,9 @@ test("current work meals are used and never returnable even without an explicit 
     const economy = controller({ jobs: [job({ kind: consumer === "hero" ? "exploration" : "construction",
       meal: { itemId: "grilled_fish", consumer, speedBps: 1000 } })] });
     hooks.reset(); const view = render({ economy, consumer, seconds: 7200 }), html = renderToStaticMarkup(view.tree);
-    assert.match(html, /Блюдо уже использовано/); assert.match(html, /Вернуть его нельзя/);
+    assert.match(html, /Бонус этой/); assert.match(html, /Потраченную часть вернуть нельзя/);
     assert.doesNotMatch(html, /Для следующей|Забрать блюдо/); assert.equal(view.nodes.some(node => node.type === "button"), false);
-    assert.match(renderToStaticMarkup(view.nodes.find(node => node.props["data-meal-duration"] !== undefined)), /2 мин/);
+    assert.match(renderToStaticMarkup(view.nodes.find(node => node.props["data-meal-duration"] !== undefined)), /1 мин 6 с/);
     assert.deepEqual(economy.calls, []);
   }
 });
@@ -407,7 +407,7 @@ test("feeding during construction previews remaining work and shows the confirme
   economy.busy = false; economy.snapshot = { ...economy.snapshot, revision: 2,
     jobs: [job({ finishesAt: new Date(now + 60_000).toISOString(), meal: { itemId: "grilled_fish", consumer: "builder", speedBps: 1000 } })] };
   view = render(props); const html = renderToStaticMarkup(view.tree);
-  assert.match(html, /текущая стройка/); assert.match(html, /Блюдо уже использовано в этой стройке/);
+  assert.match(html, /текущая стройка/); assert.match(html, /Бонус этой стройки уже учтён/);
   assert.doesNotMatch(html, /Для следующей|Забрать блюдо/);
   assert.equal(economy.snapshot.food.builderMeal, null);
 });
@@ -455,4 +455,19 @@ test("blocked choice explains the reason inside the tile without revealing a spe
   view.tree.props.onOpenChange(true);
   assert.equal(render(props).tree.props.open, false);
   assert.deepEqual(economy.calls, []);
+});
+
+test("hero work budget previews only the covered work and shows frozen remaining strength", () => {
+  const economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: null,
+    heroMealEffect: { speedBps: 2500, totalWorkSeconds: 1800, remainingWorkSeconds: 300 } } });
+  economy.snapshot.catalog.food.meals.find(meal => meal.itemId === "grilled_fish").heroSpeedBps = 9000;
+  assert.equal(mealBoostSeconds({ economy, consumer: "hero", seconds: 600 }, 2500, 300), 540);
+  hooks.reset(); const view = render({ economy, consumer: "hero", seconds: 600 });
+  const html = renderToStaticMarkup(view.tree);
+  assert.match(html, /\+25%/); assert.doesNotMatch(html, /\+90%/);
+  assert.match(html, /Осталось 5 мин из 30 мин/);
+  assert.match(html, /9 мин/);
+  assert.match(html, /Убрать остаток/); assert.match(html, /Порция в кладовую не вернётся/);
+  view.nodes.find(node => node.props["data-meal-return"]).props.onClick();
+  assert.deepEqual(economy.calls, [["cancel_meal", "hero", 1, 0]]);
 });

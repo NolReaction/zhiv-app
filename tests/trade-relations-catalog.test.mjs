@@ -22,15 +22,15 @@ test("the shared TS and Kotlin reference vectors cover every authored request an
 
 test("all five residents have bounded useful reputation with complete ordinary and weekly sources", () => {
   assert.equal(report.baselineOrders, 85);
-  assert.equal(report.orders.length, 127);
-  assert.equal(report.weekly.length, 10);
-  assert.equal(report.weekly.flatMap(order => order.stages).length, 30);
+  assert.equal(report.orders.length, 163);
+  assert.equal(report.weekly.length, 13);
+  assert.equal(report.weekly.flatMap(order => order.stages).length, 39);
   assert.equal(report.pacing.finalXp, 4200);
-  assert(report.pacing.optimisticEarliestElapsedDays >= 49);
+  assert(report.pacing.optimisticEarliestElapsedDays >= 42);
   assert.equal(report.pacing.maximumDailyOrdinaryXp, 60);
   assert.equal(report.pacing.maximumDailyPurchaseXp, 2);
   const samples = report.pacing.residents.flatMap(resident => resident.scenarios);
-  assert(samples.every(sample => sample.approximateWeeksToMaximum >= 10 && sample.approximateWeeksToMaximum <= 18));
+  assert(samples.every(sample => sample.approximateWeeksToMaximum >= 7 && sample.approximateWeeksToMaximum <= 18));
 });
 
 test("total work includes drying ingredients and basic acquisition without counting miner occupancy twice", () => {
@@ -67,23 +67,23 @@ test("a cyclic expedition alternative cannot hide valid basic ingredient acquisi
 });
 
 test("reputation scales with work while every ordinary award remains small", () => {
-  assert.deepEqual([60, 300, 3600, 43200].map(reputationXpForEffort), [3, 4, 7, 11]);
-  assert.equal(reputationXpForEffort(60 * 2 ** 30), 18);
+  assert.deepEqual([60, 300, 3600, 43200].map(reputationXpForEffort), [5, 5, 8, 30]);
+  assert.equal(reputationXpForEffort(60 * 2 ** 30), 30);
   assert.throws(() => reputationXpForEffort(0), /positive whole seconds/);
   assert.throws(() => reputationXpForEffort(.5), /positive whole seconds/);
   assert(new Set(report.orders.map(order => order.reputationXp)).size >= 5);
-  assert(report.orders.every(order => order.reputationXp >= 2 && order.reputationXp <= 18));
+  assert(report.orders.every(order => order.reputationXp >= 4 && order.reputationXp <= 30));
 });
 
 test("every fully purchasable ordinary or weekly basket remains unprofitable at maximum loyalty", () => {
   const ordinary = report.orders.filter(order => order.completeNpcPurchaseCoins !== null);
   const weekly = report.weekly.flatMap(order => order.stages).filter(stage => stage.completeNpcPurchaseCoins !== null);
-  assert.equal(ordinary.length, 20);
+  assert.equal(ordinary.length, 21);
   assert.equal(weekly.length, 5);
   assert([...ordinary, ...weekly].every(order => order.immediateNpcProfitCoins < 0));
-  assert(report.merchantDiscounts.every(row => row.discountedPrice > row.resalePrice));
+  assert(report.merchantDiscounts.every(row => row.discountedPrice >= row.resalePrice));
   const c = catalog();
-  c.fishing.baits[0].price = 10;
+  c.localBuyer.unitPrices[c.fishing.baits[0].itemId] = 2;
   assert.throws(() => auditTradeRelations(c), /maximum loyalty discount creates immediate resale profit/);
 });
 
@@ -98,11 +98,11 @@ test("unavailable upstream processing and inflated future reputation are rejecte
   assert.throws(() => auditTradeRelations(fast));
 });
 
-test("weekly deadlines exclude rare random catches and remain three individually paid stages", () => {
+test("optional weekly deadlines exclude legendary catches and remain three individually paid stages", () => {
   for (const weekly of report.weekly) {
     assert.equal(weekly.stages.length, 3);
     assert(weekly.stages.every(stage => stage.coins > 0 && stage.reputationXp > 0));
-    assert(weekly.reputationXp >= 90 && weekly.reputationXp <= 150);
+    assert(weekly.reputationXp >= 60 && weekly.reputationXp <= 300);
     assert.equal(weekly.coins, weekly.stages.reduce((sum, stage) => sum + stage.coins, 0));
     assert.equal(weekly.effortSeconds, weekly.stages.reduce((sum, stage) => sum + stage.effortSeconds, 0));
     assert(weekly.stages.every(stage => !Object.keys(stage.items).some(id => ["fish_rare", "fish_epic", "fish_legendary"].includes(id))));

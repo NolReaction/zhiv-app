@@ -37,12 +37,9 @@ test("gold preview explains the current production bonus and has no exchange act
     warehouse: 10, bridge: 1, lighthouse: 1 }, jobs: [] };
   const tree = CurrencyShopPanel({ state });
   const html = renderToStaticMarkup(tree);
-  assert.ok(html.includes(`За дом: +${shop.HOME_BONUS_PERCENT.join(" / ")}%`));
-  assert.ok(html.includes(`ещё до +${shop.MAX_BUILDING_BONUS_PERCENT}%`));
-  assert.match(html, /Производства/);
-  assert.match(html, /Сейчас 7 из 30/);
-  assert.match(html, /Кладовая, мост и маяк бонус не увеличивают/);
-  assert.doesNotMatch(html, /остальных построек|до \+100%|600%/);
+  assert.match(html, /50 монет/);
+  assert.match(html, /Одинаковый курс на всех уровнях дома/);
+  assert.doesNotMatch(html, /Как растёт бонус|Ваш бонус/);
   assert.match(html, /Покупки и обмен пока недоступны/);
   const actions = [];
   function visit(element) {
@@ -65,9 +62,7 @@ test("shop help gives the same current unit ratio, costs and completed-productio
   const answer = [...topic.paragraphs ?? [], ...topic.steps ?? [], topic.note ?? ""].join(" ");
   assert.ok(answer.includes(shop.GOLD_SHOP_PACKAGES.map(pack => formatPearls(pack.pearls)).join(" / ")));
   assert.ok(answer.includes(`${shop.BASE_COINS_PER_PEARL * 2} монет за видимую жемчужину`));
-  assert.ok(answer.includes(`+${shop.HOME_BONUS_PERCENT.join(" / ")}%`));
-  assert.ok(answer.includes(`до +${shop.MAX_BUILDING_BONUS_PERCENT}%`));
-  assert.match(answer, /Кладовая, мост, маяк и стройка до получения результата курс не увеличивают/);
+  assert.match(answer, /курс.*не меня|не.*меня.*курс/i);
   assert.match(answer, /Обмен пока недоступен/);
   assert.ok(answer.length <= 900);
 });

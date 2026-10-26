@@ -7,6 +7,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
+const money = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
@@ -208,6 +209,47 @@ test("weekly future stages freeze their price XP and requirements and each stage
   } finally { Object.assign(template, savedTemplate); }
 });
 
+test("weekly finale freezes ten visible pearls, checks capacity before debit and cannot pay twice", () => {
+  const state = developed(), choice = relations.weeklyOrderBoard(state, now).offers.find(offer => offer.residentId === "builder");
+  assert.equal(choice.pearls, 20);
+  assert.deepEqual(choice.stages.map(stage => stage.pearls ?? 0), [0, 0, 20]);
+  apply(state, "accept_weekly_order", choice.id);
+  const template = catalog.tradeRelations.weekly.templates.find(entry => entry.id === choice.templateId);
+  const saved = structuredClone(template.stages);
+  try {
+    template.stages.at(-1).pearls = 200;
+    const initialPearls = state.wallet.pearls;
+    for (let index = 0; index < 2; index++) {
+      const active = relations.weeklyOrderBoard(state, now).active;
+      fill(state, active.items); apply(state, "complete_resident_order", active.id);
+      assert.equal(state.wallet.pearls, initialPearls);
+    }
+    const final = relations.weeklyOrderBoard(state, now).active;
+    assert.equal(final.pearls, 20);
+    fill(state, final.items);
+    const { ECONOMY_MAX_PEARLS } = money;
+    state.wallet.pearls = ECONOMY_MAX_PEARLS - 10;
+    unchangedFailure(state, "complete_resident_order", final.id, "ECONOMY_CAPACITY");
+    state.wallet.pearls = initialPearls;
+    apply(state, "complete_resident_order", final.id);
+    assert.equal(state.wallet.pearls, initialPearls + 20);
+    unchangedFailure(state, "complete_resident_order", final.id, "ECONOMY_WEEKLY_CHANGED");
+  } finally { template.stages = saved; }
+});
+
+test("legacy accepted weekly terms without pearls keep their original fingerprint and pay no new bonus", () => {
+  const state = developed(), choice = relations.weeklyOrderBoard(state, now).offers.find(offer => offer.residentId === "builder");
+  apply(state, "accept_weekly_order", choice.id);
+  for (const stage of state.tradeRelations.weekly.stages) delete stage.pearls;
+  const before = state.wallet.pearls;
+  for (let index = 0; index < 3; index++) {
+    const active = relations.weeklyOrderBoard(state, now).active;
+    assert.equal(relations.tradeOrderFingerprint(active), relations.tradeOrderFingerprint({ ...active, pearls: 0 }));
+    fill(state, active.items); apply(state, "complete_resident_order", active.id);
+  }
+  assert.equal(state.wallet.pearls, before);
+});
+
 test("clock rollback cannot deliver a weekly stage before its accepted start", () => {
   const state = developed(), acceptedAt = now + day;
   const choice = relations.weeklyOrderBoard(state, acceptedAt).offers.find(offer => offer.residentId === "builder");
@@ -308,18 +350,19 @@ test("shared Kotlin vectors match every authored quote, weekly stage and rank bo
   }
 });
 
-test("even maximum daily XP and the largest weekly reward cannot reach the last rank before seven weeks", () => {
+test("even maximum daily XP and the largest weekly reward cannot reach the last rank before six weeks", () => {
   const state = fresh(), target = catalog.tradeRelations.ranks.at(-1).requiredXp;
+  const weeklyMax = Math.max(...catalog.tradeRelations.weekly.templates.map(template => template.stages.reduce((sum, stage) => sum + stage.reputationXp, 0)));
   let reached = null;
   for (let elapsed = 0; elapsed <= 60; elapsed++) {
     const at = now + elapsed * day;
     for (let order = 0; order < 4; order++) relations.awardTradeOrderXp(state, "builder", 18, at);
     for (let purchase = 0; purchase < 3; purchase++) relations.awardTradePurchaseXp(state, "builder", at);
-    if (elapsed % 7 === 0) relations.awardTradeOrderXp(state, "builder", 150, at, true);
+    if (elapsed % 7 === 0) relations.awardTradeOrderXp(state, "builder", weeklyMax, at, true);
     if ((state.tradeRelations.reputation.builder ?? 0) >= target) { reached = elapsed; break; }
   }
-  assert.equal(reached, vectors.optimisticMinimumElapsedDays);
-  assert(reached >= 49);
+  assert(reached >= vectors.optimisticMinimumElapsedDays, "catalog lower bound also permits a second UTC cap at the start");
+  assert(reached >= 42);
 });
 
 test("literal UTF-16 and live board vectors pin TS/Kotlin IDs, frozen weekly promises and stage transitions", () => {

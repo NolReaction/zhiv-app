@@ -45,3 +45,11 @@ test("mail dialog keeps long text inside its scroll area and unread animation re
   assert.match(css, /max-height: min\(760px, calc\(100dvh - 32px\)\)/);
   assert.match(hud, /prefers-reduced-motion: reduce[^}]*data-mail-unread[^}]*animation: none/s);
 });
+
+
+test("new welcome gift renders its saved thirty-pearl promise", () => {
+  const html = renderToStaticMarkup(MailLetter({ message: letter({ gift: { pearls: 30, claimedAt: null }, attachments: null }),
+    reading: false, readError: null, available: true, onRetry() {}, onClaim() {} }));
+  assert.match(html, /30 жемчужин/);
+  assert.doesNotMatch(html, /100 жемчужин/);
+});

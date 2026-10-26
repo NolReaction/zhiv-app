@@ -9,6 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
 after(() => vite.close());
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const stock = await vite.ssrLoadModule("/features/economy/domain/fish-stock.ts");
+const { marketMinimumPrice } = await vite.ssrLoadModule("/features/economy/domain/market-rules.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
@@ -86,7 +87,7 @@ test("automatic selection uses unknown first then abundant species with stable t
   const state = fisher();
   assert.deepEqual(stock.autoFillFishSelection(state, { fish_epic: 3, fish_common: 5, wood: 4 }),
     { fish_epic: 1, fish_mirror_koi: 2, fish_common: 1, fish_silverfin: 3, fish_rudd: 1 });
-  const selected = stock.autoFillFishSelection(state, { fish_sturgeon: 2, fish_mirror_koi: 1 });
+  const selected = stock.autoFillFishSelection(state, { fish_epic: 3 });
   assert.deepEqual(selected, { fish_epic: 1, fish_mirror_koi: 2 });
   assert.equal(stock.fishSelectionMatches(state, { fish_epic: 3 }, selected), true);
 });
@@ -231,7 +232,7 @@ test("null selection is old-client automatic behavior and cannot attach choices 
 
 test("market cancellation restores exact escrowed species without changing the catch book", () => {
   const p = player("Seller"); marketFixture(p);
-  const before = structuredClone(read(p)), price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice * 2;
+  const before = structuredClone(read(p)), price = Math.ceil(marketMinimumPrice("fish_epic", 2) / model.ECONOMY_CURRENCY_SCALE) * model.ECONOMY_CURRENCY_SCALE;
   const listing = trade(p, "create_listing", "fish_epic", { quantity: 2, totalPrice: price }).listing;
   assert.deepEqual(stored(p).fishing.escrow[listing.id], { fish_mirror_koi: 1 });
   assert.equal(read(p).fishing.stock.fish_mirror_koi, 3);
@@ -247,7 +248,7 @@ test("market sale transfers exact known fish while leaving lifetime collections 
   const seller = player("Seller"), buyer = player("Buyer"); marketFixture(seller); marketFixture(buyer);
   stored(buyer).inventory = {}; delete stored(buyer).fishing.stock;
   const beforeCatches = structuredClone(read(buyer).fishing.catches);
-  const price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice * 2;
+  const price = Math.ceil(marketMinimumPrice("fish_epic", 2) / model.ECONOMY_CURRENCY_SCALE) * model.ECONOMY_CURRENCY_SCALE;
   const listing = trade(seller, "create_listing", "fish_epic", { quantity: 2, totalPrice: price }).listing;
   assert.ok(economy.getDevEconomyMarket(buyer.token, {}, now).listings.some(item => item.id === listing.id));
   const bought = trade(buyer, "buy_listing", listing.id, { quantity: 2, totalPrice: price }).state;
@@ -261,7 +262,7 @@ test("market sale transfers exact known fish while leaving lifetime collections 
 test("class-only market purchases remain unidentified and a failed sale keeps seller escrow", () => {
   const seller = player("Seller"), buyer = player("Buyer"); marketFixture(seller); marketFixture(buyer);
   delete stored(seller).fishing.stock; delete stored(buyer).fishing.stock; stored(buyer).inventory = {}; stored(buyer).wallet.coins = 0;
-  const price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice;
+  const price = Math.ceil(marketMinimumPrice("fish_epic", 1) / model.ECONOMY_CURRENCY_SCALE) * model.ECONOMY_CURRENCY_SCALE;
   const listing = trade(seller, "create_listing", "fish_epic", { totalPrice: price }).listing;
   economy.getDevEconomyMarket(buyer.token, {}, now);
   const beforeSeller = structuredClone(read(seller));

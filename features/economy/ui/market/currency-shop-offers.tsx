@@ -5,6 +5,7 @@ import { Check, Gift, House, Palette, Sparkles } from "lucide-react";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { storefrontCostumes, storefrontStarterOffer } from "@/features/economy/domain/storefront";
 import { formatPearls } from "@/features/economy/domain/money";
+import { worldRecipeDuration } from "@/features/economy/ui/stations/world-recipe-groups";
 import { ItemIcon } from "@/features/items/item-icon";
 import { premiumCostumes } from "@/features/world/domain/premium-costumes";
 import { WardrobePreview } from "@/features/world/ui/wardrobe/world-wardrobe";
@@ -29,9 +30,9 @@ export function StarterOffer({ state, previewId }: { state: EconomyView | null; 
     <ul className={styles.starterItems} aria-label="Предметы в наборе">{Object.entries(offer.rewards.items).map(([itemId, quantity]) => {
       const name = state.catalog.items.find(item => item.id === itemId)?.name ?? itemId;
       const meal = state.catalog.food?.meals.find(entry => entry.itemId === itemId);
-      return <li key={itemId}><span className={styles.rewardIcon}><ItemIcon itemId={itemId} size={34} /></span><span><strong>{name}</strong>{meal && <small>Скорость: вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}%</small>}</span><b>×{quantity}</b></li>;
+      return <li key={itemId}><span className={styles.rewardIcon}><ItemIcon itemId={itemId} size={34} /></span><span><strong>{name}</strong>{meal && <><small>Скорость: вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}%</small>{meal.heroWorkSeconds && <small>Запас на {worldRecipeDuration(meal.heroWorkSeconds)} работы Мохлика</small>}</>}</span><b>×{quantity}</b></li>;
     })}</ul>
-    <p className={styles.foodNote}>Блюдо ускоряет одну вылазку Мохлика или стройку. Бонусы еды не складываются.</p>
+    <p className={styles.foodNote}>Блюдо ускоряет работу Мохлика или одну стройку. Запас сил и скорость указаны в меню еды; бонусы не складываются.</p>
     <button className={styles.offerPrice} type="button" disabled aria-describedby={previewId}><span>{number(offer.priceRub)} ₽</span><small>Скоро</small></button>
     <p className={styles.stageNote}>{state.catalog.buildings.find(building => building.id === "home")?.levels.some(level => level.level > offer.homeLevel)
       ? "После улучшения дома здесь появится новый набор." : "Набор для последнего уровня дома."}</p>

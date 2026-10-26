@@ -43,12 +43,12 @@ class EconomyFishingShopTest {
     @Test fun `cheaper starter tackle is applied to new stock without rewriting saved prices`() {
         val current = ready()
         val shop = checkNotNull(current.fishingShop)
-        assertEquals(1800L, shop.offers.single { it.itemId == "river_rod" }.unitPrice)
-        assertEquals(1200L, shop.offers.single { it.itemId == "barbed_hook" }.unitPrice)
+        assertEquals(400L, shop.offers.single { it.itemId == "river_rod" }.unitPrice)
+        assertEquals(80L, shop.offers.single { it.itemId == "barbed_hook" }.unitPrice)
         val alternate = EconomyFishingShops.create(current.copy(fishing = current.fishing.copy(
             ownedRods = current.fishing.ownedRods + "float_rod", ownedHooks = current.fishing.ownedHooks + "spoon_hook")), now, { it - 1 })
-        assertEquals(900L, alternate.offers.single { it.itemId == "brook_rod" }.unitPrice)
-        assertEquals(600L, alternate.offers.single { it.itemId == "round_hook" }.unitPrice)
+        assertEquals(250L, alternate.offers.single { it.itemId == "brook_rod" }.unitPrice)
+        assertEquals(40L, alternate.offers.single { it.itemId == "round_hook" }.unitPrice)
         val saved = current.copy(fishingShop = shop.copy(offers = shop.offers.map {
             if (it.itemId == "river_rod") it.copy(unitPrice = 18000) else it
         }))
@@ -107,15 +107,15 @@ class EconomyFishingShopTest {
     @Test fun `discounted fish stays bounded pays server quote and never unlocks catch collection`() {
         val state = ready()
         val offer = checkNotNull(state.fishingShop).offers.single { it.kind == "fish" }
-        assertEquals(120L, offer.unitPrice)
+        assertEquals(45L, offer.unitPrice)
         val bought = EconomyRules.apply(state, command("buy_fishing_item", offer.id, 2, 300), now).first
-        assertEquals(state.wallet.coins - 240, bought.wallet.coins)
+        assertEquals(state.wallet.coins - 90, bought.wallet.coins)
         assertEquals((state.inventory[offer.itemId] ?: 0) + 2, bought.inventory[offer.itemId])
         assertEquals(state.fishing, bought.fishing)
         assertEquals(state.progression, bought.progression)
         assertEquals(4L, checkNotNull(bought.fishingShop).offers.single { it.id == offer.id }.remaining)
         assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> {
-            EconomyRules.apply(state, command("buy_fishing_item", offer.id, price = 119), now)
+            EconomyRules.apply(state, command("buy_fishing_item", offer.id, price = 44), now)
         }.code)
         assertEquals("ECONOMY_FISHING_STOCK", assertFailsWith<AuthFailure> {
             EconomyRules.apply(state, command("buy_fishing_item", offer.id, 7, 840), now)

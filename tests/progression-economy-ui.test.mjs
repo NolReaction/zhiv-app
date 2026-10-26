@@ -217,7 +217,7 @@ test("selected sources and uses navigate to the actual ingredient while fish rec
   const tree = h.render(), next = elements(tree).find(node => node.type === "button" && text(renderToStaticMarkup(node)).includes("Распилить доску"));
   assert.ok(next); next.props.onClick(); assert.deepEqual(calls, ["planks"]);
   const fish = harness(ItemDetails, { item: item("fish_mooncarp"), home: 0, onSelect(id) { calls.push(id); } }).render();
-  assert.match(text(renderToStaticMarkup(fish)), /Вид рыбы.*В рецептах учитывается как/);
+  assert.match(text(renderToStaticMarkup(fish)), /Вид рыбы.*В обычных рецептах подходит как/);
   const inventory = elements(fish).find(node => node.type === "button" && node.props.children === item("fish_mooncarp").inventoryItemId);
   const conversion = inventory ?? elements(fish).find(node => node.type === "button" && node.props.children === item(item("fish_mooncarp").inventoryItemId).name);
   assert.ok(conversion); conversion.props.onClick(); assert.equal(calls.at(-1), "fish_rare");
@@ -271,15 +271,15 @@ test("soup quantity scales sale and intermediate inputs without inventing fishin
   const h = harness(RecipeCalculator, { recipe: recipe("cook_fish_soup"), onSelect() {} });
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "3" } });
   const value = text(renderToStaticMarkup(h.render()));
-  assert.match(value, /Стоимость ингредиентов у NPC 420 монет/);
-  assert.match(value, /Выкуп готового товара NPC 660 монет/);
+  assert.match(value, /Стоимость ингредиентов у NPC 270 монет/);
+  assert.match(value, /Выкуп готового товара NPC 510 монет/);
   assert.match(value, /Прирост стоимости переработки \+240 монет/);
   assert.match(value, /Таймер выбранного производства 24 мин/);
   assert.match(value, /Обычная рыба ×6/); assert.match(value, /Малина ×3/); assert.match(value, /Бревно ×3/);
   assert.match(value, /Ягодный куст 3 мин \+ 24 с сбора/);
   assert.match(value, /Отдельно получить: Обычная рыба/);
   assert.match(value, /Время случайного улова или находки не подставляется/);
-  assert.match(value, /7,5 предметов · 1 650 монет за час/);
+  assert.match(value, /7,5 предметов · 1 275 монет за час/);
   assert.match(value, /это валовая выручка/);
 });
 
@@ -288,8 +288,8 @@ test("two trail rations include every prepared ingredient and uncertain fish acq
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "2" } });
   const html = renderToStaticMarkup(h.render()), value = text(html);
   assert.match(value, /Копчёная рыба ×2 Сушёные ягоды ×2 Малиновый компот ×2 Походный паёк ×2/);
-  assert.match(value, /Стоимость ингредиентов у NPC 980 монет/);
-  assert.match(value, /Выкуп готового товара NPC 1 380 монет/);
+  assert.match(value, /Стоимость ингредиентов у NPC 880 монет/);
+  assert.match(value, /Выкуп готового товара NPC 1 280 монет/);
   assert.match(value, /Прирост стоимости переработки \+400 монет/);
   assert.match(value, /Таймер выбранного производства 40 мин/);
   assert.match(value, /Бревно ×2/); assert.match(value, /Обычная рыба ×4/); assert.match(value, /Малина ×16/);
@@ -379,14 +379,15 @@ test("invalid quantities suppress calculations and recover with valid integral i
 
 test("stage and pearl summaries distinguish guaranteed project gates from chance rewards and optional warehouse", () => {
   const value = text(renderToStaticMarkup(harness(EconomyPanel).render()));
-  assert.match(value, /Всего обязательного ожидания: 6 дн\. 17 ч; затем стройка дома 8 ч/);
-  assert.match(value, /Жемчуг не сокращает интервалы поставок/);
+  assert.ok(data.stages.every(stage => stage.minimumGateSeconds === (stage.orders.length - 1) * stage.intervalSeconds));
+  assert.doesNotMatch(value, /6 дн\. 17 ч/);
+  if (data.stages.some(stage => stage.intervalSeconds > 0)) assert.match(value, /Жемчуг не сокращает интервалы поставок/);
   assert.match(value, /Гарантированная награда за весь проект Живая смола ×1/);
   assert.ok(value.includes(`${economyCatalog.food.orders.templates.length} шаблонов · до ${economyCatalog.food.orders.slots} просьб, по одной у жителя`));
   assert.match(value, /5 бесплатных мест, максимум 10/);
   assert.match(value, /Все расширения вместе: 680 жемчужин/);
-  assert.match(value, /За 7 полученных подарков 500/);
-  assert.match(value, /Все достижения однократно 2 060/);
+  assert.ok(value.includes(`За 7 полученных подарков ${data.pearls.dailyCycle}`));
+  assert.ok(value.includes(`Все достижения однократно ${data.pearls.achievementLifetime.toLocaleString("ru-RU").replaceAll("\u00a0", " ")}`));
   assert.match(value, /Жемчуг за каждый полученный подарок/);
   assert.match(value, /Цели и жемчуг за каждую ступень/);
   assert.match(value, /Ускорение стройки считается по оставшемуся времени/);
@@ -426,7 +427,7 @@ test("branch shop shows the disabled preview and current visible amounts alongsi
   assert.match(value, /Особые костюмы/);
   assert.match(value, /без бонусов к скорости или добыче/);
   for (const offer of data.currencyShop.costumeOffers) assert.ok(value.includes(`${offer.name}: ${offer.priceRub} ₽`));
-  assert.match(value, /Максимум: 8\s?500 монет за 100 жемчужин/);
+  assert.match(value, /Максимум: 5\s?000 монет за 100 жемчужин/);
   const details = text(renderToStaticMarkup(harness(ItemDetails, { item: item("strawberries"), home: 0, onSelect() {} }).render()));
   assert.match(details, /Сначала получить: Малиновый компот ×1/);
   assert.doesNotMatch(details, /[Сс]начала получить[^·<]*Приготовить/);
@@ -437,14 +438,15 @@ test("house-four project displays one-time funding, actual restoration costs and
   const tree = harness(StageCard, { stage, onSelect() {} }).render();
   const value = text(renderToStaticMarkup(tree));
   assert.equal(stage.preliminary, false);
-  assert.match(value, /Обязательные стройки 34 800 монет/);
-  assert.match(value, /Поставки этапа 12 · \+14 965 монет/);
-  assert.match(value, /Заказы минус стройки -19 835 монет/);
-  assert.match(value, /Очередь одного строителя 2 дн\. 10 ч/);
-  assert.match(value, /Между поставками: 23 ч/);
-  assert.match(value, /Всего обязательного ожидания: 10 дн\. 13 ч; затем стройка дома 1 дн\./);
+  assert.match(value, /Обязательные стройки 19 200 монет/);
+  assert.ok(value.includes(`Поставки этапа ${stage.orders.length} · +${stage.orderCoins.toLocaleString("ru-RU").replaceAll("\u00a0", " ")} монет`));
+  assert.match(value, /Заказы минус стройки/);
+  assert.match(value, /Очередь одного строителя/);
+  if (stage.intervalSeconds > 0) assert.match(value, /Между поставками:/);
+  assert.doesNotMatch(value, /Между поставками: 23 ч/);
+  if (stage.intervalSeconds > 0) assert.match(value, /Всего обязательного ожидания:.*затем стройка дома/);
   assert.match(value, /разовое финансирование развития дальнего берега и хозяйства/);
-  assert.match(value, /Для покрытия разницы нужны повторяемые заказы или продажа товаров NPC/);
+  if (stage.orderCoins < stage.buildingCoins) assert.match(value, /Для покрытия разницы нужны повторяемые заказы или продажа товаров NPC/);
   assert.match(value, /Мост \(доступен с дома 2\) и Маяк \(доступен с дома 3\)/);
   assert.match(value, /на этом этапе нужно на 3 000 монет и 5 ч стройки меньше/);
   assert.match(value, /Повторной оплаты нет/);
@@ -486,9 +488,9 @@ test("every house's berry and processing unlock is visible and opens its actual 
 
 test("new meals expose their real effects and premium examples agree with the live command price", () => {
   const jelly = text(renderToStaticMarkup(harness(ItemDetails, { item: item("currant_jelly"), home: 0, onSelect() {} }).render()));
-  assert.match(jelly, /Характеристики обеда Мохлик: \+20% скорости одной вылазки/);
-  assert.match(jelly, /Строитель: \+30% скорости одной стройки/);
-  assert.match(jelly, /шахтёра обед не ускоряет/);
+  assert.match(jelly, /Характеристики обеда Мохлик: \+20% скорости на/);
+  assert.ok(jelly.includes(`Строитель: +${item("currant_jelly").meal.builderSpeedBps / 100}% скорости одной стройки`));
+  assert.match(jelly, /Шахтёра обед не ускоряет/);
   for (const quote of data.pearls.construction.prices) {
     assert.equal(quote.pearls, pearlDisplayAmount(constructionTimePearlPrice(quote.seconds, economyCatalog.constructionSpeedup)));
   }

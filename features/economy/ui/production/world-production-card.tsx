@@ -4,7 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Clock3, LockKeyhole } from "lucide-react";
 import { locked, productionLocked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
-import { worldCostShortfalls, worldProductionReason, worldRecipeAccessReason, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
+import { worldCostShortfalls, worldItemAvailable, worldRecipeCost, worldProductionReason, worldRecipeAccessReason, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 import { ProductIcon, itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldRecipeDuration } from "@/features/economy/ui/stations/world-recipe-groups";
 import { fishStockRequirements, fishSelectionMatches, type FishSelection } from "@/features/economy/domain/fish-stock";
@@ -40,7 +40,8 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
     ? tradeWorkDuration(state, recipe.seconds, "lopukh", 0, state.catalog) : recipe.seconds);
   const reason = worldProductionReason(state, recipe, 1);
   const accessReason = worldRecipeAccessReason(state, recipe);
-  const costs = [...(recipe.cost.coins > 0 ? [["coins", recipe.cost.coins] as const] : []), ...Object.entries(recipe.cost.items)];
+  const recipeCost = worldRecipeCost(state, recipe);
+  const costs = [...(recipeCost.coins > 0 ? [["coins", recipeCost.coins] as const] : []), ...Object.entries(recipeCost.items)];
   const hasFish = Object.keys(fishStockRequirements(recipe.cost.items, state.catalog.fishing)).length > 0;
   const durableProduction = !firstHarvest && economy.productionQueueAvailable && !hasFish && !recipe.fishInput;
   const meal = state.catalog.food?.meals.find(entry => (recipe.rewards[entry.itemId] ?? 0) > 0);
@@ -86,7 +87,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
       : current.economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения."
       : !durableProduction && current.economy.retryAt > current.economy.now ? `Повторите через ${Math.ceil((current.economy.retryAt - current.economy.now) / 1000)} с.`
         : current.economy.busy || !durableProduction && (pending.current || (current.economy.pendingProductionCount ?? 0) > 0) ? "Дождитесь завершения действия." : null;
-    const missing = currentReason === "Не хватает материалов или монет" ? worldCostShortfalls(snapshot, current.recipe.cost)
+    const missing = currentReason === "Не хватает материалов или монет" ? worldCostShortfalls(snapshot, worldRecipeCost(snapshot, current.recipe))
       .map(entry => `${entry.id === "coins" ? "Монеты" : itemName(snapshot, entry.id)} ×${number(entry.required - entry.available)}`).join(", ") : "";
     const blocked = wait ?? (missing ? `Не хватает: ${missing}.` : currentReason);
     if (blocked) { setNotice(blocked); return false; }
@@ -94,7 +95,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
       fishFocusOrigin.current = { element: button.current, owner: snapshot.ownerPublicId, recipeId: current.recipe.id };
       setChoosingFish(true); return false;
     }
-    if (selection && !fishSelectionMatches(snapshot, current.recipe.cost.items, selection)) return false;
+    if (selection && !fishSelectionMatches(snapshot, worldRecipeCost(snapshot, current.recipe).items, selection)) return false;
     const action = current.tutorialHarvestActive && canPrepareTutorialHarvest(snapshot, current.recipe.id)
       ? "start_tutorial_harvest" : "start_production";
     const accepted = selection ? current.economy.act(action, current.recipe.id, 1, 0, selection)
@@ -123,19 +124,20 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
         {accessReason && <span className={styles.accessReason} data-recipe-access>{accessReason}</span>}
         {tradeSpeedBps > 0 && <span className={styles.benefits} data-production-trade-bonus>Лопоух: +{number(tradeSpeedBps / 100)}% к скорости</span>}
         {costs.length > 0 && <span className={styles.costs} data-production-inputs aria-label="Понадобится">{costs.map(([id, amount]) => {
-          const available = id === "coins" ? state.wallet.coins : state.inventory[id] ?? 0;
+          const available = id === "coins" ? state.wallet.coins : worldItemAvailable(state, id);
           const missing = available < amount;
           return <span key={id} data-missing={missing || undefined} title={`${id === "coins" ? "Монеты" : itemName(state, id)}: есть ${number(available)}, нужно ${number(amount)}`}>
             <ProductIcon state={state} itemId={id} size={15} />
             <span>{id === "coins" ? "Монеты" : itemName(state, id)}</span><b>{missing ? `${number(available)} / ${number(amount)}` : `×${number(amount)}`}</b>
           </span>;
         })}</span>}
-        {meal && <span className={styles.benefits}><span>Вылазка +{number(meal.heroSpeedBps / 100)}% скорости</span><span>Стройка +{number(meal.builderSpeedBps / 100)}% скорости</span></span>}
+        {recipe.fishInput?.exactSpecies && <span className={styles.benefits}>Нужен указанный вид рыбы</span>}
+        {meal && <span className={styles.benefits}><span>Вылазки +{number(meal.heroSpeedBps / 100)}%{meal.heroWorkSeconds ? ` · запас на ${worldRecipeDuration(meal.heroWorkSeconds)} работы` : " скорости"}</span><span>Одна стройка +{number(meal.builderSpeedBps / 100)}% скорости</span></span>}
       </span>
     </button>
     {description && <span id={detailId} className={styles.accessible}>{description}</span>}
     {notice && <p id={noticeId} className={styles.notice} role="status" aria-live="polite">{notice}</p>}
-    {choosingFish && hasFish && <WorldFishSelection economy={economy} requiredItems={recipe.cost.items} contextId={`recipe:${recipe.id}`} confirmLabel="Готовить"
+    {choosingFish && hasFish && <WorldFishSelection economy={economy} requiredItems={recipeCost.items} contextId={`recipe:${recipe.id}`} confirmLabel="Готовить"
       onClose={() => setChoosingFish(false)} onConfirm={start} onCloseAutoFocus={event => {
         event.preventDefault();
         const origin = fishFocusOrigin.current, current = latest.current;

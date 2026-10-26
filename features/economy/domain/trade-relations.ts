@@ -21,6 +21,7 @@ export function tradeOrderFingerprint(order: Terms): string {
   const input: unknown[] = [order.id, order.residentId, pairs(order.items), order.coins];
   if ([order.reputationXp, order.effortSeconds, order.manufacturingSeconds, order.fishingUncertain].some(value => value != null))
     input.push(order.reputationXp ?? 0, order.effortSeconds ?? 0, order.manufacturingSeconds ?? 0, Boolean(order.fishingUncertain));
+  if ((order.pearls ?? 0) > 0) input.push(order.pearls);
   return String(tradeHash(JSON.stringify(input)));
 }
 export function tradeRelationsState(state: Partial<Pick<EconomyState, "tradeRelations">>): EconomyTradeRelations {
@@ -101,19 +102,19 @@ export function awardTradePurchaseXp(state: EconomyState, residentId: TradeResid
   return awarded;
 }
 export type WeeklyOrderCandidate = { id: string; templateId: string; residentId: TradeResidentId; name: string; description: string;
-  stages: Terms[]; coins: number; reputationXp: number; effortSeconds: number; manufacturingSeconds: number; fishingUncertain: boolean };
+  stages: Terms[]; coins: number; pearls: number; reputationXp: number; effortSeconds: number; manufacturingSeconds: number; fishingUncertain: boolean };
 export type WeeklyOrderOffer = { id: string; slot: number; templateId: string; residentId: TradeResidentId; name: string; description?: string;
-  items: Record<string, number>; coins: number; availableAt: string; reputationXp?: number; effortSeconds?: number;
+  items: Record<string, number>; coins: number; pearls?: number; availableAt: string; reputationXp?: number; effortSeconds?: number;
   manufacturingSeconds?: number; fishingUncertain?: boolean; requiredBuildings?: Record<string, number> | null;
   weekly: true; stage: number; stages: number; expiresAt: string };
 function weeklyCandidate(template: NonNullable<EconomyCatalog["tradeRelations"]>["weekly"]["templates"][number]): WeeklyOrderCandidate {
   const input = [template.id, template.residentId, template.requiredHomeLevel, pairs(template.requiredBuildings),
-    template.stages.map(stage => [stage.id, pairs(stage.items), stage.coins, stage.reputationXp, stage.effortSeconds, stage.manufacturingSeconds, stage.fishingUncertain])];
+    template.stages.map(stage => [stage.id, pairs(stage.items), stage.coins, stage.reputationXp, stage.effortSeconds, stage.manufacturingSeconds, stage.fishingUncertain, ...((stage.pearls ?? 0) > 0 ? [stage.pearls] : [])])];
   const stages = template.stages.map(stage => ({ ...stage, residentId: template.residentId, items: { ...stage.items },
     requiredBuildings: { home: template.requiredHomeLevel, ...template.requiredBuildings } }));
   return { id: `weekly_choice1_${template.id}_${tradeHash(JSON.stringify(input))}`, templateId: template.id,
     residentId: template.residentId, name: template.name, description: template.description, stages,
-    coins: stages.reduce((sum, stage) => sum + stage.coins, 0), reputationXp: stages.reduce((sum, stage) => sum + stage.reputationXp, 0),
+    coins: stages.reduce((sum, stage) => sum + stage.coins, 0), pearls: stages.reduce((sum, stage) => sum + (stage.pearls ?? 0), 0), reputationXp: stages.reduce((sum, stage) => sum + stage.reputationXp, 0),
     effortSeconds: stages.reduce((sum, stage) => sum + stage.effortSeconds, 0),
     manufacturingSeconds: stages.reduce((sum, stage) => sum + stage.manufacturingSeconds, 0), fishingUncertain: stages.some(stage => stage.fishingUncertain) };
 }

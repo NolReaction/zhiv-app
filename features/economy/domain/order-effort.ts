@@ -1,5 +1,5 @@
 import { economyCatalog, recipeBuildingLevel, type EconomyCatalog, type EconomyState } from "./model";
-import { fishingClassWeights, fishingState, fishingClassItemId, fishingCollectionDraws } from "./fishing";
+import { fishingClassWeights, fishingState, fishingClassItemId, fishingCollectionDraws, fishingSpeciesWeights, fishingWeights, fishClassForItem } from "./fishing";
 
 export type OrderEffortSource = Pick<EconomyState, "buildings"> & Partial<Pick<EconomyState, "fishing" | "progression">> & { catalog?: EconomyCatalog };
 /** Reachability is a fixed point over all unlocked production and expedition
@@ -11,7 +11,10 @@ export function obtainableResidentOrderItems(state: OrderEffortSource, catalog =
   const catchable = new Set<string>();
   if (fishing) for (const rod of fishing.rods.filter(rod => tackle.ownedRods.includes(rod.id)))
     for (const hook of fishing.hooks.filter(hook => tackle.ownedHooks.includes(hook.id)))
-      for (const group of fishingClassWeights(rod.id, null, fishing, hook.id)) if (group.weight > 0) catchable.add(group.itemId);
+      for (const group of fishingClassWeights(rod.id, null, fishing, hook.id)) if (group.weight > 0) {
+        catchable.add(group.itemId);
+        for (const fish of fishingSpeciesWeights(rod.id, group.rarity, fishing, hook.id)) if (fish.weight > 0) catchable.add(fish.itemId);
+      }
   const unlocked = (source: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }) =>
     (state.buildings.home ?? 1) >= source.requiredHomeLevel && Object.entries(source.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
   let changed = true;
@@ -21,8 +24,8 @@ export function obtainableResidentOrderItems(state: OrderEffortSource, catalog =
       if (source.retired) continue;
       if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < recipeBuildingLevel(source)) continue;
       if ("requiredRecipes" in source && Object.entries(source.requiredRecipes).some(([id, count]) => (state.progression?.recipes[id] ?? 0) < count)) continue;
-      const fishInput = "fishInput" in source ? source.fishInput?.itemIds : undefined;
-      if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !fishInput?.includes(id))) continue;
+      const fishInput = "fishInput" in source ? source.fishInput?.itemIds.map(id => source.fishInput?.exactSpecies ? id : fishing ? fishingClassItemId(id, fishing) : id) : undefined;
+      if (Object.keys(source.cost.items).some(id => { const key = "fishInput" in source && !source.fishInput?.exactSpecies && fishing ? fishingClassItemId(id, fishing) : id; return !reachable.has(key) && !fishInput?.includes(key); })) continue;
       if (fishInput && !fishInput.some(id => reachable.has(id))) continue;
       const fishingRoute = fishing?.routeIds.includes(source.id);
       for (const [id, quantity] of Object.entries(source.rewards)) if (quantity > 0 && (!fishingRoute || id !== "fish"))
@@ -60,25 +63,29 @@ export function orderEffort(state: OrderEffortSource, items: Record<string, numb
       const isRecipe = "buildingId" in source;
       const isFishing = !isRecipe && fishing?.routeIds.includes(source.id);
       const reward = source.rewards[itemId] ?? 0;
-      const weights = isFishing && fishing ? fishing.rods.filter(rod => tackle.ownedRods.includes(rod.id)).flatMap(rod =>
-        fishing.hooks.filter(hook => tackle.ownedHooks.includes(hook.id)).map(hook => fishingClassWeights(rod.id, null, fishing, hook.id))) : [];
       let expectedYield = reward, uncertain = false;
-      if (isFishing && fishing && itemId.startsWith("fish_")) {
-        const draws = fishingCollectionDraws(source.id, fishing);
-        expectedYield = Math.max(0, ...weights.map(groups => {
-          const total = groups.reduce((sum, group) => sum + group.weight, 0);
-          return total ? (itemId === "fish_common" ? Math.max(0, (source.rewards.fish ?? 0) - draws) : 0)
-            + draws * (groups.find(group => group.itemId === itemId)?.weight ?? 0) / total : 0;
-        }));
-        uncertain = expectedYield > 0 && weights.some(groups => (groups.find(group => group.itemId === itemId)?.weight ?? 0)
-          < groups.reduce((sum, group) => sum + group.weight, 0));
+      if (isFishing && fishing && fishClassForItem(itemId, fishing)) {
+        const draws = fishingCollectionDraws(source.id, fishing), species = fishing.fish.some(fish => fish.itemId === itemId);
+        const gear = fishing.rods.filter(rod => tackle.ownedRods.includes(rod.id)).flatMap(rod =>
+          fishing.hooks.filter(hook => tackle.ownedHooks.includes(hook.id)).map(hook => ({ rod, hook })));
+        const probabilities = gear.map(({ rod, hook }) => {
+          const groups = fishingClassWeights(rod.id, null, fishing, hook.id), total = groups.reduce((sum, group) => sum + group.weight, 0);
+          const weight = species ? fishingWeights(rod.id, null, fishing, hook.id).find(fish => fish.itemId === itemId)?.weight ?? 0
+            : groups.find(group => group.itemId === itemId)?.weight ?? 0;
+          return total ? weight / total : 0;
+        });
+        const bestProbability = Math.max(0, ...probabilities);
+        expectedYield = (!species && itemId === fishing.classes.find(group => group.rarity === "common")?.itemId
+          ? Math.max(0, (source.rewards.fish ?? 0) - draws) : 0) + draws * bestProbability;
+        uncertain = bestProbability > 0 && bestProbability < 1;
       }
       if (expectedYield <= 0) continue;
       const batches = Math.ceil(quantity / expectedYield), seconds = source.seconds * batches;
       const prerequisites: Plan[] = [];
       let valid = true;
       for (const [input, count] of Object.entries(source.cost.items)) {
-        const candidates = isRecipe && source.fishInput?.itemIds.includes(input) ? source.fishInput.itemIds : [input];
+        const candidates = (isRecipe && source.fishInput?.itemIds.includes(input) ? source.fishInput.itemIds : [input])
+          .map(id => isRecipe && !source.fishInput?.exactSpecies && fishing ? fishingClassItemId(id, fishing) : id);
         const options = candidates.flatMap(id => { const result = plan(id, count * batches, [...path, itemId]); return result ? [result] : []; });
         options.sort((a, b) => a.work - b.work || a.critical - b.critical);
         if (!options.length) { valid = false; break; }

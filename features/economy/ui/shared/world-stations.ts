@@ -1,6 +1,7 @@
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
 import { recipeBuildingLevel, type EconomyCatalog, type EconomyCost, type EconomyJob, type EconomyView } from "@/features/economy/domain/model";
-import { fishClassForItem } from "@/features/economy/domain/fishing";
+import { fishClassForItem, fishClassInventory } from "@/features/economy/domain/fishing";
+import { normalizedFishStock } from "@/features/economy/domain/fish-stock";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
@@ -97,10 +98,19 @@ export function worldMaterialSource(state: EconomyView, itemId: string) {
     || recipeBuildingLevel(left) - recipeBuildingLevel(right) || left.seconds - right.seconds)[0];
   return future ? { kind: "production" as const, stationId: future.buildingId, targetId: future.id } : null;
 }
+/** Species ownership comes from today's stock ledger, never the lifetime catch book. */
+export function worldItemAvailable(state: EconomyView, itemId: string) {
+  return state.catalog.fishing?.fish.some(fish => fish.itemId === itemId)
+    ? normalizedFishStock(state)[itemId] ?? 0 : state.inventory[itemId] ?? 0;
+}
+export function worldRecipeCost(state: EconomyView, recipe: WorldRecipe): EconomyCost {
+  return recipe.fishInput?.exactSpecies ? recipe.cost
+    : { ...recipe.cost, items: fishClassInventory(recipe.cost.items, state.catalog.fishing) };
+}
 export function worldCostShortfalls(state: EconomyView, cost: EconomyCost, quantity = 1) {
   return [
     ...(state.wallet.coins < cost.coins * quantity ? [{ id: "coins", required: cost.coins * quantity, available: state.wallet.coins }] : []),
-    ...Object.entries(cost.items).filter(([id, amount]) => (state.inventory[id] ?? 0) < amount * quantity).map(([id, amount]) => ({ id, required: amount * quantity, available: state.inventory[id] ?? 0 })),
+    ...Object.entries(cost.items).filter(([id, amount]) => worldItemAvailable(state, id) < amount * quantity).map(([id, amount]) => ({ id, required: amount * quantity, available: worldItemAvailable(state, id) })),
   ];
 }
 export function worldBatchLimit(state: EconomyView, recipe: WorldRecipe) {
@@ -140,7 +150,7 @@ export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, q
   if (state.jobs.some(job => job.kind === "construction" && job.targetId === recipe.buildingId)) return "Сначала завершите улучшение";
   if (state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId).length >= productionSlotCount(state, recipe.buildingId)) return "Все места заняты: сначала заберите результат";
   if (quantity > worldBatchLimit(state, recipe)) return "Уменьшите партию или расширьте кладовую";
-  if (worldCostShortfalls(state, recipe.cost, quantity).length) return "Не хватает материалов или монет";
+  if (worldCostShortfalls(state, worldRecipeCost(state, recipe), quantity).length) return "Не хватает материалов или монет";
   return null;
 }
 export function worldConstructionReason(state: EconomyView, stationId: string, target: WorldBuildingLevel) {

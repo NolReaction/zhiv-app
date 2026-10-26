@@ -92,7 +92,7 @@ export function auditProductionBalance(catalog) {
   return rows;
 }
 
-/** Current authored project contracts. Waits belong to deliveries, not buildings. */
+/** Current project contracts retain their identity; v14 gates work by materials. */
 export function auditProjectCourses(catalog) {
   const items = new Set(catalog.items.map(item => item.id));
   const buildings = new Map(catalog.buildings.map(building => [building.id, building]));
@@ -121,11 +121,12 @@ export function auditProjectCourses(catalog) {
       && Number.isSafeInteger(quantity) && quantity > 0), "Invalid project completion reward");
   }
   const third = courses.get(3), fourth = courses.get(4);
-  assert(third?.orders.length === 8 && third.intervalSeconds === 23 * 3600,
-    "Third stage project must keep eight deliveries and seven 23-hour waits");
+  const interval = catalog.version >= 14 ? 0 : 23 * 3600;
+  assert(third?.orders.length === 8 && third.intervalSeconds === interval,
+    "Third stage must retain eight deliveries and its versioned interval");
   assert.deepEqual(third.completionRewards, { living_resin: 1 }, "Third stage must guarantee its home relic");
-  assert(fourth?.orders.length === 12 && fourth.intervalSeconds === 23 * 3600,
-    "Fourth stage project must keep twelve deliveries and eleven 23-hour waits");
+  assert(fourth?.orders.length === 12 && fourth.intervalSeconds === interval,
+    "Fourth stage must retain twelve deliveries and its versioned interval");
   if (catalog.version < 13) assert.equal(fourth.orders.reduce((sum, order) => sum + order.coins, 0), 50000,
     "Fourth stage one-time project financing must total 50000 coins");
   else {

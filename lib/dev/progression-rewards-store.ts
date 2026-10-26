@@ -4,7 +4,7 @@ import { getDevGameAchievements } from "./game-store";
 import { creditDevProgressionReward, getDevEconomy, DevEconomyError } from "./economy-store";
 import { gameRewardClaimSchema, type GameRewardClaim, type GameRewardResult, type GameRewards } from "@/features/game/game-rewards-api";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, nominalEconomyMoney, nominalEconomyPearls } from "@/features/economy/domain/money";
-import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, normalizeDailyRewardState, onboardingRewardEligible, progressionRewardsCatalog, type DailyRewardState } from "@/features/game/progression-rewards";
+import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, normalizeDailyRewardState, onboardingRewardEligible, onboardingRewardForState, progressionRewardsCatalog, type DailyRewardState } from "@/features/game/progression-rewards";
 
 type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRevision: number; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50 };
 type Profile = { daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt>; onboardingClaimedAt?: string | null };
@@ -63,7 +63,7 @@ export function claimDevProgressionReward(token: string | undefined, input: unkn
     if (current.onboarding?.claimedAt) fail("ONBOARDING_REWARD_CLAIMED", "Награда за обучение уже получена");
     if (!onboardingRewardEligible(getDevEconomy(token, now, owner)))
       fail("ONBOARDING_REWARD_UNAVAILABLE", "Сначала выполни учебный заказ. Награда останется доступна после него");
-    claim = { kind: "onboarding", reward: structuredClone(progressionRewardsCatalog.onboarding), claimedAt };
+    claim = { kind: "onboarding", reward: onboardingRewardForState(getDevEconomy(token, now, owner)), claimedAt };
   } else {
     const row = current.achievementRewards.find(row => row.achievementId === command.achievementId && row.level === command.level);
     if (!row) fail("INVALID_REWARD_CLAIM", "Такой ступени достижения нет", 400);

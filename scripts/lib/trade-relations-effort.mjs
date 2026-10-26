@@ -31,7 +31,10 @@ export function tradeSourceAvailability(catalog, buildings) {
       if (source.buildingId) recipes.add(source.id);
       if (catalog.fishing.routeIds.includes(source.id)) for (const group of catalog.fishing.classes) {
         if (catalog.fishing.rods.some(rod => rod.requiredHomeLevel <= buildings.home
-          && (group.rarity !== "legendary" || rod.rarity === "legendary") && rod.classOddsBps[group.rarity] > 0)) items.add(group.itemId);
+          && (group.rarity !== "legendary" || rod.rarity === "legendary") && rod.classOddsBps[group.rarity] > 0)) {
+          items.add(group.itemId);
+          for (const species of catalog.fishing.fish.filter(fish => fish.rarity === group.rarity)) items.add(species.itemId);
+        }
       }
     }
     changed = before !== items.size + recipes.size;
@@ -39,11 +42,16 @@ export function tradeSourceAvailability(catalog, buildings) {
   return { items, recipes };
 }
 
-/** Diminishing XP follows authored effort, with a separate daily earning cap.
- * Short tasks stay useful; one expensive late-game basket cannot buy a rank. */
+/** Work-scaled XP with bounded individual awards and a separate daily cap.
+ * A long, nested delivery earns more than a handful of raw ingredients. */
 export function reputationXpForEffort(seconds) {
   assert(Number.isSafeInteger(seconds) && seconds > 0, "Effort must be positive whole seconds");
-  return Math.min(18, Math.max(2, 2 + Math.floor(Math.log2(1 + Math.ceil(seconds / 60)))));
+  return Math.min(30, Math.max(4, 4 + Math.ceil(seconds / 900)));
+}
+
+export function weeklyReputationXpForEffort(seconds) {
+  assert(Number.isSafeInteger(seconds) && seconds > 0, "Effort must be positive whole seconds");
+  return Math.min(100, Math.max(20, 10 + Math.ceil(seconds / 600)));
 }
 
 /** Baseline occupied work from an empty pantry, not a completion deadline.
@@ -56,7 +64,7 @@ export function reputationXpForEffort(seconds) {
 export function tradeOrderEffort(catalog) {
   const math = economicMath(catalog), price = residentOrderPricing(catalog);
   const known = new Map(catalog.items.map(item => [item.id, item]));
-  const fish = new Map(catalog.fishing.classes.map(group => [group.itemId, group]));
+  const fish = new Map([...catalog.fishing.classes, ...catalog.fishing.fish].map(group => [group.itemId, group]));
   return template => {
     const buildings = tradeGuaranteedBuildings(template), reachable = tradeSourceAvailability(catalog, buildings);
     const work = new Map(), references = {};
@@ -86,7 +94,8 @@ export function tradeOrderEffort(catalog) {
       assert(rod, `${template.id}: no available tackle for ${itemId}`);
       const route = catalog.explorations.find(route => route.id === "shore");
       assert(route && levelsPermit(route, buildings), `${template.id}: baseline fishing route is unavailable`);
-      const portfolio = math.catchPortfolio(rod.id, null, route.id, "bare_hook"), output = portfolio.output[itemId];
+      const portfolio = math.catchPortfolio(rod.id, null, route.id, "bare_hook");
+      const output = portfolio.output[itemId] ?? portfolio.probabilities[itemId] * portfolio.speciesDrawsPerJob;
       assert(output > 0, `${template.id}: zero chance of ${itemId}`);
       candidates.push({ itemId, id: `${route.id}:${rod.id}`, output, seconds: route.seconds,
         inputs: route.cost.items, fishingUncertain: true });

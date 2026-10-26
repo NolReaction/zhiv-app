@@ -63,7 +63,7 @@ test("branch prerenders cooking's fish source and current food uses as active ac
   assert(sourceButton);
   assert.match(sourceButton, /data-kind="acquisition"/);
   assert.match(sourceButton, /data-status="active"/);
-  assert.match(sourceButton, /aria-label="Классы рыбы из улова"/);
+  assert.match(sourceButton, /aria-label="Виды и классы рыбы из улова"/);
   assert.match(html, /data-node-id="orders"[^>]*data-status="active"/);
   assert.match(html, /data-node-id="meals"[^>]*data-status="active"/);
   assert.match(html, /data-node-id="r:cook_berry_fish"/);

@@ -209,7 +209,7 @@ test("the meal card uses saved pending or active work bonuses independently of m
   const pending = mood({ economy: { snapshot: state }, observation: { ...observation, needs: { ...observation.needs, energy: .1 } } });
   assert.match(pending.markup, /Пора передохнуть/);
   assert.match(pending.markup, /Еда: \+25% к скорости/);
-  assert.match(pending.markup, /Бонус ждёт следующую вылазку/);
+  assert.match(pending.markup, /Сохранённый обед ускорит одну следующую вылазку/);
   assert.match(pending.markup, /data-meal-return="hero"/);
   assert.match(pending.markup, /Забрать блюдо/);
   assert.deepEqual(state, before, "rendering never consumes the pending meal");
@@ -217,18 +217,18 @@ test("the meal card uses saved pending or active work bonuses independently of m
   state.jobs = [{ kind: "exploration", meal: { itemId: recipeMeal.itemId, consumer: "hero", speedBps: 2500 } }];
   const applied = mood({ economy: { snapshot: state } });
   assert.match(applied.markup, /Бонус учтён в текущей вылазке/);
-  assert.match(applied.markup, /Блюдо уже использовано, вернуть его нельзя/);
+  assert.match(applied.markup, /Потраченную часть вернуть нельзя/);
   assert.doesNotMatch(applied.markup, /data-meal-return/);
   state.jobs = [{ kind: "construction", meal: { itemId: recipeMeal.itemId, consumer: "builder", speedBps: 1000 } }];
   const builderOnly = mood({ economy: { snapshot: state } });
   assert.doesNotMatch(builderOnly.markup, /Еда: \+/);
-  assert.match(builderOnly.markup, /Силы восстанавливаются во время отдыха/);
+  assert.match(builderOnly.markup, /Он расходуется в пути, а не во время отдыха/);
   state.jobs = [{ kind: "exploration", actorId: "miner", targetId: "quarry_stone",
     meal: { itemId: recipeMeal.itemId, consumer: "hero", speedBps: 2500 } }];
   assert.doesNotMatch(mood({ economy: { snapshot: state } }).markup, /Еда: \+|Бонус учтён в текущей вылазке/,
     "a miner's stale meal metadata never becomes Mochlik's active food bonus");
   state.food.heroMeal = recipeMeal.itemId;
-  assert.match(mood({ economy: { snapshot: state } }).markup, /Бонус ждёт следующую вылазку/);
+  assert.match(mood({ economy: { snapshot: state } }).markup, /Сохранённый обед ускорит одну следующую вылазку/);
   assert.doesNotMatch(mood({ economy: { snapshot: null } }).markup, /Бонус от еды/);
 });
 
@@ -319,4 +319,13 @@ test("local profile explanation offers the saved course status and only its expl
     namedButton(view, label).props.onClick();
     assert.deepEqual(calls, ["hide-help", "guide"]);
   }
+});
+
+test("profile shows remaining frozen work budget without consulting changed recipe strength", () => {
+  const state = freshEconomy();
+  state.food = { heroMeal: "grilled_fish", builderMeal: null, heroMealEffect: { speedBps: 2700, remainingWorkSeconds: 600, totalWorkSeconds: 3600 } };
+  const view = mood({ economy: { snapshot: state } });
+  assert.match(view.markup, /Еда: \+27% к скорости/);
+  assert.match(view.markup, /Осталось 10 мин обычного времени вылазок/);
+  assert.match(view.markup, /Убрать остаток/);
 });

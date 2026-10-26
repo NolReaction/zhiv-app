@@ -48,7 +48,7 @@ class JdbcIntroOrderMigrationIntegrationTest {
             assertEquals("2", scalar(source, "SELECT state->'tutorialOrder'->'terms'->'items'->>'berries' FROM economy_profiles"))
             val before = retained(source)
             DatabaseFactory.migrate(source)
-            assertEquals("70", scalar(source, "SELECT max(version::int)::text FROM flyway_schema_history"))
+            assertEquals("71", scalar(source, "SELECT max(version::int)::text FROM flyway_schema_history"))
             assertEquals(before, retained(source), "V58 does not rewrite existing progress, wallet, receipts, timestamps or older history")
             source.connection.use { c ->
                 for (include in listOf(true, false)) {
@@ -65,7 +65,7 @@ class JdbcIntroOrderMigrationIntegrationTest {
             assertEquals(function, scalar(source, "SELECT pg_get_functiondef('public.economy_v4_initial_state(jsonb,boolean)'::regprocedure)"))
             assertEquals(Json.parseToJsonElement("{\"berries\":1}"), Json.parseToJsonElement(scalar(source,
                 "SELECT economy_v4_initial_state('{}',true)->'tutorialOrder'->'terms'->'items'")))
-            assertEquals("15", scalar(source, "SELECT economy_v4_initial_state('{}',true)->'tutorialOrder'->'terms'->>'coins'"))
+            assertEquals("13", scalar(source, "SELECT economy_v4_initial_state('{}',true)->'tutorialOrder'->'terms'->>'coins'"))
         }
     }
 

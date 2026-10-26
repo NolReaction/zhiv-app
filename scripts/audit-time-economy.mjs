@@ -73,11 +73,29 @@ export function auditTimeEconomy(catalog) {
   }
   const materialTrips = active.filter(source => !source.buildingId && source.activity !== "mining"
     && !catalog.fishing.routeIds.includes(source.id));
+  const expeditionFinds = [];
   for (const source of materialTrips) {
     assert(source.seconds > 0 && source.seconds <= 3600, `${source.id}: material exploration must take at most one hour`);
     assert.equal((value(source.rewards) - value(source.cost.items) - source.cost.coins) * 60,
       source.seconds * policy.coinsPerMinute, `${source.id}: hero material trip must earn only its own time value after inputs`);
     assert(sum(Object.values(source.rewards)) + 1 <= 50, `${source.id}: full trip and one possible relic must fit initial storage`);
+    if (source.finds) {
+      const { emptyWeight, entries } = source.finds;
+      assert(Number.isSafeInteger(emptyWeight) && emptyWeight >= 0 && entries.length > 0, `${source.id}: invalid find weights`);
+      const totalWeight = emptyWeight + sum(entries.map(entry => entry.weight));
+      for (const entry of entries) {
+        assert(Number.isSafeInteger(entry.weight) && entry.weight > 0 && Number.isSafeInteger(entry.quantity) && entry.quantity > 0,
+          `${source.id}: finds need positive integer weights and quantities`);
+        assert(items.has(entry.itemId) && items.get(entry.itemId).tradable, `${source.id}: random bonus must be ordinary useful goods`);
+        assert(sum(Object.values(source.rewards)) + entry.quantity + 1 <= 50, `${source.id}: maximum find and relic must fit starter storage`);
+      }
+      const expectedBonusCoins = sum(entries.map(entry => value({ [entry.itemId]: entry.quantity }) * entry.weight / totalWeight));
+      const guaranteedNetCoins = value(source.rewards) - value(source.cost.items) - source.cost.coins;
+      assert(expectedBonusCoins >= guaranteedNetCoins * .05 && expectedBonusCoins <= guaranteedNetCoins * .15,
+        `${source.id}: expected bonus must stay between five and fifteen percent of guaranteed work value`);
+      expeditionFinds.push({ routeId: source.id, chance: 1 - emptyWeight / totalWeight, guaranteedNetCoins,
+        expectedBonusCoins, expectedNetCoinsPerMinute: (guaranteedNetCoins + expectedBonusCoins) * 60 / source.seconds });
+    }
   }
   for (const building of catalog.buildings) for (const level of building.levels) {
     if (building.id === "warehouse" && level.level >= 4) continue; // Explicit relic-only optional capacity.
@@ -130,7 +148,7 @@ export function auditTimeEconomy(catalog) {
   }
   return { catalogVersion: catalog.version, coinsPerMinute: policy.coinsPerMinute, orderBonusBps: policy.orderBonusBps,
     buildingUnlocks: auditBuildingUnlocks(catalog),
-    activeHeroMaterialRoutes: materialTrips.length,
+    activeHeroMaterialRoutes: materialTrips.length, expeditionFinds,
     activeRecipes: active.filter(source => source.buildingId).length, activeMiningRoutes: active.filter(source => source.activity === "mining").length,
     retiredSources: [...recipes.values(), ...routes.values()].filter(source => source.retired).map(source => source.id),
     assumptions: ["Reference unboosted technology; input value and operation time are each counted once.",

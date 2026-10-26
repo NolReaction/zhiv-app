@@ -15,11 +15,11 @@ test("economy catalog has useful chains, reachable actual tiers and separate pro
   assert.equal(report.completionLevels.lighthouse, 1);
   assert.deepEqual(report.completionLevels, Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level])));
   assert.ok(report.fullBaseMinimumSeconds > report.fiveTierBaseMinimumSeconds);
-  assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 7 * 23 * 3600);
-  assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 11 * 23 * 3600);
-  assert.equal(report.fourthStage.constructionCoins, 34800);
-  assert.equal(report.fourthStage.constructionSeconds, 58 * 3600);
-  assert.equal(report.fourthStage.longWorkshopJobs, 3);
+  assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 0);
+  assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 0);
+  assert.equal(report.fourthStage.constructionCoins, 19200);
+  assert.equal(report.fourthStage.constructionSeconds, 32 * 3600);
+  assert.equal(report.fourthStage.longWorkshopJobs, 5);
   assert.match(report.timingBasis, /construction queue.*actual play duration are separate/);
 });
 
@@ -63,7 +63,7 @@ test("catalog audit rejects building prerequisites that route back through the t
 test("catalog audit rejects compression of the authored stage construction contracts", () => {
   const catalog = readEconomyCatalog();
   for (const building of catalog.buildings) for (const level of building.levels) level.seconds = Math.floor(level.seconds / 10);
-  assert.throws(() => auditEconomyProgression(catalog), /Third stage home construction.*eight-hour|Fourth stage.*one-day|construction price must follow builder time/);
+  assert.throws(() => auditEconomyProgression(catalog), /Third stage home construction.*declared tier|Fourth stage.*declared tier|construction price must follow builder time/);
 });
 
 test("warehouse has ten increasing tiers, ordinary early costs and independent relic expansions", () => {
@@ -103,7 +103,7 @@ test("optional warehouse tiers cannot gate the final home or replace the authore
   assert.throws(() => auditEconomyProgression(catalog), /Storage expansion must not gate ordinary buildings or homes/);
   const compressed = readEconomyCatalog();
   for (const building of compressed.buildings) for (const level of building.levels) if (level.level <= 5) level.seconds = Math.floor(level.seconds / 10);
-  assert.throws(() => auditEconomyProgression(compressed), /Third stage home construction.*eight-hour|Fourth stage.*one-day|construction price must follow builder time/);
+  assert.throws(() => auditEconomyProgression(compressed), /Third stage home construction.*declared tier|Fourth stage.*declared tier|construction price must follow builder time/);
 });
 
 
@@ -163,9 +163,9 @@ test("unit production, short mining and ingredient value cannot silently regress
   }
 });
 
-test("the authored v13 catalog keeps every current production unit-sized and every storage gate optional", () => {
+test("the authored v14 catalog keeps every current production unit-sized and every storage gate optional", () => {
   const catalog = readEconomyCatalog();
-  assert.equal(catalog.version, 13); assert.equal(catalog.recipes.filter(recipe => !recipe.retired).length, 55);
+  assert.equal(catalog.version, 14); assert.equal(catalog.recipes.filter(recipe => !recipe.retired).length, 61);
   for (const recipe of catalog.recipes.filter(recipe => !recipe.retired)) {
     assert.equal(recipe.maxBatch, 1, recipe.id);
     assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);
@@ -216,10 +216,10 @@ test("the restored bridge gates the market while the lighthouse and its material
 test("pearl rewards provide regular free progress while permanent slots retain distinct prices", () => {
   const catalog = readEconomyCatalog();
   const rewards = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8"));
-  assert.equal(rewards.version, 5);
+  assert.equal(rewards.version, 6);
   for (const cycle of [rewards.daily, ...Object.values(rewards.dailyByHomeLevel)]) {
-    assert.deepEqual(cycle.map(reward => reward.pearls / 2), [40, 50, 60, 70, 80, 90, 110]);
-    assert.equal(cycle.reduce((sum, reward) => sum + reward.pearls / 2, 0), 500);
+    assert.deepEqual(cycle.map(reward => reward.pearls / 2), [10, 15, 20, 20, 25, 25, 35]);
+    assert.equal(cycle.reduce((sum, reward) => sum + reward.pearls / 2, 0), 150);
   }
   assert.equal(Object.values(rewards.achievementPearls).flat().reduce((sum, amount) => sum + amount / 2, 0), 2060);
   assert.deepEqual(catalog.productionSlots.upgrades.map(upgrade => upgrade.pricePearls / 2), [100, 250]);
@@ -231,13 +231,13 @@ test("pearl rewards provide regular free progress while permanent slots retain d
   assert.throws(() => auditEconomyProgression(invalid), /declared time tariff in stored pearl units/);
 });
 
-test("project pacing cannot lose its daily fences or guaranteed home relics", () => {
+test("project pacing cannot regain daily fences or lose guaranteed home relics", () => {
   for (const [mutate, pattern] of [
-    [c => c.stageOrders.find(stage => stage.homeLevel === 3).orders.pop(), /Third stage project.*eight deliveries/],
-    [c => c.stageOrders.find(stage => stage.homeLevel === 3).intervalSeconds = 23 * 3600 - 1, /Third stage project.*23-hour waits/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 3).orders.pop(), /Third stage.*eight deliveries/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 3).intervalSeconds = 23 * 3600 - 1, /Third stage.*versioned interval/],
     [c => c.stageOrders.find(stage => stage.homeLevel === 3).completionRewards = {}, /Third stage must guarantee/],
-    [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders.pop(), /Fourth stage project.*twelve deliveries/],
-    [c => c.stageOrders.find(stage => stage.homeLevel === 4).intervalSeconds = 23 * 3600 - 1, /Fourth stage project.*23-hour waits/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders.pop(), /Fourth stage.*twelve deliveries/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).intervalSeconds = 23 * 3600 - 1, /Fourth stage.*versioned interval/],
     [c => delete c.stageOrders.find(stage => stage.homeLevel === 4).completionRewards.moon_crystal, /Fourth stage must guarantee both/],
   ]) {
     const invalid = readEconomyCatalog(); mutate(invalid);
@@ -277,7 +277,7 @@ test("the compact fourth stage protects financing, construction fees and manual 
     [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders[0].coins += 1, /project must pay item value plus 25 percent/],
     [c => c.buildings.find(building => building.id === "woodlot").levels[3].cost.coins += 1, /construction price must follow builder time/],
     [c => c.buildings.find(building => building.id === "quarry").levels[3].seconds -= 60, /construction price must follow builder time/],
-    [c => { c.buildings.find(building => building.id === "home").levels[4].cost.items.reinforced_parts = 35; const order = c.stageOrders.find(stage => stage.homeLevel === 4).orders.at(-1); order.items.reinforced_parts = 6; order.coins = Math.ceil(createLiquidation(c)(order.items) * 1.25); }, /workshop workload must stay within forty/],
+    [c => { c.buildings.find(building => building.id === "home").levels[4].cost.items.reinforced_parts = 10; const order = c.stageOrders.find(stage => stage.homeLevel === 4).orders.at(-1); order.items.reinforced_parts = 35; order.coins = Math.ceil(createLiquidation(c)(order.items) * 1.25); }, /workshop workload must stay within forty/],
     [c => c.buildings.find(building => building.id === "home").levels[4].cost.items.wood = 51, /upgrade inputs exceed available storage/],
     [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders[0].items.moon_crystal = 1, /must not depend on a rare find/],
     [c => { const order = c.stageOrders.find(stage => stage.homeLevel === 4).orders[0]; order.items.fish_epic = 1; order.coins = Math.ceil(createLiquidation(c)(order.items) * 1.25); }, /must not depend on a rare find or rare fish/],
@@ -303,19 +303,19 @@ test("arcade production improvements do not make earlier tiers slower than later
   assert.throws(() => auditEconomyProgression(oldFurnaceWait), /kiln: later production upgrades must not take less construction time/);
 });
 
-test("third-stage mandatory building bundles stay compact without removing their week-long project", () => {
+test("third-stage material bundles fit starter storage while daily delivery waits are removed", () => {
   const catalog = readEconomyCatalog(), report = auditEconomyProgression(catalog);
-  assert.deepEqual(report.thirdStage, { constructionCount: 7, constructionCoins: 11400,
-    constructionSeconds: 19 * 3600, largestMaterialBundle: 12 });
-  assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 161 * 3600);
+  assert.deepEqual(report.thirdStage, { constructionCount: 7, constructionCoins: 9000,
+    constructionSeconds: 15 * 3600, largestMaterialBundle: 25 });
+  assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 0);
   const home = catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4);
-  assert.equal(home.seconds, 8 * 3600);
+  assert.equal(home.seconds, 4 * 3600);
   for (const mutate of [
-    c => c.buildings.find(building => building.id === "workshop").levels[2].cost.items.planks = 20,
-    c => c.buildings.find(building => building.id === "home").levels[3].cost.items.beams = 10,
+    c => c.buildings.find(building => building.id === "workshop").levels[2].cost.items.planks = 60,
+    c => c.buildings.find(building => building.id === "home").levels[3].cost.items.beams = 55,
   ]) {
     const invalid = structuredClone(catalog); mutate(invalid);
-    assert.throws(() => auditEconomyProgression(invalid), /Third stage mandatory building materials must fit a compact fourteen-item bundle/);
+    assert.throws(() => auditEconomyProgression(invalid), /upgrade inputs exceed available storage|must fit the initial warehouse/);
   }
 });
 

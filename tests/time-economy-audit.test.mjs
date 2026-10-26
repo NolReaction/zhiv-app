@@ -25,9 +25,9 @@ test("each chapter separates earned project payouts, fees and one-versus-three-s
     assert(chapter.productionCapacityLowerBoundSeconds.threeSlots <= chapter.productionCapacityLowerBoundSeconds.oneSlot);
     assert(chapter.productionCapacityLowerBoundSeconds.threeSlots >= (chapter.stationSeconds.miner ?? 0));
   }
-  assert.deepEqual(report.chapters.map(chapter => chapter.constructionCoins), [400, 1550, 11400, 34800]);
-  assert.deepEqual(report.chapters.map(chapter => chapter.projectCoins), [325, 1738, 13301, 14965]);
-  assert.equal(report.chapters[3].buildingFeesMinusProjectRewards, 19835, "the late chapter discloses its required extra earnings");
+  assert.deepEqual(report.chapters.map(chapter => chapter.constructionCoins), [400, 1550, 9000, 19200]);
+  assert.deepEqual(report.chapters.map(chapter => chapter.projectCoins), [325, 1457, 15689, 21152]);
+  assert.equal(report.chapters[3].buildingFeesMinusProjectRewards, -1952, "project proceeds are disclosed separately from the larger material sink");
   assert(report.assumptions.some(text => text.includes("not calendar-playthrough")));
 });
 

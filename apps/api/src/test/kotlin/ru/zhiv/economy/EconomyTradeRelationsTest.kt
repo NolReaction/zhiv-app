@@ -269,26 +269,26 @@ class EconomyTradeRelationsTest {
 
     @Serializable private data class OrdinaryVector(val templateId: String, val residentId: String, val home: Int,
         val requiredBuildings: Map<String, Int>, val items: Map<String, Long>, val coins: Long, val reputationXp: Int,
-        val effortSeconds: Long, val manufacturingSeconds: Long, val fishingUncertain: Boolean)
+        val effortSeconds: Long, val manufacturingSeconds: Long, val fishingUncertain: Boolean, val pearls: Long = 0)
     @Serializable private data class WeeklyVector(val templateId: String, val residentId: String, val home: Int,
         val requiredBuildings: Map<String, Int>, val stages: List<OrdinaryVector>, val coins: Long, val reputationXp: Int,
-        val effortSeconds: Long, val manufacturingSeconds: Long, val fishingUncertain: Boolean)
+        val effortSeconds: Long, val manufacturingSeconds: Long, val fishingUncertain: Boolean, val pearls: Long = 0)
     @Serializable private data class RankVector(val xp: Long, val rankIndex: Int, val bonusBps: Int)
 
     @Serializable private data class OfferVector(val id: String, val slot: Int, val templateId: String,
         val residentId: String, val name: String, val description: String? = null, val items: Map<String, Long>, val coins: Long,
         val reputationXp: Int?, val effortSeconds: Long?, val manufacturingSeconds: Long?, val fishingUncertain: Boolean?,
-        val requiredBuildings: Map<String, Int> = emptyMap())
+        val requiredBuildings: Map<String, Int> = emptyMap(), val pearls: Long = 0)
     @Serializable private data class ChoiceVector(val id: String, val templateId: String, val residentId: String,
         val coins: Long, val reputationXp: Int, val effortSeconds: Long, val manufacturingSeconds: Long, val fishingUncertain: Boolean,
         val savedWeeklyId: String, val acceptedAt: String, val expiresAt: String, val stages: List<EconomyResidentOrderTemplate>,
-        val activeStages: List<OfferVector>)
+        val activeStages: List<OfferVector>, val pearls: Long = 0)
     @Serializable private data class IdCase(val label: String, val now: String, val buildings: Map<String, Int>,
         val ownedRods: List<String>, val ownedHooks: List<String>, val completedRecipes: Map<String, Long>,
         val ordinary: List<OfferVector>, val weeklyChoices: List<ChoiceVector>)
     @Serializable private data class HashVector(val input: String, val expected: Long)
     private fun EconomyResidentOrderOffer.vector() = OfferVector(id, slot, templateId, residentId, name, description,
-        items, coins, reputationXp, effortSeconds, manufacturingSeconds, fishingUncertain, requiredBuildings)
+        items, coins, reputationXp, effortSeconds, manufacturingSeconds, fishingUncertain, requiredBuildings, pearls)
     private fun vectors() = economyJson.parseToJsonElement(checkNotNull(javaClass.getResourceAsStream(
         "/world/trade-relations-vectors.json")).bufferedReader().readText()).jsonObject
 
@@ -309,6 +309,7 @@ class EconomyTradeRelationsTest {
             row.weeklyChoices.zip(choices).forEach { (expected, actual) ->
                 assertEquals(expected.templateId, actual.templateId); assertEquals(expected.residentId, actual.residentId)
                 assertEquals(expected.coins, actual.coins); assertEquals(expected.reputationXp, actual.reputationXp)
+                assertEquals(expected.pearls, actual.pearls)
                 assertEquals(expected.effortSeconds, actual.effortSeconds); assertEquals(expected.manufacturingSeconds, actual.manufacturingSeconds)
                 assertEquals(expected.fishingUncertain, actual.fishingUncertain); assertEquals(expected.stages, actual.stages)
                 val accepted = apply(state, "accept_weekly_order", expected.id, instant)
@@ -349,11 +350,13 @@ class EconomyTradeRelationsTest {
             assertEquals(row.residentId, actual.residentId); assertEquals(row.home, actual.requiredHomeLevel)
             assertEquals(row.requiredBuildings, actual.requiredBuildings)
             assertEquals(row.coins, actual.stages.sumOf { it.coins }); assertEquals(row.reputationXp, actual.stages.sumOf { it.reputationXp })
+            assertEquals(row.pearls, actual.stages.sumOf { it.pearls })
             assertEquals(row.effortSeconds, actual.stages.sumOf { it.effortSeconds })
             assertEquals(row.manufacturingSeconds, actual.stages.sumOf { it.manufacturingSeconds })
             assertEquals(row.fishingUncertain, actual.stages.any { it.fishingUncertain })
             row.stages.zip(actual.stages).forEach { (expected, stage) ->
                 assertEquals(expected.templateId, stage.id); assertEquals(expected.items, stage.items); assertEquals(expected.coins, stage.coins)
+                assertEquals(expected.pearls, stage.pearls)
                 assertEquals(expected.reputationXp, stage.reputationXp); assertEquals(expected.effortSeconds, stage.effortSeconds)
                 assertEquals(expected.manufacturingSeconds, stage.manufacturingSeconds); assertEquals(expected.fishingUncertain, stage.fishingUncertain)
             }

@@ -141,9 +141,9 @@ test("fish ingredients resolve to a real chance source without inventing guarant
   assert.equal(source.rewards, undefined);
   assert.equal(source.seconds, undefined);
   assert.equal(source.cost, undefined);
-  assert.deepEqual(plain(source.fishingSource.itemIds), catalog.fishing.classes.map(group => group.itemId));
+  assert.deepEqual(plain(source.fishingSource.itemIds), [...catalog.fishing.classes.map(group => group.itemId), ...catalog.fishing.fish.map(fish => fish.itemId)]);
   assert.deepEqual(plain(source.fishingSource.routeIds), catalog.fishing.routeIds);
-  assert.match(source.description, /конкретный класс не гарантирован/);
+  assert.match(source.description, /Ни класс, ни вид не гарантированы/);
   assert.match(source.description, /легендарная удочка/);
   assert(hasEdge("b:home:1", source.id, "requirement"));
   for (const route of catalog.fishing.routeIds) assert(hasEdge(`e:${route}`, source.id, "any"));
@@ -168,7 +168,7 @@ test("food and resident orders are active optional uses rather than future progr
   assert.match(node("orders").description, /сытость отдельно/);
   assert.match(node("orders").description, /3 бесплатные замены/);
   assert.match(node("meals").description, /\+8–100%/);
-  assert.match(node("meals").description, /\+8–90%/);
+  assert.ok(node("meals").description.includes(`строитель +${Math.min(...catalog.food.meals.map(meal => meal.builderSpeedBps / 100))}–${Math.max(...catalog.food.meals.map(meal => meal.builderSpeedBps / 100))}%`));
   assert(hasEdge("start", "orders", "available"));
   assert(hasEdge("orders", "coins", "flow"));
   assert(hasEdge("r:cook_grilled_fish", "meals", "flow"));
@@ -584,18 +584,18 @@ test("player graph prices and rewards use visible pearls while costs keep intern
   assert.ok(node("pleska").description.includes(`обновление стоит до ${moneyContext.exports.formatPearls(catalog.fishing.shop.refreshPricePearls)} жемчужин`));
   assert.match(node("pearls").description, /1 мин — 1 жемчужин; 1 ч — 12 жемчужин; 24 ч — 288 жемчужин; 48 ч — 576 жемчужин/);
   assert.doesNotMatch(node("pearls").description, /жемчужина за 10 минут/);
-  assert.match(node("daily_rewards").description, /500 жемчужин/);
+  assert.match(node("daily_rewards").description, /150 жемчужин/);
   assert.equal(catalog.pearlScale, 50);
   assert.equal(catalog.fishing.shop.refreshPricePearls, 100);
 });
 
-test("the orders graph describes the week-long house-four project and permanent market discovery", () => {
+test("the orders graph describes material-led house-four projects and permanent market discovery", () => {
   const orders = node("orders").description;
   assert.match(orders, /один учебный заказ на малину, 3 просьбы к дому 2/);
   assert.match(orders, /7 просьб дома 2, включая улов и жареную рыбу/);
-  assert.match(orders, /проект из 8 поставок: первая сразу, остальные через 23 ч после сдачи предыдущей/);
-  assert.match(orders, /Смена суток UTC и жемчуг интервал не сокращают/);
-  assert.match(orders, /Ожидание между всеми поставками: 161 ч; строительство дома считается отдельно.*Живая смола × 1/);
+  assert.match(orders, /проект из 8 поставок: следующая открывается сразу после сдачи предыдущей/);
+  assert.match(orders, /Искусственной паузы между поставками нет/);
+  assert.match(orders, /Ожидание между всеми поставками: 0 с; строительство дома считается отдельно.*Живая смола × 1/);
   assert.match(node("market").description, /бесплатно доступны 5 мест/);
   assert.match(node("market").description, /покупаются по очереди до 10/);
   for (const [index, price] of [50, 80, 120, 180, 250].entries()) assert.ok(node("market").description.includes(`${index + 6}-е — ${price} жемчужин`));
@@ -611,8 +611,8 @@ test("the orders graph describes the week-long house-four project and permanent 
 });
 
 test("the house-five graph distinguishes project funding and guaranteed relics from random exploration", () => {
-  assert.match(node("orders").description, /Дом 5 требует 12 поставок с интервалом 23 ч/);
-  assert.match(node("orders").description, /14965 монет за весь проект/);
+  assert.match(node("orders").description, /Дом 5 требует 12 поставок без ожидания между ними/);
+  assert.ok(node("orders").description.includes(`${catalog.stageOrders.find(course => course.homeLevel === 4).orders.reduce((sum, order) => sum + order.coins, 0)} монет за весь проект`));
   assert.match(node("orders").description, /Финал гарантирует Древнее ядро × 1, Лунный кристалл × 1/);
   assert.match(node("orders").description, /полученный результат исследования руин; запуск или отмена не засчитываются/);
   assert.match(node("rare_materials").description, /Проект дома 4 отдельно гарантирует Древнее ядро × 1, Лунный кристалл × 1/);

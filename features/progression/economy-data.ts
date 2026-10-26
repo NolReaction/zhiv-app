@@ -38,7 +38,7 @@ export type EconomyItem = EconomyCatalog["items"][number] & {
   inventoryItemId?: string;
   sources: EconomyItemSource[];
   uses: EconomyItemUse[];
-  meal?: { heroSpeedBps: number; builderSpeedBps: number };
+  meal?: { heroSpeedBps: number; builderSpeedBps: number; heroWorkSeconds?: number };
 };
 export type EconomyRecipe = EconomyCatalog["recipes"][number] & {
   inputNpcValue: number;
@@ -319,6 +319,15 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
         rewards: Object.fromEntries(Object.entries(route.rewards).filter(([rewardId]) => !isFishing || rewardId !== "fish")),
         detail: `${route.activity === "mining" ? "Отдельная очередь шахтёра" : "Вылазка Мохлика"}. Набор гарантирован после успешного получения.` });
     }
+    if (route.finds) {
+      const total = route.finds.emptyWeight + route.finds.entries.reduce((sum, entry) => sum + entry.weight, 0);
+      route.finds.entries.forEach((entry, index) => addSource(entry.itemId, {
+        id: `find:${route.id}:${index}`, kind: "exploration", name: `${route.name} · дополнительная находка`, homeLevel: route.requiredHomeLevel,
+        quantity: entry.quantity, seconds: route.seconds, guaranteed: false, routeId: route.id,
+        cost: copyCost(route.cost), requiredBuildings: { ...route.requiredBuildings },
+        detail: `Шанс ${(100 * entry.weight / total).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}% за завершённый поход. Одна дополнительная находка или ничего; в гарантированный производственный план не включается.`,
+      }));
+    }
     for (const [id, quantity] of Object.entries(route.cost.items)) addUse(id,
       { id: `route:${route.id}`, kind: "exploration", name: route.name, quantity, homeLevel: route.requiredHomeLevel });
   }
@@ -328,7 +337,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
       const eligible = fish.rods.filter(rod => (rod.classOddsBps?.[rarity] ?? 0) > 0 && (rarity !== "legendary" || rod.rarity === "legendary"));
       const homeLevel = eligible.length ? Math.min(...eligible.map(rod => rod.requiredHomeLevel)) : 5;
       addSource(item.id, { id: `fishing:${rarity}`, kind: "fishing", name: "Рыбалка с подходящими снастями", homeLevel, guaranteed: false,
-        detail: `${item.kind === "fish-species" ? "Вид записывается в коллекцию после собственного улова; в кладовую поступает класс рыбы. " : ""}Класс и вид разыгрываются для каждой рыбы. Время получения нужного улова не фиксировано. Подходящие удочки: ${eligible.map(rod => `${rod.name} (дом ${rod.requiredHomeLevel})`).join(", ") || "нет в текущем каталоге"}.` });
+        detail: `${item.kind === "fish-species" ? "Вид хранится в запасе улова и подходит для именного рецепта, пока рыба не потрачена. Запись в книге сама по себе не является запасом. " : ""}Класс и вид разыгрываются для каждой рыбы. Время получения нужного улова не фиксировано. Подходящие удочки: ${eligible.map(rod => `${rod.name} (дом ${rod.requiredHomeLevel})`).join(", ") || "нет в текущем каталоге"}.` });
       if (item.kind === "fish-species") addUse(item.id, { id: "fish-class", kind: "fishing", name: `В кладовой: ${byId.get(item.inventoryItemId ?? "")?.name ?? rarity}`, quantity: 1, homeLevel });
     }
     for (const bait of fish.baits) {
@@ -353,7 +362,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
     { id: `weekly:${weekly.id}:${stage.id}`, kind: "weekly", name: `${weekly.name}: ${stage.name}`, quantity, homeLevel: weekly.requiredHomeLevel });
   for (const meal of catalog.food?.meals ?? []) {
     const item = byId.get(meal.itemId);
-    if (item) item.meal = { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps };
+    if (item) item.meal = { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps, ...(meal.heroWorkSeconds ? { heroWorkSeconds: meal.heroWorkSeconds } : {}) };
     addUse(meal.itemId, { id: "meal", kind: "meal", name: `Обед: Мохлик +${meal.heroSpeedBps / 100}%, строитель +${meal.builderSpeedBps / 100}% скорости`, quantity: 1,
       homeLevel: unlockHomes.get(baselineRecipe(catalog, meal.itemId)?.id ?? "") ?? 1 });
   }

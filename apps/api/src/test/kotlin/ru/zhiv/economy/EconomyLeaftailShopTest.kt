@@ -23,7 +23,7 @@ class EconomyLeaftailShopTest {
     private fun failure(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
     @Test fun `daily relics cost exactly 150 visible pearls and do not spend coins or advance free collection clocks`() {
-        assertEquals(13, EconomyRules.catalog.version)
+        assertEquals(14, EconomyRules.catalog.version)
         assertEquals(3, spec.requiredHomeLevel)
         assertEquals(86400L, spec.refreshSeconds)
         assertEquals(setOf("ancient_core", "moon_crystal", "living_resin"), spec.pearlOffers.map { it.itemId }.toSet())

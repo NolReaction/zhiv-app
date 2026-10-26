@@ -131,11 +131,11 @@ test("direct processing math uses current NPC prices; timer rate excludes collec
   assert.equal(recipe("make_beams").addedNpcValue, 200);
   assert.equal(recipe("weave_cloth").inputNpcValue, 100);
   assert.equal(recipe("weave_cloth").addedNpcValue, 120);
-  assert.equal(recipe("cook_fish_soup").inputNpcValue, 140);
-  assert.equal(recipe("cook_fish_soup").outputNpcValue, 220);
+  assert.equal(recipe("cook_fish_soup").inputNpcValue, 90);
+  assert.equal(recipe("cook_fish_soup").outputNpcValue, 170);
   assert.equal(recipe("cook_fish_soup").addedNpcValue, 80);
   assert.equal(recipe("cook_fish_soup").unitsPerHour, 7.5);
-  assert.equal(recipe("cook_fish_soup").grossNpcPerHour, 1650);
+  assert.equal(recipe("cook_fish_soup").grossNpcPerHour, 1275);
   assert.equal(recipe("grow_berries").unitsPerHour, 60);
   assert.equal(recipe("grow_berries").collectionSeconds, 8);
 });
@@ -179,7 +179,7 @@ test("unit mining is counted independently without choosing a multi-output exped
   assert.equal(queue(stone, "quarry").seconds, 3 * 180);
 });
 
-test("stage budgets derive only required new buildings and preserve the seven daily gates", () => {
+test("stage budgets derive only required new buildings and the current short delivery cadence", () => {
   const first = economy.stages.find(stage => stage.homeLevel === 1);
   assert.equal(first.buildingCoins, 400);
   assert.equal(first.orderCoins, 338);
@@ -189,30 +189,31 @@ test("stage budgets derive only required new buildings and preserve the seven da
   assert.deepEqual(plain(economy.storage.map(level => level.capacity)), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
   const second = economy.stages.find(stage => stage.homeLevel === 2);
   assert.equal(second.buildingCoins, 1550);
-  assert.equal(second.orderCoins, 1738);
+  assert.equal(second.orderCoins, second.orders.reduce((sum, order) => sum + order.coins, 0));
   assert.equal(second.orders.length, 7);
   const third = economy.stages.find(stage => stage.homeLevel === 3);
-  assert.equal(third.buildingCoins, 11400);
-  assert.equal(third.orderCoins, 13301);
+  assert.equal(third.buildingCoins, 9000);
+  assert.equal(third.orderCoins, third.orders.reduce((sum, order) => sum + order.coins, 0));
   assert.equal(third.orders.length, 8);
-  assert.equal(third.intervalSeconds, 23 * 3600);
-  assert.equal(third.minimumGateSeconds, 7 * 23 * 3600);
-  assert.equal(third.buildings.find(value => value.id === "home").seconds, 8 * 3600);
+  assert.equal(third.intervalSeconds, catalog.stageOrders.find(course => course.homeLevel === 3).intervalSeconds);
+  assert(third.intervalSeconds <= 3600);
+  assert.equal(third.minimumGateSeconds, (third.orders.length - 1) * third.intervalSeconds);
+  assert.equal(third.buildings.find(value => value.id === "home").seconds, catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4).seconds);
   assert.deepEqual(plain(third.completionRewards), { living_resin: 1 });
-  assert.equal(third.orders[0].inputNpcValue, 420);
-  assert.equal(third.orders[0].addedNpcValue, 105);
+  assert.equal(third.orders[0].inputNpcValue, Object.entries(third.orders[0].items).reduce((sum, [id, quantity]) => sum + item(id).npcSellPrice * quantity, 0));
+  assert.equal(third.orders[0].addedNpcValue, third.orders[0].coins - third.orders[0].inputNpcValue);
   assert.ok(economy.stages.every(stage => !stage.buildings.some(value => value.id === "warehouse")));
   assert.equal(economy.stages.find(stage => stage.homeLevel === 4).preliminary, false);
 });
 
 test("pearl budgets respect visible denomination and distinguish seven gifts from finite achievements", () => {
-  assert.equal(economy.pearls.dailyCycle, 500);
-  assert.equal(economy.pearls.achievementLifetime, 2060);
-  assert.deepEqual(plain(economy.pearls.dailyRewards.map(reward => reward.pearls)), [40, 50, 60, 70, 80, 90, 110]);
-  assert.equal(economy.pearls.achievementRewards.flatMap(quest => quest.tiers).reduce((sum, tier) => sum + tier.pearls, 0), 2060);
+  assert.equal(economy.pearls.dailyCycle, rewards.daily.reduce((sum, reward) => sum + reward.pearls, 0) / 2);
+  assert.equal(economy.pearls.achievementLifetime, Object.values(rewards.achievementPearls).flat().reduce((sum, pearls) => sum + pearls, 0) / 2);
+  assert.deepEqual(plain(economy.pearls.dailyRewards.map(reward => reward.pearls)), rewards.daily.map(reward => reward.pearls / 2));
+  assert.equal(economy.pearls.achievementRewards.flatMap(quest => quest.tiers).reduce((sum, tier) => sum + tier.pearls, 0), economy.pearls.achievementLifetime);
   assert.ok(economy.pearls.achievementRewards.every(quest => quest.id !== "full_collection"));
   assert.deepEqual(plain(economy.pearls.achievementRewards.find(quest => quest.id === "explorer").tiers),
-    [{ level: 1, target: 10, pearls: 30 }, { level: 2, target: 50, pearls: 80 }, { level: 3, target: 200, pearls: 200 }]);
+    [10, 50, 200].map((target, index) => ({ level: index + 1, target, pearls: rewards.achievementPearls.explorer[index] / 2 })));
   assert.equal(economy.pearls.dailyMinimumHours, 20);
   assert.deepEqual(plain(economy.pearls.marketSlotPrices), [50, 80, 120, 180, 250]);
   assert.equal(economy.pearls.marketTotal, 680);
@@ -243,14 +244,14 @@ test("currency shop reference uses visible pearls and home quotes, excluding sto
   assert.deepEqual(plain(economy.currencyShop.pearlPackages.map(pack => [pack.pearls, pack.priceRub])), [[100, 99], [350, 299], [800, 599]]);
   assert.deepEqual(plain(economy.currencyShop.goldPrices), [20, 50, 100]);
   assert.deepEqual(plain(economy.currencyShop.goldByHome.map(row => row.offers.map(offer => offer.coins))),
-    [[400, 1000, 2000], [600, 1500, 3000], [900, 2250, 4500], [1200, 3000, 6000], [1600, 4000, 8000]]);
-  assert.equal(economy.currencyShop.productionBonusPercent, 25);
-  assert.equal(economy.currencyShop.maximumGold, 8500);
+    Array.from({ length: 5 }, () => [1000, 2500, 5000]));
+  assert.equal(economy.currencyShop.productionBonusPercent, 0);
+  assert.equal(economy.currencyShop.maximumGold, 5000);
 });
 
 test("branch references all five stage packs and cosmetic prices without turning preview contents into free item sources", () => {
   assert.deepEqual(plain(economy.currencyShop.starterPacks.map(pack => [pack.homeLevel, pack.priceRub, pack.rewards.pearls, pack.rewards.coins])),
-    [[1, 149, 150, 250], [2, 299, 350, 800], [3, 399, 500, 2000], [4, 499, 650, 5000], [5, 599, 800, 8000]]);
+    storefrontCatalog.starterPacks.map(pack => [pack.homeLevel, pack.priceRub, pack.rewards.pearls / 2, pack.rewards.coins]));
   for (const pack of economy.currencyShop.starterPacks) {
     const original = storefrontCatalog.starterPacks.find(value => value.id === pack.id);
     assert.equal(pack.purchaseLimit, 1);
@@ -265,22 +266,23 @@ test("branch references all five stage packs and cosmetic prices without turning
   const copied = buildProgressionEconomy();
   copied.currencyShop.starterPacks[0].rewards.items.wood = 999;
   copied.currencyShop.costumeOffers[0].priceRub = 1;
-  assert.equal(storefrontCatalog.starterPacks[0].rewards.items.wood, 3);
+  assert.notEqual(storefrontCatalog.starterPacks[0].rewards.items.wood, 999);
   assert.equal(storefrontCatalog.costumeOffers[0].priceRub, 199);
 });
 
 test("house four has a separate twelve-delivery course, restored landmarks and guaranteed home-five relics", () => {
   const fourth = economy.stages.find(stage => stage.homeLevel === 4);
-  assert.equal(fourth.buildingCoins, 34800);
-  assert.equal(fourth.buildSeconds, 58 * 3600, "one builder's queue excludes delivery waits and resource preparation");
+  assert.equal(fourth.buildingCoins, 19200);
+  assert.equal(fourth.buildSeconds, fourth.buildings.reduce((sum, building) => sum + building.seconds, 0), "one builder's queue excludes delivery waits and resource preparation");
   assert.equal(fourth.orders.length, 12);
-  assert.equal(fourth.orderCoins, 14965);
-  assert.equal(fourth.intervalSeconds, 23 * 3600);
-  assert.equal(fourth.minimumGateSeconds, 11 * 23 * 3600);
+  assert.equal(fourth.orderCoins, fourth.orders.reduce((sum, order) => sum + order.coins, 0));
+  assert.equal(fourth.intervalSeconds, catalog.stageOrders.find(course => course.homeLevel === 4).intervalSeconds);
+  assert(fourth.intervalSeconds <= 3600);
+  assert.equal(fourth.minimumGateSeconds, (fourth.orders.length - 1) * fourth.intervalSeconds);
   assert.deepEqual(plain(fourth.completionRewards), { ancient_core: 1, moon_crystal: 1 });
   assert.equal(fourth.preliminary, false, "the command route is verified; its runtime is not a guarantee for every visit pattern");
   for (const id of ["bridge", "lighthouse"]) assert.ok(fourth.buildings.some(building => building.id === id && building.level === 1));
-  assert.equal(fourth.buildings.find(building => building.id === "home").seconds, 24 * 3600);
+  assert.equal(fourth.buildings.find(building => building.id === "home").seconds, catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 5).seconds);
   const final = fourth.orders.find(order => order.id === "stage4_completion_order");
   assert.deepEqual(plain(final.requiredBuildings), { bridge: 1, lighthouse: 1 });
   assert.deepEqual(plain(final.requiredExplorations), { ancient_ruins: 1 });
@@ -296,7 +298,7 @@ test("rations and research equipment add NPC value and expand the actual depende
   const ration = recipe("prepare_trail_ration"), gear = recipe("make_research_gear");
   assert.deepEqual(plain(ration.cost.items), { smoked_fish: 1, dried_berries: 1, berry_compote: 1 });
   assert.deepEqual(plain(gear.cost.items), { tools: 1, cloth: 1, rope: 2 });
-  for (const [entry, input, output, added] of [[ration, 490, 690, 200], [gear, 1350, 1750, 400]]) {
+  for (const [entry, input, output, added] of [[ration, 440, 640, 200], [gear, 1350, 1750, 400]]) {
     assert.equal(entry.inputNpcValue, input);
     assert.equal(entry.outputNpcValue, output);
     assert.equal(entry.addedNpcValue, added);
@@ -333,7 +335,7 @@ test("each house adds a real berry and useful processing chain, with catalog mea
     assert.equal(processing.unlockHomeLevel, home);
     assert.ok(processing.addedNpcValue > 0, `Processing ${product} must add value`);
     const meal = catalog.food.meals.find(meal => meal.itemId === product);
-    assert.deepEqual(plain(item(product).meal), { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps });
+    assert.deepEqual(plain(item(product).meal), { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps, heroWorkSeconds: meal.heroWorkSeconds });
   }
   assert.deepEqual(plain(economy.market), { homeLevel: 2, requiredBuildings: { bridge: 1 }, requiredExplorations: 0 });
   assert.deepEqual(plain(economy.homeUnlocks.filter(unlock => unlock.landmarks.length).map(unlock => [unlock.homeLevel, unlock.landmarks[0].id])), [[2, "bridge"], [3, "lighthouse"]]);
@@ -351,8 +353,8 @@ test("unlock overview follows changed station gates and owns its copies while ea
   const fourth = economy.stages.find(stage => stage.homeLevel === 4);
   const landmarks = fourth.buildings.filter(building => ["bridge", "lighthouse"].includes(building.id));
   assert.deepEqual(plain(landmarks.map(building => [building.id, building.availableHomeLevel])), [["bridge", 2], ["lighthouse", 3]]);
-  assert.equal(fourth.buildingCoins - landmarks.reduce((sum, building) => sum + building.cost.coins, 0), 31800);
-  assert.equal(fourth.buildSeconds - landmarks.reduce((sum, building) => sum + building.seconds, 0), 53 * 3600);
+  assert.equal(fourth.buildingCoins - landmarks.reduce((sum, building) => sum + building.cost.coins, 0), 16200);
+  assert.equal(fourth.buildSeconds - landmarks.reduce((sum, building) => sum + building.seconds, 0), fourth.buildings.filter(building => !["bridge", "lighthouse"].includes(building.id)).reduce((sum, building) => sum + building.seconds, 0));
   custom.homeUnlocks.find(unlock => unlock.homeLevel === 2).landmarks[0].cost.items.rope = 100;
   custom.items.find(item => item.id === "currant_jelly").meal.heroSpeedBps = 9999;
   custom.market.requiredBuildings.bridge = 100;

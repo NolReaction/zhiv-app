@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { GuideCoach, type GuideCoachProps } from "@/features/onboarding/guide-coach";
-import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
+import { onboardingRewardForState } from "@/features/game/progression-rewards";
 import { formatPearls } from "@/features/economy/domain/money";
 import { worldOnboardingNeedsHarvest, WORLD_ONBOARDING_STEPS, type WorldOnboardingProgress, type WorldOnboardingStepId } from "@/features/world/domain/world-onboarding";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
@@ -196,7 +196,10 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   if (progress?.status === "skipped" || progress?.status === "completed" && !reminder) return null;
   const index = WORLD_ONBOARDING_STEPS.findIndex(step => step.id === current);
   const step = WORLD_ONBOARDING_STEPS[index];
-  const completionGift = `${formatPearls(progressionRewardsCatalog.onboarding.pearls)} жемчуга и ${progressionRewardsCatalog.onboarding.coins.toLocaleString("ru-RU")} монет`;
+  const completionReward = snapshot ? onboardingRewardForState(snapshot) : null;
+  const completionGift = completionReward
+    ? `${formatPearls(completionReward.pearls)} жемчуга и ${completionReward.coins.toLocaleString("ru-RU")} монет`
+    : "подарок из монет и жемчуга";
   const base: GuideCoachProps = {
     open: props.open && !props.modalBlocked, flow: "world", stepId: current ?? (reminder ? "harvest" : "welcome"),
     title: "Привет! Это наш лес", text: "Я Мохлик. За 3-5 минут посадим ягоды, познакомимся с соседями и заглянем в мастерскую. Всё можно открывать и пробовать.",

@@ -215,3 +215,9 @@
   .content.content .activity { transition: none; }
   .content.content .activity:hover:not(:disabled) { transform: none; }
 }
+
+.chanceFinds { display: grid; gap: 7px; padding: 10px; border: 1px dashed #b8c9ac; border-radius: 10px; background: #f5f8ef; }
+.chanceFinds ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.chanceFinds li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 7px; font-size: 11px; }
+.chanceFinds small { font-size: 10px; line-height: 1.45; color: #667461; }
+.findChance { flex-basis: 100%; color: #567049; font-size: 10px; }

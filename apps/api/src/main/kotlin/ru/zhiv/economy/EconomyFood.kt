@@ -9,14 +9,30 @@ import java.math.BigInteger
 import java.time.Duration
 import java.time.Instant
 
-@Serializable data class EconomyFoodState(val heroMeal: String? = null, val builderMeal: String? = null)
-@Serializable data class EconomyJobMeal(val itemId: String, val consumer: String, val speedBps: Int) {
-    init { require(consumer in setOf("hero", "builder") && speedBps in 0..10000) }
+@Serializable data class EconomyHeroMealEffect(val remainingWorkSeconds: Long, val totalWorkSeconds: Long, val speedBps: Int) {
+    init { require(totalWorkSeconds in 1L..31_536_000L && remainingWorkSeconds in 1L..totalWorkSeconds && speedBps in 0..10000) }
 }
-@Serializable data class EconomyMealSpec(val itemId: String, val heroSpeedBps: Int, val builderSpeedBps: Int = 1000) {
-    init { require(heroSpeedBps in 0..10000 && builderSpeedBps in 0..10000) }
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class EconomyFoodState(val heroMeal: String? = null, val builderMeal: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val heroMealEffect: EconomyHeroMealEffect? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val builderMealSpeedBps: Int? = null) {
+    init { require(heroMealEffect == null || heroMeal != null)
+        require(builderMealSpeedBps == null || builderMeal != null && builderMealSpeedBps in 0..10000) }
 }
-@Serializable data class EconomyRecipeFishInput(val itemIds: List<String>)
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class EconomyJobMeal(val itemId: String, val consumer: String, val speedBps: Int,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val workSeconds: Long? = null) {
+    init { require(consumer in setOf("hero", "builder") && speedBps in 0..10000)
+        require(workSeconds == null || consumer == "hero" && workSeconds in 1L..31_536_000L) }
+}
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class EconomyMealSpec(val itemId: String, val heroSpeedBps: Int, val builderSpeedBps: Int = 1000,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val heroWorkSeconds: Long? = null) {
+    init { require(heroSpeedBps in 0..10000 && builderSpeedBps in 0..10000 && (heroWorkSeconds == null || heroWorkSeconds in 1L..31_536_000L)) }
+}
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class EconomyRecipeFishInput(val itemIds: List<String>,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val exactSpecies: Boolean = false)
 @Serializable data class EconomyResidentOrderSlot(val sequence: Long = 0, val readyAt: String, val templateId: String? = null,
     val terms: EconomyResidentOrderTemplate? = null, val residentId: String? = null, val retired: Boolean = false)
 @Serializable data class EconomyResidentOrders(
@@ -35,7 +51,8 @@ import java.time.Instant
     @EncodeDefault(EncodeDefault.Mode.NEVER) val effortSeconds: Long? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val manufacturingSeconds: Long? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val fishingUncertain: Boolean? = null,
-)
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val pearls: Long = 0,
+) { init { require(pearls in 0L..ECONOMY_MAX_PEARLS) } }
 @Serializable data class EconomyResidentOrderProgression(
     val rawBpsByHome: List<Int>, val fishBpsByHome: List<Int>, val craftedBpsByHome: List<Int>,
 )
@@ -54,6 +71,7 @@ data class EconomyResidentOrderOffer(
     val fishingUncertain: Boolean? = null, val weekly: Boolean = false, val stage: Int? = null,
     val stages: Int? = null, val expiresAt: String? = null,
     val requiredBuildings: Map<String, Int> = emptyMap(),
+    val pearls: Long = 0,
 )
 data class EconomyResidentOrderBoard(
     val refreshAt: String, val offers: List<EconomyResidentOrderOffer>, val completed: Long, val earnedCoins: Long,
@@ -62,6 +80,13 @@ data class EconomyResidentOrderBoard(
 
 /** Derived boards never write a profile or advance its revision merely because time passed. */
 object EconomyFood {
+    // Pending pre-v14 meals promised one whole job at the old speed.
+    private val legacyHeroSpeeds = mapOf("grilled_fish" to 1000, "fish_soup" to 2500, "berry_fish" to 4000,
+        "hearty_fish" to 6000, "epic_fish" to 8000, "legendary_fish" to 10000, "strawberry_compote" to 800,
+        "blueberry_compote" to 1200, "currant_jelly" to 2000, "blackberry_preserve" to 4500, "cranberry_glaze" to 7500)
+    private val legacyBuilderSpeeds = mapOf("grilled_fish" to 1000, "fish_soup" to 2500, "berry_fish" to 3500,
+        "hearty_fish" to 5000, "epic_fish" to 7000, "legendary_fish" to 9000, "strawberry_compote" to 1200,
+        "blueberry_compote" to 800, "currant_jelly" to 3000, "blackberry_preserve" to 3000, "cranberry_glaze" to 5500)
     fun validateCatalog(catalog: EconomyCatalog) {
         val itemIds = catalog.items.map { it.id }.toSet()
         val fishIds = catalog.fishing?.fish?.map { it.itemId }?.toSet() ?: emptySet()
@@ -98,7 +123,7 @@ object EconomyFood {
             })
             require(orders.templates.any { it.requiredHomeLevel == 1 && it.requiredBuildings.isEmpty() })
             require(orders.templates.all { template ->
-                (template.reputationXp == null || template.reputationXp in 0..18) &&
+                (template.reputationXp == null || template.reputationXp in 0..30) &&
                 (template.effortSeconds == null || template.effortSeconds in 0L..31_536_000L) &&
                 (template.manufacturingSeconds == null || template.manufacturingSeconds in 0L..(template.effortSeconds ?: 31_536_000L))
             })
@@ -140,11 +165,27 @@ object EconomyFood {
     fun pendingMeal(state: EconomyState, consumer: String): EconomyJobMeal? {
         val id = if (consumer == "hero") state.food.heroMeal else state.food.builderMeal
         val spec = EconomyRules.catalog.food?.meals?.find { it.itemId == id } ?: return null
-        return EconomyJobMeal(spec.itemId, consumer, if (consumer == "hero") spec.heroSpeedBps else spec.builderSpeedBps)
+        return EconomyJobMeal(spec.itemId, consumer, if (consumer == "hero") state.food.heroMealEffect?.speedBps
+            ?: legacyHeroSpeeds[id] ?: spec.heroSpeedBps else state.food.builderMealSpeedBps ?: legacyBuilderSpeeds[id] ?: spec.builderSpeedBps)
+    }
+
+    data class HeroTrip(val seconds: Long, val meal: EconomyJobMeal?, val food: EconomyFoodState)
+    fun heroTrip(state: EconomyState, seconds: Long): HeroTrip {
+        val meal = pendingMeal(state, "hero") ?: return HeroTrip(seconds, null, state.food)
+        val effect = state.food.heroMealEffect
+        if (effect == null) return HeroTrip(mealDuration(seconds, meal.speedBps), meal,
+            state.food.copy(heroMeal = null, heroMealEffect = null))
+        val used = minOf(seconds, effect.remainingWorkSeconds)
+        val left = effect.remainingWorkSeconds - used
+        return HeroTrip(seconds - used + mealDuration(used, effect.speedBps), meal.copy(workSeconds = used),
+            if (left == 0L) state.food.copy(heroMeal = null, heroMealEffect = null)
+            else state.food.copy(heroMealEffect = effect.copy(remainingWorkSeconds = left)))
     }
 
     /** Pending portions still belong to the player; job meals have been consumed. */
-    fun pendingPortions(state: EconomyState): Int = listOfNotNull(state.food.heroMeal, state.food.builderMeal).size
+    fun pendingPortions(state: EconomyState): Int = (if (state.food.builderMeal != null) 1 else 0) +
+        (if (state.food.heroMeal != null && (state.food.heroMealEffect == null ||
+            state.food.heroMealEffect.remainingWorkSeconds == state.food.heroMealEffect.totalWorkSeconds)) 1 else 0)
 
     fun cancelMeal(state: EconomyState, consumer: String, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         if (consumer !in setOf("hero", "builder")) invalidEconomy()
@@ -152,10 +193,15 @@ object EconomyFood {
             ?: economyFailure("ECONOMY_MEAL_UNAVAILABLE", "Нет блюда для возврата: оно уже использовано или не выбрано")
         if (EconomyRules.catalog.food?.meals?.none { it.itemId == itemId } != false)
             economyFailure("ECONOMY_FOOD", "Не удалось определить сохранённое блюдо")
+        val effect = state.food.heroMealEffect
+        if (consumer == "hero" && effect != null && effect.remainingWorkSeconds < effect.totalWorkSeconds)
+            return state.copy(food = state.food.copy(heroMeal = null, heroMealEffect = null)) to
+                "Остаток действия блюда снят. Использованная порция не возвращается"
         val inventory = EconomyRules.addItems(state.inventory, mapOf(itemId to 1L))
         EconomyRules.addItems(inventory, reservedItems)
         val next = state.copy(inventory = inventory,
-            food = if (consumer == "hero") state.food.copy(heroMeal = null) else state.food.copy(builderMeal = null))
+            food = if (consumer == "hero") state.food.copy(heroMeal = null, heroMealEffect = null)
+                else state.food.copy(builderMeal = null, builderMealSpeedBps = null))
         EconomyRules.assertStorageTransition(state, next, reservedItems)
         return next to "Неиспользованное блюдо возвращено в кладовую"
     }
@@ -171,13 +217,13 @@ object EconomyFood {
                 economyFailure("ECONOMY_JOB_READY", "Сначала завершите готовую стройку")
             if (construction?.meal != null) economyFailure("ECONOMY_ALREADY_FED", "Шишколап уже поел для этой стройки")
         } else {
-            if (state.food.heroMeal != null) economyFailure("ECONOMY_ALREADY_FED", "Мохлик уже сыт. Блюдо сохранено в кладовой")
             if (state.jobs.any { it.collection?.startedAt != null })
                 economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
             if (state.jobs.any { it.kind == "exploration" && !EconomyRules.isMinerJob(it) })
                 economyFailure("ECONOMY_EXPLORER_BUSY", "Сначала дождитесь Мохлика и заберите результат работы")
             if (state.jobs.any { it.kind == "production" && it.targetId == "quarry" })
                 economyFailure("ECONOMY_QUARRY_BUSY", "Сначала дождитесь Мохлика и заберите добычу из каменоломни")
+            if (state.food.heroMeal != null) economyFailure("ECONOMY_ALREADY_FED", "Мохлик уже сыт. Блюдо сохранено в кладовой")
         }
         val spent = spendItems(state, mapOf(itemId to 1L))
         if (builder && construction != null) {
@@ -186,8 +232,9 @@ object EconomyFood {
             return spent.copy(jobs = state.jobs.map { if (it.id == construction.id) it.copy(finishesAt = finish.toString(),
                 meal = EconomyJobMeal(itemId, "builder", spec.builderSpeedBps)) else it }) to "Шишколап поел и строит на ${spec.builderSpeedBps / 100}% быстрее"
         }
-        return spent.copy(food = if (builder) state.food.copy(builderMeal = itemId) else state.food.copy(heroMeal = itemId)) to
-            if (builder) "Шишколап сыт: следующая стройка пойдёт на ${spec.builderSpeedBps / 100}% быстрее" else "Мохлик сыт: следующая вылазка пройдёт быстрее"
+        return spent.copy(food = if (builder) state.food.copy(builderMeal = itemId, builderMealSpeedBps = spec.builderSpeedBps) else state.food.copy(heroMeal = itemId,
+            heroMealEffect = spec.heroWorkSeconds?.let { EconomyHeroMealEffect(it, it, spec.heroSpeedBps) })) to
+            if (builder) "Шишколап сыт: следующая стройка пойдёт на ${spec.builderSpeedBps / 100}% быстрее" else "Мохлик сыт: время работы с бонусом сохранено"
     }
 
     private fun itemPairs(template: EconomyResidentOrderTemplate) = JsonArray(template.items.toSortedMap().map { (id, quantity) ->
@@ -199,6 +246,7 @@ object EconomyFood {
         if (template.reputationXp != null || template.effortSeconds != null || template.manufacturingSeconds != null || template.fishingUncertain != null)
             fields += listOf(JsonPrimitive(template.reputationXp ?: 0), JsonPrimitive(template.effortSeconds ?: 0L),
                 JsonPrimitive(template.manufacturingSeconds ?: 0L), JsonPrimitive(template.fishingUncertain ?: false))
+        if (template.pearls > 0L) fields += JsonPrimitive(template.pearls)
         return hash(JsonArray(fields).toString()).toString()
     }
 
@@ -216,6 +264,13 @@ object EconomyFood {
                 }
             }.toSet()
         } ?: emptySet()
+        val catchableSpecies = fishing?.let { spec -> spec.rods.filter { it.id in state.fishing.ownedRods }.flatMap { rod ->
+            spec.hooks.filter { it.id in state.fishing.ownedHooks }.flatMap { hook ->
+                EconomyRules.fishingClassWeights(rod.id, null, hook.id, spec).filter { it.second > 0 }.flatMap { (tier, _) ->
+                    EconomyRules.fishingSpeciesWeights(rod.id, tier.rarity, hook.id, spec).filter { it.second > 0 }.map { it.first.itemId }
+                }
+            }
+        }.toSet() } ?: emptySet()
         fun unlocked(home: Int, buildings: Map<String, Int>) = (state.buildings["home"] ?: 1) >= home &&
             buildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level }
         do {
@@ -224,7 +279,10 @@ object EconomyFood {
                 if (unlocked(route.requiredHomeLevel, route.requiredBuildings) && route.cost.items.keys.all { it in reachable }) {
                     reachable += if (route.id in (fishing?.routeIds ?: emptyList())) route.rewards.filter { (id, count) -> id != "fish" && count > 0 }.keys
                         else EconomyFishInventory.items(route.rewards, catalog).filterValues { it > 0 }.keys
-                    if (route.id in (fishing?.routeIds ?: emptyList())) reachable += catchable
+                    if (route.id in (fishing?.routeIds ?: emptyList())) {
+                        reachable += catchable
+                        reachable += catchableSpecies
+                    }
                 }
             }
             catalog.recipes.filterNot { it.retired }.forEach { recipe ->

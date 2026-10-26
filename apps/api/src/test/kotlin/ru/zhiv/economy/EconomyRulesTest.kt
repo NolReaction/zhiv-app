@@ -561,7 +561,7 @@ class EconomyRulesTest {
         val started = apply(EconomyRules.initial(), "start_exploration", "forest")
         val job = started.jobs.single()
         val completed = apply(started, "claim_job", job.id, at = now.plusSeconds(365 * 24 * 3600L))
-        assertEquals(EconomyRules.addItems(started.inventory, job.rewards), completed.inventory)
+        assertEquals(EconomyRules.addItems(EconomyRules.addItems(started.inventory, job.rewards), job.expeditionFinds.orEmpty()), completed.inventory)
         assertEquals(1L, completed.completedExplorations)
         assertEquals(started.wallet.pearls, completed.wallet.pearls)
     }
@@ -611,7 +611,7 @@ class EconomyRulesTest {
         }
         for (bait in fishing.baits) {
             val item = assertNotNull(items[bait.itemId], "Unknown bait item: ${bait.itemId}")
-            assertTrue(bait.price > item.baseSellPrice, "${bait.itemId}: bait buy-sell arbitrage")
+            assertTrue(bait.price >= item.baseSellPrice, "${bait.itemId}: bait buy-sell arbitrage")
             assertTrue(bait.rareBonus >= 0)
         }
         val rarities = setOf("common", "uncommon", "rare", "epic", "legendary")

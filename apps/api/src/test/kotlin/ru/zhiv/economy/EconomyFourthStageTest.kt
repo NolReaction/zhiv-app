@@ -28,9 +28,9 @@ class EconomyFourthStageTest {
             step = index, terms = terms, availableAt = now.toString(), intervalSeconds = course.intervalSeconds,
             completionRewards = course.completionRewards))))
 
-    @Test fun `twelve daily requests require claimed ruins and award both guaranteed relics only once`() {
+    @Test fun `twelve resource requests require claimed ruins and award both guaranteed relics only once`() {
         assertEquals(12, course.orders.size)
-        assertEquals(82800L, course.intervalSeconds)
+        assertEquals(0L, course.intervalSeconds)
         assertEquals(mapOf("ancient_core" to 1L, "moon_crystal" to 1L), course.completionRewards)
         assertEquals(mapOf("ancient_ruins" to 1L), course.orders.last().requiredExplorations)
         assertEquals(1, course.orders.last().requiredBuildings["lighthouse"])
@@ -50,7 +50,7 @@ class EconomyFourthStageTest {
             assertEquals(if (index == course.orders.lastIndex) course.completionRewards else emptyMap(), state.inventory)
             if (index != course.orders.lastIndex) at = at.plusSeconds(course.intervalSeconds)
         }
-        assertEquals(now.plusSeconds(11 * 82800L), at)
+        assertEquals(now.plusSeconds(11 * course.intervalSeconds), at)
         assertEquals(initialCoins + course.orders.sumOf { it.coins }, state.wallet.coins)
         assertTrue(EconomyStageOrders.progress(state).completed)
         assertTrue(state.unlockedItems.containsAll(course.completionRewards.keys))
@@ -80,7 +80,7 @@ class EconomyFourthStageTest {
 
     @Test fun `starting cancelling and reading a ruin job do not satisfy the final expedition requirement`() {
         val route = EconomyRules.catalog.explorations.single { it.id == "ancient_ruins" }
-        assertEquals(3480L, route.seconds)
+        assertEquals(3600L, route.seconds)
         assertTrue(route.requiredBuildings["bridge"] == 1 && route.requiredBuildings["lighthouse"] == 1)
         val start = atStep(player().copy(inventory = route.cost.items), course.orders.lastIndex)
         val travelling = apply(start, "start_exploration", route.id)
@@ -93,8 +93,8 @@ class EconomyFourthStageTest {
         fails("ECONOMY_JOB_NOT_READY") { apply(travelling, "claim_job", job.id, end.minusNanos(1)) }
         val claimed = apply(travelling, "claim_job", job.id, end)
         assertEquals(1L, claimed.progression.routes[route.id])
-        assertEquals(3480L, claimed.progression.collections.travelSeconds)
-        assertTrue(claimed.progression.collections.finds.isEmpty(), "A 58-minute route does not fill the two-hour collection clock")
+        assertEquals(3600L, claimed.progression.collections.travelSeconds)
+        assertTrue(claimed.progression.collections.finds.isEmpty(), "A 60-minute route does not fill the two-hour collection clock")
         assertTrue(claimed.inventory.values.sum() <= 50L, "One complete route fits the free warehouse")
         fails("ECONOMY_JOB_GONE") { apply(claimed, "claim_job", job.id, end) }
         val delivered = apply(claimed.copy(inventory = course.orders.last().items), "complete_resident_order", course.orders.last().id, end)
@@ -117,7 +117,7 @@ class EconomyFourthStageTest {
             fails("ECONOMY_HOME_REQUIRED") { apply(early, "start_construction", id) }
             val started = apply(supplied, "start_construction", id)
             assertEquals(upgrade.cost, started.jobs.single().cost)
-            assertEquals(13, started.jobs.single().catalogVersion)
+            assertEquals(14, started.jobs.single().catalogVersion)
             assertEquals(EconomyWallet(), started.wallet)
             assertTrue(started.inventory.isEmpty())
             assertEquals(0, started.buildings[id] ?: 0)

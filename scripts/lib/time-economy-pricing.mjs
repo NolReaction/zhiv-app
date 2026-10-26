@@ -36,3 +36,12 @@ export function timeEconomyPricing(catalog) {
   const order = quantities => Math.ceil(basket(quantities) * (10000 + policy.orderBonusBps) / 10000);
   return { price, basket, order };
 }
+
+/** Full occupied-work budget saves at least 125% of meal value at the common
+ * work rate. This is not a wall-clock expiry and never starts jobs itself. */
+export function heroMealWorkBudgetSeconds(catalog, meal, pricing = timeEconomyPricing(catalog)) {
+  assert(meal.heroSpeedBps > 0, `${meal.itemId}: hero meal must increase speed`);
+  const savedShare = meal.heroSpeedBps / (10000 + meal.heroSpeedBps);
+  const seconds = pricing.price(meal.itemId) * 1.25 / catalog.timeEconomy.coinsPerMinute / savedShare * 60;
+  return Math.max(3600, Math.ceil(seconds / 900) * 900);
+}

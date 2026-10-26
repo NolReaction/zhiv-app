@@ -30,7 +30,7 @@ type ResidentId = OrderResidentId;
 type Filter = "all" | ResidentId;
 type BoardOrderOffer = ResidentOrderOffer & { intervalSeconds?: number; completionRewards?: Record<string, number>;
   requiredBuildings?: Record<string, number> | null; requiredExplorations?: Record<string, number> | null;
-  weekly?: boolean; stage?: number; stages?: number; expiresAt?: string;
+  pearls?: number; weekly?: boolean; stage?: number; stages?: number; expiresAt?: string;
   reputationXp?: number; effortSeconds?: number; manufacturingSeconds?: number; fishingUncertain?: boolean };
 export type OrderNavigation = {
   onNavigateStation?: (stationId: string, recipeId?: string) => void;
@@ -197,6 +197,7 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
         {completionRewards.length > 0 && <div className={styles.completionReward}><p>Награда за завершение этапа</p><ul aria-label="Дополнительная награда за этап">{completionRewards.map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={21} /><span>{itemName(state, id)} × {number(amount)}</span></li>)}</ul></div>}
       </div>
     </div>
+    {(offer.pearls ?? 0) > 0 && <p className={styles.premium} data-order-pearl-reward><ItemIcon itemId="pearls" size={16} />+{formatPearls(offer.pearls ?? 0)} жемчужин за этот этап</p>}
     {bonus > 0 && !permanent && <p className={styles.premium}>На {number(bonus)} монет больше продажи</p>}
     {confirmation ?? <div className={styles.actions}>
       {hasFish ? <FishOrderAction economy={economy} offer={offer} disabled={submitDisabled} onSubmit={complete} />

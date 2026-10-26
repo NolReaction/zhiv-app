@@ -79,16 +79,17 @@ BEGIN
     END IF;
     -- V68 adds the reset generation and release ledger; migration itself never resets data.
     -- V69 onboarding progress is cleared; V70 expands achievement constraints without new tables.
+    -- V71 adds frozen reward fields to existing mail/daily tables and updates the fresh-state factory.
     -- Every later migration still requires an explicit inventory/policy review.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 70
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 71
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,70) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,71) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V70. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V71. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

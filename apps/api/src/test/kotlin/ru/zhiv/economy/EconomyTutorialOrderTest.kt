@@ -159,7 +159,7 @@ class EconomyTutorialOrderTest {
         val fresh = EconomyRules.initial().tutorialOrder
         val finished = fresh.copy(step = 1, completed = true)
         for ((a, b) in listOf(fresh to finished, finished to fresh, EconomyTutorialOrder() to finished, finished to EconomyTutorialOrder()))
-            assertEquals(finished, EconomyTutorialOrders.merge(a, b))
+            assertEquals(finished.copy(rewardVersion = minOf(a.rewardVersion, b.rewardVersion)), EconomyTutorialOrders.merge(a, b))
         val old = EconomyTutorialOrder(ingredientsClaimed = true, terms = oldTerms(), completed = true)
         for ((a, b) in listOf(fresh to old, old to fresh)) assertEquals(old, EconomyTutorialOrders.merge(a, b))
         val first = EconomyStageOrderState(stages = mapOf("1" to EconomyStageOrderProgress(step = 1, terms = course.orders[1])))

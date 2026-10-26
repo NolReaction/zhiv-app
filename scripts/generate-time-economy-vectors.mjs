@@ -52,8 +52,8 @@ try {
   vectors.weekly = report.weekly.map(weekly => ({ ...weekly, stages: weekly.stages.map(clean) }));
   vectors.optimisticMinimumElapsedDays = report.pacing.optimisticEarliestElapsedDays;
   const project = (source, keys) => Object.fromEntries(keys.filter(key => source[key] !== undefined).map(key => [key, source[key]]));
-  const offerKeys = ["id", "slot", "templateId", "residentId", "name", "description", "items", "coins", "reputationXp", "effortSeconds", "manufacturingSeconds", "fishingUncertain", "requiredBuildings"];
-  const choiceKeys = ["id", "templateId", "residentId", "coins", "reputationXp", "effortSeconds", "manufacturingSeconds", "fishingUncertain"];
+  const offerKeys = ["id", "slot", "templateId", "residentId", "name", "description", "items", "coins", "pearls", "reputationXp", "effortSeconds", "manufacturingSeconds", "fishingUncertain", "requiredBuildings"];
+  const choiceKeys = ["id", "templateId", "residentId", "coins", "pearls", "reputationXp", "effortSeconds", "manufacturingSeconds", "fishingUncertain"];
   for (const row of vectors.idCases) {
     const state = fresh(row), now = Date.parse(row.now);
     row.ordinary = food.residentOrderBoard(state, now).offers.map(offer => project(offer, offerKeys));

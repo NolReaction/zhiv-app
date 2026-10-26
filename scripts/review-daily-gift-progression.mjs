@@ -49,7 +49,7 @@ export function reviewDailyGiftProgression(loaded, baselineBytes, onScenario = (
       if (giftVersion === "after") {
         assert.equal(result.dailyRewards.claims, 7);
         assert.equal(result.dailyRewards.completed, true);
-        assert.equal(result.dailyRewards.pearlsReceived, 1000);
+        assert.equal(result.dailyRewards.pearlsReceived, 300);
       }
       for (const failure of ["ECONOMY_BUILDING_BUSY", "ECONOMY_BUILDING_REQUIRED", "ECONOMY_PEARLS", "ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
         assert.equal(result.failures[failure], undefined, `${giftVersion}/${id} violated ${failure}`);

@@ -1,9 +1,11 @@
 "use client";
 
 import { useId, useMemo, useState, type KeyboardEvent } from "react";
-import { ArrowDownUp, Download, GitBranch, ListChecks, Search, Table2 } from "lucide-react";
+import { ArrowDownUp, Compass, Download, GitBranch, ListChecks, Search, Table2 } from "lucide-react";
 import { economyCatalog } from "@/features/economy/domain/model";
 import { buildEconomyAnalysis } from "./economy-analysis";
+import { expeditionExpectedReturns } from "./economy-expeditions";
+import { EconomyExpeditionAnalysis } from "./economy-expedition-analysis";
 import { EconomyProductionGraph } from "./economy-production-graph";
 import { EconomyProductionPlanner } from "./economy-production-planner";
 import { downloadEconomyFile, economyCsv, economyDuration, economyNumber, economySearch } from "./economy-workbench-common";
@@ -11,7 +13,7 @@ import styles from "./economy-workbench.module.css";
 
 const analysis = buildEconomyAnalysis();
 const categoryLabels: Record<string, string> = { produce: "Урожай", material: "Материалы", crafted: "Переработка", provisions: "Еда и запасы", raw: "Рыба", fishing: "Наживка", special: "Реликвии" };
-const tabs = [{ id: "chains", name: "Цепочки", icon: GitBranch }, { id: "balance", name: "Баланс", icon: Table2 }, { id: "plan", name: "План", icon: ListChecks }] as const;
+const tabs = [{ id: "chains", name: "Цепочки", icon: GitBranch }, { id: "balance", name: "Баланс", icon: Table2 }, { id: "plan", name: "План", icon: ListChecks }, { id: "expeditions", name: "Вылазки", icon: Compass }] as const;
 type Tab = typeof tabs[number]["id"];
 type Item = typeof analysis.items[number];
 type SortKey = "name" | "npcPrice" | "ownSeconds" | "fullWorkSeconds" | "addedCoinsPerMinute" | "recurringUses";
@@ -37,7 +39,7 @@ export function EconomyBalanceTable({ onSelect }: { onSelect: (id: string) => vo
   }
   function exportBalance(format: "csv" | "json") {
     try {
-      const content = format === "json" ? JSON.stringify({ schemaVersion: 1, catalogVersion: economyCatalog.version, generatedAt: new Date().toISOString(), analysis }, null, 2) : economyCsv([
+      const content = format === "json" ? JSON.stringify({ schemaVersion: 1, catalogVersion: economyCatalog.version, generatedAt: new Date().toISOString(), analysis, expeditionExpectations: expeditionExpectedReturns() }, null, 2) : economyCsv([
         ["catalog_version", "item_id", "name", "category", "base_price", "npc_price", "input_value", "own_seconds", "full_work_seconds", "launches", "added_value", "added_coins_per_minute", "recurring_uses", "source_id", "warnings"],
         ...analysis.items.map(item => [economyCatalog.version, item.id, item.name, item.category, item.baseSellPrice, item.npcPrice, item.inputValue, item.ownSeconds,
           item.fullWorkSeconds, item.launches, item.addedValue, item.addedCoinsPerMinute, item.recurringUses, item.sourceId, item.warnings.join(" | ")]),
@@ -84,6 +86,7 @@ export function EconomyWorkbench({ onInspectItem }: { onInspectItem: (id: string
     </div>
     <div id={`${id}-chains-panel`} role="tabpanel" aria-labelledby={`${id}-chains-tab`} hidden={tab !== "chains"}><EconomyProductionGraph analysis={analysis} selectedId={selectedId} onSelect={select} onPlan={plan} onInspect={onInspectItem} /></div>
     <div id={`${id}-balance-panel`} role="tabpanel" aria-labelledby={`${id}-balance-tab`} hidden={tab !== "balance"}><EconomyBalanceTable onSelect={select} /></div>
+    <div id={`${id}-expeditions-panel`} role="tabpanel" aria-labelledby={`${id}-expeditions-tab`} hidden={tab !== "expeditions"}><EconomyExpeditionAnalysis onSelect={select} /></div>
     <div id={`${id}-plan-panel`} role="tabpanel" aria-labelledby={`${id}-plan-tab`} hidden={tab !== "plan"}><EconomyProductionPlanner analysis={analysis} targets={targets} onTargets={setTargets} onSelect={select} /></div>
   </section>;
 }

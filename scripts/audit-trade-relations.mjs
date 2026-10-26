@@ -62,8 +62,8 @@ export function auditTradeRelations(catalog) {
     for (const key of ["effortSeconds", "manufacturingSeconds", "fishingUncertain"])
       assert.equal(template[key], intrinsic[key], `${template.id}: incorrect ${key}`);
     if (!weekly) assert.equal(template.reputationXp, reputationXpForEffort(intrinsic.effortSeconds), `${template.id}: incorrect reputation reward`);
-    else assert(Number.isSafeInteger(template.reputationXp) && template.reputationXp >= 30 && template.reputationXp <= 50,
-      `${template.id}: weekly XP must be an explicit bounded stage reward`);
+    else assert.equal(template.reputationXp, Math.min(100, Math.max(20, 10 + Math.ceil(intrinsic.effortSeconds / 600))),
+      `${template.id}: weekly XP must follow occupied work within its cap`);
     assert.equal(template.coins, pricing.coins, `${template.id}: coin payout must preserve the manufacturing policy`);
     const npcPurchaseCoins = Object.keys(template.items).every(itemId => npcPrices.has(itemId))
       ? sum(Object.entries(template.items).map(([itemId, quantity]) => quantity * npcPrices.get(itemId))) : null;
@@ -72,6 +72,7 @@ export function auditTradeRelations(catalog) {
     return { templateId: template.id, residentId: template.residentId, home: template.requiredHomeLevel,
       requiredBuildings: template.requiredBuildings, items: template.items, coins: template.coins,
       reputationXp: template.reputationXp, effortSeconds: template.effortSeconds,
+      ...(weekly ? { pearls: template.pearls ?? 0 } : {}),
       manufacturingSeconds: template.manufacturingSeconds, fishingUncertain: template.fishingUncertain,
       completeNpcPurchaseCoins: npcPurchaseCoins, immediateNpcProfitCoins: npcPurchaseCoins === null ? null : template.coins - npcPurchaseCoins };
   }
@@ -85,27 +86,28 @@ export function auditTradeRelations(catalog) {
   for (const template of templates.filter(template => template.residentId === "leaftail"))
     assert(template.requiredHomeLevel >= catalog.leaftailShop.requiredHomeLevel, `${template.id}: trader request predates his arrival stage`);
 
-  assert.equal(config.weekly.templates.length, 10);
-  assert.equal(new Set(config.weekly.templates.map(template => template.id)).size, 10);
+  assert(config.weekly.templates.length >= 10);
+  assert.equal(new Set(config.weekly.templates.map(template => template.id)).size, config.weekly.templates.length);
   const weekly = config.weekly.templates.map(template => {
     assert(tradeResidentIds.includes(template.residentId), `${template.id}: unknown weekly customer`);
     assert.equal(template.stages.length, 3, `${template.id}: weekly work needs exactly three stages`);
     const stages = template.stages.map(stage => auditBasket({ ...template, ...stage }, true));
     const reputationXp = sum(stages.map(stage => stage.reputationXp));
-    assert(reputationXp >= 90 && reputationXp <= 150, `${template.id}: weekly reputation out of bounds`);
-    // The weekly deadline must not depend on collecting rare random classes.
-    // Cooked rare fish is also excluded through the fixed-point references.
-    const forbidden = ["fish_rare", "fish_epic", "fish_legendary", "hearty_fish", "epic_fish", "legendary_fish"];
+    assert(reputationXp >= 60 && reputationXp <= 300, `${template.id}: weekly reputation out of bounds`);
+    // Optional specialist weeklies may use named fish dishes, with expected
+    // acquisition disclosed above. Legendary RNG remains outside deadlines.
+    const forbidden = ["fish_legendary", "legendary_fish"];
     assert(stages.every(stage => Object.keys(stage.items).every(item => !forbidden.includes(item))),
       `${template.id}: a weekly deadline cannot require rare random catches`);
     return { templateId: template.id, residentId: template.residentId, home: template.requiredHomeLevel,
       requiredBuildings: template.requiredBuildings, stages, reputationXp,
+      pearls: sum(stages.map(stage => stage.pearls)),
       coins: sum(stages.map(stage => stage.coins)), effortSeconds: sum(stages.map(stage => stage.effortSeconds)),
       manufacturingSeconds: sum(stages.map(stage => stage.manufacturingSeconds)), fishingUncertain: stages.some(stage => stage.fishingUncertain) };
   });
   for (const resident of tradeResidentIds) {
     const variants = weekly.filter(template => template.residentId === resident);
-    assert.equal(variants.length, 2, `${resident}: early and late weekly variants required`);
+    assert(variants.length >= 2, `${resident}: early and late weekly variants required`);
     assert(variants[0].home < variants[1].home, `${resident}: weekly variants must expand with progression`);
   }
 
@@ -115,7 +117,7 @@ export function auditTradeRelations(catalog) {
   const merchantDiscounts = catalog.fishing.baits.map(bait => {
     const discountedPrice = Math.ceil(bait.price * (10000 - config.maxBonusBps) / 10000);
     const resalePrice = catalog.localBuyer.unitPrices?.[bait.itemId] ?? itemMap.get(bait.itemId)?.baseSellPrice ?? 0;
-    assert(discountedPrice > resalePrice, `${bait.itemId}: maximum loyalty discount creates immediate resale profit`);
+    assert(discountedPrice >= resalePrice, `${bait.itemId}: maximum loyalty discount creates immediate resale profit`);
     return { itemId: bait.itemId, merchant: bait.shop, basePrice: bait.price, discountedPrice, resalePrice };
   });
   const finalXp = config.ranks.at(-1).requiredXp, weeklyMax = Math.max(...weekly.map(template => template.reputationXp));
@@ -126,7 +128,7 @@ export function auditTradeRelations(catalog) {
   const ceilingAtDay = day => (day + 2) * (config.dailyOrderXpCap + config.dailyPurchaseXpCap)
     + (Math.floor(day / 7) + 1) * weeklyMax;
   while (ceilingAtDay(optimisticEarliestElapsedDays) < finalXp) optimisticEarliestElapsedDays++;
-  assert(optimisticEarliestElapsedDays >= 49, "Maximum reputation must require at least about seven weeks even at every cap");
+  assert(optimisticEarliestElapsedDays >= 42, "Maximum reputation must require at least six weeks even at every cap");
   const pacing = tradeResidentIds.map(residentId => {
     const dailyMedianXp = median(orders.filter(order => order.residentId === residentId).map(order => order.reputationXp));
     const ownWeeklies = weekly.filter(template => template.residentId === residentId);

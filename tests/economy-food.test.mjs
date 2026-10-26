@@ -80,7 +80,7 @@ test("invalid fish substitutions and decorated non-fish recipes are rejected bef
   assert.throws(() => food.recipeWithFish(catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish"), "fish_shark"), RangeError);
 });
 
-test("feeding the hero reserves one meal indefinitely and applies it to exactly one successful trip", () => {
+test("feeding the hero reserves active work indefinitely and spends only successful departures", () => {
   const state = fresh(); state.inventory = { grilled_fish: 2 };
   apply(state, "eat_food", "grilled_fish");
   assert.equal(state.inventory.grilled_fish, 1); assert.equal(state.food.heroMeal, "grilled_fish");
@@ -89,12 +89,15 @@ test("feeding the hero reserves one meal indefinitely and applies it to exactly 
   const later = now + 30 * 86400000, route = catalog.explorations.find(item => item.id === "forest");
   apply(state, "start_exploration", route.id, later);
   assert.equal(Date.parse(state.jobs[0].finishesAt) - later, food.mealDuration(route.seconds, 1000) * 1000);
-  assert.deepEqual(state.jobs[0].meal, { itemId: "grilled_fish", consumer: "hero", speedBps: 1000 });
-  assert.equal(state.food.heroMeal, null);
+  assert.deepEqual(state.jobs[0].meal, { itemId: "grilled_fish", consumer: "hero", speedBps: 1000, workSeconds: route.seconds });
+  assert.equal(state.food.heroMealEffect.remainingWorkSeconds, catalog.food.meals.find(meal => meal.itemId === "grilled_fish").heroWorkSeconds - route.seconds);
+  const remaining = state.food.heroMealEffect.remainingWorkSeconds;
   apply(state, "cancel_exploration", state.jobs[0].id, later);
+  assert.equal(state.food.heroMealEffect.remainingWorkSeconds, remaining, "cancelled work is never restored");
+  const duration = food.heroMealWorkDuration(state, route.seconds);
   apply(state, "start_exploration", route.id, later);
-  assert.equal(Date.parse(state.jobs[0].finishesAt) - later, route.seconds * 1000);
-  assert.equal(state.jobs[0].meal, undefined, "cancelled meals are not refundable or repeatable");
+  assert.equal(Date.parse(state.jobs[0].finishesAt) - later, duration * 1000);
+  assert.equal(state.food.heroMealEffect.remainingWorkSeconds, remaining - route.seconds);
 });
 
 test("unused hero and builder portions return exactly once without touching the other meal or jobs", () => {
@@ -103,7 +106,7 @@ test("unused hero and builder portions return exactly once without touching the 
   const jobs = structuredClone(state.jobs), wallet = structuredClone(state.wallet);
   apply(state, "cancel_meal", "hero");
   assert.deepEqual(state.inventory, { grilled_fish: 2 });
-  assert.deepEqual(state.food, { heroMeal: null, builderMeal: "fish_soup" });
+  assert.deepEqual(state.food, { heroMeal: null, builderMeal: "fish_soup", builderMealSpeedBps: catalog.food.meals.find(meal => meal.itemId === "fish_soup").builderSpeedBps });
   failWithoutChanges(state, "cancel_meal", "hero", "ECONOMY_MEAL_UNAVAILABLE");
   apply(state, "cancel_meal", "builder");
   assert.deepEqual(state.inventory, { grilled_fish: 2, fish_soup: 1 });
@@ -158,7 +161,7 @@ test("missing food and an occupied hero cannot debit a dish or overwrite active 
   assert.equal(economyCommandUsesActor(command("eat_food", "grilled_fish")), true, "legacy trips block eating at the adapter boundary too");
 });
 
-test("failed paid departure preserves the hero meal; fishing receives the same one-trip speed rule", () => {
+test("failed paid departure preserves the hero meal; fishing spends the same active-work budget", () => {
   const state = fresh(); state.buildings.home = 3;
   state.inventory = { hearty_fish: 1 };
   apply(state, "eat_food", "hearty_fish");
@@ -172,7 +175,7 @@ test("failed paid departure preserves the hero meal; fishing receives the same o
   apply(state, "start_fishing", route.id);
   const job = state.jobs[0];
   assert.equal(Date.parse(job.finishesAt) - now, food.mealDuration(route.seconds, 6000) * 1000);
-  assert.equal(job.meal.itemId, "hearty_fish"); assert.equal(state.food.heroMeal, null);
+  assert.equal(job.meal.itemId, "hearty_fish"); assert.equal(state.food.heroMealEffect.remainingWorkSeconds, catalog.food.meals.find(meal => meal.itemId === "hearty_fish").heroWorkSeconds - route.seconds);
   if (job.rareDrop) assert.equal(job.rareDrop.seconds, food.mealDuration(route.seconds, 6000));
 });
 
@@ -357,7 +360,8 @@ test("local API meal refunds keep receipts ownership and stale-revision protecti
   assert.equal(read(p).food.heroMeal, "grilled_fish", "old refund receipt cannot cancel a newly selected portion");
   assert.equal(read(p).inventory.grilled_fish ?? 0, 0);
   send(p, "start_exploration", "forest");
-  assert.throws(() => send(p, "cancel_meal", "hero"), { code: "ECONOMY_MEAL_UNAVAILABLE" });
+  send(p, "cancel_meal", "hero");
+  assert.equal(read(p).inventory.grilled_fish ?? 0, 0, "discarding a spent serving cannot refund it");
   const trip = read(p).jobs.find(job => job.kind === "exploration");
   send(p, "cancel_exploration", trip.id);
   assert.throws(() => send(p, "cancel_meal", "hero"), { code: "ECONOMY_MEAL_UNAVAILABLE" });

@@ -21,13 +21,13 @@ class EconomyLocalSaleTest {
         val nominalBase = EconomyMoney.nominal(3)
         assertEquals(270L,EconomyRules.localSellPrice(nominalBase,9,legacy.localBuyer))
         assertEquals(160L,EconomyRules.localSellPrice(nominalBase,9))
-        assertEquals(1800L,EconomyRules.catalog.fishing!!.rods.single { it.id=="river_rod" }.price)
-        assertEquals(9000L,EconomyRules.catalog.fishing!!.rods.single { it.id=="willow_rod" }.price)
+        assertEquals(400L,EconomyRules.catalog.fishing!!.rods.single { it.id=="river_rod" }.price)
+        assertEquals(1800L,EconomyRules.catalog.fishing!!.rods.single { it.id=="willow_rod" }.price)
     }
 
     @Test fun `first and second stage item quotes use fixed unit payouts without packet rounding`() {
         val prices = mapOf("berries" to 10L, "strawberries" to 50L, "wood" to 30L, "stone" to 30L,
-            "planks" to 50L, "berry_compote" to 50L, "grilled_fish" to 70L,
+            "planks" to 50L, "berry_compote" to 50L, "grilled_fish" to 45L,
             "fiber" to 10L, "rope" to 50L, "clay" to 30L, "charcoal" to 50L, "bricks" to 110L)
         assertEquals(prices, EconomyRules.catalog.localBuyer.unitPrices.filterKeys { it in prices })
         // Every current tradable item has an explicit quote, including travelling baits.
@@ -64,18 +64,18 @@ class EconomyLocalSaleTest {
         assertEquals(30L,sold.wallet.coins)
         assertEquals(6L,sold.inventory["berries"])
         val generic=EconomyRules.apply(sold,command("sell","fish",2),now).first
-        assertEquals(110L,generic.wallet.coins)
+        assertEquals(60L,generic.wallet.coins)
         val specialist=EconomyRules.apply(generic,command("sell_fish","fish",2),now).first
-        assertEquals(190L,specialist.wallet.coins)
+        assertEquals(90L,specialist.wallet.coins)
         assertTrue(specialist.fishing.catches.isEmpty())
         assertEquals(0L,state.wallet.coins,"the domain input remains unchanged")
     }
 
     @Test fun `small goods sell individually and exact fixed wallet headroom is accepted`() {
         val state=EconomyRules.initial().copy(wallet=EconomyWallet(),inventory=mapOf("crumb_bait" to 2L,"berries" to 4L))
-        val single = EconomyRules.apply(state,command("sell","crumb_bait",1,10),now).first
-        assertEquals(10L,single.wallet.coins); assertEquals(1L,single.inventory["crumb_bait"])
-        assertEquals(20L,EconomyRules.apply(state,command("sell","crumb_bait",2,20),now).first.wallet.coins)
+        val single = EconomyRules.apply(state,command("sell","crumb_bait",1,1),now).first
+        assertEquals(1L,single.wallet.coins); assertEquals(1L,single.inventory["crumb_bait"])
+        assertEquals(2L,EconomyRules.apply(state,command("sell","crumb_bait",2,2),now).first.wallet.coins)
         assertEquals(0L,EconomyRules.localSellPrice(10), "The optional old packet-discount fallback remains available")
         val full=state.copy(wallet=EconomyWallet(ECONOMY_MAX_BALANCE-30))
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure> {

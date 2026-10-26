@@ -94,7 +94,7 @@ class EconomyMarketRulesTest {
         assertTrue(EconomyMarketRules.eligible("tools", 1, 1030, 4))
         assertFalse(EconomyMarketRules.eligible("tools", 1, 1030, 3))
         assertFalse(EconomyMarketRules.eligible("tools", 1, 1020, 4))
-        assertFalse(EconomyMarketRules.eligible("fish_mooncarp", 1, 31, 4))
+        assertFalse(EconomyMarketRules.eligible("fish_mooncarp", 1, 24, 4))
         for (item in EconomyRules.catalog.items.filter { it.tradable }) {
             assertTrue(EconomyMarketRules.requiredHomeLevel(item.id) in 1..5, item.id)
             val minimum = (item.baseSellPrice * 99 + 9) / 10 * 10

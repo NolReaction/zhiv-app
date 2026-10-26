@@ -63,8 +63,8 @@ test("campfire sections include every selected product once and leave the catalo
   const economy = controller(), products = worldRecipeGroups(economy.snapshot, recipes(economy)), before = structuredClone(products);
   const groups = campfireRecipeGroups(products, "all");
   assert.deepEqual(groups.map(group => group.id), ["fish", "drinks", "desserts", "provisions"]);
-  assert.equal(products.length, 18);
-  assert.deepEqual(groups.map(group => group.recipes.length), [6, 4, 4, 4]);
+  assert.equal(products.length, 24);
+  assert.deepEqual(groups.map(group => group.recipes.length), [12, 4, 4, 4]);
   assert.deepEqual(groups.flatMap(group => group.recipes.map(product => product.key)).sort(), products.map(product => product.key).sort());
   for (const group of groups) assert.deepEqual(group.recipes.map(product => product.recipe.seconds), group.recipes.map(product => product.recipe.seconds).toSorted((left, right) => left - right));
   assert.deepEqual(products, before);
@@ -101,7 +101,7 @@ test("cooking filters show logical blocks and exact current product cards", () =
   view.filter("long").props.onClick(); view = catalog(economy);
   assert.deepEqual(view.ids, []);
   view.filter("all").props.onClick(); view = catalog(economy);
-  assert.equal(view.ids.length, 18); assert.equal(new Set(view.ids).size, 18);
+  assert.equal(view.ids.length, 24); assert.equal(new Set(view.ids).size, 24);
   assert.deepEqual(economy.snapshot, before);
 });
 

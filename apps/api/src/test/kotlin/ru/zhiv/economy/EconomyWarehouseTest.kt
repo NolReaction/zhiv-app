@@ -32,7 +32,7 @@ class EconomyWarehouseTest {
         warehouse.levels.drop(3).forEachIndexed { index, target ->
             assertEquals(EconomyCost(items = relicIds.zip(relicCosts[index]).toMap()), target.cost)
             assertEquals(1, target.requiredHomeLevel); assertTrue(target.requiredBuildings.isEmpty())
-            assertEquals(listOf(2L, 4L, 6L, 8L, 12L, 16L, 24L)[index] * 3600L, target.seconds)
+            assertEquals(listOf(2L, 4L, 4L, 4L, 4L, 4L, 4L)[index] * 3600L, target.seconds)
         }
     }
 

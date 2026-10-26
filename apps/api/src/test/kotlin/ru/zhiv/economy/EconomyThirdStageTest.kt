@@ -19,8 +19,8 @@ class EconomyThirdStageTest {
             "quarry" to 2, "kiln" to 2, "dryer" to 1), tutorialOrder = EconomyTutorialOrder()) }
     private fun fails(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
-    @Test fun `eight third stage requests follow the twenty three hour cadence and deliver one final saved resin reward`() {
-        assertEquals(8, course.orders.size); assertEquals(82800L, course.intervalSeconds)
+    @Test fun `eight third stage requests need resources without calendar gaps and deliver one final saved resin reward`() {
+        assertEquals(8, course.orders.size); assertEquals(0L, course.intervalSeconds)
         assertEquals(mapOf("living_resin" to 1L), course.completionRewards)
         var state = player()
         var at = now
@@ -38,9 +38,9 @@ class EconomyThirdStageTest {
             state = apply(state, "complete_resident_order", terms.id, at)
             assertEquals(index + 1, EconomyStageOrders.progress(state).step)
             assertEquals(if (index == 7) 1L else 0L, state.inventory["living_resin"] ?: 0L)
-            if (index < 7) at = at.plusSeconds(82800)
+            if (index < 7) at = at.plusSeconds(course.intervalSeconds)
         }
-        assertEquals(now.plusSeconds(7 * 82800L), at)
+        assertEquals(now.plusSeconds(7 * course.intervalSeconds), at)
         assertTrue(EconomyStageOrders.progress(state).completed)
         assertNull(EconomyStageOrders.offer(state))
         assertEquals(coins + course.orders.sumOf { it.coins }, state.wallet.coins)
@@ -60,8 +60,8 @@ class EconomyThirdStageTest {
         val late = now.plusSeconds(3 * 86400L)
         val completed = apply(pinned.copy(inventory = first.items), "complete_resident_order", first.id, late)
         val progress = EconomyStageOrders.progress(completed)
-        assertEquals(late.plusSeconds(82800).toString(), progress.availableAt)
-        assertEquals(82800L, progress.intervalSeconds)
+        assertEquals(late.plusSeconds(course.intervalSeconds).toString(), progress.availableAt)
+        assertEquals(course.intervalSeconds, progress.intervalSeconds)
         assertEquals(mapOf("living_resin" to 1L), progress.completionRewards)
         fails("INVALID_ECONOMY_COMMAND") {
             EconomyRules.apply(completed, command("complete_resident_order", course.orders[1].id, 100), late) }
@@ -107,7 +107,7 @@ class EconomyThirdStageTest {
         }
     }
 
-    @Test fun `soup waits for a claimed grilled recipe then uses one first level fire slot and sells for two hundred twenty`() {
+    @Test fun `soup waits for a claimed grilled recipe then uses one first level fire slot and sells for one hundred seventy`() {
         val state = player().copy(inventory = mapOf("fish_common" to 3L, "berries" to 1L, "charcoal" to 1L))
         fails("ECONOMY_RECIPE_REQUIRED") { apply(state, "start_production", "cook_fish_soup") }
         val cooking = apply(state, "start_production", "cook_grilled_fish")
@@ -123,7 +123,7 @@ class EconomyThirdStageTest {
         val served = apply(soup, "claim_job", job.id, Instant.parse(job.finishesAt))
         assertTrue("fish_soup" in served.unlockedItems)
         val sold = apply(served, "sell", "fish_soup", Instant.parse(job.finishesAt))
-        assertEquals(served.wallet.coins + 220, sold.wallet.coins)
+        assertEquals(served.wallet.coins + 170, sold.wallet.coins)
         val bonus = EconomyRules.catalog.food!!.meals.single { it.itemId == "fish_soup" }
         assertEquals(2500, bonus.heroSpeedBps); assertEquals(2500, bonus.builderSpeedBps)
     }

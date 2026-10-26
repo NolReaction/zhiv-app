@@ -165,13 +165,15 @@ export function economicMath(catalog) {
       const rod = catalog.fishing.rods.filter(rod => rodCanCatch(rod, spec.rarity)).sort((a, b) => a.price - b.price)[0];
       const hook = catalog.fishing.hooks.toSorted((a, b) => a.price - b.price)[0];
       assert(rod && hook, `${id}: no eligible reference tackle`);
-      const portfolio = catchPortfolio(rod.id, null, "shore", hook.id), probability = portfolio.classProbabilities[group.itemId];
-      const output = portfolio.output[group.itemId];
+      const exactSpecies = id !== group.itemId;
+      const portfolio = catchPortfolio(rod.id, null, "shore", hook.id);
+      const probability = exactSpecies ? portfolio.probabilities[id] : portfolio.classProbabilities[group.itemId];
+      const output = exactSpecies ? probability * portfolio.speciesDrawsPerJob : portfolio.output[group.itemId];
       assert(output > 0, `${id}: reference tackle cannot catch the fish class`);
-      result.reference = "steady-state class stock with least expensive eligible tackle; merchant waiting excluded";
+      result.reference = `steady-state ${exactSpecies ? "exact species" : "class"} stock with least expensive eligible tackle; merchant waiting excluded`;
       result.referenceHome = result.sourceHome;
       result.producerLevels.home = result.referenceHome;
-      result.rawInputs[group.itemId] = 1;
+      result.rawInputs[id] = 1;
       result.catchReference = { rodId: rod.id, hookId: hook.id, probability, expectedTrips: 1 / output,
         expectedFishPerTrip: output, rodPurchaseCoins: rod.price, hookPurchaseCoins: hook.price, finiteGuarantee: false };
       add(result.slotMinutes, portfolio.slotMinutes, 1 / output);
@@ -182,7 +184,10 @@ export function economicMath(catalog) {
         requireLevels(result.producerLevels, p.producerLevels); result.coins += p.coins * scale;
         result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
       }
-      for (const [other, quantity] of Object.entries(portfolio.output)) if (other !== group.itemId && quantity > 0) result.byproducts[other] = quantity / output;
+      for (const [other, quantity] of Object.entries(portfolio.output)) {
+        const remaining = other === group.itemId ? quantity - output : quantity;
+        if (remaining > 1e-10) result.byproducts[other] = remaining / output;
+      }
     } else {
       const purchase = catalog.fishing?.baits.find(b => b.itemId === id);
       assert(purchase, `No elementary reference or NPC stock for ${id}`);

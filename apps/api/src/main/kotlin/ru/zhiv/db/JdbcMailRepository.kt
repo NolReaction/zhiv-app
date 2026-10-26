@@ -34,10 +34,10 @@ internal fun insertAdminMail(c: Connection,user: UUID,sourceKey: String,type: St
     notify: Boolean,now: OffsetDateTime,attachments: MailAttachments? = null): UUID {
     require(type in mailTypes && sourceKey.length in 1..160 && Regex("^[a-z]+:[A-Za-z0-9:_-]+$").matches(sourceKey))
     require(validPlayerMailMessage(PlayerMailMessage(title,body)) && (attachments==null || validAttachments(attachments)))
-    val inserted=c.economyRows("""INSERT INTO player_mail_messages(user_id,source_key,type,title,body,notify,attachments,created_at)
-        SELECT ?,?,?,?,?,?,?::jsonb,? WHERE EXISTS(SELECT 1 FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL)
+    val inserted=c.economyRows("""INSERT INTO player_mail_messages(user_id,source_key,type,title,body,notify,attachments,created_at,welcome_pearls)
+        SELECT ?,?,?,?,?,?,?::jsonb,?,? WHERE EXISTS(SELECT 1 FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL)
         ON CONFLICT(user_id,source_key) DO NOTHING RETURNING id""",user,sourceKey,type,title,body,notify,
-        attachments?.let { mailJson.encodeToString(it) },now,user) { it.getObject(1,UUID::class.java) }.firstOrNull()
+        attachments?.let { mailJson.encodeToString(it) },now,if(sourceKey==WELCOME_MAIL_SOURCE) WELCOME_MAIL_PEARLS else null,user) { it.getObject(1,UUID::class.java) }.firstOrNull()
     if(inserted!=null) {
         if(notify) enqueueMailNotification(c,user,inserted,now)
         return inserted
@@ -92,7 +92,8 @@ class JdbcMailRepository(private val source: DataSource,private val adminConfig:
     private fun unread(c: Connection,user: UUID): Long=c.economyRows("SELECT count(*) FROM player_mail_messages WHERE user_id=? AND read_at IS NULL",user) { it.getLong(1) }.single()
     private fun message(r: ResultSet)=MailMessage(r.getObject("id").toString(),r.getString("type"),r.getString("title"),r.getString("body"),
         r.mailTime("created_at")!!,r.mailTime("read_at"),r.getBoolean("notify"),r.getString("attachments")?.let { mailJson.decodeFromString<MailAttachments>(it) },
-        if(r.getString("source_key")==WELCOME_MAIL_SOURCE) MailGift(claimedAt=r.mailTime("welcome_claimed_at")) else null)
+        if(r.getString("source_key")==WELCOME_MAIL_SOURCE) MailGift(pearls=(r.getObject("welcome_pearls") as? Number)?.toLong() ?: 100L,
+            claimedAt=r.mailTime("welcome_claimed_at")) else null)
     override suspend fun inbox(sessionHash: ByteArray,expectedOwnerPublicId: String,cursor: String?,limit: Int): MailboxPage {
         validateMailOwner(expectedOwnerPublicId);if(limit !in 1..50) invalidMail()
         val after=MailCursor.decode(cursor)
@@ -140,7 +141,7 @@ class JdbcMailRepository(private val source: DataSource,private val adminConfig:
                 val before=readEconomyProfile(c,current.id)
                 val normalized=EconomyMoney.redenominate(before.state)
                 // Same visible-to-stored conversion as administrative grants.
-                val units=WELCOME_MAIL_PEARLS*2L
+                val units=letter.gift.pearls*2L
                 if(normalized.wallet.pearls>ECONOMY_MAX_PEARLS-units)
                     mailFailure("ECONOMY_CAPACITY","В кошельке пока нет места для подарка",409)
                 saveEconomyProfile(c,current.id,normalized.copy(wallet=normalized.wallet.copy(pearls=normalized.wallet.pearls+units)))
@@ -150,7 +151,7 @@ class JdbcMailRepository(private val source: DataSource,private val adminConfig:
                     it.mailTime("welcome_claimed_at")!!
                 }.single()
             }
-            MailClaimResult(current.publicId,id.toString(),MailGift(claimedAt=claimedAt),at.toInstant().toString())
+            MailClaimResult(current.publicId,id.toString(),letter.gift.copy(claimedAt=claimedAt),at.toInstant().toString())
         }
     }
     override suspend fun read(sessionHash: ByteArray,expectedOwnerPublicId: String,id: UUID): MailReadResult {

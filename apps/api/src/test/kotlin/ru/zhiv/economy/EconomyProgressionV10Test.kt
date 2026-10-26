@@ -36,7 +36,7 @@ class EconomyProgressionV10Test {
             val grown = apply(state, "start_production", recipe.id)
             val job = grown.jobs.single()
             val ripeAt = Instant.parse(job.finishesAt)
-            assertEquals(13, job.catalogVersion)
+            assertEquals(14, job.catalogVersion)
             assertEquals("ECONOMY_COLLECTION_REQUIRED", assertFailsWith<AuthFailure> {
                 apply(grown, "claim_job", job.id, ripeAt)
             }.code)
@@ -68,11 +68,11 @@ class EconomyProgressionV10Test {
         assertFalse(EconomyMarketRules.unlocked(bridge.copy(buildings = bridge.buildings + ("home" to 1))))
     }
 
-    @Test fun `previously pinned twenty four hour deliveries keep deadlines while new courses use twenty three`() {
+    @Test fun `previously pinned twenty four hour deliveries keep deadlines while new courses remove calendar waits`() {
         for (home in listOf(3, 4)) {
             val initial = EconomyRules.initial()
             val course = EconomyRules.catalog.stageOrders.single { it.homeLevel == home }
-            assertEquals(23 * 3600L, course.intervalSeconds)
+            assertEquals(0L, course.intervalSeconds)
             val first = course.orders.first()
             val state = initial.copy(buildings = initial.buildings + ("home" to home), inventory = first.items,
                 stageOrders = EconomyStageOrderState(stages = mapOf(home.toString() to EconomyStageOrderProgress(

@@ -64,7 +64,7 @@
       "items": {
         "fish_common": 3
       },
-      "coins": 150
+      "coins": 57
     },
     {
       "templateId": "plesk_grilled_dinner",
@@ -73,7 +73,7 @@
         "grilled_fish": 1,
         "berries": 2
       },
-      "coins": 113
+      "coins": 82
     },
     {
       "templateId": "plesk_legendary_dinner",
@@ -81,7 +81,7 @@
       "items": {
         "legendary_fish": 1
       },
-      "coins": 1438
+      "coins": 1085
     }
   ],
   "availability": [

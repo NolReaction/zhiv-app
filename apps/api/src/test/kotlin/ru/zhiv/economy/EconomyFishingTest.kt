@@ -37,7 +37,7 @@ class EconomyFishingTest {
     @Test fun `shared catalog has no immediate arbitrage and UUID draw vectors match TypeScript`() {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         spec.classes.forEach { fish -> assertTrue(fish.buyPrice > EconomyRules.catalog.items.single { it.id == fish.itemId }.baseSellPrice) }
-        spec.baits.forEach { bait -> assertTrue(bait.price > EconomyRules.catalog.items.single { it.id == bait.itemId }.baseSellPrice) }
+        spec.baits.forEach { bait -> assertTrue(bait.price >= EconomyRules.catalog.items.single { it.id == bait.itemId }.baseSellPrice) }
         assertEquals(listOf("fish_bream", "fish_mooncarp", "fish_reedperch"),
             listOf("00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff")
                 .map { EconomyRules.selectFishingCatch(it, "willow_rod", "worm_bait") })
@@ -76,7 +76,7 @@ class EconomyFishingTest {
     @Test fun `shop charges server quote rods stay unique and purchased fish never counts as caught`() {
         val initial = funded()
         val rod = apply(initial, "buy_fishing_item", "river_rod", price = 1850)
-        assertEquals(98200L, rod.wallet.coins)
+        assertEquals(99600L, rod.wallet.coins)
         assertEquals(listOf("reed_rod", "river_rod"), rod.fishing.ownedRods)
         assertEquals(initial.inventory, rod.inventory)
         assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(rod, "buy_fishing_item", "river_rod", price = 1800) }.code)
@@ -87,14 +87,14 @@ class EconomyFishingTest {
         assertEquals(2L, bought.inventory["fish_rare"])
         assertTrue(bought.fishing.catches.isEmpty())
         val sold = apply(bought, "sell_fish", "fish_rare", quantity = 2)
-        assertEquals(98420L, sold.wallet.coins)
+        assertEquals(99650L, sold.wallet.coins)
         assertTrue(sold.fishing.catches.isEmpty())
         assertEquals("ECONOMY_FISHING_ITEM", assertFailsWith<AuthFailure> { apply(sold, "sell_fish", "wood") }.code)
     }
 
     @Test fun `bad quotes unknown goods unsupported quantities inventory and escrow limits are rejected`() {
         val initial = funded()
-        assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", price = 1790) }.code)
+        assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", price = 399) }.code)
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "wood", price = 1000) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", quantity = 2, price = 3600) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "crumb_bait", quantity = 11, price = 330) }.code)

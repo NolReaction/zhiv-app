@@ -52,7 +52,8 @@ class EconomyMinerTest {
         assertEquals(EconomyRules.catalog.explorations.single { it.id == "quarry_stone" }.seconds,
             ready(mine.jobs.single()).epochSecond - now.epochSecond)
         val departing = apply(mine, "start_exploration", "forest")
-        assertNull(departing.food.heroMeal)
+        assertEquals(eating.food.heroMealEffect!!.remainingWorkSeconds - EconomyRules.catalog.explorations.single { it.id == "forest" }.seconds,
+            departing.food.heroMealEffect?.remainingWorkSeconds)
         assertEquals("grilled_fish", departing.jobs.single { it.actorId == "mochlik" }.meal!!.itemId)
         val noMeal = apply(initial, "start_exploration", "quarry_stone")
         assertEquals("grilled_fish", apply(noMeal, "eat_food", "grilled_fish").food.heroMeal)

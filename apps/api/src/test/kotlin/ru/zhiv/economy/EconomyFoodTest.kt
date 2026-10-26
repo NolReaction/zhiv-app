@@ -62,7 +62,7 @@ class EconomyFoodTest {
         assertEquals(encoded, economyJson.encodeToString(state))
     }
 
-    @Test fun `eating spends one dish and arms one persistent bonus only for the next successful trip`() {
+    @Test fun `eating spends one dish and freezes work budget across successful trips`() {
         val state = stocked()
         val fed = apply(state, "eat_food", "fish_soup")
         assertEquals(state.inventory.getValue("fish_soup") - 1, fed.inventory["fish_soup"])
@@ -77,11 +77,11 @@ class EconomyFoodTest {
         val job = trip.jobs.single()
         val seconds = EconomyFood.mealDuration(route.seconds, 2500)
         assertEquals(later.plusSeconds(seconds), Instant.parse(job.finishesAt))
-        assertEquals(EconomyJobMeal("fish_soup", "hero", 2500), job.meal)
-        assertNull(trip.food.heroMeal)
+        assertEquals(EconomyJobMeal("fish_soup", "hero", 2500, route.seconds), job.meal)
+        assertEquals(fed.food.heroMealEffect!!.remainingWorkSeconds - route.seconds, trip.food.heroMealEffect?.remainingWorkSeconds)
         assertEquals(seconds, job.rareDrop?.seconds)
         val canceled = apply(trip, "cancel_exploration", job.id, later)
-        assertNull(canceled.food.heroMeal, "cancellation does not refund a spent bonus")
+        assertEquals(trip.food, canceled.food, "cancellation does not refund spent work")
         assertEquals(fed.inventory["fish_soup"], canceled.inventory["fish_soup"])
     }
 
@@ -107,7 +107,7 @@ class EconomyFoodTest {
         assertEquals(now.plusSeconds(EconomyFood.mealDuration(route.seconds, 6000)), Instant.parse(job.finishesAt))
         assertNotNull(job.fishing)
         assertEquals(state.fishing, trip.fishing)
-        assertNull(trip.food.heroMeal)
+        assertEquals(state.food.heroMealEffect!!.remainingWorkSeconds - route.seconds, trip.food.heroMealEffect?.remainingWorkSeconds)
         val fishIds = EconomyRules.catalog.fishing!!.fish.map { it.itemId }.toSet()
         assertEquals(route.rewards.getValue("fish"), job.rewards.filterKeys { it in fishIds }.values.sum())
     }
@@ -117,7 +117,7 @@ class EconomyFoodTest {
         val fed = apply(apply(original, "eat_food", "grilled_fish"), "feed_builder", "fish_soup")
         val heroReturned = apply(fed, "cancel_meal", "hero")
         assertEquals(mapOf("grilled_fish" to 2L), heroReturned.inventory)
-        assertEquals(EconomyFoodState(null, "fish_soup"), heroReturned.food)
+        assertEquals(EconomyFoodState(null, "fish_soup", builderMealSpeedBps = 2500), heroReturned.food)
         failure("ECONOMY_MEAL_UNAVAILABLE") { apply(heroReturned, "cancel_meal", "hero") }
         val returned = apply(heroReturned, "cancel_meal", "builder")
         assertEquals(original.inventory, returned.inventory)
@@ -166,8 +166,8 @@ class EconomyFoodTest {
         assertEquals(ECONOMY_MAX_ITEMS, state.inventory["grilled_fish"])
     }
 
-    @Test fun `consumed hero food cannot return after starting or abandoning a boosted trip`() {
-        val fed = apply(stocked(), "eat_food", "grilled_fish")
+    @Test fun `legacy consumed hero food cannot return after starting or abandoning a boosted trip`() {
+        val fed = apply(stocked(), "eat_food", "grilled_fish").let { it.copy(food = it.food.copy(heroMealEffect = null)) }
         val trip = apply(fed, "start_exploration", "forest")
         failure("ECONOMY_MEAL_UNAVAILABLE") { apply(trip, "cancel_meal", "hero") }
         failure("ECONOMY_MEAL_UNAVAILABLE") { apply(trip, "cancel_meal", "hero", Instant.parse(trip.jobs.single().finishesAt)) }

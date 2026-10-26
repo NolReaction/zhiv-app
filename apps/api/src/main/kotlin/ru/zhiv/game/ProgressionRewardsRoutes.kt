@@ -48,7 +48,8 @@ fun Route.progressionRewardsRoutes(repository: ProgressionRewardsRepository,code
 internal fun requestedRewardCatalog(parameters: Parameters): Int {
     if (parameters.isEmpty()) return 4
     if (parameters.names() != setOf("catalog") || parameters.getAll("catalog")?.size != 1) invalidRewardClaim()
-    return when (parameters["catalog"]) { "4" -> 4; "5" -> 5; else -> invalidRewardClaim() }
+    return when (parameters["catalog"]) { "4" -> 4; "5" -> 5; "6" -> 6; else -> invalidRewardClaim() }
 }
 internal fun rewardCatalogView(value: ProgressionRewardsView, catalog: Int): ProgressionRewardsView =
-    if (catalog == 5) value else value.copy(catalogVersion = 4, achievementRewards = value.achievementRewards.take(21))
+    if (catalog == 6) value else if (catalog == 5) value.copy(catalogVersion = 5)
+    else value.copy(catalogVersion = 4, achievementRewards = value.achievementRewards.take(21))

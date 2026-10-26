@@ -199,7 +199,7 @@ test("current NPC prices align the native market input with the allowed currency
 
 test("a permanently opened bait stays listable after its source becomes unavailable, while new gift stock stays locked", () => {
   const e = economy(), calls = [];
-  e.snapshot.inventory.firefly_bait = 2;
+  e.snapshot.inventory.firefly_bait = 5;
   e.snapshot.unlockedItems.push("firefly_bait");
   e.actMarket = (...args) => calls.push(args);
   const item = e.snapshot.catalog.items.find(entry => entry.id === "firefly_bait");
@@ -237,10 +237,10 @@ test("creating a fish lot opens an exact class picker and sends only the explici
   const picker = fishPicker(view);
   assert.deepEqual(picker.props.requiredItems, { fish_epic: 2 });
   assert.equal(picker.props.confirmLabel, "Выставить лот");
-  assert.equal(picker.props.summary, `2 шт. · ${(item.baseSellPrice * 2).toLocaleString("ru-RU")} монет`);
+  assert.equal(picker.props.summary, `2 шт. · ${(Math.ceil(item.baseSellPrice * 2 / e.snapshot.catalog.currencyScale) * e.snapshot.catalog.currencyScale).toLocaleString("ru-RU")} монет`);
   assert.ok(view.nodes.filter(node => node.type === "input").every(node => node.props.disabled));
   assert.equal(picker.props.onConfirm({ fish_sturgeon: 1, fish_mirror_koi: 1 }), true);
-  assert.deepEqual(calls, [["create_listing", "fish_epic", 2, item.baseSellPrice * 2, { fish_sturgeon: 1, fish_mirror_koi: 1 }]]);
+  assert.deepEqual(calls, [["create_listing", "fish_epic", 2, Math.ceil(item.baseSellPrice * 2 / e.snapshot.catalog.currencyScale) * e.snapshot.catalog.currencyScale, { fish_sturgeon: 1, fish_mirror_koi: 1 }]]);
   assert.equal(picker.props.onConfirm({ fish_sturgeon: 1, fish_mirror_koi: 1 }), false, "a repeated callback cannot create a second lot");
   assert.equal(calls.length, 1);
   assert.deepEqual(e.snapshot, before, "the form cannot debit economic or species stock itself");
@@ -694,4 +694,20 @@ test("a sale transferred by account merge belongs to the current market owner ev
   const button = view.nodes.find(node => node.type === "button");
   assert.equal(button.props.disabled, false); button.props.onClick();
   assert.deepEqual(calls, [["claim_sale", lot.id, 1, 0]]);
+});
+
+test("one cheap bait cannot form a valid whole-coin lot, while five bait starts with a valid quoted total", () => {
+  for (const quantity of [1, 5]) {
+    const e = economy(), calls = [];
+    e.snapshot.inventory.firefly_bait = quantity; e.snapshot.unlockedItems.push("firefly_bait");
+    e.actMarket = (...args) => { calls.push(args); return true; };
+    const item = e.snapshot.catalog.items.find(entry => entry.id === "firefly_bait");
+    assert.equal(item.baseSellPrice, 1);
+    const h = harness(ListingPriceForm, { economy: e, item }), view = h.render();
+    const submit = view.nodes.find(node => node.type === "button");
+    assert.equal(submit.props.disabled, quantity === 1);
+    if (quantity === 1) assert.match(view.html, /соберите не меньше 5 шт/);
+    submit.props.onClick();
+    assert.deepEqual(calls, quantity === 1 ? [] : [["create_listing", "firefly_bait", 5, 10]]);
+  }
 });

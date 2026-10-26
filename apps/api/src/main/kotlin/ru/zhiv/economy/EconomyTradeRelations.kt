@@ -1,6 +1,8 @@
 package ru.zhiv.economy
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.Instant
@@ -11,9 +13,11 @@ private fun validTradeCounts(values: Map<String, Long>) = values.size <= 5 && va
 }
 
 @Serializable data class EconomyTradeRank(val id: String, val name: String, val requiredXp: Long, val bonusBps: Int)
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyWeeklyStageTemplate(
     val id: String, val name: String, val description: String, val items: Map<String, Long>, val coins: Long,
     val reputationXp: Int, val effortSeconds: Long, val manufacturingSeconds: Long, val fishingUncertain: Boolean,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val pearls: Long = 0,
 )
 @Serializable data class EconomyWeeklyTemplate(
     val id: String, val residentId: String, val name: String, val description: String,
@@ -51,6 +55,7 @@ data class EconomyWeeklyOffer(
     val id: String, val templateId: String, val residentId: String, val name: String, val description: String,
     val stages: List<EconomyResidentOrderTemplate>, val coins: Long, val reputationXp: Int,
     val effortSeconds: Long, val manufacturingSeconds: Long, val fishingUncertain: Boolean,
+    val pearls: Long = 0,
 )
 data class EconomyWeeklyBoard(
     val offers: List<EconomyWeeklyOffer>, val active: EconomyResidentOrderOffer?, val progress: EconomyWeeklyProgress?,
@@ -74,11 +79,12 @@ object EconomyTradeRelations {
             template.id.matches(Regex("[a-z0-9_]{1,40}")) && template.residentId in tradeResidentIds &&
                 template.requiredHomeLevel in 1..5 && template.name.isNotBlank() && template.description.length <= 280 &&
                 template.requiredBuildings.all { (id, level) -> catalog.buildings.any { it.id == id && it.levels.any { it.level == level } } } &&
-                template.stages.size == 3 && template.stages.map { it.id }.distinct().size == 3 && template.stages.all { stage ->
+                template.stages.size == 3 && template.stages.map { it.id }.distinct().size == 3 && template.stages.withIndex().all { (index, stage) ->
                     stage.id.matches(Regex("[a-z0-9_]{1,40}")) && stage.name.isNotBlank() && stage.description.length <= 280 &&
                         stage.items.isNotEmpty() && stage.items.all { (id, amount) -> id in itemIds && amount in 1L..100L } &&
                         stage.coins in 1L..ECONOMY_MAX_BALANCE && stage.reputationXp in 1..1000 &&
-                        stage.effortSeconds in 0L..31_536_000L && stage.manufacturingSeconds in 0L..stage.effortSeconds
+                        stage.effortSeconds in 0L..31_536_000L && stage.manufacturingSeconds in 0L..stage.effortSeconds &&
+                        stage.pearls in 0L..20L && stage.pearls % 2L == 0L && (index == 2 || stage.pearls == 0L)
                 }
         })
     }
@@ -171,7 +177,8 @@ object EconomyTradeRelations {
     private fun choiceFingerprint(template: EconomyWeeklyTemplate): Long = EconomyFood.hash(JsonArray(listOf(
         JsonPrimitive(template.id), JsonPrimitive(template.residentId), JsonPrimitive(template.requiredHomeLevel), pairs(template.requiredBuildings),
         JsonArray(template.stages.map { stage -> JsonArray(listOf(JsonPrimitive(stage.id), pairs(stage.items), JsonPrimitive(stage.coins),
-            JsonPrimitive(stage.reputationXp), JsonPrimitive(stage.effortSeconds), JsonPrimitive(stage.manufacturingSeconds), JsonPrimitive(stage.fishingUncertain))) }),
+            JsonPrimitive(stage.reputationXp), JsonPrimitive(stage.effortSeconds), JsonPrimitive(stage.manufacturingSeconds), JsonPrimitive(stage.fishingUncertain)) +
+            if (stage.pearls > 0L) listOf(JsonPrimitive(stage.pearls)) else emptyList()) }),
     )).toString())
 
     fun weeklyBoard(state: EconomyState, now: Instant, catalog: EconomyCatalog = EconomyRules.catalog): EconomyWeeklyBoard {
@@ -184,7 +191,7 @@ object EconomyTradeRelations {
                 weekly.residentId, terms.name, terms.items, terms.coins, weekly.acceptedAt, terms.description,
                 reputationXp = terms.reputationXp, effortSeconds = terms.effortSeconds, manufacturingSeconds = terms.manufacturingSeconds,
                 fishingUncertain = terms.fishingUncertain, weekly = true, stage = weekly.stage, stages = 3, expiresAt = weekly.expiresAt,
-                requiredBuildings = terms.requiredBuildings)
+                requiredBuildings = terms.requiredBuildings, pearls = terms.pearls)
         }
         val canChoose = config != null && progress == null && (saved.weeklyAvailableAt == null || !now.isBefore(Instant.parse(saved.weeklyAvailableAt)))
         if (!canChoose) return EconomyWeeklyBoard(emptyList(), active, progress, saved.weeklyAvailableAt, false)
@@ -204,11 +211,11 @@ object EconomyTradeRelations {
                 requiredBuildings = mapOf("home" to template.requiredHomeLevel) + template.requiredBuildings,
                 items = stage.items, coins = stage.coins, description = stage.description,
                 reputationXp = stage.reputationXp, effortSeconds = stage.effortSeconds,
-                manufacturingSeconds = stage.manufacturingSeconds, fishingUncertain = stage.fishingUncertain,
+                manufacturingSeconds = stage.manufacturingSeconds, fishingUncertain = stage.fishingUncertain, pearls = stage.pearls,
             ) }
             EconomyWeeklyOffer("weekly_choice1_${template.id}_${choiceFingerprint(template)}", template.id, template.residentId,
                 template.name, template.description, stages, stages.sumOf { it.coins }, stages.sumOf { it.reputationXp ?: 0 },
-                stages.sumOf { it.effortSeconds ?: 0L }, stages.sumOf { it.manufacturingSeconds ?: 0L }, stages.any { it.fishingUncertain == true })
+                stages.sumOf { it.effortSeconds ?: 0L }, stages.sumOf { it.manufacturingSeconds ?: 0L }, stages.any { it.fishingUncertain == true }, stages.sumOf { it.pearls })
         }
         return EconomyWeeklyBoard(offers, active, null, saved.weeklyAvailableAt, true)
     }
@@ -241,12 +248,12 @@ object EconomyTradeRelations {
         EconomyRules.requireBuildings(state, terms.requiredBuildings)
         val orders = EconomyFood.normalizedOrders(state, now)
         val last = progress.stage == progress.stages.lastIndex
-        if (offer.coins > ECONOMY_MAX_BALANCE - state.wallet.coins ||
+        if (offer.coins > ECONOMY_MAX_BALANCE - state.wallet.coins || offer.pearls > ECONOMY_MAX_PEARLS - state.wallet.pearls ||
             orders.completed >= ECONOMY_MAX_REVISION || offer.coins > ECONOMY_MAX_REVISION - orders.earnedCoins ||
             last && state.tradeRelations.completedWeekly >= ECONOMY_MAX_REVISION)
             economyFailure("ECONOMY_CAPACITY", "Кошелёк достиг предела")
         val spent = EconomyRules.spend(state, EconomyCost(items = offer.items), command.fishSelection)
-        val paid = spent.copy(wallet = spent.wallet.copy(coins = spent.wallet.coins + offer.coins),
+        val paid = spent.copy(wallet = spent.wallet.copy(coins = spent.wallet.coins + offer.coins, pearls = spent.wallet.pearls + offer.pearls),
             residentOrders = orders.copy(completed = orders.completed + 1, earnedCoins = orders.earnedCoins + offer.coins),
             tradeRelations = spent.tradeRelations.copy(weekly = if (last) null else progress.copy(stage = progress.stage + 1),
                 completedWeekly = spent.tradeRelations.completedWeekly + if (last) 1 else 0))

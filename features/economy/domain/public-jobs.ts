@@ -6,6 +6,8 @@ const fishIds = new Set([...(economyCatalog.fishing?.fish.map(fish => fish.itemI
 /** Hide an unfinished draw. Only authoritative server time reveals the saved
  * completed catch; projecting never rolls or awards any fish. */
 export function publicEconomyJob(job: EconomyJob, now = Date.now()): EconomyJob {
+  // A ready random find is still secret: cancellation must never reveal a free reroll.
+  if (job.expeditionFinds != null) { job = { ...job }; delete job.expeditionFinds; }
   if (!job.fishing) return job;
   const finishesAt = Date.parse(job.finishesAt);
   if (Number.isFinite(now) && Number.isFinite(finishesAt) && now >= finishesAt)

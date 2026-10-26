@@ -46,8 +46,8 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
         }
     }
     private fun daily(c: Connection,user: UUID): DailyRewardsState = c.economyRows(
-        "SELECT next_step,last_claim_at,completed FROM game_daily_rewards WHERE user_id=?",user) {
-        DailyRewardsState(it.getInt(1),it.getObject(2,OffsetDateTime::class.java)?.toInstant(),it.getBoolean(3)) }.single()
+        "SELECT next_step,last_claim_at,completed,reward_catalog_version FROM game_daily_rewards WHERE user_id=?",user) {
+        DailyRewardsState(it.getInt(1),it.getObject(2,OffsetDateTime::class.java)?.toInstant(),it.getBoolean(3),it.getInt(4)) }.single()
     private fun ownership(c: Connection,user: UUID): Map<Pair<String,Int>,Ownership> = c.economyRows("""
             SELECT achievement_id,1 AS level,unlocked_at,reward_eligible FROM game_achievements
             WHERE user_id=? AND achievement_id IN ('seven_day_streak','thousand_taps','five_friends','ten_thousand_series',
@@ -152,7 +152,7 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
                 if(current.onboarding.claimedAt!=null) rewardFailure("ONBOARDING_REWARD_CLAIMED","Награда за обучение уже получена")
                 if(!ProgressionRewardRules.onboardingEligible(readEconomyProfile(c,a.id).state))
                     rewardFailure("ONBOARDING_REWARD_UNAVAILABLE","Сначала выполни учебный заказ. Награда останется доступна после него")
-                ProgressionRewardReceipt("onboarding",ProgressionRewardRules.onboarding,now.toString())
+                ProgressionRewardReceipt("onboarding",ProgressionRewardRules.onboardingRewardForState(readEconomyProfile(c,a.id).state),now.toString())
             } else {
                 val row=current.achievementRewards.single { it.achievementId==command.achievementId && it.level==command.level }
                 if(row.claimedAt!=null) rewardFailure("ACHIEVEMENT_REWARD_CLAIMED","Награда за эту ступень уже получена")

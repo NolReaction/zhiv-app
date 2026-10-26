@@ -54,10 +54,10 @@ export function claimDevMailGift(token: string | undefined, owner: string, id: s
   if (!message?.gift) return { kind: "not-found" };
   const claimedAt = message.gift.claimedAt ?? new Date(now).toISOString();
   if (!message.gift.claimedAt) {
-    creditDevProgressionReward(token, owner, `mail:${id}`, { coins: 0, pearls: WELCOME_MAIL_PEARLS * PEARL_DISPLAY_DIVISOR, items: {} }, "welcome:v1", now);
-    messages.set(id, { ...message, gift: { pearls: WELCOME_MAIL_PEARLS, claimedAt } });
+    creditDevProgressionReward(token, owner, `mail:${id}`, { coins: 0, pearls: message.gift.pearls * PEARL_DISPLAY_DIVISOR, items: {} }, "welcome:v1", now);
+    messages.set(id, { ...message, gift: { pearls: message.gift.pearls, claimedAt } });
   }
-  return { kind: "ok", value: { ownerPublicId: owner, id, gift: { pearls: WELCOME_MAIL_PEARLS, claimedAt }, serverTime: new Date(now).toISOString() } };
+  return { kind: "ok", value: { ownerPublicId: owner, id, gift: { pearls: message.gift.pearls, claimedAt }, serverTime: new Date(now).toISOString() } };
 }
 export function readDevMail(token: string | undefined, owner: string, id: string, now = Date.now()): DevMailResult<MailReadResult> {
   const session = actor(token, owner);

@@ -21,7 +21,7 @@ export function visibleMeals(state: EconomyView) {
 export function mealBlockedReason(economy: ReadyEconomy, consumer: MealConsumer) {
   const state = economy.snapshot, food = foodState(state);
   if (consumer === "hero") {
-    if (food.heroMeal) return "Мохлик уже сыт: обед поможет в следующей вылазке.";
+    if (food.heroMeal) return "Мохлик уже сыт: оставшийся запас сил поможет в вылазках.";
     return economyActorConflict(state.jobs, "departure", economy.now)?.message ?? null;
   }
   const construction = state.jobs.find(job => job.kind === "construction");

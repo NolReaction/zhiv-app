@@ -41,11 +41,11 @@ class EconomyOrderProgressionTest {
         }
     }
 
-    @Test fun `all v13 orders include baseline item value and one final 25 percent bonus in shared browser vectors`() {
+    @Test fun `all v14 orders include baseline item value and one final 25 percent bonus in shared browser vectors`() {
         val balance = economyJson.decodeFromString<TimeBalanceVectors>(checkNotNull(javaClass.getResourceAsStream("/world/time-economy-order-vectors.json"))
             .bufferedReader().use { it.readText() })
         assertEquals("baseline-time-value-plus-order-bonus", balance.policy)
-        assertEquals(13, balance.catalogVersion)
+        assertEquals(14, balance.catalogVersion)
         assertEquals(2500L, balance.orderBonusBps)
         assertEquals(1L, balance.roundingCoins)
         val templates = catalog.food!!.orders.templates.associateBy { it.id }
@@ -88,9 +88,9 @@ class EconomyOrderProgressionTest {
             }
         }
         val baselineIds = balance.orders.map { it.templateId }.toSet()
-        assertEquals(127, baselineIds.size, "Every current ordinary order has an independently calculated vector")
+        assertEquals(163, baselineIds.size, "Every current ordinary order has an independently calculated vector")
         assertEquals(baselineIds, templates.keys)
-        assertEquals(127, balance.orders.size)
+        assertEquals(163, balance.orders.size)
         balance.orders.forEach { expected ->
             val source = templates.getValue(expected.templateId)
             assertEquals(source.requiredHomeLevel, expected.home, source.id)

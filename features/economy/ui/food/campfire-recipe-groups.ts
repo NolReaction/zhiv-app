@@ -10,7 +10,7 @@ export type CampfireDurationFilter = typeof campfireDurationFilters[number]["id"
 export type CampfireRecipeSection = { id: string; label: string; recipes: WorldRecipeGroup[] };
 
 const sections = [
-  { id: "fish", label: "Рыбные блюда", items: ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish"] },
+  { id: "fish", label: "Рыбные блюда", items: ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish", "grilled_silverfin", "smoked_bream", "mooncarp_blueberries", "pike_berry_sauce", "eel_in_jar", "festive_sturgeon"] },
   { id: "drinks", label: "Напитки", items: ["berry_compote", "strawberry_compote", "blueberry_compote", "bottled_compote"] },
   { id: "desserts", label: "Ягодные десерты", items: ["currant_jelly", "blackberry_preserve", "cranberry_glaze", "berry_gift"] },
   { id: "provisions", label: "Походные припасы", items: ["dried_berries", "smoked_fish", "trail_ration", "packed_berries"] },

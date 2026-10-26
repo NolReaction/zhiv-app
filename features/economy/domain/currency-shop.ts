@@ -12,10 +12,11 @@ export const GOLD_SHOP_PACKAGES = [
   { id: "chest", name: "Сундук золота", pearls: 200 },
 ] as const;
 
-export const HOME_BONUS_PERCENT = [0, 50, 125, 200, 300] as const;
-/** Coins per stored pearl unit; one visible pearl is two units. */
-export const BASE_COINS_PER_PEARL = 10;
-export const MAX_BUILDING_BONUS_PERCENT = 25;
+export const HOME_BONUS_PERCENT = [0, 0, 0, 0, 0] as const;
+/** 5 minutes × 10 coins/minute = 50 coins per visible pearl (two stored units).
+ * Development never changes the time value of the same pearl. */
+export const BASE_COINS_PER_PEARL = 25;
+export const MAX_BUILDING_BONUS_PERCENT = 0;
 // Storage and restored landmarks serve their own purposes and do not mint gold bonuses.
 const GOLD_BONUS_BUILDINGS = new Set(["garden", "woodlot", "workshop", "quarry", "dryer", "kiln"]);
 type Development = Pick<EconomyView, "buildings" | "catalog">;

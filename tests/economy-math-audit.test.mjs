@@ -105,14 +105,14 @@ test("new berry processing includes all crop collection and upstream station wor
     near(cropProfile.slotMinutes.garden, (seconds + 8) / 60);
     near(cropProfile.slotMinutes.mochlik, 8 / 60);
     assert.equal(cropProfile.sourceHome, home); assert.equal(productProfile.referenceHome, home);
-    assert(productProfile.slotMinutes.garden >= 2 * cropProfile.slotMinutes.garden);
     const recipe = catalog.recipes.find(row => row.rewards[product] > 0);
+    assert(productProfile.slotMinutes.garden >= recipe.cost.items[crop] * cropProfile.slotMinutes.garden);
     assert.equal(math.liquidation(recipe.rewards) - math.liquidation(recipe.cost.items), recipe.seconds / 60 * 10);
     assert.equal(productProfile.producerLevels.garden, home);
   }
   const dessert = math.profile("cranberry_glaze");
   assert.equal(dessert.producerLevels.dryer, 4);
-  assert.equal(dessert.rawInputs.cranberries, 2);
+  assert.equal(dessert.rawInputs.cranberries, 1);
   assert.equal(dessert.rawInputs.currants, 2);
   assert.equal(dessert.rawInputs.berries, 2);
   const jam = math.profile("blackberry_preserve");

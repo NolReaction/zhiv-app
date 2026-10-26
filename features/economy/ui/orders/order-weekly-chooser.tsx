@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, CalendarDays, Check, Clock3, HeartHandshake } from "lucide-react";
+import { formatPearls } from "@/features/economy/domain/money";
 import { tradeRelationsState, weeklyOrderBoard } from "@/features/economy/domain/trade-relations";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -66,7 +67,7 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
         const resident = orderResidents[offer.residentId];
         return <article className={styles.choice} key={offer.id} data-weekly-choice={offer.residentId}>
           <header><resident.Portrait className={styles.portrait} /><div><p>{resident.name}</p><h4>{offer.name}</h4></div></header>
-          <div className={styles.rewards}><span><ItemIcon itemId="coins" size={16} />{number(offer.coins)}</span><span><HeartHandshake size={14} aria-hidden="true" />+{number(offer.reputationXp)} реп.</span></div>
+          <div className={styles.rewards}><span><ItemIcon itemId="coins" size={16} />{number(offer.coins)}</span>{(offer.pearls ?? 0) > 0 && <span data-weekly-pearls><ItemIcon itemId="pearls" size={16} />{formatPearls(offer.pearls ?? 0)}</span>}<span><HeartHandshake size={14} aria-hidden="true" />+{number(offer.reputationXp)} реп.</span></div>
           <p className={styles.effort}><Clock3 size={13} aria-hidden="true" />Около {worldDuration(offer.effortSeconds)} работы с нуля{offer.fishingUncertain ? " · улов случаен" : ""}</p>
           <button type="button" disabled={locked(economy) || pending} onClick={() => review(offer)} aria-label={`Посмотреть поручение: ${offer.name}, ${resident.name}`}>Посмотреть три этапа</button>
         </article>;
@@ -79,7 +80,7 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
         <div className={styles.stageHeading}><span>{index + 1}</span><h5>{stage.name}</h5></div>
         {stage.description && <p>{stage.description}</p>}
         <ul aria-label={`Товары для этапа ${index + 1}`}>{Object.entries(stage.items).map(([id, amount]) => <li key={id}><ProductIcon state={economy.snapshot} itemId={id} size={19} /><span>{itemName(economy.snapshot, id)}</span><strong>×{number(amount)}</strong></li>)}</ul>
-        <div className={styles.stageReward}><span><ItemIcon itemId="coins" size={14} />{number(stage.coins)}</span><span>+{number(stage.reputationXp ?? 0)} репутации</span><span>≈ {worldDuration(stage.effortSeconds ?? 0)} работы</span></div>
+        <div className={styles.stageReward}><span><ItemIcon itemId="coins" size={14} />{number(stage.coins)}</span>{(stage.pearls ?? 0) > 0 && <span data-weekly-stage-pearls><ItemIcon itemId="pearls" size={14} />{formatPearls(stage.pearls ?? 0)}</span>}<span>+{number(stage.reputationXp ?? 0)} репутации</span><span>≈ {worldDuration(stage.effortSeconds ?? 0)} работы</span></div>
       </li>)}</ol>
       <p className={styles.promise}><CalendarDays size={16} aria-hidden="true" /><span>Семь дней на все этапы. Каждый этап оплачивается отдельно; уже полученные награды сохранятся, даже если срок закончится.</span></p>
       {reason && <p className={styles.warning} role="status">{reason}</p>}

@@ -231,3 +231,34 @@ test("closing a picker cannot focus a detached, replaced, disabled or different-
     assert.equal(prevented, 1); assert.deepEqual(focuses, [], `${kind}: ${change}`); assert.deepEqual(economy.calls, []);
   }
 });
+
+test("a named-species recipe shows actual owned fish and never accepts the same rarity as a substitute", () => {
+  hooks.reset();
+  const economy = controller(), requiredItems = { fish_silverfin: 2 };
+  const view = render(WorldFishSelection, pickerProps(economy, { requiredItems, contextId: "recipe:silverfin" }));
+  assert.deepEqual(view.nodes.filter(node => node.props["data-fish-choice"]).map(node => node.props["data-fish-choice"]), ["fish_silverfin"]);
+  assert.equal(find(view, "data-fish-required-species").props["data-fish-required-species"], "fish_silverfin");
+  assert.equal(find(view, "data-fish-confirm").props.disabled, false);
+  economy.snapshot.fishing.stock = {}; economy.snapshot.fishing.catches.fish_silverfin = 100; economy.snapshot.revision++;
+  render(WorldFishSelection, pickerProps(economy, { requiredItems, contextId: "recipe:silverfin" }));
+  const missing = render(WorldFishSelection, pickerProps(economy, { requiredItems, contextId: "recipe:silverfin" }));
+  assert.equal(find(missing, "data-fish-confirm").props.disabled, true);
+  assert.equal(missing.nodes.filter(node => node.props["data-fish-choice"]).length, 0, "unknown class stock and lifetime catches are not ownership of the species");
+});
+
+test("named-species production opens only with the actual stock and identifies a missing species", () => {
+  hooks.reset(); const economy = controller();
+  const recipe = { ...economy.snapshot.catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish"), id: "ui_species_recipe", requiredRecipes: {}, cost: { coins: 0, items: { fish_silverfin: 2 } }, fishInput: { exactSpecies: true, itemIds: ["fish_silverfin"] } };
+  const props = { economy, recipe };
+  find(render(WorldProductionCard, props), "data-recipe-order").props.onClick();
+  const picker = render(WorldProductionCard, props).nodes.find(node => node.type === WorldFishSelection);
+  assert(picker); assert.deepEqual(picker.props.requiredItems, { fish_silverfin: 2 });
+  assert.equal(picker.props.onConfirm({ fish_common: 2 }), false);
+  assert.equal(picker.props.onConfirm({ fish_silverfin: 2 }), true);
+  assert.deepEqual(economy.calls, [["start_production", "ui_species_recipe", 1, 0, { fish_silverfin: 2 }]]);
+  hooks.reset(); economy.calls.length = 0; economy.snapshot.fishing.stock = {}; economy.snapshot.revision++;
+  find(render(WorldProductionCard, props), "data-recipe-order").props.onClick();
+  const missing = render(WorldProductionCard, props);
+  assert.equal(missing.nodes.some(node => node.type === WorldFishSelection), false);
+  assert.match(missing.nodes.find(node => node.props.role === "status").props.children, /Не хватает:.*2/);
+});

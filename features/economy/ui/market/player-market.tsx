@@ -78,7 +78,11 @@ export function ListingForm({ economy }: { economy: ReadyEconomy }) {
 
 export function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const { snapshot: state, busy, uncertain } = economy;
-  const [amount, setAmount] = useState("1"), [price, setPrice] = useState(String(item.baseSellPrice * 2));
+  const firstQuantity = Math.max(1, Math.ceil(state.catalog.currencyScale / (item.baseSellPrice * state.catalog.market.maxPriceMultiplier)));
+  const [amount, setAmount] = useState(String(Math.min(firstQuantity, state.inventory[item.id] ?? 1))), [price, setPrice] = useState(String(Math.min(
+    Math.ceil(item.baseSellPrice * firstQuantity * 2 / state.catalog.currencyScale),
+    Math.floor(item.baseSellPrice * firstQuantity * state.catalog.market.maxPriceMultiplier / state.catalog.currencyScale),
+  ) * state.catalog.currencyScale));
   const [choosingFish, setChoosingFish] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const focusOrigin = useRef<{ element: HTMLButtonElement | null; owner: string; itemId: string } | null>(null);
@@ -131,10 +135,20 @@ export function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; ite
   }
   return <div className={styles.card}>
     <div className={styles.fields}>
-      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain || choosingFish} onChange={event => setAmount(event.target.value)} /></label>
+      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain || choosingFish} onChange={event => {
+        setAmount(event.target.value);
+        const nextQuantity = integer(event.target.value, quantityMax), currentPrice = Number(price);
+        if (nextQuantity && Number.isSafeInteger(currentPrice) && currentPrice > 0 && currentPrice % quantum === 0) {
+          const floor = Math.ceil(marketMinimumPrice(item.id, nextQuantity, state.catalog) / quantum) * quantum;
+          const ceiling = Math.floor(item.baseSellPrice * limits.maxPriceMultiplier * nextQuantity / quantum) * quantum;
+          setPrice(String(Math.max(floor, Math.min(ceiling, currentPrice))));
+        }
+      }} /></label>
       <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={quantum} value={price} disabled={busy || uncertain || choosingFish} onChange={event => setPrice(event.target.value)} /></label>
     </div>
-    <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
+    <p className={styles.muted}>{minimum > maximum && quantity
+      ? `Для продажи на рынке соберите не меньше ${number(firstQuantity)} шт. этого товара.`
+      : quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
     {valid && <p className={styles.muted}>Получите {number(totalPrice! - marketSaleFee(totalPrice!, limits.feeBps))} монет после сбора {limits.feeBps / 100}%. Заберите их здесь после продажи.</p>}
     <details className={styles.marketRules}><summary>Что происходит с товаром?</summary><p>Предметы ждут покупателя на прилавке и занимают место в кладовой. При отмене они вернутся. После продажи заберите монеты, чтобы освободить прилавок.</p></details>
     <button ref={trigger} className={styles.primary} disabled={disabled} onClick={() => {

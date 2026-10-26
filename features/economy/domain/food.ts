@@ -1,6 +1,7 @@
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState, type TradeResidentId } from "./model";
 
 import { fishClassInventory, fishClassForItem } from "./fishing";
+import { normalizedFishStock } from "./fish-stock";
 import { obtainableResidentOrderItems } from "./order-effort";
 import { tradeOrderFingerprint, tradeResidentAvailable, TRADE_RESIDENT_IDS } from "./trade-relations";
 export { obtainableResidentOrderItems } from "./order-effort";
@@ -11,18 +12,62 @@ type Recipe = EconomyCatalog["recipes"][number];
 export type ResidentOrderOffer = {
   id: string; slot: number; templateId: string; residentId: TradeResidentId; name: string; description?: string;
   items: Record<string, number>; coins: number; availableAt: string;
-  reputationXp?: number; effortSeconds?: number; manufacturingSeconds?: number; fishingUncertain?: boolean;
+  pearls?: number; reputationXp?: number; effortSeconds?: number; manufacturingSeconds?: number; fishingUncertain?: boolean;
   requiredBuildings?: Record<string, number> | null; weekly?: boolean; stage?: number; stages?: number; expiresAt?: string;
 };
 
 /** Pending meals have no offline decay; this also accepts snapshots from older servers. */
 export function foodState(state: FoodSource): EconomyFood {
-  return { heroMeal: state.food?.heroMeal ?? null, builderMeal: state.food?.builderMeal ?? null };
+  return { heroMeal: state.food?.heroMeal ?? null, builderMeal: state.food?.builderMeal ?? null,
+    ...(state.food?.heroMealEffect ? { heroMealEffect: { ...state.food.heroMealEffect } } : {}),
+    ...(state.food?.builderMealSpeedBps != null ? { builderMealSpeedBps: state.food.builderMealSpeedBps } : {}) };
 }
 
 export function pendingMeal(state: FoodSource, consumer: "hero" | "builder", catalog = state.catalog ?? economyCatalog) {
   const itemId = foodState(state)[consumer === "hero" ? "heroMeal" : "builderMeal"];
-  return catalog.food?.meals.find(meal => meal.itemId === itemId) ?? null;
+  const meal = catalog.food?.meals.find(meal => meal.itemId === itemId);
+  if (!meal) return null;
+  const legacy = LEGACY_MEAL_SPEEDS[meal.itemId];
+  return { ...meal, heroSpeedBps: state.food?.heroMealEffect?.speedBps ?? legacy?.[0] ?? meal.heroSpeedBps,
+    builderSpeedBps: state.food?.builderMealSpeedBps ?? legacy?.[1] ?? meal.builderSpeedBps };
+}
+
+/** Prepared v13 servings retain their paid effect after catalog rebalancing. */
+const LEGACY_MEAL_SPEEDS: Record<string, readonly [number, number]> = {
+  grilled_fish: [1000, 1000], fish_soup: [2500, 2500], berry_fish: [4000, 3500], hearty_fish: [6000, 5000],
+  epic_fish: [8000, 7000], legendary_fish: [10000, 9000], strawberry_compote: [800, 1200],
+  blueberry_compote: [1200, 800], currant_jelly: [2000, 3000], blackberry_preserve: [4500, 3000], cranberry_glaze: [7500, 5500],
+};
+
+export function pendingHeroMealEffect(state: FoodSource) {
+  return state.food?.heroMeal ? state.food.heroMealEffect ?? null : null;
+}
+export function heroMealWorkUsed(state: FoodSource, seconds: number): number {
+  const effect = pendingHeroMealEffect(state);
+  return effect ? Math.min(seconds, effect.remainingWorkSeconds) : 0;
+}
+/** Budget is measured in baseline active work, never idle time or the number of trips. */
+export function heroMealWorkDuration(state: FoodSource, seconds: number): number {
+  const meal = pendingMeal(state, "hero");
+  if (!meal) return seconds;
+  const effect = pendingHeroMealEffect(state);
+  if (!effect) return mealDuration(seconds, meal.heroSpeedBps);
+  const used = heroMealWorkUsed(state, seconds);
+  return mealWorkDuration(seconds, effect.speedBps, used);
+}
+/** Preview the same bounded work boost before selecting a serving. */
+export function mealWorkDuration(seconds: number, speedBps: number, remainingWorkSeconds: number): number {
+  if (!Number.isSafeInteger(remainingWorkSeconds) || remainingWorkSeconds < 0) throw new RangeError("Invalid meal work budget");
+  const used = Math.min(seconds, remainingWorkSeconds);
+  return seconds - used + mealDuration(used, speedBps);
+}
+/** Call only after accepting the paid job. Returning early cannot recover work. */
+export function spendHeroMealWork(state: EconomyState, seconds: number) {
+  const food = foodState(state), effect = pendingHeroMealEffect(state);
+  if (!food.heroMeal) return;
+  const remaining = effect ? effect.remainingWorkSeconds - Math.min(seconds, effect.remainingWorkSeconds) : 0;
+  if (effect && remaining > 0) state.food = { ...food, heroMealEffect: { ...effect, remainingWorkSeconds: remaining } };
+  else { delete food.heroMealEffect; state.food = { ...food, heroMeal: null }; }
 }
 
 /** Speed is extra work per second: +10% speed divides the time by 1.1. */
@@ -47,11 +92,11 @@ export function recipeWithFish(recipe: Recipe, fishItemId?: string): Recipe {
   return { ...recipe, cost: { ...recipe.cost, items } };
 }
 
-export function recipeFishOptions(state: Pick<EconomyState, "inventory"> & { catalog?: EconomyCatalog }, recipe: Recipe,
+export function recipeFishOptions(state: Pick<EconomyState, "inventory"> & Partial<Pick<EconomyState, "fishing">> & { catalog?: EconomyCatalog }, recipe: Recipe,
   catalog = state.catalog ?? economyCatalog) {
   return (recipe.fishInput?.itemIds ?? []).map(itemId => ({ itemId,
     name: catalog.items.find(item => item.id === itemId)?.name ?? itemId,
-    quantity: state.inventory[itemId] ?? 0,
+    quantity: recipe.fishInput?.exactSpecies ? normalizedFishStock(state)[itemId] ?? 0 : state.inventory[itemId] ?? 0,
     rarity: catalog.fishing?.fish.find(fish => fish.itemId === itemId)?.rarity,
   }));
 }

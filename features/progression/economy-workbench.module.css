@@ -156,3 +156,28 @@
   .operationList li { grid-template-columns: 18px 1fr; gap: 6px; }
   .operationList li > div:last-child { grid-column: 2; }
 }
+
+.expeditionAnalysis { display: grid; gap: 32px; padding: 20px 24px 24px; min-width: 0; }
+.expeditionAnalysis > section { min-width: 0; }
+.expeditionAnalysis h3 { margin: 0 0 10px; font-size: 19px; }
+.expeditionControls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+.expeditionControls label { display: grid; gap: 5px; font-size: 12px; color: var(--work-muted); min-width: 0; }
+.expeditionControls select { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--work-line); border-radius: 8px; color: #e1ebd4; background: #111c10; font: inherit; }
+.returnStats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.returnStats > div { padding: 12px; border-radius: 10px; background: #26361f; }
+.returnStats dt { font-size: 11px; color: var(--work-muted); }
+.returnStats dd { margin: 6px 0 0; font-size: 15px; font-weight: 650; }
+.expeditionCards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.expeditionCard { min-width: 0; padding: 16px; border: 1px solid var(--work-line); border-radius: 12px; display: grid; align-content: start; gap: 10px; background: #202e1c; font-size: 12px; }
+.expeditionCard h4 { margin: 0 0 5px; font-size: 15px; }
+.expeditionCard header span { color: var(--work-muted); font-size: 11px; }
+.expeditionCard p { margin: 0; }
+.expeditionCard ul { display: grid; gap: 7px; list-style: none; margin: 0; padding: 0; }
+.expeditionCard li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.expeditionCard li button { color: #d4e3c0; background: transparent; border: 0; font: inherit; padding: 3px 0; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.expeditionCard li > span:last-child { white-space: nowrap; }
+@media (max-width: 640px) { .returnStats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .expeditionCards { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 380px) { .expeditionControls { grid-template-columns: minmax(0, 1fr); } }
+
+@media (max-width: 600px) { .expeditionAnalysis { padding: 14px 12px 18px; } }
+@media (max-width: 360px) { .tabs button { padding-inline: 6px; } .tabs button svg { display: none; } }

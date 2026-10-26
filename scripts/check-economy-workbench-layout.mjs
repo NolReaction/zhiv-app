@@ -109,6 +109,13 @@ try {
     assert(json.analysis.graph.edges.some(edge => edge.from === "item:clay" && edge.to === jarSource.id && edge.quantity === 2), "Downloaded graph preserves material amounts");
     cases++;
 
+    await page.getByRole("tab", { name: "Вылазки", exact: true }).click();
+    await page.getByLabel("Удочка для расчёта").selectOption("reed_rod");
+    assert(await page.locator("[data-analysis-route]").count() > 0);
+    assert(await page.getByRole("region", { name: "Шансы видов рыб", exact: true }).isVisible());
+    await noOverflow(`${width}/expeditions`); await screenshot(`expeditions-${width}.png`);
+    cases++;
+
     await page.getByRole("tab", { name: "План", exact: true }).click();
     const initialLaunches = await page.locator("[data-plan-launches]").textContent();
     await page.getByLabel("Добавить запас", { exact: true }).selectOption("dried_berries");

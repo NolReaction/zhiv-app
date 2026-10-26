@@ -35,20 +35,20 @@ test("shop quotes use current currency units, ruble pearl packs and no gold volu
   assert.deepEqual(shop.GOLD_SHOP_PACKAGES.map(pack => pack.pearls), [40, 100, 200]);
   for (const pack of [...shop.PEARL_SHOP_PACKAGES, ...shop.GOLD_SHOP_PACKAGES]) assert.equal(pack.pearls % 2, 0);
   const offers = shop.currencyShopGoldOffers(state({ home: 1 }));
-  assert.deepEqual(offers.map(pack => [pack.baseCoins, pack.bonusCoins, pack.coins]), [[400, 0, 400], [1000, 0, 1000], [2000, 0, 2000]]);
-  assert.deepEqual([1, 2, 3, 4, 5].map(home => firstQuote({ home }).coins), [400, 600, 900, 1200, 1600]);
+  assert.deepEqual(offers.map(pack => [pack.baseCoins, pack.bonusCoins, pack.coins]), [[1000, 0, 1000], [2500, 0, 2500], [5000, 0, 5000]]);
+  assert.deepEqual([1, 2, 3, 4, 5].map(home => firstQuote({ home }).coins), [1000, 1000, 1000, 1000, 1000]);
 });
 
-test("completed house and catalog buildings contribute separate additive percentages", () => {
+test("completed house and productive levels retain metadata without altering the fixed rate", () => {
   const middle = state({ home: 3, workshop: 3, warehouse: 3, garden: 2, woodlot: 2 });
   assert.deepEqual(shop.currencyShopDevelopment(middle), { homeLevel: 3, completedLevels: 7, totalLevels: 30,
-    homeBonusPercent: 125, buildingBonusPercent: 5, bonusPercent: 130 });
-  assert.deepEqual(shop.currencyShopGoldOffers(middle).map(pack => pack.coins), [920, 2300, 4600]);
-  assert.equal(firstQuote({ home: 1, garden: 1 }).coins, 400, "one of thirty productive levels stays below one percent");
+    homeBonusPercent: 0, buildingBonusPercent: 0, bonusPercent: 0 });
+  assert.deepEqual(shop.currencyShopGoldOffers(middle).map(pack => pack.coins), [1000, 2500, 5000]);
+  assert.equal(firstQuote({ home: 1, garden: 1 }).coins, 1000, "one of thirty productive levels stays below one percent");
   const full = state({ home: 5, workshop: 5, warehouse: 10, garden: 5, woodlot: 5, quarry: 5, dryer: 5, kiln: 5, bridge: 1, lighthouse: 1 });
   assert.equal(shop.currencyShopDevelopment(full).completedLevels, 30, "only the six production stations contribute completed levels");
-  assert.equal(shop.currencyShopDevelopment(full).bonusPercent, 325);
-  assert.deepEqual(shop.currencyShopGoldOffers(full).map(pack => pack.coins), [1700, 4250, 8500]);
+  assert.equal(shop.currencyShopDevelopment(full).bonusPercent, 0);
+  assert.deepEqual(shop.currencyShopGoldOffers(full).map(pack => pack.coins), [1000, 2500, 5000]);
 });
 
 test("optional warehouse expansions preserve every original gold quote and never add a gold bonus", () => {
@@ -82,19 +82,19 @@ test("optional warehouse expansions preserve every original gold quote and never
 
 test("development is monotonic, finite and bounded for every current completed level", () => {
   const buildings = { home: 1 };
-  let previous = 400;
+  let previous = 1000;
   for (const building of economyCatalog.buildings) for (const entry of building.levels) {
     buildings[building.id] = entry.level;
     const offers = shop.currencyShopGoldOffers(state(buildings));
     assert.ok(offers[0].coins >= previous);
     for (const quote of offers) {
       assert.ok(Number.isSafeInteger(quote.coins));
-      assert.ok(quote.coins <= quote.baseCoins * 4.25);
+      assert.ok(quote.coins <= quote.baseCoins);
       assert.equal(quote.coins / quote.pearls, offers[0].coins / offers[0].pearls);
     }
     previous = offers[0].coins;
   }
-  assert.equal(previous, 1700);
+  assert.equal(previous, 1000);
 });
 
 test("unknown, unfinished and future uncatalogued buildings cannot boost the quote or mutate state", () => {
@@ -109,8 +109,8 @@ test("unknown, unfinished and future uncatalogued buildings cannot boost the quo
   assert.deepEqual(initial, frozen);
   assert.equal(shop.currencyShopDevelopment({ catalog: { buildings: [] }, buildings: { home: 100 } }).bonusPercent, 0);
   const impossible = Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 100]));
-  assert.equal(firstQuote(impossible).coins, 1700, "saved levels cannot exceed the catalog cap");
-  for (const invalid of [NaN, Infinity, -1, 2.5]) assert.equal(firstQuote({ home: invalid, garden: invalid }).coins, 400);
+  assert.equal(firstQuote(impossible).coins, 1000, "saved levels cannot exceed the catalog cap");
+  for (const invalid of [NaN, Infinity, -1, 2.5]) assert.equal(firstQuote({ home: invalid, garden: invalid }).coins, 1000);
 });
 
 function harness(snapshot = state({ home: 3, garden: 2 }), initialPage = "pearls") {
@@ -164,9 +164,9 @@ test("preview tabs show compact distinct currencies and cannot spend or grant ei
     }
   }
   assert.match(view.html, /Золото за жемчуг/);
-  assert.match(view.html, /Дом 3 ур\./);
-  assert.match(view.html, /\+126%/);
-  assert.match(view.html, /904/);
+  assert.match(view.html, /50 монет/);
+  assert.doesNotMatch(view.html, /Ваш бонус/);
+  assert.match(view.html, /1 000/);
 });
 
 test("shop tabs support arrows, Home and End with one focusable tab and connected panel", () => {
@@ -204,8 +204,8 @@ test("recalculated package prices display stored units as whole visible pearls",
   assert.match(view.html, /<span>20<\/span>/);
   assert.match(view.html, /<span>50<\/span>/);
   assert.match(view.html, /<span>100<\/span>/);
-  assert.deepEqual(shop.currencyShopGoldOffers(state({ home: 1 })).map(pack => [pack.pearls, pack.coins]), [[40, 400], [100, 1000], [200, 2000]]);
-  assert.deepEqual(amounts().slice(1), ["400", "1000", "2000"]);
+  assert.deepEqual(shop.currencyShopGoldOffers(state({ home: 1 })).map(pack => [pack.pearls, pack.coins]), [[40, 1000], [100, 2500], [200, 5000]]);
+  assert.deepEqual(amounts().slice(1), ["1000", "2500", "5000"]);
 });
 
 

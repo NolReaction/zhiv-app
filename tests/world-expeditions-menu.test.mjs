@@ -237,7 +237,7 @@ test("departure compares reward size with total capacity; a full pantry can be c
   let state = snapshot({ storage: { capacity: 10, available: 10, used: 0, reserved: 0, overflow: 0 } });
   let html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
   assert.equal(disabled(button(html, "Отправиться")), true);
-  assert.match(html, /Находки займут 12 мест, вместимость - 10/);
+  assert.match(html, /Для находок нужно до 13 мест, вместимость - 10/);
   assert.equal(disabled(button(html, "Расширить кладовую")), false);
   state = snapshot({ storage: { capacity: 200, available: 0, used: 170, reserved: 30, overflow: 0 } });
   html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
@@ -750,7 +750,7 @@ test("shore gear shortcuts open Pleska without spending and fishing keeps each r
     const quantity = Object.values(entry.rewards).reduce((sum, count) => sum + count, 0);
     const full = sectorView("shore", snapshot({ storage: { capacity: quantity - 1, available: quantity - 1, used: 0, reserved: 0, overflow: 0 } }), {}, { selectedRoute: routeId });
     assert.equal(full.depart(routeId).props.disabled, true);
-    assert.match(route(full.html, routeId), new RegExp(`Находки займут ${quantity} мест`));
+    assert.match(route(full.html, routeId), new RegExp(`Для находок нужно до ${quantity} мест`));
     assert.match(route(full.html, routeId), /Всего рыб/);
     assert.match(route(full.html, routeId), new RegExp(`<dd>${economyCatalog.fishing.collectionDrawsByRoute[entry.id]}</dd>`));
   }

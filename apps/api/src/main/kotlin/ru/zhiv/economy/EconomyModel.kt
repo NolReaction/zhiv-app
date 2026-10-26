@@ -143,6 +143,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val meal: EconomyJobMeal? = null, val actorId: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val tradeSpeedBps: Int = 0,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val fishStockCost: Map<String, Long>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val expeditionFinds: Map<String, Long>? = null,
 ) {
     init {
         require(actorId == null || kind == "exploration" && actorId in setOf("mochlik", "miner"))
@@ -152,6 +153,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
             rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L })
         require(rareDrop == null || kind == "exploration" && (rareDrop.itemId == null || rewards[rareDrop.itemId] == 1L))
         require(meal == null || (meal.consumer == "hero" && kind == "exploration" || meal.consumer == "builder" && kind == "construction"))
+        require(expeditionFinds == null || kind == "exploration" && expeditionFinds.all { (id, count) -> id.matches(Regex("[a-z0-9_]{1,80}")) && count in 1L..ECONOMY_MAX_ITEMS })
     }
 }
 @Serializable data class EconomyBookCollection(
@@ -208,6 +210,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
     val requiredBuildings: Map<String, Int> = emptyMap(), val activity: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val retired: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val finds: EconomyExpeditionFinds? = null,
 ) { init { require(activity == null || activity == "mining") } }
 @Serializable data class EconomyMarketConfig(val requiredHomeLevel: Int = 2, val requiredExplorations: Long = 1, val maxListings: Int = 10, val maxLotQuantity: Long = 99, val maxPriceMultiplier: Long = 2, val feeBps: Int = 500,
     val showcaseSlots: Int = 12, val showcasePerSeller: Int = 2, val showcaseRefreshSeconds: Long = 300,

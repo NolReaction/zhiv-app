@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { timeEconomyPricing } from "./lib/time-economy-pricing.mjs";
-import { reputationXpForEffort, tradeOrderEffort } from "./lib/trade-relations-effort.mjs";
+import { heroMealWorkBudgetSeconds, timeEconomyPricing } from "./lib/time-economy-pricing.mjs";
+import { reputationXpForEffort, weeklyReputationXpForEffort, tradeOrderEffort } from "./lib/trade-relations-effort.mjs";
 
 /** Reproducible derivations only: recipes, their timings, requirements and basket
  * contents remain authored inputs. Never reads player wallets or saved jobs. */
@@ -22,6 +22,14 @@ export function repriceTimeEconomy(source) {
   for (const offer of catalog.leaftailShop.supplyOffers ?? []) offer.unitPriceCoins = pricing.price(offer.itemId) * 2;
   for (const offer of catalog.leaftailShop.offers ?? [])
     if (itemById.has(offer.itemId) && (!offer.kind || offer.kind === "item")) offer.priceCoins = pricing.price(offer.itemId) * offer.quantity * 2;
+  for (const offer of catalog.leaftailShop.travelOffers ?? []) {
+    const gear = offer.kind === "rod" ? catalog.fishing.rods.find(item => item.id === offer.itemId)
+      : offer.kind === "hook" ? catalog.fishing.hooks.find(item => item.id === offer.itemId)
+      : offer.kind === "bait" ? catalog.fishing.baits.find(item => item.itemId === offer.itemId) : null;
+    if (gear) offer.priceCoins = gear.price * (offer.quantity ?? 1);
+  }
+  if (catalog.version >= 14) for (const meal of catalog.food.meals)
+    meal.heroWorkSeconds = heroMealWorkBudgetSeconds(catalog, meal, pricing);
 
   // Transitive requirements protect every new order from an inaccessible input.
   // Early free forest trips remain an alternative for stone/fibre before mining.
@@ -63,8 +71,12 @@ export function repriceTimeEconomy(source) {
     for (const id of Object.keys(items)) item(id);
     return { requiredHomeLevel: home, requiredBuildings: levels };
   }
-  for (const template of catalog.food.orders.templates)
+  for (const template of catalog.food.orders.templates) {
+    if (template.residentId === "lopukh") template.requiredBuildings.woodlot = Math.max(1, template.requiredBuildings.woodlot ?? 0);
+    if (template.residentId === "kamneshmyg") template.requiredBuildings.quarry = Math.max(1, template.requiredBuildings.quarry ?? 0);
+    if (template.residentId === "leaftail") template.requiredHomeLevel = Math.max(catalog.leaftailShop.requiredHomeLevel, template.requiredHomeLevel);
     Object.assign(template, requirements(template.items, template.requiredHomeLevel, template.requiredBuildings));
+  }
   for (const weekly of catalog.tradeRelations.weekly.templates) {
     const items = Object.assign({}, ...weekly.stages.map(stage => stage.items));
     Object.assign(weekly, requirements(items, weekly.requiredHomeLevel, weekly.requiredBuildings));
@@ -79,7 +91,8 @@ export function repriceTimeEconomy(source) {
   for (const weekly of catalog.tradeRelations.weekly.templates) for (const stage of weekly.stages) {
     const work = effort({ ...weekly, ...stage });
     Object.assign(stage, { coins: pricing.order(stage.items), effortSeconds: work.effortSeconds,
-      manufacturingSeconds: work.manufacturingSeconds, fishingUncertain: work.fishingUncertain });
+      manufacturingSeconds: work.manufacturingSeconds, fishingUncertain: work.fishingUncertain,
+      reputationXp: weeklyReputationXpForEffort(work.effortSeconds) });
   }
   for (const course of catalog.stageOrders ?? []) for (const order of course.orders) order.coins = pricing.order(order.items);
   for (const order of [catalog.onboarding.residentOrder, ...(catalog.onboarding.residentOrders ?? [])]) order.coins = pricing.order(order.items);

@@ -117,7 +117,9 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
-        food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal),
+        food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal,
+            heroMealEffect = if (a.food.heroMeal != null) a.food.heroMealEffect else b.food.heroMealEffect,
+            builderMealSpeedBps = if (a.food.builderMeal != null) a.food.builderMealSpeedBps else b.food.builderMealSpeedBps),
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
         tradeRelations=EconomyTradeRelations.merge(a.tradeRelations,b.tradeRelations,now),
         workshopStarterClaimed=a.workshopStarterClaimed || b.workshopStarterClaimed,

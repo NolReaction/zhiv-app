@@ -2,8 +2,9 @@
 
 import { CircleHelp, Heart, Leaf, Moon, Search, Soup, Sprout } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { pendingMeal } from "@/features/economy/domain/food";
+import { pendingHeroMealEffect, pendingMeal } from "@/features/economy/domain/food";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
+import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import type { ForestObservation } from "@/features/world/state/use-forest-observation";
 import styles from "./world-mood-module.module.css";
@@ -28,6 +29,7 @@ type Props = {
 export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, onOpenHelp, onOpenExpeditions }: Props) {
   const snapshot = economy.snapshot;
   const meal = snapshot ? pendingMeal(snapshot, "hero") : null;
+  const effect = snapshot ? pendingHeroMealEffect(snapshot) : null;
   const jobMeal = snapshot?.jobs.find(job => job.kind === "exploration" && !isMinerJob(job) && job.meal?.consumer === "hero")?.meal;
   const speedBps = meal?.heroSpeedBps ?? jobMeal?.speedBps;
   return <div className={styles.module}>
@@ -52,7 +54,7 @@ export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, o
     {snapshot?.catalog.food && <section className={styles.food} aria-label="Бонус от еды">
       <Soup size={18} aria-hidden="true" />
       <div><h3>{speedBps ? `Еда: +${speedBps / 100}% к скорости` : "Еда для вылазки"}</h3>
-        <p>{meal ? "Бонус ждёт следующую вылазку." : jobMeal ? "Бонус учтён в текущей вылазке. Блюдо уже использовано, вернуть его нельзя." : "Блюдо ускоряет одну вылазку. Силы восстанавливаются во время отдыха."}</p></div>
+        <p>{effect ? `Осталось ${worldDuration(effect.remainingWorkSeconds)} обычного времени вылазок. Запас сохранится между походами.` : meal ? "Сохранённый обед ускорит одну следующую вылазку." : jobMeal ? "Бонус учтён в текущей вылазке. Потраченную часть вернуть нельзя." : "Блюдо даёт запас скорости для вылазок. Он расходуется в пути, а не во время отдыха."}</p></div>
       {onOpenExpeditions && <button type="button" className={styles.foodAction} onClick={onOpenExpeditions}>К вылазкам</button>}
       {meal && <div className={styles.foodMeal}><WorldMealBoost economy={economy} consumer="hero" /></div>}
     </section>}

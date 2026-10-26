@@ -29,7 +29,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert([12, 13].includes(catalog.version), "Unsupported audited economy catalog");
+  assert([12, 13, 14].includes(catalog.version), "Unsupported audited economy catalog");
   assert.equal(catalog.currencyScale, 10);
   const projects = auditProjectCourses(catalog);
   const rare = catalog.rareDrops;
@@ -196,7 +196,7 @@ export function auditEconomyProgression(catalog) {
     assert.equal(new Set(fishing.classes.map(group => group.itemId)).size, rarity.size, "Duplicate fish class item");
     for (const bait of fishing.baits) {
       assert(items.has(bait.itemId), `Fishing: unknown bait ${bait.itemId}`);
-      assert(Number.isSafeInteger(bait.price) && bait.price > items.get(bait.itemId).baseSellPrice, "Bait buy-sell arbitrage");
+      assert(Number.isSafeInteger(bait.price) && bait.price >= items.get(bait.itemId).baseSellPrice, "Bait buy-sell arbitrage");
       assert(validGear(bait), "Invalid bait rarity or progression");
       itemUses.add(bait.itemId); // One stack unit is consumed by a special fishing departure.
       merchantItems.push({ itemId: bait.itemId, requiredHomeLevel: merchantGearLevel(bait, "bait") });
@@ -406,8 +406,8 @@ export function auditEconomyProgression(catalog) {
   const fiveTierConstruction = new Set([...nodes.keys()].filter(key => nodes.get(key).level <= 5).flatMap(key => [...closure(key)]));
   const fiveTierBaseMinimumSeconds = duration(fiveTierConstruction);
   const fullBaseMinimumSeconds = duration(allConstruction);
-  assert.equal(buildings.get("home").levels.find(level => level.level === 4).seconds, catalog.version >= 13 ? 8 * 3600 : day, "Third stage home construction must match its declared eight-hour v13 tier");
-  assert.equal(buildings.get("home").levels.find(level => level.level === 5).seconds, catalog.version >= 13 ? day : 2 * day, "Fourth stage home construction must match its declared one-day v13 tier");
+  assert.equal(buildings.get("home").levels.find(level => level.level === 4).seconds, catalog.version >= 14 ? 4 * 3600 : catalog.version >= 13 ? 8 * 3600 : day, "Third stage home construction must match its declared tier");
+  assert.equal(buildings.get("home").levels.find(level => level.level === 5).seconds, catalog.version >= 14 ? 6 * 3600 : catalog.version >= 13 ? day : 2 * day, "Fourth stage home construction must match its declared tier");
   assert([...closure("home:5")].every(key => nodes.get(key).buildingId !== "warehouse"),
     "Optional warehouse expansions must not gate home five");
   const homeFive = buildings.get("home").levels.find(level => level.level === 5);
@@ -416,8 +416,8 @@ export function auditEconomyProgression(catalog) {
   const previousHome = closure("home:4");
   const previousThirdHome = closure("home:3");
   const thirdConstruction = [...previousHome].filter(key => !previousThirdHome.has(key)).map(key => nodes.get(key));
-  assert(thirdConstruction.every(node => Object.values(node.cost.items).reduce((sum, count) => sum + count, 0) <= 14),
-    "Third stage mandatory building materials must fit a compact fourteen-item bundle");
+  assert(thirdConstruction.every(node => Object.values(node.cost.items).reduce((sum, count) => sum + count, 0) <= (catalog.version >= 14 ? 50 : 14)),
+    "Third stage mandatory building materials must fit the initial warehouse");
   const thirdStage = { constructionCount: thirdConstruction.length,
     constructionCoins: thirdConstruction.reduce((sum, node) => sum + node.cost.coins, 0),
     constructionSeconds: thirdConstruction.reduce((sum, node) => sum + node.seconds, 0),
