@@ -197,12 +197,16 @@ test("maximum workshops, storage and restorations retain their own completion st
   }
 });
 
-test("late pantry expansion shows its exact crafted and relic counters without a coin charge", () => {
+test("late pantry expansion shows its exact coin crafted and relic costs and requires the full payment", () => {
   const target = economyCatalog.buildings.find(building => building.id === "warehouse").levels.at(-1);
+  assert.equal(target.cost.coins, 95_000);
   const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, ...target.requiredBuildings },
-    wallet: { coins: 0, pearls: 0 }, inventory: { ...target.cost.items } });
+    wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items } });
+  const before = structuredClone(snapshot);
   const html = render("warehouse", { snapshot });
   assert.match(text(html), /Вместимость кладовой 450 500 \+50 мест/);
+  assert.match(text(html), /Монеты 95 000 \/ 95 000/);
+  assert.match(html, /data-item-icon="coins"/);
   const relics = economyCatalog.rareDrops.itemIds.filter(id => target.cost.items[id]);
   for (const id of relics) assert.match(html, new RegExp(`data-relic="${id}"`));
   assert.equal((html.match(/width="34" height="34"/g) ?? []).length, relics.length);
@@ -211,7 +215,13 @@ test("late pantry expansion shows its exact crafted and relic counters without a
     assert.ok(text(html).includes(`${name} ${amount} / ${amount}`), id);
   }
   assert.doesNotMatch(buttons(html).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
-  assert.doesNotMatch(html, /Нужны улучшения|data-item-icon="coins"|Купить.*жемч/);
+  assert.doesNotMatch(html, /Нужны улучшения|Купить.*жемч/);
+  assert.deepEqual(snapshot, before, "reading the exact upgrade cost cannot spend coins or materials");
+  snapshot.wallet.coins--;
+  const shortCoins = render("warehouse", { snapshot });
+  assert.match(text(shortCoins), /Монеты 94 999 \/ 95 000/);
+  assert.match(buttons(shortCoins).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
+  snapshot.wallet.coins = target.cost.coins;
   snapshot.inventory.living_resin--;
   const missing = render("warehouse", { snapshot });
   assert.ok(text(missing).includes(`Живая смола ${snapshot.inventory.living_resin} / ${target.cost.items.living_resin}`));

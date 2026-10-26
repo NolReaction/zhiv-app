@@ -61,7 +61,29 @@ test("the comparison base, final home and all current upgrades are distinct repr
 test("the canonical eight-hour daily player earns every building and storage ten with real relics", async t => {
   const loaded = await loadProgressionRules();
   try {
-    const result = simulateProgression(loaded, { seed: 1, visitsPerDay: 1, regularActiveMinutes: 480, firstVisitMinutes: 480,
+    const exchangeReceipts = [], exchangeConfig = loaded.catalog.leaftailShop.relicExchange;
+    const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand(state, command, ...args) {
+      if (command.action !== "exchange_leaftail_relic") return loaded.rules.applyEconomyCommand(state, command, ...args);
+      const [fromItemId, toItemId] = command.targetId.split(":");
+      const before = { coins: state.wallet.coins, inventory: { ...state.inventory } };
+      const value = loaded.rules.applyEconomyCommand(state, command, ...args);
+      assert.equal(command.quantity, 1);
+      assert.equal(command.totalPrice, exchangeConfig.priceCoins);
+      assert.notEqual(fromItemId, toItemId);
+      assert(loaded.catalog.rareDrops.itemIds.includes(fromItemId) && loaded.catalog.rareDrops.itemIds.includes(toItemId));
+      const receipt = { fromItemId, toItemId,
+        spentQuantity: (before.inventory[fromItemId] ?? 0) - (state.inventory[fromItemId] ?? 0),
+        receivedQuantity: (state.inventory[toItemId] ?? 0) - (before.inventory[toItemId] ?? 0),
+        paidCoins: before.coins - state.wallet.coins };
+      assert.equal(receipt.spentQuantity, exchangeConfig.quantity);
+      assert.equal(receipt.receivedQuantity, 1);
+      assert.equal(receipt.paidCoins, exchangeConfig.priceCoins);
+      for (const id of loaded.catalog.rareDrops.itemIds.filter(id => ![fromItemId, toItemId].includes(id)))
+        assert.equal(state.inventory[id] ?? 0, before.inventory[id] ?? 0, `${id}: exchange cannot alter a third relic type`);
+      exchangeReceipts.push(receipt);
+      return value;
+    } } };
+    const result = simulateProgression(observed, { seed: 1, visitsPerDay: 1, regularActiveMinutes: 480, firstVisitMinutes: 480,
       maxDays: 240, claimRewards: true, completionGoal: "all-buildings", slotPolicy: "earned", speedupPolicy: "none" });
     // This also verifies every item and both currencies against the actual
     // receipt ledger, including supplies, rewards, slot purchases and sales.
@@ -70,11 +92,19 @@ test("the canonical eight-hour daily player earns every building and storage ten
     assert.equal(result.externalSlotBudget, 0);
     assert.equal(result.state.buildings.warehouse, 10);
     for (const building of loaded.catalog.buildings) assert.equal(result.state.buildings[building.id], building.levels.at(-1).level);
+    assert(exchangeReceipts.length > 0, "This seeded route exercises the paid duplicate exchange");
+    assert.equal(report.actions.exchange_leaftail_relic, exchangeReceipts.length);
+    assert.equal(report.coinLedger.debits.exchange_leaftail_relic, exchangeReceipts.reduce((sum, receipt) => sum + receipt.paidCoins, 0));
+    assert.deepEqual(result.relicExchanges.map(({ fromItemId, toItemId, spentQuantity, receivedQuantity, paidCoins }) =>
+      ({ fromItemId, toItemId, spentQuantity, receivedQuantity, paidCoins })), exchangeReceipts,
+    "The simulator ledger must describe the actual inventory and wallet changes");
     for (const id of loaded.catalog.rareDrops.itemIds) {
       const required = loaded.catalog.buildings.reduce((sum, building) => sum + building.levels.reduce((total, level) => total + (level.cost.items[id] ?? 0), 0), 0);
-      assert.equal(result.flow[id].consumed, required, `${id}: all required relics are actually consumed`);
-      assert.equal(result.flow[id].sold, 0, `${id}: rare stock is kept for construction`);
-      assert.equal(result.flow[id].received - required, result.state.inventory[id] ?? 0, `${id}: grants and claimed finds are conserved`);
+      const exchanged = exchangeReceipts.filter(receipt => receipt.fromItemId === id).reduce((sum, receipt) => sum + receipt.spentQuantity, 0);
+      assert.equal(result.flow[id].consumed, required + exchanged, `${id}: construction and paid exchange inputs are both actually consumed`);
+      assert.equal(result.flow[id].sold, 0, `${id}: rare stock is never sold for coins`);
+      assert.equal(result.flow[id].received - required - exchanged, result.state.inventory[id] ?? 0,
+        `${id}: grants, claimed finds and exchange outputs are conserved`);
     }
     assert(result.builds.some(build => build.target === "warehouse" && build.level === 10));
     const daily = result.rewardClaims.filter(claim => claim.kind === "daily");
@@ -87,7 +117,7 @@ test("the canonical eight-hour daily player earns every building and storage ten
     assert.equal(report.actions.buy, undefined, "the route needs no other player's market supply");
     assert(report.allBuildingsDays <= 240);
     t.diagnostic(JSON.stringify({ allBuildingsDays: report.allBuildingsDays, commands: report.commandCount,
-      activeHours: report.activeHours, relicWorkSeconds: report.claimedWorkSeconds, buildings: report.buildings }));
+      activeHours: report.activeHours, relicWorkSeconds: report.claimedWorkSeconds, exchanges: exchangeReceipts, buildings: report.buildings }));
   } finally { await loaded.close(); }
 });
 

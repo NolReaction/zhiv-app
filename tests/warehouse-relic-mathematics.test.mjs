@@ -22,10 +22,12 @@ test("current storage starts at 50 places and consumes 12 varied relics across i
   assert.equal(report.totalWarehouseRelicCount, 12);
   assert.deepEqual(report.levels.map(level => level.capacity), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
   assert.deepEqual(report.levels.map(level => level.capacityGain), Array(10).fill(50));
+  assert.deepEqual(report.levels.map(level => level.cost.coins), [0, 200, 1500, 8000, 12000, 18000, 30000, 45000, 65000, 95000],
+    "v15 storage expansions retain their growing authored coin prices alongside the relic requirements");
   assert.equal(report.levels[1].requiredHomeLevel, 2);
   assert(report.levels.slice(0, 3).every(level => Object.values(level.relicCost).every(quantity => quantity === 0)));
   assert(report.levels.slice(3).every(level => Object.values(level.relicCost).some(quantity => quantity > 0)
-    && level.cost.coins === 0 && level.requiredHomeLevel === (level.level <= 6 ? 4 : 5) && Object.keys(level.requiredBuildings).length));
+    && level.requiredHomeLevel === (level.level <= 6 ? 4 : 5) && Object.keys(level.requiredBuildings).length));
   assert(catalog.buildings.filter(building => building.id !== "warehouse")
     .every(building => building.levels.every(level => !level.requiredBuildings.warehouse)), "earned storage is optional for every other building");
   assert(report.levels.every(level => Object.values(level.cost.items).reduce((sum, quantity) => sum + quantity, 0) <= 42),
