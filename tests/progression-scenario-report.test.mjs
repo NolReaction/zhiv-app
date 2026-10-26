@@ -99,7 +99,7 @@ test("published branch results match the full evidence and current economy sourc
       maxDays: options.maxDays ?? 160, manualSeconds: options.manualSeconds ?? 2,
       externalPearls: (options.externalSlotBudget ?? 0) / 2, goal: options.completionGoal ?? "home-5",
       socialMode: options.socialMode ?? "income", speedupPolicy: options.speedupPolicy ?? "none",
-      ownerPublicId: options.ownerPublicId ?? "0000-0000-0001", neighborPolicy: options.neighborPolicy ?? "none", relicPolicy: options.relicPolicy ?? "none",
+      ownerPublicId: options.ownerPublicId ?? "0000-0000-0001", neighborPolicy: options.neighborPolicy ?? "none", relicPolicy: options.relicPolicy ?? "none", exchangePolicy: options.exchangePolicy ?? "duplicates",
       useMeals: options.useMeals ?? true, buySupplies: options.buySupplies ?? true, opportunisticRoutes: options.opportunisticRoutes ?? true,
     };
     assert.deepEqual(Object.fromEntries(Object.keys(expected).map(key => [key, row[key]])), expected, `${row.id} metadata must describe the actual runner options`);
@@ -128,7 +128,7 @@ test("capacity and renewable budgets remain visible separately from building and
   assert.equal(value.scenarios[0].coinSpending.buildings, 700);
   assert.equal(value.scenarios[0].allCapacityDays, null);
   const text = html(value);
-  assert.match(text, /Хозяйство, ранги и все места/);
+  assert.match(text, /Хозяйство, рецепты, ранги и все места/);
   assert.match(text, /Торговые места/);
   assert.match(text, /Бюджет по календарным дням/);
   assert.match(text, /недельные поручения продолжают приносить жемчуг/);
@@ -141,4 +141,30 @@ test("free earned speedups have their own highlights and never inherit external-
     { ...base, externalPearls: 1750, home5Days: 2 }, { ...base, relicPolicy: "earned", home5Days: 1 },
     { ...base, ownerPublicId: "0000-0000-0002", home5Days: 3 }] });
   assert.deepEqual(JSON.parse(JSON.stringify(highlights)), [{ title: "Дом 5 · 16 ч · бесплатные ускорения", minimum: 7, maximum: 8, count: 2 }]);
+});
+
+
+test("published completion cannot substitute a building maximum for paid capacity or hide an unbalanced wallet", () => {
+  const complete = { ...row, completed: true, completionGoal: "all-capacity", allBuildingsDays: 80,
+    allRecipesDays: 70, reputationMaxDays: 50, allCapacityDays: 90, productionSlots: {}, marketSlots: economy.market.maxListings };
+  const build = value => compactProgressionReport({ ...source, scenarios: [value] }, economy, rewards);
+  assert.throws(() => build(complete), /must own every production and market place/);
+  assert.throws(() => build({ ...row, coins: 999, coinLedger: { initial: 100, credits: { sale: 200 }, debits: { building: 150 } } }), /coins ledger does not balance/);
+  assert.throws(() => build({ ...row, calendarSnapshots: [{ day: 101, coins: 0, pearls: 0,
+    coinLedger: { credits: {}, debits: {} }, pearlLedger: { credits: {}, debits: {} } }] }), /within the observed run/);
+});
+
+test("full relic purchases and all-capacity goals are visible without blending their policies into standard full ranges", () => {
+  const base = { ...report().scenarios[0], goal: "full", visitsPerDay: 1, regularMinutes: 960, completed: true,
+    slotPolicy: "earned", socialMode: "reputation", elapsedDays: 45 };
+  const summaries = scenarioHighlights({ ...report(), scenarios: [base,
+    { ...base, id: "earned-relics", elapsedDays: 30, slotPolicy: "second-only", relicPolicy: "earned" },
+    { ...base, id: "external-relics", elapsedDays: 10, slotPolicy: "second-only", relicPolicy: "earned", externalPearls: 100 },
+    { ...base, id: "all-capacity", regularMinutes: 480, goal: "all-capacity", elapsedDays: 84 },
+  ] });
+  assert.deepEqual(JSON.parse(JSON.stringify(summaries)), [
+    { title: "Все три цели · 16 часов", minimum: 45, maximum: 45, count: 1 },
+    { title: "Все три цели · 16 ч · покупка реликвий", minimum: 30, maximum: 30, count: 1 },
+    { title: "Все три цели и все места · 8 часов", minimum: 84, maximum: 84, count: 1 },
+  ]);
 });

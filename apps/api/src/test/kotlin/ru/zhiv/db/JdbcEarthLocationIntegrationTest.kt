@@ -59,7 +59,7 @@ class JdbcEarthLocationIntegrationTest {
         val before=scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h")
         DatabaseFactory.migrate(source)
         assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=65"))
-        assertEquals("75",scalar("SELECT max(version::int) FROM flyway_schema_history"))
+        assertEquals("78",scalar("SELECT max(version::int) FROM flyway_schema_history"))
         runBlocking {
             assertEquals(legacy.third,scalar("SELECT updated_at::text || '/' || expires_at::text FROM earth_latest_locations WHERE user_id=?",legacy.first.id),"upgrade preserves the original fix and deadline")
             assertEquals(1,repo.people(legacy.second.hash).people.size)

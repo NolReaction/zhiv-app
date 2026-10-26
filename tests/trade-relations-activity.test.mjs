@@ -105,3 +105,17 @@ test("weekly tiers expose choice and pay only their frozen final pearl reward", 
     assert.equal(choice.pearls, raw); assert.deepEqual(choice.stages.map(stage => stage.pearls), [0, 0, raw]);
   }
 });
+
+test("equal current support can retain different grace horizons and previews preserve the earned timestamp", () => {
+  const older = fresh(), newer = fresh();
+  older.tradeRelations.activity.builder = { pointsBps: 10000, updatedAt: new Date(now).toISOString() };
+  newer.tradeRelations.activity.builder = { pointsBps: 10000, updatedAt: new Date(now + 2 * day).toISOString() };
+  for (const state of [older, newer]) assert.equal(relations.tradeActivityBps(state, "builder", catalog, now + 3 * day), 10000);
+  assert.equal(relations.tradeActivityBps(older, "builder", catalog, now + 4 * day), 8572);
+  assert.equal(relations.tradeActivityBps(newer, "builder", catalog, now + 4 * day), 10000);
+  assert.equal(relations.tradeActivityBps(newer, "builder", catalog, now + 12 * day), 0);
+  assert.equal(newer.tradeRelations.activity.builder.updatedAt, new Date(now + 2 * day).toISOString());
+  newer.tradeRelations.activity.builder = { pointsBps: 5000, updatedAt: new Date(now + 6 * day).toISOString() };
+  for (const state of [older, newer]) assert.equal(relations.tradeActivityBps(state, "builder", catalog, now + 6.5 * day), 5000);
+  assert.equal(relations.tradeActivityBps(newer, "builder", catalog, now + 9 * day), 5000);
+});

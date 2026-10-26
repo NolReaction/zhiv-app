@@ -541,9 +541,10 @@ export function getDevEconomyAchievementState(owner: string): Pick<EconomyState,
     progression: inheritEconomyCollection(state.progression, getDevCollectionFinds(owner)), residentOrders: structuredClone(state.residentOrders) };
 }
 
-/** A verified completed trade, not a listing attempt, qualifies the seller. */
+/** The sale medal requires a real player, matching the PostgreSQL buyer-character fence. */
 export function getDevConfirmedMarketSales(owner: string): number {
-  return [...store().listings.values()].some(listing => listing.sellerPublicId === owner && listing.status === "sold") ? 1 : 0;
+  return [...store().listings.values()].some(listing => listing.sellerPublicId === owner && listing.status === "sold"
+    && listing.sale?.buyerKind !== "world_character") ? 1 : 0;
 }
 
 /** Daily stock may be initialized by a read, but reads never purchase a player's listing. */
@@ -635,7 +636,6 @@ export function buyDevNeighborListing(listingId: string, options: { now?: number
   recordDevNeighborSale({ id: crypto.randomUUID(), listingId: listing.id, sellerPublicId: listing.sellerPublicId,
     itemId: listing.itemId, quantity: listing.quantity, totalPrice: listing.totalPrice, proceedsCoins: proceeds,
     createdAt: new Date(now).toISOString(), source: options.manual ? "manual" : "auto", ...(options.requestId ? { requestId: options.requestId } : {}) }, now);
-  awardDevMarketSale(listing.sellerPublicId, now);
   return true;
 }
 

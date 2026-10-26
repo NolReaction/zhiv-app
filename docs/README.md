@@ -94,7 +94,7 @@
 | Подготовить обнуление игры, сохранив входы и друзей | [Сброс игрового прогресса](operations/reset-game-progress.md) — preview, проверенная копия и границы старых клиентов |
 | Намеренно очистить БД или пользовательские данные | [Сброс БД](operations/reset-database.md) · [сброс данных](operations/reset-user-data.md) — не часть обычного обновления |
 
-Текущие цены и правила — в [строительстве v15](game/economy-v15-construction.md), [поручениях и репутации v15](game/economy-v15-relations.md), [распределении жемчуга](game/pearl-reward-distribution.md), [рынке Береста v15](game/economy-v15-neighbor.md), [экономической основе](game/economy-foundation.md), [наградах и реликвиях](game/rewards-and-relics.md), [еде и заказах](game/food-and-orders.md).
+Общий обзор — [экономика v15](game/economy-v15.md). Текущие цены и правила — в [строительстве v15](game/economy-v15-construction.md), [поручениях и репутации v15](game/economy-v15-relations.md), [распределении жемчуга](game/pearl-reward-distribution.md), [рынке Береста v15](game/economy-v15-neighbor.md), [обмене реликвий](game/economy-v15-relic-exchange.md), [экономической основе](game/economy-foundation.md), [наградах и реликвиях](game/rewards-and-relics.md), [еде и заказах](game/food-and-orders.md).
 
 ## История и материалы
 

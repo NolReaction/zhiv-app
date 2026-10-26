@@ -83,9 +83,13 @@ internal val economyBerryItemIds = setOf("berries", "strawberries", "blueberries
     val stock: Int = 1, val requiredHomeLevel: Int = 1) {
     init { require(id.length in 1..60 && itemId.length in 1..80 && pricePearls in 1L..ECONOMY_MAX_BALANCE && stock == 1 && requiredHomeLevel in 1..5) }
 }
+@Serializable data class EconomyLeaftailRelicExchangeConfig(val requiredHomeLevel: Int, val quantity: Long, val priceCoins: Long) {
+    init { require(requiredHomeLevel in 4..5 && quantity in 2L..100L && priceCoins in 1L..ECONOMY_MAX_BALANCE) }
+}
 @Serializable data class EconomyLeaftailShopConfig(val requiredHomeLevel: Int, val refreshSeconds: Long, val offers: List<EconomyLeaftailOffer>,
     val travelOffers: List<EconomyLeaftailOffer> = emptyList(),
-    val supplyOffers: List<EconomyLeaftailSupplyOffer> = emptyList(), val pearlOffers: List<EconomyLeaftailPearlOffer> = emptyList()) {
+    val supplyOffers: List<EconomyLeaftailSupplyOffer> = emptyList(), val pearlOffers: List<EconomyLeaftailPearlOffer> = emptyList(),
+    val relicExchange: EconomyLeaftailRelicExchangeConfig? = null) {
     init {
         require(requiredHomeLevel in 1..5 && refreshSeconds == 86400L && offers.size in 1..12 && offers.all { it.kind == "item" })
         val combined = offers + travelOffers

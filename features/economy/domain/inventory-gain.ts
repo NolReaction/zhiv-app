@@ -3,6 +3,7 @@ import { isMinerJob } from "./actor-availability";
 import { hasGardenBerryReward } from "./garden-berries";
 import { productionCollectionRewards } from "./production-collection";
 import { leaftailOfferTarget, leaftailShopOffers } from "./leaftail-shop";
+import { leaftailRelicExchangeOffer } from "./leaftail-relic-exchange";
 import type { EconomyCommand, EconomyJob, EconomyResult, EconomyView, MarketCommand } from "./model";
 
 export type InventoryGainItem = Readonly<{ itemId: string; quantity: number }>;
@@ -101,6 +102,13 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     if (!offer || !Number.isSafeInteger(command.quantity) || command.quantity < 1 || command.quantity > 20
       || offer.kind !== "item" && offer.kind !== "bait") return null;
     allowed = { [offer.itemId]: offer.quantity * command.quantity }; source = "purchase";
+  } else if (command.action === "exchange_leaftail_relic") {
+    const ids = command.targetId.split(":"), offer = ids.length === 2
+      ? leaftailRelicExchangeOffer(before, ids[0], ids[1], before.catalog) : null;
+    if (!offer?.unlocked || !offer.canAfford || command.quantity !== 1 || command.totalPrice !== offer.priceCoins
+      || before.wallet.coins - after.wallet.coins !== offer.priceCoins
+      || (before.inventory[offer.fromItemId] ?? 0) - (after.inventory[offer.fromItemId] ?? 0) !== offer.quantity) return null;
+    allowed = { [offer.toItemId]: 1 }; source = "purchase";
   } else if (command.action === "buy_listing") {
     const listing = result.listing;
     if (!listing || listing.id !== command.targetId || listing.status !== "sold") return null;

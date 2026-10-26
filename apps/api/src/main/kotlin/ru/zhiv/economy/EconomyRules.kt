@@ -416,7 +416,7 @@ object EconomyRules {
 
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
@@ -688,6 +688,7 @@ object EconomyRules {
                 state.copy(marketSlots = offer.slots, wallet = state.wallet.copy(pearls = state.wallet.pearls - offer.pricePearls)) to
                     "Новое место рынка открыто"
             }
+            "exchange_leaftail_relic" -> EconomyLeaftailRelics.exchange(state, command, reservedItems)
             "buy_leaftail_item" -> EconomyLeaftailShops.buy(state, command, now, reservedItems)
             "refresh_fishing_shop" -> {
                 val shop = state.fishingShop

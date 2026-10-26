@@ -35,7 +35,7 @@ const constructionSequence = Object.values(chapters).flat();
 
 /** The only fixture is a newly created account. Each later chapter carries the
  * actual money, stock, recipes, restored landmarks and unfinished work forward. */
-function completeJourney(regularActiveMinutes) {
+function completeJourney(regularActiveMinutes, maximumDays) {
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   const startingCoins = state.wallet.coins, startingItems = { ...state.inventory };
   let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0, visitCount = 0;
@@ -283,7 +283,7 @@ function completeJourney(regularActiveMinutes) {
   }
   const chapterRecipesComplete = () => newRecipes[state.buildings.home].every(id => (state.progression.recipes[id] ?? 0) > 0);
   const completed = () => state.buildings.home === 5 && !nextConstruction() && chapterRecipesComplete() && state.jobs.length === 0;
-  for (let visit = 0; visit < 240 && !completed(); visit++) {
+  for (let visit = 0; visit < maximumDays * 3 && !completed(); visit++) {
     const activeMinutes = visit === 0 ? 60 : regularActiveMinutes;
     const begin = epoch + visit * 8 * hour, end = begin + activeMinutes * 60000;
     windows.push({ begin, end });
@@ -309,8 +309,11 @@ function completeJourney(regularActiveMinutes) {
 // or pearls. It also makes every berry product at its advertised house. The
 // monthly balance is measured separately by the unified gameplay simulator.
 // Visits happen eight hours apart; missed recipe finishes wait until the next.
-for (const [minutes, maximumDays] of [[30, 46], [15, 80]]) test(`a conservative free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
-  const result = completeJourney(minutes), { state, clock, flow, courses, builds, berryClaims, checkpoints, actions } = result;
+// v15 charges 129,850 coins for this optional recipe route. The unchanged policy
+// completes in 64/105 days and 11,031/10,618 commands; keep a small regression
+// margin rather than the v14 budget. This is reachability, not an optimal route.
+for (const [minutes, maximumDays, maximumCommands] of [[30, 66, 11400], [15, 108, 11000]]) test(`a conservative free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
+  const result = completeJourney(minutes, maximumDays), { state, clock, flow, courses, builds, berryClaims, checkpoints, actions } = result;
   t.diagnostic(JSON.stringify({ elapsedDays: (clock - epoch) / (24 * hour), visits: result.visitCount,
     firstVisitMinutes: 60, laterVisitMinutes: result.regularActiveMinutes, activeTimerHours: result.activeSeconds / 3600,
     builderHours: result.constructionSeconds / 3600, peak: result.peak, coins: state.wallet.coins,
@@ -367,7 +370,7 @@ for (const [minutes, maximumDays] of [[30, 46], [15, 80]]) test(`a conservative 
   for (const id of ["ancient_core", "moon_crystal"]) {
     assert.equal(flow[id].received, 1); assert.equal(flow[id].consumed, 1); assert.equal(flow[id].sold, 0);
   }
-  assert(result.revision < 5500, "the v14 material chains and all berry products remain below 5,500 manual commands");
+  assert(result.revision <= maximumCommands, "v15 paid construction and all berry products stay within the measured command budget");
   assert(result.peak <= 50); assert(clock - epoch <= maximumDays * 24 * hour);
 });
 const currentOfferId = state => (tutorial.tutorialResidentOrder(state) ?? stages.stageResidentOrder(state))?.id;

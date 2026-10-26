@@ -198,7 +198,10 @@ object EconomyTradeRelations {
         return first.copy(dailyCycle = maxOf(first.dailyCycle, second.dailyCycle), reputation = tradeResidentIds.associateWith { maxOf(first.reputation[it] ?: 0L, second.reputation[it] ?: 0L) },
             activity = tradeResidentIds.mapNotNull { resident ->
                 val candidates = listOfNotNull(first.activity[resident]?.let { first }, second.activity[resident]?.let { second })
-                val chosen = candidates.maxByOrNull { activityBps(it, resident, now, catalog) }
+                // Equal current strength can have different remaining grace.
+                // Retain the newer earned anchor, never the merge timestamp.
+                val chosen = candidates.maxWithOrNull(compareBy<EconomyTradeRelationsState> { activityBps(it, resident, now, catalog) }
+                    .thenBy { Instant.parse(it.activity.getValue(resident).updatedAt) })
                 chosen?.activity?.get(resident)?.let { resident to it }
             }.toMap(),
             dailyOrderXp = tradeResidentIds.associateWith { minOf((config?.dailyOrderXpCap ?: 60).toLong(), (first.dailyOrderXp[it] ?: 0L) + (second.dailyOrderXp[it] ?: 0L)) },

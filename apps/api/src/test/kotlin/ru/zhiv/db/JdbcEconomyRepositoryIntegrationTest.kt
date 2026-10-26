@@ -81,6 +81,49 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `relic exchange atomically spends once across duplicate requests with a single signed ledger entry`() = runBlocking<Unit> {
+        val p = player(); val stranger = player(); economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        val seeded = original.copy(buildings = original.buildings + ("home" to 4),
+            wallet = EconomyWallet(100_000, 300), inventory = mapOf("moon_crystal" to 4L),
+            rareDropState = EconomyRareDropClock(remainingSeconds = 9000, itemId = "living_resin"),
+            minerRareDropState = EconomyRareDropClock(remainingSeconds = 12000, itemId = "ancient_core"))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(seeded), p.id)
+        val before = economy.snapshot(p.hash)
+        val request = command(p, before, "exchange_leaftail_relic", "moon_crystal:ancient_core").copy(totalPrice = 20_000)
+        assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, request) }.code)
+        val badQuote = request.copy(requestId = UUID.randomUUID().toString(), totalPrice = 19_999)
+        assertEquals("ECONOMY_LEAFTAIL_PRICE_CHANGED", assertFailsWith<AuthFailure> { economy.command(p.hash, badQuote) }.code)
+        assertEquals(before.wallet, economy.snapshot(p.hash).wallet)
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(badQuote.requestId)))
+        val responses = coroutineScope { List(2) { async(Dispatchers.IO) {
+            JdbcEconomyRepository(source).command(p.hash, request)
+        } }.awaitAll() }
+        assertEquals(1, responses.count { it.replayed })
+        val after = JdbcEconomyRepository(source).snapshot(p.hash)
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(EconomyWallet(80_000, 300), after.wallet)
+        assertEquals(mapOf("moon_crystal" to 2L, "ancient_core" to 1L), after.inventory)
+        assertEquals(before.progression, after.progression); assertEquals(before.tradeRelations, after.tradeRelations)
+        val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
+        assertEquals(seeded.rareDropState, persisted.rareDropState); assertEquals(seeded.minerRareDropState, persisted.minerRareDropState)
+        assertEquals(seeded.jobs, persisted.jobs); assertEquals(seeded.leaftailShop, persisted.leaftailShop)
+        assertTrue(JdbcEconomyRepository(source).command(p.hash, request).replayed)
+        assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, request.copy(targetId = "moon_crystal:living_resin"))
+        }.code)
+        assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, request.copy(requestId = UUID.randomUUID().toString()))
+        }.code)
+        val sourceKey = "command:${request.requestId}"
+        assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(request.requestId)))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, sourceKey))
+        assertEquals("-20000", scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, sourceKey))
+        assertEquals("0", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, sourceKey))
+        assertEquals("-2", scalar("SELECT items->>'moon_crystal' FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, sourceKey))
+        assertEquals("1", scalar("SELECT items->>'ancient_core' FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, sourceKey))
+    }
+
     @Test fun `weekly acceptance and one delivery persist once across owner revision races and repository reload`() = runBlocking<Unit> {
         val p = player(); val stranger = player(); economy.snapshot(p.hash)
         val original = source.connection.use { readEconomyProfile(it, p.id).state }

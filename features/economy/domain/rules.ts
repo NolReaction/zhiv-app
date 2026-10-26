@@ -17,6 +17,7 @@ import { canPrepareTutorialHarvest, isTutorialOrderId, newTutorialOrder, TUTORIA
 import { ensureStageOrders, isStageOrderId, stageCourseRequired, stageOrderProgress, stageOrdersProgress, stageResidentOrder } from "./stage-orders";
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "./item-unlocks";
 import { economyMarketUnlocked, marketSlotOffer } from "./market-rules";
+import { leaftailRelicExchangeOffer } from "./leaftail-relic-exchange";
 import { leaftailShopStock, leaftailShopUsesUnits, leaftailShopView } from "./leaftail-shop";
 import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock, type FishSelection } from "./fish-stock";
 import { canStartTutorialWorkshop } from "./workshop-starter";
@@ -163,7 +164,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
 function applyEconomyTransition(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number>, rareRandom: RareRandomInteger): string {
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
-  if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, finds?: EconomyCatalog["explorations"][number]["finds"]) => {
     if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) + Math.max(0, ...(finds?.entries.map(entry => entry.quantity) ?? [])) > economyStorage(state).capacity)
@@ -683,6 +684,25 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       state.wallet.pearls -= price;
       state.fishingShop = next;
       return "Плёска подготовила новые предложения";
+    }
+    case "exchange_leaftail_relic": {
+      if (!economyCatalog.leaftailShop?.relicExchange)
+        return fail("ECONOMY_LEAFTAIL_UNAVAILABLE", "Листохвост пока не обменивает реликвии");
+      const ids = command.targetId.split(":"), offer = ids.length === 2 ? leaftailRelicExchangeOffer(state, ids[0], ids[1]) : null;
+      if (!offer) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выберите разные реликвии для обмена", 400);
+      requireHome(state, offer.requiredHomeLevel);
+      if (command.totalPrice !== offer.priceCoins)
+        return fail("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена обмена изменилась. Проверьте предложение Листохвоста");
+      if (!offer.canAfford) return fail("ECONOMY_RESOURCES", "Не хватает монет или реликвий для обмена");
+      const inventory = { ...state.inventory, [offer.fromItemId]: offer.availableQuantity - offer.quantity,
+        [offer.toItemId]: (state.inventory[offer.toItemId] ?? 0) + 1 };
+      if (!inventory[offer.fromItemId]) delete inventory[offer.fromItemId];
+      assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+      // Validate the entire transition before either debit. Exchange never
+      // advances rare clocks, work, shop stock, achievements or friendship.
+      state.wallet.coins -= offer.priceCoins;
+      state.inventory = inventory;
+      return "Реликвии обменены. Находка отправлена в кладовую";
     }
     case "buy_leaftail_item": {
       // The adapter has already authenticated command.ownerPublicId before this

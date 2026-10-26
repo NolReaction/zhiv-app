@@ -47,10 +47,10 @@ test("funded listings retain escrow, wait three minutes, then settle and require
       createdAt: new Date(now).toISOString(), closedAt: new Date(now + 180_000).toISOString() }]);
     assert.deepEqual(scenario.escrowItems(), {});
     assert.equal(state.wallet.coins, coins, "A sale reserves proceeds until the seller claims them");
-    assert.equal(state.wallet.pearls, pearls, "Awarding the sale medal never pays pearls automatically");
-    assert.equal(scenario.confirmedSales(), 1);
+    assert.equal(state.wallet.pearls, pearls, "A world-character sale never grants a player-market pearl award");
+    assert.equal(scenario.confirmedSales(), 0, "Production excludes NPC transactions from first-sale achievements");
     const uid = globalThis.__zhivDevStore.publicIds.get(ownerPublicId);
-    assert.equal(globalThis.__zhivDevStore.achievementTierAwards.get(uid).get("first_sale").size, 1);
+    assert.equal(globalThis.__zhivDevStore.achievementTierAwards.get(uid)?.get("first_sale")?.size ?? 0, 0);
     assert.equal(scenario.tick(now + 180_001).automaticTransactions, 0);
     scenario.command("claim_sale", listed.id, 1, 0, now + 182_000);
     assert.equal(state.wallet.coins, coins + 57);

@@ -94,7 +94,7 @@ class JdbcRewardMigrationCompatibilityIntegrationTest {
             "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='70'" to "UPDATE flyway_schema_history SET checksum=checksum-1 WHERE version='70'",
             "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='49'" to "UPDATE flyway_schema_history SET checksum=checksum-1 WHERE version='49'",
             "UPDATE flyway_schema_history SET success=false WHERE version='71'" to "UPDATE flyway_schema_history SET success=true WHERE version='71'",
-            "UPDATE flyway_schema_history SET version='76' WHERE version='71'" to "UPDATE flyway_schema_history SET version='71' WHERE version='76'",
+            "UPDATE flyway_schema_history SET version='79' WHERE version='71'" to "UPDATE flyway_schema_history SET version='71' WHERE version='79'",
         )
         changes.forEach { (change, restore) ->
             execute(source, change); val before = history(source); val data = promises(source)

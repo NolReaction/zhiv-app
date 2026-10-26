@@ -22,6 +22,7 @@ function enterGame(p) {
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const rewards = await vite.ssrLoadModule("/lib/dev/progression-rewards-store.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
+const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/game/rewards/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/game/rewards/claims/route.ts");
 beforeEach(() => { identities.resetDevStoreForTests(); activePresence.clear(); process.env.NODE_ENV = "test"; delete globalThis.__rewardTestToken; });
@@ -171,4 +172,38 @@ test("old reward claims require an update before any new payout and keep accepte
   assert.equal(replay.acceptedRevision, paid.acceptedRevision);
   const bad = await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=5&catalog=5", post(command(p))));
   assert.equal(bad.status, 400);
+});
+
+test("the update-required response is definitive for the reward transport and leaves a claim available after reload", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token), originalFetch = globalThis.fetch;
+  const storage = new Map(), errors = [], sent = [];
+  globalThis.fetch = async (url, init) => {
+    const path = new URL(url, "http://localhost:3000");
+    path.searchParams.set("catalog", "7");
+    if (init?.method === "POST") {
+      sent.push(JSON.parse(init.body));
+      const response = await POST(new Request(path, post(init.body)));
+      errors.push(await response.clone().json());
+      return response;
+    }
+    return GET(new Request(path));
+  };
+  const session = createGameRewardsSession(p.me.user.publicId, { get: api.getGameRewards, send: api.claimGameReward }, {
+    getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key),
+  });
+  const stop = session.activate();
+  try {
+    await session.refresh();
+    assert.equal(await session.claimDaily(), undefined);
+    assert.equal(errors[0].code, "APP_UPDATE_REQUIRED");
+    assert.equal(session.getSnapshot().error, errors[0].message);
+    assert.equal(session.getSnapshot().uncertain, false);
+    assert.equal(session.getSnapshot().pending, null); assert.equal(storage.size, 0);
+    assert.equal(session.getSnapshot().data.daily.claimable, true);
+    assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
+    assert.equal(economy.getDevEconomy(p.token).revision, before.revision);
+    const accepted = await (await POST(post(sent[0]))).json();
+    assert.equal(accepted.replayed, false, "the rejected old request did not consume its UUID");
+    assert.equal(api.gameRewardResultSchema.safeParse(accepted).success, true);
+  } finally { stop(); globalThis.fetch = originalFetch; }
 });

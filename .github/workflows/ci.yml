@@ -162,8 +162,10 @@ jobs:
             --tests ru.zhiv.economy.NeighborRoutesTest \
             --tests ru.zhiv.economy.EconomyMarketRulesTest \
             --tests ru.zhiv.db.JdbcLeaftailV12IntegrationTest \
+            --tests ru.zhiv.db.JdbcEconomyRepositoryIntegrationTest \
             --tests ru.zhiv.db.JdbcCollectionV12IntegrationTest \
             --tests ru.zhiv.economy.EconomyLeaftailShopTest \
+            --tests ru.zhiv.economy.EconomyLeaftailRelicsTest \
             --tests ru.zhiv.economy.EconomyLeaftailAssortmentTest \
             --tests ru.zhiv.economy.EconomyBookProgressionTest \
             --tests ru.zhiv.economy.EconomyFourthStageTest \
@@ -177,7 +179,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.db.JdbcNeighborRepositoryIntegrationTest', 'ru.zhiv.economy.NeighborRulesTest', 'ru.zhiv.economy.NeighborRoutesTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest', 'ru.zhiv.world.WorldRulesTest', 'ru.zhiv.economy.EconomyWardrobeTest', 'ru.zhiv.db.JdbcPremiumCostumesIntegrationTest'):
+          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.db.JdbcNeighborRepositoryIntegrationTest', 'ru.zhiv.economy.NeighborRulesTest', 'ru.zhiv.economy.NeighborRoutesTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcEconomyRepositoryIntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailRelicsTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest', 'ru.zhiv.world.WorldRulesTest', 'ru.zhiv.economy.EconomyWardrobeTest', 'ru.zhiv.db.JdbcPremiumCostumesIntegrationTest'):
               path = Path('apps/api/build/test-results/test') / f'TEST-{name}.xml'
               report = ET.parse(path).getroot()
               count = int(report.get('tests', '0'))
@@ -201,8 +203,10 @@ jobs:
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.NeighborRoutesTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyMarketRulesTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcLeaftailV12IntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcEconomyRepositoryIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcCollectionV12IntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailShopTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailRelicsTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailAssortmentTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyBookProgressionTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyFourthStageTest.xml
@@ -237,6 +241,7 @@ jobs:
         run: |
           ./gradlew --no-daemon test \
             --tests ru.zhiv.game.ProgressionRewardsTest \
+            --tests ru.zhiv.game.ProgressionRewardsRoutesTest \
             --tests ru.zhiv.db.JdbcProgressionRewardsIntegrationTest \
             --tests ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest \
@@ -260,7 +265,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest', 'ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest', 'ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest', 'ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest', 'ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
+          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.game.ProgressionRewardsRoutesTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest', 'ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest', 'ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest', 'ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest', 'ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
               report = ET.parse(Path('apps/api/build/test-results/test') / f'TEST-{name}.xml').getroot()
               count = int(report.get('tests', '0'))
               assert report.get('name') == name and count > 0, f'{name}: missing or empty suite'
@@ -278,6 +283,7 @@ jobs:
           name: one-time-rewards-test-reports-${{ github.run_attempt }}
           path: |
             apps/api/build/test-results/test/TEST-ru.zhiv.game.ProgressionRewardsTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.game.ProgressionRewardsRoutesTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcProgressionRewardsIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest.xml
@@ -351,7 +357,7 @@ jobs:
             echo "Security observations must run with real PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest JdbcNeighborRepositoryIntegrationTest JdbcNeighborConfigurationMigrationIntegrationTest JdbcEconomyRewardPromisesMigrationIntegrationTest JdbcRewardMigrationCompatibilityIntegrationTest JdbcNewPlayerRewardCourseMigrationIntegrationTest JdbcNeighborV14StockMigrationIntegrationTest; do
+          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest JdbcNeighborRepositoryIntegrationTest JdbcNeighborConfigurationMigrationIntegrationTest JdbcEconomyRewardPromisesMigrationIntegrationTest JdbcRewardMigrationCompatibilityIntegrationTest JdbcNewPlayerRewardCourseMigrationIntegrationTest JdbcNeighborV14StockMigrationIntegrationTest JdbcNeighborMarketSupportMigrationIntegrationTest JdbcAchievementCourseMigrationIntegrationTest JdbcResidentActivityMigrationIntegrationTest; do
             mail_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${mail_report}"
             grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${mail_report}"
@@ -366,6 +372,8 @@ jobs:
           reports = [ET.parse(path).getroot() for path in Path('apps/api/build/test-results/test').glob('TEST-*.xml')]
           totals = {key: sum(int(report.get(key, '0')) for report in reports) for key in ('tests', 'failures', 'errors', 'skipped')}
           passed = totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped']
+          assert reports and totals['tests'] > 0, 'Backend test reports must not be empty'
+          assert all(totals[key] == 0 for key in ('failures', 'errors', 'skipped')), f'Backend failures or skipped PostgreSQL suites: {totals}'
           print(f"Backend verification: {passed} passed, {totals['skipped']} skipped, {totals['failures']} failures, {totals['errors']} errors.")
           security = next(report for report in reports if report.get('name') == 'ru.zhiv.db.JdbcSecurityObservationsIntegrationTest')
           print(f"Security observations PostgreSQL: {security.get('tests')} tests, {security.get('skipped', '0')} skipped.")

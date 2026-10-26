@@ -393,23 +393,35 @@ test("HTTP requires the final house and ingredient sources before paying for war
   row.state.buildings = { home: 1, warehouse: 9 };
   const target = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.at(-1);
   row.state.inventory = { ...target.cost.items };
-  row.state.wallet = { coins: 0, pearls: 0 };
+  const retainedCoins = 321;
+  row.state.wallet = { coins: target.cost.coins + retainedCoins, pearls: 0 };
   const blockedCommand = { ...command(p), action: "start_construction", targetId: "warehouse" };
   const beforeGate = structuredClone(row.state);
   const blocked = await POST(post(blockedCommand));
   assert.equal(blocked.status, 409); assert.equal((await blocked.json()).code, "ECONOMY_HOME_REQUIRED");
   assert.deepEqual(row.state, beforeGate);
   row.state.buildings = { ...row.state.buildings, home: target.requiredHomeLevel, ...target.requiredBuildings };
+  for (const [buildingId, requiredLevel] of Object.entries(target.requiredBuildings)) {
+    row.state.buildings[buildingId] = requiredLevel - 1;
+    const before = structuredClone(row.state), revision = row.revision, receipts = row.receipts.size;
+    const missingSource = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
+    assert.equal(missingSource.status, 409);
+    assert.equal((await missingSource.json()).code, "ECONOMY_BUILDING_REQUIRED");
+    assert.deepEqual(row.state, before); assert.equal(row.revision, revision); assert.equal(row.receipts.size, receipts);
+    row.state.buildings[buildingId] = requiredLevel;
+  }
   const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
   const response = await POST(post(order));
   assert.equal(response.status, 200);
   const started = await response.json();
   assert.equal(model.economyResultSchema.safeParse(started).success, true);
   assert.equal(started.state.jobs[0].targetLevel, 10);
+  assert.deepEqual(started.state.jobs[0].cost, target.cost);
   assert.equal(started.state.storage.capacity, 450);
-  assert.deepEqual(started.state.wallet, { coins: 0, pearls: 0 });
+  assert.deepEqual(started.state.wallet, { coins: retainedCoins, pearls: 0 });
   assert.deepEqual(started.state.inventory, {});
-  assert.equal((await (await POST(post(order))).json()).replayed, true);
+  const replayedStart = await (await POST(post(order))).json();
+  assert.equal(replayedStart.replayed, true); assert.deepEqual(replayedStart.state.wallet, started.state.wallet);
   // Advance only this fixture's valid saved interval; the client sends no time or capacity.
   const finishedAt = Date.now() - 1000;
   row.state.jobs[0].startedAt = new Date(finishedAt - target.seconds * 1000).toISOString();
@@ -423,9 +435,11 @@ test("HTTP requires the final house and ingredient sources before paying for war
   assert.equal(claimed.state.buildings.warehouse, 10);
   assert.equal(claimed.state.storage.capacity, 500);
   assert.deepEqual(claimed.state.jobs, []);
+  assert.deepEqual(claimed.state.wallet, { coins: retainedCoins, pearls: 0 });
   const repeated = await (await POST(post(claim))).json();
   assert.equal(repeated.replayed, true);
   assert.equal(repeated.state.revision, claimed.state.revision);
+  assert.deepEqual(repeated.state.wallet, claimed.state.wallet);
   const maximum = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
   assert.equal(maximum.status, 409);
   assert.equal((await maximum.json()).code, "ECONOMY_MAX_LEVEL");

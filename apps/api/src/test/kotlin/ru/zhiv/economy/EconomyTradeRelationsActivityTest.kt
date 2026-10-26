@@ -69,4 +69,24 @@ class EconomyTradeRelationsActivityTest {
             assertEquals(listOf(0L, 0L, pearls), template.stages.map { it.pearls }, template.id)
         }
     }
+
+    @Test fun `equal current support keeps the newer original anchor in either merge order without extending grace`() {
+        val older = EconomyTradeRelationsState(reputation = mapOf("builder" to 1600),
+            activity = mapOf("builder" to EconomyTradeActivity(10000, now.toString())))
+        val newer = older.copy(activity = mapOf("builder" to EconomyTradeActivity(10000, at(2.0).toString())))
+        assertEquals(10000, EconomyTradeRelations.activityBps(older, "builder", at(3.0)))
+        assertEquals(10000, EconomyTradeRelations.activityBps(newer, "builder", at(3.0)))
+        for ((a, b) in listOf(older to newer, newer to older)) {
+            val merged = EconomyTradeRelations.merge(a, b, at(3.0))
+            assertEquals(at(2.0).toString(), merged.activity["builder"]!!.updatedAt)
+            assertEquals(10000, EconomyTradeRelations.activityBps(merged, "builder", at(4.0)))
+            assertEquals(newer.activity, EconomyTradeRelations.merge(merged, older, at(4.0)).activity)
+            assertEquals(0, EconomyTradeRelations.activityBps(merged, "builder", at(12.0)))
+        }
+        val freshPartial = older.copy(activity = mapOf("builder" to EconomyTradeActivity(5000, at(6.0).toString())))
+        val mergedPartial = EconomyTradeRelations.merge(older, freshPartial, at(6.5))
+        assertEquals(5000, EconomyTradeRelations.activityBps(older, "builder", at(6.5)))
+        assertEquals(freshPartial.activity, mergedPartial.activity)
+        assertEquals(5000, EconomyTradeRelations.activityBps(mergedPartial, "builder", at(9.0)))
+    }
 }

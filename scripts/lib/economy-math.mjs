@@ -147,7 +147,7 @@ export function economicMath(catalog) {
       }
     } else if (rare.has(id)) {
       const spec = catalog.rareDrops, meanSeconds = (spec.minSeconds + spec.maxSeconds) / 2;
-      result.reference = "independent completed-exploration clock per actor; no NPC or coin-market purchase";
+      result.reference = "independent completed-exploration clock per actor; optional personal pearl-shop purchases excluded from this acquisition reference";
       result.referenceHome = spec.requiredHomeLevel;
       result.producerLevels.home = spec.requiredHomeLevel;
       // These are expectations, not a deterministic recipe or a zero-cost NPC item.

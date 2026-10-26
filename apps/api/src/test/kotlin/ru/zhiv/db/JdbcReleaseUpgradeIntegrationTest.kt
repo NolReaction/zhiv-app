@@ -67,7 +67,7 @@ class JdbcReleaseUpgradeIntegrationTest {
         c.commit()
     }
 
-    @Test fun `populated master V52 upgrades once to V75 retaining progress and already paid rewards`() = runBlocking<Unit> {
+    @Test fun `populated master V52 upgrades once to V78 retaining progress and already paid rewards`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.createForMigrations(config).use { source ->
             // Match deployed master's full V1-V52 history, not the new empty-DB B49 path.
@@ -111,7 +111,7 @@ class JdbcReleaseUpgradeIntegrationTest {
                 FROM economy_market_listings l"""
             val listingsBefore = scalar(source, listingsSql)
             migrateWithLegacyAdminHistory(source)
-            assertEquals("75", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL' AND success"))
+            assertEquals("78", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL' AND success"))
             assertEquals("0:true", scalar(source,
                 "SELECT generation::text || ':' || (reset_at IS NULL)::text FROM gameplay_generations WHERE singleton"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM gameplay_reset_runs"),
@@ -179,7 +179,7 @@ class JdbcReleaseUpgradeIntegrationTest {
                 "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'"), "V55 advances the profile fence exactly once")
             assertEquals("2", scalar(source, "SELECT count(*) FROM admin_actions WHERE accepted_revision IS NULL"))
             assertEquals(oldHistory, scalar(source, oldHistorySql))
-            assertEquals("75", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("78", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals(receipt, repository.grantReward(token.hash, player.publicId, requestId, reward))
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
@@ -258,7 +258,7 @@ class JdbcReleaseUpgradeIntegrationTest {
                 'immutable',to_jsonb(e)-'state'-'revision'-'updated_at','revision',revision)::text
                 FROM economy_profiles e WHERE user_id='${player.id}'"""), "V55 changes only knowledge metadata and its revision fence")
             assertEquals(history, scalar(source, historySql))
-            assertEquals("75", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("78", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             for (table in listOf("game_presence_clients", "game_presence_accounts", "game_presence_daily"))
                 assertEquals("0", scalar(source, "SELECT count(*) FROM $table"))
             val presence = JdbcPresenceRepository(source)
@@ -304,7 +304,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("75", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("78", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -368,7 +368,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("75", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("78", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))

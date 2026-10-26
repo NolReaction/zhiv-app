@@ -197,6 +197,7 @@ export const economyCatalogSchema = z.object({
     slots: z.number().int().min(2).max(3), requiredHomeLevel: z.number().int().min(1).max(5), pricePearls: count.positive().max(ECONOMY_MAX_PEARLS),
   })).max(2).refine(upgrades => upgrades.every((upgrade, index) => upgrade.slots === index + 2)) }).prefault({ upgrades: [] }),
   leaftailShop: z.object({ requiredHomeLevel: count.min(1).max(5), refreshSeconds: z.literal(86400),
+    relicExchange: z.object({ requiredHomeLevel: count.min(4).max(5), quantity: count.min(2).max(100), priceCoins: balance.positive() }).optional(),
     offers: z.array(economyLeaftailOfferSchema).min(1).max(12),
     travelOffers: z.array(economyLeaftailOfferSchema).max(32).prefault([]),
     supplyOffers: z.array(economyLeaftailSupplySchema).max(32).optional(),
@@ -282,6 +283,9 @@ export const economyCatalogSchema = z.object({
     })) invalid("Leaftail offers require valid exclusive clothing, tackle or non-profitable material bundles");
   const leaf = catalog.leaftailShop;
   if (leaf) {
+    if (leaf.relicExchange && (!catalog.rareDrops || catalog.rareDrops.itemIds.some(id =>
+      !catalog.items.some(item => item.id === id && item.category === "special" && !item.tradable))))
+      invalid("Relic exchange requires the non-tradable rare-drop items");
     const supplies = leaf.supplyOffers ?? [], pearls = leaf.pearlOffers ?? [];
     const all = [...leafOffers, ...supplies, ...pearls];
     const effective = [...(supplies.length ? supplies : leaf.offers), ...leaf.travelOffers, ...pearls];
@@ -414,7 +418,7 @@ const commandBase = {
   quantity: z.number().int().min(1).max(10_000).prefault(1), totalPrice: balance.prefault(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order"]),
+  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order"]),
   fishSelection: quantities.nullish(),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,

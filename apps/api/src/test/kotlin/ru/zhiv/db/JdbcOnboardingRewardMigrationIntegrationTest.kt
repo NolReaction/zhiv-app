@@ -47,7 +47,8 @@ class JdbcOnboardingRewardMigrationIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals("78",scalar(source,"SELECT max(version::int)::text FROM flyway_schema_history"))
             assertEquals(before,retained(source),"Migration never awards an old local completion or rewrites money and receipts")
-            assertEquals(daily,scalar(source,"SELECT (to_jsonb(r)-'onboarding_claimed_at'-'completed'-'reward_catalog_version')::text FROM game_daily_rewards r WHERE user_id=?",user))
+            assertEquals(daily,scalar(source,"SELECT (to_jsonb(r)-'onboarding_claimed_at'-'completed'-'reward_catalog_version'-'achievement_reward_version')::text FROM game_daily_rewards r WHERE user_id=?",user))
+            assertEquals("6",scalar(source,"SELECT achievement_reward_version::text FROM game_daily_rewards WHERE user_id=?",user))
             assertEquals("true",scalar(source,"SELECT (onboarding_claimed_at IS NULL)::text FROM game_daily_rewards WHERE user_id=?",user))
             val insert="""INSERT INTO game_reward_claims(user_id,origin_user_id,request_id,signature,kind,claim,accepted_revision,claimed_at)
                 VALUES (?,?,?,'intentional-completion',?,'{"kind":"onboarding","reward":{"coins":1000,"pearls":200,"items":{}},"claimedAt":"2026-10-18T00:00:00Z"}',8,'2026-10-18T00:00:00Z')"""

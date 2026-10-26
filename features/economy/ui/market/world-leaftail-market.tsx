@@ -18,6 +18,7 @@ import { FishingCatchOdds } from "@/features/economy/ui/fishing/fishing-catch-od
 import { FishRarityBadge } from "@/features/economy/ui/fishing/fish-rarity";
 import { MarketRefreshProgress } from "@/features/economy/ui/shared/market-refresh-progress";
 import { WardrobePreview } from "@/features/world/ui/wardrobe/world-wardrobe";
+import { LeaftailRelicExchange } from "./leaftail-relic-exchange";
 import styles from "./world-leaftail-market.module.css";
 
 type Offer = NonNullable<ReturnType<typeof leaftailShopView>>["offers"][number];
@@ -28,7 +29,7 @@ const sections: ReadonlyArray<{ id: ShopSection; label: string; hint: string; Ic
   { id: "wardrobe", label: "Одежда", Icon: Shirt, hint: "Примерьте на Мохлика." },
   { id: "tackle", label: "Снасти", Icon: Fish, hint: "Снасти и наживки из этой поставки. Выбор - перед рыбалкой." },
   { id: "supplies", label: "Припасы", Icon: Package, hint: "Выберите, сколько нужно. Запас ограничен до новой поставки." },
-  { id: "finds", label: "Реликвии", Icon: Gem, hint: "Для важных улучшений. Каждая реликвия - за жемчуг." },
+  { id: "finds", label: "Реликвии", Icon: Gem, hint: "Для важных улучшений. Обменяйте лишние находки или выберите покупку за жемчуг." },
 ];
 const number = (value: number) => value.toLocaleString("ru-RU");
 const money = (value: number, currency: Offer["currency"]) => currency === "pearls" ? formatPearls(value) : number(value);
@@ -214,6 +215,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
         <div className={styles.actions}><button type="button" onClick={() => setQuote(null)}>Назад</button><button className={styles.buy} type="button" disabled={Boolean(reason)} onClick={confirm}>Подтвердить<ItemIcon itemId={quote.currency} size={16} />{money(quote.price, quote.currency)}</button></div>
       </section> : <div role="tabpanel" id={`${tabsId}-offers`} aria-labelledby={`${tabsId}-${section}`} data-leaftail-section={section}>
         <p className={styles.hint}>{sections.find(entry => entry.id === section)?.hint}</p>
+        {section === "finds" && <LeaftailRelicExchange key={state.ownerPublicId} economy={economy} isOnline={isOnline} />}
         {shop.offers.filter(offer => offer.section === section).length === 0 && <p className={styles.empty} role="status" data-leaftail-empty>В этой поставке здесь пока пусто. Загляните после обновления.</p>}
         <div className={`${styles.offers} ${section === "wardrobe" ? styles.clothes : ""}`}>{shop.offers.filter(offer => offer.section === section).map(offer => {
           const limit = leaftailPurchaseLimit(state, offer), requested = quantities[offer.targetId] ?? 1;

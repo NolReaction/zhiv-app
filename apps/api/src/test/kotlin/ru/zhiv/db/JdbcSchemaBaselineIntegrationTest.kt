@@ -117,7 +117,7 @@ class JdbcSchemaBaselineIntegrationTest {
         }
     }
 
-    @Test fun `fresh database executes baseline and V50 through V75 equivalent to the upgraded historical chain`() {
+    @Test fun `fresh database executes baseline and V50 through V78 equivalent to the upgraded historical chain`() {
         DatabaseFactory.create(config()).use { legacy ->
             // Deliberately excludes the parent location: Flyway 12.8 applies the newest B
             // even when target is lower, so historical builds must resolve only V files.
@@ -127,7 +127,7 @@ class JdbcSchemaBaselineIntegrationTest {
             assertEquals("49", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(legacy, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             DatabaseFactory.migrate(legacy)
-            assertEquals("75", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("78", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
 
             val database = "baseline_${UUID.randomUUID().toString().replace("-", "")}"
             legacy.connection.use { c ->
@@ -139,7 +139,7 @@ class JdbcSchemaBaselineIntegrationTest {
                     val started = databaseTime(fresh)
                     DatabaseFactory.migrate(fresh)
                     val finished = databaseTime(fresh)
-                    assertEquals("27", scalar(fresh, "SELECT count(*) FROM flyway_schema_history"))
+                    assertEquals("30", scalar(fresh, "SELECT count(*) FROM flyway_schema_history"))
                     assertEquals("49:SQL_BASELINE:true", scalar(fresh,
                         "SELECT version || ':' || type || ':' || success::text FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
                     val metadata = fresh.connection.use { c -> c.createStatement().use { statement ->
@@ -161,7 +161,7 @@ class JdbcSchemaBaselineIntegrationTest {
                     for ((category, definitions) in expected) {
                         assertEquals(definitions.keys, actual.getValue(category).keys, "$category object names differ")
                         for ((name, definition) in definitions)
-                            assertEquals(definition, actual.getValue(category).getValue(name), "$category: $name differs from V1–V75")
+                            assertEquals(definition, actual.getValue(category).getValue(name), "$category: $name differs from V1–V78")
                     }
                     val freshHistory = history(fresh)
                     val freshMetadata = scalar(fresh, "SELECT row_to_json(m)::text FROM game_tap_collection_metadata m")
@@ -202,10 +202,19 @@ class JdbcSchemaBaselineIntegrationTest {
                 c.commit()
             }
             val data = tableData(source)
+            assertEquals("[]", data.getValue("game_daily_rewards"), "Both historical accounts have unopened reward screens")
+            val unchangedData = data - "game_daily_rewards"
             val earlierHistory = history(source)
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals(data, tableData(source).filterKeys { it in data }, "Adding a baseline must not rewrite existing records")
+            assertEquals(unchangedData, tableData(source).filterKeys { it in unchangedData }, "Adding a baseline must not rewrite existing records")
+            assertEquals("2", scalar(source, "SELECT count(*) FROM game_daily_rewards"))
+            for (account in listOf(first, second)) assertEquals("1:false:7:6:true:true:true", scalar(source,
+                """SELECT next_step::text||':'||completed::text||':'||reward_catalog_version::text||':'||achievement_reward_version::text
+                    ||':'||(last_claim_at IS NULL)::text||':'||(last_claim_date IS NULL)::text||':'||(onboarding_claimed_at IS NULL)::text
+                    FROM game_daily_rewards WHERE user_id='${account.id}'"""),
+                "V77 preserves the legacy achievement course without granting a gift or claiming a day")
+            val migratedDaily = tableData(source).getValue("game_daily_rewards")
             assertEquals(mapOf("managed_promo_codes" to "[]", "player_security_observations" to "[]",
                 "player_mail_messages" to "[]", "admin_mail_broadcasts" to "[]",
                 "earth_sharing_settings" to "[]", "earth_sharing_recipients" to "[]", "earth_latest_locations" to "[]", "earth_frozen_locations" to "[]",
@@ -219,7 +228,7 @@ class JdbcSchemaBaselineIntegrationTest {
                 "Schema upgrade only prepares the reset mechanism; it does not start a new game")
             assertEquals(earlierHistory, scalar(source,
                 "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=48"))
-            assertEquals("75", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
+            assertEquals("78", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             assertEquals(first.id, identities.findBySession(firstSession)?.id)
             assertEquals(second.id, identities.findBySession(secondSession)?.id)
@@ -229,7 +238,8 @@ class JdbcSchemaBaselineIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(upgradedHistory, history(source))
-            assertEquals(data, tableData(source).filterKeys { it in data })
+            assertEquals(unchangedData, tableData(source).filterKeys { it in unchangedData })
+            assertEquals(migratedDaily, tableData(source).getValue("game_daily_rewards"), "Restart does not recreate or advance reward courses")
         }
     }
 

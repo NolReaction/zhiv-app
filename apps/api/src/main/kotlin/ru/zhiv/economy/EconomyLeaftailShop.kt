@@ -115,6 +115,8 @@ object EconomyLeaftailShops {
 
     /** V2 sources cannot silently reinterpret legacy coin offers as pearl purchases. */
     fun validCatalog(catalog: EconomyCatalog, spec: EconomyLeaftailShopConfig): Boolean {
+        if (spec.relicExchange != null && (catalog.rareDrops == null || catalog.rareDrops.itemIds.any { id ->
+            catalog.items.none { it.id == id && it.category == "special" && !it.tradable } })) return false
         if (!(spec.offers + spec.travelOffers).all { validOffer(catalog, it) }) return false
         if (spec.supplyOffers.any { offer -> catalog.items.none { item -> item.id == offer.itemId && item.tradable &&
                 item.category in setOf("material", "crafted", "provisions", "produce") && offer.unitPriceCoins >= 2L * item.baseSellPrice } }) return false

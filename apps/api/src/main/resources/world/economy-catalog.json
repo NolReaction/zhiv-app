@@ -306,7 +306,12 @@
         "stock": 1,
         "requiredHomeLevel": 3
       }
-    ]
+    ],
+    "relicExchange": {
+      "requiredHomeLevel": 4,
+      "quantity": 2,
+      "priceCoins": 20000
+    }
   },
   "constructionSpeedup": {
     "secondsPerPearl": 300,

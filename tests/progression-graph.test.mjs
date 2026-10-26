@@ -228,7 +228,8 @@ test("rare materials share a real post-home-three exploration source without a f
   assert.match(source.description, /завершение проекта дома 3 гарантирует Живая смола × 1/);
   assert.match(source.description, /путь к дому 4 не зависит от случайной находки/);
   assert.match(source.description, /Седьмой ежедневный подарок даёт древнее ядро/);
-  assert.match(source.description, /купить или продать за монеты нельзя/);
+  assert.match(source.description, /двух одинаковых лишних реликвий с доплатой 20 000 монет/);
+  assert.match(source.description, /Обычной продажи реликвий NPC нет/);
   assert(hasEdge("b:home:3", source.id, "requirement"));
   for (const route of activeExplorations) assert(hasEdge(`e:${route.id}`, source.id, "any"));
   for (const item of catalog.rareDrops.itemIds) {

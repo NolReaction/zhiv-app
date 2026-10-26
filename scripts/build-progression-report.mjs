@@ -22,6 +22,11 @@ export function compactProgressionReport(source, economy, rewards) {
   const scenarios = source.scenarios.map(row => {
     assert(typeof row.label === "string" && !labels.has(row.label), "Scenario labels must be unique"); labels.add(row.label);
     assert.equal(typeof row.completed, "boolean");
+    for (const [currency, ledger, balance] of [["coins", row.coinLedger, row.coins], ["pearls", row.pearlLedger, row.pearls]]) {
+      if (ledger?.initial == null) continue;
+      const sum = entries => Object.values(entries).reduce((total, value) => total + finite(value, `${currency} ledger`), 0);
+      assert.equal(balance, finite(ledger.initial, `${currency} initial`) + sum(ledger.credits) - sum(ledger.debits), `${row.label}: ${currency} ledger does not balance`);
+    }
     const result = {
       id: row.label, completed: row.completed, goal: row.completionGoal ?? "home-5",
       seed: finite(row.seed, "seed"), visitsPerDay: finite(row.visitsPerDay, "visits/day"),
@@ -37,7 +42,8 @@ export function compactProgressionReport(source, economy, rewards) {
       reputationMaxDays: milestone(row.reputationMaxDays, "reputation maximum"),
       ownerPublicId: row.ownerPublicId ?? "0000-0000-0001", neighborPolicy: row.neighborPolicy ?? "none",
       neighborSales: row.neighbor?.sales.length ?? 0, neighborProceeds: row.neighbor?.sales.reduce((sum, sale) => sum + sale.proceedsCoins, 0) ?? 0,
-      relicPolicy: row.relicPolicy ?? "none",
+      relicPolicy: row.relicPolicy ?? "none", exchangePolicy: row.exchangePolicy ?? "duplicates",
+      relicExchanges: row.relicExchanges?.length ?? 0, exchangeCoins: row.relicExchanges?.reduce((sum, exchange) => sum + exchange.paidCoins, 0) ?? 0,
       allProductionSlotsDays: milestone(row.allProductionSlotsDays, "production slots"), allCapacityDays: milestone(row.allCapacityDays, "all paid capacity"),
       productionSlots: row.productionSlots ?? {}, marketSlots: row.marketSlots ?? economy.market.baseSlots,
       coinsRemaining: finite(row.coins ?? 0, "remaining coins"),
@@ -63,6 +69,20 @@ export function compactProgressionReport(source, economy, rewards) {
     assert(result.manualHours <= result.activeHours + 1 / 3600, "Manual time cannot exceed active time");
     for (const key of ["home5Days", "allProductionDays", "allBuildingsDays", "allRecipesDays", "reputationMaxDays", "allProductionSlotsDays", "allCapacityDays"])
       assert(result[key] === null || result[key] <= result.elapsedDays + 1 / 86400, `${key} is after the end of the run`);
+    let previousSnapshotDay = 0;
+    for (const snapshot of result.calendarSnapshots) {
+      assert(snapshot.day > previousSnapshotDay && snapshot.day <= result.elapsedDays, "Calendar snapshots must be ordered and within the observed run");
+      previousSnapshotDay = snapshot.day;
+    }
+    if (result.completed && ["full", "all-capacity"].includes(result.goal))
+      assert(result.allBuildingsDays !== null && result.allRecipesDays !== null && result.reputationMaxDays !== null,
+        "A completed full goal requires buildings, recipes and permanent ranks");
+    if (result.completed && result.goal === "all-capacity") {
+      const stations = [...new Set(economy.recipes.filter(recipe => !recipe.retired).map(recipe => recipe.buildingId))];
+      const maximumSlots = Math.max(...economy.productionSlots.upgrades.map(offer => offer.slots));
+      assert(result.allCapacityDays !== null && result.marketSlots === economy.market.maxListings
+        && stations.every(id => result.productionSlots[id] === maximumSlots), "A completed capacity goal must own every production and market place");
+    }
     return result;
   });
   return { schemaVersion: 1, status: "ready", releaseValidated: source.releaseValidated === true,

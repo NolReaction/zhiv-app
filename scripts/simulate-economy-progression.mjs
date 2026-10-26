@@ -18,7 +18,7 @@ export async function loadProgressionRules(sourceRoot = defaultRoot) {
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
   const paths = { rules: "features/economy/domain/rules.ts", model: "features/economy/domain/model.ts", stages: "features/economy/domain/stage-orders.ts",
     food: "features/economy/domain/food.ts", actors: "features/economy/domain/actor-availability.ts", tutorial: "features/economy/domain/tutorial-order.ts",
-    slots: "features/economy/domain/production-slots.ts", market: "features/economy/domain/market-rules.ts", relations: "features/economy/domain/trade-relations.ts", fishing: "features/economy/domain/fishing.ts", fishingShop: "features/economy/domain/fishing-shop.ts", publicJobs: "features/economy/domain/public-jobs.ts", leaftail: "features/economy/domain/leaftail-shop.ts", rewards: "features/game/progression-rewards.ts", achievements: "features/game/achievement-progress.ts",
+    slots: "features/economy/domain/production-slots.ts", market: "features/economy/domain/market-rules.ts", relations: "features/economy/domain/trade-relations.ts", fishing: "features/economy/domain/fishing.ts", fishingShop: "features/economy/domain/fishing-shop.ts", publicJobs: "features/economy/domain/public-jobs.ts", leaftail: "features/economy/domain/leaftail-shop.ts", relicExchange: "features/economy/domain/leaftail-relic-exchange.ts", rewards: "features/game/progression-rewards.ts", achievements: "features/game/achievement-progress.ts",
     welcome: "features/mailbox/welcome.ts", money: "features/economy/domain/money.ts", fishStock: "features/economy/domain/fish-stock.ts",
     identities: "lib/dev/api-store.ts", economyStore: "lib/dev/economy-store.ts", neighborStore: "lib/dev/neighbor-store.ts",
     neighborRules: "features/economy/domain/neighbor-rules.ts", neighborModel: "features/economy/domain/neighbor-model.ts" };
@@ -52,7 +52,8 @@ export function simulateProgression(loaded, options = {}) {
   const { rules, catalog, stages, food, actors, tutorial, slots } = loaded;
   const { regularActiveMinutes = 20, firstVisitMinutes = 60, seed = 1, slotPolicy = "earned", maxDays = 160,
     claimRewards = true, useMeals = true, completionGoal = "home-5", manualSeconds = 2, externalSlotBudget = 0,
-    visitsPerDay = 3, opportunisticRoutes = true, speedupPolicy = "none", socialMode = "income", buySupplies = true, relicPolicy = "none", neighborPolicy = "none", ownerPublicId = "0000-0000-0001", onVisit, onCommand } = options;
+    visitsPerDay = 3, opportunisticRoutes = true, speedupPolicy = "none", socialMode = "income", buySupplies = true, relicPolicy = "none", exchangePolicy = "duplicates", neighborPolicy = "none", ownerPublicId = "0000-0000-0001", onVisit, onCommand } = options;
+  assert(["none", "duplicates"].includes(exchangePolicy), "Unknown relic exchange policy");
   assert(["none", "auto"].includes(neighborPolicy), "Unknown neighbor policy");
   assert(["none", "earned"].includes(relicPolicy), "Unknown relic purchasing policy");
   assert(["home-5", "all-production", "all-buildings", "all-recipes", "full", "all-capacity", "reputation", "observation"].includes(completionGoal), "Unknown completion goal");
@@ -81,7 +82,7 @@ export function simulateProgression(loaded, options = {}) {
   const uuid = () => `${(seed >>> 0).toString(16).padStart(8, "0")}-0000-4000-9000-${(++sequence).toString(16).padStart(12, "0")}`;
   const rewardClaims = [], slotPurchases = [], mealUses = [], storagePressure = [], waits = [];
   const concurrencyPeaks = {}, claimedWorkSeconds = {}, readyIdleSeconds = {};
-  const materialRouteStarts = [], speedups = [], relicPurchases = [], marketSlotPurchases = [], calendarSnapshots = [];
+  const materialRouteStarts = [], speedups = [], relicPurchases = [], relicExchanges = [], marketSlotPurchases = [], calendarSnapshots = [];
   const sourceCache = new Map(), effortCache = new Map();
   const milestones = {};
   const targetHome = Math.max(...catalog.buildings.find(row => row.id === "home").levels.map(row => row.level));
@@ -129,7 +130,6 @@ export function simulateProgression(loaded, options = {}) {
       const item = record(sale.itemId);
       item.escrow -= sale.quantity; item.sold += sale.quantity;
       assert(item.escrow >= 0, "Berest cannot buy goods which were never escrowed");
-      rewardScenario?.recordMarketSale?.();
       const ordinaryUnit = catalog.localBuyer.unitPrices[sale.itemId] ?? catalog.items.find(row => row.id === sale.itemId).baseSellPrice;
       neighborSales.push({ itemId: sale.itemId, quantity: sale.quantity, totalPrice: sale.totalPrice, proceedsCoins: sale.proceedsCoins, feeCoins: sale.feeCoins, createdAt: sale.createdAt, closedAt: sale.closedAt, day: (Date.parse(sale.closedAt) - epoch) / (24 * hour), directSaleAlternative: ordinaryUnit * sale.quantity });
     }
@@ -364,6 +364,38 @@ export function simulateProgression(loaded, options = {}) {
     makeRoom(quantity * offer.quantity);
     apply("buy_leaftail_item",offer.targetId,quantity,quantity*offer.unitPrice); return true;
   }
+  function exchangeNeededRelic(id, count) {
+    const config = catalog.leaftailShop?.relicExchange;
+    if (exchangePolicy !== "duplicates" || !config || state.buildings.home < config.requiredHomeLevel || owned(id) >= count) return false;
+    // Every catalog building requirement is public. Protect all future unpaid
+    // construction needs, including other relic types, before calling a spare a
+    // duplicate. An already paid active construction must not be reserved twice.
+    const future = {};
+    for (const building of catalog.buildings) {
+      const paidLevel = Math.max(state.buildings[building.id] ?? 0,
+        ...state.jobs.filter(job => job.kind === "construction" && job.targetId === building.id).map(job => job.targetLevel));
+      for (const level of building.levels.filter(row => row.level > paidLevel))
+        for (const [itemId, quantity] of Object.entries(level.cost.items)) future[itemId] = (future[itemId] ?? 0) + quantity;
+    }
+    const candidates = catalog.rareDrops.itemIds.filter(itemId => itemId !== id)
+      .map(itemId => ({ itemId, spare: owned(itemId) - (future[itemId] ?? 0) }))
+      .filter(row => row.spare >= config.quantity).sort((a, b) => b.spare - a.spare || a.itemId.localeCompare(b.itemId));
+    const candidate = candidates[0];
+    if (!candidate) return false;
+    const offer = loaded.relicExchange.leaftailRelicExchangeOffer(state, candidate.itemId, id, catalog);
+    if (!offer?.unlocked || offer.availableQuantity < offer.quantity) return false;
+    const buildingBudget = Math.max(cashReserve, buildDefinition(nextConstruction())?.cost.coins ?? 0);
+    const requiredCoins = buildingBudget + offer.priceCoins;
+    if (state.wallet.coins < requiredCoins) return ordinaryIncome(requiredCoins);
+    const ownedBefore = owned(candidate.itemId);
+    apply("exchange_leaftail_relic", offer.targetId, 1, offer.priceCoins);
+    assert(owned(candidate.itemId) >= (future[candidate.itemId] ?? 0), "Exchange must preserve future construction relics");
+    assert(state.wallet.coins >= buildingBudget, "Exchange must preserve the next building coin budget");
+    relicExchanges.push({ day: (clock - epoch) / (24 * hour), fromItemId: candidate.itemId, toItemId: id,
+      spentQuantity: offer.quantity, receivedQuantity: 1, paidCoins: offer.priceCoins,
+      ownedBefore, reservedQuantity: future[candidate.itemId] ?? 0, buildingBudget });
+    return true;
+  }
   function buyNeededRelic(id, count) {
     if (relicPolicy !== "earned" || state.buildings.home < targetHome) return false;
     const shop = loaded.leaftail.leaftailShopView({ ...state, ownerPublicId }, clock);
@@ -384,6 +416,7 @@ export function simulateProgression(loaded, options = {}) {
       if (sourceBusy(source)) return false;
       apply("start_fishing", "shore"); production.shore = (production.shore ?? 0) + 1; return true;
     }
+    if (catalog.rareDrops.itemIds.includes(id) && exchangeNeededRelic(id, count)) return true;
     if (catalog.rareDrops.itemIds.includes(id) && buyNeededRelic(id, count)) return true;
     if (catalog.rareDrops.itemIds.includes(id)) return state.buildings.home >= targetHome && completionGoal === "all-buildings" ? farmRelics() : false;
     if (buyUsefulSupply(id,count)) return true;
@@ -706,7 +739,7 @@ export function simulateProgression(loaded, options = {}) {
     pendingProceeds: neighbor?.listings().filter(row => row.status === "sold" && !row.sale?.claimedAt).reduce((sum, row) => sum + row.sale.proceedsCoins, 0) ?? 0,
     settings: neighbor ? { maxLotsPerDay: neighbor.settings.maxLotsPerDay, dailyBudgetCoins: neighbor.settings.dailyBudgetCoins,
       maxLotCoins: neighbor.settings.maxLotCoins, firstDelaySeconds: neighbor.settings.firstDelaySeconds, staleAfterSeconds: neighbor.settings.staleAfterSeconds } : null };
-  return { state, neighborPolicy, neighbor: neighborSnapshot, productionStations, marketSlots: loaded.market.marketSlotCount(state, catalog), relicPolicy, ownerPublicId, relicPurchases, marketSlotPurchases, calendarSnapshots, activeRecipeIds: activeRecipes.map(row=>row.id), clock, revision, peak, constructionCoins, courseCoins, repeatCoins, saleCoins, courses, builds,
+  return { state, neighborPolicy, neighbor: neighborSnapshot, productionStations, marketSlots: loaded.market.marketSlotCount(state, catalog), relicPolicy, exchangePolicy, ownerPublicId, relicPurchases, relicExchanges, marketSlotPurchases, calendarSnapshots, activeRecipeIds: activeRecipes.map(row=>row.id), clock, revision, peak, constructionCoins, courseCoins, repeatCoins, saleCoins, courses, builds,
     actions, flow, production, catches, repeatOrders, visitCount, activeSeconds, constructionSeconds, berryClaims, checkpoints, windows, startingCoins, startingItems, regularActiveMinutes, completed: completed(), rewardClaims, slotPurchases, mealUses, storagePressure, waits, coinLedger, pearlLedger, seed, slotPolicy, firstVisitMinutes, manualSeconds, externalSlotBudget, visitsPerDay, completionGoal, maxDays, speedupPolicy, speedups, milestones, social: social.snapshot(clock), socialMode, buySupplies, useMeals, opportunisticRoutes, materialRouteStarts, concurrencyPeaks, claimedWorkSeconds, readyIdleSeconds };
   } finally { neighbor?.close(); }
 }
@@ -724,7 +757,7 @@ export function summarizeProgression(result) {
   for (const [id, quantity] of Object.entries(result.neighbor.escrow))
     assert.equal(quantity, result.flow[id]?.escrow ?? 0, `${id}: every escrowed item was actually produced`);
   return { completed: result.completed, seed: result.seed, regularMinutes: result.regularActiveMinutes, firstMinutes: result.firstVisitMinutes,
-    slotPolicy: result.slotPolicy, neighborPolicy: result.neighborPolicy, neighbor: result.neighbor, relicPolicy: result.relicPolicy, ownerPublicId: result.ownerPublicId, visitsPerDay: result.visitsPerDay, completionGoal: result.completionGoal, maxDays: result.maxDays, speedupPolicy: result.speedupPolicy, buySupplies: result.buySupplies, useMeals: result.useMeals, opportunisticRoutes: result.opportunisticRoutes, socialMode: result.socialMode, social: result.social, speedups: result.speedups,
+    slotPolicy: result.slotPolicy, neighborPolicy: result.neighborPolicy, neighbor: result.neighbor, relicPolicy: result.relicPolicy, exchangePolicy: result.exchangePolicy, ownerPublicId: result.ownerPublicId, visitsPerDay: result.visitsPerDay, completionGoal: result.completionGoal, maxDays: result.maxDays, speedupPolicy: result.speedupPolicy, buySupplies: result.buySupplies, useMeals: result.useMeals, opportunisticRoutes: result.opportunisticRoutes, socialMode: result.socialMode, social: result.social, speedups: result.speedups,
     allProductionDays: result.milestones.allProductionAt == null ? null : (result.milestones.allProductionAt - epoch)/(24*hour),
     allBuildingsDays: result.milestones.allBuildingsAt == null ? null : (result.milestones.allBuildingsAt - epoch)/(24*hour),
     allRecipesDays: result.milestones.allRecipesAt == null ? null : (result.milestones.allRecipesAt - epoch)/(24*hour), materialRouteStarts: result.materialRouteStarts, concurrencyPeaks: result.concurrencyPeaks, claimedWorkSeconds: result.claimedWorkSeconds, readyIdleSeconds: result.readyIdleSeconds, manualSeconds: result.manualSeconds, externalSlotBudget: result.externalSlotBudget, home5Days: result.milestones.home5At == null ? null : (result.milestones.home5At - epoch)/(24*hour),
@@ -732,7 +765,7 @@ export function summarizeProgression(result) {
     elapsedDays: (result.clock - epoch) / (24 * hour), activeHours: result.activeSeconds / 3600, manualHours: result.revision * result.manualSeconds / 3600, productionWaitWithinVisitsHours: Math.max(0, result.activeSeconds - result.revision * result.manualSeconds) / 3600, commandCount: result.revision,
     storagePeak: result.peak, storagePressureCount: result.storagePressure.length, coinLedger: result.coinLedger, pearlLedger: result.pearlLedger,
     productionSlots: Object.fromEntries(result.productionStations.map(id => [id, result.state.productionSlots?.[id] ?? 1])),
-    marketSlots: result.marketSlots, relicPurchases: result.relicPurchases, marketSlotPurchases: result.marketSlotPurchases,
+    marketSlots: result.marketSlots, relicPurchases: result.relicPurchases, relicExchanges: result.relicExchanges, marketSlotPurchases: result.marketSlotPurchases,
     allProductionSlotsDays: result.milestones.allProductionSlotsAt == null ? null : (result.milestones.allProductionSlotsAt - epoch)/(24*hour),
     allCapacityDays: result.milestones.allCapacityAt == null ? null : (result.milestones.allCapacityAt - epoch)/(24*hour),
     calendarSnapshots: result.calendarSnapshots,

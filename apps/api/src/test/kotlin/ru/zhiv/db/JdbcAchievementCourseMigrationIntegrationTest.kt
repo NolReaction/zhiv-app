@@ -40,6 +40,7 @@ class JdbcAchievementCourseMigrationIntegrationTest {
             source.connection.use { c ->
                 c.economyUpdate("INSERT INTO app_users(id,public_id,display_name) VALUES (?,'0000-0000-0079','New')",fresh)
                 c.economyUpdate("INSERT INTO game_daily_rewards(user_id) VALUES (?)",fresh)
+                c.economyUpdate("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'master_recipes',clock_timestamp())",old)
                 c.economyUpdate("INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at) VALUES (?,'master_recipes',4,clock_timestamp())",old)
                 c.commit()
             }
