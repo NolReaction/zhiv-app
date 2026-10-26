@@ -17,7 +17,7 @@ export type TradeShipMotion = Readonly<{
   berth: TradeShipBerth;
 }>;
 
-export const TRADE_SHIP_VOYAGE = { arrivalDuration: 18, departureDuration: 16, maxHeading: .18 } as const;
+export const TRADE_SHIP_VOYAGE = { arrivalDuration: 18, departureDuration: 22 } as const;
 const DEFAULT_BERTH: TradeShipBerth = { x: 705, y: 1090, width: 310 };
 type Point = { x: number; y: number };
 type Curve = readonly [Point, Point, Point, Point];
@@ -32,16 +32,19 @@ function validBerth(berth: TradeShipBerth): TradeShipBerth {
 
 function route(berth: TradeShipBerth, reverse: boolean): Curve {
   const { x, y, width: w } = berth;
+  // A short stern-first move clears the berth before a continuous down-left exit.
+  // The rightmost excursion is about .19 widths, rather than another full ship.
   // The entire art box starts/ends beyond the bottom map edge, not just its centre.
   if (reverse) return [
-    { x, y }, { x: x + w * .2, y: y + w * .04 },
-    { x: x + w * .78, y: y + w * .38 },
-    { x: x + w * .82, y: Math.max(1350, y + w * .86) },
+    { x, y }, { x: x + w * .32, y: y + w * .15 },
+    { x: x + w * .32, y: y + w * .45 },
+    { x: x - w * .65, y: Math.max(1350, y + w * .95) },
   ];
   return [
     { x: x + w * 1.1, y: Math.max(1330, y + w * .72) },
     { x: x + w * .8, y: y + w * .43 },
-    { x: x + w * .28, y: y + w * .056 }, { x, y },
+    // Approach from deeper water before the final shore-side docking position.
+    { x: x + w * .28, y: y + w * .15 }, { x, y },
   ];
 }
 
@@ -59,7 +62,7 @@ function curveAt(curve: Curve, u: number) {
  * Analytic kinematic trajectory: a quintic throttle/braking envelope along a curved channel.
  * Position, velocity and acceleration are continuous, including zero velocity/acceleration
  * at departure and docking. Sampling absolute elapsed time avoids Euler drift between FPS.
- * Heading is only a small camera correction for the fixed three-quarter drawing, not a 3D yaw.
+ * The fixed three-quarter drawing retains its pose; its base angle belongs to the sprite.
  */
 export function sampleTradeShipMotion(
   phase: TradeShipVoyagePhase, elapsed: number, inputBerth: TradeShipBerth = DEFAULT_BERTH,
@@ -76,14 +79,14 @@ export function sampleTradeShipMotion(
   const rate = stationary ? 0 : 30 * t * t * (1 - t) ** 2 / duration;
   const point = current === "docked" ? { ...berth, dx: 0, dy: 0 } : curveAt(route(berth, reverse), u);
   const velocityX = point.dx * rate, velocityY = point.dy * rate;
-  // The left-facing boat keeps its bow forward on arrival, then moves stern-first on departure.
-  const course = Math.atan2(Math.abs(point.dy), Math.abs(point.dx));
-  const heading = stationary ? 0 : TRADE_SHIP_VOYAGE.maxHeading * Math.tanh((course - Math.atan(.2)) / TRADE_SHIP_VOYAGE.maxHeading);
+  // A single PNG cannot turn in 3D. Moving along the channel must not rotate its
+  // waterline onto the bank or snap the picture when arrival becomes docked.
+  const heading = 0;
   return {
     phase: current, elapsed: stationary ? 0 : time, progress: t,
     x: point.x, y: point.y, width: berth.width, heading,
     velocityX, velocityY, speed: Math.hypot(velocityX, velocityY),
-    reverse, visible: current !== "departed", berth,
+    reverse: reverse && point.dx > 0, visible: current !== "departed", berth,
   };
 }
 

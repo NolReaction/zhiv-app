@@ -5,12 +5,13 @@ import type { CookingAction } from "@/features/world/activities/cooking/forest-c
 import { TILED_WORLD } from "@/features/world/scene/presentation";
 import { initialPreviewLevels } from "../tiled/preview-state";
 import { retainWorldDevClientState } from "./world-dev-hmr-cache";
+import { createTradeShipWorldPreview, type WorldTradeShipCommand } from "./trade-ship-world-preview";
 import { normalizeWorldDevSceneFeedback, normalizeWorldDevSceneRequest,
   type WorldDevSceneActor, type WorldDevSceneFeedback, type WorldDevScenePhase, type WorldDevSceneRequest,
   type WorldDevSceneScenario } from "./forest-scene-preview";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";
-export type WorldDevCameraAction = "in" | "out" | "overview" | "pet" | "plesk" | "builder" | "fishing";
+export type WorldDevCameraAction = "in" | "out" | "overview" | "pet" | "plesk" | "builder" | "fishing" | "ship";
 export type WorldDevLifeAction = "butterfly" | "firefly" | "mushroom" | "leaf" | "bush" | "home-sleep" | "wake" | "grow-mushrooms" | "water-bush" | "harvest-berries" | "grow-berries" | "watch-birds" | "campfire" | "idle";
 
 export const WORLD_DEV_SCENARIOS = [
@@ -141,6 +142,7 @@ const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfl
 /** Ephemeral visual overrides only; this store never touches player progress or storage. */
 export function createWorldDevStore(enabled: boolean) {
   let state = WORLD_DEV_DEFAULTS;
+  const tradeShip = createTradeShipWorldPreview();
   let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0, scenarioEventId = 0, residentEventId = 0, cookingEventId = 0, builderEventId = 0, sceneEventId = 0;
   let sceneFeedback: WorldDevSceneFeedback | null = null;
   const listeners = new Set<() => void>();
@@ -154,6 +156,7 @@ export function createWorldDevStore(enabled: boolean) {
   };
   const publish = (next: WorldDevState) => {
     if (!enabled || next === state) return;
+    tradeShip.setEnabled(next.tradeShipPreview);
     const previousScene = state.scenePreview;
     state = Object.freeze(next);
     if (previousScene && !state.scenePreview && !feedbackTerminal(sceneFeedback)) {
@@ -165,6 +168,19 @@ export function createWorldDevStore(enabled: boolean) {
   return {
     getSnapshot: () => state,
     getServerSnapshot: () => WORLD_DEV_DEFAULTS,
+    getTradeShipMotion: tradeShip.getMotion,
+    getTradeShipPhase: tradeShip.getPhase,
+    getServerTradeShipPhase: tradeShip.getServerPhase,
+    subscribeTradeShipPhase: tradeShip.subscribePhase,
+    advanceTradeShip(seconds: number, frame: number, imageReady: boolean) {
+      if (enabled && state.tradeShipPreview && !state.paused) tradeShip.advance(seconds, frame, imageReady);
+    },
+    triggerTradeShip(command: WorldTradeShipCommand) {
+      if (!enabled || !["arrive", "depart", "dock"].some(value => value === command)) return;
+      tradeShip.setEnabled(true); tradeShip.command(command);
+      publish({ ...state, tradeShipPreview: true, scenePreview: null,
+        cameraEvent: Object.freeze({ id: ++cameraEventId, action: "ship" }) });
+    },
     getSceneFeedback: () => sceneFeedback,
     getServerSceneFeedback: (): WorldDevSceneFeedback | null => null,
     subscribeSceneFeedback(listener: () => void) {
@@ -290,7 +306,7 @@ export function createWorldDevStore(enabled: boolean) {
       if (feedback) publishSceneFeedback(feedback);
     },
     triggerCamera(action: WorldDevCameraAction) {
-      if (enabled && ["in", "out", "overview", "pet", "plesk", "builder", "fishing"].some(option => option === action)) {
+      if (enabled && ["in", "out", "overview", "pet", "plesk", "builder", "fishing", "ship"].some(option => option === action)) {
         publish({ ...state, cameraEvent: Object.freeze({ id: ++cameraEventId, action }) });
       }
     },
@@ -301,5 +317,5 @@ export function createWorldDevStore(enabled: boolean) {
 }
 
 export const worldDevStore = retainWorldDevClientState("world-controls",
-  `v1:3:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
+  `v1:4:ship-voyage:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
   () => createWorldDevStore(WORLD_DEV_ENABLED)).value;

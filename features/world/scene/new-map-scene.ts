@@ -106,7 +106,7 @@ import { drawLopukhWoodpile } from "@/features/world/characters/lopukh/lopukh-wo
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 import { drawLeaftailBoatArrival } from "@/features/world/characters/leaftail/leaftail-boat-painter";
 import { drawTradeShipSprite, TRADE_SHIP_SPRITE } from "@/features/world/objects/trade-ship/trade-ship-sprite";
-import { createTradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
+import type { TradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import { createTradeShipPreviewArtwork } from "@/features/world/dev/trade-ship-preview-artwork";
 import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-diagnostics";
 import { forestPerformanceProfiler } from "@/features/world/dev/forest-performance-profiler";
@@ -183,6 +183,7 @@ export type NewMapPaintPreview = {
   residentPresentation?: ReturnType<typeof residentScenePresentation>;
   merchantBoat?: ReturnType<typeof leaftailBoatArrivalFrame>;
   tradeShipImage?: HTMLImageElement | null;
+  tradeShipMotion?: TradeShipMotion;
 };
 
 function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
@@ -352,9 +353,9 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
       if (preview?.water && dev?.waterSurface !== false) {
         drawForestWaterDynamics(ground, world, preview.water, { dusk: weather.dusk, reducedMotion: still });
       }
-      if (WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview && preview?.tradeShipImage) {
+      if (WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview && preview?.tradeShipImage && preview.tradeShipMotion?.visible) {
         // Shared atmosphere below handles night; tinting the sprite here would darken it twice.
-        drawTradeShipSprite(ground, preview.tradeShipImage, { ...createTradeShipMotion().berth,
+        drawTradeShipSprite(ground, preview.tradeShipImage, { ...preview.tradeShipMotion,
           time: elapsed, night: 0, still, water: true });
       }
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
@@ -997,6 +998,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       residentPresentation: residentScenePresentation(state, world),
       merchantBoat: state.leaftailBoat ? leaftailBoatArrivalFrame(state.leaftailBoat) : null,
       tradeShipImage: tradeShipArtwork.getImage(),
+      tradeShipMotion: WORLD_DEV_ENABLED && !options.readOnly ? worldDevStore.getTradeShipMotion() : undefined,
       mining: forestJourneyMiningFrame(state,world,reducedMotion(options,dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),
@@ -1112,6 +1114,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (!previous) previous = now;
     if (worldFrameDue(now, previous)) {
       const step = Math.min((now - previous) / 1000, .05);
+      if (WORLD_DEV_ENABLED && !options.readOnly) worldDevStore.advanceTradeShip(step, now, Boolean(tradeShipArtwork.getImage()));
       state.elapsed += step; state.timestamp += step * 1000;
       if (state.birdStarted !== null && state.elapsed - state.birdStarted >= FOREST_BIRD_FLIGHT_DURATION) state.birdStarted = null;
       state.dusk += (Number(options.dusk) - state.dusk) * Math.min(1, step * .7);

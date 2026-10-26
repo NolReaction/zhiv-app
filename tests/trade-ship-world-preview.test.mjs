@@ -52,3 +52,45 @@ test("ship preview is temporary, resettable and unavailable from a disabled DEV 
   enabled.reset(); assert.equal(enabled.getSnapshot().tradeShipPreview, false);
   production.patch({ tradeShipPreview: true }); assert.equal(production.getSnapshot().tradeShipPreview, false);
 });
+
+test("in-game voyage commands share one clock, wait for PNG and never publish per-frame scene overrides", () => {
+  const store = createWorldDevStore(true), phases = [];
+  let changes = 0;
+  store.subscribe(() => changes++);
+  store.subscribeTradeShipPhase(() => phases.push(store.getTradeShipPhase()));
+  store.triggerTradeShip("arrive");
+  assert.equal(store.getSnapshot().tradeShipPreview, true);
+  assert.equal(store.getSnapshot().cameraEvent.action, "ship");
+  const start = store.getTradeShipMotion();
+  store.advanceTradeShip(2, 100, false); assert.equal(store.getTradeShipMotion(), start, "loading cannot consume the visible voyage");
+  store.advanceTradeShip(2, 100, true);
+  assert.equal(store.getTradeShipMotion().elapsed, 2);
+  store.advanceTradeShip(2, 100, true);
+  assert.equal(store.getTradeShipMotion().elapsed, 2, "two views cannot advance the same RAF twice");
+  assert.equal(changes, 1, "ordinary frames cannot re-enter scene configuration");
+  store.triggerTradeShip("arrive");
+  assert.equal(store.getTradeShipMotion().elapsed, 2, "repeated arrival preserves position and speed");
+  store.advanceTradeShip(100, 200, true);
+  assert.equal(store.getTradeShipPhase(), "docked");
+  store.triggerTradeShip("depart"); store.advanceTradeShip(2, 300, true);
+  const departing = store.getTradeShipMotion();
+  store.triggerTradeShip("depart"); assert.equal(store.getTradeShipMotion(), departing);
+  store.patch({ paused: true }); store.advanceTradeShip(4, 400, true);
+  assert.equal(store.getTradeShipMotion(), departing);
+  store.patch({ paused: false }); store.advanceTradeShip(100, 500, true);
+  assert.equal(store.getTradeShipPhase(), "departed"); assert.equal(store.getTradeShipMotion().visible, false);
+  assert.deepEqual(phases, ["arriving", "docked", "departing", "departed"]);
+  store.patch({ tradeShipPreview: false });
+  assert.equal(store.getTradeShipPhase(), "docked");
+  store.patch({ tradeShipPreview: true }); assert.equal(store.getTradeShipMotion().elapsed, 0);
+  store.reset(); assert.equal(store.getSnapshot().tradeShipPreview, false);
+});
+
+test("disabled DEV cannot issue ship commands or advance a voyage", () => {
+  const store = createWorldDevStore(false), initial = store.getTradeShipMotion();
+  for (const command of ["arrive", "depart", "dock"]) store.triggerTradeShip(command);
+  store.advanceTradeShip(20, 100, true); store.triggerCamera("ship");
+  assert.equal(store.getTradeShipMotion(), initial);
+  assert.equal(store.getSnapshot().tradeShipPreview, false);
+  assert.equal(store.getSnapshot().cameraEvent, null);
+});

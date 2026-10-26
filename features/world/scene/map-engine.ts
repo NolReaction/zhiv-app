@@ -10,6 +10,7 @@ import { drawRouteProps } from "@/features/world/legacy/route-props";
 import { drawBoatWreck, prepareBoatWreck } from "@/features/world/legacy/boat-wreck";
 import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
+import { tradeShipCamera } from "./trade-ship-camera";
 import { retainWorldDevClientState } from "@/features/world/dev/world-dev-hmr-cache";
 import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "@/features/world/dev/world-lighting-editor-store";
 import { createWorldLightingEditorMap, WORLD_LIGHTING_EDITOR_FOCUS_EVENT, takeWorldLightingEditorFocus, WORLD_STUDIO_CREATE_EVENT, takeWorldStudioCreate, type WorldStudioCreateKind, type WorldLightingEditorFocus } from "@/features/world/dev/world-lighting-editor-map";
@@ -34,7 +35,7 @@ export type MapInteractionCallbacks = {
   onObjectAnchorsChange?: (anchors: readonly MapObjectScreenAnchor[]) => void;
   objectMarkerHeight?: (place: MapObjectPlace) => number;
 };
-export type MapAction = "home" | "pet" | "overview" | "in" | "out" | "plesk" | "builder" | "fishing";
+export type MapAction = "home" | "pet" | "overview" | "in" | "out" | "plesk" | "builder" | "fishing" | "ship";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
 type MapFraming = "world" | "home" | "overview" | "manual" | "guide";
 type StudioViewport = { camera: Camera; framing: MapFraming };
@@ -608,6 +609,13 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function wheel(event: WheelEvent) { event.preventDefault(); pendingEditorMove = null; lightingEditor.cancel(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
   function control(action: MapAction) {
     framing = action === "home" || action === "overview" ? action : "manual";
+    if (action === "ship") {
+      if (WORLD_DEV_ENABLED && !options.readOnly && rebuilding) {
+        // Show the berth and the leftward exit together, including under the mobile HUD.
+        camera = tradeShipCamera(view, bounds, cameraInsets);
+      }
+      draw(); return;
+    }
     if (action === "plesk" || action === "builder" || action === "fishing") {
       const target = habitat.inspectPoint?.(action);
       if (target) camera = clampCamera({ ...target, zoom: Math.max(camera.zoom, focusCamera(view, true).zoom) }, view, bounds, cameraInsets);
@@ -690,7 +698,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   if (WORLD_DEV_ENABLED && !initial.readOnly) createStudioElement(takeWorldStudioCreate());
   // An absolute DEV target chosen in the circle survives opening the full map.
   if ((!retainedViewport || dev?.cameraEvent?.id !== initialCameraEventId)
-    && (dev?.cameraEvent?.action === "plesk" || dev?.cameraEvent?.action === "builder" || dev?.cameraEvent?.action === "fishing")) control(dev.cameraEvent.action);
+    && (dev?.cameraEvent?.action === "plesk" || dev?.cameraEvent?.action === "builder" || dev?.cameraEvent?.action === "fishing" || dev?.cameraEvent?.action === "ship")) control(dev.cameraEvent.action);
   const unsubscribeDev = WORLD_DEV_ENABLED && !initial.readOnly ? worldDevStore.subscribe(() => {
     if (disposed) return;
     const previousCamera = dev?.cameraEvent?.id;
