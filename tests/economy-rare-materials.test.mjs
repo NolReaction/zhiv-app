@@ -173,7 +173,8 @@ test('late warehouse gates combine a bounded relic budget with crafted goods and
   for (const target of warehouse.levels.filter(row => row.level >= 4)) {
     assert.equal(target.requiredHomeLevel, target.level <= 6 ? 4 : 5);
     assert.ok(Object.keys(target.requiredBuildings).length > 0, 'crafted materials have their source prerequisites');
-    assert.equal(target.cost.coins, 0);
+    assert.ok(target.cost.coins > warehouse.levels[target.level - 2].cost.coins,
+      'each late warehouse tier consumes an increasing earned coin budget');
     const rare = Object.entries(target.cost.items).filter(([id]) => spec.itemIds.includes(id));
     const crafted = Object.entries(target.cost.items).filter(([id]) => !spec.itemIds.includes(id));
     assert.ok(rare.length >= 1 && rare.length <= 2);

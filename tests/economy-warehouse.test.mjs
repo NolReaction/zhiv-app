@@ -42,8 +42,9 @@ const issue = (p, action, targetId, at = now) => economy.commandDevEconomy(p.tok
 test("ten warehouse tiers preserve capacity and spread small relic baskets across crafted endgame goals", () => {
   assert.deepEqual(warehouse.levels.map(level => level.level), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   assert.deepEqual(warehouse.levels.map(level => level.warehouseCapacity), capacity);
+  assert.deepEqual(warehouse.levels.map(level => level.cost.coins), [0, 200, 1500, 8000, 12000, 18000, 30000, 45000, 65000, 95000]);
   const third = warehouse.levels[2];
-  assert.deepEqual(third.cost, { coins: 600, items: { planks: 6, bricks: 6, iron_ingot: 2, cloth: 2 } });
+  assert.deepEqual(third.cost, { coins: 1500, items: { planks: 6, bricks: 6, iron_ingot: 2, cloth: 2 } });
   for (const target of warehouse.levels) {
     assert.equal(target.requiredHomeLevel, target.level <= 3 ? target.level : target.level <= 6 ? 4 : 5);
     if (target.level <= 3) assert.deepEqual(target.requiredBuildings, {});
@@ -51,7 +52,7 @@ test("ten warehouse tiers preserve capacity and spread small relic baskets acros
   for (const target of warehouse.levels.slice(0, 3))
     assert.ok(relicIds.every(id => !target.cost.items[id]));
   for (const [index, target] of warehouse.levels.slice(3).entries()) {
-    assert.equal(target.cost.coins, 0);
+    assert.ok(target.cost.coins > warehouse.levels[target.level - 2].cost.coins);
     assert.deepEqual(relicIds.map(id => target.cost.items[id] ?? 0), relicCosts[index]);
     assert.equal(Object.keys(target.cost.items).filter(id => !relicIds.includes(id)).length, 3);
     assert.equal(target.requiredHomeLevel, target.level <= 6 ? 4 : 5);
@@ -87,11 +88,11 @@ test("ordinary construction fits the base warehouse and never requires a warehou
   assert.equal(rules.economyStorage(state).capacity, 50);
 });
 
-test("warehouse two and three charge builder minutes and require the home stage that opens their materials", () => {
+test("warehouse two and three charge current prices and require the home stage that opens their materials", () => {
   const state = initial(1);
   const costs = [
-    { coins: 100, items: { planks: 3, stone: 2, rope: 2 } },
-    { coins: 600, items: { planks: 6, bricks: 6, iron_ingot: 2, cloth: 2 } },
+    { coins: 200, items: { planks: 3, stone: 2, rope: 2 } },
+    { coins: 1500, items: { planks: 6, bricks: 6, iron_ingot: 2, cloth: 2 } },
   ];
   const seconds = [600, 3600];
   let at = now;
@@ -129,17 +130,20 @@ test("warehouse two and three charge builder minutes and require the home stage 
 
 test("a developed settlement pays each crafted and relic basket exactly once through warehouse ten", () => {
   const state = initial(3);
-  state.wallet = { coins: 321, pearls: 500 };
+  const totalCoins = warehouse.levels.slice(3).reduce((sum, target) => sum + target.cost.coins, 0);
+  state.wallet = { coins: totalCoins + 321, pearls: 500 };
   state.buildings = { ...state.buildings, ...Object.fromEntries(model.economyCatalog.buildings.map(b => [b.id, b.levels.at(-1).level])), warehouse: 3 };
   state.inventory = { wood: 2 };
   for (const target of warehouse.levels.slice(3)) for (const [id, amount] of Object.entries(target.cost.items)) state.inventory[id] = (state.inventory[id] ?? 0) + amount;
   const buildings = structuredClone(state.buildings);
   let at = now;
   for (const target of warehouse.levels.slice(3)) {
-    const before = structuredClone(state.inventory);
+    const before = structuredClone(state.inventory), beforeWallet = structuredClone(state.wallet);
     direct(state, "start_construction", "warehouse", at);
     const job = state.jobs[0];
     assert.equal(job.targetLevel, target.level); assert.deepEqual(job.cost, target.cost);
+    assert.deepEqual(state.wallet, { ...beforeWallet, coins: beforeWallet.coins - target.cost.coins });
+    const paidWallet = structuredClone(state.wallet);
     for (const [id, amount] of Object.entries(target.cost.items)) assert.equal(state.inventory[id] ?? 0, before[id] - amount);
     assert.equal(state.buildings.warehouse, target.level - 1);
     assert.equal(rules.economyStorage(state).capacity, capacity[target.level - 2]);
@@ -149,9 +153,10 @@ test("a developed settlement pays each crafted and relic basket exactly once thr
     direct(state, "claim_job", job.id, at);
     assert.equal(state.buildings.warehouse, target.level);
     assert.equal(rules.economyStorage(state).capacity, capacity[target.level - 1]);
-    assert.deepEqual(state.wallet, { coins: 321, pearls: 500 });
+    assert.deepEqual(state.wallet, paidWallet, "claiming paid construction never charges its coins again");
     assert.equal(state.jobs.length, 0);
   }
+  assert.deepEqual(state.wallet, { coins: 321, pearls: 500 });
   assert.deepEqual(state.inventory, { wood: 2 });
   assert.deepEqual(state.buildings, { ...buildings, warehouse: 10 });
   const before = structuredClone(state);
@@ -162,6 +167,7 @@ test("a developed settlement pays each crafted and relic basket exactly once thr
 test("each missing material or relic blocks an advanced tier atomically in the local server adapter", () => {
   for (const target of warehouse.levels.slice(3)) for (const id of Object.keys(target.cost.items)) {
     const p = player(target.level - 1);
+    saved(p).wallet.coins = target.cost.coins;
     saved(p).inventory = { ...target.cost.items, [id]: target.cost.items[id] - 1 };
     saved(p).rareDropState = { version: 1, remainingSeconds: 1800, itemId: "living_resin" };
     const before = structuredClone(saved(p)), view = read(p);
@@ -176,6 +182,7 @@ test("advanced storage requires its house and ingredient sources before spending
       ...Object.entries(target.requiredBuildings).map(([id, level]) => [id, level, "ECONOMY_BUILDING_REQUIRED"])];
     for (const [id, level, code] of gates) {
       const p = player(target.level - 1);
+      saved(p).wallet.coins = target.cost.coins;
       saved(p).inventory = { ...target.cost.items };
       saved(p).buildings[id] = level - 1;
       const before = structuredClone(saved(p)), view = read(p);
@@ -187,16 +194,22 @@ test("advanced storage requires its house and ingredient sources before spending
 
 test("construction and claim request replays cannot spend another relic set or grant another level", () => {
   const p = player(9), target = warehouse.levels[9];
+  saved(p).wallet = { coins: target.cost.coins + 321, pearls: 50 };
   saved(p).inventory = { ...target.cost.items, wood: 5 };
   const start = request(p, "start_construction", "warehouse");
   const started = economy.commandDevEconomy(p.token, start, now), job = started.state.jobs[0];
+  assert.deepEqual(job.cost, target.cost);
+  assert.deepEqual(started.state.wallet, { coins: 321, pearls: 50 });
   assert.deepEqual(started.state.inventory, { wood: 5 });
   assert.equal(economy.commandDevEconomy(p.token, start, now + 1).replayed, true);
+  assert.deepEqual(saved(p).wallet, started.state.wallet);
   assert.equal(read(p).jobs.length, 1); assert.deepEqual(read(p).inventory, { wood: 5 });
   const end = Date.parse(job.finishesAt), claim = request(p, "claim_job", job.id, end);
   const claimed = economy.commandDevEconomy(p.token, claim, end);
+  assert.deepEqual(claimed.state.wallet, started.state.wallet);
   assert.equal(claimed.state.buildings.warehouse, 10); assert.equal(claimed.state.storage.capacity, 500);
   assert.equal(economy.commandDevEconomy(p.token, claim, end + 1).replayed, true);
+  assert.deepEqual(saved(p).wallet, started.state.wallet);
   assert.deepEqual(saved(p).inventory, { wood: 5 }); assert.equal(saved(p).buildings.warehouse, 10);
   assert.equal(read(p, end).jobs.length, 0);
   assert.throws(() => issue(p, "claim_job", job.id, end), { code: "ECONOMY_JOB_GONE" });
@@ -235,9 +248,11 @@ test("saved paid warehouse upgrades keep original costs and finish without new h
 
 test("speedup finishes warehouse ten once for the current pearl tariff without recharging paid relics", () => {
   const p = player(9), target = warehouse.levels[9];
-  saved(p).wallet = { coins: 321, pearls: 500000 };
+  saved(p).wallet = { coins: target.cost.coins + 321, pearls: 500000 };
   saved(p).inventory = { ...target.cost.items };
   const started = issue(p, "start_construction", "warehouse").state, job = started.jobs[0];
+  assert.deepEqual(job.cost, target.cost);
+  assert.deepEqual(started.wallet, { coins: 321, pearls: 500000 });
   const price = rules.constructionSpeedupPrice(job, now);
   assert.equal(price, 96); assert.deepEqual(started.inventory, {});
   const speedup = request(p, "speedup_construction", job.id, now, { totalPrice: price });
