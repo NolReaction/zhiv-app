@@ -5,9 +5,11 @@ import Link from "next/link";
 import { ArrowLeft, Download, Moon, Pause, Play, Sun } from "lucide-react";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { drawTradeShipSprite, TRADE_SHIP_SPRITE, type TradeShipSpriteFrame } from "@/features/world/objects/trade-ship/trade-ship-sprite";
-import { advanceTradeShipMotion, createTradeShipMotion, sampleTradeShipMotion, TRADE_SHIP_VOYAGE } from "@/features/world/objects/trade-ship/trade-ship-motion";
+import { drawTradeShipGangway } from "@/features/world/objects/trade-ship/trade-ship-gangway";
+import { advanceTradeShipMotion, createTradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import runtimeArt from "@/features/world/runtime-art.json";
-import { advanceTradeShipPreviewClock, commandTradeShipPreview, tradeShipPreviewCrop, tradeShipPreviewLayout, tradeShipPreviewMapSource, type TradeShipPreviewMode } from "./trade-ship-preview-model";
+import { advanceTradeShipPreviewClock, commandTradeShipPreview, sampleTradeShipPreviewLeg, tradeShipPreviewCrop, tradeShipPreviewLegProgress,
+  tradeShipPreviewLayout, tradeShipPreviewMapSource, type TradeShipPreviewLeg, type TradeShipPreviewMode } from "./trade-ship-preview-model";
 import styles from "./trade-ship-preview.module.css";
 
 const visibleSnapshot = () => !document.hidden;
@@ -43,7 +45,7 @@ function paintPreviewWater(ctx: CanvasRenderingContext2D, width: number, height:
 export function TradeShipPreview() {
   const [voyage, setVoyage] = useState(() => createTradeShipMotion());
   const motion = useRef(voyage);
-  const [leg, setLeg] = useState<"arriving" | "departing">("arriving");
+  const [leg, setLeg] = useState<TradeShipPreviewLeg>("arriving");
   const [revision, setRevision] = useState(0);
   const [mode, setMode] = useState<TradeShipPreviewMode>("detail");
   const [night, setNight] = useState(false), [playing, setPlaying] = useState(true);
@@ -58,8 +60,10 @@ export function TradeShipPreview() {
   const canvas = useRef<HTMLCanvasElement>(null), stage = useRef<HTMLDivElement>(null);
   const elapsed = useRef(0), lifetime = useRef(0);
   const moving = playing && visible && !reducedMotion && Boolean(shipImage);
-  const atSea = voyage.phase !== "docked";
-  const voyageStatus = { arriving: "Подходит к берегу", docked: "У берега", departing: "Отходит кормой", departed: "Ушёл в море" }[voyage.phase];
+  const maneuvering = voyage.phase !== "docked" && voyage.phase !== "departed";
+  const voyageProgress = Math.round(tradeShipPreviewLegProgress(voyage, leg) * 100);
+  const voyageStatus = { arriving: "Подходит к берегу", deploying: "Выдвигает мостик", docked: "У берега",
+    retracting: "Убирает мостик", departing: "Отходит кормой", departed: "Ушёл в море" }[voyage.phase];
 
   useEffect(() => {
     const owner = ++lifetime.current;
@@ -133,10 +137,14 @@ export function TradeShipPreview() {
         context.scale(layout.scale, layout.scale);
       }
       const sailing = motion.current, position = mode === "voyage" ? sailing : layout.ship;
-      if (shipImage && (mode !== "voyage" || sailing.visible)) drawTradeShipSprite(context, shipImage, { ...position, facing: "left", water: true,
-        heading: mode === "voyage" ? sailing.heading : 0,
-        velocityX: mode === "voyage" ? sailing.velocityX : 0, velocityY: mode === "voyage" ? sailing.velocityY : 0,
-        time: elapsed.current, night: Number(night), still: !moving });
+      if (shipImage && (mode !== "voyage" || sailing.visible)) {
+        const frame = { ...position, facing: "left" as const, water: true,
+          heading: mode === "voyage" ? sailing.heading : 0,
+          velocityX: mode === "voyage" ? sailing.velocityX : 0, velocityY: mode === "voyage" ? sailing.velocityY : 0,
+          time: elapsed.current, night: Number(night), still: !moving };
+        if (mode !== "detail") drawTradeShipGangway(context, { ...frame, gangway: mode === "voyage" ? sailing.gangway : 1 });
+        drawTradeShipSprite(context, shipImage, frame);
+      }
       context.restore();
     };
     paint();
@@ -149,13 +157,14 @@ export function TradeShipPreview() {
       if (mode === "voyage") {
         motion.current = advanceTradeShipMotion(motion.current, elapsed.current - before);
         const next = motion.current;
-        setVoyage(current => current.phase === next.phase && Math.round(current.progress * 100) === Math.round(next.progress * 100) ? current : next);
+        setVoyage(current => current.phase === next.phase
+          && Math.round(tradeShipPreviewLegProgress(current, leg) * 100) === Math.round(tradeShipPreviewLegProgress(next, leg) * 100) ? current : next);
       }
       previous = now; paint(); scheduled = requestAnimationFrame(tick);
     };
     scheduled = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(scheduled);
-  }, [viewport, mode, night, moving, playing, reducedMotion, mapImage, shipImage, revision]);
+  }, [viewport, mode, leg, night, moving, playing, reducedMotion, mapImage, shipImage, revision]);
 
   function voyageCommand(command: "arrive" | "depart" | "dock") {
     if (!shipImage) return;
@@ -168,8 +177,7 @@ export function TradeShipPreview() {
 
   function seekVoyage(progress: number) {
     if (!shipImage) return;
-    const duration = leg === "arriving" ? TRADE_SHIP_VOYAGE.arrivalDuration : TRADE_SHIP_VOYAGE.departureDuration;
-    const next = sampleTradeShipMotion(leg, progress / 100 * duration, motion.current.berth);
+    const next = sampleTradeShipPreviewLeg(leg, progress / 100, motion.current.berth);
     motion.current = next; setVoyage(next); setPlaying(false); setMode("voyage");
     setRevision(value => value + 1);
   }
@@ -241,17 +249,17 @@ export function TradeShipPreview() {
         <section className={styles.voyageControls} aria-label="Управление рейсом">
           <div className={styles.voyageHeading}><h2>Рейс</h2><span role="status">{voyageStatus}</span></div>
           <div className={styles.voyageActions}>
-            <button type="button" disabled={!shipImage || voyage.phase === "arriving" || voyage.phase === "departing"} onClick={() => voyageCommand("arrive")}>Приплыть</button>
-            <button type="button" disabled={!shipImage || atSea} onClick={() => voyageCommand("depart")}>Отойти</button>
+            <button type="button" disabled={!shipImage || maneuvering} onClick={() => voyageCommand("arrive")}>Приплыть</button>
+            <button type="button" disabled={!shipImage || voyage.phase !== "docked"} onClick={() => voyageCommand("depart")}>Отойти</button>
             <button type="button" disabled={!shipImage} onClick={() => voyageCommand("dock")}>В порт</button>
           </div>
-          <label className={styles.field} htmlFor="trade-ship-voyage"><span>{leg === "arriving" ? "Прибытие" : "Отход"}<output>{Math.round(voyage.progress * 100)}%</output></span>
-            <input id="trade-ship-voyage" disabled={!shipImage} type="range" min={0} max={100} step={1} value={Math.round(voyage.progress * 100)} onChange={event => seekVoyage(Number(event.target.value))} /></label>
-          <p className={styles.note}>Заход с наклоном и выравниванием. Отход вправо, затем поворот против часовой и вниз-влево.</p>
+          <label className={styles.field} htmlFor="trade-ship-voyage"><span>{leg === "arriving" ? "Прибытие и мостик" : "Мостик и отход"}<output>{voyageProgress}%</output></span>
+            <input id="trade-ship-voyage" disabled={!shipImage} type="range" min={0} max={100} step={1} value={voyageProgress} onChange={event => seekVoyage(Number(event.target.value))} /></label>
+          <p className={styles.note}>У берега мостик выдвигается. Перед отходом он полностью убирается, затем корабль идёт вправо и поворачивает вниз-влево.</p>
         </section>
         <h2>Изображение</h2>
         <button type="button" className={styles.download} disabled={!shipImage} onClick={downloadPng}><Download size={18} aria-hidden />Скачать PNG</button>
-        <p className={styles.note}>Корпус и дверь — одно изображение. Калитку и трап добавим отдельными деталями.</p>
+        <p className={styles.note}>Корпус и дверь — одно изображение. Мостик показывается на карте и в рейсе; PNG скачивается без мостика.</p>
         <p className={styles.note}>Пробный маршрут ещё не связан с торговлей и маяком.</p>
         {reducedMotion && <p className={styles.note}>В системе уменьшено движение. Рейс можно просмотреть ползунком. Автоматическое движение остановлено.</p>}
         <p className={styles.exportNotice} role="status">{exportNotice}</p>

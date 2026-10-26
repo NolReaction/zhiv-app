@@ -106,6 +106,7 @@ import { drawLopukhWoodpile } from "@/features/world/characters/lopukh/lopukh-wo
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 import { drawLeaftailBoatArrival } from "@/features/world/characters/leaftail/leaftail-boat-painter";
 import { drawTradeShipSprite, TRADE_SHIP_SPRITE } from "@/features/world/objects/trade-ship/trade-ship-sprite";
+import { drawTradeShipGangway } from "@/features/world/objects/trade-ship/trade-ship-gangway";
 import type { TradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import { createTradeShipPreviewArtwork } from "@/features/world/dev/trade-ship-preview-artwork";
 import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-diagnostics";
@@ -355,6 +356,7 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
       }
       if (WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview && preview?.tradeShipImage && preview.tradeShipMotion?.visible) {
         // Shared atmosphere below handles night; tinting the sprite here would darken it twice.
+        drawTradeShipGangway(ground, { ...preview.tradeShipMotion, time: elapsed, night: 0, still });
         drawTradeShipSprite(ground, preview.tradeShipImage, { ...preview.tradeShipMotion,
           time: elapsed, night: 0, still, water: true });
       }

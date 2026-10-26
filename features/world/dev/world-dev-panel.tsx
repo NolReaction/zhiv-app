@@ -451,7 +451,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, m
   const gardenReasons = page === "activities"
     ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   const cookingReason = page === "animation" ? unavailable({ kind: "cooking", action: "sequence" }) : null;
-  const shipMoving = state.tradeShipPreview && (tradeShipPhase === "arriving" || tradeShipPhase === "departing");
+  const shipMoving = state.tradeShipPreview && tradeShipPhase !== "docked" && tradeShipPhase !== "departed";
   function shipCommand(command: "arrive" | "depart" | "dock") {
     worldDevStore.triggerTradeShip(command);
     shortcut(() => { if (!worldView) onOpenWorld?.(); });
@@ -663,7 +663,8 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, m
         })}>К кораблю</button>
       </div>
       {state.tradeShipPreview && <p className={styles.hint} data-trade-ship-phase={tradeShipPhase}>
-        {{ arriving: "Корабль прибывает", docked: "Корабль у причала", departing: "Корабль отходит", departed: "Корабль ушёл" }[tradeShipPhase]}.
+        {{ arriving: "Корабль прибывает", deploying: "Выдвигает мостик", docked: "Корабль у причала",
+          retracting: "Убирает мостик", departing: "Корабль отходит", departed: "Корабль ушёл" }[tradeShipPhase]}.
         {state.paused || state.reducedMotion === "on" || state.reducedMotion === "auto" && prefersReducedMotion
           ? " Движение остановлено настройками сцены; «У причала» покажет корабль без анимации." : ""}
         {" "}<a href="/prototype/trade-ship">Открыть отдельный стенд ↗</a>

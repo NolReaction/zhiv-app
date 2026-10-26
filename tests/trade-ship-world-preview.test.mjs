@@ -9,6 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { createTradeShipPreviewArtwork } = await vite.ssrLoadModule("/features/world/dev/trade-ship-preview-artwork.ts");
 const { createWorldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
+const { TRADE_SHIP_GANGWAY, TRADE_SHIP_VOYAGE } = await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
   let resolve, reject;
@@ -70,16 +71,35 @@ test("in-game voyage commands share one clock, wait for PNG and never publish pe
   assert.equal(changes, 1, "ordinary frames cannot re-enter scene configuration");
   store.triggerTradeShip("arrive");
   assert.equal(store.getTradeShipMotion().elapsed, 2, "repeated arrival preserves position and speed");
-  store.advanceTradeShip(100, 200, true);
+  store.advanceTradeShip(TRADE_SHIP_VOYAGE.arrivalDuration - 2, 200, true);
+  assert.equal(store.getTradeShipPhase(), "deploying"); assert.equal(store.getTradeShipMotion().gangway, 0);
+  const deploying = store.getTradeShipMotion();
+  for (const command of ["arrive", "depart"]) {
+    store.triggerTradeShip(command); assert.equal(store.getTradeShipMotion(), deploying);
+  }
+  store.advanceTradeShip(TRADE_SHIP_GANGWAY.deployDuration / 2, 210, true);
+  assert.ok(Math.abs(store.getTradeShipMotion().gangway - .5) < 1e-8);
+  store.advanceTradeShip(TRADE_SHIP_GANGWAY.deployDuration / 2, 220, true);
   assert.equal(store.getTradeShipPhase(), "docked");
-  store.triggerTradeShip("depart"); store.advanceTradeShip(2, 300, true);
+  assert.equal(store.getTradeShipMotion().gangway, 1);
+  store.triggerTradeShip("depart");
+  assert.equal(store.getTradeShipPhase(), "retracting");
+  const retracting = store.getTradeShipMotion();
+  for (const command of ["arrive", "depart"]) {
+    store.triggerTradeShip(command); assert.equal(store.getTradeShipMotion(), retracting);
+  }
+  store.advanceTradeShip(TRADE_SHIP_GANGWAY.retractDuration / 2, 230, true);
+  assert.ok(Math.abs(store.getTradeShipMotion().gangway - .5) < 1e-8);
+  assert.equal(store.getTradeShipMotion().x, retracting.x); assert.equal(store.getTradeShipMotion().y, retracting.y);
+  store.advanceTradeShip(TRADE_SHIP_GANGWAY.retractDuration / 2, 300, true);
+  assert.equal(store.getTradeShipPhase(), "departing"); assert.equal(store.getTradeShipMotion().gangway, 0);
   const departing = store.getTradeShipMotion();
   store.triggerTradeShip("depart"); assert.equal(store.getTradeShipMotion(), departing);
   store.patch({ paused: true }); store.advanceTradeShip(4, 400, true);
   assert.equal(store.getTradeShipMotion(), departing);
   store.patch({ paused: false }); store.advanceTradeShip(100, 500, true);
   assert.equal(store.getTradeShipPhase(), "departed"); assert.equal(store.getTradeShipMotion().visible, false);
-  assert.deepEqual(phases, ["arriving", "docked", "departing", "departed"]);
+  assert.deepEqual(phases, ["arriving", "deploying", "docked", "retracting", "departing", "departed"]);
   store.patch({ tradeShipPreview: false });
   assert.equal(store.getTradeShipPhase(), "docked");
   store.patch({ tradeShipPreview: true }); assert.equal(store.getTradeShipMotion().elapsed, 0);

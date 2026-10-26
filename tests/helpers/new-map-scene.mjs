@@ -62,6 +62,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts"),
       ...await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts"),
       ...await vite.ssrLoadModule("/features/world/scene/new-map-scene.ts"),
+      ...await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-gangway.ts"),
       ...await vite.ssrLoadModule("/features/world/characters/social/forest-conversations.ts"),
       ...await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts"),
       ...await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts"),

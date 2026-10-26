@@ -25,7 +25,7 @@ export function createTradeShipWorldPreview() {
       if (!shown) return;
       if (command === "dock") replace(createTradeShipMotion());
       else if (command === "depart") replace(departTradeShip(motion));
-      else if (command === "arrive" && motion.phase !== "arriving" && motion.phase !== "departing") replace(createTradeShipMotion("arriving"));
+      else if (command === "arrive" && (motion.phase === "docked" || motion.phase === "departed")) replace(createTradeShipMotion("arriving"));
     },
     /** Only the active owning scene calls this, after its image has loaded. */
     advance(seconds: number, frame: number, imageReady: boolean) {

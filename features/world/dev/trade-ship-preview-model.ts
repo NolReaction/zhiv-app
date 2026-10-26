@@ -1,7 +1,9 @@
 import { TRADE_SHIP_SPRITE } from "@/features/world/objects/trade-ship/trade-ship-sprite";
-import { createTradeShipMotion, departTradeShip, type TradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
+import { advanceTradeShipMotion, createTradeShipMotion, departTradeShip, TRADE_SHIP_GANGWAY, TRADE_SHIP_VOYAGE,
+  type TradeShipBerth, type TradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 
 export type TradeShipPreviewMode = "detail" | "map" | "voyage";
+export type TradeShipPreviewLeg = "arriving" | "departing";
 export const TRADE_SHIP_MAP_CROP = { x: 640, y: 1020, width: 420, height: 280, worldSize: 1254 } as const;
 export const TRADE_SHIP_VOYAGE_CROP = { x: 620, y: 1000, width: 634, height: 320, worldSize: 1254 } as const;
 export const TRADE_SHIP_PREVIEW_BERTH = createTradeShipMotion().berth;
@@ -18,8 +20,34 @@ export function tradeShipPreviewMapSource(mode: TradeShipPreviewMode) {
 export function commandTradeShipPreview(state: TradeShipMotion, command: "arrive" | "depart" | "dock") {
   if (command === "dock") return createTradeShipMotion("docked", state.berth);
   if (command === "depart") return departTradeShip(state);
-  if (state.phase === "arriving" || state.phase === "departing") return state;
+  if (state.phase !== "docked" && state.phase !== "departed") return state;
   return createTradeShipMotion("arriving", state.berth);
+}
+
+const legDuration = (leg: TradeShipPreviewLeg) => leg === "arriving"
+  ? TRADE_SHIP_VOYAGE.arrivalDuration + TRADE_SHIP_GANGWAY.deployDuration
+  : TRADE_SHIP_GANGWAY.retractDuration + TRADE_SHIP_VOYAGE.departureDuration;
+
+/** The slider owns a whole leg, including its bridge animation, rather than a phase clock. */
+export function sampleTradeShipPreviewLeg(leg: TradeShipPreviewLeg, progress: number, berth: TradeShipBerth) {
+  const unit = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+  const initial = leg === "arriving" ? createTradeShipMotion("arriving", berth)
+    : departTradeShip(createTradeShipMotion("docked", berth));
+  return advanceTradeShipMotion(initial, legDuration(leg) * unit);
+}
+
+export function tradeShipPreviewLegProgress(state: TradeShipMotion, leg: TradeShipPreviewLeg) {
+  let elapsed = 0;
+  if (leg === "arriving") {
+    if (state.phase === "arriving") elapsed = state.elapsed;
+    else if (state.phase === "deploying") elapsed = TRADE_SHIP_VOYAGE.arrivalDuration + state.elapsed;
+    else return 1;
+  } else {
+    if (state.phase === "retracting") elapsed = state.elapsed;
+    else if (state.phase === "departing") elapsed = TRADE_SHIP_GANGWAY.retractDuration + state.elapsed;
+    else return state.phase === "departed" ? 1 : 0;
+  }
+  return Math.max(0, Math.min(1, elapsed / legDuration(leg)));
 }
 
 /** The preview owns its clock; leaving the tab never advances an animation. */

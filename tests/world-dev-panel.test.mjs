@@ -251,9 +251,11 @@ test("in-game ship actions focus the real map and close the drawer without accou
     assert.deepEqual(commands, ["arrive", "depart", "dock"]);
     assert.deepEqual(cameras, ["ship"]); assert.equal(opened.length, 4);
     assert.deepEqual(view.calls.actions, []); assert.deepEqual(view.calls.patches, []);
-    for (const tradeShipPhase of ["arriving", "departing"]) {
+    for (const tradeShipPhase of ["arriving", "deploying", "retracting", "departing"]) {
       const moving = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true }, tradeShipPhase });
       for (const label of ["Приплыть", "Отойти"]) assert.equal(moving.elements.find(element => element.type === "button" && labelText(element) === label).props.disabled, true);
+      if (tradeShipPhase === "deploying") assert.match(moving.markup, /Выдвигает мостик/);
+      if (tradeShipPhase === "retracting") assert.match(moving.markup, /Убирает мостик/);
     }
     const staticView = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true, reducedMotion: "on" } });
     assert.match(staticView.markup, /покажет корабль без анимации/);

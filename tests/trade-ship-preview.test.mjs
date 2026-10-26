@@ -11,10 +11,12 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { default: TradeShipPage, metadata } = await vite.ssrLoadModule("/app/prototype/trade-ship/page.tsx");
 const { TradeShipPreview } = await vite.ssrLoadModule("/features/world/dev/trade-ship-preview.tsx");
-const { advanceTradeShipPreviewClock, tradeShipPreviewLayout, TRADE_SHIP_MAP_CROP, TRADE_SHIP_VOYAGE_CROP, TRADE_SHIP_PREVIEW_BERTH, tradeShipPreviewMapSource, commandTradeShipPreview } =
+const { advanceTradeShipPreviewClock, tradeShipPreviewLayout, TRADE_SHIP_MAP_CROP, TRADE_SHIP_VOYAGE_CROP, TRADE_SHIP_PREVIEW_BERTH,
+  tradeShipPreviewMapSource, commandTradeShipPreview, sampleTradeShipPreviewLeg, tradeShipPreviewLegProgress } =
   await vite.ssrLoadModule("/features/world/dev/trade-ship-preview-model.ts");
 
-const { createTradeShipMotion, sampleTradeShipMotion, TRADE_SHIP_VOYAGE } = await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
+const { advanceTradeShipMotion, createTradeShipMotion, sampleTradeShipMotion, TRADE_SHIP_VOYAGE, TRADE_SHIP_GANGWAY } =
+  await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
 
 test("ship workshop is available only in development and stays out of search indexing", () => {
   const saved = process.env.NODE_ENV;
@@ -122,9 +124,43 @@ test("preview commands cannot restart or reverse a moving ship and reset is expl
   assert.equal(commandTradeShipPreview(departed, "depart"), departed);
   assert.equal(commandTradeShipPreview(departed, "arrive").phase, "arriving");
   const departing = commandTradeShipPreview(docked, "depart");
-  assert.equal(departing.phase, "departing");
+  assert.equal(departing.phase, "retracting");
   assert.equal(commandTradeShipPreview(departing, "arrive"), departing);
   const reset = commandTradeShipPreview(departing, "dock");
   assert.equal(reset.phase, "docked"); assert.equal(reset.speed, 0);
   assert.deepEqual(reset.berth, departing.berth);
+  assert.equal(reset.gangway, 1);
+  for (const state of [arriving, sampleTradeShipMotion("deploying", 1), departing, sampleTradeShipMotion("departing", 1)]) {
+    for (const command of ["arrive", "depart"]) assert.equal(commandTradeShipPreview(state, command), state,
+      `${command} cannot interrupt ${state.phase}`);
+  }
+});
+
+test("full-leg scrubbing includes bridge deployment/retraction and holds terminal progress at 100 percent", () => {
+  const berth = TRADE_SHIP_PREVIEW_BERTH;
+  const arrivalDuration = TRADE_SHIP_VOYAGE.arrivalDuration + TRADE_SHIP_GANGWAY.deployDuration;
+  const departureDuration = TRADE_SHIP_GANGWAY.retractDuration + TRADE_SHIP_VOYAGE.departureDuration;
+  for (const leg of ["arriving", "departing"]) {
+    const duration = leg === "arriving" ? arrivalDuration : departureDuration;
+    let state = sampleTradeShipPreviewLeg(leg, 0, berth), previous = 0;
+    for (let n = 1; n <= 1000; n++) {
+      state = advanceTradeShipMotion(state, duration / 1000);
+      const progress = tradeShipPreviewLegProgress(state, leg);
+      assert.ok(progress >= previous - 1e-10, `${leg} cannot jump backwards when a phase ends`);
+      previous = progress;
+      const sampled = sampleTradeShipPreviewLeg(leg, n / 1000, berth);
+      for (const key of ["x", "y", "gangway", "heading"]) assert.ok(Math.abs(state[key] - sampled[key]) < 1e-7);
+    }
+    assert.equal(previous, 1);
+    assert.equal(state.phase, leg === "arriving" ? "docked" : "departed");
+    assert.equal(tradeShipPreviewLegProgress(advanceTradeShipMotion(state, 20), leg), 1);
+  }
+  const deploying = sampleTradeShipPreviewLeg("arriving",
+    (TRADE_SHIP_VOYAGE.arrivalDuration + TRADE_SHIP_GANGWAY.deployDuration / 2) / arrivalDuration, berth);
+  assert.equal(deploying.phase, "deploying"); assert.ok(Math.abs(deploying.gangway - .5) < 1e-8);
+  const retracting = sampleTradeShipPreviewLeg("departing", TRADE_SHIP_GANGWAY.retractDuration / 2 / departureDuration, berth);
+  assert.equal(retracting.phase, "retracting"); assert.ok(Math.abs(retracting.gangway - .5) < 1e-8);
+  assert.equal(sampleTradeShipPreviewLeg("arriving", 1, berth).gangway, 1);
+  assert.equal(sampleTradeShipPreviewLeg("departing", 1, berth).gangway, 0);
+  assert.equal(tradeShipPreviewLegProgress(createTradeShipMotion(), "arriving"), 1);
 });
