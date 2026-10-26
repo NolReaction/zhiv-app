@@ -392,6 +392,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
       capacity: level.warehouseCapacity ?? 0, homeLevel: level.requiredHomeLevel, cost: copyCost(level.cost), seconds: level.seconds })),
     pearls: { dailyCycle: pearlDisplayAmount(progressionRewards.daily.reduce((sum, reward) => sum + reward.pearls, 0)),
       achievementLifetime: pearlDisplayAmount(Object.values(progressionRewards.achievementPearls).flat().reduce((sum, value) => sum + value, 0)),
+      renewableWeeklyPearls: [...new Set((catalog.tradeRelations?.weekly.templates ?? []).map(template => pearlDisplayAmount(template.stages.reduce((sum, stage) => sum + (stage.pearls ?? 0), 0))))].filter(value => value > 0).sort((a, b) => a - b),
       dailyRewards: progressionRewards.daily.map((reward, index) => ({ step: index + 1, pearls: pearlDisplayAmount(reward.pearls) })),
       achievementRewards: VISIBLE_GAME_ACHIEVEMENTS.map(quest => ({ id: quest.id, title: quest.title, description: quest.description,
         tiers: quest.tiers.map((target, index) => ({ level: index + 1, target,

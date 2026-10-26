@@ -38,9 +38,9 @@ class NeighborRulesTest {
         assertEquals(180L, config.firstDelaySeconds.toLong())
         assertEquals(21600L, config.staleAfterSeconds.toLong())
         assertEquals(2L, config.maxLotsPerDay)
-        assertEquals(300L, config.dailyBudgetCoins)
-        assertEquals(150L, config.maxLotCoins)
-        assertEquals(10000L, config.globalDailyBudgetCoins)
+        assertEquals(10000L, config.dailyBudgetCoins)
+        assertEquals(5000L, config.maxLotCoins)
+        assertEquals(10000000L, config.globalDailyBudgetCoins)
         assertTrue(config.allowedItemIds.all { id -> EconomyRules.catalog.items.any { it.id == id && it.tradable } })
     }
 
@@ -76,14 +76,14 @@ class NeighborRulesTest {
     }
 
     @Test fun `whole lot prices use one ceil ten step and never permit profitable resell to the neighbor`() {
-        assertEquals(20L, NeighborRules.sellPrice(10, 1, settings))
-        assertEquals(30L, NeighborRules.sellPrice(10, 2, settings))
-        assertEquals(70L, NeighborRules.sellPrice(55, 1, settings))
-        assertEquals(140L, NeighborRules.sellPrice(55, 2, settings))
-        assertEquals(10L, NeighborRules.buyCap(10, 1, settings))
-        assertEquals(50L, NeighborRules.buyCap(55, 1, settings))
-        assertEquals(110L, NeighborRules.buyCap(55, 2, settings))
-        val nominal = settings.copy(sellPriceBps = 10000)
+        assertEquals(30L, NeighborRules.sellPrice(10, 1, settings))
+        assertEquals(50L, NeighborRules.sellPrice(10, 2, settings))
+        assertEquals(130L, NeighborRules.sellPrice(55, 1, settings))
+        assertEquals(250L, NeighborRules.sellPrice(55, 2, settings))
+        assertEquals(20L, NeighborRules.buyCap(10, 1, settings))
+        assertEquals(110L, NeighborRules.buyCap(55, 1, settings))
+        assertEquals(220L, NeighborRules.buyCap(55, 2, settings))
+        val nominal = settings.copy(sellPriceBps = 10000, buyPriceBps = 10000)
         assertEquals(50L, NeighborRules.buyCap(55, 1, nominal),
             "Rounding a buyback upward would let a player split a two-item 110 coin purchase into profitable 60 coin sales")
         for (config in listOf(settings, settings.copy(sellPriceBps = 10000, buyPriceBps = 10000),
@@ -98,6 +98,28 @@ class NeighborRulesTest {
                         "${item.id}: normal seller fee cannot create a profit")
                     assertEquals(0L, purchase % 10)
                 }
+            }
+        }
+    }
+
+    @Test fun `default buybacks of every stock item cannot profit from any resident acquisition or split lot`() {
+        assertEquals(20000L,settings.buyPriceBps)
+        assertEquals(22500L,settings.sellPriceBps)
+        assertEquals(60L,NeighborRules.itemBuyCap("wood",1,settings))
+        assertEquals(10L,NeighborRules.itemBuyCap("crumb_bait",10,settings))
+        assertEquals(10L,NeighborRules.itemBuyCap("crumb_bait",10,settings.copy(buyPriceBps=100000)))
+        assertEquals(0L,NeighborRules.itemBuyCap("crumb_bait",5,settings))
+        for (id in settings.allowedItemIds) {
+            val item=EconomyRules.catalog.items.single { it.id==id }
+            for(quantity in 1L..99L) {
+                val cap=NeighborRules.itemBuyCap(id,quantity,settings)
+                val proceeds=cap-EconomyMarketRules.sellerFee(cap,500)
+                val stock=NeighborRules.sellPrice(item.baseSellPrice,quantity,settings)
+                assertTrue(proceeds<stock,"$id × $quantity: neighbor resale")
+                NeighborRules.cheapestUnitAcquisition(id)?.let { cost ->
+                    assertTrue(proceeds<cost*quantity,"$id × $quantity: another resident resale")
+                }
+                assertTrue(quantity*NeighborRules.itemBuyCap(id,1,settings)<=stock,"$id: splitting cannot help")
             }
         }
     }

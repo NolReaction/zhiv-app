@@ -141,7 +141,7 @@ test("successful claim records once and waiting after completion cannot inflate 
   const first = economy.commandDevEconomy(p.token, claim, collectAt);
   const replay = economy.commandDevEconomy(p.token, claim, collectAt + 1000);
   assert.equal(replay.replayed, true); assert.deepEqual(replay.state.progression, first.state.progression);
-  assert.equal(started.jobs[0].catalogVersion, 14);
+  assert.equal(started.jobs[0].catalogVersion, 15);
   assert.equal(first.state.progression.collections.travelSeconds, 1680);
   assert.equal(first.state.progression.collections.finds.length, 0);
   assert.deepEqual(first.state.progression.routes, { forest: 1 });

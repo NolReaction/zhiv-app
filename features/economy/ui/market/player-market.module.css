@@ -54,6 +54,7 @@
 .market button.primary:hover:not(:disabled) { background: #405d34; }
 .market .textButton { display: flex; align-items: center; justify-content: flex-start; gap: 4px; min-height: 36px; padding: 3px 0; background: transparent; border: 0; color: #526f3c; font-size: .6875rem; text-align: left; }
 .hint { display: flex; align-items: flex-start; gap: 5px; color: var(--market-muted); font-size: .6875rem; line-height: 1.45; }
+.neighborHint { display: grid; gap: 7px; min-width: 0; padding: 10px; border: 1px solid var(--market-line); border-radius: 10px; color: var(--market-muted); font-size: .6875rem; line-height: 1.5; overflow-wrap: anywhere; }
 .hint > svg { margin-top: 2px; flex-shrink: 0; }
 .shopHeading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; padding-top: 4px; }
 .shopHeading > div { display: grid; flex: 1; min-width: 0; gap: 4px; }

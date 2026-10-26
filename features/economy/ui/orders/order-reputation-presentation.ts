@@ -19,5 +19,7 @@ export function orderReputationPresentation(state: EconomyView, residentId: Orde
     nextBenefit: value.nextRank ? orderReputationBenefit(residentId, value.nextRank.bonusBps) : undefined,
     dailyOrderXpRemaining: value.dailyOrderXpRemaining,
     dailyOrderXpCap: state.catalog.tradeRelations?.dailyOrderXpCap ?? 0,
+    activityPercent: Math.floor(value.activityBps / 100),
+    potentialBenefit: orderReputationBenefit(residentId, value.rankBonusBps),
   };
 }

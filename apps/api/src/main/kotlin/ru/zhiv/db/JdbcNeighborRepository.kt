@@ -95,7 +95,11 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
             NeighborShop(economyTradeDay(at).toString(),economyTradeResetsAt(at),available,
                 if(!s.enabled) "paused" else if(!available) "market_locked" else null,visibleStock),
             NeighborBuying(s.enabled && s.autoBuyEnabled && cfg.pause==null && NeighborRules.active(at,s),s.firstDelaySeconds,s.staleAfterSeconds,
-                s.maxLotsPerDay,s.dailyBudgetCoins,s.maxLotCoins,u.usedLots,u.spentCoins))
+                s.maxLotsPerDay,s.dailyBudgetCoins,s.maxLotCoins,u.usedLots,u.spentCoins,
+                first(c,a.id),s.buyPriceBps,maxOf(0L,s.globalDailyBudgetCoins-u.globalSpentCoins),visibleItems.toList(),
+                c.economyRows("SELECT purchased_items FROM neighbor_shop_cycles WHERE user_id=? AND cycle_day=?",a.id,economyTradeDay(at)) {
+                    economyJson.decodeFromString<List<String>>(it.getString(1))
+                }.singleOrNull().orEmpty()))
     }
     override suspend fun purchase(sessionHash: ByteArray, command: EconomyCommand): EconomyResult {
         NeighborRules.validatePurchase(command)
@@ -162,7 +166,7 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
         if(!safe) return "Профиль требует проверки"
         if(!EconomyMarketRules.unlocked(state)) return "Рынок продавца закрыт"
         val item=NeighborRules.eligibleItems(state,s).find { it.id==l.itemId } ?: return "Этот товар не входит в ассортимент соседа"
-        if(l.price<=0 || l.price>s.maxLotCoins || l.price>NeighborRules.buyCap(item.baseSellPrice,l.quantity,s) ||
+        if(l.price<=0 || l.price>s.maxLotCoins || l.price>NeighborRules.itemBuyCap(l.itemId,l.quantity,s) ||
             !EconomyMarketRules.eligible(l.itemId,l.quantity,l.price,state)) return "Цена или размер партии выше лимита"
         if(c.economyRows("SELECT 1 FROM neighbor_shop_cycles WHERE user_id=? AND cycle_day=? AND purchased_items @> to_jsonb(?::text)",l.seller,economyTradeDay(at),l.itemId) { true }.isNotEmpty()) return "Этот товар сегодня куплен у соседа"
         val u=usage(c,l.seller,at)

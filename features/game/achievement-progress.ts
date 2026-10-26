@@ -4,6 +4,7 @@ import achievements from "@/apps/api/src/main/resources/world/achievements-catal
 import { personallyFoundBookCollection } from "@/features/economy/domain/collection-progress";
 
 export const GAME_ACHIEVEMENT_TARGETS = achievements.targets;
+export const LEGACY_GAME_ACHIEVEMENT_TARGETS = achievements.legacyTargets;
 // Paid production already issued before mining became an activity keeps its
 // promised recipe progress. New mining claims only increment route counters.
 const recognizedRecipes = new Set([...economyCatalog.recipes.map(recipe => recipe.id), ...achievements.legacyRecipeIds]);
@@ -27,9 +28,9 @@ export function economyAchievementProgress(state: AchievementProgressState | nul
     first_sale: confirmedSales,
     lucky_find: foundPersonally ? 1 : 0,
     patient_angler: (economyCatalog.fishing?.fish ?? []).reduce((total, fish) =>
-      Math.min(200, total + Math.min(200, state?.fishing.catches[fish.itemId] ?? 0)), 0),
-    campfire_cook: completedRecipes("dryer", 100),
+      Math.min(1000, total + Math.min(1000, state?.fishing.catches[fish.itemId] ?? 0)), 0),
+    campfire_cook: completedRecipes("dryer", 500),
     helpful_neighbor: state?.residentOrders?.completed ?? 0,
-    generous_garden: completedRecipes("garden", 200),
+    generous_garden: completedRecipes("garden", 1000),
   };
 }

@@ -26,14 +26,14 @@ class EconomyWarehouseTest {
         assertEquals((1..10).toList(), warehouse.levels.map { it.level })
         assertEquals(capacities, warehouse.levels.map { it.warehouseCapacity })
         val third = warehouse.levels[2]
-        assertEquals(EconomyCost(600, mapOf("planks" to 6L, "bricks" to 6L, "iron_ingot" to 2L, "cloth" to 2L)), third.cost)
+        assertEquals(EconomyCost(1500, mapOf("planks" to 6L, "bricks" to 6L, "iron_ingot" to 2L, "cloth" to 2L)), third.cost)
         warehouse.levels.forEach { target ->
             assertEquals(if (target.level <= 3) target.level else if (target.level <= 6) 4 else 5, target.requiredHomeLevel)
             if (target.level <= 3) assertTrue(target.requiredBuildings.isEmpty())
         }
         warehouse.levels.take(3).forEach { target -> assertTrue(relicIds.none { it in target.cost.items }) }
         warehouse.levels.drop(3).forEachIndexed { index, target ->
-            assertEquals(0L, target.cost.coins)
+            assertTrue(target.cost.coins > warehouse.levels[index + 2].cost.coins)
             assertEquals(relicCosts[index], relicIds.map { target.cost.items[it] ?: 0L })
             assertEquals(3, target.cost.items.keys.count { it !in relicIds })
             assertTrue(target.requiredBuildings.isNotEmpty())
@@ -85,7 +85,7 @@ class EconomyWarehouseTest {
     @Test fun `developed settlement pays each crafted and relic basket once through warehouse ten`() {
         val supplies = mutableMapOf("wood" to 2L)
         warehouse.levels.drop(3).forEach { target -> target.cost.items.forEach { (id, count) -> supplies[id] = (supplies[id] ?: 0L) + count } }
-        var state = developed(3).copy(wallet = EconomyWallet(321, 500), inventory = supplies)
+        var state = developed(3).copy(wallet = EconomyWallet(321 + warehouse.levels.drop(3).sumOf { it.cost.coins }, 500), inventory = supplies)
         val buildings = state.buildings
         var at = now
         for (target in warehouse.levels.drop(3)) {
@@ -93,6 +93,7 @@ class EconomyWarehouseTest {
             state = apply(state, "start_construction", "warehouse", at)
             val job = state.jobs.single()
             assertEquals(target.level, job.targetLevel); assertEquals(target.cost, job.cost)
+            assertEquals(before.wallet.coins - target.cost.coins, state.wallet.coins)
             target.cost.items.forEach { (id, amount) -> assertEquals(before.inventory.getValue(id) - amount, state.inventory[id] ?: 0L) }
             assertEquals(target.level - 1, state.buildings["warehouse"])
             assertEquals(capacities[target.level - 2], EconomyRules.storage(state).capacity)
@@ -105,10 +106,11 @@ class EconomyWarehouseTest {
             state = apply(state, "claim_job", job.id, at)
             assertEquals(target.level, state.buildings["warehouse"])
             assertEquals(capacities[target.level - 1], EconomyRules.storage(state).capacity)
-            assertEquals(EconomyWallet(321, 500), state.wallet); assertTrue(state.jobs.isEmpty())
+            assertEquals(EconomyWallet(before.wallet.coins - target.cost.coins, 500), state.wallet); assertTrue(state.jobs.isEmpty())
             assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { apply(state, "claim_job", job.id, at) }.code)
         }
         assertEquals(mapOf("wood" to 2L), state.inventory)
+        assertEquals(EconomyWallet(321, 500), state.wallet)
         assertEquals(buildings + ("warehouse" to 10), state.buildings)
         val before = economyJson.encodeToString(state)
         assertEquals("ECONOMY_MAX_LEVEL", assertFailsWith<AuthFailure> { apply(state, "start_construction", "warehouse", at) }.code)
@@ -117,7 +119,7 @@ class EconomyWarehouseTest {
 
     @Test fun `any missing crafted input or relic denies every advanced upgrade without consuming balances jobs or rare progress`() {
         for (target in warehouse.levels.drop(3)) for (id in target.cost.items.keys) {
-            val state = developed(target.level - 1).copy(inventory = target.cost.items + (id to target.cost.items.getValue(id) - 1),
+            val state = developed(target.level - 1).copy(wallet = EconomyWallet(target.cost.coins), inventory = target.cost.items + (id to target.cost.items.getValue(id) - 1),
                 rareDropState = EconomyRareDropClock(1, 1800, "living_resin"))
             val before = economyJson.encodeToString(state)
             assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(state, "start_construction", "warehouse") }.code)
@@ -131,7 +133,7 @@ class EconomyWarehouseTest {
                 target.requiredBuildings.map { (id, level) -> Triple(id, level, "ECONOMY_BUILDING_REQUIRED") }
             for ((id, level, code) in gates) {
                 val ready = developed(target.level - 1)
-                val state = ready.copy(inventory = target.cost.items, buildings = ready.buildings + (id to level - 1))
+                val state = ready.copy(wallet = EconomyWallet(target.cost.coins), inventory = target.cost.items, buildings = ready.buildings + (id to level - 1))
                 val before = economyJson.encodeToString(state)
                 assertEquals(code, assertFailsWith<AuthFailure> { apply(state, "start_construction", "warehouse") }.code)
                 assertEquals(before, economyJson.encodeToString(state))
@@ -182,7 +184,7 @@ class EconomyWarehouseTest {
 
     @Test fun `speedup can finish warehouse ten but never recharges its paid relic cost`() {
         val target = warehouse.levels.last()
-        val state = developed(9).copy(wallet = EconomyWallet(321, 500000), inventory = target.cost.items)
+        val state = developed(9).copy(wallet = EconomyWallet(target.cost.coins + 321, 500000), inventory = target.cost.items)
         val started = apply(state, "start_construction", "warehouse")
         val job = started.jobs.single()
         assertTrue(started.inventory.isEmpty())
@@ -190,7 +192,8 @@ class EconomyWarehouseTest {
         val finished = apply(started, "speedup_construction", job.id, totalPrice = price)
         assertEquals(10, finished.buildings["warehouse"]); assertEquals(500L, EconomyRules.storage(finished).capacity)
         assertTrue(finished.jobs.isEmpty()); assertTrue(finished.inventory.isEmpty())
-        assertEquals(state.wallet.coins, finished.wallet.coins); assertEquals(state.wallet.pearls - price, finished.wallet.pearls)
+        assertEquals(321L, started.wallet.coins); assertEquals(started.wallet.coins, finished.wallet.coins)
+        assertEquals(state.wallet.pearls - price, finished.wallet.pearls)
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
             apply(finished, "speedup_construction", job.id, totalPrice = price)
         }.code)

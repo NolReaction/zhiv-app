@@ -68,9 +68,9 @@ test("second-stage basic production and construction keep unit counts, exact tim
     assert.deepEqual(entry.rewards, outputs); assert.equal(entry.requiredBuildings.quarry, quarry); assert.equal(entry.requiredHomeLevel, 2);
   }
   for (const [id, level, seconds, coins, items] of [
-    ["quarry", 1, 300, 50, { wood: 2, planks: 2 }], ["quarry", 2, 1200, 200, { planks: 3, stone: 3, rope: 2 }],
-    ["warehouse", 2, 600, 100, { planks: 3, stone: 2, rope: 2 }], ["kiln", 1, 600, 100, { planks: 2, stone: 4, clay: 2 }],
-    ["home", 3, 7200, 1200, { planks: 12, bricks: 12, rope: 8, stone: 8 }],
+    ["quarry", 1, 300, 50, { wood: 2, planks: 2 }], ["quarry", 2, 1200, 500, { planks: 3, stone: 3, rope: 2 }],
+    ["warehouse", 2, 600, 200, { planks: 3, stone: 2, rope: 2 }], ["kiln", 1, 600, 100, { planks: 2, stone: 4, clay: 2 }],
+    ["home", 3, 7200, 2400, { planks: 12, bricks: 12, rope: 8, stone: 8 }],
   ]) {
     const entry = model.economyCatalog.buildings.find(building => building.id === id).levels.find(entry => entry.level === level);
     assert.equal(entry.seconds, seconds); assert.deepEqual(entry.cost, { coins, items });

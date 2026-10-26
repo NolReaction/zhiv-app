@@ -25,12 +25,12 @@ test("all five residents have bounded useful reputation with complete ordinary a
   assert.equal(report.orders.length, 163);
   assert.equal(report.weekly.length, 13);
   assert.equal(report.weekly.flatMap(order => order.stages).length, 39);
-  assert.equal(report.pacing.finalXp, 4200);
-  assert(report.pacing.optimisticEarliestElapsedDays >= 42);
-  assert.equal(report.pacing.maximumDailyOrdinaryXp, 60);
+  assert.equal(report.pacing.finalXp, 1600);
+  assert(report.pacing.optimisticEarliestElapsedDays >= 4);
+  assert.equal(report.pacing.maximumDailyOrdinaryXp, 180);
   assert.equal(report.pacing.maximumDailyPurchaseXp, 2);
   const samples = report.pacing.residents.flatMap(resident => resident.scenarios);
-  assert(samples.every(sample => sample.approximateWeeksToMaximum >= 7 && sample.approximateWeeksToMaximum <= 18));
+  assert(samples.every(sample => sample.approximateWeeksToMaximum >= 1 && sample.approximateWeeksToMaximum <= 5));
 });
 
 test("total work includes drying ingredients and basic acquisition without counting miner occupancy twice", () => {
@@ -38,7 +38,7 @@ test("total work includes drying ingredients and basic acquisition without count
   const snack = effort(c.food.orders.templates.find(order => order.id === "builder_trail_snack"));
   assert.equal(snack.manufacturingSeconds, 15 * 60);
   assert.equal(snack.effortSeconds, 2148);
-  assert.equal(snack.reputationXp, 7);
+  assert.equal(snack.reputationXp, 14);
   assert.equal(snack.fishingUncertain, false);
   const ore = effort({ id: "ore_clock", requiredHomeLevel: 3, requiredBuildings: { quarry: 2 }, items: { ore: 2 } });
   assert.equal(ore.effortSeconds, 2 * 600, "two ten-minute mining jobs count once each, not once per actor and station");
@@ -67,12 +67,12 @@ test("a cyclic expedition alternative cannot hide valid basic ingredient acquisi
 });
 
 test("reputation scales with work while every ordinary award remains small", () => {
-  assert.deepEqual([60, 300, 3600, 43200].map(reputationXpForEffort), [5, 5, 8, 30]);
-  assert.equal(reputationXpForEffort(60 * 2 ** 30), 30);
+  assert.deepEqual([60, 300, 3600, 43200].map(seconds => reputationXpForEffort(seconds)), [10, 10, 16, 60]);
+  assert.equal(reputationXpForEffort(60 * 2 ** 30), 60);
   assert.throws(() => reputationXpForEffort(0), /positive whole seconds/);
   assert.throws(() => reputationXpForEffort(.5), /positive whole seconds/);
   assert(new Set(report.orders.map(order => order.reputationXp)).size >= 5);
-  assert(report.orders.every(order => order.reputationXp >= 4 && order.reputationXp <= 30));
+  assert(report.orders.every(order => order.reputationXp >= 8 && order.reputationXp <= 60));
 });
 
 test("every fully purchasable ordinary or weekly basket remains unprofitable at maximum loyalty", () => {
@@ -102,7 +102,7 @@ test("optional weekly deadlines exclude legendary catches and remain three indiv
   for (const weekly of report.weekly) {
     assert.equal(weekly.stages.length, 3);
     assert(weekly.stages.every(stage => stage.coins > 0 && stage.reputationXp > 0));
-    assert(weekly.reputationXp >= 60 && weekly.reputationXp <= 300);
+    assert(weekly.reputationXp >= 120 && weekly.reputationXp <= 600);
     assert.equal(weekly.coins, weekly.stages.reduce((sum, stage) => sum + stage.coins, 0));
     assert.equal(weekly.effortSeconds, weekly.stages.reduce((sum, stage) => sum + stage.effortSeconds, 0));
     assert(weekly.stages.every(stage => !Object.keys(stage.items).some(id => ["fish_rare", "fish_epic", "fish_legendary"].includes(id))));

@@ -61,7 +61,10 @@ export const neighborViewSchema = z.object({
   character: z.object({ id: z.literal("berest"), kind: z.literal("world_character"), name: z.string().min(1).max(40), description: z.string().max(240), world: neighborWorldSchema }).strict(),
   shop: z.object({ cycleId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), refreshAt: clock, available: z.boolean(), reason: z.string().nullable(), offers: z.array(neighborOfferSchema).max(stockIds.size) }).strict(),
   buying: z.object({ enabled: z.boolean(), firstDelaySeconds: count, staleAfterSeconds: count,
-    maxLotsPerDay: count, dailyBudgetCoins: count, maxLotCoins: count, usedLots: count, spentCoins: count }).strict(),
+    maxLotsPerDay: count, dailyBudgetCoins: count, maxLotCoins: count, usedLots: count, spentCoins: count,
+    firstSale: z.boolean().nullish(), buyPriceBps: count.nullish(), globalRemainingCoins: count.nullish(),
+    allowedItemIds: z.array(itemId).max(stockIds.size).nullish(), boughtItemIds: z.array(itemId).max(stockIds.size).nullish(),
+  }).strict(),
 }).strict().superRefine((value, context) => {
   if (value.shop.available !== (value.shop.reason === null))
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["shop", "available"], message: "Inconsistent shop availability" });

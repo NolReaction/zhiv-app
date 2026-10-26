@@ -21,7 +21,7 @@ import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order"
 import { ensureStageOrders, stageOrdersProgress } from "@/features/economy/domain/stage-orders";
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "@/features/economy/domain/item-unlocks";
 import { foodState } from "@/features/economy/domain/food";
-import { tradeRelationsState } from "@/features/economy/domain/trade-relations";
+import { migrateTradeActivity, tradeRelationsState } from "@/features/economy/domain/trade-relations";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
@@ -77,6 +77,7 @@ function profile(token: string | undefined, now: number) {
     store().profiles.set(owner, value);
   }
   normalizeCurrency(value);
+  migrateTradeActivity(value.state, now);
   value.state.fishing ??= fishingState({});
   normalizeFishStockInventory(value.state);
   value.state.wardrobe = wardrobeOwned(value.state.wardrobe, getDevLegacyWardrobe(owner));
@@ -569,7 +570,10 @@ export function getDevEconomyNeighbor(token: string | undefined, now = Date.now(
     shop: { cycleId: day, refreshAt: marketBudgetReset(now), available: reason === null, reason, offers: structuredClone(offers) },
     buying: { enabled: settings.enabled && settings.autoBuyEnabled && neighborActiveHour(settings, now), firstDelaySeconds: settings.firstDelaySeconds,
       staleAfterSeconds: settings.staleAfterSeconds, maxLotsPerDay: settings.maxLotsPerDay, dailyBudgetCoins: settings.dailyBudgetCoins,
-      maxLotCoins: settings.maxLotCoins, usedLots: usage.usedLots, spentCoins: usage.spentCoins },
+      maxLotCoins: settings.maxLotCoins, usedLots: usage.usedLots, spentCoins: usage.spentCoins,
+      firstSale: !devNeighborExperienced(owner) && !getDevConfirmedMarketSales(owner), buyPriceBps: settings.buyPriceBps,
+      globalRemainingCoins: Math.max(0, settings.globalDailyBudgetCoins - devNeighborGlobalSpent(now)),
+      allowedItemIds: [...visibleItems], boughtItemIds: [...devNeighborBoughtItems(owner, now)] },
   };
 }
 

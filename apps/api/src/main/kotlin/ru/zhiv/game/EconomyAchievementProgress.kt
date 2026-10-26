@@ -21,10 +21,10 @@ internal fun economyAchievementProgress(state: EconomyState?, confirmedSale: Boo
         "first_sale" to if (confirmedSale) 1L else 0L,
         "lucky_find" to if (state != null && EconomyCollectionProgress.personallyFound(state.progression.collections, inheritedFinds)) 1L else 0L,
         "patient_angler" to EconomyRules.catalog.fishing?.fish.orEmpty().fold(0L) { total, fish ->
-            minOf(200L, total + minOf(200L, state?.fishing?.catches?.get(fish.itemId) ?: 0L)) },
-        "campfire_cook" to completedRecipes("dryer", 100L),
+            minOf(1000L, total + minOf(1000L, state?.fishing?.catches?.get(fish.itemId) ?: 0L)) },
+        "campfire_cook" to completedRecipes("dryer", 500L),
         "helpful_neighbor" to (state?.residentOrders?.completed ?: 0L),
-        "generous_garden" to completedRecipes("garden", 200L),
+        "generous_garden" to completedRecipes("garden", 1000L),
     )
 }
 
@@ -37,4 +37,11 @@ internal fun achievementWithTiers(id: String, progress: Long, dates: Map<Int, St
     }
     val current = tiers.firstOrNull { it.unlockedAt == null } ?: tiers.last()
     return GameAchievement(id, current.progress, current.target, tiers.first().unlockedAt, tiers)
+}
+
+/** A cached client must receive exactly the target set it can parse. */
+internal fun legacyAchievementView(value: GameAchievement): GameAchievement {
+    val tiers = value.tiers.take(GameRewards.legacyTiers.getValue(value.id).size)
+    val current = tiers.firstOrNull { it.unlockedAt == null } ?: tiers.last()
+    return value.copy(progress = current.progress, target = current.target, tiers = tiers)
 }

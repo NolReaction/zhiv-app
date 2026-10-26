@@ -94,7 +94,7 @@
 | Подготовить обнуление игры, сохранив входы и друзей | [Сброс игрового прогресса](operations/reset-game-progress.md) — preview, проверенная копия и границы старых клиентов |
 | Намеренно очистить БД или пользовательские данные | [Сброс БД](operations/reset-database.md) · [сброс данных](operations/reset-user-data.md) — не часть обычного обновления |
 
-Текущие цены и правила — в [экономике времени v13](game/economy-time-v13.md), [экономической основе](game/economy-foundation.md), [наградах и реликвиях](game/rewards-and-relics.md), [еде и заказах](game/food-and-orders.md).
+Текущие цены и правила — в [строительстве v15](game/economy-v15-construction.md), [поручениях и репутации v15](game/economy-v15-relations.md), [распределении жемчуга](game/pearl-reward-distribution.md), [рынке Береста v15](game/economy-v15-neighbor.md), [экономической основе](game/economy-foundation.md), [наградах и реликвиях](game/rewards-and-relics.md), [еде и заказах](game/food-and-orders.md).
 
 ## История и материалы
 
@@ -109,6 +109,7 @@
 
 При изменении поведения обновляйте соответствующую инструкцию и справку игрока, если правило видно пользователю. Текущее состояние незавершённой работы хранится в [WORK_STATE.md](../WORK_STATE.md), подробная история — в коммитах.
 
-- [Экономика v14: баланс, слоты, награды и сохранения](game/economy-v14.md)
-- [Воспроизводимые прохождения и режимы многочасовой игры](game/economy-v14-final-simulation.md)
+- [Экономика v14: предыдущий баланс, слоты, награды и сохранения](game/economy-v14.md)
+- [Исторические прохождения v14](game/economy-v14-final-simulation.md)
+- [Текущие прохождения v15](game/economy-v15-final-simulation.md)
 - [Редкости и поздняя кладовая: отдельный расчёт](game/economy-v14-relic-audit.md)

@@ -4,16 +4,17 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 @Serializable private data class AchievementCatalog(val version: Int, val targets: Map<String, List<Long>>,
-    val legacyRecipeIds: List<String> = emptyList())
+    val legacyRecipeIds: List<String> = emptyList(), val legacyTargets: Map<String, List<Long>>)
 
 object GameRewards {
     val items = linkedMapOf("flower" to 3L, "leaf_bed" to 7L, "keepsakes" to 14L, "leaf_garland" to 30L)
     private val catalog = Json.decodeFromString<AchievementCatalog>(checkNotNull(GameRewards::class.java
         .getResourceAsStream("/world/achievements-catalog.json")).bufferedReader().use { it.readText() })
     val tiers = catalog.targets
+    val legacyTiers = catalog.legacyTargets
     val achievements = tiers.mapValues { (_, targets) -> targets.last() }
     val legacyRecipeIds = catalog.legacyRecipeIds.toSet()
-    init { require(catalog.version == 6 && tiers.size == 19 && tiers.values.all { targets ->
+    init { require(catalog.version == 7 && tiers.size == 19 && tiers.values.all { targets ->
         targets.isNotEmpty() && targets.size <= 4 && targets.first() > 0 && targets.zipWithNext().all { (a, b) -> a < b }
-    }) }
+    } && legacyTiers.keys == tiers.keys && legacyTiers.all { (id,targets) -> tiers.getValue(id).take(targets.size) == targets }) }
 }

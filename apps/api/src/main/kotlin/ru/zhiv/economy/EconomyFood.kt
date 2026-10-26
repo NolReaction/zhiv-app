@@ -123,7 +123,7 @@ object EconomyFood {
             })
             require(orders.templates.any { it.requiredHomeLevel == 1 && it.requiredBuildings.isEmpty() })
             require(orders.templates.all { template ->
-                (template.reputationXp == null || template.reputationXp in 0..30) &&
+                (template.reputationXp == null || template.reputationXp in 0..(if (catalog.version >= 15) 60 else 30)) &&
                 (template.effortSeconds == null || template.effortSeconds in 0L..31_536_000L) &&
                 (template.manufacturingSeconds == null || template.manufacturingSeconds in 0L..(template.effortSeconds ?: 31_536_000L))
             })

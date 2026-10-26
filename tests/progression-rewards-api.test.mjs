@@ -29,7 +29,7 @@ after(async () => { delete globalThis.__rewardTestToken; if (initialMode == null
 const read = (suffix = "") => new Request(`http://localhost:3000/api/v1/game/rewards${suffix}`);
 const player = () => { const p = enterGame(identities.createDevIdentity("Мохлик", crypto.randomUUID())); globalThis.__rewardTestToken = p.token; return p; };
 const command = p => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, kind: "daily" });
-const post = (body, headers = {}) => new Request("http://localhost:3000/api/v1/game/rewards/claims", { method: "POST",
+const post = (body, headers = {}) => new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=8", { method: "POST",
   headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...(activePresence.has(globalThis.__rewardTestToken) ? { "X-Game-Presence": activePresence.get(globalThis.__rewardTestToken) } : {}), ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
 
 test("rewards require session and expose no-store private state without issuing a gift", async () => {
@@ -41,7 +41,7 @@ test("rewards require session and expose no-store private state without issuing 
   assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
   assert.deepEqual(opened.daily.cycle.map(row => row.reward.coins), [30, 30, 40, 40, 50, 50, 80]);
   assert.equal(opened.daily.cycle.reduce((sum, row) => sum + row.reward.pearls, 0), 140);
-  assert.equal(opened.achievementRewards.reduce((sum, row) => sum + row.pearls, 0), 3000);
+  assert.equal(opened.achievementRewards.reduce((sum, row) => sum + row.pearls, 0), 1860);
   assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
   assert.equal((await GET(read("?step=7"))).status, 400);
 });
@@ -134,31 +134,41 @@ test("reward reads negotiate new activity rows while cached clients retain their
   const current = await (await GET(read("?catalog=5"))).json();
   const previous = await (await GET(read("?catalog=6"))).json();
   assert.equal(previous.catalogVersion, 6);
-  const latest = await (await GET(read("?catalog=7"))).json();
-  assert.equal(latest.catalogVersion, 7);
-  assert.equal(latest.achievementRewards.length, 33);
+  const latest = await (await GET(read("?catalog=8"))).json();
+  assert.equal(latest.catalogVersion, 8);
+  assert.equal(latest.achievementRewards.length, 40);
   assert.deepEqual(latest.daily.cycle, current.daily.cycle);
   assert.equal(legacy.catalogVersion, 4); assert.equal(legacy.achievementRewards.length, 21);
   assert.equal(current.catalogVersion, 5); assert.equal(current.achievementRewards.length, 33);
   assert.deepEqual(current.achievementRewards.slice(0, 21), legacy.achievementRewards);
-  for (const suffix of ["?catalog=8", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
+  for (const suffix of ["?catalog=9", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
     assert.equal((await GET(read(suffix))).status, 400);
   }
 });
 
-test("claim reply negotiation preserves one receipt across old and new cached clients", async () => {
-  const p = player(), request = command(p);
-  const legacy = await (await POST(post(request))).json();
-  const nextRequest = new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=5", post(request));
-  const response = await POST(nextRequest), current = await response.json();
-  assert.equal(response.status, 200); assert.equal(current.replayed, true);
-  assert.deepEqual(current.claim, legacy.claim); assert.deepEqual(current.economy.wallet, legacy.economy.wallet);
-  assert.equal(legacy.rewards.achievementRewards.length, 21);
-  assert.equal(current.rewards.catalogVersion, 5); assert.equal(current.rewards.achievementRewards.length, 33);
-  assert.equal(api.gameRewardResultSchema.safeParse(current).success, true);
-  const latest = await (await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=6", post(request)))).json();
-  assert.equal(latest.rewards.catalogVersion, 6); assert.equal(latest.replayed, true);
-  assert.deepEqual(latest.claim, legacy.claim); assert.deepEqual(latest.economy.wallet, legacy.economy.wallet);
+test("old reward claims require an update before any new payout and keep accepted receipts intact", async () => {
+  const p = player(), request = command(p), before = economy.getDevEconomy(p.token);
+  for (const suffix of ["", "?catalog=4", "?catalog=5", "?catalog=6", "?catalog=7"]) {
+    const denied = await POST(new Request(`http://localhost:3000/api/v1/game/rewards/claims${suffix}`, post(request)));
+    assert.equal(denied.status, 409);
+    assert.equal(denied.headers.get("Cache-Control"), "no-store");
+    const error = await denied.json();
+    assert.equal(error.code, "APP_UPDATE_REQUIRED"); assert.match(error.message, /Обновите приложение/);
+    assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
+    assert.equal(economy.getDevEconomy(p.token).revision, before.revision);
+    assert.equal((await (await GET(read(suffix))).json()).daily.lastClaimAt, null);
+  }
+  const paidResponse = await POST(post(request)), paid = await paidResponse.json();
+  assert.equal(paidResponse.status, 200); assert.equal(paid.replayed, false);
+  assert.equal(paid.rewards.catalogVersion, 8); assert.equal(paid.rewards.achievementRewards.length, 40);
+  assert.equal(api.gameRewardResultSchema.safeParse(paid).success, true);
+  const staleRetry = await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=7", post(request)));
+  assert.equal(staleRetry.status, 409); assert.equal((await staleRetry.json()).code, "APP_UPDATE_REQUIRED");
+  assert.deepEqual(economy.getDevEconomy(p.token).wallet, paid.economy.wallet);
+  const replay = await (await POST(post(request))).json();
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, paid.claim);
+  assert.deepEqual(replay.economy.wallet, paid.economy.wallet);
+  assert.equal(replay.acceptedRevision, paid.acceptedRevision);
   const bad = await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=5&catalog=5", post(command(p))));
   assert.equal(bad.status, 400);
 });

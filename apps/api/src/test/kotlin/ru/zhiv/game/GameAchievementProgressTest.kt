@@ -61,7 +61,7 @@ class GameAchievementProgressTest {
         val first="2026-01-01T00:00:00Z"
         val partial=achievementWithTiers("explorer",0,mapOf(1 to first))
         assertEquals(first,partial.unlockedAt); assertEquals(50L,partial.target); assertEquals(10L,partial.progress)
-        assertEquals(listOf(first,null,null),partial.tiers.map { it.unlockedAt })
+        assertEquals(listOf(first,null,null,null),partial.tiers.map { it.unlockedAt })
         val full=achievementWithTiers("home_builder",1,(1..4).associateWith { first })
         assertEquals(5L,full.progress); assertEquals(5L,full.target)
         assertTrue(full.tiers.all { it.progress==it.target })
@@ -84,7 +84,7 @@ class GameAchievementProgressTest {
             fishing = state.fishing.copy(catches = mapOf("fish" to Long.MAX_VALUE, "fish_silverfin" to Long.MAX_VALUE)),
             progression = state.progression.copy(recipes = mapOf("cook_grilled_fish" to Long.MAX_VALUE, "cook_compote" to Long.MAX_VALUE,
                 "grow_berries" to Long.MAX_VALUE, "grow_strawberries" to Long.MAX_VALUE))))
-        assertEquals(200L, huge["patient_angler"]); assertEquals(100L, huge["campfire_cook"]); assertEquals(200L, huge["generous_garden"])
+        assertEquals(1000L, huge["patient_angler"]); assertEquals(500L, huge["campfire_cook"]); assertEquals(1000L, huge["generous_garden"])
     }
 
 }

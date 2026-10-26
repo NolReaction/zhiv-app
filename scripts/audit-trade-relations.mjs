@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { residentOrderPricing } from "./lib/resident-order-pricing.mjs";
-import { reputationXpForEffort, tradeGuaranteedBuildings, tradeOrderEffort, tradeResidentIds, tradeSourceAvailability } from "./lib/trade-relations-effort.mjs";
+import { reputationXpForEffort, weeklyReputationXpForEffort, weeklyPearlsForEffort, tradeGuaranteedBuildings, tradeOrderEffort, tradeResidentIds, tradeSourceAvailability } from "./lib/trade-relations-effort.mjs";
 
 const sum = values => values.reduce((total, value) => total + value, 0);
 const signature = items => JSON.stringify(Object.entries(items).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
@@ -15,11 +15,11 @@ export function auditTradeRelations(catalog) {
   const config = catalog.tradeRelations;
   assert(config?.version === 1, "Trading relations catalog is required");
   assert.equal(config.maxBonusBps, 1000, "Reputation benefits must never exceed ten percent");
-  assert.deepEqual(config.ranks.map(rank => rank.requiredXp), [0, 150, 600, 1800, 4200]);
+  assert.deepEqual(config.ranks.map(rank => rank.requiredXp), catalog.version >= 15 ? [0, 100, 350, 800, 1600] : [0, 150, 600, 1800, 4200]);
   assert.deepEqual(config.ranks.map(rank => rank.bonusBps), [0, 200, 400, 700, 1000]);
   assert.equal(new Set(config.ranks.map(rank => rank.id)).size, 5);
   assert(config.ranks.every(rank => rank.name.length > 0));
-  assert.equal(config.dailyOrderXpCap, 60);
+  assert.equal(config.dailyOrderXpCap, catalog.version >= 15 ? 180 : 60);
   assert.equal(config.purchaseXp, 1);
   assert.equal(config.dailyPurchaseXpCap, 2);
   assert.equal(config.weekly.durationSeconds, 7 * 86400);
@@ -61,8 +61,8 @@ export function auditTradeRelations(catalog) {
     const intrinsic = effort(template), pricing = quote(template);
     for (const key of ["effortSeconds", "manufacturingSeconds", "fishingUncertain"])
       assert.equal(template[key], intrinsic[key], `${template.id}: incorrect ${key}`);
-    if (!weekly) assert.equal(template.reputationXp, reputationXpForEffort(intrinsic.effortSeconds), `${template.id}: incorrect reputation reward`);
-    else assert.equal(template.reputationXp, Math.min(100, Math.max(20, 10 + Math.ceil(intrinsic.effortSeconds / 600))),
+    if (!weekly) assert.equal(template.reputationXp, reputationXpForEffort(intrinsic.effortSeconds, catalog.version), `${template.id}: incorrect reputation reward`);
+    else assert.equal(template.reputationXp, weeklyReputationXpForEffort(intrinsic.effortSeconds, catalog.version),
       `${template.id}: weekly XP must follow occupied work within its cap`);
     assert.equal(template.coins, pricing.coins, `${template.id}: coin payout must preserve the manufacturing policy`);
     const npcPurchaseCoins = Object.keys(template.items).every(itemId => npcPrices.has(itemId))
@@ -93,7 +93,8 @@ export function auditTradeRelations(catalog) {
     assert.equal(template.stages.length, 3, `${template.id}: weekly work needs exactly three stages`);
     const stages = template.stages.map(stage => auditBasket({ ...template, ...stage }, true));
     const reputationXp = sum(stages.map(stage => stage.reputationXp));
-    assert(reputationXp >= 60 && reputationXp <= 300, `${template.id}: weekly reputation out of bounds`);
+    if (catalog.version >= 15) assert.deepEqual(stages.map(stage => stage.pearls), [0, 0, weeklyPearlsForEffort(sum(stages.map(stage => stage.effortSeconds)))], `${template.id}: difficulty must set only the final pearl reward`);
+    assert(reputationXp >= (catalog.version >= 15 ? 120 : 60) && reputationXp <= (catalog.version >= 15 ? 600 : 300), `${template.id}: weekly reputation out of bounds`);
     // Optional specialist weeklies may use named fish dishes, with expected
     // acquisition disclosed above. Legendary RNG remains outside deadlines.
     const forbidden = ["fish_legendary", "legendary_fish"];
@@ -128,7 +129,7 @@ export function auditTradeRelations(catalog) {
   const ceilingAtDay = day => (day + 2) * (config.dailyOrderXpCap + config.dailyPurchaseXpCap)
     + (Math.floor(day / 7) + 1) * weeklyMax;
   while (ceilingAtDay(optimisticEarliestElapsedDays) < finalXp) optimisticEarliestElapsedDays++;
-  assert(optimisticEarliestElapsedDays >= 42, "Maximum reputation must require at least six weeks even at every cap");
+  assert(optimisticEarliestElapsedDays >= (catalog.version >= 15 ? 4 : 42), "Maximum reputation must respect the bounded daily and weekly budgets");
   const pacing = tradeResidentIds.map(residentId => {
     const dailyMedianXp = median(orders.filter(order => order.residentId === residentId).map(order => order.reputationXp));
     const ownWeeklies = weekly.filter(template => template.residentId === residentId);

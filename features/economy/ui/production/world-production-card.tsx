@@ -35,9 +35,9 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
   const results = Object.entries(recipe.rewards);
   const title = results.length === 1 ? itemName(state, results[0][0]) : recipe.name.split(" · ")[0];
   const firstHarvest = tutorialHarvestActive && canPrepareTutorialHarvest(state, recipe.id);
-  const tradeSpeedBps = recipe.buildingId === "woodlot" ? tradeRelationBonusBps(state, "lopukh", state.catalog) : 0;
+  const tradeSpeedBps = recipe.buildingId === "woodlot" ? tradeRelationBonusBps(state, "lopukh", state.catalog, economy.now) : 0;
   const duration = firstHarvest ? "Сразу · первый урожай" : worldRecipeDuration(recipe.buildingId === "woodlot"
-    ? tradeWorkDuration(state, recipe.seconds, "lopukh", 0, state.catalog) : recipe.seconds);
+    ? tradeWorkDuration(state, recipe.seconds, "lopukh", 0, state.catalog, economy.now) : recipe.seconds);
   const reason = worldProductionReason(state, recipe, 1);
   const accessReason = worldRecipeAccessReason(state, recipe);
   const recipeCost = worldRecipeCost(state, recipe);

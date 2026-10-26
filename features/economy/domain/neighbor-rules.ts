@@ -1,4 +1,4 @@
-import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, type EconomyMarketListing, type EconomyState } from "./model";
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, type EconomyCatalog, type EconomyMarketListing, type EconomyState } from "./model";
 import { economyMarketUnlocked, marketDay, marketItemUnlocked, marketListingEligible } from "./market-rules";
 import type { NeighborSettings } from "./neighbor-model";
 
@@ -24,11 +24,39 @@ export function neighborOfferPrice(itemId: string, quantity: number, settings: N
   return value !== null && value <= BigInt(ECONOMY_MAX_BALANCE) ? Number(value) : Infinity;
 }
 /** Seller market limits still apply; rounding down preserves the administrator's maximum quote. */
-export function neighborBuyPriceCeiling(itemId: string, quantity: number, settings: NeighborSettings): number {
-  const item = economyCatalog.items.find(item => item.id === itemId && item.tradable);
+export function neighborBuyPriceCeiling(itemId: string, quantity: number, settings: Pick<NeighborSettings, "buyPriceBps">,
+  catalog: EconomyCatalog = economyCatalog): number {
+  const item = catalog.items.find(item => item.id === itemId && item.tradable);
   if (!item) return 0;
   const value = quote(item.baseSellPrice, quantity, settings.buyPriceBps, false);
-  return value === null ? 0 : Number(value > BigInt(ECONOMY_MAX_BALANCE) ? BigInt(ECONOMY_MAX_BALANCE) : value);
+  if (value === null) return 0;
+  // Repeatable supplies from other residents cannot fund a subsidised resale loop.
+  // Use the best possible discount, not the seller's current rank or activity.
+  const acquisition = neighborCheapestUnitAcquisition(itemId, catalog);
+  const acquisitionCap = Number.isFinite(acquisition) ? BigInt(acquisition) * BigInt(quantity) / BigInt(10) * BigInt(10) : null;
+  return Number([value, BigInt(ECONOMY_MAX_BALANCE), ...(acquisitionCap === null ? [] : [acquisitionCap])]
+    .reduce((minimum, candidate) => candidate < minimum ? candidate : minimum));
+}
+/** Gross buyback cannot exceed even the cheapest discounted resident supply. */
+export function neighborCheapestUnitAcquisition(itemId: string, catalog: EconomyCatalog = economyCatalog): number {
+  const prices: number[] = [];
+  const discount = Math.min(catalog.tradeRelations?.maxBonusBps ?? 0,
+    Math.max(0, ...(catalog.tradeRelations?.ranks ?? []).map(rank => rank.bonusBps)));
+  const discounted = (price: number) => Math.ceil(price * (10000 - discount) / 10000);
+  const bait = catalog.fishing?.baits.find(item => item.itemId === itemId);
+  if (bait) prices.push(Math.max(1, discounted(bait.price)));
+  const shop = catalog.leaftailShop;
+  for (const offer of shop?.supplyOffers ?? []) if (offer.itemId === itemId) prices.push(offer.unitPriceCoins);
+  // Legacy bundles remain a possible source only while the catalog still uses them.
+  for (const offer of [...(shop?.supplyOffers?.length ? [] : shop?.offers ?? []), ...(shop?.travelOffers ?? [])]) {
+    if (offer.itemId !== itemId || offer.kind && !["item", "bait"].includes(offer.kind)) continue;
+    const quantity = offer.quantity ?? 1;
+    const unitSales = Boolean(shop?.supplyOffers?.length || shop?.pearlOffers?.length);
+    const price = unitSales ? offer.priceCoins / quantity : offer.priceCoins;
+    const paid = offer.kind === "bait" ? Math.max(1, discounted(price)) : price;
+    prices.push(unitSales ? paid : Math.floor(paid / quantity));
+  }
+  return Math.min(...prices);
 }
 export function neighborOfferItems(state: EconomyState, settings: NeighborSettings): string[] {
   return settings.allowedItemIds.filter(id => marketItemUnlocked(state, id) && Number.isFinite(neighborOfferPrice(id, settings.offerQuantity, settings)));

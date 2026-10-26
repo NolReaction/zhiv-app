@@ -248,8 +248,8 @@ export function auditEconomicMath(catalog) {
     startup: math.startup(math.profile(i.id).producerLevels),
     oneUnitNpcRevenue: math.liquidation({ [i.id]: 1 }),
     slotOpportunityCoins: i.category === "special" ? null : Object.entries(math.profile(i.id).slotMinutes).reduce((sum, [slot, minutes]) => sum + minutes * math.stationBenchmarks[slot].coinsPerMinute, 0) }));
-  const batches = catalog.recipes.map(math.batch);
-  const mining = catalog.explorations.filter(route => route.activity === "mining").map(math.batch);
+  const batches = catalog.recipes.filter(recipe => !recipe.retired).map(math.batch);
+  const mining = catalog.explorations.filter(route => !route.retired && route.activity === "mining").map(math.batch);
   for (const p of profiles) assert(Object.values(p.slotMinutes).every(x => Number.isFinite(x) && x >= 0), `${p.itemId}: invalid minutes`);
   for (const r of batches) assert(r.incrementalMargin > 0, `${r.id}: nonpositive actual sale margin`);
   return { units: "minimum intrinsic occupied named slot-minutes, excluding waits to claim; coins; item units", profiles, batches, mining, stationBenchmarks: math.stationBenchmarks,

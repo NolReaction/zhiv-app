@@ -13,6 +13,8 @@ export type OrderReputationPresentation = {
   nextBenefit?: string;
   dailyOrderXpRemaining: number;
   dailyOrderXpCap: number;
+  activityPercent?: number;
+  potentialBenefit?: string;
 };
 
 export function OrderResidentRelations({ residentId, reputation }: {
@@ -33,6 +35,10 @@ export function OrderResidentRelations({ residentId, reputation }: {
       <p>{reputation.nextRankAt === null ? "Высший уровень. Дружба сохраняется." : `До следующего уровня: ${number(Math.max(0, reputation.nextRankAt - reputation.xp))}.`}</p>
     </div>
     <div className={styles.benefit}><Sparkles size={15} aria-hidden="true" /><div><strong>{reputation.benefit}</strong>{reputation.nextBenefit && <span>Следующий уровень: {reputation.nextBenefit}</span>}</div></div>
+    {reputation.activityPercent !== undefined && <p className={styles.daily} data-order-activity>
+      Поддержка жителя: <strong>{reputation.activityPercent}%</strong>. {reputation.activityPercent < 100 && <>При полной поддержке: {reputation.potentialBenefit}. </>}
+      Сдача просьбы восстанавливает 25% поддержки. Три дня без помощи она сохраняется, затем снижается; полная поддержка угаснет ещё за семь дней. Уровень дружбы и репутация остаются.
+    </p>}
     <p className={styles.daily} data-order-daily-reputation>За обычные просьбы сегодня: ещё <strong>{number(reputation.dailyOrderXpRemaining)} / {number(reputation.dailyOrderXpCap)}</strong> репутации.</p>
   </section>;
 }

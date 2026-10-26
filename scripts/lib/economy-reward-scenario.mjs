@@ -1,11 +1,12 @@
 /** Reward receipts for command-driven simulations. Modules are injected so the
  * same scenario can compare frozen catalog versions without inventing grants.
  * The credit callback must perform the runtime wallet/storage checks atomically.
- * Social achievements and market sales require external evidence and are omitted.
+ * Social achievements are omitted. Market awards require confirmed transactions recorded by the NPC adapter.
  */
 export function createRewardScenario({ rewards, achievementProgress, welcome, pearlDisplayDivisor = 2 }) {
   let daily = rewards.initialDailyRewardState();
   const received = new Set(), offered = new Map();
+  let confirmedMarketSales = 0;
   const catalog = rewards.progressionRewardsCatalog;
   function claims(state, now) {
     const result = [];
@@ -19,7 +20,7 @@ export function createRewardScenario({ rewards, achievementProgress, welcome, pe
     offer("welcome", "welcome", { coins: 0, pearls: welcome.WELCOME_MAIL_PEARLS * pearlDisplayDivisor, items: {} });
     const day = rewards.dailyRewardView(daily, now, state.buildings.home ?? 1);
     if (day.claimable) offer(`daily:${day.step}`, "daily", day.reward, { step: day.step });
-    const progress = achievementProgress.economyAchievementProgress(state, 0);
+    const progress = achievementProgress.economyAchievementProgress(state, confirmedMarketSales);
     for (const [id, targets] of Object.entries(achievementProgress.GAME_ACHIEVEMENT_TARGETS)) {
       if (!(id in progress)) continue;
       for (const [index, target] of targets.entries()) {
@@ -38,7 +39,7 @@ export function createRewardScenario({ rewards, achievementProgress, welcome, pe
     offered.delete(id);
     return true;
   }
-  return { claims, commitClaim,
+  return { claims, commitClaim, recordMarketSale: () => { confirmedMarketSales++; },
     claimEligible(state, now, credit) {
       const paid = [];
       for (const claim of claims(state, now)) if (credit(claim.reward, claim) !== false) {

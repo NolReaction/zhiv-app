@@ -1,6 +1,96 @@
 {
-  "version": 6,
+  "version": 7,
   "targets": {
+    "seven_day_streak": [
+      7
+    ],
+    "thousand_taps": [
+      1000
+    ],
+    "five_friends": [
+      5
+    ],
+    "ten_thousand_series": [
+      10000
+    ],
+    "linked_email": [
+      1
+    ],
+    "saved_recovery_code": [
+      1
+    ],
+    "full_collection": [
+      12
+    ],
+    "first_path": [
+      1
+    ],
+    "familiar_trails": [
+      3
+    ],
+    "explorer": [
+      10,
+      50,
+      200,
+      1000
+    ],
+    "master_recipes": [
+      5,
+      10,
+      35,
+      61
+    ],
+    "home_builder": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "river_atlas": [
+      12
+    ],
+    "first_sale": [
+      1
+    ],
+    "lucky_find": [
+      1
+    ],
+    "patient_angler": [
+      10,
+      50,
+      200,
+      1000
+    ],
+    "campfire_cook": [
+      5,
+      25,
+      100,
+      500
+    ],
+    "helpful_neighbor": [
+      5,
+      25,
+      100,
+      500
+    ],
+    "generous_garden": [
+      10,
+      50,
+      200,
+      1000
+    ]
+  },
+  "legacyRecipeIds": [
+    "quarry_stone",
+    "quarry_stone_overnight",
+    "quarry_ore",
+    "quarry_clay",
+    "quarry_sand",
+    "quarry_shift",
+    "quarry_deep_face",
+    "quarry_supply"
+  ],
+  "legacyTargets": {
     "seven_day_streak": [
       7
     ],
@@ -72,15 +162,5 @@
       50,
       200
     ]
-  },
-  "legacyRecipeIds": [
-    "quarry_stone",
-    "quarry_stone_overnight",
-    "quarry_ore",
-    "quarry_clay",
-    "quarry_sand",
-    "quarry_shift",
-    "quarry_deep_face",
-    "quarry_supply"
-  ]
+  }
 }

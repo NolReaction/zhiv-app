@@ -15,7 +15,8 @@ class EconomyProductionSlotsTest {
         buildings = mapOf("home" to home, "garden" to 1, "woodlot" to 1, "workshop" to 1, "kiln" to 1, "dryer" to 1, "warehouse" to 5, "quarry" to 1))
     private fun command(action: String, target: String) = EconomyCommand(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0, action, target)
     private fun apply(state: EconomyState, action: String, target: String, at: Instant = now) =
-        EconomyRules.apply(state, command(action, target), at).first
+        EconomyRules.apply(state, command(action, target).copy(totalPrice =
+            if (action == "buy_production_slot") EconomyRules.productionSlotOffer(state, target)?.pricePearls ?: 0L else 0L), at).first
     private fun failure(code: String, block: () -> Unit) { assertEquals(code, assertFailsWith<AuthFailure>(block = block).code) }
 
     @Test fun `old persisted profiles have one slot and serialization preserves paid capacity`() {
@@ -55,11 +56,28 @@ class EconomyProductionSlotsTest {
             assertNull(EconomyRules.productionSlotOffer(fixture(), station))
         }
         for (forged in listOf(command("buy_production_slot", "workshop").copy(quantity = 2),
-            command("buy_production_slot", "workshop").copy(totalPrice = 1),
             // Public IDs exclude ambiguous L; malformed owners must fail before slot rules.
             command("buy_production_slot", "workshop").copy(ownerPublicId = "ABCD-EFGH-JKLM"))) {
             failure("INVALID_ECONOMY_COMMAND") { EconomyRules.apply(fixture(), forged, now) }
         }
+    }
+
+    @Test fun `slot purchases require the exact confirmed price for the current tier`() {
+        val state = fixture()
+        for (price in listOf(0L, 1L, 199L, 201L, 500L)) {
+            failure("ECONOMY_PRODUCTION_SLOT_PRICE_CHANGED") {
+                EconomyRules.apply(state, command("buy_production_slot", "workshop").copy(totalPrice = price), now)
+            }
+            assertEquals(50_000L, state.wallet.pearls)
+            assertTrue(state.productionSlots.isEmpty())
+        }
+        val second = apply(state, "buy_production_slot", "workshop")
+        failure("ECONOMY_PRODUCTION_SLOT_PRICE_CHANGED") {
+            EconomyRules.apply(second, command("buy_production_slot", "workshop").copy(totalPrice = 200), now)
+        }
+        assertEquals(49_800L, second.wallet.pearls)
+        assertEquals(2, second.productionSlots["workshop"])
+        assertEquals(49_300L, apply(second, "buy_production_slot", "workshop").wallet.pearls)
     }
 
     @Test fun `existing third slots stay usable below their new purchase gate`() {

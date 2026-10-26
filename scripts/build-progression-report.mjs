@@ -35,9 +35,24 @@ export function compactProgressionReport(source, economy, rewards) {
       home5Days: milestone(row.home5Days, "home 5"), allProductionDays: milestone(row.allProductionDays, "production maximum"),
       allBuildingsDays: milestone(row.allBuildingsDays, "building maximum"), allRecipesDays: milestone(row.allRecipesDays, "all recipes"),
       reputationMaxDays: milestone(row.reputationMaxDays, "reputation maximum"),
+      ownerPublicId: row.ownerPublicId ?? "0000-0000-0001", neighborPolicy: row.neighborPolicy ?? "none",
+      neighborSales: row.neighbor?.sales.length ?? 0, neighborProceeds: row.neighbor?.sales.reduce((sum, sale) => sum + sale.proceedsCoins, 0) ?? 0,
+      relicPolicy: row.relicPolicy ?? "none",
+      allProductionSlotsDays: milestone(row.allProductionSlotsDays, "production slots"), allCapacityDays: milestone(row.allCapacityDays, "all paid capacity"),
+      productionSlots: row.productionSlots ?? {}, marketSlots: row.marketSlots ?? economy.market.baseSlots,
+      coinsRemaining: finite(row.coins ?? 0, "remaining coins"),
+      coinIncome: Object.fromEntries(Object.entries(row.coinLedger?.credits ?? {}).map(([key, value]) => [key, finite(value, `coin income ${key}`)])),
+      coinSpending: Object.fromEntries(Object.entries(row.coinLedger?.debits ?? {}).map(([key, value]) => [key, finite(value, `coin spending ${key}`)])),
+      calendarSnapshots: (row.calendarSnapshots ?? []).map(snapshot => ({ day: finite(snapshot.day, "snapshot day"),
+        coins: finite(snapshot.coins, "snapshot coins"), pearls: finite(snapshot.pearls, "snapshot pearls") / 2,
+        coinIncome: Object.values(snapshot.coinLedger.credits).reduce((sum, value) => sum + finite(value, "snapshot coin income"), 0),
+        coinSpending: Object.values(snapshot.coinLedger.debits).reduce((sum, value) => sum + finite(value, "snapshot coin spending"), 0),
+        pearlIncome: Object.values(snapshot.pearlLedger.credits).reduce((sum, value) => sum + finite(value, "snapshot pearl income"), 0) / 2,
+        pearlSpending: Object.values(snapshot.pearlLedger.debits).reduce((sum, value) => sum + finite(value, "snapshot pearl spending"), 0) / 2,
+      })),
       buildings: row.buildings ?? {},
       social: row.social ? { mode: row.social.mode, funded: row.social.funded === true, maximumXp: row.social.maximumXp,
-        reputation: row.social.reputation, bonusPercent: row.social.bonusPercent, allMaximum: row.social.allMaximum === true,
+        reputation: row.social.reputation, bonusPercent: row.social.bonusPercent, activityPercent: row.social.activityPercent ?? {}, rankBonusPercent: row.social.rankBonusPercent ?? {}, allMaximum: row.social.allMaximum === true,
         completedWeekly: row.social.completedWeekly, ordinaryOrdersCompleted: row.social.ordinaryOrdersCompleted ?? 0, acceptedWeeklyCount: row.social.acceptedWeeklies?.length ?? 0,
         expiredWeeklyCount: row.social.expiredWeeklies?.length ?? 0, deliveryCount: row.social.deliveryCount ?? row.social.deliveries?.length ?? 0 } : null,
       pearlIncome: Object.fromEntries(Object.entries(row.pearlLedger?.credits ?? {}).map(([key, value]) => [key, finite(value, `pearl income ${key}`) / 2])),
@@ -46,18 +61,18 @@ export function compactProgressionReport(source, economy, rewards) {
     };
     assert(result.visitsPerDay > 0 && result.regularMinutes > 0 && result.manualSeconds > 0);
     assert(result.manualHours <= result.activeHours + 1 / 3600, "Manual time cannot exceed active time");
-    for (const key of ["home5Days", "allProductionDays", "allBuildingsDays", "allRecipesDays", "reputationMaxDays"])
+    for (const key of ["home5Days", "allProductionDays", "allBuildingsDays", "allRecipesDays", "reputationMaxDays", "allProductionSlotsDays", "allCapacityDays"])
       assert(result[key] === null || result[key] <= result.elapsedDays + 1 / 86400, `${key} is after the end of the run`);
     return result;
   });
   return { schemaVersion: 1, status: "ready", releaseValidated: source.releaseValidated === true,
     generatedAt: source.generatedAt ?? null, economyVersion: source.economyVersion,
     policyVersion: source.policyVersion, catalogFingerprint: progressionCatalogFingerprint(economy, rewards),
-    sourceSha256: source.sourceSha256, evidencePath: "docs/game/economy-v14-final-scenarios.json",
+    sourceSha256: source.sourceSha256, evidencePath: "docs/game/economy-v15-final-scenarios.json",
     policy: source.policy, scenarios };
 }
 
-export async function buildProgressionReport({ sourcePath = "docs/game/economy-v14-final-scenarios.json", check = false, repositoryRoot = root } = {}) {
+export async function buildProgressionReport({ sourcePath = "docs/game/economy-v15-final-scenarios.json", check = false, repositoryRoot = root } = {}) {
   const source = JSON.parse(await readFile(resolve(repositoryRoot, sourcePath), "utf8"));
   const economyBytes = await readFile(resolve(repositoryRoot, "apps/api/src/main/resources/world/economy-catalog.json"));
   const rewardsBytes = await readFile(resolve(repositoryRoot, "apps/api/src/main/resources/world/progression-rewards-catalog.json"));

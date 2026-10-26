@@ -415,7 +415,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       if (!(state.buildings[id] > 0) || state.jobs.some(job => job.kind === "construction" && job.targetId === id)) continue;
       for (const upgrade of catalog.productionSlots.upgrades) {
         if (upgrade.slots !== slotCapacity(id) + 1 || state.buildings.home < upgrade.requiredHomeLevel || state.wallet.pearls < upgrade.pricePearls) continue;
-        assert(command("buy_production_slot", id), `Eligible slot purchase failed: ${lastFailure}`);
+        assert(command("buy_production_slot", id, 1, upgrade.pricePearls), `Eligible slot purchase failed: ${lastFailure}`);
       }
     }
     plan = demand(target); sellExcess(plan.needed);

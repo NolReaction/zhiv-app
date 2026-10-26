@@ -57,7 +57,8 @@ function snapshot(tutorialOnly) {
     wallet: { coins: 1000000, pearls: 1000 }, inventory: tutorialOnly ? { ...catalog.onboarding.residentOrder.items } : {},
     tutorialOrder: { version: 3, step: 0, ingredientsClaimed: tutorialOnly, completed: !tutorialOnly, firstHarvestPrepared: true, terms: null },
     stageOrders: { version: 1, stages },
-    tradeRelations: economyTradeRelationsSchema.parse({ reputation: { builder: 600, lopukh: 150, kamneshmyg: 1800, plesk: 4200, leaftail: 600 },
+    tradeRelations: economyTradeRelationsSchema.parse({ reputation: { builder: 350, lopukh: 100, kamneshmyg: 800, plesk: 1600, leaftail: 350 },
+      activity: Object.fromEntries(residents.map(id => [id, { pointsBps: 10000, updatedAt: new Date(initialNow).toISOString() }])),
       dailyCycle: Math.floor(initialNow / 86400000), dailyOrderXp: { builder: 17 } }),
     storage: { capacity: 1000, used: tutorialOnly ? 1 : 0, reserved: 0, available: 1000, overflow: 0 } };
 }

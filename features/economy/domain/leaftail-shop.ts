@@ -103,7 +103,7 @@ export function leaftailShopView(state: ShopState, now: number, catalog: Economy
       const owned = kind === "wardrobe" ? Boolean(state.wardrobe?.includes(offer.itemId))
         : kind === "rod" ? Boolean(state.fishing?.ownedRods.includes(offer.itemId))
         : kind === "hook" ? Boolean(state.fishing?.ownedHooks.includes(offer.itemId)) : false;
-      const unitPrice = tradePurchaseUnitPrice(state, "leaftail", kind, offer.unitPrice, offer.currency, catalog);
+      const unitPrice = tradePurchaseUnitPrice(state, "leaftail", kind, offer.unitPrice, offer.currency, catalog, now);
       return { ...offer, baseUnitPrice: offer.unitPrice, unitPrice,
         priceCoins: offer.currency === "coins" ? unitPrice : 0,
         pricePearls: offer.currency === "pearls" ? unitPrice : 0,

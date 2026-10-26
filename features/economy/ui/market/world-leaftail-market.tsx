@@ -118,7 +118,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
   useLayoutEffect(() => { latest.current = { economy, quote, isOnline, introduced }; }, [economy, quote, isOnline, introduced]);
   const state = economy.snapshot;
   // Keep the accepted delivery on screen until the next server snapshot arrives.
-  const friendshipDiscount = state ? tradeRelationBonusBps(state, "leaftail", state.catalog) / 100 : 0;
+  const friendshipDiscount = state ? tradeRelationBonusBps(state, "leaftail", state.catalog, economy.now) / 100 : 0;
   const acceptedAt = Date.parse(state?.serverTime ?? "");
   const shop = state ? leaftailShopView(state, Number.isFinite(acceptedAt) ? acceptedAt : economy.now, state.catalog) : null;
   const deliveryExpired = Boolean(shop && economy.now >= shop.refreshAt);

@@ -131,7 +131,7 @@ test("node and edge ids are unique and actual world remains connected without pr
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 14);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 12);
 });
 
 test("fish ingredients resolve to a real chance source without inventing guaranteed species rewards", () => {
@@ -182,7 +182,7 @@ test("orders reference explains all five relationships and the separate reviewed
   for (const name of ["Плёске", "Шишколапу", "Лопоуху", "Камнешмыгу", "Листохвосту"]) assert.ok(description.includes(name), name);
   assert.match(description, /Маленькие портреты.*вкладка «Все»/);
   assert.ok(description.includes(`до ${catalog.tradeRelations.dailyOrderXpCap} очков у каждого жителя в сутки UTC`));
-  assert.match(description, /Репутация не падает, учебные и проектные поставки её не дают/);
+  assert.match(description, /Заработанный ранг не падает, учебные и проектные поставки его не повышают/);
   assert.ok(description.includes(`Максимальная выгода ${catalog.tradeRelations.maxBonusBps / 100}%`));
   assert.match(description, /Рыба, обычные материалы и припасы, жемчуг и обновление лавки без скидки/);
   assert.ok(description.includes(`одно большое поручение на аккаунт на ${catalog.tradeRelations.weekly.durationSeconds / 86400} дней с принятия`));
@@ -200,7 +200,7 @@ test("older catalogs retain their board description without invented reputation 
   assert.doesNotMatch(description, /репутаци|Репутаци|большое поручение|Маленькие портреты|Лопоуху|Камнешмыгу|Листохвосту/);
 });
 
-test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {
+test("daily and earned achievements explain current pearl sources while the optional relic merchant cannot gate upgrades", () => {
   assert.equal(node("daily_rewards").status, "active");
   const dailyPearls = moneyContext.exports.formatPearls(progressionRewards.daily.reduce((sum, reward) => sum + reward.pearls, 0));
   const achievementPearls = moneyContext.exports.formatPearls(Object.values(progressionRewards.achievementPearls).flat().reduce((sum, reward) => sum + reward, 0));
@@ -208,8 +208,9 @@ test("daily and earned achievements explain current pearl sources while the futu
   assert.match(node("daily_rewards").description, /20 часов/); assert.match(node("daily_rewards").description, /Пропуск не сбрасывает/);
   assert.ok(node("pearls").description.includes(`до ${achievementPearls}`)); assert.ok(node("achievements").description.includes(`до ${achievementPearls}`));
   assert(hasEdge("daily_rewards", "pearls", "flow")); assert(hasEdge("achievements", "pearls", "flow"));
-  assert.equal(node("pearl_trader").status, "plan");
-  assert(graph.edges.filter(edge => edge.source === "pearl_trader" || edge.target === "pearl_trader").every(edge => edge.kind === "plan"));
+  assert.equal(node("pearl_trader").status, "active");
+  assert.match(node("pearl_trader").description, /личной лавке Листохвоста/);
+  assert(graph.edges.filter(edge => edge.source === "pearl_trader" || edge.target === "pearl_trader").every(edge => edge.kind !== "plan"));
   assert(!getPrerequisiteIds(graph, "b:home:5").has("pearl_trader"));
   assert.match(node("market").description, /обмен реликвиями 1:1/);
 });
@@ -249,13 +250,15 @@ test("rare materials share a real post-home-three exploration source without a f
   assert.equal(JSON.stringify(changed), before, "Graph keeps its own copy of drop metadata");
 });
 
-test("fishing and friend profiles are current while glade visits and Pleska's home remain optional proposals", () => {
+test("fishing and glade visits are current while Pleska's home remains an optional proposal", () => {
   assert.equal(node("pleska").status, "active");
   assert.equal(node("fishing_catches").status, "active");
   assert(hasEdge("start", "pleska", "available"));
   assert.equal(node("public_profiles").status, "active");
   assert(hasEdge("start", "public_profiles", "available"));
-  for (const id of ["friend_glade", "pleska_home"]) {
+  assert.equal(node("friend_glade").status, "active");
+  assert(hasEdge("public_profiles", "friend_glade", "flow"));
+  for (const id of ["pleska_home"]) {
     assert.equal(node(id).status, "plan");
     assert.equal(node(id).cost, undefined);
     assert.equal(node(id).seconds, undefined);

@@ -15,6 +15,7 @@ import ru.zhiv.presence.PresenceRepository
 import ru.zhiv.presence.requireGameplayPresence
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
+import ru.zhiv.economy.EconomyRules
 import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.sessionCookie
 import ru.zhiv.security.TokenCodec
@@ -37,6 +38,7 @@ fun Route.progressionRewardsRoutes(repository: ProgressionRewardsRepository,code
                 val hash=codec.hash(call.sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED","Войдите в профиль ещё раз",401))
                 call.requireGameplayPresence(presence, hash)
                 val catalog = requestedRewardCatalog(call.request.queryParameters)
+                requireCurrentRewardClaimCatalog(catalog)
                 val result = repository.claim(hash,decodeRewardClaim(call.receive<JsonElement>()))
                 call.respond(result.copy(rewards = rewardCatalogView(result.rewards, catalog)))
             }
@@ -44,12 +46,20 @@ fun Route.progressionRewardsRoutes(repository: ProgressionRewardsRepository,code
     }
 }
 
-/** Cached clients require the old 21-row response for both reads and claims. */
+/** Cached clients retain readable 21/33-row previews while their bundle updates. */
 internal fun requestedRewardCatalog(parameters: Parameters): Int {
     if (parameters.isEmpty()) return 4
     if (parameters.names() != setOf("catalog") || parameters.getAll("catalog")?.size != 1) invalidRewardClaim()
-    return when (parameters["catalog"]) { "4" -> 4; "5" -> 5; "6" -> 6; "7" -> 7; else -> invalidRewardClaim() }
+    return when (parameters["catalog"]) { "4" -> 4; "5" -> 5; "6" -> 6; "7" -> 7; "8" -> 8; else -> invalidRewardClaim() }
 }
 internal fun rewardCatalogView(value: ProgressionRewardsView, catalog: Int): ProgressionRewardsView =
-    if (catalog >= 5) value.copy(catalogVersion = catalog)
-    else value.copy(catalogVersion = 4, achievementRewards = value.achievementRewards.take(21))
+    if (catalog >= 8) value.copy(catalogVersion = catalog)
+    else value.copy(catalogVersion = catalog, achievementRewards = value.achievementRewards
+        .filter { it.level <= GameRewards.legacyTiers.getValue(it.achievementId).size }.take(if (catalog >= 5) 33 else 21))
+
+/** A catalog <=7 client cannot parse the mandatory economy 15 claim snapshot.
+ * Fail before repository.claim so a rejected response never hides a new payout. */
+internal fun requireCurrentRewardClaimCatalog(catalog: Int, economyVersion: Int = EconomyRules.catalog.version) {
+    if (catalog < 8 && economyVersion >= 15) rewardFailure("APP_UPDATE_REQUIRED",
+        "Обновите приложение, чтобы получить награду. Сохранённые награды останутся доступны.")
+}

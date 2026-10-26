@@ -151,7 +151,7 @@ object EconomyLeaftailShops {
         }
         if (offer.unitPrice > ECONOMY_MAX_BALANCE / command.quantity) invalidEconomy()
         val unitPrice = EconomyTradeRelations.discount(state, "leaftail", offer.unitPrice,
-            offer.currency == "coins" && offer.kind in setOf("rod", "hook", "bait", "wardrobe"))
+            offer.currency == "coins" && offer.kind in setOf("rod", "hook", "bait", "wardrobe"), now = now)
         val price = unitPrice * command.quantity
         if (command.totalPrice != price)
             economyFailure("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена изменилась. Проверьте стоимость товара")

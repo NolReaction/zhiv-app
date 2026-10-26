@@ -58,11 +58,12 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
     private fun view(c: Connection,actor: Actor,now: Instant,
         owned: Map<Pair<String,Int>,Ownership> = ownership(c,actor.id),
         state: EconomyState = readEconomyProfile(c,actor.id).state): ProgressionRewardsView {
-        val paid=c.economyRows("SELECT achievement_id,level,claimed_at FROM game_achievement_reward_claims WHERE user_id=?",actor.id) {
-            (it.getString(1) to it.getInt(2)) to it.getObject(3,OffsetDateTime::class.java).toInstant().toString() }.toMap()
+        val rewardVersion=c.economyRows("SELECT achievement_reward_version FROM game_daily_rewards WHERE user_id=?",actor.id) { it.getInt(1) }.single()
+        val paid=c.economyRows("SELECT achievement_id,level,claimed_at,pearls,pearl_scale FROM game_achievement_reward_claims WHERE user_id=?",actor.id) {
+            (it.getString(1) to it.getInt(2)) to (it.getObject(3,OffsetDateTime::class.java).toInstant().toString() to EconomyMoney.pearls(it.getLong(4),it.getInt(5))) }.toMap()
         val rows=GameRewards.tiers.flatMap { (id,targets) -> targets.mapIndexed { i,target ->
-            val level=i+1; val ownership=owned[id to level]; val claimedAt=paid[id to level]
-            val pearls=ProgressionRewardRules.achievementPearls.getValue(id)[i]
+            val level=i+1; val ownership=owned[id to level]; val claimedAt=paid[id to level]?.first
+            val pearls=paid[id to level]?.second ?: ProgressionRewardRules.achievementPearlsForVersion(id,level,rewardVersion)
             val blocked=when { pearls==0L -> "no_reward"; ownership==null -> "not_earned"; !ownership.eligible -> "admin_grant"; else -> null }
             AchievementRewardView(id,level,target,pearls,ownership?.at,claimedAt,ownership!=null && ownership.eligible && pearls>0 && claimedAt==null,blocked)
         } }

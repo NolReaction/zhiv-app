@@ -42,6 +42,22 @@ export const progressionCases = [
   { label: "manual-4s", regularActiveMinutes: 20, manualSeconds: 4 },
   { label: "second-slots-only", regularActiveMinutes: 20, slotPolicy: "second-only" },
   { label: "without-meals", regularActiveMinutes: 20, useMeals: false },
+  ...[1, 7, 42].flatMap(seed => [
+    { label: `earned-speedups-30m-seed${seed}`, regularActiveMinutes: 30, speedupPolicy: "earned", seed },
+    { label: `earned-speedups-8h-seed${seed}`, visitsPerDay: 1, regularActiveMinutes: 480, firstVisitMinutes: 480, speedupPolicy: "earned", seed },
+    { label: `earned-speedups-16h-seed${seed}`, visitsPerDay: 1, regularActiveMinutes: 960, firstVisitMinutes: 960, speedupPolicy: "earned", seed },
+  ]),
+  { label: "full-relics-30m", regularActiveMinutes: 30, socialMode: "reputation", slotPolicy: "second-only", relicPolicy: "earned", completionGoal: "full", maxDays: 365 },
+  { label: "full-relics-8h", visitsPerDay: 1, regularActiveMinutes: 480, firstVisitMinutes: 480, socialMode: "reputation", slotPolicy: "second-only", relicPolicy: "earned", completionGoal: "full", maxDays: 240 },
+  { label: "full-relics-16h", visitsPerDay: 1, regularActiveMinutes: 960, firstVisitMinutes: 960, socialMode: "reputation", slotPolicy: "second-only", relicPolicy: "earned", completionGoal: "full", maxDays: 240 },
+  { label: "all-capacity-8h", visitsPerDay: 1, regularActiveMinutes: 480, firstVisitMinutes: 480, socialMode: "reputation", completionGoal: "all-capacity", maxDays: 365 },
+  { label: "free-30m-owner2", regularActiveMinutes: 30, ownerPublicId: "0000-0000-0002" },
+  { label: "free-30m-owner3", regularActiveMinutes: 30, ownerPublicId: "0000-0000-0003" },
+  { label: "full-max-30m", regularActiveMinutes: 30, socialMode: "reputation", completionGoal: "full", maxDays: 365 },
+  { label: "neighbor-30m", regularActiveMinutes: 30, neighborPolicy: "auto" },
+  { label: "neighbor-8h", visitsPerDay: 1, regularActiveMinutes: 480, firstVisitMinutes: 480, neighborPolicy: "auto" },
+  { label: "neighbor-16h", visitsPerDay: 1, regularActiveMinutes: 960, firstVisitMinutes: 960, neighborPolicy: "auto" },
+  { label: "full-max-24h", visitsPerDay: 1, regularActiveMinutes: 1440, firstVisitMinutes: 1440, socialMode: "reputation", completionGoal: "full", maxDays: 240 },
 ];
 
 export function compactProgressionEvidence(summary) {
@@ -72,20 +88,20 @@ export async function runProgressionScenarios({ sourceRoot = fileURLToPath(new U
       scenarios.push(result); await onResult?.(result);
     }
     assert.deepEqual(await progressionSourceDigests(source, {policyRoot}), sourceSha256, "Economic source changed during the run; rerun before publishing evidence");
-    return { schemaVersion: 2, policyVersion: "v14-unified-2", generatedAt: new Date().toISOString(), releaseValidated: false, sourceSha256, economyVersion: loaded.catalog.version,
+    return { schemaVersion: 2, policyVersion: "v15-unified-1", generatedAt: new Date().toISOString(), releaseValidated: false, sourceSha256, economyVersion: loaded.catalog.version,
       economySha256: createHash("sha256").update(catalogBytes).digest("hex"), rewardsSha256: createHash("sha256").update(rewardsBytes).digest("hex"),
       policy: { defaultVisitsPerDay: 3, defaultVisitIntervalHours: 8, firstVisitMinutes: 60, defaultManualSeconds: 2,
-        schedules: "Visits are evenly spaced during each day. Once-a-day 4/8/16h cases use one contiguous session. Active duration includes waiting inside visits; first visit 60 minutes unless explicitly overridden.",
-        completion: "Separate milestones: claimed home5; all production buildings/landmarks at the actual catalog maximum (warehouse excluded); all buildings including warehouse 10; every active recipe produced and claimed; every resident at maximum rank. Observation cases stop at a declared 30-day horizon without claiming completion.",
-        rewards: "Actual one-time welcome, eligible tutorial, seven home-tier gifts on canonical cooldown, earned economy achievements. No external social/tap/market achievements.",
-        slots: "Buy all second slots before third slots; workshop, woodlot, garden, kiln, dryer priority. Each purchase uses actual domain command and pearl debit.",
+        schedules: "Visits are evenly spaced during each day. Once-a-day 4/8/16/24h cases use one contiguous session. Active duration includes waiting inside visits; first visit 60 minutes unless explicitly overridden.",
+        completion: "Separate milestones: claimed home5; all production buildings/landmarks at the actual catalog maximum (warehouse excluded); all buildings including warehouse 10; every active recipe produced and claimed; every resident at maximum permanent rank; all-capacity additionally requires every production and market slot. Full does not silently imply all paid capacity or permanently active friendship bonuses. Observation cases stop at a declared 30-day horizon without claiming completion.",
+        rewards: "Actual one-time welcome, eligible tutorial, seven home-tier gifts on canonical cooldown, new-profile achievement course with earned economy achievements. No external social/tap achievements; NPC sensitivity cases can claim first-sale achievements only after actual confirmed Berest transactions.",
+        slots: "Buy all second slots before third slots; workshop, woodlot, garden, kiln, dryer priority. Each purchase uses the actual domain command, confirmed price and pearl debit. All-capacity buys market places after production places; it continues earning weekly rewards after ranks are complete.",
         externalSlots: "Alternative stress case adds 3500 stored = 1750 visible pearls explicitly from outside. This is not free progression or an enabled payment claim.",
         production: "Manually start one item per slot; prepare at most owned-slot capacity of current visible requirements. No automatic restart or future-order knowledge.",
-        income: "Current visible ordinary orders, spare mining, basic fishing and actual NPCsales. Useful material expeditions use public guaranteed outputs; private finds are not inspected. Leaftail dated supplies may be bought with coins above the next known building or gear budget. No invented market buyers or tap income.",
+        income: "Current visible ordinary orders, spare mining, basic fishing and actual NPCsales. Useful material expeditions use public guaranteed outputs; private finds are not inspected. Leaftail dated supplies may be bought with coins above the next known building or gear budget. Explicit relic-policy cases spend actually earned pearls on dated personal offers for a currently missing building relic, after home5; second-only policy preserves funds by foregoing third places. No invented market buyers or tap income. Explicit neighbor cases produce real goods, post lots at current safe quotes, observe automatic waits and per-player budgets, pay the ordinary fee and manually claim proceeds through the existing DEV transaction implementation. Global competition for the NPC budget is not modeled.",
         social: "Balanced and reputation modes execute actual funded requests and weekly contracts; stock is produced by the same account, never injected. Other modes record naturally earned reputation from income requests and eligible purchases.",
-        speedups: "Only explicitly named stresscases spend remaining legitimately earned pearls on construction speedups after prioritized slot purchases. External 3500 raw pearls pays the full slot budget; future slot costs remain reserved and real payments remain disabled.",
+        speedups: "Explicit earned-speedups cases spend remaining legitimately earned pearls on construction speedups after prioritized slot purchases without external funding; they are legal free-play strategies. External 3500 raw pearls pays the full slot budget; future slot costs remain reserved and real payments remain disabled.",
         food: "Use owned optional meals after reserving visible order/build/recipe needs. Does not optimize a dedicated cooking strategy.",
-        limits: "Deterministic strategy, not population forecast. Two seconds per command is an explicit attention assumption tested at one and four seconds. Earliest source definitions are chosen locally; this is not an optimal speedrun." }, scenarios };
+        limits: "Deterministic strategy, not population forecast. Two seconds per command is an explicit attention assumption tested at one and four seconds. Synthetic owner IDs vary only personal stock; ordinary-order replacements are not used. Earliest source definitions are chosen locally; this is not an optimal speedrun." }, scenarios };
   } finally { await loaded.close(); }
 }
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {

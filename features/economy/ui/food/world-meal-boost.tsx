@@ -61,7 +61,7 @@ export function mealBoostSeconds({ economy, seconds, jobId, consumer }: Pick<Wor
   }
   if (seconds === undefined || !Number.isSafeInteger(seconds) || seconds < 0) return null;
   return consumer === "builder" && economy.snapshot
-    ? tradeWorkDuration(economy.snapshot, seconds, "builder", speedBps, economy.snapshot.catalog)
+    ? tradeWorkDuration(economy.snapshot, seconds, "builder", speedBps, economy.snapshot.catalog, economy.now)
     : remainingWorkSeconds === undefined ? mealDuration(seconds, speedBps) : mealWorkDuration(seconds, speedBps, remainingWorkSeconds);
 }
 
@@ -96,7 +96,7 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
   const applied = active?.meal?.consumer === consumer ? active.meal : null;
   const saved = applied ?? (pending ? { itemId: pending.itemId, speedBps: consumer === "hero" ? pending.heroSpeedBps : pending.builderSpeedBps } : null);
   const tradeSpeedBps = consumer === "builder" ? (applied && active || jobId)
-    ? active?.tradeSpeedBps ?? 0 : tradeRelationBonusBps(state, "builder", state.catalog) : 0;
+    ? active?.tradeSpeedBps ?? 0 : tradeRelationBonusBps(state, "builder", state.catalog, economy.now) : 0;
   if (!meals.length && !saved) return null;
   const reason = mealBoostReason(props);
   const open = Boolean(quote && quote.owner === state.ownerPublicId && quote.revision === state.revision && quote.consumer === consumer && quote.jobId === jobId && quote.stationId === stationId);

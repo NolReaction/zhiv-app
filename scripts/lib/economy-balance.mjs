@@ -169,7 +169,7 @@ export function auditFourthStageBudget(catalog, requiredConstruction) {
   if (catalog.version < 13) {
     assert.equal(constructionCoins, 70500, "Fourth stage mandatory construction must total 70500 coins (starting with unrestored landmarks)");
     assert.equal(constructionSeconds, 96 * 3600, "Fourth stage mandatory construction must total 96 hours");
-  } else for (const node of requiredConstruction) {
+  } else if (catalog.version < 15) for (const node of requiredConstruction) {
     assert.equal(node.cost.coins, Math.ceil(node.seconds * catalog.timeEconomy.constructionCoinsPerMinute / 60),
       `${node.buildingId}:${node.level}: construction price must follow builder time`);
   }

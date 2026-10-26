@@ -196,12 +196,12 @@ test("only explicit confirmation buys the next station tier and double clicks ca
   economy.snapshot.buildings.home = 3;
   click(card(render(economy), 2)); let tree = render(economy);
   const confirmationButton = buy(tree); click(confirmationButton); click(confirmationButton);
-  assert.deepEqual(calls, [["buy_production_slot", "woodlot"]]);
+  assert.deepEqual(calls, [["buy_production_slot", "woodlot", 1, 200]]);
   assert.equal(buy(render(economy)), undefined);
   economy.snapshot.productionSlots.woodlot = 2; economy.snapshot.revision++; render(economy); hooks.flush();
   click(card(render(economy), 3)); tree = render(economy);
   assert.match(renderToStaticMarkup(tree), /Купить за 250/); click(buy(tree));
-  assert.deepEqual(calls, [["buy_production_slot", "woodlot"], ["buy_production_slot", "woodlot"]]);
+  assert.deepEqual(calls, [["buy_production_slot", "woodlot", 1, 200], ["buy_production_slot", "woodlot", 1, 500]]);
 });
 
 test("the third place is inert without a visible or accessible price until the second is bought", () => {

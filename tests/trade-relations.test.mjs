@@ -26,6 +26,8 @@ const developed = () => {
   state.fishing.ownedRods = catalog.fishing.rods.map(rod => rod.id);
   state.fishing.ownedHooks = catalog.fishing.hooks.map(hook => hook.id);
   state.wallet.coins = 1_000_000;
+  state.tradeRelations.activity = Object.fromEntries(relations.TRADE_RESIDENT_IDS.map(id => [id, { pointsBps: 10000, updatedAt: new Date(now).toISOString() }]));
+  state.serverTime = new Date(now).toISOString();
   return state;
 };
 const command = (action, targetId, extra = {}) => ({ requestId: crypto.randomUUID(), ownerPublicId: "0123-4567-89AB", expectedRevision: 0,
@@ -44,7 +46,7 @@ test("old states gain empty synchronized relationships without retroactive exper
   const state = fresh(); delete state.tradeRelations;
   const before = structuredClone(state);
   const parsed = model.economyTradeRelationsSchema.parse(undefined);
-  assert.deepEqual(parsed, { version: 1, reputation: {}, dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null, weeklyAvailableAt: null, completedWeekly: 0 });
+  assert.deepEqual(parsed, { version: 1, reputation: {}, activity: {}, dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null, weeklyAvailableAt: null, completedWeekly: 0 });
   state.residentOrders.completed = 99999; state.residentOrders.earnedCoins = 500000;
   assert.equal(relations.tradeRelationProgress(state, "builder", catalog, now).xp, 0);
   assert.deepEqual(relations.tradeRelationsState(state), parsed);
@@ -52,7 +54,7 @@ test("old states gain empty synchronized relationships without retroactive exper
   assert.equal(state.tradeRelations, undefined, "deriving empty state cannot write or grant progress");
 });
 
-test("rank thresholds give only the resident's capped benefit and never decay", () => {
+test("permanent rank thresholds remain while active resident benefits are capped", () => {
   const state = developed();
   for (const [index, rank] of catalog.tradeRelations.ranks.entries()) {
     state.tradeRelations.reputation.builder = rank.requiredXp;
@@ -71,7 +73,7 @@ test("rank thresholds give only the resident's capped benefit and never decay", 
 
 test("ordinary daily cap, purchase cap and weekly reputation have independent budgets", () => {
   const state = fresh();
-  assert.equal(relations.awardTradeOrderXp(state, "builder", 58, now), 58);
+  assert.equal(relations.awardTradeOrderXp(state, "builder", 178, now), 178);
   assert.equal(relations.awardTradeOrderXp(state, "builder", 18, now), 2);
   assert.equal(relations.awardTradeOrderXp(state, "builder", 18, now), 0);
   assert.equal(relations.awardTradeOrderXp(state, "plesk", 18, now), 18);
@@ -80,7 +82,7 @@ test("ordinary daily cap, purchase cap and weekly reputation have independent bu
   assert.equal(relations.awardTradePurchaseXp(state, "builder", now), 0);
   assert.equal(relations.awardTradeOrderXp(state, "builder", 40, now, true), 40);
   const progress = relations.tradeRelationProgress(state, "builder", catalog, now);
-  assert.equal(progress.xp, 102); assert.equal(progress.dailyOrderXpRemaining, 0); assert.equal(progress.dailyPurchaseXpRemaining, 0);
+  assert.equal(progress.xp, 222); assert.equal(progress.dailyOrderXpRemaining, 0); assert.equal(progress.dailyPurchaseXpRemaining, 0);
   assert.equal(relations.awardTradeOrderXp(state, "builder", 10, now - day), 0, "clock rollback cannot reopen the previous day's allowance");
   assert.equal(relations.awardTradePurchaseXp(state, "builder", now - day), 0);
   assert.equal(relations.tradeRelationProgress(state, "builder", catalog, now - day).dailyOrderXpRemaining, 0);
@@ -95,7 +97,7 @@ test("every introduced profession receives an obtainable ordinary card; locked r
   const board = food.residentOrderBoard(developedState, now);
   assert.deepEqual(board.offers.map(offer => offer.residentId), ["plesk", "builder", "lopukh", "kamneshmyg", "leaftail"]);
   for (const offer of board.offers) {
-    assert(offer.reputationXp > 0 && offer.reputationXp <= 18);
+    assert(offer.reputationXp > 0 && offer.reputationXp <= 60);
     assert(offer.effortSeconds >= offer.manufacturingSeconds);
     assert(Object.keys(offer.items).every(id => effort.obtainableResidentOrderItems(developedState).has(id)));
   }
@@ -111,6 +113,7 @@ test("new reward fingerprints include XP and work while legacy promise fingerpri
 
 test("v2 migration preserves exact old IDs goods money and zero XP while adding missing professions", () => {
   const state = developed(), cycle = Math.floor(now / (catalog.food.orders.refreshSeconds * 1000));
+  state.tradeRelations.activity = {};
   const legacy = [
     { id: "saved_fish", residentId: "plesk", name: "Old fish", items: { fish_common: 1 }, coins: 100 },
     { id: "saved_wood", residentId: "builder", name: "Old wood", items: { wood: 1 }, coins: 400 },
@@ -128,6 +131,7 @@ test("v2 migration preserves exact old IDs goods money and zero XP while adding 
   const coins = state.wallet.coins;
   apply(state, "complete_resident_order", board.offers[2].id);
   assert.equal(state.wallet.coins, coins + 180); assert.equal(state.tradeRelations.reputation.builder ?? 0, 0);
+  assert.equal(relations.tradeActivityBps(state, "builder", catalog, now), 2500, "the old paid basket is still real help without retroactive XP");
   assert.equal(state.residentOrders.slots[2].retired, true);
   assert(!food.residentOrderBoard(state, now).offers.some(offer => offer.slot === 2));
   const nextCycle = food.residentOrderBoard(state, now + catalog.food.orders.refreshSeconds * 1000);
@@ -169,7 +173,8 @@ test("ordinary completion credits authored effort XP once while failed/replaced 
 test("weekly choices require complete accessible chains and explicit reviewed selection", () => {
   const state = fresh(); assert.equal(relations.weeklyOrderBoard(state, now).offers.length, 0);
   const advanced = developed(), board = relations.weeklyOrderBoard(advanced, now);
-  assert.equal(board.offers.length, 5);
+  assert(board.offers.length >= 5);
+  assert.equal(new Set(board.offers.map(offer => offer.id)).size, board.offers.length);
   assert.equal(new Set(board.offers.map(offer => offer.residentId)).size, 5);
   assert.deepEqual(relations.weeklyOrderBoard(advanced, now + 1000).offers, board.offers);
   const choice = board.offers[0];
@@ -210,10 +215,10 @@ test("weekly future stages freeze their price XP and requirements and each stage
   } finally { Object.assign(template, savedTemplate); }
 });
 
-test("weekly finale freezes ten visible pearls, checks capacity before debit and cannot pay twice", () => {
+test("weekly finale freezes difficulty pearls, checks capacity before debit and cannot pay twice", () => {
   const state = developed(), choice = relations.weeklyOrderBoard(state, now).offers.find(offer => offer.residentId === "builder");
-  assert.equal(choice.pearls, 20);
-  assert.deepEqual(choice.stages.map(stage => stage.pearls ?? 0), [0, 0, 20]);
+  assert.equal(choice.pearls, 40);
+  assert.deepEqual(choice.stages.map(stage => stage.pearls ?? 0), [0, 0, 40]);
   apply(state, "accept_weekly_order", choice.id);
   const template = catalog.tradeRelations.weekly.templates.find(entry => entry.id === choice.templateId);
   const saved = structuredClone(template.stages);
@@ -226,14 +231,14 @@ test("weekly finale freezes ten visible pearls, checks capacity before debit and
       assert.equal(state.wallet.pearls, initialPearls);
     }
     const final = relations.weeklyOrderBoard(state, now).active;
-    assert.equal(final.pearls, 20);
+    assert.equal(final.pearls, 40);
     fill(state, final.items);
     const { ECONOMY_MAX_PEARLS } = money;
     state.wallet.pearls = ECONOMY_MAX_PEARLS - 10;
     unchangedFailure(state, "complete_resident_order", final.id, "ECONOMY_CAPACITY");
     state.wallet.pearls = initialPearls;
     apply(state, "complete_resident_order", final.id);
-    assert.equal(state.wallet.pearls, initialPearls + 20);
+    assert.equal(state.wallet.pearls, initialPearls + 40);
     unchangedFailure(state, "complete_resident_order", final.id, "ECONOMY_WEEKLY_CHANGED");
   } finally { template.stages = saved; }
 });
@@ -391,7 +396,7 @@ test("shared Kotlin vectors match every authored quote, weekly stage and rank bo
   }
 });
 
-test("even maximum daily XP and the largest weekly reward cannot reach the last rank before six weeks", () => {
+test("maximum daily XP and weekly rewards obey the accelerated catalog lower bound", () => {
   const state = fresh(), target = catalog.tradeRelations.ranks.at(-1).requiredXp;
   const weeklyMax = Math.max(...catalog.tradeRelations.weekly.templates.map(template => template.stages.reduce((sum, stage) => sum + stage.reputationXp, 0)));
   let reached = null;
@@ -403,7 +408,7 @@ test("even maximum daily XP and the largest weekly reward cannot reach the last 
     if ((state.tradeRelations.reputation.builder ?? 0) >= target) { reached = elapsed; break; }
   }
   assert(reached >= vectors.optimisticMinimumElapsedDays, "catalog lower bound also permits a second UTC cap at the start");
-  assert(reached >= 42);
+  assert(reached >= 5 && reached <= 21);
 });
 
 test("literal UTF-16 and live board vectors pin TS/Kotlin IDs, frozen weekly promises and stage transitions", () => {

@@ -1,6 +1,7 @@
 import { economyCatalog, economyTradeRelationsSchema, type EconomyCatalog, type EconomyState, type EconomyTradeRelations,
   type EconomyWeeklyOrder, type TradeResidentId } from "./model";
 import { obtainableResidentOrderItems } from "./order-effort";
+import { orderDifficulty } from "./order-difficulty";
 
 export type { TradeResidentId } from "./model";
 export const TRADE_RESIDENT_IDS: readonly TradeResidentId[] = ["plesk", "builder", "lopukh", "kamneshmyg", "leaftail"];
@@ -35,6 +36,33 @@ export function tradeResidentAvailable(state: Pick<EconomyState, "buildings">, r
   return true;
 }
 function clock(state: RelationSource, now?: number) { return now ?? (state.serverTime ? Date.parse(state.serverTime) : Date.now()); }
+/** Activity never changes permanent reputation. Its clock is evaluated from the
+ * authoritative action/snapshot time, without a write during a preview. */
+export function tradeActivityBps(state: RelationSource, residentId: TradeResidentId, catalog = state.catalog ?? economyCatalog, now?: number): number {
+  const config = catalog.tradeRelations?.activity;
+  if (!config) return 10000;
+  const saved = tradeRelationsState(state).activity[residentId];
+  if (!saved) return 0;
+  const elapsed = Math.max(0, Math.floor((clock(state, now) - Date.parse(saved.updatedAt)) / 1000));
+  const decay = Math.max(0, elapsed - config.graceSeconds);
+  return Math.max(0, saved.pointsBps - Math.floor(10000 * Math.min(decay, config.decaySeconds) / config.decaySeconds));
+}
+/** One-time local-profile upgrade; SQL V78 anchors production profiles once.
+ * New accounts already contain an empty activity map and receive no free favor. */
+export function migrateTradeActivity(state: EconomyState, now: number) {
+  if (state.tradeRelations?.activity !== undefined) return;
+  const relations = tradeRelationsState(state);
+  state.tradeRelations = { ...relations, activity: Object.fromEntries(Object.entries(relations.reputation)
+    .filter(([, xp]) => xp > 0).map(([id]) => [id, { pointsBps: 10000, updatedAt: new Date(now).toISOString() }])) };
+}
+function refreshTradeActivity(relations: EconomyTradeRelations, residentId: TradeResidentId, now: number, catalog: EconomyCatalog) {
+  const config = catalog.tradeRelations?.activity;
+  if (!config) return;
+  const saved = relations.activity[residentId];
+  if (saved && now < Date.parse(saved.updatedAt)) return;
+  const current = tradeActivityBps({ tradeRelations: relations }, residentId, catalog, now);
+  relations.activity[residentId] = { pointsBps: Math.min(10000, current + config.recoveryBps), updatedAt: new Date(now).toISOString() };
+}
 export function tradeRelationProgress(state: RelationSource, residentId: TradeResidentId, catalog = state.catalog ?? economyCatalog, now?: number) {
   const config = catalog.tradeRelations, relations = tradeRelationsState(state), xp = relations.reputation[residentId] ?? 0;
   const ranks = config?.ranks ?? [{ id: "acquaintance", name: "Знакомый", requiredXp: 0, bonusBps: 0 }];
@@ -42,14 +70,15 @@ export function tradeRelationProgress(state: RelationSource, residentId: TradeRe
   for (let index = 1; index < ranks.length; index++) if (xp >= ranks[index].requiredXp) rankIndex = index;
   const rank = ranks[rankIndex], nextRank = ranks[rankIndex + 1] ?? null;
   const currentDay = relations.dailyCycle >= Math.floor(clock(state, now) / DAY_MS);
+  const activityBps = tradeActivityBps(state, residentId, catalog, now), rankBonusBps = Math.min(config?.maxBonusBps ?? 0, rank.bonusBps);
   return { residentId, xp, rankIndex, rank, nextRank,
-    bonusBps: Math.min(config?.maxBonusBps ?? 0, rank.bonusBps),
+    activityBps, rankBonusBps, bonusBps: Math.floor(rankBonusBps * activityBps / 10000),
     progressXp: nextRank ? xp - rank.requiredXp : 0, requiredXp: nextRank ? nextRank.requiredXp - rank.requiredXp : 0,
     dailyOrderXpRemaining: Math.max(0, (config?.dailyOrderXpCap ?? 0) - (currentDay ? relations.dailyOrderXp[residentId] ?? 0 : 0)),
     dailyPurchaseXpRemaining: Math.max(0, (config?.dailyPurchaseXpCap ?? 0) - (currentDay ? relations.dailyPurchaseXp[residentId] ?? 0 : 0)) };
 }
-export function tradeRelationBonusBps(state: RelationSource, residentId: TradeResidentId, catalog = state.catalog ?? economyCatalog): number {
-  return tradeRelationProgress(state, residentId, catalog).bonusBps;
+export function tradeRelationBonusBps(state: RelationSource, residentId: TradeResidentId, catalog = state.catalog ?? economyCatalog, now?: number): number {
+  return tradeRelationProgress(state, residentId, catalog, now).bonusBps;
 }
 function scaledCeiling(value: number, numerator: number, denominator: number): number {
   if (!Number.isSafeInteger(value) || value < 0 || !Number.isSafeInteger(numerator) || numerator < 0
@@ -60,9 +89,9 @@ function scaledCeiling(value: number, numerator: number, denominator: number): n
 }
 /** Applicable food and resident speed share one divisor, with one integer ceiling. */
 export function tradeWorkDuration(state: RelationSource, seconds: number, residentId: TradeResidentId, foodBps = 0,
-  catalog = state.catalog ?? economyCatalog): number {
+  catalog = state.catalog ?? economyCatalog, now?: number): number {
   if (!Number.isInteger(foodBps) || foodBps < 0 || foodBps > 10000) throw new RangeError("Invalid meal speed");
-  return scaledCeiling(seconds, 10000, 10000 + foodBps + tradeRelationBonusBps(state, residentId, catalog));
+  return scaledCeiling(seconds, 10000, 10000 + foodBps + tradeRelationBonusBps(state, residentId, catalog, now));
 }
 /** Adding food to a saved job must retain the resident speed frozen at its start. */
 export function tradeMealDuration(remaining: number, savedTradeBps: number, foodBps: number): number {
@@ -71,8 +100,8 @@ export function tradeMealDuration(remaining: number, savedTradeBps: number, food
   return scaledCeiling(remaining, 10000 + savedTradeBps, 10000 + savedTradeBps + foodBps);
 }
 export function tradeDiscountedPrice(state: RelationSource, residentId: TradeResidentId, baseCoins: number,
-  catalog = state.catalog ?? economyCatalog): number {
-  return scaledCeiling(baseCoins, 10000 - tradeRelationBonusBps(state, residentId, catalog), 10000);
+  catalog = state.catalog ?? economyCatalog, now?: number): number {
+  return scaledCeiling(baseCoins, 10000 - tradeRelationBonusBps(state, residentId, catalog, now), 10000);
 }
 function dailyRelations(state: EconomyState, now: number) {
   const current = tradeRelationsState(state), cycle = Math.floor(now / DAY_MS);
@@ -81,10 +110,10 @@ function dailyRelations(state: EconomyState, now: number) {
 export function awardTradeOrderXp(state: EconomyState, residentId: TradeResidentId, amount: number, now: number,
   weekly = false, catalog = economyCatalog): number {
   const config = catalog.tradeRelations;
-  if (!config || !Number.isSafeInteger(amount) || amount <= 0) return 0;
+  if (!config || !Number.isSafeInteger(amount) || amount < 0) return 0;
   const relations = dailyRelations(state, now), before = relations.reputation[residentId] ?? 0;
   const awarded = Math.min(amount, MAX_XP - before, weekly ? amount : Math.max(0, config.dailyOrderXpCap - (relations.dailyOrderXp[residentId] ?? 0)));
-  if (!awarded) return 0;
+  refreshTradeActivity(relations, residentId, now, catalog);
   relations.reputation[residentId] = before + awarded;
   if (!weekly) relations.dailyOrderXp[residentId] = (relations.dailyOrderXp[residentId] ?? 0) + awarded;
   state.tradeRelations = relations;
@@ -140,11 +169,13 @@ export function weeklyOrderBoard(state: Source, now: number, catalog = state.cat
     && Object.entries(template.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
     && template.stages.every(stage => Object.keys(stage.items).every(id => reachable.has(id))));
   const cycle = Math.floor(now / (config.weekly.durationSeconds * 1000));
-  const offers = TRADE_RESIDENT_IDS.flatMap(residentId => {
-    const choices = templates.filter(template => template.residentId === residentId).sort((a, b) => compare(a.id, b.id));
-    const selected = choices[tradeHash(`weekly1:${cycle}:${residentId}`) % choices.length];
+  const offers = TRADE_RESIDENT_IDS.flatMap(residentId => ["ordinary", "challenging", "masterful"].flatMap(difficulty => {
+    const choices = templates.filter(template => template.residentId === residentId
+      && orderDifficulty(template.stages.reduce((sum, stage) => sum + stage.effortSeconds, 0), true) === difficulty)
+      .sort((a, b) => compare(a.id, b.id));
+    const selected = choices[tradeHash(`weekly1:${cycle}:${residentId}:${difficulty}`) % choices.length];
     return selected ? [weeklyCandidate(selected)] : [];
-  });
+  }));
   return { offers, active, progress, availableAt, canChoose };
 }
 export function acceptWeeklyOrder(state: EconomyState, candidate: WeeklyOrderCandidate, now: number, catalog = economyCatalog) {

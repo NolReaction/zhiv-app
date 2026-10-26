@@ -146,6 +146,30 @@ class JdbcNeighborRepositoryIntegrationTest {
             "An NPC purchase cannot award the achievement that requires another player")
     }
 
+    @Test fun `composer price is bought at twice base while bait cannot be flipped at the same multiplier`() = runBlocking<Unit> {
+        val p=player(); val repository=JdbcNeighborRepository(source,AdminConfig(emptySet()))
+        val first=listing(p,quantity=1,price=20)
+        val buying=repository.neighbor(p.hash).buying
+        assertEquals(true,buying.firstSale)
+        assertEquals(20000L,buying.buyPriceBps)
+        assertTrue("berries" in buying.allowedItemIds.orEmpty())
+        age(first,minutes=4)
+        assertEquals(1,repository.runAutomaticBatch())
+        assertEquals(19L,market.market(p.hash).mine.single { it.id==first.id }.sale?.proceedsCoins)
+        assertEquals(false,repository.neighbor(p.hash).buying.firstSale)
+        source.connection.use { c ->
+            val old=readEconomyProfile(c,p.id).state
+            saveEconomyProfile(c,p.id,old.copy(inventory=old.inventory+mapOf("crumb_bait" to 10L)))
+            c.commit()
+        }
+        market.command(p.hash,command(p,"create_listing","crumb_bait",quantity=10,price=20))
+        val bait=market.market(p.hash).mine.single { it.itemId=="crumb_bait" }
+        age(bait,hours=7)
+        assertEquals(0,repository.runAutomaticBatch())
+        assertEquals("active",market.market(p.hash).mine.single { it.id==bait.id }.status)
+        assertEquals(1L,scalar("SELECT count(*) FROM neighbor_purchases WHERE user_id=?",p.id))
+    }
+
     @Test fun `manual buy shares automatic budgets and audit receipt and never bypasses disabled neighbor`() = runBlocking<Unit> {
         val administrator = player("Администратор"); val seller = player()
         val repository = JdbcNeighborRepository(source, AdminConfig(setOf(administrator.publicId)))

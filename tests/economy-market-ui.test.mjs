@@ -40,6 +40,7 @@ const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/do
 const { ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const { fishDiscovered } = await vite.ssrLoadModule("/features/economy/ui/fishing/fish-discovery.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
+const neighborGuidance = await vite.ssrLoadModule("/features/economy/ui/market/neighbor-listing-guidance.ts");
 const now = Date.parse("2026-10-05T14:00:00Z");
 function economy() {
   return { snapshot: { ownerPublicId: "ME", revision: 1, wallet: { coins: 10000, pearls: 0 }, inventory: { wood: 20 }, unlockedItems: ["wood"], buildings: { home: 5, warehouse: 5, bridge: 1 }, completedExplorations: 1,
@@ -710,4 +711,45 @@ test("one cheap bait cannot form a valid whole-coin lot, while five bait starts 
     submit.props.onClick();
     assert.deepEqual(calls, quantity === 1 ? [] : [["create_listing", "firefly_bait", 5, 10]]);
   }
+});
+
+test("listing composer shows real neighbor eligibility budget and adjusted safe price", () => {
+  const e = economy();
+  e.neighbor = { ownerPublicId: "ME", character: { name: "Берест" }, shop: { refreshAt: new Date(now + 100000).toISOString() },
+    buying: { enabled: true, firstSale: true, firstDelaySeconds: 180, staleAfterSeconds: 21600, maxLotsPerDay: 2,
+      dailyBudgetCoins: 10000, maxLotCoins: 5000, usedLots: 0, spentCoins: 0, buyPriceBps: 20000,
+      globalRemainingCoins: 10000000, allowedItemIds: ["wood"], boughtItemIds: [] } };
+  const item = e.snapshot.catalog.items.find(item => item.id === "wood");
+  const h = harness(ListingPriceForm, { economy: e, item });
+  let view = h.render();
+  assert.match(view.html, /может купить этот лот не раньше чем через 3 мин/);
+  assert.match(view.html, /первая продажа/);
+  assert.match(view.html, /10\s?000/);
+  e.neighbor.buying.buyPriceBps = 10000;
+  view = h.render();
+  assert.match(view.html, /снизьте цену до 30/);
+  const adjust = view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes("Поставить 30"));
+  adjust.props.onClick();
+  view = h.render();
+  assert.match(view.html, /может купить этот лот/);
+  assert.equal(view.nodes.find(node => node.type === "input" && node.props.step === 10).props.value, "30");
+  e.neighbor.buying.boughtItemIds = ["wood"];
+  assert.match(h.render().html, /обратный выкуп сегодня недоступен/);
+  e.neighbor.ownerPublicId = "OTHER";
+  assert.doesNotMatch(h.render().html, /data-neighbor-listing-hint/);
+});
+
+test("small bait lot and stale exhausted or paused neighbor never promise first sale", () => {
+  const { neighborListingGuidance } = neighborGuidance;
+  const data = { ownerPublicId: "ME", character: { name: "Берест" }, shop: { refreshAt: new Date(now + 100000).toISOString() },
+    buying: { enabled: true, firstSale: true, firstDelaySeconds: 180, staleAfterSeconds: 21600, maxLotsPerDay: 2,
+      dailyBudgetCoins: 10000, maxLotCoins: 5000, usedLots: 0, spentCoins: 0, buyPriceBps: 20000,
+      globalRemainingCoins: 10000000, allowedItemIds: ["crumb_bait", "wood"], boughtItemIds: [] } };
+  const small = neighborListingGuidance(data, "ME", "crumb_bait", 5, 10, now);
+  assert.equal(small.eligible, false); assert.equal(small.canAdjustPrice, false); assert.match(small.reason, /размеру/);
+  for (const patch of [{ enabled: false }, { usedLots: 2 }, { spentCoins: 10000 }, { globalRemainingCoins: 0 }]) {
+    const changed = { ...data, buying: { ...data.buying, ...patch } };
+    assert.equal(neighborListingGuidance(changed, "ME", "wood", 1, 60, now).eligible, false);
+  }
+  assert.match(neighborListingGuidance(data, "ME", "wood", 1, 60, now + 100001).reason, /Обновите/);
 });

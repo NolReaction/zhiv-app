@@ -78,7 +78,7 @@ function UpgradeCost({ state, cost, navigation }: { state: EconomyView; cost: Ec
   })}</ul>{guaranteed.length > 0 && <p className={styles.muted}>Гарантированный источник: завершите проект к дому {(state.buildings.home ?? 1) + 1} на доске жителей. Награда: {guaranteed.map(({ id }) => `${itemName(state, id)} × ${projectRewards[id]}`).join(", ")}. Жемчуг не требуется.</p>}{lockedFinds && <p className={styles.muted}>Находки реликвий в вылазках доступны с домом ур. {state.catalog.rareDrops!.requiredHomeLevel}.</p>}</>;
 }
 
-function UpgradeUnlocks({ state, stationId, target, navigation }: { state: EconomyView; stationId: string; target: WorldBuildingLevel; navigation?: StationNavigation }) {
+function UpgradeUnlocks({ state, stationId, target, navigation, now }: { now: number; state: EconomyView; stationId: string; target: WorldBuildingLevel; navigation?: StationNavigation }) {
   const unlocks = worldUpgradeUnlocks(state, stationId, target);
   // The home opens a new tier of crops and dishes. Other station previews show
   // only their own products so their dependency cascade stays in /branch.
@@ -126,7 +126,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
     const ActivityIcon = mining ? Pickaxe : Compass;
     cards.push({ id: `route:${route.id}`, label: route.name, details: requirementDetails(worldRequirements(route), mining ? "Для этой добычи" : "Для этого маршрута"), content: <>
       <span className={styles.benefitArt} data-kind="route">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={42} />)}<ActivityIcon size={20} className={styles.benefitArtBadge} aria-hidden="true" /></span>
-      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(mining ? tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog) : route.seconds)}</span><strong className={styles.benefitTitle}>{route.name.replace(/ · \d+ ч$/, "")}</strong>
+      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(mining ? tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog, now) : route.seconds)}</span><strong className={styles.benefitTitle}>{route.name.replace(/ · \d+ ч$/, "")}</strong>
       <span className={styles.benefitRewards} role="list" aria-label="Находки маршрута">{rewards.map(([id, amount]) => <span role="listitem" key={id}>{itemName(state, id)} <b>×{number(amount)}</b></span>)}</span>
       {requirements(worldRequirements(route))}
       {mining && <span className={styles.benefitDescription}>Шахта работает независимо от Мохлика.</span>}
@@ -143,7 +143,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
       content: <>
       <span className={styles.benefitArt} data-kind="recipe">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={44} />)}</span>
       <span className={styles.benefitKind}>Новый рецепт{stationId === "home" ? ` · ${stationName(state, entry.buildingId)}` : ""}</span><strong className={styles.benefitTitle}>{title}</strong>
-      <span className={styles.benefitDescription}>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.buildingId === "woodlot" ? tradeWorkDuration(state, entry.seconds, "lopukh", 0, state.catalog) : entry.seconds)}</span>
+      <span className={styles.benefitDescription}>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.buildingId === "woodlot" ? tradeWorkDuration(state, entry.seconds, "lopukh", 0, state.catalog, now) : entry.seconds)}</span>
       {meal && <span className={styles.benefitDescription}>Вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}% скорости</span>}
       {missing.length > 0 && <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>}
     </> });
@@ -198,7 +198,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
   const homeFinale = stationId === "home" && maximum > 0 && current >= maximum && !target && !construction;
   const builder = state ? economyBuilderStatus(state, economy.now) : null;
   const meal = state ? pendingMeal(state, "builder") : null;
-  const tradeSpeedBps = state ? tradeRelationBonusBps(state, "builder", state.catalog) : 0;
+  const tradeSpeedBps = state ? tradeRelationBonusBps(state, "builder", state.catalog, economy.now) : 0;
   const builderElsewhere = !construction && target && builder;
   const readyEconomy: ReadyEconomy | null = state ? { ...economy, snapshot: state } : null;
   const reason = state && target ? worldConstructionReason(state, stationId, target) : null;
@@ -234,7 +234,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
         </section>}
         {readyEconomy && production.length > 0 && <section className={styles.section} aria-label="Текущие заказы"><h3><Clock3 size={16} aria-hidden="true" />Сначала заберите {production.length === 1 ? "заказ" : "заказы"}</h3>{production.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={onOpenPantry} />)}</section>}
         {target ? <>
-          <UpgradeUnlocks key={target.level} state={state} stationId={stationId} target={target} navigation={navigation} />
+          <UpgradeUnlocks key={target.level} now={economy.now} state={state} stationId={stationId} target={target} navigation={navigation} />
           {!construction && <section className={`${styles.section} ${styles.costCard}`} aria-label="Подготовка к улучшению">
             <div className={styles.sectionHeading}><h3>Потребуется</h3><span>Есть / нужно</span></div>
             <UpgradeCost state={state} cost={target.cost} navigation={navigation} />
@@ -248,7 +248,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(tradeWorkDuration(state, target.seconds, "builder", meal?.builderSpeedBps ?? 0, state.catalog))}</strong>{meal && <small>{`Сыт · ${mealSpeedDescription(meal.builderSpeedBps, tradeSpeedBps)}`}</small>}{tradeSpeedBps > 0 && <small data-construction-trade-bonus>Шишколап: +{tradeSpeedBps / 100}% к скорости</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(tradeWorkDuration(state, target.seconds, "builder", meal?.builderSpeedBps ?? 0, state.catalog, economy.now))}</strong>{meal && <small>{`Сыт · ${mealSpeedDescription(meal.builderSpeedBps, tradeSpeedBps)}`}</small>}{tradeSpeedBps > 0 && <small data-construction-trade-bonus>Шишколап: +{tradeSpeedBps / 100}% к скорости</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{homeFinale ? "В лес!" : state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

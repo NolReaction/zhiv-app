@@ -1,5 +1,5 @@
 {
-  "version": 14,
+  "version": 15,
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
@@ -971,7 +971,7 @@
           "level": 3,
           "seconds": 7200,
           "cost": {
-            "coins": 1200,
+            "coins": 2400,
             "items": {
               "planks": 12,
               "bricks": 12,
@@ -990,7 +990,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 7000,
             "items": {
               "beams": 5,
               "cut_stone": 5,
@@ -1012,7 +1012,7 @@
           "level": 5,
           "seconds": 21600,
           "cost": {
-            "coins": 3600,
+            "coins": 20000,
             "items": {
               "beams": 5,
               "cut_stone": 5,
@@ -1055,7 +1055,7 @@
           "level": 2,
           "seconds": 1800,
           "cost": {
-            "coins": 300,
+            "coins": 600,
             "items": {
               "wood": 4,
               "stone": 4,
@@ -1071,7 +1071,7 @@
           "level": 3,
           "seconds": 7200,
           "cost": {
-            "coins": 1200,
+            "coins": 2500,
             "items": {
               "planks": 4,
               "ceramic_jar": 3,
@@ -1088,7 +1088,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 6000,
             "items": {
               "beams": 1,
               "bricks": 3,
@@ -1105,7 +1105,7 @@
           "level": 5,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 25000,
             "items": {
               "beams": 3,
               "bricks": 3,
@@ -1143,7 +1143,7 @@
           "level": 2,
           "seconds": 3600,
           "cost": {
-            "coins": 600,
+            "coins": 1200,
             "items": {
               "planks": 4,
               "stone": 4,
@@ -1159,7 +1159,7 @@
           "level": 3,
           "seconds": 10800,
           "cost": {
-            "coins": 1800,
+            "coins": 4000,
             "items": {
               "planks": 10,
               "iron_ingot": 4,
@@ -1175,7 +1175,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 7000,
             "items": {
               "beams": 3,
               "cut_stone": 3,
@@ -1192,7 +1192,7 @@
           "level": 5,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 35000,
             "items": {
               "beams": 3,
               "tools": 1,
@@ -1231,7 +1231,7 @@
           "level": 2,
           "seconds": 1200,
           "cost": {
-            "coins": 200,
+            "coins": 500,
             "items": {
               "planks": 3,
               "stone": 3,
@@ -1247,7 +1247,7 @@
           "level": 3,
           "seconds": 7200,
           "cost": {
-            "coins": 1200,
+            "coins": 3500,
             "items": {
               "planks": 4,
               "iron_ingot": 3,
@@ -1267,7 +1267,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 7000,
             "items": {
               "beams": 3,
               "cut_stone": 1,
@@ -1285,7 +1285,7 @@
           "level": 5,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 35000,
             "items": {
               "beams": 3,
               "reinforced_parts": 1,
@@ -1322,7 +1322,7 @@
           "level": 2,
           "seconds": 3600,
           "cost": {
-            "coins": 600,
+            "coins": 1200,
             "items": {
               "planks": 4,
               "bricks": 4,
@@ -1339,7 +1339,7 @@
           "level": 3,
           "seconds": 10800,
           "cost": {
-            "coins": 1800,
+            "coins": 4000,
             "items": {
               "planks": 8,
               "bricks": 10,
@@ -1357,7 +1357,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 7000,
             "items": {
               "beams": 1,
               "metal_parts": 1,
@@ -1376,7 +1376,7 @@
           "level": 5,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 35000,
             "items": {
               "reinforced_parts": 1,
               "tools": 1,
@@ -1415,7 +1415,7 @@
           "level": 2,
           "seconds": 3600,
           "cost": {
-            "coins": 600,
+            "coins": 1000,
             "items": {
               "planks": 2,
               "stone": 3,
@@ -1431,7 +1431,7 @@
           "level": 3,
           "seconds": 7200,
           "cost": {
-            "coins": 1200,
+            "coins": 2500,
             "items": {
               "planks": 3,
               "bricks": 3,
@@ -1448,7 +1448,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 9000,
             "items": {
               "beams": 1,
               "bricks": 3,
@@ -1465,7 +1465,7 @@
           "level": 5,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 25000,
             "items": {
               "reinforced_parts": 1,
               "beams": 1,
@@ -1506,7 +1506,7 @@
           "level": 2,
           "seconds": 3600,
           "cost": {
-            "coins": 600,
+            "coins": 1200,
             "items": {
               "planks": 4,
               "stone": 6,
@@ -1525,7 +1525,7 @@
           "level": 3,
           "seconds": 7200,
           "cost": {
-            "coins": 1200,
+            "coins": 3500,
             "items": {
               "planks": 3,
               "bricks": 3,
@@ -1542,7 +1542,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 7000,
             "items": {
               "beams": 1,
               "cut_stone": 1,
@@ -1562,7 +1562,7 @@
           "level": 5,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 35000,
             "items": {
               "reinforced_parts": 1,
               "bricks": 3,
@@ -1598,7 +1598,7 @@
           "level": 2,
           "seconds": 600,
           "cost": {
-            "coins": 100,
+            "coins": 200,
             "items": {
               "planks": 3,
               "stone": 2,
@@ -1613,7 +1613,7 @@
           "level": 3,
           "seconds": 3600,
           "cost": {
-            "coins": 600,
+            "coins": 1500,
             "items": {
               "planks": 6,
               "bricks": 6,
@@ -1629,7 +1629,7 @@
           "level": 4,
           "seconds": 7200,
           "cost": {
-            "coins": 0,
+            "coins": 8000,
             "items": {
               "beams": 2,
               "bricks": 2,
@@ -1650,7 +1650,7 @@
           "level": 5,
           "seconds": 14400,
           "cost": {
-            "coins": 0,
+            "coins": 12000,
             "items": {
               "glass": 2,
               "ceramic_jar": 2,
@@ -1670,7 +1670,7 @@
           "level": 6,
           "seconds": 14400,
           "cost": {
-            "coins": 0,
+            "coins": 18000,
             "items": {
               "beams": 3,
               "cut_stone": 2,
@@ -1691,7 +1691,7 @@
           "level": 7,
           "seconds": 14400,
           "cost": {
-            "coins": 0,
+            "coins": 30000,
             "items": {
               "reinforced_parts": 2,
               "lens": 1,
@@ -1713,7 +1713,7 @@
           "level": 8,
           "seconds": 14400,
           "cost": {
-            "coins": 0,
+            "coins": 45000,
             "items": {
               "beams": 4,
               "mortar": 3,
@@ -1734,7 +1734,7 @@
           "level": 9,
           "seconds": 14400,
           "cost": {
-            "coins": 0,
+            "coins": 65000,
             "items": {
               "cut_stone": 4,
               "glass": 4,
@@ -1755,7 +1755,7 @@
           "level": 10,
           "seconds": 14400,
           "cost": {
-            "coins": 0,
+            "coins": 95000,
             "items": {
               "reinforced_parts": 3,
               "lens": 2,
@@ -1784,7 +1784,7 @@
           "level": 1,
           "seconds": 3600,
           "cost": {
-            "coins": 600,
+            "coins": 1200,
             "items": {
               "planks": 8,
               "rope": 6,
@@ -1810,7 +1810,7 @@
           "level": 1,
           "seconds": 14400,
           "cost": {
-            "coins": 2400,
+            "coins": 5000,
             "items": {
               "glass": 3,
               "glass_bottle": 1,
@@ -5037,7 +5037,7 @@
           "effortSeconds": 318,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_silver_catch",
@@ -5053,7 +5053,7 @@
           "effortSeconds": 212,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_morning_assortment",
@@ -5070,7 +5070,7 @@
           "effortSeconds": 962,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "plesk_net_patch",
@@ -5087,7 +5087,7 @@
           "effortSeconds": 3192,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "builder_wood_supply",
@@ -5103,7 +5103,7 @@
           "effortSeconds": 672,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "builder_stone_foundation",
@@ -5119,7 +5119,7 @@
           "effortSeconds": 4480,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "builder_foundation_mix",
@@ -5136,7 +5136,7 @@
           "effortSeconds": 4256,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "builder_binding_fiber",
@@ -5152,7 +5152,7 @@
           "effortSeconds": 3360,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "builder_light_supports",
@@ -5169,7 +5169,7 @@
           "effortSeconds": 3024,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "builder_plank_brace",
@@ -5188,7 +5188,7 @@
           "effortSeconds": 3864,
           "manufacturingSeconds": 840,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "builder_grilled_lunch",
@@ -5206,7 +5206,7 @@
           "effortSeconds": 572,
           "manufacturingSeconds": 360,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_grilled_dinner",
@@ -5226,7 +5226,7 @@
           "effortSeconds": 422,
           "manufacturingSeconds": 180,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_reed_catch",
@@ -5242,7 +5242,7 @@
           "effortSeconds": 1500,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "plesk_camp_provisions",
@@ -5262,7 +5262,7 @@
           "effortSeconds": 3704,
           "manufacturingSeconds": 2340,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "plesk_warm_lunch",
@@ -5286,7 +5286,7 @@
           "effortSeconds": 2982,
           "manufacturingSeconds": 1320,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "builder_fasteners",
@@ -5307,7 +5307,7 @@
           "effortSeconds": 9096,
           "manufacturingSeconds": 3480,
           "fishingUncertain": false,
-          "reputationXp": 15
+          "reputationXp": 30
         },
         {
           "id": "builder_brick_stack",
@@ -5328,7 +5328,7 @@
           "effortSeconds": 5304,
           "manufacturingSeconds": 1560,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "builder_iron_fittings",
@@ -5347,7 +5347,7 @@
           "effortSeconds": 9468,
           "manufacturingSeconds": 3060,
           "fishingUncertain": false,
-          "reputationXp": 15
+          "reputationXp": 30
         },
         {
           "id": "plesk_mooncatch",
@@ -5363,7 +5363,7 @@
           "effortSeconds": 3000,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "plesk_pike_catch",
@@ -5380,7 +5380,7 @@
           "effortSeconds": 3750,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "plesk_hearty_table",
@@ -5399,7 +5399,7 @@
           "effortSeconds": 5144,
           "manufacturingSeconds": 1200,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "builder_stone_cut",
@@ -5419,7 +5419,7 @@
           "effortSeconds": 22200,
           "manufacturingSeconds": 7080,
           "fishingUncertain": false,
-          "reputationXp": 29
+          "reputationXp": 58
         },
         {
           "id": "builder_window_materials",
@@ -5440,7 +5440,7 @@
           "effortSeconds": 18672,
           "manufacturingSeconds": 5040,
           "fishingUncertain": false,
-          "reputationXp": 25
+          "reputationXp": 50
         },
         {
           "id": "plesk_golden_sturgeon",
@@ -5456,7 +5456,7 @@
           "effortSeconds": 9000,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 14
+          "reputationXp": 28
         },
         {
           "id": "plesk_epic_dinner",
@@ -5477,7 +5477,7 @@
           "effortSeconds": 12408,
           "manufacturingSeconds": 2040,
           "fishingUncertain": true,
-          "reputationXp": 18
+          "reputationXp": 36
         },
         {
           "id": "builder_tools",
@@ -5499,7 +5499,7 @@
           "effortSeconds": 20160,
           "manufacturingSeconds": 9840,
           "fishingUncertain": false,
-          "reputationXp": 27
+          "reputationXp": 54
         },
         {
           "id": "builder_reinforced",
@@ -5521,7 +5521,7 @@
           "effortSeconds": 32940,
           "manufacturingSeconds": 15180,
           "fishingUncertain": false,
-          "reputationXp": 30
+          "reputationXp": 60
         },
         {
           "id": "plesk_shadow_catch",
@@ -5537,7 +5537,7 @@
           "effortSeconds": 300,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_legendary_dinner",
@@ -5558,7 +5558,7 @@
           "effortSeconds": 5344,
           "manufacturingSeconds": 2940,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "builder_final_fittings",
@@ -5580,7 +5580,7 @@
           "effortSeconds": 62520,
           "manufacturingSeconds": 27600,
           "fishingUncertain": false,
-          "reputationXp": 30
+          "reputationXp": 60
         },
         {
           "id": "builder_ore_delivery",
@@ -5598,7 +5598,7 @@
           "effortSeconds": 4800,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "builder_clay_delivery",
@@ -5616,7 +5616,7 @@
           "effortSeconds": 720,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "builder_sand_delivery",
@@ -5634,7 +5634,7 @@
           "effortSeconds": 3600,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "builder_charcoal_delivery",
@@ -5652,7 +5652,7 @@
           "effortSeconds": 912,
           "manufacturingSeconds": 240,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "builder_hardwood_delivery",
@@ -5670,7 +5670,7 @@
           "effortSeconds": 4800,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "builder_resin_delivery",
@@ -5688,7 +5688,7 @@
           "effortSeconds": 2880,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "plesk_berry_basket",
@@ -5706,7 +5706,7 @@
           "effortSeconds": 680,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "repeat3_wood_fiber",
@@ -5723,7 +5723,7 @@
           "effortSeconds": 2688,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "repeat3_stone_clay",
@@ -5742,7 +5742,7 @@
           "effortSeconds": 1080,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "repeat3_plank_rope",
@@ -5761,7 +5761,7 @@
           "effortSeconds": 3408,
           "manufacturingSeconds": 720,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "repeat3_berries",
@@ -5781,7 +5781,7 @@
           "effortSeconds": 888,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "repeat3_compote",
@@ -5800,7 +5800,7 @@
           "effortSeconds": 948,
           "manufacturingSeconds": 540,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "repeat3_brick_charcoal",
@@ -5822,7 +5822,7 @@
           "effortSeconds": 2580,
           "manufacturingSeconds": 1140,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "repeat3_iron_planks",
@@ -5844,7 +5844,7 @@
           "effortSeconds": 6600,
           "manufacturingSeconds": 2280,
           "fishingUncertain": false,
-          "reputationXp": 12
+          "reputationXp": 24
         },
         {
           "id": "repeat3_metal_cloth",
@@ -5866,7 +5866,7 @@
           "effortSeconds": 5100,
           "manufacturingSeconds": 2520,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "repeat3_soup",
@@ -5889,7 +5889,7 @@
           "effortSeconds": 2120,
           "manufacturingSeconds": 1200,
           "fishingUncertain": true,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "repeat3_river_table",
@@ -5906,7 +5906,7 @@
           "effortSeconds": 1068,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "repeat3_grilled_compote",
@@ -5926,7 +5926,7 @@
           "effortSeconds": 888,
           "manufacturingSeconds": 540,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "repeat3_smoked_berries",
@@ -5946,7 +5946,7 @@
           "effortSeconds": 2576,
           "manufacturingSeconds": 1620,
           "fishingUncertain": true,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "builder_trail_supplies",
@@ -5967,7 +5967,7 @@
           "effortSeconds": 6132,
           "manufacturingSeconds": 3360,
           "fishingUncertain": true,
-          "reputationXp": 11
+          "reputationXp": 22
         },
         {
           "id": "builder_research_tools",
@@ -5989,7 +5989,7 @@
           "effortSeconds": 16680,
           "manufacturingSeconds": 10740,
           "fishingUncertain": false,
-          "reputationXp": 23
+          "reputationXp": 46
         },
         {
           "id": "plesk_trail_table",
@@ -6009,7 +6009,7 @@
           "effortSeconds": 8396,
           "manufacturingSeconds": 6000,
           "fishingUncertain": true,
-          "reputationXp": 14
+          "reputationXp": 28
         },
         {
           "id": "builder_survey_camp",
@@ -6034,7 +6034,7 @@
           "effortSeconds": 14436,
           "manufacturingSeconds": 10200,
           "fishingUncertain": true,
-          "reputationXp": 21
+          "reputationXp": 42
         },
         {
           "id": "starter_fresh_berries",
@@ -6054,7 +6054,7 @@
           "effortSeconds": 820,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "starter_strawberry_drink",
@@ -6073,7 +6073,7 @@
           "effortSeconds": 976,
           "manufacturingSeconds": 360,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "blueberry_harvest",
@@ -6093,7 +6093,7 @@
           "effortSeconds": 1060,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "blueberry_drink",
@@ -6112,7 +6112,7 @@
           "effortSeconds": 1472,
           "manufacturingSeconds": 720,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "currant_harvest",
@@ -6132,7 +6132,7 @@
           "effortSeconds": 2560,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "currant_jelly",
@@ -6153,7 +6153,7 @@
           "effortSeconds": 3608,
           "manufacturingSeconds": 1320,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "blackberry_harvest",
@@ -6172,7 +6172,7 @@
           "effortSeconds": 5072,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "blackberry_preserve",
@@ -6194,7 +6194,7 @@
           "effortSeconds": 6616,
           "manufacturingSeconds": 2220,
           "fishingUncertain": false,
-          "reputationXp": 12
+          "reputationXp": 24
         },
         {
           "id": "cranberry_harvest",
@@ -6213,7 +6213,7 @@
           "effortSeconds": 10832,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 17
+          "reputationXp": 34
         },
         {
           "id": "cranberry_glaze",
@@ -6234,7 +6234,7 @@
           "effortSeconds": 9616,
           "manufacturingSeconds": 3720,
           "fishingUncertain": false,
-          "reputationXp": 15
+          "reputationXp": 30
         },
         {
           "id": "plesk_berry_break",
@@ -6252,7 +6252,7 @@
           "effortSeconds": 272,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_catch_and_berries",
@@ -6271,7 +6271,7 @@
           "effortSeconds": 242,
           "manufacturingSeconds": 0,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_compote_break",
@@ -6291,7 +6291,7 @@
           "effortSeconds": 452,
           "manufacturingSeconds": 180,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_picnic_lunch",
@@ -6311,7 +6311,7 @@
           "effortSeconds": 602,
           "manufacturingSeconds": 360,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_evening_basket",
@@ -6331,7 +6331,7 @@
           "effortSeconds": 528,
           "manufacturingSeconds": 180,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_strawberry_lunch",
@@ -6351,7 +6351,7 @@
           "effortSeconds": 1262,
           "manufacturingSeconds": 540,
           "fishingUncertain": true,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "builder_small_repair",
@@ -6368,7 +6368,7 @@
           "effortSeconds": 1232,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "builder_bench_repair",
@@ -6387,7 +6387,7 @@
           "effortSeconds": 792,
           "manufacturingSeconds": 120,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "builder_drink_and_firewood",
@@ -6407,7 +6407,7 @@
           "effortSeconds": 652,
           "manufacturingSeconds": 180,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_blueberry_lunch",
@@ -6427,7 +6427,7 @@
           "effortSeconds": 1022,
           "manufacturingSeconds": 540,
           "fishingUncertain": true,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "plesk_berry_assortment",
@@ -6446,7 +6446,7 @@
           "effortSeconds": 580,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "builder_blueberry_snack",
@@ -6466,7 +6466,7 @@
           "effortSeconds": 662,
           "manufacturingSeconds": 180,
           "fishingUncertain": true,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "plesk_soup_and_compote",
@@ -6487,7 +6487,7 @@
           "effortSeconds": 1532,
           "manufacturingSeconds": 780,
           "fishingUncertain": true,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "plesk_berry_sauce_lunch",
@@ -6507,7 +6507,7 @@
           "effortSeconds": 2814,
           "manufacturingSeconds": 1080,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "plesk_smoked_currants",
@@ -6527,7 +6527,7 @@
           "effortSeconds": 2904,
           "manufacturingSeconds": 900,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "plesk_catch_and_jelly",
@@ -6549,7 +6549,7 @@
           "effortSeconds": 3820,
           "manufacturingSeconds": 1320,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "builder_trail_snack",
@@ -6570,7 +6570,7 @@
           "effortSeconds": 2148,
           "manufacturingSeconds": 900,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "plesk_blackberry_feast",
@@ -6592,7 +6592,7 @@
           "effortSeconds": 14216,
           "manufacturingSeconds": 2040,
           "fishingUncertain": true,
-          "reputationXp": 20
+          "reputationXp": 40
         },
         {
           "id": "plesk_preserve_and_catch",
@@ -6614,7 +6614,7 @@
           "effortSeconds": 6984,
           "manufacturingSeconds": 2220,
           "fishingUncertain": true,
-          "reputationXp": 12
+          "reputationXp": 24
         },
         {
           "id": "plesk_path_provisions",
@@ -6634,7 +6634,7 @@
           "effortSeconds": 4828,
           "manufacturingSeconds": 3360,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "plesk_cranberry_dinner",
@@ -6654,7 +6654,7 @@
           "effortSeconds": 5686,
           "manufacturingSeconds": 720,
           "fishingUncertain": true,
-          "reputationXp": 11
+          "reputationXp": 22
         },
         {
           "id": "plesk_winter_table",
@@ -6676,7 +6676,7 @@
           "effortSeconds": 9828,
           "manufacturingSeconds": 3720,
           "fishingUncertain": true,
-          "reputationXp": 15
+          "reputationXp": 30
         },
         {
           "id": "lopukh_woodpile_roof",
@@ -6696,7 +6696,7 @@
           "effortSeconds": 564,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "lopukh_sawbench_patch",
@@ -6716,7 +6716,7 @@
           "effortSeconds": 780,
           "manufacturingSeconds": 240,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "lopukh_bundle_ties",
@@ -6737,7 +6737,7 @@
           "effortSeconds": 872,
           "manufacturingSeconds": 360,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "lopukh_blueberry_break",
@@ -6759,7 +6759,7 @@
           "effortSeconds": 1586,
           "manufacturingSeconds": 540,
           "fishingUncertain": true,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "lopukh_dry_trail_pack",
@@ -6781,7 +6781,7 @@
           "effortSeconds": 1728,
           "manufacturingSeconds": 1080,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "lopukh_canopy_braces",
@@ -6801,7 +6801,7 @@
           "effortSeconds": 5220,
           "manufacturingSeconds": 2280,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "lopukh_resin_tools",
@@ -6823,7 +6823,7 @@
           "effortSeconds": 7260,
           "manufacturingSeconds": 3540,
           "fishingUncertain": false,
-          "reputationXp": 13
+          "reputationXp": 26
         },
         {
           "id": "lopukh_long_shift_kit",
@@ -6848,7 +6848,7 @@
           "effortSeconds": 14736,
           "manufacturingSeconds": 10380,
           "fishingUncertain": true,
-          "reputationXp": 21
+          "reputationXp": 42
         },
         {
           "id": "kamneshmyg_timber_posts",
@@ -6869,7 +6869,7 @@
           "effortSeconds": 840,
           "manufacturingSeconds": 120,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "kamneshmyg_berry_flasks",
@@ -6890,7 +6890,7 @@
           "effortSeconds": 836,
           "manufacturingSeconds": 360,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "kamneshmyg_furnace_ties",
@@ -6912,7 +6912,7 @@
           "effortSeconds": 900,
           "manufacturingSeconds": 420,
           "fishingUncertain": false,
-          "reputationXp": 5
+          "reputationXp": 10
         },
         {
           "id": "kamneshmyg_sample_bags",
@@ -6933,7 +6933,7 @@
           "effortSeconds": 1920,
           "manufacturingSeconds": 1260,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "kamneshmyg_ore_samples",
@@ -6954,7 +6954,7 @@
           "effortSeconds": 3000,
           "manufacturingSeconds": 240,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "kamneshmyg_deep_supports",
@@ -6976,7 +6976,7 @@
           "effortSeconds": 6900,
           "manufacturingSeconds": 2400,
           "fishingUncertain": false,
-          "reputationXp": 12
+          "reputationXp": 24
         },
         {
           "id": "kamneshmyg_hot_shift",
@@ -7000,7 +7000,7 @@
           "effortSeconds": 7240,
           "manufacturingSeconds": 4140,
           "fishingUncertain": true,
-          "reputationXp": 13
+          "reputationXp": 26
         },
         {
           "id": "kamneshmyg_survey_lenses",
@@ -7022,7 +7022,7 @@
           "effortSeconds": 16380,
           "manufacturingSeconds": 7260,
           "fishingUncertain": false,
-          "reputationXp": 23
+          "reputationXp": 46
         },
         {
           "id": "leaftail_travel_ties",
@@ -7044,7 +7044,7 @@
           "effortSeconds": 1532,
           "manufacturingSeconds": 900,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "leaftail_dried_basket",
@@ -7064,7 +7064,7 @@
           "effortSeconds": 2528,
           "manufacturingSeconds": 1440,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "leaftail_cloth_wrapping",
@@ -7084,7 +7084,7 @@
           "effortSeconds": 3240,
           "manufacturingSeconds": 2160,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "leaftail_boat_patch",
@@ -7106,7 +7106,7 @@
           "effortSeconds": 2520,
           "manufacturingSeconds": 1380,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "leaftail_river_lunch",
@@ -7127,7 +7127,7 @@
           "effortSeconds": 3320,
           "manufacturingSeconds": 2160,
           "fishingUncertain": true,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "leaftail_camp_supplies",
@@ -7149,7 +7149,7 @@
           "effortSeconds": 8472,
           "manufacturingSeconds": 6360,
           "fishingUncertain": true,
-          "reputationXp": 14
+          "reputationXp": 28
         },
         {
           "id": "leaftail_display_crates",
@@ -7172,7 +7172,7 @@
           "effortSeconds": 6240,
           "manufacturingSeconds": 3480,
           "fishingUncertain": false,
-          "reputationXp": 11
+          "reputationXp": 22
         },
         {
           "id": "leaftail_explorer_order",
@@ -7194,7 +7194,7 @@
           "effortSeconds": 23880,
           "manufacturingSeconds": 13020,
           "fishingUncertain": false,
-          "reputationXp": 30
+          "reputationXp": 60
         },
         {
           "id": "builder_ceramic_storage",
@@ -7216,7 +7216,7 @@
           "effortSeconds": 2220,
           "manufacturingSeconds": 960,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "builder_delivery_crates",
@@ -7238,7 +7238,7 @@
           "effortSeconds": 4080,
           "manufacturingSeconds": 2400,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "builder_finishing_mortar",
@@ -7260,7 +7260,7 @@
           "effortSeconds": 5340,
           "manufacturingSeconds": 1440,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "builder_tile_order",
@@ -7282,7 +7282,7 @@
           "effortSeconds": 11700,
           "manufacturingSeconds": 4080,
           "fishingUncertain": false,
-          "reputationXp": 17
+          "reputationXp": 34
         },
         {
           "id": "lopukh_pantry_jars",
@@ -7304,7 +7304,7 @@
           "effortSeconds": 1260,
           "manufacturingSeconds": 600,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "lopukh_berry_reserve",
@@ -7328,7 +7328,7 @@
           "effortSeconds": 3168,
           "manufacturingSeconds": 1860,
           "fishingUncertain": false,
-          "reputationXp": 8
+          "reputationXp": 16
         },
         {
           "id": "lopukh_bottled_compote",
@@ -7352,7 +7352,7 @@
           "effortSeconds": 3736,
           "manufacturingSeconds": 2400,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "kamneshmyg_quartz_lens",
@@ -7374,7 +7374,7 @@
           "effortSeconds": 5100,
           "manufacturingSeconds": 1620,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "kamneshmyg_field_kit",
@@ -7398,7 +7398,7 @@
           "effortSeconds": 14568,
           "manufacturingSeconds": 8880,
           "fishingUncertain": false,
-          "reputationXp": 21
+          "reputationXp": 42
         },
         {
           "id": "kamneshmyg_limestone",
@@ -7420,7 +7420,7 @@
           "effortSeconds": 4440,
           "manufacturingSeconds": 360,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "kamneshmyg_tile_path",
@@ -7442,7 +7442,7 @@
           "effortSeconds": 7140,
           "manufacturingSeconds": 2040,
           "fishingUncertain": false,
-          "reputationXp": 12
+          "reputationXp": 24
         },
         {
           "id": "plesk_ceramic_table",
@@ -7464,7 +7464,7 @@
           "effortSeconds": 1246,
           "manufacturingSeconds": 600,
           "fishingUncertain": true,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "plesk_bottled_drinks",
@@ -7488,7 +7488,7 @@
           "effortSeconds": 5044,
           "manufacturingSeconds": 3000,
           "fishingUncertain": true,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "plesk_berry_gift",
@@ -7512,7 +7512,7 @@
           "effortSeconds": 10802,
           "manufacturingSeconds": 5040,
           "fishingUncertain": true,
-          "reputationXp": 17
+          "reputationXp": 34
         },
         {
           "id": "leaftail_packed_berries",
@@ -7536,7 +7536,7 @@
           "effortSeconds": 6516,
           "manufacturingSeconds": 4140,
           "fishingUncertain": false,
-          "reputationXp": 12
+          "reputationXp": 24
         },
         {
           "id": "leaftail_glassware",
@@ -7558,7 +7558,7 @@
           "effortSeconds": 4980,
           "manufacturingSeconds": 2940,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "leaftail_field_kit",
@@ -7580,7 +7580,7 @@
           "effortSeconds": 15300,
           "manufacturingSeconds": 8880,
           "fishingUncertain": false,
-          "reputationXp": 21
+          "reputationXp": 42
         },
         {
           "id": "leaftail_berry_presents",
@@ -7604,7 +7604,7 @@
           "effortSeconds": 12932,
           "manufacturingSeconds": 6360,
           "fishingUncertain": false,
-          "reputationXp": 19
+          "reputationXp": 38
         },
         {
           "id": "lopukh_berry_lunch",
@@ -7625,7 +7625,7 @@
           "effortSeconds": 932,
           "manufacturingSeconds": 180,
           "fishingUncertain": false,
-          "reputationXp": 6
+          "reputationXp": 12
         },
         {
           "id": "lopukh_tool_wrapping",
@@ -7648,7 +7648,7 @@
           "effortSeconds": 2236,
           "manufacturingSeconds": 1140,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "lopukh_charcoal_basket",
@@ -7669,7 +7669,7 @@
           "effortSeconds": 2408,
           "manufacturingSeconds": 840,
           "fishingUncertain": true,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "lopukh_forest_pantry",
@@ -7692,7 +7692,7 @@
           "effortSeconds": 5304,
           "manufacturingSeconds": 3000,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "lopukh_bream_shift",
@@ -7714,7 +7714,7 @@
           "effortSeconds": 7848,
           "manufacturingSeconds": 2340,
           "fishingUncertain": true,
-          "reputationXp": 13
+          "reputationXp": 26
         },
         {
           "id": "lopukh_mooncarp_dinner",
@@ -7737,7 +7737,7 @@
           "effortSeconds": 12888,
           "manufacturingSeconds": 2220,
           "fishingUncertain": true,
-          "reputationXp": 19
+          "reputationXp": 38
         },
         {
           "id": "lopukh_resin_boxes",
@@ -7757,7 +7757,7 @@
           "effortSeconds": 3840,
           "manufacturingSeconds": 1800,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "lopukh_pike_picnic",
@@ -7780,7 +7780,7 @@
           "effortSeconds": 16488,
           "manufacturingSeconds": 4260,
           "fishingUncertain": true,
-          "reputationXp": 23
+          "reputationXp": 46
         },
         {
           "id": "lopukh_eel_rest",
@@ -7803,7 +7803,7 @@
           "effortSeconds": 16204,
           "manufacturingSeconds": 2640,
           "fishingUncertain": true,
-          "reputationXp": 23
+          "reputationXp": 46
         },
         {
           "id": "lopukh_festival_table",
@@ -7826,7 +7826,7 @@
           "effortSeconds": 41284,
           "manufacturingSeconds": 8760,
           "fishingUncertain": true,
-          "reputationXp": 30
+          "reputationXp": 60
         },
         {
           "id": "kamneshmyg_fiber_baskets",
@@ -7846,7 +7846,7 @@
           "effortSeconds": 4140,
           "manufacturingSeconds": 360,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "kamneshmyg_warm_shift",
@@ -7868,7 +7868,7 @@
           "effortSeconds": 2640,
           "manufacturingSeconds": 840,
           "fishingUncertain": true,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "kamneshmyg_kiln_fuel",
@@ -7888,7 +7888,7 @@
           "effortSeconds": 2364,
           "manufacturingSeconds": 480,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "kamneshmyg_glass_samples",
@@ -7908,7 +7908,7 @@
           "effortSeconds": 5112,
           "manufacturingSeconds": 2040,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "kamneshmyg_bream_lunch",
@@ -7931,7 +7931,7 @@
           "effortSeconds": 9980,
           "manufacturingSeconds": 2760,
           "fishingUncertain": true,
-          "reputationXp": 16
+          "reputationXp": 32
         },
         {
           "id": "kamneshmyg_survey_lens",
@@ -7952,7 +7952,7 @@
           "effortSeconds": 14592,
           "manufacturingSeconds": 5040,
           "fishingUncertain": false,
-          "reputationXp": 21
+          "reputationXp": 42
         },
         {
           "id": "kamneshmyg_pike_break",
@@ -7974,7 +7974,7 @@
           "effortSeconds": 19832,
           "manufacturingSeconds": 6000,
           "fishingUncertain": true,
-          "reputationXp": 27
+          "reputationXp": 54
         },
         {
           "id": "kamneshmyg_mineral_package",
@@ -7994,7 +7994,7 @@
           "effortSeconds": 5112,
           "manufacturingSeconds": 900,
           "fishingUncertain": false,
-          "reputationXp": 10
+          "reputationXp": 20
         },
         {
           "id": "kamneshmyg_limestone_mortar",
@@ -8014,7 +8014,7 @@
           "effortSeconds": 6480,
           "manufacturingSeconds": 720,
           "fishingUncertain": false,
-          "reputationXp": 12
+          "reputationXp": 24
         },
         {
           "id": "kamneshmyg_tile_finish",
@@ -8036,7 +8036,7 @@
           "effortSeconds": 23580,
           "manufacturingSeconds": 9180,
           "fishingUncertain": false,
-          "reputationXp": 30
+          "reputationXp": 60
         },
         {
           "id": "leaftail_market_ribbon",
@@ -8056,7 +8056,7 @@
           "effortSeconds": 1876,
           "manufacturingSeconds": 0,
           "fishingUncertain": false,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "leaftail_silverfin_delivery",
@@ -8077,7 +8077,7 @@
           "effortSeconds": 4347,
           "manufacturingSeconds": 1140,
           "fishingUncertain": true,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "leaftail_berry_containers",
@@ -8098,7 +8098,7 @@
           "effortSeconds": 4100,
           "manufacturingSeconds": 1260,
           "fishingUncertain": false,
-          "reputationXp": 9
+          "reputationXp": 18
         },
         {
           "id": "leaftail_bream_provisions",
@@ -8120,7 +8120,7 @@
           "effortSeconds": 7908,
           "manufacturingSeconds": 2340,
           "fishingUncertain": true,
-          "reputationXp": 13
+          "reputationXp": 26
         },
         {
           "id": "leaftail_mooncarp_guest",
@@ -8142,7 +8142,7 @@
           "effortSeconds": 14144,
           "manufacturingSeconds": 3000,
           "fishingUncertain": true,
-          "reputationXp": 20
+          "reputationXp": 40
         },
         {
           "id": "leaftail_bottled_delivery",
@@ -8163,7 +8163,7 @@
           "effortSeconds": 13548,
           "manufacturingSeconds": 4860,
           "fishingUncertain": false,
-          "reputationXp": 20
+          "reputationXp": 40
         },
         {
           "id": "leaftail_pike_feast",
@@ -8186,7 +8186,7 @@
           "effortSeconds": 25524,
           "manufacturingSeconds": 7620,
           "fishingUncertain": true,
-          "reputationXp": 30
+          "reputationXp": 60
         },
         {
           "id": "leaftail_eel_parcel",
@@ -8209,7 +8209,7 @@
           "effortSeconds": 17936,
           "manufacturingSeconds": 4440,
           "fishingUncertain": true,
-          "reputationXp": 24
+          "reputationXp": 48
         },
         {
           "id": "leaftail_survey_equipment",
@@ -8232,7 +8232,7 @@
           "effortSeconds": 21164,
           "manufacturingSeconds": 10260,
           "fishingUncertain": false,
-          "reputationXp": 28
+          "reputationXp": 56
         },
         {
           "id": "leaftail_sturgeon_feast",
@@ -8255,7 +8255,7 @@
           "effortSeconds": 37236,
           "manufacturingSeconds": 6720,
           "fishingUncertain": true,
-          "reputationXp": 30
+          "reputationXp": 60
         },
         {
           "id": "plesk_silverfin_recipe",
@@ -8276,7 +8276,7 @@
           "effortSeconds": 2040,
           "manufacturingSeconds": 480,
           "fishingUncertain": true,
-          "reputationXp": 7
+          "reputationXp": 14
         },
         {
           "id": "plesk_bream_recipe",
@@ -8296,7 +8296,7 @@
           "effortSeconds": 13056,
           "manufacturingSeconds": 2880,
           "fishingUncertain": true,
-          "reputationXp": 19
+          "reputationXp": 38
         },
         {
           "id": "plesk_mooncarp_recipe",
@@ -8317,7 +8317,7 @@
           "effortSeconds": 11572,
           "manufacturingSeconds": 1500,
           "fishingUncertain": true,
-          "reputationXp": 17
+          "reputationXp": 34
         },
         {
           "id": "plesk_pike_recipe",
@@ -8338,7 +8338,7 @@
           "effortSeconds": 14384,
           "manufacturingSeconds": 2760,
           "fishingUncertain": true,
-          "reputationXp": 20
+          "reputationXp": 40
         },
         {
           "id": "plesk_eel_recipe",
@@ -8359,7 +8359,7 @@
           "effortSeconds": 14552,
           "manufacturingSeconds": 2640,
           "fishingUncertain": true,
-          "reputationXp": 21
+          "reputationXp": 42
         },
         {
           "id": "plesk_sturgeon_recipe",
@@ -8380,7 +8380,7 @@
           "effortSeconds": 32136,
           "manufacturingSeconds": 5040,
           "fishingUncertain": true,
-          "reputationXp": 30
+          "reputationXp": 60
         }
       ],
       "progression": {
@@ -8846,29 +8846,29 @@
       {
         "id": "companion",
         "name": "Приятель",
-        "requiredXp": 150,
+        "requiredXp": 100,
         "bonusBps": 200
       },
       {
         "id": "friend",
         "name": "Друг",
-        "requiredXp": 600,
+        "requiredXp": 350,
         "bonusBps": 400
       },
       {
         "id": "close_friend",
         "name": "Близкий друг",
-        "requiredXp": 1800,
+        "requiredXp": 800,
         "bonusBps": 700
       },
       {
         "id": "forest_family",
         "name": "Свой в лесу",
-        "requiredXp": 4200,
+        "requiredXp": 1600,
         "bonusBps": 1000
       }
     ],
-    "dailyOrderXpCap": 60,
+    "dailyOrderXpCap": 180,
     "purchaseXp": 1,
     "dailyPurchaseXpCap": 2,
     "weekly": {
@@ -8896,10 +8896,11 @@
                 "stone": 3
               },
               "coins": 338,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 2760,
               "manufacturingSeconds": 0,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_builder_shelter_2",
@@ -8910,10 +8911,11 @@
                 "wood": 2
               },
               "coins": 263,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1260,
               "manufacturingSeconds": 360,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_builder_shelter_3",
@@ -8924,11 +8926,11 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 40
             }
           ]
         },
@@ -8954,10 +8956,11 @@
                 "cut_stone": 2
               },
               "coins": 813,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 3900,
               "manufacturingSeconds": 2340,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_builder_crossing_2",
@@ -8968,10 +8971,11 @@
                 "glass": 2
               },
               "coins": 1313,
-              "reputationXp": 21,
+              "reputationXp": 42,
               "effortSeconds": 6300,
               "manufacturingSeconds": 3060,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_builder_crossing_3",
@@ -8982,11 +8986,11 @@
                 "tools": 1
               },
               "coins": 2863,
-              "reputationXp": 33,
+              "reputationXp": 66,
               "effortSeconds": 13740,
               "manufacturingSeconds": 6780,
               "fishingUncertain": false,
-              "pearls": 20
+              "pearls": 80
             }
           ]
         },
@@ -9012,10 +9016,11 @@
                 "wood": 3
               },
               "coins": 213,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1084,
               "manufacturingSeconds": 0,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_lopukh_camp_2",
@@ -9026,10 +9031,11 @@
                 "wood": 1
               },
               "coins": 225,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1080,
               "manufacturingSeconds": 360,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_lopukh_camp_3",
@@ -9040,11 +9046,11 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 40
             }
           ]
         },
@@ -9072,10 +9078,11 @@
                 "beams": 1
               },
               "coins": 1100,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 5280,
               "manufacturingSeconds": 2280,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_lopukh_far_shift_2",
@@ -9086,10 +9093,11 @@
                 "bottled_compote": 1
               },
               "coins": 1550,
-              "reputationXp": 23,
+              "reputationXp": 46,
               "effortSeconds": 7552,
               "manufacturingSeconds": 4740,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_lopukh_far_shift_3",
@@ -9100,11 +9108,11 @@
                 "dried_berries": 1
               },
               "coins": 1825,
-              "reputationXp": 25,
+              "reputationXp": 50,
               "effortSeconds": 9000,
               "manufacturingSeconds": 6720,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 80
             }
           ]
         },
@@ -9132,10 +9140,11 @@
                 "planks": 2
               },
               "coins": 275,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1320,
               "manufacturingSeconds": 240,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_kamneshmyg_entry_2",
@@ -9146,10 +9155,11 @@
                 "rope": 3
               },
               "coins": 375,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1800,
               "manufacturingSeconds": 900,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_kamneshmyg_entry_3",
@@ -9160,11 +9170,11 @@
                 "blueberry_compote": 1
               },
               "coins": 263,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1308,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 40
             }
           ]
         },
@@ -9192,10 +9202,11 @@
                 "lens": 1
               },
               "coins": 1063,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 5100,
               "manufacturingSeconds": 1620,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_kamneshmyg_survey_2",
@@ -9206,10 +9217,11 @@
                 "packed_berries": 1
               },
               "coins": 3025,
-              "reputationXp": 35,
+              "reputationXp": 70,
               "effortSeconds": 14568,
               "manufacturingSeconds": 8880,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_kamneshmyg_survey_3",
@@ -9220,11 +9232,11 @@
                 "fish_soup": 2
               },
               "coins": 1713,
-              "reputationXp": 24,
+              "reputationXp": 48,
               "effortSeconds": 8300,
               "manufacturingSeconds": 4740,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 80
             }
           ]
         },
@@ -9248,10 +9260,11 @@
                 "berries": 4
               },
               "coins": 125,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 696,
               "manufacturingSeconds": 0,
-              "fishingUncertain": true
+              "fishingUncertain": true,
+              "pearls": 0
             },
             {
               "id": "week_plesk_picnic_2",
@@ -9262,10 +9275,11 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
-              "fishingUncertain": true
+              "fishingUncertain": true,
+              "pearls": 0
             },
             {
               "id": "week_plesk_picnic_3",
@@ -9276,11 +9290,11 @@
                 "strawberry_compote": 2
               },
               "coins": 457,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 2270,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 40
             }
           ]
         },
@@ -9308,10 +9322,11 @@
                 "bottled_compote": 1
               },
               "coins": 550,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 3916,
               "manufacturingSeconds": 1500,
-              "fishingUncertain": true
+              "fishingUncertain": true,
+              "pearls": 0
             },
             {
               "id": "week_plesk_river_table_2",
@@ -9322,10 +9337,11 @@
                 "currant_jelly": 1
               },
               "coins": 1238,
-              "reputationXp": 21,
+              "reputationXp": 42,
               "effortSeconds": 6036,
               "manufacturingSeconds": 3120,
-              "fishingUncertain": true
+              "fishingUncertain": true,
+              "pearls": 0
             },
             {
               "id": "week_plesk_river_table_3",
@@ -9336,11 +9352,11 @@
                 "fish_uncommon": 2
               },
               "coins": 2238,
-              "reputationXp": 31,
+              "reputationXp": 62,
               "effortSeconds": 12016,
               "manufacturingSeconds": 4860,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 80
             }
           ]
         },
@@ -9368,10 +9384,11 @@
                 "rope": 2
               },
               "coins": 413,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 1980,
               "manufacturingSeconds": 1260,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_leaftail_provisions_2",
@@ -9382,10 +9399,11 @@
                 "packed_berries": 1
               },
               "coins": 800,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 3888,
               "manufacturingSeconds": 2520,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_leaftail_provisions_3",
@@ -9396,11 +9414,11 @@
                 "smoked_fish": 1
               },
               "coins": 763,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 3708,
               "manufacturingSeconds": 2400,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 40
             }
           ]
         },
@@ -9428,10 +9446,11 @@
                 "tools": 1
               },
               "coins": 1863,
-              "reputationXp": 25,
+              "reputationXp": 50,
               "effortSeconds": 8940,
               "manufacturingSeconds": 5340,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_leaftail_expedition_2",
@@ -9442,10 +9461,11 @@
                 "cloth": 1
               },
               "coins": 1025,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 4920,
               "manufacturingSeconds": 2940,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_leaftail_expedition_3",
@@ -9456,11 +9476,11 @@
                 "berry_gift": 1
               },
               "coins": 4688,
-              "reputationXp": 48,
+              "reputationXp": 96,
               "effortSeconds": 22516,
               "manufacturingSeconds": 12120,
               "fishingUncertain": false,
-              "pearls": 20
+              "pearls": 140
             }
           ]
         },
@@ -9487,10 +9507,11 @@
                 "ceramic_jar": 3
               },
               "coins": 850,
-              "reputationXp": 20,
+              "reputationXp": 40,
               "effortSeconds": 4080,
               "manufacturingSeconds": 1740,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_lopukh_forest_kitchen_2",
@@ -9501,10 +9522,11 @@
                 "smoked_bream": 1
               },
               "coins": 813,
-              "reputationXp": 26,
+              "reputationXp": 52,
               "effortSeconds": 9543,
               "manufacturingSeconds": 2400,
-              "fishingUncertain": true
+              "fishingUncertain": true,
+              "pearls": 0
             },
             {
               "id": "week_lopukh_forest_kitchen_3",
@@ -9515,11 +9537,11 @@
                 "packed_berries": 2
               },
               "coins": 1582,
-              "reputationXp": 38,
+              "reputationXp": 76,
               "effortSeconds": 16552,
               "manufacturingSeconds": 4740,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 80
             }
           ]
         },
@@ -9546,10 +9568,11 @@
                 "cut_stone": 3
               },
               "coins": 2063,
-              "reputationXp": 27,
+              "reputationXp": 54,
               "effortSeconds": 9900,
               "manufacturingSeconds": 3240,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_kamneshmyg_stone_square_2",
@@ -9560,10 +9583,11 @@
                 "glass_bottle": 2
               },
               "coins": 3938,
-              "reputationXp": 43,
+              "reputationXp": 86,
               "effortSeconds": 19212,
               "manufacturingSeconds": 7080,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_kamneshmyg_stone_square_3",
@@ -9574,11 +9598,11 @@
                 "cranberry_glaze": 1
               },
               "coins": 4250,
-              "reputationXp": 75,
+              "reputationXp": 150,
               "effortSeconds": 38720,
               "manufacturingSeconds": 9000,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 140
             }
           ]
         },
@@ -9605,10 +9629,11 @@
                 "cloth": 3
               },
               "coins": 1688,
-              "reputationXp": 26,
+              "reputationXp": 52,
               "effortSeconds": 9036,
               "manufacturingSeconds": 5400,
-              "fishingUncertain": false
+              "fishingUncertain": false,
+              "pearls": 0
             },
             {
               "id": "week_leaftail_river_festival_2",
@@ -9619,10 +9644,11 @@
                 "eel_in_jar": 1
               },
               "coins": 2225,
-              "reputationXp": 59,
+              "reputationXp": 118,
               "effortSeconds": 28936,
               "manufacturingSeconds": 5400,
-              "fishingUncertain": true
+              "fishingUncertain": true,
+              "pearls": 0
             },
             {
               "id": "week_leaftail_river_festival_3",
@@ -9633,15 +9659,20 @@
                 "berry_gift": 2
               },
               "coins": 7290,
-              "reputationXp": 100,
+              "reputationXp": 200,
               "effortSeconds": 54416,
               "manufacturingSeconds": 14760,
               "fishingUncertain": true,
-              "pearls": 20
+              "pearls": 140
             }
           ]
         }
       ]
+    },
+    "activity": {
+      "graceSeconds": 259200,
+      "decaySeconds": 604800,
+      "recoveryBps": 2500
     }
   },
   "timeEconomy": {

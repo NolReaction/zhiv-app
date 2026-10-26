@@ -2,14 +2,14 @@ import rawCatalog from "@/apps/api/src/main/resources/world/progression-rewards-
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_MAX_PEARLS } from "@/features/economy/domain/money";
 import type { EconomyState } from "@/features/economy/domain/model";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
-import { GAME_ACHIEVEMENT_TARGETS } from "./achievement-progress";
+import { GAME_ACHIEVEMENT_TARGETS, LEGACY_GAME_ACHIEVEMENT_TARGETS } from "./achievement-progress";
 import type { GameAchievementId } from "./game-api";
 import type { AchievementReward, GameReward, GameRewards } from "./game-rewards-api";
 
-const catalog = rawCatalog as unknown as { version: 7; currencyScale: number; pearlScale: number; dailyMinimumHours: number; daily: GameReward[];
+const catalog = rawCatalog as unknown as { version: 8; currencyScale: number; pearlScale: number; dailyMinimumHours: number; daily: GameReward[];
   onboarding: GameReward; legacyOnboarding: GameReward; legacyDailyPearls: number[]; v6Onboarding: GameReward; v6DailyPearls: number[];
   dailyByHomeLevel: Record<string, GameReward[]>;
-  achievementPearls: Record<GameAchievementId, number[]> };
+  legacyAchievementPearls: Record<GameAchievementId, number[]>; achievementPearls: Record<GameAchievementId, number[]> };
 export const progressionRewardsCatalog = catalog;
 export type RewardPromiseVersion = 5 | 6 | 7;
 export type DailyRewardState = { step: number; lastClaimAt: string | null; lastClaimDate: string | null; completed: boolean; rewardVersion?: RewardPromiseVersion };
@@ -65,20 +65,24 @@ export function mergeDailyRewards(leftSaved: SavedDailyRewardState, rightSaved: 
     step: completed ? catalog.daily.length : Math.max(left.step, right.step), completed };
 }
 export function achievementRewardRows(earned: (id: GameAchievementId, level: number) => { at: string | null; eligible: boolean },
-  claimed: (id: GameAchievementId, level: number) => string | null): AchievementReward[] {
+  claimed: (id: GameAchievementId, level: number) => string | null, rewardVersion: 6 | 7 = 7, paidPearls?: (id: GameAchievementId, level: number) => number | undefined): AchievementReward[] {
   return Object.entries(GAME_ACHIEVEMENT_TARGETS).flatMap(([rawId, targets]) => {
     const achievementId = rawId as GameAchievementId;
     return targets.map((target, index) => {
-      const level = index + 1, pearls = catalog.achievementPearls[achievementId][index], ownership = earned(achievementId, level), claimedAt = claimed(achievementId, level);
+      const level = index + 1, pearls = paidPearls?.(achievementId, level) ?? achievementPearlsForVersion(achievementId, level, rewardVersion), ownership = earned(achievementId, level), claimedAt = claimed(achievementId, level);
       const blockedReason = pearls === 0 ? "no_reward" : !ownership.at ? "not_earned" : !ownership.eligible ? "admin_grant" : null;
       return { achievementId, level, target, pearls, earnedAt: ownership.at, claimedAt, blockedReason,
         eligible: Boolean(ownership.at && ownership.eligible && pearls > 0 && !claimedAt) };
     });
   });
 }
+/** Existing profiles keep the original award promises; appended tiers are new rewards for everyone. */
+export function achievementPearlsForVersion(id: GameAchievementId, level: number, version: 6 | 7 = 7): number {
+  return (version === 6 ? catalog.legacyAchievementPearls[id][level - 1] : undefined) ?? catalog.achievementPearls[id][level - 1];
+}
 /** Daily bundles are authoritative and finite; the finale also grants one relic. */
 export function assertProgressionRewardCatalog(): void {
-  if (catalog.version !== 7 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
+  if (catalog.version !== 8 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
   if (catalog.onboarding.coins !== 100 || catalog.onboarding.pearls !== 20 || Object.keys(catalog.onboarding.items).length !== 0)
     throw new Error("Invalid onboarding reward");
   if (catalog.legacyOnboarding.coins !== 1_000 || catalog.legacyOnboarding.pearls !== 200
@@ -87,6 +91,12 @@ export function assertProgressionRewardCatalog(): void {
     || catalog.v6DailyPearls.join() !== "20,30,40,40,50,50,70") throw new Error("Invalid legacy reward promises");
   if (Object.keys(catalog.dailyByHomeLevel).sort().join() !== "2,3,4,5") throw new Error("Invalid daily home tiers");
   const ids = Object.keys(GAME_ACHIEVEMENT_TARGETS) as GameAchievementId[];
+  if (Object.keys(catalog.legacyAchievementPearls).length !== ids.length
+    || Object.values(catalog.legacyAchievementPearls).flat().reduce((sum, value) => sum + value, 0) !== 4_120
+    || ids.some(id => catalog.legacyAchievementPearls[id].length !== LEGACY_GAME_ACHIEVEMENT_TARGETS[id].length
+      || LEGACY_GAME_ACHIEVEMENT_TARGETS[id].some((target, index) => GAME_ACHIEVEMENT_TARGETS[id][index] !== target)
+      || catalog.legacyAchievementPearls[id].some(value => !Number.isSafeInteger(value) || value < 0 || value % 2 !== 0)))
+    throw new Error("Invalid legacy achievement promises");
   if (Object.keys(catalog.achievementPearls).length !== ids.length || ids.some(id => catalog.achievementPearls[id].length !== GAME_ACHIEVEMENT_TARGETS[id].length)) throw new Error("Invalid achievement rewards");
   if (Object.values(catalog.achievementPearls).flat().reduce((sum, value) => sum + value, 0) !== 4_120
     || ids.some(id => catalog.achievementPearls[id].some((value, index, values) => !Number.isSafeInteger(value)

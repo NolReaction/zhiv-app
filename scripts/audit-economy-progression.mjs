@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { auditBuildingUnlocks, auditFourthStageBudget, auditProductionBalance, auditProjectCourses } from "./lib/economy-balance.mjs";
 import { createLiquidation, recipeBuildingLevel } from "./lib/economy-math.mjs";
+import { auditConstructionEconomy } from "./lib/construction-economy.mjs";
 
 const catalogPath = new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url);
 const startingBuildings = { home: 1, garden: 1, warehouse: 1 };
@@ -29,7 +30,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert([12, 13, 14].includes(catalog.version), "Unsupported audited economy catalog");
+  assert([12, 13, 14, 15].includes(catalog.version), "Unsupported audited economy catalog");
   assert.equal(catalog.currencyScale, 10);
   const projects = auditProjectCourses(catalog);
   const rare = catalog.rareDrops;
@@ -86,7 +87,8 @@ export function auditEconomyProgression(catalog) {
         assert.equal(level.warehouseCapacity, level.level * 50, `${key}: storage must grow by 50 places per level`);
         if (level.level <= 3) assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: early storage must use ordinary materials`);
         else {
-          assert(rare && level.cost.coins === 0, `${key}: relic storage must not require coins`);
+          assert(rare && (catalog.version >= 15 ? level.cost.coins > building.levels[level.level - 2].cost.coins : level.cost.coins === 0),
+            `${key}: relic storage must follow its declared coin progression`);
           if (craftedExpansion) {
             const relicCount = rare.itemIds.reduce((sum, id) => sum + (level.cost.items[id] ?? 0), 0);
             const crafted = Object.entries(level.cost.items).filter(([id]) => !rare.itemIds.includes(id));
@@ -439,6 +441,7 @@ export function auditEconomyProgression(catalog) {
     assert(levels.every((level, index) => !index || level.seconds >= levels[index - 1].seconds),
       `${id}: later production upgrades must not take less construction time than earlier tiers`);
   }
+  if (catalog.version >= 15) auditConstructionEconomy(catalog);
   return {
     catalogVersion: catalog.version, itemCount: items.size, buildingCount: buildings.size, retiredSourceCount,
     recipeCount: catalog.recipes.length, explorationCount: catalog.explorations.length,

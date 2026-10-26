@@ -70,7 +70,7 @@ test("new house berries require their garden and deliver one item only after the
     assert.throws(() => issue(p, "start_production", `grow_${itemId}`), { code: "ECONOMY_BUILDING_REQUIRED" });
     state.buildings.garden = home;
     const job = issue(p, "start_production", `grow_${itemId}`).state.jobs[0], readyAt = Date.parse(job.finishesAt);
-    assert.equal(job.catalogVersion, 14); assert.deepEqual(job.rewards, { [itemId]: 1 });
+    assert.equal(job.catalogVersion, 15); assert.deepEqual(job.rewards, { [itemId]: 1 });
     assert.throws(() => issue(p, "claim_job", job.id, readyAt), { code: "ECONOMY_COLLECTION_REQUIRED" });
     issue(p, "start_collection", job.id, readyAt);
     assert.throws(() => issue(p, "claim_job", job.id, readyAt + 7999), { code: "ECONOMY_COLLECTION_NOT_READY" });

@@ -44,14 +44,19 @@ export function tradeSourceAvailability(catalog, buildings) {
 
 /** Work-scaled XP with bounded individual awards and a separate daily cap.
  * A long, nested delivery earns more than a handful of raw ingredients. */
-export function reputationXpForEffort(seconds) {
+export function reputationXpForEffort(seconds, version = 15) {
   assert(Number.isSafeInteger(seconds) && seconds > 0, "Effort must be positive whole seconds");
-  return Math.min(30, Math.max(4, 4 + Math.ceil(seconds / 900)));
+  return (version >= 15 ? 2 : 1) * Math.min(30, Math.max(4, 4 + Math.ceil(seconds / 900)));
 }
 
-export function weeklyReputationXpForEffort(seconds) {
+export function weeklyReputationXpForEffort(seconds, version = 15) {
   assert(Number.isSafeInteger(seconds) && seconds > 0, "Effort must be positive whole seconds");
-  return Math.min(100, Math.max(20, 10 + Math.ceil(seconds / 600)));
+  return (version >= 15 ? 2 : 1) * Math.min(100, Math.max(20, 10 + Math.ceil(seconds / 600)));
+}
+
+export function weeklyPearlsForEffort(seconds) {
+  assert(Number.isSafeInteger(seconds) && seconds > 0, "Effort must be positive whole seconds");
+  return seconds < 3 * 3600 ? 40 : seconds < 10 * 3600 ? 80 : 140;
 }
 
 /** Baseline occupied work from an empty pantry, not a completion deadline.
@@ -137,6 +142,6 @@ export function tradeOrderEffort(catalog) {
     const effortSeconds = Math.ceil(seconds), manufacturingSeconds = price(template).manufacturingSeconds;
     assert(Number.isSafeInteger(effortSeconds) && effortSeconds >= manufacturingSeconds && effortSeconds > 0,
       `${template.id}: intrinsic work must include all manufacturing`);
-    return { effortSeconds, manufacturingSeconds, fishingUncertain, reputationXp: reputationXpForEffort(effortSeconds), references };
+    return { effortSeconds, manufacturingSeconds, fishingUncertain, reputationXp: reputationXpForEffort(effortSeconds, catalog.version), references };
   };
 }

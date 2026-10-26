@@ -5,7 +5,7 @@ import { naturalItems } from "@/features/game/game-rewards";
 import { rollingStreakStartedAt } from "@/lib/daily-streak";
 import { isTimeZone, nextLocalDay } from "@/lib/time-zone";
 import type { GameAchievementId, GameAchievements } from "@/features/game/game-api";
-import { GAME_ACHIEVEMENT_TARGETS, economyAchievementProgress, type AchievementProgressState } from "@/features/game/achievement-progress";
+import { GAME_ACHIEVEMENT_TARGETS, LEGACY_GAME_ACHIEVEMENT_TARGETS, economyAchievementProgress, type AchievementProgressState } from "@/features/game/achievement-progress";
 import type {
   CheckInResponse,
   CheckInCalendarResponse,
@@ -819,7 +819,7 @@ export function getDevAchievements(token: string | undefined, lifetimeTaps: numb
   const expanded = catalog >= 5 ? [...legacy.map(value => ({ ...value, tiers: [{ level: 1, target: value.target, progress: value.progress, unlockedAt: value.unlockedAt }] })),
     ...Object.entries(economic).map(([id, progress]) => {
       const typedId = id as GameAchievementId, dates = store().achievementTierAwards.get(user.id)?.get(typedId);
-      const targets = GAME_ACHIEVEMENT_TARGETS[typedId];
+      const targets = (catalog >= 7 ? GAME_ACHIEVEMENT_TARGETS : LEGACY_GAME_ACHIEVEMENT_TARGETS)[typedId];
       const floor = targets.filter((_, index) => dates?.has(index + 1)).at(-1) ?? 0;
       const tiers = targets.map((target, index) => ({ level: index + 1, target,
         progress: dates?.has(index + 1) ? target : Math.min(target, Math.max(floor, progress)), unlockedAt: dates?.get(index + 1) ?? null }));

@@ -16,8 +16,8 @@ type Kind = Candidate["kind"];
 /** The stored offer retains its base quote; reputation is resolved once at buy. */
 export function fishingOfferUnitPrice(state: Pick<EconomyState, "tradeRelations">,
   offer: Pick<EconomyFishingShop["offers"][number], "kind" | "unitPrice">,
-  catalog: EconomyCatalog = economyCatalog): number {
-  return tradePurchaseUnitPrice(state, "plesk", offer.kind, offer.unitPrice, "coins", catalog);
+  catalog: EconomyCatalog = economyCatalog, now?: number): number {
+  return tradePurchaseUnitPrice(state, "plesk", offer.kind, offer.unitPrice, "coins", catalog, now);
 }
 const categories: Kind[] = ["rod", "hook", "bait", "fish"];
 function candidates(state: ShopState): Candidate[] {

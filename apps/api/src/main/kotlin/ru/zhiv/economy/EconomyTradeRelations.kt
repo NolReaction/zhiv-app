@@ -13,6 +13,10 @@ private fun validTradeCounts(values: Map<String, Long>) = values.size <= 5 && va
 }
 
 @Serializable data class EconomyTradeRank(val id: String, val name: String, val requiredXp: Long, val bonusBps: Int)
+@Serializable data class EconomyTradeActivity(val pointsBps: Int, val updatedAt: String) {
+    init { require(pointsBps in 0..10000); Instant.parse(updatedAt) }
+}
+@Serializable data class EconomyTradeActivityConfig(val graceSeconds: Long, val decaySeconds: Long, val recoveryBps: Int)
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyWeeklyStageTemplate(
     val id: String, val name: String, val description: String, val items: Map<String, Long>, val coins: Long,
@@ -29,6 +33,7 @@ private fun validTradeCounts(values: Map<String, Long>) = values.size <= 5 && va
     val version: Int = 1, val maxBonusBps: Int = 1000, val ranks: List<EconomyTradeRank>,
     val dailyOrderXpCap: Int = 60, val purchaseXp: Int = 1, val dailyPurchaseXpCap: Int = 2,
     val weekly: EconomyWeeklyConfig,
+    val activity: EconomyTradeActivityConfig? = null,
 )
 @Serializable data class EconomyWeeklyProgress(
     val id: String, val templateId: String, val residentId: String, val name: String, val description: String? = null,
@@ -44,10 +49,12 @@ private fun validTradeCounts(values: Map<String, Long>) = values.size <= 5 && va
     val version: Int = 1, val reputation: Map<String, Long> = emptyMap(), val dailyCycle: Long = -1,
     val dailyOrderXp: Map<String, Long> = emptyMap(), val dailyPurchaseXp: Map<String, Long> = emptyMap(),
     val weekly: EconomyWeeklyProgress? = null, val weeklyAvailableAt: String? = null, val completedWeekly: Long = 0,
+    val activity: Map<String, EconomyTradeActivity> = emptyMap(),
 ) {
     init {
         require(version == 1 && dailyCycle in -1L..ECONOMY_MAX_REVISION && completedWeekly in 0L..ECONOMY_MAX_REVISION)
         require(validTradeCounts(reputation) && validTradeCounts(dailyOrderXp) && validTradeCounts(dailyPurchaseXp))
+        require(activity.size <= 5 && activity.keys.all { it in tradeResidentIds })
         weeklyAvailableAt?.let(Instant::parse)
     }
 }
@@ -72,6 +79,7 @@ object EconomyTradeRelations {
         require(config.ranks.all { it.id.length in 1..80 && it.name.isNotBlank() && it.requiredXp in 0L..ECONOMY_MAX_ITEMS && it.bonusBps in 0..config.maxBonusBps })
         require(config.ranks.zipWithNext().all { (a, b) -> a.requiredXp < b.requiredXp && a.bonusBps <= b.bonusBps })
         require(config.dailyOrderXpCap in 1..1000 && config.purchaseXp in 0..10 && config.dailyPurchaseXpCap in 0..100)
+        config.activity?.let { require(it.graceSeconds in 1..31_536_000L && it.decaySeconds in 1..31_536_000L && it.recoveryBps in 1..10000) }
         require(config.weekly.durationSeconds == 604800L && config.weekly.templates.size in 1..100)
         require(config.weekly.templates.map { it.id }.distinct().size == config.weekly.templates.size)
         val itemIds = catalog.items.map { it.id }.toSet()
@@ -84,7 +92,7 @@ object EconomyTradeRelations {
                         stage.items.isNotEmpty() && stage.items.all { (id, amount) -> id in itemIds && amount in 1L..100L } &&
                         stage.coins in 1L..ECONOMY_MAX_BALANCE && stage.reputationXp in 1..1000 &&
                         stage.effortSeconds in 0L..31_536_000L && stage.manufacturingSeconds in 0L..stage.effortSeconds &&
-                        stage.pearls in 0L..20L && stage.pearls % 2L == 0L && (index == 2 || stage.pearls == 0L)
+                        stage.pearls in 0L..140L && stage.pearls % 2L == 0L && (index == 2 || stage.pearls == 0L)
                 }
         })
     }
@@ -102,31 +110,51 @@ object EconomyTradeRelations {
         return if (state.dailyCycle >= cycle) state else state.copy(dailyCycle = cycle, dailyOrderXp = emptyMap(), dailyPurchaseXp = emptyMap())
     }
 
-    fun bonusBps(state: EconomyState, residentId: String, catalog: EconomyCatalog = EconomyRules.catalog): Int {
+    fun activityBps(state: EconomyTradeRelationsState, residentId: String, now: Instant,
+        catalog: EconomyCatalog = EconomyRules.catalog): Int {
+        val config = catalog.tradeRelations?.activity ?: return 10000
+        val saved = state.activity[residentId] ?: return 0
+        val elapsed = maxOf(0L, java.time.Duration.between(Instant.parse(saved.updatedAt), now).seconds)
+        val decay = (elapsed - config.graceSeconds).coerceIn(0L, config.decaySeconds)
+        return maxOf(0, saved.pointsBps - (10000L * decay / config.decaySeconds).toInt())
+    }
+
+    private fun refreshActivity(state: EconomyTradeRelationsState, residentId: String, now: Instant,
+        catalog: EconomyCatalog): Map<String, EconomyTradeActivity> {
+        val config = catalog.tradeRelations?.activity ?: return state.activity
+        val saved = state.activity[residentId]
+        if (saved != null && now.isBefore(Instant.parse(saved.updatedAt))) return state.activity
+        val points = minOf(10000, activityBps(state, residentId, now, catalog) + config.recoveryBps)
+        return state.activity + (residentId to EconomyTradeActivity(points, now.toString()))
+    }
+
+    fun bonusBps(state: EconomyState, residentId: String, catalog: EconomyCatalog = EconomyRules.catalog,
+        now: Instant = Instant.now()): Int {
         val config = catalog.tradeRelations ?: return 0
         val xp = state.tradeRelations.reputation[residentId] ?: 0L
-        return (config.ranks.lastOrNull { it.requiredXp <= xp }?.bonusBps ?: 0).coerceIn(0, minOf(1000, config.maxBonusBps))
+        val permanent = (config.ranks.lastOrNull { it.requiredXp <= xp }?.bonusBps ?: 0).coerceIn(0, minOf(1000, config.maxBonusBps))
+        return permanent * activityBps(state.tradeRelations, residentId, now, catalog) / 10000
     }
 
     fun discount(state: EconomyState, residentId: String, baseUnitPrice: Long, eligible: Boolean,
-        catalog: EconomyCatalog = EconomyRules.catalog): Long {
+        catalog: EconomyCatalog = EconomyRules.catalog, now: Instant = Instant.now()): Long {
         require(baseUnitPrice in 0L..ECONOMY_MAX_BALANCE)
-        val bps = if (eligible && residentId in setOf("plesk", "leaftail")) bonusBps(state, residentId, catalog) else 0
+        val bps = if (eligible && residentId in setOf("plesk", "leaftail")) bonusBps(state, residentId, catalog, now) else 0
         return (baseUnitPrice * (10000L - bps) + 9999L) / 10000L
     }
 
     fun awardOrder(state: EconomyState, residentId: String, requested: Int, now: Instant, weekly: Boolean = false,
         catalog: EconomyCatalog = EconomyRules.catalog): EconomyState {
         val config = catalog.tradeRelations ?: return state
-        if (residentId !in tradeResidentIds || requested <= 0) return state
+        if (residentId !in tradeResidentIds || requested < 0) return state
         val saved = normalized(state.tradeRelations, now)
         val used = (saved.dailyOrderXp[residentId] ?: 0L).coerceIn(0L, config.dailyOrderXpCap.toLong())
         val before = saved.reputation[residentId] ?: 0L
         val amount = minOf(requested.toLong(), 1_000_000L - before, if (weekly) requested.toLong() else config.dailyOrderXpCap - used)
-        if (amount <= 0L) return state
         val reputation = before + amount
         return state.copy(tradeRelations = saved.copy(reputation = saved.reputation + (residentId to reputation),
-            dailyOrderXp = if (weekly) saved.dailyOrderXp else saved.dailyOrderXp + (residentId to (used + amount))))
+            dailyOrderXp = if (weekly) saved.dailyOrderXp else saved.dailyOrderXp + (residentId to (used + amount)),
+            activity = refreshActivity(saved, residentId, now, catalog)))
     }
 
     /** Bait never awards XP; a refundable old quote cannot become free friendship. */
@@ -168,6 +196,11 @@ object EconomyTradeRelations {
             else -> firstActive ?: secondActive
         }
         return first.copy(dailyCycle = maxOf(first.dailyCycle, second.dailyCycle), reputation = tradeResidentIds.associateWith { maxOf(first.reputation[it] ?: 0L, second.reputation[it] ?: 0L) },
+            activity = tradeResidentIds.mapNotNull { resident ->
+                val candidates = listOfNotNull(first.activity[resident]?.let { first }, second.activity[resident]?.let { second })
+                val chosen = candidates.maxByOrNull { activityBps(it, resident, now, catalog) }
+                chosen?.activity?.get(resident)?.let { resident to it }
+            }.toMap(),
             dailyOrderXp = tradeResidentIds.associateWith { minOf((config?.dailyOrderXpCap ?: 60).toLong(), (first.dailyOrderXp[it] ?: 0L) + (second.dailyOrderXp[it] ?: 0L)) },
             dailyPurchaseXp = tradeResidentIds.associateWith { minOf((config?.dailyPurchaseXpCap ?: 2).toLong(), (first.dailyPurchaseXp[it] ?: 0L) + (second.dailyPurchaseXp[it] ?: 0L)) },
             weekly = weekly?.takeIf { now.isBefore(Instant.parse(it.expiresAt)) },
@@ -206,10 +239,10 @@ object EconomyTradeRelations {
             template.stages.all { stage -> stage.items.keys.all { it in reachable } }
         }.sortedBy { it.id }
         val cycle = Math.floorDiv(now.epochSecond, 604800L)
-        val offers = tradeResidentIds.mapNotNull { resident ->
-            val pool = eligible.filter { it.residentId == resident }
+        val offers = tradeResidentIds.flatMap { resident -> listOf("ordinary", "challenging", "masterful").mapNotNull { difficulty ->
+            val pool = eligible.filter { it.residentId == resident && orderDifficulty(it.stages.sumOf { stage -> stage.effortSeconds }, true) == difficulty }
             if (pool.isEmpty()) return@mapNotNull null
-            val template = pool[(EconomyFood.hash("weekly1:$cycle:$resident") % pool.size).toInt()]
+            val template = pool[(EconomyFood.hash("weekly1:$cycle:$resident:$difficulty") % pool.size).toInt()]
             val stages = template.stages.map { stage -> EconomyResidentOrderTemplate(
                 stage.id, template.residentId, stage.name,
                 requiredBuildings = mapOf("home" to template.requiredHomeLevel) + template.requiredBuildings,
@@ -220,8 +253,14 @@ object EconomyTradeRelations {
             EconomyWeeklyOffer("weekly_choice1_${template.id}_${choiceFingerprint(template)}", template.id, template.residentId,
                 template.name, template.description, stages, stages.sumOf { it.coins }, stages.sumOf { it.reputationXp ?: 0 },
                 stages.sumOf { it.effortSeconds ?: 0L }, stages.sumOf { it.manufacturingSeconds ?: 0L }, stages.any { it.fishingUncertain == true }, stages.sumOf { it.pearls })
-        }
+        } }
         return EconomyWeeklyBoard(offers, active, null, saved.weeklyAvailableAt, true)
+    }
+
+    fun orderDifficulty(effortSeconds: Long, weekly: Boolean = false): String {
+        val ordinary = if (weekly) 10800L else 1800L
+        val challenging = if (weekly) 36000L else 7200L
+        return if (effortSeconds < ordinary) "ordinary" else if (effortSeconds < challenging) "challenging" else "masterful"
     }
 
     fun accept(state: EconomyState, command: EconomyCommand, now: Instant): Pair<EconomyState, String> {

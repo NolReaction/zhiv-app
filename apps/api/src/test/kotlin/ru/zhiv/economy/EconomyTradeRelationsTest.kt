@@ -24,7 +24,7 @@ class EconomyTradeRelationsTest {
         progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 100L }))
     private fun failure(code: String, block: () -> Unit) { assertEquals(code, assertFailsWith<AuthFailure>(block = block).code) }
     private fun maximum(state: EconomyState = stocked()) = state.copy(tradeRelations = EconomyTradeRelationsState(
-        reputation = tradeResidentIds.associateWith { 4200L }))
+        reputation = tradeResidentIds.associateWith { 1600L }, activity = tradeResidentIds.associateWith { EconomyTradeActivity(10000, now.toString()) }))
 
     @Test fun `old saves default friendship without retroactive experience and roundtrip new promises`() {
         val old = JsonObject(economyJson.parseToJsonElement(economyJson.encodeToString(stocked())).jsonObject - "tradeRelations")
@@ -67,6 +67,8 @@ class EconomyTradeRelationsTest {
         assertTrue(migrated.offers.size <= 7)
         val completed = apply(pinned, "complete_resident_order", before.first().id)
         assertEquals(0L, completed.tradeRelations.reputation[before.first().residentId] ?: 0L)
+        assertEquals(2500, completed.tradeRelations.activity[before.first().residentId]!!.pointsBps,
+            "A valid legacy delivery restores support while its promised XP stays zero")
         val fresh = EconomyFood.normalizedOrders(completed, now.plusSeconds(catalog.food.orders.refreshSeconds))
         assertEquals(5, fresh.slots.size)
         assertEquals(3, fresh.version)
@@ -96,8 +98,8 @@ class EconomyTradeRelationsTest {
             val offer = EconomyFood.residentOrderBoard(state, now).offers.single { it.residentId == "builder" }
             state = apply(state, "complete_resident_order", offer.id)
         }
-        assertEquals(60L, state.tradeRelations.reputation["builder"])
-        assertEquals(60L, state.tradeRelations.dailyOrderXp["builder"])
+        assertEquals(180L, state.tradeRelations.reputation["builder"])
+        assertEquals(180L, state.tradeRelations.dailyOrderXp["builder"])
         val before = economyJson.encodeToString(state)
         val offer = EconomyFood.residentOrderBoard(state, now).offers.single { it.residentId == "builder" }
         failure("ECONOMY_RESOURCES") { apply(state.copy(inventory = emptyMap()), "complete_resident_order", offer.id) }
@@ -105,14 +107,14 @@ class EconomyTradeRelationsTest {
         val nextDay = now.plusSeconds(86400)
         val next = EconomyFood.residentOrderBoard(state, nextDay).offers.single { it.residentId == "builder" }
         val completed = apply(state, "complete_resident_order", next.id, nextDay)
-        assertEquals(60L + next.reputationXp!!, completed.tradeRelations.reputation["builder"])
+        assertEquals(180L + next.reputationXp!!, completed.tradeRelations.reputation["builder"])
         assertEquals(next.reputationXp.toLong(), completed.tradeRelations.dailyOrderXp["builder"])
         assertEquals(0L, completed.tradeRelations.reputation["plesk"] ?: 0L)
     }
 
     @Test fun `one selected weekly freezes three stages pays each once and retains seven day fence`() {
         var state = stocked()
-        val selected = EconomyTradeRelations.weeklyBoard(state, now).offers.single { it.residentId == "lopukh" }
+        val selected = EconomyTradeRelations.weeklyBoard(state, now).offers.first { it.residentId == "lopukh" }
         val beforeCoins = state.wallet.coins
         state = apply(state, "accept_weekly_order", selected.id)
         assertEquals(now.plusSeconds(604800), Instant.parse(state.tradeRelations.weeklyAvailableAt))
@@ -260,7 +262,7 @@ class EconomyTradeRelationsTest {
     }
 
     @Test fun `merged consumed weekly window cannot be reopened with another active guest in either direction`() {
-        val choice = EconomyTradeRelations.weeklyBoard(stocked(), now).offers.single { it.residentId == "lopukh" }
+        val choice = EconomyTradeRelations.weeklyBoard(stocked(), now).offers.first { it.residentId == "lopukh" }
         val accepted = apply(stocked(), "accept_weekly_order", choice.id)
         var paid = accepted
         repeat(3) {
@@ -294,7 +296,7 @@ class EconomyTradeRelationsTest {
     }
 
     @Test fun `merging the same frozen weekly retains the furthest paid stage`() {
-        val choice = EconomyTradeRelations.weeklyBoard(stocked(), now).offers.single { it.residentId == "lopukh" }
+        val choice = EconomyTradeRelations.weeklyBoard(stocked(), now).offers.first { it.residentId == "lopukh" }
         val accepted = apply(stocked(), "accept_weekly_order", choice.id)
         val first = EconomyTradeRelations.weeklyBoard(accepted, now).active!!
         val sameSecond = apply(stocked(), "accept_weekly_order", choice.id, now.plusMillis(1))
@@ -405,8 +407,8 @@ class EconomyTradeRelationsTest {
         }
         val ranks = economyJson.decodeFromString<List<RankVector>>(json.getValue("ranks").toString())
         ranks.forEach { row ->
-            val state = stocked().copy(tradeRelations = EconomyTradeRelationsState(reputation = mapOf("builder" to row.xp)))
-            assertEquals(row.bonusBps, EconomyTradeRelations.bonusBps(state, "builder"))
+            val state = stocked().copy(tradeRelations = EconomyTradeRelationsState(reputation = mapOf("builder" to row.xp), activity = mapOf("builder" to EconomyTradeActivity(10000, now.toString()))))
+            assertEquals(row.bonusBps, EconomyTradeRelations.bonusBps(state, "builder", now = now))
         }
         assertTrue(catalog.tradeRelations!!.ranks.all { it.bonusBps <= 1000 })
     }

@@ -135,19 +135,22 @@ class EconomyV14RuntimeTest {
         val state = accepted.copy(inventory = progress.stages[2].items,
             tradeRelations = accepted.tradeRelations.copy(weekly = progress))
         val offer = checkNotNull(EconomyTradeRelations.weeklyBoard(state, now).active)
-        assertEquals(20L, offer.pearls)
-        val full = state.copy(wallet = state.wallet.copy(pearls = ECONOMY_MAX_PEARLS - 19L))
+        assertEquals(choice.pearls, offer.pearls)
+        assertTrue(offer.pearls in setOf(40L, 80L, 140L))
+        val full = state.copy(wallet = state.wallet.copy(pearls = ECONOMY_MAX_PEARLS - offer.pearls + 1L))
         error("ECONOMY_CAPACITY") { apply(full, "complete_resident_order", offer.id) }
         assertEquals(state.inventory, full.inventory)
         assertEquals(progress, full.tradeRelations.weekly)
         val paid = apply(state, "complete_resident_order", offer.id)
-        assertEquals(state.wallet.pearls + 20L, paid.wallet.pearls)
+        assertEquals(state.wallet.pearls + offer.pearls, paid.wallet.pearls)
         assertNull(paid.tradeRelations.weekly)
         error("ECONOMY_WEEKLY_CHANGED") { apply(paid, "complete_resident_order", offer.id) }
-        val legacyProgress = progress.copy(stages = progress.stages.map { it.copy(pearls = 0L) })
-        val legacy = state.copy(tradeRelations = state.tradeRelations.copy(weekly = legacyProgress))
-        val legacyOffer = checkNotNull(EconomyTradeRelations.weeklyBoard(legacy, now).active)
-        assertNotEquals(offer.id, legacyOffer.id)
-        assertEquals(0L, apply(legacy, "complete_resident_order", legacyOffer.id).wallet.pearls)
+        for (oldPearls in listOf(0L, 20L)) {
+            val legacyProgress = progress.copy(stages = progress.stages.mapIndexed { index, stage -> stage.copy(pearls = if (index == 2) oldPearls else 0L) })
+            val legacy = state.copy(tradeRelations = state.tradeRelations.copy(weekly = legacyProgress))
+            val legacyOffer = checkNotNull(EconomyTradeRelations.weeklyBoard(legacy, now).active)
+            assertNotEquals(offer.id, legacyOffer.id)
+            assertEquals(oldPearls, apply(legacy, "complete_resident_order", legacyOffer.id).wallet.pearls)
+        }
     }
 }

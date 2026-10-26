@@ -117,19 +117,19 @@ test("GET neither buys a stale lot nor consumes a first-sale subsidy", () => {
 });
 
 test("first sale has a 180-second floor, preserves the usual fee and waits for manual proceeds", () => {
-  const owner = player(), lot = listing(owner), before = read(owner);
+  const owner = player(), lot = listing(owner, 1, 60), before = read(owner);
   assert.equal(economy.runDevNeighborTick(now + 179999), 0);
   assert.equal(economy.runDevNeighborTick(now + 180000), 1);
   assert.equal(economy.runDevNeighborTick(now + 180001), 0);
   const sold = mine(owner, now + 180000).find(row => row.id === lot.id);
   assert.equal(economyMarketListingSchema.safeParse(sold).success, true);
   assert.deepEqual(sold.sale, { buyerKind: "world_character", buyerCharacterId: "berest", buyerPublicId: null,
-    buyerName: "Берест", buyerAvatarUrl: null, proceedsCoins: 28, claimedAt: null });
+    buyerName: "Берест", buyerAvatarUrl: null, proceedsCoins: 57, claimedAt: null });
   assert.equal(read(owner, now + 180000).wallet.coins, before.wallet.coins);
   const claim = { requestId: crypto.randomUUID(), ownerPublicId: owner.me.user.publicId, expectedRevision: read(owner, now + 180000).revision,
     action: "claim_sale", targetId: lot.id, quantity: 1, totalPrice: 0 };
   const result = economy.commandDevEconomyMarket(owner.token, claim, now + 180000);
-  assert.equal(result.state.wallet.coins, before.wallet.coins + 28);
+  assert.equal(result.state.wallet.coins, before.wallet.coins + 57);
   assert.equal(economy.commandDevEconomyMarket(owner.token, claim, now + 180001).replayed, true);
 });
 
@@ -143,11 +143,12 @@ test("after the first trade normal six-hour eligibility and two-lot daily cap ap
 });
 
 test("price ceilings and per-lot, daily and global subsidy caps are independent", () => {
+  configure({ buyPriceBps: 10000, maxLotCoins: 150 });
   const owner = player();
   const overpriced = listing(owner, 1, 40), tooLarge = listing(owner, 6, 180);
   assert.equal(economy.buyDevNeighborListing(overpriced.id, { now: now + sixHours }), false);
   assert.equal(economy.buyDevNeighborListing(tooLarge.id, { now: now + sixHours }), false);
-  configure({ dailyBudgetCoins: 100, maxLotCoins: 100 });
+  configure({ buyPriceBps: 10000, dailyBudgetCoins: 100, maxLotCoins: 100 });
   listing(owner, 3, 90, now + 1); listing(owner, 1, 30, now + 2);
   assert.equal(economy.runDevNeighborTick(now + sixHours + 2), 1);
   assert.equal(shop(owner, now + sixHours + 2).buying.spentCoins, 90);
@@ -246,6 +247,7 @@ test("settings accept administrator tuning while preserving integral values know
 });
 
 test("a bounded background scan rotates past one hundred permanently ineligible listings", () => {
+  configure({ buyPriceBps: 10000 });
   for (let ownerIndex = 0; ownerIndex < 10; ownerIndex++) {
     const owner = player(); row(owner).state.marketSlots = 10;
     for (let lotIndex = 0; lotIndex < 10; lotIndex++) listing(owner, 1, 60);
@@ -320,4 +322,49 @@ test("extreme multipliers do not overflow or produce invalid public quotes", () 
   assert.deepEqual(view.shop.offers, []);
   assert.equal(model.neighborViewSchema.safeParse(view).success, true);
   assert.equal(rules.neighborOfferPrice("wood", 1000000000, settings({ sellPriceBps: 0 })), 0);
+});
+
+test("the actual composer default qualifies all standard stock without subsidised resident shop roundtrips", async () => {
+  const { suggestedMarketListing } = await vite.ssrLoadModule("/features/economy/ui/market/neighbor-listing-guidance.ts");
+  for (const item of model.neighborStockItems) {
+    const suggested = suggestedMarketListing(item.id, 99);
+    assert.ok(suggested.price >= market.marketMinimumPrice(item.id, suggested.quantity), item.id);
+    assert.ok(suggested.price <= rules.neighborBuyPriceCeiling(item.id, suggested.quantity, settings()), item.id);
+    assert.ok(suggested.price <= settings().maxLotCoins, item.id);
+    for (let quantity = 1; quantity <= 99; quantity++) {
+      const cap = rules.neighborBuyPriceCeiling(item.id, quantity, settings());
+      const income = cap - market.marketSaleFee(cap, economyCatalog.market.feeBps);
+      assert.ok(income < rules.neighborOfferPrice(item.id, quantity, settings()), `${item.id} × ${quantity}: Berest roundtrip`);
+      const acquisition = rules.neighborCheapestUnitAcquisition(item.id);
+      if (Number.isFinite(acquisition)) assert.ok(income < acquisition * quantity, `${item.id} × ${quantity}: other resident roundtrip`);
+      const split = quantity * rules.neighborBuyPriceCeiling(item.id, 1, settings());
+      assert.ok(split <= rules.neighborOfferPrice(item.id, quantity, settings()), `${item.id}: split-lot roundtrip`);
+    }
+  }
+  assert.deepEqual(suggestedMarketListing("wood", 20), { quantity: 1, minimumQuantity: 1, price: 60 });
+  assert.deepEqual(suggestedMarketListing("crumb_bait", 20), { quantity: 10, minimumQuantity: 10, price: 10 });
+});
+
+test("buying cheap bait then listing it at twice its acquisition value cannot fund a loop", () => {
+  const owner = player(2, { crumb_bait: 10 });
+  row(owner).state.unlockedItems.push("crumb_bait");
+  const lot = economy.commandDevEconomyMarket(owner.token, { requestId: crypto.randomUUID(), ownerPublicId: owner.me.user.publicId,
+    expectedRevision: read(owner).revision, action: "create_listing", targetId: "crumb_bait", quantity: 10, totalPrice: 20 }, now).listing;
+  assert.equal(economy.buyDevNeighborListing(lot.id, { now: now + sixHours }), false);
+  assert.equal(rules.neighborBuyPriceCeiling("crumb_bait", 10, settings()), 10);
+  assert.equal(rules.neighborBuyPriceCeiling("crumb_bait", 10, settings({ buyPriceBps: 100000 })), 10);
+});
+
+test("full late crafted lots qualify within higher budgets and proceeds exceed immediate local sale", () => {
+  const owner = player(5, { festive_sturgeon: 2 });
+  row(owner).state.unlockedItems.push("festive_sturgeon");
+  const item = economyCatalog.items.find(item => item.id === "festive_sturgeon");
+  const price = Math.floor(item.baseSellPrice * 2 / economyCatalog.currencyScale) * economyCatalog.currencyScale;
+  const lot = economy.commandDevEconomyMarket(owner.token, { requestId: crypto.randomUUID(), ownerPublicId: owner.me.user.publicId,
+    expectedRevision: read(owner).revision, action: "create_listing", targetId: item.id, quantity: 1, totalPrice: price }, now).listing;
+  assert.equal(economy.buyDevNeighborListing(lot.id, { now: now + 180000 }), true);
+  const sold = mine(owner, now + 180000).find(value => value.id === lot.id);
+  assert.ok(sold.sale.proceedsCoins > item.baseSellPrice);
+  assert.equal(shop(owner, now + 180000).buying.globalRemainingCoins, settings().globalDailyBudgetCoins - price);
+  assert.equal(shop(owner, now + 180000).buying.firstSale, false);
 });

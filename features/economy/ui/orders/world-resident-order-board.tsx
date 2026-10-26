@@ -17,6 +17,7 @@ import { worldDuration, worldMaterialSource, worldMaterialAccessReason } from "@
 import { fishSelectionMatches, fishStockRequirements, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import { tradeRelationProgress, tradeRelationsState, tradeResidentAvailable, weeklyOrderBoard } from "@/features/economy/domain/trade-relations";
+import { orderDifficulty, orderDifficultyNames } from "@/features/economy/domain/order-difficulty";
 import { orderOfferReady } from "./order-journal-summary";
 import { OrderResidentTabs } from "./order-resident-tabs";
 import { OrderResidentRelations } from "./order-resident-relations";
@@ -147,6 +148,9 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
   const xpRemaining = !permanent && state.catalog.tradeRelations ? tradeRelationProgress(state, offer.residentId, state.catalog, economy.now).dailyOrderXpRemaining : 0;
   const promisedXp = !tutorial && !stageOrder ? offer.reputationXp ?? 0 : 0;
   const reputationXp = weekly ? promisedXp : Math.min(promisedXp, xpRemaining);
+  const difficultyEffort = weekly ? tradeRelationsState(state).weekly?.stages.reduce((sum, stage) => sum + (stage.effortSeconds ?? 0), 0)
+    ?? offer.effortSeconds ?? 0 : offer.effortSeconds ?? 0;
+  const difficulty = orderDifficulty(difficultyEffort, weekly);
   const submitDisabled = locked(economy) || missing || requiredBuildings.length > 0 || requiredExplorations.length > 0 || walletFull || !rewardRoom || waitSeconds > 0 || expired || !currentOffer;
   const acceptedOwner = state.ownerPublicId, acceptedRevision = state.revision;
   const complete = (selection?: FishSelection): boolean => {
@@ -178,7 +182,7 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
         {offer.description && <p className={styles.description}>{offer.description}</p>}
         {!tutorial && !stageOrder && <div className={styles.orderDetails}>
           {promisedXp > 0 && <p className={styles.reputationReward} data-order-reputation-reward><HeartHandshake size={13} aria-hidden="true" />{reputationXp > 0 ? <>+{number(reputationXp)} репутации{reputationXp < promisedXp && <span> · дневной остаток</span>}</> : "Репутация за обычные просьбы на сегодня получена"}</p>}
-          {offer.effortSeconds !== undefined && <p className={styles.effort} data-order-preparation><Clock3 size={13} aria-hidden="true" />Около {worldDuration(offer.effortSeconds)} работы с нуля{offer.fishingUncertain ? " · улов случаен" : ""}</p>}
+          {offer.effortSeconds !== undefined && <p className={styles.effort} data-order-preparation data-order-difficulty={difficulty}><Clock3 size={13} aria-hidden="true" />{orderDifficultyNames[difficulty]}{weekly ? " поручение · этот этап:" : " ·"} около {worldDuration(offer.effortSeconds)} работы с нуля{offer.fishingUncertain ? " · улов случаен" : ""}</p>}
         </div>}
         {weekly && offer.expiresAt && <p className={styles.deadline} data-weekly-deadline>{expired ? "Срок поручения закончился" : <>На поручение осталось <strong>{waiting(remaining(offer.expiresAt, economy.now))}</strong></>}</p>}
         {waitSeconds > 0 && <p className={styles.wait} data-stage-order-wait><Clock3 size={15} aria-hidden="true" /><span>Следующая поставка через <strong>{waiting(waitSeconds)}</strong>. Материалы можно подготовить заранее.</span></p>}

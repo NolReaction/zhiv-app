@@ -160,7 +160,7 @@ class NeighborRoutesTest {
         }.status)
         for (bad in listOf(
             settings.replace("\"expectedVersion\":0", "\"expectedVersion\":\"0\""),
-            settings.replace("\"dailyBudgetCoins\":300", "\"dailyBudgetCoins\":\"300\""),
+            settings.replace("\"dailyBudgetCoins\":${NeighborRules.defaults.dailyBudgetCoins}", "\"dailyBudgetCoins\":\"${NeighborRules.defaults.dailyBudgetCoins}\""),
             settings.replace("\"enabled\":true", "\"enabled\":\"true\""),
             settings.replace("\"home\":$home", "\"home\":\"$home\""),
             settings.dropLast(1) + ",\"mintCoins\":999}",

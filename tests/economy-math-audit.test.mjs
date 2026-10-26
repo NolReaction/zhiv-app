@@ -193,3 +193,20 @@ test("each specialist rod and hook can lead a distinct rarity objective instead 
     assert(catalog.fishing.hooks.every(other => share(own, rarity) >= share(math.catchPortfolio(rod.id, null, "shore", other.id), rarity)), `${hook.id}: missing intended ${rarity} role`);
   }
 });
+
+
+test("public math audit excludes retired jobs from recipes, mining and station benchmarks", () => {
+  const catalog = readEconomyCatalog();
+  // Archived jobs remain in the catalog to settle work already paid for. They
+  // cannot be advertised as available income routes in a fresh economy audit.
+  const retiredRecipe = catalog.recipes.find(recipe => recipe.retired);
+  const retiredRoute = catalog.explorations.find(route => route.retired && route.activity === "mining");
+  assert(retiredRecipe && retiredRoute, "regression must include both historical source kinds");
+  retiredRecipe.cost.coins = Number.MAX_SAFE_INTEGER;
+  retiredRoute.cost.coins = Number.MAX_SAFE_INTEGER;
+  const report = auditEconomicMath(catalog);
+  assert.deepEqual(report.batches.map(row => row.id), catalog.recipes.filter(row => !row.retired).map(row => row.id));
+  assert.deepEqual(report.mining.map(row => row.id), catalog.explorations.filter(row => !row.retired && row.activity === "mining").map(row => row.id));
+  const retiredIds = new Set([...catalog.recipes, ...catalog.explorations].filter(row => row.retired).map(row => row.id));
+  assert(Object.values(report.stationBenchmarks).every(row => !retiredIds.has(row.recipeId)));
+});

@@ -7,7 +7,7 @@ import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, nominalEconomyMoney, nomin
 import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, normalizeDailyRewardState, onboardingRewardEligible, onboardingRewardForState, progressionRewardsCatalog, type DailyRewardState } from "@/features/game/progression-rewards";
 
 type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRevision: number; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50 };
-type Profile = { daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt>; onboardingClaimedAt?: string | null };
+type Profile = { achievementRewardVersion?: 6 | 7; daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt>; onboardingClaimedAt?: string | null };
 const globalStore = globalThis as typeof globalThis & { __zhivDevProgressionRewards?: Map<string, Profile> };
 const store = () => globalStore.__zhivDevProgressionRewards ??= new Map();
 export const getDevOnboardingClaimedAt = (owner: string) => store().get(owner)?.onboardingClaimedAt ?? null;
@@ -19,14 +19,14 @@ function profile(token: string | undefined, expectedOwner?: string) {
   const owner = identity.user.publicId;
   if (expectedOwner && owner !== expectedOwner) fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите награды");
   let value = store().get(owner);
-  if (!value) store().set(owner, value = { daily: initialDailyRewardState(), claims: new Map(), receipts: new Map() });
+  if (!value) store().set(owner, value = { achievementRewardVersion: 7, daily: initialDailyRewardState(), claims: new Map(), receipts: new Map() });
   value.daily = normalizeDailyRewardState(value.daily, [...value.receipts.values()].flatMap(({ claim }) => claim.kind === "daily" ? [claim.step] : []));
   return { owner, value };
 }
 function view(token: string | undefined, owner: string, value: Profile, now: number): GameRewards {
   // Reconcile verified progress before reading dates; dates are never inferred from ownership in the browser.
   const economy = getDevEconomy(token, now, owner);
-  const result = getDevGameAchievements(token, now, 6);
+  const result = getDevGameAchievements(token, now, 7);
   if (result.kind !== "ok") fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401);
   return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: progressionRewardsCatalog.version,
     onboarding: { claimedAt: value.onboardingClaimedAt ?? null },
@@ -34,7 +34,10 @@ function view(token: string | undefined, owner: string, value: Profile, now: num
     achievementRewards: achievementRewardRows((id, level) => ({
       at: result.value.achievements.find(row => row.id === id)?.tiers?.find(tier => tier.level === level)?.unlockedAt ?? null,
       eligible: getDevAchievementRewardEligibility(owner, id, level),
-    }), (id, level) => value.claims.get(`${id}:${level}`) ?? null) };
+    }), (id, level) => value.claims.get(`${id}:${level}`) ?? null, value.achievementRewardVersion ?? 6, (id, level) => {
+      const receipt = [...value.receipts.values()].find(({ claim }) => claim.kind === "achievement" && claim.achievementId === id && claim.level === level);
+      return receipt ? nominalEconomyPearls(receipt.claim.reward.pearls, receipt.pearlScale ?? receipt.currencyScale ?? 1) : undefined;
+    }) };
 }
 export function getDevProgressionRewards(token: string | undefined, now = Date.now()): GameRewards {
   const { owner, value } = profile(token);

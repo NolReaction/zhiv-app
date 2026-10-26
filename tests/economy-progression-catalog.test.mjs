@@ -17,7 +17,7 @@ test("economy catalog has useful chains, reachable actual tiers and separate pro
   assert.ok(report.fullBaseMinimumSeconds > report.fiveTierBaseMinimumSeconds);
   assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 0);
   assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 0);
-  assert.equal(report.fourthStage.constructionCoins, 19200);
+  assert.equal(report.fourthStage.constructionCoins, 61200);
   assert.equal(report.fourthStage.constructionSeconds, 32 * 3600);
   assert.equal(report.fourthStage.longWorkshopJobs, 6);
   assert.match(report.timingBasis, /construction queue.*actual play duration are separate/);
@@ -165,7 +165,7 @@ test("unit production, short mining and ingredient value cannot silently regress
 
 test("the authored v14 catalog keeps every current production unit-sized and every storage gate optional", () => {
   const catalog = readEconomyCatalog();
-  assert.equal(catalog.version, 14); assert.equal(catalog.recipes.filter(recipe => !recipe.retired).length, 61);
+  assert.equal(catalog.version, 15); assert.equal(catalog.recipes.filter(recipe => !recipe.retired).length, 61);
   for (const recipe of catalog.recipes.filter(recipe => !recipe.retired)) {
     assert.equal(recipe.maxBatch, 1, recipe.id);
     assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);
@@ -216,7 +216,7 @@ test("the restored bridge gates the market while the lighthouse and its material
 test("pearl rewards provide regular free progress while permanent slots retain distinct prices", () => {
   const catalog = readEconomyCatalog();
   const rewards = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8"));
-  assert.equal(rewards.version, 7);
+  assert.equal(rewards.version, 8);
   assert.deepEqual(rewards.v6DailyPearls, [20, 30, 40, 40, 50, 50, 70]);
   assert.equal(rewards.v6Onboarding.pearls, 40);
   assert.equal(rewards.onboarding.pearls, 20);
@@ -278,8 +278,8 @@ test("new landmarks stop at their actual restored tier and cannot add a fake pro
 test("the compact fourth stage protects financing, construction fees and manual unit workload", () => {
   for (const [mutate, pattern] of [
     [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders[0].coins += 1, /project must pay item value plus 25 percent/],
-    [c => c.buildings.find(building => building.id === "woodlot").levels[3].cost.coins += 1, /construction price must follow builder time/],
-    [c => c.buildings.find(building => building.id === "quarry").levels[3].seconds -= 60, /construction price must follow builder time/],
+    [c => c.buildings.find(building => building.id === "woodlot").levels[3].cost.coins = 0, /later construction must not cost less|permanent construction price/],
+    [c => c.buildings.find(building => building.id === "quarry").levels[3].cost.coins += 0.5, /invalid price/],
     [c => { c.buildings.find(building => building.id === "home").levels[4].cost.items.reinforced_parts = 10; const order = c.stageOrders.find(stage => stage.homeLevel === 4).orders.at(-1); order.items.reinforced_parts = 35; order.coins = Math.ceil(createLiquidation(c)(order.items) * 1.25); }, /workshop workload must stay within forty/],
     [c => c.buildings.find(building => building.id === "home").levels[4].cost.items.wood = 51, /upgrade inputs exceed available storage/],
     [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders[0].items.moon_crystal = 1, /must not depend on a rare find/],
@@ -308,7 +308,7 @@ test("arcade production improvements do not make earlier tiers slower than later
 
 test("third-stage material bundles fit starter storage while daily delivery waits are removed", () => {
   const catalog = readEconomyCatalog(), report = auditEconomyProgression(catalog);
-  assert.deepEqual(report.thirdStage, { constructionCount: 7, constructionCoins: 9000,
+  assert.deepEqual(report.thirdStage, { constructionCount: 7, constructionCoins: 22100,
     constructionSeconds: 15 * 3600, largestMaterialBundle: 32 });
   assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 0);
   const home = catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4);

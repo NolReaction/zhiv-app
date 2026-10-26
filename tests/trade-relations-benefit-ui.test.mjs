@@ -31,7 +31,7 @@ function fresh(reputation = {}) {
   state.buildings = { home: 3, warehouse: 2, garden: 1, workshop: 1, woodlot: 1, quarry: 1, dryer: 1 };
   state.wallet = { coins: 100_000, pearls: 0 };
   state.inventory = {};
-  state.tradeRelations = { version: 1, reputation, dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null,
+  state.tradeRelations = { version: 1, reputation, activity: Object.fromEntries(Object.keys(reputation).map(id => [id, { pointsBps: 10000, updatedAt: new Date(now).toISOString() }])), dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null,
     weeklyAvailableAt: null, completedWeekly: 0 };
   return state;
 }
@@ -121,4 +121,19 @@ test("mine list, preparation and saved extraction agree without consuming hero f
 test("meal saving text compares against existing friendship speed instead of promising the old reduction", () => {
   assert.equal(mealSpeedDescription(2500), "+25% скорости · время −20%");
   assert.equal(mealSpeedDescription(2500, 1000), "+25% скорости · время ≈ −18,5%");
+});
+
+test("a resumed tab uses the current activity clock for mining previews as well as its benefit badge", () => {
+  const state = fresh({ kamneshmyg: 1600 });
+  const route = economyCatalog.explorations.find(route => route.id === "quarry_stone");
+  const economy = controller(state);
+  economy.now = now + 10 * 86400000;
+  const shared = { sectorId: "caves", economy, state: economy.snapshot, exploring: false, onSelectRoute() {}, onOpenPantry() {} };
+  const preparation = render(WorldExpeditionSector, { ...shared, selectedRoute: route.id });
+  const listing = render(WorldExpeditionSector, { ...shared, selectedRoute: null });
+  assert.doesNotMatch(preparation, /data-mining-trade-bonus/);
+  assert(preparation.includes(miningDurationLabel(route.seconds)));
+  assert(listing.includes(miningDurationLabel(route.seconds)));
+  apply(state, "start_exploration", route.id, economy.now);
+  assert.equal(elapsed(state.jobs[0], economy.now), route.seconds);
 });

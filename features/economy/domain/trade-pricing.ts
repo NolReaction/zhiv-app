@@ -5,7 +5,7 @@ import { tradeDiscountedPrice } from "./trade-relations";
  * pearls and rerolls keep their original prices and order exchange value. */
 export function tradePurchaseUnitPrice(state: Pick<EconomyState, "tradeRelations">,
   residentId: "plesk" | "leaftail", kind: string, basePrice: number,
-  currency: "coins" | "pearls" = "coins", catalog: EconomyCatalog = economyCatalog): number {
+  currency: "coins" | "pearls" = "coins", catalog: EconomyCatalog = economyCatalog, now?: number): number {
   if (currency !== "coins" || !["rod", "hook", "bait", "wardrobe"].includes(kind) || basePrice <= 0) return basePrice;
-  return Math.max(1, tradeDiscountedPrice(state, residentId, basePrice, catalog));
+  return Math.max(1, tradeDiscountedPrice(state, residentId, basePrice, catalog, now));
 }

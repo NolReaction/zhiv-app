@@ -57,15 +57,15 @@ test("orders retain All and five character tabs without exposing residents befor
 
 test("character view shows the real long-term rank, benefit and remaining daily reputation", () => {
   const economy = controller();
-  economy.snapshot.tradeRelations = { ...tradeRelationsState(economy.snapshot), reputation: { builder: 1800 },
-    dailyCycle: Math.floor(now / 86400000), dailyOrderXp: { builder: 59 } };
+  economy.snapshot.tradeRelations = { ...tradeRelationsState(economy.snapshot), reputation: { builder: 800 }, activity: { builder: { pointsBps: 10000, updatedAt: new Date(now).toISOString() } },
+    dailyCycle: Math.floor(now / 86400000), dailyOrderXp: { builder: 179 } };
   const html = render(WorldOrderJournal, { economy, residentId: "builder", introducedResidents: ids });
   assert.match(html, /data-order-relations="builder"/);
   assert.match(html, /Близкий друг/);
   assert.match(html, /Скорость стройки \+7%/);
   assert.match(html, /Следующий уровень: Скорость стройки \+10%/);
   assert.match(html, /data-order-daily-reputation/);
-  assert.match(html, /<strong>1 \/ 60<\/strong>/);
+  assert.match(html, /<strong>1 \/ 180<\/strong>/);
   const offer = residentOrderBoard(economy.snapshot, now).offers.find(entry => entry.residentId === "builder");
   const card = render(ResidentOrderCard, { economy, offer });
   assert.match(card, /\+1 репутации/);
@@ -100,6 +100,17 @@ test("All includes the saved weekly stage in readiness and weekly rewards do not
   assert.ok(ownSummary.total >= 2);
   const future = { ...economy, now: Date.parse(state.tradeRelations.weekly.expiresAt) };
   assert.doesNotMatch(render(WorldOrderJournal, { economy: future }), /data-weekly-order=/);
+});
+
+test("an accepted weekly stage keeps the difficulty of the complete frozen contract", () => {
+  const economy = controller(), state = economy.snapshot;
+  const choice = weeklyOrderBoard(state, now).offers.find(offer => offer.effortSeconds >= 10 * 3600);
+  assert(choice);
+  acceptWeeklyOrder(state, choice, now, state.catalog);
+  const active = weeklyOrderBoard(state, now).active;
+  const html = render(ResidentOrderCard, { economy, offer: active });
+  assert.match(html, /data-order-difficulty="masterful"/);
+  assert.match(html, /Мастерское поручение · этот этап:/);
 });
 
 test("the initial world lesson stays focused on its single pinned request", () => {

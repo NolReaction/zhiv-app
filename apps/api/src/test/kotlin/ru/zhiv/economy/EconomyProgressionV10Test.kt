@@ -36,7 +36,7 @@ class EconomyProgressionV10Test {
             val grown = apply(state, "start_production", recipe.id)
             val job = grown.jobs.single()
             val ripeAt = Instant.parse(job.finishesAt)
-            assertEquals(14, job.catalogVersion)
+            assertEquals(EconomyRules.catalog.version, job.catalogVersion)
             assertEquals("ECONOMY_COLLECTION_REQUIRED", assertFailsWith<AuthFailure> {
                 apply(grown, "claim_job", job.id, ripeAt)
             }.code)

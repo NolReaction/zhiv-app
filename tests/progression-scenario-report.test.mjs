@@ -99,6 +99,7 @@ test("published branch results match the full evidence and current economy sourc
       maxDays: options.maxDays ?? 160, manualSeconds: options.manualSeconds ?? 2,
       externalPearls: (options.externalSlotBudget ?? 0) / 2, goal: options.completionGoal ?? "home-5",
       socialMode: options.socialMode ?? "income", speedupPolicy: options.speedupPolicy ?? "none",
+      ownerPublicId: options.ownerPublicId ?? "0000-0000-0001", neighborPolicy: options.neighborPolicy ?? "none", relicPolicy: options.relicPolicy ?? "none",
       useMeals: options.useMeals ?? true, buySupplies: options.buySupplies ?? true, opportunisticRoutes: options.opportunisticRoutes ?? true,
     };
     assert.deepEqual(Object.fromEntries(Object.keys(expected).map(key => [key, row[key]])), expected, `${row.id} metadata must describe the actual runner options`);
@@ -111,4 +112,33 @@ test("summary ranges never mix paid capacity, altered action speed or disabled-f
   const summaries = scenarioHighlights({ ...report(), scenarios: [base, { ...base, seed: 42, home5Days: 33 },
     { ...base, externalPearls: 1750, home5Days: 4 }, { ...base, manualSeconds: 1, home5Days: 3 }, { ...base, useMeals: false, home5Days: 99 }] });
   assert.deepEqual(JSON.parse(JSON.stringify(summaries)), [{ title: "Дом 5 · 3 × 30 минут", minimum: 31, maximum: 33, count: 2 }]);
+});
+
+
+test("capacity and renewable budgets remain visible separately from building and permanent-rank goals", () => {
+  const value = compactProgressionReport({ ...source, scenarios: [{ ...row, completionGoal: "all-capacity",
+    productionSlots: { garden: 2, woodlot: 3 }, marketSlots: 7, allProductionSlotsDays: null, allCapacityDays: null,
+    relicPolicy: "earned", coins: 400, coinLedger: { credits: { orders: 1000 }, debits: { buildings: 700 } },
+    calendarSnapshots: [{ day: 1, coins: 400, pearls: 50, coinLedger: { credits: { orders: 1000 }, debits: { buildings: 700 } },
+      pearlLedger: { credits: { achievements: 200 }, debits: { slots: 150 } } }],
+  }] }, economy, rewards);
+  assert.equal(progressionScenarioReportSchema.safeParse(value).success, true);
+  assert.equal(value.scenarios[0].calendarSnapshots[0].pearls, 25);
+  assert.equal(value.scenarios[0].calendarSnapshots[0].pearlIncome, 100);
+  assert.equal(value.scenarios[0].coinSpending.buildings, 700);
+  assert.equal(value.scenarios[0].allCapacityDays, null);
+  const text = html(value);
+  assert.match(text, /Хозяйство, ранги и все места/);
+  assert.match(text, /Торговые места/);
+  assert.match(text, /Бюджет по календарным дням/);
+  assert.match(text, /недельные поручения продолжают приносить жемчуг/);
+});
+
+test("free earned speedups have their own highlights and never inherit external-funded results", () => {
+  const base = { ...report().scenarios[0], goal: "home-5", visitsPerDay: 1, regularMinutes: 960, completed: true,
+    slotPolicy: "earned", socialMode: "income", speedupPolicy: "earned", home5Days: 7 };
+  const highlights = scenarioHighlights({ ...report(), scenarios: [base, { ...base, seed: 42, home5Days: 8 },
+    { ...base, externalPearls: 1750, home5Days: 2 }, { ...base, relicPolicy: "earned", home5Days: 1 },
+    { ...base, ownerPublicId: "0000-0000-0002", home5Days: 3 }] });
+  assert.deepEqual(JSON.parse(JSON.stringify(highlights)), [{ title: "Дом 5 · 16 ч · бесплатные ускорения", minimum: 7, maximum: 8, count: 2 }]);
 });

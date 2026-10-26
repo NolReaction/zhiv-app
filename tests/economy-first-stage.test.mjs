@@ -99,7 +99,7 @@ test("fresh-stage one-slot commands reject batches atomically and strawberry unl
 test("from home three garden slots run two raspberries and a strawberry simultaneously until claimed", () => {
   const p = player(); read(p); const state = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state;
   state.buildings.home = 3; state.wallet.pearls = 700; state.progression.recipes.cook_compote = 1;
-  send(p, "buy_production_slot", "garden"); send(p, "buy_production_slot", "garden");
+  send(p, "buy_production_slot", "garden", 0, { totalPrice: 200 }); send(p, "buy_production_slot", "garden", 0, { totalPrice: 500 });
   send(p, "start_production", "grow_berries"); send(p, "start_production", "grow_berries");
   const started = send(p, "start_production", "grow_strawberries");
   assert.equal(started.wallet.pearls, 0); assert.deepEqual(started.productionSlots, { garden: 3 });

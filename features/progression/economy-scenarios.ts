@@ -15,9 +15,15 @@ const scenarioSchema = z.object({
   useMeals: z.boolean(), buySupplies: z.boolean(), opportunisticRoutes: z.boolean(), speedupPolicy: z.string(), socialMode: z.string(), maxDays: milestone,
   elapsedDays: nonnegative, activeHours: nonnegative, manualHours: nonnegative, commandCount: count,
   home5Days: milestone, allProductionDays: milestone, allBuildingsDays: milestone, allRecipesDays: milestone, reputationMaxDays: milestone,
+  ownerPublicId: z.string().default("0000-0000-0001"), neighborPolicy: z.string().default("none"), neighborSales: count.default(0), neighborProceeds: nonnegative.default(0), relicPolicy: z.string().default("none"),
+  allProductionSlotsDays: milestone.default(null), allCapacityDays: milestone.default(null),
+  productionSlots: z.record(z.string(), count).default({}), marketSlots: count.default(economy.market.baseSlots),
+  coinsRemaining: nonnegative.default(0), coinIncome: quantities.default({}), coinSpending: quantities.default({}),
+  calendarSnapshots: z.array(z.object({ day: nonnegative, coins: nonnegative, pearls: nonnegative,
+    coinIncome: nonnegative, coinSpending: nonnegative, pearlIncome: nonnegative, pearlSpending: nonnegative }).strict()).default([]),
   buildings: z.record(z.string(), count),
   social: z.object({ mode: z.string(), funded: z.boolean(), maximumXp: count,
-    reputation: z.record(z.string(), count), bonusPercent: quantities, allMaximum: z.boolean(), completedWeekly: count,
+    reputation: z.record(z.string(), count), bonusPercent: quantities, activityPercent: quantities.default({}), rankBonusPercent: quantities.default({}), allMaximum: z.boolean(), completedWeekly: count,
     ordinaryOrdersCompleted: count, acceptedWeeklyCount: count, expiredWeeklyCount: count, deliveryCount: count }).strict().nullable(),
   pearlIncome: quantities, pearlSpending: quantities, pearlsRemaining: nonnegative,
 }).strict();
@@ -39,7 +45,7 @@ export function scenarioReportState(report: ProgressionScenarioReport, currentFi
 }
 
 export const scenarioGoalNames: Record<string, string> = {
-  "home-5": "Дом 5", "all-production": "Все производства", "all-buildings": "Все постройки", "all-recipes": "Все рецепты", "max-reputation": "Репутация всех жителей", "reputation": "Репутация всех жителей", "observation": "Наблюдение за развитием", "full": "Хозяйство, рецепты и репутация",
+  "home-5": "Дом 5", "all-production": "Все производства", "all-buildings": "Все постройки", "all-recipes": "Все рецепты", "max-reputation": "Репутация всех жителей", "reputation": "Репутация всех жителей", "observation": "Наблюдение за развитием", "full": "Хозяйство, рецепты и ранги", "all-capacity": "Хозяйство, ранги и все места",
 };
 export const scenarioResidentNames: Record<string, string> = { builder: "Шишколап", lopukh: "Лопоух", kamneshmyg: "Камнешмыг", plesk: "Плёска", leaftail: "Листохвост" };
 export function scenarioSchedule(row: Pick<ProgressionScenario, "visitsPerDay" | "regularMinutes">) {
@@ -50,15 +56,21 @@ export function scenarioSchedule(row: Pick<ProgressionScenario, "visitsPerDay" |
 /** Compare only the declared standard policy; sensitivity variants stay in the table. */
 export function scenarioHighlights(report: ProgressionScenarioReport) {
   const standard = report.scenarios.filter(row => row.externalPearls === 0 && row.manualSeconds === 2
-    && row.slotPolicy === "earned" && row.useMeals && row.buySupplies && row.opportunisticRoutes && row.speedupPolicy === "none");
+    && row.slotPolicy === "earned" && row.useMeals && row.buySupplies && row.opportunisticRoutes
+    && row.relicPolicy === "none" && row.neighborPolicy === "none" && row.ownerPublicId === "0000-0000-0001");
   const definitions = [
     { title: "Дом 5 · 3 × 30 минут", goal: "home-5", visits: 3, minutes: 30, socialMode: "income", field: "home5Days" },
     { title: "Дом 5 · 8 часов в день", goal: "home-5", visits: 1, minutes: 480, socialMode: "income", field: "home5Days" },
     { title: "Все три цели · 8 часов", goal: "full", visits: 1, minutes: 480, socialMode: "reputation", field: "elapsedDays" },
     { title: "Все три цели · 16 часов", goal: "full", visits: 1, minutes: 960, socialMode: "reputation", field: "elapsedDays" },
   ] as const;
-  return definitions.flatMap(definition => {
-    const rows = standard.filter(row => row.completed && row.goal === definition.goal && row.visitsPerDay === definition.visits
+  const accelerated = [
+    { title: "Дом 5 · 3 × 30 мин · бесплатные ускорения", goal: "home-5", visits: 3, minutes: 30, socialMode: "income", field: "home5Days" },
+    { title: "Дом 5 · 8 ч · бесплатные ускорения", goal: "home-5", visits: 1, minutes: 480, socialMode: "income", field: "home5Days" },
+    { title: "Дом 5 · 16 ч · бесплатные ускорения", goal: "home-5", visits: 1, minutes: 960, socialMode: "income", field: "home5Days" },
+  ] as const;
+  return [...definitions.map(row => ({ ...row, speedup: "none" })), ...accelerated.map(row => ({ ...row, speedup: "earned" }))].flatMap(definition => {
+    const rows = standard.filter(row => row.speedupPolicy === definition.speedup && row.completed && row.goal === definition.goal && row.visitsPerDay === definition.visits
       && row.regularMinutes === definition.minutes && row.socialMode === definition.socialMode && row[definition.field] !== null);
     if (!rows.length) return [];
     const values = rows.map(row => row[definition.field]!);
@@ -68,10 +80,10 @@ export function scenarioHighlights(report: ProgressionScenarioReport) {
 
 export function scenarioCsvRows(report: ProgressionScenarioReport): (string | number | null)[][] {
   return [
-    ["policy", "catalog_version", "scenario", "goal", "completed", "seed", "visits_per_day", "minutes_per_visit", "first_visit_minutes", "seconds_per_action", "external_visible_pearls", "slot_policy", "observed_days", "home_5_days", "all_production_days", "all_buildings_days", "all_recipes_days", "max_reputation_days", "active_hours", "manual_hours", "commands", "use_meals", "buy_supplies", "useful_routes", "speedup_policy", "social_mode"],
+    ["policy", "catalog_version", "scenario", "goal", "completed", "seed", "visits_per_day", "minutes_per_visit", "first_visit_minutes", "seconds_per_action", "external_visible_pearls", "slot_policy", "observed_days", "home_5_days", "all_production_days", "all_buildings_days", "all_recipes_days", "max_reputation_days", "active_hours", "manual_hours", "commands", "use_meals", "buy_supplies", "useful_routes", "speedup_policy", "social_mode", "owner_public_id", "relic_policy", "all_production_slots_days", "all_capacity_days", "market_slots", "remaining_coins", "remaining_visible_pearls", "neighbor_policy", "neighbor_sales", "neighbor_proceeds"],
     ...report.scenarios.map(row => [report.policyVersion, report.economyVersion, row.id, row.goal, row.completed ? 1 : 0, row.seed,
       row.visitsPerDay, row.regularMinutes, row.firstMinutes, row.manualSeconds, row.externalPearls, row.slotPolicy,
       row.elapsedDays, row.home5Days, row.allProductionDays, row.allBuildingsDays, row.allRecipesDays, row.reputationMaxDays,
-      row.activeHours, row.manualHours, row.commandCount, row.useMeals ? 1 : 0, row.buySupplies ? 1 : 0, row.opportunisticRoutes ? 1 : 0, row.speedupPolicy, row.socialMode]),
+      row.activeHours, row.manualHours, row.commandCount, row.useMeals ? 1 : 0, row.buySupplies ? 1 : 0, row.opportunisticRoutes ? 1 : 0, row.speedupPolicy, row.socialMode, row.ownerPublicId, row.relicPolicy, row.allProductionSlotsDays, row.allCapacityDays, row.marketSlots, row.coinsRemaining, row.pearlsRemaining, row.neighborPolicy, row.neighborSales, row.neighborProceeds]),
   ];
 }

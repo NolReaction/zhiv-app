@@ -438,7 +438,7 @@ test("house-four project displays one-time funding, actual restoration costs and
   const tree = harness(StageCard, { stage, onSelect() {} }).render();
   const value = text(renderToStaticMarkup(tree));
   assert.equal(stage.preliminary, false);
-  assert.match(value, /Обязательные стройки 19 200 монет/);
+  assert.match(value, /Обязательные стройки 61 200 монет/);
   assert.ok(value.includes(`Поставки этапа ${stage.orders.length} · +${stage.orderCoins.toLocaleString("ru-RU").replaceAll("\u00a0", " ")} монет`));
   assert.match(value, /Заказы минус стройки/);
   assert.match(value, /Очередь одного строителя/);
@@ -448,10 +448,10 @@ test("house-four project displays one-time funding, actual restoration costs and
   assert.match(value, /разовое финансирование развития дальнего берега и хозяйства/);
   if (stage.orderCoins < stage.buildingCoins) assert.match(value, /Для покрытия разницы нужны повторяемые заказы или продажа товаров NPC/);
   assert.match(value, /Мост \(доступен с дома 2\) и Маяк \(доступен с дома 3\)/);
-  assert.match(value, /на этом этапе нужно на 3 000 монет и 5 ч стройки меньше/);
+  assert.match(value, /на этом этапе нужно на 6 200 монет и 5 ч стройки меньше/);
   assert.match(value, /Повторной оплаты нет/);
-  assert.match(value, /Мост на дальний берег 1 600 монет · 1 ч/);
-  assert.match(value, /Лесной маяк 1 2 400 монет · 4 ч/);
+  assert.match(value, /Мост на дальний берег 1 1 200 монет · 1 ч/);
+  assert.match(value, /Лесной маяк 1 5 000 монет · 4 ч/);
   const list = elements(tree).find(node => node.type === "ol");
   const deliveries = Children.toArray(list.props.children);
   assert.equal(deliveries.length, 12);
@@ -481,7 +481,7 @@ test("every house's berry and processing unlock is visible and opens its actual 
   }
   const bridge = text(renderToStaticMarkup(HomeUnlockCard(cards[1].props)));
   const lighthouse = text(renderToStaticMarkup(HomeUnlockCard(cards[2].props)));
-  assert.match(bridge, /600 монет · 1 ч/);
+  assert.match(bridge, /1 200 монет · 1 ч/);
   assert.match(bridge, /После получения восстановления открывается рынок игроков/);
   assert.match(lighthouse, /Пароход с большими заказами запланирован; сейчас его нет/);
 });

@@ -51,6 +51,10 @@ try {
   vectors.orders = report.orders.map(clean);
   vectors.weekly = report.weekly.map(weekly => ({ ...weekly, stages: weekly.stages.map(clean) }));
   vectors.optimisticMinimumElapsedDays = report.pacing.optimisticEarliestElapsedDays;
+  vectors.ranks = [...new Set([0, 1_000_000, ...catalog.tradeRelations.ranks.flatMap(rank => [Math.max(0, rank.requiredXp - 1), rank.requiredXp])])].sort((a, b) => a - b).map(xp => {
+    const rankIndex = catalog.tradeRelations.ranks.findLastIndex(rank => rank.requiredXp <= xp);
+    return { xp, rankIndex, bonusBps: catalog.tradeRelations.ranks[rankIndex].bonusBps };
+  });
   const project = (source, keys) => Object.fromEntries(keys.filter(key => source[key] !== undefined).map(key => [key, source[key]]));
   const offerKeys = ["id", "slot", "templateId", "residentId", "name", "description", "items", "coins", "pearls", "reputationXp", "effortSeconds", "manufacturingSeconds", "fishingUncertain", "requiredBuildings"];
   const choiceKeys = ["id", "templateId", "residentId", "coins", "pearls", "reputationXp", "effortSeconds", "manufacturingSeconds", "fishingUncertain"];

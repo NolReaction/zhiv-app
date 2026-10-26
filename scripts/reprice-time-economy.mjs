@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { heroMealWorkBudgetSeconds, timeEconomyPricing } from "./lib/time-economy-pricing.mjs";
-import { reputationXpForEffort, weeklyReputationXpForEffort, tradeOrderEffort } from "./lib/trade-relations-effort.mjs";
+import { reputationXpForEffort, weeklyReputationXpForEffort, weeklyPearlsForEffort, tradeOrderEffort } from "./lib/trade-relations-effort.mjs";
+import { auditConstructionEconomy } from "./lib/construction-economy.mjs";
 
 /** Reproducible derivations only: recipes, their timings, requirements and basket
  * contents remain authored inputs. Never reads player wallets or saved jobs. */
@@ -16,7 +17,8 @@ export function repriceTimeEconomy(source) {
   const buildingById = new Map(catalog.buildings.map(building => [building.id, building]));
   for (const item of catalog.items) item.baseSellPrice = pricing.price(item.id);
   catalog.localBuyer.unitPrices = Object.fromEntries(catalog.items.filter(item => item.tradable).map(item => [item.id, item.baseSellPrice]));
-  for (const building of catalog.buildings) for (const level of building.levels)
+  if (catalog.version >= 15) auditConstructionEconomy(catalog);
+  else for (const building of catalog.buildings) for (const level of building.levels)
     level.cost.coins = building.id === "warehouse" && level.level >= 4 ? 0
       : Math.ceil(level.seconds * policy.constructionCoinsPerMinute / 60);
   for (const offer of catalog.leaftailShop.supplyOffers ?? []) offer.unitPriceCoins = pricing.price(offer.itemId) * 2;
@@ -86,13 +88,17 @@ export function repriceTimeEconomy(source) {
     const work = effort(template);
     Object.assign(template, { coins: pricing.order(template.items), effortSeconds: work.effortSeconds,
       manufacturingSeconds: work.manufacturingSeconds, fishingUncertain: work.fishingUncertain,
-      reputationXp: reputationXpForEffort(work.effortSeconds) });
+      reputationXp: reputationXpForEffort(work.effortSeconds, catalog.version) });
   }
   for (const weekly of catalog.tradeRelations.weekly.templates) for (const stage of weekly.stages) {
     const work = effort({ ...weekly, ...stage });
     Object.assign(stage, { coins: pricing.order(stage.items), effortSeconds: work.effortSeconds,
       manufacturingSeconds: work.manufacturingSeconds, fishingUncertain: work.fishingUncertain,
-      reputationXp: weeklyReputationXpForEffort(work.effortSeconds) });
+      reputationXp: weeklyReputationXpForEffort(work.effortSeconds, catalog.version) });
+  }
+  if (catalog.version >= 15) for (const weekly of catalog.tradeRelations.weekly.templates) {
+    const pearls = weeklyPearlsForEffort(weekly.stages.reduce((sum, stage) => sum + stage.effortSeconds, 0));
+    weekly.stages.forEach((stage, index) => { stage.pearls = index === weekly.stages.length - 1 ? pearls : 0; });
   }
   for (const course of catalog.stageOrders ?? []) for (const order of course.orders) order.coins = pricing.order(order.items);
   for (const order of [catalog.onboarding.residentOrder, ...(catalog.onboarding.residentOrders ?? [])]) order.coins = pricing.order(order.items);

@@ -188,11 +188,11 @@ test("stage budgets derive only required new buildings and the current short del
   assert.equal(economy.starter.coins + first.orderCoins - first.buildingCoins, 38);
   assert.deepEqual(plain(economy.storage.map(level => level.capacity)), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
   const second = economy.stages.find(stage => stage.homeLevel === 2);
-  assert.equal(second.buildingCoins, 1550);
+  assert.equal(second.buildingCoins, 3050);
   assert.equal(second.orderCoins, second.orders.reduce((sum, order) => sum + order.coins, 0));
   assert.equal(second.orders.length, 7);
   const third = economy.stages.find(stage => stage.homeLevel === 3);
-  assert.equal(third.buildingCoins, 9000);
+  assert.equal(third.buildingCoins, 22100);
   assert.equal(third.orderCoins, third.orders.reduce((sum, order) => sum + order.coins, 0));
   assert.equal(third.orders.length, 8);
   assert.equal(third.intervalSeconds, catalog.stageOrders.find(course => course.homeLevel === 3).intervalSeconds);
@@ -213,7 +213,7 @@ test("pearl budgets respect visible denomination and distinguish seven gifts fro
   assert.equal(economy.pearls.achievementRewards.flatMap(quest => quest.tiers).reduce((sum, tier) => sum + tier.pearls, 0), economy.pearls.achievementLifetime);
   assert.ok(economy.pearls.achievementRewards.every(quest => quest.id !== "full_collection"));
   assert.deepEqual(plain(economy.pearls.achievementRewards.find(quest => quest.id === "explorer").tiers),
-    [10, 50, 200].map((target, index) => ({ level: index + 1, target, pearls: rewards.achievementPearls.explorer[index] / 2 })));
+    [10, 50, 200, 1000].map((target, index) => ({ level: index + 1, target, pearls: rewards.achievementPearls.explorer[index] / 2 })));
   assert.equal(economy.pearls.dailyMinimumHours, 20);
   assert.deepEqual(plain(economy.pearls.marketSlotPrices), [50, 80, 120, 180, 250]);
   assert.equal(economy.pearls.marketTotal, 680);
@@ -272,7 +272,7 @@ test("branch references all five stage packs and cosmetic prices without turning
 
 test("house four has a separate twelve-delivery course, restored landmarks and guaranteed home-five relics", () => {
   const fourth = economy.stages.find(stage => stage.homeLevel === 4);
-  assert.equal(fourth.buildingCoins, 19200);
+  assert.equal(fourth.buildingCoins, 61200);
   assert.equal(fourth.buildSeconds, fourth.buildings.reduce((sum, building) => sum + building.seconds, 0), "one builder's queue excludes delivery waits and resource preparation");
   assert.equal(fourth.orders.length, 12);
   assert.equal(fourth.orderCoins, fourth.orders.reduce((sum, order) => sum + order.coins, 0));
@@ -353,7 +353,7 @@ test("unlock overview follows changed station gates and owns its copies while ea
   const fourth = economy.stages.find(stage => stage.homeLevel === 4);
   const landmarks = fourth.buildings.filter(building => ["bridge", "lighthouse"].includes(building.id));
   assert.deepEqual(plain(landmarks.map(building => [building.id, building.availableHomeLevel])), [["bridge", 2], ["lighthouse", 3]]);
-  assert.equal(fourth.buildingCoins - landmarks.reduce((sum, building) => sum + building.cost.coins, 0), 16200);
+  assert.equal(fourth.buildingCoins - landmarks.reduce((sum, building) => sum + building.cost.coins, 0), 55000);
   assert.equal(fourth.buildSeconds - landmarks.reduce((sum, building) => sum + building.seconds, 0), fourth.buildings.filter(building => !["bridge", "lighthouse"].includes(building.id)).reduce((sum, building) => sum + building.seconds, 0));
   custom.homeUnlocks.find(unlock => unlock.homeLevel === 2).landmarks[0].cost.items.rope = 100;
   custom.items.find(item => item.id === "currant_jelly").meal.heroSpeedBps = 9999;

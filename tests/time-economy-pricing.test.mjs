@@ -77,7 +77,7 @@ test("invalid missing retired joint or cyclic price bases fail instead of silent
 
 test("constructor work and material inputs stay separate and the complete derivation is reproducible", () => {
   const catalog = read();
-  assert.deepEqual(catalog.buildings.find(building => building.id === "home").levels.map(level => level.cost.coins), [0, 300, 1200, 2400, 3600]);
+  assert.deepEqual(catalog.buildings.find(building => building.id === "home").levels.map(level => level.cost.coins), [0, 300, 2400, 7000, 20000]);
   assert.equal(catalog.buildings.find(building => building.id === "home").levels[1].cost.items.planks, 2);
   assert.deepEqual(repriceTimeEconomy(catalog), catalog);
 });

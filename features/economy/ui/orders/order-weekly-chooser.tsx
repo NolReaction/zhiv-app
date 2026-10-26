@@ -4,6 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, CalendarDays, Check, Clock3, HeartHandshake } from "lucide-react";
 import { formatPearls } from "@/features/economy/domain/money";
 import { tradeRelationsState, weeklyOrderBoard } from "@/features/economy/domain/trade-relations";
+import { orderDifficulty, orderDifficultyNames } from "@/features/economy/domain/order-difficulty";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { ItemIcon } from "@/features/items/item-icon";
 import { itemName, number, ProductIcon } from "@/features/economy/ui/shared/world-economy-parts";
@@ -67,6 +68,7 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
         const resident = orderResidents[offer.residentId];
         return <article className={styles.choice} key={offer.id} data-weekly-choice={offer.residentId}>
           <header><resident.Portrait className={styles.portrait} /><div><p>{resident.name}</p><h4>{offer.name}</h4></div></header>
+          <p className={styles.effort} data-order-difficulty={orderDifficulty(offer.effortSeconds, true)}>{orderDifficultyNames[orderDifficulty(offer.effortSeconds, true)]} поручение · жемчуг за последний этап</p>
           <div className={styles.rewards}><span><ItemIcon itemId="coins" size={16} />{number(offer.coins)}</span>{(offer.pearls ?? 0) > 0 && <span data-weekly-pearls><ItemIcon itemId="pearls" size={16} />{formatPearls(offer.pearls ?? 0)}</span>}<span><HeartHandshake size={14} aria-hidden="true" />+{number(offer.reputationXp)} реп.</span></div>
           <p className={styles.effort}><Clock3 size={13} aria-hidden="true" />Около {worldDuration(offer.effortSeconds)} работы с нуля{offer.fishingUncertain ? " · улов случаен" : ""}</p>
           <button type="button" disabled={locked(economy) || pending} onClick={() => review(offer)} aria-label={`Посмотреть поручение: ${offer.name}, ${resident.name}`}>Посмотреть три этапа</button>
@@ -75,7 +77,7 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
       {!candidates.length && <p className={styles.intro}>У этого жителя пока нет доступного большого поручения.</p>}
     </> : <section className={styles.review} aria-labelledby={titleId} data-weekly-review>
       <button type="button" className={styles.back} disabled={pending} onClick={() => setQuote(null)}><ArrowLeft size={14} aria-hidden="true" />К выбору поручения</button>
-      <header><p>{orderResidents[selected.residentId].name} · большое поручение</p><h4 id={titleId} ref={heading} tabIndex={-1}>{selected.name}</h4>{selected.description && <p>{selected.description}</p>}</header>
+      <header><p>{orderResidents[selected.residentId].name} · {orderDifficultyNames[orderDifficulty(selected.effortSeconds, true)].toLocaleLowerCase("ru-RU")} поручение</p><h4 id={titleId} ref={heading} tabIndex={-1}>{selected.name}</h4>{selected.description && <p>{selected.description}</p>}</header>
       <ol className={styles.stages}>{selected.stages.map((stage, index) => <li key={stage.id}>
         <div className={styles.stageHeading}><span>{index + 1}</span><h5>{stage.name}</h5></div>
         {stage.description && <p>{stage.description}</p>}

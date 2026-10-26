@@ -44,13 +44,28 @@ class ProgressionRewardsTest {
     }
     @Test fun `catalog pays finite achievement pearls and seven valuable bundles`() {
         assertEquals(4120L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
-        assertEquals(33,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
+        assertEquals(40,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
         assertEquals(320L,ProgressionRewardRules.daily.sumOf { it.coins })
         assertEquals(140L,ProgressionRewardRules.daily.sumOf { it.pearls })
         assertEquals(listOf(10L,10L,20L,20L,20L,20L,40L),ProgressionRewardRules.daily.map { it.pearls })
         assertEquals(20L,ProgressionRewardRules.daily.sumOf { it.items.values.sum() })
         assertEquals(setOf("wood","stone","fiber","berries","fish","planks","ancient_core"),ProgressionRewardRules.daily.flatMap { it.items.keys }.toSet())
         assertEquals(listOf(0L),ProgressionRewardRules.achievementPearls.getValue("full_collection"))
+    }
+    @Test fun `new course moves pearls to later milestones while all existing award promises remain`() {
+        var current=0L; var legacy=0L; var promised=0L
+        for ((id,targets) in GameRewards.tiers) {
+            assertEquals(GameRewards.legacyTiers.getValue(id),targets.take(GameRewards.legacyTiers.getValue(id).size))
+            targets.indices.forEach { index ->
+                current+=ProgressionRewardRules.achievementPearlsForVersion(id,index+1,7)
+                legacy+=ProgressionRewardRules.achievementPearlsForVersion(id,index+1,6)
+                if(index<GameRewards.legacyTiers.getValue(id).size) promised+=ProgressionRewardRules.achievementPearlsForVersion(id,index+1,6)
+            }
+        }
+        assertEquals(4120L,current); assertEquals(4120L,promised); assertEquals(5820L,legacy)
+        assertEquals(listOf(5L,10L,35L,61L),GameRewards.tiers.getValue("master_recipes"))
+        assertEquals(10L,ProgressionRewardRules.achievementPearlsForVersion("first_path",1,7))
+        assertEquals(40L,ProgressionRewardRules.achievementPearlsForVersion("first_path",1,6))
     }
     @Test fun `next UTC date and twenty hours are independent fences`() {
         val late=DailyRewardsState(2,at("2026-10-05T23:59:00Z"))
@@ -156,7 +171,8 @@ class ProgressionRewardsTest {
         assertEquals(5, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "5")))
         assertEquals(6, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "6")))
         assertEquals(7, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "7")))
-        for (parameters in listOf(io.ktor.http.parametersOf("catalog", "8"),
+        assertEquals(8, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "8")))
+        for (parameters in listOf(io.ktor.http.parametersOf("catalog", "9"),
             io.ktor.http.parametersOf("catalog", listOf("5", "5")),
             io.ktor.http.Parameters.build { append("catalog", "5"); append("extra", "1") })) {
             assertFailsWith<AuthFailure> { requestedRewardCatalog(parameters) }
@@ -167,9 +183,10 @@ class ProgressionRewardsTest {
         val current = ProgressionRewardsView("AAAA-0000-0001", "2026-10-22T12:00:00Z",
             daily = ProgressionRewardRules.dailyView(DailyRewardsState(), at("2026-10-22T12:00:00Z")), achievementRewards = rows)
         assertEquals(33, rewardCatalogView(current, 5).achievementRewards.size)
+        assertEquals(40, rewardCatalogView(current, 8).achievementRewards.size)
         val legacy = rewardCatalogView(current, 4)
-        assertEquals(4, legacy.catalogVersion); assertEquals(rows.take(21), legacy.achievementRewards)
-        assertEquals(3000L, legacy.achievementRewards.sumOf { it.pearls })
+        assertEquals(4, legacy.catalogVersion); assertEquals(rows.filter { it.level <= GameRewards.legacyTiers.getValue(it.achievementId).size }.take(21), legacy.achievementRewards)
+        assertEquals(1860L, legacy.achievementRewards.sumOf { it.pearls })
         assertEquals(current.daily, legacy.daily)
     }
 

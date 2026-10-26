@@ -111,7 +111,7 @@ test("familiar trails count different completed routes including restored far ba
     const visited = { ...initial, progression: { ...collection.newEconomyProgression(), routes: { [route.id]: 100, invented: 999 } } };
     assert.equal(math.economyAchievementProgress(visited).familiar_trails, 1, route.id);
   }
-  assert.equal(achievementCatalog.version, 6);
+  assert.equal(achievementCatalog.version, 7);
   const sameFormerBiome = { ...initial, progression: { ...collection.newEconomyProgression(),
     routes: { forest: 2, forest_camp: 1, old_woodland: 1, invented: 999 } } };
   assert.equal(math.economyAchievementProgress(sameFormerBiome).familiar_trails, 3);
@@ -219,7 +219,7 @@ test("current activity medals read only verified counters and clamp large cumula
   state.progression.recipes.cook_grilled_fish = Number.MAX_SAFE_INTEGER;
   state.progression.recipes.grow_berries = Number.MAX_SAFE_INTEGER;
   progress = math.economyAchievementProgress(state);
-  assert.equal(progress.patient_angler, 200); assert.equal(progress.campfire_cook, 100); assert.equal(progress.generous_garden, 200);
+  assert.equal(progress.patient_angler, 1000); assert.equal(progress.campfire_cook, 500); assert.equal(progress.generous_garden, 1000);
 });
 
 test("an earned former biome medal keeps its timestamp and eligibility after route condition replacement", () => {

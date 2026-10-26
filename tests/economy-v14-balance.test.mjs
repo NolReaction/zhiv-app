@@ -85,15 +85,16 @@ test("random expedition bonuses are useful bounded upside, separately disclosed 
   assert.throws(() => auditTimeEconomy(mint), /expected bonus|maximum find/);
 });
 
-test("reputation values authored work, preserves the ten-percent ceiling and takes weeks even at every daily cap", () => {
+test("reputation values authored work, preserves the ten-percent ceiling and pays weekly difficulty tiers", () => {
   const catalog = read(), report = auditTradeRelations(catalog);
-  assert.equal(reputationXpForEffort(240), 5);
-  assert.equal(reputationXpForEffort(17 * 3600), 30);
-  assert.equal(weeklyReputationXpForEffort(36000), 70);
-  assert(report.pacing.optimisticEarliestElapsedDays >= 42);
+  assert.equal(reputationXpForEffort(240), 10);
+  assert.equal(reputationXpForEffort(17 * 3600), 60);
+  assert.equal(weeklyReputationXpForEffort(36000), 140);
+  assert(report.pacing.optimisticEarliestElapsedDays >= 5);
   assert.equal(catalog.tradeRelations.maxBonusBps, 1000);
   for (const weekly of catalog.tradeRelations.weekly.templates) {
-    assert.equal(weekly.stages.at(-1).pearls, 20);
+    const effort = weekly.stages.reduce((sum, stage) => sum + stage.effortSeconds, 0);
+    assert.equal(weekly.stages.at(-1).pearls, effort < 3 * 3600 ? 40 : effort < 10 * 3600 ? 80 : 140);
     assert(weekly.stages.slice(0, -1).every(stage => !stage.pearls));
   }
   assert(catalog.food.orders.templates.every(order => !order.pearls));

@@ -28,18 +28,18 @@ function completeTutorial(p, now) {
 }
 const row = (p, id, level, now) => rewards.getDevProgressionRewards(p.token, now).achievementRewards.find(r => r.achievementId === id && r.level === level);
 
-test("v7 catalog grants 2060 visible lifetime achievement pearls and 70 visible pearls in one lifetime gift chain", () => {
+test("v8 catalog grants 2060 visible lifetime achievement pearls and 70 visible pearls in one lifetime gift chain", () => {
   const catalog = rules.progressionRewardsCatalog;
-  assert.equal(catalog.version, 7);
+  assert.equal(catalog.version, 8);
   const achievementPearls = Object.values(catalog.achievementPearls).flat().reduce((a, b) => a + b, 0);
   assert.equal(achievementPearls, 4120);
   assert.equal(money.pearlDisplayAmount(achievementPearls), 2060);
   assert.deepEqual(catalog.achievementPearls, {
-    seven_day_streak: [100], thousand_taps: [40], five_friends: [100], ten_thousand_series: [300],
-    linked_email: [40], saved_recovery_code: [40], full_collection: [0], first_path: [40], familiar_trails: [100],
-    explorer: [60, 160, 400], master_recipes: [100, 200], home_builder: [60, 120, 240, 400],
-    river_atlas: [400], first_sale: [60], lucky_find: [40],
-    patient_angler: [40, 80, 160], campfire_cook: [40, 80, 160], helpful_neighbor: [40, 80, 160], generous_garden: [40, 80, 160],
+    seven_day_streak: [100], thousand_taps: [20], five_friends: [100], ten_thousand_series: [300],
+    linked_email: [20], saved_recovery_code: [20], full_collection: [0], first_path: [10], familiar_trails: [20],
+    explorer: [20, 60, 160, 340], master_recipes: [10, 30, 180, 300], home_builder: [20, 80, 200, 360],
+    river_atlas: [300], first_sale: [20], lucky_find: [10],
+    patient_angler: [10, 30, 100, 220], campfire_cook: [10, 30, 100, 220], helpful_neighbor: [10, 30, 100, 220], generous_garden: [10, 30, 100, 220],
   });
   assert.deepEqual(catalog.daily.reduce((sum, r) => ({ coins: sum.coins + r.coins, pearls: sum.pearls + r.pearls,
     items: sum.items + Object.values(r.items).reduce((a, b) => a + b, 0) }), { coins: 0, pearls: 0, items: 0 }), { coins: 320, pearls: 140, items: 20 });
@@ -211,7 +211,7 @@ test("opening rewards changes no wallet; seven manual claims finish permanently 
   const initial = economy.getDevEconomy(p.token, now), opened = rewards.getDevProgressionRewards(p.token, now);
   assert.equal(initial.storage.capacity, 50, "the compact cycle fits the starter warehouse");
   assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
-  assert.equal(opened.achievementRewards.length, 33); assert.equal(opened.daily.step, 1);
+  assert.equal(opened.achievementRewards.length, 40); assert.equal(opened.daily.step, 1);
   assert.deepEqual(economy.getDevEconomy(p.token, now).wallet, initial.wallet);
   let last;
   for (let step = 1; step <= 7; step++) {
@@ -291,7 +291,7 @@ test("paid v2 and v3 finales retain their old amounts without opening another gi
     rewardProfile.receipts.set(oldRequest.requestId, structuredClone(oldReceipt));
     const replay = claim(p, oldRequest, now);
     assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, oldClaim);
-    assert.equal(replay.rewards.catalogVersion, 7);
+    assert.equal(replay.rewards.catalogVersion, 8);
     assert.equal(replay.economy.wallet.pearls, oldPearls, "a fresh preview cannot top up an old paid receipt");
     assert.equal(replay.rewards.daily.completed, true);
     assert.throws(() => claim(p, request(p), now), { code: "DAILY_REWARD_COMPLETED" });
@@ -345,7 +345,7 @@ test("earned achievement tiers pay manually once and duplicate keys cannot reope
   assert.equal(row(p, "first_path", 1, now).eligible, true);
   assert.equal(economy.getDevEconomy(p.token, now).wallet.pearls, initial.wallet.pearls, "earning is not an automatic payout");
   const command = request(p, { kind: "achievement", achievementId: "first_path", level: 1 }), first = claim(p, command, now);
-  assert.equal(first.claim.reward.pearls, 40); assert.equal(first.economy.wallet.pearls, initial.wallet.pearls + 40);
+  assert.equal(first.claim.reward.pearls, 10); assert.equal(first.economy.wallet.pearls, initial.wallet.pearls + 10);
   assert.equal(row(p, "first_path", 1, now).claimedAt, first.claim.claimedAt);
   assert.equal(claim(p, command, now + 5000).replayed, true);
   assert.throws(() => claim(p, request(p, { kind: "achievement", achievementId: "first_path", level: 1 }), now), { code: "ACHIEVEMENT_REWARD_CLAIMED" });
@@ -371,6 +371,8 @@ test("legacy finite ownership is grandfathered while obsolete full_collection ha
   const p = player(), now = at("2026-10-05T12:00:00Z");
   economy.getDevEconomy(p.token, now);
   ids.awardDevGameTaps(p.me.user.publicId, 1000, now);
+  rewards.getDevProgressionRewards(p.token, now);
+  delete globalThis.__zhivDevProgressionRewards.get(p.me.user.publicId).achievementRewardVersion;
   const own = row(p, "thousand_taps", 1, now); assert.equal(own.eligible, true);
   const hidden = row(p, "full_collection", 1, now); assert.equal(hidden.pearls, 0); assert.equal(hidden.blockedReason, "no_reward");
   assert.equal(claim(p, request(p, { kind: "achievement", achievementId: "thousand_taps", level: 1 }), now).claim.reward.pearls, 40);
@@ -390,7 +392,7 @@ test("an already paid v3 achievement never receives the v4 increase on read or r
   rewardProfile.claims.set("thousand_taps:1", original.claimedAt);
   rewardProfile.receipts.set(command.requestId, structuredClone(receipt));
   const before = structuredClone(value.state.wallet), preview = row(p, "thousand_taps", 1, now);
-  assert.equal(preview.pearls, 40); assert.equal(preview.eligible, false); assert.equal(preview.claimedAt, original.claimedAt);
+  assert.equal(preview.pearls, 4); assert.equal(preview.eligible, false); assert.equal(preview.claimedAt, original.claimedAt);
   const replay = claim(p, command, now);
   assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, 1); assert.deepEqual(replay.claim, original);
   assert.deepEqual(replay.economy.wallet, before); assert.equal(value.revision, 1);
@@ -546,7 +548,7 @@ test("new activity tiers reconcile saved play and pay once across reload and dup
   state.residentOrders.completed = 100;
   const names = ["patient_angler", "campfire_cook", "helpful_neighbor", "generous_garden"];
   const opened = rewards.getDevProgressionRewards(p.token, now);
-  assert.equal(opened.catalogVersion, 7);
+  assert.equal(opened.catalogVersion, 8);
   assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
   assert.equal(opened.achievementRewards.filter(row => names.includes(row.achievementId) && row.eligible).length, 12);
   assert.equal(economy.getDevEconomy(p.token, now).wallet.pearls, before.wallet.pearls, "reading never pays automatically");
@@ -560,7 +562,7 @@ test("new activity tiers reconcile saved play and pay once across reload and dup
     assert.throws(() => claim(p, request(p, { kind: "achievement", achievementId, level }), now + paid + 2),
       error => error.code === "ACHIEVEMENT_REWARD_CLAIMED");
   }
-  assert.equal(paid, 1120);
+  assert.equal(paid, 560);
   assert.equal(rewards.getDevProgressionRewards(p.token, now + 10_000).achievementRewards.filter(row => names.includes(row.achievementId) && row.eligible).length, 0);
 });
 

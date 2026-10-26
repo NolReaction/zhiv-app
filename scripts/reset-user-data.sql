@@ -57,18 +57,20 @@ BEGIN
     -- V71 clears personal neighbor data while retaining managed settings and the global spending fence.
     -- V73 freezes reward amounts in the existing mail/daily tables; no additional table is introduced.
     -- V74 changes only future reward defaults; V75 upgrades only the default neighbor assortment.
+    -- V76 preserves managed neighbor tuning; V77 reward courses are account data.
+    -- V78 activity lives inside cleared economy profiles; no tables were added.
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
     -- A known admin-history upgrade can install V50 after V51/V52.
     -- Verify either complete history by version, independently of install order.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 75
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 78
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,75) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,78) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V75. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V78. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

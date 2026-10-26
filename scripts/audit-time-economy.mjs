@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { auditConstructionEconomy } from "./lib/construction-economy.mjs";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { auditBuildingUnlocks } from "./lib/economy-balance.mjs";
@@ -97,7 +98,8 @@ export function auditTimeEconomy(catalog) {
         expectedBonusCoins, expectedNetCoinsPerMinute: (guaranteedNetCoins + expectedBonusCoins) * 60 / source.seconds });
     }
   }
-  for (const building of catalog.buildings) for (const level of building.levels) {
+  if (catalog.version >= 15) auditConstructionEconomy(catalog);
+  else for (const building of catalog.buildings) for (const level of building.levels) {
     if (building.id === "warehouse" && level.level >= 4) continue; // Explicit relic-only optional capacity.
     assert.equal(level.cost.coins, Math.ceil(level.seconds * policy.constructionCoinsPerMinute / 60),
       `${building.id}:${level.level}: construction price must follow builder time`);

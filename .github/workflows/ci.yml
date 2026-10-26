@@ -246,6 +246,9 @@ jobs:
             --tests ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest \
             --tests ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest \
             --tests ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest \
             --tests ru.zhiv.db.JdbcGameProgressResetIntegrationTest \
@@ -257,7 +260,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest', 'ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest', 'ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest', 'ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
+          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest', 'ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest', 'ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest', 'ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest', 'ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
               report = ET.parse(Path('apps/api/build/test-results/test') / f'TEST-{name}.xml').getroot()
               count = int(report.get('tests', '0'))
               assert report.get('name') == name and count > 0, f'{name}: missing or empty suite'
@@ -284,6 +287,9 @@ jobs:
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcGameProgressResetIntegrationTest.xml

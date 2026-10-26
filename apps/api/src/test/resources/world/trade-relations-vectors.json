@@ -10,7 +10,7 @@
         "fish_common": 3
       },
       "coins": 57,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 318,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -24,7 +24,7 @@
         "fish_common": 2
       },
       "coins": 38,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 212,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -39,7 +39,7 @@
         "fish_uncommon": 1
       },
       "coins": 63,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 962,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -54,7 +54,7 @@
         "wood": 2
       },
       "coins": 150,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3192,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -68,7 +68,7 @@
         "wood": 2
       },
       "coins": 75,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 672,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -82,7 +82,7 @@
         "stone": 8
       },
       "coins": 300,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 4480,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -97,7 +97,7 @@
         "stone": 4
       },
       "coins": 375,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 4256,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -111,7 +111,7 @@
         "fiber": 8
       },
       "coins": 100,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3360,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -126,7 +126,7 @@
         "fiber": 4
       },
       "coins": 200,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3024,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -143,7 +143,7 @@
         "rope": 2
       },
       "coins": 375,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 3864,
       "manufacturingSeconds": 840,
       "fishingUncertain": false
@@ -159,7 +159,7 @@
         "grilled_fish": 2
       },
       "coins": 113,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 572,
       "manufacturingSeconds": 360,
       "fishingUncertain": true
@@ -177,7 +177,7 @@
         "berries": 2
       },
       "coins": 82,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 422,
       "manufacturingSeconds": 180,
       "fishingUncertain": true
@@ -191,7 +191,7 @@
         "fish_uncommon": 2
       },
       "coins": 50,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1500,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -209,7 +209,7 @@
         "dried_berries": 2
       },
       "coins": 713,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 3704,
       "manufacturingSeconds": 2340,
       "fishingUncertain": true
@@ -231,7 +231,7 @@
         "berry_fish": 1
       },
       "coins": 475,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 2982,
       "manufacturingSeconds": 1320,
       "fishingUncertain": true
@@ -250,7 +250,7 @@
         "planks": 2
       },
       "coins": 1700,
-      "reputationXp": 15,
+      "reputationXp": 30,
       "effortSeconds": 9096,
       "manufacturingSeconds": 3480,
       "fishingUncertain": false
@@ -269,7 +269,7 @@
         "rope": 2
       },
       "coins": 675,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5304,
       "manufacturingSeconds": 1560,
       "fishingUncertain": false
@@ -286,7 +286,7 @@
         "iron_ingot": 3
       },
       "coins": 1875,
-      "reputationXp": 15,
+      "reputationXp": 30,
       "effortSeconds": 9468,
       "manufacturingSeconds": 3060,
       "fishingUncertain": false
@@ -300,7 +300,7 @@
         "fish_rare": 1
       },
       "coins": 32,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3000,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -315,7 +315,7 @@
         "fish_rare": 1
       },
       "coins": 57,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 3750,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -332,7 +332,7 @@
         "hearty_fish": 1
       },
       "coins": 407,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5144,
       "manufacturingSeconds": 1200,
       "fishingUncertain": true
@@ -350,7 +350,7 @@
         "beams": 2
       },
       "coins": 3200,
-      "reputationXp": 29,
+      "reputationXp": 58,
       "effortSeconds": 22200,
       "manufacturingSeconds": 7080,
       "fishingUncertain": false
@@ -369,7 +369,7 @@
         "glass": 2
       },
       "coins": 1725,
-      "reputationXp": 25,
+      "reputationXp": 50,
       "effortSeconds": 18672,
       "manufacturingSeconds": 5040,
       "fishingUncertain": false
@@ -383,7 +383,7 @@
         "fish_epic": 1
       },
       "coins": 40,
-      "reputationXp": 14,
+      "reputationXp": 28,
       "effortSeconds": 9000,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -402,7 +402,7 @@
         "epic_fish": 1
       },
       "coins": 740,
-      "reputationXp": 18,
+      "reputationXp": 36,
       "effortSeconds": 12408,
       "manufacturingSeconds": 2040,
       "fishingUncertain": true
@@ -422,7 +422,7 @@
         "beams": 2
       },
       "coins": 4200,
-      "reputationXp": 27,
+      "reputationXp": 54,
       "effortSeconds": 20160,
       "manufacturingSeconds": 9840,
       "fishingUncertain": false
@@ -442,7 +442,7 @@
         "tools": 1
       },
       "coins": 6863,
-      "reputationXp": 30,
+      "reputationXp": 60,
       "effortSeconds": 32940,
       "manufacturingSeconds": 15180,
       "fishingUncertain": false
@@ -456,7 +456,7 @@
         "fish_legendary": 1
       },
       "coins": 48,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 300,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -475,7 +475,7 @@
         "legendary_fish": 1
       },
       "coins": 1085,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5344,
       "manufacturingSeconds": 2940,
       "fishingUncertain": true
@@ -495,7 +495,7 @@
         "glass": 6
       },
       "coins": 13025,
-      "reputationXp": 30,
+      "reputationXp": 60,
       "effortSeconds": 62520,
       "manufacturingSeconds": 27600,
       "fishingUncertain": false
@@ -511,7 +511,7 @@
         "ore": 8
       },
       "coins": 1000,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 4800,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -527,7 +527,7 @@
         "clay": 4
       },
       "coins": 150,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 720,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -543,7 +543,7 @@
         "sand": 12
       },
       "coins": 750,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3600,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -559,7 +559,7 @@
         "charcoal": 2
       },
       "coins": 125,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 912,
       "manufacturingSeconds": 240,
       "fishingUncertain": false
@@ -575,7 +575,7 @@
         "hardwood": 8
       },
       "coins": 1000,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 4800,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -591,7 +591,7 @@
         "resin": 8
       },
       "coins": 600,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 2880,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -607,7 +607,7 @@
         "berries": 10
       },
       "coins": 125,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 680,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -622,7 +622,7 @@
         "fiber": 4
       },
       "coins": 163,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2688,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -639,7 +639,7 @@
         "clay": 2
       },
       "coins": 225,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1080,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -656,7 +656,7 @@
         "rope": 2
       },
       "coins": 313,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3408,
       "manufacturingSeconds": 720,
       "fishingUncertain": false
@@ -674,7 +674,7 @@
         "strawberries": 2
       },
       "coins": 175,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 888,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -691,7 +691,7 @@
         "berry_compote": 3
       },
       "coins": 188,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 948,
       "manufacturingSeconds": 540,
       "fishingUncertain": false
@@ -711,7 +711,7 @@
         "charcoal": 2
       },
       "coins": 538,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2580,
       "manufacturingSeconds": 1140,
       "fishingUncertain": false
@@ -731,7 +731,7 @@
         "planks": 2
       },
       "coins": 1375,
-      "reputationXp": 12,
+      "reputationXp": 24,
       "effortSeconds": 6600,
       "manufacturingSeconds": 2280,
       "fishingUncertain": false
@@ -751,7 +751,7 @@
         "cloth": 1
       },
       "coins": 1063,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5100,
       "manufacturingSeconds": 2520,
       "fishingUncertain": false
@@ -772,7 +772,7 @@
         "fish_soup": 2
       },
       "coins": 425,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2120,
       "manufacturingSeconds": 1200,
       "fishingUncertain": true
@@ -787,7 +787,7 @@
         "fish_uncommon": 1
       },
       "coins": 82,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1068,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -805,7 +805,7 @@
         "berry_compote": 1
       },
       "coins": 175,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 888,
       "manufacturingSeconds": 540,
       "fishingUncertain": true
@@ -823,7 +823,7 @@
         "dried_berries": 1
       },
       "coins": 488,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2576,
       "manufacturingSeconds": 1620,
       "fishingUncertain": true
@@ -842,7 +842,7 @@
         "rope": 2
       },
       "coins": 925,
-      "reputationXp": 11,
+      "reputationXp": 22,
       "effortSeconds": 6132,
       "manufacturingSeconds": 3360,
       "fishingUncertain": true
@@ -862,7 +862,7 @@
         "tools": 1
       },
       "coins": 3475,
-      "reputationXp": 23,
+      "reputationXp": 46,
       "effortSeconds": 16680,
       "manufacturingSeconds": 10740,
       "fishingUncertain": false
@@ -880,7 +880,7 @@
         "fish_common": 2
       },
       "coins": 1638,
-      "reputationXp": 14,
+      "reputationXp": 28,
       "effortSeconds": 8396,
       "manufacturingSeconds": 6000,
       "fishingUncertain": true
@@ -903,7 +903,7 @@
         "trail_ration": 1
       },
       "coins": 2988,
-      "reputationXp": 21,
+      "reputationXp": 42,
       "effortSeconds": 14436,
       "manufacturingSeconds": 10200,
       "fishingUncertain": true
@@ -921,7 +921,7 @@
         "strawberries": 2
       },
       "coins": 163,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 820,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -938,7 +938,7 @@
         "strawberry_compote": 1
       },
       "coins": 200,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 976,
       "manufacturingSeconds": 360,
       "fishingUncertain": false
@@ -956,7 +956,7 @@
         "strawberries": 1
       },
       "coins": 213,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1060,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -973,7 +973,7 @@
         "blueberry_compote": 2
       },
       "coins": 300,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1472,
       "manufacturingSeconds": 720,
       "fishingUncertain": false
@@ -991,7 +991,7 @@
         "blueberries": 2
       },
       "coins": 525,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2560,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -1010,7 +1010,7 @@
         "currant_jelly": 1
       },
       "coins": 713,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 3608,
       "manufacturingSeconds": 1320,
       "fishingUncertain": false
@@ -1027,7 +1027,7 @@
         "currants": 2
       },
       "coins": 1050,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5072,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -1047,7 +1047,7 @@
         "blackberry_preserve": 1
       },
       "coins": 1375,
-      "reputationXp": 12,
+      "reputationXp": 24,
       "effortSeconds": 6616,
       "manufacturingSeconds": 2220,
       "fishingUncertain": false
@@ -1064,7 +1064,7 @@
         "blackberries": 2
       },
       "coins": 2250,
-      "reputationXp": 17,
+      "reputationXp": 34,
       "effortSeconds": 10832,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -1083,7 +1083,7 @@
         "cranberry_glaze": 1
       },
       "coins": 1963,
-      "reputationXp": 15,
+      "reputationXp": 30,
       "effortSeconds": 9616,
       "manufacturingSeconds": 3720,
       "fishingUncertain": false
@@ -1099,7 +1099,7 @@
         "berries": 4
       },
       "coins": 50,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 272,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -1116,7 +1116,7 @@
         "berries": 2
       },
       "coins": 44,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 242,
       "manufacturingSeconds": 0,
       "fishingUncertain": true
@@ -1134,7 +1134,7 @@
         "berries": 2
       },
       "coins": 88,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 452,
       "manufacturingSeconds": 180,
       "fishingUncertain": false
@@ -1152,7 +1152,7 @@
         "berry_compote": 1
       },
       "coins": 119,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 602,
       "manufacturingSeconds": 360,
       "fishingUncertain": true
@@ -1170,7 +1170,7 @@
         "berry_compote": 1
       },
       "coins": 100,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 528,
       "manufacturingSeconds": 180,
       "fishingUncertain": true
@@ -1188,7 +1188,7 @@
         "strawberry_compote": 1
       },
       "coins": 257,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1262,
       "manufacturingSeconds": 540,
       "fishingUncertain": true
@@ -1203,7 +1203,7 @@
         "stone": 1
       },
       "coins": 113,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1232,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -1220,7 +1220,7 @@
         "wood": 1
       },
       "coins": 100,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 792,
       "manufacturingSeconds": 120,
       "fishingUncertain": false
@@ -1238,7 +1238,7 @@
         "wood": 1
       },
       "coins": 100,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 652,
       "manufacturingSeconds": 180,
       "fishingUncertain": false
@@ -1256,7 +1256,7 @@
         "blueberry_compote": 1
       },
       "coins": 207,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1022,
       "manufacturingSeconds": 540,
       "fishingUncertain": true
@@ -1273,7 +1273,7 @@
         "blueberries": 2
       },
       "coins": 113,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 580,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -1291,7 +1291,7 @@
         "blueberries": 2
       },
       "coins": 132,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 662,
       "manufacturingSeconds": 180,
       "fishingUncertain": true
@@ -1310,7 +1310,7 @@
         "berry_compote": 1
       },
       "coins": 275,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1532,
       "manufacturingSeconds": 780,
       "fishingUncertain": true
@@ -1328,7 +1328,7 @@
         "blueberry_compote": 1
       },
       "coins": 413,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 2814,
       "manufacturingSeconds": 1080,
       "fishingUncertain": true
@@ -1346,7 +1346,7 @@
         "currants": 2
       },
       "coins": 563,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 2904,
       "manufacturingSeconds": 900,
       "fishingUncertain": true
@@ -1366,7 +1366,7 @@
         "currant_jelly": 1
       },
       "coins": 750,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 3820,
       "manufacturingSeconds": 1320,
       "fishingUncertain": true
@@ -1385,7 +1385,7 @@
         "rope": 1
       },
       "coins": 288,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2148,
       "manufacturingSeconds": 900,
       "fishingUncertain": false
@@ -1405,7 +1405,7 @@
         "blackberries": 1
       },
       "coins": 1115,
-      "reputationXp": 20,
+      "reputationXp": 40,
       "effortSeconds": 14216,
       "manufacturingSeconds": 2040,
       "fishingUncertain": true
@@ -1425,7 +1425,7 @@
         "fish_common": 2
       },
       "coins": 1413,
-      "reputationXp": 12,
+      "reputationXp": 24,
       "effortSeconds": 6984,
       "manufacturingSeconds": 2220,
       "fishingUncertain": true
@@ -1443,7 +1443,7 @@
         "blueberry_compote": 1
       },
       "coins": 950,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 4828,
       "manufacturingSeconds": 3360,
       "fishingUncertain": true
@@ -1461,7 +1461,7 @@
         "cranberries": 1
       },
       "coins": 1013,
-      "reputationXp": 11,
+      "reputationXp": 22,
       "effortSeconds": 5686,
       "manufacturingSeconds": 720,
       "fishingUncertain": true
@@ -1481,7 +1481,7 @@
         "cranberry_glaze": 1
       },
       "coins": 2000,
-      "reputationXp": 15,
+      "reputationXp": 30,
       "effortSeconds": 9828,
       "manufacturingSeconds": 3720,
       "fishingUncertain": true
@@ -1499,7 +1499,7 @@
         "berries": 3
       },
       "coins": 113,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 564,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -1517,7 +1517,7 @@
         "wood": 1
       },
       "coins": 163,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 780,
       "manufacturingSeconds": 240,
       "fishingUncertain": false
@@ -1536,7 +1536,7 @@
         "berries": 4
       },
       "coins": 175,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 872,
       "manufacturingSeconds": 360,
       "fishingUncertain": false
@@ -1556,7 +1556,7 @@
         "blueberries": 3
       },
       "coins": 319,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1586,
       "manufacturingSeconds": 540,
       "fishingUncertain": true
@@ -1576,7 +1576,7 @@
         "rope": 2
       },
       "coins": 350,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1728,
       "manufacturingSeconds": 1080,
       "fishingUncertain": false
@@ -1594,7 +1594,7 @@
         "cloth": 1
       },
       "coins": 1088,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5220,
       "manufacturingSeconds": 2280,
       "fishingUncertain": false
@@ -1614,7 +1614,7 @@
         "tools": 1
       },
       "coins": 1513,
-      "reputationXp": 13,
+      "reputationXp": 26,
       "effortSeconds": 7260,
       "manufacturingSeconds": 3540,
       "fishingUncertain": false
@@ -1637,7 +1637,7 @@
         "rope": 1
       },
       "coins": 3050,
-      "reputationXp": 21,
+      "reputationXp": 42,
       "effortSeconds": 14736,
       "manufacturingSeconds": 10380,
       "fishingUncertain": true
@@ -1656,7 +1656,7 @@
         "planks": 1
       },
       "coins": 175,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 840,
       "manufacturingSeconds": 120,
       "fishingUncertain": false
@@ -1675,7 +1675,7 @@
         "berries": 3
       },
       "coins": 163,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 836,
       "manufacturingSeconds": 360,
       "fishingUncertain": false
@@ -1695,7 +1695,7 @@
         "rope": 1
       },
       "coins": 188,
-      "reputationXp": 5,
+      "reputationXp": 10,
       "effortSeconds": 900,
       "manufacturingSeconds": 420,
       "fishingUncertain": false
@@ -1714,7 +1714,7 @@
         "rope": 2
       },
       "coins": 400,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 1920,
       "manufacturingSeconds": 1260,
       "fishingUncertain": false
@@ -1733,7 +1733,7 @@
         "charcoal": 2
       },
       "coins": 625,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3000,
       "manufacturingSeconds": 240,
       "fishingUncertain": false
@@ -1753,7 +1753,7 @@
         "iron_ingot": 1
       },
       "coins": 1438,
-      "reputationXp": 12,
+      "reputationXp": 24,
       "effortSeconds": 6900,
       "manufacturingSeconds": 2400,
       "fishingUncertain": false
@@ -1775,7 +1775,7 @@
         "fish_soup": 1
       },
       "coins": 1500,
-      "reputationXp": 13,
+      "reputationXp": 26,
       "effortSeconds": 7240,
       "manufacturingSeconds": 4140,
       "fishingUncertain": true
@@ -1795,7 +1795,7 @@
         "glass": 2
       },
       "coins": 3413,
-      "reputationXp": 23,
+      "reputationXp": 46,
       "effortSeconds": 16380,
       "manufacturingSeconds": 7260,
       "fishingUncertain": false
@@ -1815,7 +1815,7 @@
         "berry_compote": 2
       },
       "coins": 313,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1532,
       "manufacturingSeconds": 900,
       "fishingUncertain": false
@@ -1833,7 +1833,7 @@
         "berries": 4
       },
       "coins": 500,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2528,
       "manufacturingSeconds": 1440,
       "fishingUncertain": false
@@ -1851,7 +1851,7 @@
         "rope": 2
       },
       "coins": 675,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3240,
       "manufacturingSeconds": 2160,
       "fishingUncertain": false
@@ -1871,7 +1871,7 @@
         "cloth": 1
       },
       "coins": 525,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2520,
       "manufacturingSeconds": 1380,
       "fishingUncertain": false
@@ -1890,7 +1890,7 @@
         "blueberry_compote": 1
       },
       "coins": 675,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3320,
       "manufacturingSeconds": 2160,
       "fishingUncertain": true
@@ -1910,7 +1910,7 @@
         "rope": 2
       },
       "coins": 1725,
-      "reputationXp": 14,
+      "reputationXp": 28,
       "effortSeconds": 8472,
       "manufacturingSeconds": 6360,
       "fishingUncertain": true
@@ -1931,7 +1931,7 @@
         "planks": 2
       },
       "coins": 1300,
-      "reputationXp": 11,
+      "reputationXp": 22,
       "effortSeconds": 6240,
       "manufacturingSeconds": 3480,
       "fishingUncertain": false
@@ -1951,7 +1951,7 @@
         "reinforced_parts": 1
       },
       "coins": 4975,
-      "reputationXp": 30,
+      "reputationXp": 60,
       "effortSeconds": 23880,
       "manufacturingSeconds": 13020,
       "fishingUncertain": false
@@ -1971,7 +1971,7 @@
         "planks": 1
       },
       "coins": 463,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2220,
       "manufacturingSeconds": 960,
       "fishingUncertain": false
@@ -1991,7 +1991,7 @@
         "bricks": 2
       },
       "coins": 850,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 4080,
       "manufacturingSeconds": 2400,
       "fishingUncertain": false
@@ -2011,7 +2011,7 @@
         "cut_stone": 1
       },
       "coins": 1113,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5340,
       "manufacturingSeconds": 1440,
       "fishingUncertain": false
@@ -2031,7 +2031,7 @@
         "glass": 1
       },
       "coins": 2438,
-      "reputationXp": 17,
+      "reputationXp": 34,
       "effortSeconds": 11700,
       "manufacturingSeconds": 4080,
       "fishingUncertain": false
@@ -2051,7 +2051,7 @@
         "rope": 1
       },
       "coins": 263,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1260,
       "manufacturingSeconds": 600,
       "fishingUncertain": false
@@ -2073,7 +2073,7 @@
         "planks": 2
       },
       "coins": 650,
-      "reputationXp": 8,
+      "reputationXp": 16,
       "effortSeconds": 3168,
       "manufacturingSeconds": 1860,
       "fishingUncertain": false
@@ -2095,7 +2095,7 @@
         "cloth": 1
       },
       "coins": 775,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 3736,
       "manufacturingSeconds": 2400,
       "fishingUncertain": false
@@ -2115,7 +2115,7 @@
         "lens": 1
       },
       "coins": 1063,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5100,
       "manufacturingSeconds": 1620,
       "fishingUncertain": false
@@ -2137,7 +2137,7 @@
         "packed_berries": 1
       },
       "coins": 3025,
-      "reputationXp": 21,
+      "reputationXp": 42,
       "effortSeconds": 14568,
       "manufacturingSeconds": 8880,
       "fishingUncertain": false
@@ -2157,7 +2157,7 @@
         "mortar": 1
       },
       "coins": 925,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 4440,
       "manufacturingSeconds": 360,
       "fishingUncertain": false
@@ -2177,7 +2177,7 @@
         "mortar": 1
       },
       "coins": 1488,
-      "reputationXp": 12,
+      "reputationXp": 24,
       "effortSeconds": 7140,
       "manufacturingSeconds": 2040,
       "fishingUncertain": false
@@ -2197,7 +2197,7 @@
         "grilled_fish": 1
       },
       "coins": 257,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 1246,
       "manufacturingSeconds": 600,
       "fishingUncertain": true
@@ -2219,7 +2219,7 @@
         "fish_common": 2
       },
       "coins": 1038,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5044,
       "manufacturingSeconds": 3000,
       "fishingUncertain": true
@@ -2241,7 +2241,7 @@
         "grilled_fish": 1
       },
       "coins": 2244,
-      "reputationXp": 17,
+      "reputationXp": 34,
       "effortSeconds": 10802,
       "manufacturingSeconds": 5040,
       "fishingUncertain": true
@@ -2263,7 +2263,7 @@
         "trade_crate": 1
       },
       "coins": 1338,
-      "reputationXp": 12,
+      "reputationXp": 24,
       "effortSeconds": 6516,
       "manufacturingSeconds": 4140,
       "fishingUncertain": false
@@ -2283,7 +2283,7 @@
         "trade_crate": 1
       },
       "coins": 1038,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 4980,
       "manufacturingSeconds": 2940,
       "fishingUncertain": false
@@ -2303,7 +2303,7 @@
         "lens": 1
       },
       "coins": 3188,
-      "reputationXp": 21,
+      "reputationXp": 42,
       "effortSeconds": 15300,
       "manufacturingSeconds": 8880,
       "fishingUncertain": false
@@ -2325,7 +2325,7 @@
         "bottled_compote": 1
       },
       "coins": 2688,
-      "reputationXp": 19,
+      "reputationXp": 38,
       "effortSeconds": 12932,
       "manufacturingSeconds": 6360,
       "fishingUncertain": false
@@ -2344,7 +2344,7 @@
         "berry_compote": 1
       },
       "coins": 188,
-      "reputationXp": 6,
+      "reputationXp": 12,
       "effortSeconds": 932,
       "manufacturingSeconds": 180,
       "fishingUncertain": false
@@ -2365,7 +2365,7 @@
         "blueberry_compote": 1
       },
       "coins": 463,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2236,
       "manufacturingSeconds": 1140,
       "fishingUncertain": false
@@ -2384,7 +2384,7 @@
         "grilled_silverfin": 1
       },
       "coins": 363,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2408,
       "manufacturingSeconds": 840,
       "fishingUncertain": true
@@ -2405,7 +2405,7 @@
         "ceramic_jar": 2
       },
       "coins": 1075,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5304,
       "manufacturingSeconds": 3000,
       "fishingUncertain": false
@@ -2425,7 +2425,7 @@
         "cloth": 1
       },
       "coins": 738,
-      "reputationXp": 13,
+      "reputationXp": 26,
       "effortSeconds": 7848,
       "manufacturingSeconds": 2340,
       "fishingUncertain": true
@@ -2446,7 +2446,7 @@
         "blueberry_compote": 2
       },
       "coins": 832,
-      "reputationXp": 19,
+      "reputationXp": 38,
       "effortSeconds": 12888,
       "manufacturingSeconds": 2220,
       "fishingUncertain": true
@@ -2464,7 +2464,7 @@
         "resin": 3
       },
       "coins": 800,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 3840,
       "manufacturingSeconds": 1800,
       "fishingUncertain": false
@@ -2485,7 +2485,7 @@
         "bottled_compote": 1
       },
       "coins": 1582,
-      "reputationXp": 23,
+      "reputationXp": 46,
       "effortSeconds": 16488,
       "manufacturingSeconds": 4260,
       "fishingUncertain": true
@@ -2506,7 +2506,7 @@
         "blackberries": 1
       },
       "coins": 1519,
-      "reputationXp": 23,
+      "reputationXp": 46,
       "effortSeconds": 16204,
       "manufacturingSeconds": 2640,
       "fishingUncertain": true
@@ -2527,7 +2527,7 @@
         "cranberry_glaze": 1
       },
       "coins": 4878,
-      "reputationXp": 30,
+      "reputationXp": 60,
       "effortSeconds": 41284,
       "manufacturingSeconds": 8760,
       "fishingUncertain": true
@@ -2545,7 +2545,7 @@
         "rope": 2
       },
       "coins": 188,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 4140,
       "manufacturingSeconds": 360,
       "fishingUncertain": false
@@ -2565,7 +2565,7 @@
         "strawberry_compote": 1
       },
       "coins": 375,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2640,
       "manufacturingSeconds": 840,
       "fishingUncertain": true
@@ -2583,7 +2583,7 @@
         "clay": 3
       },
       "coins": 363,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2364,
       "manufacturingSeconds": 480,
       "fishingUncertain": false
@@ -2601,7 +2601,7 @@
         "glass_bottle": 2
       },
       "coins": 1000,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5112,
       "manufacturingSeconds": 2040,
       "fishingUncertain": false
@@ -2622,7 +2622,7 @@
         "currant_jelly": 1
       },
       "coins": 1175,
-      "reputationXp": 16,
+      "reputationXp": 32,
       "effortSeconds": 9980,
       "manufacturingSeconds": 2760,
       "fishingUncertain": true
@@ -2641,7 +2641,7 @@
         "cloth": 2
       },
       "coins": 1925,
-      "reputationXp": 21,
+      "reputationXp": 42,
       "effortSeconds": 14592,
       "manufacturingSeconds": 5040,
       "fishingUncertain": false
@@ -2661,7 +2661,7 @@
         "packed_berries": 2
       },
       "coins": 2132,
-      "reputationXp": 27,
+      "reputationXp": 54,
       "effortSeconds": 19832,
       "manufacturingSeconds": 6000,
       "fishingUncertain": true
@@ -2679,7 +2679,7 @@
         "trade_crate": 1
       },
       "coins": 850,
-      "reputationXp": 10,
+      "reputationXp": 20,
       "effortSeconds": 5112,
       "manufacturingSeconds": 900,
       "fishingUncertain": false
@@ -2697,7 +2697,7 @@
         "mortar": 2
       },
       "coins": 1350,
-      "reputationXp": 12,
+      "reputationXp": 24,
       "effortSeconds": 6480,
       "manufacturingSeconds": 720,
       "fishingUncertain": false
@@ -2717,7 +2717,7 @@
         "reinforced_parts": 1
       },
       "coins": 4913,
-      "reputationXp": 30,
+      "reputationXp": 60,
       "effortSeconds": 23580,
       "manufacturingSeconds": 9180,
       "fishingUncertain": false
@@ -2735,7 +2735,7 @@
         "strawberries": 2
       },
       "coins": 163,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 1876,
       "manufacturingSeconds": 0,
       "fishingUncertain": false
@@ -2754,7 +2754,7 @@
         "rope": 1
       },
       "coins": 413,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 4347,
       "manufacturingSeconds": 1140,
       "fishingUncertain": true
@@ -2773,7 +2773,7 @@
         "blueberries": 4
       },
       "coins": 750,
-      "reputationXp": 9,
+      "reputationXp": 18,
       "effortSeconds": 4100,
       "manufacturingSeconds": 1260,
       "fishingUncertain": false
@@ -2793,7 +2793,7 @@
         "trade_crate": 1
       },
       "coins": 750,
-      "reputationXp": 13,
+      "reputationXp": 26,
       "effortSeconds": 7908,
       "manufacturingSeconds": 2340,
       "fishingUncertain": true
@@ -2813,7 +2813,7 @@
         "bottled_compote": 1
       },
       "coins": 1032,
-      "reputationXp": 20,
+      "reputationXp": 40,
       "effortSeconds": 14144,
       "manufacturingSeconds": 3000,
       "fishingUncertain": true
@@ -2832,7 +2832,7 @@
         "cloth": 2
       },
       "coins": 1675,
-      "reputationXp": 20,
+      "reputationXp": 40,
       "effortSeconds": 13548,
       "manufacturingSeconds": 4860,
       "fishingUncertain": false
@@ -2853,7 +2853,7 @@
         "berry_gift": 1
       },
       "coins": 3269,
-      "reputationXp": 30,
+      "reputationXp": 60,
       "effortSeconds": 25524,
       "manufacturingSeconds": 7620,
       "fishingUncertain": true
@@ -2874,7 +2874,7 @@
         "trade_crate": 2
       },
       "coins": 1719,
-      "reputationXp": 24,
+      "reputationXp": 48,
       "effortSeconds": 17936,
       "manufacturingSeconds": 4440,
       "fishingUncertain": true
@@ -2895,7 +2895,7 @@
         "bottled_compote": 2
       },
       "coins": 3500,
-      "reputationXp": 28,
+      "reputationXp": 56,
       "effortSeconds": 21164,
       "manufacturingSeconds": 10260,
       "fishingUncertain": false
@@ -2916,7 +2916,7 @@
         "stone_tile": 1
       },
       "coins": 3978,
-      "reputationXp": 30,
+      "reputationXp": 60,
       "effortSeconds": 37236,
       "manufacturingSeconds": 6720,
       "fishingUncertain": true
@@ -2935,7 +2935,7 @@
         "blueberries": 2
       },
       "coins": 250,
-      "reputationXp": 7,
+      "reputationXp": 14,
       "effortSeconds": 2040,
       "manufacturingSeconds": 480,
       "fishingUncertain": true
@@ -2953,7 +2953,7 @@
         "smoked_bream": 2
       },
       "coins": 925,
-      "reputationXp": 19,
+      "reputationXp": 38,
       "effortSeconds": 13056,
       "manufacturingSeconds": 2880,
       "fishingUncertain": true
@@ -2972,7 +2972,7 @@
         "mooncarp_blueberries": 1
       },
       "coins": 532,
-      "reputationXp": 17,
+      "reputationXp": 34,
       "effortSeconds": 11572,
       "manufacturingSeconds": 1500,
       "fishingUncertain": true
@@ -2991,7 +2991,7 @@
         "pike_berry_sauce": 1
       },
       "coins": 1082,
-      "reputationXp": 20,
+      "reputationXp": 40,
       "effortSeconds": 14384,
       "manufacturingSeconds": 2760,
       "fishingUncertain": true
@@ -3010,7 +3010,7 @@
         "eel_in_jar": 1
       },
       "coins": 1144,
-      "reputationXp": 21,
+      "reputationXp": 42,
       "effortSeconds": 14552,
       "manufacturingSeconds": 2640,
       "fishingUncertain": true
@@ -3029,7 +3029,7 @@
         "festive_sturgeon": 1
       },
       "coins": 2915,
-      "reputationXp": 30,
+      "reputationXp": 60,
       "effortSeconds": 32136,
       "manufacturingSeconds": 5040,
       "fishingUncertain": true
@@ -3062,7 +3062,7 @@
             "stone": 3
           },
           "coins": 338,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 2760,
           "pearls": 0,
           "manufacturingSeconds": 0,
@@ -3083,7 +3083,7 @@
             "wood": 2
           },
           "coins": 263,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1260,
           "pearls": 0,
           "manufacturingSeconds": 360,
@@ -3104,15 +3104,15 @@
             "berry_compote": 2
           },
           "coins": 238,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1204,
-          "pearls": 20,
+          "pearls": 40,
           "manufacturingSeconds": 720,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 60,
-      "pearls": 20,
+      "reputationXp": 120,
+      "pearls": 40,
       "coins": 839,
       "effortSeconds": 5224,
       "manufacturingSeconds": 1080,
@@ -3144,7 +3144,7 @@
             "cut_stone": 2
           },
           "coins": 813,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 3900,
           "pearls": 0,
           "manufacturingSeconds": 2340,
@@ -3165,7 +3165,7 @@
             "glass": 2
           },
           "coins": 1313,
-          "reputationXp": 21,
+          "reputationXp": 42,
           "effortSeconds": 6300,
           "pearls": 0,
           "manufacturingSeconds": 3060,
@@ -3186,15 +3186,15 @@
             "tools": 1
           },
           "coins": 2863,
-          "reputationXp": 33,
+          "reputationXp": 66,
           "effortSeconds": 13740,
-          "pearls": 20,
+          "pearls": 80,
           "manufacturingSeconds": 6780,
           "fishingUncertain": false
         }
       ],
-      "reputationXp": 74,
-      "pearls": 20,
+      "reputationXp": 148,
+      "pearls": 80,
       "coins": 4989,
       "effortSeconds": 23940,
       "manufacturingSeconds": 12180,
@@ -3226,7 +3226,7 @@
             "wood": 3
           },
           "coins": 213,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1084,
           "pearls": 0,
           "manufacturingSeconds": 0,
@@ -3247,7 +3247,7 @@
             "wood": 1
           },
           "coins": 225,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1080,
           "pearls": 0,
           "manufacturingSeconds": 360,
@@ -3268,15 +3268,15 @@
             "berry_compote": 2
           },
           "coins": 238,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1204,
-          "pearls": 20,
+          "pearls": 40,
           "manufacturingSeconds": 720,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 60,
-      "pearls": 20,
+      "reputationXp": 120,
+      "pearls": 40,
       "coins": 676,
       "effortSeconds": 3368,
       "manufacturingSeconds": 1080,
@@ -3312,7 +3312,7 @@
             "beams": 1
           },
           "coins": 1100,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 5280,
           "pearls": 0,
           "manufacturingSeconds": 2280,
@@ -3335,7 +3335,7 @@
             "bottled_compote": 1
           },
           "coins": 1550,
-          "reputationXp": 23,
+          "reputationXp": 46,
           "effortSeconds": 7552,
           "pearls": 0,
           "manufacturingSeconds": 4740,
@@ -3358,15 +3358,15 @@
             "dried_berries": 1
           },
           "coins": 1825,
-          "reputationXp": 25,
+          "reputationXp": 50,
           "effortSeconds": 9000,
-          "pearls": 20,
+          "pearls": 80,
           "manufacturingSeconds": 6720,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 68,
-      "pearls": 20,
+      "reputationXp": 136,
+      "pearls": 80,
       "coins": 4475,
       "effortSeconds": 21832,
       "manufacturingSeconds": 13740,
@@ -3402,7 +3402,7 @@
             "planks": 2
           },
           "coins": 275,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1320,
           "pearls": 0,
           "manufacturingSeconds": 240,
@@ -3425,7 +3425,7 @@
             "rope": 3
           },
           "coins": 375,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1800,
           "pearls": 0,
           "manufacturingSeconds": 900,
@@ -3448,15 +3448,15 @@
             "blueberry_compote": 1
           },
           "coins": 263,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1308,
-          "pearls": 20,
+          "pearls": 40,
           "manufacturingSeconds": 720,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 60,
-      "pearls": 20,
+      "reputationXp": 120,
+      "pearls": 40,
       "coins": 913,
       "effortSeconds": 4428,
       "manufacturingSeconds": 1860,
@@ -3492,7 +3492,7 @@
             "lens": 1
           },
           "coins": 1063,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 5100,
           "pearls": 0,
           "manufacturingSeconds": 1620,
@@ -3515,7 +3515,7 @@
             "packed_berries": 1
           },
           "coins": 3025,
-          "reputationXp": 35,
+          "reputationXp": 70,
           "effortSeconds": 14568,
           "pearls": 0,
           "manufacturingSeconds": 8880,
@@ -3538,15 +3538,15 @@
             "fish_soup": 2
           },
           "coins": 1713,
-          "reputationXp": 24,
+          "reputationXp": 48,
           "effortSeconds": 8300,
-          "pearls": 20,
+          "pearls": 80,
           "manufacturingSeconds": 4740,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 79,
-      "pearls": 20,
+      "reputationXp": 158,
+      "pearls": 80,
       "coins": 5801,
       "effortSeconds": 27968,
       "manufacturingSeconds": 15240,
@@ -3574,7 +3574,7 @@
             "berries": 4
           },
           "coins": 125,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 696,
           "pearls": 0,
           "manufacturingSeconds": 0,
@@ -3593,7 +3593,7 @@
             "berry_compote": 2
           },
           "coins": 238,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1204,
           "pearls": 0,
           "manufacturingSeconds": 720,
@@ -3612,15 +3612,15 @@
             "strawberry_compote": 2
           },
           "coins": 457,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 2270,
-          "pearls": 20,
+          "pearls": 40,
           "manufacturingSeconds": 720,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 60,
-      "pearls": 20,
+      "reputationXp": 120,
+      "pearls": 40,
       "coins": 820,
       "effortSeconds": 4170,
       "manufacturingSeconds": 1440,
@@ -3656,7 +3656,7 @@
             "bottled_compote": 1
           },
           "coins": 550,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 3916,
           "pearls": 0,
           "manufacturingSeconds": 1500,
@@ -3679,7 +3679,7 @@
             "currant_jelly": 1
           },
           "coins": 1238,
-          "reputationXp": 21,
+          "reputationXp": 42,
           "effortSeconds": 6036,
           "pearls": 0,
           "manufacturingSeconds": 3120,
@@ -3702,15 +3702,15 @@
             "fish_uncommon": 2
           },
           "coins": 2238,
-          "reputationXp": 31,
+          "reputationXp": 62,
           "effortSeconds": 12016,
-          "pearls": 20,
+          "pearls": 80,
           "manufacturingSeconds": 4860,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 72,
-      "pearls": 20,
+      "reputationXp": 144,
+      "pearls": 80,
       "coins": 4026,
       "effortSeconds": 21968,
       "manufacturingSeconds": 9480,
@@ -3746,7 +3746,7 @@
             "rope": 2
           },
           "coins": 413,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 1980,
           "pearls": 0,
           "manufacturingSeconds": 1260,
@@ -3769,7 +3769,7 @@
             "packed_berries": 1
           },
           "coins": 800,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 3888,
           "pearls": 0,
           "manufacturingSeconds": 2520,
@@ -3792,15 +3792,15 @@
             "smoked_fish": 1
           },
           "coins": 763,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 3708,
-          "pearls": 20,
+          "pearls": 40,
           "manufacturingSeconds": 2400,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 60,
-      "pearls": 20,
+      "reputationXp": 120,
+      "pearls": 40,
       "coins": 1976,
       "effortSeconds": 9576,
       "manufacturingSeconds": 6180,
@@ -3836,7 +3836,7 @@
             "tools": 1
           },
           "coins": 1863,
-          "reputationXp": 25,
+          "reputationXp": 50,
           "effortSeconds": 8940,
           "pearls": 0,
           "manufacturingSeconds": 5340,
@@ -3859,7 +3859,7 @@
             "cloth": 1
           },
           "coins": 1025,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 4920,
           "pearls": 0,
           "manufacturingSeconds": 2940,
@@ -3882,15 +3882,15 @@
             "berry_gift": 1
           },
           "coins": 4688,
-          "reputationXp": 48,
+          "reputationXp": 96,
           "effortSeconds": 22516,
-          "pearls": 20,
+          "pearls": 140,
           "manufacturingSeconds": 12120,
           "fishingUncertain": false
         }
       ],
-      "reputationXp": 93,
-      "pearls": 20,
+      "reputationXp": 186,
+      "pearls": 140,
       "coins": 7576,
       "effortSeconds": 36376,
       "manufacturingSeconds": 20400,
@@ -3924,7 +3924,7 @@
             "ceramic_jar": 3
           },
           "coins": 850,
-          "reputationXp": 20,
+          "reputationXp": 40,
           "effortSeconds": 4080,
           "pearls": 0,
           "manufacturingSeconds": 1740,
@@ -3946,7 +3946,7 @@
             "smoked_bream": 1
           },
           "coins": 813,
-          "reputationXp": 26,
+          "reputationXp": 52,
           "effortSeconds": 9543,
           "pearls": 0,
           "manufacturingSeconds": 2400,
@@ -3968,15 +3968,15 @@
             "packed_berries": 2
           },
           "coins": 1582,
-          "reputationXp": 38,
+          "reputationXp": 76,
           "effortSeconds": 16552,
-          "pearls": 20,
+          "pearls": 80,
           "manufacturingSeconds": 4740,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 84,
-      "pearls": 20,
+      "reputationXp": 168,
+      "pearls": 80,
       "coins": 3245,
       "effortSeconds": 30175,
       "manufacturingSeconds": 8880,
@@ -4010,7 +4010,7 @@
             "cut_stone": 3
           },
           "coins": 2063,
-          "reputationXp": 27,
+          "reputationXp": 54,
           "effortSeconds": 9900,
           "pearls": 0,
           "manufacturingSeconds": 3240,
@@ -4032,7 +4032,7 @@
             "glass_bottle": 2
           },
           "coins": 3938,
-          "reputationXp": 43,
+          "reputationXp": 86,
           "effortSeconds": 19212,
           "pearls": 0,
           "manufacturingSeconds": 7080,
@@ -4054,15 +4054,15 @@
             "cranberry_glaze": 1
           },
           "coins": 4250,
-          "reputationXp": 75,
+          "reputationXp": 150,
           "effortSeconds": 38720,
-          "pearls": 20,
+          "pearls": 140,
           "manufacturingSeconds": 9000,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 145,
-      "pearls": 20,
+      "reputationXp": 290,
+      "pearls": 140,
       "coins": 10251,
       "effortSeconds": 67832,
       "manufacturingSeconds": 19320,
@@ -4096,7 +4096,7 @@
             "cloth": 3
           },
           "coins": 1688,
-          "reputationXp": 26,
+          "reputationXp": 52,
           "effortSeconds": 9036,
           "pearls": 0,
           "manufacturingSeconds": 5400,
@@ -4118,7 +4118,7 @@
             "eel_in_jar": 1
           },
           "coins": 2225,
-          "reputationXp": 59,
+          "reputationXp": 118,
           "effortSeconds": 28936,
           "pearls": 0,
           "manufacturingSeconds": 5400,
@@ -4140,15 +4140,15 @@
             "berry_gift": 2
           },
           "coins": 7290,
-          "reputationXp": 100,
+          "reputationXp": 200,
           "effortSeconds": 54416,
-          "pearls": 20,
+          "pearls": 140,
           "manufacturingSeconds": 14760,
           "fishingUncertain": true
         }
       ],
-      "reputationXp": 185,
-      "pearls": 20,
+      "reputationXp": 370,
+      "pearls": 140,
       "coins": 11203,
       "effortSeconds": 92388,
       "manufacturingSeconds": 25560,
@@ -4162,52 +4162,52 @@
       "bonusBps": 0
     },
     {
-      "xp": 149,
+      "xp": 99,
       "rankIndex": 0,
       "bonusBps": 0
     },
     {
-      "xp": 150,
+      "xp": 100,
       "rankIndex": 1,
       "bonusBps": 200
     },
     {
-      "xp": 599,
+      "xp": 349,
       "rankIndex": 1,
       "bonusBps": 200
     },
     {
-      "xp": 600,
+      "xp": 350,
       "rankIndex": 2,
       "bonusBps": 400
     },
     {
-      "xp": 1799,
+      "xp": 799,
       "rankIndex": 2,
       "bonusBps": 400
     },
     {
-      "xp": 1800,
+      "xp": 800,
       "rankIndex": 3,
       "bonusBps": 700
     },
     {
-      "xp": 4199,
+      "xp": 1599,
       "rankIndex": 3,
       "bonusBps": 700
     },
     {
-      "xp": 4200,
+      "xp": 1600,
       "rankIndex": 4,
       "bonusBps": 1000
     },
     {
-      "xp": 999999,
+      "xp": 1000000,
       "rankIndex": 4,
       "bonusBps": 1000
     }
   ],
-  "optimisticMinimumElapsedDays": 45,
+  "optimisticMinimumElapsedDays": 5,
   "idCases": [
     {
       "label": "home_1_confirmed_sources",
@@ -4236,7 +4236,7 @@
       },
       "ordinary": [
         {
-          "id": "order2_41499_0_0_1893606886",
+          "id": "order2_41499_0_0_1927997738",
           "slot": 0,
           "templateId": "plesk_compote_break",
           "residentId": "plesk",
@@ -4247,13 +4247,13 @@
             "berries": 2
           },
           "coins": 88,
-          "reputationXp": 5,
+          "reputationXp": 10,
           "effortSeconds": 452,
           "manufacturingSeconds": 180,
           "fishingUncertain": false
         },
         {
-          "id": "order2_41499_1_0_4195716658",
+          "id": "order2_41499_1_0_1194573223",
           "slot": 1,
           "templateId": "builder_small_repair",
           "residentId": "builder",
@@ -4264,13 +4264,13 @@
             "stone": 1
           },
           "coins": 113,
-          "reputationXp": 6,
+          "reputationXp": 12,
           "effortSeconds": 1232,
           "manufacturingSeconds": 0,
           "fishingUncertain": false
         },
         {
-          "id": "order2_41499_2_0_3061042090",
+          "id": "order2_41499_2_0_729069856",
           "slot": 2,
           "templateId": "lopukh_woodpile_roof",
           "residentId": "lopukh",
@@ -4281,7 +4281,7 @@
             "berries": 3
           },
           "coins": 113,
-          "reputationXp": 5,
+          "reputationXp": 10,
           "effortSeconds": 564,
           "manufacturingSeconds": 0,
           "fishingUncertain": false
@@ -4289,16 +4289,16 @@
       ],
       "weeklyChoices": [
         {
-          "id": "weekly_choice1_week_plesk_picnic_610149453",
+          "id": "weekly_choice1_week_plesk_picnic_1955489393",
           "templateId": "week_plesk_picnic",
           "residentId": "plesk",
           "coins": 820,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 4170,
           "manufacturingSeconds": 1440,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_866106041",
+          "savedWeeklyId": "weekly1_1792758896_1577695066",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -4311,7 +4311,8 @@
                 "berries": 4
               },
               "coins": 125,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 696,
               "manufacturingSeconds": 0,
               "fishingUncertain": true,
@@ -4331,7 +4332,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4351,8 +4353,8 @@
                 "strawberry_compote": 2
               },
               "coins": 457,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 2270,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4366,7 +4368,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_866106041_0_382730572",
+              "id": "weekly1_1792758896_1577695066_0_695545034",
               "slot": -1,
               "templateId": "week_plesk_picnic_1",
               "residentId": "plesk",
@@ -4377,7 +4379,8 @@
                 "berries": 4
               },
               "coins": 125,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 696,
               "manufacturingSeconds": 0,
               "fishingUncertain": true,
@@ -4388,7 +4391,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_866106041_1_2988504485",
+              "id": "weekly1_1792758896_1577695066_1_2052113699",
               "slot": -1,
               "templateId": "week_plesk_picnic_2",
               "residentId": "plesk",
@@ -4399,7 +4402,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4410,7 +4414,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_866106041_2_3737634161",
+              "id": "weekly1_1792758896_1577695066_2_2805644965",
               "slot": -1,
               "templateId": "week_plesk_picnic_3",
               "residentId": "plesk",
@@ -4421,8 +4425,8 @@
                 "strawberry_compote": 2
               },
               "coins": 457,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 2270,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4435,16 +4439,16 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_builder_shelter_369403957",
+          "id": "weekly_choice1_week_builder_shelter_3290589205",
           "templateId": "week_builder_shelter",
           "residentId": "builder",
           "coins": 839,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 5224,
           "manufacturingSeconds": 1080,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_1904794173",
+          "savedWeeklyId": "weekly1_1792758896_713435726",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -4457,7 +4461,8 @@
                 "stone": 3
               },
               "coins": 338,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 2760,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -4479,7 +4484,8 @@
                 "wood": 2
               },
               "coins": 263,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1260,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -4501,8 +4507,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4518,7 +4524,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_1904794173_0_451408283",
+              "id": "weekly1_1792758896_713435726_0_2750918993",
               "slot": -1,
               "templateId": "week_builder_shelter_1",
               "residentId": "builder",
@@ -4529,7 +4535,8 @@
                 "stone": 3
               },
               "coins": 338,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 2760,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -4542,7 +4549,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_1904794173_1_3325859924",
+              "id": "weekly1_1792758896_713435726_1_3763085194",
               "slot": -1,
               "templateId": "week_builder_shelter_2",
               "residentId": "builder",
@@ -4553,7 +4560,8 @@
                 "wood": 2
               },
               "coins": 263,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1260,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -4566,7 +4574,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_1904794173_2_2764713861",
+              "id": "weekly1_1792758896_713435726_2_2116366937",
               "slot": -1,
               "templateId": "week_builder_shelter_3",
               "residentId": "builder",
@@ -4577,8 +4585,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4593,16 +4601,16 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_lopukh_camp_3409391727",
+          "id": "weekly_choice1_week_lopukh_camp_311122191",
           "templateId": "week_lopukh_camp",
           "residentId": "lopukh",
           "coins": 676,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 3368,
           "manufacturingSeconds": 1080,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_2660869562",
+          "savedWeeklyId": "weekly1_1792758896_3371255000",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -4615,7 +4623,8 @@
                 "wood": 3
               },
               "coins": 213,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1084,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -4637,7 +4646,8 @@
                 "wood": 1
               },
               "coins": 225,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1080,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -4659,8 +4669,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4676,7 +4686,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_2660869562_0_2996953196",
+              "id": "weekly1_1792758896_3371255000_0_2535354642",
               "slot": -1,
               "templateId": "week_lopukh_camp_1",
               "residentId": "lopukh",
@@ -4687,7 +4697,8 @@
                 "wood": 3
               },
               "coins": 213,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1084,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -4700,7 +4711,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2660869562_1_2839523907",
+              "id": "weekly1_1792758896_3371255000_1_3319732149",
               "slot": -1,
               "templateId": "week_lopukh_camp_2",
               "residentId": "lopukh",
@@ -4711,7 +4722,8 @@
                 "wood": 1
               },
               "coins": 225,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1080,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -4724,7 +4736,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2660869562_2_3387449613",
+              "id": "weekly1_1792758896_3371255000_2_1401243425",
               "slot": -1,
               "templateId": "week_lopukh_camp_3",
               "residentId": "lopukh",
@@ -4735,8 +4747,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4826,7 +4838,7 @@
       },
       "ordinary": [
         {
-          "id": "order2_41499_0_0_693010698",
+          "id": "order2_41499_0_0_1030749604",
           "slot": 0,
           "templateId": "plesk_evening_basket",
           "residentId": "plesk",
@@ -4837,13 +4849,13 @@
             "berry_compote": 1
           },
           "coins": 100,
-          "reputationXp": 5,
+          "reputationXp": 10,
           "effortSeconds": 528,
           "manufacturingSeconds": 180,
           "fishingUncertain": true
         },
         {
-          "id": "order2_41499_1_0_2561649026",
+          "id": "order2_41499_1_0_3235635947",
           "slot": 1,
           "templateId": "starter_strawberry_drink",
           "residentId": "builder",
@@ -4853,13 +4865,13 @@
             "strawberry_compote": 1
           },
           "coins": 200,
-          "reputationXp": 6,
+          "reputationXp": 12,
           "effortSeconds": 976,
           "manufacturingSeconds": 360,
           "fishingUncertain": false
         },
         {
-          "id": "order2_41499_2_0_508627110",
+          "id": "order2_41499_2_0_3036047837",
           "slot": 2,
           "templateId": "lopukh_pantry_jars",
           "residentId": "lopukh",
@@ -4870,13 +4882,13 @@
             "rope": 1
           },
           "coins": 263,
-          "reputationXp": 6,
+          "reputationXp": 12,
           "effortSeconds": 1260,
           "manufacturingSeconds": 600,
           "fishingUncertain": false
         },
         {
-          "id": "order2_41499_3_0_1973867124",
+          "id": "order2_41499_3_0_2471396333",
           "slot": 3,
           "templateId": "kamneshmyg_ore_samples",
           "residentId": "kamneshmyg",
@@ -4887,13 +4899,13 @@
             "charcoal": 2
           },
           "coins": 625,
-          "reputationXp": 8,
+          "reputationXp": 16,
           "effortSeconds": 3000,
           "manufacturingSeconds": 240,
           "fishingUncertain": false
         },
         {
-          "id": "order2_41499_4_0_414768957",
+          "id": "order2_41499_4_0_3900458125",
           "slot": 4,
           "templateId": "leaftail_silverfin_delivery",
           "residentId": "leaftail",
@@ -4904,7 +4916,7 @@
             "rope": 1
           },
           "coins": 413,
-          "reputationXp": 9,
+          "reputationXp": 18,
           "effortSeconds": 4347,
           "manufacturingSeconds": 1140,
           "fishingUncertain": true
@@ -4912,16 +4924,16 @@
       ],
       "weeklyChoices": [
         {
-          "id": "weekly_choice1_week_plesk_picnic_610149453",
+          "id": "weekly_choice1_week_plesk_picnic_1955489393",
           "templateId": "week_plesk_picnic",
           "residentId": "plesk",
           "coins": 820,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 4170,
           "manufacturingSeconds": 1440,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_866106041",
+          "savedWeeklyId": "weekly1_1792758896_1577695066",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -4934,7 +4946,8 @@
                 "berries": 4
               },
               "coins": 125,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 696,
               "manufacturingSeconds": 0,
               "fishingUncertain": true,
@@ -4954,7 +4967,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4974,8 +4988,8 @@
                 "strawberry_compote": 2
               },
               "coins": 457,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 2270,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -4989,7 +5003,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_866106041_0_382730572",
+              "id": "weekly1_1792758896_1577695066_0_695545034",
               "slot": -1,
               "templateId": "week_plesk_picnic_1",
               "residentId": "plesk",
@@ -5000,7 +5014,8 @@
                 "berries": 4
               },
               "coins": 125,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 696,
               "manufacturingSeconds": 0,
               "fishingUncertain": true,
@@ -5011,7 +5026,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_866106041_1_2988504485",
+              "id": "weekly1_1792758896_1577695066_1_2052113699",
               "slot": -1,
               "templateId": "week_plesk_picnic_2",
               "residentId": "plesk",
@@ -5022,7 +5037,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -5033,7 +5049,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_866106041_2_3737634161",
+              "id": "weekly1_1792758896_1577695066_2_2805644965",
               "slot": -1,
               "templateId": "week_plesk_picnic_3",
               "residentId": "plesk",
@@ -5044,8 +5060,8 @@
                 "strawberry_compote": 2
               },
               "coins": 457,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 2270,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -5058,16 +5074,16 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_builder_shelter_369403957",
+          "id": "weekly_choice1_week_builder_shelter_3290589205",
           "templateId": "week_builder_shelter",
           "residentId": "builder",
           "coins": 839,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 5224,
           "manufacturingSeconds": 1080,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_1904794173",
+          "savedWeeklyId": "weekly1_1792758896_713435726",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -5080,7 +5096,8 @@
                 "stone": 3
               },
               "coins": 338,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 2760,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -5102,7 +5119,8 @@
                 "wood": 2
               },
               "coins": 263,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1260,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -5124,8 +5142,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -5141,7 +5159,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_1904794173_0_451408283",
+              "id": "weekly1_1792758896_713435726_0_2750918993",
               "slot": -1,
               "templateId": "week_builder_shelter_1",
               "residentId": "builder",
@@ -5152,7 +5170,8 @@
                 "stone": 3
               },
               "coins": 338,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 2760,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -5165,7 +5184,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_1904794173_1_3325859924",
+              "id": "weekly1_1792758896_713435726_1_3763085194",
               "slot": -1,
               "templateId": "week_builder_shelter_2",
               "residentId": "builder",
@@ -5176,7 +5195,8 @@
                 "wood": 2
               },
               "coins": 263,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1260,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -5189,7 +5209,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_1904794173_2_2764713861",
+              "id": "weekly1_1792758896_713435726_2_2116366937",
               "slot": -1,
               "templateId": "week_builder_shelter_3",
               "residentId": "builder",
@@ -5200,8 +5220,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -5216,16 +5236,178 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_lopukh_forest_kitchen_2365016907",
+          "id": "weekly_choice1_week_lopukh_camp_311122191",
+          "templateId": "week_lopukh_camp",
+          "residentId": "lopukh",
+          "coins": 676,
+          "pearls": 40,
+          "reputationXp": 120,
+          "effortSeconds": 3368,
+          "manufacturingSeconds": 1080,
+          "fishingUncertain": true,
+          "savedWeeklyId": "weekly1_1792758896_3371255000",
+          "acceptedAt": "2026-10-23T12:34:56.789Z",
+          "expiresAt": "2026-10-30T12:34:56.789Z",
+          "stages": [
+            {
+              "id": "week_lopukh_camp_1",
+              "name": "Ягоды и дрова",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "berries": 8,
+                "wood": 3
+              },
+              "coins": 213,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1084,
+              "manufacturingSeconds": 0,
+              "fishingUncertain": false,
+              "residentId": "lopukh",
+              "requiredBuildings": {
+                "home": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "dryer": 1,
+                "garden": 1
+              }
+            },
+            {
+              "id": "week_lopukh_camp_2",
+              "name": "Лавочки у навеса",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "planks": 3,
+                "wood": 1
+              },
+              "coins": 225,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1080,
+              "manufacturingSeconds": 360,
+              "fishingUncertain": false,
+              "residentId": "lopukh",
+              "requiredBuildings": {
+                "home": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "dryer": 1,
+                "garden": 1
+              }
+            },
+            {
+              "id": "week_lopukh_camp_3",
+              "name": "Обед под деревьями",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "grilled_fish": 2,
+                "berry_compote": 2
+              },
+              "coins": 238,
+              "pearls": 40,
+              "reputationXp": 40,
+              "effortSeconds": 1204,
+              "manufacturingSeconds": 720,
+              "fishingUncertain": true,
+              "residentId": "lopukh",
+              "requiredBuildings": {
+                "home": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "dryer": 1,
+                "garden": 1
+              }
+            }
+          ],
+          "activeStages": [
+            {
+              "id": "weekly1_1792758896_3371255000_0_2535354642",
+              "slot": -1,
+              "templateId": "week_lopukh_camp_1",
+              "residentId": "lopukh",
+              "name": "Ягоды и дрова",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "berries": 8,
+                "wood": 3
+              },
+              "coins": 213,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1084,
+              "manufacturingSeconds": 0,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "dryer": 1,
+                "garden": 1
+              }
+            },
+            {
+              "id": "weekly1_1792758896_3371255000_1_3319732149",
+              "slot": -1,
+              "templateId": "week_lopukh_camp_2",
+              "residentId": "lopukh",
+              "name": "Лавочки у навеса",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "planks": 3,
+                "wood": 1
+              },
+              "coins": 225,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1080,
+              "manufacturingSeconds": 360,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "dryer": 1,
+                "garden": 1
+              }
+            },
+            {
+              "id": "weekly1_1792758896_3371255000_2_1401243425",
+              "slot": -1,
+              "templateId": "week_lopukh_camp_3",
+              "residentId": "lopukh",
+              "name": "Обед под деревьями",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "grilled_fish": 2,
+                "berry_compote": 2
+              },
+              "coins": 238,
+              "pearls": 40,
+              "reputationXp": 40,
+              "effortSeconds": 1204,
+              "manufacturingSeconds": 720,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "dryer": 1,
+                "garden": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "weekly_choice1_week_lopukh_forest_kitchen_1959171466",
           "templateId": "week_lopukh_forest_kitchen",
           "residentId": "lopukh",
           "coins": 3245,
-          "pearls": 20,
-          "reputationXp": 84,
+          "pearls": 80,
+          "reputationXp": 168,
           "effortSeconds": 30175,
           "manufacturingSeconds": 8880,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_2063169501",
+          "savedWeeklyId": "weekly1_1792758896_3367368825",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -5238,7 +5420,8 @@
                 "ceramic_jar": 3
               },
               "coins": 850,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 4080,
               "manufacturingSeconds": 1740,
               "fishingUncertain": false,
@@ -5261,7 +5444,8 @@
                 "smoked_bream": 1
               },
               "coins": 813,
-              "reputationXp": 26,
+              "pearls": 0,
+              "reputationXp": 52,
               "effortSeconds": 9543,
               "manufacturingSeconds": 2400,
               "fishingUncertain": true,
@@ -5284,8 +5468,8 @@
                 "packed_berries": 2
               },
               "coins": 1582,
-              "pearls": 20,
-              "reputationXp": 38,
+              "pearls": 80,
+              "reputationXp": 76,
               "effortSeconds": 16552,
               "manufacturingSeconds": 4740,
               "fishingUncertain": true,
@@ -5302,7 +5486,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_2063169501_0_2909809777",
+              "id": "weekly1_1792758896_3367368825_0_1378012719",
               "slot": -1,
               "templateId": "week_lopukh_forest_kitchen_1",
               "residentId": "lopukh",
@@ -5313,7 +5497,8 @@
                 "ceramic_jar": 3
               },
               "coins": 850,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 4080,
               "manufacturingSeconds": 1740,
               "fishingUncertain": false,
@@ -5327,7 +5512,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2063169501_1_599721883",
+              "id": "weekly1_1792758896_3367368825_1_2651236204",
               "slot": -1,
               "templateId": "week_lopukh_forest_kitchen_2",
               "residentId": "lopukh",
@@ -5338,7 +5523,8 @@
                 "smoked_bream": 1
               },
               "coins": 813,
-              "reputationXp": 26,
+              "pearls": 0,
+              "reputationXp": 52,
               "effortSeconds": 9543,
               "manufacturingSeconds": 2400,
               "fishingUncertain": true,
@@ -5352,7 +5538,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2063169501_2_1121738748",
+              "id": "weekly1_1792758896_3367368825_2_3346895960",
               "slot": -1,
               "templateId": "week_lopukh_forest_kitchen_3",
               "residentId": "lopukh",
@@ -5363,8 +5549,8 @@
                 "packed_berries": 2
               },
               "coins": 1582,
-              "pearls": 20,
-              "reputationXp": 38,
+              "pearls": 80,
+              "reputationXp": 76,
               "effortSeconds": 16552,
               "manufacturingSeconds": 4740,
               "fishingUncertain": true,
@@ -5380,16 +5566,16 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_kamneshmyg_entry_3988424462",
+          "id": "weekly_choice1_week_kamneshmyg_entry_2141605894",
           "templateId": "week_kamneshmyg_entry",
           "residentId": "kamneshmyg",
           "coins": 913,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 4428,
           "manufacturingSeconds": 1860,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_3037451597",
+          "savedWeeklyId": "weekly1_1792758896_715135383",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -5402,7 +5588,8 @@
                 "planks": 2
               },
               "coins": 275,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1320,
               "manufacturingSeconds": 240,
               "fishingUncertain": false,
@@ -5426,7 +5613,8 @@
                 "rope": 3
               },
               "coins": 375,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1800,
               "manufacturingSeconds": 900,
               "fishingUncertain": false,
@@ -5450,8 +5638,8 @@
                 "blueberry_compote": 1
               },
               "coins": 263,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1308,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -5469,7 +5657,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_3037451597_0_3720161644",
+              "id": "weekly1_1792758896_715135383_0_1130213170",
               "slot": -1,
               "templateId": "week_kamneshmyg_entry_1",
               "residentId": "kamneshmyg",
@@ -5480,7 +5668,8 @@
                 "planks": 2
               },
               "coins": 275,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1320,
               "manufacturingSeconds": 240,
               "fishingUncertain": false,
@@ -5495,7 +5684,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_3037451597_1_2021846791",
+              "id": "weekly1_1792758896_715135383_1_3700819385",
               "slot": -1,
               "templateId": "week_kamneshmyg_entry_2",
               "residentId": "kamneshmyg",
@@ -5506,7 +5695,8 @@
                 "rope": 3
               },
               "coins": 375,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1800,
               "manufacturingSeconds": 900,
               "fishingUncertain": false,
@@ -5521,7 +5711,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_3037451597_2_3896632108",
+              "id": "weekly1_1792758896_715135383_2_550272612",
               "slot": -1,
               "templateId": "week_kamneshmyg_entry_3",
               "residentId": "kamneshmyg",
@@ -5532,8 +5722,8 @@
                 "blueberry_compote": 1
               },
               "coins": 263,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1308,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -5550,16 +5740,16 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_leaftail_provisions_266260503",
+          "id": "weekly_choice1_week_leaftail_provisions_2064951287",
           "templateId": "week_leaftail_provisions",
           "residentId": "leaftail",
           "coins": 1976,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 9576,
           "manufacturingSeconds": 6180,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_2447575791",
+          "savedWeeklyId": "weekly1_1792758896_3065206953",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -5572,7 +5762,8 @@
                 "rope": 2
               },
               "coins": 413,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1980,
               "manufacturingSeconds": 1260,
               "fishingUncertain": false,
@@ -5596,7 +5787,8 @@
                 "packed_berries": 1
               },
               "coins": 800,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 3888,
               "manufacturingSeconds": 2520,
               "fishingUncertain": false,
@@ -5620,8 +5812,8 @@
                 "smoked_fish": 1
               },
               "coins": 763,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 3708,
               "manufacturingSeconds": 2400,
               "fishingUncertain": true,
@@ -5639,7 +5831,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_2447575791_0_2606508020",
+              "id": "weekly1_1792758896_3065206953_0_3211196014",
               "slot": -1,
               "templateId": "week_leaftail_provisions_1",
               "residentId": "leaftail",
@@ -5650,7 +5842,8 @@
                 "rope": 2
               },
               "coins": 413,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1980,
               "manufacturingSeconds": 1260,
               "fishingUncertain": false,
@@ -5665,7 +5858,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2447575791_1_2039257952",
+              "id": "weekly1_1792758896_3065206953_1_803681542",
               "slot": -1,
               "templateId": "week_leaftail_provisions_2",
               "residentId": "leaftail",
@@ -5676,7 +5869,8 @@
                 "packed_berries": 1
               },
               "coins": 800,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 3888,
               "manufacturingSeconds": 2520,
               "fishingUncertain": false,
@@ -5691,7 +5885,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2447575791_2_1599542343",
+              "id": "weekly1_1792758896_3065206953_2_1308106535",
               "slot": -1,
               "templateId": "week_leaftail_provisions_3",
               "residentId": "leaftail",
@@ -5702,8 +5896,8 @@
                 "smoked_fish": 1
               },
               "coins": 763,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 3708,
               "manufacturingSeconds": 2400,
               "fishingUncertain": true,
@@ -5819,7 +6013,7 @@
       },
       "ordinary": [
         {
-          "id": "order2_41499_0_0_2529095048",
+          "id": "order2_41499_0_0_519654994",
           "slot": 0,
           "templateId": "repeat3_smoked_berries",
           "residentId": "plesk",
@@ -5830,13 +6024,13 @@
             "dried_berries": 1
           },
           "coins": 488,
-          "reputationXp": 7,
+          "reputationXp": 14,
           "effortSeconds": 2576,
           "manufacturingSeconds": 1620,
           "fishingUncertain": true
         },
         {
-          "id": "order2_41499_1_0_3868408120",
+          "id": "order2_41499_1_0_1640787975",
           "slot": 1,
           "templateId": "builder_resin_delivery",
           "residentId": "builder",
@@ -5846,13 +6040,13 @@
             "resin": 8
           },
           "coins": 600,
-          "reputationXp": 8,
+          "reputationXp": 16,
           "effortSeconds": 2880,
           "manufacturingSeconds": 0,
           "fishingUncertain": false
         },
         {
-          "id": "order2_41499_2_0_267976131",
+          "id": "order2_41499_2_0_3622341295",
           "slot": 2,
           "templateId": "lopukh_resin_tools",
           "residentId": "lopukh",
@@ -5863,13 +6057,13 @@
             "tools": 1
           },
           "coins": 1513,
-          "reputationXp": 13,
+          "reputationXp": 26,
           "effortSeconds": 7260,
           "manufacturingSeconds": 3540,
           "fishingUncertain": false
         },
         {
-          "id": "order2_41499_3_0_1705837971",
+          "id": "order2_41499_3_0_655543459",
           "slot": 3,
           "templateId": "kamneshmyg_hot_shift",
           "residentId": "kamneshmyg",
@@ -5880,13 +6074,13 @@
             "fish_soup": 1
           },
           "coins": 1500,
-          "reputationXp": 13,
+          "reputationXp": 26,
           "effortSeconds": 7240,
           "manufacturingSeconds": 4140,
           "fishingUncertain": true
         },
         {
-          "id": "order2_41499_4_0_784330488",
+          "id": "order2_41499_4_0_3918677760",
           "slot": 4,
           "templateId": "leaftail_bream_provisions",
           "residentId": "leaftail",
@@ -5897,7 +6091,7 @@
             "trade_crate": 1
           },
           "coins": 750,
-          "reputationXp": 13,
+          "reputationXp": 26,
           "effortSeconds": 7908,
           "manufacturingSeconds": 2340,
           "fishingUncertain": true
@@ -5905,16 +6099,166 @@
       ],
       "weeklyChoices": [
         {
-          "id": "weekly_choice1_week_plesk_river_table_2459740739",
+          "id": "weekly_choice1_week_plesk_picnic_1955489393",
+          "templateId": "week_plesk_picnic",
+          "residentId": "plesk",
+          "coins": 820,
+          "pearls": 40,
+          "reputationXp": 120,
+          "effortSeconds": 4170,
+          "manufacturingSeconds": 1440,
+          "fishingUncertain": true,
+          "savedWeeklyId": "weekly1_1792758896_1577695066",
+          "acceptedAt": "2026-10-23T12:34:56.789Z",
+          "expiresAt": "2026-10-30T12:34:56.789Z",
+          "stages": [
+            {
+              "id": "week_plesk_picnic_1",
+              "name": "Свежий улов к столу",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "fish_common": 4,
+                "berries": 4
+              },
+              "coins": 125,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 696,
+              "manufacturingSeconds": 0,
+              "fishingUncertain": true,
+              "residentId": "plesk",
+              "requiredBuildings": {
+                "home": 1,
+                "garden": 1,
+                "dryer": 1
+              }
+            },
+            {
+              "id": "week_plesk_picnic_2",
+              "name": "Горячая часть пикника",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "grilled_fish": 2,
+                "berry_compote": 2
+              },
+              "coins": 238,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1204,
+              "manufacturingSeconds": 720,
+              "fishingUncertain": true,
+              "residentId": "plesk",
+              "requiredBuildings": {
+                "home": 1,
+                "garden": 1,
+                "dryer": 1
+              }
+            },
+            {
+              "id": "week_plesk_picnic_3",
+              "name": "Угощение для поздних гостей",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "fish_common": 3,
+                "strawberry_compote": 2
+              },
+              "coins": 457,
+              "pearls": 40,
+              "reputationXp": 40,
+              "effortSeconds": 2270,
+              "manufacturingSeconds": 720,
+              "fishingUncertain": true,
+              "residentId": "plesk",
+              "requiredBuildings": {
+                "home": 1,
+                "garden": 1,
+                "dryer": 1
+              }
+            }
+          ],
+          "activeStages": [
+            {
+              "id": "weekly1_1792758896_1577695066_0_695545034",
+              "slot": -1,
+              "templateId": "week_plesk_picnic_1",
+              "residentId": "plesk",
+              "name": "Свежий улов к столу",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "fish_common": 4,
+                "berries": 4
+              },
+              "coins": 125,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 696,
+              "manufacturingSeconds": 0,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 1,
+                "garden": 1,
+                "dryer": 1
+              }
+            },
+            {
+              "id": "weekly1_1792758896_1577695066_1_2052113699",
+              "slot": -1,
+              "templateId": "week_plesk_picnic_2",
+              "residentId": "plesk",
+              "name": "Горячая часть пикника",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "grilled_fish": 2,
+                "berry_compote": 2
+              },
+              "coins": 238,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1204,
+              "manufacturingSeconds": 720,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 1,
+                "garden": 1,
+                "dryer": 1
+              }
+            },
+            {
+              "id": "weekly1_1792758896_1577695066_2_2805644965",
+              "slot": -1,
+              "templateId": "week_plesk_picnic_3",
+              "residentId": "plesk",
+              "name": "Угощение для поздних гостей",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "fish_common": 3,
+                "strawberry_compote": 2
+              },
+              "coins": 457,
+              "pearls": 40,
+              "reputationXp": 40,
+              "effortSeconds": 2270,
+              "manufacturingSeconds": 720,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 1,
+                "garden": 1,
+                "dryer": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "weekly_choice1_week_plesk_river_table_957435774",
           "templateId": "week_plesk_river_table",
           "residentId": "plesk",
           "coins": 4026,
-          "pearls": 20,
-          "reputationXp": 72,
+          "pearls": 80,
+          "reputationXp": 144,
           "effortSeconds": 21968,
           "manufacturingSeconds": 9480,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_2018305355",
+          "savedWeeklyId": "weekly1_1792758896_38009266",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -5927,7 +6271,8 @@
                 "bottled_compote": 1
               },
               "coins": 550,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 3916,
               "manufacturingSeconds": 1500,
               "fishingUncertain": true,
@@ -5951,7 +6296,8 @@
                 "currant_jelly": 1
               },
               "coins": 1238,
-              "reputationXp": 21,
+              "pearls": 0,
+              "reputationXp": 42,
               "effortSeconds": 6036,
               "manufacturingSeconds": 3120,
               "fishingUncertain": true,
@@ -5975,8 +6321,8 @@
                 "fish_uncommon": 2
               },
               "coins": 2238,
-              "pearls": 20,
-              "reputationXp": 31,
+              "pearls": 80,
+              "reputationXp": 62,
               "effortSeconds": 12016,
               "manufacturingSeconds": 4860,
               "fishingUncertain": true,
@@ -5994,7 +6340,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_2018305355_0_3422387327",
+              "id": "weekly1_1792758896_38009266_0_2470867421",
               "slot": -1,
               "templateId": "week_plesk_river_table_1",
               "residentId": "plesk",
@@ -6005,7 +6351,8 @@
                 "bottled_compote": 1
               },
               "coins": 550,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 3916,
               "manufacturingSeconds": 1500,
               "fishingUncertain": true,
@@ -6020,7 +6367,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2018305355_1_34641944",
+              "id": "weekly1_1792758896_38009266_1_1564017255",
               "slot": -1,
               "templateId": "week_plesk_river_table_2",
               "residentId": "plesk",
@@ -6031,7 +6378,8 @@
                 "currant_jelly": 1
               },
               "coins": 1238,
-              "reputationXp": 21,
+              "pearls": 0,
+              "reputationXp": 42,
               "effortSeconds": 6036,
               "manufacturingSeconds": 3120,
               "fishingUncertain": true,
@@ -6046,7 +6394,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2018305355_2_1557079132",
+              "id": "weekly1_1792758896_38009266_2_254396642",
               "slot": -1,
               "templateId": "week_plesk_river_table_3",
               "residentId": "plesk",
@@ -6057,8 +6405,8 @@
                 "fish_uncommon": 2
               },
               "coins": 2238,
-              "pearls": 20,
-              "reputationXp": 31,
+              "pearls": 80,
+              "reputationXp": 62,
               "effortSeconds": 12016,
               "manufacturingSeconds": 4860,
               "fishingUncertain": true,
@@ -6075,16 +6423,16 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_builder_shelter_369403957",
+          "id": "weekly_choice1_week_builder_shelter_3290589205",
           "templateId": "week_builder_shelter",
           "residentId": "builder",
           "coins": 839,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 5224,
           "manufacturingSeconds": 1080,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_1904794173",
+          "savedWeeklyId": "weekly1_1792758896_713435726",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -6097,7 +6445,8 @@
                 "stone": 3
               },
               "coins": 338,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 2760,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -6119,7 +6468,8 @@
                 "wood": 2
               },
               "coins": 263,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1260,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -6141,8 +6491,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -6158,7 +6508,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_1904794173_0_451408283",
+              "id": "weekly1_1792758896_713435726_0_2750918993",
               "slot": -1,
               "templateId": "week_builder_shelter_1",
               "residentId": "builder",
@@ -6169,7 +6519,8 @@
                 "stone": 3
               },
               "coins": 338,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 2760,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -6182,7 +6533,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_1904794173_1_3325859924",
+              "id": "weekly1_1792758896_713435726_1_3763085194",
               "slot": -1,
               "templateId": "week_builder_shelter_2",
               "residentId": "builder",
@@ -6193,7 +6544,8 @@
                 "wood": 2
               },
               "coins": 263,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1260,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -6206,7 +6558,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_1904794173_2_2764713861",
+              "id": "weekly1_1792758896_713435726_2_2116366937",
               "slot": -1,
               "templateId": "week_builder_shelter_3",
               "residentId": "builder",
@@ -6217,8 +6569,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -6233,16 +6585,178 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_lopukh_camp_3409391727",
+          "id": "weekly_choice1_week_builder_crossing_107913292",
+          "templateId": "week_builder_crossing",
+          "residentId": "builder",
+          "coins": 4989,
+          "pearls": 80,
+          "reputationXp": 148,
+          "effortSeconds": 23940,
+          "manufacturingSeconds": 12180,
+          "fishingUncertain": false,
+          "savedWeeklyId": "weekly1_1792758896_374660016",
+          "acceptedAt": "2026-10-23T12:34:56.789Z",
+          "expiresAt": "2026-10-30T12:34:56.789Z",
+          "stages": [
+            {
+              "id": "week_builder_crossing_1",
+              "name": "Ящики и каменные опоры",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "trade_crate": 1,
+                "cut_stone": 2
+              },
+              "coins": 813,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 3900,
+              "manufacturingSeconds": 2340,
+              "fishingUncertain": false,
+              "residentId": "builder",
+              "requiredBuildings": {
+                "home": 4,
+                "woodlot": 3,
+                "workshop": 3,
+                "kiln": 3,
+                "quarry": 4
+              }
+            },
+            {
+              "id": "week_builder_crossing_2",
+              "name": "Стекло и линзы для разметки",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "lens": 1,
+                "glass": 2
+              },
+              "coins": 1313,
+              "pearls": 0,
+              "reputationXp": 42,
+              "effortSeconds": 6300,
+              "manufacturingSeconds": 3060,
+              "fishingUncertain": false,
+              "residentId": "builder",
+              "requiredBuildings": {
+                "home": 4,
+                "woodlot": 3,
+                "workshop": 3,
+                "kiln": 3,
+                "quarry": 4
+              }
+            },
+            {
+              "id": "week_builder_crossing_3",
+              "name": "Завершить рабочий комплект",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "metal_parts": 2,
+                "tools": 1
+              },
+              "coins": 2863,
+              "pearls": 80,
+              "reputationXp": 66,
+              "effortSeconds": 13740,
+              "manufacturingSeconds": 6780,
+              "fishingUncertain": false,
+              "residentId": "builder",
+              "requiredBuildings": {
+                "home": 4,
+                "woodlot": 3,
+                "workshop": 3,
+                "kiln": 3,
+                "quarry": 4
+              }
+            }
+          ],
+          "activeStages": [
+            {
+              "id": "weekly1_1792758896_374660016_0_2714042048",
+              "slot": -1,
+              "templateId": "week_builder_crossing_1",
+              "residentId": "builder",
+              "name": "Ящики и каменные опоры",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "trade_crate": 1,
+                "cut_stone": 2
+              },
+              "coins": 813,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 3900,
+              "manufacturingSeconds": 2340,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 4,
+                "woodlot": 3,
+                "workshop": 3,
+                "kiln": 3,
+                "quarry": 4
+              }
+            },
+            {
+              "id": "weekly1_1792758896_374660016_1_2674770702",
+              "slot": -1,
+              "templateId": "week_builder_crossing_2",
+              "residentId": "builder",
+              "name": "Стекло и линзы для разметки",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "lens": 1,
+                "glass": 2
+              },
+              "coins": 1313,
+              "pearls": 0,
+              "reputationXp": 42,
+              "effortSeconds": 6300,
+              "manufacturingSeconds": 3060,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 4,
+                "woodlot": 3,
+                "workshop": 3,
+                "kiln": 3,
+                "quarry": 4
+              }
+            },
+            {
+              "id": "weekly1_1792758896_374660016_2_2690965663",
+              "slot": -1,
+              "templateId": "week_builder_crossing_3",
+              "residentId": "builder",
+              "name": "Завершить рабочий комплект",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "metal_parts": 2,
+                "tools": 1
+              },
+              "coins": 2863,
+              "pearls": 80,
+              "reputationXp": 66,
+              "effortSeconds": 13740,
+              "manufacturingSeconds": 6780,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 4,
+                "woodlot": 3,
+                "workshop": 3,
+                "kiln": 3,
+                "quarry": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "weekly_choice1_week_lopukh_camp_311122191",
           "templateId": "week_lopukh_camp",
           "residentId": "lopukh",
           "coins": 676,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 3368,
           "manufacturingSeconds": 1080,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_2660869562",
+          "savedWeeklyId": "weekly1_1792758896_3371255000",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -6255,7 +6769,8 @@
                 "wood": 3
               },
               "coins": 213,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1084,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -6277,7 +6792,8 @@
                 "wood": 1
               },
               "coins": 225,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1080,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -6299,8 +6815,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -6316,7 +6832,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_2660869562_0_2996953196",
+              "id": "weekly1_1792758896_3371255000_0_2535354642",
               "slot": -1,
               "templateId": "week_lopukh_camp_1",
               "residentId": "lopukh",
@@ -6327,7 +6843,8 @@
                 "wood": 3
               },
               "coins": 213,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1084,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
@@ -6340,7 +6857,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2660869562_1_2839523907",
+              "id": "weekly1_1792758896_3371255000_1_3319732149",
               "slot": -1,
               "templateId": "week_lopukh_camp_2",
               "residentId": "lopukh",
@@ -6351,7 +6868,8 @@
                 "wood": 1
               },
               "coins": 225,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1080,
               "manufacturingSeconds": 360,
               "fishingUncertain": false,
@@ -6364,7 +6882,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2660869562_2_3387449613",
+              "id": "weekly1_1792758896_3371255000_2_1401243425",
               "slot": -1,
               "templateId": "week_lopukh_camp_3",
               "residentId": "lopukh",
@@ -6375,8 +6893,8 @@
                 "berry_compote": 2
               },
               "coins": 238,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 1204,
               "manufacturingSeconds": 720,
               "fishingUncertain": true,
@@ -6391,16 +6909,532 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_kamneshmyg_stone_square_1715611873",
+          "id": "weekly_choice1_week_lopukh_forest_kitchen_1959171466",
+          "templateId": "week_lopukh_forest_kitchen",
+          "residentId": "lopukh",
+          "coins": 3245,
+          "pearls": 80,
+          "reputationXp": 168,
+          "effortSeconds": 30175,
+          "manufacturingSeconds": 8880,
+          "fishingUncertain": true,
+          "savedWeeklyId": "weekly1_1792758896_3367368825",
+          "acceptedAt": "2026-10-23T12:34:56.789Z",
+          "expiresAt": "2026-10-30T12:34:56.789Z",
+          "stages": [
+            {
+              "id": "week_lopukh_forest_kitchen_1",
+              "name": "Запас для очага",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "charcoal": 4,
+                "ceramic_jar": 3
+              },
+              "coins": 850,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 4080,
+              "manufacturingSeconds": 1740,
+              "fishingUncertain": false,
+              "residentId": "lopukh",
+              "requiredBuildings": {
+                "home": 3,
+                "kiln": 1,
+                "quarry": 2,
+                "dryer": 2,
+                "woodlot": 1,
+                "garden": 2
+              }
+            },
+            {
+              "id": "week_lopukh_forest_kitchen_2",
+              "name": "Обеды на смену",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "grilled_silverfin": 2,
+                "smoked_bream": 1
+              },
+              "coins": 813,
+              "pearls": 0,
+              "reputationXp": 52,
+              "effortSeconds": 9543,
+              "manufacturingSeconds": 2400,
+              "fishingUncertain": true,
+              "residentId": "lopukh",
+              "requiredBuildings": {
+                "home": 3,
+                "kiln": 1,
+                "quarry": 2,
+                "dryer": 2,
+                "woodlot": 1,
+                "garden": 2
+              }
+            },
+            {
+              "id": "week_lopukh_forest_kitchen_3",
+              "name": "Ягодный вечер",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "mooncarp_blueberries": 1,
+                "packed_berries": 2
+              },
+              "coins": 1582,
+              "pearls": 80,
+              "reputationXp": 76,
+              "effortSeconds": 16552,
+              "manufacturingSeconds": 4740,
+              "fishingUncertain": true,
+              "residentId": "lopukh",
+              "requiredBuildings": {
+                "home": 3,
+                "kiln": 1,
+                "quarry": 2,
+                "dryer": 2,
+                "woodlot": 1,
+                "garden": 2
+              }
+            }
+          ],
+          "activeStages": [
+            {
+              "id": "weekly1_1792758896_3367368825_0_1378012719",
+              "slot": -1,
+              "templateId": "week_lopukh_forest_kitchen_1",
+              "residentId": "lopukh",
+              "name": "Запас для очага",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "charcoal": 4,
+                "ceramic_jar": 3
+              },
+              "coins": 850,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 4080,
+              "manufacturingSeconds": 1740,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 3,
+                "kiln": 1,
+                "quarry": 2,
+                "dryer": 2,
+                "woodlot": 1,
+                "garden": 2
+              }
+            },
+            {
+              "id": "weekly1_1792758896_3367368825_1_2651236204",
+              "slot": -1,
+              "templateId": "week_lopukh_forest_kitchen_2",
+              "residentId": "lopukh",
+              "name": "Обеды на смену",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "grilled_silverfin": 2,
+                "smoked_bream": 1
+              },
+              "coins": 813,
+              "pearls": 0,
+              "reputationXp": 52,
+              "effortSeconds": 9543,
+              "manufacturingSeconds": 2400,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 3,
+                "kiln": 1,
+                "quarry": 2,
+                "dryer": 2,
+                "woodlot": 1,
+                "garden": 2
+              }
+            },
+            {
+              "id": "weekly1_1792758896_3367368825_2_3346895960",
+              "slot": -1,
+              "templateId": "week_lopukh_forest_kitchen_3",
+              "residentId": "lopukh",
+              "name": "Ягодный вечер",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "mooncarp_blueberries": 1,
+                "packed_berries": 2
+              },
+              "coins": 1582,
+              "pearls": 80,
+              "reputationXp": 76,
+              "effortSeconds": 16552,
+              "manufacturingSeconds": 4740,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 3,
+                "kiln": 1,
+                "quarry": 2,
+                "dryer": 2,
+                "woodlot": 1,
+                "garden": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "weekly_choice1_week_kamneshmyg_entry_2141605894",
+          "templateId": "week_kamneshmyg_entry",
+          "residentId": "kamneshmyg",
+          "coins": 913,
+          "pearls": 40,
+          "reputationXp": 120,
+          "effortSeconds": 4428,
+          "manufacturingSeconds": 1860,
+          "fishingUncertain": true,
+          "savedWeeklyId": "weekly1_1792758896_715135383",
+          "acceptedAt": "2026-10-23T12:34:56.789Z",
+          "expiresAt": "2026-10-30T12:34:56.789Z",
+          "stages": [
+            {
+              "id": "week_kamneshmyg_entry_1",
+              "name": "Деревянные подпорки",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "wood": 4,
+                "planks": 2
+              },
+              "coins": 275,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1320,
+              "manufacturingSeconds": 240,
+              "fishingUncertain": false,
+              "residentId": "kamneshmyg",
+              "requiredBuildings": {
+                "home": 2,
+                "quarry": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "kiln": 1,
+                "garden": 2,
+                "dryer": 1
+              }
+            },
+            {
+              "id": "week_kamneshmyg_entry_2",
+              "name": "Топливо и завязки",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "charcoal": 3,
+                "rope": 3
+              },
+              "coins": 375,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1800,
+              "manufacturingSeconds": 900,
+              "fishingUncertain": false,
+              "residentId": "kamneshmyg",
+              "requiredBuildings": {
+                "home": 2,
+                "quarry": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "kiln": 1,
+                "garden": 2,
+                "dryer": 1
+              }
+            },
+            {
+              "id": "week_kamneshmyg_entry_3",
+              "name": "Обед каменной смены",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "grilled_fish": 2,
+                "blueberry_compote": 1
+              },
+              "coins": 263,
+              "pearls": 40,
+              "reputationXp": 40,
+              "effortSeconds": 1308,
+              "manufacturingSeconds": 720,
+              "fishingUncertain": true,
+              "residentId": "kamneshmyg",
+              "requiredBuildings": {
+                "home": 2,
+                "quarry": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "kiln": 1,
+                "garden": 2,
+                "dryer": 1
+              }
+            }
+          ],
+          "activeStages": [
+            {
+              "id": "weekly1_1792758896_715135383_0_1130213170",
+              "slot": -1,
+              "templateId": "week_kamneshmyg_entry_1",
+              "residentId": "kamneshmyg",
+              "name": "Деревянные подпорки",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "wood": 4,
+                "planks": 2
+              },
+              "coins": 275,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1320,
+              "manufacturingSeconds": 240,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 2,
+                "quarry": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "kiln": 1,
+                "garden": 2,
+                "dryer": 1
+              }
+            },
+            {
+              "id": "weekly1_1792758896_715135383_1_3700819385",
+              "slot": -1,
+              "templateId": "week_kamneshmyg_entry_2",
+              "residentId": "kamneshmyg",
+              "name": "Топливо и завязки",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "charcoal": 3,
+                "rope": 3
+              },
+              "coins": 375,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 1800,
+              "manufacturingSeconds": 900,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 2,
+                "quarry": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "kiln": 1,
+                "garden": 2,
+                "dryer": 1
+              }
+            },
+            {
+              "id": "weekly1_1792758896_715135383_2_550272612",
+              "slot": -1,
+              "templateId": "week_kamneshmyg_entry_3",
+              "residentId": "kamneshmyg",
+              "name": "Обед каменной смены",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "grilled_fish": 2,
+                "blueberry_compote": 1
+              },
+              "coins": 263,
+              "pearls": 40,
+              "reputationXp": 40,
+              "effortSeconds": 1308,
+              "manufacturingSeconds": 720,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 2,
+                "quarry": 1,
+                "woodlot": 1,
+                "workshop": 1,
+                "kiln": 1,
+                "garden": 2,
+                "dryer": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "weekly_choice1_week_kamneshmyg_survey_1066617675",
+          "templateId": "week_kamneshmyg_survey",
+          "residentId": "kamneshmyg",
+          "coins": 5801,
+          "pearls": 80,
+          "reputationXp": 158,
+          "effortSeconds": 27968,
+          "manufacturingSeconds": 15240,
+          "fishingUncertain": true,
+          "savedWeeklyId": "weekly1_1792758896_2582429928",
+          "acceptedAt": "2026-10-23T12:34:56.789Z",
+          "expiresAt": "2026-10-30T12:34:56.789Z",
+          "stages": [
+            {
+              "id": "week_kamneshmyg_survey_1",
+              "name": "Кварц и линза для разведки",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "quartz": 2,
+                "lens": 1
+              },
+              "coins": 1063,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 5100,
+              "manufacturingSeconds": 1620,
+              "fishingUncertain": false,
+              "residentId": "kamneshmyg",
+              "requiredBuildings": {
+                "home": 4,
+                "quarry": 4,
+                "woodlot": 3,
+                "workshop": 4,
+                "kiln": 3,
+                "dryer": 2,
+                "garden": 1
+              }
+            },
+            {
+              "id": "week_kamneshmyg_survey_2",
+              "name": "Оснастка для укрепления",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "field_kit": 1,
+                "packed_berries": 1
+              },
+              "coins": 3025,
+              "pearls": 0,
+              "reputationXp": 70,
+              "effortSeconds": 14568,
+              "manufacturingSeconds": 8880,
+              "fishingUncertain": false,
+              "residentId": "kamneshmyg",
+              "requiredBuildings": {
+                "home": 4,
+                "quarry": 4,
+                "woodlot": 3,
+                "workshop": 4,
+                "kiln": 3,
+                "dryer": 2,
+                "garden": 1
+              }
+            },
+            {
+              "id": "week_kamneshmyg_survey_3",
+              "name": "Инструмент и горячий обед",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "tools": 1,
+                "fish_soup": 2
+              },
+              "coins": 1713,
+              "pearls": 80,
+              "reputationXp": 48,
+              "effortSeconds": 8300,
+              "manufacturingSeconds": 4740,
+              "fishingUncertain": true,
+              "residentId": "kamneshmyg",
+              "requiredBuildings": {
+                "home": 4,
+                "quarry": 4,
+                "woodlot": 3,
+                "workshop": 4,
+                "kiln": 3,
+                "dryer": 2,
+                "garden": 1
+              }
+            }
+          ],
+          "activeStages": [
+            {
+              "id": "weekly1_1792758896_2582429928_0_1594275055",
+              "slot": -1,
+              "templateId": "week_kamneshmyg_survey_1",
+              "residentId": "kamneshmyg",
+              "name": "Кварц и линза для разведки",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "quartz": 2,
+                "lens": 1
+              },
+              "coins": 1063,
+              "pearls": 0,
+              "reputationXp": 40,
+              "effortSeconds": 5100,
+              "manufacturingSeconds": 1620,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 4,
+                "quarry": 4,
+                "woodlot": 3,
+                "workshop": 4,
+                "kiln": 3,
+                "dryer": 2,
+                "garden": 1
+              }
+            },
+            {
+              "id": "weekly1_1792758896_2582429928_1_2978705074",
+              "slot": -1,
+              "templateId": "week_kamneshmyg_survey_2",
+              "residentId": "kamneshmyg",
+              "name": "Оснастка для укрепления",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "field_kit": 1,
+                "packed_berries": 1
+              },
+              "coins": 3025,
+              "pearls": 0,
+              "reputationXp": 70,
+              "effortSeconds": 14568,
+              "manufacturingSeconds": 8880,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 4,
+                "quarry": 4,
+                "woodlot": 3,
+                "workshop": 4,
+                "kiln": 3,
+                "dryer": 2,
+                "garden": 1
+              }
+            },
+            {
+              "id": "weekly1_1792758896_2582429928_2_1864527487",
+              "slot": -1,
+              "templateId": "week_kamneshmyg_survey_3",
+              "residentId": "kamneshmyg",
+              "name": "Инструмент и горячий обед",
+              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "items": {
+                "tools": 1,
+                "fish_soup": 2
+              },
+              "coins": 1713,
+              "pearls": 80,
+              "reputationXp": 48,
+              "effortSeconds": 8300,
+              "manufacturingSeconds": 4740,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 4,
+                "quarry": 4,
+                "woodlot": 3,
+                "workshop": 4,
+                "kiln": 3,
+                "dryer": 2,
+                "garden": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "weekly_choice1_week_kamneshmyg_stone_square_159158309",
           "templateId": "week_kamneshmyg_stone_square",
           "residentId": "kamneshmyg",
           "coins": 10251,
-          "pearls": 20,
-          "reputationXp": 145,
+          "pearls": 140,
+          "reputationXp": 290,
           "effortSeconds": 67832,
           "manufacturingSeconds": 19320,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_2688237948",
+          "savedWeeklyId": "weekly1_1792758896_4126441453",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -6413,7 +7447,8 @@
                 "cut_stone": 3
               },
               "coins": 2063,
-              "reputationXp": 27,
+              "pearls": 0,
+              "reputationXp": 54,
               "effortSeconds": 9900,
               "manufacturingSeconds": 3240,
               "fishingUncertain": false,
@@ -6436,7 +7471,8 @@
                 "glass_bottle": 2
               },
               "coins": 3938,
-              "reputationXp": 43,
+              "pearls": 0,
+              "reputationXp": 86,
               "effortSeconds": 19212,
               "manufacturingSeconds": 7080,
               "fishingUncertain": false,
@@ -6459,8 +7495,8 @@
                 "cranberry_glaze": 1
               },
               "coins": 4250,
-              "pearls": 20,
-              "reputationXp": 75,
+              "pearls": 140,
+              "reputationXp": 150,
               "effortSeconds": 38720,
               "manufacturingSeconds": 9000,
               "fishingUncertain": true,
@@ -6477,7 +7513,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_2688237948_0_3897961005",
+              "id": "weekly1_1792758896_4126441453_0_2433415567",
               "slot": -1,
               "templateId": "week_kamneshmyg_stone_square_1",
               "residentId": "kamneshmyg",
@@ -6488,7 +7524,8 @@
                 "cut_stone": 3
               },
               "coins": 2063,
-              "reputationXp": 27,
+              "pearls": 0,
+              "reputationXp": 54,
               "effortSeconds": 9900,
               "manufacturingSeconds": 3240,
               "fishingUncertain": false,
@@ -6502,7 +7539,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2688237948_1_3668407682",
+              "id": "weekly1_1792758896_4126441453_1_3223974517",
               "slot": -1,
               "templateId": "week_kamneshmyg_stone_square_2",
               "residentId": "kamneshmyg",
@@ -6513,7 +7550,8 @@
                 "glass_bottle": 2
               },
               "coins": 3938,
-              "reputationXp": 43,
+              "pearls": 0,
+              "reputationXp": 86,
               "effortSeconds": 19212,
               "manufacturingSeconds": 7080,
               "fishingUncertain": false,
@@ -6527,7 +7565,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2688237948_2_1782456937",
+              "id": "weekly1_1792758896_4126441453_2_3907500634",
               "slot": -1,
               "templateId": "week_kamneshmyg_stone_square_3",
               "residentId": "kamneshmyg",
@@ -6538,8 +7576,8 @@
                 "cranberry_glaze": 1
               },
               "coins": 4250,
-              "pearls": 20,
-              "reputationXp": 75,
+              "pearls": 140,
+              "reputationXp": 150,
               "effortSeconds": 38720,
               "manufacturingSeconds": 9000,
               "fishingUncertain": true,
@@ -6555,16 +7593,16 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_leaftail_provisions_266260503",
+          "id": "weekly_choice1_week_leaftail_provisions_2064951287",
           "templateId": "week_leaftail_provisions",
           "residentId": "leaftail",
           "coins": 1976,
-          "pearls": 20,
-          "reputationXp": 60,
+          "pearls": 40,
+          "reputationXp": 120,
           "effortSeconds": 9576,
           "manufacturingSeconds": 6180,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_2447575791",
+          "savedWeeklyId": "weekly1_1792758896_3065206953",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -6577,7 +7615,8 @@
                 "rope": 2
               },
               "coins": 413,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1980,
               "manufacturingSeconds": 1260,
               "fishingUncertain": false,
@@ -6601,7 +7640,8 @@
                 "packed_berries": 1
               },
               "coins": 800,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 3888,
               "manufacturingSeconds": 2520,
               "fishingUncertain": false,
@@ -6625,8 +7665,8 @@
                 "smoked_fish": 1
               },
               "coins": 763,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 3708,
               "manufacturingSeconds": 2400,
               "fishingUncertain": true,
@@ -6644,7 +7684,7 @@
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_2447575791_0_2606508020",
+              "id": "weekly1_1792758896_3065206953_0_3211196014",
               "slot": -1,
               "templateId": "week_leaftail_provisions_1",
               "residentId": "leaftail",
@@ -6655,7 +7695,8 @@
                 "rope": 2
               },
               "coins": 413,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 1980,
               "manufacturingSeconds": 1260,
               "fishingUncertain": false,
@@ -6670,7 +7711,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2447575791_1_2039257952",
+              "id": "weekly1_1792758896_3065206953_1_803681542",
               "slot": -1,
               "templateId": "week_leaftail_provisions_2",
               "residentId": "leaftail",
@@ -6681,7 +7722,8 @@
                 "packed_berries": 1
               },
               "coins": 800,
-              "reputationXp": 20,
+              "pearls": 0,
+              "reputationXp": 40,
               "effortSeconds": 3888,
               "manufacturingSeconds": 2520,
               "fishingUncertain": false,
@@ -6696,7 +7738,7 @@
               }
             },
             {
-              "id": "weekly1_1792758896_2447575791_2_1599542343",
+              "id": "weekly1_1792758896_3065206953_2_1308106535",
               "slot": -1,
               "templateId": "week_leaftail_provisions_3",
               "residentId": "leaftail",
@@ -6707,8 +7749,8 @@
                 "smoked_fish": 1
               },
               "coins": 763,
-              "pearls": 20,
-              "reputationXp": 20,
+              "pearls": 40,
+              "reputationXp": 40,
               "effortSeconds": 3708,
               "manufacturingSeconds": 2400,
               "fishingUncertain": true,
@@ -6719,6 +7761,174 @@
                 "dryer": 3,
                 "kiln": 3,
                 "garden": 1,
+                "quarry": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "weekly_choice1_week_leaftail_river_festival_2936765332",
+          "templateId": "week_leaftail_river_festival",
+          "residentId": "leaftail",
+          "coins": 11203,
+          "pearls": 140,
+          "reputationXp": 370,
+          "effortSeconds": 92388,
+          "manufacturingSeconds": 25560,
+          "fishingUncertain": true,
+          "savedWeeklyId": "weekly1_1792758896_147926708",
+          "acceptedAt": "2026-10-23T12:34:56.789Z",
+          "expiresAt": "2026-10-30T12:34:56.789Z",
+          "stages": [
+            {
+              "id": "week_leaftail_river_festival_1",
+              "name": "Подготовить прилавки",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "trade_crate": 3,
+                "cloth": 3
+              },
+              "coins": 1688,
+              "pearls": 0,
+              "reputationXp": 52,
+              "effortSeconds": 9036,
+              "manufacturingSeconds": 5400,
+              "fishingUncertain": false,
+              "residentId": "leaftail",
+              "requiredBuildings": {
+                "home": 5,
+                "workshop": 2,
+                "garden": 5,
+                "kiln": 3,
+                "dryer": 5,
+                "quarry": 3
+              }
+            },
+            {
+              "id": "week_leaftail_river_festival_2",
+              "name": "Угощения с реки",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "pike_berry_sauce": 1,
+                "eel_in_jar": 1
+              },
+              "coins": 2225,
+              "pearls": 0,
+              "reputationXp": 118,
+              "effortSeconds": 28936,
+              "manufacturingSeconds": 5400,
+              "fishingUncertain": true,
+              "residentId": "leaftail",
+              "requiredBuildings": {
+                "home": 5,
+                "workshop": 2,
+                "garden": 5,
+                "kiln": 3,
+                "dryer": 5,
+                "quarry": 3
+              }
+            },
+            {
+              "id": "week_leaftail_river_festival_3",
+              "name": "Праздничный финал",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "festive_sturgeon": 1,
+                "berry_gift": 2
+              },
+              "coins": 7290,
+              "pearls": 140,
+              "reputationXp": 200,
+              "effortSeconds": 54416,
+              "manufacturingSeconds": 14760,
+              "fishingUncertain": true,
+              "residentId": "leaftail",
+              "requiredBuildings": {
+                "home": 5,
+                "workshop": 2,
+                "garden": 5,
+                "kiln": 3,
+                "dryer": 5,
+                "quarry": 3
+              }
+            }
+          ],
+          "activeStages": [
+            {
+              "id": "weekly1_1792758896_147926708_0_226399974",
+              "slot": -1,
+              "templateId": "week_leaftail_river_festival_1",
+              "residentId": "leaftail",
+              "name": "Подготовить прилавки",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "trade_crate": 3,
+                "cloth": 3
+              },
+              "coins": 1688,
+              "pearls": 0,
+              "reputationXp": 52,
+              "effortSeconds": 9036,
+              "manufacturingSeconds": 5400,
+              "fishingUncertain": false,
+              "requiredBuildings": {
+                "home": 5,
+                "workshop": 2,
+                "garden": 5,
+                "kiln": 3,
+                "dryer": 5,
+                "quarry": 3
+              }
+            },
+            {
+              "id": "weekly1_1792758896_147926708_1_3563210923",
+              "slot": -1,
+              "templateId": "week_leaftail_river_festival_2",
+              "residentId": "leaftail",
+              "name": "Угощения с реки",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "pike_berry_sauce": 1,
+                "eel_in_jar": 1
+              },
+              "coins": 2225,
+              "pearls": 0,
+              "reputationXp": 118,
+              "effortSeconds": 28936,
+              "manufacturingSeconds": 5400,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 5,
+                "workshop": 2,
+                "garden": 5,
+                "kiln": 3,
+                "dryer": 5,
+                "quarry": 3
+              }
+            },
+            {
+              "id": "weekly1_1792758896_147926708_2_490865851",
+              "slot": -1,
+              "templateId": "week_leaftail_river_festival_3",
+              "residentId": "leaftail",
+              "name": "Праздничный финал",
+              "description": "Подготовь эту часть поставки.",
+              "items": {
+                "festive_sturgeon": 1,
+                "berry_gift": 2
+              },
+              "coins": 7290,
+              "pearls": 140,
+              "reputationXp": 200,
+              "effortSeconds": 54416,
+              "manufacturingSeconds": 14760,
+              "fishingUncertain": true,
+              "requiredBuildings": {
+                "home": 5,
+                "workshop": 2,
+                "garden": 5,
+                "kiln": 3,
+                "dryer": 5,
                 "quarry": 3
               }
             }

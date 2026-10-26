@@ -2,7 +2,7 @@ import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity
 import { playerTagSchema } from "@/lib/player-tag";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
-import { GAME_ACHIEVEMENT_TARGETS } from "@/features/game/achievement-progress";
+import { GAME_ACHIEVEMENT_TARGETS, LEGACY_GAME_ACHIEVEMENT_TARGETS } from "@/features/game/achievement-progress";
 
 const count = z.number().int().nonnegative().safe();
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -68,7 +68,8 @@ const gameAchievementSchema = z.object({
   unlockedAt: z.string().datetime().nullable(),
   tiers: z.array(gameAchievementTierSchema).min(1).max(4).optional(),
 }).refine(value => {
-  const targets: readonly number[] = GAME_ACHIEVEMENT_TARGETS[value.id];
+  const currentTargets: readonly number[] = GAME_ACHIEVEMENT_TARGETS[value.id];
+  const targets: readonly number[] = value.tiers?.length === LEGACY_GAME_ACHIEVEMENT_TARGETS[value.id].length ? LEGACY_GAME_ACHIEVEMENT_TARGETS[value.id] : currentTargets;
   if (!value.tiers) return Object.keys(GAME_ACHIEVEMENT_TARGETS).indexOf(value.id) < 7 && value.target === targets[0]
     && value.progress <= value.target && (!value.unlockedAt || value.progress === value.target);
   if (value.tiers.length !== targets.length || value.tiers.some((tier, index) => tier.level !== index + 1 || tier.target !== targets[index]
@@ -155,7 +156,7 @@ export function getGameLeaderboard(scope: GameLeaderboardScope = "global", signa
   return gameRequest(`/api/v1/game/leaderboard?scope=${scope}&metric=${metric}`, gameLeaderboardSchema, "GET", undefined, signal);
 }
 export function getGameAchievements(signal?: AbortSignal): Promise<GameAchievements> {
-  return gameRequest("/api/v1/game/achievements?catalog=6", gameAchievementsSchema, "GET", undefined, signal);
+  return gameRequest("/api/v1/game/achievements?catalog=7", gameAchievementsSchema, "GET", undefined, signal);
 }
 export function updateGameVisibility(body: GameVisibilityRequest, signal?: AbortSignal): Promise<GameProgress> {
   return gameRequest("/api/v1/game/visibility", gameProgressSchema, "PATCH", body, signal);

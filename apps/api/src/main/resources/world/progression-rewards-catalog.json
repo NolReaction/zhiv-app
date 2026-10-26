@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "dailyMinimumHours": 20,
   "onboarding": {
     "coins": 100,
@@ -70,7 +70,7 @@
       100
     ],
     "thousand_taps": [
-      40
+      20
     ],
     "five_friends": [
       100
@@ -79,63 +79,70 @@
       300
     ],
     "linked_email": [
-      40
+      20
     ],
     "saved_recovery_code": [
-      40
+      20
     ],
     "full_collection": [
       0
     ],
     "first_path": [
-      40
+      10
     ],
     "familiar_trails": [
-      100
+      20
     ],
     "explorer": [
+      20,
       60,
       160,
-      400
+      340
     ],
     "master_recipes": [
-      100,
-      200
+      10,
+      30,
+      180,
+      300
     ],
     "home_builder": [
-      60,
-      120,
-      240,
-      400
+      20,
+      80,
+      200,
+      360
     ],
     "river_atlas": [
-      400
+      300
     ],
     "first_sale": [
-      60
+      20
     ],
     "lucky_find": [
-      40
+      10
     ],
     "patient_angler": [
-      40,
-      80,
-      160
+      10,
+      30,
+      100,
+      220
     ],
     "campfire_cook": [
-      40,
-      80,
-      160
+      10,
+      30,
+      100,
+      220
     ],
     "helpful_neighbor": [
-      40,
-      80,
-      160
+      10,
+      30,
+      100,
+      220
     ],
     "generous_garden": [
-      40,
-      80,
-      160
+      10,
+      30,
+      100,
+      220
     ]
   },
   "currencyScale": 10,
@@ -405,5 +412,78 @@
     50,
     50,
     70
-  ]
+  ],
+  "legacyAchievementPearls": {
+    "seven_day_streak": [
+      100
+    ],
+    "thousand_taps": [
+      40
+    ],
+    "five_friends": [
+      100
+    ],
+    "ten_thousand_series": [
+      300
+    ],
+    "linked_email": [
+      40
+    ],
+    "saved_recovery_code": [
+      40
+    ],
+    "full_collection": [
+      0
+    ],
+    "first_path": [
+      40
+    ],
+    "familiar_trails": [
+      100
+    ],
+    "explorer": [
+      60,
+      160,
+      400
+    ],
+    "master_recipes": [
+      100,
+      200
+    ],
+    "home_builder": [
+      60,
+      120,
+      240,
+      400
+    ],
+    "river_atlas": [
+      400
+    ],
+    "first_sale": [
+      60
+    ],
+    "lucky_find": [
+      40
+    ],
+    "patient_angler": [
+      40,
+      80,
+      160
+    ],
+    "campfire_cook": [
+      40,
+      80,
+      160
+    ],
+    "helpful_neighbor": [
+      40,
+      80,
+      160
+    ],
+    "generous_garden": [
+      40,
+      80,
+      160
+    ]
+  }
 }

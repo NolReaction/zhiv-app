@@ -87,7 +87,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val catalog = EconomyRules.catalog
         val unlocked = original.copy(buildings = catalog.buildings.associate { it.id to it.levels.last().level },
             progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 100L }))
-        val choice = EconomyTradeRelations.weeklyBoard(unlocked, Instant.now()).offers.single { it.residentId == "builder" }
+        val choice = EconomyTradeRelations.weeklyBoard(unlocked, Instant.now()).offers.first { it.residentId == "builder" }
         val seeded = unlocked.copy(inventory = choice.stages.first().items)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(seeded), p.id)
         val before = economy.snapshot(p.hash)
@@ -108,6 +108,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(accepted.state.revision + 1, after.revision)
         assertEquals(before.wallet.coins + stage.coins, after.wallet.coins)
         assertEquals(stage.reputationXp!!.toLong(), after.tradeRelations.reputation["builder"])
+        assertEquals(2500, after.tradeRelations.activity["builder"]!!.pointsBps)
         assertEquals(1, after.tradeRelations.weekly!!.stage)
         assertTrue(after.tradeRelations.dailyOrderXp.isEmpty())
         assertTrue(JdbcEconomyRepository(source).command(p.hash, deliver).replayed)
@@ -561,7 +562,18 @@ class JdbcEconomyRepositoryIntegrationTest {
         val original = source.connection.use { readEconomyProfile(it, p.id).state }
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(original.copy(
             wallet = EconomyWallet(0, 20_000), buildings = original.buildings + mapOf("home" to 4, "workshop" to 1))), p.id)
-        val buy = command(p, economy.snapshot(p.hash), "buy_production_slot", "workshop")
+        val before = economy.snapshot(p.hash)
+        for (price in listOf(0L, 1L, 199L, 201L, 500L)) {
+            assertEquals("ECONOMY_PRODUCTION_SLOT_PRICE_CHANGED", assertFailsWith<AuthFailure> {
+                economy.command(p.hash, command(p, before, "buy_production_slot", "workshop").copy(totalPrice = price))
+            }.code)
+            val unchanged = economy.snapshot(p.hash)
+            assertEquals(before.wallet, unchanged.wallet)
+            assertEquals(before.productionSlots, unchanged.productionSlots)
+            assertEquals(before.revision, unchanged.revision)
+        }
+        assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='buy_production_slot'", p.id))
+        val buy = command(p, before, "buy_production_slot", "workshop").copy(totalPrice = 200)
         val replies = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, buy) } }.awaitAll() }
         assertEquals(1, replies.count { it.replayed })
         assertEquals(mapOf("workshop" to 2), economy.snapshot(p.hash).productionSlots)
@@ -569,7 +581,10 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals("-200", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND kind='buy_production_slot'", p.id))
         assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, buy) }.code)
         assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> { economy.command(p.hash, buy.copy(targetId = "garden")) }.code)
-        val next = command(p, economy.snapshot(p.hash), "buy_production_slot", "workshop")
+        val next = command(p, economy.snapshot(p.hash), "buy_production_slot", "workshop").copy(totalPrice = 500)
+        assertEquals("ECONOMY_PRODUCTION_SLOT_PRICE_CHANGED", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, next.copy(requestId = UUID.randomUUID().toString(), totalPrice = 200))
+        }.code)
         val raced = coroutineScope { List(2) { async(Dispatchers.IO) {
             runCatching { economy.command(p.hash, next.copy(requestId = UUID.randomUUID().toString())) }
         } }.awaitAll() }

@@ -104,12 +104,13 @@ export const economyWeeklyOrderSchema = z.object({
   && weekly.stages.every(stage => stage.residentId === weekly.residentId), "Weekly terms require one resident and a positive interval");
 export const economyTradeRelationsSchema = z.object({
   version: z.literal(1).prefault(1), reputation: z.partialRecord(economyTradeResidentIdSchema, count.max(1_000_000)).prefault({}),
+  activity: z.partialRecord(economyTradeResidentIdSchema, z.object({ pointsBps: count.max(10000), updatedAt: z.string().datetime() })).prefault({}),
   dailyCycle: z.number().int().min(-1).safe().prefault(-1),
   dailyOrderXp: z.partialRecord(economyTradeResidentIdSchema, count.max(10000)).prefault({}),
   dailyPurchaseXp: z.partialRecord(economyTradeResidentIdSchema, count.max(10000)).prefault({}),
   weekly: economyWeeklyOrderSchema.nullable().prefault(null), weeklyAvailableAt: z.string().datetime().nullable().prefault(null),
   completedWeekly: count.prefault(0),
-}).prefault({ version: 1, reputation: {}, dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null, weeklyAvailableAt: null, completedWeekly: 0 });
+}).prefault({ version: 1, reputation: {}, activity: {}, dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null, weeklyAvailableAt: null, completedWeekly: 0 });
 const economyWeeklyOrderStageSchema = z.object({ id, name: z.string().min(1), description: z.string().min(1).max(280),
   items: z.record(id, count.positive().max(100)).refine(items => Object.keys(items).length > 0), coins: balance.positive(),
   pearls: count.max(ECONOMY_MAX_PEARLS).optional(), reputationXp: count.positive().max(10000), effortSeconds: count.positive().max(31_536_000),
@@ -117,6 +118,7 @@ const economyWeeklyOrderStageSchema = z.object({ id, name: z.string().min(1), de
 });
 export const economyTradeRelationsCatalogSchema = z.object({
   version: z.literal(1), maxBonusBps: z.literal(1000),
+  activity: z.object({ graceSeconds: count.positive().max(31_536_000), decaySeconds: count.positive().max(31_536_000), recoveryBps: count.positive().max(10000) }).optional(),
   ranks: z.array(z.object({ id, name: z.string().min(1), requiredXp: count.max(1_000_000), bonusBps: count.max(1000) })).length(5)
     .refine(ranks => ranks[0].requiredXp === 0 && ranks[0].bonusBps === 0
       && ranks.every((rank, index) => index === 0 || rank.requiredXp > ranks[index - 1].requiredXp && rank.bonusBps >= ranks[index - 1].bonusBps), "Reputation ranks must increase"),
@@ -205,7 +207,7 @@ export const economyCatalogSchema = z.object({
   food: economyFoodCatalogSchema.nullish(),
   tradeRelations: economyTradeRelationsCatalogSchema.optional(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000), unitPrices: z.record(id, balance.positive()).optional() }).optional(),
-  version: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14)]), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
+  version: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15)]), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).prefault(2),
     pricingPoints: z.array(z.object({ seconds: count.positive(), pearls: count.positive().max(ECONOMY_MAX_PEARLS) })).max(32).prefault([])
       .refine(points => points.length === 0 || points.length >= 2, "A pricing curve requires at least two points")
@@ -370,7 +372,7 @@ export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGra
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
-  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14)]),
+  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
   actorId: z.enum(["mochlik", "miner"]).nullish(),
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.prefault("bare_hook"), baitId: id.nullable(), fishId: id,

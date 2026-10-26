@@ -175,7 +175,7 @@ export function FishCounter({ economy, state, catalog }: ReadyProps & { catalog:
 export function PleskRodOffer({ economy, state, rod }: ReadyProps & { rod: FishingCatalog["rods"][number] }) {
   const { blocked, send } = useFishingCommand({ economy, state }), gear = fishingState(state);
   const owned = gear.ownedRods.includes(rod.id), equipped = gear.equippedRodId === rod.id, offer = offerFor(state, rod.id);
-  const price = fishingOfferUnitPrice(state, offer ?? { kind: "rod", unitPrice: rod.price }, state.catalog), live = offerLive(state, economy.now, offer), affordable = state.wallet.coins >= price;
+  const price = fishingOfferUnitPrice(state, offer ?? { kind: "rod", unitPrice: rod.price }, state.catalog, economy.now), live = offerLive(state, economy.now, offer), affordable = state.wallet.coins >= price;
   const allowed = !owned && live && affordable;
   return <article className={styles.gearCard} data-gear-rarity={rod.rarity}>
     <div className={styles.gearHeading}><FishingRodIcon rodId={rod.id} size={48} /><div><h3>{rod.name}</h3><FishRarityBadge rarity={rod.rarity} /><p>{owned ? "Уже куплена" : "Останется навсегда"}</p></div>{owned && <Check size={17} aria-hidden="true" />}</div>
@@ -188,7 +188,7 @@ export function PleskRodOffer({ economy, state, rod }: ReadyProps & { rod: Fishi
 export function PleskHookOffer({ economy, state, hook }: ReadyProps & { hook: FishingCatalog["hooks"][number] }) {
   const { blocked, send } = useFishingCommand({ economy, state }), gear = fishingState(state);
   const owned = gear.ownedHooks.includes(hook.id), equipped = gear.equippedHookId === hook.id, offer = offerFor(state, hook.id);
-  const price = fishingOfferUnitPrice(state, offer ?? { kind: "hook", unitPrice: hook.price }, state.catalog), live = offerLive(state, economy.now, offer), affordable = state.wallet.coins >= price;
+  const price = fishingOfferUnitPrice(state, offer ?? { kind: "hook", unitPrice: hook.price }, state.catalog, economy.now), live = offerLive(state, economy.now, offer), affordable = state.wallet.coins >= price;
   const allowed = !owned && live && affordable;
   return <article className={styles.gearCard} data-gear-rarity={hook.rarity}>
     <div className={styles.gearHeading}><ItemIcon itemId={hook.id} size={48} /><div><h3>{hook.name}</h3><FishRarityBadge rarity={hook.rarity} /><p>{owned ? "Уже куплен" : "Останется навсегда"}</p></div>{owned && <Check size={17} aria-hidden="true" />}</div>
@@ -202,7 +202,7 @@ export function PleskHookOffer({ economy, state, hook }: ReadyProps & { hook: Fi
 export function PleskBaitOffer({ economy, state, bait }: ReadyProps & { bait: FishingCatalog["baits"][number] }) {
   const { blocked, send } = useFishingCommand({ economy, state }), [quantityText, setQuantityText] = useState("1"), id = useId();
   const stock = state.inventory[bait.itemId] ?? 0, offer = offerFor(state, bait.itemId);
-  const price = fishingOfferUnitPrice(state, offer ?? { kind: "bait", unitPrice: bait.price }, state.catalog), live = offerLive(state, economy.now, offer);
+  const price = fishingOfferUnitPrice(state, offer ?? { kind: "bait", unitPrice: bait.price }, state.catalog, economy.now), live = offerLive(state, economy.now, offer);
   const maximum = live ? Math.max(0, Math.min(offer!.remaining, state.catalog.maxBatch, state.storage.available, Math.floor(state.wallet.coins / price))) : 0;
   const quantity = Number(quantityText), valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= maximum;
   return <article className={styles.gearCard} data-gear-rarity={bait.rarity}>
@@ -235,7 +235,7 @@ export function PleskFishOffer({ economy, state, fish, selectedOffer, onOpenOrde
 }
 
 export function PleskMerchantHeader({ economy, state }: ReadyProps) {
-  const friendshipDiscount = tradeRelationBonusBps(state, "plesk", state.catalog) / 100;
+  const friendshipDiscount = tradeRelationBonusBps(state, "plesk", state.catalog, economy.now) / 100;
   const shop = state.fishingShop, { blocked, send } = useFishingCommand({ economy, state }), reasonId = useId();
   const [confirm, setConfirm] = useState<{ shopId: string; owner: string; revision: number; price: number } | null>(null);
   const refreshed = useRef<string | null>(null), latest = useRef({ economy, state, confirm, send });
@@ -345,19 +345,19 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders, guid
       if (!entry) return null;
       const stockItemId = offer.kind === "fish" ? fishClassForItem(offer.itemId, catalog)?.itemId ?? offer.itemId : offer.itemId;
       const name = "name" in entry ? entry.name : itemName(state, stockItemId);
-      const offerPrice = fishingOfferUnitPrice(state, offer, state.catalog);
+      const offerPrice = fishingOfferUnitPrice(state, offer, state.catalog, economy.now);
       const basePrice = "buyPrice" in entry ? entry.buyPrice : offer.unitPrice;
       const discount = Math.max(0, Math.round((1 - offerPrice / basePrice) * 100));
       return <button type="button" key={offer.id} className={styles.offerTile} data-guide-plesk-offer={offer.kind} data-gear-rarity={entry.rarity} aria-pressed={selected?.id === offer.id} onPointerDown={event => { if (event.button === 0) event.currentTarget.focus({ preventScroll: true }); }} onClick={event => selectOffer(offer.id, event.currentTarget)}>
         <small className={styles.offerKind}>{slot.name}{discount > 0 && <span>−{discount}%</span>}</small>
         <span className={styles.offerArt}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={44} /> : <ItemIcon itemId={stockItemId} size={36} />}</span>
         <strong>{name}</strong><FishRarityBadge rarity={entry.rarity} />
-        <span className={styles.offerBottom}>{offer.remaining > 0 ? <><Price value={fishingOfferUnitPrice(state, offer, state.catalog)} /><small>×{offer.remaining}</small></> : <small><Check size={12} aria-hidden="true" />Раскуплено</small>}</span>
+        <span className={styles.offerBottom}>{offer.remaining > 0 ? <><Price value={fishingOfferUnitPrice(state, offer, state.catalog, economy.now)} /><small>×{offer.remaining}</small></> : <small><Check size={12} aria-hidden="true" />Раскуплено</small>}</span>
       </button>;
     })}</div>
     {previousStock.length > 0 && <details className={styles.previousStock}><summary>Остатки прежней поставки · {previousStock.length}</summary><div>{previousStock.map(offer => <button key={offer.id} type="button" aria-pressed={selected?.id === offer.id} onPointerDown={event => { if (event.button === 0) event.currentTarget.focus({ preventScroll: true }); }} onClick={event => selectOffer(offer.id, event.currentTarget)}>
       <span>{catalog.rods.find(rod => rod.id === offer.itemId)?.name ?? catalog.hooks.find(hook => hook.id === offer.itemId)?.name ?? itemName(state, fishClassForItem(offer.itemId, catalog)?.itemId ?? offer.itemId)}</span>
-      {offer.remaining > 0 ? <Price value={fishingOfferUnitPrice(state, offer, state.catalog)} /> : <span>Раскуплено</span>}
+      {offer.remaining > 0 ? <Price value={fishingOfferUnitPrice(state, offer, state.catalog, economy.now)} /> : <span>Раскуплено</span>}
     </button>)}</div></details>}
     {selected ? <div ref={detail} data-guide-plesk-detail={selected.kind}><GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} onOpenOrders={onOpenOrders} /></div>
       : (guideRod || guideBait) && <div ref={detail} data-guide-plesk-detail={detailKind}><section className={styles.gearCard} aria-label="Снасть для знакомства">

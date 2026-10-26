@@ -17,10 +17,10 @@ import java.time.ZoneOffset
     val name: String = "Берест", val description: String = "Лесной сосед и персонаж мира.",
     val buildings: Map<String, Int> = emptyMap(), val equipment: WorldEquipment = WorldEquipment(),
     val offerSlots: Long = 3, val offerQuantity: Long = 1, val allowedItemIds: List<String> = emptyList(),
-    val sellPriceBps: Long = 12500, val buyPriceBps: Long = 10000,
+    val sellPriceBps: Long = 22500, val buyPriceBps: Long = 20000,
     val firstDelaySeconds: Long = 180, val staleAfterSeconds: Long = 21600,
-    val maxLotsPerDay: Long = 2, val dailyBudgetCoins: Long = 300, val maxLotCoins: Long = 150,
-    val globalDailyBudgetCoins: Long = 10000, val activeFromHourUtc: Int = 0, val activeUntilHourUtc: Int = 24,
+    val maxLotsPerDay: Long = 2, val dailyBudgetCoins: Long = 10000, val maxLotCoins: Long = 5000,
+    val globalDailyBudgetCoins: Long = 10000000, val activeFromHourUtc: Int = 0, val activeUntilHourUtc: Int = 24,
 )
 @Serializable data class NeighborGarment(val id: String, val name: String, val slot: String, val description: String)
 @Serializable data class NeighborOffer(val id: String, val itemId: String, val quantity: Long, val totalPrice: Long, val purchased: Boolean = false)
@@ -29,7 +29,9 @@ import java.time.ZoneOffset
 @Serializable data class NeighborShop(val cycleId: String, val refreshAt: String, val available: Boolean,
     val reason: String? = null, val offers: List<NeighborOffer>)
 @Serializable data class NeighborBuying(val enabled: Boolean, val firstDelaySeconds: Long, val staleAfterSeconds: Long,
-    val maxLotsPerDay: Long, val dailyBudgetCoins: Long, val maxLotCoins: Long, val usedLots: Long, val spentCoins: Long)
+    val maxLotsPerDay: Long, val dailyBudgetCoins: Long, val maxLotCoins: Long, val usedLots: Long, val spentCoins: Long,
+    val firstSale: Boolean? = null, val buyPriceBps: Long? = null, val globalRemainingCoins: Long? = null,
+    val allowedItemIds: List<String>? = null, val boughtItemIds: List<String>? = null)
 @Serializable data class NeighborView(val ownerPublicId: String, val serverTime: String, val character: NeighborCharacter,
     val shop: NeighborShop, val buying: NeighborBuying)
 @Serializable data class NeighborAdminPlayer(val publicId: String, val name: String)
@@ -106,6 +108,33 @@ object NeighborRules {
     fun buyCap(base: Long, quantity: Long, settings: NeighborSettings): Long =
         (quoted(base,quantity,settings.buyPriceBps,false) ?: BigInteger.ZERO)
             .min(BigInteger.valueOf(ECONOMY_MAX_BALANCE)).toLong()
+    /** Includes resident shops at their best possible discount, even when this seller has no rank. */
+    fun cheapestUnitAcquisition(itemId: String): Long? {
+        val catalog = EconomyRules.catalog
+        val relations = catalog.tradeRelations
+        val discount = minOf(relations?.maxBonusBps ?: 0, relations?.ranks?.maxOfOrNull { it.bonusBps } ?: 0)
+        fun discounted(price: Long): Long = (price * (10000 - discount) + 9999) / 10000
+        val prices = mutableListOf<Long>()
+        catalog.fishing?.baits?.find { it.itemId == itemId }?.let { prices.add(maxOf(1,discounted(it.price))) }
+        val shop = catalog.leaftailShop
+        shop?.supplyOffers?.filter { it.itemId == itemId }?.forEach { prices.add(it.unitPriceCoins) }
+        val unitSales = !shop?.supplyOffers.isNullOrEmpty() || !shop?.pearlOffers.isNullOrEmpty()
+        val legacy = (if (!shop?.supplyOffers.isNullOrEmpty()) emptyList() else shop?.offers.orEmpty()) + shop?.travelOffers.orEmpty()
+        legacy.filter { it.itemId == itemId && it.kind in listOf("item", "bait") }.forEach {
+            val price = if (unitSales) it.priceCoins / it.quantity else it.priceCoins
+            val paid = if (it.kind == "bait") maxOf(1,discounted(price)) else price
+            prices.add(if (unitSales) paid else paid / it.quantity)
+        }
+        return prices.minOrNull()
+    }
+    fun itemBuyCap(itemId: String, quantity: Long, settings: NeighborSettings): Long {
+        val item = EconomyRules.catalog.items.find { it.id == itemId && it.tradable } ?: return 0
+        val price = buyCap(item.baseSellPrice, quantity, settings)
+        val acquisition = cheapestUnitAcquisition(itemId) ?: return price
+        if (quantity !in 1..ECONOMY_MAX_ITEMS) return 0
+        val cap = BigInteger.valueOf(acquisition).multiply(BigInteger.valueOf(quantity)).divide(BigInteger.TEN).multiply(BigInteger.TEN)
+        return cap.min(BigInteger.valueOf(price)).toLong()
+    }
     /** A broad, PostgreSQL-safe scan cutoff; the final exact age check remains authoritative. */
     fun candidateCutoff(at: Instant, settings: NeighborSettings): Instant =
         at.minusSeconds(minOf(settings.firstDelaySeconds,settings.staleAfterSeconds,maxOf(0L,at.epochSecond)))

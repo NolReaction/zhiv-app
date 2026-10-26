@@ -41,7 +41,7 @@ function nextDeliveryWith(p, itemId, start = tomorrow) {
 
 test('v14 delivery rotates all departments after applying home eligibility while legacy snapshots remain readable', () => {
   const p = player(), view = stock(p), catalog = read(p).catalog;
-  assert.equal(catalog.version, 14);
+  assert.equal(catalog.version, 15);
   assert.equal(catalog.leaftailShop.offers.length, 3);
   assert.equal(catalog.leaftailShop.supplyOffers.length, 8);
   assert.equal(catalog.leaftailShop.pearlOffers.length, 3);

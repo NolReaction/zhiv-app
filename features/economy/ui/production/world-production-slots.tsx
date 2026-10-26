@@ -111,7 +111,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
           if (reason || locked(economy) || economy.error || selectedOffer.slots !== offer?.slots || selectedOffer.pricePearls !== currentConfirmation.pricePearls || offer?.pricePearls !== currentConfirmation.pricePearls || purchasePending.current) return;
           purchasePending.current = { owner: state.ownerPublicId, revision: state.revision };
           setConfirmation(null);
-          void economy.act("buy_production_slot", stationId);
+          void economy.act("buy_production_slot", stationId, 1, currentConfirmation.pricePearls);
         }}>Купить за {formatPearls(currentConfirmation.pricePearls)}<ItemIcon itemId="pearls" size={16} /></button>
       </div>
     </div>}

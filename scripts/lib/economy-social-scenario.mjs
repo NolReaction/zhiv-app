@@ -5,7 +5,7 @@ const dayMs = 86_400_000;
 /** A funded player policy, not a reputation fixture. The only way this helper
  * changes the world is through the caller's real command/bundle callbacks.
  * It never supplies money, ingredients, unlocked technology or experience. */
-export function createSocialPolicy({ catalog, relations, food, state, mode = "balanced" }) {
+export function createSocialPolicy({ catalog, relations, food, state, mode = "balanced", continueWeekly = () => false }) {
   assert(["income", "balanced", "reputation"].includes(mode));
   const residentIds = relations.TRADE_RESIDENT_IDS;
   const maximumXp = catalog.tradeRelations?.ranks.at(-1).requiredXp ?? 0;
@@ -15,10 +15,13 @@ export function createSocialPolicy({ catalog, relations, food, state, mode = "ba
   const xp = id => state.tradeRelations?.reputation[id] ?? 0;
   const countToday = (id, now) => ordinaryByDay.get(`${Math.floor(now / dayMs)}:${id}`) ?? 0;
   function availableOrdinary(now) {
-    return food.residentOrderBoard(state, now).offers.filter(offer => Date.parse(offer.availableAt) <= now
-      && xp(offer.residentId) < maximumXp
-      && relations.tradeRelationProgress(state, offer.residentId, catalog, now).dailyOrderXpRemaining > 0
-      && (mode === "reputation" || countToday(offer.residentId, now) < 1));
+    return food.residentOrderBoard(state, now).offers.filter(offer => {
+      const progress = relations.tradeRelationProgress(state, offer.residentId, catalog, now);
+      const progressNeeded = xp(offer.residentId) < maximumXp && progress.dailyOrderXpRemaining > 0;
+      const activityNeeded = (progress.activityBps ?? 10000) < 10000;
+      return Date.parse(offer.availableAt) <= now && (progressNeeded || activityNeeded)
+        && (mode === "reputation" || countToday(offer.residentId, now) < 1);
+    });
   }
   function observeExpiry(now) {
     const saved = state.tradeRelations?.weekly;
@@ -59,12 +62,18 @@ export function createSocialPolicy({ catalog, relations, food, state, mode = "ba
     if (board.canChoose) {
       // Public contract stages are visible before acceptance. Never inspect
       // unrevealed future ordinary orders or the random contents of a trip.
-      const choices = board.offers.filter(offer => xp(offer.residentId) < maximumXp)
+      const choices = board.offers.filter(offer => xp(offer.residentId) < maximumXp || continueWeekly())
         .map(offer => ({ offer, seconds: offer.stages.reduce((sum, stage) => sum + effort(stage.items, estimatedEffort), 0) }))
         .filter(entry => Number.isFinite(entry.seconds) && entry.seconds <= dailyActiveSeconds * 7)
-        .sort((a, b) => (mode === "reputation" ? xp(a.offer.residentId) - xp(b.offer.residentId) : 0)
-          || a.seconds / Math.max(1, a.offer.reputationXp) - b.seconds / Math.max(1, b.offer.reputationXp)
-          || a.offer.id.localeCompare(b.offer.id));
+        .sort((a, b) => {
+          // After permanent ranks are complete, a capacity-focused player still
+          // has a real reason to accept contracts: renewable pearl income.
+          if (residentIds.every(id => xp(id) >= maximumXp) && continueWeekly())
+            return b.offer.pearls - a.offer.pearls || a.seconds - b.seconds || a.offer.id.localeCompare(b.offer.id);
+          return (mode === "reputation" ? xp(a.offer.residentId) - xp(b.offer.residentId) : 0)
+            || a.seconds / Math.max(1, a.offer.reputationXp) - b.seconds / Math.max(1, b.offer.reputationXp)
+            || a.offer.id.localeCompare(b.offer.id);
+        });
       if (choices.length) {
         const choice = choices[0];
         apply("accept_weekly_order", choice.offer.id);
@@ -103,6 +112,8 @@ export function createSocialPolicy({ catalog, relations, food, state, mode = "ba
       return { mode, funded: true, ordinaryGoalPerResidentPerDay: mode === "balanced" ? 1 : null,
         maximumXp, reputation: Object.fromEntries(residentIds.map(id => [id, xp(id)])),
         bonusPercent: Object.fromEntries(residentIds.map(id => [id, relations.tradeRelationProgress(state, id, catalog, now).bonusBps / 100])),
+        activityPercent: Object.fromEntries(residentIds.map(id => [id, (relations.tradeRelationProgress(state, id, catalog, now).activityBps ?? 10000) / 100])),
+        rankBonusPercent: Object.fromEntries(residentIds.map(id => { const progress = relations.tradeRelationProgress(state, id, catalog, now); return [id, (progress.rankBonusBps ?? progress.bonusBps) / 100]; })),
         allMaximum: residentIds.every(id => xp(id) >= maximumXp),
         ordinaryOrdersCompleted: state.residentOrders?.completed ?? 0,
         completedWeekly: state.tradeRelations?.completedWeekly ?? 0,

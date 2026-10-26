@@ -1,6 +1,6 @@
 {
   "policy": "baseline-time-value-plus-order-bonus",
-  "catalogVersion": 14,
+  "catalogVersion": 15,
   "orderBonusBps": 2500,
   "roundingCoins": 1,
   "orders": [
