@@ -14,7 +14,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
     val version: Int = 1, val step: Int = 0,
     val firstHarvestPrepared: Boolean = false,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val rewardVersion: Int = 5,
-) { init { require(version in 1..3 && step in 0..4 && rewardVersion in 5..6) } }
+) { init { require(version in 1..3 && step in 0..4 && rewardVersion in 5..7) } }
 
 /** A single teaching request, followed by the separate first-house course. */
 object EconomyTutorialOrders {

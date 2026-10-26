@@ -11,13 +11,15 @@ after(() => vite.close());
 const { ItemIcon, CollectionIcon, itemIconIds, collectionIconIds } = await vite.ssrLoadModule("/features/items/item-icon.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { worldCatalog } = await vite.ssrLoadModule("/features/world/domain/model.ts");
+const { neighborExclusiveWardrobeItems } = await vite.ssrLoadModule("/features/economy/domain/neighbor-model.ts");
 const { quarryCollectionFinds, collectionBookEntries } = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
 const { WorldCollections, CollectionBookFinds } = await vite.ssrLoadModule("/features/world/ui/collections/world-collections.tsx");
 const { COLLECTION_PAGE_SIZE } = await vite.ssrLoadModule("/features/world/ui/collections/collection-book-page.ts");
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
 
 test("every economic item, currency and wardrobe item has artwork", () => {
-  const expected = [...economyCatalog.items.map(item => item.id), ...economyCatalog.fishing.hooks.map(hook => hook.id), ...worldCatalog.items.map(item => item.id), "coins", "pearls"];
+  const expected = [...economyCatalog.items.map(item => item.id), ...economyCatalog.fishing.hooks.map(hook => hook.id),
+    ...worldCatalog.items.map(item => item.id), ...neighborExclusiveWardrobeItems.map(item => item.id), "coins", "pearls"];
   assert.deepEqual([...itemIconIds].sort(), expected.sort());
   assert.equal(new Set(itemIconIds).size, itemIconIds.length);
 });

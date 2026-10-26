@@ -109,7 +109,7 @@ class JdbcProgressionRewardsIntegrationTest {
         val paid=same.first()
         assertEquals(ProgressionRewardRules.onboarding,paid.claim.reward)
         assertEquals(before.wallet.coins+100,paid.economy.wallet.coins)
-        assertEquals(before.wallet.pearls+40,paid.economy.wallet.pearls)
+        assertEquals(before.wallet.pearls+20,paid.economy.wallet.pearls)
         assertEquals(before.inventory,paid.economy.inventory)
         assertEquals(before.revision+1,paid.economy.revision)
         assertEquals(paid.claim.claimedAt,rewards.snapshot(p.hash).onboarding.claimedAt)
@@ -128,7 +128,7 @@ class JdbcProgressionRewardsIntegrationTest {
         val p=player(); completeTutorial(p)
         val original=source.connection.use { readEconomyProfile(it,p.id).state }
         val capacity=EconomyRules.storage(original).capacity
-        val full=original.copy(wallet=original.wallet.copy(pearls=ECONOMY_MAX_PEARLS-20),inventory=mapOf("wood" to capacity))
+        val full=original.copy(wallet=original.wallet.copy(pearls=ECONOMY_MAX_PEARLS-10),inventory=mapOf("wood" to capacity))
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(full),p.id)
         val request=command(p).copy(kind="onboarding"); val before=economy.snapshot(p.hash)
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure> { rewards.claim(p.hash,request) }.code)
@@ -138,7 +138,7 @@ class JdbcProgressionRewardsIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(full.copy(wallet=original.wallet)),p.id)
         val paid=rewards.claim(p.hash,request)
         assertFalse(paid.replayed); assertEquals(capacity,paid.economy.storage.used)
-        assertEquals(original.wallet.pearls+40,paid.economy.wallet.pearls)
+        assertEquals(original.wallet.pearls+20,paid.economy.wallet.pearls)
         assertEquals(paid.claim,rewards.claim(p.hash,request).claim)
     }
 
@@ -157,13 +157,41 @@ class JdbcProgressionRewardsIntegrationTest {
         assertEquals("ONBOARDING_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(target.hash,command(target).copy(kind="onboarding")) }.code)
     }
 
+    @Test fun `v6 accepted tutorial and daily course survive reset merge and replay after fresh v7 rollout`()=runBlocking<Unit> {
+        val legacy=player(); completeTutorial(legacy); rewards.snapshot(legacy.hash)
+        val original=source.connection.use { readEconomyProfile(it,legacy.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(
+            original.copy(tutorialOrder=original.tutorialOrder.copy(rewardVersion=6))),legacy.id)
+        execute("UPDATE game_daily_rewards SET reward_catalog_version=6 WHERE user_id=?",legacy.id)
+        assertEquals(300L,rewards.snapshot(legacy.hash).daily.cycle.sumOf { it.reward.pearls })
+        val tutorialRequest=command(legacy).copy(kind="onboarding")
+        val tutorial=rewards.claim(legacy.hash,tutorialRequest)
+        assertEquals(40L,tutorial.claim.reward.pearls)
+        assertEquals(original.wallet.pearls+40,tutorial.economy.wallet.pearls)
+        val dailyRequest=command(legacy); val daily=rewards.claim(legacy.hash,dailyRequest)
+        assertEquals(20L,daily.claim.reward.pearls)
+        assertEquals(daily.claim,rewards.claim(legacy.hash,dailyRequest).claim)
+        execute("DELETE FROM economy_profiles WHERE user_id=?",legacy.id)
+        economy.snapshot(legacy.hash)
+        assertEquals(300L,rewards.snapshot(legacy.hash).daily.cycle.sumOf { it.reward.pearls })
+        assertEquals(tutorial.claim,rewards.claim(legacy.hash,tutorialRequest).claim)
+        val fresh=player(); val before=economy.snapshot(fresh.hash); rewards.snapshot(fresh.hash)
+        assertEquals(140L,rewards.snapshot(fresh.hash).daily.cycle.sumOf { it.reward.pearls })
+        source.connection.use { c -> mergeProgressionRewards(c,fresh.id,legacy.id); c.commit() }
+        assertEquals("6",scalar("SELECT reward_catalog_version::text FROM game_daily_rewards WHERE user_id=?",fresh.id))
+        assertEquals(300L,rewards.snapshot(fresh.hash).daily.cycle.sumOf { it.reward.pearls })
+        assertEquals(before.wallet,economy.snapshot(fresh.hash).wallet)
+        assertEquals("DAILY_REWARD_COOLDOWN",assertFailsWith<AuthFailure> { rewards.claim(fresh.hash,command(fresh)) }.code)
+        assertEquals("ONBOARDING_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(fresh.hash,command(fresh).copy(kind="onboarding")) }.code)
+    }
+
     @Test fun `same key concurrency credits once and replay retains immutable receipt`()=runBlocking<Unit> {
         val p=player(); val initial=economy.snapshot(p.hash); val request=command(p)
         val both=List(2) { async(Dispatchers.IO) { rewards.claim(p.hash,request) } }.awaitAll()
         assertEquals(1,both.count { it.replayed }); assertEquals(both[0].claim,both[1].claim)
         assertEquals(initial.wallet.coins+30,economy.snapshot(p.hash).wallet.coins)
-        assertEquals(initial.wallet.pearls+20,economy.snapshot(p.hash).wallet.pearls)
-        assertEquals(6,rewards.snapshot(p.hash).catalogVersion)
+        assertEquals(initial.wallet.pearls+10,economy.snapshot(p.hash).wallet.pearls)
+        assertEquals(7,rewards.snapshot(p.hash).catalogVersion)
         assertEquals(initial.revision+1,economy.snapshot(p.hash).revision)
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='daily_reward'",p.id))
         val conflict=assertFailsWith<AuthFailure> { rewards.claim(p.hash,request.copy(kind="achievement",achievementId="first_path",level=1)) }
@@ -235,7 +263,7 @@ class JdbcProgressionRewardsIntegrationTest {
         val paid=rewards.claim(p.hash,request); val repeated=rewards.claim(p.hash,request)
         assertEquals(1L,paid.economy.inventory["ancient_core"])
         assertEquals(before.wallet.coins+80,paid.economy.wallet.coins)
-        assertEquals(before.wallet.pearls+220,paid.economy.wallet.pearls)
+        assertEquals(before.wallet.pearls+40,paid.economy.wallet.pearls)
         assertEquals(capacity,paid.economy.storage.used)
         assertTrue(repeated.replayed); assertEquals(paid.claim,repeated.claim)
         assertEquals(paid.economy.wallet,repeated.economy.wallet)
@@ -270,7 +298,7 @@ class JdbcProgressionRewardsIntegrationTest {
         assertTrue(success.size in 1..2); assertEquals(1,success.count { !it.replayed })
         assertTrue(attempts.filter { it.isFailure }.all { (it.exceptionOrNull() as AuthFailure).code=="DAILY_REWARD_COMPLETED" })
         val paid=success.first()
-        assertEquals(before.wallet.pearls+220,paid.economy.wallet.pearls)
+        assertEquals(before.wallet.pearls+40,paid.economy.wallet.pearls)
         assertEquals(1L,paid.economy.inventory["ancient_core"])
         assertEquals("1",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=? AND kind='daily'",p.id))
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='daily_reward'",p.id))
@@ -382,7 +410,7 @@ class JdbcProgressionRewardsIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(played),p.id)
         val names=setOf("patient_angler","campfire_cook","helpful_neighbor","generous_garden")
         val opened=rewards.snapshot(p.hash)
-        assertEquals(6,opened.catalogVersion); assertEquals(33,opened.achievementRewards.size)
+        assertEquals(7,opened.catalogVersion); assertEquals(33,opened.achievementRewards.size)
         assertEquals(12,opened.achievementRewards.count { it.achievementId in names && it.eligible })
         assertEquals(before.wallet,economy.snapshot(p.hash).wallet,"Reading achievements never pays automatically")
         var paid=0L

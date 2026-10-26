@@ -39,6 +39,7 @@ test("player management preserves a lost grant request through rate limiting", a
   const sent = [];
   globalThis.fetch = async (url, options) => {
     assert.equal(url, `/api/v1/admin/users/${publicId}/manage`);
+    assert.equal(options.mode, "same-origin");
     sent.push(JSON.parse(options.body));
     if (sent.length === 1) throw new TypeError("Response lost after commit");
     if (sent.length === 2) return Response.json({ code: "RATE_LIMITED", message: "Wait" }, { status: 429 });

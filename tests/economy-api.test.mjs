@@ -225,7 +225,7 @@ test("HTTP fish commerce listings keep the chosen species in escrow and reject c
   row.state.unlockedItems = ["fish_epic"];
   row.state.inventory = { fish_sturgeon: 1, fish_mirror_koi: 2 };
   const before = await (await GET(read())).json();
-  const price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice * 2;
+  const price = Math.ceil(model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice * 2 / 10) * 10;
   const marketCommand = extra => ({ ...command(p), action: "create_listing", targetId: "fish_epic", quantity: 2, totalPrice: price, ...extra });
   for (const fishSelection of [{}, { fish_sturgeon: 2 }, { fish_mirror_koi: 1 }, { fish_shark: 2 }]) {
     const invalid = await marketPOST(post(marketCommand({ fishSelection }), {}, "/market/commands"));

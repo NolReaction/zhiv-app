@@ -178,7 +178,11 @@ object EconomyLeaftailShops {
             EconomyRules.addItems(inventory, reservedItems)
             EconomyRules.assertStorageTransition(state, next, reservedItems)
         }
-        return EconomyTradeRelations.awardPurchase(next, "leaftail", price, now) to when (offer.kind) {
+        val resaleCoins = if (offer.currency == "coins" && offer.kind == "item") catalog.items.find { it.id == offer.itemId && it.tradable }
+            ?.let { EconomyRules.localSellPrice(it.baseSellPrice, quantity, catalog.localBuyer, it.id) } ?: 0L else 0L
+        val rewarded = if (EconomyTradeRelations.purchaseXpEligible(offer.kind, price, resaleCoins))
+            EconomyTradeRelations.awardPurchase(next, "leaftail", price, now) else next
+        return rewarded to when (offer.kind) {
             "wardrobe" -> "Покупка у Листохвоста добавлена в гардероб"
             "rod" -> "Удочка у Листохвоста добавлена в коллекцию"
             "hook" -> "Крючок у Листохвоста добавлен в коллекцию"

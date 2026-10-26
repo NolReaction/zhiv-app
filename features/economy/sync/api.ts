@@ -4,8 +4,9 @@ import { ApiError } from "@/lib/check-in-api";
 import { retryAfterMs } from "@/lib/request-deadline";
 import { economyResultSchema, economyViewSchema, marketCommandSchema, marketViewSchema, type EconomyCommand, type MarketCommand } from "@/features/economy/domain/model";
 import type { EconomyDevCommand } from "@/features/economy/dev/dev-model";
+import { neighborCommandSchema, neighborResultSchema, neighborViewSchema, type NeighborCommand } from "@/features/economy/domain/neighbor-model";
 
-async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, command?: EconomyCommand | MarketCommand | EconomyDevCommand, signal?: AbortSignal): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?: EconomyCommand | MarketCommand | EconomyDevCommand | NeighborCommand, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
@@ -46,9 +47,9 @@ export const getEconomyMarket = (signal?: AbortSignal) => request(
 export const sendMarketCommand = (command: MarketCommand, signal?: AbortSignal) => request(
   "/api/v1/economy/market/commands", economyResultSchema, command, signal);
 export async function sendFriendMarketCommand(circleId: string, command: MarketCommand, signal?: AbortSignal) {
-  const circle = z.string().uuid().safeParse(circleId);
+  const circle = z.guid().safeParse(circleId);
   const purchase = marketCommandSchema.extend({
-    action: z.literal("buy_listing"), targetId: z.string().uuid(), fishSelection: z.undefined().optional(),
+    action: z.literal("buy_listing"), targetId: z.guid(), fishSelection: z.undefined().optional(),
   }).safeParse(command);
   if (!circle.success || !purchase.success) throw new ApiError("Не удалось определить покупку у друга", 400);
   const result = await request(`/api/v1/people/${encodeURIComponent(circle.data)}/world/market/commands`, economyResultSchema, purchase.data, signal);
@@ -57,3 +58,15 @@ export async function sendFriendMarketCommand(circleId: string, command: MarketC
 }
 export const sendEconomyDevCommand = (command: EconomyDevCommand, signal?: AbortSignal) => request(
   "/api/v1/economy/dev", economyResultSchema, command, signal);
+export async function getEconomyNeighbor(ownerPublicId: string, signal?: AbortSignal) {
+  const result = await request("/api/v1/economy/neighbor", neighborViewSchema, undefined, signal);
+  if (result.ownerPublicId !== ownerPublicId) throw new ApiError("Аккаунт изменился. Откройте полянку заново.", 401);
+  return result;
+}
+export async function sendNeighborCommand(command: NeighborCommand, signal?: AbortSignal) {
+  const parsed = neighborCommandSchema.safeParse(command);
+  if (!parsed.success) throw new ApiError("Не удалось определить покупку у лесного соседа", 400);
+  const result = await request("/api/v1/economy/neighbor/commands", neighborResultSchema, parsed.data, signal);
+  if (result.state.ownerPublicId !== command.ownerPublicId) throw new ApiError("Аккаунт изменился. Откройте полянку заново.", 401);
+  return result;
+}

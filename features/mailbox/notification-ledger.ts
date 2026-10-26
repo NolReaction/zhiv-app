@@ -5,7 +5,7 @@ export const MAIL_NOTIFICATION_LIMIT = 128;
 export const mailNotificationKey = (owner: string) => `zhiv:mail:notified:v1:${owner}`;
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 const ledgerSchema = z.object({ version: z.literal(1), owner: z.string(), watermark: mailNotificationSchema.nullable(),
-  ids: z.array(z.string().uuid()).max(MAIL_NOTIFICATION_LIMIT) }).strict();
+  ids: z.array(z.guid()).max(MAIL_NOTIFICATION_LIMIT) }).strict();
 type Ledger = z.infer<typeof ledgerSchema>;
 /** Preserve sub-millisecond ordering from PostgreSQL/Instant without rounding it to browser milliseconds. */
 function timeKey(value: string) {

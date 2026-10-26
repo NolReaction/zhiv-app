@@ -11,8 +11,12 @@ const visibleDecorations = new Set(["flower", "leaf_bed", "keepsakes", "leaf_gar
 
 /** The public visit DTO is projected directly, never adopted as the visitor's account state. */
 export function friendWorldScene(visit: GuestWorld) {
-  const { world, user } = visit, ownerPublicId = user.publicId;
-  const revision = Math.max(0, Date.parse(visit.serverTime));
+  return readOnlyWorldScene(visit.world, visit.user.publicId, visit.serverTime);
+}
+
+/** Scenery accepts an isolated scene key; a world character never needs a fake account. */
+export function readOnlyWorldScene(world: GuestWorld["world"], ownerPublicId: string, serverTime: string) {
+  const revision = Math.max(0, Date.parse(serverTime));
   const state: WorldState = { ...newWorldState(), houseLevel: Math.max(1, Math.min(5, world.buildings.home ?? 1)),
     workshop: (world.buildings.workshop ?? 0) > 0, workshopLevel: world.buildings.workshop ?? 0,
     equipment: { ...world.equipment },

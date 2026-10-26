@@ -20,7 +20,7 @@ import { economyMarketUnlocked, marketSlotOffer } from "./market-rules";
 import { leaftailShopStock, leaftailShopUsesUnits, leaftailShopView } from "./leaftail-shop";
 import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock, type FishSelection } from "./fish-stock";
 import { canStartTutorialWorkshop } from "./workshop-starter";
-import { acceptWeeklyOrder, awardTradeOrderXp, awardTradePurchaseXp, tradeRelationBonusBps, tradeRelationsState, tradeWorkDuration, tradeMealDuration, weeklyOrderBoard } from "./trade-relations";
+import { acceptWeeklyOrder, awardTradeOrderXp, awardTradePurchaseXp, tradePurchaseXpEligible, tradeRelationBonusBps, tradeRelationsState, tradeWorkDuration, tradeMealDuration, weeklyOrderBoard } from "./trade-relations";
 import { drawExpeditionFinds, expeditionJobRewards } from "./expedition-finds";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
@@ -728,7 +728,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (rod) state.fishing = { ...current, ownedRods: [...current.ownedRods, rod.id] };
       if (hook) state.fishing = { ...current, ownedHooks: [...current.ownedHooks, hook.id] };
       state.leaftailShop = { cycle: stock.cycle, purchased: { ...stock.purchased, [offer.id]: (stock.purchased[offer.id] ?? 0) + command.quantity } };
-      if (price > 0) awardTradePurchaseXp(state, "leaftail", now);
+      const resaleCoins = item && item.tradable && offer.currency === "coins"
+        ? economyLocalSellPrice(item.baseSellPrice, quantity, economyCatalog.localBuyer, item.id) : 0;
+      if (tradePurchaseXpEligible(offer.kind, price, resaleCoins)) awardTradePurchaseXp(state, "leaftail", now);
       return clothing ? "Покупка у Листохвоста добавлена в гардероб" : rod ? "Удочка у Листохвоста добавлена в коллекцию"
         : hook ? "Крючок у Листохвоста добавлен в коллекцию" : "Покупка у Листохвоста отправлена в кладовую";
     }
@@ -772,7 +774,8 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       else if (hook) state.fishing = { ...current, ownedHooks: [...current.ownedHooks, hook.id] };
       else creditEconomyItems(state, { [offer.itemId]: command.quantity });
       offer.remaining -= command.quantity;
-      if (price > 0) awardTradePurchaseXp(state, "plesk", now);
+      const resaleCoins = fish ? (economyCatalog.items.find(item => item.id === fish.itemId)?.baseSellPrice ?? 0) * command.quantity : 0;
+      if (tradePurchaseXpEligible(offer.kind, price, resaleCoins)) awardTradePurchaseXp(state, "plesk", now);
       return rod ? "Удочка добавлена в коллекцию" : hook ? "Крючок добавлен в коллекцию" : "Покупка у Плёски отправлена на склад";
     }
     case "equip_fishing_rod": {

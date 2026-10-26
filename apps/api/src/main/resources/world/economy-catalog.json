@@ -10,7 +10,7 @@
       },
       {
         "slots": 3,
-        "requiredHomeLevel": 1,
+        "requiredHomeLevel": 3,
         "pricePearls": 500
       }
     ]
@@ -992,12 +992,12 @@
           "cost": {
             "coins": 2400,
             "items": {
-              "beams": 4,
-              "cut_stone": 4,
-              "bricks": 4,
-              "cloth": 6,
-              "metal_parts": 2,
-              "fish_soup": 4,
+              "beams": 5,
+              "cut_stone": 5,
+              "bricks": 5,
+              "cloth": 8,
+              "metal_parts": 3,
+              "fish_soup": 5,
               "living_resin": 1
             }
           },
@@ -1014,12 +1014,12 @@
           "cost": {
             "coins": 3600,
             "items": {
-              "beams": 4,
-              "cut_stone": 4,
-              "bricks": 4,
-              "glass": 4,
-              "reinforced_parts": 4,
-              "cloth": 6,
+              "beams": 5,
+              "cut_stone": 5,
+              "bricks": 5,
+              "glass": 5,
+              "reinforced_parts": 5,
+              "cloth": 8,
               "ancient_core": 1,
               "moon_crystal": 1
             }
@@ -1073,9 +1073,9 @@
           "cost": {
             "coins": 1200,
             "items": {
-              "planks": 3,
-              "ceramic_jar": 2,
-              "rope": 2,
+              "planks": 4,
+              "ceramic_jar": 3,
+              "rope": 3,
               "cloth": 1
             }
           },
@@ -1091,8 +1091,8 @@
             "coins": 2400,
             "items": {
               "beams": 1,
-              "bricks": 2,
-              "glass": 2,
+              "bricks": 3,
+              "glass": 3,
               "tools": 1
             }
           },
@@ -1107,9 +1107,9 @@
           "cost": {
             "coins": 2400,
             "items": {
-              "beams": 2,
-              "bricks": 2,
-              "glass": 2,
+              "beams": 3,
+              "bricks": 3,
+              "glass": 3,
               "tools": 1,
               "reinforced_parts": 1
             }
@@ -1161,9 +1161,9 @@
           "cost": {
             "coins": 1800,
             "items": {
-              "planks": 8,
-              "iron_ingot": 3,
-              "rope": 5
+              "planks": 10,
+              "iron_ingot": 4,
+              "rope": 6
             }
           },
           "requiredHomeLevel": 3,
@@ -1177,10 +1177,10 @@
           "cost": {
             "coins": 2400,
             "items": {
-              "beams": 2,
-              "cut_stone": 2,
+              "beams": 3,
+              "cut_stone": 3,
               "metal_parts": 1,
-              "rope": 3
+              "rope": 4
             }
           },
           "requiredHomeLevel": 4,
@@ -1194,10 +1194,10 @@
           "cost": {
             "coins": 2400,
             "items": {
-              "beams": 2,
+              "beams": 3,
               "tools": 1,
               "reinforced_parts": 1,
-              "rope": 2
+              "rope": 3
             }
           },
           "requiredHomeLevel": 5,
@@ -1249,12 +1249,12 @@
           "cost": {
             "coins": 1200,
             "items": {
-              "planks": 3,
-              "iron_ingot": 2,
-              "bricks": 8,
-              "clay": 4,
+              "planks": 4,
+              "iron_ingot": 3,
+              "bricks": 10,
+              "clay": 5,
               "charcoal": 1,
-              "rope": 2
+              "rope": 3
             }
           },
           "requiredHomeLevel": 3,
@@ -1269,10 +1269,10 @@
           "cost": {
             "coins": 2400,
             "items": {
-              "beams": 2,
+              "beams": 3,
               "cut_stone": 1,
               "metal_parts": 1,
-              "planks": 2,
+              "planks": 3,
               "cloth": 1
             }
           },
@@ -1287,10 +1287,10 @@
           "cost": {
             "coins": 2400,
             "items": {
-              "beams": 2,
+              "beams": 3,
               "reinforced_parts": 1,
               "tools": 1,
-              "glass": 2
+              "glass": 3
             }
           },
           "requiredHomeLevel": 5,
@@ -1341,10 +1341,10 @@
           "cost": {
             "coins": 1800,
             "items": {
-              "planks": 6,
-              "bricks": 8,
-              "iron_ingot": 3,
-              "cloth": 3
+              "planks": 8,
+              "bricks": 10,
+              "iron_ingot": 4,
+              "cloth": 4
             }
           },
           "requiredHomeLevel": 3,
@@ -1361,7 +1361,7 @@
             "items": {
               "beams": 1,
               "metal_parts": 1,
-              "glass": 2,
+              "glass": 3,
               "cloth": 1,
               "tools": 1
             }
@@ -1380,7 +1380,7 @@
             "items": {
               "reinforced_parts": 1,
               "tools": 1,
-              "beams": 2,
+              "beams": 3,
               "lens": 1,
               "trade_crate": 1
             }
@@ -1433,8 +1433,8 @@
           "cost": {
             "coins": 1200,
             "items": {
-              "planks": 2,
-              "bricks": 2,
+              "planks": 3,
+              "bricks": 3,
               "iron_ingot": 1,
               "glass_bottle": 1
             }
@@ -1451,8 +1451,8 @@
             "coins": 2400,
             "items": {
               "beams": 1,
-              "bricks": 2,
-              "glass": 2,
+              "bricks": 3,
+              "glass": 3,
               "tools": 1
             }
           },
@@ -1469,7 +1469,7 @@
             "items": {
               "reinforced_parts": 1,
               "beams": 1,
-              "glass": 2,
+              "glass": 3,
               "cloth": 1
             }
           },
@@ -1527,8 +1527,8 @@
           "cost": {
             "coins": 1200,
             "items": {
-              "planks": 2,
-              "bricks": 2,
+              "planks": 3,
+              "bricks": 3,
               "iron_ingot": 1
             }
           },
@@ -1546,10 +1546,10 @@
             "items": {
               "beams": 1,
               "cut_stone": 1,
-              "glass": 3,
+              "glass": 4,
               "metal_parts": 1,
-              "bricks": 3,
-              "ceramic_jar": 2
+              "bricks": 4,
+              "ceramic_jar": 3
             }
           },
           "requiredHomeLevel": 4,
@@ -1565,8 +1565,8 @@
             "coins": 2400,
             "items": {
               "reinforced_parts": 1,
-              "bricks": 2,
-              "glass": 2,
+              "bricks": 3,
+              "glass": 3,
               "tools": 1
             }
           },
@@ -1769,11 +1769,11 @@
           "cost": {
             "coins": 2400,
             "items": {
-              "glass": 2,
+              "glass": 3,
               "glass_bottle": 1,
-              "beams": 2,
+              "beams": 3,
               "metal_parts": 1,
-              "rope": 2
+              "rope": 3
             }
           },
           "requiredHomeLevel": 3,

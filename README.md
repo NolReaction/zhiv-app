@@ -43,7 +43,7 @@
 | Совместимый контур Sites | Vite, Vinext, Cloudflare Workers |
 | Отдельный Engine | TypeScript и Canvas 2D в `packages/engine`; React/Vite-редактор в `apps/engine` |
 
-Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Новая PostgreSQL создаётся из [B49__current_schema.sql](apps/api/src/main/resources/db/migration/B49__current_schema.sql), затем применяет V50–V68; [V1–V49](apps/api/src/main/resources/db/migration/history/) сохранены для обновления существующих БД. [Правила baseline и следующих миграций](docs/development/database-baseline.md). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
+Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Новая PostgreSQL создаётся из [B49__current_schema.sql](apps/api/src/main/resources/db/migration/B49__current_schema.sql), затем применяет V50–V71; [V1–V49](apps/api/src/main/resources/db/migration/history/) сохранены для обновления существующих БД. [Правила baseline и следующих миграций](docs/development/database-baseline.md). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
 
 ## Где искать код
 

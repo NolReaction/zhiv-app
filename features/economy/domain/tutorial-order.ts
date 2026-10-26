@@ -53,7 +53,7 @@ export function isTutorialOrderId(id: string, catalog = economyCatalog): boolean
 /** New profiles pin their only teaching request immediately; no ingredient grant is needed. */
 export function newTutorialOrder(catalog = economyCatalog): EconomyTutorialOrder {
   const terms = catalog.onboarding?.residentOrder;
-  return { version: 3, rewardVersion: 6, step: 0, ingredientsClaimed: true, completed: false,
+  return { version: 3, rewardVersion: 7, step: 0, ingredientsClaimed: true, completed: false,
     firstHarvestPrepared: false,
     terms: terms ? copyTerms(terms) : null };
 }

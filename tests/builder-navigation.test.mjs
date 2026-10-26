@@ -167,7 +167,7 @@ test("woodlot construction visits the rabbit home and respects its upgraded exte
 });
 
 test("an authored left-side home marker is not rejected by transparent bush image padding", () => {
-  const source = structuredClone(TILED_WORLD), marker = { x: 589.5761, y: 648 };
+  const source = structuredClone(TILED_WORLD), marker = { x: 594, y: 642 };
   source.destinations.find(destination => destination.id === "builder-work-home").position = marker;
   const initial = initialPreviewLevels(source);
   for (const level of [1, 2, 3, 4, 5]) {

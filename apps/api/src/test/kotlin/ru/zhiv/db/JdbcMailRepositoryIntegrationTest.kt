@@ -267,36 +267,61 @@ class JdbcMailRepositoryIntegrationTest {
         assertFalse(client.get(path){header(HttpHeaders.Cookie,cookie)}.bodyAsText().contains(request.reason))
     }
 
-    @Test fun `welcome delivery and reading never pay while concurrent explicit claims credit 30 visible pearls once`()=runBlocking<Unit> {
+    @Test fun `welcome delivery and reading never pay while concurrent explicit claims credit 20 visible pearls once`()=runBlocking<Unit> {
         val a=player();val repository=repo();val economy=JdbcEconomyRepository(source)
         val before=economy.snapshot(a.hash)
         val welcome=repository.inbox(a.hash,a.publicId,null,20).messages.single()
         assertEquals(WELCOME_MAIL_TITLE,welcome.title);assertTrue(welcome.body.contains("Я делаю эту игру один"))
-        assertEquals(30L,welcome.gift!!.pearls);assertNull(welcome.gift.claimedAt);assertNull(welcome.attachments)
+        assertEquals(20L,welcome.gift!!.pearls);assertNull(welcome.gift.claimedAt);assertNull(welcome.attachments)
         repository.read(a.hash,a.publicId,UUID.fromString(welcome.id))
         assertEquals(before.wallet.pearls,economy.snapshot(a.hash).wallet.pearls)
         val replies=coroutineScope { (1..8).map { async(Dispatchers.IO) { repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id)) } }.awaitAll() }
-        assertEquals(1,replies.map { it.gift.claimedAt }.distinct().size);assertTrue(replies.all { it.gift.pearls==30L })
+        assertEquals(1,replies.map { it.gift.claimedAt }.distinct().size);assertTrue(replies.all { it.gift.pearls==20L })
         val paid=economy.snapshot(a.hash)
-        assertEquals(before.wallet.pearls+60L,paid.wallet.pearls);assertEquals(before.revision+1,paid.revision)
-        assertEquals(1L,count("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key='mail:welcome:v1' AND pearls=60",a.id))
+        assertEquals(before.wallet.pearls+40L,paid.wallet.pearls);assertEquals(before.revision+1,paid.revision)
+        assertEquals(1L,count("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key='mail:welcome:v1' AND pearls=40",a.id))
         val repeat=repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id))
         assertEquals(replies[0].gift,repeat.gift);assertEquals(paid.revision,economy.snapshot(a.hash).revision)
         assertEquals(welcome.id,repository.inbox(a.hash,a.publicId,null,20).messages.single().id)
     }
 
     @Test fun `saved welcome gift amount survives later catalog reductions and repeated claims`()=runBlocking<Unit> {
+        for (promised in listOf(30L,100L)) {
         val a=player();val repository=repo();val economy=JdbcEconomyRepository(source)
         val before=economy.snapshot(a.hash)
         val welcome=repository.inbox(a.hash,a.publicId,null,20).messages.single()
-        execute("UPDATE player_mail_messages SET welcome_pearls=100 WHERE id=?",UUID.fromString(welcome.id))
+        execute("UPDATE player_mail_messages SET welcome_pearls=? WHERE id=?",promised,UUID.fromString(welcome.id))
         val saved=repository.inbox(a.hash,a.publicId,null,20).messages.single()
-        assertEquals(100L,saved.gift!!.pearls)
+        assertEquals(promised,saved.gift!!.pearls)
         val claimed=repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id))
-        assertEquals(100L,claimed.gift.pearls)
-        assertEquals(before.wallet.pearls+200L,economy.snapshot(a.hash).wallet.pearls)
+        assertEquals(promised,claimed.gift.pearls)
+        assertEquals(before.wallet.pearls+promised*2,economy.snapshot(a.hash).wallet.pearls)
         assertEquals(claimed.gift,repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id)).gift)
-        assertEquals(before.wallet.pearls+200L,economy.snapshot(a.hash).wallet.pearls)
+        assertEquals(before.wallet.pearls+promised*2,economy.snapshot(a.hash).wallet.pearls)
+        }
+    }
+
+    @Test fun `merging unclaimed older welcome preserves the largest promise but never adds the two gifts`()=runBlocking<Unit> {
+        val repository=repo();val economy=JdbcEconomyRepository(source)
+        for (olderIsTarget in listOf(false,true)) {
+            val target=player();val incomingPlayer=player()
+            val kept=repository.inbox(target.hash,target.publicId,null,20).messages.single()
+            val incoming=repository.inbox(incomingPlayer.hash,incomingPlayer.publicId,null,20).messages.single()
+            execute("UPDATE player_mail_messages SET welcome_pearls=30,body='Saved welcome: 30 pearls' WHERE id=?",UUID.fromString(if(olderIsTarget) kept.id else incoming.id))
+            val before=economy.snapshot(target.hash)
+            source.connection.use { c ->
+                c.economyRows("SELECT id FROM app_users WHERE id IN (?,?) ORDER BY id FOR NO KEY UPDATE",target.id,incomingPlayer.id){true}
+                mergePlayerMail(c,target.id,incomingPlayer.id);c.commit()
+            }
+            val merged=repository.inbox(target.hash,target.publicId,null,20).messages.single()
+            assertEquals(kept.id,merged.id);assertEquals(30L,merged.gift!!.pearls);assertNull(merged.gift.claimedAt)
+            assertEquals("Saved welcome: 30 pearls",merged.body)
+            val paid=repository.claim(target.hash,target.publicId,UUID.fromString(kept.id))
+            assertEquals(30L,paid.gift.pearls)
+            assertEquals(before.wallet.pearls+60,economy.snapshot(target.hash).wallet.pearls)
+            assertEquals(paid.gift,repository.claim(target.hash,target.publicId,UUID.fromString(kept.id)).gift)
+            assertEquals(before.wallet.pearls+60,economy.snapshot(target.hash).wallet.pearls)
+        }
     }
 
     @Test fun `ordinary audit attachments and foreign IDs cannot claim and a full wallet rolls back the gift fence`()=runBlocking<Unit> {
@@ -317,7 +342,7 @@ class JdbcMailRepositoryIntegrationTest {
         assertEquals(before.revision,economy.snapshot(a.hash).revision)
         execute("UPDATE economy_profiles SET state=jsonb_set(state,'{wallet,pearls}',to_jsonb(?::bigint)) WHERE user_id=?",before.wallet.pearls,a.id)
         repository.claim(a.hash,a.publicId,id)
-        assertEquals(before.wallet.pearls+60L,economy.snapshot(a.hash).wallet.pearls)
+        assertEquals(before.wallet.pearls+40L,economy.snapshot(a.hash).wallet.pearls)
     }
 
     @Test fun `claimed welcome is retained across economy recreation and either merge direction cannot reopen it`()=runBlocking<Unit> {

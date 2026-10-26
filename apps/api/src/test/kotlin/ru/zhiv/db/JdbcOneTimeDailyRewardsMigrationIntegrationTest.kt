@@ -60,7 +60,7 @@ class JdbcOneTimeDailyRewardsMigrationIntegrationTest {
             val regressed=player(7,2); receipt(regressed,5,"2026-10-10",UUID.randomUUID()); receipt(regressed,1,"2026-10-17")
             val before=retained(source)
             DatabaseFactory.migrate(source)
-            assertEquals("71",scalar(source,"SELECT max(version::int)::text FROM flyway_schema_history"))
+            assertEquals("75",scalar(source,"SELECT max(version::int)::text FROM flyway_schema_history"))
             assertEquals(before,retained(source),"V64 must never change money, revisions, immutable claims, ledger or prior Flyway checksums")
             for((user,expected) in listOf(fresh to "1:false",partial to "4:false",wrapped to "7:true",immediateWrap to "7:true",
                 awaitingFinal to "7:false",missingRow to "7:true",regressed to "6:false")) {

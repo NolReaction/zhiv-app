@@ -30,13 +30,19 @@ class EconomyProductionSlotsTest {
         assertEquals(3, EconomyRules.productionSlotCount(paid.copy(productionSlots = mapOf("workshop" to 999)), "workshop"))
     }
 
-    @Test fun `purchases allow both sequential tiers from house one and require a built station and sufficient pearls`() {
+    @Test fun `second slot opens at house one but third requires completed house three`() {
         val second = apply(fixture(home = 1), "buy_production_slot", "workshop")
         assertEquals(mapOf("workshop" to 2), second.productionSlots)
         assertEquals(EconomyWallet(100_000, 49_800), second.wallet)
         assertEquals(fixture().inventory, second.inventory)
-        val third = apply(second, "buy_production_slot", "workshop")
-        assertEquals(1, third.buildings["home"])
+        for (home in 1..2) {
+            val locked = second.copy(buildings = second.buildings + ("home" to home))
+            failure("ECONOMY_HOME_REQUIRED") { apply(locked, "buy_production_slot", "workshop") }
+            assertEquals(EconomyWallet(100_000, 49_800), locked.wallet)
+            assertEquals(2, locked.productionSlots["workshop"])
+        }
+        val third = apply(second.copy(buildings = second.buildings + ("home" to 3)), "buy_production_slot", "workshop")
+        assertEquals(3, third.buildings["home"])
         assertEquals(3, third.productionSlots["workshop"])
         assertEquals(49_300L, third.wallet.pearls)
         assertEquals(1, EconomyRules.productionSlotCount(third, "kiln"))
@@ -54,6 +60,15 @@ class EconomyProductionSlotsTest {
             command("buy_production_slot", "workshop").copy(ownerPublicId = "ABCD-EFGH-JKLM"))) {
             failure("INVALID_ECONOMY_COMMAND") { EconomyRules.apply(fixture(), forged, now) }
         }
+    }
+
+    @Test fun `existing third slots stay usable below their new purchase gate`() {
+        var state = fixture(home = 1).copy(productionSlots = mapOf("workshop" to 3))
+        repeat(3) { state = apply(state, "start_production", "make_planks") }
+        assertEquals(3, state.productionSlots["workshop"])
+        assertEquals(3, state.jobs.size)
+        assertEquals(50_000L, state.wallet.pearls)
+        assertNull(EconomyRules.productionSlotOffer(state, "workshop"))
     }
 
     @Test fun `concurrent recipes retain their slots until claimed and their recipe economics stay intact`() {

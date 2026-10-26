@@ -16,6 +16,9 @@ import { validAdminReason } from "./admin-input";
 import { AdminIncidentsPanel } from "./admin-incidents-panel";
 import { AdminRequestTrafficPanel } from "./admin-request-traffic-panel";
 import { AdminApiUsagePanel } from "./admin-api-usage-panel";
+import { AdminNeighborPanel } from "./admin-neighbor-panel";
+import { AdminLocalUnlock } from "./admin-local-unlock";
+import { AdminLocalDashboard } from "./admin-local-dashboard";
 import Link from "next/link";
 import { AdminRewardsDialog } from "./admin-rewards-dialog";
 import { GAME_ITEMS, GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
@@ -23,7 +26,7 @@ import { GAME_ITEMS, GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Activity, RefreshCw, ArrowLeft, ArrowUpRight, Check, ChevronLeft, ChevronRight, CircleAlert,
-  Clock3, Cpu, Database, Gift, HeartPulse, LayoutDashboard, LoaderCircle,
+  Clock3, Cpu, Database, Gift, HeartPulse, LayoutDashboard, LoaderCircle, TreePine,
   LogOut, Search, Server, ShieldCheck, ShieldX, Terminal, Ticket, Trophy, Users, MessageSquare, Warehouse,
 } from "lucide-react";
 import {
@@ -45,7 +48,7 @@ import {
 } from "@/features/admin/admin-api";
 import styles from "./admin-dashboard.module.css";
 
-type AdminTab = "grants" | "mail" | "promos" | "overview" | "users" | "economy" | "monitoring" | "audit" | "incidents" | "clicks" | "feedback" | "request-traffic" | "api-usage";
+type AdminTab = "grants" | "mail" | "promos" | "overview" | "users" | "economy" | "monitoring" | "audit" | "incidents" | "clicks" | "feedback" | "request-traffic" | "api-usage" | "neighbor";
 type UserSort = "created" | "activity" | "taps" | "review";
 type AccessStatus = "loading" | "allowed" | "signed-out" | "forbidden" | "error";
 type Snapshot<T> = { key: string; value: T };
@@ -458,6 +461,8 @@ export function AdminDashboard() {
   const currentTime = currentData?.serverTime;
   const validConfirmation = Boolean(revocation && revocation.confirmation.trim() === revocation.target.publicId && validAdminReason(revocation.reason));
 
+  if (accessStatus === "allowed" && access?.mode === "local") return <AdminLocalDashboard access={access} onAccessLost={closeAccess} />;
+
   if (accessStatus !== "allowed" || !access) return (
     <main className={styles.shell}><div className={styles.accessGate}>
       <Link href="/" className={styles.backLink}><ArrowLeft size={18} />В приложение</Link>
@@ -465,6 +470,7 @@ export function AdminDashboard() {
       <p className={styles.eyebrow}>Я живой / Управление</p>
       <h1>{accessStatus === "loading" ? "Проверяем доступ" : accessStatus === "signed-out" ? "Войдите в свой аккаунт" : accessStatus === "forbidden" ? "Доступ закрыт" : "Панель временно недоступна"}</h1>
       <p>{accessStatus === "loading" ? "Подключаемся к панели управления…" : accessStatus === "signed-out" ? "Откройте приложение, войдите в аккаунт администратора и вернитесь на /admin в этом же браузере." : accessStatus === "forbidden" ? "У этого аккаунта нет прав на просмотр панели управления." : loadError}</p>
+      {process.env.NODE_ENV === "development" && accessStatus === "forbidden" && <AdminLocalUnlock onUnlocked={requestRefresh} />}
       <div className={styles.gateActions}>{accessStatus === "signed-out" && <Link className={styles.primaryButton} href="/">Открыть приложение<ArrowUpRight size={18} /></Link>}{accessStatus !== "loading" && <button type="button" className={styles.button} onClick={requestRefresh}><Activity size={18} />Проверить снова</button>}</div>
     </div></main>
   );
@@ -483,6 +489,7 @@ export function AdminDashboard() {
               <TabsTrigger className={styles.tab} value="grants"><Gift size={18} />Выдать игроку</TabsTrigger>
               <TabsTrigger className={styles.tab} value="mail"><MessageSquare size={18} />Почта и рассылки</TabsTrigger>
               <TabsTrigger className={styles.tab} value="promos"><Ticket size={18} />Промокоды</TabsTrigger>
+              <TabsTrigger className={styles.tab} value="neighbor"><TreePine size={18} />Лесной сосед</TabsTrigger>
               <TabsTrigger className={styles.tab} value="users"><Users size={18} />Пользователи</TabsTrigger>
               <span className={styles.navCaption} aria-hidden="true">Аналитика и контроль</span>
               <TabsTrigger className={styles.tab} value="overview"><LayoutDashboard size={18} />Обзор</TabsTrigger>
@@ -506,6 +513,7 @@ export function AdminDashboard() {
           <TabsContent value="grants" forceMount hidden={tab !== "grants"} className={styles.tabContent}><AdminGrantsPanel key={access.publicId} actorPublicId={access.publicId} target={grantTarget} onTargetChange={setGrantTarget} onAccessLost={closeAccess} onLockChange={setGrantsLocked} onManage={setPlayerTarget} onEconomy={setEconomyTarget} onRewards={target => { rewardTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setRewardTarget(target); }} /></TabsContent>
           <TabsContent value="mail" forceMount hidden={tab !== "mail"} className={styles.tabContent}><AdminMailPanel key={access.publicId} actorPublicId={access.publicId} onAccessLost={closeAccess} /></TabsContent>
           <TabsContent value="promos" forceMount hidden={tab !== "promos"} className={styles.tabContent}><AdminPromoPanel key={access.publicId} actorPublicId={access.publicId} onAccessLost={closeAccess} /></TabsContent>
+          <TabsContent value="neighbor" className={styles.tabContent}>{tab === "neighbor" && <AdminNeighborPanel key={access.publicId} actorPublicId={access.publicId} onAccessLost={closeAccess} />}</TabsContent>
           <TabsContent value="overview" className={styles.tabContent}>{overviewData ? <Overview data={overviewData} days={days} /> : <Empty>{loading ? "Загружаем статистику…" : "Статистика пока не загружена."}</Empty>}</TabsContent>
           <TabsContent value="users" className={styles.tabContent}>
             <div className={styles.searchToolbar}><label className={styles.search}><Search size={19} /><span className={styles.srOnly}>Поиск пользователя по имени или ID</span><input type="search" value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="Имя или ID пользователя" maxLength={100} autoComplete="off" /></label><label className={styles.selectLabel}><span>Сортировка</span><select className={styles.select} value={sort} onChange={event => { setSort(event.target.value as UserSort); setUsersOffset(0); }}><option value="created">Сначала новые</option><option value="activity">По последней отметке</option><option value="taps">По числу тапов</option><option value="review">Сначала на проверку</option></select></label></div>

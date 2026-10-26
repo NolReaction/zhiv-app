@@ -36,7 +36,7 @@ test("one-time gift projection uses completed home tiers, ends after seven claim
     assert.equal(report.coinFlow.orders, delivered.reduce((sum, order) => sum + order.coins, 0));
     assert.equal(gifts.claims, 7, "A month of visits can claim the seven gifts only once");
     assert.equal(gifts.completed, true);
-    assert.equal(gifts.pearlsReceived, 300, "The account chain grants 150 visible pearls in raw storage units");
+    assert.equal(gifts.pearlsReceived, 140, "The account chain grants 70 visible pearls in raw storage units");
     assert(!report.excludedIncome.includes("daily_rewards"));
     assert(report.excludedIncome.includes("player_market"));
     assert(gifts.claimRows.every(row => Number.isInteger(row.homeLevel) && row.homeLevel >= 1 && row.homeLevel <= 5),
@@ -51,7 +51,7 @@ test("one-time gift projection uses completed home tiers, ends after seven claim
       assert.equal(row.step, index + 1);
       assert.deepEqual(row.reward, loaded.progressionRewards.dailyRewardCycle(row.homeLevel)[row.step - 1]);
       assert.equal(row.reward.coins, [30, 30, 40, 40, 50, 50, 80][row.step - 1] * row.homeLevel);
-      assert.equal(row.reward.pearls, [20, 30, 40, 40, 50, 50, 70][row.step - 1]);
+      assert.equal(row.reward.pearls, [10, 10, 20, 20, 20, 20, 40][row.step - 1]);
       assert.deepEqual(row.reward.items, cycle[row.step - 1], "completed homes keep the same compact stock without advanced gifts");
       if (index > 0) {
         assert(Date.parse(row.at) - Date.parse(gifts.claimRows[index - 1].at) >= 20 * 3_600_000);
@@ -150,7 +150,7 @@ test("the completed chain stops checking gifts while ordinary progression contin
     assert.equal(giftViews, viewsAtCompletion, "Completed days do not count as storage deferrals or future gift work");
     assert(commandsAfterCompletion > 0, "Production and upgrades continue after the last gift");
     assert.equal(report.dailyRewards.completed, true);
-    assert.equal(report.dailyRewards.pearlsReceived, 300);
-    assert.equal(report.pearlsRemaining + report.pearlsSpent, 300);
+    assert.equal(report.dailyRewards.pearlsReceived, 140);
+    assert.equal(report.pearlsRemaining + report.pearlsSpent, 140);
   } finally { await loaded.close(); }
 });

@@ -11,6 +11,8 @@ data class EconomyMarketSale(
     val buyerAvatarUrl: String? = null,
     val proceedsCoins: Long,
     val claimedAt: String? = null,
+    val buyerKind: String = "player",
+    val buyerCharacterId: String? = null,
 )
 
 @Serializable

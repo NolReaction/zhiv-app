@@ -9,8 +9,8 @@ export const economyDevCommandSchema = z.object({
   expectedRevision: economyCommandSchema.shape.expectedRevision,
   action: z.enum(["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"]),
   targetId: economyCommandSchema.shape.targetId,
-  quantity: z.number().int().min(0).max(10_000_000).default(1),
-  totalPrice: z.literal(0).default(0),
+  quantity: z.number().int().min(0).max(10_000_000).prefault(1),
+  totalPrice: z.literal(0).prefault(0),
 }).strict().superRefine((command, context) => {
   const invalid = (path: "targetId" | "quantity") => context.addIssue({ code: "custom", path: [path], message: "Недопустимое значение для DEV-команды" });
   if (command.action === "grant_currency" || command.action === "grant_item") {

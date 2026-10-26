@@ -111,9 +111,30 @@ function withMonotonicClock(run) {
   finally { hooks.reset(); Object.assign(globalThis, previous); }
 }
 
+test("third slot appears with house three while existing purchased capacity stays visible", () => {
+  hooks.reset(); const economy = controller();
+  for (const home of [1, 2]) {
+    economy.snapshot.buildings.home = home;
+    const tree = render(economy);
+    assert.equal(card(tree, 3), undefined);
+    assert.match(renderToStaticMarkup(tree), /Место 3 появится с домом 3 уровня/);
+    assert.equal(elements(tree).filter(node => node.props["data-production-slot"]).length, 2);
+  }
+  economy.snapshot.buildings.home = 3;
+  economy.snapshot.productionSlots.woodlot = 2;
+  const unlocked = render(economy);
+  assert.equal(card(unlocked, 3).props.disabled, false);
+  assert.doesNotMatch(renderToStaticMarkup(unlocked), /появится с домом/);
+  economy.snapshot.buildings.home = 1;
+  economy.snapshot.productionSlots.woodlot = 3;
+  const grandfathered = render(economy);
+  assert.equal(elements(grandfathered).filter(node => node.props["data-production-slot"]).length, 3);
+  assert.doesNotMatch(renderToStaticMarkup(grandfathered), /появится с домом/);
+});
+
 test("opening, cancelling and dismissing purchase confirmation never spends pearls", () => {
   hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
-  let tree = render(economy); assert.equal(elements(tree).filter(node => node.props["data-production-slot"]).length, 3);
+  let tree = render(economy); assert.equal(elements(tree).filter(node => node.props["data-production-slot"]).length, 2);
   let focused = 0; const trigger = { isConnected: true, focus() { focused++; } };
   click(card(tree, 2), { currentTarget: trigger }); tree = render(economy);
   const dialog = elements(tree).find(node => node.props.role === "dialog");
@@ -172,6 +193,7 @@ test("confirmation focuses cancel first and a completed purchase returns focus t
 
 test("only explicit confirmation buys the next station tier and double clicks cannot submit twice", () => {
   hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
+  economy.snapshot.buildings.home = 3;
   click(card(render(economy), 2)); let tree = render(economy);
   const confirmationButton = buy(tree); click(confirmationButton); click(confirmationButton);
   assert.deepEqual(calls, [["buy_production_slot", "woodlot"]]);
@@ -184,6 +206,7 @@ test("only explicit confirmation buys the next station tier and double clicks ca
 
 test("the third place is inert without a visible or accessible price until the second is bought", () => {
   hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
+  economy.snapshot.buildings.home = 3;
   const third = card(render(economy), 3), html = renderToStaticMarkup(third);
   assert.equal(third.props.disabled, true); assert.match(html, /Закрыто/);
   assert.doesNotMatch(html, /250|pearls|жемчужин|aria-haspopup|aria-expanded/);
@@ -307,6 +330,7 @@ test("both entry points discard confirmation on station or owner changes, includ
 
 test("a changed snapshot never turns consent for place two into a more expensive place three", () => {
   hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
+  economy.snapshot.buildings.home = 3;
   click(card(render(economy), 2)); assert.match(renderToStaticMarkup(render(economy)), /Купить за 100/);
   economy.snapshot.productionSlots.woodlot = 2; economy.snapshot.revision++;
   assert.equal(buy(render(economy)), undefined); assert.deepEqual(calls, []);

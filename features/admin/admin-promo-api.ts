@@ -20,7 +20,7 @@ export const adminPromoDefinitionSchema = z.object({
 }).refine(value => !value.startsAt || !value.endsAt || Date.parse(value.endsAt) > Date.parse(value.startsAt),
   "Окончание должно быть позже начала");
 export const adminPromoCommandSchema = z.object({
-  requestId: z.string().uuid(), action: z.enum(["create", "update", "delete"]), promoId,
+  requestId: z.guid(), action: z.enum(["create", "update", "delete"]), promoId,
   expectedVersion: count, reason: z.string().refine(validAdminReason), definition: adminPromoDefinitionSchema.optional(),
 }).refine(value => value.action === "delete" ? value.definition === undefined : value.definition?.id === value.promoId)
   .refine(value => value.action !== "create" || value.expectedVersion === 0);
@@ -29,14 +29,14 @@ const entrySchema = z.object({ definition: adminPromoDefinitionSchema, version: 
 const listSchema = z.object({ serverTime: instant, codes: z.array(entrySchema).max(1000) })
   .refine(value => new Set(value.codes.map(entry => entry.definition.id)).size === value.codes.length
     && new Set(value.codes.map(entry => entry.definition.code)).size === value.codes.length);
-const receiptSchema = z.object({ requestId: z.string().uuid(), action: z.enum(["create", "update", "delete"]),
+const receiptSchema = z.object({ requestId: z.guid(), action: z.enum(["create", "update", "delete"]),
   promoId, version: count, createdAt: instant, replayed: z.boolean() });
 export type AdminPromoDefinition = z.infer<typeof adminPromoDefinitionSchema>;
 export type AdminPromoCommand = z.infer<typeof adminPromoCommandSchema>;
 export type AdminPromoEntry = z.infer<typeof entrySchema>;
 export type AdminPromos = z.infer<typeof listSchema>;
 
-async function promoRequest<T>(actorPublicId: string, path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+async function promoRequest<T>(actorPublicId: string, path: string, schema: z.ZodType<T, unknown>,
   signal: AbortSignal, body?: AdminPromoCommand): Promise<T> {
   const actor = await getAdminAccess(signal);
   signal.throwIfAborted();

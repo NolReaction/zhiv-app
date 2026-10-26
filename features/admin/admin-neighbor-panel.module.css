@@ -1,0 +1,45 @@
+.stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.heading, .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.heading h2, .heading h3 { margin: 0; font-size: 20px; }
+.heading p, .hint { margin: 6px 0 0; color: #b1bdab; font-size: 14px; line-height: 1.6; }
+.badge { display: inline-flex; margin-top: 8px; padding: 4px 10px; border: 1px solid #556646; border-radius: 20px; color: #cde3b6; font-size: 13px; }
+.fieldset { min-width: 0; margin: 0; padding: 18px; border: 1px solid #46513e; border-radius: 12px; }
+.fieldset legend { padding: 0 8px; font-weight: 600; }
+.fieldset:disabled { opacity: .65; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 16px; margin-top: 14px; }
+.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; font-size: 14px; color: #e2eadc; }
+.field input, .field select, .field textarea { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #485540; border-radius: 10px; background: #141a13; color: #f0f4ec; font: inherit; font-size: 16px; }
+.field textarea { resize: vertical; }
+.checks, .catalog { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 8px 16px; }
+.checks label, .catalog label, .confirm { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; line-height: 1.5; }
+.checks input, .catalog input, .confirm input { flex-shrink: 0; width: 20px; height: 20px; accent-color: #b9d99c; }
+.catalog { max-height: 260px; overflow-y: auto; padding: 10px 0; }
+.fieldset details { margin-top: 18px; }
+.fieldset summary { cursor: pointer; padding-block: 10px; }
+.button, .primaryButton { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border: 1px solid #536449; border-radius: 10px; font: inherit; font-size: 14px; background: #252f21; color: #edf4e6; cursor: pointer; }
+.primaryButton { background: #b9d99c; color: #182213; border-color: #b9d99c; }
+.button:disabled, .primaryButton:disabled { opacity: .5; cursor: not-allowed; }
+.button:focus-visible, .primaryButton:focus-visible, .field :focus-visible, .fieldset summary:focus-visible, .checks input:focus-visible, .catalog input:focus-visible, .confirm input:focus-visible { outline: 3px solid #b9d99c; outline-offset: 3px; }
+.error, .notice, .success { padding: 14px 16px; border: 1px solid #795341; border-radius: 10px; color: #f5d5b5; line-height: 1.6; overflow-wrap: anywhere; }
+.notice { border-color: #5c6041; }
+.success { border-color: #536c45; color: #cfe6b9; }
+.summary { display: grid; gap: 12px; margin: 0; font-size: 14px; line-height: 1.6; }
+.summary div { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; }
+.summary dt { color: #b1bdab; }
+.summary dd { margin: 0; overflow-wrap: anywhere; }
+.search { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.search .field { flex: 1; min-width: min(240px, 100%); }
+.dialog { width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; background: #20271d; color: #eef3e8; border: 1px solid #536449; }
+.dialog code, .requestId { overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 12px; }
+.dialogDescription { color: #b1bdab; line-height: 1.6; }
+.dialogActions { display: flex; justify-content: end; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+@media (max-width: 600px) {
+  .fieldset { padding: 12px; }
+  .summary div { grid-template-columns: 1fr; gap: 2px; }
+  .search .button, .dialogActions > button { flex: 1; }
+}
+
+.unlock { display: grid; gap: 14px; width: min(100%, 440px); margin: 24px auto 0; text-align: left; }
+.appearance { display: flex; align-items: center; gap: 18px; margin-top: 16px; flex-wrap: wrap; }
+.appearance canvas { width: 112px; height: 112px; image-rendering: pixelated; flex-shrink: 0; background: #263321; border-radius: 18px; }
+.appearance p { flex: 1; min-width: min(180px, 100%); }

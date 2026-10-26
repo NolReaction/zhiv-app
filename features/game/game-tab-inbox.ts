@@ -4,7 +4,7 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { gameJournalStore } from "@/features/game/game-sync-journal";
 import { GameSyncClient, type GameTapInput, type GameSyncSnapshot } from "@/features/game/game-sync";
 
-const inputSchema = z.object({ id: z.string().uuid(), ownerPublicId: z.string(), runId: z.string().uuid(),
+const inputSchema = z.object({ id: z.guid(), ownerPublicId: z.string(), runId: z.guid(),
   count: z.number().int().min(1).max(60), capturedAt: z.number().int().safe().nonnegative() });
 type InboxStorage = Pick<Storage, "getItem" | "setItem" | "removeItem" | "key" | "length">;
 

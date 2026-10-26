@@ -1,15 +1,15 @@
 {
-  "version": 6,
+  "version": 7,
   "dailyMinimumHours": 20,
   "onboarding": {
     "coins": 100,
-    "pearls": 40,
+    "pearls": 20,
     "items": {}
   },
   "daily": [
     {
       "coins": 30,
-      "pearls": 20,
+      "pearls": 10,
       "items": {
         "wood": 2,
         "stone": 1
@@ -17,7 +17,7 @@
     },
     {
       "coins": 30,
-      "pearls": 30,
+      "pearls": 10,
       "items": {
         "fiber": 2,
         "berries": 2
@@ -25,7 +25,7 @@
     },
     {
       "coins": 40,
-      "pearls": 40,
+      "pearls": 20,
       "items": {
         "planks": 1,
         "wood": 1
@@ -33,7 +33,7 @@
     },
     {
       "coins": 40,
-      "pearls": 40,
+      "pearls": 20,
       "items": {
         "fish": 1,
         "berries": 1
@@ -41,7 +41,7 @@
     },
     {
       "coins": 50,
-      "pearls": 50,
+      "pearls": 20,
       "items": {
         "wood": 2,
         "fiber": 2
@@ -49,7 +49,7 @@
     },
     {
       "coins": 50,
-      "pearls": 50,
+      "pearls": 20,
       "items": {
         "planks": 1,
         "stone": 1
@@ -57,7 +57,7 @@
     },
     {
       "coins": 80,
-      "pearls": 70,
+      "pearls": 40,
       "items": {
         "ancient_core": 1,
         "planks": 1,
@@ -144,7 +144,7 @@
     "2": [
       {
         "coins": 60,
-        "pearls": 20,
+        "pearls": 10,
         "items": {
           "wood": 2,
           "stone": 1
@@ -152,7 +152,7 @@
       },
       {
         "coins": 60,
-        "pearls": 30,
+        "pearls": 10,
         "items": {
           "fiber": 2,
           "berries": 2
@@ -160,7 +160,7 @@
       },
       {
         "coins": 80,
-        "pearls": 40,
+        "pearls": 20,
         "items": {
           "planks": 1,
           "wood": 1
@@ -168,7 +168,7 @@
       },
       {
         "coins": 80,
-        "pearls": 40,
+        "pearls": 20,
         "items": {
           "fish": 1,
           "berries": 1
@@ -176,7 +176,7 @@
       },
       {
         "coins": 100,
-        "pearls": 50,
+        "pearls": 20,
         "items": {
           "wood": 2,
           "fiber": 2
@@ -184,7 +184,7 @@
       },
       {
         "coins": 100,
-        "pearls": 50,
+        "pearls": 20,
         "items": {
           "planks": 1,
           "stone": 1
@@ -192,7 +192,7 @@
       },
       {
         "coins": 160,
-        "pearls": 70,
+        "pearls": 40,
         "items": {
           "ancient_core": 1,
           "planks": 1,
@@ -203,7 +203,7 @@
     "3": [
       {
         "coins": 90,
-        "pearls": 20,
+        "pearls": 10,
         "items": {
           "wood": 2,
           "stone": 1
@@ -211,7 +211,7 @@
       },
       {
         "coins": 90,
-        "pearls": 30,
+        "pearls": 10,
         "items": {
           "fiber": 2,
           "berries": 2
@@ -219,7 +219,7 @@
       },
       {
         "coins": 120,
-        "pearls": 40,
+        "pearls": 20,
         "items": {
           "planks": 1,
           "wood": 1
@@ -227,7 +227,7 @@
       },
       {
         "coins": 120,
-        "pearls": 40,
+        "pearls": 20,
         "items": {
           "fish": 1,
           "berries": 1
@@ -235,7 +235,7 @@
       },
       {
         "coins": 150,
-        "pearls": 50,
+        "pearls": 20,
         "items": {
           "wood": 2,
           "fiber": 2
@@ -243,7 +243,7 @@
       },
       {
         "coins": 150,
-        "pearls": 50,
+        "pearls": 20,
         "items": {
           "planks": 1,
           "stone": 1
@@ -251,7 +251,7 @@
       },
       {
         "coins": 240,
-        "pearls": 70,
+        "pearls": 40,
         "items": {
           "ancient_core": 1,
           "planks": 1,
@@ -262,7 +262,7 @@
     "4": [
       {
         "coins": 120,
-        "pearls": 20,
+        "pearls": 10,
         "items": {
           "wood": 2,
           "stone": 1
@@ -270,7 +270,7 @@
       },
       {
         "coins": 120,
-        "pearls": 30,
+        "pearls": 10,
         "items": {
           "fiber": 2,
           "berries": 2
@@ -278,7 +278,7 @@
       },
       {
         "coins": 160,
-        "pearls": 40,
+        "pearls": 20,
         "items": {
           "planks": 1,
           "wood": 1
@@ -286,7 +286,7 @@
       },
       {
         "coins": 160,
-        "pearls": 40,
+        "pearls": 20,
         "items": {
           "fish": 1,
           "berries": 1
@@ -294,7 +294,7 @@
       },
       {
         "coins": 200,
-        "pearls": 50,
+        "pearls": 20,
         "items": {
           "wood": 2,
           "fiber": 2
@@ -302,7 +302,7 @@
       },
       {
         "coins": 200,
-        "pearls": 50,
+        "pearls": 20,
         "items": {
           "planks": 1,
           "stone": 1
@@ -310,7 +310,7 @@
       },
       {
         "coins": 320,
-        "pearls": 70,
+        "pearls": 40,
         "items": {
           "ancient_core": 1,
           "planks": 1,
@@ -321,7 +321,7 @@
     "5": [
       {
         "coins": 150,
-        "pearls": 20,
+        "pearls": 10,
         "items": {
           "wood": 2,
           "stone": 1
@@ -329,7 +329,7 @@
       },
       {
         "coins": 150,
-        "pearls": 30,
+        "pearls": 10,
         "items": {
           "fiber": 2,
           "berries": 2
@@ -337,7 +337,7 @@
       },
       {
         "coins": 200,
-        "pearls": 40,
+        "pearls": 20,
         "items": {
           "planks": 1,
           "wood": 1
@@ -345,7 +345,7 @@
       },
       {
         "coins": 200,
-        "pearls": 40,
+        "pearls": 20,
         "items": {
           "fish": 1,
           "berries": 1
@@ -353,7 +353,7 @@
       },
       {
         "coins": 250,
-        "pearls": 50,
+        "pearls": 20,
         "items": {
           "wood": 2,
           "fiber": 2
@@ -361,7 +361,7 @@
       },
       {
         "coins": 250,
-        "pearls": 50,
+        "pearls": 20,
         "items": {
           "planks": 1,
           "stone": 1
@@ -369,7 +369,7 @@
       },
       {
         "coins": 400,
-        "pearls": 70,
+        "pearls": 40,
         "items": {
           "ancient_core": 1,
           "planks": 1,
@@ -391,5 +391,19 @@
     160,
     180,
     220
+  ],
+  "v6Onboarding": {
+    "coins": 100,
+    "pearls": 40,
+    "items": {}
+  },
+  "v6DailyPearls": [
+    20,
+    30,
+    40,
+    40,
+    50,
+    50,
+    70
   ]
 }

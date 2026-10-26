@@ -173,7 +173,7 @@ export function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; ite
 
 
 /** One storefront owns active lots, pending sales and a compact new-batch composer. */
-export function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Navigate }) {
+export function Market({ economy, navigate, onOpenNeighbor }: { economy: ReadyEconomy; navigate: Navigate; onOpenNeighbor?: () => void }) {
   const [section, setSection] = useState<"browse" | "mine">("mine");
   const [composing, setComposing] = useState(false);
   const composer = useRef<HTMLHeadingElement>(null), composeTrigger = useRef<HTMLButtonElement>(null), wasComposing = useRef(false);
@@ -234,6 +234,7 @@ export function Market({ economy, navigate }: { economy: ReadyEconomy; navigate:
     </div>;
   }
   return <div className={`${styles.stack} ${styles.market}`} aria-label="Рынок игроков">
+    {onOpenNeighbor && <button type="button" className={styles.neighborEntry} data-neighbor-market-entry aria-haspopup="dialog" onClick={onOpenNeighbor}><Store size={20} aria-hidden="true" /><span><strong>В гости к соседу</strong><small>Персонаж мира · полянка и дневная лавка</small></span><ArrowRight size={18} aria-hidden="true" /></button>}
     <header className={styles.marketSign}><span className={styles.signIcon}><Store size={25} aria-hidden /></span><div><span className={styles.eyebrow}>Соседская торговля</span><strong>Лавки соседей</strong></div><span className={styles.wallet}><ItemIcon itemId="coins" size={20} /><b>{number(state.wallet.coins)}</b><span className={styles.sr}> монет</span></span></header>
     <nav className={styles.subnav} aria-label="Раздел рынка">
       <button type="button" data-guide-market-tab="buy" aria-pressed={section === "browse"} onClick={() => setSection("browse")}><ShoppingBasket size={18} aria-hidden /><span>Купить</span></button>

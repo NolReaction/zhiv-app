@@ -15,7 +15,7 @@ export type AdminEconomyGrant = AdminRevokeRequest & DeliveryOptions & {
 
 const positive = z.number().int().positive().max(10_000);
 export const adminEconomyGrantSchema = z.object({
-  requestId: z.string().uuid(), confirmationPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
+  requestId: z.guid(), confirmationPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
   reason: z.string().min(8).max(240), coins: z.number().int().min(0).max(1_000_000_000), pearls: z.number().int().min(0).max(1_000_000_000),
   items: z.record(z.string().min(1).max(80), positive), buildings: z.record(z.string().min(1).max(80), positive),
   productionSlots: z.record(z.string().min(1).max(80), z.number().int().min(2).max(3)),
@@ -24,7 +24,7 @@ export const adminEconomyGrantSchema = z.object({
 }).strict().refine(value => value.delivery === "notify" || value.playerMessage === undefined, "Silent grants cannot contain a player message");
 
 export const adminEconomyReceiptSchema = z.object({
-  requestId: z.string().uuid(), publicId: z.string(), changed: z.boolean(),
+  requestId: z.guid(), publicId: z.string(), changed: z.boolean(),
   acceptedRevision: z.number().int().nonnegative().safe(), createdAt: z.string().datetime(),
 });
 

@@ -52,6 +52,14 @@ internal fun insertAdminMail(c: Connection,user: UUID,sourceKey: String,type: St
 internal fun mergePlayerMail(c: Connection,target: UUID,source: UUID) {
     c.economyUpdate("""UPDATE player_mail_messages kept SET read_at=CASE WHEN kept.read_at IS NULL THEN incoming.read_at
         WHEN incoming.read_at IS NULL THEN kept.read_at ELSE least(kept.read_at,incoming.read_at) END,
+        body=CASE WHEN kept.source_key<>'welcome:v1' OR kept.welcome_claimed_at IS NOT NULL THEN kept.body
+            WHEN incoming.welcome_claimed_at IS NOT NULL
+                OR coalesce(incoming.welcome_pearls,100)>coalesce(kept.welcome_pearls,100) THEN incoming.body
+            ELSE kept.body END,
+        welcome_pearls=CASE WHEN kept.source_key<>'welcome:v1' THEN kept.welcome_pearls
+            WHEN kept.welcome_claimed_at IS NOT NULL THEN coalesce(kept.welcome_pearls,100)
+            WHEN incoming.welcome_claimed_at IS NOT NULL THEN coalesce(incoming.welcome_pearls,100)
+            ELSE greatest(coalesce(kept.welcome_pearls,100),coalesce(incoming.welcome_pearls,100)) END,
         welcome_claimed_at=CASE WHEN kept.welcome_claimed_at IS NULL THEN incoming.welcome_claimed_at
         WHEN incoming.welcome_claimed_at IS NULL THEN kept.welcome_claimed_at ELSE least(kept.welcome_claimed_at,incoming.welcome_claimed_at) END
         FROM player_mail_messages incoming WHERE kept.user_id=? AND incoming.user_id=? AND kept.source_key=incoming.source_key""",target,source)

@@ -26,7 +26,7 @@ fun validateEconomyCommand(command: EconomyCommand) {
     }
 }
 
-fun decodeEconomyCommand(element: JsonElement): EconomyCommand {
+fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Unit = ::validateEconomyCommand): EconomyCommand {
     val value = element as? JsonObject ?: invalidEconomy()
     val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection")
     if (value.keys.any { it !in fields }) invalidEconomy()
@@ -45,7 +45,7 @@ fun decodeEconomyCommand(element: JsonElement): EconomyCommand {
             if (id.length !in 1..80 || primitive.isString || primitive.longOrNull == null) invalidEconomy()
         }
     }
-    return try { economyJson.decodeFromJsonElement<EconomyCommand>(value).also(::validateEconomyCommand) }
+    return try { economyJson.decodeFromJsonElement<EconomyCommand>(value).also(validator) }
     catch (_: SerializationException) { invalidEconomy() }
 }
 
@@ -162,7 +162,7 @@ object EconomyRules {
                 "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0,
                 "bridge" to 0, "lighthouse" to 0), migration = grant,
             tutorialOrder = if (starting == null) EconomyTutorialOrder() else EconomyTutorialOrder(
-                version = 3, step = 0, ingredientsClaimed = true, terms = EconomyTutorialOrders.orders(starting).first(), rewardVersion = 6))
+                version = 3, step = 0, ingredientsClaimed = true, terms = EconomyTutorialOrders.orders(starting).first(), rewardVersion = 7))
     }
 
     /** Escrow keeps its space until sold, so putting goods on the market cannot expand the warehouse. */
@@ -740,9 +740,13 @@ object EconomyRules {
                     else spent.copy(inventory = addItems(spent.inventory, mapOf(offer.itemId to command.quantity)))
                 addItems(next.inventory, reservedItems)
                 assertStorageTransition(state, next, reservedItems)
-                EconomyTradeRelations.awardPurchase(next.copy(fishingShop = shop.copy(offers = shop.offers.map {
+                val purchased = next.copy(fishingShop = shop.copy(offers = shop.offers.map {
                     if (it.id == offer.id) it.copy(remaining = it.remaining - command.quantity) else it
-                })), "plesk", price, now) to if (rod != null) "Удочка добавлена в коллекцию" else if (hook != null) "Крючок добавлен в коллекцию" else "Покупка у Плёски отправлена на склад"
+                }))
+                val resaleCoins = if (fish != null) (catalog.items.find { it.id == fish.itemId }?.baseSellPrice ?: 0L) * command.quantity else 0L
+                val rewarded = if (EconomyTradeRelations.purchaseXpEligible(offer.kind, price, resaleCoins))
+                    EconomyTradeRelations.awardPurchase(purchased, "plesk", price, now) else purchased
+                rewarded to if (rod != null) "Удочка добавлена в коллекцию" else if (hook != null) "Крючок добавлен в коллекцию" else "Покупка у Плёски отправлена на склад"
             }
             "equip_fishing_rod" -> {
                 if (catalog.fishing?.rods?.none { it.id == command.targetId } != false || command.targetId !in state.fishing.ownedRods)

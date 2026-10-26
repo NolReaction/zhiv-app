@@ -159,6 +159,25 @@ class JdbcGameProgressResetIntegrationTest {
                   VALUES ('10000000-0000-4000-8000-000000000001',7,'{"oldScene":true}',clock_timestamp());
                 INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price)
                   VALUES ('60000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000001','fish',5,100);
+                INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price,status,closed_at,
+                    seller_fee_bps,sale_owner_id,sale_proceeds_coins,sale_buyer_name,sale_buyer_character_id)
+                  VALUES ('61000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000001',
+                    'berries',2,20,'sold',clock_timestamp(),500,'10000000-0000-4000-8000-000000000001',
+                    19,'Берест · Персонаж мира','berest');
+                INSERT INTO neighbor_settings(singleton,version,settings) VALUES (true,1,'{}');
+                INSERT INTO neighbor_identity(user_id,first_buy_consumed)
+                  VALUES ('10000000-0000-4000-8000-000000000001',true);
+                INSERT INTO neighbor_shop_cycles(user_id,cycle_day,offers)
+                  VALUES ('10000000-0000-4000-8000-000000000001',CURRENT_DATE,'[]');
+                INSERT INTO neighbor_daily_usage(user_id,trade_day,used_lots,spent_coins)
+                  VALUES ('10000000-0000-4000-8000-000000000001',CURRENT_DATE,2,40);
+                INSERT INTO neighbor_global_usage(trade_day,spent_coins) VALUES (CURRENT_DATE,40);
+                INSERT INTO neighbor_receipts(user_id,request_id,signature,message,accepted_revision)
+                  VALUES ('10000000-0000-4000-8000-000000000001','62000000-0000-4000-8000-000000000006',
+                    '{}','Историческая покупка',30);
+                INSERT INTO neighbor_purchases(id,listing_id,user_id,item_id,quantity,total_price,proceeds_coins,source)
+                  VALUES ('63000000-0000-4000-8000-000000000006','61000000-0000-4000-8000-000000000006',
+                    '10000000-0000-4000-8000-000000000001','berries',2,20,19,'auto');
                 INSERT INTO notification_preferences(user_id,preferences)
                   VALUES ('10000000-0000-4000-8000-000000000001','{"rateLimitsEnabled":true}');
                 INSERT INTO notification_subscriptions(endpoint_hash,user_id,session_id,endpoint,p256dh,auth)
@@ -209,6 +228,7 @@ class JdbcGameProgressResetIntegrationTest {
                 "SELECT jsonb_agg(to_jsonb(a) ORDER BY user_id,achievement_id)::text FROM game_achievement_reward_claims a WHERE achievement_id IN ('linked_email','saved_recovery_code')",
                 "SELECT jsonb_agg(to_jsonb(m) ORDER BY id)::text FROM player_mail_messages m WHERE source_key<>'welcome:v1'",
                 "SELECT jsonb_agg(to_jsonb(b) ORDER BY id)::text FROM notification_batches b WHERE id='b1000000-0000-4000-8000-000000000001'",
+                "SELECT jsonb_agg(to_jsonb(l) ORDER BY id)::text FROM economy_market_listings l WHERE status='sold'",
             ).associateWith { selectedRows(source, it) }
             val before = snapshot(source)
             assertNotEquals("[]", before.getValue("earth_frozen_locations"), "The reset fixture includes a frozen recipient snapshot")
@@ -220,13 +240,13 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='72' WHERE version='71'")
+            execute(source, "UPDATE flyway_schema_history SET version='76' WHERE version='75'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V71"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V75"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='71' WHERE version='72'")
+            execute(source, "UPDATE flyway_schema_history SET version='75' WHERE version='76'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
@@ -265,6 +285,12 @@ class JdbcGameProgressResetIntegrationTest {
             for (table in tables("preserved_tables") + "flyway_schema_history")
                 assertEquals(before.getValue(table), after.getValue(table), "Preserved full contents: $table")
             for (table in tables("cleared_tables")) assertEquals("[]", after.getValue(table), "Cleared: $table")
+            assertTrue(after.getValue("economy_market_listings").contains("61000000-0000-4000-8000-000000000006"),
+                "A confirmed neighbor purchase and its manually claimable proceeds survive the release reset")
+            assertTrue(!after.getValue("economy_market_listings").contains("60000000-0000-4000-8000-000000000006"),
+                "Active escrow from the discarded game is removed")
+            assertEquals(before.getValue("neighbor_receipts"), after.getValue("economy_market_receipts"),
+                "Persistent neighbor receipts must retain cross-endpoint request UUID fences after reset")
             assertTrue(!after.getValue("notification_events").contains("checkin:test"))
             assertTrue(after.getValue("notification_events").contains("mail:b0000000-0000-4000-8000-00000000000b"))
             assertTrue(!after.getValue("notification_events").contains("job:test"))

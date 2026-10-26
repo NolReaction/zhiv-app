@@ -87,7 +87,7 @@ export type EarthMapPerson = EarthSharedPerson & { expiresAtMonotonic: number };
 export type EarthPeopleResponse = { ownerPublicId: string; people: EarthSharedPerson[]; serverTime: string };
 
 const owner = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
-const uuid = z.string().uuid();
+const uuid = z.guid();
 const revision = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
 const precision = z.enum(["APPROXIMATE", "PRECISE"]);
 const circleIds = z.array(uuid).max(EARTH_SHARING_MAX_PEOPLE).refine(ids => new Set(ids).size === ids.length);
@@ -95,18 +95,18 @@ const timestamp = z.string().datetime();
 
 export const earthSharingSettingsSchema = z.object({
   ownerPublicId: owner, mode: z.enum(["OFF", "SHARING", "GHOST"]), revision, precision,
-  recipientCircleIds: circleIds, frozenCircleIds: circleIds.default([]), sharingUntil: timestamp.nullable(), publicationEpoch: uuid.nullable(), serverTime: timestamp,
+  recipientCircleIds: circleIds, frozenCircleIds: circleIds.prefault([]), sharingUntil: timestamp.nullable(), publicationEpoch: uuid.nullable(), serverTime: timestamp,
 }).strict().refine(value => value.frozenCircleIds.every(id => value.recipientCircleIds.includes(id)));
 
 export const earthSharingWriteSchema = z.object({
   expectedOwnerPublicId: owner, expectedRevision: revision, mode: z.enum(["OFF", "SHARING", "GHOST"]), precision,
-  recipientCircleIds: circleIds, frozenCircleIds: circleIds.default([]), frozenOnly: z.boolean().default(false), preserveSharingUntil: z.boolean().default(false),
+  recipientCircleIds: circleIds, frozenCircleIds: circleIds.prefault([]), frozenOnly: z.boolean().prefault(false), preserveSharingUntil: z.boolean().prefault(false),
   durationMinutes: z.union([z.literal(60), z.literal(480)]).nullable(),
 }).strict().refine(value => (value.mode !== "SHARING" || value.recipientCircleIds.length > 0 || value.frozenOnly)
   && (value.mode !== "SHARING" || value.frozenCircleIds.every(id => value.recipientCircleIds.includes(id))));
 
 export const earthSharingResumeSchema = z.object({
-  expectedOwnerPublicId: owner, expectedRevision: revision, resumeGhost: z.boolean().default(false),
+  expectedOwnerPublicId: owner, expectedRevision: revision, resumeGhost: z.boolean().prefault(false),
 }).strict();
 
 export const earthPositionWriteSchema: z.ZodType<EarthPositionWrite> = z.object({

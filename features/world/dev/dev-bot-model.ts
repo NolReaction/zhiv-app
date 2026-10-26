@@ -54,10 +54,10 @@ export const devBotCommandSchema = z.discriminatedUnion("action", [
 
 export const devBotSchema = z.object({
   id: uuid, publicId, displayName: name, circleId: uuid, sharingMode, createdAt: z.string().datetime(),
-  lastCheckInAt: z.string().datetime().nullable().default(null),
+  lastCheckInAt: z.string().datetime().nullable().prefault(null),
   earth: z.object({ mode: earthMode, precision: earthPrecision, sharingUntil: z.string().datetime().nullable(),
     position: earthPosition.nullable(), sharedUpdatedAt: z.string().datetime().nullable(), sharedExpiresAt: z.string().datetime().nullable(),
-    nextPublishAt: z.string().datetime().nullable() }).strict().default({ mode: "OFF", precision: "APPROXIMATE", sharingUntil: null,
+    nextPublishAt: z.string().datetime().nullable() }).strict().prefault({ mode: "OFF", precision: "APPROXIMATE", sharingUntil: null,
     position: null, sharedUpdatedAt: null, sharedExpiresAt: null, nextPublishAt: null }),
   economy: economyViewSchema.pick({ revision: true, buildings: true, wallet: true, inventory: true, jobs: true, storage: true }).strict(),
   equipment: z.object({ palette: itemId, head: itemId.nullable(), neck: itemId.nullable(), rod: itemId.nullable() }).strict(),
@@ -65,7 +65,7 @@ export const devBotSchema = z.object({
 }).strict();
 export const devBotsSnapshotSchema = z.object({
   ownerPublicId: publicId, serverTime: z.string().datetime(), maxBots: z.literal(5), bots: z.array(devBotSchema).max(5),
-  ownListings: z.array(economyMarketListingSchema).max(10).default([]),
+  ownListings: z.array(economyMarketListingSchema).max(10).prefault([]),
 }).strict();
 export const devBotResultSchema = z.object({ snapshot: devBotsSnapshotSchema, botId: uuid, message: z.string().max(500), replayed: z.boolean() }).strict();
 export type DevBot = z.infer<typeof devBotSchema>;

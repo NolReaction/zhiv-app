@@ -414,7 +414,8 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
     assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
   }
   assert.match(answer("production-slots"), /Третье до покупки второго показывает только замок/);
-  assert.match(answer("production-slots"), /три одинаковых места/);
+  assert.match(answer("production-slots"), /Сначала видны два места; третье появляется с завершённым домом 3/);
+  assert.match(answer("production-slots"), /Ранее купленное третье место сохраняется/);
   assert.match(answer("production-slots"), /обе очереди.*в общей плашке видны «Верстак» и «Печь».*нажатие строки откроет нужное производство/);
   for (const [label, seconds] of [["5 мин", 300], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
     assert.ok(answer("pearls").includes(`${label} - ${formatPearls(constructionTimePearlPrice(seconds))} жемчужин`));

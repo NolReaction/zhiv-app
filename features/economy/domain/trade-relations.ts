@@ -90,6 +90,11 @@ export function awardTradeOrderXp(state: EconomyState, residentId: TradeResident
   state.tradeRelations = relations;
   return awarded;
 }
+/** Consumable bait is never friendship progress. Other resellable goods must
+ * cost more than their entire NPC resale value, including old frozen quotes. */
+export function tradePurchaseXpEligible(kind: string, paid: number, resaleCoins = 0): boolean {
+  return kind !== "bait" && paid > 0 && paid > resaleCoins;
+}
 export function awardTradePurchaseXp(state: EconomyState, residentId: TradeResidentId, now: number, catalog = economyCatalog): number {
   const config = catalog.tradeRelations;
   if (!config) return 0;

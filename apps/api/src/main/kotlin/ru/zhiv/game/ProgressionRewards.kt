@@ -14,17 +14,18 @@ internal val progressionRewardsJson = Json { encodeDefaults = true; ignoreUnknow
 @Serializable data class ProgressionReward(val coins: Long = 0, val pearls: Long = 0, val items: Map<String,Long> = emptyMap())
 @Serializable private data class ProgressionRewardsCatalog(val version: Int, val currencyScale: Int, val pearlScale: Int, val dailyMinimumHours: Long,
     val daily: List<ProgressionReward>, val dailyByHomeLevel: Map<String,List<ProgressionReward>>, val achievementPearls: Map<String,List<Long>>,
-    val onboarding: ProgressionReward, val legacyOnboarding: ProgressionReward, val legacyDailyPearls: List<Long>)
+    val onboarding: ProgressionReward, val legacyOnboarding: ProgressionReward, val legacyDailyPearls: List<Long>,
+    val v6Onboarding: ProgressionReward, val v6DailyPearls: List<Long>)
 @Serializable data class DailyRewardCycle(val step: Int, val reward: ProgressionReward)
 data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null, val completed: Boolean = false,
-    val rewardVersion: Int = 5) { init { require(rewardVersion in 5..6) } }
+    val rewardVersion: Int = 5) { init { require(rewardVersion in 5..7) } }
 @Serializable data class DailyRewardsView(val step: Int, val claimable: Boolean, val nextClaimAt: String?,
     val lastClaimAt: String?, val lastClaimDate: String?, val reward: ProgressionReward, val cycle: List<DailyRewardCycle>, val homeLevel: Int = 1,
     val completed: Boolean = false)
 @Serializable data class AchievementRewardView(val achievementId: String, val level: Int, val target: Long, val pearls: Long,
     val earnedAt: String?, val claimedAt: String?, val eligible: Boolean, val blockedReason: String?)
 @Serializable data class OnboardingRewardView(val claimedAt: String? = null)
-@Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 6,
+@Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 7,
     val daily: DailyRewardsView, val achievementRewards: List<AchievementRewardView>, val onboarding: OnboardingRewardView = OnboardingRewardView())
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class ProgressionRewardClaim(val requestId: String, val ownerPublicId: String, val kind: String,
@@ -74,7 +75,7 @@ object ProgressionRewardRules {
     val daily = catalog.daily
     val onboarding = catalog.onboarding
     fun onboardingRewardForState(state: EconomyState): ProgressionReward =
-        if (state.tutorialOrder.rewardVersion == 6) onboarding else catalog.legacyOnboarding
+        when (state.tutorialOrder.rewardVersion) { 7 -> onboarding; 6 -> catalog.v6Onboarding; else -> catalog.legacyOnboarding }
     val achievementPearls = catalog.achievementPearls
     /** The course already requires this server-confirmed lesson. Merely opening
      * screens, a local completion flag or an administrative building grant is not proof.
@@ -84,10 +85,12 @@ object ProgressionRewardRules {
         return progress.completed || progress.step>0
     }
     init {
-        require(catalog.version==6 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
-        require(onboarding == ProgressionReward(coins=100,pearls=40))
+        require(catalog.version==7 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
+        require(onboarding == ProgressionReward(coins=100,pearls=20))
         require(catalog.legacyOnboarding == ProgressionReward(coins=1_000,pearls=200))
         require(catalog.legacyDailyPearls == listOf(80L,100L,120L,140L,160L,180L,220L))
+        require(catalog.v6Onboarding == ProgressionReward(coins=100,pearls=40))
+        require(catalog.v6DailyPearls == listOf(20L,30L,40L,40L,50L,50L,70L))
         require(catalog.dailyByHomeLevel.keys==setOf("2","3","4","5"))
         require(achievementPearls.keys==GameRewards.tiers.keys && achievementPearls.all { (id,values) ->
             values.size==GameRewards.tiers.getValue(id).size && values.all { it in 0L..ECONOMY_MAX_PEARLS } })
@@ -97,7 +100,7 @@ object ProgressionRewardRules {
         val itemIds=setOf("wood","stone","fiber","berries","fish","hardwood","resin","planks","rope","bricks","iron_ingot",
             "cloth","metal_parts","glass","beams","cut_stone","tools","reinforced_parts","ancient_core")
         for(cycle in listOf(daily)+catalog.dailyByHomeLevel.values) {
-            require(cycle.size==7 && cycle.sumOf { it.pearls }==300L && cycle.sumOf { it.items["ancient_core"] ?: 0L }==1L)
+            require(cycle.size==7 && cycle.sumOf { it.pearls }==140L && cycle.sumOf { it.items["ancient_core"] ?: 0L }==1L)
             require(cycle.withIndex().all { (index,reward) -> reward.coins in 0L..ECONOMY_MAX_BALANCE
                 && reward.pearls==daily[index].pearls && reward.pearls in 0L..ECONOMY_MAX_PEARLS && reward.pearls%2L==0L
                 && reward.items.all { (id,quantity) -> id in itemIds && quantity in 1L..ECONOMY_MAX_ITEMS } })
@@ -110,7 +113,8 @@ object ProgressionRewardRules {
         require(state.step in 1..7)
         val level=homeLevel.coerceIn(1,5)
         val cycle=dailyCycle(level).mapIndexed { index, reward ->
-            if (state.rewardVersion == 5) reward.copy(pearls = catalog.legacyDailyPearls[index]) else reward }
+            when (state.rewardVersion) { 5 -> reward.copy(pearls = catalog.legacyDailyPearls[index])
+                6 -> reward.copy(pearls = catalog.v6DailyPearls[index]); else -> reward } }
         val last = state.lastClaimAt
         val step=if(state.completed) 7 else state.step
         val next = if(state.completed) null else if(last==null) now else maxOf(last.atOffset(ZoneOffset.UTC).toLocalDate().plusDays(1)

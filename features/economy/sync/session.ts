@@ -11,6 +11,7 @@ import { localLeaftailPurchaseFromReceipt, type LocalLeaftailPurchase } from "@/
 import { localExplorationFromReceipt, type LocalExplorationReceipt } from "@/features/economy/domain/local-exploration-receipt";
 import { barterCommandSchema, type BarterCommand, type BarterIntent, type BarterResult, type BarterView } from "@/features/economy/domain/barter-model";
 import { hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
+import { neighborCommandSchema, type NeighborCommand, type NeighborView } from "@/features/economy/domain/neighbor-model";
 import type { ProductionStart } from "@/features/economy/domain/production-start";
 import { parseProductionJournal, productionJournalKey, productionProjection, reserveProduction, safeProductionRecipe,
   PRODUCTION_JOURNAL_LIMIT, type ProductionIntent, type JournalStorage, type JournalCoordinator } from "./production-journal";
@@ -21,19 +22,23 @@ type Transport = {
   market: (signal: AbortSignal) => Promise<MarketView>;
   trade: (command: MarketCommand, signal: AbortSignal) => Promise<EconomyResult>;
   friendTrade?: (circleId: string, command: MarketCommand, signal: AbortSignal) => Promise<EconomyResult>;
+  neighbor?: (signal: AbortSignal) => Promise<NeighborView>;
+  neighborTrade?: (command: NeighborCommand, signal: AbortSignal) => Promise<EconomyResult>;
   dev?: (command: EconomyDevCommand, signal: AbortSignal) => Promise<EconomyResult>;
   barter?: (signal: AbortSignal) => Promise<BarterView>;
   barterTrade?: (command: BarterCommand, signal: AbortSignal) => Promise<BarterResult>;
 };
 const friendMarketReceiptSchema = z.object({
-  kind: z.literal("friend_market"), circleId: z.string().uuid(),
-  command: marketCommandSchema.extend({ action: z.literal("buy_listing"), targetId: z.string().uuid(), fishSelection: z.undefined().optional() }),
+  kind: z.literal("friend_market"), circleId: z.guid(),
+  command: marketCommandSchema.extend({ action: z.literal("buy_listing"), targetId: z.guid(), fishSelection: z.undefined().optional() }),
 }).strict();
+const neighborReceiptSchema = z.object({ kind: z.literal("neighbor"), command: neighborCommandSchema }).strict();
 type Pending = { kind: "economy"; command: EconomyCommand } | { kind: "market"; command: MarketCommand }
-  | z.infer<typeof friendMarketReceiptSchema> | { kind: "dev"; command: EconomyDevCommand } | { kind: "barter"; command: BarterCommand };
+  | z.infer<typeof friendMarketReceiptSchema> | { kind: "neighbor"; command: NeighborCommand } | { kind: "dev"; command: EconomyDevCommand } | { kind: "barter"; command: BarterCommand };
 type View = {
   snapshot: EconomyView | null; market: MarketView | null; marketError: string | null;
   barter: BarterView | null; barterError: string | null;
+  neighbor: NeighborView | null; neighborError: string | null; neighborSyncError: string | null;
   marketSyncError: string | null; barterSyncError: string | null;
   error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number; rateLimited: boolean;
   completedConstructions: readonly ConstructionCompletion[];
@@ -65,7 +70,7 @@ type ReceiptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 /** Account-scoped session, independent of map/panel lifetime. An uncertain command keeps its exact receipt. */
 export function createEconomySession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: ReceiptStorage,
   journalOptions?: { storage: JournalStorage; coordinate: JournalCoordinator }) {
-  let view: View = { snapshot: null, market: null, marketError: null, barter: null, barterError: null, marketSyncError: null, barterSyncError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0, completedConstructions: [], inventoryGains: [],
+  let view: View = { snapshot: null, market: null, marketError: null, barter: null, barterError: null, neighbor: null, neighborError: null, neighborSyncError: null, marketSyncError: null, barterSyncError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0, completedConstructions: [], inventoryGains: [],
     directActionsAvailable: true, snapshotConfirmed: false, productionSnapshot: null, pendingProductionIds: [], pendingProductionCount: 0, productionQueueAvailable: false, syncPending: false, storageError: null, syncError: null, rateLimited: false };
   let pending: Pending | null = null, active = false, available = true, epoch = 0, readSequence = 0, marketSequence = 0, barterSequence = 0;
   // A reload may recover the command, but must not pretend the player just
@@ -73,6 +78,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   let localExplorationIntent: { requestId: string; before: EconomyView } | null = null;
   let localLeaftailPurchaseIntent: { requestId: string; before: EconomyView } | null = null;
   let reading: Promise<void> | null = null, marketReading: Promise<void> | null = null, barterReading: Promise<void> | null = null;
+  let neighborReading: Promise<void> | null = null, neighborSequence = 0, neighborBlockedUntil = 0;
   let barterBlockedUntil = 0, rateLimitedUntil = 0;
   let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
@@ -217,8 +223,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const raw = storage?.getItem(storageKey);
       if (!raw) return;
       const value = JSON.parse(raw) as { kind?: unknown; command?: unknown };
-      if (value.kind === "friend_market") {
-        const parsed = transport.friendTrade ? friendMarketReceiptSchema.safeParse(value) : null;
+      if (value.kind === "friend_market" || value.kind === "neighbor") {
+        const parsed = value.kind === "friend_market" ? transport.friendTrade ? friendMarketReceiptSchema.safeParse(value) : null
+          : transport.neighborTrade ? neighborReceiptSchema.safeParse(value) : null;
         if (parsed?.success && parsed.data.command.ownerPublicId === owner) {
           pending = parsed.data;
           const message = "Остался неподтверждённый запрос. Проверьте его результат перед новым действием.";
@@ -345,18 +352,46 @@ export function createEconomySession(owner: string | null, transport: Transport,
       }
     } finally { requests.delete(request); }
   }
+  function refreshNeighbor(): Promise<void> {
+    if (!active || !available || !owner || !transport.neighbor || view.busy || performance.now() < neighborBlockedUntil) return Promise.resolve();
+    if (neighborReading) return neighborReading;
+    const task = readNeighbor(); neighborReading = task;
+    void task.finally(() => { if (neighborReading === task) neighborReading = null; });
+    return task;
+  }
+  async function readNeighbor() {
+    const generation = epoch, sequence = ++neighborSequence, request = controller();
+    try {
+      const result = await transport.neighbor!(request.signal);
+      if (!valid(generation) || sequence !== neighborSequence) return;
+      if (result.ownerPublicId !== owner) { onSessionLost(); return; }
+      neighborBlockedUntil = 0;
+      publish({ neighbor: result, neighborError: null, neighborSyncError: null });
+    } catch (error) {
+      if (!valid(generation) || sequence !== neighborSequence) return;
+      if (error instanceof ApiError && error.status === 401) onSessionLost();
+      else {
+        neighborBlockedUntil = performance.now() + (error instanceof ApiError && error.status === 429 ? Math.max(1000, error.retryAfterMs ?? 60_000) : 3000);
+        const message = error instanceof ApiError ? error.message : "Не удалось зайти к соседу. Проверьте соединение.";
+        const transportFailure = !(error instanceof ApiError) || error.status >= 500 || [408, 425, 429].includes(error.status)
+          || error.body?.code === "GAME_SESSION_INACTIVE";
+        publish({ neighborError: message, neighborSyncError: transportFailure ? message : null });
+      }
+    } finally { requests.delete(request); }
+  }
   async function execute(value: Pending, localProductionStart = false) {
-    if (!active || !available || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev) || (value.kind === "barter" && !transport.barterTrade) || (value.kind === "friend_market" && !transport.friendTrade)) return;
+    if (!active || !available || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev) || (value.kind === "barter" && !transport.barterTrade) || (value.kind === "friend_market" && !transport.friendTrade) || (value.kind === "neighbor" && !transport.neighborTrade)) return;
     const generation = epoch, request = controller(), before = view.snapshot;
-    ++readSequence; ++marketSequence; ++barterSequence; reading = null; marketReading = null; barterReading = null; remember(value);
+    ++readSequence; ++marketSequence; ++barterSequence; ++neighborSequence; reading = null; marketReading = null; barterReading = null; neighborReading = null; remember(value);
     publish({ busy: true, error: null, notice: "", retryAt: 0, rateLimited: false,
       ...(value.kind === "economy" && value.command.action === "buy_leaftail_item" ? { localLeaftailPurchase: undefined } : {}),
       ...(localProductionStart ? { productionStarts: productionStarts(value.command.requestId) } : {}) });
-    let reloadMarket = false, reloadBarter = false;
+    let reloadMarket = false, reloadBarter = false, reloadNeighbor = false;
     try {
       const result = value.kind === "economy" ? await transport.send(value.command, request.signal)
         : value.kind === "market" ? await transport.trade(value.command, request.signal)
         : value.kind === "friend_market" ? await transport.friendTrade!(value.circleId, value.command, request.signal)
+        : value.kind === "neighbor" ? await transport.neighborTrade!(value.command, request.signal)
         : value.kind === "barter" ? await transport.barterTrade!(value.command, request.signal)
         : await transport.dev!(value.command, request.signal);
       if (!valid(generation)) return;
@@ -369,7 +404,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && !result.state.jobs.some(job => job.id === value.command.targetId)
           && !view.snapshot?.jobs.some(job => job.id === value.command.targetId)
           && !view.cancelledExplorations?.includes(value.command.targetId) ? value.command.targetId : null;
-        const gain = value.kind !== "dev" && value.kind !== "barter" && view.snapshot?.revision === result.state.revision
+        const gain = value.kind !== "dev" && value.kind !== "barter" && value.kind !== "neighbor" && view.snapshot?.revision === result.state.revision
           && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(before, result, value.command) : null;
         const sale = value.kind === "economy" && view.snapshot?.revision === result.state.revision
           && view.localSale?.id !== value.command.requestId ? localSaleFromReceipt(before, result, value.command) : null;
@@ -385,6 +420,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
           if (inventoryReceipts.size > 64) inventoryReceipts.delete(inventoryReceipts.values().next().value!);
         }
         remember(null); publish({ notice: result.message, uncertain: false, syncError: null,
+          ...(value.kind === "neighbor" && view.neighbor ? { neighbor: { ...view.neighbor, shop: { ...view.neighbor.shop,
+            offers: view.neighbor.shop.offers.map(offer => offer.id === value.command.targetId ? { ...offer, purchased: true } : offer) } } } : {}),
           ...(sale ? { localSale: sale } : {}),
           ...(purchase ? { localLeaftailPurchase: purchase } : {}),
           ...(exploration ? { localExploration: exploration } : {}),
@@ -393,6 +430,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
           ...(gain ? { inventoryGains: Object.freeze([...(view.inventoryGains ?? []), gain].slice(-INVENTORY_GAIN_HISTORY_LIMIT)) } : {}) });
         reloadMarket = value.kind === "market";
         reloadBarter = value.kind === "barter";
+        reloadNeighbor = value.kind === "neighbor";
       }
     } catch (error) {
       if (!valid(generation)) return;
@@ -414,6 +452,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
         if (valid(generation) && snapshot) adopt(snapshot);
         reloadMarket = value.kind === "market";
         reloadBarter = value.kind === "barter";
+        reloadNeighbor = value.kind === "neighbor";
       }
     } finally {
       requests.delete(request);
@@ -421,6 +460,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
         publish({ busy: false });
         if (reloadMarket) void refreshMarket();
         if (reloadBarter) { void refresh(); void refreshBarter(); }
+        if (reloadNeighbor) void refreshNeighbor();
       }
     }
   }
@@ -428,7 +468,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     if (available === value) return;
     available = value;
     if (!value) {
-      epoch++; readSequence++; marketSequence++; barterSequence++; reading = null; marketReading = null; barterReading = null;
+      epoch++; readSequence++; marketSequence++; barterSequence++; neighborSequence++; reading = null; marketReading = null; barterReading = null; neighborReading = null;
       requests.forEach(request => request.abort()); requests.clear();
       publish({ busy: false, uncertain: Boolean(pending) });
     } else { lastReadAt = -Infinity; blockedUntil = Math.max(0, rateLimitedUntil); }
@@ -455,14 +495,14 @@ export function createEconomySession(owner: string | null, transport: Transport,
       active = true; lastReadAt = -Infinity; restore();
       if (journalOptions && !journalRelease) journalInitialization = initializeJournal(++lifetime);
       return () => {
-        active = false; epoch++; lifetime++; readSequence++; marketSequence++; barterSequence++; reading = null; marketReading = null; barterReading = null;
+        active = false; epoch++; lifetime++; readSequence++; marketSequence++; barterSequence++; neighborSequence++; reading = null; marketReading = null; barterReading = null; neighborReading = null;
         requests.forEach(request => request.abort()); requests.clear();
         journalController?.abort(); journalRelease?.(); journalRelease = null; journalReady = false;
         productionSending = null;
         if (view.busy) publish({ busy: false, uncertain: Boolean(pending) });
       };
     },
-    refresh, refreshSoft: () => refresh(false), refreshMarket, refreshBarter,
+    refresh, refreshSoft: () => refresh(false), refreshMarket, refreshBarter, refreshNeighbor,
     act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>) {
       if (action === "start_production" && journalReady && !journalFault && view.snapshot && safeProductionRecipe(view.snapshot, targetId) && quantity === 1 && totalPrice === 0 && fishSelection == null) {
         if (!owner || !view.snapshot || !active || !localActionsAvailable || pending || view.busy || productionEntries.length >= PRODUCTION_JOURNAL_LIMIT) return false;
@@ -496,6 +536,15 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const receipt = friendMarketReceiptSchema.safeParse({ kind: "friend_market", circleId,
         command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision,
           action: "buy_listing", targetId, quantity, totalPrice } });
+      if (!receipt.success) return false;
+      void execute(receipt.data);
+      return true;
+    },
+    actNeighbor(targetId: string, quantity: number, totalPrice: number) {
+      if (!owner || !view.snapshot || !view.snapshotConfirmed || !view.directActionsAvailable || pending || productionEntries.length || !active || !localActionsAvailable || !available || view.busy || performance.now() < blockedUntil || !transport.neighborTrade) return false;
+      const receipt = neighborReceiptSchema.safeParse({ kind: "neighbor", command: {
+        requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision,
+        action: "buy_offer", targetId, quantity, totalPrice } });
       if (!receipt.success) return false;
       void execute(receipt.data);
       return true;

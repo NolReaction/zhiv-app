@@ -27,6 +27,9 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   const state = economy.productionSnapshot ?? economy.snapshot;
   const capacity = productionSlotCount(state, stationId), offer = productionSlotOffer(state, stationId);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === stationId);
+  const visibleSlotCount = Math.max(capacity, Math.min(3, jobs.length), ...state.catalog.productionSlots.upgrades
+    .filter(tier => tier.requiredHomeLevel <= (state.buildings.home ?? 1)).map(tier => tier.slots));
+  const futureTier = state.catalog.productionSlots.upgrades.find(tier => tier.slots > visibleSlotCount);
   const readyJobs = readyProductionJobs(economy.snapshot.jobs, stationId, economy.now);
   const claimQuantity = Object.values(productionCollectionRewards(readyJobs)).reduce((sum, quantity) => sum + quantity, 0);
   const claimShortfall = Math.max(0, claimQuantity - economy.snapshot.storage.available);
@@ -80,7 +83,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
       {claimShortfall > 0 && <p role="status">Освободите {claimShortfall.toLocaleString("ru-RU")} мест в кладовой.{openPantry && <button type="button" onClick={openPantry}>Открыть кладовую</button>}</p>}
       {claimFeedback && <p role="status">{claimFeedback}</p>}
     </div>}
-    <div className={styles.track} data-slot-columns={basicCampfire ? capacity : 3}>{Array.from({ length: basicCampfire ? capacity : 3 }, (_, index) => {
+    <div className={styles.track} data-slot-columns={basicCampfire ? capacity : visibleSlotCount}>{Array.from({ length: basicCampfire ? capacity : visibleSlotCount }, (_, index) => {
       const job = jobs[index], opened = index < capacity;
       const queued = Boolean(job && economy.pendingProductionIds?.includes(job.id));
       const tier = state.catalog.productionSlots.upgrades.find(entry => entry.slots === index + 1);
@@ -97,6 +100,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
         <span className={styles.slotNumber}>Место {index + 1}</span><span className={styles.lock}><LockKeyhole size={24} aria-hidden="true" /></span><strong>{nextLocked ? "Открыть" : "Закрыто"}</strong>{nextLocked && <span className={styles.price}>{formatPearls(tier?.pricePearls ?? 0)}<ItemIcon itemId="pearls" size={16} /></span>}
       </button>;
     })}</div>
+    {!basicCampfire && futureTier && <p className={styles.hint}>Место {futureTier.slots} появится с домом {futureTier.requiredHomeLevel} уровня.</p>}
     {confirming && currentConfirmation && selectedOffer && <div className={styles.confirmation} role="dialog" id={dialogId} aria-labelledby={`${dialogId}-title`} aria-describedby={`${dialogId}-description`}
       onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelPurchase(); } }}>
       <h4 id={`${dialogId}-title`}>Открыть место {currentConfirmation.slot}?</h4>

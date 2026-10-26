@@ -11,7 +11,7 @@ const count = z.number().int().nonnegative().safe();
 const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);
 const instant = z.string().datetime();
 const page = { serverTime: instant, total: count, offset: count, limit: z.number().int().min(1).max(100) };
-const accessSchema = z.object({ publicId, displayName: z.string(), serverTime: instant });
+const accessSchema = z.object({ publicId, displayName: z.string(), serverTime: instant, mode: z.literal("local").optional() });
 const retentionSchema = z.object({ eligible: count, returned: count, rate: z.number().min(0).max(100).nullable() });
 const overviewSchema = z.object({
   serverTime: instant, days: z.union([z.literal(7), z.literal(30), z.literal(90)]),
@@ -31,8 +31,8 @@ const userSchema = z.object({
 });
 const usersSchema = z.object({ ...page, users: z.array(userSchema).max(100) });
 const auditSchema = z.object({ ...page, events: z.array(z.object({
-  requestId: z.string().uuid(), actorPublicId: publicId, targetPublicId: publicId,
-  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "grant_economy", "adjust_economy", "mail_broadcast", "promo_create", "promo_update", "promo_delete", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
+  requestId: z.guid(), actorPublicId: publicId, targetPublicId: publicId,
+  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "grant_economy", "adjust_economy", "mail_broadcast", "promo_create", "promo_update", "promo_delete", "neighbor_settings", "neighbor_buy", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().prefault(null), granted: z.boolean().nullable().prefault(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
 })).max(100) });
 const metric = z.number().finite().nullable();
 const monitoringSchema = z.object({
@@ -54,7 +54,7 @@ export type AdminAudit = z.infer<typeof auditSchema>;
 export type AdminMonitoring = z.infer<typeof monitoringSchema>;
 export type AdminRevokeRequest = { requestId: string; confirmationPublicId: string; reason: string };
 
-export async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: object): Promise<T> {
+export async function adminRequest<T>(path: string, schema: z.ZodType<T, unknown>, signal?: AbortSignal, body?: object): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   if (signal?.aborted) abort();
@@ -62,7 +62,7 @@ export async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTy
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
     const response = await fetch(`/api/v1/admin/${path}`, {
-      method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
+      method: body ? "POST" : "GET", mode: "same-origin", credentials: "same-origin", cache: "no-store", signal: controller.signal,
       headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
@@ -114,7 +114,7 @@ const economySchema = z.object({ ...page, summary: z.object({ players: count, in
 "Economy page counts must agree");
 const signedCount = z.number().int().safe();
 const economyDetailSchema = z.object({ publicId, displayName: z.string(), serverTime: instant, updatedAt: instant.nullable(),
-  economy: economyViewSchema.nullable(), jobStatuses: z.array(z.object({ jobId: z.string().uuid(),
+  economy: economyViewSchema.nullable(), jobStatuses: z.array(z.object({ jobId: z.guid(),
     status: z.enum(["running", "awaiting_collection", "collecting", "ready"]), storageBlocked: z.boolean() })
     .refine(job => !job.storageBlocked || job.status === "ready")).max(100),
   ledger: z.array(z.object({ kind: z.string().min(1).max(100), coins: signedCount, pearls: signedCount,
@@ -137,7 +137,7 @@ export const getAdminEconomyPlayer = (target: string, signal?: AbortSignal) => a
   `users/${encodeURIComponent(target)}/economy`, economyDetailSchema.refine(value => value.publicId === target), signal);
 export function revokeAdminSessions(targetPublicId: string, body: AdminRevokeRequest, signal?: AbortSignal) {
   return adminRequest(`users/${encodeURIComponent(targetPublicId)}/revoke-sessions`,
-    z.object({ requestId: z.string().uuid(), affectedSessions: count, createdAt: instant }), signal, body);
+    z.object({ requestId: z.guid(), affectedSessions: count, createdAt: instant }), signal, body);
 }
 
 const rewardIdSchema = z.string().refine(id => [...GAME_ITEMS, ...GAME_ACHIEVEMENTS].some(item => item.id === id));
@@ -153,13 +153,13 @@ export function getAdminRewards(target: string, signal?: AbortSignal) {
 }
 export function grantAdminReward(target: string, body: AdminGrantRequest, signal?: AbortSignal) {
   return adminRequest(`users/${encodeURIComponent(target)}/grant-reward`,
-    z.object({ requestId: z.string().uuid(), kind: z.enum(["item", "achievement"]), rewardId: rewardIdSchema, granted: z.boolean(), createdAt: instant }), signal, body);
+    z.object({ requestId: z.guid(), kind: z.enum(["item", "achievement"]), rewardId: rewardIdSchema, granted: z.boolean(), createdAt: instant }), signal, body);
 }
 
 const incidentsSchema = z.object({ ...page, totalOccurrences: count, affectedUsers: count, events: z.array(z.object({
   id: count, publicId, displayName: z.string(), source: z.enum(["client", "server"]),
   operation: z.string().max(100), code: z.string().max(64), occurredAt: instant, receivedAt: instant,
-  requestId: z.string().uuid().nullable(), httpStatus: z.number().int().min(100).max(599).nullable(), pendingTaps: count, occurrences: count,
+  requestId: z.guid().nullable(), httpStatus: z.number().int().min(100).max(599).nullable(), pendingTaps: count, occurrences: count,
 })).max(100) });
 export type AdminIncidents = z.infer<typeof incidentsSchema>;
 export function getAdminIncidents(options: { rangeMinutes: number; q: string; offset: number; source?: "" | "client" | "server"; code?: string }, signal?: AbortSignal) {
@@ -176,14 +176,14 @@ export type AdminPlayerCommand = AdminRevokeRequest & DeliveryOptions & {
 };
 export const getAdminPlayer = (target: string, signal?: AbortSignal) => adminRequest(`users/${encodeURIComponent(target)}/player`, playerSchema.refine(value => value.publicId === target), signal);
 export const manageAdminPlayer = (target: string, body: AdminPlayerCommand, signal?: AbortSignal) =>
-  adminRequest(`users/${encodeURIComponent(target)}/manage`, z.object({ requestId: z.string().uuid(), action: z.string(),
+  adminRequest(`users/${encodeURIComponent(target)}/manage`, z.object({ requestId: z.guid(), action: z.string(),
     changed: z.boolean(), affectedSessions: count, createdAt: instant }), signal, body);
 
 const securitySignalSchema = z.object({
   code: z.enum(["ECONOMY_REQUEST_TAMPER", "MARKET_OWNERSHIP_DENIED", "BARTER_OWNERSHIP_DENIED"]),
   reason: z.string().min(1).max(240), severity: z.literal("review"),
   count: count.refine(value => value > 0), pendingCount: count,
-  firstAt: instant, lastAt: instant, lastAction: z.string().min(1).max(100), lastRequestId: z.string().uuid(),
+  firstAt: instant, lastAt: instant, lastAction: z.string().min(1).max(100), lastRequestId: z.guid(),
   status: z.enum(["context", "active", "reviewed"]), reviewedAt: instant.nullable(),
   threshold: count.refine(value => value > 0), windowMinutes: count.refine(value => value > 0).nullable(),
 }).refine(value => value.pendingCount <= value.count && Date.parse(value.firstAt) <= Date.parse(value.lastAt)

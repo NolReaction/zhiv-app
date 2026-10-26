@@ -108,7 +108,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   const isActive = mode === "active16h", visits = mode === "visits2" ? [7, 19] : [7, 15, 23];
   const gap = isActive ? 1 : mode === "visits2" ? 12 * hour : 8 * hour;
   const uuid = () => `00000000-0000-4000-8000-${(++sequence).toString(16).padStart(12, "0")}`;
-  const eligible = d => (state.buildings.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
+  const eligible = d => !d.retired && (state.buildings.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
     && (!d.buildingId || state.buildings[d.buildingId] >= recipeBuildingLevel(d))
     && Object.entries(d.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
   const courseTerms = () => state.tutorialOrder?.ingredientsClaimed && !state.tutorialOrder.completed
@@ -199,6 +199,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   const cash = rewards => Object.entries(rewards).reduce((sum, [id, amount]) => sum + (fishing.fishClassForItem(id, catalog.fishing)
     ? items.get(id).baseSellPrice * amount : rules.economyLocalSellPrice(items.get(id).baseSellPrice, amount, catalog.localBuyer, id)), 0);
   const projectedEligible = d => {
+    if (d.retired) return false;
     if (!prepareNextConstruction) return eligible(d);
     // Forecast only for ingredient planning. Commands still use current levels.
     const predicted = { ...state.buildings };

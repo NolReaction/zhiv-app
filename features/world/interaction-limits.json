@@ -1,6 +1,7 @@
 {
   "homeThreshold": 33.6,
-  "homeDock": 13.44,
+  "homeDock": 33.6,
+  "legacyHomeApproach": 13.44,
   "bushJump": 44.8,
   "localRouteRadius": 89.6
 }

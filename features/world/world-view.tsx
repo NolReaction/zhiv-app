@@ -75,7 +75,7 @@ type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | 
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
-export default function WorldView({ open, suspended = false, world, economy, mailbox, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onVisitFriend, onDevBotsChanged, onDevVisitBot, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+export default function WorldView({ open, suspended = false, world, economy, mailbox, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onVisitFriend, onOpenNeighbor, onDevBotsChanged, onDevVisitBot, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const currentOwner = useRef(ownerPublicId);
   const achievementRewards = useGameRewards(ownerPublicId, open && !suspended && isOnline !== false, onSessionLost);
   const availableAchievements = achievementRewardSummary(achievementRewards.data, ownerPublicId);
@@ -241,6 +241,10 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [hasWorld]);
   const clearObject = useCallback(() => { selectedId.current = null; selectionPosition.publish(null); setSelection(null); setShopGalleryOwner(null); }, [selectionPosition]);
+  const openNeighbor = () => {
+    if (currentOwner.current !== ownerPublicId) return;
+    clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(false); onOpenNeighbor?.();
+  };
   const openMailbox = () => {
     if (currentOwner.current !== ownerPublicId || mailbox?.ownerPublicId !== ownerPublicId) return;
     clearObject(); setPanel(null); setQuickMenu(null); setCharactersOpen(false);
@@ -631,7 +635,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       {open && quickSection && <SectionGuide key={`${ownerPublicId}:${quickSection}`} owner={ownerPublicId} section={quickSection} enabled={quickGuideEnabled && !pantryFishSaleOpen} targetRoot={quickFrame} />}
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
         {quickMenu === "expeditions" && economy.snapshot && <ConstructionGoalSummary state={economy.snapshot} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} compact />}
-        {quickMenu === "profile" && <WorldProfileMenu key={`${ownerPublicId}:${profileEntry.request}`} ownerPublicId={ownerPublicId} initialTab={profileEntry.tab} onOpenOnboarding={replayOnboarding} onboardingStatus={onboarding.progress?.status ?? null} friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onOpenHelp={() => openContextHelp(undefined, "mochlik-life")} onOpenExpeditions={() => openExpeditions()} world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
+        {quickMenu === "profile" && <WorldProfileMenu key={`${ownerPublicId}:${profileEntry.request}`} ownerPublicId={ownerPublicId} initialTab={profileEntry.tab} onOpenOnboarding={replayOnboarding} onboardingStatus={onboarding.progress?.status ?? null} friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onVisitNeighbor={onOpenNeighbor ? openNeighbor : undefined} neighbor={economy.neighbor?.ownerPublicId === ownerPublicId ? { name: economy.neighbor.character.name, equipment: economy.neighbor.character.world.equipment } : undefined} onOpenHelp={() => openContextHelp(undefined, "mochlik-life")} onOpenExpeditions={() => openExpeditions()} world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
           achievements={<GameAchievementsButton inWorld key={ownerPublicId} ownerPublicId={ownerPublicId} isOnline={isOnline !== false} onSessionLost={onSessionLost} onRewardsClaimed={() => { void economy.refresh(); }} />}
           rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onFishSaleOpenChange={onFishSaleOpenChange} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: openStation, explore: () => openQuick("expeditions") }} onReturnToGift={giftPantryOwner === ownerPublicId ? returnToGift : undefined} onExplore={() => openQuick("expeditions")} onOpenFishingShop={() => openResident("plesk")} />}
@@ -752,7 +756,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
           {panel === "orders" && <WorldOrderJournal tutorialOnly={mainCourseActive} key={`${ownerPublicId}:${orderEntry.request}`} economy={economy} residentId={orderEntry.residentId} introducedResidents={introducedResidents} onNavigateExpeditions={openExpeditions} onNavigateStation={openStation} />}
           {panel === "help" && <WorldHelp key={`${ownerPublicId}:${helpEntry.request}`} economy={economy} world={world} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} isOnline={isOnline} context={helpEntry.context} initialTopicId={helpEntry.topicId} onNavigate={navigateHelp} onReplayTutorial={replayOnboarding} />}
           {panel === "shop" && <CurrencyShopPanel key={`${ownerPublicId}:${shopPage}`} state={economy.snapshot} initialPage={shopPage} onRedeemed={economy.reconcile} />}
-          {panel === "economy" && <EconomyPanel key={`${economyTab}:${economyFocusId ?? ""}`} economy={economy} initialTab={economyTab} initialFocusId={economyFocusId} standalone onNavigate={openEconomy} />}
+          {panel === "economy" && <EconomyPanel key={`${economyTab}:${economyFocusId ?? ""}`} economy={economy} initialTab={economyTab} initialFocusId={economyFocusId} standalone onNavigate={openEconomy} onOpenNeighbor={openNeighbor} />}
           {WORLD_PRESENTATION.streakDecor && panel === "customize" && <div className={styles.panel}>
             <div className={styles.panelHeading}><span className={styles.eyebrow}>ДОМИК ПО ТВОЕМУ ВКУСУ</span><p>Выбирай, что оставить у дома. Подарки сохраняются, даже когда выключены.</p></div>
             {GAME_ITEMS.map(item => {

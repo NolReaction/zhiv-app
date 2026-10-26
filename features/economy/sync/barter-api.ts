@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { retryAfterMs, withRequestDeadline } from "@/lib/request-deadline";
 import { barterResultSchema, barterViewSchema, type BarterCommand } from "@/features/economy/domain/barter-model";
 
-async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, command?: BarterCommand, signal?: AbortSignal): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?: BarterCommand, signal?: AbortSignal): Promise<T> {
   return withRequestDeadline(10_000, signal, async requestSignal => {
     const presence = gamePresenceHeaders();
     const response = await fetch(path, {

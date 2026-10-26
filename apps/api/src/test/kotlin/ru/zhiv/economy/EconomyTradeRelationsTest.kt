@@ -190,7 +190,9 @@ class EconomyTradeRelationsTest {
         val threshold = state.copy(tradeRelations = EconomyTradeRelationsState(reputation = mapOf("plesk" to 149)))
         val crossed = apply(threshold, "buy_fishing_item", "bait", price = 20)
         assertEquals(20L, threshold.wallet.coins - crossed.wallet.coins)
-        assertEquals(150L, crossed.tradeRelations.reputation["plesk"])
+        assertEquals(149L, crossed.tradeRelations.reputation["plesk"], "Bait keeps its pre-purchase discount without granting XP")
+        val credited = apply(threshold, "buy_fishing_item", "fish", price = 120)
+        assertEquals(150L, credited.tradeRelations.reputation["plesk"], "A genuine non-refundable purchase can still cross a rank")
         failure("ECONOMY_FISHING_PRICE_CHANGED") { apply(threshold, "buy_fishing_item", "bait", price = 19) }
         assertEquals(149L, threshold.tradeRelations.reputation["plesk"])
         val spec = catalog.leaftailShop!!
@@ -198,6 +200,46 @@ class EconomyTradeRelationsTest {
         val supply = stock.first { it.kind == "item" && it.currency == "coins" }
         val leaf = apply(base, "buy_leaftail_item", EconomyLeaftailShops.targetId(spec, EconomyLeaftailShops.cycle(now, spec), supply.id), price = supply.unitPrice)
         assertEquals(supply.unitPrice, base.wallet.coins - leaf.wallet.coins)
+    }
+
+    @Test fun `bait round trips at both residents preserve coins but never grant purchase experience`() {
+        for (oldXp in listOf(0L, 4200L)) {
+            var state = stocked().copy(inventory = emptyMap(), tradeRelations = EconomyTradeRelationsState(
+                reputation = mapOf("plesk" to oldXp, "leaftail" to oldXp)))
+            val initialCoins = state.wallet.coins
+            repeat(3) { index ->
+                val at = now.plusSeconds(index * 86400L)
+                state = state.copy(fishingShop = EconomyFishingShop("bait-$index", at.toString(), at.plusSeconds(86400).toString(), 0,
+                    listOf(EconomyFishingOffer("bait-offer-$index", "bait", "crumb_bait", 1, 20))))
+                state = apply(state, "buy_fishing_item", "bait-offer-$index", at, price = 1)
+                state = apply(state, "sell", "crumb_bait", at)
+                val spec = catalog.leaftailShop!!
+                val cycle = EconomyLeaftailShops.cycle(at, spec)
+                val bait = EconomyLeaftailShops.offers(catalog, cycle, "ABCD-EFGH-JKMP", 5).first { it.kind == "bait" }
+                state = apply(state, "buy_leaftail_item", EconomyLeaftailShops.targetId(spec, cycle, bait.id), at, price = bait.unitPrice)
+                state = apply(state, "sell", bait.itemId, at)
+            }
+            assertEquals(initialCoins, state.wallet.coins)
+            assertEquals(mapOf("plesk" to oldXp, "leaftail" to oldXp), state.tradeRelations.reputation)
+            assertEquals(emptyMap(), state.tradeRelations.dailyPurchaseXp)
+        }
+    }
+
+    @Test fun `a refundable frozen fish quote grants no purchase experience`() {
+        val resale = catalog.items.first { it.id == "fish_common" }.baseSellPrice
+        var state = stocked().copy(inventory = emptyMap(), fishingShop = EconomyFishingShop("old-fish", now.toString(), now.plusSeconds(86400).toString(), 0,
+            listOf(EconomyFishingOffer("fish-offer", "fish", "fish_common", resale, 6))))
+        val coins = state.wallet.coins
+        state = apply(state, "buy_fishing_item", "fish-offer", price = resale)
+        state = apply(state, "sell_fish", "fish_common")
+        assertEquals(coins, state.wallet.coins)
+        assertEquals(0L, state.tradeRelations.reputation["plesk"] ?: 0L)
+        assertFalse(EconomyTradeRelations.purchaseXpEligible("bait", 100))
+        assertFalse(EconomyTradeRelations.purchaseXpEligible("item", 10, 10))
+        assertFalse(EconomyTradeRelations.purchaseXpEligible("item", 9, 10))
+        assertTrue(EconomyTradeRelations.purchaseXpEligible("item", 11, 10))
+        assertFalse(EconomyTradeRelations.purchaseXpEligible("rod", 0))
+        assertTrue(EconomyTradeRelations.purchaseXpEligible("rod", 1))
     }
 
     @Test fun `purchase daily caps and merges cannot reopen capped days or multiply reputation`() {

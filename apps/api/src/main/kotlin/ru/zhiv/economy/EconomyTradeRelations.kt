@@ -129,6 +129,10 @@ object EconomyTradeRelations {
             dailyOrderXp = if (weekly) saved.dailyOrderXp else saved.dailyOrderXp + (residentId to (used + amount))))
     }
 
+    /** Bait never awards XP; a refundable old quote cannot become free friendship. */
+    fun purchaseXpEligible(kind: String, paid: Long, resaleCoins: Long = 0): Boolean =
+        kind != "bait" && paid > 0 && paid > resaleCoins
+
     fun awardPurchase(state: EconomyState, residentId: String, paid: Long, now: Instant,
         catalog: EconomyCatalog = EconomyRules.catalog): EconomyState {
         val config = catalog.tradeRelations ?: return state

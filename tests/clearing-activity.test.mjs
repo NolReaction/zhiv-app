@@ -34,7 +34,13 @@ const onRoute = p => Math.abs(p.y - 210) < 1e-7 && p.x >= 185 - 1e-7 && p.x <= 2
 test("the authored clearing routes are safe, copied and start exactly at the feet", () => {
   const state = createClearingActivity(withPlacedBushArtwork(TILED_WORLD), 1);
   assert.ok(state.routes.length >= 3, "the shipped forest must have real local routes");
-  assert.ok(state.diagnostics.every(item => item.valid), JSON.stringify(state.diagnostics));
+  const localIds = new Set(TILED_WORLD.paths.filter(path => path.behavior === "clearing").map(path => path.id));
+  assert.ok(state.diagnostics.filter(item => localIds.has(item.id)).every(item => item.valid), JSON.stringify(state.diagnostics));
+  assert.ok(state.interactions.home, "the current doorway remains reachable through checked navigation");
+  for (const item of state.diagnostics.filter(item => !item.valid)) {
+    assert.equal(item.reason, "home-end-away-from-entry", "only the stale legacy doorway route is excluded");
+    assert.equal(state.homeRoute, null, "moving the authored doorway never reuses an obsolete path");
+  }
   assert.deepEqual(state.position, TILED_WORLD.actor.spawn);
   for (const item of state.routes) assert.deepEqual(item.points[0], TILED_WORLD.actor.spawn);
   const nearby = scene(); nearby.paths[0].points[0].x += .7;

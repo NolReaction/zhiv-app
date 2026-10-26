@@ -14,6 +14,7 @@ const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const relations = await vite.ssrLoadModule("/features/economy/domain/trade-relations.ts");
 const effort = await vite.ssrLoadModule("/features/economy/domain/order-effort.ts");
 const { fishingOfferUnitPrice } = await vite.ssrLoadModule("/features/economy/domain/fishing-shop.ts");
+const { leaftailShopView } = await vite.ssrLoadModule("/features/economy/domain/leaftail-shop.ts");
 const catalog = model.economyCatalog;
 const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/trade-relations-vectors.json", import.meta.url), "utf8"));
 const now = Date.parse("2026-10-23T12:00:00.000Z"), day = 86400000, week = 7 * day;
@@ -307,6 +308,46 @@ test("paid purchases grant limited XP only after a successful debit", () => {
   const offer = state.fishingShop.offers[0]; state.wallet.coins = 0;
   unchangedFailure(state, "buy_fishing_item", offer.id, "ECONOMY_RESOURCES", now, { totalPrice: offer.unitPrice });
   assert.equal(state.tradeRelations.reputation.plesk, 2);
+});
+
+test("buying and reselling bait at either resident cannot manufacture free reputation", () => {
+  for (const existingXp of [0, 4200]) {
+    const state = developed();
+    state.tradeRelations.reputation = { plesk: existingXp, leaftail: existingXp };
+    const initialCoins = state.wallet.coins;
+    for (let index = 0; index < 3; index++) {
+      const at = now + index * day;
+      state.fishingShop = { id: `bait-${index}`, openedAt: new Date(at).toISOString(), refreshAt: new Date(at + day).toISOString(), refreshPricePearls: 0,
+        offers: [{ id: `bait-offer-${index}`, kind: "bait", itemId: "crumb_bait", unitPrice: 1, remaining: 20 }] };
+      const offer = state.fishingShop.offers[0];
+      apply(state, "buy_fishing_item", offer.id, at, { totalPrice: fishingOfferUnitPrice(state, offer) });
+      apply(state, "sell", offer.itemId, at);
+      const leaf = leaftailShopView({ ...state, ownerPublicId: "0123-4567-89AB" }, at).offers.find(item => item.kind === "bait");
+      assert(leaf, "the actual personal daily supply must contain bait");
+      apply(state, "buy_leaftail_item", leaf.targetId, at, { totalPrice: leaf.unitPrice });
+      apply(state, "sell", leaf.itemId, at);
+    }
+    assert.equal(state.wallet.coins, initialCoins, "the former zero-loss cycle is really exercised");
+    assert.deepEqual(state.tradeRelations.reputation, { plesk: existingXp, leaftail: existingXp }, "already earned XP stays, the cycle adds none");
+    assert.deepEqual(state.tradeRelations.dailyPurchaseXp, {}, "bait does not consume the allowance for eligible purchases");
+  }
+});
+
+test("a frozen refundable fish quote grants no XP but a genuine expense still does", () => {
+  const state = developed(), resale = catalog.items.find(item => item.id === "fish_common").baseSellPrice;
+  const initial = state.wallet.coins;
+  state.fishingShop = { id: "old-fish", openedAt: new Date(now).toISOString(), refreshAt: new Date(now + day).toISOString(), refreshPricePearls: 0,
+    offers: [{ id: "refundable-fish", kind: "fish", itemId: "fish_common", unitPrice: resale, remaining: 6 }] };
+  apply(state, "buy_fishing_item", "refundable-fish", now, { totalPrice: resale });
+  apply(state, "sell_fish", "fish_common");
+  assert.equal(state.wallet.coins, initial);
+  assert.equal(state.tradeRelations.reputation.plesk ?? 0, 0);
+  assert.equal(relations.tradePurchaseXpEligible("bait", 100, 0), false);
+  assert.equal(relations.tradePurchaseXpEligible("item", 10, 10), false);
+  assert.equal(relations.tradePurchaseXpEligible("item", 9, 10), false);
+  assert.equal(relations.tradePurchaseXpEligible("item", 11, 10), true);
+  assert.equal(relations.tradePurchaseXpEligible("rod", 0), false);
+  assert.equal(relations.tradePurchaseXpEligible("rod", 1), true);
 });
 
 test("work estimates include raw inputs and upstream processing and flag random catches", () => {

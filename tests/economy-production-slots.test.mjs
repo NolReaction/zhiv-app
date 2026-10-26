@@ -43,17 +43,35 @@ test("old saves and snapshots default to one slot and expose only the five real 
   assert.equal(slots.productionSlotCount({ productionSlots: { workshop: 999 } }, "workshop"), 3);
 });
 
-test("both premium slot tiers are available at home one and persist independently per station", () => {
+test("second slot opens at home one and third requires the completed home three without spending on rejection", () => {
   const p = player(1); const before = read(p);
   const second = issue(p, "buy_production_slot", "workshop").state;
   assert.deepEqual(second.productionSlots, { workshop: 2 });
   assert.deepEqual(second.wallet, { coins: 100_000, pearls: 49_800 });
   assert.deepEqual(second.inventory, before.inventory);
+  for (const home of [1, 2]) {
+    p.row.state.buildings.home = home;
+    const locked = read(p);
+    assert.throws(() => issue(p, "buy_production_slot", "workshop"), { code: "ECONOMY_HOME_REQUIRED" });
+    assert.deepEqual(read(p), locked);
+  }
+  p.row.state.buildings.home = 3;
   const third = issue(p, "buy_production_slot", "workshop").state;
   assert.equal(third.productionSlots.workshop, 3); assert.equal(third.wallet.pearls, 49_300);
   assert.equal(slots.productionSlotCount(third, "kiln"), 1);
   assert.throws(() => issue(p, "buy_production_slot", "workshop"), { code: "ECONOMY_PRODUCTION_SLOTS_MAX" });
   assert.equal(slots.productionSlotOffer(third, "workshop"), null);
+});
+
+test("a previously purchased third slot remains usable below its new purchase gate", () => {
+  const p = player(1);
+  p.row.state.productionSlots = { workshop: 3 };
+  for (let index = 0; index < 3; index++) issue(p, "start_production", "make_planks");
+  const state = read(p);
+  assert.equal(state.productionSlots.workshop, 3);
+  assert.equal(state.jobs.length, 3);
+  assert.equal(state.wallet.pearls, 50_000);
+  assert.equal(slots.productionSlotOffer(state, "workshop"), null);
 });
 
 test("invalid stations, missing buildings, insufficient pearls and forged batch or price cannot buy capacity", () => {

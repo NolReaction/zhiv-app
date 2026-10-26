@@ -37,3 +37,7 @@
 .manage:hover { background: #38543c; }
 .refresh:focus-visible, .clear:focus-visible, .manage:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }
 @media (forced-colors: active) { .refresh, .clear, .manage, .person, .searchField, .empty { border-color: ButtonText; } .favorite { color: CanvasText; fill: Canvas; } }
+
+.neighbor { border-color: #91a77a; background: #e5eacb80; }
+.neighborAvatar { flex-basis: 46px; width: 46px; height: 46px; overflow: hidden; background: #d4dfbb; }
+.portrait { display: block; width: 46px; height: 46px; image-rendering: pixelated; }

@@ -10,7 +10,7 @@ const owner = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2
 
 export const gameProgressSchema = z.object({
   ownerPublicId: owner,
-  items: z.array(z.enum(["flower", "leaf_bed", "keepsakes", "leaf_garland"])).max(4).refine(items => new Set(items).size === items.length).default([]),
+  items: z.array(z.enum(["flower", "leaf_bed", "keepsakes", "leaf_garland"])).max(4).refine(items => new Set(items).size === items.length).prefault([]),
   lifetimeTaps: count,
   bestSeries: count,
   month,
@@ -20,7 +20,7 @@ export const gameProgressSchema = z.object({
   serverTime: z.string().datetime(),
 });
 export const gameSessionSchema = z.object({
-  sessionId: z.string().uuid(),
+  sessionId: z.guid(),
   nextSequence: count,
   expiresAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable().optional(),
@@ -28,7 +28,7 @@ export const gameSessionSchema = z.object({
   progress: gameProgressSchema,
 });
 const gameBatchSchema = z.object({
-  sessionId: z.string().uuid(),
+  sessionId: z.guid(),
   sequence: count,
   acceptedTaps: count,
   runTaps: count,
@@ -40,8 +40,8 @@ const gameBatchSchema = z.object({
 const gameLeaderboardSchema = z.object({
   ownerPublicId: owner,
   scope: z.enum(["global", "friends"]),
-  metric: z.enum(["monthly_taps", "best_series"]).default("monthly_taps"),
-  bestSeries: count.default(0),
+  metric: z.enum(["monthly_taps", "best_series"]).prefault("monthly_taps"),
+  bestSeries: count.prefault(0),
   month,
   serverTime: z.string().datetime(),
   entries: z.array(z.object({
@@ -103,7 +103,7 @@ export type GameVisibilityRequest = { leaderboardOptIn: boolean; expectedVersion
 
 async function gameRequest<T>(
   path: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T, unknown>,
   method: "GET" | "POST" | "PATCH",
   body: unknown,
   externalSignal?: AbortSignal,

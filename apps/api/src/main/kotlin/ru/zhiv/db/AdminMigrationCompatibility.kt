@@ -12,7 +12,7 @@ private const val grantScript = "V51__admin_economy_grants.sql"
 private const val promoScript = "V52__managed_promo_codes.sql"
 private const val notificationScript = "V50__actionable_notification_sources.sql"
 private const val baselineScript = "B49__current_schema.sql"
-private val canonicalTailScripts = mapOf(
+internal val canonicalTailScripts = mapOf(
     50 to notificationScript,
     51 to grantScript,
     52 to promoScript,
@@ -34,7 +34,11 @@ private val canonicalTailScripts = mapOf(
     68 to "V68__gameplay_generations.sql",
     69 to "V69__onboarding_account_progress.sql",
     70 to "V70__current_activity_achievements.sql",
-    71 to "V71__economy_reward_promises.sql",
+    71 to "V71__world_neighbor.sql",
+    72 to "V72__neighbor_admin_configuration.sql",
+    73 to "V73__economy_reward_promises.sql",
+    74 to "V74__new_player_reward_course.sql",
+    75 to "V75__neighbor_v14_stock.sql",
 )
 
 private data class AdminMigrationHistoryRow(
@@ -44,7 +48,7 @@ private data class AdminMigrationHistoryRow(
 /** Flyway's SQL checksum excludes line separators and the leading UTF-8 BOM.
  * Check both the packaged bytes and the recorded checksum; never repair an
  * unknown script, failed installation or unrelated future schema. */
-private fun migrationChecksum(script: String): Int {
+internal fun migrationChecksum(script: String): Int {
     val stream = checkNotNull(DatabaseFactory::class.java.getResourceAsStream("/db/migration/$script")
         ?: DatabaseFactory::class.java.getResourceAsStream("/db/migration/history/$script")) {
         "Unknown migration script in admin compatibility history"
@@ -169,6 +173,13 @@ internal fun normalizeLegacyAdminMigrationHistory(source: DataSource): Boolean =
 /** No runtime API calls this function. Out-of-order execution is enabled only
  * after exact legacy/resume history and schema checks, never for normal DBs. */
 internal fun migrateWithLegacyAdminHistory(source: DataSource) {
+    if (normalizeLegacyRewardPromiseHistory(source)) {
+        // Only the exact reward-branch history can omit the colliding neighbor
+        // V71/V72. This is separate from the older admin V50/V51 compatibility.
+        Flyway.configure().dataSource(source).locations("classpath:db/migration")
+            .cleanDisabled(true).outOfOrder(true).load().migrate()
+        return
+    }
     if (!normalizeLegacyAdminMigrationHistory(source)) {
         DatabaseFactory.migrate(source)
         return

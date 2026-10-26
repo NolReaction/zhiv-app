@@ -10,7 +10,7 @@ const buildingIds = new Set(economyCatalog.buildings.map(building => building.id
 /** Only visible scenery and work clocks cross the friendship boundary. */
 export const guestWorldSchema = z.object({
   ownerPublicId: publicId,
-  circleId: z.string().uuid(),
+  circleId: z.guid(),
   user: z.object({ publicId, displayName: z.string().min(1).max(100) }).strict(),
   serverTime: clock,
   world: z.object({
@@ -19,7 +19,7 @@ export const guestWorldSchema = z.object({
     gifts: z.array(itemId).max(100),
     hiddenGifts: z.array(z.enum(["flower", "leaf_bed", "keepsakes", "leaf_garland"])).max(4),
     jobs: z.array(z.object({
-      id: z.string().uuid(),
+      id: z.guid(),
       kind: z.enum(["construction", "production", "exploration"]),
       targetId: itemId,
       recipeId: itemId.nullable(),

@@ -51,11 +51,11 @@ const profileStateSchema = z.object({
   displayNameChangeAvailableAt: z.string().datetime().nullable(),
 });
 
-const userStatusSchema = z.object({ text: z.string().max(240), updatedAt: z.string().datetime(), expiresAt: z.string().datetime().nullable().default(null) });
+const userStatusSchema = z.object({ text: z.string().max(240), updatedAt: z.string().datetime(), expiresAt: z.string().datetime().nullable().prefault(null) });
 
 const meSchema: z.ZodType<MeResponse> = z.object({
-  gameplayGeneration: z.number().int().nonnegative().safe().default(0),
-  status: userStatusSchema.nullable().default(null),
+  gameplayGeneration: z.number().int().nonnegative().safe().prefault(0),
+  status: userStatusSchema.nullable().prefault(null),
   user: userSchema,
   lastCheckInAt: z.string().datetime().nullable(),
   checkInCount: z.number().int().nonnegative().safe(),
@@ -65,7 +65,7 @@ const meSchema: z.ZodType<MeResponse> = z.object({
 });
 
 const checkInSchema: z.ZodType<CheckInResponse> = z.object({
-  eventId: z.string().uuid(),
+  eventId: z.guid(),
   checkedAt: z.string().datetime(),
   checkInCount: z.number().int().nonnegative().safe(),
   streak: dailyStreakSchema,
@@ -91,17 +91,17 @@ const displayNameCooldownSchema: z.ZodType<DisplayNameCooldownResponse> = z.obje
 
 const sharingModeSchema = z.enum(["OFF", "LATEST_ONLY"]);
 const directRequestSchema = z.object({
-  requestId: z.string().uuid(),
+  requestId: z.guid(),
   direction: z.enum(["INCOMING", "OUTGOING"]),
   user: userSchema,
   createdAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
 });
 const personSchema = z.object({
-  nickname: z.string().nullable().default(null),
-  isFavorite: z.boolean().default(false),
-  status: userStatusSchema.nullable().default(null),
-  circleId: z.string().uuid(),
+  nickname: z.string().nullable().prefault(null),
+  isFavorite: z.boolean().prefault(false),
+  status: userStatusSchema.nullable().prefault(null),
+  circleId: z.guid(),
   user: userSchema,
   connectedAt: z.string().datetime(),
   mySharingMode: sharingModeSchema,
@@ -138,14 +138,14 @@ const directRequestResponseSchema: z.ZodType<DirectRequestResponse> = z.object({
   serverTime: z.string().datetime(),
 });
 const directRequestActionSchema: z.ZodType<DirectRequestActionResponse> = z.object({
-  requestId: z.string().uuid(),
+  requestId: z.guid(),
   status: z.enum(["ACCEPTED", "REJECTED", "CANCELLED"]),
   person: personSchema.nullable(),
   replayed: z.boolean(),
   serverTime: z.string().datetime(),
 });
 const sharingResponseSchema: z.ZodType<SharingResponse> = z.object({
-  circleId: z.string().uuid(),
+  circleId: z.guid(),
   sharingMode: sharingModeSchema,
   serverTime: z.string().datetime(),
 });
@@ -158,9 +158,9 @@ const groupEmojiSchema = z.string().refine(
   "Group emoji is too long",
 ).nullable();
 const groupInviteSchema = z.object({
-  inviteId: z.string().uuid(),
+  inviteId: z.guid(),
   direction: z.enum(["INCOMING", "OUTGOING"]),
-  groupId: z.string().uuid(),
+  groupId: z.guid(),
   groupTitle: groupTitleSchema,
   groupEmoji: groupEmojiSchema,
   user: userSchema,
@@ -168,8 +168,8 @@ const groupInviteSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 const groupMemberSchema = z.object({
-  status: userStatusSchema.nullable().default(null),
-  membershipId: z.string().uuid(),
+  status: userStatusSchema.nullable().prefault(null),
+  membershipId: z.guid(),
   user: userSchema,
   role: z.enum(["OWNER", "ADMIN", "MEMBER"]),
   sharingMode: sharingModeSchema,
@@ -178,8 +178,8 @@ const groupMemberSchema = z.object({
   isMe: z.boolean(),
 });
 const groupSchema = z.object({
-  sharingMixed: z.boolean().default(false),
-  groupId: z.string().uuid(),
+  sharingMixed: z.boolean().prefault(false),
+  groupId: z.guid(),
   title: groupTitleSchema,
   emoji: groupEmojiSchema,
   myRole: z.enum(["OWNER", "ADMIN", "MEMBER"]),
@@ -195,13 +195,13 @@ const groupsSchema: z.ZodType<GroupsResponse> = z.object({
   serverTime: z.string().datetime(),
 });
 const groupMutationSchema: z.ZodType<GroupMutationResponse> = z.object({
-  groupId: z.string().uuid(),
+  groupId: z.guid(),
   replayed: z.boolean(),
   serverTime: z.string().datetime(),
 });
 
 const directInviteLinkSchema: z.ZodType<DirectInviteLink> = z.object({
-  inviteId: z.string().uuid(),
+  inviteId: z.guid(),
   expiresAt: z.string().datetime(),
   replayed: z.boolean(),
   serverTime: z.string().datetime(),
@@ -219,7 +219,7 @@ const directInviteRedeemSchema: z.ZodType<DirectInviteRedeemResponse> = z.object
 const errorSchema: z.ZodType<ApiErrorResponse> = z.object({
   code: z.string(),
   message: z.string(),
-  requestId: z.string().uuid().nullish(),
+  requestId: z.guid().nullish(),
 });
 
 export class ApiError extends Error {
@@ -606,14 +606,14 @@ export function redeemRecoveryCode(code: string, retrySecret: string): Promise<M
 
 export function updatePersonFavorite(circleId: string, isFavorite: boolean, idempotencyKey: string): Promise<FavoriteResponse> {
   return request<FavoriteResponse>(`/api/v1/people/${encodeURIComponent(circleId)}/favorite`,
-    z.object({ circleId: z.string().uuid(), isFavorite: z.boolean(), serverTime: z.string().datetime() }), {
+    z.object({ circleId: z.guid(), isFavorite: z.boolean(), serverTime: z.string().datetime() }), {
       method: "PATCH", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ isFavorite }),
     });
 }
 
 export function updatePersonNickname(circleId: string, nickname: string, idempotencyKey: string): Promise<NicknameResponse> {
   return request<NicknameResponse>(`/api/v1/people/${encodeURIComponent(circleId)}/nickname`,
-    z.object({ circleId: z.string().uuid(), nickname: z.string().nullable(), serverTime: z.string().datetime() }), {
+    z.object({ circleId: z.guid(), nickname: z.string().nullable(), serverTime: z.string().datetime() }), {
       method: "PATCH", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ nickname }),
     });
 }

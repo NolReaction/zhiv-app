@@ -9,7 +9,7 @@ const count = z.number().int().nonnegative().safe();
 const balance = count.max(ECONOMY_MAX_BALANCE);
 const id = z.string().min(1).max(80);
 const quantities = z.record(id, count.max(ECONOMY_MAX_ITEMS));
-const requiredBuildings = z.record(id, count.positive().max(100)).default({});
+const requiredBuildings = z.record(id, count.positive().max(100)).prefault({});
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 export const economyCostSchema = z.object({ coins: balance, items: quantities });
 export const economyCollectionSpecSchema = z.object({ kind: z.literal("berry_harvest"), seconds: count.positive().max(120) });
@@ -21,19 +21,19 @@ export const economyCollectionSchema = economyCollectionSpecSchema.extend({
   .refine(value => !value.startedAt || !value.finishesAt || Date.parse(value.finishesAt) >= Date.parse(value.startedAt) + value.seconds * 1000,
     "Collection cannot finish before its required duration");
 export const economyFishingSchema = z.object({
-  ownedRods: z.array(id).max(100).default(["reed_rod"]), equippedRodId: id.default("reed_rod"),
-  ownedHooks: z.array(id).max(100).default(["bare_hook"]), equippedHookId: id.default("bare_hook"),
-  equippedBaitId: id.nullable().default(null), catches: quantities.default({}), stock: quantities.nullish(),
+  ownedRods: z.array(id).max(100).prefault(["reed_rod"]), equippedRodId: id.prefault("reed_rod"),
+  ownedHooks: z.array(id).max(100).prefault(["bare_hook"]), equippedHookId: id.prefault("bare_hook"),
+  equippedBaitId: id.nullable().prefault(null), catches: quantities.prefault({}), stock: quantities.nullish(),
   escrow: z.record(uuid, quantities).nullish(),
-}).default({ ownedRods: ["reed_rod"], equippedRodId: "reed_rod", ownedHooks: ["bare_hook"], equippedHookId: "bare_hook", equippedBaitId: null, catches: {} });
+}).prefault({ ownedRods: ["reed_rod"], equippedRodId: "reed_rod", ownedHooks: ["bare_hook"], equippedHookId: "bare_hook", equippedBaitId: null, catches: {} });
 export const economyFishingShopSchema = z.object({
   id: uuid, openedAt: z.string().datetime(), refreshAt: z.string().datetime(), refreshPricePearls: balance,
   offers: z.array(z.object({ id, kind: z.enum(["rod", "hook", "bait", "fish"]), itemId: id, unitPrice: balance.positive(), remaining: count.max(100) })).max(4),
 });
 export type EconomyFishingShop = z.infer<typeof economyFishingShopSchema>;
 export const economyLeaftailShopSchema = z.object({
-  cycle: z.number().int().min(-1).safe().default(-1), purchased: z.record(id, count.max(100)).default({}),
-}).default({ cycle: -1, purchased: {} });
+  cycle: z.number().int().min(-1).safe().prefault(-1), purchased: z.record(id, count.max(100)).prefault({}),
+}).prefault({ cycle: -1, purchased: {} });
 export type EconomyLeaftailShop = z.infer<typeof economyLeaftailShopSchema>;
 const rarityWeights = z.object({ common: count.positive().max(1000), uncommon: count.positive().max(1000),
   rare: count.positive().max(1000), epic: count.positive().max(1000), legendary: count.positive().max(1000) });
@@ -52,39 +52,39 @@ const fishingRodClassOdds = z.object({ common: count.max(10000), uncommon: count
   epic: count.max(10000), legendary: count.max(10000) }).strict()
   .refine(value => Object.values(value).reduce((sum, weight) => sum + weight, 0) === 10000, "Rod class odds must sum to 10000");
 export const economyFishingCatalogSchema = z.object({
-  shop: z.object({ refreshSeconds: count.positive().max(86400), refreshPricePearls: balance.positive(), refreshPriceStepPearls: balance.positive().default(2), slots: z.literal(4), baitStock: count.positive().max(100),
-    fishStock: count.positive().max(100).default(3), fishPriceBps: count.positive().max(9999).default(8000),
-    gearRarityBpsByHome: z.array(shopRarityOdds).length(5).default(defaultGearShopOdds) })
+  shop: z.object({ refreshSeconds: count.positive().max(86400), refreshPricePearls: balance.positive(), refreshPriceStepPearls: balance.positive().prefault(2), slots: z.literal(4), baitStock: count.positive().max(100),
+    fishStock: count.positive().max(100).prefault(3), fishPriceBps: count.positive().max(9999).prefault(8000),
+    gearRarityBpsByHome: z.array(shopRarityOdds).length(5).prefault(defaultGearShopOdds) })
     .refine(value => value.refreshPriceStepPearls <= value.refreshPricePearls)
-    .default({ refreshSeconds: 21600, refreshPricePearls: 100, refreshPriceStepPearls: 2, slots: 4, baitStock: 5, fishStock: 3, fishPriceBps: 8000, gearRarityBpsByHome: defaultGearShopOdds }),
+    .prefault({ refreshSeconds: 21600, refreshPricePearls: 100, refreshPriceStepPearls: 2, slots: 4, baitStock: 5, fishStock: 3, fishPriceBps: 8000, gearRarityBpsByHome: defaultGearShopOdds }),
   routeIds: z.array(id).min(1).max(100),
-  collectionDrawsByRoute: z.record(id, count.positive().max(100)).default({}),
+  collectionDrawsByRoute: z.record(id, count.positive().max(100)).prefault({}),
   classes: z.array(z.object({ rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]), itemId: id,
     weight: count.positive().max(10000), buyPrice: balance.positive() })).length(5)
     .refine(classes => new Set(classes.map(item => item.rarity)).size === 5 && new Set(classes.map(item => item.itemId)).size === 5, "Fish classes must cover five unique rarities and items"),
   fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
     weight: count.positive().max(10000).nullish(), affinity: count.max(10).nullish(), buyPrice: balance.positive(), requiredHookId: id.nullish() })).min(1).max(100),
   rods: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
-    classOddsBps: fishingRodClassOdds.nullish(), speciesWeights, shop: z.enum(["plesk", "leaftail"]).default("plesk"),
-    rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100),
-  hooks: z.array(z.object({ id, name: z.string(), description: z.string(), shop: z.enum(["plesk", "leaftail"]).default("plesk"), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(), speciesWeights,
-    rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100)
-    .default([{ id: "bare_hook", name: "Простой крючок", description: "Начальная снасть без дополнительных усилений.", price: 0, rareBonus: 0, rarity: "common", requiredHomeLevel: 1, shop: "plesk" }]),
-  baits: z.array(z.object({ itemId: id, description: z.string(), shop: z.enum(["plesk", "leaftail"]).default("plesk"), price: balance.positive(), rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
-    rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).max(100),
+    classOddsBps: fishingRodClassOdds.nullish(), speciesWeights, shop: z.enum(["plesk", "leaftail"]).prefault("plesk"),
+    rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).prefault("common"), requiredHomeLevel: count.positive().max(5).prefault(1) })).min(1).max(100),
+  hooks: z.array(z.object({ id, name: z.string(), description: z.string(), shop: z.enum(["plesk", "leaftail"]).prefault("plesk"), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(), speciesWeights,
+    rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).prefault("common"), requiredHomeLevel: count.positive().max(5).prefault(1) })).min(1).max(100)
+    .prefault([{ id: "bare_hook", name: "Простой крючок", description: "Начальная снасть без дополнительных усилений.", price: 0, rareBonus: 0, rarity: "common", requiredHomeLevel: 1, shop: "plesk" }]),
+  baits: z.array(z.object({ itemId: id, description: z.string(), shop: z.enum(["plesk", "leaftail"]).prefault("plesk"), price: balance.positive(), rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
+    rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).prefault("common"), requiredHomeLevel: count.positive().max(5).prefault(1) })).max(100),
 });
 export const economyRareDropsSchema = z.object({ version: z.literal(1), requiredHomeLevel: count.positive().max(5),
   minSeconds: count.positive().max(31_536_000), maxSeconds: count.positive().max(31_536_000), itemIds: z.array(id).length(3),
 }).refine(value => value.maxSeconds >= value.minSeconds && new Set(value.itemIds).size === value.itemIds.length);
 export const economyRareDropDeliverySchema = z.object({ version: z.literal(1), seconds: count.positive(), itemId: id.nullable() });
 export type EconomyRareDropClock = { version: 1; remainingSeconds: number; itemId: string };
-export const economyFoodSchema = z.object({ heroMeal: id.nullable().default(null), builderMeal: id.nullable().default(null),
+export const economyFoodSchema = z.object({ heroMeal: id.nullable().prefault(null), builderMeal: id.nullable().prefault(null),
   heroMealEffect: z.object({ remainingWorkSeconds: count.positive().max(31_536_000), totalWorkSeconds: count.positive().max(31_536_000),
     speedBps: count.max(10000) }).refine(effect => effect.remainingWorkSeconds <= effect.totalWorkSeconds).nullish(),
   builderMealSpeedBps: count.max(10000).nullish(),
 }).refine(food => !food.heroMealEffect || food.heroMeal !== null, "Hero work requires a pending meal")
   .refine(food => food.builderMealSpeedBps == null || food.builderMeal !== null, "Builder speed requires a pending meal")
-  .default({ heroMeal: null, builderMeal: null });
+  .prefault({ heroMeal: null, builderMeal: null });
 export const economyTradeResidentIdSchema = z.enum(["plesk", "builder", "lopukh", "kamneshmyg", "leaftail"]);
 export type TradeResidentId = z.infer<typeof economyTradeResidentIdSchema>;
 const orderEffortFields = { reputationXp: count.max(10000).optional(), effortSeconds: count.max(31_536_000).optional(),
@@ -103,13 +103,13 @@ export const economyWeeklyOrderSchema = z.object({
 }).refine(weekly => Date.parse(weekly.expiresAt) > Date.parse(weekly.acceptedAt)
   && weekly.stages.every(stage => stage.residentId === weekly.residentId), "Weekly terms require one resident and a positive interval");
 export const economyTradeRelationsSchema = z.object({
-  version: z.literal(1).default(1), reputation: z.record(economyTradeResidentIdSchema, count.max(1_000_000)).default({}),
-  dailyCycle: z.number().int().min(-1).safe().default(-1),
-  dailyOrderXp: z.record(economyTradeResidentIdSchema, count.max(10000)).default({}),
-  dailyPurchaseXp: z.record(economyTradeResidentIdSchema, count.max(10000)).default({}),
-  weekly: economyWeeklyOrderSchema.nullable().default(null), weeklyAvailableAt: z.string().datetime().nullable().default(null),
-  completedWeekly: count.default(0),
-}).default({ version: 1, reputation: {}, dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null, weeklyAvailableAt: null, completedWeekly: 0 });
+  version: z.literal(1).prefault(1), reputation: z.partialRecord(economyTradeResidentIdSchema, count.max(1_000_000)).prefault({}),
+  dailyCycle: z.number().int().min(-1).safe().prefault(-1),
+  dailyOrderXp: z.partialRecord(economyTradeResidentIdSchema, count.max(10000)).prefault({}),
+  dailyPurchaseXp: z.partialRecord(economyTradeResidentIdSchema, count.max(10000)).prefault({}),
+  weekly: economyWeeklyOrderSchema.nullable().prefault(null), weeklyAvailableAt: z.string().datetime().nullable().prefault(null),
+  completedWeekly: count.prefault(0),
+}).prefault({ version: 1, reputation: {}, dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null, weeklyAvailableAt: null, completedWeekly: 0 });
 const economyWeeklyOrderStageSchema = z.object({ id, name: z.string().min(1), description: z.string().min(1).max(280),
   items: z.record(id, count.positive().max(100)).refine(items => Object.keys(items).length > 0), coins: balance.positive(),
   pearls: count.max(ECONOMY_MAX_PEARLS).optional(), reputationXp: count.positive().max(10000), effortSeconds: count.positive().max(31_536_000),
@@ -127,38 +127,38 @@ export const economyTradeRelationsCatalogSchema = z.object({
   })).min(5).max(100) }),
 });
 export const economyTutorialOrderSchema = z.object({
-  rewardVersion: z.union([z.literal(5), z.literal(6)]).optional(),
-  version: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1), step: count.max(4).default(0),
-  ingredientsClaimed: z.boolean().default(false), completed: z.boolean().default(false),
-  firstHarvestPrepared: z.boolean().default(false),
-  terms: economyResidentOrderTermsSchema.nullable().default(null),
-}).default({ version: 1, step: 0, ingredientsClaimed: false, completed: false, firstHarvestPrepared: false, terms: null });
+  rewardVersion: z.union([z.literal(5), z.literal(6), z.literal(7)]).optional(),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]).prefault(1), step: count.max(4).prefault(0),
+  ingredientsClaimed: z.boolean().prefault(false), completed: z.boolean().prefault(false),
+  firstHarvestPrepared: z.boolean().prefault(false),
+  terms: economyResidentOrderTermsSchema.nullable().prefault(null),
+}).prefault({ version: 1, step: 0, ingredientsClaimed: false, completed: false, firstHarvestPrepared: false, terms: null });
 export type EconomyTutorialOrder = z.infer<typeof economyTutorialOrderSchema>;
 export const economyStageOrderProgressSchema = z.object({
-  step: count.max(100).default(0), completed: z.boolean().default(false),
-  terms: economyResidentOrderTermsSchema.nullable().default(null),
-  availableAt: z.string().datetime().nullable().default(null), intervalSeconds: count.max(31_536_000).nullable().default(null),
-  completionRewards: quantities.nullable().default(null),
+  step: count.max(100).prefault(0), completed: z.boolean().prefault(false),
+  terms: economyResidentOrderTermsSchema.nullable().prefault(null),
+  availableAt: z.string().datetime().nullable().prefault(null), intervalSeconds: count.max(31_536_000).nullable().prefault(null),
+  completionRewards: quantities.nullable().prefault(null),
 });
 export const economyStageOrdersSchema = z.object({
-  version: z.literal(1).default(1), stages: z.record(z.string().regex(/^[1234]$/), economyStageOrderProgressSchema).default({}),
-}).default({ version: 1, stages: {} });
+  version: z.literal(1).prefault(1), stages: z.record(z.string().regex(/^[1234]$/), economyStageOrderProgressSchema).prefault({}),
+}).prefault({ version: 1, stages: {} });
 export type EconomyStageOrders = z.infer<typeof economyStageOrdersSchema>;
 export type EconomyStageOrderProgress = z.infer<typeof economyStageOrderProgressSchema>;
 export const economyResidentOrdersSchema = z.object({
-  version: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
-  cycle: z.number().int().min(-1).safe().default(-1),
-  slots: z.array(z.object({ sequence: count, readyAt: z.string().datetime(), templateId: id.nullable().default(null), terms: economyResidentOrderTermsSchema.nullish(), residentId: economyTradeResidentIdSchema.nullish(), retired: z.boolean().optional() })).max(7).default([]),
-  completed: count.default(0), earnedCoins: count.default(0),
-  recentTemplateIds: z.array(id).max(100).default([]),
-  replacementCycle: z.number().int().min(-1).safe().default(-1), freeReplacementsUsed: count.max(100).default(0),
-}).default({ version: 1, cycle: -1, slots: [], completed: 0, earnedCoins: 0, recentTemplateIds: [], replacementCycle: -1, freeReplacementsUsed: 0 });
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]).prefault(1),
+  cycle: z.number().int().min(-1).safe().prefault(-1),
+  slots: z.array(z.object({ sequence: count, readyAt: z.string().datetime(), templateId: id.nullable().prefault(null), terms: economyResidentOrderTermsSchema.nullish(), residentId: economyTradeResidentIdSchema.nullish(), retired: z.boolean().optional() })).max(7).prefault([]),
+  completed: count.prefault(0), earnedCoins: count.prefault(0),
+  recentTemplateIds: z.array(id).max(100).prefault([]),
+  replacementCycle: z.number().int().min(-1).safe().prefault(-1), freeReplacementsUsed: count.max(100).prefault(0),
+}).prefault({ version: 1, cycle: -1, slots: [], completed: 0, earnedCoins: 0, recentTemplateIds: [], replacementCycle: -1, freeReplacementsUsed: 0 });
 export const economyFoodCatalogSchema = z.object({
   meals: z.array(z.object({ itemId: id, heroSpeedBps: count.max(10000), builderSpeedBps: count.max(10000), heroWorkSeconds: count.positive().max(31_536_000).nullish() })).min(1).max(100),
   orders: z.object({ slots: z.union([z.literal(3), z.literal(5)]), refreshSeconds: count.min(3600).max(86400),
     replacementSeconds: count.max(86400), completionSeconds: count.max(86400),
-    freeReplacements: count.max(100).default(3), replacementWindowSeconds: count.min(3600).max(86400).default(43200),
-    replacementPricePearls: count.positive().max(ECONOMY_MAX_BALANCE).default(10), recentLimit: count.max(100).default(6),
+    freeReplacements: count.max(100).prefault(3), replacementWindowSeconds: count.min(3600).max(86400).prefault(43200),
+    replacementPricePearls: count.positive().max(ECONOMY_MAX_BALANCE).prefault(10), recentLimit: count.max(100).prefault(6),
     progression: z.object({
       rawBpsByHome: z.array(count.min(10000).max(100000)).length(5),
       fishBpsByHome: z.array(count.min(10000).max(20000)).length(5),
@@ -171,19 +171,19 @@ export const economyFoodCatalogSchema = z.object({
     })).min(1).max(1000),
   }).refine(orders => orders.replacementSeconds <= orders.refreshSeconds && orders.completionSeconds <= orders.refreshSeconds),
 });
-const economyLeaftailOfferSchema = z.object({ id: id.max(60), itemId: id, priceCoins: balance.positive(), stock: z.literal(1), quantity: count.min(1).max(100).default(1),
-  kind: z.enum(["item", "wardrobe", "rod", "hook", "bait"]).default("item"), requiredHomeLevel: count.min(1).max(5).default(1) });
+const economyLeaftailOfferSchema = z.object({ id: id.max(60), itemId: id, priceCoins: balance.positive(), stock: z.literal(1), quantity: count.min(1).max(100).prefault(1),
+  kind: z.enum(["item", "wardrobe", "rod", "hook", "bait"]).prefault("item"), requiredHomeLevel: count.min(1).max(5).prefault(1) });
 const economyLeaftailSupplySchema = z.object({ id: id.max(60), itemId: id, unitPriceCoins: balance.positive(),
-  stock: count.positive().max(100), requiredHomeLevel: count.min(1).max(5).default(1) });
+  stock: count.positive().max(100), requiredHomeLevel: count.min(1).max(5).prefault(1) });
 const economyLeaftailPearlSchema = z.object({ id: id.max(60), itemId: id, pricePearls: count.positive().max(ECONOMY_MAX_BALANCE),
-  stock: z.literal(1).default(1), requiredHomeLevel: count.min(1).max(5).default(1) });
+  stock: z.literal(1).prefault(1), requiredHomeLevel: count.min(1).max(5).prefault(1) });
 export const economyCatalogSchema = z.object({
   timeEconomy: z.object({
     version: z.literal(1), coinsPerMinute: count.positive().max(1_000_000), constructionCoinsPerMinute: count.positive().max(1_000_000), orderBonusBps: count.max(10_000),
     baselineRecipes: z.record(id, id), baselineExplorations: z.record(id, id), externalPrices: z.record(id, balance),
   }).optional(),
   stageOrders: z.array(z.object({ homeLevel: count.min(1).max(4), orders: z.array(economyResidentOrderTermsSchema).min(1).max(100),
-    intervalSeconds: count.max(31_536_000).default(0), completionRewards: quantities.default({}) }))
+    intervalSeconds: count.max(31_536_000).prefault(0), completionRewards: quantities.prefault({}) }))
     .max(4).refine(stages => new Set(stages.map(stage => stage.homeLevel)).size === stages.length, "Stage courses require distinct home levels").optional(),
   onboarding: z.object({
     startingWallet: z.object({ coins: balance, pearls: count.max(ECONOMY_MAX_PEARLS) }),
@@ -193,10 +193,10 @@ export const economyCatalogSchema = z.object({
   }).optional(),
   productionSlots: z.object({ upgrades: z.array(z.object({
     slots: z.number().int().min(2).max(3), requiredHomeLevel: z.number().int().min(1).max(5), pricePearls: count.positive().max(ECONOMY_MAX_PEARLS),
-  })).max(2).refine(upgrades => upgrades.every((upgrade, index) => upgrade.slots === index + 2)) }).default({ upgrades: [] }),
+  })).max(2).refine(upgrades => upgrades.every((upgrade, index) => upgrade.slots === index + 2)) }).prefault({ upgrades: [] }),
   leaftailShop: z.object({ requiredHomeLevel: count.min(1).max(5), refreshSeconds: z.literal(86400),
     offers: z.array(economyLeaftailOfferSchema).min(1).max(12),
-    travelOffers: z.array(economyLeaftailOfferSchema).max(32).default([]),
+    travelOffers: z.array(economyLeaftailOfferSchema).max(32).prefault([]),
     supplyOffers: z.array(economyLeaftailSupplySchema).max(32).optional(),
     pearlOffers: z.array(economyLeaftailPearlSchema).max(12).optional(),
   }).optional(),
@@ -206,17 +206,17 @@ export const economyCatalogSchema = z.object({
   tradeRelations: economyTradeRelationsCatalogSchema.optional(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000), unitPrices: z.record(id, balance.positive()).optional() }).optional(),
   version: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14)]), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
-  constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2),
-    pricingPoints: z.array(z.object({ seconds: count.positive(), pearls: count.positive().max(ECONOMY_MAX_PEARLS) })).max(32).default([])
+  constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).prefault(2),
+    pricingPoints: z.array(z.object({ seconds: count.positive(), pearls: count.positive().max(ECONOMY_MAX_PEARLS) })).max(32).prefault([])
       .refine(points => points.length === 0 || points.length >= 2, "A pricing curve requires at least two points")
       .refine(points => points.every((point, index) => index === 0 || point.seconds > points[index - 1].seconds && point.pearls >= points[index - 1].pearls),
         "Pricing points must have increasing times and nondecreasing prices"),
   }).refine(config => config.pricingPoints.every(point => point.pearls % config.priceStepPearls === 0), "Pricing points require whole price quanta"),
   market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, requiredBuildings,
-    maxListings: z.literal(10), baseSlots: z.literal(5).default(5),
-    slotPricesPearls: z.array(count.positive().max(ECONOMY_MAX_PEARLS)).length(5).default([100, 160, 240, 360, 500]),
-    maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000), dailyTradeValueByHome: z.array(balance).length(5).default([0, 2400, 4800, 9600, 14400]),
-    showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(300) }),
+    maxListings: z.literal(10), baseSlots: z.literal(5).prefault(5),
+    slotPricesPearls: z.array(count.positive().max(ECONOMY_MAX_PEARLS)).length(5).prefault([100, 160, 240, 360, 500]),
+    maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000), dailyTradeValueByHome: z.array(balance).length(5).prefault([0, 2400, 4800, 9600, 14400]),
+    showcaseSlots: count.positive().max(12).prefault(12), showcasePerSeller: count.positive().max(10).prefault(2), showcaseRefreshSeconds: count.positive().max(86400).prefault(300) }),
   items: z.array(z.object({ id, name: z.string(), category: z.string(), baseSellPrice: balance, tradable: z.boolean() })
     .refine(item => item.category === "special" ? item.baseSellPrice === 0 && !item.tradable : item.baseSellPrice > 0)).max(1000),
   buildings: z.array(z.object({ id, name: z.string(), description: z.string(), levels: z.array(z.object({
@@ -228,7 +228,7 @@ export const economyCatalogSchema = z.object({
     baseCampfire: z.literal(true).nullish().transform(value => value ?? undefined), requiredHomeLevel: count.positive(),
     maxBatch: count.positive().max(100).nullish(),
     fishInput: z.object({ exactSpecies: z.boolean().optional(), itemIds: z.array(id).min(1).max(100).refine(ids => new Set(ids).size === ids.length) }).nullish(),
-    requiredBuildings, requiredRecipes: quantities.default({}), seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
+    requiredBuildings, requiredRecipes: quantities.prefault({}), seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
     .refine(recipe => !recipe.baseCampfire || recipe.id === "cook_grilled_fish" && recipe.buildingId === "dryer" && recipe.buildingLevel === 1,
       "Only grilled fish is available at the base campfire")
     .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && hasGardenBerryReward(recipe.rewards),
@@ -361,11 +361,11 @@ export function recipeBuildingLevel(recipe: { id?: string; buildingId: string; b
     ? 0 : recipe.buildingLevel;
 }
 export const economyBookCollectionSchema = z.object({
-  finds: z.array(id).max(100).default([]), travelSeconds: count.max(ECONOMY_MAX_ITEMS).default(0), quarrySeconds: count.max(ECONOMY_MAX_ITEMS).default(0),
-}).default({ finds: [], travelSeconds: 0, quarrySeconds: 0 });
+  finds: z.array(id).max(100).prefault([]), travelSeconds: count.max(ECONOMY_MAX_ITEMS).prefault(0), quarrySeconds: count.max(ECONOMY_MAX_ITEMS).prefault(0),
+}).prefault({ finds: [], travelSeconds: 0, quarrySeconds: 0 });
 export const economyProgressionSchema = z.object({
-  routes: quantities.default({}), recipes: quantities.default({}), collections: economyBookCollectionSchema,
-}).default({ routes: {}, recipes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } });
+  routes: quantities.prefault({}), recipes: quantities.prefault({}), collections: economyBookCollectionSchema,
+}).prefault({ routes: {}, recipes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } });
 export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGranted: count.max(5000), woodGranted: count.max(30), stoneGranted: count.max(30) });
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
@@ -373,7 +373,7 @@ export const economyJobSchema = z.object({
   rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14)]),
   actorId: z.enum(["mochlik", "miner"]).nullish(),
   collection: economyCollectionSchema.nullish(),
-  fishing: z.object({ rodId: id, hookId: id.default("bare_hook"), baitId: id.nullable(), fishId: id,
+  fishing: z.object({ rodId: id, hookId: id.prefault("bare_hook"), baitId: id.nullable(), fishId: id,
     catchRevealed: z.boolean().nullish() }).nullish(),
   fishStockCost: quantities.nullish(),
   // Private server delivery; public projections never expose even a completed draw.
@@ -396,20 +396,20 @@ export const economyJobSchema = z.object({
 export const economyStorageSchema = z.object({ capacity: count, used: count, reserved: count, available: count, overflow: count });
 export const economyViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40), revision: count, serverTime: z.string().datetime(),
-  currencyScale: z.literal(10).default(10), pearlScale: z.literal(50).default(50),
+  currencyScale: z.literal(10).prefault(10), pearlScale: z.literal(50).prefault(50),
   wallet: z.object({ coins: balance, pearls: count.max(ECONOMY_MAX_PEARLS) }), inventory: quantities, buildings: z.record(id, count.max(100)),
-  productionSlots: z.record(id, count.min(1).max(3)).default({}),
-  marketSlots: count.min(5).max(10).default(5), unlockedItems: z.array(id).max(1000).refine(items => new Set(items).size === items.length).default([]),
-  workshopStarterClaimed: z.boolean().default(false), tutorialOrder: economyTutorialOrderSchema, stageOrders: economyStageOrdersSchema,
+  productionSlots: z.record(id, count.min(1).max(3)).prefault({}),
+  marketSlots: count.min(5).max(10).prefault(5), unlockedItems: z.array(id).max(1000).refine(items => new Set(items).size === items.length).prefault([]),
+  workshopStarterClaimed: z.boolean().prefault(false), tutorialOrder: economyTutorialOrderSchema, stageOrders: economyStageOrdersSchema,
   jobs: z.array(economyJobSchema).max(100), migration: economyMigrationSchema, catalog: economyCatalogSchema,
-  fishingShop: economyFishingShopSchema.nullable().default(null), leaftailShop: economyLeaftailShopSchema,
-  wardrobe: z.array(id).max(100).default(["moss", "amber_scarf"]),
+  fishingShop: economyFishingShopSchema.nullable().prefault(null), leaftailShop: economyLeaftailShopSchema,
+  wardrobe: z.array(id).max(100).prefault(["moss", "amber_scarf"]),
   completedExplorations: count, storage: economyStorageSchema, fishing: economyFishingSchema, progression: economyProgressionSchema,
   food: economyFoodSchema, residentOrders: economyResidentOrdersSchema, tradeRelations: economyTradeRelationsSchema,
 });
 const commandBase = {
   requestId: uuid, ownerPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/), expectedRevision: count.max(Number.MAX_SAFE_INTEGER - 1), targetId: id,
-  quantity: z.number().int().min(1).max(10_000).default(1), totalPrice: balance.default(0),
+  quantity: z.number().int().min(1).max(10_000).prefault(1), totalPrice: balance.prefault(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
   action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order"]),
@@ -422,11 +422,17 @@ export const marketCommandSchema = z.object({ ...commandBase,
 export const economyMarketListingSchema = z.object({
   id: uuid, sellerPublicId: z.string().min(1), sellerName: z.string(), itemId: id,
   quantity: z.number().int().min(1).max(99), totalPrice: balance.positive(), status: z.enum(["active", "sold", "cancelled"]),
-  createdAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), owned: z.boolean(), feeBps: count.max(10000).default(0),
+  createdAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), owned: z.boolean(), feeBps: count.max(10000).prefault(0),
   sale: z.object({
     buyerPublicId: z.string().min(1).max(40).nullable(), buyerName: z.string().min(1).max(100),
     buyerAvatarUrl: z.string().url().nullable(), proceedsCoins: balance, claimedAt: z.string().datetime().nullable(),
-  }).strict().nullish(),
+    buyerKind: z.enum(["player", "world_character"]).optional(), buyerCharacterId: z.literal("berest").nullable().optional(),
+  }).strict().superRefine((sale, context) => {
+    if (sale.buyerKind === "world_character" && (sale.buyerCharacterId !== "berest" || sale.buyerPublicId !== null || sale.buyerAvatarUrl !== null))
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["buyerCharacterId"], message: "World characters cannot impersonate a player" });
+    if (sale.buyerKind !== "world_character" && sale.buyerCharacterId != null)
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["buyerCharacterId"], message: "Player sales cannot name a world character" });
+  }).nullish(),
 });
 export const marketViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40),

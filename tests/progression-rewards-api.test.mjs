@@ -40,7 +40,7 @@ test("rewards require session and expose no-store private state without issuing 
   assert.equal(opened.catalogVersion, 4);
   assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
   assert.deepEqual(opened.daily.cycle.map(row => row.reward.coins), [30, 30, 40, 40, 50, 50, 80]);
-  assert.equal(opened.daily.cycle.reduce((sum, row) => sum + row.reward.pearls, 0), 300);
+  assert.equal(opened.daily.cycle.reduce((sum, row) => sum + row.reward.pearls, 0), 140);
   assert.equal(opened.achievementRewards.reduce((sum, row) => sum + row.pearls, 0), 3000);
   assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
   assert.equal((await GET(read("?step=7"))).status, 400);
@@ -50,7 +50,7 @@ test("manual HTTP claim echoes its key and a lost-response retry returns the sam
   assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
   const first = await response.json(); assert.equal(api.gameRewardResultSchema.safeParse(first).success, true);
   assert.equal(first.requestId, request.requestId); assert.equal(first.claim.kind, "daily"); assert.equal(first.claim.step, 1);
-  assert.deepEqual(first.claim.reward, { coins: 30, pearls: 20, items: { wood: 2, stone: 1 } });
+  assert.deepEqual(first.claim.reward, { coins: 30, pearls: 10, items: { wood: 2, stone: 1 } });
   const repeat = await (await POST(post(request))).json(); assert.equal(repeat.replayed, true); assert.deepEqual(repeat.claim, first.claim);
   assert.equal(repeat.economy.wallet.coins, first.economy.wallet.coins);
   const duplicate = await POST(post(command(p))); assert.equal(duplicate.status, 409); assert.equal((await duplicate.json()).code, "DAILY_REWARD_COOLDOWN");
@@ -86,7 +86,7 @@ test("cross-site wrong content-type forged gift and excessive bodies leave walle
   assert.equal((await (await GET(read())).json()).daily.step, 1);
 });
 
-test("intentional onboarding completion credits 20 visible pearls and 100 coins once without consuming daily", async () => {
+test("intentional onboarding completion credits 10 visible pearls and 100 coins once without consuming daily", async () => {
   const p = player(), initial = economy.getDevEconomy(p.token);
   globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory.berries = 1;
   const before = economy.commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
@@ -100,9 +100,9 @@ test("intentional onboarding completion credits 20 visible pearls and 100 coins 
   const response = await POST(post(request)), first = await response.json();
   assert.equal(response.status, 200);
   assert.equal(api.gameRewardResultSchema.safeParse(first).success, true);
-  assert.deepEqual(first.claim.reward, { coins: 100, pearls: 40, items: {} });
+  assert.deepEqual(first.claim.reward, { coins: 100, pearls: 20, items: {} });
   assert.equal(first.economy.wallet.coins - before.wallet.coins, 100);
-  assert.equal(first.economy.wallet.pearls - before.wallet.pearls, 40);
+  assert.equal(first.economy.wallet.pearls - before.wallet.pearls, 20);
   assert.equal(first.rewards.onboarding.claimedAt, first.claim.claimedAt);
   assert.equal(first.rewards.daily.claimable, true);
   assert.equal(first.rewards.daily.step, 1);
@@ -132,14 +132,16 @@ test("reward reads negotiate new activity rows while cached clients retain their
   globalThis.__rewardTestToken = p.token;
   const legacy = await (await GET(read())).json();
   const current = await (await GET(read("?catalog=5"))).json();
-  const latest = await (await GET(read("?catalog=6"))).json();
-  assert.equal(latest.catalogVersion, 6);
+  const previous = await (await GET(read("?catalog=6"))).json();
+  assert.equal(previous.catalogVersion, 6);
+  const latest = await (await GET(read("?catalog=7"))).json();
+  assert.equal(latest.catalogVersion, 7);
   assert.equal(latest.achievementRewards.length, 33);
   assert.deepEqual(latest.daily.cycle, current.daily.cycle);
   assert.equal(legacy.catalogVersion, 4); assert.equal(legacy.achievementRewards.length, 21);
   assert.equal(current.catalogVersion, 5); assert.equal(current.achievementRewards.length, 33);
   assert.deepEqual(current.achievementRewards.slice(0, 21), legacy.achievementRewards);
-  for (const suffix of ["?catalog=7", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
+  for (const suffix of ["?catalog=8", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
     assert.equal((await GET(read(suffix))).status, 400);
   }
 });

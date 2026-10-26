@@ -14,7 +14,7 @@ const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}
 const ids = (known: readonly string[]) => z.array(z.string().refine(id => known.includes(id))).max(known.length)
   .refine(values => new Set(values).size === values.length);
 export const guestProfileSchema = z.object({
-  ownerPublicId: publicId, circleId: z.string().uuid(),
+  ownerPublicId: publicId, circleId: z.guid(),
   user: z.object({ publicId, displayName: z.string().min(1).max(100) }).strict(),
   homeLevel: z.number().int().min(1).max(5), completedExplorations: z.number().int().nonnegative().safe(),
   achievements: z.array(z.object({ id: z.string().refine(id => GUEST_ACHIEVEMENT_IDS.includes(id)),
@@ -24,7 +24,7 @@ export const guestProfileSchema = z.object({
     })).max(GUEST_ACHIEVEMENT_IDS.length).refine(awards => new Set(awards.map(award => award.id)).size === awards.length),
   collections: z.object({ travel: ids(GUEST_COLLECTION_IDS.travel), fishing: ids(GUEST_COLLECTION_IDS.fishing), quarry: ids(GUEST_COLLECTION_IDS.quarry) }).strict(),
   tapStats: z.object({ lifetimeTaps: z.number().int().nonnegative().safe(), bestSeries: z.number().int().nonnegative().safe() }).strict()
-    .refine(value => value.bestSeries <= value.lifetimeTaps).nullable().default(null),
+    .refine(value => value.bestSeries <= value.lifetimeTaps).nullable().prefault(null),
   serverTime: z.string().datetime(),
 }).strict();
 export type GuestProfile = z.infer<typeof guestProfileSchema>;

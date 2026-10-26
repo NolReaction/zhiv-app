@@ -78,8 +78,9 @@ test("shared inputs are aggregated once and output batches round up across a mul
 });
 
 test("advanced goals protect current unit recipe inputs even with the base warehouse", () => {
+  const homeCost = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4).cost.items;
   const view = state({ buildings: { home: 3, warehouse: 1, workshop: 3, woodlot: 3, kiln: 2, quarry: 3 },
-    inventory: { beams: 1, hardwood: 30, rope: 20, cut_stone: 8, bricks: 10, cloth: 4, metal_parts: 4, fish_soup: 4, living_resin: 1 } });
+    inventory: { ...homeCost, beams: homeCost.beams - 1, hardwood: 30, rope: 20 } });
   const before = structuredClone(view);
   const recipe = view.catalog.recipes.find(entry => entry.id === "make_beams");
   assert.equal(recipe.maxBatch, 1); assert.deepEqual(recipe.rewards, { beams: 1 });
