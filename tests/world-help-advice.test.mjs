@@ -10,7 +10,6 @@ const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/ui/help/wo
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
-const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 const now = Date.parse("2026-10-07T12:00:00Z");
 const snapshot = (patch = {}) => {
   const value = { ownerPublicId: "0000-0000-0001", revision: 0, serverTime: new Date(now).toISOString(), catalog: economyCatalog,
@@ -104,7 +103,8 @@ test("strawberry advice opens the compote recipe until its result has been colle
 });
 
 test("house two advice separates its single intro from three stage requests before sale suggestions", () => {
-  const patch = { inventory: { wood: 3, stone: 2, planks: 2 }, wallet: { coins: 250, pearls: 0 }, tutorialOrder: newTutorialOrder() };
+  const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2);
+  const patch = { inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 0 }, tutorialOrder: newTutorialOrder() };
   const context = { intent: "construction", stationId: "home" };
   let result = advice(patch, { context });
   assert.equal(result[0].id, "construction:tutorial");
@@ -156,12 +156,16 @@ test("house-four advice gates legacy tutorials on the eight supplies and disting
   result = advice(patch, { context });
   assert.equal(result[0].title, "Дождитесь следующей поставки");
   assert.match(result[0].message, /1 из 8.*Следующая поставка через 1 д/,
-    "an already accepted 24-hour deadline remains authoritative after the current course changes to 23 hours");
+    "an already accepted 24-hour deadline remains authoritative after the current course removes daily waits");
   assert.match(result[0].message, /Материалы можно подготовить заранее.*жемчуг не сокращает/);
   assert.deepEqual(result[0].action.target, { kind: "orders" });
   assert.deepEqual(patch, before, "waiting advice never moves the accepted deadline or the course");
   patch.stageOrders.stages[3].availableAt = new Date(now + course.intervalSeconds * 1000).toISOString();
-  assert.match(advice(patch, { context })[0].message, new RegExp(`Следующая поставка через ${worldDuration(course.intervalSeconds)}`));
+  assert.equal(course.intervalSeconds, 0);
+  const immediate = advice(patch, { context })[0];
+  assert.equal(immediate.title, "Завершите заказы этапа");
+  assert.match(immediate.message, /1 из 8.*Соберите товары/);
+  assert.doesNotMatch(immediate.message, /Следующая поставка через/);
   assert.equal(advice({ ...patch, inventory: {} }, { context })[0].id, "construction:stage-orders",
     "the required project remains ahead of unrelated resource shortfalls");
   patch.stageOrders.stages[3] = { step: 8, completed: true, terms: null };
@@ -178,7 +182,8 @@ test("material advice directs stage-two stone and clay to the mine and first-sta
   const clay = advice({ ...patch, inventory: { clay: 0, charcoal: 1 } },
     { context: { intent: "production", stationId: "kiln", recipeId: "fire_bricks", quantity: 1 } }).find(entry => entry.id === "missing:clay");
   assert.deepEqual(clay.action.target, { kind: "station", stationId: "quarry", recipeId: "quarry_clay" });
-  const first = advice({ inventory: { wood: 3, stone: 0, planks: 2 }, wallet: { coins: 250, pearls: 0 } },
+  const firstCost = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2).cost;
+  const first = advice({ inventory: { ...firstCost.items, stone: 0 }, wallet: { coins: firstCost.coins, pearls: 0 } },
     { context: { intent: "construction", stationId: "home" } }).find(entry => entry.id === "missing:stone");
   assert.deepEqual(first.action.target, { kind: "expeditions", sector: "forest" });
 });
@@ -286,9 +291,11 @@ test("exact trip context handles missing bait, provisions and locked mine withou
   assert.deepEqual(worldHelpAdvice({ economy }), [], "unselected fishing is not an error");
   const bait = worldHelpAdvice({ economy, context: { intent: "expedition", routeId: "shore" } });
   assert.equal(bait[0].id, "fishing:bait"); assert.match(bait[0].message, /Без наживки/);
-  const mine = advice({}, { context: { intent: "expedition", routeId: "cave" } });
+  const mine = advice({}, { context: { intent: "expedition", routeId: "quarry_stone" } });
   assert.equal(mine[0].action.target.kind, "upgrade");
-  const provisions = advice({ buildings: { home: 3, warehouse: 3, quarry: 1, dryer: 2 } }, { context: { intent: "expedition", routeId: "deep_cave" } });
+  const route = economyCatalog.explorations.find(entry => entry.id === "old_woodland");
+  const provisions = advice({ buildings: { home: route.requiredHomeLevel, warehouse: 3, ...route.requiredBuildings } },
+    { context: { intent: "expedition", routeId: route.id } });
   assert.equal(provisions[0].id, "missing:dried_berries"); assert.equal(provisions[0].action.target.recipeId, "dry_berries");
   const away = job({ kind: "exploration", targetId: "shore", recipeId: null, rewards: { fish: 4 }, finishesAt: new Date(now).toISOString() });
   const returned = advice({ jobs: [away] }, { context: { intent: "expedition", routeId: "forest" } });

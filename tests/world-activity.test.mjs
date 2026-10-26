@@ -34,7 +34,7 @@ test("every route has a recognizable sector icon, including saved fishing journe
   const expected = { forest: "forest", forest_camp: "forest", old_woodland: "forest", uplands: "forest", far_bank_path: "forest", far_bank_grove: "forest", ancient_ruins: "forest", shore: "fishing", shore_camp: "fishing", coastal_deposits: "fishing", cave: "cave", deep_cave: "cave", abandoned_quarry: "cave",
     quarry_stone: "cave", quarry_stone_hour: "cave", quarry_stone_overnight: "cave", quarry_ore: "cave", quarry_ore_hour: "cave", quarry_ore_overnight: "cave",
     quarry_clay: "cave", quarry_clay_hour: "cave", quarry_clay_overnight: "cave", quarry_sand: "cave", quarry_sand_hour: "cave", quarry_sand_overnight: "cave",
-    quarry_shift: "cave", quarry_deep_face: "cave", quarry_supply: "cave" };
+    quarry_shift: "cave", quarry_deep_face: "cave", quarry_supply: "cave", quarry_quartz: "cave", quarry_limestone: "cave" };
   for (const route of economyCatalog.explorations) {
     assert.ok(expected[route.id], `${route.id}: every catalog route needs an explicit sector expectation`);
     assert.equal(activityRouteKind(route.id), expected[route.id], route.id);

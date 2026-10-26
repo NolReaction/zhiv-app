@@ -28,11 +28,18 @@ function setup(id, production = null) {
   return state;
 }
 function step(state, id, env = {}, dt = .1) {
-  const mind = state.residents[id], feet = { ...mind.position }, oldDoor = ["enter", "inside", "exit"].includes(mind.doorPhase) ? mind.door : null;
-  advanceForestVillagers(state, state.scene, dt, { now, ...env });
-  const door = ["enter", "inside", "exit"].includes(mind.doorPhase) ? mind.door : oldDoor;
-  assert.ok(distance(feet, mind.position) <= FOREST_VILLAGER_PROFILES[id].speed * dt + .001, "all transitions preserve the walking speed budget");
-  assert.ok(canTraverse(door?.navigation ?? forestVillagerPlaces(state.scene, id).navigation, feet, mind.position), "every step uses ordinary ground or the validated private doorway");
+  // A 100ms tick may follow several rounded samples around the quarry. Its
+  // end-to-end chord cuts the corner even when every actual movement is safe.
+  // Inspect at the movement integrator's 60Hz cadence, retaining total time.
+  for (let remaining = dt; remaining > 1e-7;) {
+    const slice = Math.min(1 / 60, remaining), mind = state.residents[id], feet = { ...mind.position };
+    const oldDoor = ["enter", "inside", "exit"].includes(mind.doorPhase) ? mind.door : null;
+    advanceForestVillagers(state, state.scene, slice, { now, ...env });
+    const door = ["enter", "inside", "exit"].includes(mind.doorPhase) ? mind.door : oldDoor;
+    assert.ok(distance(feet, mind.position) <= FOREST_VILLAGER_PROFILES[id].speed * slice + .001, "all transitions preserve the walking speed budget");
+    assert.ok(canTraverse(door?.navigation ?? forestVillagerPlaces(state.scene, id).navigation, feet, mind.position), "every step uses ordinary ground or the validated private doorway");
+    remaining -= slice;
+  }
 }
 function until(state, id, predicate, seconds = 120) {
   for (let at = 0; at < seconds && !predicate(state.residents[id]); at += .1) step(state, id);

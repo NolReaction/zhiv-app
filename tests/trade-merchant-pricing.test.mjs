@@ -41,25 +41,33 @@ test("merchant ranks discount only coin equipment and clothes with a ten percent
 test("Pleska debits the displayed pre-purchase rank once and crossing a rank affects the next purchase", () => {
   const value = state({ plesk: 149 });
   value.fishingShop = createFishingShop(value, now, () => 0);
-  const offer = value.fishingShop.offers.find(item => item.kind === "bait");
-  assert.ok(offer?.remaining >= 2);
+  const offer = value.fishingShop.offers.find(item => item.kind === "rod");
+  const nextOffer = value.fishingShop.offers.find(item => item.kind === "hook");
+  const fishOffer = value.fishingShop.offers.find(item => item.kind === "fish");
+  assert.ok(offer && nextOffer && fishOffer);
   const base = offer.unitPrice, before = value.wallet.coins;
   rules.applyEconomyCommand(value, command("buy_fishing_item", offer.id, base), now);
   assert.equal(value.wallet.coins, before - base);
   assert.equal(value.tradeRelations.reputation.plesk, 150);
   assert.equal(offer.unitPrice, base, "saved shop terms keep the base price");
-  const discounted = fishingOfferUnitPrice(value, offer, catalog);
-  assert.equal(discounted, Math.ceil(base * .98));
-  rules.applyEconomyCommand(value, command("buy_fishing_item", offer.id, discounted), now);
+  assert.ok(value.fishing.ownedRods.includes(offer.itemId));
+  const discounted = fishingOfferUnitPrice(value, nextOffer, catalog);
+  assert.equal(discounted, Math.ceil(nextOffer.unitPrice * .98));
+  assert.ok(discounted < nextOffer.unitPrice, "the next eligible purchase uses the newly earned rank");
+  rules.applyEconomyCommand(value, command("buy_fishing_item", nextOffer.id, discounted), now);
   assert.equal(value.wallet.coins, before - base - discounted);
+  assert.ok(value.fishing.ownedHooks.includes(nextOffer.itemId));
   assert.equal(value.tradeRelations.reputation.plesk, 151);
-  rules.applyEconomyCommand(value, command("buy_fishing_item", offer.id, discounted), now);
+  assert.ok(fishOffer.unitPrice > catalog.items.find(item => item.id === fishOffer.itemId).baseSellPrice,
+    "the third purchase has a real coin cost after resale, so only the daily XP cap blocks its XP");
+  rules.applyEconomyCommand(value, command("buy_fishing_item", fishOffer.id, fishOffer.unitPrice), now);
+  assert.equal(value.wallet.coins, before - base - discounted - fishOffer.unitPrice);
   assert.equal(value.tradeRelations.reputation.plesk, 151, "the daily purchase XP allowance is exhausted");
 });
 
 test("Leaftail receipt uses before-rank price while the response may already show a better rank", () => {
   const value = state({ leaftail: 149 }), view = snapshot(value, 4);
-  const offer = leaftailShopView(view, now, catalog).offers.find(item => item.kind === "bait");
+  const offer = leaftailShopView(view, now, catalog).offers.find(item => item.kind === "rod" && !item.owned);
   assert.ok(offer);
   const sent = command("buy_leaftail_item", offer.targetId, offer.unitPrice);
   rules.applyEconomyCommand(value, sent, now);
@@ -67,9 +75,12 @@ test("Leaftail receipt uses before-rank price while the response may already sho
   const receipt = localLeaftailPurchaseFromReceipt(view, result, sent);
   assert.ok(receipt);
   assert.equal(receipt.coins, offer.unitPrice);
+  assert.equal(receipt.kind, "rod");
+  assert.ok(after.fishing.ownedRods.includes(offer.itemId));
   assert.equal(after.tradeRelations.reputation.leaftail, 150);
   const current = leaftailShopView(after, now, catalog).offers.find(item => item.id === offer.id);
   assert.equal(current.unitPrice, Math.ceil(offer.unitPrice * .98));
+  assert.ok(current.unitPrice < receipt.coins);
   assert.equal(current.baseUnitPrice, offer.baseUnitPrice);
 });
 

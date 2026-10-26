@@ -165,15 +165,22 @@ test('later house upgrades consume the required special stack and older paid con
   assert.equal(state.buildings.home, 4);
 });
 
-test('warehouse relic gates begin after the third level and consume several different special stacks', () => {
+test('late warehouse gates combine a bounded relic budget with crafted goods and house progression', () => {
   const warehouse = model.economyCatalog.buildings.find(building => building.id === 'warehouse');
   for (const target of warehouse.levels.filter(row => row.level <= 3))
     assert.ok(spec.itemIds.every(itemId => !target.cost.items[itemId]));
+  const totals = Object.fromEntries(spec.itemIds.map(id => [id, 0]));
   for (const target of warehouse.levels.filter(row => row.level >= 4)) {
-    assert.equal(target.requiredHomeLevel, 1); assert.deepEqual(target.requiredBuildings, {});
+    assert.equal(target.requiredHomeLevel, target.level <= 6 ? 4 : 5);
+    assert.ok(Object.keys(target.requiredBuildings).length > 0, 'crafted materials have their source prerequisites');
     assert.equal(target.cost.coins, 0);
-    assert.deepEqual(Object.keys(target.cost.items).sort(), [...spec.itemIds].sort());
-    assert.ok(Object.values(target.cost.items).every(quantity => quantity >= 1));
-    assert.ok(Object.values(target.cost.items).some(quantity => quantity >= 2));
+    const rare = Object.entries(target.cost.items).filter(([id]) => spec.itemIds.includes(id));
+    const crafted = Object.entries(target.cost.items).filter(([id]) => !spec.itemIds.includes(id));
+    assert.ok(rare.length >= 1 && rare.length <= 2);
+    assert.equal(crafted.length, 3);
+    assert.ok(Object.values(target.cost.items).every(quantity => Number.isInteger(quantity) && quantity >= 1));
+    for (const [id, quantity] of rare) totals[id] += quantity;
   }
+  assert.deepEqual(totals, { ancient_core: 6, moon_crystal: 3, living_resin: 3 });
+  assert.equal(warehouse.levels.find(row => row.level === 8).requiredBuildings.quarry, 5, 'mortar needs an accessible limestone source');
 });

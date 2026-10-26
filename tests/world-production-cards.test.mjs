@@ -13,7 +13,7 @@ const { WorldProductionCard } = await vite.ssrLoadModule("/features/economy/ui/p
 const { WorldExpeditionSector, ExpeditionRouteDetails } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
-const { worldRecipeGroups } = await vite.ssrLoadModule("/features/economy/ui/stations/world-recipe-groups.ts");
+const { worldRecipeGroups, worldRecipeDuration } = await vite.ssrLoadModule("/features/economy/ui/stations/world-recipe-groups.ts");
 const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 after(() => vite.close());
 
@@ -107,7 +107,7 @@ function prepareMineRoute(economy, routeId = "quarry_stone") {
 
 test("workshop shows one tap products with inline material costs and no preparation screen", () => {
   const html = renderMenu("workshop");
-  assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["make_planks", "make_rope", "weave_cloth"]);
+  assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["make_planks", "make_rope", "weave_cloth", "make_trade_crate"]);
   assert.match(html, /data-item-icon="fiber"/);
   assert.match(html, /data-item-icon="rope"/);
   assert.match(html, /0 \/ 1/);
@@ -129,23 +129,27 @@ test("workshop tabs and all three slot controls remain available beside a focuse
   }
 });
 
-test("garden upgrades improve the single product automatically and retain precise seconds", () => {
-  for (const [home, garden, raspberryId, strawberryId] of [
-    [1, 1, "grow_berries", "grow_strawberries"],
-    [3, 2, "grow_berries_large", "grow_strawberries"],
-    [3, 3, "garden_season", "grow_strawberries"],
-    [4, 4, "garden_season", "garden_supply"],
-    [5, 5, "garden_season", "garden_abundance"],
-  ]) {
+test("garden upgrades add crops without duplicating products or restoring retired speed recipes", () => {
+  for (const [home, garden] of [[1, 1], [3, 2], [3, 3], [4, 4], [5, 5]]) {
     const economy = controller({ buildings: { home, garden, warehouse: 1 }, progression: { recipes: { cook_compote: 1 } } });
     const html = renderMenu("garden", economy);
     assert.equal((html.match(/data-recipe-product="berries"/g) ?? []).length, 1);
     assert.equal((html.match(/data-recipe-product="strawberries"/g) ?? []).length, 1);
-    assert.match(html, new RegExp(`data-recipe="${raspberryId}"`));
-    assert.match(html, new RegExp(`data-recipe="${strawberryId}"`));
+    assert.match(html, /data-recipe="grow_berries"/);
+    assert.match(html, /aria-label="Произвести: Малина, 1 мин"/);
+    assert.match(html, /data-recipe="grow_strawberries"/);
+    assert.match(html, /aria-label="Произвести: Клубника, 5 мин"/);
+    for (const [level, product] of [[2, "blueberries"], [3, "currants"], [4, "blackberries"], [5, "cranberries"]]) {
+      assert.equal([...html.matchAll(new RegExp(`data-recipe-product="${product}"`, "g"))].length, Number(garden >= level));
+    }
+    assert.doesNotMatch(html, /data-recipe="(?:grow_berries_large|garden_season|garden_supply|garden_abundance)"/);
     assert.doesNotMatch(html, /Способ производства|data-recipe-method|data-recipe-preparation/);
-    if (garden >= 3) assert.match(html, /30 с/);
-    else if (garden === 2) assert.match(html, /45 с/);
+  }
+});
+
+test("production durations retain precise seconds instead of rounding a partial minute", () => {
+  for (const [seconds, label] of [[30, "30 с"], [45, "45 с"], [60, "1 мин"], [90, "1 мин 30 с"], [150, "2 мин 30 с"], [3599, "59 мин 59 с"]]) {
+    assert.equal(worldRecipeDuration(seconds), label);
   }
 });
 
@@ -160,12 +164,16 @@ test("automatic product grouping preserves paid legacy recipes and chooses perso
 });
 
 test("help links focus the logical product without starting it or hiding existing work", () => {
-  const economy = controller({ buildings: { home: 3, garden: 3, warehouse: 1 } }, { act() { assert.fail("Opening a source must never start production"); } });
-  for (const id of ["grow_berries", "grow_berries_large", "garden_season"]) {
-    const html = renderMenu("garden", economy, { initialRecipeId: id });
-    assert.match(html, /data-recipe="garden_season"[^>]*data-recipe-focused="true"/);
-    assert.match(html, /data-production-slots="garden"/);
-    assert.doesNotMatch(html, /data-recipe-preparation|Все рецепты|data-recipe-method/);
+  const economy = controller({ buildings: { home: 5, garden: 3, workshop: 5, woodlot: 4, warehouse: 1 },
+    progression: { recipes: { make_reinforced_parts: 10 } } }, { act() { assert.fail("Opening a source must never start production"); } });
+  for (const [place, selectedId, sources] of [["garden", "grow_berries", ["grow_berries"]],
+    ["workshop", "make_precision_parts", ["make_reinforced_parts", "make_precision_parts"]]]) {
+    for (const initialRecipeId of sources) {
+      const html = renderMenu(place, economy, { initialRecipeId });
+      assert.match(html, new RegExp(`data-recipe="${selectedId}"[^>]*data-recipe-focused="true"`));
+      assert.match(html, new RegExp(`data-production-slots="${place}"`));
+      assert.doesNotMatch(html, /data-recipe-preparation|Все рецепты|data-recipe-method/);
+    }
   }
   for (const initialRecipeId of ["make_planks", "missing_recipe"]) {
     assert.doesNotMatch(renderMenu("garden", economy, { initialRecipeId }), /data-recipe-focused="true"/);
@@ -222,8 +230,8 @@ test("locked food cards show the prerequisite along with ingredients and bonuses
   assert.match(contents, /data-item-icon="berries"/);
   assert.match(contents, /data-item-icon="charcoal"/);
   assert.match(contents, /0 \/ 2/);
-  assert.match(contents, /Вылазка \+25%/);
-  assert.match(contents, /Стройка \+25%/);
+  assert.match(contents, /Вылазки \+25% · запас на 2 ч работы/);
+  assert.match(contents, /Одна стройка \+25% скорости/);
   assert.match(html, /aria-describedby=/);
   assert.equal(card.props.disabled, undefined, "a locked card still explains its reason on tap");
 });

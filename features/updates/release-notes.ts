@@ -29,7 +29,7 @@ export function parseReleaseFeed(value: unknown): ReleaseNote[] | null {
       || !plainText(item.version, 40) || !plainText(item.title, 160)
       || typeof item.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(item.date)
       || !Number.isFinite(Date.parse(item.date)) || new Date(item.date).toISOString().slice(0, 10) !== item.date
-      || !Array.isArray(item.changes) || item.changes.length === 0 || item.changes.length > 12
+      || !Array.isArray(item.changes) || item.changes.length === 0 || item.changes.length > 64
       || !item.changes.every(change => plainText(change, 400))) return null;
     ids.add(item.id);
     releases.push({ id: item.id, version: item.version.trim(), date: item.date, title: item.title.trim(), changes: item.changes.map(change => change.trim()) });

@@ -106,8 +106,9 @@ test("all provisions share the refrigerator, with compotes together and travel s
     assert.equal(cardFor(supplies, item.id), undefined, item.id);
     assert.ok(cardFor(fridge, item.id)?.includes(`aria-label="${item.name}: 2"`), item.id);
   }
-  for (const id of ["berry_compote", "strawberry_compote", "blueberry_compote"]) assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === id), economyCatalog), "drinks");
-  for (const id of ["dried_berries", "smoked_fish", "trail_ration"]) assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === id), economyCatalog), "travel");
+  for (const id of ["berry_compote", "strawberry_compote", "blueberry_compote", "bottled_compote"]) assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === id), economyCatalog), "drinks");
+  for (const id of ["dried_berries", "smoked_fish", "trail_ration", "packed_berries"]) assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === id), economyCatalog), "travel");
+  assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === "berry_gift"), economyCatalog), "desserts");
   assert.ok(fridge.indexOf('data-pantry-fish-class="fish_common"') < fridge.indexOf('data-pantry-item-group="fish-dishes"'));
   assert.deepEqual(economy.snapshot, before, "tabs share one unchanged stock and storage capacity");
 });

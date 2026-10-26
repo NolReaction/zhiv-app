@@ -446,7 +446,7 @@ test("ten storage levels stay visible in economic sections with their true seque
     const id = `b:warehouse:${level.level}`, storage = node(id), position = layout.positions.get(id);
     assert.equal(storage.status, "active");
     assert.equal(storage.locationId, "place:home");
-    assert.equal(storage.phase, Math.min(level.level, 3), "house gates propagate through all subsequent storage tiers");
+    assert.equal(storage.phase, level.requiredHomeLevel, "house gates and ingredient sources place storage in its actual stage");
     assert.deepEqual(plain(storage.cost), level.cost);
     assert.equal(storage.warehouseCapacity, level.warehouseCapacity);
     assert(position, `storage ${level.level} must not disappear beyond the five home tiers`);
@@ -454,15 +454,15 @@ test("ten storage levels stay visible in economic sections with their true seque
     assert(position.x >= group.x && position.x + NODE_WIDTH <= group.x + group.width);
     assert(position.y >= group.y && position.y + NODE_HEIGHT <= group.y + group.height);
     assert.deepEqual(plain(storage.requirements), level.level === 1 ? { home: 1 }
-      : { home: level.level <= 3 ? level.level : 1, warehouse: level.level - 1 });
+      : { home: level.requiredHomeLevel, ...level.requiredBuildings, warehouse: level.level - 1 });
     const gates = getPrerequisiteIds(graph, id, false);
     assert.equal(gates.has("b:home:2"), level.level >= 2);
     assert.equal(gates.has("b:home:3"), level.level >= 3);
-    assert(!gates.has("b:home:4"));
-    assert(!gates.has("b:home:5"));
-    assert(!("workshop" in storage.requirements), "storage has no direct workbench requirement beyond the home course");
+    assert.equal(gates.has("b:home:4"), level.requiredHomeLevel >= 4);
+    assert.equal(gates.has("b:home:5"), level.requiredHomeLevel >= 5);
+    assert.equal(storage.requirements.workshop, level.requiredBuildings.workshop);
     if (level.level >= 4) {
-      for (const relic of Object.keys(level.cost.items)) {
+      for (const relic of Object.keys(level.cost.items).filter(id => catalog.rareDrops.itemIds.includes(id))) {
         assert.equal(getProgressionResourceSource(graph, relic).id, "rare_materials");
       }
       assert(hasEdge("rare_materials", id, "cost"));
@@ -584,7 +584,8 @@ test("player graph prices and rewards use visible pearls while costs keep intern
   assert.ok(node("pleska").description.includes(`обновление стоит до ${moneyContext.exports.formatPearls(catalog.fishing.shop.refreshPricePearls)} жемчужин`));
   assert.match(node("pearls").description, /1 мин — 1 жемчужин; 1 ч — 12 жемчужин; 24 ч — 288 жемчужин; 48 ч — 576 жемчужин/);
   assert.doesNotMatch(node("pearls").description, /жемчужина за 10 минут/);
-  assert.match(node("daily_rewards").description, /150 жемчужин/);
+  const gifts = progressionRewards.daily.reduce((sum, reward) => sum + reward.pearls, 0);
+  assert.ok(node("daily_rewards").description.includes(`${moneyContext.exports.formatPearls(gifts)} жемчужин`));
   assert.equal(catalog.pearlScale, 50);
   assert.equal(catalog.fishing.shop.refreshPricePearls, 100);
 });

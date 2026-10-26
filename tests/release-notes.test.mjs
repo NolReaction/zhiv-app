@@ -136,6 +136,9 @@ test("published feed remains valid as entries grow; fixtures sort by publication
   const parsed = parseReleaseFeed(published);
   assert.ok(parsed, "published updates must pass the same validation as fetched updates");
   assert.deepEqual(BUNDLED_RELEASE_NOTES, parsed);
+  const long = { ...original, changes: Array.from({ length: 64 }, (_, i) => `Изменение ${i + 1}.`) };
+  assert.equal(parseReleaseFeed(feed(long))[0].changes.length, 64);
+  assert.equal(parseReleaseFeed(feed({ ...long, changes: [...long.changes, "Переполнение"] })), null);
   assert.deepEqual(parseReleaseFeed(feed(original, later)).map(item => item.id), [later.id, original.id]);
   const sameDay = { ...later, id: "same-day" };
   assert.deepEqual(parseReleaseFeed(feed(sameDay, later)).map(item => item.id), [sameDay.id, later.id]);

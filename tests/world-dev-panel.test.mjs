@@ -29,7 +29,7 @@ function inspect(element) {
   return { markup: renderToStaticMarkup(element), elements };
 }
 const labelText = element => Children.toArray(element.props.children).filter(child => typeof child === "string").join("");
-function panel(page, overrides = {}) {
+function panel(page, overrides = {}, Content = WorldDevPanelContent) {
   const calls = { patches: [], actions: [], poses: [], outfits: [], notices: [] };
   const props = {
     world: { busy: false, uncertain: false, snapshot: null, act() { assert.fail("render cannot issue account commands"); } },
@@ -39,7 +39,7 @@ function panel(page, overrides = {}) {
     shortcut: callback => callback(), onFeedback: message => calls.notices.push(message), prefersReducedMotion: false,
     ...overrides,
   };
-  return { ...inspect(WorldDevPanelContent(props)), calls, props };
+  return { ...inspect(Content(props)), calls, props };
 }
 
 const tabs = [["scenes", "Сценки"], ["animation", "Анимации"], ["appearance", "Внешность"]];
@@ -331,11 +331,37 @@ test("object shortcuts use authored places and account menus without granting a 
     interactiveMapObjects(TILED_WORLD, { showBuildings: false }).map(object => object.place));
 });
 
-test("route diagnostics follow the selected house geometry instead of the base Tiled level", () => {
-  const routes = level => panel("routes", { state: { ...WORLD_DEV_DEFAULTS, levels: { ...WORLD_DEV_DEFAULTS.levels, home: level } } }).markup;
-  assert.match(routes(1), /<strong>home-approach<\/strong>: Готов к прогулке/);
-  assert.match(routes(5), /<strong>home-approach<\/strong>: Последняя вершина должна совпадать с home-entry/);
+test("route diagnostics reject the obsolete authored approach while all selected house entrances remain ready", () => {
+  for (let home = 1; home <= 5; home++) {
+    const { markup } = panel("routes", { state: { ...WORLD_DEV_DEFAULTS, levels: { ...WORLD_DEV_DEFAULTS.levels, home } } });
+    assert.match(markup, /<strong>home-approach<\/strong>: Последняя вершина должна совпадать с home-entry/);
+    assert.match(markup, /<strong>home<\/strong>: Точки перехода готовы/);
+  }
   assert.match(panel("appearance").markup, /визуальный масштаб.*Actor.size/);
+});
+
+test("route diagnostics follow selected house geometry rather than a base or cached level", async () => {
+  // The authored legacy line no longer ends at any live home entrance. Give an
+  // isolated fixture one matching state so the UI's selected-level contract
+  // stays observable without modifying Tiled or making that unsafe line valid.
+  const fixture = structuredClone(TILED_WORLD), end = fixture.paths.find(path => path.id === "home-approach").points.at(-1);
+  const geometry = fixture.sites.find(site => site.id === "home").states.find(state => state.level === 1).geometry;
+  geometry.entry = { ...end }; geometry.doorway = { x: end.x, y: end.y - 12 };
+  const scoped = await createServer({ appType: "custom", configFile: false, root, optimizeDeps: { noDiscovery: true, include: [] },
+    resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+    plugins: [{ name: "route-diagnostics-fixture", enforce: "pre",
+      transform(source, id) {
+        if (id.endsWith("/features/world/scene/presentation.ts")) return source.replace(
+          'import forest from "@/features/world/tiled/forest.generated.json";', `const forest = ${JSON.stringify(fixture)};`);
+      },
+    }] });
+  try {
+    const { WorldDevPanelContent: Content } = await scoped.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
+    const routes = home => panel("routes", { state: { ...WORLD_DEV_DEFAULTS, levels: { ...WORLD_DEV_DEFAULTS.levels, home } } }, Content).markup;
+    assert.match(routes(1), /<strong>home-approach<\/strong>: Готов к прогулке/);
+    assert.match(routes(5), /<strong>home-approach<\/strong>: Последняя вершина должна совпадать с home-entry/);
+    assert.match(routes(1), /<strong>home-approach<\/strong>: Готов к прогулке/);
+  } finally { await scoped.close(); }
 });
 
 test("application diagnostics link to economy cheats instead of granting obsolete resources", () => {

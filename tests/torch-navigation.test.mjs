@@ -13,6 +13,7 @@ const { forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/sta
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { forestDestinations } = await vite.ssrLoadModule("/features/world/navigation/forest-trails.ts");
+const { forestVillagerPlaces } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-navigation.ts");
 const torch = (changes = {}) => ({ id: "torch", kind: "torch", position: { x: 100, y: 83.5 }, radius: 70,
   intensity: 1, color: "#ffb45d", flicker: .12, ...changes });
 const source = (lights = [torch()]) => ({ schemaVersion: 1, id: "torch-navigation", width: 200, height: 200,
@@ -68,7 +69,17 @@ test("all six authored torch feet stay blocked without disconnecting travel mark
     for (const light of scene.lights.filter(light => light.kind === "torch" && light.enabled !== false))
       assert.equal(isWalkable(nav, { x: light.position.x, y: light.position.y + 16.5 }), false, light.id);
     const destinations = forestDestinations(scene);
-    for (const target of scene.destinations.filter(target => !target.id.startsWith("builder-"))) {
+    const privateRabbit = target => /^(lopukh-work|lopukh-delivery|lopukh-rest)(-|$)/.test(target.id);
+    const rabbit = forestVillagerPlaces(scene, "lopukh");
+    for (const target of scene.destinations.filter(privateRabbit)) {
+      // Workers retain their own physical clearance; the larger hero need not
+      // fit a rabbit's private stop next to a tree.
+      const path = findWorldPath(rabbit.navigation, rabbit.home.position, target.position);
+      assert.ok(path, `${target.id} stays connected for its owner at tier ${level}`);
+      assert.deepEqual(path.at(-1), target.position);
+      for (let index = 1; index < path.length; index++) assert.ok(canTraverse(rabbit.navigation, path[index - 1], path[index]));
+    }
+    for (const target of scene.destinations.filter(target => !target.id.startsWith("builder-") && !privateRabbit(target))) {
       assert.ok(destinations.has(target.id), `${target.id} remains valid at tier ${level}`);
       assert.ok(findWorldPath(nav, scene.actor.spawn, target.position), `${target.id} stays connected at tier ${level}`);
     }

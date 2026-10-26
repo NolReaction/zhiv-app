@@ -467,7 +467,7 @@ test("the orders lesson opens the real journal dock entry without blocking its o
       "the coach targets the live portal content instead of the hidden map behind it");
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
     assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, false, "the journal is the orders lesson's own surface");
-    assert.equal(nav.component("SectionGuide").props.enabled, false, "the section introduction yields to the active initial course");
+    assert.equal(nav.component("SectionGuide"), undefined, "the journal does not mount a competing section introduction");
     assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined);
     assert.equal(nav.refreshes, 0);
   } finally { nav.restore(); }

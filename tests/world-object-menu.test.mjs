@@ -155,7 +155,7 @@ test("ordinary workshop menus hide future recipes but direct product links show 
 });
 const disabled = entry => /\bdisabled=/.test(entry.attributes);
 
-test("production slots are available at home one with pearl gates and keep all orders claimable", () => {
+test("production slots unlock the second place at home one and the third at home three while keeping all orders claimable", () => {
   let state = snapshot({ buildings: { home: 1, garden: 1 }, wallet: { coins: 0, pearls: 10000 } });
   let html = render("garden", controller({ snapshot: state }));
   assert.match(html, /data-production-slots="garden"/);
@@ -171,7 +171,10 @@ test("production slots are available at home one with pearl gates and keep all o
   assert.doesNotMatch(html, /Не хватает жемчужин: 0,5/, "purchase restrictions appear only after opening its confirmation");
   state.wallet.pearls = 10000; state.productionSlots = { garden: 2 };
   html = render("garden", controller({ snapshot: state }));
-  assert.doesNotMatch(html, /Нужен дом 4 уровня/);
+  assert.match(html, /Место 3 появится с домом 3 уровня/);
+  assert.doesNotMatch(html, /data-production-slot="3"|Открыть место 3/);
+  state.buildings.home = 3;
+  html = render("garden", controller({ snapshot: state }));
   assert.match(html, /Открыть место 3 за 250 жемчужин/);
   assert.equal(disabled(button(html, "Место 3")), false);
   state.buildings.home = 4;
@@ -252,7 +255,7 @@ test("all unfinished production places show construction without slots, products
       state.jobs = []; state.buildings[stationId] = 1;
       html = render(place, economy, extra);
       assert.doesNotMatch(html, /data-station-setup=/);
-      assert.match(html, stationId === "quarry" ? /data-mining-duration=/ : /data-production-slots=/);
+      assert.match(html, stationId === "quarry" ? /data-route="quarry_stone"/ : /data-production-slots=/);
     }
   }
 });
@@ -288,7 +291,8 @@ test("the basic campfire cooks fish before its paid first improvement at phone a
     html = render("campfire", economy, extra);
     assert.match(html, /data-recipe="cook_compote"/);
     assert.match(html, /data-cooking-duration=/);
-    assert.equal([...html.matchAll(/data-production-slot="/g)].length, 3);
+    assert.equal([...html.matchAll(/data-production-slot="/g)].length, 2);
+    assert.match(html, /Место 3 появится с домом 3 уровня/);
   }
 });
 
@@ -526,9 +530,9 @@ test("first-stage cards offer one item directly and strawberry explains its real
 });
 
 test("new house two requires one introduction and three house requests even with enough stock and coins", () => {
-  const state = snapshot({ wallet: { coins: 250, pearls: 0 }, inventory: { wood: 3, stone: 2, planks: 2 },
+  const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2);
+  const state = snapshot({ wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
     buildings: { home: 1, warehouse: 1, garden: 1, woodlot: 1, dryer: 1, workshop: 1 }, tutorialOrder: newTutorialOrder() });
-  const target = state.catalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2);
   assert.match(helpers.worldConstructionReason(state, "home", target), /первый учебный заказ: 1 малина/);
   state.tutorialOrder.step = 1; state.tutorialOrder.completed = true;
   assert.match(helpers.worldConstructionReason(state, "home", target), /заказы для дома 2: 0 \/ 3/);
@@ -634,9 +638,9 @@ test("the mine has one independent route picker without production tabs or paid 
   assert.match(stone.attributes, /aria-label="Подготовиться: Добыть камень"/);
   assert.match(stone.text, /Камень/);
   assert.doesNotMatch(stone.text, /Добыть камень|×1/);
-  assert.match(built, /aria-label="Время добычи"/);
+  assert.doesNotMatch(built, /aria-label="Время добычи"|data-mining-duration=/, "single-resource routes do not offer obsolete duration variants");
   assert.match(built, /data-mining-resource="stone"/);
-  for (const id of ["all", "short", "medium", "long"]) assert.ok(built.includes(`data-mining-duration="${id}"`));
+  assert.match(built, /data-mining-resource="clay"/);
   assert.doesNotMatch(built, /Вход в пещеру|data-route-preparation=/);
   assert.equal(disabled(button(prepareMine(builtState), "Начать добычу")), false, "a completed quarry opens one stone per free launch");
   for (const finishesAt of [new Date(now + 500_000).toISOString(), new Date(now).toISOString()]) {
@@ -648,7 +652,8 @@ test("the mine has one independent route picker without production tabs or paid 
   }
   const fullMine = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } }) }));
   assert.doesNotMatch(fullMine, /data-route="quarry_shift"|data-route="quarry_deep_face"/);
-  assert.match(fullMine, /data-route="quarry_supply"/);
+  assert.doesNotMatch(fullMine, /data-route="quarry_supply"/);
+  for (const id of ["quarry_stone", "quarry_clay", "quarry_ore"]) assert.match(fullMine, new RegExp(`data-route="${id}"`));
 });
 
 test("legacy simultaneous quarry and expedition jobs remain claimable in the unified mine", () => {
@@ -793,6 +798,7 @@ test("navigation to house storage preserves the requested station instead of ope
 
 test("embedded warehouse sale quotes the same markdown and preserves legacy catalog prices", () => {
   const state = snapshot({ inventory: { fish_common: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "fish_common").baseSellPrice = 40; // Explicit legacy price: fallback must respect this saved catalogue.
   const sale = () => renderToStaticMarkup(createElement(WorldObjectSale, { economy: controller({ snapshot: state }), itemId: "fish_common", onCollapse() {} }));
   let html = sale();
   assert.match(html, /быстрая продажа с уценкой 40%/); assert.match(html, /Плёска купит дороже: 40 монет/);

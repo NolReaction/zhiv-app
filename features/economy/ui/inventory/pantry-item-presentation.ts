@@ -12,11 +12,12 @@ export const pantryRarityNames: Record<PantryRarity, string> = {
 /** Presentation metadata only. These tiers never set prices, drops or unlocks. */
 export const pantryItemRarities: Readonly<Record<string, PantryRarity>> = {
   berries: "common", strawberries: "common", wood: "common", stone: "common", planks: "common", berry_compote: "common", strawberry_compote: "common",
-  fiber: "uncommon", clay: "uncommon", rope: "uncommon", charcoal: "uncommon", bricks: "uncommon", blueberries: "uncommon", blueberry_compote: "uncommon",
+  fiber: "uncommon", clay: "uncommon", rope: "uncommon", charcoal: "uncommon", bricks: "uncommon", blueberries: "uncommon", blueberry_compote: "uncommon", ceramic_jar: "uncommon",
   ore: "rare", sand: "rare", hardwood: "rare", metal_parts: "rare", iron_ingot: "rare", glass: "rare", cloth: "rare", beams: "rare", cut_stone: "rare",
-  dried_berries: "rare", currants: "rare", currant_jelly: "rare",
+  dried_berries: "rare", currants: "rare", currant_jelly: "rare", glass_bottle: "rare", packed_berries: "rare", trade_crate: "rare", bottled_compote: "rare",
   resin: "epic", tools: "epic", reinforced_parts: "epic", research_gear: "epic", trail_ration: "epic", blackberries: "epic", blackberry_preserve: "epic",
-  cranberries: "legendary", cranberry_glaze: "legendary",
+  quartz: "epic", lens: "epic", field_kit: "epic", berry_gift: "epic",
+  cranberries: "legendary", cranberry_glaze: "legendary", limestone: "legendary", mortar: "legendary", stone_tile: "legendary",
 };
 
 /** Alternatives use the lowest required raw fish class, independent of the chosen species. */
@@ -47,8 +48,8 @@ export const pantryGroupDefinitions = [
 ] as const;
 export type PantryGroupId = typeof pantryGroupDefinitions[number]["id"];
 const berries = new Set(["berries", "strawberries", "blueberries", "currants", "blackberries", "cranberries"]);
-const desserts = new Set(["currant_jelly", "blackberry_preserve", "cranberry_glaze"]);
-const travel = new Set(["dried_berries", "smoked_fish", "trail_ration"]);
+const desserts = new Set(["currant_jelly", "blackberry_preserve", "cranberry_glaze", "berry_gift"]);
+const travel = new Set(["dried_berries", "smoked_fish", "trail_ration", "packed_berries"]);
 
 export function pantryItemGroup(item: Item, catalog: Catalog): PantryGroupId {
   if (fishClassForItem(item.id, catalog.fishing)) return "fish";

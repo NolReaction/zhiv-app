@@ -210,7 +210,7 @@ test("quick sale shows catalog markdown and sends the displayed minimum quote wi
 });
 
 test("all seven first-stage goods display and send their fixed NPC price without markdown", () => {
-  const fixedPrices = { berries: 10, strawberries: 40, wood: 30, stone: 40, planks: 40, berry_compote: 30, grilled_fish: 55 };
+  const fixedPrices = { berries: 10, strawberries: 50, wood: 30, stone: 30, planks: 50, berry_compote: 50, grilled_fish: 45 };
   for (const [itemId, price] of Object.entries(fixedPrices)) {
     const state = snapshot({ inventory: { [itemId]: 2 } });
     const view = inspectSale(state, { itemId });
@@ -225,9 +225,10 @@ test("all seven first-stage goods display and send their fixed NPC price without
   }
 });
 
-test("penny stock starts at a payable batch, and wallet limits use the whole-stack rounded price", () => {
+test("legacy penny stock starts at a payable batch, and wallet limits use the whole-stack rounded price", () => {
   const state = snapshot({ inventory: { crumb_bait: 10 }, wallet: { coins: 9_999_999_990, pearls: 0 } });
   state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "crumb_bait").baseSellPrice = 10;
   const view = inspectSale(state, { itemId: "crumb_bait" });
   const input = view.elements.find(element => element.type === "input");
   assert.equal(input.props.min, 2); assert.equal(input.props.max, 3); assert.equal(input.props.value, "2");
@@ -241,8 +242,9 @@ test("penny stock starts at a payable batch, and wallet limits use the whole-sta
   assert.match(empty.html, /нужно хотя бы 2 шт/);
 });
 
-test("fish points to Pleska's full price and an available navigation callback", () => {
+test("legacy fish markdown points to Pleska's full price and an available navigation callback", () => {
   const state = snapshot({ inventory: { fish_common: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "fish_common").baseSellPrice = 40;
   let opened = 0;
   const view = inspectSale(state, { itemId: "fish_common", onOpenFishingShop() { opened++; } });
   assert.match(view.html, /Плёска купит дороже: 40 монет за штуку/);

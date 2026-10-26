@@ -313,7 +313,10 @@ test("sandbox: public web admin fallback never grants authority from forged head
       const response = await context.run({ token: actor.token }, () => routes.admin[method](request(actor, `/api/v1/admin/${path}`,
         method === "POST" ? { role: "admin", publicId: actor.me.user.publicId, coinsDelta: 1_000_000 } : undefined,
         { "X-Admin": "true", "X-User-Id": actor.me.user.publicId, "X-Forwarded-For": "127.0.0.1", Authorization: "Bearer admin" }, method)));
-      assert.equal(response.status, 503); assert.equal((await response.json()).code, "ADMIN_UNAVAILABLE"); count++;
+      const body = await response.json();
+      assert.equal(response.status, mode === "production" ? 503 : 403);
+      assert.equal(body.code, mode === "production" ? "ADMIN_UNAVAILABLE" : "FORBIDDEN");
+      assert.equal(response.headers.get("cache-control"), "no-store"); count++;
     }
   }
   assert.deepEqual(saved(actor), before);

@@ -10,6 +10,12 @@ import { checkNextDevDependencies, nextDevArguments, validateNextDevDependencies
 
 const launcher = fileURLToPath(new URL("../scripts/next-dev.mjs", import.meta.url));
 const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+function childOutput(stdout) {
+  const match = stdout.match(/^\nLocal administration: \/admin\nLocal access code \(this development process only\): ([A-Za-z0-9_-]{16,})\n\n/);
+  assert.ok(match, "launcher announces the isolated local admin code before starting Next");
+  return stdout.slice(match[0].length);
+}
+
 const versions = Object.fromEntries(["next", "react", "react-dom"].map(name => [name, manifest.dependencies[name]]));
 
 async function fixture(t, overrides = {}, cli = "process.exit(0);") {
@@ -71,7 +77,7 @@ test("the launcher forwards arguments and environment and preserves the child ex
   assert.ifError(result.error);
   assert.equal(result.status, 7);
   assert.equal(result.stderr, "");
-  assert.deepEqual(JSON.parse(result.stdout), { args: ["dev", "--webpack", "--hostname", "0.0.0.0", "--port", "4321"], marker: "inherited" });
+  assert.deepEqual(JSON.parse(childOutput(result.stdout)), { args: ["dev", "--webpack", "--hostname", "0.0.0.0", "--port", "4321"], marker: "inherited" });
 });
 
 test("the development launcher enables DEV even when the shell exports production or test", async t => {
@@ -84,7 +90,7 @@ test("the development launcher enables DEV even when the shell exports productio
     assert.ifError(result.error);
     assert.equal(result.status, 0, `inherited NODE_ENV=${mode}`);
     assert.equal(result.stderr, "");
-    assert.equal(result.stdout.trim(), "development", `inherited NODE_ENV=${mode}`);
+    assert.equal(childOutput(result.stdout).trim(), "development", `inherited NODE_ENV=${mode}`);
   }
 });
 
@@ -103,7 +109,7 @@ test("the launcher prepares a matching development status on clean and previousl
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stderr, "");
-    assert.deepEqual(JSON.parse(result.stdout), expected, "status exists before Next starts and inherited release IDs cannot trigger dev reloads");
+    assert.deepEqual(JSON.parse(childOutput(result.stdout)), expected, "status exists before Next starts and inherited release IDs cannot trigger dev reloads");
     assert.deepEqual(JSON.parse(await readFile(join(root, "public/app-status.json"), "utf8")), expected.status);
   }
 });
@@ -123,8 +129,12 @@ test("termination is forwarded to Next and retained as the launcher's exit signa
   const child = spawn(process.execPath, [launcher], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM"); });
   const exit = once(child, "exit");
-  const [ready] = await once(child.stdout, "data");
-  assert.match(ready.toString(), /READY/);
+  let output = "";
+  while (!output.includes("READY")) {
+    const [chunk] = await once(child.stdout, "data");
+    output += chunk.toString();
+  }
+  assert.match(childOutput(output), /READY/);
   child.kill("SIGTERM");
   const [code, signal] = await exit;
   assert.equal(code, null);
