@@ -317,5 +317,5 @@ export function createWorldDevStore(enabled: boolean) {
 }
 
 export const worldDevStore = retainWorldDevClientState("world-controls",
-  `v1:4:ship-voyage:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
+  `v1:5:ship-turn:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
   () => createWorldDevStore(WORLD_DEV_ENABLED)).value;

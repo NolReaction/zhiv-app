@@ -5,7 +5,7 @@ export const TRADE_SHIP_SPRITE = {
   src: "/world/ships/trade-ship.png?v=608f97253e98", width: 800, height: 500,
   sourceWidth: 1774, sourceHeight: 887,
   image: { x: 70, y: 60, width: 660, height: 330 },
-  pivot: { x: 400, y: 350 }, baseHeading: .12,
+  pivot: { x: 400, y: 350 }, baseHeading: .12, maxHeading: Math.PI / 3,
 } as const;
 
 export type TradeShipSpriteFrame = {
@@ -36,7 +36,7 @@ export function drawTradeShipSprite(ctx: CanvasRenderingContext2D, image: Canvas
   const sprite = TRADE_SHIP_SPRITE, scale = frame.width / sprite.width;
   const night = Math.max(0, Math.min(1, finite(frame.night)));
   const time = Math.max(0, finite(frame.time));
-  const heading = sprite.baseHeading + Math.max(-.3, Math.min(.3, finite(frame.heading)));
+  const heading = sprite.baseHeading + Math.max(-sprite.maxHeading, Math.min(sprite.maxHeading, finite(frame.heading)));
   const facing = frame.facing === "right" ? 1 : -1;
   ctx.save();
   try {

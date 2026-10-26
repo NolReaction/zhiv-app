@@ -92,8 +92,18 @@ test("invalid placement is skipped; optional values are finite and Canvas state 
     assert.deepEqual(canvas.calls, []);
   }
   assert.deepEqual(drawing({ time: NaN, heading: Infinity, night: NaN }), drawing());
-  assert.deepEqual(drawing({ heading: 3, night: 4 }), drawing({ heading: .3, night: 1 }));
+  assert.deepEqual(drawing({ heading: 3, night: 4 }), drawing({ heading: Math.PI / 3, night: 1 }));
+  assert.deepEqual(drawing({ heading: -3 }), drawing({ heading: -Math.PI / 3 }));
   const canvas = recordingCanvas("drawImage");
   assert.throws(() => drawTradeShipSprite(canvas.ctx, source, { x: 0, y: 0, width: 800, night: 1 }), /recording failure/);
   assert.equal(canvas.depth(), 0); assert.deepEqual(canvas.snapshot(), canvas.original);
+});
+
+test("the renderer preserves the clockwise arrival tilt and the full counterclockwise departure turn", () => {
+  for (const requested of [.28, 0, -.60]) {
+    const rotation = drawing({ heading: requested }).find(call => call[0] === "rotate");
+    assert.ok(rotation, "the PNG receives its supplied screen rotation");
+    assert.ok(Math.abs(rotation[1] - (TRADE_SHIP_SPRITE.baseHeading + requested)) < 1e-12,
+      `requested ${requested} must reach Canvas without being clipped to the former ±.3 limit`);
+  }
 });

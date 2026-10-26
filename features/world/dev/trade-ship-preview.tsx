@@ -247,7 +247,7 @@ export function TradeShipPreview() {
           </div>
           <label className={styles.field} htmlFor="trade-ship-voyage"><span>{leg === "arriving" ? "Прибытие" : "Отход"}<output>{Math.round(voyage.progress * 100)}%</output></span>
             <input id="trade-ship-voyage" disabled={!shipImage} type="range" min={0} max={100} step={1} value={Math.round(voyage.progress * 100)} onChange={event => seekVoyage(Number(event.target.value))} /></label>
-          <p className={styles.note}>Заход справа снизу, остановка у берега. Обратно — кормой, затем вниз.</p>
+          <p className={styles.note}>Заход с наклоном и выравниванием. Отход вправо, затем поворот против часовой и вниз-влево.</p>
         </section>
         <h2>Изображение</h2>
         <button type="button" className={styles.download} disabled={!shipImage} onClick={downloadPng}><Download size={18} aria-hidden />Скачать PNG</button>

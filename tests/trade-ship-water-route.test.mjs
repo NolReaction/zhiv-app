@@ -30,6 +30,8 @@ function polygons(name, layers = tiled.layers, offset = { x: 0, y: 0 }) {
   });
 }
 const surfaces = polygons("Water"), exclusions = polygons("WaterExclusions");
+const edges = [...surfaces, ...exclusions].flatMap(polygon => polygon.map((point, index) =>
+  [point, polygon[(index + 1) % polygon.length]]));
 const bottom = tiled.height * tiled.tileheight;
 function wet(point, holes = exclusions) {
   if (holes.some(polygon => previewPointInPolygon(point, polygon))) return false;
@@ -43,7 +45,7 @@ const waterline = [];
 // Follow the actual opaque lower hull across the complete PNG width, including
 // bow, stern and fenders. Roof/chimney height is not a water-contact footprint.
 // Three strips cover the bottom 24 native pixels (~3.5 world px at this scale).
-for (let x = 0; x < info.width; x += 8) {
+for (let x = 0; x < info.width; x++) {
   let y = info.height - 1;
   while (y >= 0 && data[(y * info.width + x) * 4 + 3] <= 64) y--;
   for (const inset of [0, 12, 24]) {
@@ -62,18 +64,22 @@ function placement(point, state, bob = 0) {
   };
 }
 
-test("the complete PNG waterline stays in Tiled Water on arrival, stern-right clearance and down-left exit", () => {
-  assert.ok(surfaces.length > 0 && waterline.length > 600);
+test("the rotated PNG waterline stays in Water through tilted arrival, level stern-right clearance and CCW exit", () => {
+  assert.ok(surfaces.length > 0 && waterline.length > 5000, "every native PNG column contributes its hull contact strips");
+  let clockwiseArrival = false, counterclockwiseExit = false;
   for (const phase of ["arriving", "departing"]) {
     const duration = phase === "arriving" ? TRADE_SHIP_VOYAGE.arrivalDuration : TRADE_SHIP_VOYAGE.departureDuration;
     for (let step = 0; step <= duration * 10; step++) {
       const state = sampleTradeShipMotion(phase, step / 10);
+      clockwiseArrival ||= phase === "arriving" && state.heading > .2;
+      counterclockwiseExit ||= phase === "departing" && state.heading < -.5;
       for (const point of waterline) for (const bob of [-.8, .8]) {
         const actual = placement(point, state, bob);
         assert.ok(wet(actual), `${phase} at ${step / 10}s: hull meets land/exclusion at ${actual.x},${actual.y}`);
       }
     }
   }
+  assert.ok(clockwiseArrival && counterclockwiseExit, "coast validation must include both requested rotated poses");
 });
 
 test("the waterline check rejects an unsafe berth and authored water exclusions", () => {
@@ -85,6 +91,29 @@ test("the waterline check rejects an unsafe berth and authored water exclusions"
   const hole = [{ x: point.x - 1, y: point.y - 1 }, { x: point.x + 1, y: point.y - 1 },
     { x: point.x + 1, y: point.y + 1 }, { x: point.x - 1, y: point.y + 1 }];
   assert.equal(wet(point, [...exclusions, hole]), false, "WaterExclusions must be subtracted from water");
+});
+
+test("the entire straight-right swept waterline clears the bank between animation frames", () => {
+  const start = sampleTradeShipMotion("departing", 0);
+  const finish = sampleTradeShipMotion("departing", TRADE_SHIP_VOYAGE.backingDuration);
+  assert.equal(start.y, finish.y); assert.ok(start.heading === 0 && finish.heading === 0);
+  for (const point of waterline) for (const bob of [-.8, .8]) {
+    const a = placement(point, start, bob), b = placement(point, finish, bob);
+    const cuts = [a.x, b.x];
+    // Split this exact horizontal sweep at every authored shoreline/hole
+    // intersection; each open interval then lies entirely in water or on land.
+    for (const [c, d] of edges) {
+      if ((c.y > a.y) === (d.y > a.y)) continue;
+      const x = c.x + (a.y - c.y) * (d.x - c.x) / (d.y - c.y);
+      if (x > a.x && x < b.x) cuts.push(x);
+    }
+    cuts.sort((left, right) => left - right);
+    assert.ok(wet(a) && wet(b), "straight-right sweep endpoints must stay wet");
+    for (let n = 1; n < cuts.length; n++) {
+      assert.ok(wet({ x: (cuts[n - 1] + cuts[n]) / 2, y: a.y }),
+        `straight-right hull sweep crosses land at y=${a.y}, x=${cuts[n - 1]}..${cuts[n]}`);
+    }
+  }
 });
 
 test("arrival and departure endpoints clear the whole visible PNG before hiding", () => {

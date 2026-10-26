@@ -11,94 +11,83 @@ const { TRADE_SHIP_VOYAGE: voyage, createTradeShipMotion, sampleTradeShipMotion,
   advanceTradeShipMotion, departTradeShip } = await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
 const near = (a, b, epsilon = 1e-7) => assert.ok(Math.abs(a - b) < epsilon, `${a} ≠ ${b}`);
 
-test("arrival enters from lower-right, brakes continuously, and stays at the berth until commanded", () => {
-  let state = createTradeShipMotion("arriving");
-  assert.ok(state.y > 1320, "starts beyond both the map and the preview's sea margin");
-  assert.ok(state.x > state.berth.x);
+test("clockwise-tilted arrival levels continuously at the horizontal berth", () => {
+  let state = createTradeShipMotion("arriving"), previous = state;
+  assert.ok(state.y > 1320 && state.x > state.berth.x);
   assert.equal(state.speed, 0);
-  assert.equal(state.reverse, false);
-  let previous = state;
+  assert.equal(state.heading, voyage.arrivalHeading);
+  assert.ok(state.heading > 0, "Canvas-positive gives the incoming clockwise tilt");
   for (let i = 1; i <= 1800; i++) {
     state = sampleTradeShipMotion("arriving", i / 100);
     assert.ok(state.x <= previous.x + 1e-9 && state.y <= previous.y + 1e-9);
-    assert.ok(state.speed < 60);
-    assert.equal(state.heading, 0);
-    assert.ok(state.visible);
+    assert.ok(state.heading >= 0 && state.heading <= previous.heading + 1e-9);
+    assert.ok(state.speed < 60 && state.visible);
     previous = state;
   }
   assert.equal(state.phase, "docked");
-  assert.equal(state.speed, 0);
   assert.equal(state.heading, 0);
-  assert.equal(state.x, state.berth.x);
-  assert.equal(state.y, state.berth.y);
+  assert.equal(state.speed, 0);
+  assert.equal(state.x, state.berth.x); assert.equal(state.y, state.berth.y);
   assert.equal(advanceTradeShipMotion(state, 60), state);
   const before = sampleTradeShipMotion("arriving", voyage.arrivalDuration - .001);
-  near(before.x, state.x); near(before.y, state.y);
-  near(before.heading, state.heading, .00001);
+  near(before.x, state.x); near(before.y, state.y); near(before.heading, state.heading);
   assert.ok(before.speed < .00001);
 });
 
-test("departure backs a little right, turns smoothly down-left, and leaves without spinning or jumping", () => {
+test("departure first slides strictly right, then drifts slightly left/down while turning counterclockwise", () => {
   const docked = createTradeShipMotion(), departing = departTradeShip(docked);
-  assert.equal(departing.phase, "departing");
   near(departing.x, docked.x); near(departing.y, docked.y); near(departing.heading, docked.heading);
-  assert.equal(departing.speed, 0);
-  assert.equal(departing.reverse, true);
+  assert.equal(departing.speed, 0); assert.equal(departing.reverse, true);
   assert.equal(departTradeShip(departing), departing);
-  let previous = departing, turns = 0, turned = false, rightmost = departing.x, peakSpeed = 0;
-  for (let i = 1; i < voyage.departureDuration * 10; i++) {
-    const t = i / 10;
-    const state = sampleTradeShipMotion("departing", t);
-    assert.ok(state.y > previous.y && state.velocityY > 0, "the whole departure continues toward open sea");
-    if (state.velocityX < 0 && !turned) { turned = true; turns++; }
-    if (turned) {
-      assert.ok(state.velocityX < 0, "after clearing the berth, the ship continues down-left");
-      assert.equal(state.reverse, false);
-    } else {
-      assert.ok(state.x > previous.x && state.velocityX > 0);
-      assert.equal(state.reverse, true, "the first short move is stern-first");
-    }
-    assert.equal(state.heading, 0, "one fixed PNG must not pretend to rotate into another perspective");
-    assert.ok(Math.hypot(state.x - previous.x, state.y - previous.y) < 5, "no frame jump or flyoff");
-    rightmost = Math.max(rightmost, state.x); peakSpeed = Math.max(peakSpeed, state.speed);
-    previous = state;
+  let previous = departing, peakSpeed = 0;
+  for (let time = .1; time <= voyage.backingDuration; time += .1) {
+    const state = sampleTradeShipMotion("departing", Math.min(time, voyage.backingDuration));
+    assert.ok(state.x >= previous.x);
+    assert.equal(state.y, docked.y, "initial clearance is a pure horizontal translation");
+    assert.equal(state.velocityY, 0);
+    assert.equal(state.heading, 0, "the picture stays level during the entire rightward slide");
+    peakSpeed = Math.max(peakSpeed, state.speed); previous = state;
   }
-  assert.equal(turns, 1);
-  assert.ok(rightmost - docked.x > docked.width * .1);
-  assert.ok(rightmost - docked.x < docked.width * .25, "backs less than a quarter ship placement width");
-  assert.ok(peakSpeed < 48, "the longer departure keeps the default manoeuvre unhurried");
-  assert.ok(previous.x < docked.x - docked.width * .5);
+  const cleared = sampleTradeShipMotion("departing", voyage.backingDuration);
+  assert.ok(cleared.x - docked.x > docked.width * .3 && cleared.x - docked.x < docked.width * .45);
+  previous = cleared;
+  for (let time = voyage.backingDuration + .1; time < voyage.departureDuration; time += .1) {
+    const state = sampleTradeShipMotion("departing", time);
+    assert.ok(state.x < previous.x && state.y > previous.y);
+    assert.ok(state.velocityX < 0 && state.velocityY > 0);
+    assert.ok(state.heading <= previous.heading && state.heading >= voyage.departureHeading);
+    assert.equal(state.reverse, false);
+    assert.ok(Math.hypot(state.x - previous.x, state.y - previous.y) < 6, "no flyoff");
+    peakSpeed = Math.max(peakSpeed, state.speed); previous = state;
+  }
+  assert.ok(peakSpeed < 60);
+  const turned = sampleTradeShipMotion("departing", voyage.backingDuration + voyage.turnDuration);
+  assert.equal(turned.heading, voyage.departureHeading);
+  assert.ok(turned.y < docked.y + docked.width * .1, "the picture turns before the downward exit takes it off the map");
+  assert.ok(cleared.x - previous.x < docked.width * .4, "only a small leftward drift after clearing");
   const departed = advanceTradeShipMotion(departing, voyage.departureDuration);
-  assert.equal(departed.phase, "departed");
-  assert.equal(departed.visible, false);
+  assert.equal(departed.phase, "departed"); assert.equal(departed.visible, false);
   assert.equal(departed.speed, 0);
-  assert.ok(departed.y > 1320, "becomes invisible only after leaving the full preview frame");
+  assert.equal(departed.heading, voyage.departureHeading);
+  assert.ok(departed.y > 1320);
   assert.equal(advanceTradeShipMotion(departed, 10), departed);
 });
 
-test("horizontal direction changes once with continuous position, velocity and acceleration", () => {
-  let low = 0, high = voyage.departureDuration;
-  for (let n = 0; n < 60; n++) {
-    const middle = (low + high) / 2;
-    if (sampleTradeShipMotion("departing", middle).velocityX > 0) low = middle;
-    else high = middle;
-  }
-  const turn = (low + high) / 2, h = .001;
-  assert.ok(turn > voyage.departureDuration * .3 && turn < voyage.departureDuration * .5);
-  const before = sampleTradeShipMotion("departing", turn - h);
-  const current = sampleTradeShipMotion("departing", turn);
-  const after = sampleTradeShipMotion("departing", turn + h);
-  near(current.velocityX, 0, 1e-7);
-  assert.ok(current.velocityY > 15, "the bend does not stop and launch a second animation");
-  near(before.x, after.x, .001); near(before.y, after.y, .1);
-  for (const axis of ["X", "Y"]) {
-    near((current[`velocity${axis}`] - before[`velocity${axis}`]) / h,
-      (after[`velocity${axis}`] - current[`velocity${axis}`]) / h, .01);
-  }
-  const start = sampleTradeShipMotion("departing", h);
+test("backing/turning join has no position, angle, velocity or acceleration jump", () => {
+  const h = .00001, join = voyage.backingDuration;
+  const before = sampleTradeShipMotion("departing", join - h);
+  const current = sampleTradeShipMotion("departing", join);
+  const after = sampleTradeShipMotion("departing", join + h);
+  near(before.x, current.x); near(after.x, current.x);
+  near(before.y, current.y); near(after.y, current.y);
+  near(before.heading, 0); near(after.heading, 0);
+  assert.equal(current.speed, 0);
+  for (const state of [before, after]) assert.ok(state.speed < .0001);
+  for (const axis of ["X", "Y"]) near((current[`velocity${axis}`] - before[`velocity${axis}`]) / h,
+    (after[`velocity${axis}`] - current[`velocity${axis}`]) / h, .001);
   const finish = sampleTradeShipMotion("departing", voyage.departureDuration - h);
-  assert.ok(start.speed < .00001 && finish.speed < .00001);
-  near(start.heading, 0); near(finish.heading, 0);
+  near(finish.heading, voyage.departureHeading);
+  assert.ok(finish.speed < .00001);
 });
 
 test("route and velocity are independent of FPS and frame partition, including a late large frame", () => {
