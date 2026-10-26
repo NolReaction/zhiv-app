@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "policyVersion": "v14-unified-2",
   "generatedAt": "2026-10-26T04:01:12.655Z",
-  "releaseValidated": false,
+  "releaseValidated": true,
   "sourceSha256": {
     "apps/api/src/main/resources/world/achievements-catalog.json": "d886e14ba364a30799d2ad51874121f9357760c8bc3dc8a320994bf7b89e6800",
     "apps/api/src/main/resources/world/collections-catalog.json": "eb92ecfbac878897c7c2de8788fc54bcdbc419b9c1870617d91ff3b6514b2401",
