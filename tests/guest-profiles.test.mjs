@@ -122,8 +122,11 @@ test("closed or switched profile ignores even a transport that finishes after ca
 
 test("strict profile schema rejects hidden IDs duplicated discoveries invalid tiers and private nested fields", () => {
   const a = player(), b = player(), circle = connect(a, b), value = read(a, circle);
+  assert.equal(model.guestProfileSchema.safeParse({ ...value, achievements: [{ id: "explorer", level: 4 }] }).success, true,
+    "the new fourth explorer tier is a public achievement");
   for (const patch of [
-    { achievements: [{ id: "linked_email", level: 1 }] }, { achievements: [{ id: "explorer", level: 4 }] },
+    { achievements: [{ id: "linked_email", level: 1 }] }, { achievements: [{ id: "explorer", level: 5 }] },
+    { achievements: [{ id: "first_path", level: 2 }] },
     { achievements: [{ id: "first_path", level: 1, unlockedAt: value.serverTime }] },
     { collections: { ...value.collections, travel: ["acorn", "acorn"] } },
     { collections: { ...value.collections, fishing: ["ancient_core"] } },

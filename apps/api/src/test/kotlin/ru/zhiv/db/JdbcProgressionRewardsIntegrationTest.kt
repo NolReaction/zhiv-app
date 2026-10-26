@@ -276,12 +276,15 @@ class JdbcProgressionRewardsIntegrationTest {
     }
     @Test fun `admin award cannot pay until actual tier and ownership revocation cannot reset paid fence`()=runBlocking<Unit> {
         val p=player(); economy.snapshot(p.hash)
-        source.connection.use { c -> recordAchievementTiers(c,p.id,"explorer",200,OffsetDateTime.now(),rewardEligible=false); c.commit() }
-        assertTrue(rewards.snapshot(p.hash).achievementRewards.filter { it.achievementId=="explorer" }.all { it.blockedReason=="admin_grant" })
+        source.connection.use { c -> recordAchievementTiers(c,p.id,"explorer",GameRewards.achievements.getValue("explorer"),OffsetDateTime.now(),rewardEligible=false); c.commit() }
+        val granted=rewards.snapshot(p.hash).achievementRewards.filter { it.achievementId=="explorer" }
+        assertEquals(GameRewards.tiers.getValue("explorer").size,granted.size)
+        assertTrue(granted.all { it.blockedReason=="admin_grant" && !it.eligible })
         val state=source.connection.use { readEconomyProfile(it,p.id).state }
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state.copy(completedExplorations=10)),p.id)
         val rows=rewards.snapshot(p.hash).achievementRewards.filter { it.achievementId=="explorer" }
-        assertTrue(rows[0].eligible); assertFalse(rows[1].eligible)
+        assertTrue(rows[0].eligible)
+        assertTrue(rows.drop(1).all { it.blockedReason=="admin_grant" && !it.eligible })
         val paid=rewards.claim(p.hash,command(p,achievement="explorer",level=1))
         execute("DELETE FROM game_achievements WHERE user_id=? AND achievement_id='explorer'",p.id)
         assertEquals(paid.claim.claimedAt,rewards.snapshot(p.hash).achievementRewards.single { it.achievementId=="explorer" && it.level==1 }.claimedAt)

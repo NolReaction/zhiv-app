@@ -44,6 +44,15 @@ class JdbcReleaseUpgradeIntegrationTest {
         scalar(source, "SELECT COALESCE(jsonb_agg($row ORDER BY ($row)::text),'[]'::jsonb)::text FROM public.\"$table\" t")
     }
 
+    private fun assertUnopenedLegacyRewardCourses(source: DataSource, users: List<UUID>) {
+        assertEquals(users.size.toString(), scalar(source, "SELECT count(*) FROM game_daily_rewards"))
+        for (user in users) assertEquals("1:false:7:6:true:true:true", scalar(source,
+            """SELECT next_step::text||':'||completed::text||':'||reward_catalog_version::text||':'||achievement_reward_version::text
+                ||':'||(last_claim_at IS NULL)::text||':'||(last_claim_date IS NULL)::text||':'||(onboarding_claimed_at IS NULL)::text
+                FROM game_daily_rewards WHERE user_id='$user'"""),
+            "V77 freezes the legacy achievement course without claiming or paying a gift")
+    }
+
     private fun seedLegacyWorld(source: DataSource, user: UUID, state: WorldState, revision: Long, command: WorldCommand) {
         source.connection.use { connection ->
             fun execute(sql: String, vararg values: Any?) = connection.prepareStatement(sql).use { statement ->
@@ -169,12 +178,16 @@ class JdbcReleaseUpgradeIntegrationTest {
             val tables = source.connection.use { c -> c.economyRows(
                 "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename") { it.getString(1) } }
             val before = legacyData(source, tables)
+            assertEquals("[]", before.getValue("game_daily_rewards"), "Historical accounts have not opened rewards")
+            val unchangedBefore = before - "game_daily_rewards"
             val beforeEconomyRevision = scalar(source, "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'").toLong()
             val oldHistorySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=50"
             val oldHistory = scalar(source, oldHistorySql)
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals(before, legacyData(source, tables), "Existing audit, receipts, sessions and balances are unchanged")
+            assertEquals(unchangedBefore, legacyData(source, tables - "game_daily_rewards"), "Existing audit, receipts, sessions and balances are unchanged")
+            assertUnopenedLegacyRewardCourses(source, listOf(admin.id, player.id))
+            val migratedRewards = legacyData(source, listOf("game_daily_rewards"))
             assertEquals((beforeEconomyRevision + 1).toString(), scalar(source,
                 "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'"), "V55 advances the profile fence exactly once")
             assertEquals("2", scalar(source, "SELECT count(*) FROM admin_actions WHERE accepted_revision IS NULL"))
@@ -183,7 +196,8 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(receipt, repository.grantReward(token.hash, player.publicId, requestId, reward))
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals(before, legacyData(source, tables))
+            assertEquals(unchangedBefore, legacyData(source, tables - "game_daily_rewards"))
+            assertEquals(migratedRewards, legacyData(source, listOf("game_daily_rewards")), "Restart cannot advance or recreate reward courses")
             val grant = ru.zhiv.admin.AdminEconomyGrantRequest(UUID.randomUUID().toString(), player.publicId, "Компенсация после обновления", coins = 25)
             assertTrue(repository.grantEconomy(token.hash, player.publicId, UUID.fromString(grant.requestId), grant).changed)
             assertEquals("1", scalar(source, "SELECT count(*) FROM admin_actions WHERE action='grant_economy' AND accepted_revision IS NOT NULL"))
@@ -245,6 +259,8 @@ class JdbcReleaseUpgradeIntegrationTest {
                 "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename") { it.getString(1) } }
             val preservedTables = tables.filter { it != "economy_profiles" }
             val before = legacyData(source, preservedTables)
+            assertEquals("[]", before.getValue("game_daily_rewards"), "Historical account has not opened rewards")
+            val unchangedBefore = before - "game_daily_rewards"
             val expectedProfile = scalar(source, """SELECT jsonb_build_object('state',state,
                 'immutable',to_jsonb(e)-'state'-'revision'-'updated_at','revision',revision+1)::text
                 FROM economy_profiles e WHERE user_id='${player.id}'""")
@@ -252,7 +268,9 @@ class JdbcReleaseUpgradeIntegrationTest {
             val history = scalar(source, historySql)
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals(before, legacyData(source, preservedTables))
+            assertEquals(unchangedBefore, legacyData(source, preservedTables - "game_daily_rewards"))
+            assertUnopenedLegacyRewardCourses(source, listOf(player.id))
+            val migratedRewards = legacyData(source, listOf("game_daily_rewards"))
             assertEquals(expectedProfile, scalar(source, """SELECT jsonb_build_object(
                 'state',state-'marketSlots'-'unlockedItems'-'itemUnlockVersion',
                 'immutable',to_jsonb(e)-'state'-'revision'-'updated_at','revision',revision)::text
@@ -268,6 +286,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(player.publicId, identity.findBySession(token.hash)?.publicId)
+            assertEquals(migratedRewards, legacyData(source, listOf("game_daily_rewards")), "Restart cannot advance or recreate reward courses")
         }
     }
 

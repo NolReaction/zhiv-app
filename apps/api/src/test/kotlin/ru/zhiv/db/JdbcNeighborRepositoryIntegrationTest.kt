@@ -159,9 +159,13 @@ class JdbcNeighborRepositoryIntegrationTest {
         assertEquals(false,repository.neighbor(p.hash).buying.firstSale)
         source.connection.use { c ->
             val old=readEconomyProfile(c,p.id).state
-            saveEconomyProfile(c,p.id,old.copy(inventory=old.inventory+mapOf("crumb_bait" to 10L)))
+            // Model a previously discovered item: inventory alone must not unlock
+            // market access in a current profile. Reach the neighbor price guard.
+            saveEconomyProfile(c,p.id,old.copy(inventory=old.inventory+mapOf("crumb_bait" to 10L),
+                unlockedItems=(old.unlockedItems+"crumb_bait").distinct().sorted()))
             c.commit()
         }
+        assertTrue("crumb_bait" in economy.snapshot(p.hash).unlockedItems)
         market.command(p.hash,command(p,"create_listing","crumb_bait",quantity=10,price=20))
         val bait=market.market(p.hash).mine.single { it.itemId=="crumb_bait" }
         age(bait,hours=7)

@@ -478,7 +478,7 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(3,json.getValue("achievements").jsonArray.size)
         val legacy=client.get("/api/v1/game/achievements?catalog=2") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(3,Json.parseToJsonElement(legacy.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
-        for (query in listOf("catalog=7","catalog=3&catalog=3","catalog=6&catalog=6"))
+        for (query in listOf("catalog=8","catalog=3&catalog=3","catalog=6&catalog=6","catalog=7&catalog=7"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/achievements?$query") { header(HttpHeaders.Cookie,cookie) }.status)
         val expanded=client.get("/api/v1/game/achievements?catalog=3") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(6,Json.parseToJsonElement(expanded.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
@@ -513,6 +513,22 @@ class JdbcGameRepositoryIntegrationTest {
             assertEquals(targets,tiers.map { it.jsonObject.getValue("target").jsonPrimitive.long })
             assertTrue(tiers.all { it.jsonObject.getValue("progress").jsonPrimitive.long==0L && it.jsonObject.getValue("unlockedAt")==JsonNull })
         }
+        val latest=client.get("/api/v1/game/achievements?catalog=7") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(HttpStatusCode.OK,latest.status)
+        assertEquals("no-store",latest.headers[HttpHeaders.CacheControl])
+        val latestJson=Json.parseToJsonElement(latest.bodyAsText()).jsonObject
+        assertEquals(p.publicId,latestJson.getValue("ownerPublicId").jsonPrimitive.content)
+        val latestCards=latestJson.getValue("achievements").jsonArray
+        assertEquals(19,latestCards.size)
+        assertEquals(activityCards.map { it.jsonObject.getValue("id") },latestCards.map { it.jsonObject.getValue("id") })
+        for (card in latestCards) {
+            val item=card.jsonObject
+            assertEquals(GameRewards.tiers.getValue(item.getValue("id").jsonPrimitive.content),
+                item.getValue("tiers").jsonArray.map { it.jsonObject.getValue("target").jsonPrimitive.long })
+        }
+        assertEquals(4,latestCards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="explorer" }.jsonObject.getValue("tiers").jsonArray.size)
+        assertEquals(listOf(5L,10L,35L,61L),latestCards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="master_recipes" }
+            .jsonObject.getValue("tiers").jsonArray.map { it.jsonObject.getValue("target").jsonPrimitive.long })
         for (query in listOf("metric=unknown","metric=best_series&metric=best_series"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
 

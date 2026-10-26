@@ -1063,7 +1063,7 @@ class JdbcAdminRepositoryIntegrationTest {
         assertFalse(repo.grantReward(admin.hash,target.publicId,next,request.copy(requestId=next.toString())).granted)
         val award=JdbcGameRepository(source).achievements(target.hash).achievements.single { it.id=="explorer" }
         assertEquals("2026-01-01T00:00:00Z",award.unlockedAt)
-        assertEquals(3,award.tiers.count { it.unlockedAt!=null }); assertEquals(200L,award.progress)
+        assertEquals(4,award.tiers.count { it.unlockedAt!=null }); assertEquals(1000L,award.progress)
         assertEquals(0L,JdbcEconomyRepository(source).snapshot(target.hash).completedExplorations)
     }
 
