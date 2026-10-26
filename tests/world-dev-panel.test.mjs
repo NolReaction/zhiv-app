@@ -228,6 +228,41 @@ test("water DEV controls separate wildlife, surface, breeze and wind without aff
   assert.deepEqual(view.calls.actions, []);
 });
 
+test("PNG ship inspection changes only the visual toggle and links to its independent workshop", () => {
+  const view = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true } });
+  const ship = view.elements.find(element => element.props.label === "Торговый корабль (PNG)");
+  assert.equal(ship.props.checked, true);
+  ship.props.onChange(false);
+  assert.deepEqual(view.calls.patches, [{ tradeShipPreview: false }]);
+  assert.deepEqual(view.calls.actions, []);
+  assert.match(view.markup, /href="\/prototype\/trade-ship"/);
+});
+
+test("in-game ship actions focus the real map and close the drawer without account commands", () => {
+  const commands = [], cameras = [], opened = [];
+  const trigger = worldDevStore.triggerTradeShip, camera = worldDevStore.triggerCamera;
+  worldDevStore.triggerTradeShip = command => commands.push(command);
+  worldDevStore.triggerCamera = action => cameras.push(action);
+  try {
+    const view = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true },
+      onOpenWorld: () => opened.push(true) });
+    const button = label => view.elements.find(element => element.type === "button" && labelText(element) === label);
+    for (const label of ["Приплыть", "Отойти", "У причала", "К кораблю"]) button(label).props.onClick();
+    assert.deepEqual(commands, ["arrive", "depart", "dock"]);
+    assert.deepEqual(cameras, ["ship"]); assert.equal(opened.length, 4);
+    assert.deepEqual(view.calls.actions, []); assert.deepEqual(view.calls.patches, []);
+    for (const tradeShipPhase of ["arriving", "deploying", "retracting", "departing"]) {
+      const moving = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true }, tradeShipPhase });
+      for (const label of ["Приплыть", "Отойти"]) assert.equal(moving.elements.find(element => element.type === "button" && labelText(element) === label).props.disabled, true);
+      if (tradeShipPhase === "deploying") assert.match(moving.markup, /Выдвигает мостик/);
+      if (tradeShipPhase === "retracting") assert.match(moving.markup, /Убирает мостик/);
+    }
+    const staticView = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true, reducedMotion: "on" } });
+    assert.match(staticView.markup, /покажет корабль без анимации/);
+    assert.equal(staticView.elements.find(element => element.type === "button" && labelText(element) === "У причала").props.disabled, undefined);
+  } finally { worldDevStore.triggerTradeShip = trigger; worldDevStore.triggerCamera = camera; }
+});
+
 test("lighting page offers an A/B shadow switch and a night campfire through the existing local scenario", () => {
   const view = panel("lighting", { state: { ...WORLD_DEV_DEFAULTS, lightShadows: false, lightTestLamp: true } });
   const controls = view.elements.find(element => element.type === WorldDevLighting);

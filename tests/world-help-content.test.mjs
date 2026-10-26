@@ -90,6 +90,7 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["как выставить больше лотов", "market-slots"],
     ["что значит открыть товар", "item-unlocks"],
     ["как сварить рыбный суп", "fish-soup"],
+    ["корабль", "future-world"],
   ]) {
     const results = searchWorldHelp(topics, query);
     assert.equal(results[0]?.id, expected, `${query}: ${results.map(entry => entry.id).join(", ")}`);
@@ -519,7 +520,7 @@ test("fish-soup guidance uses the authored recipe and distinct hero/builder bonu
   assert.deepEqual(topic("fish-soup").action.target, { kind: "station", stationId: "dryer", recipeId: recipe.id });
 });
 
-test("current landmark answers separate early market restoration from later expeditions and planned boat orders", () => {
+test("landmark help explains claimed-lighthouse first arrival while keeping sea orders in the future", () => {
   assert.match(answer("market"), /С дома 2 восстановите мост и получите готовую стройку/);
   assert.match(answer("market"), /Вылазка для открытия не нужна/);
   assert.doesNotMatch(answer("market"), /хотя бы .* завершённая вылазка/);
@@ -527,8 +528,11 @@ test("current landmark answers separate early market restoration from later expe
   assert.match(landmarks, /С дома 2.*мост.*рынок игроков/);
   assert.match(landmarks, /С дома 3 доступен маяк/);
   assert.match(landmarks, /С дома 4.*тропу и рощу.*древним руинам/);
-  assert.match(landmarks, /Пароход с большими заказами.*ещё готовятся/);
-  assert.match(landmarks, /не запускает рейс парохода/);
+  assert.match(landmarks, /получите результат стройки.*своей большой карты.*впервые подходит пароход и выдвигает мостик/);
+  assert.match(landmarks, /Пароход остаётся у берега с мостиком/);
+  assert.match(landmarks, /без заказов и новых наград/);
+  assert.match(landmarks, /Морские заказы.*ещё готовятся/);
+  assert.doesNotMatch(landmarks, /не запускает рейс парохода|будущий причал/);
   assert.match(answer("relics"), /после восстановления моста.*«Обмен»/);
 });
 

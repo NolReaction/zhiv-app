@@ -38,6 +38,7 @@ import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESID
 import styles from "./world-dev-panel.module.css";
 
 export type WorldDevPanelProps = {
+  onOpenChange?: (open: boolean) => void;
   world: WorldController;
   economy?: EconomyController;
   active?: boolean;
@@ -197,11 +198,16 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged, onOpenChange }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
+  const tradeShipPhase = useSyncExternalStore(worldDevStore.subscribeTradeShipPhase, worldDevStore.getTradeShipPhase, worldDevStore.getServerTradeShipPhase);
   const lighting = useSyncExternalStore(worldLightingEditorStore.subscribe, worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
   const [open, setOpen] = useState(initiallyOpen && !initialLightingStudio);
+  useEffect(() => {
+    onOpenChange?.(Boolean(active && (open || lighting.enabled)));
+    return () => onOpenChange?.(false);
+  }, [active, open, lighting.enabled, onOpenChange]);
   const merchant = useLeaftailArrival(economy?.snapshot?.ownerPublicId ?? world.snapshot?.ownerPublicId ?? "guest", {
     unlocked: (economy?.snapshot?.buildings.home ?? 0) >= 3, enabled: false,
     onboarding: { loaded: false, isPaused: false, progress: null },
@@ -414,7 +420,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
               onOpenWorld={onOpenWorld} onOpenCalendar={onOpenCalendar} onOpenGame={onOpenGame} onOpenStatus={onOpenStatus} onOpenWardrobe={onOpenWardrobe} onOpenCollection={onOpenCollection}
               onOpenObject={onOpenObject}
               onVisitBot={onVisitBot ? target => shortcut(() => onVisitBot(target)) : undefined} onBotsChanged={onBotsChanged} onOpenCheats={() => setTab("cheats")}
-              state={state} observation={observation} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
+              state={state} tradeShipPhase={tradeShipPhase} observation={observation} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
               heroUnavailable={heroUnavailable} birdsUnavailable={birdsUnavailable} unavailable={unavailable}
               change={change} play={play} outfit={outfit} shortcut={shortcut} onFeedback={setFeedback} prefersReducedMotion={prefersReducedMotion} onOpenLighting={openLighting} />}
           </div>)}
@@ -430,9 +436,10 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
 
 /** Stateless controls: navigation never patches the world or launches a scene. */
 export function WorldDevPanelContent({ world, economy, worldView, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged, onOpenCheats,
-  state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion, onOpenLighting,
+  state, tradeShipPhase = "docked", observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion, onOpenLighting,
 }: WorldDevPanelProps & {
   state: WorldDevState; observation?: ForestObservation | null; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
+  tradeShipPhase?: ReturnType<typeof worldDevStore.getTradeShipPhase>;
   heroUnavailable: string | null; birdsUnavailable: string | null; unavailable: (action: ManualAction) => string | null;
   change: (patch: Partial<WorldDevState>, message?: string) => void; play: (action: ManualAction) => void;
   outfit: (slot: "palette" | "head" | "neck", value: string) => void; shortcut: (callback: () => void) => void;
@@ -449,6 +456,11 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, m
   const gardenReasons = page === "activities"
     ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   const cookingReason = page === "animation" ? unavailable({ kind: "cooking", action: "sequence" }) : null;
+  const shipMoving = state.tradeShipPreview && tradeShipPhase !== "docked" && tradeShipPhase !== "departed";
+  function shipCommand(command: "arrive" | "depart" | "dock") {
+    worldDevStore.triggerTradeShip(command);
+    shortcut(() => { if (!worldView) onOpenWorld?.(); });
+  }
   return <div className={styles.pageContent}>
     {page === "lighting" && <>
       <h3 className={styles.pageTitle}>Свет и тени</h3>
@@ -646,6 +658,22 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, m
         onChange={waterFish => change({ waterFish })} />
       <Toggle label="Бриз на воде" checked={state.waterBreeze} onChange={waterBreeze => change({ waterBreeze })} />
       <Toggle label="Течение и блики" checked={state.waterSurface} onChange={waterSurface => change({ waterSurface })} />
+      <Toggle label="Торговый корабль (PNG)" checked={state.tradeShipPreview} onChange={tradeShipPreview => change({ tradeShipPreview })} />
+      <div className={styles.columns}>
+        <button type="button" disabled={shipMoving} onClick={() => shipCommand("arrive")}>Приплыть</button>
+        <button type="button" disabled={!state.tradeShipPreview || tradeShipPhase !== "docked"} onClick={() => shipCommand("depart")}>Отойти</button>
+        <button type="button" onClick={() => shipCommand("dock")}>У причала</button>
+        <button type="button" disabled={!state.tradeShipPreview} onClick={() => shortcut(() => {
+          worldDevStore.triggerCamera("ship"); if (!worldView) onOpenWorld?.();
+        })}>К кораблю</button>
+      </div>
+      {state.tradeShipPreview && <p className={styles.hint} data-trade-ship-phase={tradeShipPhase}>
+        {{ arriving: "Корабль прибывает", deploying: "Выдвигает мостик", docked: "Корабль у причала",
+          retracting: "Убирает мостик", departing: "Корабль отходит", departed: "Корабль ушёл" }[tradeShipPhase]}.
+        {state.paused || state.reducedMotion === "on" || state.reducedMotion === "auto" && prefersReducedMotion
+          ? " Движение остановлено настройками сцены; «У причала» покажет корабль без анимации." : ""}
+        {" "}<a href="/prototype/trade-ship">Открыть отдельный стенд ↗</a>
+      </p>}
       <Select label="Ветер над водой" value={state.waterWind}
         values={[["auto", "По погоде"], ["calm", "Штиль"], ["breeze", "Лёгкий ветер"], ["windy", "Сильный ветер"]]}
         onChange={waterWind => change({ waterWind })} />
@@ -719,6 +747,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, m
         {([["Большая карта", onOpenWorld], ["Календарь", onOpenCalendar], ["Игра и рейтинг", onOpenGame], ["Мой статус", onOpenStatus], ["Гардероб", onOpenWardrobe], ["Коллекции", onOpenCollection]] as const)
           .filter(([, callback]) => callback).map(([label, callback]) => <button key={label} type="button" onClick={() => { if (callback) shortcut(callback); }}>{label}</button>)}
         <a href="/prototype/tiled-world">Карта и маршруты ↗</a>
+        <a href="/prototype/trade-ship">Торговый пароход · PNG ↗</a>
       </div>
       <Section title="О DEV и ограничениях">
         <p className={styles.scope}>Настройки вида действуют в этой вкладке и сбрасываются при перезагрузке. «Читы» меняют ресурсы и постройки тестового профиля на сервере. Сброс вида не отменяет читы и не удаляет память Мохлика.</p>

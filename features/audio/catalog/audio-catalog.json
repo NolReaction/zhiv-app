@@ -1556,6 +1556,20 @@
         "changes": "Deterministic nonverbal creature oscillator with individual timbre and greeting rhythm; DC removal, peak-safe level adjustment, TPDF PCM16.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "ship.arrival.01",
+      "src": "/audio/originals-v1/effect/ship.arrival.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.2-ship/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original steamship sound design generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-26",
+        "changes": "Original low two-chamber steam whistle, seeded filtered breath, pressure envelope, quiet early reflections; mono PCM16 48 kHz with deterministic dither and conservative peak/RMS ceilings.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -2349,6 +2363,20 @@
       "cooldownMs": 2500,
       "pitchVariation": 0.012,
       "fadeMs": 30
+    },
+    {
+      "id": "ship.arrival",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "ship.arrival.01"
+      ],
+      "gainDb": -13,
+      "priority": 60,
+      "maxInstances": 1,
+      "cooldownMs": 6000,
+      "pitchVariation": 0,
+      "fadeMs": 250
     }
   ],
   "profiles": [

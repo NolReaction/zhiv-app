@@ -509,6 +509,9 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     """
     if not isinstance(sample_rate, int) or sample_rate < 16000:
         raise ValueError("sample_rate must be an integer of at least 16000 Hz")
+    if asset_id == "ship.arrival.01":
+        import steamship
+        return steamship.render(asset_id, sample_rate)
     parts = asset_id.split(".")
     if len(parts) < 3 or parts[-1] not in ("01", "02", "03", "04"):
         raise ValueError(f"Not a supported one-shot asset ID: {asset_id}")
