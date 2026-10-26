@@ -8,7 +8,7 @@
 .rate strong { color: #e0edb0; font-size: 38px; font-weight: 600; letter-spacing: -.06em; }
 .rate span { color: #bdcda8; font-size: 10px; line-height: 1.6; }
 .workbenchNav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-block: 1px solid var(--work-line); }
-.tabs { display: flex; gap: 5px; padding: 4px; border-radius: 10px; background: #10180f; }
+.tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px; border-radius: 10px; background: #10180f; }
 .tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--work-muted); border: 0; border-radius: 7px; background: transparent; padding: 10px 14px; font-size: 12px; min-height: 40px; }
 .tabs button[aria-selected="true"] { background: #354829; color: #e1edc9; box-shadow: 0 1px 4px #0004; }
 .productSelect { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--work-muted); min-width: 0; }
@@ -133,7 +133,7 @@
   .rate { display: none; }
   .workbenchNav { padding: 12px; gap: 12px; }
   .tabs { width: 100%; }
-  .tabs button { flex: 1; padding: 9px 7px; gap: 5px; font-size: 11px; }
+  .tabs button { flex: 1 1 29%; padding: 9px 7px; gap: 5px; font-size: 11px; }
   .productSelect { width: 100%; }
   .productSelect select { flex: 1; width: 0; max-width: none; }
   .graphSection, .balance, .planner { padding: 14px 12px 18px; }

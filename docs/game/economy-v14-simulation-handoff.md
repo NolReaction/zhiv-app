@@ -1,4 +1,6 @@
-# Economy v14 simulation checkpoint — unfinished
+# Economy v14 simulation checkpoint — historical
+
+Superseded by [the final simulation report](economy-v14-final-simulation.md) and [the unified evidence](economy-v14-final-scenarios.json). The unfinished numbers below describe the handoff before the continuation on 26 October 2026; they are retained for history.
 
 The user stopped work and requested a handoff. **Do not claim the month target is achieved.** The strongest new finding is that a more capable material-trip strategy reached the actual home finale in **25.33 days free / 24.33 days with externally funded slots**, at three 30-minute visits per day. That experiment needs review and matched reruns, but already invalidates treating the slower planner as a reliable month guarantee.
 

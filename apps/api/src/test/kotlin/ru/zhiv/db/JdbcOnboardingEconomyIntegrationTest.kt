@@ -235,7 +235,7 @@ class JdbcOnboardingEconomyIntegrationTest {
                     repository.command(token.hash, request.copy(requestId = UUID.randomUUID().toString(),
                         expectedRevision = current.revision)) }.code)
             }
-            assertEquals(initialCoins + 315, current.wallet.coins)
+            assertEquals(initialCoins + requests.sumOf { it.coins }, current.wallet.coins)
             assertTrue(current.inventory.isEmpty())
             assertEquals(3, current.stageOrders.stages.getValue("1").step)
             assertTrue(current.stageOrders.stages.getValue("1").completed)

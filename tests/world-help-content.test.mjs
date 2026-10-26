@@ -247,7 +247,8 @@ test("food guidance names the choice tile and makes spending an explicit second 
   assert.match(answer("builder-food"), /Выбор блюда покажет бонус и новое время.*Подтвердите «Угостить · 1 порция»: только эта кнопка потратит еду/);
   assert.match(answer("journeys"), /«Ускорение едой» под таймером/);
   assert.match(answer("journeys"), /открытие ничего не тратит/);
-  assert.match(answer("journeys"), /У начатой работы показаны оставшееся время и находки/);
+  assert.match(answer("journeys"), /У начатой работы показаны оставшееся время и гарантированная добыча/);
+  assert.match(answer("journeys"), /Дополнительная находка раскрывается при получении/);
 });
 
 test("premium shop guidance offers stage packs and costume previews while keeping checkout unavailable", () => {
@@ -277,19 +278,24 @@ test("food, building speed and orders are distinct and use current catalog numbe
   const food = economyCatalog.food;
   for (const meal of food.meals) {
     const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
-    assert.ok(answer("food").includes(`${name} +${meal.heroSpeedBps / 100}%`));
+    assert.ok(answer("food-bonuses").includes(`${name} +${meal.heroSpeedBps / 100}%`));
   }
   assert.match(answer("food"), /не повышает|шансы рыбы не меняются/);
   assert.match(answer("food"), /бонусы не складываются/);
-  assert.match(answer("food"), /не заменяет обязательные припасы/);
+  assert.match(answer("food"), /не заменяет припасы/);
+  assert.match(answer("food"), /запас базовых минут работы/);
+  assert.match(answer("food"), /остаток сохранится для следующих отправлений/);
+  assert.match(answer("food"), /После первого расхода.*вернуть порцию уже нельзя/);
+  assert.ok(topic("food").relatedIds.includes("food-bonuses"));
   assert.match(answer("food"), /Голодать.*не нужно/);
   assert.match(answer("food"), /офлайн/);
   for (const meal of food.meals) {
     const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
-    assert.ok(answer("builder-food").includes(`${name} +${meal.builderSpeedBps / 100}%`));
+    assert.ok(answer("builder-food-bonuses").includes(`${name} +${meal.builderSpeedBps / 100}%`));
   }
   assert.match(answer("builder-food"), /оставшуюся часть/);
   assert.match(answer("builder-food"), /только один раз/);
+  assert.ok(topic("builder-food").relatedIds.includes("builder-food-bonuses"));
   assert.match(answer("resident-orders"), /Обычные заказы дают монеты, не сытость/);
   assert.match(answer("resident-orders"), /не резервируются/);
   assert.ok(answer("resident-orders").includes(`${food.orders.slots} ${food.orders.slots === 5 ? "заказов" : "заказа"}`));
@@ -319,7 +325,8 @@ test("relationship guidance explains the actual limits, scoped benefits and pres
   assert.match(weekly, /уже полученные награды сохранятся/);
   assert.match(weekly, /условия|Условия/);
   assert.match(preparation, /подготовка без собственных запасов/);
-  assert.match(preparation, /Одновременно занятые места/);
+  assert.match(preparation, /Купленные дополнительные места позволяют готовить параллельно/);
+  assert.match(preparation, /Время разных производств складывается как работа/);
   assert.match(preparation, /не гарантирует нужный класс рыбы/);
   for (const id of ["trade-relations", "weekly-orders", "order-preparation"]) assert.deepEqual(topic(id).action.target, { kind: "orders" });
 });
@@ -468,19 +475,20 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
 });
 
-test("house-three guidance explains seven full waits, guaranteed resin and optional storage", () => {
+test("house-three guidance explains immediate deliveries, guaranteed resin and the actual house build time", () => {
   const course = economyCatalog.stageOrders.find(entry => entry.homeLevel === 3);
-  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 82800);
+  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 0);
   assert.deepEqual(course.completionRewards, { living_resin: 1 });
   assert.match(answer("third-house-stage"), /Первая из 8.*доступна сразу/);
-  assert.match(answer("third-house-stage"), /через 23 ч/);
-  assert.match(answer("third-house-stage"), /с передачи товаров.*не со смены суток UTC/);
+  assert.match(answer("third-house-stage"), /Сдайте товары.*следующая поставка станет доступна сразу/);
+  assert.match(answer("third-house-stage"), /Готовьте несколько цепочек параллельно.*местом в кладовой/);
   const home = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4);
-  assert.ok(answer("third-house-stage").includes(`минимум ${((course.orders.length - 1) * course.intervalSeconds + home.seconds) / 3600} ч`));
+  assert.ok(answer("third-house-stage").includes(`дом 4 строится ${home.seconds / 3600} ч без ускорений`));
+  assert.match(answer("third-house-stage"), /это не срок прохождения всего этапа/);
   assert.match(answer("third-house-stage"), /гарантированно.*Живая смола × 1/);
-  assert.match(answer("third-house-stage"), /Жемчуг и обеды не сокращают интервалы/);
+  assert.match(answer("third-house-stage"), /Начатые проекты сохраняют обещанные условия/);
   assert.match(answer("third-house-stage"), /не истекают и не заменяются/);
-  assert.match(answer("third-house-stage"), /Расширять кладовую необязательно/);
+  assert.doesNotMatch(answer("third-house-stage"), /через 23 ч|минимум 161 ч/);
   assert.deepEqual(topic("third-house-stage").action.target, { kind: "orders" });
 });
 
@@ -539,20 +547,22 @@ test("berry ladder describes each source tier, preparation time and hero or buil
   }
   assert.match(ladder, /Дом 1.*малина.*клубника/);
   assert.match(ladder, /Один слот даёт один предмет/);
-  assert.match(ladder, /Блюдо ускоряет одну работу/);
+  assert.match(ladder, /У Мохлика блюдо даёт запас ускоряемой работы.*у строителя.*одну стройку/);
 });
 
 test("gift budgets and project timing remain distinct from build durations and all help avoids em dashes", () => {
   const giftPearls = progressionRewardsCatalog.daily.reduce((sum, reward) => sum + reward.pearls, 0);
-  assert.ok(answer("rewards").includes(`Все семь подарков дают ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
-  assert.ok(answer("currency-shop").includes(`все семь подарков дают ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
+  assert.ok(answer("rewards").includes(`Новая цепочка из семи подарков даёт ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
+  assert.ok(answer("currency-shop").includes(`новая цепочка из семи подарков даёт ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
+  assert.match(answer("rewards"), /ранее начатая сохраняет свои суммы/);
   assert.match(answer("rewards"), /новые сутки UTC.*20 часов/);
   assert.match(answer("rewards"), /цепочка завершена и через неделю не повторяется/);
   const fourth = economyCatalog.stageOrders.find(course => course.homeLevel === 4);
   const fifthHome = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 5);
-  const minimumHours = ((fourth.orders.length - 1) * fourth.intervalSeconds + fifthHome.seconds) / 3600;
-  assert.ok(answer("fourth-house-stage").includes(`Между поставками ${fourth.intervalSeconds / 3600} ч`));
-  assert.ok(answer("fourth-house-stage").includes(`Без ускорений проект и дом 5 занимают минимум ${minimumHours} ч`));
+  assert.equal(fourth.intervalSeconds, 0);
+  assert.match(answer("fourth-house-stage"), /Следующая поставка открывается сразу после сдачи предыдущей/);
+  assert.ok(answer("fourth-house-stage").includes(`запустите стройку на ${fifthHome.seconds / 3600} ч`));
+  assert.match(answer("fourth-house-stage"), /Уже принятые условия остаются прежними/);
   for (const entry of topics) assert.ok(!answer(entry.id).includes("—"), entry.id);
 });
 

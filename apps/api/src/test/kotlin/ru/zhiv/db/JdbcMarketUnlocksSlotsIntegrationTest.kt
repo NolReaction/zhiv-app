@@ -133,11 +133,11 @@ class JdbcMarketUnlocksSlotsIntegrationTest {
         edit(seller.id) { it.copy(inventory=mapOf("beams" to 1),unlockedItems=it.unlockedItems+"beams") }
         edit(buyer.id) { it.copy(inventory=mapOf("beams" to 1),unlockedItems=emptyList()) }
         assertFalse("beams" in economy.snapshot(buyer.hash).unlockedItems)
-        market.command(seller.hash,command(seller,"create_listing","beams",price=600))
+        market.command(seller.hash,command(seller,"create_listing","beams",price=650))
         val lot=market.market(seller.hash).mine.single()
         assertTrue(market.market(buyer.hash).listings.isEmpty())
         assertEquals("ECONOMY_MARKET_ITEM_LOCKED",assertFailsWith<AuthFailure> {
-            market.command(buyer.hash,command(buyer,"create_listing","beams",price=600)) }.code)
+            market.command(buyer.hash,command(buyer,"create_listing","beams",price=650)) }.code)
         execute(source,"UPDATE economy_market_showcases SET listing_ids=ARRAY[?::uuid] WHERE user_id=?",
             UUID.fromString(lot.id),buyer.id)
         assertEquals("ECONOMY_MARKET_ITEM_LOCKED",assertFailsWith<AuthFailure> {

@@ -34,9 +34,9 @@ function command(p, offer, quantity = 1, at = now, extra = {}) {
 const buy = (p, offer, quantity = 1, at = now) => economy.commandDevEconomy(p.token, command(p, offer, quantity, at), at);
 const bySection = (p, section) => shelf(p).offers.find(offer => offer.section === section);
 
-test("v12 keeps positive legacy coin bundles while pearl finds live in an independent safe catalog array", () => {
+test("v14 keeps positive legacy coin bundles while pearl finds live in an independent safe catalog array", () => {
   const spec = catalog.leaftailShop;
-  assert.equal(catalog.version, 12);
+  assert.equal(catalog.version, 14);
   assert.equal(spec.offers.length, 3); assert.ok(spec.offers.every(offer => offer.priceCoins > 0));
   assert.equal(spec.supplyOffers.length, 8); assert.equal(spec.pearlOffers.length, 3);
   assert.ok(spec.pearlOffers.every(offer => offer.pricePearls === 300 && offer.stock === 1 && !("priceCoins" in offer)));

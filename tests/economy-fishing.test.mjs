@@ -41,7 +41,7 @@ test("old snapshots and profiles receive a free starter rod, never retroactive c
 test("Pleska catalog has no buy-sell arbitrage and upgrades visibly improve their target class odds", () => {
   const config = model.economyCatalog.fishing;
   for (const fish of config.fish) assert.ok(fish.buyPrice > model.economyCatalog.items.find(item => item.id === fish.itemId).baseSellPrice);
-  for (const bait of config.baits) assert.ok(bait.price > model.economyCatalog.items.find(item => item.id === bait.itemId).baseSellPrice);
+  for (const bait of config.baits) assert.ok(bait.price >= model.economyCatalog.localBuyer.unitPrices[bait.itemId], "cheap bait can break even on resale but cannot print coins");
   const base = fishingWeights("reed_rod", null), upgraded = fishingWeights("willow_rod", "worm_bait");
   const chance = weights => weights.find(fish => fish.itemId === "fish_mooncarp").weight / weights.reduce((total, fish) => total + fish.weight, 0);
   assert.ok(chance(upgraded) > chance(base));
@@ -97,9 +97,10 @@ test("stale incompatible bait cannot start either fishing command or spend stock
 test("purchases charge authoritative prices once, durable rods are unique and inventory alone never opens collection", () => {
   const p = player(); fund(p);
   const before = read(p);
-  const buy = command(p, "buy_fishing_item", "river_rod", { totalPrice: 1850 });
+  const rodPrice = before.fishingShop.offers.find(offer => offer.itemId === "river_rod").unitPrice;
+  const buy = command(p, "buy_fishing_item", "river_rod", { totalPrice: rodPrice + 50 });
   const result = economy.commandDevEconomy(p.token, buy, now);
-  assert.equal(result.state.wallet.coins, 98200);
+  assert.equal(result.state.wallet.coins, before.wallet.coins - rodPrice, "a higher accepted quote still charges only the authoritative price");
   assert.deepEqual(result.state.fishing.ownedRods, ["reed_rod", "river_rod"]);
   assert.equal(result.state.storage.used, before.storage.used, "durable rods are not warehouse stacks");
   assert.equal(economy.commandDevEconomy(p.token, buy, now).replayed, true);
@@ -108,14 +109,15 @@ test("purchases charge authoritative prices once, durable rods are unique and in
   stored(p).inventory.fish_mooncarp = 2;
   assert.deepEqual(read(p).fishing.catches, {});
   const sold = issue(p, "sell_fish", "fish_mooncarp", { quantity: 2 });
-  assert.equal(sold.wallet.coins, 98420);
+  assert.equal(sold.wallet.coins, before.wallet.coins - rodPrice + 2 * model.economyCatalog.items.find(item => item.id === "fish_mooncarp").baseSellPrice);
   assert.deepEqual(sold.fishing.catches, {});
 });
 
 test("stale quotes, unsupported items, bulk rods, full escrow storage and insufficient coins leave snapshots unchanged", () => {
   const p = player(); fund(p);
   const before = read(p);
-  for (const [target, extra, code] of [["river_rod", { totalPrice: 1790 }, "ECONOMY_FISHING_PRICE_CHANGED"],
+  const rodPrice = before.fishingShop.offers.find(offer => offer.itemId === "river_rod").unitPrice;
+  for (const [target, extra, code] of [["river_rod", { totalPrice: rodPrice - 10 }, "ECONOMY_FISHING_PRICE_CHANGED"],
     ["wood", { totalPrice: 1000 }, "ECONOMY_FISHING_SHOP_CHANGED"], ["river_rod", { quantity: 2, totalPrice: 3600 }, "INVALID_ECONOMY_COMMAND"],
     ["crumb_bait", { quantity: 11, totalPrice: 330 }, "INVALID_ECONOMY_COMMAND"]]) {
     assert.throws(() => issue(p, "buy_fishing_item", target, extra), { code });
@@ -213,12 +215,15 @@ test("twelve species cover five rarities, with the shark available to the legend
   const strongest = fishingOdds({}, config, { rodId: 'starfall_rod', hookId: 'leviathan_hook', baitId: 'star_bait' });
   assert.equal(strongest.find(fish => fish.itemId === 'fish_shark').probability, 13500 / 17500);
   const value = odds => odds.reduce((sum, fish) => sum + fish.probability * model.economyCatalog.items.find(item => item.id === fish.itemId).baseSellPrice, 0);
-  assert.ok(Math.abs(value(base) - 45.7) < 1e-9);
+  assert.ok(Math.abs(value(base) - 15.9) < 1e-9, "v14's starting catch has the repriced expected sale value");
   assert.equal(fishingOdds({}, config, { rodId: "starfall_rod", hookId: "bare_hook", baitId: null }).find(fish => fish.itemId === "fish_shark").probability, 0.6);
   for (const rod of config.rods) for (const hook of config.hooks) for (const bait of config.baits) {
-    const noBait = value(fishingOdds({}, config, { rodId: rod.id, hookId: hook.id, baitId: null }));
-    const withBait = value(fishingOdds({}, config, { rodId: rod.id, hookId: hook.id, baitId: bait.itemId }));
-    assert.ok(withBait - noBait < bait.price, 'Bait buys collection odds, never an expected immediate profit');
+    const odds = fishingOdds({}, config, { rodId: rod.id, hookId: hook.id, baitId: bait.itemId });
+    assert.ok(odds.every(fish => Number.isFinite(fish.probability) && fish.probability >= 0 && fish.probability <= 1));
+    assert.ok(Math.abs(odds.reduce((sum, fish) => sum + fish.probability, 0) - 1) < 1e-9);
+    // V14 deliberately prices bait cheaply: fishing may earn its cost back,
+    // while direct buy/resell profitability is checked separately above.
+    assert.ok(value(odds) > 0);
   }
 });
 

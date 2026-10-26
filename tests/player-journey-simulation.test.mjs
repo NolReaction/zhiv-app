@@ -4,6 +4,7 @@ import { createJourneyRareRandom, DEFAULT_JOURNEY_RARE_SEED, journeyConstruction
 import { readEconomyCatalog } from "../scripts/audit-economy-progression.mjs";
 import { lookaheadPolicy } from "../scripts/simulate-player-lookahead.mjs";
 import { jointPlanningPolicy } from "../scripts/simulate-player-joint.mjs";
+import { loadProgressionRules, simulateProgression, summarizeProgression } from "../scripts/simulate-economy-progression.mjs";
 
 test("a simulated new player reaches home two from starting supplies using actual commands without extra grants or a quarry", async () => {
   const loaded = await loadJourneyRules();
@@ -19,8 +20,11 @@ test("a simulated new player reaches home two from starting supplies using actua
     assert.equal(report.actions.speedup_construction, undefined);
     assert.equal(report.actions.cancel_exploration, undefined);
     assert.equal(report.actions.complete_resident_order, 12);
-    // One 15-coin introduction, 300 from home-one requests, 1990 from home two, and the first 570-coin home-three request.
-    assert.equal(report.coinFlow.orders, 2875);
+    const course = home => loaded.catalog.stageOrders.find(stage => stage.homeLevel === home);
+    const expectedOrders = loaded.catalog.onboarding.residentOrder.coins
+      + [1, 2].reduce((sum, home) => sum + course(home).orders.reduce((total, order) => total + order.coins, 0), 0)
+      + course(3).orders[0].coins;
+    assert.equal(report.coinFlow.orders, expectedOrders);
     assert.equal(report.actions.claim_tutorial_order, undefined);
     assert.equal(report.actions.claim_workshop_starter, undefined);
     assert(report.actions.start_fishing > 0, "The current fishing UI path is exercised");
@@ -33,9 +37,9 @@ test("the comparison base, final home and all current upgrades are distinct repr
   const catalog = readEconomyCatalog();
   assert.deepEqual(journeyConstructionOrder(catalog), journeyOrder);
   const full = journeyConstructionOrder(catalog, "all-current-buildings");
-  assert.deepEqual(full.slice(full.indexOf("warehouse:5") + 1, full.indexOf("garden:5")),
+  assert.deepEqual(full.slice(-5),
     ["warehouse:6", "warehouse:7", "warehouse:8", "warehouse:9", "warehouse:10"]);
-  assert(full.indexOf("warehouse:10") < full.indexOf("quarry:5"));
+  assert(full.indexOf("quarry:5") < full.indexOf("warehouse:8"), "mortar source must precede its optional storage upgrade");
   const home = journeyConstructionOrder(catalog, "home-5");
   assert.equal(home.at(-1), "home:5");
   assert(!home.some(key => key.startsWith("warehouse:") && Number(key.split(":")[1]) > 4));
@@ -52,37 +56,38 @@ test("the comparison base, final home and all current upgrades are distinct repr
   } finally { await loaded.close(); }
 });
 
-test("an automated player visiting three times daily can complete all current buildings and storage ten with earned relics", async () => {
-  const loaded = await loadJourneyRules();
+// The old journey helper remains useful for opening-route/lookahead research.
+// Full progression is tested with the same current command policy as /branch.
+test("the canonical eight-hour daily player earns every building and storage ten with real relics", async t => {
+  const loaded = await loadProgressionRules();
   try {
-    let firstCommandAt = null;
-    const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, ...args) => {
-      firstCommandAt ??= now;
-      if (now - firstCommandAt >= 50 * 86400000)
-        assert(state.buildings.warehouse >= 3, "Crowded storage must not trap the planner replacing needed ore instead of making upgrade materials");
-      return loaded.rules.applyEconomyCommand(state, command, now, ...args);
-    } } };
-    const report = simulateJourney(observed, "visits3", 500,
-      { ...jointPlanningPolicy, dailyRewards: true, completionGoal: "all-current-buildings" });
-    assert.equal(report.complete, true);
-    assert.equal(report.stoppedAt, null);
-    assert.equal(report.finalBuildingLevels.warehouse, 10);
-    for (const building of loaded.catalog.buildings) assert.equal(report.finalBuildingLevels[building.id], building.levels.at(-1).level);
+    const result = simulateProgression(loaded, { seed: 1, visitsPerDay: 1, regularActiveMinutes: 480, firstVisitMinutes: 480,
+      maxDays: 240, claimRewards: true, completionGoal: "all-buildings", slotPolicy: "earned", speedupPolicy: "none" });
+    // This also verifies every item and both currencies against the actual
+    // receipt ledger, including supplies, rewards, slot purchases and sales.
+    const report = summarizeProgression(result);
+    assert.equal(report.completed, true, JSON.stringify({ elapsedDays: report.elapsedDays, buildings: report.buildings, waits: report.lastWaits }));
+    assert.equal(result.externalSlotBudget, 0);
+    assert.equal(result.state.buildings.warehouse, 10);
+    for (const building of loaded.catalog.buildings) assert.equal(result.state.buildings[building.id], building.levels.at(-1).level);
     for (const id of loaded.catalog.rareDrops.itemIds) {
       const required = loaded.catalog.buildings.reduce((sum, building) => sum + building.levels.reduce((total, level) => total + (level.cost.items[id] ?? 0), 0), 0);
-      assert.equal(report.rareMaterials.spentOnConstruction[id], required);
-      assert.equal(report.rareMaterials.received[id] + report.rareMaterials.stageRewards[id]
-        + (report.dailyRewards.itemsReceived[id] ?? 0) - required, report.rareMaterials.inventory[id]);
+      assert.equal(result.flow[id].consumed, required, `${id}: all required relics are actually consumed`);
+      assert.equal(result.flow[id].sold, 0, `${id}: rare stock is kept for construction`);
+      assert.equal(result.flow[id].received - required, result.state.inventory[id] ?? 0, `${id}: grants and claimed finds are conserved`);
     }
-    assert(report.milestones.some(milestone => milestone.building === "warehouse:10"));
-    assert.equal(report.dailyRewards.claims, 7);
-    assert.equal(report.dailyRewards.completed, true);
-    assert.equal(report.dailyRewards.pearlsReceived, 1000);
+    assert(result.builds.some(build => build.target === "warehouse" && build.level === 10));
+    const daily = result.rewardClaims.filter(claim => claim.kind === "daily");
+    assert.equal(daily.length, 7);
+    assert.equal(new Set(daily.map(claim => claim.id)).size, 7, "the gift chain never repeats");
+    assert.equal(daily.reduce((sum, claim) => sum + claim.pearls, 0), loaded.rewards.progressionRewardsCatalog.daily
+      .reduce((sum, reward) => sum + reward.pearls, 0));
     assert.equal(report.actions.speedup_construction, undefined);
     assert.equal(report.actions.cancel_exploration, undefined);
-    assert.equal(report.failures.ECONOMY_BUILDING_REQUIRED, undefined);
-    assert.equal(report.failures.ECONOMY_RESOURCES, undefined);
-    assert(report.excludedIncome.includes("player_market") && report.excludedIncome.includes("legacy_grants"));
+    assert.equal(report.actions.buy, undefined, "the route needs no other player's market supply");
+    assert(report.allBuildingsDays <= 240);
+    t.diagnostic(JSON.stringify({ allBuildingsDays: report.allBuildingsDays, commands: report.commandCount,
+      activeHours: report.activeHours, relicWorkSeconds: report.claimedWorkSeconds, buildings: report.buildings }));
   } finally { await loaded.close(); }
 });
 
@@ -165,7 +170,7 @@ test("research relic entropy is bounded, reproducible and can roll back a reject
   assert.throws(() => random.integer(0), /Invalid relic draw bound/);
 });
 
-test("the current simulator earns relics only from completed home-three explorations and keeps their stock", async () => {
+test("the early-route simulator counts only completed home-three relic work and conserves any resulting finds", async () => {
   const loaded = await loadJourneyRules();
   try {
     const starts = [], claims = [];
@@ -186,7 +191,9 @@ test("the current simulator earns relics only from completed home-three explorat
     assert(starts.every(start => Boolean(start.rare) === (start.home >= 3)));
     assert.equal(report.rareMaterials.seed, DEFAULT_JOURNEY_RARE_SEED);
     assert.equal(report.rareMaterials.eligibleExplorationHours, Number((claims.reduce((sum, job) => sum + job.rareDrop.seconds, 0) / 3600).toFixed(4)));
-    assert(report.rareMaterials.finds.length > 0);
+    assert(claims.some(job => job.rareDrop.seconds > 0), "claimed eligible jobs really advance the relic clocks");
+    // Forty days of brief visits complete less work per actor than a guaranteed
+    // drop interval. The canonical full-building test exercises actual finds.
     assert(report.rareMaterials.finds.every(find => find.day > report.homeDays[3]));
     assert.equal(report.rareMaterials.finds.length, claims.filter(job => job.rareDrop.itemId).length);
     for (const id of loaded.catalog.rareDrops.itemIds) {
@@ -220,7 +227,7 @@ test("joint planning uses only current unit production without reviving retired 
   } finally { await loaded.close(); }
 });
 
-test("the player policy schedules the independent miner and Mochlik without overlapping either actor or starving relic work", async () => {
+test("the early player policy schedules independent actors and records eligible relic work without overlapping them", async () => {
   const loaded = await loadJourneyRules();
   try {
     const actorSeconds = { miner: 0, exploration: 0, collection: 0 }; let parallelActors = false;
@@ -252,7 +259,7 @@ test("the player policy schedules the independent miner and Mochlik without over
     assert(actorSeconds.exploration + actorSeconds.collection <= report.elapsedDays * 86400);
     for (const code of ["ECONOMY_MINER_BUSY", "ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
       assert.equal(report.failures[code], undefined, "Policy availability matches the authoritative rule");
-    assert(report.rareMaterials.finds.length > 0, "Completed mining and other routes earn relics on their own actor clocks");
+    assert(report.rareMaterials.eligibleExplorationHours > 0, "completed work advances independent relic clocks even before a find is due");
   } finally { await loaded.close(); }
 });
 

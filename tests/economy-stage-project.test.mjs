@@ -34,31 +34,26 @@ const send = (p, action = "complete_resident_order", targetId, at = now, extra =
 
 test("the project quote opens immediately without persisting, and rejected attempts cannot freeze conditions or grant ingredients", () => {
   const p = player(), stored = structuredClone(row(p).state), first = quote(p);
-  assert.equal(course().orders.length, 8); assert.equal(course().intervalSeconds, 82800);
+  assert.equal(course().orders.length, 8); assert.equal(course().intervalSeconds, 0);
   assert.deepEqual(course().completionRewards, { living_resin: 1 });
   assert.equal(first.id, course().orders[0].id); assert(Date.parse(first.availableAt) <= now);
-  assert.equal(first.intervalSeconds, 82800); assert.deepEqual(first.completionRewards, {});
+  assert.equal(first.intervalSeconds, 0); assert.deepEqual(first.completionRewards, {});
   assert.deepEqual(row(p).state, stored);
   assert.throws(() => send(p), { code: "ECONOMY_RESOURCES" });
   assert.throws(() => send(p, "replace_resident_order", first.id), { code: "ECONOMY_STAGE_ORDER_UNAVAILABLE" });
   assert.deepEqual(row(p).state, stored);
   send(p, "start_production", "grow_berries");
   const progress = row(p).state.stageOrders.stages[3];
-  assert.equal(progress.intervalSeconds, 82800); assert.deepEqual(progress.completionRewards, { living_resin: 1 });
+  assert.equal(progress.intervalSeconds, 0); assert.deepEqual(progress.completionRewards, { living_resin: 1 });
   assert.equal(progress.terms.id, first.id); assert.deepEqual(read(p).inventory, {});
 });
 
-test("eight newly pinned deliveries require seven real 23-hour fences and award one guaranteed resin exactly once", () => {
+test("eight newly pinned deliveries can follow immediately when funded and award one guaranteed resin exactly once", () => {
   const p = player(), receipts = []; let paid = 0;
   for (let step = 0; step < 8; step++) {
-    const at = now + step * interval, offer = quote(p, at);
+    const at = now + step * 1000, offer = quote(p, at);
     assert.equal(offer.id, course().orders[step].id); row(p).state.inventory = { ...offer.items };
-    if (step > 0) {
-      const before = read(p, at - 1), captured = request(p, "complete_resident_order", offer.id, at - 1);
-      assert.throws(() => economy.commandDevEconomy(p.token, captured, at - 1), { code: "ECONOMY_STAGE_WAIT" });
-      assert.deepEqual(read(p, at - 1), before);
-      assert.equal(Date.parse(offer.availableAt), at);
-    }
+    if (step > 0) assert.equal(Date.parse(offer.availableAt), at - 1000, "the next offer opens at the previous successful delivery");
     assert.deepEqual(offer.completionRewards, step === 7 ? { living_resin: 1 } : {});
     const cmd = request(p, "complete_resident_order", offer.id, at), result = economy.commandDevEconomy(p.token, cmd, at);
     receipts.push([cmd, result.acceptedRevision]); paid += offer.coins;
@@ -69,8 +64,8 @@ test("eight newly pinned deliveries require seven real 23-hour fences and award 
     if (step < 7) {
       const next = stages.stageResidentOrder(result.state);
       assert.equal(next.id, course().orders[step + 1].id);
-      assert.equal(Date.parse(next.availableAt), at + interval);
-      assert.deepEqual(next.items, course().orders[step + 1].items, "the next material list is visible during its wait");
+      assert.equal(Date.parse(next.availableAt), at);
+      assert.deepEqual(next.items, course().orders[step + 1].items, "the next material list is immediately visible");
     }
     assert.throws(() => send(p, "complete_resident_order", offer.id, at), { code: "ECONOMY_STAGE_ORDER_UNAVAILABLE" });
   }
@@ -83,8 +78,11 @@ test("eight newly pinned deliveries require seven real 23-hour fences and award 
   }
 });
 
-test("the next deadline is measured from actual delivery and frozen conditions survive JSON and catalog edits", () => {
-  const p = player(); send(p, "start_production", "grow_berries");
+test("a saved v13 deadline is measured from actual delivery and its frozen conditions survive v14 catalog edits", () => {
+  const p = player();
+  row(p).state.stageOrders.stages[3] = { step: 0, completed: false, terms: structuredClone(course().orders[0]),
+    availableAt: new Date(now).toISOString(), intervalSeconds: interval / 1000, completionRewards: { living_resin: 1 } };
+  send(p, "start_production", "grow_berries");
   const first = quote(p), later = now + 3 * interval + 12345;
   row(p).state.inventory = { ...first.items };
   const result = send(p, "complete_resident_order", first.id, later);
@@ -99,7 +97,7 @@ test("the next deadline is measured from actual delivery and frozen conditions s
   assert.deepEqual(view.stageOrders.stages[3].completionRewards, { living_resin: 1 });
 });
 
-test("previously saved twenty four hour projects keep their exact cadence across the new twenty three hour catalog", () => {
+test("previously saved twenty four hour projects keep their exact cadence after new daily gates are removed", () => {
   const p = player(), first = structuredClone(course().orders[0]), oldInterval = 24 * 3600000;
   row(p).state.stageOrders.stages[3] = { step: 0, completed: false, terms: first,
     availableAt: new Date(now).toISOString(), intervalSeconds: 86400, completionRewards: { living_resin: 1 } };

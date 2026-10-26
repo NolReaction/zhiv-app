@@ -77,16 +77,27 @@ export function auditEconomyProgression(catalog) {
       assert(Number.isSafeInteger(level.seconds) && level.seconds >= 0, `${key}: invalid duration`);
       assert(Number.isSafeInteger(level.cost.coins) && level.cost.coins >= 0, `${key}: invalid price`);
       if (building.id === "warehouse") {
-        assert(level.requiredHomeLevel === (level.level === 2 ? 2 : catalog.version >= 13 && level.level === 3 ? 3 : 1) && !Object.keys(level.requiredBuildings ?? {}).length,
+        const craftedExpansion = catalog.version >= 14 && level.level >= 4;
+        const houseGate = level.level === 2 ? 2 : catalog.version >= 13 && level.level === 3 ? 3
+          : craftedExpansion ? level.level <= 6 ? 4 : 5 : 1;
+        assert(level.requiredHomeLevel === houseGate && (craftedExpansion || !Object.keys(level.requiredBuildings ?? {}).length),
           `${key}: storage must keep its declared material-availability house gate`);
         assert(Number.isSafeInteger(level.warehouseCapacity) && level.warehouseCapacity > 0, `${key}: warehouse capacity missing`);
         assert.equal(level.warehouseCapacity, level.level * 50, `${key}: storage must grow by 50 places per level`);
         if (level.level <= 3) assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: early storage must use ordinary materials`);
         else {
           assert(rare && level.cost.coins === 0, `${key}: relic storage must not require coins`);
-          assert.deepEqual(Object.keys(level.cost.items).sort(), [...rare.itemIds].sort(), `${key}: relic storage must use all three relic types only`);
-          if (level.level > 4) assert(rare.itemIds.every(id => level.cost.items[id] >= building.levels[level.level - 2].cost.items[id]),
-            `${key}: later storage must not reduce relic quantities`);
+          if (craftedExpansion) {
+            const relicCount = rare.itemIds.reduce((sum, id) => sum + (level.cost.items[id] ?? 0), 0);
+            const crafted = Object.entries(level.cost.items).filter(([id]) => !rare.itemIds.includes(id));
+            assert(relicCount >= 1 && relicCount <= 3 && crafted.length === 3
+              && crafted.every(([, amount]) => amount <= 4) && Object.keys(level.requiredBuildings ?? {}).length > 0,
+            `${key}: relic storage needs a small relic basket and three ordinary crafted inputs with source gates`);
+          } else {
+            assert.deepEqual(Object.keys(level.cost.items).sort(), [...rare.itemIds].sort(), `${key}: relic storage must use all three relic types only`);
+            if (level.level > 4) assert(rare.itemIds.every(id => level.cost.items[id] >= building.levels[level.level - 2].cost.items[id]),
+              `${key}: later storage must not reduce relic quantities`);
+          }
         }
       } else if (building.id === "quarry") {
         assert(catalog.explorations.some(route => route.activity === "mining" && route.requiredBuildings?.quarry === level.level), `${key}: upgrade has no mining route benefit`);

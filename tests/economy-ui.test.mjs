@@ -467,8 +467,9 @@ test("placed workshop opens production while the mine keeps activity unlocks and
   assert.deepEqual(economyBuildingDestination("workshop", null), { tab: "buildings", focusId: "workshop" });
 });
 
-test("inventory guide and sale consistently show the actual discounted payout", () => {
+test("legacy inventory guide and sale consistently show the saved catalog's discounted payout", () => {
   const state = snapshot({ inventory: { fish_common: 3 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "fish_common").baseSellPrice = 40;
   const html = render("inventory", controller({ snapshot: state }), "fish_common");
   assert.match(html, /Быстрая продажа с уценкой 40%/);
   assert.match(html, /Быстрая продажа торговцу: 60% базовой цены/);
@@ -480,7 +481,7 @@ test("inventory guide and sale consistently show the actual discounted payout", 
 });
 
 test("generic inventory quotes the fixed NPC price without discounting or rounding a single item", () => {
-  for (const [id, coins] of [["berries", 10], ["wood", 30], ["grilled_fish", 70]]) {
+  for (const [id, coins] of [["berries", 10], ["wood", 30], ["grilled_fish", 45]]) {
     const state = snapshot({ inventory: { [id]: 1 } });
     const html = render("inventory", controller({ snapshot: state }), id);
     assert.equal(disabled(button(html, `Продать 1 шт. за ${coins} монет`)), false);
@@ -491,6 +492,7 @@ test("generic inventory quotes the fixed NPC price without discounting or roundi
 
 test("legacy inventory sale keeps full price; tiny stock cannot disappear for zero proceeds", () => {
   const state = snapshot({ inventory: { crumb_bait: 1 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "crumb_bait").baseSellPrice = 10;
   let html = render("inventory", controller({ snapshot: state }), "crumb_bait");
   assert.match(html, /нужно хотя бы 2 шт/); assert.equal(disabled(button(html, "Продать - шт.")), true);
   delete state.catalog.localBuyer;

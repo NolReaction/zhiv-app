@@ -398,7 +398,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
           pearls: pearlDisplayAmount(progressionRewards.achievementPearls[quest.id][index]) })) })),
       dailyMinimumHours: progressionRewards.dailyMinimumHours, dailyCycleLength: progressionRewards.daily.length,
       marketBaseSlots: catalog.market.baseSlots, marketSlotPrices, marketTotal: marketSlotPrices.reduce((sum, value) => sum + value, 0),
-      productionSlots: catalog.productionSlots.upgrades.map(upgrade => ({ slots: upgrade.slots, pearls: pearlDisplayAmount(upgrade.pricePearls) })),
+      productionSlots: catalog.productionSlots.upgrades.map(upgrade => ({ slots: upgrade.slots, pearls: pearlDisplayAmount(upgrade.pricePearls), requiredHomeLevel: upgrade.requiredHomeLevel })),
       construction: { stepPearls: pearlDisplayAmount(step), curved: points.length >= 2 && !proportional,
         secondsPerVisiblePearl: proportional ? points[0].seconds / pearlDisplayAmount(points[0].pearls) : null,
         prices: [60, 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400].map(seconds => ({ seconds,

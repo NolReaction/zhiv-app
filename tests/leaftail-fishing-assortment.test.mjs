@@ -33,7 +33,7 @@ test("Leaftail rods offer two useful directions without replacing the class spec
   assert.ok(boosted.epic > plain.epic && boosted.legendary > plain.legendary);
 });
 
-test("new tackle keeps every old class-winning loadout and the old maximum fishing income", () => {
+test("new tackle keeps class specialists and starter income while cheap mixed bait has a bounded net benefit", () => {
   const report = auditFishingBalance(economyCatalog);
   assert.deepEqual(report.targets.map(({ rarity, rodId, hookId, baitId }) => [rarity, rodId, hookId, baitId]), [
     ["common", "reed_rod", "bare_hook", "crumb_bait"],
@@ -47,7 +47,12 @@ test("new tackle keeps every old class-winning loadout and the old maximum fishi
   const previous = auditFishingBalance(old);
   for (const [index, row] of report.incomeRanges.entries()) {
     assert.ok(row.minimumNetSaleCoinsPerHour > 0);
-    assert.equal(row.maximumNetSaleCoinsPerHour, previous.incomeRanges[index].maximumNetSaleCoinsPerHour);
+    const route = economyCatalog.explorations.find(route => route.id === row.routeId);
+    const oldMaximum = previous.incomeRanges[index].maximumNetSaleCoinsPerHour;
+    assert.ok(row.maximumNetSaleCoinsPerHour >= oldMaximum, "adding choices cannot remove an existing loadout");
+    // V14's mixed bait costs one coin less than the specialist's top bait.
+    // Keep any resulting maximum-income gain below one coin per actual cast.
+    assert.ok(row.maximumNetSaleCoinsPerHour <= oldMaximum + 3600 / route.seconds);
     assert.equal(row.starterNetSaleCoinsPerHour, previous.incomeRanges[index].starterNetSaleCoinsPerHour);
   }
 });

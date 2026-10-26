@@ -19,7 +19,7 @@ test("economy catalog has useful chains, reachable actual tiers and separate pro
   assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 0);
   assert.equal(report.fourthStage.constructionCoins, 19200);
   assert.equal(report.fourthStage.constructionSeconds, 32 * 3600);
-  assert.equal(report.fourthStage.longWorkshopJobs, 5);
+  assert.equal(report.fourthStage.longWorkshopJobs, 6);
   assert.match(report.timingBasis, /construction queue.*actual play duration are separate/);
 });
 
@@ -66,15 +66,15 @@ test("catalog audit rejects compression of the authored stage construction contr
   assert.throws(() => auditEconomyProgression(catalog), /Third stage home construction.*declared tier|Fourth stage.*declared tier|construction price must follow builder time/);
 });
 
-test("warehouse has ten increasing tiers, ordinary early costs and independent relic expansions", () => {
+test("warehouse has ten increasing tiers with modest optional crafted and relic expansions", () => {
   const catalog = readEconomyCatalog();
   const warehouse = catalog.buildings.find(building => building.id === "warehouse");
   assert.deepEqual(warehouse.levels.map(level => level.level), Array.from({ length: 10 }, (_, index) => index + 1));
   for (const mutate of [
     c => c.buildings.find(building => building.id === "warehouse").levels[2].cost.items.living_resin = 1,
     c => c.buildings.find(building => building.id === "warehouse").levels[3].cost.coins = 10,
-    c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredHomeLevel = 4,
-    c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredBuildings.workshop = 3,
+    c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredHomeLevel = 3,
+    c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredBuildings = {},
     c => c.buildings.find(building => building.id === "warehouse").levels[3].cost.items.planks = 1,
     c => c.buildings.find(building => building.id === "warehouse").levels[9].warehouseCapacity = 8200,
   ]) {
@@ -83,17 +83,17 @@ test("warehouse has ten increasing tiers, ordinary early costs and independent r
   }
 });
 
-test("early storage gates match its materials and optional relic tiers have no extra building requirements", () => {
+test("storage gates follow accessible production without becoming prerequisites of the main journey", () => {
   const catalog = readEconomyCatalog();
   for (const level of catalog.buildings.find(building => building.id === "warehouse").levels) {
-    assert.equal(level.requiredHomeLevel, level.level === 2 ? 2 : level.level === 3 ? 3 : 1);
-    assert.deepEqual(level.requiredBuildings, {});
-    for (const requirement of ["home", "workshop"]) {
-      const invalid = structuredClone(catalog), target = invalid.buildings.find(building => building.id === "warehouse").levels.find(candidate => candidate.level === level.level);
-      if (requirement === "home") target.requiredHomeLevel = level.requiredHomeLevel + 1;
-      else target.requiredBuildings.workshop = 1;
-      assert.throws(() => auditEconomyProgression(invalid), /storage must keep its declared material-availability house gate/, `storage ${level.level}: ${requirement}`);
-    }
+    const expectedHome = level.level <= 3 ? level.level : level.level <= 6 ? 4 : 5;
+    assert.equal(level.requiredHomeLevel, expectedHome);
+    if (level.level <= 3) assert.deepEqual(level.requiredBuildings, {});
+    else assert(Object.keys(level.requiredBuildings).length > 0);
+    assert.equal(level.requiredBuildings.warehouse, undefined);
+    const invalid = structuredClone(catalog), target = invalid.buildings.find(building => building.id === "warehouse").levels.find(candidate => candidate.level === level.level);
+    target.requiredHomeLevel = level.requiredHomeLevel === 5 ? 4 : level.requiredHomeLevel + 1;
+    assert.throws(() => auditEconomyProgression(invalid), /storage must keep its declared material-availability house gate/);
   }
 });
 
@@ -309,7 +309,7 @@ test("arcade production improvements do not make earlier tiers slower than later
 test("third-stage material bundles fit starter storage while daily delivery waits are removed", () => {
   const catalog = readEconomyCatalog(), report = auditEconomyProgression(catalog);
   assert.deepEqual(report.thirdStage, { constructionCount: 7, constructionCoins: 9000,
-    constructionSeconds: 15 * 3600, largestMaterialBundle: 25 });
+    constructionSeconds: 15 * 3600, largestMaterialBundle: 32 });
   assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 0);
   const home = catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4);
   assert.equal(home.seconds, 4 * 3600);

@@ -20,8 +20,8 @@ const chapters = {
   1: [["woodlot", 1], ["dryer", 1], ["workshop", 1], ["home", 2]],
   2: [["quarry", 1], ["quarry", 2], ["kiln", 1], ["garden", 2], ["bridge", 1], ["home", 3]],
   3: [["woodlot", 2], ["kiln", 2], ["workshop", 2], ["garden", 3], ["dryer", 2], ["woodlot", 3], ["workshop", 3],
-    ["quarry", 3], ["kiln", 3], ["lighthouse", 1], ["home", 4]],
-  4: [["garden", 4], ["woodlot", 4], ["quarry", 4], ["kiln", 4], ["workshop", 4], ["dryer", 3], ["home", 5]],
+    ["quarry", 3], ["kiln", 3], ["dryer", 3], ["lighthouse", 1], ["home", 4]],
+  4: [["garden", 4], ["woodlot", 4], ["quarry", 4], ["kiln", 4], ["workshop", 4], ["home", 5]],
   5: [["dryer", 4], ["garden", 5]],
 };
 const newRecipes = {
@@ -141,8 +141,18 @@ function completeJourney(regularActiveMinutes) {
       }
       if (job.collection && Date.parse(job.collection.finishesAt) > clock) continue;
       // Species are grouped into classes by the normal claim transition.
-      makeRoom(Object.values(job.rewards).reduce((sum, count) => sum + count, 0));
-      apply("claim_job", job.id); changed = true;
+      let room = Object.values(job.rewards).reduce((sum, count) => sum + count, 0);
+      for (;;) {
+        makeRoom(room);
+        try { apply("claim_job", job.id); break; }
+        catch (error) {
+          if (error.code !== "ECONOMY_STORAGE_FULL") throw error;
+          // Additional finds are revealed only at delivery. Respond to the
+          // server's capacity error with a real sale, without reading the draw.
+          assert(++room <= 50, "a complete delivery fits the original warehouse");
+        }
+      }
+      changed = true;
       if (incomeJobs.delete(job.id)) {
         // Keep a small working reserve and sell the claimed single item
         // through an actual NPC command when it exceeds that reserve.
@@ -295,9 +305,11 @@ function completeJourney(regularActiveMinutes) {
 }
 
 
-// Visits happen eight hours apart; the smaller introductory payout can move a
-// later material purchase to the following visit without adding a new time gate.
-for (const [minutes, maximumDays] of [[30, 46], [15, 57]]) test(`a single fresh free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
+// This conservative reachability route uses one free slot and no food, purchases
+// or pearls. It also makes every berry product at its advertised house. The
+// monthly balance is measured separately by the unified gameplay simulator.
+// Visits happen eight hours apart; missed recipe finishes wait until the next.
+for (const [minutes, maximumDays] of [[30, 46], [15, 80]]) test(`a conservative free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
   const result = completeJourney(minutes), { state, clock, flow, courses, builds, berryClaims, checkpoints, actions } = result;
   t.diagnostic(JSON.stringify({ elapsedDays: (clock - epoch) / (24 * hour), visits: result.visitCount,
     firstVisitMinutes: 60, laterVisitMinutes: result.regularActiveMinutes, activeTimerHours: result.activeSeconds / 3600,
@@ -336,8 +348,9 @@ for (const [minutes, maximumDays] of [[30, 46], [15, 57]]) test(`a single fresh 
   for (const [home, count] of [[1, 3], [2, 7], [3, 8], [4, 12]]) {
     assert.equal(state.stageOrders.stages[String(home)].step, count); assert.equal(state.stageOrders.stages[String(home)].completed, true);
     const chapter = courses.filter(course => course.id.startsWith(`stage${home}_`));
+    const interval = catalog.stageOrders.find(stage => stage.homeLevel === home).intervalSeconds * 1000;
     for (let index = 1; index < chapter.length; index++)
-      assert(chapter[index].at - chapter[index - 1].at >= (home <= 2 ? 0 : 23 * hour));
+      assert(chapter[index].at - chapter[index - 1].at >= interval);
   }
   assert.deepEqual(builds.map(build => `${build.target}:${build.level}`), constructionSequence.map(([id, level]) => `${id}:${level}`));
   for (const action of ["buy_market_slot", "buy_production_slot", "claim_tutorial_order", "claim_workshop_starter", "speedup_construction", "eat_food", "feed_builder", "buy", "buy_fish"])
@@ -354,7 +367,7 @@ for (const [minutes, maximumDays] of [[30, 46], [15, 57]]) test(`a single fresh 
   for (const id of ["ancient_core", "moon_crystal"]) {
     assert.equal(flow[id].received, 1); assert.equal(flow[id].consumed, 1); assert.equal(flow[id].sold, 0);
   }
-  assert(result.revision < 4500, "compact material bundles keep the complete route below 4,500 manual commands");
+  assert(result.revision < 5500, "the v14 material chains and all berry products remain below 5,500 manual commands");
   assert(result.peak <= 50); assert(clock - epoch <= maximumDays * 24 * hour);
 });
 const currentOfferId = state => (tutorial.tutorialResidentOrder(state) ?? stages.stageResidentOrder(state))?.id;

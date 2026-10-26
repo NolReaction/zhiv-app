@@ -14,6 +14,7 @@ const { residentOrderBoard, normalizedResidentOrders, advanceResidentOrder } = a
 const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
 const { TUTORIAL_ORDER_ID, tutorialResidentOrder, newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 const { stageResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
+const { tradeResidentAvailable } = await vite.ssrLoadModule("/features/economy/domain/trade-relations.ts");
 const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-07T14:00:00Z");
@@ -37,7 +38,8 @@ function elements(tree) {
 }
 const buttons = tree => elements(tree).filter(element => element.type === "button");
 const submissionControls = tree => elements(tree).filter(element => element.props["data-guide-order-submit"] !== undefined || element.type?.name === "FishOrderAction");
-const ordinaryCount = economy => residentOrderBoard(economy.snapshot, economy.now).offers.length;
+const ordinaryCount = economy => residentOrderBoard(economy.snapshot, economy.now).offers
+  .filter(offer => tradeResidentAvailable(economy.snapshot, offer.residentId, economy.snapshot.catalog)).length;
 
 test("board offers five resident tabs and an initial NPC filter without mixing meals into feeding", () => {
   const economy = controller({}, { act() { assert.fail("rendering cannot change an order"); } });
@@ -157,9 +159,11 @@ test("house-three supply keeps its saved deadline separate from current and hist
   const economy = controller({ buildings: { home: 3, warehouse: 1, workshop: 2, quarry: 2, kiln: 1 },
     tutorialOrder: { version: 1, ingredientsClaimed: true, completed: true } });
   const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 3);
-  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 23 * 3600);
+  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 0);
   const terms = course.orders[1], deadlineSeconds = 24 * 3600, availableAt = new Date(now + deadlineSeconds * 1000).toISOString();
-  for (const acceptedInterval of [course.intervalSeconds, 24 * 3600]) {
+  // Previously accepted 23/24-hour promises still render their saved deadline
+  // even though newly accepted v14 courses have no interval.
+  for (const acceptedInterval of [23 * 3600, 24 * 3600]) {
     economy.snapshot.stageOrders = { version: 1, stages: { 3: { step: 1, completed: false, terms, availableAt,
       intervalSeconds: acceptedInterval, completionRewards: course.completionRewards } } };
     economy.snapshot.inventory = { ...terms.items };
@@ -383,6 +387,7 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       tree = board(); first = cards(tree)[0];
       assert.equal(first.props.offer.id, terms.id);
       assert.match(renderToStaticMarkup(tree), new RegExp(`К дому 3 · ${step + 1} / 7`));
+      assert.ok(cards(tree).every(card => card.props.offer.residentId !== "leaftail"), "a saved late-game board cannot expose the trader before house three");
       assert.equal(submissionControls(Card(first.props)).length, 1);
       first.props.onComplete(first.props.offer); first.props.onComplete(first.props.offer);
       assert.deepEqual(calls, [["complete_resident_order", terms.id, 1, 0]]);

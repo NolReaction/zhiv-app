@@ -210,13 +210,13 @@ test("paid replacement receipts replay once, reject altered quotes, and fence co
   const stateAfter = read(p); assert.equal(stateAfter.wallet.pearls, 40); assert.equal(stateAfter.residentOrders.freeReplacementsUsed, 3);
 });
 
-test("eleven meals keep distinct boosts, preserve the six fish tiers and retain old paid timing", () => {
-  assert.equal(catalog.food.meals.length, 11);
+test("seventeen meals keep distinct boosts, preserve the six fish tiers and retain old paid timing", () => {
+  assert.equal(catalog.food.meals.length, 17);
   assert.deepEqual(catalog.food.meals.filter(meal => ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish"].includes(meal.itemId)).map(meal => [meal.heroSpeedBps, meal.builderSpeedBps]), [[1000,1000],[2500,2500],[4000,3500],[6000,5000],[8000,7000],[10000,9000]]);
   assert.deepEqual(catalog.food.meals.filter(meal => ["strawberry_compote", "blueberry_compote", "currant_jelly", "blackberry_preserve", "cranberry_glaze"].includes(meal.itemId))
     .map(meal => [meal.itemId, meal.heroSpeedBps, meal.builderSpeedBps]), [
-      ["strawberry_compote", 800, 1200], ["blueberry_compote", 1200, 800], ["currant_jelly", 2000, 3000],
-      ["blackberry_preserve", 4500, 3000], ["cranberry_glaze", 7500, 5500],
+      ["strawberry_compote", 800, 2500], ["blueberry_compote", 1200, 2000], ["currant_jelly", 2000, 5000],
+      ["blackberry_preserve", 4500, 8000], ["cranberry_glaze", 7500, 10000],
     ]);
   for (const meal of catalog.food.meals) {
     const state = fresh(); state.inventory = { [meal.itemId]: 1 };
@@ -224,6 +224,8 @@ test("eleven meals keep distinct boosts, preserve the six fish tiers and retain 
     const route = catalog.explorations.find(route => route.id === "forest");
     assert.equal(Date.parse(state.jobs[0].finishesAt) - now, Math.ceil(route.seconds * 10000 / (10000 + meal.heroSpeedBps)) * 1000);
     assert.equal(state.jobs[0].meal.speedBps, meal.heroSpeedBps);
+    assert.equal(state.food.heroMealEffect.remainingWorkSeconds, meal.heroWorkSeconds - route.seconds,
+      "one short trip spends its real work and leaves the serving's remaining budget");
     const builder = fresh(), target = catalog.buildings.find(building => building.id === "workshop").levels[0];
     builder.wallet.coins = target.cost.coins; builder.inventory = { ...target.cost.items, [meal.itemId]: 1 }; Object.assign(builder.buildings, target.requiredBuildings);
     apply(builder, "feed_builder", meal.itemId); apply(builder, "start_construction", "workshop");

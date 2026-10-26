@@ -33,7 +33,7 @@ function player(home = 2, inventory = { wood: 100 }) {
 const command = (player, action, targetId, quantity = 1, totalPrice = 0) => ({ requestId: key(), ownerPublicId: player.me.user.publicId,
   expectedRevision: read(player).revision, action, targetId, quantity, totalPrice });
 const offer = (player, quantity = 1, itemId = "wood") => economy.commandDevEconomyMarket(player.token,
-  command(player, "create_listing", itemId, quantity, marketMinimumPrice(itemId, quantity)), now).listing;
+  command(player, "create_listing", itemId, quantity, Math.ceil(marketMinimumPrice(itemId, quantity) / 10) * 10), now).listing;
 const buyCommand = (player, listing) => command(player, "buy_listing", listing.id, listing.quantity, listing.totalPrice);
 const buy = (player, circle, listing) => economy.commandDevGuestWorldMarket(player.token, circle, buyCommand(player, listing), now);
 const snapshot = () => structuredClone({ economy: globalThis.__zhivDevEconomyStore, world: globalThis.__zhivDevWorldStore });
@@ -223,9 +223,9 @@ test("friend purchases preserve revision owner quote resources capacity and elig
     ["ECONOMY_MARKET_ITEM_LOCKED", () => { for (const listing of globalThis.__zhivDevEconomyStore.listings.values()) listing.totalPrice = 150; },
       request => ({ ...request, totalPrice: 150 })],
     ["ECONOMY_MARKET_DAILY_LIMIT", buyer => { globalThis.__zhivDevEconomyStore.turnover.set(buyer.me.user.publicId,
-      { day: "2026-10-19", buysUsed: 2400, salesUsed: 0, barterUsed: 0 }); }],
+      { day: "2026-10-19", buysUsed: economyCatalog.market.dailyTradeValueByHome[1], salesUsed: 0, barterUsed: 0 }); }],
     ["ECONOMY_MARKET_SELLER_DAILY_LIMIT", (_, seller) => { globalThis.__zhivDevEconomyStore.turnover.set(seller.me.user.publicId,
-      { day: "2026-10-19", buysUsed: 0, salesUsed: 2400, barterUsed: 0 }); }],
+      { day: "2026-10-19", buysUsed: 0, salesUsed: economyCatalog.market.dailyTradeValueByHome[1], barterUsed: 0 }); }],
   ];
   for (const [code, change, transform = request => request] of cases) {
     social.resetDevStoreForTests();

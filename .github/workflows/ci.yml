@@ -68,6 +68,9 @@ jobs:
       - name: Check committed Tiled export
         run: npm run world:check
 
+      - name: Check progression report matches the current rules
+        run: node scripts/build-progression-report.mjs --check
+
       - name: Check audio catalog and asset licenses
         run: npm run audio:check
 

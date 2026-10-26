@@ -17,8 +17,10 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { BranchPage } from "/features/progression/branch-page.tsx";
 import { buildEconomyAnalysis } from "/features/progression/economy-analysis.ts";
+import { progressionScenarioReport, scenarioReportState } from "/features/progression/economy-scenarios.ts";
 import "/app/globals.css";
 window.__economyAnalysis = buildEconomyAnalysis();
+window.__scenarioReport = { state: scenarioReportState(progressionScenarioReport), report: progressionScenarioReport };
 window.location.hash = "economy-analysis";
 createRoot(document.getElementById("root")).render(React.createElement(BranchPage));
 `;
@@ -114,6 +116,37 @@ try {
     assert(await page.locator("[data-analysis-route]").count() > 0);
     assert(await page.getByRole("region", { name: "Шансы видов рыб", exact: true }).isVisible());
     await noOverflow(`${width}/expeditions`); await screenshot(`expeditions-${width}.png`);
+    cases++;
+
+    await page.getByRole("tab", { name: "Вылазки", exact: true }).focus();
+    await page.keyboard.press("End");
+    assert.equal(await page.getByRole("tab", { name: "Прохождение", exact: true }).getAttribute("aria-selected"), "true");
+    assert.equal(await page.getByRole("tab", { name: "Прохождение", exact: true }).evaluate(node => document.activeElement === node), true);
+    const scenarios = await page.evaluate(() => window.__scenarioReport);
+    if (["validated", "review"].includes(scenarios.state)) {
+      assert.equal(await page.locator("[data-scenario]").count(), scenarios.report.scenarios.length);
+      await page.getByLabel("Бюджет в сценариях").selectOption("free");
+      assert.equal(await page.locator("[data-scenario]").count(), scenarios.report.scenarios.filter(row => row.externalPearls === 0).length);
+      const [scenariosCsvDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "CSV прогонов", exact: true }).click()]);
+      const scenarioCsv = await readFile(await scenariosCsvDownload.path(), "utf8");
+      assert.equal(scenarioCsv.trim().split(/\r?\n/).length, scenarios.report.scenarios.length + 1, "Scenario export includes all funding modes despite filter");
+      const [scenariosJsonDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "JSON прогонов", exact: true }).click()]);
+      assert.deepEqual(JSON.parse(await readFile(await scenariosJsonDownload.path(), "utf8")), scenarios.report);
+      await page.getByLabel("Цель в сценариях").selectOption("full");
+      assert.equal(await page.locator("[data-scenario]").count(), scenarios.report.scenarios.filter(row => row.goal === "full" && row.externalPearls === 0).length);
+      await page.getByLabel("Бюджет в сценариях").selectOption("external");
+      assert.equal(await page.locator("[data-scenario]").count(), scenarios.report.scenarios.filter(row => row.goal === "full" && row.externalPearls > 0).length);
+      if (!scenarios.report.scenarios.some(row => row.goal === "full" && row.externalPearls > 0)) assert(await page.getByText("Нет прогонов с выбранной целью и бюджетом.").isVisible());
+      await page.getByLabel("Цель в сценариях").selectOption("all");
+      await page.getByLabel("Бюджет в сценариях").selectOption("all");
+      await page.locator("[data-scenario]").last().getByRole("button").click();
+      assert(await page.getByRole("region", { name: "Подробности прохождения", exact: true }).evaluate(node => node === document.activeElement));
+      await page.getByRole("region", { name: "Сравнение прохождений, горизонтальная прокрутка", exact: true }).focus();
+      await page.keyboard.press("ArrowRight");
+    } else {
+      assert.equal(await page.locator("[data-scenario]").count(), 0, "Unpublished or stale evidence is hidden");
+    }
+    await noOverflow(`${width}/scenarios`); await screenshot(`scenarios-${width}.png`);
     cases++;
 
     await page.getByRole("tab", { name: "План", exact: true }).click();

@@ -150,7 +150,7 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         edit(buyer){it.copy(inventory=mapOf("berries" to 50L))}
         assertEquals("ECONOMY_STORAGE_FULL",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
         edit(buyer){it.copy(inventory=mapOf("berries" to 20L))}
-        execute("INSERT INTO economy_market_daily_turnover(user_id,trade_day,buys_value) VALUES (?,(clock_timestamp() AT TIME ZONE 'UTC')::date,2400)",buyer.id)
+        execute("INSERT INTO economy_market_daily_turnover(user_id,trade_day,buys_value) VALUES (?,(clock_timestamp() AT TIME ZONE 'UTC')::date,?)",buyer.id,EconomyMarketRules.dailyTradeLimit(2))
         assertEquals("ECONOMY_MARKET_DAILY_LIMIT",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
         assertEquals(1000L,economy.snapshot(buyer.hash).wallet.coins)
         assertEquals(listOf(lot.id),worlds.world(buyer.hash,circle).market.listings.map { it.id })
@@ -166,7 +166,7 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         val buyer=player();val seller=player();val circle=connect(buyer,seller)
         edit(seller){it.copy(buildings=it.buildings + ("home" to 5),inventory=mapOf("tools" to 1L),
             unlockedItems=(it.unlockedItems+"tools").distinct())}
-        market.command(seller.hash,command(seller,"create_listing","tools",1,1000))
+        market.command(seller.hash,command(seller,"create_listing","tools",1,1030))
         val lot=market.market(seller.hash).mine.single()
         val storefront=worlds.world(buyer.hash,circle).market
         assertTrue(storefront.available);assertNull(storefront.reason)

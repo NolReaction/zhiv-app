@@ -89,6 +89,13 @@ class NotificationMessagesTest {
             "blueberry_compote" to "2 порции черничного компота", "currant_jelly" to "2 порции смородинового желе",
             "blackberry_preserve" to "2 порции ежевичного варенья", "cranberry_glaze" to "2 порции клюквенного десерта",
             "trail_ration" to "2 походных пайка", "research_gear" to "2 комплекта снаряжения исследователя",
+            "ceramic_jar" to "2 керамические банки", "mortar" to "2 ед. строительной смеси",
+            "glass_bottle" to "2 стеклянные бутылки", "lens" to "2 линзы", "packed_berries" to "2 ягодных запаса",
+            "trade_crate" to "2 торговых ящика", "field_kit" to "2 полевых комплекта", "stone_tile" to "2 облицовочные плитки",
+            "bottled_compote" to "2 бутылки компота", "berry_gift" to "2 ягодных подарка",
+            "grilled_silverfin" to "2 порции серебропёрки на углях", "smoked_bream" to "2 порции копчёного леща",
+            "mooncarp_blueberries" to "2 порции лунного карася с черникой", "pike_berry_sauce" to "2 порции щуки в ягодном соусе",
+            "eel_in_jar" to "2 порции угря в горшочке", "festive_sturgeon" to "2 порции праздничного осетра",
         )
         expectations.forEach { (resource, expected) ->
             assertEquals("Готово: $expected. Можно забрать в кладовую.", message(job("production", "workshop", mapOf(resource to 2))).body)
@@ -123,6 +130,7 @@ class NotificationMessagesTest {
             "quarry_stone_hour" to "из шахты", "quarry_ore_hour" to "из шахты", "quarry_ore_overnight" to "из шахты",
             "quarry_clay_hour" to "из шахты", "quarry_clay_overnight" to "из шахты", "quarry_sand_hour" to "из шахты",
             "quarry_sand_overnight" to "из шахты",
+            "quarry_quartz" to "из шахты", "quarry_limestone" to "из шахты",
         )
         val namedRoutes = mapOf("far_bank_path" to "Тропа дальнего берега", "far_bank_grove" to "Роща за рекой", "ancient_ruins" to "Древние руины")
         assertEquals(EconomyRules.catalog.explorations.map { it.id }.toSet(), expectedPlaces.keys + namedRoutes.keys)

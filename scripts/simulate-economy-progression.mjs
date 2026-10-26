@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { createServer } from "vite";
+import { createSocialPolicy } from "./lib/economy-social-scenario.mjs";
 import { createRewardScenario } from "./lib/economy-reward-scenario.mjs";
 
 export const epoch = Date.parse("2026-10-14T09:00:00Z"), hour = 3_600_000;
@@ -16,7 +17,7 @@ export async function loadProgressionRules(sourceRoot = defaultRoot) {
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
   const paths = { rules: "features/economy/domain/rules.ts", model: "features/economy/domain/model.ts", stages: "features/economy/domain/stage-orders.ts",
     food: "features/economy/domain/food.ts", actors: "features/economy/domain/actor-availability.ts", tutorial: "features/economy/domain/tutorial-order.ts",
-    slots: "features/economy/domain/production-slots.ts", rewards: "features/game/progression-rewards.ts", achievements: "features/game/achievement-progress.ts",
+    slots: "features/economy/domain/production-slots.ts", relations: "features/economy/domain/trade-relations.ts", fishing: "features/economy/domain/fishing.ts", fishingShop: "features/economy/domain/fishing-shop.ts", publicJobs: "features/economy/domain/public-jobs.ts", leaftail: "features/economy/domain/leaftail-shop.ts", rewards: "features/game/progression-rewards.ts", achievements: "features/game/achievement-progress.ts",
     welcome: "features/mailbox/welcome.ts", money: "features/economy/domain/money.ts", fishStock: "features/economy/domain/fish-stock.ts" };
   const loaded = {};
   for (const [name, path] of Object.entries(paths)) loaded[name] = await vite.ssrLoadModule(`/${path}`);
@@ -47,12 +48,19 @@ const newRecipes = {
 export function simulateProgression(loaded, options = {}) {
   const { rules, catalog, stages, food, actors, tutorial, slots } = loaded;
   const { regularActiveMinutes = 20, firstVisitMinutes = 60, seed = 1, slotPolicy = "earned", maxDays = 160,
-    claimRewards = true, useMeals = true, completionGoal = "home-5", manualSeconds = 2, externalSlotBudget = 0 } = options;
+    claimRewards = true, useMeals = true, completionGoal = "home-5", manualSeconds = 2, externalSlotBudget = 0,
+    visitsPerDay = 3, opportunisticRoutes = true, speedupPolicy = "none", socialMode = "income", buySupplies = true, onVisit, onCommand } = options;
+  assert(Number.isInteger(visitsPerDay) && visitsPerDay > 0 && visitsPerDay <= 24);
+  assert(regularActiveMinutes > 0 && regularActiveMinutes <= 24 * 60 / visitsPerDay);
+  assert(firstVisitMinutes > 0 && firstVisitMinutes <= 24 * 60 / visitsPerDay);
+  assert(manualSeconds > 0 && Number.isFinite(manualSeconds));
   const random = createRandom(seed);
   const rewardScenario = loaded.createRewards?.();
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   const startingCoins = state.wallet.coins, startingItems = { ...state.inventory };
+  const social = createSocialPolicy({catalog,relations:loaded.relations,food,state,mode:socialMode});
   let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0, visitCount = 0;
+  let cashReserve = 0;
   let constructionSeconds = 0, activeStart = epoch, activeEnd = epoch, activeSeconds = 0;
   const courses = [], builds = [], actions = {}, flow = {}, production = {}, catches = {}, repeatOrders = [];
   const berryClaims = [], checkpoints = [], windows = [];
@@ -61,6 +69,16 @@ export function simulateProgression(loaded, options = {}) {
   const uuid = () => `${(seed >>> 0).toString(16).padStart(8, "0")}-0000-4000-9000-${(++sequence).toString(16).padStart(12, "0")}`;
   const rewardClaims = [], slotPurchases = [], mealUses = [], storagePressure = [], waits = [];
   const concurrencyPeaks = {}, claimedWorkSeconds = {}, readyIdleSeconds = {};
+  const materialRouteStarts = [], speedups = [];
+  const sourceCache = new Map(), effortCache = new Map();
+  const milestones = {};
+  const targetHome = Math.max(...catalog.buildings.find(row => row.id === "home").levels.map(row => row.level));
+  const maximumBuildings = Object.fromEntries(catalog.buildings.map(row => [row.id, Math.max(...row.levels.map(level => level.level))]));
+  const activeRecipes = catalog.recipes.filter(row => !row.retired);
+  const maximumProduction = () => Object.entries(maximumBuildings).filter(([id]) => id !== "warehouse").every(([id,level]) => state.buildings[id] >= level);
+  const maximumSettlement = () => Object.entries(maximumBuildings).every(([id,level]) => state.buildings[id] >= level);
+  const recipesComplete = () => activeRecipes.every(row => (state.progression.recipes[row.id] ?? 0) > 0);
+  const owned = id => catalog.fishing.fish.some(fish => fish.itemId === id) ? loaded.fishStock.normalizedFishStock(state)[id] ?? 0 : state.inventory[id] ?? 0;
   const coinLedger = { initial: state.wallet.coins, credits: {}, debits: {} };
   const pearlLedger = { initial: state.wallet.pearls, credits: {}, debits: {} };
   assert([0, 3500].includes(externalSlotBudget), "Only explicit zero or all-slot sensitivity budget is supported");
@@ -72,23 +90,26 @@ export function simulateProgression(loaded, options = {}) {
   const slotCapacity = id => slots.productionSlotCount(state, id);
   const record = id => flow[id] ??= { received: 0, consumed: 0, sold: 0 };
   const currentCourse = () => tutorial.tutorialResidentOrder(state) ?? stages.stageResidentOrder(state);
-  const held = items => Object.entries(items).every(([id, count]) => (state.inventory[id] ?? 0) >= count);
+  const held = items => Object.entries(items).every(([id, count]) => owned(id) >= count);
   const buildingOpen = requirements => Object.entries(requirements ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
   const sourceOpen = source => !source.retired && state.buildings.home >= source.requiredHomeLevel && buildingOpen(source.requiredBuildings)
     && (!source.buildingId || (state.buildings[source.buildingId] ?? 0) >= source.buildingLevel);
-  // Maximum interval and living resin are fixed trusted server entropy. Neither
-  // core nor crystal can be supplied by this sampler, so the chapter must supply both.
+  // Seeded server entropy is shared by real trusted draws, never inspected by
+  // the policy. The guaranteed chapter rewards do not depend on random relics.
   const rareRandom = random;
-  function apply(action, targetId, quantity = 1) {
+  function apply(action, targetId, quantity = 1, totalPrice = 0) {
     if (clock + manualMilliseconds > activeEnd) throw visitEnded;
     assert(clock >= activeStart && clock <= activeEnd, "manual actions only happen during a scheduled visit");
     const before = structuredClone(state), offer = action === "complete_resident_order" ? currentCourse() : null;
     rules.applyEconomyCommand(state, { requestId: uuid(), ownerPublicId: "0000-0000-0001", expectedRevision: revision,
-      action, targetId, quantity, totalPrice: 0 }, clock, uuid, {}, rareRandom);
+      action, targetId, quantity, totalPrice }, clock, uuid, {}, rareRandom);
     recordCurrency(coinLedger, before.wallet.coins, state.wallet.coins, action);
     recordCurrency(pearlLedger, before.wallet.pearls, state.wallet.pearls, action);
+    if (action === "speedup_construction") { sourceCache.clear(); effortCache.clear(); }
+    if (action === "speedup_construction") speedups.push({ day: (clock - epoch) / (24 * hour), paid: before.wallet.pearls - state.wallet.pearls, target: before.jobs.find(job => job.id === targetId)?.targetId });
     if (action === "buy_production_slot") slotPurchases.push({ day: (clock - epoch) / (24 * hour), station: targetId, slots: slotCapacity(targetId), paid: before.wallet.pearls - state.wallet.pearls, home: state.buildings.home });
     if (["eat_food", "feed_builder"].includes(action)) mealUses.push({ day: (clock - epoch) / (24 * hour), action, item: targetId });
+    if (["buy_fishing_item","buy_leaftail_item","equip_fishing_rod","equip_fishing_hook"].includes(action)) effortCache.clear();
     revision++; actions[action] = (actions[action] ?? 0) + 1;
     if (action === "claim_job") {
       const job = before.jobs.find(job => job.id === targetId);
@@ -99,8 +120,8 @@ export function simulateProgression(loaded, options = {}) {
       }
       if (job?.recipeId && Object.values(newRecipes).flat().includes(job.recipeId))
         berryClaims.push({ recipeId: job.recipeId, home: before.buildings.home, at: clock, rewards: { ...job.rewards } });
-      if (job?.kind === "construction" && ["home", "bridge", "lighthouse"].includes(job.targetId))
-        checkpoints.push({ target: job.targetId, level: job.targetLevel, home: state.buildings.home, at: clock, coins: state.wallet.coins });
+      if (job?.kind === "construction") { sourceCache.clear(); effortCache.clear(); }
+
     }
     if (action === "start_construction") {
       constructionCoins += before.wallet.coins - state.wallet.coins;
@@ -131,7 +152,15 @@ export function simulateProgression(loaded, options = {}) {
     }
     for (const actor of ["miner", "mochlik"])
       assert(state.jobs.filter(job => job.kind === "exploration" && job.actorId === actor).length <= 1);
+    for (const target of ["home","bridge","lighthouse"]) if (state.buildings[target] > before.buildings[target])
+      checkpoints.push({target,level:state.buildings[target],home:state.buildings.home,at:clock,coins:state.wallet.coins});
+    if (state.buildings.home >= targetHome) milestones.home5At ??= clock;
+    if (social.complete()) milestones.reputationMaxAt ??= clock;
+    if (maximumProduction()) milestones.allProductionAt ??= clock;
+    if (maximumSettlement()) milestones.allBuildingsAt ??= clock;
+    if (recipesComplete()) milestones.allRecipesAt ??= clock;
     clock += manualMilliseconds;
+    onCommand?.({action,targetId,clock,state,revision});
   }
   function sell(id, count) {
     while (count > 0) {
@@ -154,7 +183,7 @@ export function simulateProgression(loaded, options = {}) {
     // needed for a rope while keeping eighteen unused pieces of hardwood.
     const reserve = {};
     const protect = items => { for (const [id, count] of Object.entries(items ?? {})) reserve[id] = Math.max(reserve[id] ?? 0, count); };
-    protect(currentCourse()?.items); protect(buildDefinition(nextConstruction())?.cost.items);
+    protect(currentCourse()?.items); protect(buildDefinition(nextConstruction())?.cost.items); protect(social.demand(clock));
     for (const recipe of catalog.recipes.filter(sourceOpen)) protect(recipe.cost.items);
     for (const id of goods) {
       const count = Math.min(left, Math.max(0, state.inventory[id] - (reserve[id] ?? 0)));
@@ -179,12 +208,17 @@ export function simulateProgression(loaded, options = {}) {
       }
       if (job.collection && Date.parse(job.collection.finishesAt) > clock) continue;
       // Species are grouped into classes by the normal claim transition.
-      makeRoom(Object.values(job.rewards).reduce((sum, count) => sum + count, 0));
+      const possibleFind = catalog.explorations.find(route => route.id === job.targetId)?.finds?.entries ?? [];
+      // Reserve the public maximum bonus quantity without inspecting the saved
+      // private find. The concrete item is revealed only by the successful claim.
+      makeRoom(Object.values(job.rewards).reduce((sum, count) => sum + count, 0) + Math.max(0,...possibleFind.map(row => row.quantity)));
       apply("claim_job", job.id); changed = true;
       if (incomeJobs.delete(job.id)) {
         // Keep a small working reserve and sell the claimed single item
         // through an actual NPC command when it exceeds that reserve.
         const reserve = { stone: 3, ore: 3, clay: 1, sand: 1 };
+        for (const basket of [currentCourse()?.items,buildDefinition(nextConstruction())?.cost.items,social.demand(clock)])
+          for (const [id,count] of Object.entries(basket ?? {})) reserve[id] = Math.max(reserve[id] ?? 0,count);
         for (const id of Object.keys(job.rewards).filter(id => !catalog.rareDrops.itemIds.includes(id))) {
           const surplus = Math.max(0, (state.inventory[id] ?? 0) - (reserve[id] ?? 0));
           if (surplus) sell(id, surplus);
@@ -198,11 +232,14 @@ export function simulateProgression(loaded, options = {}) {
     : source.activity === "mining"
       ? Boolean(actors.economyMinerConflict(state.jobs, clock)) || state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry")
       : Boolean(actors.economyActorConflict(state.jobs, "departure", clock));
-  const pending = id => state.jobs.reduce((sum, job) => sum + (job.rewards[id] ?? 0), 0);
-  const sources = id => [...catalog.recipes, ...catalog.explorations.filter(route => !catalog.fishing.routeIds.includes(route.id))]
-    .filter(source => source.rewards[id] > 0 && sourceOpen(source))
-    .sort((a, b) => Number(Object.keys(a.cost.items).length > 0) - Number(Object.keys(b.cost.items).length > 0)
-      || a.seconds / a.rewards[id] - b.seconds / b.rewards[id]);
+  const pending = id => state.jobs.reduce((sum, job) => sum + (loaded.publicJobs.publicEconomyJob(job,clock).rewards[id] ?? 0), 0);
+  const sources = id => {
+    if (!sourceCache.has(id)) sourceCache.set(id,[...catalog.recipes, ...catalog.explorations.filter(route => !catalog.fishing.routeIds.includes(route.id))]
+      .filter(source => source.rewards[id] > 0 && sourceOpen(source))
+      .sort((a, b) => Number(Object.keys(a.cost.items).length > 0) - Number(Object.keys(b.cost.items).length > 0)
+        || a.seconds / a.rewards[id] - b.seconds / b.rewards[id]));
+    return sourceCache.get(id);
+  };
   function run(source, ancestors = [], requestedBatches = 1) {
     if (!sourceOpen(source)) return false;
     if (ancestors.includes(source.id)) throw new Error(`Acquisition cycle: ${ancestors.join(" -> ")} -> ${source.id}`);
@@ -217,20 +254,69 @@ export function simulateProgression(loaded, options = {}) {
     // The currently visible requirement may need several copies. Prepare a
     // bounded parallel batch of ingredients, never an unknown future order.
     const batches = Math.min(requestedBatches, source.buildingId ? slotCapacity(source.buildingId) : 1);
-    for (const [id, count] of Object.entries(source.cost.items)) if ((state.inventory[id] ?? 0) < count * batches && need(id, count * batches, path)) return true;
-    if (!held(source.cost.items) || sourceBusy(source)) return false;
+    for (const [id, count] of Object.entries(source.cost.items)) if (owned(id) < count * batches && need(id, count * batches, path)) return true;
+    if (!held(source.cost.items) || state.wallet.coins < source.cost.coins || sourceBusy(source)) return false;
     apply(source.buildingId ? "start_production" : "start_exploration", source.id);
     production[source.id] = (production[source.id] ?? 0) + 1;
     return true;
   }
+  function fishNeed(id) {
+    const route = catalog.explorations.find(row => row.id === "shore");
+    if (sourceBusy(route)) return false;
+    const isSpecies = catalog.fishing.fish.some(fish => fish.itemId === id);
+    const probability = rodId => (isSpecies ? loaded.fishing.fishingOdds : loaded.fishing.fishingClassOdds)(state,catalog.fishing,{rodId,baitId:null})
+      .find(fish => fish.itemId === id)?.probability ?? 0;
+    if (loaded.fishingShop.fishingShopExpired(state.fishingShop,clock)) {
+      if (clock + manualMilliseconds > activeEnd) throw visitEnded;
+      state.fishingShop = loaded.fishingShop.createFishingShop(state,clock,random,uuid());
+      revision++; actions.open_fishing_shop = (actions.open_fishing_shop ?? 0) + 1; clock += manualMilliseconds;
+      return true;
+    }
+    const bestOwned = [...state.fishing.ownedRods].sort((a,b) => probability(b)-probability(a))[0];
+    const candidate = state.fishingShop.offers.filter(offer => offer.kind === "rod" && offer.remaining > 0 && !state.fishing.ownedRods.includes(offer.itemId)
+      && probability(offer.itemId) > probability(bestOwned))
+      .sort((a,b) => probability(b.itemId) - probability(a.itemId))[0];
+    if (candidate && cashReserve === 0) {
+      const price = loaded.fishingShop.fishingOfferUnitPrice(state,candidate);
+      const requiredCoins = price + (buildDefinition(nextConstruction())?.cost.coins ?? 0);
+      if (state.wallet.coins >= requiredCoins) {
+        apply("buy_fishing_item",candidate.id,1,price); return true;
+      }
+      if (ordinaryIncome(requiredCoins)) return true;
+    }
+    if (!probability(bestOwned)) {
+      const minimumPrice = Math.min(...catalog.fishing.rods.filter(rod => rod.requiredHomeLevel <= state.buildings.home && probability(rod.id) > 0).map(rod => rod.price));
+      return Number.isFinite(minimumPrice) && ordinaryIncome(minimumPrice);
+    }
+    // Keep this public acquisition objective until an actual cast starts: an
+    // income request and a recipe must not spend a session swapping rods. Both
+    // commands still pay their separate attention cost and obey the visit end.
+    if (state.fishing.equippedRodId !== bestOwned) apply("equip_fishing_rod",bestOwned);
+    apply("start_fishing",route.id); production.shore = (production.shore ?? 0) + 1; return true;
+  }
+  function buyUsefulSupply(id,count) {
+    if (!buySupplies) return false;
+    const shop = loaded.leaftail.leaftailShopView({...state,ownerPublicId:"0000-0000-0001"},clock);
+    const offer = shop?.offers.find(row => row.kind === "item" && row.currency === "coins" && row.itemId === id && row.remaining > 0);
+    if (!offer) return false;
+    // Spend only surplus above the next known building. Every supply is drawn
+    // from the actual dated shop and deducted through the real purchase rule.
+    const available = Math.max(0,state.wallet.coins - Math.max(cashReserve,buildDefinition(nextConstruction())?.cost.coins ?? 0));
+    const quantity = Math.min(20,offer.remaining,Math.ceil((count-owned(id))/offer.quantity),Math.floor(available/offer.unitPrice));
+    if (quantity <= 0) return false;
+    makeRoom(quantity * offer.quantity);
+    apply("buy_leaftail_item",offer.targetId,quantity,quantity*offer.unitPrice); return true;
+  }
   function need(id, count, ancestors = []) {
-    if ((state.inventory[id] ?? 0) + pending(id) >= count) return false;
+    if (owned(id) + pending(id) >= count) return false;
+    if (catalog.fishing.fish.some(fish => fish.itemId === id) || catalog.fishing.classes.some(group => group.itemId === id && id !== "fish_common")) return fishNeed(id);
     if (catalog.fishing.classes.some(group => group.itemId === id)) {
       const source = catalog.explorations.find(route => route.id === "shore");
       if (sourceBusy(source)) return false;
       apply("start_fishing", "shore"); production.shore = (production.shore ?? 0) + 1; return true;
     }
-    if (catalog.rareDrops.itemIds.includes(id)) return false;
+    if (catalog.rareDrops.itemIds.includes(id)) return state.buildings.home >= targetHome && completionGoal === "all-buildings" ? farmRelics() : false;
+    if (buyUsefulSupply(id,count)) return true;
     // Every active extraction yields one item; a return after eight hours never
     // silently substitutes the removed overnight bundle.
     const source = sources(id)[0];
@@ -260,7 +346,11 @@ export function simulateProgression(loaded, options = {}) {
     return null;
   }
   function nextConstruction() {
-    const next = chapters[state.buildings.home].find(([id, level]) => (state.buildings[id] ?? 0) < level
+    const plan = state.buildings.home < targetHome ? chapters[state.buildings.home] : catalog.buildings
+      .filter(row => row.id !== "home" && row.id !== "warehouse").map(row => [row.id, (state.buildings[row.id] ?? 0) + 1])
+      .filter(([id, level]) => level <= maximumBuildings[id] && buildingOpen(buildDefinition([id,level]).requiredBuildings));
+    if (state.buildings.home >= targetHome && ["all-buildings","full"].includes(completionGoal) && state.buildings.warehouse < maximumBuildings.warehouse) plan.push(["warehouse",state.buildings.warehouse + 1]);
+    const next = plan.find(([id, level]) => (state.buildings[id] ?? 0) < level
       && !state.jobs.some(job => job.kind === "construction" && job.targetId === id && job.targetLevel >= level));
     // Current visible order reveals its crafting prerequisites. Future chapter
     // orders, future random loot and unrevealed catches are never inspected.
@@ -270,18 +360,38 @@ export function simulateProgression(loaded, options = {}) {
   }
   const buildDefinition = entry => entry && catalog.buildings.find(building => building.id === entry[0]).levels.find(level => level.level === entry[1]);
 
+  function farmRelics() {
+    // Both workers advance private clocks only through legitimately claimed work.
+    // Choose longest free job when a specific random relic is still missing;
+    // never inspect private remainingSeconds/itemId to time or reroll a drop.
+    const routes = catalog.explorations.filter(route => sourceOpen(route) && route.cost.coins === 0 && !Object.keys(route.cost.items).length)
+      .sort((a,b) => b.seconds - a.seconds);
+    for (const route of routes) if (!sourceBusy(route) && run(route)) return true;
+    return false;
+  }
   function estimatedEffort(id, path = []) {
+    if (effortCache.has(id)) return effortCache.get(id);
     if (path.includes(id)) return Infinity;
-    if (catalog.fishing.classes.some(group => group.itemId === id)) return id === "fish_common" ? 100 : 1500;
+    if (catalog.fishing.fish.some(fish => fish.itemId === id) || catalog.fishing.classes.some(group => group.itemId === id)) {
+      const species = catalog.fishing.fish.some(fish => fish.itemId === id);
+      const odds = (species ? loaded.fishing.fishingOdds : loaded.fishing.fishingClassOdds)(state,catalog.fishing).find(fish => fish.itemId === id)?.probability ?? 0;
+      return odds > 0 ? 90 / odds : Infinity;
+    }
     const source = sources(id)[0];
     if (!source) return Infinity;
-    return (source.seconds + Object.entries(source.cost.items).reduce((sum, [item, count]) => sum + count * estimatedEffort(item, [...path, id]), 0)) / source.rewards[id];
+    const seconds = (source.seconds + Object.entries(source.cost.items).reduce((sum, [item, count]) => sum + count * estimatedEffort(item, [...path, id]), 0)) / source.rewards[id];
+    effortCache.set(id,seconds);
+    return seconds;
   }
   function ordinaryIncome(requiredCoins) {
+    const previous = cashReserve; cashReserve = Math.max(cashReserve,requiredCoins);
+    try { return earnOrdinaryIncome(requiredCoins); } finally { cashReserve = previous; }
+  }
+  function earnOrdinaryIncome(requiredCoins) {
     if (state.wallet.coins >= requiredCoins) return false;
     const offers = food.residentOrderBoard(state, clock).offers;
     const effort = offer => Object.entries(offer.items).reduce((sum, [id, count]) => sum + count * estimatedEffort(id), 0);
-    const offer = [...offers].sort((a, b) => b.coins / effort(b) - a.coins / effort(a))[0];
+    const offer = [...offers].filter(row => Number.isFinite(effort(row)) && effort(row) > 0).sort((a, b) => b.coins / effort(b) - a.coins / effort(a))[0];
     if (offer && held(offer.items)) { apply("complete_resident_order", offer.id); return true; }
     if (offer && bundle(offer.items)) return true;
     // Fishing is a sustainable NPC fallback even when a frozen board currently
@@ -293,6 +403,41 @@ export function simulateProgression(loaded, options = {}) {
     }
     return need("fish_common", commonNeeded + 2);
   }
+  function usefulMaterialTrip() {
+    if (!opportunisticRoutes || actors.economyActorConflict(state.jobs, "departure", clock)) return false;
+    // A long trip must not strand a crop that will become collectible during
+    // this visit. Overnight bundles remain manual single departures.
+    if (state.jobs.some(job => job.collection && !job.collection.startedAt && Date.parse(job.finishesAt) <= activeEnd)) return false;
+    const desired = {}, pool = { ...state.inventory };
+    for (const job of state.jobs) for (const [id,count] of Object.entries(loaded.publicJobs.publicEconomyJob(job,clock).rewards)) pool[id] = (pool[id] ?? 0) + count;
+    function expand(items, ancestors = []) {
+      for (const [id, amount] of Object.entries(items ?? {})) {
+        const covered = Math.min(amount, pool[id] ?? 0); pool[id] = (pool[id] ?? 0) - covered;
+        const missing = Math.max(0, amount - covered);
+        if (!missing || ancestors.includes(id)) continue;
+        desired[id] = (desired[id] ?? 0) + missing;
+        const source = sources(id)[0];
+        if (source) expand(Object.fromEntries(Object.entries(source.cost.items).map(([item, count]) => [item, count * Math.ceil(missing / source.rewards[id])])), [...ancestors, id]);
+      }
+    }
+    expand(currentCourse()?.items ?? buildDefinition(nextConstruction())?.cost.items ?? social.demand(clock));
+    const value = id => catalog.items.find(item => item.id === id)?.baseSellPrice ?? 0;
+    const candidates = catalog.explorations.filter(route => route.activity !== "mining" && !catalog.fishing.routeIds.includes(route.id)
+      && sourceOpen(route) && Object.entries(route.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count))
+      .map(route => ({ route, useful: Object.entries(route.rewards).reduce((sum, [id, count]) => sum + Math.min(count, desired[id] ?? 0) * value(id), 0),
+        cost: route.cost.coins + Object.entries(route.cost.items).reduce((sum, [id, count]) => sum + count * value(id), 0) }))
+      .filter(row => row.useful > row.cost && Object.values(row.route.rewards).reduce((sum, count) => sum + count, 0) <= rules.economyStorage(state).capacity)
+      .sort((a, b) => (b.useful - b.cost) - (a.useful - a.cost));
+    for (const { route, useful, cost } of candidates) {
+      const previous = state.jobs.length;
+      if (!run(route)) continue;
+      if (state.jobs.length > previous && state.jobs.some(job => job.targetId === route.id && Date.parse(job.startedAt) >= clock - manualMilliseconds))
+        materialRouteStarts.push({ route: route.id, day: (clock - epoch) / (24 * hour), usefulValue: useful, costValue: cost });
+      return true;
+    }
+    return false;
+  }
+
   function claimAvailableRewards() {
     if (!claimRewards || !rewardScenario) return false;
     return rewardScenario.claimEligible(state, clock, (reward, { id, kind }) => {
@@ -351,6 +496,13 @@ export function simulateProgression(loaded, options = {}) {
     if (claimReady()) return true;
     if (claimAvailableRewards()) return true;
     if (buySlot()) return true;
+    if (speedupPolicy === "earned") {
+      const construction = state.jobs.find(job => job.kind === "construction" && Date.parse(job.finishesAt) > clock);
+      const price = construction && rules.constructionSpeedupPrice(construction,clock);
+      const reservedSlotBudget = externalSlotBudget ? ["garden","woodlot","workshop","dryer","kiln"].reduce((sum,id) =>
+        sum + catalog.productionSlots.upgrades.filter(row => row.slots > slotCapacity(id)).reduce((total,row) => total + row.pricePearls,0),0) : 0;
+      if (price > 0 && state.wallet.pearls - reservedSlotBudget >= price) { apply("speedup_construction",construction.id,1,price); return true; }
+    }
     if (feedAvailable()) return true;
     const course = currentCourse();
     if (course && Date.parse(course.availableAt) <= clock && buildingOpen(course.requiredBuildings)
@@ -393,29 +545,41 @@ export function simulateProgression(loaded, options = {}) {
       if (ordinaryIncome(definition.cost.coins)) return true;
     }
     if (next && bundle(definition.cost.items)) return true;
+    if (completionGoal === "all-recipes" || completionGoal === "full") {
+      for (const recipe of activeRecipes) if (sourceOpen(recipe) && !(state.progression.recipes[recipe.id] > 0)
+        && !state.jobs.some(job => job.recipeId === recipe.id) && run(recipe)) return true;
+    }
+    if (social.act({now:clock,held,bundle,estimatedEffort,apply,dailyActiveSeconds:regularActiveMinutes*60*visitsPerDay})) return true;
+    if (usefulMaterialTrip()) return true;
+    if (completionGoal === "full" && next?.[0] === "warehouse" && catalog.rareDrops.itemIds.some(id => owned(id) < (definition.cost.items[id] ?? 0)) && farmRelics()) return true;
     return false;
   }
   const chapterRecipesComplete = () => newRecipes[state.buildings.home].every(id => (state.progression.recipes[id] ?? 0) > 0);
-  const completed = () => state.buildings.home === 5 && (completionGoal === "home-5" || !nextConstruction() && chapterRecipesComplete() && state.jobs.length === 0);
-  for (let visit = 0; visit < maxDays * 3 && !completed(); visit++) {
+  const completed = () => state.buildings.home >= targetHome && (completionGoal === "home-5" || completionGoal === "all-production" && maximumProduction()
+    || completionGoal === "all-buildings" && maximumSettlement() || completionGoal === "all-recipes" && maximumProduction() && recipesComplete()
+    || completionGoal === "full" && maximumSettlement() && recipesComplete() && social.complete()
+    || completionGoal === "reputation" && social.complete());
+  for (let visit = 0; visit < maxDays * visitsPerDay && !completed(); visit++) {
     const activeMinutes = visit === 0 ? firstVisitMinutes : regularActiveMinutes;
-    const begin = epoch + visit * 8 * hour, end = begin + activeMinutes * 60000;
+    const begin = epoch + visit * 24 / visitsPerDay * hour, end = begin + activeMinutes * 60000;
     windows.push({ begin, end });
     clock = begin; visitCount++; activeStart = begin; activeEnd = end;
     let commands = 0;
     while (clock <= end && !completed()) {
-      try { if (act()) { assert(++commands < 500, "a short visit has bounded actual commands"); continue; } } catch (error) { if (error === visitEnded) break; throw error; }
+      try { if (act()) { assert(++commands <= Math.ceil(activeMinutes * 60 / manualSeconds) + 1, "commands cannot exceed the declared visit attention budget"); continue; } } catch (error) { if (error === visitEnded) break; throw error; }
       const due = state.jobs.map(job => job.collection?.startedAt ? Date.parse(job.collection.finishesAt) : Date.parse(job.finishesAt))
         .filter(at => at > clock && at <= end);
       const course = currentCourse(), availableAt = course && Date.parse(course.availableAt);
       if (availableAt > clock && availableAt <= end) due.push(availableAt);
+      if (state.fishingShop && Date.parse(state.fishingShop.refreshAt) > clock && Date.parse(state.fishingShop.refreshAt) <= end) due.push(Date.parse(state.fishingShop.refreshAt));
       if (!due.length) { waits.push({ day: (clock - epoch) / (24 * hour), reason: course && Date.parse(course.availableAt) > clock ? "project-cooldown" : state.jobs.length ? "jobs-outside-visit" : "no-action", home: state.buildings.home, course: course?.id ?? null }); break; }
       clock = Math.min(...due);
     }
     activeSeconds += (clock - begin) / 1000;
+    onVisit?.({visit,clock,day:(clock-epoch)/(24*hour),state,revision,completed:completed()});
   }
-  return { state, clock, revision, peak, constructionCoins, courseCoins, repeatCoins, saleCoins, courses, builds,
-    actions, flow, production, catches, repeatOrders, visitCount, activeSeconds, constructionSeconds, berryClaims, checkpoints, windows, startingCoins, startingItems, regularActiveMinutes, completed: completed(), rewardClaims, slotPurchases, mealUses, storagePressure, waits, coinLedger, pearlLedger, seed, slotPolicy, firstVisitMinutes, manualSeconds, externalSlotBudget, concurrencyPeaks, claimedWorkSeconds, readyIdleSeconds };
+  return { state, activeRecipeIds: activeRecipes.map(row=>row.id), clock, revision, peak, constructionCoins, courseCoins, repeatCoins, saleCoins, courses, builds,
+    actions, flow, production, catches, repeatOrders, visitCount, activeSeconds, constructionSeconds, berryClaims, checkpoints, windows, startingCoins, startingItems, regularActiveMinutes, completed: completed(), rewardClaims, slotPurchases, mealUses, storagePressure, waits, coinLedger, pearlLedger, seed, slotPolicy, firstVisitMinutes, manualSeconds, externalSlotBudget, visitsPerDay, completionGoal, maxDays, speedupPolicy, speedups, milestones, social: social.snapshot(clock), socialMode, buySupplies, useMeals, opportunisticRoutes, materialRouteStarts, concurrencyPeaks, claimedWorkSeconds, readyIdleSeconds };
 }
 
 
@@ -427,12 +591,18 @@ export function summarizeProgression(result) {
   for (const [id, counts] of Object.entries(result.flow))
     assert.equal(counts.received - counts.consumed - counts.sold, result.state.inventory[id] ?? 0, `${id} conservation`);
   return { completed: result.completed, seed: result.seed, regularMinutes: result.regularActiveMinutes, firstMinutes: result.firstVisitMinutes,
-    slotPolicy: result.slotPolicy, concurrencyPeaks: result.concurrencyPeaks, claimedWorkSeconds: result.claimedWorkSeconds, readyIdleSeconds: result.readyIdleSeconds, manualSeconds: result.manualSeconds, externalSlotBudget: result.externalSlotBudget, home5Days: result.checkpoints.find(p => p.target === "home" && p.level === 5) ? (result.checkpoints.find(p => p.target === "home" && p.level === 5).at - epoch) / (24 * hour) : null,
+    slotPolicy: result.slotPolicy, visitsPerDay: result.visitsPerDay, completionGoal: result.completionGoal, maxDays: result.maxDays, speedupPolicy: result.speedupPolicy, buySupplies: result.buySupplies, useMeals: result.useMeals, opportunisticRoutes: result.opportunisticRoutes, socialMode: result.socialMode, social: result.social, speedups: result.speedups,
+    allProductionDays: result.milestones.allProductionAt == null ? null : (result.milestones.allProductionAt - epoch)/(24*hour),
+    allBuildingsDays: result.milestones.allBuildingsAt == null ? null : (result.milestones.allBuildingsAt - epoch)/(24*hour),
+    allRecipesDays: result.milestones.allRecipesAt == null ? null : (result.milestones.allRecipesAt - epoch)/(24*hour), materialRouteStarts: result.materialRouteStarts, concurrencyPeaks: result.concurrencyPeaks, claimedWorkSeconds: result.claimedWorkSeconds, readyIdleSeconds: result.readyIdleSeconds, manualSeconds: result.manualSeconds, externalSlotBudget: result.externalSlotBudget, home5Days: result.milestones.home5At == null ? null : (result.milestones.home5At - epoch)/(24*hour),
+    reputationMaxDays: result.milestones.reputationMaxAt == null ? null : (result.milestones.reputationMaxAt - epoch)/(24*hour),
     elapsedDays: (result.clock - epoch) / (24 * hour), activeHours: result.activeSeconds / 3600, manualHours: result.revision * result.manualSeconds / 3600, productionWaitWithinVisitsHours: Math.max(0, result.activeSeconds - result.revision * result.manualSeconds) / 3600, commandCount: result.revision,
     storagePeak: result.peak, storagePressureCount: result.storagePressure.length, coinLedger: result.coinLedger, pearlLedger: result.pearlLedger,
     slotPurchases: result.slotPurchases, rewardClaims: result.rewardClaims, mealUses: result.mealUses,
     checkpoints: result.checkpoints.map(p => ({ ...p, day: (p.at - epoch) / (24 * hour) })), actions: result.actions,
     production: result.production, builderHours: result.constructionSeconds / 3600,
+    recipesCompleted: result.activeRecipeIds.filter(id => result.state.progression.recipes[id] > 0).length,
+    missingRecipes: result.activeRecipeIds.filter(id => !(result.state.progression.recipes[id] > 0)),
     buildings: result.state.buildings, coins: result.state.wallet.coins, pearls: result.state.wallet.pearls,
     lastWaits: result.waits.slice(-5), nextCourse: result.state.stageOrders, inventory: result.state.inventory };
 }

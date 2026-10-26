@@ -217,7 +217,7 @@ class JdbcMarketSaleClaimsIntegrationTest {
         val seller=player(berries=0); val buyer=player(berries=0)
         val species=checkNotNull(EconomyRules.catalog.fishing).fish.first { it.rarity=="common" }.itemId
         edit(seller.id) { it.copy(inventory=mapOf("fish_common" to 2L),fishing=it.fishing.copy(stock=mapOf(species to 2L))) }
-        val lot=offer(seller,"fish_common",2,80)
+        val lot=offer(seller,"fish_common",2,40)
         market.command(buyer.hash,purchase(buyer,lot))
         val sold=economy.snapshot(seller.hash)
         assertTrue(sold.fishing.stock.orEmpty().isEmpty()); assertTrue(sold.fishing.escrow.orEmpty().isEmpty())
@@ -227,7 +227,7 @@ class JdbcMarketSaleClaimsIntegrationTest {
         assertEquals(mapOf(species to 2L),bought.fishing.stock)
         assertTrue(bought.fishing.catches.isEmpty())
         market.command(seller.hash,command(seller,"claim_sale",lot.id))
-        assertEquals(1076L,economy.snapshot(seller.hash).wallet.coins)
+        assertEquals(1038L,economy.snapshot(seller.hash).wallet.coins)
     }
 
     @Test fun `economy profile reset preserves pending proceeds and the original daily sales fence`() = runBlocking<Unit> {

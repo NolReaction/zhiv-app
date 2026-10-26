@@ -16,7 +16,7 @@ const player = () => identities.createDevIdentity("Fisher", crypto.randomUUID())
 const read = p => economy.getDevEconomy(p.token, now);
 const stored = p => globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state;
 const command = (p, action, targetId, quantity = 1, totalPrice = 0) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
-  expectedRevision: read(p).revision, action, targetId, quantity, totalPrice: totalPrice * 10 });
+  expectedRevision: read(p).revision, action, targetId, quantity, totalPrice });
 const issue = (p, action, targetId, quantity = 1, totalPrice = 0) => economy.commandDevEconomy(p.token, command(p, action, targetId, quantity, totalPrice), now);
 
 test("sale discount belongs to the server catalog and older snapshots retain full quotes", () => {
@@ -25,8 +25,8 @@ test("sale discount belongs to the server catalog and older snapshots retain ful
   assert.equal(economyCatalogSchema.parse(legacy).localBuyer, undefined);
   assert.equal(quote(30, 9), 270); assert.equal(quote(30, 9, config), 160);
   assert.equal(minimum(10), 1); assert.equal(minimum(10, config), 2);
-  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "river_rod").price, 1800);
-  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "willow_rod").price, 9000);
+  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "river_rod").price, 400);
+  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "willow_rod").price, 1800);
 });
 
 test("whole-stack flooring cannot be improved by splitting and large quotes retain exact integer arithmetic", () => {
@@ -52,16 +52,16 @@ test("wallet quantity limits use discounted packet proceeds and exclude zero-rev
 test("generic sale honors accepted minimum and revision receipt once while Pleska pays full price", () => {
   const p = player(); read(p); stored(p).inventory = { berries: 9, fish: 4 };
   const before = read(p);
-  assert.throws(() => issue(p, "sell", "berries", 3, 4), { code: "ECONOMY_SALE_PRICE_CHANGED" });
+  assert.throws(() => issue(p, "sell", "berries", 3, 40), { code: "ECONOMY_SALE_PRICE_CHANGED" });
   assert.deepEqual(read(p), before);
-  const sale = command(p, "sell", "berries", 3, 3);
+  const sale = command(p, "sell", "berries", 3, 30);
   const accepted = economy.commandDevEconomy(p.token, sale, now);
   assert.equal(accepted.state.wallet.coins, before.wallet.coins + 30); assert.equal(accepted.state.inventory.berries, 6);
   assert.equal(economy.commandDevEconomy(p.token, sale, now).replayed, true);
   assert.equal(read(p).wallet.coins, before.wallet.coins + 30);
   assert.throws(() => economy.commandDevEconomy(p.token, { ...sale, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
-  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, before.wallet.coins + 110, "the current NPC override pays the full common fish price");
-  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, before.wallet.coins + 190, "Pleska pays the same full common class price");
+  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, before.wallet.coins + 60, "the current NPC override pays 15 per common fish");
+  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, before.wallet.coins + 90, "Pleska pays the same full common class price");
 });
 
 test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom can be filled exactly", () => {
@@ -72,12 +72,12 @@ test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom
   assert.equal(limit(10, 1, 0, discounted), 0, "a generic zero-revenue quote is never a sale candidate");
   assert.throws(() => issue(p, "sell", "crumb_bait", 0), { code: "INVALID_ECONOMY_COMMAND" });
   assert.deepEqual(read(p), before);
-  assert.equal(issue(p, "sell", "crumb_bait", 2, 2).state.wallet.coins, before.wallet.coins + 20);
+  assert.equal(issue(p, "sell", "crumb_bait", 2, 2).state.wallet.coins, before.wallet.coins + 2);
   stored(p).wallet.coins = ECONOMY_MAX_BALANCE - 30;
   const full = read(p);
   assert.throws(() => issue(p, "sell", "berries", 4), { code: "ECONOMY_CAPACITY" });
   assert.deepEqual(read(p), full);
-  assert.equal(issue(p, "sell", "berries", 3, 3).state.wallet.coins, ECONOMY_MAX_BALANCE);
+  assert.equal(issue(p, "sell", "berries", 3, 30).state.wallet.coins, ECONOMY_MAX_BALANCE);
 });
 
 test("discount preserves smoking margin against specialist raw-fish value and merchant recovery remains free", () => {
@@ -97,7 +97,7 @@ test("discount preserves smoking margin against specialist raw-fish value and me
 
 
 test("first two stages' NPC prices pay one exact unit without discount and their stack limits use the same quote", () => {
-  const prices = { berries: 10, strawberries: 50, wood: 30, stone: 30, planks: 50, berry_compote: 50, grilled_fish: 70,
+  const prices = { berries: 10, strawberries: 50, wood: 30, stone: 30, planks: 50, berry_compote: 50, grilled_fish: 45,
     fiber: 10, rope: 50, clay: 30, charcoal: 50, bricks: 110 };
   assert.deepEqual(Object.fromEntries(Object.keys(prices).map(id => [id, config.unitPrices[id]])), prices);
   for (const [id, price] of Object.entries(config.unitPrices)) {
@@ -113,7 +113,7 @@ test("first two stages' NPC prices pay one exact unit without discount and their
     const p = player(); read(p); stored(p).inventory = { [id]: 3 };
     const before = read(p), sold = issue(p, "sell", id, 1).state;
     assert.equal(sold.wallet.coins, before.wallet.coins + price); assert.equal(sold.inventory[id], 2);
-    assert.throws(() => issue(p, "sell", id, 1, (price + 10) / 10), { code: "ECONOMY_SALE_PRICE_CHANGED" });
+    assert.throws(() => issue(p, "sell", id, 1, price + 1), { code: "ECONOMY_SALE_PRICE_CHANGED" });
     stored(p).wallet.coins = ECONOMY_MAX_BALANCE - price;
     const nearCap = read(p); assert.throws(() => issue(p, "sell", id, 2), { code: "ECONOMY_CAPACITY" }); assert.deepEqual(read(p), nearCap);
     assert.equal(issue(p, "sell", id, 1).state.wallet.coins, ECONOMY_MAX_BALANCE);

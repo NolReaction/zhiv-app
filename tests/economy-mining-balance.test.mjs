@@ -79,16 +79,16 @@ test("saved bulk mining definitions remain readable but all new starts are rejec
   }
 });
 
-test("reference processing pays for inputs plus time and projects retain separate waits", () => {
+test("reference processing pays for inputs plus time while new projects remove daily waits", () => {
   assert.equal(catalog.localBuyer.unitPrices.ore, 100);
   for (const id of ["smelt_iron", "make_metal_parts"]) {
     const recipe = catalog.recipes.find(entry => entry.id === id);
     assert.equal(cash(recipe.rewards) - cash(recipe.cost.items) - recipe.cost.coins, recipe.seconds / 60 * 10, id);
   }
   const report = auditEconomyProgression(readEconomyCatalog());
-  assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 7 * 23 * 3600);
-  assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 11 * 23 * 3600);
-  assert.equal(report.fourthStage.constructionSeconds, 58 * 3600);
+  assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 0);
+  assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 0);
+  assert.equal(report.fourthStage.constructionSeconds, 32 * 3600);
 });
 
 test("every new mining choice contributes to the quarry collection and a distinct completed route", () => {

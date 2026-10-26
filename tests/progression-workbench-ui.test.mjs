@@ -47,9 +47,9 @@ test("analysis tabs have a single focusable tab, linked hidden panels and preser
   const h = harness(EconomyWorkbench, { onInspectItem() {} });
   let tree = h.render();
   const tabs = elements(tree).filter(node => node.props.role === "tab");
-  assert.deepEqual(tabs.map(node => node.props["aria-selected"]), [true, false, false, false]);
+  assert.deepEqual(tabs.map(node => node.props["aria-selected"]), [true, false, false, false, false]);
   const panels = elements(tree).filter(node => node.props.role === "tabpanel");
-  assert.deepEqual(panels.map(node => node.props.hidden), [false, true, true, true]);
+  assert.deepEqual(panels.map(node => node.props.hidden), [false, true, true, true, true]);
   for (const tab of tabs) assert.equal(panels.find(panel => panel.props.id === tab.props["aria-controls"])?.props["aria-labelledby"], tab.props.id);
   elements(tree).find(node => node.type === EconomyProductionGraph).props.onPlan("ceramic_jar");
   tree = h.render();
@@ -63,7 +63,7 @@ test("analysis tabs have a single focusable tab, linked hidden panels and preser
 
 test("analysis tab keyboard navigation wraps, focuses selected controls and leaves ordinary Tab alone", () => {
   const h = harness(EconomyWorkbench, { onInspectItem() {} }), focused = [];
-  for (const [key, expected] of [["ArrowLeft", "expeditions"], ["Home", "chains"], ["ArrowRight", "balance"], ["End", "expeditions"]]) {
+  for (const [key, expected] of [["ArrowLeft", "scenarios"], ["Home", "chains"], ["ArrowRight", "balance"], ["End", "scenarios"]]) {
     let prevented = false;
     field(h.render(), "Инструмент анализа").props.onKeyDown({ key, preventDefault() { prevented = true; }, currentTarget: { querySelector(selector) { return { focus() { focused.push(selector); } }; } } });
     assert(prevented); assert.equal(elements(h.render()).find(node => node.props["data-economy-tab"] === expected).props.tabIndex, 0);

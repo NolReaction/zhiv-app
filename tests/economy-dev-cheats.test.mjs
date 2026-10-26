@@ -196,7 +196,8 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
 test("DEV storage controls fund every independent upgrade through level 10 without changing home or other buildings", () => {
   const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
   assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 10);
-  cheat(p, "set_building_level", "home", 3);
+  for (const building of model.economyCatalog.buildings.filter(entry => entry.id !== "warehouse"))
+    cheat(p, "set_building_level", building.id, building.levels.at(-1).level);
   const ordinaryBuildings = structuredClone(read(p).buildings);
   for (const target of warehouse.levels.filter(level => level.level >= 2)) {
     const previous = cheat(p, "set_building_level", "warehouse", target.level - 1).state;
@@ -207,12 +208,12 @@ test("DEV storage controls fund every independent upgrade through level 10 witho
     assert.deepEqual(granted.buildings, { ...ordinaryBuildings, warehouse: target.level - 1 });
     const repeated = cheat(p, "grant_upgrade_cost", "warehouse").state;
     assert.deepEqual(repeated.inventory, granted.inventory, "cost grants are missing-only for ordinary materials and relic sets");
-    if (target.level === 3) {
-      cheat(p, "set_building_level", "home", 2);
+    if (target.requiredHomeLevel > 1) {
+      cheat(p, "set_building_level", "home", target.requiredHomeLevel - 1);
       const locked = read(p);
       assert.throws(() => normal(p, "start_construction", "warehouse"), { code: "ECONOMY_HOME_REQUIRED" });
       assert.deepEqual(read(p), locked, "funding an upgrade cannot bypass the current house gate");
-      cheat(p, "set_building_level", "home", 3);
+      cheat(p, "set_building_level", "home", ordinaryBuildings.home);
     }
     const construction = normal(p, "start_construction", "warehouse").state.jobs.find(job => job.kind === "construction");
     assert.equal(construction.targetLevel, target.level);

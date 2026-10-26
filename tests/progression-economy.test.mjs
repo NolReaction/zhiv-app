@@ -217,7 +217,7 @@ test("pearl budgets respect visible denomination and distinguish seven gifts fro
   assert.equal(economy.pearls.dailyMinimumHours, 20);
   assert.deepEqual(plain(economy.pearls.marketSlotPrices), [50, 80, 120, 180, 250]);
   assert.equal(economy.pearls.marketTotal, 680);
-  assert.deepEqual(plain(economy.pearls.productionSlots), [{ slots: 2, pearls: 100 }, { slots: 3, pearls: 250 }]);
+  assert.deepEqual(plain(economy.pearls.productionSlots), [{ slots: 2, pearls: 100, requiredHomeLevel: 1 }, { slots: 3, pearls: 250, requiredHomeLevel: 3 }]);
   assert.deepEqual(plain(economy.pearls.construction), { stepPearls: 1, curved: false, secondsPerVisiblePearl: 300,
     prices: [{ seconds: 60, pearls: 1 }, { seconds: 3600, pearls: 12 }, { seconds: 21600, pearls: 72 },
       { seconds: 43200, pearls: 144 }, { seconds: 86400, pearls: 288 }, { seconds: 172800, pearls: 576 }, { seconds: 604800, pearls: 2016 }] });

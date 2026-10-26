@@ -1631,13 +1631,19 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 2,
-              "moon_crystal": 1,
-              "living_resin": 1
+              "beams": 2,
+              "bricks": 2,
+              "cloth": 2,
+              "ancient_core": 1
             }
           },
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 3,
+            "woodlot": 3,
+            "kiln": 1,
+            "quarry": 2
+          },
           "warehouseCapacity": 200
         },
         {
@@ -1646,13 +1652,18 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 3,
-              "moon_crystal": 1,
-              "living_resin": 1
+              "glass": 2,
+              "ceramic_jar": 2,
+              "cloth": 2,
+              "moon_crystal": 1
             }
           },
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 2,
+            "kiln": 3,
+            "quarry": 3
+          },
           "warehouseCapacity": 250
         },
         {
@@ -1661,13 +1672,19 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 4,
-              "moon_crystal": 1,
+              "beams": 3,
+              "cut_stone": 2,
+              "tools": 1,
               "living_resin": 1
             }
           },
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 3,
+            "woodlot": 3,
+            "kiln": 2,
+            "quarry": 2
+          },
           "warehouseCapacity": 300
         },
         {
@@ -1676,13 +1693,20 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 5,
-              "moon_crystal": 2,
-              "living_resin": 2
+              "reinforced_parts": 2,
+              "lens": 1,
+              "cloth": 2,
+              "ancient_core": 1,
+              "moon_crystal": 1
             }
           },
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 4,
+            "kiln": 3,
+            "quarry": 4
+          },
           "warehouseCapacity": 350
         },
         {
@@ -1691,13 +1715,19 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 6,
-              "moon_crystal": 2,
-              "living_resin": 2
+              "beams": 4,
+              "mortar": 3,
+              "trade_crate": 2,
+              "ancient_core": 1,
+              "living_resin": 1
             }
           },
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 3,
+            "quarry": 5
+          },
           "warehouseCapacity": 400
         },
         {
@@ -1706,13 +1736,19 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 8,
-              "moon_crystal": 2,
-              "living_resin": 2
+              "cut_stone": 4,
+              "glass": 4,
+              "tools": 2,
+              "ancient_core": 1,
+              "moon_crystal": 1
             }
           },
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "workshop": 3,
+            "kiln": 3,
+            "quarry": 3
+          },
           "warehouseCapacity": 450
         },
         {
@@ -1721,13 +1757,20 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 10,
-              "moon_crystal": 3,
-              "living_resin": 3
+              "reinforced_parts": 3,
+              "lens": 2,
+              "field_kit": 2,
+              "ancient_core": 2,
+              "living_resin": 1
             }
           },
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 4,
+            "kiln": 3,
+            "quarry": 4
+          },
           "warehouseCapacity": 500
         }
       ]

@@ -13,14 +13,15 @@ const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const actors = await vite.ssrLoadModule("/features/economy/domain/actor-availability.ts");
 after(() => vite.close());
 const epoch = Date.parse("2026-10-14T09:00:00Z"), hour = 3600000;
-const constructionSequence = [["dryer", 2], ["woodlot", 4], ["kiln", 3], ["bridge", 1],
-  ["lighthouse", 1], ["quarry", 4], ["kiln", 4], ["workshop", 4], ["dryer", 3], ["home", 5]];
+const constructionSequence = [["garden", 4], ["woodlot", 4], ["bridge", 1],
+  ["lighthouse", 1], ["quarry", 4], ["kiln", 4], ["workshop", 4], ["home", 5]];
 
 /** Every action goes through the actual domain transition. Only the initial
  * completed house-three chapter is a fixture; money, inputs and work are earned. */
 function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
-  Object.assign(state.buildings, { home: 4, garden: 1, warehouse: 1, woodlot: 3, workshop: 3, quarry: 3, kiln: 2, dryer: 1 });
+  // The completed v14 third chapter already needed these production tiers.
+  Object.assign(state.buildings, { home: 4, garden: 3, warehouse: 1, woodlot: 3, workshop: 3, quarry: 3, kiln: 3, dryer: 3 });
   state.wallet = { coins: 3510, pearls: 0 }; state.inventory = {};
   state.tutorialOrder = { version: 2, step: 4, completed: true, ingredientsClaimed: true, terms: null };
   state.stageOrders = { version: 1, stages: { 2: { step: 7, completed: true, terms: null }, 3: { step: 8, completed: true, terms: null } } };
@@ -123,8 +124,16 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
       }
       if (job.collection && Date.parse(job.collection.finishesAt) > clock) continue;
       // Species are grouped into classes by the normal claim transition.
-      makeRoom(Object.values(job.rewards).reduce((sum, count) => sum + count, 0));
-      apply("claim_job", job.id); changed = true;
+      let room = Object.values(job.rewards).reduce((sum, count) => sum + count, 0);
+      for (;;) {
+        makeRoom(room);
+        try { apply("claim_job", job.id); break; }
+        catch (error) {
+          if (error.code !== "ECONOMY_STORAGE_FULL") throw error;
+          assert(++room <= 50, "unexpected finds still fit after real surplus sales");
+        }
+      }
+      changed = true;
       if (incomeJobs.delete(job.id)) {
         // Keep a small working stock and ingredients for the current project;
         // sell surplus through real NPC commands after receiving the full batch.
@@ -177,7 +186,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
   }
   function need(id, count, ancestors = []) {
     if ((state.inventory[id] ?? 0) + pending(id) >= count) return false;
-    if (id.startsWith("fish_")) {
+    if (catalog.fishing.classes.some(group => group.itemId === id)) {
       const source = catalog.explorations.find(route => route.id === "shore");
       if (sourceBusy(source)) return false;
       apply("start_fishing", "shore"); production.shore = (production.shore ?? 0) + 1; return true;
@@ -195,7 +204,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
   const buildDefinition = entry => entry && catalog.buildings.find(building => building.id === entry[0]).levels.find(level => level.level === entry[1]);
   function estimatedEffort(id, path = []) {
     if (path.includes(id)) return Infinity;
-    if (id.startsWith("fish_")) return id === "fish_common" ? 100 : 1500;
+    if (catalog.fishing.classes.some(group => group.itemId === id)) return id === "fish_common" ? 100 : Infinity;
     const source = sources(id)[0];
     if (!source) return Infinity;
     return (source.seconds + Object.entries(source.cost.items).reduce((sum, [item, count]) => sum + count * estimatedEffort(item, [...path, id]), 0)) / source.rewards[id];
@@ -204,7 +213,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
     if (state.wallet.coins >= requiredCoins) return false;
     const offers = food.residentOrderBoard(state, clock).offers;
     const effort = offer => Object.entries(offer.items).reduce((sum, [id, count]) => sum + count * estimatedEffort(id), 0);
-    const offer = [...offers].sort((a, b) => b.coins / effort(b) - a.coins / effort(a))[0];
+    const offer = [...offers].filter(row => Number.isFinite(effort(row))).sort((a, b) => b.coins / effort(b) - a.coins / effort(a))[0];
     if (offer && held(offer.items)) { apply("complete_resident_order", offer.id); return true; }
     if (offer && bundle(offer.items)) return true;
     // Fishing is a sustainable NPC fallback even when a frozen board currently
@@ -240,7 +249,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
     if (miningIncome) {
       // Earn before assembling final stock: an income delivery should not force
       // the player to sell and recreate a prepared building bundle.
-      if (repeatCoins + saleCoins >= miningIncomeGoal) {
+      if (repeatCoins + saleCoins >= miningIncomeGoal && (!next || state.wallet.coins >= definition.cost.coins)) {
         for (const future of constructionSequence) {
           if ((state.buildings[future[0]] ?? 0) >= future[1]
             || state.jobs.some(job => job.kind === "construction" && job.targetId === future[0] && job.targetLevel >= future[1])) continue;
@@ -292,13 +301,13 @@ test("a real three-visits-per-day house-four chapter builds both landmarks and h
   assert.equal(state.buildings.bridge, 1); assert.equal(state.buildings.lighthouse, 1); assert.equal(state.buildings.warehouse, 1);
   assert.equal(state.jobs.length, 0, "all completed work is manually claimed");
   assert.equal(courses.length, 12); assert.equal(result.courseCoins, catalog.stageOrders.find(stage => stage.homeLevel === 4).orders.reduce((sum, order) => sum + order.coins, 0)); assert.equal(result.constructionCoins, constructionSequence.reduce((sum, [id, level]) => sum + catalog.buildings.find(building => building.id === id).levels.find(spec => spec.level === level).cost.coins, 0));
-  assert.equal(result.constructionSeconds, constructionSequence.reduce((sum, [id, level]) => sum + catalog.buildings.find(building => building.id === id).levels.find(spec => spec.level === level).seconds, 0), "all ten constructions use their actual catalog timers");
+  assert.equal(result.constructionSeconds, constructionSequence.reduce((sum, [id, level]) => sum + catalog.buildings.find(building => building.id === id).levels.find(spec => spec.level === level).seconds, 0), "all constructions use their actual catalog timers");
   assert.equal(state.stageOrders.stages["4"].completed, true); assert.equal(state.stageOrders.stages["4"].step, 12);
   assert.equal(state.progression.routes.ancient_ruins, 1); assert.equal(production.ancient_ruins, 1);
-  assert(courses.at(-1).at - courses[0].at >= 11 * 23 * hour);
-  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 23 * hour);
+  assert.equal(catalog.stageOrders.find(stage => stage.homeLevel === 4).intervalSeconds, 0);
+  for (let index = 1; index < courses.length; index++) assert(courses[index].at >= courses[index - 1].at);
   assert(clock - courses.at(-1).at >= catalog.buildings.find(building => building.id === "home").levels.at(-1).seconds * 1000, "the final house uses its actual builder timer");
-  assert(clock - epoch >= (11 * 23 + 24) * hour); assert(clock - epoch <= 21 * 24 * hour, JSON.stringify(report));
+  assert(clock - epoch <= 21 * 24 * hour, JSON.stringify(report));
   assert.equal(result.flow.ancient_core.received, 1); assert.equal(result.flow.moon_crystal.received, 1);
   assert.equal(result.flow.ancient_core.consumed, 1); assert.equal(result.flow.moon_crystal.consumed, 1);
   assert.equal(state.wallet.coins, 3510 + result.courseCoins + result.repeatCoins + result.saleCoins - result.constructionCoins);
@@ -331,14 +340,14 @@ test("three 15-minute visits per day can fund house five with independent mining
   assert.equal(result.constructionSeconds, constructionSequence.reduce((sum, [id, level]) => sum + catalog.buildings.find(building => building.id === id).levels.find(spec => spec.level === level).seconds, 0)); assert.equal(courses.length, 12);
   assert.equal(state.stageOrders.stages["4"].completed, true); assert.equal(state.stageOrders.stages["4"].step, 12);
   assert.equal(state.progression.routes.ancient_ruins, 1); assert.equal(production.ancient_ruins, 1);
-  assert(courses.at(-1).at - courses[0].at >= 11 * 23 * hour);
-  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 23 * hour);
+  assert.equal(catalog.stageOrders.find(stage => stage.homeLevel === 4).intervalSeconds, 0);
+  for (let index = 1; index < courses.length; index++) assert(courses[index].at >= courses[index - 1].at);
   assert(clock - courses.at(-1).at >= catalog.buildings.find(building => building.id === "home").levels.at(-1).seconds * 1000);
   // Single-item mining needs manual visits: the v12 23-day budget relied on removed overnight bundles.
-  assert(clock - epoch >= (11 * 23 + 24) * hour); assert(clock - epoch <= 35 * 24 * hour);
+  assert(clock - epoch <= 35 * 24 * hour);
   assert.equal(result.activeMinutes, 15); assert(result.activeSeconds <= 24 * 3600);
   assert(actions.start_fishing >= 8); assert(actions.start_fishing <= 20);
-  assert(result.revision < 1800); assert(result.saleCoins >= Math.max(0, result.constructionCoins - result.courseCoins - 3510)); assert.equal(result.repeatCoins, 0);
+  assert(result.revision < 2400, "the larger v14 material chains remain bounded without paid slots"); assert(result.saleCoins >= Math.max(0, result.constructionCoins - result.courseCoins - 3510)); assert.equal(result.repeatCoins, 0);
   assert(result.miningDeliveries.length > 0, "independent mining really delivers the goods that fund the project");
   assert(result.miningDeliveries.every(delivery => Object.values(delivery.rewards).reduce((sum, count) => sum + count, 0) === 1),
     "every extraction delivers exactly one item, never a removed hourly batch");

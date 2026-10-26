@@ -11,12 +11,21 @@ const { economyCatalog } = await vite.ssrLoadModule('/features/economy/domain/mo
 const { recipeFishGroupLabel } = await vite.ssrLoadModule('/features/economy/ui/food/food-recipe-labels.ts');
 const { WorldProductionCard } = await vite.ssrLoadModule('/features/economy/ui/production/world-production-card.tsx');
 
-test('kitchen names exact classes and reserves a distinct legendary recipe', () => {
+test('ordinary meals name exact classes while the six species dishes name their actual catch', () => {
   const hearty = economyCatalog.recipes.find(recipe => recipe.id === 'cook_hearty_fish');
   assert.equal(recipeFishGroupLabel(hearty, economyCatalog), 'Редкая рыба');
   assert.equal(recipeFishGroupLabel(economyCatalog.recipes.find(recipe => recipe.id === 'cook_epic_fish'), economyCatalog), 'Эпическая рыба');
   assert.equal(recipeFishGroupLabel(economyCatalog.recipes.find(recipe => recipe.id === 'cook_legendary_fish'), economyCatalog), 'Легендарная рыба');
-  assert.ok(economyCatalog.recipes.every(recipe => !recipe.fishInput), 'no recipe needs collection species');
+  for (const id of ['cook_hearty_fish', 'cook_epic_fish', 'cook_legendary_fish'])
+    assert.equal(economyCatalog.recipes.find(recipe => recipe.id === id).fishInput, undefined);
+  const speciesRecipes = economyCatalog.recipes.filter(recipe => recipe.fishInput?.exactSpecies);
+  assert.equal(speciesRecipes.length, 6);
+  assert.equal(economyCatalog.food.meals.length, 17);
+  for (const recipe of speciesRecipes) {
+    const names = recipe.fishInput.itemIds.map(id => economyCatalog.items.find(item => item.id === id).name);
+    assert.equal(recipeFishGroupLabel(recipe, economyCatalog), names.join(' + '));
+    assert.ok(recipe.fishInput.itemIds.every(id => recipe.cost.items[id] > 0));
+  }
 });
 
 test('rare recipe preview shows exact class and both bonuses without substituting a more valuable class', () => {
@@ -30,8 +39,8 @@ test('rare recipe preview shows exact class and both bonuses without substitutin
   assert.doesNotMatch(html, /<select|data-item-icon="fish_epic"/);
   assert.match(html, /data-blocked="true"/);
   assert.doesNotMatch(html, /disabled=|Все рецепты|Способ производства/);
-  assert.match(html, /Вылазка \+60%/);
-  assert.match(html, /Стройка \+50%/);
+  assert.match(html, /Вылазки \+60% · запас на 2 ч работы/);
+  assert.match(html, /Одна стройка \+50% скорости/);
   assert.match(html, /Скорость вылазки \+60%, стройки \+50%/);
   assert.deepEqual(state.inventory, { fish_epic: 5 });
 });

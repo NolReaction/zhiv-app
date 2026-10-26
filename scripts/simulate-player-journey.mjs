@@ -21,13 +21,10 @@ export function journeyConstructionOrder(catalog, completionGoal = "base-tier-5"
   assert(["home-5", "base-tier-5", "all-current-buildings"].includes(completionGoal), "Invalid research completion goal");
   const expansions = catalog.buildings.flatMap(building => building.levels
     .filter(level => level.level > 5).map(level => `${building.id}:${level.level}`));
-  // The full-storage goal pays for optional capacity before accumulating the
-  // final workshop chains. Every purchase still checks authored prerequisites
-  // through the ordinary command and pays with earned relic inventory.
-  const storageIndex = journeyOrder.indexOf("warehouse:5") + 1;
+  // Advanced storage uses final-tier ingredients (including quarry-five mortar).
+  // Finish the base production chain first so authored dependencies are available.
   const order = completionGoal === "home-5" ? journeyOrder.slice(0, journeyOrder.indexOf("home:5") + 1)
-    : completionGoal === "all-current-buildings" ? [...journeyOrder.slice(0, storageIndex), ...expansions,
-      ...journeyOrder.slice(storageIndex)] : [...journeyOrder];
+    : completionGoal === "all-current-buildings" ? [...journeyOrder, ...expansions] : [...journeyOrder];
   for (const key of order) {
     const [id, level] = key.split(":");
     assert(catalog.buildings.find(building => building.id === id)?.levels.some(entry => entry.level === Number(level)), `Unknown research goal ${key}`);

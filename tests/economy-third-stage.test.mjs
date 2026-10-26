@@ -13,14 +13,14 @@ const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 after(() => vite.close());
 const epoch = Date.parse("2026-10-14T09:00:00Z"), hour = 3600000;
 
-test("a real one-slot 50-place house-three route earns its costs and project resin after seven 23-hour waits", () => {
+test("a real one-slot 50-place house-three route funds new material chains and earns its project resin", () => {
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   Object.assign(state.buildings, { home: 3, garden: 1, warehouse: 1, woodlot: 1, workshop: 1, quarry: 2, kiln: 1, dryer: 1 });
   state.wallet = { coins: 230, pearls: 0 }; state.inventory = {};
   state.tutorialOrder = { version: 2, step: 4, completed: true, ingredientsClaimed: true, terms: null };
   state.stageOrders = { version: 1, stages: { 2: { step: 5, completed: true, terms: null } } };
   let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0;
-  const courses = [], builds = [], actions = {}, flow = {}, production = {}, catches = {};
+  const courses = [], builds = [], actions = {}, flow = {}, production = {}, catches = {}, acquisitionTargets = [];
   const uuid = () => `00000000-0000-4000-9000-${(++sequence).toString(16).padStart(12, "0")}`;
   const record = id => flow[id] ??= { received: 0, consumed: 0, sold: 0 };
   const currentCourse = () => stages.stageResidentOrder(state);
@@ -28,7 +28,7 @@ test("a real one-slot 50-place house-three route earns its costs and project res
   function apply(action, targetId, quantity = 1) {
     const before = structuredClone(state), offer = action === "complete_resident_order" ? currentCourse() : null;
     rules.applyEconomyCommand(state, { requestId: uuid(), ownerPublicId: "0000-0000-0001", expectedRevision: revision,
-      action, targetId, quantity, totalPrice: 0 }, clock, uuid);
+      action, targetId, quantity, totalPrice: 0 }, clock, uuid, {}, maximum => maximum - 1);
     revision++; actions[action] = (actions[action] ?? 0) + 1;
     if (action === "start_construction") {
       constructionCoins += before.wallet.coins - state.wallet.coins;
@@ -66,13 +66,28 @@ test("a real one-slot 50-place house-three route earns its costs and project res
     for (const job of [...state.jobs]) if (job.kind === "construction" && Date.parse(job.finishesAt) <= clock) apply("claim_job", job.id);
     readyCourse();
   }
+  function receive(action, targetId) {
+    for (;;) {
+      try { apply(action, targetId); break; }
+      catch (error) {
+        if (error.code !== "ECONOMY_STORAGE_FULL") throw error;
+        const targets = [...acquisitionTargets, currentCourse()?.items ?? {}];
+        const surplus = Object.entries(state.inventory).filter(([id]) => catalog.items.some(item => item.id === id && item.tradable))
+          .map(([id, count]) => [id, count - Math.max(0, ...targets.map(items => items[id] ?? 0))])
+          .filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1])[0];
+        assert(surplus, "a full warehouse must release real surplus, never inject capacity");
+        apply(catalog.fishing.classes.some(group => group.itemId === surplus[0]) ? "sell_fish" : "sell", surplus[0], 1);
+      }
+    }
+  }
   function finish(job) {
     advance(Date.parse(job.finishesAt));
     if (job.collection) {
-      apply("start_collection", job.id);
+      receive("start_collection", job.id);
       advance(Date.parse(state.jobs.find(current => current.id === job.id).collection.finishesAt));
     }
-    const before = { ...state.inventory }; apply("claim_job", job.id);
+    const before = { ...state.inventory };
+    receive("claim_job", job.id);
     if (job.fishing) for (const [id, count] of Object.entries(state.inventory)) {
       const gained = count - (before[id] ?? 0); if (gained > 0 && id.startsWith("fish_")) catches[id] = (catches[id] ?? 0) + gained;
     }
@@ -96,9 +111,12 @@ test("a real one-slot 50-place house-three route earns its costs and project res
   function run(source) {
     if (source.buildingId && state.jobs.some(job => job.kind === "construction" && job.targetId === source.buildingId)
       || source.requiredBuildings?.quarry && state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry")) waitBuilder();
-    do {
-      for (const [id, count] of Object.entries(source.cost.items)) ensure(id, count);
-    } while (!held(source.cost.items)); // A due project delivery may use previously prepared inputs.
+    acquisitionTargets.push(source.cost.items);
+    try {
+      do {
+        for (const [id, count] of Object.entries(source.cost.items)) ensure(id, count);
+      } while (!held(source.cost.items)); // A due project delivery may use previously prepared inputs.
+    } finally { acquisitionTargets.pop(); }
     apply(source.buildingId ? "start_production" : "start_exploration", source.id);
     production[source.id] = (production[source.id] ?? 0) + 1;
     finish(state.jobs.find(job => job.recipeId === source.id || job.kind === "exploration" && job.targetId === source.id));
@@ -123,11 +141,14 @@ test("a real one-slot 50-place house-three route earns its costs and project res
     }
   }
   function bundle(items, deferRelics = false, courseId = null) {
-    for (const [id, count] of Object.entries(items)) {
-      if (courseId && currentCourse()?.id !== courseId) return;
-      if (deferRelics && catalog.rareDrops.itemIds.includes(id)) continue;
-      ensure(id, count);
-    }
+    acquisitionTargets.push(items);
+    try {
+      for (const [id, count] of Object.entries(items)) {
+        if (courseId && currentCourse()?.id !== courseId) return;
+        if (deferRelics && catalog.rareDrops.itemIds.includes(id)) continue;
+        ensure(id, count);
+      }
+    } finally { acquisitionTargets.pop(); }
   }
   function prepareCourse() {
     for (;;) {
@@ -144,8 +165,18 @@ test("a real one-slot 50-place house-three route earns its costs and project res
       const offers = food.residentOrderBoard(state, clock).offers;
       const effort = offer => Object.entries(offer.items).reduce((sum, [id, count]) => sum + count
         * (id === "fish_common" ? catalog.explorations.find(route => route.id === "shore").seconds : sources(id)[0]?.seconds ?? 1e9), 0);
-      const offer = [...offers].sort((a, b) => b.coins / effort(b) - a.coins / effort(a))[0];
-      assert(offer, "the actual board must offer sustainable work"); bundle(offer.items);
+      const canMake = (id, path = []) => id === "fish_common" || !path.includes(id)
+        && sources(id).some(source => Object.keys(source.cost.items).every(item => canMake(item, [...path, id])));
+      const offer = offers.filter(entry => Object.keys(entry.items).every(id => canMake(id)))
+        .sort((a, b) => b.coins / effort(b) - a.coins / effort(a))[0];
+      if (!offer) {
+        // A new species-specific order can be declined by this deliberately
+        // basic-tackle route. Earn the coins through actual extraction and sale.
+        const item = sources("ore").length ? "ore" : "wood", source = sources(item)[0];
+        assert(source, "an unlocked commodity provides repeatable NPC income");
+        run(source); apply("sell", item, Math.min(source.rewards[item], state.inventory[item])); continue;
+      }
+      bundle(offer.items);
       if (held(offer.items) && food.residentOrderBoard(state, clock).offers.some(current => current.id === offer.id))
         apply("complete_resident_order", offer.id);
     }
@@ -164,7 +195,9 @@ test("a real one-slot 50-place house-three route earns its costs and project res
   }
 
   prepareCourse(); assert.equal(courses.length, 1, "the first delivery is immediately available once its actual materials are ready");
-  for (const [id, level] of [["woodlot", 2], ["kiln", 2], ["workshop", 2], ["woodlot", 3], ["workshop", 3], ["quarry", 3]]) construct(id, level);
+  const upgrades = [["woodlot", 2], ["kiln", 2], ["workshop", 2], ["garden", 2], ["dryer", 2],
+    ["woodlot", 3], ["workshop", 3], ["quarry", 3], ["kiln", 3], ["garden", 3], ["dryer", 3]];
+  for (const [id, level] of upgrades) construct(id, level);
   const home = catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4);
   while (currentCourse()) {
     bundle(currentCourse().items); readyCourse();
@@ -181,8 +214,8 @@ test("a real one-slot 50-place house-three route earns its costs and project res
   assert.equal(courseCoins, catalog.stageOrders.find(stage => stage.homeLevel === 3).orders.reduce((sum, order) => sum + order.coins, 0));
   assert.equal(constructionCoins, builds.reduce((sum, build) => sum + catalog.buildings.find(entry => entry.id === build.target)
     .levels.find(level => level.level === build.level).cost.coins, 0));
-  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 23 * hour);
-  assert(courses.at(-1).at - courses[0].at >= 161 * hour);
+  assert.equal(catalog.stageOrders.find(stage => stage.homeLevel === 3).intervalSeconds, 0);
+  for (let index = 1; index < courses.length; index++) assert(courses[index].at >= courses[index - 1].at);
   assert(clock - courses.at(-1).at >= home.seconds * 1000, "the final house waits for its full current builder timer");
   assert(clock - epoch < 10 * 24 * hour, JSON.stringify({ elapsedHours: (clock - epoch) / hour,
     deliveryHours: courses.map(offer => (offer.at - epoch) / hour), builds: builds.map(build => ({ target: build.target, level: build.level, hours: (build.startedAt - epoch) / hour })), peak,
@@ -195,19 +228,19 @@ test("a real one-slot 50-place house-three route earns its costs and project res
   for (const action of ["buy_market_slot", "buy_production_slot", "claim_tutorial_order", "claim_workshop_starter", "speedup_construction", "feed_hero", "feed_builder"])
     assert.equal(actions[action], undefined);
   assert(peak <= 50); assert.deepEqual(builds.map(build => `${build.target}:${build.level}`),
-    ["woodlot:2", "kiln:2", "workshop:2", "woodlot:3", "workshop:3", "quarry:3", "home:4"]);
+    [...upgrades.map(([id, level]) => `${id}:${level}`), "home:4"]);
   console.log(JSON.stringify({ elapsedHours: (clock - epoch) / hour, firstDeliveryHours: (courses[0].at - epoch) / hour,
     deliveryHours: courses.map(offer => (offer.at - epoch) / hour), peak, coins: state.wallet.coins, repeatCoins, saleCoins, commands: revision }));
 });
 
-// A player's accepted daily rhythm is a saved promise. The new 23-hour cadence
-// applies to newly accepted chapters, never to an already pinned v9 chapter.
-test("an accepted v9 chapter keeps its 24-hour delivery interval after v10 shortens new chapters to 23 hours", () => {
+// A player's accepted daily rhythm remains a saved promise after new chapters
+// replace the daily waiting gate with material requirements.
+test("an accepted v9 chapter keeps its 24-hour delivery interval while new v14 chapters have no waiting gate", () => {
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.buildings.home = 3; state.wallet = { coins: 0, pearls: 0 };
   state.tutorialOrder = { version: 2, step: 4, completed: true, ingredientsClaimed: true, terms: null };
   const course = catalog.stageOrders.find(course => course.homeLevel === 3);
-  assert.equal(course.intervalSeconds, 23 * 3600);
+  assert.equal(course.intervalSeconds, 0);
   state.stageOrders = { version: 1, stages: { 3: { step: 0, completed: false,
     terms: structuredClone(course.orders[0]), availableAt: new Date(epoch).toISOString(),
     intervalSeconds: 24 * 3600, completionRewards: { living_resin: 1 } } } };

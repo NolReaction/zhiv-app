@@ -96,9 +96,9 @@ test("fresh-stage one-slot commands reject batches atomically and strawberry unl
   assert.deepEqual(unlocked.jobs.find(entry => entry.recipeId === "grow_strawberries").rewards, { strawberries: 1 });
 });
 
-test("three garden slots run two raspberries and a strawberry simultaneously and ready crops occupy capacity until claimed", () => {
+test("from home three garden slots run two raspberries and a strawberry simultaneously until claimed", () => {
   const p = player(); read(p); const state = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state;
-  state.wallet.pearls = 700; state.progression.recipes.cook_compote = 1;
+  state.buildings.home = 3; state.wallet.pearls = 700; state.progression.recipes.cook_compote = 1;
   send(p, "buy_production_slot", "garden"); send(p, "buy_production_slot", "garden");
   send(p, "start_production", "grow_berries"); send(p, "start_production", "grow_berries");
   const started = send(p, "start_production", "grow_strawberries");

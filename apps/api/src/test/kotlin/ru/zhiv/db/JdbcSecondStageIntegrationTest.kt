@@ -105,6 +105,9 @@ class JdbcSecondStageIntegrationTest {
             assertEquals(18, current.jobs.size)
             val public = economyJson.encodeToJsonElement(current).jsonObject
             assertFalse("minerRareDropState" in public); assertFalse("rareDropState" in public)
+            assertTrue(current.jobs.all { it.expeditionFinds == null })
+            val savedJobs = source.connection.use { c -> readEconomyProfile(c, player.id).state.jobs }
+            assertEquals(current.jobs, savedJobs.map { EconomyPublicJobs.project(it) })
             source.connection.use { c ->
                 val saved = readEconomyProfile(c, player.id).state
                 assertEquals(18, saved.jobs.size)
@@ -113,7 +116,7 @@ class JdbcSecondStageIntegrationTest {
                     c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(invalid), player.id) }
                 c.rollback()
             }
-            source.connection.use { c -> assertEquals(current.jobs, readEconomyProfile(c, player.id).state.jobs) }
+            source.connection.use { c -> assertEquals(savedJobs, readEconomyProfile(c, player.id).state.jobs) }
         }
     }
 

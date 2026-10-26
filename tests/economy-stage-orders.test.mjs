@@ -52,7 +52,7 @@ test("claiming house two pins the first permanent request without minting its su
 });
 
 test("seven frozen course requests settle sequentially without rerolling the ordinary board or replaying goods and rewards", () => {
-  const p = player(), expected = [[{ rope: 2 }, 125], [{ stone: 6 }, 225], [{ clay: 4 }, 150], [{ charcoal: 2 }, 125], [{ bricks: 4 }, 550], [{ fish_common: 6 }, 300], [{ grilled_fish: 3 }, 263]], receipts = [];
+  const p = player(), expected = [[{ rope: 2 }, 125], [{ stone: 6 }, 225], [{ clay: 4 }, 150], [{ charcoal: 2 }, 125], [{ bricks: 4 }, 550], [{ fish_common: 6 }, 113], [{ grilled_fish: 3 }, 169]], receipts = [];
   const board = food.residentOrderBoard(read(p), now).offers; let paid = 0;
   for (const [step, [items, coins]] of expected.entries()) {
     const offer = quote(p); assert.deepEqual(offer.items, items); assert.equal(offer.coins, coins);
@@ -64,7 +64,7 @@ test("seven frozen course requests settle sequentially without rerolling the ord
     assert.deepEqual(food.residentOrderBoard(result.state, now).offers, board);
     assert.throws(() => send(p, "complete_resident_order", offer.id), { code: "ECONOMY_STAGE_ORDER_UNAVAILABLE" });
   }
-  const latest = read(p); assert.equal(paid, 1738); assert.equal(quote(p), null);
+  const latest = read(p); assert.equal(paid, 1457); assert.equal(quote(p), null);
   for (const [cmd, revision] of receipts) {
     const replay = economy.commandDevEconomy(p.token, cmd, now);
     assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, revision); assert.deepEqual(replay.state, latest);

@@ -15,6 +15,7 @@ const math = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const collection = await vite.ssrLoadModule("/features/economy/domain/collection-progress.ts");
 const achievementCatalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/achievements-catalog.json", import.meta.url), "utf8"));
+const collectionCatalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/collections-catalog.json", import.meta.url), "utf8"));
 beforeEach(() => { identities.resetDevStoreForTests(); game.resetDevGameStoreForTests(); });
 after(() => vite.close());
 const player = () => identities.createDevIdentity("Исследователь", crypto.randomUUID());
@@ -50,6 +51,9 @@ test("successful claim persists first path and each explorer tier once, start ca
   assert.equal(card(p, "first_path", now).unlockedAt, null);
   issue(p, "cancel_exploration", canceled.id, now + 1000);
   assert.equal(card(p, "familiar_trails", now).progress, 0);
+  const forestSeconds = model.economyCatalog.explorations.find(route => route.id === "forest").seconds;
+  const firstFindTrip = Math.ceil(collectionCatalog.travel.secondsPerFind / forestSeconds);
+  assert(firstFindTrip <= 10, "this route reaches a real collection interval within the observed ten claims");
   let firstAt, tenthAt;
   for (let count = 1; count <= 10; count++) {
     const job = issue(p, "start_exploration", "forest", now).state.jobs[0];
@@ -57,6 +61,7 @@ test("successful claim persists first path and each explorer tier once, start ca
     const request = command(p, "claim_job", job.id, now);
     economy.commandDevEconomy(p.token, request, now);
     assert.equal(economy.commandDevEconomy(p.token, request, now + 1000).replayed, true);
+    if (count < firstFindTrip) assert.equal(card(p, "lucky_find", now).unlockedAt, null, "short completed trips cannot award a find before its work threshold");
     if (count === 1) firstAt = new Date(now).toISOString();
     if (count === 10) tenthAt = new Date(now).toISOString();
   }
@@ -65,7 +70,7 @@ test("successful claim persists first path and each explorer tier once, start ca
   assert.deepEqual(explorer.tiers.map(value => value.unlockedAt), [tenthAt, null, null]);
   assert.equal(explorer.unlockedAt, tenthAt); assert.equal(explorer.target, 50); assert.equal(explorer.progress, 10);
   assert.equal(economy.getDevEconomy(p.token, now).completedExplorations, 10);
-  assert.equal(card(p, "lucky_find", now).unlockedAt, new Date(Date.parse(firstAt) + 3 * 1800_000).toISOString());
+  assert.equal(card(p, "lucky_find", now).unlockedAt, new Date(Date.parse(firstAt) + (firstFindTrip - 1) * forestSeconds * 1000).toISOString());
 });
 
 test("berries count only after actual collection and repeating one recipe stays one unique recipe", () => {
