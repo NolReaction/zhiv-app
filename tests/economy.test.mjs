@@ -30,7 +30,7 @@ function fixture(p, { coins = 5000, pearls = 0, items = { wood: 30, stone: 30, b
   return row;
 }
 
-test("fresh account starts with a fixed supply and keeps garden and exploration free", () => {
+for (const expeditionFinds of [{}, { planks: 1 }]) test(`fresh account starts with a fixed supply and keeps garden and exploration free (${Object.keys(expeditionFinds).length ? "saved bonus" : "no bonus"})`, () => {
   const p = player(), state = read(p);
   assert.equal(model.economyViewSchema.safeParse(state).success, true);
   assert.deepEqual(state.wallet, { coins: 100, pearls: 0 }); assert.deepEqual(state.inventory, { wood: 3, stone: 5 });
@@ -39,13 +39,21 @@ test("fresh account starts with a fixed supply and keeps garden and exploration 
   assert.deepEqual(state.storage, { capacity: 50, used: 8, reserved: 0, available: 42, overflow: 0 });
   const grown = issue(p, "start_production", "grow_berries").state.jobs[0];
   const walking = issue(p, "start_exploration", "forest").state.jobs.find(job => job.kind === "exploration");
+  assert.deepEqual(walking.rewards, model.economyCatalog.explorations.find(route => route.id === "forest").rewards);
+  assert.deepEqual(walking.cost, { coins: 0, items: {} });
+  // Fix both legal draw outcomes in the private saved job; the public quote deliberately hides them.
+  const saved = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.jobs.find(job => job.id === walking.id);
+  saved.expeditionFinds = { ...expeditionFinds };
+  assert.equal(read(p).jobs.find(job => job.id === walking.id).expeditionFinds, undefined);
   assert.deepEqual(read(p).inventory, state.inventory);
+  assert.deepEqual(read(p).wallet, state.wallet);
   const returnedAt = Date.parse(walking.finishesAt);
   issue(p, "claim_job", walking.id, 1, returnedAt);
   const collecting = issue(p, "start_collection", grown.id, 1, returnedAt).state.jobs[0];
   const collected = issue(p, "claim_job", grown.id, 1, Date.parse(collecting.collection.finishesAt)).state;
   const expected = { ...state.inventory, ...grown.rewards };
-  for (const [item, amount] of Object.entries(walking.rewards)) expected[item] = (expected[item] ?? 0) + amount;
+  for (const rewards of [walking.rewards, expeditionFinds])
+    for (const [item, amount] of Object.entries(rewards)) expected[item] = (expected[item] ?? 0) + amount;
   assert.deepEqual(collected.inventory, expected);
   assert.equal(collected.completedExplorations, 1);
   assert.deepEqual(issue(p, "sell", "berries", expected.berries).state.wallet, { coins: state.wallet.coins + rules.economyLocalSellPrice(model.economyCatalog.items.find(item => item.id === "berries").baseSellPrice, expected.berries, model.economyCatalog.localBuyer, "berries"), pearls: state.wallet.pearls });
