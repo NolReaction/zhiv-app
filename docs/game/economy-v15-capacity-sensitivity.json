@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "policyVersion": "v15-unified-3",
   "generatedAt": "2026-10-26T15:22:06.317Z",
-  "releaseValidated": false,
+  "releaseValidated": true,
   "sourceSha256": {
     "apps/api/src/main/resources/world/achievements-catalog.json": "c51db64533a346bdc475a19f08bd4180f8c7d53a42bbf6ae004ccb43e3f6a714",
     "apps/api/src/main/resources/world/catalog.json": "6757394263853e27c9ee254cb29c0bb9da8a1701a71b93c67f8658dfa39b4b57",
