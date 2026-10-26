@@ -97,6 +97,7 @@ import { syncForestResidentAccess } from "@/features/world/state/economy/economy
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { audioDevStore } from "@/features/audio/dev/audio-dev-store";
 import { createWorldAudioController } from "@/features/world/audio/world-audio-controller";
+import { createTradeShipAudioController } from "@/features/world/audio/trade-ship-audio";
 import { quarryAudioWorking, type WorldAudioCamera } from "@/features/world/audio/world-audio-frame";
 import { drawWorldAudioDebug } from "@/features/world/audio/world-audio-debug";
 import { worldArtworkUrls } from "./world-artwork";
@@ -106,9 +107,12 @@ import { drawLopukhWoodpile } from "@/features/world/characters/lopukh/lopukh-wo
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 import { drawLeaftailBoatArrival } from "@/features/world/characters/leaftail/leaftail-boat-painter";
 import { drawTradeShipSprite, TRADE_SHIP_SPRITE } from "@/features/world/objects/trade-ship/trade-ship-sprite";
-import { drawTradeShipGangway } from "@/features/world/objects/trade-ship/trade-ship-gangway";
+import { drawTradeShipGangway, drawTradeShipGangwayDeck } from "@/features/world/objects/trade-ship/trade-ship-gangway";
+import { drawTradeShipLighting } from "@/features/world/objects/trade-ship/trade-ship-lighting";
 import type { TradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import { createTradeShipPreviewArtwork } from "@/features/world/dev/trade-ship-preview-artwork";
+import { connectTradeShipArrival, type SceneTradeShipFrame } from "@/features/world/state/trade-ship-arrival";
+import { tradeShipImageVisible } from "./trade-ship-visibility";
 import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-diagnostics";
 import { forestPerformanceProfiler } from "@/features/world/dev/forest-performance-profiler";
 import { residentScenePresentation } from "./resident-scene-presentation";
@@ -185,6 +189,7 @@ export type NewMapPaintPreview = {
   merchantBoat?: ReturnType<typeof leaftailBoatArrivalFrame>;
   tradeShipImage?: HTMLImageElement | null;
   tradeShipMotion?: TradeShipMotion;
+  tradeShipKind?: SceneTradeShipFrame["kind"];
 };
 
 function reducedMotion(options: SceneOptions, dev?: WorldDevState) {
@@ -354,11 +359,13 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
       if (preview?.water && dev?.waterSurface !== false) {
         drawForestWaterDynamics(ground, world, preview.water, { dusk: weather.dusk, reducedMotion: still });
       }
-      if (WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview && preview?.tradeShipImage && preview.tradeShipMotion?.visible) {
+      if (!options.readOnly && preview?.tradeShipImage && preview.tradeShipMotion?.visible
+        && (preview.tradeShipKind === "arrival" || WORLD_DEV_ENABLED && dev?.tradeShipPreview)) {
         // Shared atmosphere below handles night; tinting the sprite here would darken it twice.
         drawTradeShipGangway(ground, { ...preview.tradeShipMotion, time: elapsed, night: 0, still });
         drawTradeShipSprite(ground, preview.tradeShipImage, { ...preview.tradeShipMotion,
           time: elapsed, night: 0, still, water: true });
+        drawTradeShipGangwayDeck(ground, { ...preview.tradeShipMotion, time: elapsed, night: 0, still });
       }
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
@@ -433,6 +440,11 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
       productions.flatMap(frame => frame.fireId ? [frame.fireId] : []), !occludedLighting); });
   drawForestLighthouseBeams(context, world, lighting);
   drawForestLightEmitters(context, world, lighting);
+  if (!options.readOnly && preview?.tradeShipImage && preview.tradeShipMotion?.visible
+    && (preview.tradeShipKind === "arrival" || WORLD_DEV_ENABLED && dev?.tradeShipPreview)) {
+    drawTradeShipLighting(context, { ...preview.tradeShipMotion, time: elapsed, night: lighting.night, still,
+      enabled: dev?.showBuildings !== false });
+  }
   drawBuildingDetails(context, world, lighting);
   if (shadowFrame && testLamp) drawForestTestLamp(context, testLamp);
   // Station status stays legible above the roof in both daylight and night.
@@ -461,6 +473,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
   if (WORLD_DEV_ENABLED && !options.readOnly) worldLightingEditorStore.hydrate();
   let dev = WORLD_DEV_ENABLED && !options.readOnly ? worldDevStore.getSnapshot() : undefined;
+  let productionShip: ReturnType<typeof connectTradeShipArrival> | null = null, productionShipOwner: string | null = null;
   const shipArtworkError = "Не удалось загрузить PNG корабля. Выключите его предпросмотр и включите снова.";
   const tradeShipArtwork = createTradeShipPreviewArtwork(
     () => loadHabitatImage(TRADE_SHIP_SPRITE.src, "low"),
@@ -470,6 +483,30 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     },
     () => worldDevStore.reportArtError(shipArtworkError),
   );
+  function selectedTradeShip(): SceneTradeShipFrame | null {
+    if (options.readOnly) return null;
+    if (WORLD_DEV_ENABLED && dev?.tradeShipPreview) return { motion: worldDevStore.getTradeShipMotion(),
+      voyageId: worldDevStore.getTradeShipVoyageId(), kind: "dev", pending: false };
+    return productionShip?.getFrame() ?? null;
+  }
+  function syncTradeShip() {
+    const owner = !options.readOnly && !options.devRehearsal && options.presenceKey?.startsWith("zhiv:mochlik:presence:")
+      ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : null;
+    if (owner !== productionShipOwner) {
+      productionShip?.release(); productionShip = null; productionShipOwner = owner;
+      if (owner) productionShip = connectTradeShipArrival(owner, () => {
+        if (disposed) return;
+        tradeShipArtwork.setEnabled(Boolean(selectedTradeShip()));
+        if (visible()) draw(); resume();
+      });
+    }
+    productionShip?.configure(options.economyResidents);
+    tradeShipArtwork.setEnabled(Boolean(selectedTradeShip()));
+  }
+  function productionShipActive() {
+    return Boolean(!options.readOnly && !options.devRehearsal && options.view === "world" && options.tradeShipArrivalEnabled
+      && active() && session.isOwner() && tradeShipArtwork.getImage() && !(WORLD_DEV_ENABLED && dev?.tradeShipPreview));
+  }
   let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
     { merchantArrived: options.merchantArrival?.seen }));
   let trees = createForestTreeInteractions(world);
@@ -487,6 +524,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let speechTimer: ReturnType<typeof setTimeout> | null = null, staticSpeechAt: number | null = null;
   let lastActivity: "idle" | "greet" | null = null;
   const audio = createWorldAudioController(getAudioRuntime());
+  const shipAudio = createTradeShipAudioController(getAudioRuntime());
   let audioCamera: WorldAudioCamera | undefined;
   let session = connect();
   let state = session.state;
@@ -564,6 +602,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       fires: state.life.campfires, showBuildings: dev?.showBuildings,
     }, { scope: options.view === "world" ? "world" : "music", visible: active() && !options.audioSuppressed, observationOwner: session.isObservationOwner(), emitEvents, cameraOnly,
       showHero: dev?.showHero !== false, actorAway: actorAway(), reducedMotion: reducedMotion(options, dev), waterFish: dev?.waterFish });
+    const ship = selectedTradeShip(), image = tradeShipArtwork.getImage(), still = reducedMotion(options, dev);
+    const shipAudioOwner = options.view === "world" && session.isOwner();
+    shipAudio.update({ voyageId: shipAudioOwner ? ship?.voyageId ?? null : null,
+      motion: shipAudioOwner ? ship?.motion ?? null : null, frame: audio.getFrame(),
+      active: Boolean(ship && options.view === "world" && active() && session.isOwner() && image && !still
+        && !options.audioSuppressed && (ship.kind === "dev" || options.tradeShipArrivalEnabled)),
+      visible: Boolean(ship && image && tradeShipImageVisible(image, { ...ship.motion, time: state.elapsed, still }, audioCamera, world)),
+      claimHorn: ship?.claimHorn });
   }
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
   function syncProduction() {
@@ -985,6 +1031,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       occupants: residentOccupants() };
   }
   function preview(): NewMapPaintPreview {
+    syncTradeShip();
     syncProduction();
     syncConstruction();
     syncVillagers();
@@ -1000,7 +1047,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       residentPresentation: residentScenePresentation(state, world),
       merchantBoat: state.leaftailBoat ? leaftailBoatArrivalFrame(state.leaftailBoat) : null,
       tradeShipImage: tradeShipArtwork.getImage(),
-      tradeShipMotion: WORLD_DEV_ENABLED && !options.readOnly ? worldDevStore.getTradeShipMotion() : undefined,
+      tradeShipMotion: selectedTradeShip()?.motion,
+      tradeShipKind: selectedTradeShip()?.kind,
       mining: forestJourneyMiningFrame(state,world,reducedMotion(options,dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),
@@ -1070,6 +1118,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const timing = forestPerformanceProfiler.begin("ai", options.devRehearsal ? "rehearsal" : "world");
     try {
     session.configure(options.view ?? "circle", active(), !options.readOnly);
+    syncTradeShip();
+    const arrival = productionShip?.getFrame();
+    if (arrival && !arrival.pending && arrival.motion.phase !== "docked" && productionShipActive() && reducedMotion(options, dev)) productionShip?.start(true);
     if (WORLD_DEV_ENABLED && session.isOwner()) {
       const resident = dev?.residentPreview;
       if (resident && state.residentPreview?.id !== resident.id) {
@@ -1116,7 +1167,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (!previous) previous = now;
     if (worldFrameDue(now, previous)) {
       const step = Math.min((now - previous) / 1000, .05);
-      if (WORLD_DEV_ENABLED && !options.readOnly) worldDevStore.advanceTradeShip(step, now, Boolean(tradeShipArtwork.getImage()));
+      if (WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview) worldDevStore.advanceTradeShip(step, now, Boolean(tradeShipArtwork.getImage()));
+      else if (productionShipActive()) productionShip?.advance(step, now);
       state.elapsed += step; state.timestamp += step * 1000;
       if (state.birdStarted !== null && state.elapsed - state.birdStarted >= FOREST_BIRD_FLIGHT_DURATION) state.birdStarted = null;
       state.dusk += (Number(options.dusk) - state.dusk) * Math.min(1, step * .7);
@@ -1221,9 +1273,16 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   const unsubscribeAudioDebug = WORLD_DEV_ENABLED && !options.readOnly ? audioDevStore.subscribe(() => { if (visible()) draw(); }) : () => {};
   function visibilityChanged() { stop(); syncOwner(); if (visible()) draw(); resume(); }
   document.addEventListener("visibilitychange", visibilityChanged);
+  function retryTradeShipArtwork() {
+    if (disposed || !selectedTradeShip() || tradeShipArtwork.getImage()) return;
+    tradeShipArtwork.setEnabled(false); tradeShipArtwork.setEnabled(true);
+  }
+  window.addEventListener?.("online", retryTradeShipArtwork); window.addEventListener?.("focus", retryTradeShipArtwork);
   function dispose() {
     if (disposed) return;
     tradeShipArtwork.dispose();
+    productionShip?.release(); productionShip = null; shipAudio.dispose();
+    window.removeEventListener?.("online", retryTradeShipArtwork); window.removeEventListener?.("focus", retryTradeShipArtwork);
     artworkPreparation?.dispose(); artworkPreparation = null;
     disposed = true; artworkVersion++; stop(); clearForestTreeInteractions(trees); unsubscribe(); unsubscribeAudioDebug(); unsubscribeLightingEditor(); audio.dispose(); observer.disconnect(); art = null;
     residentDiagnosticsStore.clear(options.presenceKey ?? "forest", residentDiagnosticsOwner);
@@ -1327,7 +1386,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (disposed) return;
     const before = dev!;
     dev = worldDevStore.getSnapshot();
-    tradeShipArtwork.setEnabled(Boolean(!options.readOnly && dev.tradeShipPreview));
+    syncTradeShip();
     if (forestPersistenceOverridden(dev, levels)) session.suspendPersistence();
     if (session.consumeControls(dev)) {
       if ((dev.animation?.id !== before.animation?.id && dev.animation || dev.pose !== before.pose && dev.pose !== "auto")
@@ -1389,7 +1448,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (dev.levels !== before.levels || dev.previewBuildings !== before.previewBuildings) prepareArtwork();
     resume();
   });
-  tradeShipArtwork.setEnabled(Boolean(WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview));
+  syncTradeShip();
   prepareArtwork();
   void loadForestSpeechFont().then(loaded => {
     // A still scene has no RAF: repaint once when its actual glyph metrics arrive.
@@ -1426,6 +1485,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
       { merchantArrived: options.merchantArrival?.seen })) : world;
   return {
+    tradeShipFrame() { return tradeShipArtwork.getImage() ? selectedTradeShip() : null; },
+    startTradeShipArrival() {
+      if (!productionShipActive()) return false;
+      return productionShip?.start(reducedMotion(options, dev)) ?? false;
+    },
     lightingReceivers: () => lightingWorld().shadowReceivers ?? [],
     lightingCasters: () => lightingWorld().shadowCasters ?? [],
     lightingLights: () => {
@@ -1471,8 +1535,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     configure(next) {
       if (disposed) return;
       const identityChanged = next.presenceKey !== options.presenceKey;
+      const waking = Boolean(options.backgrounded && !next.backgrounded);
       options = { ...next }; stop();
-      tradeShipArtwork.setEnabled(Boolean(WORLD_DEV_ENABLED && !options.readOnly && dev?.tradeShipPreview));
+      syncTradeShip();
+      if (waking) retryTradeShipArtwork();
       if (identityChanged) {
         clearForestTreeInteractions(trees);
         artworkPreparation?.dispose(); artworkPreparation = null;

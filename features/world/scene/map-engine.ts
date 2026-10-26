@@ -66,6 +66,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let viewportRect: DOMRect | null = null;
   let dev = WORLD_DEV_ENABLED && !initial.readOnly ? worldDevStore.getSnapshot() : undefined;
   const initialCameraEventId = dev?.cameraEvent?.id;
+  let focusedShipArrival: string | null = null;
+  let queuedShipArrival: string | null = null;
   const motionReduced = () => dev?.reducedMotion === "on" || dev?.reducedMotion !== "off" && options.reducedMotion;
   const paused = () => options.paused || Boolean(dev?.paused);
   let boatArt: HTMLCanvasElement | null = null;
@@ -304,6 +306,23 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function draw(allowPan = false, rasterClock = performance.now()) {
     if (disposed || !ctx) return;
+    const ship = habitat.tradeShipFrame?.();
+    if (!options.readOnly && options.tradeShipArrivalEnabled && !options.backgrounded && !document.hidden && inView && !paused()
+      && !guidePlace && !editingLight() && ship?.kind === "arrival" && ship.pending && queuedShipArrival !== ship.voyageId) {
+      const id = ship.voyageId; queuedShipArrival = id;
+      queueMicrotask(() => {
+        if (disposed || queuedShipArrival !== id) return;
+        queuedShipArrival = null;
+        const current = habitat.tradeShipFrame?.();
+        if (options.readOnly || !options.tradeShipArrivalEnabled || options.backgrounded || document.hidden || !inView || paused()
+          || guidePlace || editingLight() || current?.voyageId !== id || !current.pending) return;
+        if (!habitat.startTradeShipArrival?.()) return;
+        if (focusedShipArrival !== id) {
+          focusedShipArrival = id; framing = "manual"; camera = tradeShipCamera(view, bounds, cameraInsets);
+        }
+        draw();
+      });
+    }
     redrawPending = false;
     const arriving = arrivalTarget();
     if (framing === "guide" && (arriving || followedArrival)) {

@@ -169,6 +169,7 @@ export function createWorldDevStore(enabled: boolean) {
     getSnapshot: () => state,
     getServerSnapshot: () => WORLD_DEV_DEFAULTS,
     getTradeShipMotion: tradeShip.getMotion,
+    getTradeShipVoyageId: tradeShip.getVoyageId,
     getTradeShipPhase: tradeShip.getPhase,
     getServerTradeShipPhase: tradeShip.getServerPhase,
     subscribeTradeShipPhase: tradeShip.subscribePhase,
@@ -317,5 +318,5 @@ export function createWorldDevStore(enabled: boolean) {
 }
 
 export const worldDevStore = retainWorldDevClientState("world-controls",
-  `v1:6:ship-gangway:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
+  `v1:7:ship-arrival:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
   () => createWorldDevStore(WORLD_DEV_ENABLED)).value;

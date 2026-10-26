@@ -1,67 +1,134 @@
-import { TRADE_SHIP_SPRITE, type TradeShipSpriteFrame } from "./trade-ship-sprite";
+import { TRADE_SHIP_SPRITE, tradeShipSpritePose, type TradeShipSpriteFrame } from "./trade-ship-sprite";
+
+type Point = { x: number; y: number };
 
 /** Authored against the unchanged PNG and the current southern berth (width 310). */
 export const TRADE_SHIP_GANGWAY_RIG = {
-  source: { x: 1008, y: 353 },
+  source: { x: 1008, y: 353 }, deckSource: { x: 1008, y: 432 },
   referenceWidth: 310, shoreOffset: { x: 145, y: 36 }, width: 14,
 } as const;
 
-export type TradeShipGangwayFrame = Pick<TradeShipSpriteFrame, "x" | "y" | "width" | "heading" | "time" | "still" | "night"> & {
+export type TradeShipGangwayFrame = Pick<TradeShipSpriteFrame, "x" | "y" | "width" | "heading" | "time" | "still" | "night" | "facing"> & {
   gangway: number;
 };
 
-/** The shore end stays fixed while the hinge follows the PNG's subtle bob. */
+const mix = (a: Point, b: Point, t: number): Point => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+const offset = (p: Point, direction: Point, amount: number): Point => ({ x: p.x + direction.x * amount, y: p.y + direction.y * amount });
+
+/** The shore stays fixed; the hinge and supported deck tongue share the PNG's transform and bob. */
 export function tradeShipGangwayGeometry(frame: TradeShipGangwayFrame) {
   if (![frame.x, frame.y, frame.width, frame.gangway].every(Number.isFinite)
     || frame.width <= 0 || frame.gangway <= 0) return null;
+  const pose = tradeShipSpritePose(frame); if (!pose) return null;
   const rig = TRADE_SHIP_GANGWAY_RIG, sprite = TRADE_SHIP_SPRITE;
-  const scale = frame.width / sprite.width, berthScale = frame.width / rig.referenceWidth;
-  const heading = sprite.baseHeading + Math.max(-sprite.maxHeading, Math.min(sprite.maxHeading,
-    Number.isFinite(frame.heading) ? frame.heading! : 0));
-  const time = Number.isFinite(frame.time) ? Math.max(0, frame.time!) : 0;
-  const bob = frame.still ? 0 : Math.sin(time * 1.45) * .8;
-  // Same order as the raster painter: mirror, bob, rotate about the placement pivot.
-  const x = sprite.width - sprite.image.x - rig.source.x * sprite.image.width / sprite.sourceWidth - sprite.pivot.x;
-  const y = sprite.image.y + rig.source.y * sprite.image.height / sprite.sourceHeight + bob - sprite.pivot.y;
-  const from = {
-    x: frame.x + (sprite.pivot.x + x * Math.cos(heading) - y * Math.sin(heading)) * scale,
-    y: frame.y + (sprite.pivot.y + x * Math.sin(heading) + y * Math.cos(heading)) * scale,
-  };
+  const { scale, heading, bob, facing } = pose, berthScale = frame.width / rig.referenceWidth;
+  const c = Math.cos(heading), s = Math.sin(heading);
+  function rasterPoint(source: Point): Point {
+    // Same order as the raster painter: mirror, bob, rotate about the placement pivot.
+    const imageX = sprite.image.x + source.x * sprite.image.width / sprite.sourceWidth;
+    const x = (facing < 0 ? sprite.width - imageX : imageX) - sprite.pivot.x;
+    const y = sprite.image.y + source.y * sprite.image.height / sprite.sourceHeight + bob - sprite.pivot.y;
+    return { x: frame.x + (sprite.pivot.x + x * c - y * s) * scale,
+      y: frame.y + (sprite.pivot.y + x * s + y * c) * scale };
+  }
+  const from = rasterPoint(rig.source), deckEnd = rasterPoint(rig.deckSource);
   const to = { x: frame.x + rig.shoreOffset.x * berthScale, y: frame.y + rig.shoreOffset.y * berthScale };
-  const progress = Math.min(1, frame.gangway);
-  return { from, to, tip: { x: from.x + (to.x - from.x) * progress, y: from.y + (to.y - from.y) * progress },
-    width: rig.width * berthScale, scale: berthScale, progress };
+  const progress = Math.min(1, frame.gangway), across = { x: c, y: s }, down = { x: -s, y: c };
+  const width = rig.width * berthScale, tip = mix(from, to, progress);
+  const shoreAcross = { x: 1, y: 0 }, shoreWidth = width * .82;
+  const farLeft = offset(to, shoreAcross, -shoreWidth / 2), farRight = offset(to, shoreAcross, shoreWidth / 2);
+  const nearLeft = offset(from, across, -width / 2), nearRight = offset(from, across, width / 2);
+  const deckProgress = Math.min(1, progress * 2);
+  const deckStart = offset(from, down, -.8 * berthScale), deckTip = mix(from, deckEnd, deckProgress);
+  const deckWidth = width * (1 + .05 * deckProgress);
+  return { from, to, tip, width, scale: berthScale, progress, across, down,
+    nearLeft, nearRight, tipLeft: mix(nearLeft, farLeft, progress), tipRight: mix(nearRight, farRight, progress),
+    deck: { from: deckStart, to: deckEnd, tip: deckTip, progress: deckProgress,
+      nearLeft: offset(deckStart, across, -width / 2), nearRight: offset(deckStart, across, width / 2),
+      tipLeft: offset(deckTip, across, -deckWidth / 2), tipRight: offset(deckTip, across, deckWidth / 2) } };
 }
 
-/** Separate wooden support, painted BEFORE the PNG so its threshold covers the joint. */
+type Geometry = NonNullable<ReturnType<typeof tradeShipGangwayGeometry>>;
+function polygon(ctx: CanvasRenderingContext2D, points: Point[], fill: string | CanvasGradient) {
+  ctx.fillStyle = fill; ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+  for (const point of points.slice(1)) ctx.lineTo(point.x, point.y);
+  ctx.closePath(); ctx.fill();
+}
+
+/** A shallow plank plane, with thickness and narrow side lips rather than ladder rungs. */
+function timber(ctx: CanvasRenderingContext2D, left: Point, right: Point, endLeft: Point, endRight: Point, scale: number, supported = false) {
+  const center = mix(left, right, .5), end = mix(endLeft, endRight, .5);
+  const length = Math.hypot(end.x - center.x, end.y - center.y);
+  if (length < .00001) return;
+  const shadow = { x: 1.1 * scale, y: 1.6 * scale }, drop = { x: 0, y: 1.1 * scale };
+  const points = [left, endLeft, endRight, right];
+  polygon(ctx, points.map(point => ({ x: point.x + shadow.x, y: point.y + shadow.y })), "rgba(32,34,20,.25)");
+  polygon(ctx, [right, endRight, { x: endRight.x + drop.x, y: endRight.y + drop.y },
+    { x: right.x + drop.x, y: right.y + drop.y }], "#57402a");
+  if (supported) polygon(ctx, [endLeft, endRight, { x: endRight.x, y: endRight.y + drop.y },
+    { x: endLeft.x, y: endLeft.y + drop.y }], "#78502b");
+  const wood = ctx.createLinearGradient(left.x, left.y, right.x, right.y);
+  wood.addColorStop(0, "#d9a45d"); wood.addColorStop(.3, "#bd8745"); wood.addColorStop(1, "#a36d34");
+  polygon(ctx, points, wood);
+  ctx.strokeStyle = "#624122"; ctx.lineWidth = .45 * scale; ctx.stroke();
+  ctx.lineWidth = .28 * scale;
+  for (let at = 4.2 * scale; at < length - .5 * scale; at += 4.2 * scale) {
+    const t = at / length, a = mix(left, endLeft, t), b = mix(right, endRight, t);
+    ctx.strokeStyle = "#7b542f"; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    const highlight = .5 * scale / length;
+    const ah = mix(left, endLeft, Math.min(1, t + highlight)), bh = mix(right, endRight, Math.min(1, t + highlight));
+    ctx.strokeStyle = "rgba(241,203,139,.45)"; ctx.beginPath(); ctx.moveTo(ah.x, ah.y); ctx.lineTo(bh.x, bh.y); ctx.stroke();
+  }
+  let board = 0;
+  for (let at = 1.4 * scale; at < length - .6 * scale; at += 4.2 * scale) {
+    const t = at / length, a = mix(left, endLeft, t), b = mix(right, endRight, t);
+    const start = mix(a, b, .12 + board % 3 * .06), end = mix(a, b, .81 - board % 2 * .08);
+    const bend = mix(start, end, .5); bend.y += (board % 2 ? .2 : -.2) * scale;
+    ctx.strokeStyle = "rgba(99,57,24,.2)"; ctx.lineWidth = .24 * scale;
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.quadraticCurveTo(bend.x, bend.y, end.x, end.y); ctx.stroke();
+    board++;
+  }
+  // Raised edges stay inside the existing posts, leaving the middle clear.
+  const lip = Math.min(.09, .9 * scale / Math.hypot(right.x - left.x, right.y - left.y));
+  polygon(ctx, [left, endLeft, mix(endLeft, endRight, lip), mix(left, right, lip)], "#b38950");
+  polygon(ctx, [right, endRight, mix(endLeft, endRight, 1 - lip), mix(left, right, 1 - lip)], "#78522d");
+  ctx.strokeStyle = "#dfb578"; ctx.lineWidth = .45 * scale;
+  ctx.beginPath(); ctx.moveTo(left.x, left.y); ctx.lineTo(endLeft.x, endLeft.y); ctx.stroke();
+}
+
+function beginWood(ctx: CanvasRenderingContext2D, frame: TradeShipGangwayFrame, geometry: Geometry) {
+  const night = Number.isFinite(frame.night) ? Math.max(0, Math.min(1, frame.night!)) : 0;
+  ctx.filter = night ? `brightness(${1 - night * .52}) saturate(${1 - night * .12})` : "none";
+  ctx.globalAlpha *= Math.min(1, geometry.progress * 6);
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+}
+
+/** Shore support goes BEFORE the PNG; the threshold and posts retain their original silhouette. */
 export function drawTradeShipGangway(ctx: CanvasRenderingContext2D, frame: TradeShipGangwayFrame) {
   const geometry = tradeShipGangwayGeometry(frame); if (!geometry) return;
-  const { from, to, width, scale, progress } = geometry;
-  const length = Math.hypot(to.x - from.x, to.y - from.y) * progress;
-  if (length <= 0) return;
-  const half = width / 2, night = Number.isFinite(frame.night) ? Math.max(0, Math.min(1, frame.night!)) : 0;
   ctx.save();
   try {
-    ctx.translate(from.x, from.y); ctx.rotate(Math.atan2(to.y - from.y, to.x - from.x));
-    ctx.filter = night ? `brightness(${1 - night * .52}) saturate(${1 - night * .12})` : "none";
-    ctx.lineJoin = "round"; ctx.lineCap = "round";
-    // The small offset below the deck reads as thickness rather than a floating strip.
-    ctx.fillStyle = "rgba(30,43,28,.23)"; ctx.fillRect(2 * scale, -half + 2 * scale, length, width);
-    ctx.fillStyle = "#493824"; ctx.fillRect(0, -half, length, width);
-    const timber = ctx.createLinearGradient(0, -half, 0, half);
-    timber.addColorStop(0, "#d0aa69"); timber.addColorStop(.35, "#b58b50"); timber.addColorStop(1, "#8d6339");
-    ctx.fillStyle = timber; ctx.fillRect(0, -half + scale, length, width - 2 * scale);
-    ctx.strokeStyle = "#76522e"; ctx.lineWidth = .7 * scale;
-    for (let at = 4.5 * scale; at + .7 * scale < length; at += 4.5 * scale) {
-      ctx.beginPath(); ctx.moveTo(at, -half + scale); ctx.lineTo(at, half - scale); ctx.stroke();
-      ctx.strokeStyle = "rgba(238,205,139,.45)";
-      ctx.beginPath(); ctx.moveTo(at + .7 * scale, -half + scale); ctx.lineTo(at + .7 * scale, half - scale); ctx.stroke();
-      ctx.strokeStyle = "#76522e";
+    beginWood(ctx, frame, geometry);
+    timber(ctx, geometry.nearLeft, geometry.nearRight, geometry.tipLeft, geometry.tipRight, geometry.scale);
+  } finally { ctx.restore(); }
+}
+
+/** Short supported tongue goes AFTER the PNG, visibly joining the ramp to the open deck. */
+export function drawTradeShipGangwayDeck(ctx: CanvasRenderingContext2D, frame: TradeShipGangwayFrame) {
+  const geometry = tradeShipGangwayGeometry(frame); if (!geometry) return;
+  const { deck, across, down, from, width, scale } = geometry;
+  ctx.save();
+  try {
+    beginWood(ctx, frame, geometry);
+    timber(ctx, deck.nearLeft, deck.nearRight, deck.tipLeft, deck.tipRight, scale, true);
+    // Two small straps sit on the supported end, not on the railing posts.
+    for (const side of [-1, 1]) {
+      const seat = offset(offset(from, across, side * width * .3), down, 1.1 * scale * deck.progress);
+      const a = offset(seat, across, -.7 * scale), b = offset(seat, across, .7 * scale);
+      polygon(ctx, [a, b, offset(b, down, 2.5 * scale * deck.progress), offset(a, down, 2.5 * scale * deck.progress)], "#66583d");
+      ctx.fillStyle = "#c6af77"; ctx.beginPath();
+      const bolt = offset(seat, down, 1.2 * scale * deck.progress);
+      ctx.arc(bolt.x, bolt.y, .32 * scale * deck.progress, 0, Math.PI * 2); ctx.fill();
     }
-    // Low side lips stay beneath the existing gap's posts and leave a clear walkway.
-    ctx.fillStyle = "#73502d";
-    ctx.fillRect(0, -half, length, 1.4 * scale); ctx.fillRect(0, half - 1.4 * scale, length, 1.4 * scale);
-    ctx.fillStyle = "#dfb87a"; ctx.fillRect(0, -half, length, .6 * scale);
-    ctx.fillStyle = "#e0b677"; ctx.fillRect(Math.max(0, length - 1.3 * scale), -half, Math.min(length, 1.3 * scale), width);
   } finally { ctx.restore(); }
 }

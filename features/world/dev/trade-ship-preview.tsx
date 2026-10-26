@@ -5,7 +5,8 @@ import Link from "next/link";
 import { ArrowLeft, Download, Moon, Pause, Play, Sun } from "lucide-react";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { drawTradeShipSprite, TRADE_SHIP_SPRITE, type TradeShipSpriteFrame } from "@/features/world/objects/trade-ship/trade-ship-sprite";
-import { drawTradeShipGangway } from "@/features/world/objects/trade-ship/trade-ship-gangway";
+import { drawTradeShipGangway, drawTradeShipGangwayDeck } from "@/features/world/objects/trade-ship/trade-ship-gangway";
+import { drawTradeShipLighting } from "@/features/world/objects/trade-ship/trade-ship-lighting";
 import { advanceTradeShipMotion, createTradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import runtimeArt from "@/features/world/runtime-art.json";
 import { advanceTradeShipPreviewClock, commandTradeShipPreview, sampleTradeShipPreviewLeg, tradeShipPreviewCrop, tradeShipPreviewLegProgress,
@@ -144,6 +145,8 @@ export function TradeShipPreview() {
           time: elapsed.current, night: Number(night), still: !moving };
         if (mode !== "detail") drawTradeShipGangway(context, { ...frame, gangway: mode === "voyage" ? sailing.gangway : 1 });
         drawTradeShipSprite(context, shipImage, frame);
+        if (mode !== "detail") drawTradeShipGangwayDeck(context, { ...frame, gangway: mode === "voyage" ? sailing.gangway : 1 });
+        drawTradeShipLighting(context, frame);
       }
       context.restore();
     };
@@ -260,7 +263,7 @@ export function TradeShipPreview() {
         <h2>Изображение</h2>
         <button type="button" className={styles.download} disabled={!shipImage} onClick={downloadPng}><Download size={18} aria-hidden />Скачать PNG</button>
         <p className={styles.note}>Корпус и дверь — одно изображение. Мостик показывается на карте и в рейсе; PNG скачивается без мостика.</p>
-        <p className={styles.note}>Пробный маршрут ещё не связан с торговлей и маяком.</p>
+        <p className={styles.note}>В игре первый корабль приходит после восстановления маяка. Заказов пока нет.</p>
         {reducedMotion && <p className={styles.note}>В системе уменьшено движение. Рейс можно просмотреть ползунком. Автоматическое движение остановлено.</p>}
         <p className={styles.exportNotice} role="status">{exportNotice}</p>
       </aside>

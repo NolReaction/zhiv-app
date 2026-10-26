@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 111);
+  assert.equal(manifest.assets.length, 112);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);

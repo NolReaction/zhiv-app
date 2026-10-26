@@ -63,6 +63,8 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts"),
       ...await vite.ssrLoadModule("/features/world/scene/new-map-scene.ts"),
       ...await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-gangway.ts"),
+      ...await vite.ssrLoadModule("/features/world/state/trade-ship-arrival.ts"),
+      ...await vite.ssrLoadModule("/features/world/state/trade-ship-arrival-storage.ts"),
       ...await vite.ssrLoadModule("/features/world/characters/social/forest-conversations.ts"),
       ...await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts"),
       ...await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts"),
@@ -106,6 +108,7 @@ function browser() {
     const calls = [], events = new Map(), captured = new Set();
     if (!offscreen) displayedCalls.push(calls);
     const context = new Proxy({
+      globalAlpha: 1,
       createRadialGradient: () => ({ addColorStop() {} }),
       createLinearGradient: () => ({ addColorStop() {} }),
       getTransform: () => undefined,

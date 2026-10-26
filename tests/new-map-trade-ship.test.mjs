@@ -48,17 +48,17 @@ test("real circle/map share the ship voyage; loading, hidden, pause and reduced 
     const target = env.surface();
     function bridgePainted(expected) {
       const state = worldDevStore.getTradeShipMotion();
-      const geometry = tradeShipGangwayGeometry({ ...state, gangway: 1, time: probe.state.elapsed, still: false });
+      const geometry = tradeShipGangwayGeometry({ ...state, gangway: expected ? state.gangway : 1, time: probe.state.elapsed, still: false });
       target.calls.length = 0; world.paintWorld(target.context);
-      const joint = target.calls.findIndex(call => call.method === "translate"
-        && Math.abs(call.args[0] - geometry.from.x) < 1e-7 && Math.abs(call.args[1] - geometry.from.y) < 1e-7);
+      const point = (call, method, p) => call.method === method && Math.abs(call.args[0] - p.x) < 1e-7 && Math.abs(call.args[1] - p.y) < 1e-7;
+      const joint = target.calls.findIndex(call => point(call, "moveTo", geometry.nearLeft));
       if (!expected) { assert.equal(joint, -1, "no bridge geometry is painted before/after its stationary phases"); return; }
       const png = target.calls.findIndex(call => call.method === "drawImage" && call.args[0] === sprite);
       assert.ok(joint >= 0 && png > joint, "bridge is painted under the real PNG at its matching hinge");
-      const length = Math.hypot(geometry.to.x - geometry.from.x, geometry.to.y - geometry.from.y) * state.gangway;
-      assert.ok(target.calls.slice(joint, png).some(call => call.method === "fillRect"
-        && call.args[0] === 0 && call.args[1] === -geometry.width / 2
-        && Math.abs(call.args[2] - length) < 1e-7 && call.args[3] === geometry.width), "visible bridge length follows the shared animation");
+      assert.ok(target.calls.slice(joint, png).some(call => point(call, "lineTo", geometry.tipLeft)), "shore plane follows shared deployment");
+      const deck = target.calls.findIndex((call, index) => index > png && point(call, "moveTo", geometry.deck.nearLeft));
+      assert.ok(deck > png, "the supported deck tongue is painted AFTER the PNG instead of hiding behind its rail");
+      assert.ok(target.calls.slice(deck).some(call => point(call, "lineTo", geometry.deck.tipLeft)));
     }
     bridgePainted(false);
     clock.until(() => worldDevStore.getTradeShipPhase() === "deploying", "the actual scene deploys only after arrival", 500);
@@ -103,8 +103,8 @@ test("a read-only world never loads or paints the owner's DEV ship", async () =>
     clock.advance(1); assert.equal(worldDevStore.getTradeShipMotion(), frozen);
     const geometry = tradeShipGangwayGeometry({ ...frozen, time: 0, still: true }), target = env.surface();
     scene.paintWorld(target.context);
-    assert.equal(target.calls.some(call => call.method === "translate"
-      && Math.abs(call.args[0] - geometry.from.x) < 1e-7 && Math.abs(call.args[1] - geometry.from.y) < 1e-7), false,
+    assert.equal(target.calls.some(call => call.method === "moveTo"
+      && Math.abs(call.args[0] - geometry.nearLeft.x) < 1e-7 && Math.abs(call.args[1] - geometry.nearLeft.y) < 1e-7), false,
     "a foreign world also omits the owner's bridge");
   } finally { scene?.dispose(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
 });

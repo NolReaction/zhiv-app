@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
+import sharp from "sharp";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { drawTradeShipGangway, tradeShipGangwayGeometry, TRADE_SHIP_GANGWAY_RIG: rig } =
+const { drawTradeShipGangway, drawTradeShipGangwayDeck, tradeShipGangwayGeometry, TRADE_SHIP_GANGWAY_RIG: rig } =
   await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-gangway.ts");
 const { drawTradeShipSprite, TRADE_SHIP_SPRITE: sprite } = await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-sprite.ts");
 const { createTradeShipMotion } = await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
@@ -17,7 +18,7 @@ const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
 const frame = { ...createTradeShipMotion(), still: true };
 
 function canvas(failOn) {
-  let state = { transform: [1, 0, 0, 1, 0, 0], filter: "blur(2px)", fillStyle: "original", lineWidth: 7,
+  let state = { transform: [1, 0, 0, 1, 0, 0], filter: "blur(2px)", globalAlpha: .43, fillStyle: "original", lineWidth: 7,
     strokeStyle: "original", lineJoin: "bevel", lineCap: "square" };
   const copy = () => ({ ...state, transform: [...state.transform] }), original = copy(), stack = [], calls = [];
   const ctx = new Proxy({}, {
@@ -45,7 +46,7 @@ function canvas(failOn) {
 }
 
 test("hinge follows the real mirrored, calibrated raster transform and bob; shore stays fixed", () => {
-  for (const options of [{ still: true }, { still: false, time: .7 }, { still: false, time: 4.2 },
+  for (const options of [{ still: true }, { still: false, time: .7 }, { still: false, time: 4.2 }, { still: false, time: 1000001 },
     { still: true, x: 200, y: 300, width: 620 }]) {
     const pose = { ...frame, ...options }, target = canvas();
     drawTradeShipSprite(target.ctx, {}, pose);
@@ -55,6 +56,9 @@ test("hinge follows the real mirrored, calibrated raster transform and bob; shor
     const y = sprite.image.y + rig.source.y * sprite.image.height / sprite.sourceHeight;
     const geometry = tradeShipGangwayGeometry(pose);
     near(geometry.from.x, a*x+c*y+e); near(geometry.from.y, b*x+d*y+f);
+    const deckX = sprite.image.x + rig.deckSource.x * sprite.image.width / sprite.sourceWidth;
+    const deckY = sprite.image.y + rig.deckSource.y * sprite.image.height / sprite.sourceHeight;
+    near(geometry.deck.to.x, a*deckX+c*deckY+e); near(geometry.deck.to.y, b*deckX+d*deckY+f);
     near(geometry.tip.x, geometry.to.x); near(geometry.tip.y, geometry.to.y);
   }
   const fixed = tradeShipGangwayGeometry(frame), bobbed = tradeShipGangwayGeometry({ ...frame, still: false, time: .7 });
@@ -63,6 +67,24 @@ test("hinge follows the real mirrored, calibrated raster transform and bob; shor
   assert.notDeepEqual(fixed.from, bobbed.from);
   assert.ok(Math.hypot(fixed.to.x - fixed.from.x, fixed.to.y - fixed.from.y) < 40);
   assert.equal(fixed.width, 14, "narrower than the 17.5 world-pixel gap between the existing posts");
+});
+
+test("the foreground tongue rests visibly on opaque deck beyond the original threshold", async () => {
+  const geometry = tradeShipGangwayGeometry(frame), { deck } = geometry;
+  const length = Math.hypot(deck.to.x - geometry.from.x, deck.to.y - geometry.from.y);
+  assert.ok(length > 9 && length < 14, "enough supported wood must remain visible inside the ship");
+  assert.ok(deck.to.y > geometry.from.y + 9, "tongue extends onto the near deck, away from shore");
+  const { data, info } = await sharp(root + "/public" + sprite.src.split("?")[0]).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (const x of [rig.deckSource.x - 50, rig.deckSource.x, rig.deckSource.x + 50]) {
+    const alpha = data[(rig.deckSource.y * info.width + x) * 4 + 3];
+    assert.ok(alpha >= 250, "full tongue width is supported by the unmodified opaque deck");
+  }
+  const background = canvas(), foreground = canvas();
+  drawTradeShipGangway(background.ctx, frame); drawTradeShipGangwayDeck(foreground.ctx, frame);
+  const foregroundPath = foreground.calls.filter(call => call.key === "moveTo" || call.key === "lineTo");
+  assert.ok(foregroundPath.some(call => call.args[1] >= deck.to.y), "after-PNG pass actually draws the deck end");
+  assert.ok(background.calls.some(call => call.key === "fill"));
+  assert.ok(foreground.calls.some(call => call.key === "fill"));
 });
 
 test("shore landing spans dry authored land while the ship hinge is at the water edge", async () => {
@@ -97,16 +119,35 @@ test("extension reaches the same shore without stretching placement or width", (
   }
 });
 
-test("hidden/invalid gangways paint nothing and painter restores Canvas even if drawing fails", () => {
-  for (const overrides of [{ gangway: 0 }, { gangway: -1 }, { gangway: NaN }, { x: NaN }, { y: Infinity }, { width: 0 }]) {
-    const target = canvas(); drawTradeShipGangway(target.ctx, { ...frame, ...overrides }); assert.deepEqual(target.calls, []);
+test("deck support grows continuously and fades away with the same retracting bridge", () => {
+  let previous = 0;
+  const full = tradeShipGangwayGeometry(frame);
+  const maximum = Math.hypot(full.deck.to.x - full.from.x, full.deck.to.y - full.from.y);
+  for (const gangway of [.0001, .01, .05, .2, .5, 1]) {
+    const geometry = tradeShipGangwayGeometry({ ...frame, gangway });
+    const length = Math.hypot(geometry.deck.tip.x - geometry.from.x, geometry.deck.tip.y - geometry.from.y);
+    assert.ok(length >= previous - 1e-8 && length <= maximum + 1e-8); previous = length;
+    if (gangway < .01) assert.ok(length < .01, "no full deck plate appears at the first animation frame");
+    const target = canvas(); drawTradeShipGangwayDeck(target.ctx, { ...frame, gangway });
+    const painted = target.calls.filter(call => call.key === "fill");
+    assert.ok(painted.length > 0);
+    if (gangway < .01) assert.ok(painted.every(call => call.state.globalAlpha < .01));
+    assert.deepEqual(target.current(), target.original);
   }
-  for (const options of [{}, { night: 1, time: 4, still: false }, { night: NaN, heading: Infinity, time: Infinity }]) {
-    const target = canvas(); drawTradeShipGangway(target.ctx, { ...frame, ...options });
-    assert.ok(target.calls.some(call => call.key === "fillRect"));
-    assert.equal(target.depth(), 0); assert.deepEqual(target.current(), target.original);
+});
+
+test("both bridge passes paint nothing when stowed and restore Canvas even if drawing fails", () => {
+  for (const painter of [drawTradeShipGangway, drawTradeShipGangwayDeck]) {
+    for (const overrides of [{ gangway: 0 }, { gangway: -1 }, { gangway: NaN }, { gangway: Infinity }, { x: NaN }, { y: Infinity }, { width: 0 }]) {
+      const target = canvas(); painter(target.ctx, { ...frame, ...overrides }); assert.deepEqual(target.calls, []);
+    }
+    for (const options of [{}, { night: 1, time: 4, still: false }, { night: NaN, heading: Infinity, time: Infinity }]) {
+      const target = canvas(); painter(target.ctx, { ...frame, ...options });
+      assert.ok(target.calls.some(call => call.key === "fill"));
+      assert.equal(target.depth(), 0); assert.deepEqual(target.current(), target.original);
+    }
+    const failed = canvas("fill");
+    assert.throws(() => painter(failed.ctx, frame), /canvas failure/);
+    assert.equal(failed.depth(), 0); assert.deepEqual(failed.current(), failed.original);
   }
-  const failed = canvas("fillRect");
-  assert.throws(() => drawTradeShipGangway(failed.ctx, frame), /canvas failure/);
-  assert.equal(failed.depth(), 0); assert.deepEqual(failed.current(), failed.original);
 });

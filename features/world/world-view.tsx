@@ -96,6 +96,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const sectionsReady = Boolean(open && economy.snapshot && onboarding.loaded && observation?.memory.sync?.mode !== "other-device");
   const mainCourseActive = onboarding.loaded && !onboarding.isPaused && (!onboarding.progress || onboarding.progress.status === "started");
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [devOverlayOpen, setDevOverlayOpen] = useState(false);
   const [shopPage, setShopPage] = useState<CurrencyShopPage>("starters");
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const marketOpen = panel === "economy" && (economyTab === "market" || economyTab === "barter");
@@ -222,6 +223,11 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const economicProduction = useMemo(() => economySceneProduction(economy.snapshot), [economy.snapshot]);
   const economicResidents = useMemo(() => economySceneResidents(economy.snapshot, Boolean(economy.snapshotConfirmed), ownerPublicId), [economy.snapshot, economy.snapshotConfirmed, ownerPublicId]);
   const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot, economy.snapshotConfirmed, ownerPublicId), [economy.snapshot, economy.snapshotConfirmed, ownerPublicId]);
+  const shipArrivalEnabled = Boolean(open && !suspended && onboarding.loaded && !mainCourseActive && !devOverlayOpen
+    && !panel && !quickMenu && !selection && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen
+    && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled && !minerArrival.open && !minerArrival.enabled
+    && !merchantArrival.open && !merchantArrival.enabled && !economy.busy && !economy.uncertain && !world.busy && !world.uncertain
+    && observation?.memory.sync?.mode !== "other-device");
   const renderedState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const topHud = useRef<HTMLElement>(null), bottomHud = useRef<HTMLDivElement>(null);
   const hasWorld = Boolean(world.snapshot);
@@ -568,7 +574,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? economyTab === "market" ? Store : Package : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} audioSuppressed={marketOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene tradeShipArrivalEnabled={shipArrivalEnabled} tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} audioSuppressed={marketOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest} guidePlace={guidePlace}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
@@ -576,6 +582,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       marketSales={marketSales} onOpenMarket={() => { clearObject(); setQuickMenu(null); openEconomy("market"); }}
       bestStreakDays={bestStreakDays} wakeSignal={wakeSignal + localNotice} topHud={topHud} bottomHud={bottomHud} />
     {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && !selection && quickUpgrade === null && !residentOpen && !charactersOpen && !dailyOpen}
+      onOpenChange={setDevOverlayOpen}
       onBotsChanged={onDevBotsChanged} onVisitBot={onDevVisitBot} merchantArrived={merchantArrival.seen}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
       onOpenObject={openObject} onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}

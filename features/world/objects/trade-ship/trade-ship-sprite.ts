@@ -17,6 +17,29 @@ export type TradeShipSpriteFrame = {
 
 const finite = (value: number | undefined, fallback = 0) => Number.isFinite(value) ? value! : fallback;
 
+/** Shared raster transform for effects authored against the native PNG. */
+export function tradeShipSpritePose(frame: TradeShipSpriteFrame) {
+  if (![frame.x, frame.y, frame.width].every(Number.isFinite) || frame.width <= 0) return null;
+  const sprite = TRADE_SHIP_SPRITE;
+  const time = Math.max(0, finite(frame.time)) % 1e6;
+  return { scale: frame.width / sprite.width, time,
+    night: Math.max(0, Math.min(1, finite(frame.night))),
+    heading: sprite.baseHeading + Math.max(-sprite.maxHeading, Math.min(sprite.maxHeading, finite(frame.heading))),
+    facing: frame.facing === "right" ? 1 : -1, bob: frame.still ? 0 : Math.sin(time * 1.45) * .8 };
+}
+
+/** Caller saves/restores Canvas. Water uses bob=false; artwork and its lamps use the same bob. */
+export function applyTradeShipSpriteTransform(ctx: CanvasRenderingContext2D, frame: TradeShipSpriteFrame, bob = true) {
+  const pose = tradeShipSpritePose(frame); if (!pose) return null;
+  const sprite = TRADE_SHIP_SPRITE;
+  ctx.translate(frame.x, frame.y); ctx.scale(pose.scale, pose.scale);
+  ctx.translate(sprite.pivot.x, sprite.pivot.y); ctx.rotate(pose.heading);
+  ctx.translate(-sprite.pivot.x, -sprite.pivot.y);
+  if (pose.facing < 0) { ctx.translate(sprite.width, 0); ctx.scale(-1, 1); }
+  if (bob) ctx.translate(0, pose.bob);
+  return pose;
+}
+
 function paintSteam(ctx: CanvasRenderingContext2D, time: number) {
   const sprite = TRADE_SHIP_SPRITE, ratio = sprite.image.width / sprite.sourceWidth;
   const x = sprite.image.x + 588 * ratio, y = sprite.image.y + 139 * ratio;
@@ -32,25 +55,19 @@ function paintSteam(ctx: CanvasRenderingContext2D, time: number) {
 
 /** One raster ship, shared by the real scene and workshop. Loading and simulation belong to the caller. */
 export function drawTradeShipSprite(ctx: CanvasRenderingContext2D, image: CanvasImageSource, frame: TradeShipSpriteFrame) {
-  if (![frame.x, frame.y, frame.width].every(Number.isFinite) || frame.width <= 0) return;
-  const sprite = TRADE_SHIP_SPRITE, scale = frame.width / sprite.width;
-  const night = Math.max(0, Math.min(1, finite(frame.night)));
-  const time = Math.max(0, finite(frame.time));
-  const heading = sprite.baseHeading + Math.max(-sprite.maxHeading, Math.min(sprite.maxHeading, finite(frame.heading)));
-  const facing = frame.facing === "right" ? 1 : -1;
+  const pose = tradeShipSpritePose(frame); if (!pose) return;
+  const sprite = TRADE_SHIP_SPRITE, { scale, night, time, heading, facing } = pose;
   ctx.save();
   try {
-    ctx.translate(frame.x, frame.y); ctx.scale(scale, scale);
-    ctx.translate(sprite.pivot.x, sprite.pivot.y); ctx.rotate(heading);
-    ctx.translate(-sprite.pivot.x, -sprite.pivot.y);
-    if (facing < 0) { ctx.translate(sprite.width, 0); ctx.scale(-1, 1); }
+    applyTradeShipSpriteTransform(ctx, frame, false);
     if (frame.water) {
       const vx = finite(frame.velocityX), vy = finite(frame.velocityY);
-      drawTradeShipWater(ctx, { time, night,
-        velocityX: (vx * Math.cos(heading) + vy * Math.sin(heading)) * facing,
-        velocityY: -vx * Math.sin(heading) + vy * Math.cos(heading) });
+      // World velocity must use the same inverse scale/rotation/mirror as the painted hull.
+      drawTradeShipWater(ctx, { time, night, still: frame.still,
+        velocityX: (vx * Math.cos(heading) + vy * Math.sin(heading)) * facing / scale,
+        velocityY: (-vx * Math.sin(heading) + vy * Math.cos(heading)) / scale });
     }
-    if (!frame.still) ctx.translate(0, Math.sin(time * 1.45) * .8);
+    ctx.translate(0, pose.bob);
     // The forest scene passes night=0: its own common lighting already shades the ship.
     ctx.filter = night ? `brightness(${1 - night * .52}) saturate(${1 - night * .12})` : "none";
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";

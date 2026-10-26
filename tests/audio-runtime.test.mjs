@@ -11,6 +11,8 @@ const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/au
 const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
 const { AUDIO_CATALOG } = await vite.ssrLoadModule("/features/audio/catalog/catalog.ts");
 const { createMarketAudioController } = await vite.ssrLoadModule("/features/audio/ui/market-audio.ts");
+const { createTradeShipAudioController, TRADE_SHIP_ARRIVAL_AUDIO: shipContact } = await vite.ssrLoadModule("/features/world/audio/trade-ship-audio.ts");
+const { sampleTradeShipMotion } = await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
 const { AUDIO_VISIBILITY_RELEASE_SECONDS: RELEASE_SECONDS, AUDIO_VISIBILITY_CLEANUP_MS: CLEANUP_MS } = await vite.ssrLoadModule("/features/audio/runtime/audio-release-clock.ts");
 
 class Param {
@@ -80,6 +82,31 @@ function fixture(cueList = [cue("tap"), cue("river", "loop")], options = {}) {
   });
   return { runtime, context, requests, media, advance: amount => { time += amount; }, get contextCount() { return contextCount; } };
 }
+
+test("ship horn cannot emerge after a slow decode, muted contact or owner/view handoff", async () => {
+  for (const scenario of ["expired", "muted", "owner", "circle"]) {
+    const decoding = deferred();
+    const f = fixture([cue("ship.arrival", "one-shot", { gainDb: -13, maxInstances: 1, pitchVariation: 0 })]);
+    f.context.decode = () => decoding.promise;
+    const ship = createTradeShipAudioController(f.runtime);
+    const current = frame([], { listener: { position: { x: 1000, y: 1300 }, viewportWidth: 500, zoom: 1, detail: 1 } });
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(current);
+      const update = elapsed => ship.update({ voyageId: "first-ship", motion: sampleTradeShipMotion("arriving", elapsed),
+        frame: current, active: true, visible: true, now: 100_000 });
+      update(shipContact.contactAt - .01); await flush();
+      if (scenario === "muted") f.runtime.setSettings({ buses: { world: 0 } });
+      update(shipContact.contactAt + .01);
+      if (scenario === "expired") f.advance(351);
+      if (scenario === "owner") f.runtime.updateFrame({ ...current, ownerId: "other-account-map" });
+      if (scenario === "circle") f.runtime.updateFrame({ ...current, soundscape: false });
+      decoding.resolve({ length: 124800, numberOfChannels: 1, duration: 2.6 }); await flush(); await flush();
+      assert.equal(f.context.started.length, 0, scenario);
+      f.runtime.setSettings({ buses: { world: 1 } }); f.runtime.updateFrame(current);
+      update(shipContact.contactAt + .03); await flush(); assert.equal(f.context.started.length, 0, "no replay after return/unmute");
+    } finally { ship.dispose(); f.runtime.dispose(); }
+  }
+});
 
 test("entering and leaving a trading counter ducks the existing music without a second deck or rewind", async () => {
   const f = fixture([cue("music.day", "music")], { now: () => Date.now() });

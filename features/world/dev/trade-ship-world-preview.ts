@@ -4,7 +4,7 @@ export type WorldTradeShipCommand = "arrive" | "depart" | "dock";
 
 /** Shared only by DEV scene mounts. Nothing enters the saved forest session. */
 export function createTradeShipWorldPreview() {
-  let shown = false, motion = createTradeShipMotion(), previousFrame: number | null = null;
+  let shown = false, motion = createTradeShipMotion(), previousFrame: number | null = null, voyage = 0;
   const listeners = new Set<() => void>();
   function replace(next: typeof motion) {
     const phaseChanged = next.phase !== motion.phase;
@@ -14,6 +14,7 @@ export function createTradeShipWorldPreview() {
   }
   return {
     getMotion: () => motion,
+    getVoyageId: () => `dev-ship:${voyage}`,
     getPhase: () => motion.phase,
     getServerPhase: () => "docked" as const,
     subscribePhase(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -25,7 +26,7 @@ export function createTradeShipWorldPreview() {
       if (!shown) return;
       if (command === "dock") replace(createTradeShipMotion());
       else if (command === "depart") replace(departTradeShip(motion));
-      else if (command === "arrive" && (motion.phase === "docked" || motion.phase === "departed")) replace(createTradeShipMotion("arriving"));
+      else if (command === "arrive" && (motion.phase === "docked" || motion.phase === "departed")) { voyage++; replace(createTradeShipMotion("arriving")); }
     },
     /** Only the active owning scene calls this, after its image has loaded. */
     advance(seconds: number, frame: number, imageReady: boolean) {

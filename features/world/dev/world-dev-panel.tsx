@@ -38,6 +38,7 @@ import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESID
 import styles from "./world-dev-panel.module.css";
 
 export type WorldDevPanelProps = {
+  onOpenChange?: (open: boolean) => void;
   world: WorldController;
   economy?: EconomyController;
   active?: boolean;
@@ -197,12 +198,16 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, merchantArrived, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject, onVisitBot, onBotsChanged, onOpenChange }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
   const tradeShipPhase = useSyncExternalStore(worldDevStore.subscribeTradeShipPhase, worldDevStore.getTradeShipPhase, worldDevStore.getServerTradeShipPhase);
   const lighting = useSyncExternalStore(worldLightingEditorStore.subscribe, worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
   const [open, setOpen] = useState(initiallyOpen && !initialLightingStudio);
+  useEffect(() => {
+    onOpenChange?.(Boolean(active && (open || lighting.enabled)));
+    return () => onOpenChange?.(false);
+  }, [active, open, lighting.enabled, onOpenChange]);
   const merchant = useLeaftailArrival(economy?.snapshot?.ownerPublicId ?? world.snapshot?.ownerPublicId ?? "guest", {
     unlocked: (economy?.snapshot?.buildings.home ?? 0) >= 3, enabled: false,
     onboarding: { loaded: false, isPaused: false, progress: null },
