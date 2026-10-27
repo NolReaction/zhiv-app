@@ -21,13 +21,16 @@ function canvas(failOn) {
   let state = { transform: [1, 0, 0, 1, 0, 0], filter: "blur(2px)", globalAlpha: .43, fillStyle: "original", lineWidth: 7,
     strokeStyle: "original", lineJoin: "bevel", lineCap: "square" };
   const copy = () => ({ ...state, transform: [...state.transform] }), original = copy(), stack = [], calls = [];
+  let path = [];
   const ctx = new Proxy({}, {
     get(_, key) {
       if (key in state) return state[key];
       return (...args) => {
-        calls.push({ key, args, state: copy() });
+        calls.push({ key, args, state: copy(), path: [...path] });
         for (const arg of args) if (typeof arg === "number") assert.ok(Number.isFinite(arg));
         if (key === failOn) throw new Error("canvas failure");
+        if (key === "beginPath") path = [];
+        else if (["moveTo", "lineTo", "quadraticCurveTo", "arc", "closePath"].includes(key)) path.push({ key, args });
         if (key === "save") stack.push(copy());
         else if (key === "restore") state = stack.pop();
         else if (key === "createLinearGradient" || key === "createRadialGradient") return { addColorStop() {} };
@@ -99,6 +102,28 @@ test("the supported deck end continues both ramp edges without an angled extra b
     near(cross(g.from, g.to, g.deck.to), 0);
     assert.ok(Math.hypot(g.deck.tipRight.x-g.deck.tipLeft.x, g.deck.tipRight.y-g.deck.tipLeft.y) < g.width * 1.05,
       "no wide end cap protrudes from the continuous plank plane");
+  }
+});
+
+test("the PNG opening reveals one full surface with identical grain, never a separately framed deck plate", () => {
+  for (const overrides of [{}, { gangway: .25 }, { gangway: .5 }, { still: false, time: 4.2, night: 1 }]) {
+    const background = canvas(), foreground = canvas(), pose = { ...frame, ...overrides };
+    drawTradeShipGangway(background.ctx, pose); drawTradeShipGangwayDeck(foreground.ctx, pose);
+    const paint = target => target.calls.filter(call => ["fill", "stroke"].includes(call.key)).map(call => ({
+      key: call.key, path: call.path,
+      fill: typeof call.state.fillStyle === "string" ? call.state.fillStyle : "wood gradient",
+      stroke: call.state.strokeStyle, width: call.state.lineWidth,
+    }));
+    assert.deepEqual(paint(foreground), paint(background), "the fore pass must not add a border, cap, straps or restart plank rows");
+    assert.deepEqual(foreground.calls.filter(call => call.key === "createLinearGradient").map(call => call.args),
+      background.calls.filter(call => call.key === "createLinearGradient").map(call => call.args), "the wood shading has one fixed anchor");
+    assert.deepEqual(background.calls.find(call => call.key === "clip").args, ["evenodd"],
+      "the fore lane is excluded from the background even where the PNG doorway is transparent");
+    const g = tradeShipGangwayGeometry(pose);
+    const mask = foreground.calls.find(call => call.key === "clip").path;
+    assert.deepEqual(mask.filter(part => part.key === "moveTo" || part.key === "lineTo").map(part => part.args),
+      [g.surface.deckLeft, g.opening.left, g.opening.right, g.surface.deckRight].map(point => [point.x, point.y]));
+    assert.ok(g.opening.left.y < g.from.y - 5 * g.scale, "fore mask crosses the existing threshold instead of leaving a seam on its face");
   }
 });
 

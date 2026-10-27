@@ -1,0 +1,12 @@
+.content { display: grid; gap: 10px; min-width: 0; }
+.content:focus-visible { outline: 2px solid #62658d; outline-offset: 2px; }
+.catalog { min-width: 0; }
+.catalog > h3, .legacy > h3 { margin: 0 0 7px; color: #69744f; font-size: 11px; font-weight: 600; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+.content .slot.slot:has([data-confirm-cancel]), .content .slot.slot:has([data-mining-discard]), .content .slot.slot:has([data-production-blocking]) { height: auto; }
+.work.work { width: 100%; min-width: 0; }
+.work > div[role="group"] { width: 100%; box-sizing: border-box; text-align: left; }
+.notice { margin: 7px 0 0; color: #776044; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.work .discard { min-height: 28px; padding: 4px; border: 0; background: transparent; color: #76654b; font: inherit; font-size: 9px; cursor: pointer; }
+.work .discard:focus-visible { outline: 2px solid #62658d; outline-offset: 2px; border-radius: 4px; }
+.legacy { display: grid; gap: 6px; min-width: 0; }

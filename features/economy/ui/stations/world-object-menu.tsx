@@ -20,7 +20,7 @@ import { Requirements, Work, ProductIcon, stationIcons, stationName, number, typ
 import { WorldUpgradeDialog } from "@/features/economy/ui/construction/world-upgrade-dialog";
 import { WorldStationSetup } from "@/features/economy/ui/construction/world-station-setup";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
-import { WorldExpeditionsMenu } from "@/features/economy/ui/expeditions/world-expeditions-menu";
+import { WorldMiningProduction } from "@/features/economy/ui/expeditions/world-mining-production";
 import { WorldLeaftailMarket } from "@/features/economy/ui/market/world-leaftail-market";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
 import { productionStationSupported } from "@/features/economy/domain/production-slots";
@@ -169,7 +169,7 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialH
   const guidedWorkshopSetup = tutorialWorkshop && stationId === "workshop" && !current && state
     && canStartTutorialWorkshop(state);
   const needsSetup = stationId !== "dryer" && (productionStationSupported(stationId) || stationId === "quarry") && (!current || Boolean(construction));
-  const fitOverview = position.side === "sheet" && (needsSetup || ["garden", "dryer", "woodlot", "workshop", "kiln"].includes(stationId));
+  const fitOverview = position.side === "sheet" && (needsSetup || ["garden", "dryer", "woodlot", "workshop", "kiln", "quarry"].includes(stationId));
   const readyJobs = state ? jobs.filter(job => job.kind === "production" && worldJobProgress(state, job, economy.now).ready) : [];
   const runningJobs = state ? jobs.filter(job => job.kind === "production" && !worldJobProgress(state, job, economy.now).ready) : [];
   const Icon = placeIcons[selection.place] ?? Package;
@@ -269,7 +269,7 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialH
           {[...readyJobs, ...runningJobs].map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} compact />)}
         </section>}
         {readyEconomy && <WorldProductionSlots key={`${state.ownerPublicId}:${stationId}`} economy={readyEconomy} stationId={stationId} openPantry={openJobPantry} compact />}
-        {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} isOnline={isOnline} embeddedCaves initialRouteId={initialRecipeId} onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
+        {stationId === "quarry" && <WorldMiningProduction economy={economy} isOnline={isOnline} onHelpContextChange={onHelpContextChange} initialRouteId={initialRecipeId} onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
         {landmark ? <section className={styles.recipeGroup} aria-label="Возможности постройки">
           <p className={styles.small}>{building?.description}</p>
           {!current && !construction && <p className={styles.empty}>{stationId === "bridge" ? "Восстановите мост, чтобы открыть рынок игроков." : "Восстановите маяк, чтобы зажечь свет у причала."}</p>}

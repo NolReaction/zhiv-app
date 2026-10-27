@@ -471,7 +471,7 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.match(answer("mining"), /Обед Мохлика не ускоряет шахту/);
   assert.match(answer("mining"), /Выберите нужный ресурс.*один запуск даёт один предмет/);
   assert.doesNotMatch(answer("mining"), /Дольше 1 ч|Смешанные смены/);
-  assert.match(answer("mining"), /Текущая добыча всегда видна над списком ресурсов/);
+  assert.match(answer("mining"), /получение и отмена.*Месте 1.*над карточками ресурсов/);
   assert.match(answer("mining"), /У начатой работы видны добыча и оставшееся время/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
 });

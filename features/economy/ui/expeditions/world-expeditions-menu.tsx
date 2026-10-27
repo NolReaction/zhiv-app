@@ -24,6 +24,8 @@ import { WorldTacklePicker, fishingTackleChoice } from "@/features/economy/ui/fi
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob, isQuarryProduction } from "@/features/economy/domain/actor-availability";
 import { ExpeditionActivityArt } from "./expedition-activity-art";
 import { miningDurationFilters, miningDurationLabel, miningDurationMatches, miningResourceGroups, type MiningDurationFilter } from "./mining-resource-groups";
+import workStyles from "@/features/economy/ui/production/production-work.module.css";
+import miningStyles from "./world-mining-production.module.css";
 import styles from "./world-expeditions-menu.module.css";
 
 export type WorldExpeditionsMenuProps = {
@@ -72,6 +74,8 @@ const sectorRoutes = (state: EconomyView, sectorId: SectorId) => state.catalog.e
   && !(route.id === "quarry_shift" && (state.buildings.quarry ?? 0) >= 4)
   && !(route.id === "quarry_deep_face" && (state.buildings.quarry ?? 0) >= 5));
 
+export const miningProductionRoutes = (state: EconomyView) => sectorRoutes(state, "caves");
+
 function Findings({ state, rewards, compact = false, mixedFish = false }: { state: EconomyView; rewards: Record<string, number>; compact?: boolean; mixedFish?: boolean }) {
   return <span className={styles.findings} data-compact={compact || undefined} role="list" aria-label="Находки">{Object.entries(rewards).map(([id, quantity]) => {
     const name = mixedFish && id === "fish" ? "Рыбный улов" : itemName(state, id);
@@ -102,14 +106,15 @@ export function expeditionCancellationKey(owner: string, job: EconomyJob) {
     entries(job.rewards), job.cost.coins, entries(job.cost.items), job.catalogVersion, job.collection ?? null, job.fishing ?? null, job.meal ?? null, job.actorId ?? null]);
 }
 
-export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp, isOnline, confirmationKey, onConfirmation, onCancellationSent }: Pick<WorldExpeditionsMenuProps, "economy" | "onOpenPantry" | "onOpenHelp" | "isOnline"> & {
-  state: EconomyView; job: EconomyJob; confirmationKey: string | null; onConfirmation: (key: string | null) => void;
+export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp, isOnline, confirmationKey, onConfirmation, onCancellationSent, compact = false }: Pick<WorldExpeditionsMenuProps, "economy" | "onOpenPantry" | "onOpenHelp" | "isOnline"> & {
+  state: EconomyView; job: EconomyJob; compact?: boolean; confirmationKey: string | null; onConfirmation: (key: string | null) => void;
   onCancellationSent: (jobId: string) => void;
 }) {
   const id = useId(), recall = useRef<HTMLButtonElement>(null), keep = useRef<HTMLButtonElement>(null), card = useRef<HTMLElement>(null);
-  const wasConfirming = useRef(false), sentForKey = useRef<string | null>(null);
+  const wasConfirming = useRef(false), sentForKey = useRef<string | null>(null), compactClaimSent = useRef<string | null>(null);
   const key = expeditionCancellationKey(state.ownerPublicId, job);
   const confirming = confirmationKey === key;
+  useEffect(() => { compactClaimSent.current = null; }, [key, state.revision, economy.error]);
   const route = state.catalog.explorations.find(entry => entry.id === job.targetId);
   const mining = isMinerJob(job);
   const title = routeName(route?.name ?? (mining ? "Добыча в шахте" : "Вылазка Мохлика"));
@@ -142,12 +147,51 @@ export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp
   const extraRewards = fishing ? Object.fromEntries(Object.entries(job.rewards).filter(([id]) => !fishClassForItem(id, state.catalog.fishing))) : job.rewards;
   function cancel() {
     if (!confirming || blocked || sentForKey.current === key) return;
+    const live = economy.snapshot, saved = live?.jobs.find(entry => entry.id === job.id && entry.kind === "exploration");
+    if (!live || live.ownerPublicId !== state.ownerPublicId || !saved || expeditionCancellationKey(live.ownerPublicId, saved) !== key || locked(economy)) return;
     sentForKey.current = key;
     onCancellationSent(job.id);
     onConfirmation(null);
     void economy.act("cancel_exploration", job.id);
   }
+  const cancellation = confirming && <div className={styles.cancelConfirmation} id={`${id}-cancel`} role="group" aria-labelledby={`${id}-cancel-title`} aria-describedby={`${id}-cancel-cost`}>
+      <strong id={`${id}-cancel-title`}>{status.ready ? "Отказаться от этой добычи?" : mining ? "Прервать добычу?" : "Прервать вылазку?"}</strong>
+      <p id={`${id}-cancel-cost`}>Все награды этой {mining ? "работы" : "вылазки"} будут потеряны.{mining ? paid ? " Потраченные монеты и припасы вернутся." : " Новую добычу можно будет начать сразу." : paid ? " Потраченные монеты и припасы не возвращаются." : " Мохлик вернётся без добычи."}</p>
+      <div className={styles.cancelActions}>
+        <button ref={keep} type="button" className={styles.keepExpedition} onClick={() => onConfirmation(null)}>{status.ready ? "Оставить находки" : mining ? "Продолжить добычу" : "Продолжить вылазку"}</button>
+        <button type="button" className={styles.cancelExpedition} disabled={blocked} onClick={cancel}>{mining ? "Остановить без результата" : "Вернуться без добычи"}</button>
+      </div>
+    </div>;
   const ActivityIcon = mining ? Mountain : Compass;
+  if (compact && mining) {
+    const outputTitle = Object.entries(job.rewards).map(([itemId, amount]) => `${itemName(state, itemId)}${amount === 1 ? "" : ` ×${number(amount)}`}`).join(" + ") || title;
+    return <div ref={element => { card.current = element; }} tabIndex={-1} className={`${workStyles.work} ${workStyles.compact} ${miningStyles.work}`} data-job-id={job.id} data-ready={status.ready || undefined} data-confirm-cancel={confirming || undefined}
+      onKeyDown={event => { if (event.key === "Escape" && confirming) { event.preventDefault(); event.stopPropagation(); onConfirmation(null); } }}>
+      <button ref={recall} type="button" className={workStyles.main} data-production-control="true" disabled={status.ready ? claimBlocked : blocked}
+        aria-label={`${status.ready ? "Забрать добычу" : confirming ? "Подтвердить отмену добычи" : "Отменить добычу"}: ${outputTitle}`} aria-expanded={confirming}
+        aria-controls={confirming ? `${id}-cancel` : undefined} onClick={() => {
+          const live = economy.snapshot, saved = live?.jobs.find(entry => entry.id === job.id && entry.kind === "exploration");
+          if (!live || live.ownerPublicId !== state.ownerPublicId || !saved || expeditionCancellationKey(live.ownerPublicId, saved) !== key || locked(economy)) return;
+          const liveStatus = worldJobProgress(live, saved, economy.now);
+          if (liveStatus.ready !== status.ready || liveStatus.ready && liveStatus.storageShortfall > 0) return;
+          if (status.ready) {
+            if (claimBlocked || compactClaimSent.current === key) return;
+            compactClaimSent.current = key;
+            if (economy.act("claim_job", job.id) === false) compactClaimSent.current = null;
+          }
+          else if (confirming) cancel();
+          else onConfirmation(key);
+        }}>
+        <span className={workStyles.products}>{Object.keys(job.rewards).map(itemId => <ProductIcon key={itemId} state={state} itemId={itemId} size={24} />)}</span>
+        <strong>{outputTitle}</strong><span className={workStyles.time} data-job-countdown={!status.ready || undefined}>{status.ready ? "Готово к получению" : worldCountdown(status.seconds)}</span>
+        <span className={`${workStyles.actionLine} ${status.ready ? workStyles.action : confirming ? workStyles.confirmLabel : workStyles.cancelHint}`} data-production-action="true">{status.ready ? <><Check size={13} aria-hidden="true" />Забрать</> : confirming ? "Отменить?" : "Отменить"}</span>
+        <progress className={workStyles.progress} value={status.progress} max={1} aria-label={`Готовность добычи: ${title}`} />
+      </button>
+      {status.ready && status.storageShortfall > 0 && <p className={workStyles.hint} data-production-blocking>Нужно освободить {number(status.storageShortfall)} мест. Находки сохранятся.<button type="button" className={workStyles.pantry} onClick={onOpenPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button></p>}
+      {status.ready && <button type="button" className={miningStyles.discard} data-mining-discard disabled={blocked} onClick={() => { if (!blocked) onConfirmation(confirming ? null : key); }} aria-expanded={confirming} aria-controls={confirming ? `${id}-cancel` : undefined}>Отказаться от находок</button>}
+      {cancellation}
+    </div>;
+  }
   return <section ref={card} tabIndex={-1} className={styles.active} aria-label={`${mining ? "Текущая добыча" : "Текущая вылазка"}: ${title}`} aria-busy={economy.busy || undefined} data-mining={mining || undefined} data-ready={status.ready || undefined}>
     <div className={styles.activeTitle}><ActivityIcon size={18} aria-hidden="true" /><div><span>{mining ? status.ready ? "Добыча готова" : "Шахта работает" : status.ready ? "Мохлик вернулся" : "Мохлик в пути"}</span><strong>{title}</strong></div></div>
     {fishing && <FishingCatchReport state={state} rewards={job.rewards} revealed={catchRevealed} />}
@@ -160,14 +204,7 @@ export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp
     <button ref={recall} type="button" className={`${styles.link} ${styles.recall}`} disabled={blocked}
       aria-expanded={confirming} aria-controls={confirming ? `${id}-cancel` : undefined}
       onClick={() => { if (!blocked) onConfirmation(confirming ? null : key); }}>{status.ready ? "Отказаться от находок" : mining ? "Остановить добычу" : "Вернуть Мохлика"}</button>
-    {confirming && <div className={styles.cancelConfirmation} id={`${id}-cancel`} role="group" aria-labelledby={`${id}-cancel-title`} aria-describedby={`${id}-cancel-cost`}>
-      <strong id={`${id}-cancel-title`}>{status.ready ? "Отказаться от этой добычи?" : mining ? "Прервать добычу?" : "Прервать вылазку?"}</strong>
-      <p id={`${id}-cancel-cost`}>Все награды этой {mining ? "работы" : "вылазки"} будут потеряны.{mining ? paid ? " Потраченные монеты и припасы вернутся." : " Новую добычу можно будет начать сразу." : paid ? " Потраченные монеты и припасы не возвращаются." : " Мохлик вернётся без добычи."}</p>
-      <div className={styles.cancelActions}>
-        <button ref={keep} type="button" className={styles.keepExpedition} onClick={() => onConfirmation(null)}>{status.ready ? "Оставить находки" : mining ? "Продолжить добычу" : "Продолжить вылазку"}</button>
-        <button type="button" className={styles.cancelExpedition} disabled={blocked} onClick={cancel}>{mining ? "Остановить без результата" : "Вернуться без добычи"}</button>
-      </div>
-    </div>}
+    {cancellation}
   </section>;
 }
 
