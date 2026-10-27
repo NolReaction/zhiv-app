@@ -10,7 +10,7 @@
   "policyVersion": "v15-unified-3",
   "policySha256": "6c98765bb4f99538d0c1c121273eb87cc51ffcec95107cd12ebdecf69b3418c7",
   "generatedAt": "2026-10-26T22:54:52.270Z",
-  "releaseValidated": false,
+  "releaseValidated": true,
   "sourceSha256": {
     "apps/api/src/main/resources/world/achievements-catalog.json": "c51db64533a346bdc475a19f08bd4180f8c7d53a42bbf6ae004ccb43e3f6a714",
     "apps/api/src/main/resources/world/catalog.json": "6757394263853e27c9ee254cb29c0bb9da8a1701a71b93c67f8658dfa39b4b57",
@@ -119,5 +119,13 @@
   },
   "economySha256": "45e4a76254594804c7c935ed60d101a2fed07a6fd221d8111026fd4fcd1d2941",
   "rewardsSha256": "b455d68f811ec17e59054836411eaf13414a89ad4710814f43afa4b4fb6397a8",
-  "runReleaseValidated": false
+  "runReleaseValidated": false,
+  "releaseCi": {
+    "runId": 40434014103,
+    "attempt": 1,
+    "headSha": "7bff93fda30210411a101b9befa35c580a0dcff2",
+    "conclusion": "success",
+    "completedAt": "2026-10-27T02:09:45Z",
+    "url": "https://github.com/NolReaction/zhiv-app/actions/runs/40434014103"
+  }
 }

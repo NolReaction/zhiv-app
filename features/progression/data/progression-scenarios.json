@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "ready",
-  "releaseValidated": false,
+  "releaseValidated": true,
   "generatedAt": "2026-10-26T22:54:52.270Z",
   "economyVersion": 15,
   "policyVersion": "v15-unified-3",
