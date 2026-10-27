@@ -63,6 +63,22 @@ test("pause is deterministic, reduced motion freezes light animation and bad val
   drawing({ time: Number.MAX_VALUE, heading: Number.MAX_VALUE });
 });
 
+test("steady berth lights pulse only during arrival and departure, never while docked or operating the gangway", () => {
+  const brightness = options => drawing(options)
+    .filter(call => ["stroke", "fillRect", "fill"].includes(call.key))
+    .map(call => call.state.globalAlpha);
+  for (const phase of [undefined, "deploying", "docked", "retracting", "departed"]) {
+    const first = brightness({ phase, time: 2 });
+    assert.deepEqual(first, brightness({ phase, time: 8 }), `${phase ?? "detail"}: steady brightness`);
+    assert.ok(first.some(alpha => alpha > 0), "constant illumination remains visible");
+  }
+  for (const phase of ["arriving", "departing"]) {
+    assert.notDeepEqual(brightness({ phase, time: 2 }), brightness({ phase, time: 8 }), `${phase}: sailing signal`);
+    assert.deepEqual(brightness({ phase, time: 2, still: true }), brightness({ phase, time: 8, still: true }),
+      `${phase}: reduced motion and paused presentation do not blink`);
+  }
+});
+
 test("Canvas transform, composition and alpha restore even if deck lighting fails", () => {
   for (const failOn of ["stroke", "clip", "fillRect", "fill"]) {
     const canvas = recordingShipCanvas(failOn);

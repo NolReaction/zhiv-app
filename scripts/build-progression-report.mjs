@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { progressionCatalogFingerprint, progressionSourceDigests } from "./lib/progression-report-integrity.mjs";
+import { applyProgressionRerunReceipt, createProgressionRerunReceipt, progressionEvidencePath, progressionRerunReceiptPath } from "./lib/progression-rerun-receipt.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 export const progressionReportPath = "features/progression/data/progression-scenarios.json";
@@ -92,8 +93,25 @@ export function compactProgressionReport(source, economy, rewards) {
     policy: source.policy, scenarios };
 }
 
-export async function buildProgressionReport({ sourcePath = "docs/game/economy-v15-final-scenarios.json", check = false, repositoryRoot = root } = {}) {
-  const source = JSON.parse(await readFile(resolve(repositoryRoot, sourcePath), "utf8"));
+export async function readResolvedProgressionEvidence({ sourcePath = progressionEvidencePath, repositoryRoot = root } = {}) {
+  const bytes = await readFile(resolve(repositoryRoot, sourcePath));
+  if (sourcePath === progressionEvidencePath) {
+    let receipt;
+    try { receipt = JSON.parse(await readFile(resolve(repositoryRoot, progressionRerunReceiptPath), "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    if (receipt !== undefined) return applyProgressionRerunReceipt(bytes, receipt);
+  }
+  return JSON.parse(bytes.toString());
+}
+
+export async function buildProgressionReport({ sourcePath = progressionEvidencePath, check = false, repositoryRoot = root, adoptIdenticalRun } = {}) {
+  assert(!(check && adoptIdenticalRun), "Cannot adopt a rerun during a read-only check");
+  assert(!adoptIdenticalRun || sourcePath === progressionEvidencePath, "Only the canonical baseline may adopt an identical rerun");
+  let receipt;
+  if (adoptIdenticalRun) receipt = createProgressionRerunReceipt(await readFile(resolve(repositoryRoot, sourcePath)),
+    await readFile(resolve(repositoryRoot, adoptIdenticalRun)));
+  const source = receipt ? applyProgressionRerunReceipt(await readFile(resolve(repositoryRoot, sourcePath)), receipt)
+    : await readResolvedProgressionEvidence({ sourcePath, repositoryRoot });
   const economyBytes = await readFile(resolve(repositoryRoot, "apps/api/src/main/resources/world/economy-catalog.json"));
   const rewardsBytes = await readFile(resolve(repositoryRoot, "apps/api/src/main/resources/world/progression-rewards-catalog.json"));
   for (const [name, bytes] of [["economySha256", economyBytes], ["rewardsSha256", rewardsBytes]])
@@ -102,11 +120,16 @@ export async function buildProgressionReport({ sourcePath = "docs/game/economy-v
   const report = compactProgressionReport(source, JSON.parse(economyBytes), JSON.parse(rewardsBytes));
   const content = `${JSON.stringify(report, null, 2)}\n`, path = resolve(repositoryRoot, progressionReportPath);
   if (check) assert.equal(await readFile(path, "utf8"), content, "Public scenario report is stale: run node scripts/build-progression-report.mjs");
-  else await writeFile(path, content);
+  else {
+    // Do not persist a receipt until current-source, catalog and full projection checks pass.
+    if (receipt) await writeFile(resolve(repositoryRoot, progressionRerunReceiptPath), `${JSON.stringify(receipt, null, 2)}\n`);
+    await writeFile(path, content);
+  }
   return report;
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  const report = await buildProgressionReport({ check: process.argv.includes("--check"), sourcePath: process.env.SIM_REPORT_SOURCE });
+  const adoptIdenticalRun = process.argv.find(value => value.startsWith("--adopt-identical-run="))?.slice("--adopt-identical-run=".length);
+  const report = await buildProgressionReport({ check: process.argv.includes("--check"), sourcePath: process.env.SIM_REPORT_SOURCE, adoptIdenticalRun });
   process.stdout.write(`Progression report: ${report.scenarios.length} scenarios, ${report.policyVersion}\n`);
 }

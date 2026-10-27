@@ -67,6 +67,7 @@ test("development arguments preserve the hostname, port and additional options",
   const args = ["--hostname", "0.0.0.0", "--port", "4321", "--disable-source-maps"];
   assert.deepEqual(nextDevArguments(args), ["dev", "--webpack", ...args]);
   assert.deepEqual(args, ["--hostname", "0.0.0.0", "--port", "4321", "--disable-source-maps"]);
+  assert.deepEqual(nextDevArguments(["--no-warmup", ...args]), ["dev", "--webpack", ...args], "launcher-only switches do not reach Next");
 });
 
 test("the launcher forwards arguments and environment and preserves the child exit code", async t => {

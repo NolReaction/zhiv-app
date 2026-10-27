@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeAppBuildStatus } from "./app-build.mjs";
 import { prepareEarthAssets } from "./prepare-earth-assets.mjs";
+import { nextDevReadyListener, warmNextDev } from "./lib/next-dev-warmup.mjs";
 
 const DEVELOPMENT_PACKAGES = ["next", "react", "react-dom"];
 const RESTART_INSTRUCTIONS = "Stop the running development server, run npm ci, then start it again with npm run dev:local or npm run dev:lan.";
@@ -37,7 +38,7 @@ export function checkNextDevDependencies(projectRoot = process.cwd()) {
 
 /** Use webpack in development; production build commands retain their bundler. */
 export function nextDevArguments(args = []) {
-  return ["dev", "--webpack", ...args];
+  return ["dev", "--webpack", ...args.filter(arg => arg !== "--no-warmup")];
 }
 
 async function main() {
@@ -48,11 +49,21 @@ async function main() {
   const localAdminPassword = process.env.DEV_ADMIN_PASSWORD?.trim() || randomBytes(18).toString("base64url");
   if (localAdminPassword.length < 16) throw new Error("DEV_ADMIN_PASSWORD must contain at least 16 characters.");
   console.info(`\nLocal administration: /admin\nLocal access code (this development process only): ${localAdminPassword}\n`);
-  const child = spawn(process.execPath, [nextBin, ...nextDevArguments(process.argv.slice(2))], {
-    cwd: projectRoot, env: { ...process.env, DEV_ADMIN_PASSWORD: localAdminPassword, NODE_ENV: "development", APP_BUILD_ID: "development", NEXT_PUBLIC_APP_BUILD_ID: "development" }, stdio: "inherit",
+  const args = process.argv.slice(2);
+  const warmup = !args.includes("--no-warmup");
+  const warmupController = new AbortController();
+  const child = spawn(process.execPath, [nextBin, ...nextDevArguments(args)], {
+    cwd: projectRoot, env: { ...process.env, DEV_ADMIN_PASSWORD: localAdminPassword, NODE_ENV: "development", APP_BUILD_ID: "development", NEXT_PUBLIC_APP_BUILD_ID: "development" }, stdio: ["inherit", "pipe", "pipe"],
   });
-  const forwardInterrupt = () => child.kill("SIGINT");
-  const forwardTermination = () => child.kill("SIGTERM");
+  const observeOutput = warmup ? nextDevReadyListener(args, origin => {
+    warmNextDev({ origin, signal: warmupController.signal }).catch(error => {
+      if (!warmupController.signal.aborted) console.warn(`[DEV] Не удалось завершить прогрев: ${error.message}`);
+    });
+  }) : () => {};
+  child.stdout.on("data", chunk => { process.stdout.write(chunk); observeOutput(chunk); });
+  child.stderr.on("data", chunk => process.stderr.write(chunk));
+  const forwardInterrupt = () => { warmupController.abort(); child.kill("SIGINT"); };
+  const forwardTermination = () => { warmupController.abort(); child.kill("SIGTERM"); };
   const removeSignalHandlers = () => {
     process.off("SIGINT", forwardInterrupt);
     process.off("SIGTERM", forwardTermination);
@@ -60,11 +71,13 @@ async function main() {
   process.on("SIGINT", forwardInterrupt);
   process.on("SIGTERM", forwardTermination);
   child.once("error", error => {
+    warmupController.abort();
     removeSignalHandlers();
     console.error(error.message);
     process.exitCode = 1;
   });
   child.once("exit", (code, signal) => {
+    warmupController.abort();
     removeSignalHandlers();
     if (signal) process.kill(process.pid, signal);
     else process.exitCode = code ?? 1;

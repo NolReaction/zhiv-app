@@ -146,7 +146,7 @@ export function TradeShipPreview() {
         if (mode !== "detail") drawTradeShipGangway(context, { ...frame, gangway: mode === "voyage" ? sailing.gangway : 1 });
         drawTradeShipSprite(context, shipImage, frame);
         if (mode !== "detail") drawTradeShipGangwayDeck(context, { ...frame, gangway: mode === "voyage" ? sailing.gangway : 1 });
-        drawTradeShipLighting(context, frame);
+        drawTradeShipLighting(context, { ...frame, phase: mode === "voyage" ? sailing.phase : "docked" });
       }
       context.restore();
     };

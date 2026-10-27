@@ -1,4 +1,5 @@
 import { applyTradeShipSpriteTransform, TRADE_SHIP_SPRITE, tradeShipSpritePose, type TradeShipSpriteFrame } from "./trade-ship-sprite";
+import type { TradeShipVoyagePhase } from "./trade-ship-motion";
 
 /** Native PNG glass. Individual panes keep the original wooden/gold mullions visible. */
 export const TRADE_SHIP_LIGHT_RIG = {
@@ -22,7 +23,7 @@ export const TRADE_SHIP_LIGHT_RIG = {
   reflections: [{ x: 620, y: 775 }, { x: 1320, y: 825 }],
 } as const;
 
-export type TradeShipLightingFrame = TradeShipSpriteFrame & { enabled?: boolean };
+export type TradeShipLightingFrame = TradeShipSpriteFrame & { enabled?: boolean; phase?: TradeShipVoyagePhase };
 const TAU = Math.PI * 2;
 function polygon(ctx: CanvasRenderingContext2D, points: readonly (readonly [number, number])[]) {
   ctx.beginPath(); ctx.moveTo(...points[0]);
@@ -36,7 +37,9 @@ export function drawTradeShipLighting(ctx: CanvasRenderingContext2D, frame: Trad
   if (!pose || !pose.night || frame.enabled === false) return;
   const { time, night } = pose, rig = TRADE_SHIP_LIGHT_RIG;
   const strength = night * night * (3 - 2 * night);
-  const pulse = frame.still ? 1 : 1 + .018 * Math.sin(time * 3.1 + .7) + .009 * Math.sin(time * 5.7 + 2.4);
+  // Navigation signals accompany sailing only. Berth windows and deck lamps stay steadily lit.
+  const signalling = !frame.still && (frame.phase === "arriving" || frame.phase === "departing");
+  const pulse = signalling ? 1 + .018 * Math.sin(time * 3.1 + .7) + .009 * Math.sin(time * 5.7 + 2.4) : 1;
   const sprite = TRADE_SHIP_SPRITE, ratio = sprite.image.width / sprite.sourceWidth;
   ctx.save();
   try {

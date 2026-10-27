@@ -29,6 +29,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   allowedDevOrigins,
   devIndicators: false,
+  // Retain the startup-warmed first-play routes while a local session is tested.
+  onDemandEntries: { maxInactiveAge: 10 * 60 * 1000, pagesBufferLength: 8 },
   env: { NEXT_PUBLIC_APP_BUILD_ID: process.env.NEXT_PUBLIC_APP_BUILD_ID ?? "development" },
 
   async headers() {

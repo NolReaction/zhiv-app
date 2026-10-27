@@ -4,7 +4,7 @@ type Point = { x: number; y: number };
 
 /** Authored against the unchanged PNG and the current southern berth (width 310). */
 export const TRADE_SHIP_GANGWAY_RIG = {
-  source: { x: 1008, y: 353 }, deckSource: { x: 1008, y: 432 },
+  source: { x: 1008, y: 353 }, deckSource: { x: 1008, y: 409 },
   referenceWidth: 310, shoreOffset: { x: 145, y: 36 }, width: 14,
 } as const;
 
@@ -31,21 +31,28 @@ export function tradeShipGangwayGeometry(frame: TradeShipGangwayFrame) {
     return { x: frame.x + (sprite.pivot.x + x * c - y * s) * scale,
       y: frame.y + (sprite.pivot.y + x * s + y * c) * scale };
   }
-  const from = rasterPoint(rig.source), deckEnd = rasterPoint(rig.deckSource);
+  const from = rasterPoint(rig.source), deckAnchor = rasterPoint(rig.deckSource);
   const to = { x: frame.x + rig.shoreOffset.x * berthScale, y: frame.y + rig.shoreOffset.y * berthScale };
-  const progress = Math.min(1, frame.gangway), across = { x: c, y: s }, down = { x: -s, y: c };
+  const progress = Math.min(1, frame.gangway), across = { x: c, y: s };
   const width = rig.width * berthScale, tip = mix(from, to, progress);
+  const span = Math.hypot(from.x - to.x, from.y - to.y);
+  if (span < .001 * berthScale) return null;
+  const down = { x: (from.x - to.x) / span, y: (from.y - to.y) / span };
   const shoreAcross = { x: 1, y: 0 }, shoreWidth = width * .82;
   const farLeft = offset(to, shoreAcross, -shoreWidth / 2), farRight = offset(to, shoreAcross, shoreWidth / 2);
   const nearLeft = offset(from, across, -width / 2), nearRight = offset(from, across, width / 2);
   const deckProgress = Math.min(1, progress * 2);
-  const deckStart = offset(from, down, -.8 * berthScale), deckTip = mix(from, deckEnd, deckProgress);
-  const deckWidth = width * (1 + .05 * deckProgress);
+  // Continue the same ramp edges across the threshold. A separately rotated
+  // rectangle made the supported end look like a loose, crooked second board.
+  const deckLength = Math.hypot(deckAnchor.x - from.x, deckAnchor.y - from.y);
+  const deckEnd = offset(from, down, deckLength), deckTip = mix(from, deckEnd, deckProgress);
+  const overlap = .6 * berthScale / span, extension = -deckLength * deckProgress / span;
+  const deckStart = mix(from, to, overlap);
   return { from, to, tip, width, scale: berthScale, progress, across, down,
     nearLeft, nearRight, tipLeft: mix(nearLeft, farLeft, progress), tipRight: mix(nearRight, farRight, progress),
     deck: { from: deckStart, to: deckEnd, tip: deckTip, progress: deckProgress,
-      nearLeft: offset(deckStart, across, -width / 2), nearRight: offset(deckStart, across, width / 2),
-      tipLeft: offset(deckTip, across, -deckWidth / 2), tipRight: offset(deckTip, across, deckWidth / 2) } };
+      nearLeft: mix(nearLeft, farLeft, overlap), nearRight: mix(nearRight, farRight, overlap),
+      tipLeft: mix(nearLeft, farLeft, extension), tipRight: mix(nearRight, farRight, extension) } };
 }
 
 type Geometry = NonNullable<ReturnType<typeof tradeShipGangwayGeometry>>;
@@ -60,7 +67,8 @@ function timber(ctx: CanvasRenderingContext2D, left: Point, right: Point, endLef
   const center = mix(left, right, .5), end = mix(endLeft, endRight, .5);
   const length = Math.hypot(end.x - center.x, end.y - center.y);
   if (length < .00001) return;
-  const shadow = { x: 1.1 * scale, y: 1.6 * scale }, drop = { x: 0, y: 1.1 * scale };
+  const shadow = { x: (supported ? .35 : 1.1) * scale, y: (supported ? .55 : 1.6) * scale };
+  const drop = { x: 0, y: (supported ? .55 : 1.1) * scale };
   const points = [left, endLeft, endRight, right];
   polygon(ctx, points.map(point => ({ x: point.x + shadow.x, y: point.y + shadow.y })), "rgba(32,34,20,.25)");
   polygon(ctx, [right, endRight, { x: endRight.x + drop.x, y: endRight.y + drop.y },

@@ -56,9 +56,8 @@ test("hinge follows the real mirrored, calibrated raster transform and bob; shor
     const y = sprite.image.y + rig.source.y * sprite.image.height / sprite.sourceHeight;
     const geometry = tradeShipGangwayGeometry(pose);
     near(geometry.from.x, a*x+c*y+e); near(geometry.from.y, b*x+d*y+f);
-    const deckX = sprite.image.x + rig.deckSource.x * sprite.image.width / sprite.sourceWidth;
-    const deckY = sprite.image.y + rig.deckSource.y * sprite.image.height / sprite.sourceHeight;
-    near(geometry.deck.to.x, a*deckX+c*deckY+e); near(geometry.deck.to.y, b*deckX+d*deckY+f);
+    const deckLength = (rig.deckSource.y - rig.source.y) * sprite.image.height / sprite.sourceHeight * pose.width / sprite.width;
+    near(Math.hypot(geometry.deck.to.x - geometry.from.x, geometry.deck.to.y - geometry.from.y), deckLength);
     near(geometry.tip.x, geometry.to.x); near(geometry.tip.y, geometry.to.y);
   }
   const fixed = tradeShipGangwayGeometry(frame), bobbed = tradeShipGangwayGeometry({ ...frame, still: false, time: .7 });
@@ -72,8 +71,8 @@ test("hinge follows the real mirrored, calibrated raster transform and bob; shor
 test("the foreground tongue rests visibly on opaque deck beyond the original threshold", async () => {
   const geometry = tradeShipGangwayGeometry(frame), { deck } = geometry;
   const length = Math.hypot(deck.to.x - geometry.from.x, deck.to.y - geometry.from.y);
-  assert.ok(length > 9 && length < 14, "enough supported wood must remain visible inside the ship");
-  assert.ok(deck.to.y > geometry.from.y + 9, "tongue extends onto the near deck, away from shore");
+  assert.ok(length > 7 && length < 10, "short support reaches the deck without a long loose-looking flap");
+  assert.ok(deck.to.y > geometry.from.y + 7, "tongue extends onto the near deck, away from shore");
   const { data, info } = await sharp(root + "/public" + sprite.src.split("?")[0]).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   for (const x of [rig.deckSource.x - 50, rig.deckSource.x, rig.deckSource.x + 50]) {
     const alpha = data[(rig.deckSource.y * info.width + x) * 4 + 3];
@@ -85,6 +84,22 @@ test("the foreground tongue rests visibly on opaque deck beyond the original thr
   assert.ok(foregroundPath.some(call => call.args[1] >= deck.to.y), "after-PNG pass actually draws the deck end");
   assert.ok(background.calls.some(call => call.key === "fill"));
   assert.ok(foreground.calls.some(call => call.key === "fill"));
+});
+
+test("the supported deck end continues both ramp edges without an angled extra board", () => {
+  const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  for (const time of [0, .7, 4.2]) {
+    const g = tradeShipGangwayGeometry({ ...frame, still: false, time });
+    for (const [hinge, shore, start, end] of [
+      [g.nearLeft, g.tipLeft, g.deck.nearLeft, g.deck.tipLeft],
+      [g.nearRight, g.tipRight, g.deck.nearRight, g.deck.tipRight],
+    ]) {
+      near(cross(hinge, shore, start), 0); near(cross(hinge, shore, end), 0);
+    }
+    near(cross(g.from, g.to, g.deck.to), 0);
+    assert.ok(Math.hypot(g.deck.tipRight.x-g.deck.tipLeft.x, g.deck.tipRight.y-g.deck.tipLeft.y) < g.width * 1.05,
+      "no wide end cap protrudes from the continuous plank plane");
+  }
 });
 
 test("shore landing spans dry authored land while the ship hinge is at the water edge", async () => {
