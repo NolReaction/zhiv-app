@@ -90,7 +90,10 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["как выставить больше лотов", "market-slots"],
     ["что значит открыть товар", "item-unlocks"],
     ["как сварить рыбный суп", "fish-soup"],
-    ["корабль", "future-world"],
+    ["корабль", "trade-ship"],
+    ["корабль не появился", "trade-ship"],
+    ["гудок", "trade-ship-effects"],
+    ["отменить добычу", "mining-control"],
   ]) {
     const results = searchWorldHelp(topics, query);
     assert.equal(results[0]?.id, expected, `${query}: ${results.map(entry => entry.id).join(", ")}`);
@@ -534,6 +537,11 @@ test("landmark help explains claimed-lighthouse first arrival while keeping sea 
   assert.match(landmarks, /Морские заказы.*ещё готовятся/);
   assert.doesNotMatch(landmarks, /не запускает рейс парохода|будущий причал/);
   assert.match(answer("relics"), /после восстановления моста.*«Обмен»/);
+  assert.ok(topic("future-world").relatedIds.includes("trade-ship"));
+  assert.ok(topic("trade-ship").relatedIds.includes("trade-ship-effects"));
+  assert.deepEqual(topic("trade-ship-effects").action.target, { kind: "profile", tab: "settings" });
+  assert.ok(topic("mining").relatedIds.includes("mining-control"));
+  assert.deepEqual(topic("mining-control").action.target, { kind: "station", stationId: "quarry" });
 });
 
 test("berry ladder describes each source tier, preparation time and hero or builder effect from the live catalog", () => {

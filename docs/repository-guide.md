@@ -125,6 +125,8 @@
 
 ## Интерфейс и правила игры
 
+Предложения следующего этапа: [личное пространство, аквариум и модульное оформление дома](game/personal-space-proposal.md), затем [корабль, исследования и поздняя экономика](game/ship-economy-proposal.md). Это проекты для обсуждения: интерфейс аквариума, владение украшениями и соответствующие команды ещё не реализованы. Текущие системы и их исходники перечислены ниже; доступные игроку действия описывает справка.
+
 | Задача | Главные файлы | Инструкция |
 |---|---|---|
 | Видимое изготовление и котелок на очаге | [`economy-production-state.ts`](../features/world/state/economy/economy-production-state.ts), [`forest-cooking-pot.ts`](../features/world/activities/cooking/forest-cooking-pot.ts), [`production-activity.tsx`](../features/economy/ui/production/production-activity.tsx) | [Подтверждённые задания и границы анимации](game/cooking.md) |
