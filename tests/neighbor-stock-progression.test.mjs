@@ -52,7 +52,6 @@ test("the neighbor can offer learned fish soup while raw fish species and classe
 test("starter, developed and maximum player settlements receive progressively richer eligible goods", () => {
   const early = base(); Object.assign(early.buildings, { home: 2, bridge: 1 });
   const middle = base(); Object.assign(middle.buildings, { home: 3, bridge: 1, warehouse: 3, workshop: 2, quarry: 2, garden: 2, kiln: 1, dryer: 1, woodlot: 2 });
-  middle.progression.recipes = { cook_compote: 1, cook_strawberry_compote: 1 };
   const late = base(); late.buildings = { ...maxBuildings };
   late.progression.recipes = Object.fromEntries(economyCatalog.recipes.map(recipe => [recipe.id, 10]));
   const untouched = [early, middle, late].map(state => JSON.stringify(state));
@@ -63,18 +62,13 @@ test("starter, developed and maximum player settlements receive progressively ri
   assert.deepEqual([early, middle, late].map(state => JSON.stringify(state)), untouched, "Reading eligible stock cannot grant knowledge");
 });
 
-test("a high house alone does not reveal locked production or unlearned recipe chains", () => {
+test("house alone cannot open missing stations while developed bushes need no cooking history", () => {
   const bare = base(); bare.buildings.home = 5;
   assert.ok(!opened(bare).includes("tools"));
   const developed = base(); developed.buildings = { ...maxBuildings };
-  assert.ok(!opened(developed).includes("strawberries"));
-  assert.ok(!opened(developed).includes("strawberry_compote"));
-  developed.progression.recipes.cook_compote = 1;
-  assert.ok(opened(developed).includes("strawberries"));
-  assert.ok(opened(developed).includes("strawberry_compote"));
-  assert.ok(!opened(developed).includes("blueberries"));
-  developed.progression.recipes.cook_strawberry_compote = 1;
-  assert.ok(opened(developed).includes("blueberries"));
+  for (const id of ["strawberries", "strawberry_compote", "blueberries", "currants", "blackberries", "cranberries"])
+    assert.ok(opened(developed).includes(id), id);
+  assert.deepEqual(developed.progression.recipes, {}, "reading stock never grants cooking history");
 });
 
 test("gifted late stock does not open an item but prior confirmed discovery survives an empty warehouse", () => {
@@ -91,6 +85,8 @@ test("newly unlocked goods wait for the next daily delivery without rerolling ex
   const first = view(player).shop.offers;
   assert.deepEqual(first.map(offer => offer.itemId), ["wood"]);
   player.row.state.buildings = { ...maxBuildings };
+  assert.ok(!opened(player.row.state).includes("tools"), "the workshop still needs its metalworking practice");
+  player.row.state.progression.recipes.make_metal_parts = 2;
   const second = view(player, stamp + 1000).shop.offers;
   assert.deepEqual(second, first);
   assert.deepEqual(view(player, tomorrow).shop.offers.map(offer => offer.itemId).sort(), ["tools", "wood"]);

@@ -164,7 +164,10 @@ class EconomyFourthStageTest {
             assertEquals(paid, restored.jobs.single())
             val finished = apply(restored, "claim_job", paid.id)
             assertEquals(5, finished.buildings["home"])
-            assertEquals(original.wallet, finished.wallet)
+            assertEquals(original.wallet.copy(pearls = original.wallet.pearls + 4), finished.wallet,
+                "Claiming home five grants 500 XP and the level-five pearl reward")
+            assertEquals(500L, finished.progression.player!!.xp)
+            assertEquals(listOf(5), finished.progression.player.awardedLevels)
             assertEquals(original.inventory, finished.inventory)
             assertNull(EconomyStageOrders.offer(finished))
         }

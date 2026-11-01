@@ -25,7 +25,7 @@
     ]
   },
   {
-    "label": "campfire-without-the-first-compote",
+    "label": "campfire-opens-strawberry-meals-without-cooking-history",
     "buildings": {
       "home": 1,
       "garden": 1,
@@ -42,25 +42,22 @@
       "plesk_compote_break",
       "plesk_picnic_lunch",
       "plesk_evening_basket",
-      "builder_drink_and_firewood"
+      "builder_drink_and_firewood",
+      "plesk_strawberry_lunch",
+      "starter_fresh_berries"
     ],
     "missing": [
-      "plesk_strawberry_lunch",
-      "starter_fresh_berries",
       "plesk_blueberry_lunch"
     ]
   },
   {
-    "label": "first-compote-opens-the-strawberry-menu",
+    "label": "starter-workshop-and-campfire-open-the-strawberry-menu",
     "buildings": {
       "home": 1,
       "garden": 1,
       "warehouse": 1,
       "dryer": 1,
       "workshop": 1
-    },
-    "recipes": {
-      "cook_compote": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -87,9 +84,6 @@
       "warehouse": 1,
       "dryer": 1
     },
-    "recipes": {
-      "cook_compote": 1
-    },
     "ownedRods": [
       "reed_rod"
     ],
@@ -107,15 +101,12 @@
     ]
   },
   {
-    "label": "upgraded-bush-without-the-first-strawberry-compote",
+    "label": "upgraded-bush-opens-blueberries-without-cooking-history",
     "buildings": {
       "home": 2,
       "garden": 2,
       "warehouse": 1,
       "dryer": 1
-    },
-    "recipes": {
-      "cook_compote": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -125,25 +116,22 @@
     ],
     "present": [
       "plesk_picnic_lunch",
-      "plesk_strawberry_lunch"
-    ],
-    "missing": [
+      "plesk_strawberry_lunch",
       "plesk_blueberry_lunch",
       "plesk_berry_assortment",
       "builder_blueberry_snack"
+    ],
+    "missing": [
+      "plesk_blackberry_feast",
+      "plesk_winter_table"
     ]
   },
   {
-    "label": "upgraded-bush-and-first-strawberry-compote-open-blueberry-combinations",
+    "label": "upgraded-bush-without-campfire-opens-only-raw-blueberry-orders",
     "buildings": {
       "home": 2,
       "garden": 2,
-      "warehouse": 1,
-      "dryer": 1
-    },
-    "recipes": {
-      "cook_compote": 1,
-      "cook_strawberry_compote": 1
+      "warehouse": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -152,14 +140,13 @@
       "bare_hook"
     ],
     "present": [
-      "plesk_blueberry_lunch",
-      "plesk_berry_assortment",
-      "builder_blueberry_snack"
+      "plesk_berry_break",
+      "plesk_berry_assortment"
     ],
     "missing": [
-      "plesk_soup_and_compote",
-      "plesk_berry_sauce_lunch",
-      "plesk_blackberry_feast"
+      "plesk_blueberry_lunch",
+      "builder_blueberry_snack",
+      "plesk_soup_and_compote"
     ]
   },
   {
@@ -169,11 +156,6 @@
       "garden": 3,
       "warehouse": 1,
       "dryer": 2
-    },
-    "recipes": {
-      "cook_compote": 1,
-      "cook_strawberry_compote": 1,
-      "cook_blueberry_compote": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -201,11 +183,6 @@
       "dryer": 2,
       "kiln": 1
     },
-    "recipes": {
-      "cook_compote": 1,
-      "cook_strawberry_compote": 1,
-      "cook_blueberry_compote": 1
-    },
     "ownedRods": [
       "reed_rod"
     ],
@@ -231,10 +208,7 @@
       "workshop": 1
     },
     "recipes": {
-      "cook_compote": 1,
-      "cook_grilled_fish": 1,
-      "cook_strawberry_compote": 1,
-      "cook_blueberry_compote": 1
+      "cook_grilled_fish": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -264,11 +238,7 @@
       "woodlot": 3
     },
     "recipes": {
-      "cook_compote": 1,
-      "cook_grilled_fish": 1,
-      "cook_strawberry_compote": 1,
-      "cook_blueberry_compote": 1,
-      "cook_currant_jelly": 1
+      "cook_grilled_fish": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -300,11 +270,7 @@
       "quarry": 2
     },
     "recipes": {
-      "cook_compote": 1,
-      "cook_grilled_fish": 1,
-      "cook_strawberry_compote": 1,
-      "cook_blueberry_compote": 1,
-      "cook_currant_jelly": 1
+      "cook_grilled_fish": 1
     },
     "ownedRods": [
       "reed_rod",
@@ -337,12 +303,8 @@
       "workshop": 4
     },
     "recipes": {
-      "cook_compote": 1,
       "cook_grilled_fish": 1,
-      "cook_strawberry_compote": 1,
-      "cook_blueberry_compote": 1,
-      "cook_currant_jelly": 1,
-      "cook_blackberry_preserve": 1
+      "fire_bricks": 2
     },
     "ownedRods": [
       "reed_rod"
@@ -375,12 +337,8 @@
       "workshop": 4
     },
     "recipes": {
-      "cook_compote": 1,
       "cook_grilled_fish": 1,
-      "cook_strawberry_compote": 1,
-      "cook_blueberry_compote": 1,
-      "cook_currant_jelly": 1,
-      "cook_blackberry_preserve": 1
+      "fire_bricks": 2
     },
     "ownedRods": [
       "reed_rod",

@@ -4232,7 +4232,12 @@
       ],
       "completedRecipes": {
         "cook_compote": 1,
-        "cook_grilled_fish": 1
+        "cook_grilled_fish": 1,
+        "grow_berries": 100,
+        "gather_wood": 100,
+        "make_planks": 100,
+        "grow_strawberries": 100,
+        "cook_strawberry_compote": 100
       },
       "ordinary": [
         {
@@ -4834,7 +4839,15 @@
         "grow_currants": 100,
         "cook_strawberry_compote": 100,
         "cook_blueberry_compote": 100,
-        "cook_currant_jelly": 100
+        "cook_currant_jelly": 100,
+        "make_ceramic_jar": 100,
+        "make_glass_bottle": 100,
+        "pack_berries": 100,
+        "make_trade_crate": 100,
+        "bottle_compote": 100,
+        "cook_grilled_silverfin": 100,
+        "cook_smoked_bream": 100,
+        "cook_mooncarp_blueberries": 100
       },
       "ordinary": [
         {
@@ -6009,7 +6022,23 @@
         "cook_blueberry_compote": 100,
         "cook_currant_jelly": 100,
         "cook_blackberry_preserve": 100,
-        "cook_cranberry_glaze": 100
+        "cook_cranberry_glaze": 100,
+        "make_ceramic_jar": 100,
+        "mix_mortar": 100,
+        "make_glass_bottle": 100,
+        "grind_lens": 100,
+        "pack_berries": 100,
+        "make_trade_crate": 100,
+        "assemble_field_kit": 100,
+        "fire_stone_tile": 100,
+        "bottle_compote": 100,
+        "pack_berry_gift": 100,
+        "cook_grilled_silverfin": 100,
+        "cook_smoked_bream": 100,
+        "cook_mooncarp_blueberries": 100,
+        "cook_pike_berry_sauce": 100,
+        "cook_eel_in_jar": 100,
+        "cook_festive_sturgeon": 100
       },
       "ordinary": [
         {

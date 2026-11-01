@@ -330,10 +330,18 @@ test("third-stage material bundles fit starter storage while daily delivery wait
 test("first-stage slots stay single-unit and recipe dependencies cannot silently cycle", () => {
   const oversized = readEconomyCatalog(); oversized.recipes.find(recipe => recipe.id === "make_planks").maxBatch = 2;
   assert.throws(() => auditEconomyProgression(oversized), /First-stage production must reserve one slot/);
-  const invalidUnlock = readEconomyCatalog(); invalidUnlock.recipes.find(recipe => recipe.id === "grow_strawberries").requiredRecipes = { missing_compote: 1 };
+  const invalidUnlock = readEconomyCatalog(); invalidUnlock.recipes.find(recipe => recipe.id === "make_tools").requiredRecipes = { missing_parts: 1 };
   assert.throws(() => auditEconomyProgression(invalidUnlock), /unknown or invalid recipe unlock/);
-  const cycle = readEconomyCatalog(); cycle.recipes.find(recipe => recipe.id === "cook_compote").requiredRecipes = { grow_strawberries: 1 };
+  const cycle = readEconomyCatalog(); cycle.recipes.find(recipe => recipe.id === "make_metal_parts").requiredRecipes = { make_tools: 1 };
   assert.throws(() => auditEconomyProgression(cycle), /Recipe unlock cycle/);
+});
+
+test("berry cultivation cannot regain a recipe lesson even through retired crop variants", () => {
+  for (const id of ["grow_strawberries", "grow_blueberries", "grow_currants", "grow_blackberries", "grow_cranberries", "garden_supply", "garden_abundance"]) {
+    const catalog = readEconomyCatalog();
+    catalog.recipes.find(recipe => recipe.id === id).requiredRecipes = { cook_compote: 1 };
+    assert.throws(() => auditEconomyProgression(catalog), /Garden crops.*cannot require recipe mastery/, id);
+  }
 });
 
 test("rare source audit rejects ordinary prices NPC stock deterministic recipes and early upgrade gates", () => {

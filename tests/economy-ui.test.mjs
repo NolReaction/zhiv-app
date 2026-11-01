@@ -152,22 +152,21 @@ test("the economy construction hub shares house-three stage-order gates with the
   assert.equal(state.storage.capacity, 50);
 });
 
-test("strawberry production explains its first-compote prerequisite and unlocks after a collected result", () => {
-  const state = snapshot();
-  let html = render("production", controller({ snapshot: state }), "garden");
-  assert.equal(productionBlocked(html, "strawberries"), true);
-  assert.match(html, /Приготовьте и заберите: Малиновый компот \(0 \/ 1\)/);
-  state.inventory.berry_compote = 1;
-  assert.equal(productionBlocked(render("production", controller({ snapshot: state }), "garden"), "strawberries"), true, "a gifted compote is not personally claimed production");
-  assert.doesNotMatch(html, /Приготовьте[^<]*Приготовить/);
-  state.progression = { recipes: { cook_compote: 1 }, routes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } };
-  html = render("production", controller({ snapshot: state }), "garden");
-  assert.equal(productionBlocked(html, "strawberries"), false);
-  assert.doesNotMatch(html, /Приготовьте и заберите:/);
+test("every berry opens at its house and bush level without a cooking lesson", () => {
+  for (const [level, itemId] of [[1, "strawberries"], [2, "blueberries"], [3, "currants"], [4, "blackberries"], [5, "cranberries"]]) {
+    const state = snapshot({ buildings: { home: level, garden: level, warehouse: 1 }, progression: { recipes: {} } });
+    const html = render("production", controller({ snapshot: state }), "garden");
+    assert.equal(productionBlocked(html, itemId), false, itemId);
+    assert.doesNotMatch(html, /Приготовьте и заберите:/);
+    if (level > 1) {
+      state.buildings.garden--;
+      assert.equal(productionBlocked(render("production", controller({ snapshot: state }), "garden"), itemId), true, `${itemId} still requires its bush tier`);
+    }
+  }
 });
 
 test("production hub uses one automatic product per crop and focuses source links without method selectors", () => {
-  const state = snapshot({ buildings: { home: 5, garden: 5, woodlot: 5, warehouse: 1 }, progression: { recipes: { cook_compote: 1, gather_hardwood: 10 } } });
+  const state = snapshot({ buildings: { home: 5, garden: 5, woodlot: 5, warehouse: 1 }, progression: { recipes: { gather_hardwood: 10 } } });
   const html = render("production", controller({ snapshot: state }), "garden");
   assert.equal((html.match(/data-production-product="berries"/g) ?? []).length, 1);
   assert.equal((html.match(/data-production-product="strawberries"/g) ?? []).length, 1);
@@ -182,9 +181,10 @@ test("production hub uses one automatic product per crop and focuses source link
 });
 
 test("new crafting lessons show the missing claimed product on the production card", () => {
-  for (const id of ["grow_blueberries", "grow_currants", "grow_blackberries", "grow_cranberries", "grind_lens", "assemble_field_kit"]) {
+  for (const id of ["make_trade_crate", "make_tools", "make_ceramic_jar", "make_glass_bottle", "grind_lens", "assemble_field_kit"]) {
     const recipe = economyCatalog.recipes.find(row => row.id === id);
     const prerequisite = economyCatalog.recipes.find(row => row.id === Object.keys(recipe.requiredRecipes)[0]);
+    const requiredCount = recipe.requiredRecipes[prerequisite.id];
     const itemId = Object.keys(recipe.rewards)[0];
     const prerequisiteName = economyCatalog.items.find(item => item.id === Object.keys(prerequisite.rewards)[0]).name;
     const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])),
@@ -192,7 +192,7 @@ test("new crafting lessons show the missing claimed product on the production ca
     const html = render("production", controller({ snapshot: state }), recipe.buildingId);
     assert.equal(productionBlocked(html, itemId), true, id);
     const action = prerequisite.buildingId === "dryer" ? "Приготовьте" : "Произведите";
-    assert.ok(html.includes(`${action} и заберите: ${prerequisiteName} (0 / 1)`), id);
+    assert.ok(html.includes(`${action} и заберите: ${prerequisiteName} (0 / ${requiredCount})`), id);
     state.progression.recipes = { ...recipe.requiredRecipes };
     assert.equal(productionBlocked(render("production", controller({ snapshot: state }), recipe.buildingId), itemId), false, id);
   }

@@ -28,8 +28,9 @@ function profile(gameLoaded = true, progressionLoaded = true) {
 test("account level and confirmed tap records are visible before opening game progress", () => {
   const html = profile();
   const overview = html.slice(0, html.indexOf("Игровой прогресс"));
-  assert.match(overview, /Все уровни. Сейчас уровень 13/);
-  assert.match(overview, /Уровень 13/);
+  // Career level 16 spans 6,750..7,679 XP with the current factor of 30.
+  assert.match(overview, /Все уровни. Сейчас уровень 16/);
+  assert.match(overview, /Уровень 16/);
   assert.match(overview, /7.200.*всего XP/);
   assert.match(overview, /12.345/);
   assert.match(overview, /×678/);
@@ -40,7 +41,7 @@ test("account level and confirmed tap records are visible before opening game pr
 
 test("account profile does not show stale tap totals while game progress is loading", () => {
   const html = profile(false);
-  assert.match(html, /Сейчас уровень 13/);
+  assert.match(html, /Сейчас уровень 16/);
   assert.doesNotMatch(html, /12.345|×678/);
 });
 
@@ -48,5 +49,5 @@ test("account level waits for economy XP independently of loaded tap totals", ()
   const html = profile(true, false);
   assert.match(html, /Уровень загружается…/);
   assert.match(html, /12.345/);
-  assert.doesNotMatch(html, /Сейчас уровень 12|Сейчас уровень 13/);
+  assert.doesNotMatch(html, /Сейчас уровень \d+/);
 });

@@ -38,7 +38,7 @@ test("first-stage production contracts give one ordinary item per slot and add v
     assert.deepEqual(entry.cost, { coins: 0, items: inputs }); assert.deepEqual(entry.rewards, output);
   }
   for (const id of ["grow_berries", "grow_strawberries"]) assert.equal(recipe(id).collection.seconds, 8);
-  assert.deepEqual(recipe("grow_strawberries").requiredRecipes, { cook_compote: 1 });
+  assert.deepEqual(recipe("grow_strawberries").requiredRecipes, {});
   const items = new Map(model.economyCatalog.items.map(entry => [entry.id, entry]));
   for (const id of ["make_planks", "cook_compote", "cook_grilled_fish"]) {
     const entry = recipe(id), value = counts => Object.entries(counts).reduce((sum, [item, count]) => sum + items.get(item).baseSellPrice * count, 0);
@@ -82,26 +82,23 @@ test("a fresh one-slot player earns the complete first house with real commands 
     productionStarts: report.starts, peakStorage: report.peakStorage, coins: state.wallet.coins }));
 });
 
-test("fresh-stage one-slot commands reject batches atomically and strawberry unlock requires a claimed compote", () => {
+test("fresh-stage one-slot commands reject batches atomically and strawberries need no cooking history", () => {
   const p = player();
   read(p); const state = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state;
   Object.assign(state.buildings, { woodlot: 1, workshop: 1, dryer: 1 }); state.inventory = { wood: 10, berries: 10, fish_common: 10 };
-  for (const id of ["grow_berries", "gather_wood", "make_planks", "cook_compote", "cook_grilled_fish"]) {
+  for (const id of ["grow_berries", "grow_strawberries", "gather_wood", "make_planks", "cook_compote", "cook_grilled_fish"]) {
     const before = structuredClone(read(p));
     assert.throws(() => send(p, "start_production", id, 0, { quantity: 2 }), { code: "INVALID_ECONOMY_COMMAND" });
     assert.deepEqual(read(p), before);
   }
-  assert.throws(() => send(p, "start_production", "grow_strawberries"), { code: "ECONOMY_RECIPE_REQUIRED" });
-  const cooking = send(p, "start_production", "cook_compote");
-  assert.throws(() => send(p, "start_production", "grow_strawberries", 180), { code: "ECONOMY_RECIPE_REQUIRED" });
-  const job = cooking.jobs[0]; send(p, "claim_job", job.id, 180);
-  const unlocked = send(p, "start_production", "grow_strawberries", 180);
+  assert.deepEqual(state.progression.recipes, {});
+  const unlocked = send(p, "start_production", "grow_strawberries");
   assert.deepEqual(unlocked.jobs.find(entry => entry.recipeId === "grow_strawberries").rewards, { strawberries: 1 });
 });
 
 test("from home three garden slots run two raspberries and a strawberry simultaneously until claimed", () => {
   const p = player(); read(p); const state = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state;
-  state.buildings.home = 3; state.wallet.pearls = 700; state.progression.recipes.cook_compote = 1;
+  state.buildings.home = 3; state.wallet.pearls = 700;
   send(p, "buy_production_slot", "garden", 0, { totalPrice: 200 }); send(p, "buy_production_slot", "garden", 0, { totalPrice: 500 });
   send(p, "start_production", "grow_berries"); send(p, "start_production", "grow_berries");
   const started = send(p, "start_production", "grow_strawberries");

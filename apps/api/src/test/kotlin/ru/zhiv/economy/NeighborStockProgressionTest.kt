@@ -31,8 +31,7 @@ class NeighborStockProgressionTest {
     @Test fun `the players development opens ordinary materials intermediate products and late crafted goods`() {
         val early = EconomyRules.initial().copy(buildings = EconomyRules.initial().buildings + mapOf("home" to 2, "bridge" to 1))
         val middle = early.copy(buildings = early.buildings + mapOf("home" to 3, "warehouse" to 3, "workshop" to 2,
-            "quarry" to 2, "garden" to 2, "kiln" to 1, "dryer" to 1, "woodlot" to 2),
-            progression = EconomyProgression(recipes = mapOf("cook_compote" to 1L, "cook_strawberry_compote" to 1L)))
+            "quarry" to 2, "garden" to 2, "kiln" to 1, "dryer" to 1, "woodlot" to 2))
         val late = early.copy(buildings = maximumBuildings,
             progression = EconomyProgression(recipes = EconomyRules.catalog.recipes.associate { it.id to 10L }))
         val untouched = listOf(early, middle, late).map { economyJson.encodeToString(it) }
@@ -43,16 +42,13 @@ class NeighborStockProgressionTest {
         assertEquals(untouched, listOf(early, middle, late).map { economyJson.encodeToString(it) })
     }
 
-    @Test fun `house level does not bypass production prerequisites or the learned compote chain`() {
+    @Test fun `house alone cannot open missing stations while developed bushes need no cooking history`() {
         val bare = EconomyRules.initial().copy(buildings = EconomyRules.initial().buildings + ("home" to 5))
         assertFalse("tools" in opened(bare))
         val developed = bare.copy(buildings = maximumBuildings)
-        assertFalse("strawberries" in opened(developed)); assertFalse("strawberry_compote" in opened(developed))
-        val learned = developed.copy(progression = developed.progression.copy(recipes = mapOf("cook_compote" to 1L)))
-        assertTrue("strawberries" in opened(learned)); assertTrue("strawberry_compote" in opened(learned))
-        assertFalse("blueberries" in opened(learned))
-        assertTrue("blueberries" in opened(learned.copy(progression = learned.progression.copy(
-            recipes = learned.progression.recipes + ("cook_strawberry_compote" to 1L)))))
+        for (id in listOf("strawberries", "strawberry_compote", "blueberries", "currants", "blackberries", "cranberries"))
+            assertTrue(id in opened(developed), id)
+        assertTrue(developed.progression.recipes.isEmpty(), "Reading stock never grants cooking history")
     }
 
     @Test fun `gifts do not discover future goods and prior discoveries survive spent inventory`() {

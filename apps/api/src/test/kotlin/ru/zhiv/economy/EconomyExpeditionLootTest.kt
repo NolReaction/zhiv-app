@@ -59,7 +59,7 @@ class EconomyExpeditionLootTest {
         assertEquals(restored, blocked.jobs.single())
         val claimed = apply(blocked.copy(inventory = emptyMap()), "claim_job", job.id, end)
         assertEquals(EconomyExpeditionLoot.delivery(job).rewards, claimed.inventory)
-        assertEquals(68L, claimed.progression.player?.xp)
+        assertEquals(77L, claimed.progression.player?.xp, "40 first-route XP plus 1680 / 45 work XP")
         assertEquals(1L, claimed.completedExplorations)
         assertTrue(claimed.jobs.isEmpty())
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { apply(claimed, "claim_job", job.id, end.plusSeconds(1)) }.code)

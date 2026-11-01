@@ -496,7 +496,7 @@ test("starter stone sources use an available forest exploration instead of the l
   assert.equal(helpers.worldMaterialSource(state, "stone").targetId, "quarry_stone", "the second stage directs stone to its mine construction");
 });
 
-test("first-stage cards offer one item directly and strawberry explains its real compote prerequisite", () => {
+test("first-stage cards offer one item directly including strawberry without a compote prerequisite", () => {
   const state = snapshot({ buildings: { home: 1, garden: 1, warehouse: 1, dryer: 1, workshop: 1, woodlot: 1 },
     inventory: { berries: 4, wood: 2, fish_common: 1 }, progression: { recipes: {} } });
   for (const [place, stationId, recipeId] of [["garden", "garden", "grow_berries"], ["workshop", "workshop", "make_planks"],
@@ -515,15 +515,9 @@ test("first-stage cards offer one item directly and strawberry explains its real
     assert.deepEqual(state, before);
   }
   const recipe = state.catalog.recipes.find(entry => entry.id === "grow_strawberries");
-  let html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id, onNavigate() {} });
-  assert.match(html, /Приготовьте и заберите: Малиновый компот \(0 \/ 1\)/);
-  const lockedStrawberry = markedButton(html, "data-recipe", recipe.id);
-  assert.match(lockedStrawberry.attributes, /data-blocked="true"/);
-  assert.equal(disabled(lockedStrawberry), false, "a blocked card remains reachable to explain the prerequisite");
-  assert.doesNotMatch(html, /Открыть рецепт:|Начать ·/);
-  assert.equal(helpers.worldRecipeUnlockReason(state, recipe).includes("0 / 1"), true);
-  state.progression.recipes.cook_compote = 1;
-  html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id });
+  const html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id, onNavigate() {} });
+  assert.deepEqual(state.progression.recipes, {});
+  assert.equal(disabled(markedButton(html, "data-recipe", recipe.id)), false);
   assert.doesNotMatch(html, /Приготовьте и заберите:|Открыть рецепт:/);
   assert.doesNotMatch(markedButton(html, "data-recipe", recipe.id).attributes, /data-blocked="true"/);
   assert.equal(helpers.worldRecipeUnlockReason(state, recipe), null);

@@ -393,7 +393,7 @@ test("fish selection guidance preserves current species, unknown stock and expli
 });
 
 test("fish commerce answers require an explicit sale and keep market reservation distinct", () => {
-  assert.match(answer("resources"), /Листайте рыбные ряды «Холодильника»/);
+  assert.match(answer("resources"), /В «Холодильнике» нажмите класс рыбы, чтобы раскрыть виды/);
   assert.match(answer("resources"), /Тап по виду открывает его продажу, повторный добавляет 1/);
   assert.match(answer("resources"), /Другой вид меняется в том же окне/);
   assert.match(answer("resources"), /Еда стоит отдельно; только кнопка продажи тратит запас/);

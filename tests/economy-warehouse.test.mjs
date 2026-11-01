@@ -10,6 +10,8 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-levels.ts");
+const { PEARL_DISPLAY_DIVISOR } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const dev = await vite.ssrLoadModule("/features/economy/dev/dev-model.ts");
 after(() => vite.close());
 beforeEach(() => identities.resetDevStoreForTests());
@@ -19,6 +21,9 @@ const warehouse = model.economyCatalog.buildings.find(building => building.id ==
 const capacity = Array.from({ length: 15 }, (_, index) => (index + 1) * 50);
 const relicCosts = [[1, 0, 0], [1, 1, 0], [1, 0, 1], [1, 1, 1], [2, 1, 1]];
 const relicIds = ["ancient_core", "moon_crystal", "living_resin"];
+const careerPearls = xp => playerProgressionCatalog.levelRewards
+  .filter(reward => playerProgressionCatalog.levelXpFactor * (reward.level - 1) ** 2 <= xp)
+  .reduce((sum, reward) => sum + reward.rewardPearls * PEARL_DISPLAY_DIVISOR, 0);
 const initial = level => {
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.buildings.warehouse = level;
@@ -158,11 +163,13 @@ test("a developed settlement pays each crafted and relic basket exactly once thr
     direct(state, "claim_job", job.id, at);
     assert.equal(state.buildings.warehouse, target.level);
     assert.equal(rules.economyStorage(state).capacity, capacity[target.level - 1]);
-    const earnedPearls = (target.level >= 5 ? 4 : 0) + (target.level >= 10 ? 6 : 0);
+    const expectedXp = warehouse.levels.slice(3, target.level).reduce((sum, tier) => sum + tier.level * playerProgressionCatalog.constructionXpPerLevel, 0);
+    assert.equal(state.progression.player.xp, expectedXp);
+    const earnedPearls = careerPearls(expectedXp);
     assert.deepEqual(state.wallet, { ...paidWallet, pearls: 500 + earnedPearls }, "claim never recharges construction; career rewards remain available");
     assert.equal(state.jobs.length, 0);
   }
-  assert.deepEqual(state.wallet, { coins: 321, pearls: 510 });
+  assert.deepEqual(state.wallet, { coins: 321, pearls: 500 + careerPearls(11400) });
   assert.equal(state.progression.player.xp, 11400);
   assert.deepEqual(state.inventory, { wood: 2 });
   assert.deepEqual(state.buildings, { ...buildings, warehouse: 15 });
@@ -268,7 +275,9 @@ test("saved paid warehouse upgrades keep original costs and finish without new h
     const end = Date.parse(job.finishesAt), claim = request(p, "claim_job", job.id, end);
     const first = economy.commandDevEconomy(p.token, claim, end).state;
     assert.equal(first.buildings.warehouse, level); assert.equal(first.storage.capacity, capacity[level - 1]);
-    const expectedWallet = { ...before.wallet, pearls: before.wallet.pearls + (level === 10 ? 4 : 0) };
+    const expectedXp = level * playerProgressionCatalog.constructionXpPerLevel;
+    assert.equal(first.progression.player.xp, expectedXp);
+    const expectedWallet = { ...before.wallet, pearls: before.wallet.pearls + careerPearls(expectedXp) };
     assert.deepEqual(first.wallet, expectedWallet); assert.deepEqual(first.inventory, before.inventory);
     assert.equal(economy.commandDevEconomy(p.token, claim, end + 1).replayed, true);
     assert.deepEqual(saved(p).wallet, expectedWallet); assert.deepEqual(saved(p).inventory, before.inventory);

@@ -7,6 +7,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-levels.ts");
 const { drawExpeditionLoot, expeditionMaximumRewards } = await vite.ssrLoadModule("/features/economy/domain/expedition-finds.ts");
 const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/domain/public-jobs.ts");
 const now = Date.parse("2026-11-01T12:00:00Z"), catalog = model.economyCatalog;
@@ -84,7 +85,7 @@ test("variable outcome stays private through ready and reload, retries never rer
   apply(state, "claim_job", job.id, end, () => { throw Error("claim must not draw"); });
   const expected = { ...job.rewards }; for (const [id, count] of Object.entries(original)) expected[id] = (expected[id] ?? 0) + count;
   assert.deepEqual(state.inventory, expected); assert.equal(state.jobs.length, 0);
-  assert.equal(state.progression.player.xp, route.seconds / 60 + 40);
+  assert.equal(state.progression.player.xp, Math.floor(route.seconds / playerProgressionCatalog.workSecondsPerXp) + playerProgressionCatalog.firstExplorationXp);
   assert.equal(state.completedExplorations, 1);
   const delivered = structuredClone(state);
   assert.throws(() => apply(state, "claim_job", job.id, end + 1), { code: "ECONOMY_JOB_GONE" });

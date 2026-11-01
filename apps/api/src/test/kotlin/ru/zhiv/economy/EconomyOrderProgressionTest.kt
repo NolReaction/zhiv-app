@@ -12,7 +12,7 @@ class EconomyOrderProgressionTest {
     private val catalog = EconomyRules.catalog
     @Serializable private data class ScaleVector(val templateId: String, val home: Int, val items: Map<String, Long>, val coins: Long)
     @Serializable private data class AvailabilityVector(val label: String, val buildings: Map<String, Int>, val ownedRods: List<String>,
-        val ownedHooks: List<String>, val present: List<String>, val missing: List<String>)
+        val ownedHooks: List<String>, val present: List<String>, val missing: List<String>, val recipes: Map<String, Long> = emptyMap())
     @Serializable private data class Vectors(val scaling: List<ScaleVector>, val availability: List<AvailabilityVector>)
     private val vectors = economyJson.decodeFromString<Vectors>(checkNotNull(javaClass.getResourceAsStream("/world/orders-progression-vectors.json"))
         .bufferedReader().use { it.readText() })
@@ -125,6 +125,7 @@ class EconomyOrderProgressionTest {
         }
         vectors.availability.forEach { scenario ->
             val state = EconomyRules.initial().copy(buildings = scenario.buildings,
+                progression = EconomyProgression(recipes = scenario.recipes),
                 inventory = catalog.items.associate { it.id to 100L },
                 fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks))
             val reachable = EconomyFood.obtainableOrderItems(state)

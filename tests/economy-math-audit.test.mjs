@@ -76,21 +76,21 @@ test("catch expectation accounts for every fish as class stock and separately pr
   near(charged.slotMinutes.woodlot, 6 / initial.output.fish_common);
 });
 
-test("first-stage fixed NPC prices are exact and strawberry profiles retain their recipe unlock", () => {
+test("first-stage fixed NPC prices are exact and berry profiles need no cooking unlock", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   for (const [id, price] of Object.entries(catalog.localBuyer.unitPrices)) {
     assert.equal(math.liquidation({ [id]: 1 }), price);
     assert.equal(math.liquidation({ [id]: 3 }), price * 3);
   }
   const strawberry = math.profile("strawberries");
-  assert.deepEqual(strawberry.unlockRecipes, { cook_compote: 1 });
-  assert.equal(strawberry.producerLevels.dryer, 1);
+  assert.deepEqual(strawberry.unlockRecipes, {});
+  assert.equal(strawberry.producerLevels.dryer, undefined);
   near(strawberry.slotMinutes.garden, 308 / 60);
   near(math.batch(catalog.recipes.find(recipe => recipe.id === "grow_strawberries")).slotMinutes.garden, 308 / 60);
-  const locked = structuredClone(catalog); locked.recipes.find(recipe => recipe.id === "cook_compote").requiredHomeLevel = 2;
-  assert.equal(economicMath(locked).sourceHome("strawberries"), 2);
-  locked.recipes.find(recipe => recipe.id === "cook_compote").requiredRecipes = { grow_strawberries: 1 };
-  assert.throws(() => economicMath(locked).sourceHome("strawberries"), /Recipe unlock cycle/);
+  const locked = structuredClone(catalog); locked.recipes.find(recipe => recipe.id === "make_glass_bottle").requiredHomeLevel = 5;
+  assert.equal(economicMath(locked).sourceHome("lens"), 5);
+  locked.recipes.find(recipe => recipe.id === "make_glass_bottle").requiredRecipes = { grind_lens: 1 };
+  assert.throws(() => economicMath(locked).sourceHome("lens"), /Recipe unlock cycle/);
 });
 
 test("new berry processing includes all crop collection and upstream station work", () => {

@@ -15,8 +15,9 @@ import { forestVillagerOccupants } from "@/features/world/characters/villagers/v
 
 type OccupancyOptions = {
   heroVisible: boolean; heroScale?: number; heroManual?: boolean;
+  outside?: { x: number; y: number; opacity: number } | null;
   fishing?: ForestFishingFrame | null; mining?: ForestMiningFrame | null; cooking?: ForestCookingFrame | null;
-  gathering?: { held: boolean; basket: { x: number; y: number; size: number } } | null;
+  gathering?: { held: boolean; tool?: "basket" | "shovel"; basket: { x: number; y: number; size: number } } | null;
 };
 const walking = new Set(["free-walk", "outbound", "return", "homebound", "home-return"]);
 
@@ -26,8 +27,8 @@ const walking = new Set(["free-walk", "outbound", "return", "homebound", "home-r
  * same owner tick, rather than letting two stale snapshots cross each other. */
 export function forestResidentOccupants(state: ForestSessionState, scene: FixedWorldScene, options: OccupancyOptions): ResidentOccupant[] {
   const occupants: ResidentOccupant[] = [], body = clearingActivityFrame(state.clearing);
-  const hero = options.mining ?? options.fishing ?? options.cooking ?? body;
-  const opacity = options.mining?.opacity ?? (options.fishing || options.cooking ? 1 : body.opacity);
+  const hero = options.outside ?? options.mining ?? options.fishing ?? options.cooking ?? body;
+  const opacity = options.outside?.opacity ?? options.mining?.opacity ?? (options.fishing || options.cooking ? 1 : body.opacity);
   if (options.heroVisible && opacity > .05) {
     const moving = !options.heroManual && walking.has(state.clearing.stage) && !options.cooking
       && (!options.fishing || options.fishing.action === "walk")
@@ -55,7 +56,7 @@ export function forestResidentOccupants(state: ForestSessionState, scene: FixedW
   const size = state.clearing.size * (options.heroScale ?? 1), garden = state.life?.garden;
   const gardenFrame = forestGardenVisualFrame(garden, { x: hero.x, y: hero.y, size }, body);
   const gardenBasket = forestGardenGroundBasket(garden, size, gardenFrame);
-  for (const [id, basket] of [["garden-basket", gardenBasket], ["supply-basket", options.gathering?.held ? null : options.gathering?.basket]] as const) {
+  for (const [id, basket] of [["garden-basket", gardenBasket], [garden?.basket?.journeyOwner ? "garden-basket" : "supply-basket", options.gathering?.held || options.gathering?.tool === "shovel" ? null : options.gathering?.basket]] as const) {
     if (basket) occupants.push({ id, position: { x: basket.x, y: basket.y }, size: basket.size,
       groundFootprint: basketGroundFootprint(basket, basket.size) });
   }

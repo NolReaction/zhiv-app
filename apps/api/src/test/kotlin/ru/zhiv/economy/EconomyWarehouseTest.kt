@@ -83,10 +83,14 @@ class EconomyWarehouseTest {
             state = apply(state, "claim_job", job.id, at)
             assertEquals(originalBuildings + ("warehouse" to target.level), state.buildings)
             assertEquals(capacities[target.level - 1], EconomyRules.storage(state).capacity)
-            assertEquals(paid.inventory, state.inventory); assertEquals(paid.wallet, state.wallet)
+            assertEquals(paid.inventory, state.inventory)
+            assertEquals(paid.wallet.copy(pearls = paid.wallet.pearls + if (target.level == 3) 4L else 0L), state.wallet,
+                "The third warehouse claim brings cumulative XP to 500 and pays level five once")
             assertTrue(state.jobs.isEmpty())
         }
-        assertEquals(EconomyWallet(0, 77), state.wallet)
+        assertEquals(EconomyWallet(0, 81), state.wallet)
+        assertEquals(500L, state.progression.player!!.xp)
+        assertEquals(listOf(5), state.progression.player?.awardedLevels)
         assertEquals(mapOf("wood" to 2L), state.inventory)
     }
 
@@ -114,14 +118,16 @@ class EconomyWarehouseTest {
             state = apply(state, "claim_job", job.id, at)
             assertEquals(target.level, state.buildings["warehouse"])
             assertEquals(capacities[target.level - 1], EconomyRules.storage(state).capacity)
-            val earnedPearls = (if (target.level >= 5) 4L else 0L) + (if (target.level >= 10) 6L else 0L)
+            // Cumulative construction XP crosses career levels 5, 10 and 20 at warehouse levels 5, 8 and 15.
+            val earnedPearls = (if (target.level >= 5) 4L else 0L) + (if (target.level >= 8) 6L else 0L) + (if (target.level >= 15) 10L else 0L)
             assertEquals(EconomyWallet(before.wallet.coins - target.cost.coins, 500 + earnedPearls), state.wallet)
             assertTrue(state.jobs.isEmpty())
             assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { apply(state, "claim_job", job.id, at) }.code)
         }
         assertEquals(mapOf("wood" to 2L), state.inventory)
-        assertEquals(EconomyWallet(321, 510), state.wallet)
+        assertEquals(EconomyWallet(321, 520), state.wallet)
         assertEquals(11400L, state.progression.player?.xp)
+        assertEquals(listOf(5, 10, 20), state.progression.player?.awardedLevels)
         assertEquals(buildings + ("warehouse" to 15), state.buildings)
         val before = economyJson.encodeToString(state)
         assertEquals("ECONOMY_MAX_LEVEL", assertFailsWith<AuthFailure> { apply(state, "start_construction", "warehouse", at) }.code)
@@ -186,7 +192,7 @@ class EconomyWarehouseTest {
             assertEquals(saved, state)
             val claimed = apply(state, "claim_job", job.id, Instant.parse(job.finishesAt))
             assertEquals(level, claimed.buildings["warehouse"]); assertEquals(capacities[level - 1], EconomyRules.storage(claimed).capacity)
-            assertEquals(state.wallet.copy(pearls = state.wallet.pearls + if (level == 10) 4L else 0L), claimed.wallet)
+            assertEquals(state.wallet.copy(pearls = state.wallet.pearls + if (level >= 5) 4L else 0L), claimed.wallet)
             assertEquals(state.inventory, claimed.inventory); assertTrue(claimed.jobs.isEmpty())
             assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { apply(claimed, "claim_job", job.id, Instant.parse(job.finishesAt)) }.code)
         }

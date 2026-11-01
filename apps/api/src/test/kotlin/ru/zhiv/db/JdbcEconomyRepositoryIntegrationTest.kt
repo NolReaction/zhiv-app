@@ -6,6 +6,10 @@ import io.ktor.http.*
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.BeforeAll
@@ -24,6 +28,7 @@ import ru.zhiv.installZhivApi
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.world.*
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.*
 
@@ -216,7 +221,12 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(stage.reputationXp!!.toLong(), after.tradeRelations.reputation["builder"])
         assertTrue(after.tradeRelations.activity.isEmpty(), "Permanent reputation no longer requires a decaying activity meter")
         assertEquals(75L, after.progression.player!!.xp)
-        assertEquals(25L, after.progression.player.season.points)
+        val awardedAt = Instant.parse(after.progression.player.lastAward!!.at)
+        val seasonCatalog = economyJson.parseToJsonElement(checkNotNull(javaClass.getResourceAsStream("/world/player-progression-catalog.json"))
+            .bufferedReader().use { it.readText() }).jsonObject.getValue("season").jsonObject
+        val monthBonus = seasonCatalog.getValue("months").jsonArray[awardedAt.atZone(ZoneOffset.UTC).monthValue - 1]
+            .jsonObject.getValue("bonuses").jsonObject["weeklyStagePoints"]?.jsonPrimitive?.long ?: 0L
+        assertEquals(seasonCatalog.getValue("weeklyStagePoints").jsonPrimitive.long + monthBonus, after.progression.player.season.points)
         assertEquals(1, after.tradeRelations.weekly!!.stage)
         assertTrue(after.tradeRelations.dailyOrderXp.isEmpty())
         assertTrue(JdbcEconomyRepository(source).command(p.hash, deliver).replayed)
@@ -1435,7 +1445,8 @@ class JdbcEconomyRepositoryIntegrationTest {
             current = economy.command(p.hash, claim).state
             assertEquals(before.buildings + ("warehouse" to target.level), current.buildings)
             assertEquals(target.warehouseCapacity, current.storage.capacity)
-            assertEquals(started.wallet, current.wallet); assertEquals(started.inventory, current.inventory)
+            assertEquals(started.wallet.copy(pearls = started.wallet.pearls + if (target.level == 3) 4L else 0L), current.wallet)
+            assertEquals(started.inventory, current.inventory)
             assertTrue(current.jobs.isEmpty())
             val claimReplay = JdbcEconomyRepository(source).command(p.hash, claim)
             assertTrue(claimReplay.replayed)
@@ -1444,7 +1455,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         }
         val reopened = JdbcEconomyRepository(source).snapshot(p.hash)
         assertEquals(current.buildings, reopened.buildings); assertEquals(150L, reopened.storage.capacity)
-        assertEquals(EconomyWallet(0, 77), reopened.wallet); assertEquals(mapOf("wood" to 2L), reopened.inventory)
+        assertEquals(EconomyWallet(0, 81), reopened.wallet); assertEquals(mapOf("wood" to 2L), reopened.inventory)
         assertEquals("2", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='start_construction'", p.id))
         assertEquals("2", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_job'", p.id))
         assertEquals("4", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))

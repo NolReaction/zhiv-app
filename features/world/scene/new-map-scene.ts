@@ -58,6 +58,7 @@ import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from
 import { interactiveMapObjects, type MapInteractiveObject } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "@/features/world/activities/journeys/forest-journey-travel";
 import { forestJourneyGatheringFrame } from "@/features/world/activities/journeys/forest-supply-journey";
+import { forestOutsideJourneyFrame } from "@/features/world/activities/journeys/forest-outside-journey";
 import type { ForestGatheringFrame } from "@/features/world/activities/journeys/forest-gathering";
 import { drawForestGatheringBasket, drawForestGatheringHero, forestGatheringBounds } from "@/features/world/activities/journeys/forest-gathering-painter";
 
@@ -156,7 +157,7 @@ type ManualAnimation = { pose: PixelPose; elapsed: number };
 function gatheringAtSize(frame: ForestGatheringFrame | null | undefined, size: number): ForestGatheringFrame | null {
   if (!frame) return null;
   const scale = size / frame.size;
-  return { ...frame, size, basket: { x: frame.x + (frame.basket.x - frame.x) * scale,
+  return { ...frame, size, basket: { ...frame.basket, x: frame.x + (frame.basket.x - frame.x) * scale,
     y: frame.y + (frame.basket.y - frame.y) * scale, size: frame.basket.size * scale } };
 }
 export type NewMapPaintPreview = {
@@ -182,6 +183,7 @@ export type NewMapPaintPreview = {
   mining?: ForestMiningFrame | null;
   cooking?: ForestCookingFrame | null;
   gathering?: ForestGatheringFrame | null;
+  outside?: ReturnType<typeof forestOutsideJourneyFrame>;
   productions?: readonly ForestProductionFrame[];
   construction?: EconomySceneConstruction | null;
   residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
@@ -240,7 +242,7 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   const home = world.sites.find(site => site.id === "home");
   const selectedVisuals = preview?.visuals ?? visualsFor(currentLevels);
   const selectedLevels = Object.fromEntries(Object.entries(selectedVisuals).map(([id, visual]) => [id, visual.level]));
-  const walking = preview?.clearing;
+  const walking = preview?.outside ? { ...preview.clearing, ...preview.outside } : preview?.clearing;
   const visibleMining = selectedLevels.quarry > 0 ? preview?.mining : null;
   const actor = { x: visibleMining?.x ?? preview?.gathering?.x ?? walking?.x ?? NEW_MAP_SPAWN.x,
     y: visibleMining?.y ?? preview?.gathering?.y ?? walking?.y ?? NEW_MAP_SPAWN.y, size: PET_SIZE * (dev?.heroScale ?? 1) };
@@ -293,7 +295,7 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   if (parkedBasket) depthProps.push({ y: parkedBasket.y, paint: () => withForestOcclusion(context, world, parkedBasket,
     target => drawForestGardenBasket(target, parkedBasket), { x: parkedBasket.x - parkedBasket.size * .55,
       y: parkedBasket.y - parkedBasket.size * .9, width: parkedBasket.size * 1.1, height: parkedBasket.size * 1.1 }) });
-  if (gathering && !gathering.held) {
+  if (gathering && gathering.tool !== "shovel" && !gathering.held) {
     const basket = gathering.basket;
     depthProps.push({ y: basket.y, paint: () => withForestOcclusion(context, world, basket,
       target => drawForestGatheringBasket(target, gathering), { x: basket.x - basket.size * .6,
@@ -794,6 +796,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     try {
     const occupants = forestResidentOccupants(state, world, { heroVisible: dev?.showHero !== false && !actorAway(), heroScale: dev?.heroScale,
       heroManual: Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto"),
+      outside: forestOutsideJourneyFrame(state, world),
       fishing: forestJourneyFishingFrame(state, world), mining: forestJourneyMiningFrame(state, world),
       gathering: gatheringAtSize(forestJourneyGatheringFrame(state, world), state.clearing.size * (dev?.heroScale ?? 1)),
       cooking: cookingPreviewFrame(state, dev?.cookingPreview) });
@@ -1045,6 +1048,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     return { scene: world, water: dev?.waterSurface === false ? undefined : state.water, trees, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
       residents: residentFrames().map(resident => resident.id === "plesk"
         ? withForestWaterBuoyancy(resident, dev?.waterSurface === false ? undefined : state.water, reducedMotion(options, dev)) : resident),
+      outside: forestOutsideJourneyFrame(state, world, reducedMotion(options, dev)),
       fishing: forestJourneyFishingFrame(state, world, reducedMotion(options, dev)),
       gathering: gatheringAtSize(forestJourneyGatheringFrame(state, world, reducedMotion(options, dev)), state.clearing.size * (dev?.heroScale ?? 1)),
       builderSleeping: builderSleepIndicator(state.builderMind, world),

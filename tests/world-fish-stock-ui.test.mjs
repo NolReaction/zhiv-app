@@ -80,7 +80,23 @@ function fishSession(economy, extra = {}) {
   const props = { economy, classIds: ["fish_epic"], ...extra };
   return { props, get controls() { return sessionControls.get(props); } };
 }
-function fishElement() { return { isConnected: true, disabled: false, focus() {} }; }
+function fishElement() { return { isConnected: true, disabled: false, closest() { return null; }, focus() {} }; }
+
+test("closing a fish class dismisses its sale and restores focus to the visible class summary", () => {
+  hooks.reset(); const economy = controller(), before = structuredClone(economy.snapshot), session = fishSession(economy), focused = [];
+  let view = render(PantryFishPopover, session.props);
+  attr(view, "data-pantry-fish-session").props.ref.current = { isConnected: true };
+  const summary = { focus: () => focused.push("summary") }, group = { open: false, querySelector: () => summary };
+  const element = { ...fishElement(), closest: () => group, focus: () => focused.push("hidden fish") };
+  session.controls.onSelectFish("fish_epic", "fish_sturgeon", element); view = render(PantryFishPopover, session.props);
+  const content = attr(view, "data-pantry-fish-popover"), row = render(PantryFishClassRow, session.controls);
+  assert.equal(row.tree.type, "details"); assert.equal(row.tree.props.open, undefined, "native disclosure starts closed");
+  assert.match(text(attr(row, "data-pantry-fish-toggle")), /Эпическая рыба×7/);
+  row.tree.props.onToggle({ currentTarget: group });
+  view = render(PantryFishPopover, session.props); assert.equal(view.tree.props.open, false);
+  content.props.onCloseAutoFocus({ preventDefault() {} });
+  assert.deepEqual(focused, ["summary"]); assert.deepEqual(economy.calls, []); assert.deepEqual(economy.snapshot, before);
+});
 
 test("fridge uses one nonmodal exact-species sale session and no group action", () => {
   hooks.reset(); const economy = controller(), before = structuredClone(economy.snapshot), props = { economy, initialTab: "fridge", onExplore() {} };
@@ -233,7 +249,7 @@ test("Escape, real outside and close restore the latest species focus without se
   for (const way of ["escape", "outside", "close"]) {
     hooks.reset(); const economy = controller(), focus = [], notices = [], session = fishSession(economy, { onFishSaleOpenChange: value => notices.push(value) });
     let view = render(PantryFishPopover, session.props);
-    const element = { isConnected: true, disabled: false, focus: options => focus.push(["fish", options]) };
+    const element = { isConnected: true, disabled: false, closest() { return null; }, focus: options => focus.push(["fish", options]) };
     const host = attr(view, "data-pantry-fish-session"); host.props.ref.current = { isConnected: true, contains() { return false; } };
     session.controls.onSelectFish("fish_epic", "fish_sturgeon", element); view = render(PantryFishPopover, session.props);
     const content = attr(view, "data-pantry-fish-popover"), close = view.nodes.find(node => node.type === "button" && node.props["aria-label"] === "Закрыть выбор рыбы");

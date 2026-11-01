@@ -421,7 +421,7 @@ class EconomyFoodTest {
         assertEquals(state.fishing, completed.fishing)
         assertEquals(state.progression, completed.progression.copy(player = state.progression.player))
         assertEquals(EconomyPlayerProgress(xp = 25,
-            season = EconomyCooperationSeason("2026-10", points = 15),
+            season = EconomyCooperationSeason("2026-10", points = 18),
             lastAward = EconomyPlayerLastAward(25, "order", now.toString())), completed.progression.player)
         offer.items.forEach { (id, amount) -> assertEquals(state.inventory.getValue(id) - amount, completed.inventory[id] ?: 0) }
         assertEquals(1L, completed.residentOrders.completed)

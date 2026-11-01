@@ -1997,9 +1997,6 @@
         "seconds": 8
       },
       "maxBatch": 1,
-      "requiredRecipes": {
-        "cook_compote": 1
-      },
       "retired": true
     },
     {
@@ -2022,9 +2019,6 @@
         "seconds": 8
       },
       "maxBatch": 1,
-      "requiredRecipes": {
-        "cook_compote": 1
-      },
       "retired": true
     },
     {
@@ -2295,6 +2289,9 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
+      "requiredRecipes": {
+        "make_metal_parts": 2
+      },
       "seconds": 1500,
       "cost": {
         "coins": 0,
@@ -2593,9 +2590,6 @@
       "buildingLevel": 1,
       "requiredHomeLevel": 1,
       "requiredBuildings": {},
-      "requiredRecipes": {
-        "cook_compote": 1
-      },
       "seconds": 300,
       "cost": {
         "coins": 0,
@@ -2752,9 +2746,6 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 2,
       "requiredBuildings": {},
-      "requiredRecipes": {
-        "cook_strawberry_compote": 1
-      },
       "seconds": 180,
       "cost": {
         "coins": 0,
@@ -2776,9 +2767,6 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "requiredRecipes": {
-        "cook_blueberry_compote": 1
-      },
       "seconds": 720,
       "cost": {
         "coins": 0,
@@ -2800,9 +2788,6 @@
       "buildingLevel": 4,
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
-      "requiredRecipes": {
-        "cook_currant_jelly": 1
-      },
       "seconds": 1800,
       "cost": {
         "coins": 0,
@@ -2824,9 +2809,6 @@
       "buildingLevel": 5,
       "requiredHomeLevel": 5,
       "requiredBuildings": {},
-      "requiredRecipes": {
-        "cook_blackberry_preserve": 1
-      },
       "seconds": 3600,
       "cost": {
         "coins": 0,
@@ -2860,10 +2842,7 @@
       "rewards": {
         "strawberry_compote": 1
       },
-      "maxBatch": 1,
-      "requiredRecipes": {
-        "cook_compote": 1
-      }
+      "maxBatch": 1
     },
     {
       "id": "cook_blueberry_compote",
@@ -2964,6 +2943,9 @@
       "requiredBuildings": {
         "quarry": 2
       },
+      "requiredRecipes": {
+        "fire_bricks": 2
+      },
       "seconds": 300,
       "cost": {
         "coins": 0,
@@ -3007,6 +2989,9 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
+      "requiredRecipes": {
+        "make_glass": 2
+      },
       "seconds": 300,
       "cost": {
         "coins": 0,
@@ -3074,6 +3059,10 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
+      "requiredRecipes": {
+        "make_planks": 3,
+        "make_rope": 1
+      },
       "seconds": 480,
       "cost": {
         "coins": 0,

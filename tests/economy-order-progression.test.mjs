@@ -65,6 +65,7 @@ test("every historical v12 manufacturing quote remains payable at its saved pric
 test("shared Kotlin reachability vectors require every production input and rods with positive class odds", () => {
   for (const scenario of vectors.availability) {
     const state = fresh(); state.buildings = scenario.buildings;
+    state.progression.recipes = scenario.recipes ?? {};
     state.fishing.ownedRods = scenario.ownedRods; state.fishing.ownedHooks = scenario.ownedHooks;
     state.inventory = Object.fromEntries(catalog.items.map(item => [item.id, 100]));
     const reachable = food.obtainableResidentOrderItems(state);

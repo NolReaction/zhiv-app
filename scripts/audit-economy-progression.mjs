@@ -17,6 +17,7 @@ const day = 86_400;
  * and are outside these bounds; the audit is not a prediction of actual play duration.
  */
 export function auditEconomyProgression(catalog) {
+  const allRecipes = catalog.recipes;
   const retiredSourceCount = [...catalog.recipes, ...catalog.explorations].filter(source => source.retired).length;
   catalog = { ...catalog, recipes: catalog.recipes.filter(source => !source.retired), explorations: catalog.explorations.filter(source => !source.retired) };
   const unique = (entries, kind) => {
@@ -398,7 +399,9 @@ export function auditEconomyProgression(catalog) {
   assert.deepEqual(Object.fromEntries([...buildings.keys()].map(id => [id, completed[id] ?? 0])), Object.fromEntries([...buildings.values()].map(building => [building.id, building.levels.at(-1).level])), "A material/building dependency blocks progression without market purchases");
   auditBuildingUnlocks(catalog);
   const firstCrops = catalog.recipes.filter(recipe => recipe.requiredHomeLevel === 1 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length);
-  assert(firstCrops.some(recipe => recipe.seconds === 60) && firstCrops.some(recipe => recipe.seconds === 300 && recipe.requiredRecipes?.cook_compote === 1), "Starter needs one-minute raspberries and five-minute strawberries unlocked by compote");
+  assert(firstCrops.some(recipe => recipe.seconds === 60) && firstCrops.some(recipe => recipe.seconds === 300), "Starter needs one-minute raspberries and five-minute strawberries");
+  assert(allRecipes.filter(recipe => recipe.buildingId === "garden")
+    .every(recipe => Object.keys(recipe.requiredRecipes ?? {}).length === 0), "Garden crops, including retired variants, cannot require recipe mastery");
   if (catalog.version < 13) assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 3 && recipe.buildingId === "garden" && recipe.buildingLevel === 2
     && recipe.seconds < 60 && recipe.rewards.berries === 1 && recipe.maxBatch === 1
     && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Home three opens a faster free unit crop");

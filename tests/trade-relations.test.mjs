@@ -16,8 +16,14 @@ const effort = await vite.ssrLoadModule("/features/economy/domain/order-effort.t
 const { fishingOfferUnitPrice } = await vite.ssrLoadModule("/features/economy/domain/fishing-shop.ts");
 const { leaftailShopView } = await vite.ssrLoadModule("/features/economy/domain/leaftail-shop.ts");
 const catalog = model.economyCatalog;
+const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-levels.ts");
 const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/trade-relations-vectors.json", import.meta.url), "utf8"));
 const now = Date.parse("2026-10-23T12:00:00.000Z"), day = 86400000, week = 7 * day;
+const weeklySeasonPoints = count => count * (playerProgressionCatalog.season.weeklyStagePoints
+  + (playerProgressionCatalog.season.months[new Date(now).getUTCMonth()].bonuses.weeklyStagePoints ?? 0));
+const weeklySeasonPearls = count => playerProgressionCatalog.season.milestones
+  .filter(reward => reward.points <= weeklySeasonPoints(count))
+  .reduce((sum, reward) => sum + reward.rewardPearls * money.PEARL_DISPLAY_DIVISOR, 0);
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
 const developed = () => {
   const state = fresh();
@@ -229,7 +235,7 @@ test("weekly finale freezes difficulty pearls, checks capacity before debit and 
     for (let index = 0; index < 2; index++) {
       const active = relations.weeklyOrderBoard(state, now).active;
       fill(state, active.items); apply(state, "complete_resident_order", active.id);
-      assert.equal(state.wallet.pearls, initialPearls);
+      assert.equal(state.wallet.pearls, initialPearls + weeklySeasonPearls(index + 1));
     }
     const final = relations.weeklyOrderBoard(state, now).active;
     assert.equal(final.pearls, 40);
@@ -239,7 +245,8 @@ test("weekly finale freezes difficulty pearls, checks capacity before debit and 
     unchangedFailure(state, "complete_resident_order", final.id, "ECONOMY_CAPACITY");
     state.wallet.pearls = initialPearls;
     apply(state, "complete_resident_order", final.id);
-    assert.equal(state.wallet.pearls, initialPearls + 40);
+    assert.equal(state.wallet.pearls, initialPearls + 40 + weeklySeasonPearls(3));
+    assert.equal(state.progression.player.season.points, weeklySeasonPoints(3));
     unchangedFailure(state, "complete_resident_order", final.id, "ECONOMY_WEEKLY_CHANGED");
   } finally { template.stages = saved; }
 });
@@ -254,7 +261,8 @@ test("legacy accepted weekly terms without pearls keep their original fingerprin
     assert.equal(relations.tradeOrderFingerprint(active), relations.tradeOrderFingerprint({ ...active, pearls: 0 }));
     fill(state, active.items); apply(state, "complete_resident_order", active.id);
   }
-  assert.equal(state.wallet.pearls, before);
+  assert.equal(state.wallet.pearls, before + weeklySeasonPearls(3), "legacy terms grant no weekly pearls; current seasonal participation is still rewarded");
+  assert.equal(state.progression.player.season.points, weeklySeasonPoints(3));
 });
 
 test("clock rollback cannot deliver a weekly stage before its accepted start", () => {

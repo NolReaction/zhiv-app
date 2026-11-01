@@ -160,6 +160,7 @@ function canPoint(can: { x: number; y: number; side: number; size: number; tilt:
 /** Stable feet, short articulated paws, and identical prop endpoints at phase boundaries. */
 export function forestGardenVisualFrame(garden: ForestGardenState | undefined, actor: FaunaActor,
   motion: HeroAnchorPose, still = false): ForestGardenVisualFrame | null {
+  if (garden?.basket?.journeyOwner) return null;
   const routine = garden?.routine ?? (garden?.basket?.held ? { kind: "harvest-berries" as const,
     bushId: "", phase: "approach-bush" as const, elapsed: 0, carryingBasket: true } : null);
   if (!garden || !routine) return null;
@@ -319,7 +320,7 @@ export function drawForestGardenBasket(ctx: CanvasRenderingContext2D, basket: Fo
 export function forestGardenGroundBasket(garden: ForestGardenState | undefined, size: number,
   frame: ForestGardenVisualFrame | null): ForestGardenBasketVisual | null {
   if (frame?.basket) return frame.basket.grounded ? { ...frame.basket } : null;
-  if (!garden?.basket || garden.routine?.carryingBasket || garden.basket.held) return null;
+  if (!garden?.basket || garden.basket.journeyOwner || garden.routine?.carryingBasket || garden.basket.held) return null;
   return { ...garden.basket.position, size: garden.basket.size ?? size * .28,
     berries: garden.production === undefined ? garden.basket.berries : 0, behind: false, grounded: true };
 }
@@ -327,7 +328,7 @@ export function forestGardenGroundBasket(garden: ForestGardenState | undefined, 
 /** A parked basket remains attached to its safe ground point after cancellation. */
 export function drawForestGardenGround(ctx: CanvasRenderingContext2D, garden: ForestGardenState | undefined,
   size: number, frame: ForestGardenVisualFrame | null, actor?: WorldPoint, layer: "behind" | "front" = "behind") {
-  if (!garden?.basket) return;
+  if (!garden?.basket || garden.basket.journeyOwner) return;
   // Active props own their two draw passes; a parked basket uses its real sole.
   if (frame?.basket) return;
   if (garden.routine?.carryingBasket || garden.basket.held) return;

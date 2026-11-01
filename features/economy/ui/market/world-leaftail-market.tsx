@@ -207,7 +207,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
         {selected?.rarity && <FishRarityBadge rarity={selected.rarity} />}
         {selected && (quote.kind === "rod" || quote.kind === "hook" || quote.kind === "bait") && <p className={styles.hint}>{selected.description}</p>}
         {state.catalog.fishing && tackleOverride(quote.kind, quote.itemId) && <FishingCatchOdds state={state} catalog={state.catalog.fishing}
-          override={tackleOverride(quote.kind, quote.itemId)!} targetRarity={selected?.rarity} preview showLoadout />}
+          override={tackleOverride(quote.kind, quote.itemId)!} targetRarity={selected?.rarity} preview showLoadout collapsible />}
         {preview && <div className={styles.fitting}><WardrobePreview appearance={preview} /><div><strong>Примерка</strong><p>{selected?.description}</p><small>Покупка добавит вещь в гардероб. Образ можно поменять позже.</small></div></div>}
         <p>{quote.kind === "wardrobe" ? "Вещь навсегда в гардероб" : quote.kind === "rod" || quote.kind === "hook" ? "Снасть навсегда в вашу коллекцию" : `${number(quote.itemQuantity)} шт. в кладовую`} за <strong>{money(quote.price, quote.currency)} {currencyName(quote.currency)}</strong>.</p>
         <p>{walletName(quote.currency)}: {money(state.wallet[quote.currency], quote.currency)} → {money(Math.max(0, state.wallet[quote.currency] - quote.price), quote.currency)}</p>
@@ -226,7 +226,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
           return <article className={styles.offer} key={offer.id} data-leaftail-item={offer.itemId} data-leaftail-kind={offer.kind} data-leaftail-currency={offer.currency} data-leaftail-quantity={nextQuote.itemQuantity}>
             <div className={styles.item}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={40} /> : <ItemIcon itemId={offer.itemId} size={section === "wardrobe" ? 40 : 36} />}<div><strong>{name}</strong>{rarity && <FishRarityBadge rarity={rarity} />}{section !== "wardrobe" && <small>{section === "tackle" ? shortDescription(description) : description}</small>}</div>{!permanent(offer.kind) && <span className={styles.stock}>Осталось {number(offer.remaining * offer.quantity)} шт.</span>}</div>
             {state.catalog.fishing && tackleOverride(offer.kind, offer.itemId) && <FishingCatchOdds state={state} catalog={state.catalog.fishing}
-              override={tackleOverride(offer.kind, offer.itemId)!} targetRarity={rarity} preview showLoadout />}
+              override={tackleOverride(offer.kind, offer.itemId)!} targetRarity={rarity} preview showLoadout collapsible />}
             {adjustable && <div className={styles.quantityRow}><span>{money(offer.unitPrice, offer.currency)} {currencyName(offer.currency)} / {offer.quantity === 1 ? "шт." : `${number(offer.quantity)} шт.`}</span><div className={styles.quantity} role="group" aria-label={`Количество: ${name}`}>
               <button type="button" aria-label={`Уменьшить количество: ${name}`} disabled={quantity <= 1 || Boolean(disabledReason)} onClick={() => setQuantities(previous => ({ ...previous, [offer.targetId]: quantity - 1 }))}><Minus size={14} aria-hidden="true" /></button>
               <output aria-label={`Выбрано: ${name}`} aria-live="polite">{number(nextQuote.itemQuantity)}</output>

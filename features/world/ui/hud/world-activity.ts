@@ -7,14 +7,15 @@ import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { miningBatchProgress } from "@/features/economy/domain/mining-batch";
 
 export type WorldActivity = {
-  id: string; label: string; kind: "forest" | "fishing" | "cave" | "production" | "mining";
+  id: string; label: string; kind: "forest" | "fishing" | "cave" | "production" | "mining" | "digging";
   progress: number; remainingSeconds: number; ready: boolean; itemId?: string;
   collectionPhase?: "ripe" | "harvesting";
   readyCount?: number;
 };
 
 export function activityRouteKind(routeId = ""): WorldActivity["kind"] {
-  if (/fishing|shore|coastal|brook/.test(routeId)) return "fishing";
+  if (routeId === "coastal_deposits") return "digging";
+  if (/fishing|shore|brook/.test(routeId)) return "fishing";
   if (/cave|quarry/.test(routeId)) return "cave";
   return "forest";
 }
@@ -28,7 +29,7 @@ export function worldActivity(activity: EconomySceneActivity | null | undefined,
   const start = Date.parse(source.startedAt), finish = Date.parse(source.finishesAt);
   if (!Number.isFinite(start) || !Number.isFinite(finish) || finish <= start) return null;
   const kind = activity?.kind === "production" ? "production" : activityRouteKind(source.routeId);
-  const label = activity?.label || (kind === "fishing" ? "Рыбалка" : kind === "cave" ? "Пещеры" : "Лесная прогулка");
+  const label = activity?.label || (kind === "fishing" ? "Рыбалка" : kind === "cave" ? "Пещеры" : kind === "digging" ? "Прибрежные отложения" : "Лесная прогулка");
   const collection = activity?.collection;
   if (kind === "production" && collection?.kind === "berry_harvest" && collection.startedAt && collection.finishesAt) {
     const harvestStart = Date.parse(collection.startedAt), harvestFinish = Date.parse(collection.finishesAt);

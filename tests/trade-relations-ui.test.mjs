@@ -104,6 +104,8 @@ test("All includes the saved weekly stage in readiness and weekly rewards do not
 
 test("an accepted weekly stage keeps the difficulty of the complete frozen contract", () => {
   const economy = controller(), state = economy.snapshot;
+  state.progression = { routes: {}, recipes: Object.fromEntries(economyCatalog.recipes.map(recipe => [recipe.id, 100])) };
+  state.fishing = { ownedRods: economyCatalog.fishing.rods.map(rod => rod.id), ownedHooks: economyCatalog.fishing.hooks.map(hook => hook.id) };
   const choice = weeklyOrderBoard(state, now).offers.find(offer => offer.effortSeconds >= 10 * 3600);
   assert(choice);
   acceptWeeklyOrder(state, choice, now, state.catalog);

@@ -1,11 +1,11 @@
-import { Check, Fish, Hammer, Mountain, Pickaxe, Trees } from "lucide-react";
+import { Check, Fish, Hammer, Mountain, Pickaxe, Shovel, Trees } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { activityStatus, activityTime, type WorldActivity } from "./world-activity";
 import styles from "./world-activity-badge.module.css";
 
 /** Decorative overlay: the surrounding check-in button retains its original action. */
 export function WorldActivityBadge({ activity }: { activity: WorldActivity }) {
-  const Icon = activity.kind === "mining" ? Pickaxe : activity.kind === "fishing" ? Fish : activity.kind === "cave" ? Mountain : activity.kind === "production" ? Hammer : Trees;
+  const Icon = activity.kind === "digging" ? Shovel : activity.kind === "mining" ? Pickaxe : activity.kind === "fishing" ? Fish : activity.kind === "cave" ? Mountain : activity.kind === "production" ? Hammer : Trees;
   const compactStatus = activity.collectionPhase === "harvesting" ? "Сбор ягод" : activity.ready ? "Готово" : activityTime(activity.remainingSeconds);
   return <span className={styles.badge} data-world-activity={activity.kind} data-collection-phase={activity.collectionPhase} data-ready={activity.ready || undefined}
     title={`${activity.label}. ${activityStatus(activity)}`}>

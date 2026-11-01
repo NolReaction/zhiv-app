@@ -90,16 +90,19 @@ test("batch limits send the player back to quantity before recommending a bigger
   assert.match(result[0].message, /не больше 1/);
 });
 
-test("strawberry advice opens the compote recipe until its result has been collected", () => {
-  const context = { intent: "production", stationId: "garden", recipeId: "grow_strawberries", quantity: 1 };
-  const result = advice({}, { context });
-  assert.equal(result[0].id, "recipe:unlock:cook_compote");
-  assert.match(result[0].message, /Произведите и заберите «Малиновый компот»: 0 \/ 1\. После этого откроется клубника\./);
-  assert.doesNotMatch(result[0].message, /Приготовить|вырастить/i);
-  assert.deepEqual(result[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_compote" });
-  const running = job({ targetId: "dryer", recipeId: "cook_compote", rewards: { berry_compote: 1 } });
-  assert.equal(advice({ jobs: [running] }, { context })[0].id, "recipe:unlock:cook_compote", "a started job does not unlock strawberries");
-  assert.deepEqual(advice({ progression: { recipes: { cook_compote: 1 } } }, { context }), []);
+test("berries have no mastery blocker and craft advice points to the missing practice", () => {
+  const berryContext = { intent: "production", stationId: "garden", recipeId: "grow_strawberries", quantity: 1 };
+  assert.deepEqual(advice({}, { context: berryContext }), []);
+  const context = { intent: "production", stationId: "workshop", recipeId: "make_trade_crate", quantity: 1 };
+  const recipe = economyCatalog.recipes.find(row => row.id === context.recipeId);
+  const patch = { buildings: { home: 5, warehouse: 15, workshop: 5, woodlot: 5, kiln: 5 }, inventory: { ...recipe.cost.items } };
+  const result = advice(patch, { context });
+  assert.equal(result[0].id, "recipe:unlock:make_planks");
+  assert.match(result[0].message, /Произведите и заберите.*0 \/ 3/);
+  assert.deepEqual(result[0].action.target, { kind: "station", stationId: "workshop", recipeId: "make_planks" });
+  const running = job({ targetId: "workshop", recipeId: "make_planks", rewards: { planks: 1 } });
+  assert.equal(advice({ ...patch, jobs: [running] }, { context })[0].id, "recipe:unlock:make_planks");
+  assert.deepEqual(advice({ ...patch, progression: { recipes: { make_planks: 3, make_rope: 1 } } }, { context }), []);
 });
 
 test("house two advice separates its single intro from three stage requests before sale suggestions", () => {
