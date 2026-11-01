@@ -72,7 +72,11 @@ test("confirmed lighthouse queues the first ship offscreen, then an uncovered ma
     assert.notDeepEqual(mapProjection(canvas), coveredCamera, "the first visible start focuses its own berth");
     clock.advance(.5); assert.ok(probe.getFrame().motion.elapsed > .4);
     engine.update({ ...unlocked, tradeShipArrivalEnabled: false });
-    const covered = probe.getFrame().motion; clock.advance(.5); assert.equal(probe.getFrame().motion, covered);
+    const covered = probe.getFrame().motion, coveredProjection = mapProjection(canvas);
+    clock.advance(.5);
+    assert.ok(probe.getFrame().motion.elapsed > covered.elapsed + .4, "More and other ordinary menus do not freeze an already started arrival");
+    assert.ok(probe.getFrame().motion.elapsed < covered.elapsed + .6, "circle and full map still share only one simulation owner");
+    assert.deepEqual(mapProjection(canvas), coveredProjection, "an open menu never starts a second cinematic focus");
     engine.update({ ...unlocked, tradeShipArrivalEnabled: true });
     clock.advance(.2); const beforeRemount = probe.getFrame().motion;
     engine.dispose(); engine = null; await flush();

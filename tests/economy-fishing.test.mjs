@@ -27,9 +27,12 @@ test("old snapshots and profiles receive a free starter rod, never retroactive c
   const old = structuredClone(snapshot); delete old.fishing; delete old.catalog.fishing;
   // A catalog from before fishing also predates the mixed travel-tackle delivery.
   delete old.catalog.leaftailShop.travelOffers;
-  // Before fishing existed, catalogs had neither selectable fish ingredients nor the food extension.
+  // Before fishing existed, catalogs had neither personal catch gates, selectable fish ingredients nor the food extension.
   delete old.food; delete old.residentOrders; delete old.catalog.food;
-  for (const recipe of old.catalog.recipes) delete recipe.fishInput;
+  for (const recipe of old.catalog.recipes) {
+    delete recipe.fishInput;
+    delete recipe.requiredFishCaught;
+  }
   const parsed = model.economyViewSchema.parse(old);
   assert.deepEqual(parsed.fishing, { ownedRods: ["reed_rod"], equippedRodId: "reed_rod", ownedHooks: ["bare_hook"], equippedHookId: "bare_hook", equippedBaitId: null, catches: {} });
   assert.equal(parsed.catalog.fishing, undefined);

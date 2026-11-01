@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
-const { fishingExpectedReturn, expeditionExpectedReturns } = await vite.ssrLoadModule("/features/progression/economy-expeditions.ts");
+const { fishingExpectedReturn, expeditionExpectedReturns, expeditionRelicRules } = await vite.ssrLoadModule("/features/progression/economy-expeditions.ts");
+const { EconomyExpeditionAnalysis } = await vite.ssrLoadModule("/features/progression/economy-expedition-analysis.tsx");
 const { planEconomyProduction } = await vite.ssrLoadModule("/features/progression/economy-plan.ts");
 const { buildProgressionEconomy } = await vite.ssrLoadModule("/features/progression/economy-data.ts");
 const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
@@ -62,4 +65,39 @@ test("variable expedition quantities contribute their exact mean without promisi
   catalog.recipes = catalog.recipes.filter(recipe => !recipe.rewards.ceramic_jar);
   const randomOnly = planEconomyProduction({ targets: { ceramic_jar: 1 }, sourceByItem: { ceramic_jar: `exploration:${route.id}` } }, catalog);
   assert.equal(randomOnly.complete, false); assert.equal(randomOnly.elapsedSeconds, null);
+});
+
+test("relic choices follow the catalog but never masquerade as per-expedition expected income", () => {
+  const catalog = structuredClone(economyCatalog), before = expeditionExpectedReturns(catalog);
+  catalog.rareDrops = { ...catalog.rareDrops, requiredHomeLevel: 4, minSeconds: 200000, maxSeconds: 500000, itemIds: ["ancient_core", "living_resin"] };
+  const relics = expeditionRelicRules(catalog);
+  assert.deepEqual(relics, { requiredHomeLevel: 4, minimumSeconds: 200000, maximumSeconds: 500000,
+    items: [{ itemId: "ancient_core", conditionalProbability: .5 }, { itemId: "living_resin", conditionalProbability: .5 }] });
+  const after = expeditionExpectedReturns(catalog);
+  for (const [index, report] of after.entries()) {
+    assert.deepEqual(report.relics, relics);
+    assert.equal(report.expectedNetCoins, before[index].expectedNetCoins);
+    assert.deepEqual(report.guaranteed, before[index].guaranteed);
+    assert(!report.finds.some(find => catalog.rareDrops.itemIds.includes(find.itemId)));
+  }
+  assert.deepEqual(fishingExpectedReturn({ routeId: "shore", rodId: "reed_rod", hookId: "bare_hook", baitId: null }, catalog).relics, relics);
+  catalog.rareDrops = null;
+  assert.equal(expeditionRelicRules(catalog), null);
+});
+
+test("expedition analysis renders the complete bonus table and clearly conditional relic odds", () => {
+  const html = renderToStaticMarkup(createElement(EconomyExpeditionAnalysis, { onSelect() {} }));
+  for (const entry of economyCatalog.explorations.filter(route => !route.retired && route.finds)) {
+    const card = html.match(new RegExp(`data-analysis-route="${entry.id}"[\\s\\S]*?<\\/article>`))?.[0];
+    assert.ok(card, entry.id);
+    const total = entry.finds.emptyWeight + entry.finds.entries.reduce((sum, find) => sum + find.weight, 0);
+    for (const find of entry.finds.entries) {
+      const name = economyCatalog.items.find(item => item.id === find.itemId).name;
+      assert.ok(card.includes(`${name} ×${find.quantity}`));
+      assert.ok(card.includes(`${(100 * find.weight / total).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`));
+    }
+  }
+  assert.match(html, /Бонус: не более одного варианта/);
+  assert.match(html, /Проценты относятся к выбору реликвии, а не к отдельной вылазке/);
+  assert.match(html, /В доход и гарантированную добычу ниже они не включены/);
 });

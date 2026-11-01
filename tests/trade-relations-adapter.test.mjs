@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url)), initialMode = process.env.NODE_ENV;
@@ -91,4 +92,34 @@ test("another account and malformed accept commands cannot change the saved week
   assert.throws(() => send(other, { ...command, expectedRevision: read(other).revision }), error => error.code === "ECONOMY_OWNER_CHANGED");
   assert.equal(read(p).tradeRelations.weekly, null);
   assert.equal(read(other).tradeRelations.weekly, null);
+});
+
+
+test("an accepted small v15 weekly keeps all old promises and receipt replay after larger offers ship", () => {
+  const legacy = JSON.parse(readFileSync(new URL("../apps/api/src/test/resources/world/weekly-contract-legacy-v15.json", import.meta.url), "utf8"));
+  const p = player(), owner = read(p).ownerPublicId;
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(owner);
+  row.state.tradeRelations.weekly = structuredClone(legacy.weekly);
+  row.state.tradeRelations.weeklyAvailableAt = legacy.weekly.expiresAt;
+  const before = read(p), current = before.catalog.tradeRelations.weekly.templates.find(template => template.id === legacy.weekly.templateId);
+  assert.notDeepEqual(current.stages[0].items, legacy.weekly.stages[0].items);
+  for (const [index, terms] of legacy.weekly.stages.entries()) {
+    const active = weeklyOrderBoard(read(p), now).active;
+    assert.equal(active.id, legacy.activeStageIds[index]);
+    for (const key of ["items", "coins", "pearls", "reputationXp", "effortSeconds", "manufacturingSeconds", "requiredBuildings"])
+      assert.deepEqual(active[key], terms[key], `saved ${key} must not be replaced by the new catalog`);
+    fundStage(p, active);
+    const command = request(p, "complete_resident_order", active.id), paid = send(p, command), replay = send(p, command);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.state.wallet, paid.state.wallet);
+    assert.deepEqual(replay.state.inventory, paid.state.inventory);
+    assert.deepEqual(replay.state.tradeRelations, paid.state.tradeRelations);
+    assert.equal(economyViewSchema.safeParse(read(p)).success, true);
+  }
+  const after = read(p);
+  assert.equal(after.wallet.coins, before.wallet.coins + legacy.coins);
+  assert.equal(after.tradeRelations.reputation.builder ?? 0, (before.tradeRelations.reputation.builder ?? 0) + legacy.reputationXp);
+  assert.equal(after.tradeRelations.weekly, null);
+  assert.equal(after.tradeRelations.weeklyAvailableAt, legacy.weekly.expiresAt);
+  assert.equal(weeklyOrderBoard(after, now).canChoose, false);
 });

@@ -261,8 +261,8 @@ object EconomyTradeRelations {
     }
 
     fun orderDifficulty(effortSeconds: Long, weekly: Boolean = false): String {
-        val ordinary = if (weekly) 10800L else 1800L
-        val challenging = if (weekly) 36000L else 7200L
+        val ordinary = if (weekly) 21600L else 1800L
+        val challenging = if (weekly) 86400L else 7200L
         return if (effortSeconds < ordinary) "ordinary" else if (effortSeconds < challenging) "challenging" else "masterful"
     }
 

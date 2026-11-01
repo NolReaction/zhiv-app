@@ -10,6 +10,7 @@ const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-levels.ts");
 const { drawExpeditionLoot, expeditionMaximumRewards } = await vite.ssrLoadModule("/features/economy/domain/expedition-finds.ts");
 const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/domain/public-jobs.ts");
+const { economyAchievementProgress } = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
 const now = Date.parse("2026-11-01T12:00:00Z"), catalog = model.economyCatalog;
 const fresh = () => ({ ...rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 }), inventory: {} });
 const command = (action, targetId) => ({ action, targetId, requestId: crypto.randomUUID(), ownerPublicId: "0123-4567-89AB", expectedRevision: 0, quantity: 1, totalPrice: 0 });
@@ -43,6 +44,92 @@ test("independent ranges include both endpoints and merge a rare find of the sam
   assert.deepEqual(drawExpeditionLoot(route, () => 0), { stone: 1 });
   assert.deepEqual(drawExpeditionLoot(route, size => size - 1), { wood: 4, stone: 3 });
   for (const invalid of [-1, 1.5, NaN, 3]) assert.throws(() => drawExpeditionLoot({ loot: route.loot }, () => invalid));
+});
+
+test("bait and ready food replace empty rolls with exact bounded chances and useful ordinary sources", () => {
+  const additions = [
+    ["forest", "worm_bait", 3, 20, 30, 20, 303.6, 0.6],
+    ["far_bank_grove", "currant_jelly", 1, 6, 49, 22, 1085.2, 34.2],
+  ];
+  for (const [id, itemId, quantity, weight, emptyWeight, capacity, expectedValue, addedValue] of additions) {
+    const route = catalog.explorations.find(row => row.id === id), counts = {};
+    assert.equal(route.finds.emptyWeight, emptyWeight);
+    assert.equal(route.finds.emptyWeight + route.finds.entries.reduce((sum, entry) => sum + entry.weight, 0), 100);
+    assert.deepEqual(route.finds.entries.find(entry => entry.itemId === itemId), { itemId, quantity, weight });
+    for (let roll = 0; roll < 100; roll++) {
+      const result = drawExpeditionLoot({ ...route, loot: [] }, () => roll);
+      const key = Object.keys(result)[0] ?? "empty";
+      counts[key] = (counts[key] ?? 0) + 1;
+      if (key === itemId) assert.equal(result[itemId], quantity);
+    }
+    assert.equal(counts[itemId], weight);
+    assert.equal(counts.empty, emptyWeight);
+    for (const entry of route.finds.entries) assert.equal(counts[entry.itemId], entry.weight);
+    const price = id => catalog.items.find(item => item.id === id).baseSellPrice;
+    const value = Object.entries(route.rewards).reduce((sum, [id, count]) => sum + price(id) * count, 0)
+      + route.loot.reduce((sum, entry) => sum + price(entry.itemId) * (entry.min + entry.max) / 2, 0)
+      + route.finds.entries.reduce((sum, entry) => sum + price(entry.itemId) * entry.quantity * entry.weight / 100, 0);
+    assert(Math.abs(value - expectedValue) < 1e-9);
+    assert(Math.abs(price(itemId) * quantity * weight / 100 - addedValue) < 1e-9);
+    assert.equal(expeditionMaximumRewards(route), capacity);
+  }
+  assert.equal(catalog.fishing.baits.find(bait => bait.itemId === "worm_bait").price, 1);
+  const jelly = catalog.recipes.find(recipe => recipe.id === "cook_currant_jelly");
+  assert.equal(jelly.retired, undefined);
+  assert.deepEqual(jelly.cost.items, { currants: 2, berry_compote: 1, ceramic_jar: 1 });
+  assert.equal(jelly.rewards.currant_jelly, 1, "The find does not replace the ordinary crafting source");
+});
+
+test("the complete three-bait find fits exactly fifty slots and a failed claim retains the saved result", () => {
+  const state = fresh(), route = catalog.explorations.find(row => row.id === "forest");
+  apply(state, "start_exploration", route.id, now, size => size - 1);
+  const job = state.jobs[0], end = Date.parse(job.finishesAt);
+  assert.equal(job.expeditionFinds.worm_bait, 3);
+  assert.equal(Object.values(job.rewards).reduce((sum, count) => sum + count, 0)
+    + Object.values(job.expeditionFinds).reduce((sum, count) => sum + count, 0), 20);
+  state.inventory = { wood: 31 }; const blocked = structuredClone(state);
+  assert.throws(() => apply(state, "claim_job", job.id, end), { code: "ECONOMY_STORAGE_FULL" });
+  assert.deepEqual(state, blocked);
+  state.inventory = { wood: 30 };
+  apply(state, "claim_job", job.id, end, () => { throw Error("claim must not reroll the bait"); });
+  assert.equal(state.inventory.worm_bait, 3);
+  assert.equal(rules.economyStorage(state).used, 50);
+});
+
+test("found jelly grants only expedition XP and cannot mint cooking rewards or resale XP", () => {
+  const route = catalog.explorations.find(row => row.id === "far_bank_grove");
+  const start = () => {
+    const state = fresh();
+    state.buildings = { ...state.buildings, home: 4, bridge: 1, kiln: 1, dryer: 2 };
+    state.inventory = { packed_berries: 1 };
+    return state;
+  };
+  const lucky = start(), ordinary = start();
+  for (const [state, random] of [[lucky, size => size - 1], [ordinary, () => 0]]) {
+    apply(state, "start_exploration", route.id, now, random);
+    const job = state.jobs[0];
+    apply(state, "claim_job", job.id, Date.parse(job.finishesAt), random);
+  }
+  assert.equal(lucky.inventory.currant_jelly, 1);
+  assert.equal(ordinary.inventory.currant_jelly, undefined);
+  assert.deepEqual(lucky.progression.player, ordinary.progression.player);
+  assert.equal(lucky.wallet.pearls, ordinary.wallet.pearls);
+  assert.equal(lucky.progression.player.xp, Math.floor(route.seconds / playerProgressionCatalog.workSecondsPerXp) + playerProgressionCatalog.firstExplorationXp);
+  assert.deepEqual(lucky.progression.recipes, {});
+  const achievements = economyAchievementProgress(lucky);
+  for (const id of ["master_recipes", "campfire_cook", "forest_cuisine", "first_sale"])
+    assert.equal(achievements[id], 0, id);
+  const claimed = structuredClone(lucky), at = now + route.seconds * 1000;
+  apply(lucky, "eat_food", "currant_jelly", at);
+  assert.equal(lucky.inventory.currant_jelly ?? 0, 0);
+  assert.equal(lucky.food.heroMeal, "currant_jelly", "The found meal is immediately usable");
+  assert.deepEqual(lucky.progression, claimed.progression);
+  const sold = structuredClone(claimed);
+  apply(sold, "sell", "currant_jelly", at);
+  assert.equal(sold.wallet.coins - claimed.wallet.coins, 570);
+  assert.equal(sold.wallet.pearls, claimed.wallet.pearls);
+  assert.deepEqual(sold.progression, claimed.progression);
+  assert.equal(economyAchievementProgress(sold).first_sale, 0, "NPC sales are not confirmed player-market sales");
 });
 
 test("catalog rejects reversed, duplicated, unknown, special and fishing or mining loot", () => {

@@ -3,6 +3,7 @@ package ru.zhiv.economy
 import kotlinx.serialization.encodeToString
 import org.junit.jupiter.api.Test
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.game.economyAchievementProgress
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.*
@@ -42,6 +43,73 @@ class EconomyExpeditionLootTest {
             assertEquals(previous.mapValues { it.value * 2 }, doubledMean, id)
             assertTrue(route.rewards.values.sum() + EconomyExpeditionLoot.maximumBonus(route) <= 49L)
         }
+    }
+
+    @Test fun `new bait and meal finds have exact probabilities and preserve ordinary acquisition`() {
+        data class FindCase(val routeId: String, val itemId: String, val quantity: Long, val weight: Int, val emptyWeight: Int, val maximum: Long)
+        for ((routeId, itemId, quantity, weight, emptyWeight, maximum) in listOf(
+            FindCase("forest", "worm_bait", 3L, 20, 30, 20L),
+            FindCase("far_bank_grove", "currant_jelly", 1L, 6, 49, 22L))) {
+            val route = EconomyRules.catalog.explorations.first { it.id == routeId }
+            val finds = requireNotNull(route.finds)
+            assertEquals(emptyWeight, finds.emptyWeight)
+            assertEquals(100, finds.emptyWeight + finds.entries.sumOf { it.weight })
+            assertEquals(EconomyExpeditionFind(itemId, quantity, weight), finds.entries.first { it.itemId == itemId })
+            val outcomes = (0 until 100).map { roll -> EconomyExpeditionLoot.draw(finds) { roll } }
+            assertEquals(weight, outcomes.count { it[itemId] == quantity })
+            assertEquals(emptyWeight, outcomes.count { it.isEmpty() })
+            for (entry in finds.entries) assertEquals(entry.weight, outcomes.count { it[entry.itemId] == entry.quantity })
+            assertEquals(maximum, route.rewards.values.sum() + EconomyExpeditionLoot.maximumBonus(route))
+        }
+        assertEquals(1L, EconomyRules.catalog.fishing!!.baits.first { it.itemId == "worm_bait" }.price)
+        val recipe = EconomyRules.catalog.recipes.first { it.id == "cook_currant_jelly" }
+        assertFalse(recipe.retired)
+        assertEquals(mapOf("currants" to 2L, "berry_compote" to 1L, "ceramic_jar" to 1L), recipe.cost.items)
+        assertEquals(mapOf("currant_jelly" to 1L), recipe.rewards)
+    }
+
+    @Test fun `three bait outcome claims at exactly fifty slots and remains unchanged after a full storage failure`() {
+        val route = EconomyRules.catalog.explorations.first { it.id == "forest" }
+        val started = apply(fresh(), "start_exploration", route.id)
+        val job = started.jobs.single().copy(expeditionFinds = EconomyExpeditionLoot.draw(route) { it - 1 })
+        assertEquals(3L, job.expeditionFinds?.get("worm_bait"))
+        assertEquals(20L, EconomyExpeditionLoot.delivery(job).rewards.values.sum())
+        val end = Instant.parse(job.finishesAt)
+        val blocked = started.copy(inventory = mapOf("wood" to 31L), jobs = listOf(job))
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { apply(blocked, "claim_job", job.id, end) }.code)
+        assertEquals(job, blocked.jobs.single())
+        val claimed = apply(blocked.copy(inventory = mapOf("wood" to 30L)), "claim_job", job.id, end)
+        assertEquals(3L, claimed.inventory["worm_bait"])
+        assertEquals(50L, claimed.inventory.values.sum())
+        assertTrue(claimed.jobs.isEmpty())
+    }
+
+    @Test fun `found meal is usable but gives no cooking mastery additional XP or resale pearls`() {
+        val route = EconomyRules.catalog.explorations.first { it.id == "far_bank_grove" }
+        val initial = fresh().let { it.copy(buildings = it.buildings + mapOf("home" to 4, "bridge" to 1, "kiln" to 1, "dryer" to 2),
+            inventory = mapOf("packed_berries" to 1L)) }
+        val started = apply(initial, "start_exploration", route.id)
+        val job = started.jobs.single().copy(expeditionFinds = EconomyExpeditionLoot.draw(route) { it - 1 })
+        val end = Instant.parse(job.finishesAt)
+        val lucky = apply(started.copy(jobs = listOf(job)), "claim_job", job.id, end)
+        val ordinary = apply(started.copy(jobs = listOf(job.copy(expeditionFinds = emptyMap()))), "claim_job", job.id, end)
+        assertEquals(1L, lucky.inventory["currant_jelly"])
+        assertNull(ordinary.inventory["currant_jelly"])
+        assertEquals(ordinary.progression.player, lucky.progression.player)
+        assertEquals(113L, lucky.progression.player?.xp, "40 first-route XP plus 3300 / 45 work XP")
+        assertEquals(ordinary.wallet.pearls, lucky.wallet.pearls)
+        assertTrue(lucky.progression.recipes.isEmpty())
+        for (id in listOf("master_recipes", "campfire_cook", "forest_cuisine", "first_sale"))
+            assertEquals(0L, economyAchievementProgress(lucky)[id], id)
+        val eaten = apply(lucky, "eat_food", "currant_jelly", end)
+        assertEquals(0L, eaten.inventory["currant_jelly"] ?: 0L)
+        assertEquals("currant_jelly", eaten.food.heroMeal)
+        assertEquals(lucky.progression, eaten.progression)
+        val sold = apply(lucky, "sell", "currant_jelly", end)
+        assertEquals(570L, sold.wallet.coins - lucky.wallet.coins)
+        assertEquals(lucky.wallet.pearls, sold.wallet.pearls)
+        assertEquals(lucky.progression, sold.progression)
+        assertEquals(0L, economyAchievementProgress(sold)["first_sale"])
     }
 
     @Test fun `saved random outcomes stay hidden through completion and failed claims and give XP exactly once`() {

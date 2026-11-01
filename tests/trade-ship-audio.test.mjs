@@ -147,6 +147,70 @@ test("the persistent horn claim precedes playback and consumes muted or expired 
   }
 });
 
+function departureInput(f, overrides = {}) {
+  return f.input(0, { kind: "arrival", voyageId: "departure:2026-11-01T18:00:00Z", motion: sampleTradeShipMotion("departing", .05), now: 100_050, ...overrides });
+}
+function observeDocked(f, overrides = {}) {
+  f.update(f.input(0, { kind: "arrival", motion: sampleTradeShipMotion("docked", 0), ...overrides }));
+}
+
+test("a newly confirmed departure announces once with a distinct preloaded short cue", () => {
+  const f = fixture();
+  observeDocked(f);
+  assert.ok(f.prepared[0].cues.includes("ship.departure"));
+  f.update(departureInput(f)); f.update(departureInput(f));
+  assert.equal(f.played.length, 1);
+  assert.equal(f.played[0].cueId, "ship.departure");
+  assert.equal(f.played[0].ownerId, frame.ownerId); assert.equal(f.played[0].maxAgeMs, 350);
+  assert.match(f.played[0].id, /departure-horn-v1$/);
+  assert.ok(f.played[0].gain >= .65 && f.played[0].gain <= 1);
+  observeDocked(f); f.update(departureInput(f));
+  assert.equal(f.played.length, 1, "a repeated snapshot or backward clock cannot repeat the same departure");
+  f.dispose();
+});
+
+test("hydration, owner/view recovery, DEV and late departure samples establish silent baselines", () => {
+  for (const scenario of ["hydrate", "owner", "view", "hidden", "dev", "after-dev", "late-clock", "late-sample", "circle"]) {
+    const f = fixture();
+    if (scenario !== "hydrate") observeDocked(f, scenario === "hidden" ? { active: false }
+      : scenario === "after-dev" ? { kind: "dev" } : scenario === "circle" ? { voyageId: null, motion: null } : {});
+    f.update(departureInput(f, scenario === "owner" ? { frame: { ...frame, ownerId: "world-owner-b" } }
+      : scenario === "view" ? { frame: null } : scenario === "dev" ? { kind: "dev" }
+        : scenario === "late-clock" ? { now: 104_000 } : scenario === "late-sample" ? { motion: sampleTradeShipMotion("departing", 3) } : {}));
+    f.update(departureInput(f, { motion: sampleTradeShipMotion("departing", .1) }));
+    assert.equal(f.played.length, 0, scenario); f.dispose();
+  }
+});
+
+test("muted or offscreen departures are consumed and never replay on reopening or unmuting", () => {
+  for (const scenario of ["muted", "master", "world", "offscreen", "suppressed"]) {
+    const f = fixture(); observeDocked(f);
+    if (scenario === "muted") f.settings.enabled = false;
+    if (scenario === "master") f.settings.master = 0;
+    if (scenario === "world") f.settings.buses.world = 0;
+    f.update(departureInput(f, scenario === "offscreen" ? { visible: false } : scenario === "suppressed" ? { active: false } : {}));
+    Object.assign(f.settings, { enabled: true, master: .65, buses: { world: .55 } });
+    observeDocked(f); f.update(departureInput(f));
+    assert.equal(f.played.length, 0, scenario); f.dispose();
+  }
+});
+
+test("departure WAV is a separate short mono steam call with peak headroom and a silent tail", async () => {
+  const catalog = JSON.parse(await readFile(root + "/features/audio/catalog/audio-catalog.json", "utf8"));
+  const cue = catalog.cues.find(cue => cue.id === "ship.departure"), asset = catalog.assets.find(asset => asset.id === cue.assets[0]);
+  assert.equal(cue.bus, "world"); assert.equal(cue.mode, "one-shot"); assert.equal(cue.maxInstances, 1);
+  assert.equal(cue.gainDb, 0); assert.equal(cue.pitchVariation, 0); assert.equal(cue.fadeMs, 35);
+  const bytes = await readFile(root + "/public" + asset.src);
+  assert.equal(bytes.readUInt16LE(22), 1); assert.equal(bytes.readUInt32LE(24), 48000);
+  const samples = bytes.subarray(44), count = samples.length / 2;
+  assert.equal(count / 48000, 1.1);
+  let peak = 0, square = 0;
+  for (let n = 0; n < count; n++) { const value = samples.readInt16LE(n * 2) / 32768; peak = Math.max(peak, Math.abs(value)); square += value * value; }
+  assert.ok(20 * Math.log10(peak) <= -4.99);
+  assert.ok(20 * Math.log10(Math.sqrt(square / count)) > -20);
+  assert.ok(Math.abs(samples.readInt16LE(0)) <= 2 && Math.abs(samples.readInt16LE(samples.length - 2)) <= 2);
+});
+
 test("arrival sound is original mono PCM48 with headroom, a smooth tail and a clear world cue", async () => {
   const catalog = JSON.parse(await readFile(root + "/features/audio/catalog/audio-catalog.json", "utf8"));
   const cue = catalog.cues.find(cue => cue.id === "ship.arrival"), asset = catalog.assets.find(asset => asset.id === cue.assets[0]);

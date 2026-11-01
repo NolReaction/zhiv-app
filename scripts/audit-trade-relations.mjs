@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { residentOrderPricing } from "./lib/resident-order-pricing.mjs";
-import { reputationXpForEffort, weeklyReputationXpForEffort, weeklyPearlsForEffort, tradeGuaranteedBuildings, tradeOrderEffort, tradeResidentIds, tradeSourceAvailability } from "./lib/trade-relations-effort.mjs";
+import { reputationXpForEffort, weeklyReputationXpForEffort, weeklyPearlsForEffort, tradeGuaranteedBuildings, tradeOrderEffort, tradeResidentIds, tradeSourceAvailability, assertWeeklySupplyChain } from "./lib/trade-relations-effort.mjs";
 
 const sum = values => values.reduce((total, value) => total + value, 0);
 const signature = items => JSON.stringify(Object.entries(items).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
@@ -51,7 +51,10 @@ export function auditTradeRelations(catalog) {
     assert(template.name?.length > 0 && template.description?.length <= 280, `${template.id}: missing or excessive copy`);
     const kinds = Object.keys(template.items).length;
     assert(kinds >= 1 && kinds <= (weekly ? 3 : 4), `${template.id}: invalid number of ingredient kinds`);
-    assert(sum(Object.values(template.items)) <= 50, `${template.id}: basket exceeds the initial storage budget`);
+    const units = sum(Object.values(template.items));
+    assert(units <= 50, `${template.id}: basket exceeds the initial storage budget`);
+    if (weekly && catalog.version >= 15) assert(units >= 8 && units <= 26,
+      `${template.id}: weekly stages require 8 to 26 goods and room for upstream preparation`);
     const reachable = tradeSourceAvailability(catalog, tradeGuaranteedBuildings(template));
     for (const [itemId, quantity] of Object.entries(template.items)) {
       assert(itemMap.has(itemId) && reachable.items.has(itemId), `${template.id}: unavailable source chain for ${itemId}`);
@@ -59,6 +62,7 @@ export function auditTradeRelations(catalog) {
       assert(itemMap.get(itemId).category !== "special", `${template.id}: relics never belong to ordinary relations work`);
     }
     const intrinsic = effort(template), pricing = quote(template);
+    if (weekly && catalog.version >= 15) assertWeeklySupplyChain(catalog, template, intrinsic.references);
     for (const key of ["effortSeconds", "manufacturingSeconds", "fishingUncertain"])
       assert.equal(template[key], intrinsic[key], `${template.id}: incorrect ${key}`);
     if (!weekly) assert.equal(template.reputationXp, reputationXpForEffort(intrinsic.effortSeconds, catalog.version), `${template.id}: incorrect reputation reward`);
@@ -95,8 +99,8 @@ export function auditTradeRelations(catalog) {
     const reputationXp = sum(stages.map(stage => stage.reputationXp));
     if (catalog.version >= 15) assert.deepEqual(stages.map(stage => stage.pearls), [0, 0, weeklyPearlsForEffort(sum(stages.map(stage => stage.effortSeconds)))], `${template.id}: difficulty must set only the final pearl reward`);
     assert(reputationXp >= (catalog.version >= 15 ? 120 : 60) && reputationXp <= (catalog.version >= 15 ? 600 : 300), `${template.id}: weekly reputation out of bounds`);
-    // Optional specialist weeklies may use named fish dishes, with expected
-    // acquisition disclosed above. Legendary RNG remains outside deadlines.
+    // Retain the historical direct-ingredient fence; current weeks additionally
+    // prove the complete common-fish source chain in auditBasket above.
     const forbidden = ["fish_legendary", "legendary_fish"];
     assert(stages.every(stage => Object.keys(stage.items).every(item => !forbidden.includes(item))),
       `${template.id}: a weekly deadline cannot require rare random catches`);

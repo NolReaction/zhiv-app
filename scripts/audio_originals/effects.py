@@ -526,7 +526,7 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     """
     if not isinstance(sample_rate, int) or sample_rate < 16000:
         raise ValueError("sample_rate must be an integer of at least 16000 Hz")
-    if asset_id == "ship.arrival.01":
+    if asset_id in ("ship.arrival.01", "ship.departure.01"):
         import steamship
         return steamship.render(asset_id, sample_rate)
     parts = asset_id.split(".")

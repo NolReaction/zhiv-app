@@ -3406,7 +3406,7 @@
       },
       "requiredBuildings": {},
       "finds": {
-        "emptyWeight": 50,
+        "emptyWeight": 30,
         "entries": [
           {
             "itemId": "planks",
@@ -3427,6 +3427,11 @@
             "itemId": "clay",
             "quantity": 1,
             "weight": 10
+          },
+          {
+            "itemId": "worm_bait",
+            "quantity": 3,
+            "weight": 20
           }
         ]
       },
@@ -4098,7 +4103,7 @@
     {
       "id": "far_bank_grove",
       "name": "Роща за рекой",
-      "description": "Запас ягод пригодится в дальней роще. Между корнями и речными наносами встречаются крепкие брёвна, руда, песок и глина.",
+      "description": "Запас ягод пригодится в дальней роще. Между корнями и речными наносами встречаются крепкие брёвна, руда, песок и глина; иногда попадается тайник с угощением путника.",
       "requiredHomeLevel": 4,
       "requiredBuildings": {
         "bridge": 1,
@@ -4119,7 +4124,7 @@
         "clay": 2
       },
       "finds": {
-        "emptyWeight": 55,
+        "emptyWeight": 49,
         "entries": [
           {
             "itemId": "packed_berries",
@@ -4135,6 +4140,11 @@
             "itemId": "hardwood",
             "quantity": 1,
             "weight": 15
+          },
+          {
+            "itemId": "currant_jelly",
+            "quantity": 1,
+            "weight": 6
           }
         ]
       },
@@ -9151,7 +9161,7 @@
           "id": "week_builder_shelter",
           "residentId": "builder",
           "name": "Уютная беседка для соседей",
-          "description": "Шишколап готовит небольшое место для встреч. Помоги материалами и обедом для строителя.",
+          "description": "Построим беседку для соседей: подготовим опоры, соберём настил и накроем стол.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
             "woodlot": 1,
@@ -9162,46 +9172,46 @@
           "stages": [
             {
               "id": "week_builder_shelter_1",
-              "name": "Подготовить основу",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Опоры для беседки",
+              "description": "Древесина и камни для основания.",
               "items": {
-                "wood": 6,
-                "stone": 3
+                "wood": 12,
+                "stone": 8
               },
-              "coins": 338,
-              "reputationXp": 40,
-              "effortSeconds": 2760,
+              "coins": 750,
+              "reputationXp": 44,
+              "effortSeconds": 6640,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_builder_shelter_2",
-              "name": "Сделать деревянные детали",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Настил и скамьи",
+              "description": "Доски для настила и скамеек.",
               "items": {
-                "planks": 3,
-                "wood": 2
+                "planks": 10,
+                "wood": 6
               },
-              "coins": 263,
+              "coins": 850,
               "reputationXp": 40,
-              "effortSeconds": 1260,
-              "manufacturingSeconds": 360,
+              "effortSeconds": 4080,
+              "manufacturingSeconds": 1200,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_builder_shelter_3",
-              "name": "Обед для строителя",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Угощение для соседей",
+              "description": "Горячий обед и компот к открытию беседки.",
               "items": {
-                "grilled_fish": 2,
-                "berry_compote": 2
+                "grilled_fish": 6,
+                "berry_compote": 6
               },
-              "coins": 238,
+              "coins": 713,
               "reputationXp": 40,
-              "effortSeconds": 1204,
-              "manufacturingSeconds": 720,
+              "effortSeconds": 3612,
+              "manufacturingSeconds": 2160,
               "fishingUncertain": true,
               "pearls": 40
             }
@@ -9211,7 +9221,7 @@
           "id": "week_builder_crossing",
           "residentId": "builder",
           "name": "Ремонт лесной переправы",
-          "description": "Для небольшой переправы нужны крепления, каменные детали и готовые инструменты.",
+          "description": "Восстановим переправу: укрепим берег, установим фонари и закрепим новый настил.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "woodlot": 3,
@@ -9224,48 +9234,48 @@
           "stages": [
             {
               "id": "week_builder_crossing_1",
-              "name": "Ящики и каменные опоры",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Береговые опоры",
+              "description": "Каменные опоры и тара для стройки.",
               "items": {
-                "trade_crate": 1,
-                "cut_stone": 2
+                "trade_crate": 4,
+                "cut_stone": 10
               },
-              "coins": 813,
-              "reputationXp": 40,
-              "effortSeconds": 3900,
-              "manufacturingSeconds": 2340,
+              "coins": 3775,
+              "reputationXp": 82,
+              "effortSeconds": 18120,
+              "manufacturingSeconds": 10800,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_builder_crossing_2",
-              "name": "Стекло и линзы для разметки",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Фонари переправы",
+              "description": "Стекло и линзы для огней над водой.",
               "items": {
-                "lens": 1,
-                "glass": 2
+                "lens": 4,
+                "glass": 8
               },
-              "coins": 1313,
-              "reputationXp": 42,
-              "effortSeconds": 6300,
-              "manufacturingSeconds": 3060,
+              "coins": 5250,
+              "reputationXp": 104,
+              "effortSeconds": 25200,
+              "manufacturingSeconds": 12240,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_builder_crossing_3",
-              "name": "Завершить рабочий комплект",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Крепления и инструмент",
+              "description": "Крепления и инструменты для завершения работ.",
               "items": {
-                "metal_parts": 2,
-                "tools": 1
+                "metal_parts": 8,
+                "tools": 4
               },
-              "coins": 2863,
-              "reputationXp": 66,
-              "effortSeconds": 13740,
-              "manufacturingSeconds": 6780,
+              "coins": 11450,
+              "reputationXp": 200,
+              "effortSeconds": 54960,
+              "manufacturingSeconds": 27120,
               "fishingUncertain": false,
-              "pearls": 80
+              "pearls": 140
             }
           ]
         },
@@ -9273,7 +9283,7 @@
           "id": "week_lopukh_camp",
           "residentId": "lopukh",
           "name": "Лесной лагерь Лопоуха",
-          "description": "Лопоух обустраивает место для отдыха у участка и зовёт помочь.",
+          "description": "Подготовим лагерь для лесорубов: соберём запасы, обустроим навесы и приготовим обед.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
             "woodlot": 1,
@@ -9284,46 +9294,46 @@
           "stages": [
             {
               "id": "week_lopukh_camp_1",
-              "name": "Ягоды и дрова",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Запас для лагеря",
+              "description": "Дрова и ягоды для первых дней в лесу.",
               "items": {
-                "berries": 8,
-                "wood": 3
+                "berries": 16,
+                "wood": 10
               },
-              "coins": 213,
+              "coins": 575,
               "reputationXp": 40,
-              "effortSeconds": 1084,
+              "effortSeconds": 2888,
               "manufacturingSeconds": 0,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_lopukh_camp_2",
-              "name": "Лавочки у навеса",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Навесы и полки",
+              "description": "Доски и древесина для лагерных построек.",
               "items": {
-                "planks": 3,
-                "wood": 1
+                "planks": 10,
+                "wood": 6
               },
-              "coins": 225,
+              "coins": 850,
               "reputationXp": 40,
-              "effortSeconds": 1080,
-              "manufacturingSeconds": 360,
+              "effortSeconds": 4080,
+              "manufacturingSeconds": 1200,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_lopukh_camp_3",
-              "name": "Обед под деревьями",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Обед для артели",
+              "description": "Еда и напитки для всей артели.",
               "items": {
-                "grilled_fish": 2,
-                "berry_compote": 2
+                "grilled_fish": 6,
+                "berry_compote": 6
               },
-              "coins": 238,
+              "coins": 713,
               "reputationXp": 40,
-              "effortSeconds": 1204,
-              "manufacturingSeconds": 720,
+              "effortSeconds": 3612,
+              "manufacturingSeconds": 2160,
               "fishingUncertain": true,
               "pearls": 40
             }
@@ -9333,7 +9343,7 @@
           "id": "week_lopukh_far_shift",
           "residentId": "lopukh",
           "name": "Дальний участок лесоруба",
-          "description": "На дальней делянке нужны укрытие, инструменты и запас еды.",
+          "description": "Снарядим дальний участок: привезём балки, упакуем продукты и запасёмся дорожными пайками.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "woodlot": 3,
@@ -9346,48 +9356,48 @@
           "stages": [
             {
               "id": "week_lopukh_far_shift_1",
-              "name": "Подготовить укрытие",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Обустройство участка",
+              "description": "Балки и ящики для временного лагеря.",
               "items": {
-                "trade_crate": 1,
-                "beams": 1
+                "trade_crate": 4,
+                "beams": 6
               },
-              "coins": 1100,
-              "reputationXp": 40,
-              "effortSeconds": 5280,
-              "manufacturingSeconds": 2280,
+              "coins": 6025,
+              "reputationXp": 118,
+              "effortSeconds": 28920,
+              "manufacturingSeconds": 11880,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_lopukh_far_shift_2",
-              "name": "Упаковать запас ягод",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Провизия в дорогу",
+              "description": "Ягоды в банках и напитки для дороги.",
               "items": {
-                "packed_berries": 2,
-                "bottled_compote": 1
+                "packed_berries": 8,
+                "bottled_compote": 4
               },
-              "coins": 1550,
-              "reputationXp": 46,
-              "effortSeconds": 7552,
-              "manufacturingSeconds": 4740,
+              "coins": 6200,
+              "reputationXp": 122,
+              "effortSeconds": 30208,
+              "manufacturingSeconds": 18960,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_lopukh_far_shift_3",
-              "name": "Припасы для долгой смены",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Запас на дальнюю смену",
+              "description": "Паёк и сушёные ягоды на несколько выходов.",
               "items": {
-                "trail_ration": 2,
-                "dried_berries": 1
+                "trail_ration": 8,
+                "dried_berries": 8
               },
-              "coins": 1825,
-              "reputationXp": 50,
-              "effortSeconds": 9000,
-              "manufacturingSeconds": 6720,
+              "coins": 8200,
+              "reputationXp": 156,
+              "effortSeconds": 40511,
+              "manufacturingSeconds": 29760,
               "fishingUncertain": true,
-              "pearls": 80
+              "pearls": 140
             }
           ]
         },
@@ -9395,7 +9405,7 @@
           "id": "week_kamneshmyg_entry",
           "residentId": "kamneshmyg",
           "name": "Порядок у каменоломни",
-          "description": "Камнешмыг хочет привести в порядок вход и запастись всем для спокойной работы.",
+          "description": "Наведём порядок у шахты: обновим подпорки, соберём рабочие запасы и накормим шахтёров.",
           "requiredHomeLevel": 2,
           "requiredBuildings": {
             "quarry": 1,
@@ -9408,46 +9418,46 @@
           "stages": [
             {
               "id": "week_kamneshmyg_entry_1",
-              "name": "Деревянные подпорки",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Новые подпорки",
+              "description": "Древесина и доски для надёжных подпорок.",
               "items": {
-                "wood": 4,
-                "planks": 2
+                "wood": 10,
+                "planks": 8
               },
-              "coins": 275,
+              "coins": 875,
               "reputationXp": 40,
-              "effortSeconds": 1320,
-              "manufacturingSeconds": 240,
+              "effortSeconds": 4200,
+              "manufacturingSeconds": 960,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_kamneshmyg_entry_2",
-              "name": "Топливо и завязки",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Рабочие запасы",
+              "description": "Уголь и верёвки для работы у каменоломни.",
               "items": {
-                "charcoal": 3,
-                "rope": 3
+                "charcoal": 10,
+                "rope": 10
               },
-              "coins": 375,
+              "coins": 1250,
               "reputationXp": 40,
-              "effortSeconds": 1800,
-              "manufacturingSeconds": 900,
+              "effortSeconds": 6000,
+              "manufacturingSeconds": 3000,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_kamneshmyg_entry_3",
-              "name": "Обед каменной смены",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Обед шахтёров",
+              "description": "Рыба и черничный компот после смены.",
               "items": {
-                "grilled_fish": 2,
-                "blueberry_compote": 1
+                "grilled_fish": 6,
+                "blueberry_compote": 4
               },
-              "coins": 263,
+              "coins": 938,
               "reputationXp": 40,
-              "effortSeconds": 1308,
-              "manufacturingSeconds": 720,
+              "effortSeconds": 4660,
+              "manufacturingSeconds": 2520,
               "fishingUncertain": true,
               "pearls": 40
             }
@@ -9457,7 +9467,7 @@
           "id": "week_kamneshmyg_survey",
           "residentId": "kamneshmyg",
           "name": "Подготовка новой выработки",
-          "description": "Камнешмыг обследует дальнюю часть шахты. Помоги оснастить рабочее место.",
+          "description": "Подготовим новую выработку: соберём приборы, снарядим разведчиков и снабдим рабочую смену.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "quarry": 4,
@@ -9471,48 +9481,48 @@
           "stages": [
             {
               "id": "week_kamneshmyg_survey_1",
-              "name": "Кварц и линза для разведки",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Приборы разведчиков",
+              "description": "Кварц и линзы для обследования породы.",
               "items": {
-                "quartz": 2,
-                "lens": 1
+                "quartz": 8,
+                "lens": 4
               },
-              "coins": 1063,
-              "reputationXp": 40,
-              "effortSeconds": 5100,
-              "manufacturingSeconds": 1620,
+              "coins": 4250,
+              "reputationXp": 88,
+              "effortSeconds": 20400,
+              "manufacturingSeconds": 6480,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_kamneshmyg_survey_2",
-              "name": "Оснастка для укрепления",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Комплекты для выработки",
+              "description": "Полевые комплекты и упакованные ягоды для разведчиков.",
               "items": {
-                "field_kit": 1,
-                "packed_berries": 1
+                "field_kit": 3,
+                "packed_berries": 8
               },
-              "coins": 3025,
-              "reputationXp": 70,
-              "effortSeconds": 14568,
-              "manufacturingSeconds": 8880,
+              "coins": 11700,
+              "reputationXp": 200,
+              "effortSeconds": 56544,
+              "manufacturingSeconds": 34740,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_kamneshmyg_survey_3",
-              "name": "Инструмент и горячий обед",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Поставка для рабочей смены",
+              "description": "Инструменты и горячая уха для продолжения работ.",
               "items": {
-                "tools": 1,
-                "fish_soup": 2
+                "tools": 4,
+                "fish_soup": 8
               },
-              "coins": 1713,
-              "reputationXp": 48,
-              "effortSeconds": 8300,
-              "manufacturingSeconds": 4740,
+              "coins": 6850,
+              "reputationXp": 132,
+              "effortSeconds": 33199,
+              "manufacturingSeconds": 18960,
               "fishingUncertain": true,
-              "pearls": 80
+              "pearls": 140
             }
           ]
         },
@@ -9520,7 +9530,7 @@
           "id": "week_plesk_picnic",
           "residentId": "plesk",
           "name": "Большой пикник у воды",
-          "description": "Плёска собирает соседей у берега и просит помочь с уловом и угощением.",
+          "description": "Устроим большой пикник у воды: соберём улов, приготовим горячее и принесём запас для гостей.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
             "garden": 1,
@@ -9529,46 +9539,46 @@
           "stages": [
             {
               "id": "week_plesk_picnic_1",
-              "name": "Свежий улов к столу",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Улов и ягоды",
+              "description": "Обычная рыба и ягоды для общего стола.",
               "items": {
-                "fish_common": 4,
-                "berries": 4
+                "fish_common": 12,
+                "berries": 12
               },
-              "coins": 125,
+              "coins": 375,
               "reputationXp": 40,
-              "effortSeconds": 696,
+              "effortSeconds": 2087,
               "manufacturingSeconds": 0,
               "fishingUncertain": true,
               "pearls": 0
             },
             {
               "id": "week_plesk_picnic_2",
-              "name": "Горячая часть пикника",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Горячее и напитки",
+              "description": "Жареная рыба и компот для первых гостей.",
               "items": {
-                "grilled_fish": 2,
-                "berry_compote": 2
+                "grilled_fish": 8,
+                "berry_compote": 8
               },
-              "coins": 238,
+              "coins": 950,
               "reputationXp": 40,
-              "effortSeconds": 1204,
-              "manufacturingSeconds": 720,
+              "effortSeconds": 4816,
+              "manufacturingSeconds": 2880,
               "fishingUncertain": true,
               "pearls": 0
             },
             {
               "id": "week_plesk_picnic_3",
-              "name": "Угощение для поздних гостей",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Запас для гостей",
+              "description": "Ещё рыба и клубничный компот для долгого пикника.",
               "items": {
-                "fish_common": 3,
-                "strawberry_compote": 2
+                "fish_common": 10,
+                "strawberry_compote": 6
               },
-              "coins": 457,
-              "reputationXp": 40,
-              "effortSeconds": 2270,
-              "manufacturingSeconds": 720,
+              "coins": 1388,
+              "reputationXp": 44,
+              "effortSeconds": 6915,
+              "manufacturingSeconds": 2160,
               "fishingUncertain": true,
               "pearls": 40
             }
@@ -9578,7 +9588,7 @@
           "id": "week_plesk_river_table",
           "residentId": "plesk",
           "name": "Неделя речных угощений",
-          "description": "Плёска готовит несколько встреч на берегу. Нужны разные блюда и припасы.",
+          "description": "Подготовим речной праздник: запасёмся рыбой, приготовим угощения и соберём подарки гостям.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "woodlot": 1,
@@ -9591,46 +9601,46 @@
           "stages": [
             {
               "id": "week_plesk_river_table_1",
-              "name": "Улов и ягодный напиток",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Запас для речного стола",
+              "description": "Обычная рыба и компот в бутылках.",
               "items": {
-                "fish_uncommon": 2,
-                "bottled_compote": 1
+                "fish_common": 16,
+                "bottled_compote": 4
               },
-              "coins": 550,
-              "reputationXp": 40,
-              "effortSeconds": 3916,
-              "manufacturingSeconds": 1500,
+              "coins": 2300,
+              "reputationXp": 58,
+              "effortSeconds": 11359,
+              "manufacturingSeconds": 6000,
               "fishingUncertain": true,
               "pearls": 0
             },
             {
               "id": "week_plesk_river_table_2",
-              "name": "Припасы к вечернему столу",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Угощения к празднику",
+              "description": "Копчёная рыба и смородиновое желе.",
               "items": {
-                "smoked_fish": 2,
-                "currant_jelly": 1
+                "smoked_fish": 8,
+                "currant_jelly": 4
               },
-              "coins": 1238,
-              "reputationXp": 42,
-              "effortSeconds": 6036,
-              "manufacturingSeconds": 3120,
+              "coins": 4950,
+              "reputationXp": 102,
+              "effortSeconds": 24143,
+              "manufacturingSeconds": 12480,
               "fishingUncertain": true,
               "pearls": 0
             },
             {
               "id": "week_plesk_river_table_3",
-              "name": "Ягодный подарок и улов",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Подарки гостям",
+              "description": "Ягодные подарки и горячая рыба к общему столу.",
               "items": {
-                "berry_gift": 1,
-                "fish_uncommon": 2
+                "berry_gift": 3,
+                "grilled_fish": 8
               },
-              "coins": 2238,
-              "reputationXp": 62,
-              "effortSeconds": 12016,
-              "manufacturingSeconds": 4860,
+              "coins": 7013,
+              "reputationXp": 134,
+              "effortSeconds": 33836,
+              "manufacturingSeconds": 16020,
               "fishingUncertain": true,
               "pearls": 80
             }
@@ -9640,7 +9650,7 @@
           "id": "week_leaftail_provisions",
           "residentId": "leaftail",
           "name": "Сборы Листохвоста в дорогу",
-          "description": "Листохвост готовит новую поездку. Помоги упаковать груз и собрать провизию.",
+          "description": "Соберём припасы для каравана: подготовим тару, упакуем ягоды и возьмём еду в дорогу.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "woodlot": 1,
@@ -9653,48 +9663,48 @@
           "stages": [
             {
               "id": "week_leaftail_provisions_1",
-              "name": "Перевязать дорожные тюки",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Тара и крепления",
+              "description": "Ящики и верёвки для караванного груза.",
               "items": {
-                "trade_crate": 1,
-                "rope": 2
+                "trade_crate": 4,
+                "rope": 8
               },
-              "coins": 413,
-              "reputationXp": 40,
-              "effortSeconds": 1980,
-              "manufacturingSeconds": 1260,
+              "coins": 1650,
+              "reputationXp": 48,
+              "effortSeconds": 7920,
+              "manufacturingSeconds": 5040,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_leaftail_provisions_2",
-              "name": "Упаковать сухие припасы",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Упаковка провизии",
+              "description": "Полотно и ягоды в банках для крепких свёртков.",
               "items": {
-                "cloth": 1,
-                "packed_berries": 1
+                "cloth": 4,
+                "packed_berries": 4
               },
-              "coins": 800,
-              "reputationXp": 40,
-              "effortSeconds": 3888,
-              "manufacturingSeconds": 2520,
+              "coins": 3200,
+              "reputationXp": 72,
+              "effortSeconds": 15552,
+              "manufacturingSeconds": 10080,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_leaftail_provisions_3",
-              "name": "Еда для речного пути",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Дорожный запас",
+              "description": "Напитки и копчёная рыба на переход.",
               "items": {
-                "bottled_compote": 1,
-                "smoked_fish": 1
+                "bottled_compote": 4,
+                "smoked_fish": 4
               },
-              "coins": 763,
-              "reputationXp": 40,
-              "effortSeconds": 3708,
-              "manufacturingSeconds": 2400,
+              "coins": 3050,
+              "reputationXp": 70,
+              "effortSeconds": 14832,
+              "manufacturingSeconds": 9600,
               "fishingUncertain": true,
-              "pearls": 40
+              "pearls": 80
             }
           ]
         },
@@ -9702,7 +9712,7 @@
           "id": "week_leaftail_expedition",
           "residentId": "leaftail",
           "name": "Большая дорога за находками",
-          "description": "Для дальней поездки Листохвосту нужны крепкие ящики, снаряжение и запас еды.",
+          "description": "Снарядим большую экспедицию: соберём груз, подготовим упаковку и доставим полевые комплекты.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "woodlot": 1,
@@ -9716,46 +9726,46 @@
           "stages": [
             {
               "id": "week_leaftail_expedition_1",
-              "name": "Подготовить дорожные ящики",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Груз для экспедиции",
+              "description": "Ящики и инструменты для дальней дороги.",
               "items": {
-                "trade_crate": 2,
-                "tools": 1
+                "trade_crate": 6,
+                "tools": 5
               },
-              "coins": 1863,
-              "reputationXp": 50,
-              "effortSeconds": 8940,
-              "manufacturingSeconds": 5340,
+              "coins": 8163,
+              "reputationXp": 152,
+              "effortSeconds": 39180,
+              "manufacturingSeconds": 23100,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_leaftail_expedition_2",
-              "name": "Упаковать хрупкий груз",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Защита припасов",
+              "description": "Бутылки и полотно для запасов и находок.",
               "items": {
-                "glass_bottle": 2,
-                "cloth": 1
+                "glass_bottle": 8,
+                "cloth": 6
               },
-              "coins": 1025,
-              "reputationXp": 40,
-              "effortSeconds": 4920,
-              "manufacturingSeconds": 2940,
+              "coins": 4650,
+              "reputationXp": 96,
+              "effortSeconds": 22320,
+              "manufacturingSeconds": 13560,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_leaftail_expedition_3",
-              "name": "Снарядить дальнюю поездку",
-              "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+              "name": "Снаряжение и подарки",
+              "description": "Полевые комплекты и гостинцы для встречных поселений.",
               "items": {
-                "field_kit": 1,
-                "berry_gift": 1
+                "field_kit": 4,
+                "berry_gift": 4
               },
-              "coins": 4688,
-              "reputationXp": 96,
-              "effortSeconds": 22516,
-              "manufacturingSeconds": 12120,
+              "coins": 18750,
+              "reputationXp": 200,
+              "effortSeconds": 90064,
+              "manufacturingSeconds": 48480,
               "fishingUncertain": false,
               "pearls": 140
             }
@@ -9765,59 +9775,59 @@
           "id": "week_lopukh_forest_kitchen",
           "residentId": "lopukh",
           "name": "Лесная кухня Лопоуха",
-          "description": "Выбери недельное дело и выполни три разные поставки. Условия сохраняются после принятия.",
+          "description": "Откроем полевую кухню для лесорубов: запасёмся посудой, приготовим горячее и упакуем провизию.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "kiln": 1,
             "quarry": 2,
             "dryer": 2,
             "woodlot": 1,
-            "garden": 2
+            "garden": 3
           },
           "stages": [
             {
               "id": "week_lopukh_forest_kitchen_1",
-              "name": "Запас для очага",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Посуда и топливо",
+              "description": "Уголь и керамические банки для полевой кухни.",
               "items": {
-                "charcoal": 4,
-                "ceramic_jar": 3
+                "charcoal": 12,
+                "ceramic_jar": 10
               },
-              "coins": 850,
-              "reputationXp": 40,
-              "effortSeconds": 4080,
-              "manufacturingSeconds": 1740,
+              "coins": 2750,
+              "reputationXp": 64,
+              "effortSeconds": 13200,
+              "manufacturingSeconds": 5640,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_lopukh_forest_kitchen_2",
-              "name": "Обеды на смену",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Обед лесорубов",
+              "description": "Копчёная рыба и черничный компот.",
               "items": {
-                "grilled_silverfin": 2,
-                "smoked_bream": 1
+                "smoked_fish": 10,
+                "blueberry_compote": 6
               },
-              "coins": 813,
-              "reputationXp": 52,
-              "effortSeconds": 9543,
-              "manufacturingSeconds": 2400,
+              "coins": 3525,
+              "reputationXp": 78,
+              "effortSeconds": 17334,
+              "manufacturingSeconds": 11160,
               "fishingUncertain": true,
               "pearls": 0
             },
             {
               "id": "week_lopukh_forest_kitchen_3",
-              "name": "Ягодный вечер",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Провизия для следующих смен",
+              "description": "Смородиновое желе и ягоды в банках для следующих смен.",
               "items": {
-                "mooncarp_blueberries": 1,
-                "packed_berries": 2
+                "currant_jelly": 6,
+                "packed_berries": 8
               },
-              "coins": 1582,
-              "reputationXp": 76,
-              "effortSeconds": 16552,
-              "manufacturingSeconds": 4740,
-              "fishingUncertain": true,
+              "coins": 8475,
+              "reputationXp": 158,
+              "effortSeconds": 41256,
+              "manufacturingSeconds": 20880,
+              "fishingUncertain": false,
               "pearls": 80
             }
           ]
@@ -9826,7 +9836,7 @@
           "id": "week_kamneshmyg_stone_square",
           "residentId": "kamneshmyg",
           "name": "Новая каменная площадь",
-          "description": "Выбери недельное дело и выполни три разные поставки. Условия сохраняются после принятия.",
+          "description": "Построим каменную площадь: подготовим основание, уложим плитку и накроем стол для всей артели.",
           "requiredHomeLevel": 5,
           "requiredBuildings": {
             "quarry": 5,
@@ -9838,46 +9848,46 @@
           "stages": [
             {
               "id": "week_kamneshmyg_stone_square_1",
-              "name": "Раствор для основания",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Основание площади",
+              "description": "Строительная смесь и тёсаный камень для основания.",
               "items": {
-                "mortar": 3,
-                "cut_stone": 3
+                "mortar": 12,
+                "cut_stone": 12
               },
-              "coins": 2063,
-              "reputationXp": 54,
-              "effortSeconds": 9900,
-              "manufacturingSeconds": 3240,
+              "coins": 8250,
+              "reputationXp": 152,
+              "effortSeconds": 39600,
+              "manufacturingSeconds": 12960,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_kamneshmyg_stone_square_2",
-              "name": "Ровное покрытие",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Отделка и фонари",
+              "description": "Плитка и стеклянные бутылки для светильников.",
               "items": {
-                "stone_tile": 3,
-                "glass_bottle": 2
+                "stone_tile": 12,
+                "glass_bottle": 8
               },
-              "coins": 3938,
-              "reputationXp": 86,
-              "effortSeconds": 19212,
-              "manufacturingSeconds": 7080,
+              "coins": 15750,
+              "reputationXp": 200,
+              "effortSeconds": 76848,
+              "manufacturingSeconds": 28320,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_kamneshmyg_stone_square_3",
-              "name": "Отдых после работы",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Угощение для артели",
+              "description": "Горячая уха и клюквенная глазурь к завершению стройки.",
               "items": {
-                "eel_in_jar": 2,
-                "cranberry_glaze": 1
+                "fish_soup": 10,
+                "cranberry_glaze": 8
               },
-              "coins": 4250,
-              "reputationXp": 150,
-              "effortSeconds": 38720,
-              "manufacturingSeconds": 9000,
+              "coins": 17825,
+              "reputationXp": 200,
+              "effortSeconds": 89086,
+              "manufacturingSeconds": 35760,
               "fishingUncertain": true,
               "pearls": 140
             }
@@ -9887,7 +9897,7 @@
           "id": "week_leaftail_river_festival",
           "residentId": "leaftail",
           "name": "Речная ярмарка Листохвоста",
-          "description": "Выбери недельное дело и выполни три разные поставки. Условия сохраняются после принятия.",
+          "description": "Соберём речную ярмарку: подготовим торговые ряды, наполним прилавки и упакуем праздничные подарки.",
           "requiredHomeLevel": 5,
           "requiredBuildings": {
             "workshop": 2,
@@ -9899,47 +9909,47 @@
           "stages": [
             {
               "id": "week_leaftail_river_festival_1",
-              "name": "Подготовить прилавки",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Торговые ряды",
+              "description": "Ящики и полотно для ярмарочных прилавков.",
               "items": {
-                "trade_crate": 3,
-                "cloth": 3
+                "trade_crate": 8,
+                "cloth": 8
               },
-              "coins": 1688,
-              "reputationXp": 52,
-              "effortSeconds": 9036,
-              "manufacturingSeconds": 5400,
+              "coins": 4500,
+              "reputationXp": 102,
+              "effortSeconds": 24096,
+              "manufacturingSeconds": 14400,
               "fishingUncertain": false,
               "pearls": 0
             },
             {
               "id": "week_leaftail_river_festival_2",
-              "name": "Угощения с реки",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Угощения на прилавках",
+              "description": "Желе и копчёная рыба для гостей ярмарки.",
               "items": {
-                "pike_berry_sauce": 1,
-                "eel_in_jar": 1
+                "currant_jelly": 8,
+                "smoked_fish": 12
               },
-              "coins": 2225,
-              "reputationXp": 118,
-              "effortSeconds": 28936,
-              "manufacturingSeconds": 5400,
+              "coins": 8850,
+              "reputationXp": 176,
+              "effortSeconds": 46238,
+              "manufacturingSeconds": 21360,
               "fishingUncertain": true,
               "pearls": 0
             },
             {
               "id": "week_leaftail_river_festival_3",
-              "name": "Праздничный финал",
-              "description": "Подготовь эту часть поставки.",
+              "name": "Праздничные подарки",
+              "description": "Клюквенная глазурь и ягодные подарки для большого праздника.",
               "items": {
-                "festive_sturgeon": 1,
-                "berry_gift": 2
+                "cranberry_glaze": 6,
+                "berry_gift": 6
               },
-              "coins": 7290,
+              "coins": 24900,
               "reputationXp": 200,
-              "effortSeconds": 54416,
-              "manufacturingSeconds": 14760,
-              "fishingUncertain": true,
+              "effortSeconds": 124536,
+              "manufacturingSeconds": 51480,
+              "fishingUncertain": false,
               "pearls": 140
             }
           ]

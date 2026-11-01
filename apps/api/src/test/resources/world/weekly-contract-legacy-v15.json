@@ -1,0 +1,92 @@
+{
+  "source": "59807ca: accepted week_builder_shelter before larger weekly baskets",
+  "weekly": {
+    "id": "weekly1_1792756800_713435726",
+    "templateId": "week_builder_shelter",
+    "residentId": "builder",
+    "name": "Уютная беседка для соседей",
+    "description": "Шишколап готовит небольшое место для встреч. Помоги материалами и обедом для строителя.",
+    "stages": [
+      {
+        "id": "week_builder_shelter_1",
+        "name": "Подготовить основу",
+        "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+        "items": {
+          "wood": 6,
+          "stone": 3
+        },
+        "coins": 338,
+        "reputationXp": 40,
+        "effortSeconds": 2760,
+        "manufacturingSeconds": 0,
+        "fishingUncertain": false,
+        "pearls": 0,
+        "residentId": "builder",
+        "requiredBuildings": {
+          "home": 1,
+          "woodlot": 1,
+          "workshop": 1,
+          "dryer": 1,
+          "garden": 1
+        }
+      },
+      {
+        "id": "week_builder_shelter_2",
+        "name": "Сделать деревянные детали",
+        "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+        "items": {
+          "planks": 3,
+          "wood": 2
+        },
+        "coins": 263,
+        "reputationXp": 40,
+        "effortSeconds": 1260,
+        "manufacturingSeconds": 360,
+        "fishingUncertain": false,
+        "pearls": 0,
+        "residentId": "builder",
+        "requiredBuildings": {
+          "home": 1,
+          "woodlot": 1,
+          "workshop": 1,
+          "dryer": 1,
+          "garden": 1
+        }
+      },
+      {
+        "id": "week_builder_shelter_3",
+        "name": "Обед для строителя",
+        "description": "Подготовь указанную часть поставки. Награда и состав сохраняются после принятия поручения.",
+        "items": {
+          "grilled_fish": 2,
+          "berry_compote": 2
+        },
+        "coins": 238,
+        "reputationXp": 40,
+        "effortSeconds": 1204,
+        "manufacturingSeconds": 720,
+        "fishingUncertain": true,
+        "pearls": 40,
+        "residentId": "builder",
+        "requiredBuildings": {
+          "home": 1,
+          "woodlot": 1,
+          "workshop": 1,
+          "dryer": 1,
+          "garden": 1
+        }
+      }
+    ],
+    "stage": 0,
+    "acceptedAt": "2026-10-23T12:00:00.000Z",
+    "expiresAt": "2026-10-30T12:00:00.000Z"
+  },
+  "activeStageIds": [
+    "weekly1_1792756800_713435726_0_2750918993",
+    "weekly1_1792756800_713435726_1_3763085194",
+    "weekly1_1792756800_713435726_2_2116366937"
+  ],
+  "coins": 839,
+  "pearls": 40,
+  "reputationXp": 120
+}

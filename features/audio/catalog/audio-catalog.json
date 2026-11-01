@@ -1572,6 +1572,20 @@
       }
     },
     {
+      "id": "ship.departure.01",
+      "src": "/audio/originals-v1/effect/ship.departure.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.2/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original steamship sound design generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-11-01",
+        "changes": "Original 1.1-second departure double call: deterministic warm steam chambers and filtered air, two short pressure envelopes, peak-safe mono PCM16/48 kHz. No external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
       "id": "ui.production-start.01",
       "src": "/audio/originals-v1/effect/ui.production-start.01.wav",
       "status": "ready",
@@ -2447,6 +2461,20 @@
       "cooldownMs": 6000,
       "pitchVariation": 0,
       "fadeMs": 250
+    },
+    {
+      "id": "ship.departure",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "ship.departure.01"
+      ],
+      "gainDb": 0,
+      "priority": 60,
+      "maxInstances": 1,
+      "cooldownMs": 2500,
+      "pitchVariation": 0,
+      "fadeMs": 35
     },
     {
       "id": "ui.tap",

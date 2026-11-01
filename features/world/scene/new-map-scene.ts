@@ -58,7 +58,7 @@ import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from
 import { interactiveMapObjects, type MapInteractiveObject } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "@/features/world/activities/journeys/forest-journey-travel";
 import { forestJourneyGatheringFrame } from "@/features/world/activities/journeys/forest-supply-journey";
-import { forestOutsideJourneyFrame } from "@/features/world/activities/journeys/forest-outside-journey";
+import { forestOutsideJourneyBackpack, forestOutsideJourneyFrame } from "@/features/world/activities/journeys/forest-outside-journey";
 import type { ForestGatheringFrame } from "@/features/world/activities/journeys/forest-gathering";
 import { drawForestGatheringBasket, drawForestGatheringHero, forestGatheringBounds } from "@/features/world/activities/journeys/forest-gathering-painter";
 
@@ -185,6 +185,7 @@ export type NewMapPaintPreview = {
   cooking?: ForestCookingFrame | null;
   gathering?: ForestGatheringFrame | null;
   outside?: ReturnType<typeof forestOutsideJourneyFrame>;
+  journeyBackpack?: boolean;
   productions?: readonly ForestProductionFrame[];
   construction?: EconomySceneConstruction | null;
   residents?: readonly ReturnType<typeof forestResidentFrames>[number][];
@@ -416,7 +417,7 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
       drawGroundedHero(actorContext, { ...actor, direction: garden?.direction ?? routine?.direction ?? encounter?.direction ?? warming?.direction ?? birdwatch?.direction ?? trading?.direction ?? manualDirection ?? motion?.direction ?? dev?.direction ?? "front",
         ...(garden ? { pose: garden.pose, frame: garden.frame } : routine ?? encounter ?? warming ?? birdwatch ?? trading ?? (motion ? { pose: motion.pose, frame: motion.frame } : actorFrame(elapsed, reacting, still, preview))),
         appearance: dev?.equipment ?? options.worldState?.equipment, shadow: dev?.heroShadow, lift: motion?.lift, compression: motion?.compression,
-        rig: garden?.rig ?? routine?.rig });
+        rig: { ...(garden?.rig ?? routine?.rig), backpack: preview?.journeyBackpack } });
       if (routine) drawForestLifePartner(actorContext, routine, elapsed);
       drawForestGardenProps(actorContext, garden, "front", true);
     }, gathering ? forestGatheringBounds(gathering) : fishing ? fishingPropsBounds(fishing) : cooking ? forestCookingBounds(cooking) : undefined);
@@ -512,7 +513,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     tradeShipArtwork.setEnabled(Boolean(selectedTradeShip()));
   }
   function productionShipActive() {
-    return Boolean(!options.readOnly && !options.devRehearsal && options.view === "world" && options.tradeShipArrivalEnabled
+    // Menus gate the first presentation, not an already running voyage.
+    return Boolean(!options.readOnly && !options.devRehearsal && options.view === "world"
       && active() && session.isOwner() && tradeShipArtwork.getImage() && !(WORLD_DEV_ENABLED && dev?.tradeShipPreview));
   }
   let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
@@ -613,9 +615,10 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const ship = selectedTradeShip(), image = tradeShipArtwork.getImage(), still = reducedMotion(options, dev);
     const shipAudioOwner = options.view === "world" && session.isOwner();
     shipAudio.update({ voyageId: shipAudioOwner ? ship?.voyageId ?? null : null,
+      kind: ship?.kind,
       motion: shipAudioOwner ? ship?.motion ?? null : null, frame: audio.getFrame(),
       active: Boolean(ship && options.view === "world" && active() && session.isOwner() && image && !still
-        && !options.audioSuppressed && (ship.kind === "dev" || options.tradeShipArrivalEnabled)),
+        && !options.audioSuppressed && !options.devRehearsal),
       visible: Boolean(ship && image && tradeShipImageVisible(image, { ...ship.motion, time: state.elapsed, still }, audioCamera, world)),
       claimHorn: ship?.claimHorn });
   }
@@ -1052,6 +1055,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       residents: residentFrames().map(resident => resident.id === "plesk"
         ? withForestWaterBuoyancy(resident, dev?.waterSurface === false ? undefined : state.water, reducedMotion(options, dev)) : resident),
       outside: forestOutsideJourneyFrame(state, world, reducedMotion(options, dev)),
+      journeyBackpack: forestOutsideJourneyBackpack(state, world),
       fishing: forestJourneyFishingFrame(state, world, reducedMotion(options, dev)),
       gathering: gatheringAtSize(forestJourneyGatheringFrame(state, world, reducedMotion(options, dev)), state.clearing.size * (dev?.heroScale ?? 1)),
       builderSleeping: builderSleepIndicator(state.builderMind, world),
@@ -1522,7 +1526,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   return {
     tradeShipFrame() { return tradeShipArtwork.getImage() ? selectedTradeShip() : null; },
     startTradeShipArrival() {
-      if (!productionShipActive()) return false;
+      if (!options.tradeShipArrivalEnabled || !productionShipActive()) return false;
       return productionShip?.start(reducedMotion(options, dev)) ?? false;
     },
     lightingReceivers: () => lightingWorld().shadowReceivers ?? [],

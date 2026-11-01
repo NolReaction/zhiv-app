@@ -191,7 +191,7 @@ class JdbcProgressionRewardsIntegrationTest {
         assertEquals(1,both.count { it.replayed }); assertEquals(both[0].claim,both[1].claim)
         assertEquals(initial.wallet.coins+30,economy.snapshot(p.hash).wallet.coins)
         assertEquals(initial.wallet.pearls+10,economy.snapshot(p.hash).wallet.pearls)
-        assertEquals(8,rewards.snapshot(p.hash).catalogVersion)
+        assertEquals(9,rewards.snapshot(p.hash).catalogVersion)
         assertEquals(initial.revision+1,economy.snapshot(p.hash).revision)
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='daily_reward'",p.id))
         val conflict=assertFailsWith<AuthFailure> { rewards.claim(p.hash,request.copy(kind="achievement",achievementId="first_path",level=1)) }
@@ -415,7 +415,9 @@ class JdbcProgressionRewardsIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(played),p.id)
         val names=setOf("patient_angler","campfire_cook","helpful_neighbor","generous_garden")
         val opened=rewards.snapshot(p.hash)
-        assertEquals(8,opened.catalogVersion); assertEquals(40,opened.achievementRewards.size)
+        assertEquals(9,opened.catalogVersion); assertEquals(43,opened.achievementRewards.size)
+        assertEquals(0,opened.achievementRewards.count { it.achievementId == "forest_cuisine" && it.eligible },
+            "One repeatedly cooked recipe cannot unlock the variety achievement")
         assertEquals(12,opened.achievementRewards.count { it.achievementId in names && it.eligible })
         assertEquals(before.wallet,economy.snapshot(p.hash).wallet,"Reading achievements never pays automatically")
         var paid=0L

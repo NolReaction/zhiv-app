@@ -3,14 +3,16 @@
 import { useState } from "react";
 import { economyCatalog } from "@/features/economy/domain/model";
 import { fishingBaitCompatible } from "@/features/economy/domain/fishing";
-import { expeditionExpectedReturns, fishingExpectedReturn } from "./economy-expeditions";
+import { expeditionExpectedReturns, expeditionRelicRules, fishingExpectedReturn } from "./economy-expeditions";
 import { economyDuration, economyNumber, EconomyItemButton } from "./economy-workbench-common";
 import styles from "./economy-workbench.module.css";
+import detailStyles from "./economy-expedition-analysis.module.css";
 
 const catalog = economyCatalog, fishing = catalog.fishing;
 const itemName = (id: string) => catalog.items.find(item => item.id === id)?.name ?? id;
 const percent = (value: number) => `${economyNumber(value * 100)}%`;
 const routes = expeditionExpectedReturns();
+const relics = expeditionRelicRules();
 
 export function EconomyExpeditionAnalysis({ onSelect }: { onSelect: (id: string) => void }) {
   const [rodId, setRod] = useState(fishing?.rods[0]?.id ?? ""), [hookId, setHook] = useState(fishing?.hooks[0]?.id ?? "");
@@ -18,6 +20,14 @@ export function EconomyExpeditionAnalysis({ onSelect }: { onSelect: (id: string)
   const baitId = baitChoice && fishing && fishingBaitCompatible(rodId, baitChoice, fishing) ? baitChoice : null;
   const report = fishingExpectedReturn({ routeId, rodId, hookId, baitId });
   return <div className={styles.expeditionAnalysis}>
+    {relics && <details className={detailStyles.relics} data-analysis-relics>
+      <summary>Редкие реликвии · с дома {relics.requiredHomeLevel}</summary>
+      <div><p>Для каждой реликвии выбирается порог {economyNumber(relics.minimumSeconds / 3600)}–{economyNumber(relics.maximumSeconds / 3600)} ч вылазок, рыбалки и добычи. Время засчитывается при получении. Реликвия приходит с результатом достигшей порога работы. Отмена не считается, Мохлик и шахтёр копят время отдельно.</p>
+        <p>При выпадении реликвии возможен один из вариантов. Проценты относятся к выбору реликвии, а не к отдельной вылазке.</p>
+        <ul aria-label="Варианты при выпадении реликвии">{relics.items.map(item => <li key={item.itemId}><button type="button" onClick={() => onSelect(item.itemId)}>{itemName(item.itemId)}</button><strong>{percent(item.conditionalProbability)}</strong></li>)}</ul>
+        <p>Реликвии не продаются NPC. В доход и гарантированную добычу ниже они не включены.</p>
+      </div>
+    </details>}
     <section aria-label="Ожидаемый результат рыбалки">
       <h3>Рыбалка: ожидаемый результат</h3>
       <p className={styles.note}>Среднее по множеству походов. Конкретный вид и класс случайны: нужная рыба может не попасться за несколько попыток.</p>
@@ -36,9 +46,9 @@ export function EconomyExpeditionAnalysis({ onSelect }: { onSelect: (id: string)
     <section aria-label="Гарантированная добыча и случайные находки"><h3>Походы и добыча</h3><p className={styles.note}>В производственный план входит только гарантированный минимум. Диапазоны и редкие находки учитываются в средней отдаче, но не обещают срок выполнения заказа.</p>
       <div className={styles.expeditionCards}>{routes.map(route => <article key={route.id} className={styles.expeditionCard} data-analysis-route={route.id}><header><h4>{route.name}</h4><span>Дом {route.homeLevel} · {economyDuration(route.seconds)} · {route.actor === "miner" ? "Шахтёр" : "Мохлик"}</span></header>
         <strong>Гарантированно</strong><div className={styles.chips}>{Object.entries(route.guaranteed).map(([id, quantity]) => <EconomyItemButton key={id} id={id} name={itemName(id)} quantity={quantity} onSelect={onSelect} />)}</div>
-        {route.loot.length > 0 && <><strong>Диапазон добычи без редкой находки</strong><ul className={styles.variableLoot}>{route.loot.map(entry => <li key={entry.itemId}><button type="button" onClick={() => onSelect(entry.itemId)}>{itemName(entry.itemId)} ×{entry.minimum}–{entry.maximum}</button><span>в среднем {economyNumber(entry.expectedQuantity)}{entry.probability < 1 ? ` · шанс ${percent(entry.probability)}` : ""}</span></li>)}</ul><p className={styles.note}>Каждое целое количество в диапазоне равновероятно; ресурсы разыгрываются независимо.</p></>}
-        {route.finds.length > 0 && <><strong>Одна возможная находка</strong><ul>{route.finds.map((find, index) => <li key={`${find.itemId}:${index}`}><button type="button" onClick={() => onSelect(find.itemId)}>{itemName(find.itemId)} ×{find.quantity}</button><span>{percent(find.probability)}</span></li>)}<li><span>Без дополнительной находки</span><span>{percent(route.emptyProbability)}</span></li></ul></>}
-        <p>Гарантированная стоимость: {economyNumber(route.guaranteedCoins)} · припасы: {economyNumber(route.costCoins)} мон.</p>{route.loot.length > 0 && <p>Средняя прибавка сверх минимума: {economyNumber(route.expectedVariableCoins)} мон.</p>}<p>Средняя добавка от редкой находки: {economyNumber(route.expectedBonusCoins)} мон.</p><p><strong>В среднем после припасов: {economyNumber(route.expectedNetCoinsPerMinute)} мон./мин</strong></p>
+        {route.loot.length > 0 && <><strong>Диапазон основной добычи</strong><ul className={styles.variableLoot}>{route.loot.map(entry => <li key={entry.itemId}><button type="button" onClick={() => onSelect(entry.itemId)}>{itemName(entry.itemId)} ×{entry.minimum}–{entry.maximum}</button><span>в среднем {economyNumber(entry.expectedQuantity)}{entry.probability < 1 ? ` · шанс ${percent(entry.probability)}` : " · в каждом походе"}</span></li>)}</ul><p className={styles.note}>Каждое целое количество в диапазоне равновероятно; ресурсы разыгрываются независимо.</p></>}
+        {route.finds.length > 0 && <><strong>Бонус: не более одного варианта</strong><ul data-analysis-bonus>{route.finds.map((find, index) => <li key={`${find.itemId}:${index}`}><button type="button" onClick={() => onSelect(find.itemId)}>{itemName(find.itemId)} ×{find.quantity}</button><span>{percent(find.probability)}</span></li>)}{route.emptyProbability > 0 && <li><span>Без дополнительной находки</span><span>{percent(route.emptyProbability)}</span></li>}</ul><p className={styles.note}>Один выбор на вылазку, сверх основной добычи.</p></>}
+        <p>Гарантированная стоимость: {economyNumber(route.guaranteedCoins)} · припасы: {economyNumber(route.costCoins)} мон.</p>{route.loot.length > 0 && <p>Средняя прибавка сверх минимума: {economyNumber(route.expectedVariableCoins)} мон.</p>}<p>Средняя добавка от бонуса: {economyNumber(route.expectedBonusCoins)} мон.</p><p><strong>В среднем после припасов: {economyNumber(route.expectedNetCoinsPerMinute)} мон./мин</strong></p>
       </article>)}</div>
     </section>
   </div>;

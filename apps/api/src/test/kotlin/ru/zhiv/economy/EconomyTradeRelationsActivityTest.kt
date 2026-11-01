@@ -63,7 +63,7 @@ class EconomyTradeRelationsActivityTest {
         assertEquals(listOf("ordinary", "challenging", "challenging", "masterful"),
             listOf(1799L, 1800L, 7199L, 7200L).map { EconomyTradeRelations.orderDifficulty(it) })
         assertEquals(listOf("ordinary", "challenging", "challenging", "masterful"),
-            listOf(10799L, 10800L, 35999L, 36000L).map { EconomyTradeRelations.orderDifficulty(it, true) })
+            listOf(21599L, 21600L, 86399L, 86400L).map { EconomyTradeRelations.orderDifficulty(it, true) })
         catalog.tradeRelations!!.weekly.templates.forEach { template ->
             val difficulty = EconomyTradeRelations.orderDifficulty(template.stages.sumOf { it.effortSeconds }, true)
             val pearls = mapOf("ordinary" to 40L, "challenging" to 80L, "masterful" to 140L).getValue(difficulty)

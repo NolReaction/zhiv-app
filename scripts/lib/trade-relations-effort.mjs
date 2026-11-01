@@ -59,7 +59,35 @@ export function weeklyReputationXpForEffort(seconds, version = 15) {
 
 export function weeklyPearlsForEffort(seconds) {
   assert(Number.isSafeInteger(seconds) && seconds > 0, "Effort must be positive whole seconds");
-  return seconds < 3 * 3600 ? 40 : seconds < 10 * 3600 ? 80 : 140;
+  return seconds < 6 * 3600 ? 40 : seconds < 24 * 3600 ? 80 : 140;
+}
+
+/** New timed contracts use common fish only, including crafted inputs and
+ * mastery prerequisites. Follow the same available baseline used by the quote;
+ * a harmless-looking meal must not hide a named or rare random catch. */
+export function assertWeeklySupplyChain(catalog, template, references) {
+  const sources = new Map([...catalog.recipes, ...catalog.explorations].map(source => [source.id, source]));
+  const fish = new Set([...catalog.fishing.classes, ...catalog.fishing.fish].map(entry => entry.itemId));
+  const common = catalog.fishing.classes.find(entry => entry.rarity === "common").itemId;
+  const seenItems = new Set(), seenSources = new Set();
+  function source(id) {
+    if (seenSources.has(id)) return;
+    seenSources.add(id);
+    const definition = sources.get(id);
+    assert(definition && !definition.retired, `${template.id}: unavailable weekly source ${id}`);
+    for (const ingredient of Object.keys(definition.cost.items)) item(ingredient);
+    for (const prerequisite of [...Object.keys(definition.requiredRecipes ?? {}), ...Object.keys(definition.requiredExplorations ?? {})]) source(prerequisite);
+  }
+  function item(id) {
+    if (seenItems.has(id)) return;
+    seenItems.add(id);
+    if (fish.has(id)) {
+      assert.equal(id, common, `${template.id}: weekly supply chains cannot require named or rare random fish`);
+      return;
+    }
+    source(references[id]);
+  }
+  for (const id of Object.keys(template.items)) item(id);
 }
 
 /** Baseline occupied work from an empty pantry, not a completion deadline.

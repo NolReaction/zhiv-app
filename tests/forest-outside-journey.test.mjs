@@ -15,7 +15,7 @@ const { canTraverse, isWalkable, createWorldNavigation } = await vite.ssrLoadMod
 const { captureForestMemory } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
 const { forestOutsideEdge } = await vite.ssrLoadModule("/features/world/activities/journeys/forest-outside-edge.ts");
 const { isForestWater } = await vite.ssrLoadModule("/features/world/environment/water/forest-water.ts");
-const { isForestOutsideRoute, syncForestOutsideJourney: sync, forestOutsideJourneyFrame: frame } =
+const { isForestOutsideRoute, forestOutsideJourneyBackpack: backpack, syncForestOutsideJourney: sync, forestOutsideJourneyFrame: frame } =
   await vite.ssrLoadModule("/features/world/activities/journeys/forest-outside-journey.ts");
 const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)), start = 1_000_000;
 const journey = (routeId = "ancient_ruins") => ({ id: `outside-${routeId}`, routeId,
@@ -48,9 +48,12 @@ test("fresh distant work walks to a real edge, crosses the map and returns throu
   const session = create(), state = session.state, job = journey(), original = structuredClone(job);
   try {
     state.explorationId = null;
+    assert.equal(backpack(state, scene), false, "no confirmed controller means no worn expedition gear");
     const feet = { ...state.clearing.position };
     assert.equal(sync(state, scene, job, start, false, []), true);
     assert.deepEqual(state.clearing.position, feet); assert.equal(state.journeyTravel.phase, "leaving");
+    assert.equal(backpack(state, scene), true);
+    assert.equal(backpack(state, { ...scene }), false, "a different scene cannot borrow the prop");
     const outside = state.journeyTravel.outside;
     assert.equal(outside.unavailable, undefined);
     assert(isWalkable(state.clearing.navigation, outside.entry));
@@ -68,12 +71,15 @@ test("fresh distant work walks to a real edge, crosses the map and returns throu
     assert(last.x < 0 || last.y < 0 || last.x > scene.width || last.y > scene.height);
     sync(state, scene, job, start, false, []);
     assert.equal(state.journeyTravel.phase, "away"); assert.equal(frame(state, scene), null);
+    assert.equal(backpack(state, scene), false, "no detached backpack is left on the map");
     const entry = { ...outside.entry };
     sync(state, scene, job, start + 3_600_000, false, []);
     assert.equal(state.journeyTravel.phase, "returning"); assert.equal(outside.crossing, "in");
+    assert.equal(backpack(state, scene), true, "the same worn pack returns with the body");
     assert.deepEqual({ x: frame(state, scene).x, y: frame(state, scene).y }, outside.offscreen);
     advance(state, job, start + 3_600_000, () => !state.journeyTravel);
     assert.deepEqual(state.clearing.position, state.clearing.home);
+    assert.equal(backpack(state, scene), false, "gear is removed only after reaching home");
     assert.deepEqual(outside.entry, entry); assert.equal(state.clearing.requestedPoint, null);
     assert(state.director.nextDecisionAt > state.director.elapsed);
     assert.deepEqual(job, original, "cosmetic travel cannot edit paid results or deadlines");
@@ -91,6 +97,7 @@ test("cancellation reverses an unfinished crossing without a position jump or a 
     sync(state, scene, job, start + 1000, false, [job.id]);
     const after = frame(state, scene), phaseAt = outside.phaseAt;
     assert.equal(outside.crossing, "in");
+    assert.equal(backpack(state, scene), true, "cancellation keeps the pack on the visible return");
     assert(Math.hypot(after.x - before.x, after.y - before.y) < 1e-7);
     for (let i = 0; i < 5; i++) sync(state, scene, job, start + 1000, false, [job.id]);
     assert.equal(outside.phaseAt, phaseAt);
@@ -98,6 +105,7 @@ test("cancellation reverses an unfinished crossing without a position jump or a 
     assert.deepEqual(state.clearing.position, state.clearing.home);
     sync(state, scene, job, start + 2000, false, []);
     assert.equal(state.journeyTravel.outside.completed, true, "a stale cancelled snapshot cannot send the same actor away again");
+    assert.equal(backpack(state, scene), false, "a completed cancellation receipt cannot redress the hero");
     sync(state, scene, null, start + 2000, false, []); assert.equal(state.journeyTravel, undefined);
   } finally { session.release(); }
 });
@@ -112,6 +120,7 @@ test("wall-clock updates and reduced motion cannot advance a visible edge crossi
     for (const now of [start + 60_000, start + 600_000, start + 600_000]) sync(state, scene, job, now, true, []);
     assert.deepEqual(frame(state, scene, true), before);
     assert.equal(frame(state, scene, true).frame, 0);
+    assert.equal(backpack(state, scene), true, "reduced motion freezes the journey but keeps its worn gear");
     const feet = { ...state.clearing.position };
     sync(state, scene, null, start + 700_000, true, []);
     const returning = frame(state, scene, true);
@@ -128,9 +137,14 @@ test("only initial restoration may place an old job at its safe hidden entry", (
       const feet = { ...state.clearing.position };
       sync(state, scene, job, start + 60_000, false, []);
       assert.equal(state.journeyTravel.phase, observed ? "leaving" : "away");
+      assert.equal(backpack(state, scene), observed);
+      if (!observed) {
+        sync(state, scene, job, start + 3_600_000, false, []);
+        assert.equal(backpack(state, scene), true, "a restored off-map job returns wearing its pack");
+      }
       assert.deepEqual(state.clearing.position, observed ? feet : state.journeyTravel.outside.entry);
       const travel = state.journeyTravel;
-      for (let i = 0; i < 5; i++) sync(state, scene, job, start + 60_000, false, []);
+      for (let i = 0; i < 5; i++) sync(state, scene, job, observed ? start + 60_000 : start + 3_600_000, false, []);
       assert.strictEqual(state.journeyTravel, travel);
     } finally { session.release(); }
   }
@@ -144,6 +158,7 @@ test("outside assignments defer another basket, tackle cleanup and mining portal
       const saved = state.journeyTravel;
       assert.equal(sync(state, scene, job, start, false, []), false);
       assert.strictEqual(state.journeyTravel, saved);
+      assert.equal(backpack(state, scene), false, "local props finish before the distant pack can be worn");
     }
   } finally { session.release(); }
 });

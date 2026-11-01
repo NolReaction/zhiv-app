@@ -16,7 +16,7 @@
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "8661e3e6b70bbc3568add59aef6c6615d877981e755e3095dcc2baf66852af9b"
+      "sha256": "0f336461c0a67b99359eaef1ab2566fe1e9f8b4d15f28476545220b23f782318"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -28,7 +28,7 @@
     },
     {
       "path": "scripts/audio_originals/steamship.py",
-      "sha256": "28896053febf0ca7ee28897b12f9d33921dfa27389f47ee3a2a3dc46f6671312"
+      "sha256": "2401e34a9ccc382ca38c56f4c617cfe50c4384b54aac8764b4f23787062f45ad"
     }
   ],
   "assets": [
@@ -3320,6 +3320,45 @@
         }
       ],
       "composition": {}
+    },
+    {
+      "id": "ship.departure.01",
+      "kind": "effect",
+      "title": "Short steamship departure double call",
+      "description": "Two brief warm steam-whistle calls for casting off, with rounded mid harmonics and a quiet tail; original synthesis without recordings or samples.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 52800,
+      "durationSeconds": 1.1,
+      "decodedBytes": 211200,
+      "masterSha256": "0af98367955342db572d37862a57177a33249fa62ba42261f5d5c84d13635233",
+      "measurements": {
+        "peakDb": -5.0,
+        "rmsDb": -18.2834,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.035336979
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ship.departure.01.wav",
+          "bytes": 105644,
+          "sha256": "0af98367955342db572d37862a57177a33249fa62ba42261f5d5c84d13635233"
+        }
+      ],
+      "composition": {
+        "fundamentalsHz": [
+          196.0,
+          246.94
+        ],
+        "durationSeconds": 1.1,
+        "callOnsetsSeconds": [
+          0,
+          0.39
+        ],
+        "attackSeconds": 0.055,
+        "method": "Deterministic additive steam chambers, seeded filtered air, two short pressure envelopes and a quiet early reflection"
+      }
     }
   ],
   "updatedAt": "2026-11-01"

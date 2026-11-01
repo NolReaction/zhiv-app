@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { PackageCheck, Sparkles, X } from "lucide-react";
+import { ChevronDown, PackageCheck, Sparkles, X } from "lucide-react";
 import type { EconomyView } from "@/features/economy/domain/model";
 import type { InventoryGain } from "@/features/economy/domain/inventory-gain";
 import { ProductIcon, itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
@@ -28,10 +28,55 @@ export function ExpeditionLootPreview({ state, route, compact = false }: { state
         aria-label={`${name}: ${range}, шанс ${percent(entry.chance)}`} title={`${name}: ${range}, шанс ${percent(entry.chance)}`}>
         <ProductIcon state={state} itemId={entry.itemId} size={compact ? 18 : 24} />
         <span className={styles.name}>{name}{!compact && <small>{entry.chance === 100 ? "В каждом походе" : `Шанс ${percent(entry.chance)}`}</small>}</span>
-        <strong>{range}</strong>
+        <strong>{range}{compact && entry.chance < 100 && <small>{percent(entry.chance)}</small>}</strong>
       </span>;
     })}
   </span>;
+}
+
+/** Public odds only. Do not read the saved outcome or the private relic clock. */
+export function ExpeditionFindChances({ state, route, compact = false }: { state: EconomyView; route: Route; compact?: boolean }) {
+  const finds = route.finds;
+  if (!finds?.entries.length) return null;
+  const total = finds.emptyWeight + finds.entries.reduce((sum, entry) => sum + entry.weight, 0);
+  if (total <= 0) return null;
+  const chance = (weight: number) => percent(100 * weight / total);
+  const entries = finds.entries.map((entry, index) => {
+    const name = itemName(state, entry.itemId), quantity = entry.quantity === 1 ? "" : ` ×${number(entry.quantity)}`;
+    return <span key={`${entry.itemId}:${index}`} role="listitem" className={styles.bonusItem}
+      data-expedition-bonus={entry.itemId} aria-label={`${name}${quantity}: ${chance(entry.weight)}`}>
+      <ProductIcon state={state} itemId={entry.itemId} size={compact ? 16 : 21} /><span>{name}{quantity}</span><strong>{chance(entry.weight)}</strong>
+    </span>;
+  });
+  if (compact) return <span className={styles.bonusPreview} data-expedition-find-chance>
+    <span className={styles.bonusCaption}><Sparkles size={11} aria-hidden="true" />Бонус: не более одного</span>
+    <span role="list" aria-label="Варианты дополнительной находки" className={styles.bonusList} data-compact>{entries}</span>
+    {finds.emptyWeight > 0 && <span className={styles.emptyChance}>Без бонуса {chance(finds.emptyWeight)}</span>}
+  </span>;
+  return <details className={styles.discovery} data-expedition-find-odds>
+    <summary><Sparkles size={16} aria-hidden="true" /><span>Дополнительная находка<small>Шанс {chance(total - finds.emptyWeight)} · не более одного варианта</small></span><ChevronDown size={16} aria-hidden="true" /></summary>
+    <div className={styles.discoveryBody}>
+      <div role="list" aria-label="Шансы дополнительных находок" className={styles.bonusList}>{entries}</div>
+      {finds.emptyWeight > 0 && <p className={styles.emptyChance}>Без дополнительной находки: {chance(finds.emptyWeight)}.</p>}
+      <p>Один выбор на вылазку, сверх основной добычи. Места для бонуса: до {number(Math.max(...finds.entries.map(entry => entry.quantity)))}. Итог откроется при получении.</p>
+    </div>
+  </details>;
+}
+
+export function ExpeditionRelicChances({ state }: { state: EconomyView }) {
+  const relics = state.catalog.rareDrops;
+  if (!relics?.itemIds.length) return null;
+  const available = (state.buildings.home ?? 1) >= relics.requiredHomeLevel;
+  return <details className={`${styles.discovery} ${styles.relics}`} data-expedition-relics>
+    <summary><Sparkles size={16} aria-hidden="true" /><span>Редкие реликвии<small>{available ? "За накопленное время в пути" : `С дома ${relics.requiredHomeLevel}-го уровня`}</small></span><ChevronDown size={16} aria-hidden="true" /></summary>
+    <div className={styles.discoveryBody}>
+      <p>С дома {relics.requiredHomeLevel}-го уровня для каждой реликвии выбирается порог {number(relics.minSeconds / 3600)}–{number(relics.maxSeconds / 3600)} ч вылазок и добычи. Время засчитывается при получении. Реликвия приходит с результатом достигшей порога работы. У Мохлика и шахтёра отдельный счёт, отмена не считается.</p>
+      <p>При выпадении реликвии все варианты равновероятны. Это не шанс за отдельную вылазку.</p>
+      <div role="list" aria-label="Варианты при выпадении реликвии" className={styles.bonusList}>{relics.itemIds.map(itemId => <span key={itemId} role="listitem" className={styles.bonusItem} data-expedition-relic={itemId}>
+        <ProductIcon state={state} itemId={itemId} size={21} /><span>{itemName(state, itemId)}</span><strong>{percent(100 / relics.itemIds.length)}</strong>
+      </span>)}</div>
+    </div>
+  </details>;
 }
 
 export function ExpeditionReturnReport({ gain, state, onDismiss }: { gain: InventoryGain; state: EconomyView; onDismiss: () => void }) {

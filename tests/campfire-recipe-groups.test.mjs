@@ -12,21 +12,23 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
   plugins: [{ name: "campfire-catalog-hooks", enforce: "pre",
     resolveId(id) { if (id === hooksId) return `\0${id}`; },
     load(id) { if (id === `\0${hooksId}`) return `
-      let slots = [], cursor = 0;
-      export function reset() { slots = []; cursor = 0; }
-      export function render() { cursor = 0; }
+      let slots = [], cursor = 0, changed = false;
+      export function reset() { slots = []; cursor = 0; changed = false; }
+      export function render() { cursor = 0; changed = false; }
+      export function needsRender() { return changed; }
       export function useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
-        return [slots[index], value => { slots[index] = typeof value === "function" ? value(slots[index]) : value; }]; }
+        return [slots[index], value => { const next = typeof value === "function" ? value(slots[index]) : value; changed ||= !Object.is(next, slots[index]); slots[index] = next; }]; }
       export function useRef(initial) { const index = cursor++; return slots[index] ??= { current: initial }; }
       export function useEffect() {}
       export function useId() { return "campfire-group-test"; }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/ui/stations/world-object-menu.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/food/world-cookbook.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
   }],
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId);
-const { CampfireRecipeCatalog, WorldObjectMenu } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+const { WorldObjectMenu } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+const { WorldCookbook } = await vite.ssrLoadModule("/features/economy/ui/food/world-cookbook.tsx");
 const { WorldProductionCard } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-card.tsx");
 const { worldRecipeGroups } = await vite.ssrLoadModule("/features/economy/ui/stations/world-recipe-groups.ts");
 const { campfireDurationMatches, campfireRecipeGroups } = await vite.ssrLoadModule("/features/economy/ui/food/campfire-recipe-groups.ts");
@@ -45,14 +47,23 @@ function elements(tree) {
   function visit(node) { if (!isValidElement(node)) return; result.push(node); Children.forEach(node.props.children, visit); }
   visit(tree); return result;
 }
-function catalog(economy, focusedRecipeId = null) {
-  hooks.render();
-  const tree = CampfireRecipeCatalog({ economy, recipes: recipes(economy), focusedRecipeId });
+const navigation = { canOpen() { return false; }, open() { assert.fail("Filtering never navigates to another station"); } };
+function catalog(economy, focusedRecipeId = null, navigationRequest = 0) {
+  let tree, attempts = 0;
+  do {
+    assert.ok(attempts++ < 4, "source navigation settles without a render loop");
+    hooks.render();
+    tree = WorldCookbook({ economy, recipes: recipes(economy), focusedRecipeId, navigationRequest, navigation });
+  } while (hooks.needsRender());
   const nodes = elements(tree);
   return { tree, html: renderToStaticMarkup(tree), nodes,
-    filter: id => nodes.find(node => node.type === "button" && node.props["data-cooking-duration"] === id),
+    tab: id => nodes.find(node => node.props.role === "tab" && node.props.id.endsWith(`-${id}`)),
+    search: nodes.find(node => node.type === "input" && node.props.type === "search"),
+    available: nodes.find(node => node.type === "input" && node.props.type === "checkbox"),
+    rarity: nodes.find(node => node.type === "select"),
+    queue: nodes.find(node => node.type === "button" && node.props["data-cookbook-queue"]),
     cards: nodes.filter(node => node.type === WorldProductionCard),
-    ids: nodes.filter(node => node.type === WorldProductionCard).map(node => node.props.recipe.id) };
+    ids: nodes.filter(node => node.props["data-cookbook-recipe"]).map(node => node.props["data-cookbook-recipe"]) };
 }
 function menu(economy, extra = {}) {
   hooks.reset();
@@ -86,99 +97,133 @@ test("mixed or new outputs remain visible once in the fallback section", () => {
   assert.deepEqual(groups[0].recipes.map(product => product.key), ["mixed", "new"]);
 });
 
-test("cooking filters show logical blocks and exact current product cards", () => {
-  hooks.reset(); const economy = controller(), before = structuredClone(economy.snapshot);
+test("cookbook tabs show every product once and filters use real fish rarity and ingredients", () => {
+  hooks.reset(); const economy = controller({ inventory: { berries: 2 } }), before = structuredClone(economy.snapshot);
   let view = catalog(economy);
-  assert.equal(view.filter("all").props["aria-pressed"], true);
-  for (const name of ["Рыбные блюда", "Напитки", "Ягодные десерты", "Походные припасы"]) assert.ok(view.html.includes(name));
-  view.filter("short").props.onClick(); view = catalog(economy);
-  assert.deepEqual(view.ids.toSorted(), recipes(economy).filter(recipe => recipe.seconds <= 900).map(recipe => recipe.id).toSorted());
-  assert.match(view.html, /data-cooking-group="desserts"/);
-  assert.match(view.html, /data-cooking-group="provisions"/);
-  view.filter("medium").props.onClick(); view = catalog(economy);
-  assert.ok(view.ids.includes("cook_hearty_fish")); assert.ok(view.ids.includes("prepare_trail_ration"));
-  assert.ok(view.ids.includes("cook_epic_fish"));
-  view.filter("long").props.onClick(); view = catalog(economy);
-  assert.deepEqual(view.ids, []);
-  view.filter("all").props.onClick(); view = catalog(economy);
-  assert.equal(view.ids.length, 24); assert.equal(new Set(view.ids).size, 24);
+  assert.equal(view.tab("fish").props["aria-selected"], true);
+  for (const name of ["Рыбные блюда", "Напитки", "Десерты", "Припасы"]) assert.ok(view.html.includes(name));
+  const seen = [];
+  for (const [category, count] of [["fish", 12], ["drinks", 4], ["desserts", 4], ["provisions", 4]]) {
+    view.tab(category).props.onClick(); view = catalog(economy);
+    assert.equal(view.tab(category).props["aria-selected"], true);
+    assert.equal(view.ids.length, count);
+    assert.match(view.html, new RegExp(`data-cooking-group="${category}"`));
+    seen.push(...view.ids);
+  }
+  assert.deepEqual(seen.toSorted(), recipes(economy).map(recipe => recipe.id).toSorted());
+  assert.equal(new Set(seen).size, 24);
+  view.tab("fish").props.onClick(); view = catalog(economy);
+  view.rarity.props.onChange({ target: { value: "common" } }); view = catalog(economy);
+  assert.deepEqual(view.ids.toSorted(), ["cook_fish_soup", "cook_grilled_fish", "cook_grilled_silverfin"]);
+  assert.doesNotMatch(view.html, /data-cookbook-rarity="(?:uncommon|rare|epic|legendary)"/);
+  view.tab("drinks").props.onClick(); view = catalog(economy);
+  view.available.props.onChange({ target: { checked: true } }); view = catalog(economy);
+  assert.deepEqual(view.ids, ["cook_compote"]);
+  view.available.props.onChange({ target: { checked: false } }); view = catalog(economy);
+  assert.equal(view.ids.length, 4);
   assert.deepEqual(economy.snapshot, before);
 });
 
-test("a changed source target reveals its recipe outside the filter without consuming", () => {
+test("source navigation clears conflicting filters and a repeated target reopens its detail", () => {
   hooks.reset(); const economy = controller();
-  let view = catalog(economy); view.filter("short").props.onClick();
+  let view = catalog(economy);
+  view.rarity.props.onChange({ target: { value: "common" } });
+  view.available.props.onChange({ target: { checked: true } });
+  view.search.props.onChange({ target: { value: "несуществующий рецепт" } });
   view = catalog(economy, "cook_legendary_fish");
-  assert.equal(view.filter("all").props["aria-pressed"], true);
-  const focused = view.cards.find(card => card.props.recipe.id === "cook_legendary_fish");
-  assert.equal(focused.props.focused, true);
-  view.filter("short").props.onClick(); view = catalog(economy, "cook_legendary_fish");
-  assert.equal(view.filter("short").props["aria-pressed"], true);
-  assert.ok(!view.ids.includes("cook_legendary_fish"), "a player can intentionally filter after source navigation");
-  view = catalog(economy, "cook_hearty_fish");
-  assert.equal(view.filter("all").props["aria-pressed"], true);
-  assert.equal(view.cards.find(card => card.props.recipe.id === "cook_hearty_fish").props.focused, true);
+  assert.equal(view.rarity.props.value, "all"); assert.equal(view.available.props.checked, false); assert.equal(view.search.props.value, "");
+  assert.deepEqual(view.cards.map(card => card.props.recipe.id), ["cook_legendary_fish"]);
+  assert.equal(view.cards[0].props.focused, true);
+  view.rarity.props.onChange({ target: { value: "common" } }); view = catalog(economy, "cook_legendary_fish");
+  assert.equal(view.rarity.props.value, "common");
+  assert.ok(!view.ids.includes("cook_legendary_fish"), "the player can filter again after source navigation");
+  view = catalog(economy, "cook_compote");
+  assert.equal(view.tab("drinks").props["aria-selected"], true);
+  const bottle = view.nodes.find(node => node.props["data-cookbook-recipe"] === "bottle_compote");
+  bottle.props.onClick({ currentTarget: null }); view = catalog(economy, "cook_compote");
+  assert.equal(view.cards[0].props.recipe.id, "bottle_compote");
+  view = catalog(economy, "cook_compote", 1);
+  assert.equal(view.cards[0].props.recipe.id, "cook_compote");
+  assert.equal(view.cards[0].props.focused, true);
 });
 
-test("a target already inside the chosen filter keeps that filter and rejects foreign IDs", () => {
+test("an unchanged source preserves manual filters while foreign station targets never open a recipe", () => {
   hooks.reset(); const economy = controller();
-  let view = catalog(economy); view.filter("short").props.onClick();
-  view = catalog(economy, "cook_compote");
-  assert.equal(view.filter("short").props["aria-pressed"], true);
+  let view = catalog(economy, "cook_compote");
+  view.search.props.onChange({ target: { value: "Малиновый" } }); view = catalog(economy, "cook_compote");
+  assert.equal(view.search.props.value, "Малиновый"); assert.deepEqual(view.ids, ["cook_compote"]);
   for (const id of ["missing_recipe", "make_planks"]) {
     view = catalog(economy, id);
-    assert.equal(view.filter("short").props["aria-pressed"], true);
-    assert.ok(view.cards.every(card => !card.props.focused));
+    assert.equal(view.search.props.value, "");
+    assert.equal(view.tab("fish").props["aria-selected"], true);
+    assert.deepEqual(view.cards, []);
+    assert.ok(!view.ids.includes(id));
+    assert.match(view.html, /data-cookbook-view="recipes"/);
   }
 });
 
-test("a locked source recipe can be read while unrelated future dishes stay hidden", () => {
+test("future dishes remain discoverable while their selected detail explains the lock", () => {
   hooks.reset(); const economy = controller({ buildings: { home: 1, dryer: 1, garden: 1, warehouse: 1 } });
-  const ordinary = catalog(economy);
-  assert.ok(!ordinary.ids.includes("cook_legendary_fish"));
+  const before = structuredClone(economy.snapshot), ordinary = catalog(economy);
+  assert.ok(ordinary.ids.includes("cook_legendary_fish"));
+  assert.ok(ordinary.ids.includes("cook_epic_fish"));
+  assert.deepEqual(ordinary.cards, [], "browsing does not expose production actions before a recipe is selected");
   const preview = catalog(economy, "cook_legendary_fish");
-  assert.ok(preview.ids.includes("cook_legendary_fish"));
-  assert.ok(!preview.ids.includes("cook_epic_fish"));
   assert.match(preview.html, /data-recipe="cook_legendary_fish"[^>]*data-recipe-focused="true"[^>]*data-blocked="true"/);
+  assert.match(preview.html, /Доступно с 5 уровня костра/);
   assert.match(preview.html, /data-item-icon="fish_legendary"/);
+  assert.deepEqual(economy.snapshot, before);
 });
 
-test("the level-zero campfire keeps a targeted locked dish visible with its building requirement", () => {
-  hooks.reset(); const economy = controller({ buildings: { home: 1, dryer: 0, garden: 1, warehouse: 1 } });
+test("the level-zero cookbook keeps the free fish recipe and locked upgrades inspectable", () => {
+  const economy = controller({ buildings: { home: 1, dryer: 0, garden: 1, warehouse: 1 } });
   const before = structuredClone(economy.snapshot);
   for (const target of [null, "cook_grilled_fish", "cook_compote", "cook_legendary_fish"]) {
-    const view = catalog(economy, target);
-    const future = target && target !== "cook_grilled_fish";
-    assert.deepEqual(view.ids, future ? ["cook_grilled_fish", target] : ["cook_grilled_fish"]);
-    assert.equal(view.cards[0].props.focused, target === "cook_grilled_fish");
-    if (future) {
-      assert.equal(view.cards.find(card => card.props.recipe.id === target).props.focused, true);
+    hooks.reset(); const view = catalog(economy, target);
+    assert.equal(view.cards.length, target ? 1 : 0);
+    if (target) assert.equal(view.cards[0].props.focused, true);
+    if (target && target !== "cook_grilled_fish") {
       assert.match(view.html, /data-recipe-access/);
       assert.match(view.html, /Доступно с [1-5] уровня костра/);
       assert.match(view.html, /data-blocked="true"/);
+    } else {
+      assert.ok(view.ids.includes("cook_grilled_fish"));
+      assert.doesNotMatch(view.html, /data-recipe-access/);
     }
     assert.doesNotMatch(view.html, /data-cooking-duration=|Сначала обустройте/);
-    assert.match(view.html, /На костре уже можно жарить рыбу/);
+    assert.match(view.html, /data-campfire-catalog/);
   }
   assert.deepEqual(economy.snapshot, before);
 });
 
-test("an empty duration result explains how to restore the available kitchen", () => {
+test("an empty search explains how to recover and clearing it restores the selected category", () => {
   hooks.reset(); const economy = controller({ buildings: { home: 1, dryer: 1, garden: 1, warehouse: 1 } });
-  let view = catalog(economy); view.filter("long").props.onClick(); view = catalog(economy);
-  assert.equal(view.ids.length, 0); assert.match(view.html, /Нет рецептов с таким временем/);
-  view.filter("all").props.onClick(); view = catalog(economy);
-  assert.ok(view.ids.includes("cook_grilled_fish"));
+  let view = catalog(economy);
+  const before = [...view.ids];
+  view.search.props.onChange({ target: { value: "несуществующий рецепт" } }); view = catalog(economy);
+  assert.equal(view.ids.length, 0); assert.match(view.html, /Нет подходящих рецептов. Попробуйте другой раздел или фильтр/);
+  view.search.props.onChange({ target: { value: "" } }); view = catalog(economy);
+  assert.deepEqual(view.ids, before);
 });
 
-test("running slots stay before the entire filterable catalogue and focused source", () => {
+test("running slots stay in their own queue and source navigation opens detail without hiding the queue control", () => {
   const economy = controller({ jobs: [{ id: "cooking-now", kind: "production", targetId: "dryer", recipeId: "cook_compote", quantity: 1,
     startedAt: new Date(now - 30_000).toISOString(), finishesAt: new Date(now + 150_000).toISOString(), rewards: { berry_compote: 1 }, cost: { coins: 0, items: { berries: 2 } } }] });
+  hooks.reset(); let view = catalog(economy);
+  assert.match(view.html, /data-cookbook-view="queue"/); assert.match(view.html, /data-job-id="cooking-now"/);
+  view = catalog(economy, "cook_legendary_fish");
+  assert.match(view.html, /data-cookbook-view="detail"/);
+  assert.doesNotMatch(view.html, /data-production-slots=/);
+  assert.match(view.html, /data-recipe="cook_legendary_fish"[^>]*data-recipe-focused="true"/);
+  assert.match(view.html, /data-section-guide-target="workshop-recipes"/);
+  view.queue.props.onClick(); view = catalog(economy, "cook_legendary_fish");
+  assert.match(view.html, /data-job-id="cooking-now"/); assert.match(view.html, /data-production-slots="dryer"/);
+  assert.equal(view.cards.length, 0);
+  view.queue.props.onClick(); view = catalog(economy, "cook_legendary_fish");
+  assert.equal(view.cards[0].props.recipe.id, "cook_legendary_fish");
   const html = menu(economy, { initialRecipeId: "cook_legendary_fish" });
-  assert.match(html, /data-job-id="cooking-now"/);
-  assert.ok(html.indexOf('data-production-slots="dryer"') < html.indexOf("data-campfire-catalog"));
-  assert.match(html, /data-recipe="cook_legendary_fish"[^>]*data-recipe-focused="true"/);
-  assert.match(html, /data-section-guide-target="workshop-recipes"/);
+  assert.match(html, /aria-modal="true"/); assert.match(html, /Книга рецептов/);
+  assert.match(html, /data-cookbook-view="detail"/); assert.match(html, /data-cookbook-queue/);
   assert.doesNotMatch(html, /data-recipe-preparation|Способ производства/);
 });
 

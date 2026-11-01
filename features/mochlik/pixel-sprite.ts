@@ -2,13 +2,14 @@ import { mossPalette } from "./appearance-palette";
 import { drawMiningPickaxe } from "./mining-pickaxe";
 import { drawPremiumHead, drawPremiumNeck, drawPremiumTorso } from "./premium-wearables";
 import { drawBerestBag, drawBerestHead, drawBerestNeck, drawBerestTorso } from "./berest-wearables";
+import { drawJourneyBackpack } from "./journey-backpack";
 
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
   | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
 export type PixelDirection = "front" | "back" | "left" | "right";
 /** Interaction painters own continuous arms outside the cached body sprite. */
-export type PixelRigOptions = { gardening?: boolean; crouch?: number; lean?: number; fishingStance?: boolean; mining?: boolean };
+export type PixelRigOptions = { gardening?: boolean; crouch?: number; lean?: number; fishingStance?: boolean; mining?: boolean; backpack?: boolean };
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
   moss: "#7c8845", mossLight: "#a5ad58", mossDark: "#58683b", eye: "#30291d",
@@ -26,7 +27,8 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   frame = Number.isFinite(frame) ? ((Math.trunc(frame) % 4) + 4) % 4 : 0;
   const rigCrouch = Number.isFinite(rig?.crouch) ? Math.max(0, Math.min(6, Math.round(rig!.crouch!))) : undefined;
   const rigLean = Number.isFinite(rig?.lean) ? Math.max(-3, Math.min(3, Math.round(rig!.lean!))) : 0;
-  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}:${rigCrouch ?? "pose"}:${rigLean}:${Boolean(rig?.fishingStance)}:${Boolean(rig?.mining)}`;
+  const backpack = Boolean(rig?.backpack) && (pose === "idle" || pose === "walk" || pose === "blink");
+  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}:${rigCrouch ?? "pose"}:${rigLean}:${Boolean(rig?.fishingStance)}:${Boolean(rig?.mining)}:${backpack}`;
   const existing = cache.get(key);
   if (existing) { cache.delete(key); cache.set(key, existing); return existing; }
   const canvas = document.createElement("canvas"); canvas.width = 48; canvas.height = 48;
@@ -94,6 +96,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     };
     // The rear-facing tail is on the visible rump; side tails are behind the body.
     if (direction !== "back") drawTail();
+    if (backpack) drawJourneyBackpack(direction, bob, "behind", { rect });
     oval(24, 32 + bob, 13, 11, c.outline); oval(24, 31 + bob, 12, 11, c.shade);
     oval(direction === "back" ? 24 : side > 0 ? 21 : 28, 29 + bob, 10, 9, c.moss);
     if (direction !== "back") oval(side > 0 ? 26 : side < 0 ? 20 : 22, 32 + bob, 9, 9, c.cream);
@@ -155,6 +158,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
         : pose === "carry" ? 30 + bob : pose === "toss" ? [28, 17, 21, 29][frame % 4]
           : pose === "present" ? 22 + frame % 2 : pose === "groom" || pose === "yawn" ? faceY + 5 : 32 + bob;
     if (direction === "back") drawTail();
+    if (backpack) drawJourneyBackpack(direction, bob, "front", { rect });
     // Hands holding an object cannot show through the back either.
     const frontHands = feeding && direction !== "back";
     const leftHand = fishing && direction === "left" ? 12 : frontHands ? 19 : 14;
@@ -171,7 +175,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   }
   // Wearables share the rig's pose anchors and depth rules in every direction.
   if (appearance && pose !== "sleep" && pose !== "drowsy") {
-    drawBerestBag(appearance.palette, direction, bob, { rect });
+    if (!backpack) drawBerestBag(appearance.palette, direction, bob, { rect });
     if (appearance.neck && !drawBerestNeck(appearance.neck, direction, 31 + bob + Math.round((headOffset - bob) / 3), walking ? frame % 2 : 0, { rect })
       && !drawPremiumNeck(appearance.neck, direction, 31 + bob + Math.round((headOffset - bob) / 3), walking ? frame % 2 : 0, { rect, oval })) {
       const scarf = appearance.neck === "berry_scarf" ? "#b96374" : appearance.neck === "river_scarf" ? "#6299b1"

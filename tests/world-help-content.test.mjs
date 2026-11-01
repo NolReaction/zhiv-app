@@ -262,6 +262,25 @@ test("food guidance names the choice tile and makes spending an explicit second 
   assert.doesNotMatch(answer("journeys"), /гарантированная добыча/);
 });
 
+test("find guidance matches every ruins outcome and the new useful finds without promising a relic per trip", () => {
+  const text = answer("journey-finds");
+  for (const [routeId, itemIds] of [["ancient_ruins", ["glass_bottle", "quartz", "lens"]], ["forest", ["worm_bait"]], ["far_bank_grove", ["currant_jelly"]]]) {
+    const finds = economyCatalog.explorations.find(route => route.id === routeId).finds;
+    const total = finds.emptyWeight + finds.entries.reduce((sum, entry) => sum + entry.weight, 0);
+    for (const itemId of itemIds) {
+      const entry = finds.entries.find(entry => entry.itemId === itemId);
+      const name = economyCatalog.items.find(item => item.id === itemId).name;
+      const probability = Math.round(100 * entry.weight / total);
+      assert.ok(text.toLowerCase().includes(name.toLowerCase()), itemId);
+      assert.ok(text.includes(`(${probability}%)`), itemId);
+    }
+  }
+  assert.match(text, /одна дополнительная находка или ничего/);
+  assert.match(text, /нет постоянного процента на каждый поход/);
+  assert.match(text, /Находка еды не считается приготовленным рецептом/);
+  assert.ok(topic("journeys").relatedIds.includes("journey-finds"));
+});
+
 test("premium shop guidance offers stage packs and costume previews while keeping checkout unavailable", () => {
   assert.match(answer("currency-shop"), /«\+» рядом с монетами.*«Золото».*рядом с жемчугом - «Жемчуг»/);
   assert.match(answer("currency-shop"), /«Ещё» → «Магазин» открывает наборы/);

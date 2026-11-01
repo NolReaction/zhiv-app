@@ -416,4 +416,37 @@ class EconomyTradeRelationsTest {
         }
         assertTrue(catalog.tradeRelations!!.ranks.all { it.bonusBps <= 1000 })
     }
+
+    @Serializable private data class LegacyWeeklyContract(val source: String, val weekly: EconomyWeeklyProgress,
+        val activeStageIds: List<String>, val coins: Long, val pearls: Long, val reputationXp: Long)
+
+    @Test fun `accepted small v15 weekly retains saved items rewards ids and deadline after larger templates ship`() {
+        val legacy = economyJson.decodeFromString<LegacyWeeklyContract>(checkNotNull(javaClass
+            .getResourceAsStream("/world/weekly-contract-legacy-v15.json")).bufferedReader().use { it.readText() })
+        var state = stocked().copy(tradeRelations = EconomyTradeRelationsState(weekly = legacy.weekly,
+            weeklyAvailableAt = legacy.weekly.expiresAt))
+        val before = state.wallet
+        val current = catalog.tradeRelations!!.weekly.templates.single { it.id == legacy.weekly.templateId }
+        assertNotEquals(current.stages.first().items, legacy.weekly.stages.first().items)
+        legacy.weekly.stages.forEachIndexed { index, terms ->
+            val active = EconomyTradeRelations.weeklyBoard(state, now).active!!
+            assertEquals(legacy.activeStageIds[index], active.id)
+            assertEquals(terms.items, active.items)
+            assertEquals(terms.coins, active.coins)
+            assertEquals(terms.pearls, active.pearls)
+            assertEquals(terms.reputationXp, active.reputationXp)
+            assertEquals(terms.effortSeconds, active.effortSeconds)
+            assertEquals(terms.manufacturingSeconds, active.manufacturingSeconds)
+            assertEquals(terms.requiredBuildings, active.requiredBuildings)
+            state = EconomyTradeRelations.complete(state, command("complete_resident_order", active.id), now).first
+            failure("ECONOMY_WEEKLY_CHANGED") { EconomyTradeRelations.complete(state, command("complete_resident_order", active.id), now) }
+        }
+        assertEquals(before.coins + legacy.coins, state.wallet.coins)
+        assertEquals(before.pearls + legacy.pearls, state.wallet.pearls)
+        assertEquals(legacy.reputationXp, state.tradeRelations.reputation["builder"])
+        assertNull(state.tradeRelations.weekly)
+        assertEquals(legacy.weekly.expiresAt, state.tradeRelations.weeklyAvailableAt)
+        assertFalse(EconomyTradeRelations.weeklyBoard(state, now).canChoose)
+    }
+
 }

@@ -21,6 +21,14 @@ export function isForestOutsideRoute(routeId: string | undefined): boolean {
   return Boolean(routeId && !local.has(routeId) && !routeId.startsWith("quarry_")
     && (distant.has(routeId) || (baseDurations.get(routeId) ?? 0) >= 3600));
 }
+/** The confirmed travel controller owns the worn prop through the whole road
+ * home, including cancellation. A pending job or a completed stale receipt
+ * cannot dress the hero; hydration uses the same controller as both cameras. */
+export function forestOutsideJourneyBackpack(state: ForestSessionState, scene: FixedWorldScene): boolean {
+  const travel = state.journeyTravel;
+  return Boolean(travel?.outside && !travel.outside.completed && travel.scene === scene
+    && (travel.phase === "leaving" || travel.phase === "returning"));
+}
 const unit = (n: number) => Math.max(0, Math.min(1, n));
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 function progress(outside: ForestOutsideTravel, elapsed: number) {

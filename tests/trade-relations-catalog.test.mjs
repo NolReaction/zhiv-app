@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { auditTradeRelations } from "../scripts/audit-trade-relations.mjs";
-import { reputationXpForEffort, tradeOrderEffort } from "../scripts/lib/trade-relations-effort.mjs";
+import { reputationXpForEffort, tradeOrderEffort, weeklyPearlsForEffort } from "../scripts/lib/trade-relations-effort.mjs";
+
+import { repriceTimeEconomy } from "../scripts/reprice-time-economy.mjs";
 
 const catalog = () => JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
 const report = auditTradeRelations(catalog());
@@ -120,4 +122,30 @@ test("early materials use an obtainable alternative until their canonical statio
   assert.equal(built.references.stone, "quarry_stone");
   assert.equal(built.effortSeconds, 180);
   assert(early.effortSeconds > built.effortSeconds);
+});
+
+
+test("larger weekly stages leave working storage and keep bounded difficulty rewards", () => {
+  assert.deepEqual([21599, 21600, 86399, 86400].map(weeklyPearlsForEffort), [40, 80, 80, 140]);
+  assert.equal(report.pacing.maximumWeeklyXp, 552);
+  assert.equal(report.pacing.optimisticEarliestElapsedDays, 4);
+  for (const weekly of report.weekly) {
+    const minimumHours = weekly.home <= 2 ? 2.5 : weekly.home === 5 ? 48 : 10;
+    assert(weekly.effortSeconds >= minimumHours * 3600, `${weekly.templateId}: a week must involve substantial preparation`);
+    for (const stage of weekly.stages) {
+      const units = Object.values(stage.items).reduce((sum, count) => sum + count, 0);
+      assert(units >= 8 && units <= 26, `${stage.templateId}: leave at least24 free places for upstream ingredients`);
+    }
+  }
+  const overfull = catalog();
+  overfull.tradeRelations.weekly.templates[0].stages[0].items = { wood: 27 };
+  assert.throws(() => auditTradeRelations(overfull), /weekly stages require 8 to 26 goods/);
+});
+
+test("weekly ingredient and recipe chains cannot hide a named or rare random fish", () => {
+  for (const itemId of ["fish_uncommon", "grilled_silverfin", "mooncarp_blueberries", "festive_sturgeon"]) {
+    const next = catalog(), weekly = next.tradeRelations.weekly.templates.find(template => template.id === "week_leaftail_river_festival");
+    weekly.stages[0].items = { [itemId]: 8 };
+    assert.throws(() => auditTradeRelations(repriceTimeEconomy(next)), /weekly supply chains cannot require named or rare random fish/, itemId);
+  }
 });

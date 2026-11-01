@@ -94,10 +94,12 @@ test("legacy activity migration remains readable while permanent rank does not d
 
 test("weekly tiers expose choice and pay only their frozen final pearl reward", () => {
   assert.deepEqual([1799, 1800, 7199, 7200].map(seconds => orderDifficulty(seconds)), ["ordinary", "challenging", "challenging", "masterful"]);
-  assert.deepEqual([10799, 10800, 35999, 36000].map(seconds => orderDifficulty(seconds, true)), ["ordinary", "challenging", "challenging", "masterful"]);
+  assert.deepEqual([21599, 21600, 86399, 86400].map(seconds => orderDifficulty(seconds, true)), ["ordinary", "challenging", "challenging", "masterful"]);
   const state = fresh();
   state.buildings = Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level]));
   state.progression.recipes = Object.fromEntries(catalog.recipes.map(recipe => [recipe.id, 100]));
+  state.progression.routes = Object.fromEntries(catalog.explorations.map(route => [route.id, 100]));
+  state.fishing.catches = { [catalog.fishing.fish[0].itemId]: 4 };
   state.fishing.ownedRods = catalog.fishing.rods.map(rod => rod.id); state.fishing.ownedHooks = catalog.fishing.hooks.map(hook => hook.id);
   const choices = relations.weeklyOrderBoard(state, now).offers;
   const key = choice => `${choice.residentId}:${orderDifficulty(choice.effortSeconds, true)}`;

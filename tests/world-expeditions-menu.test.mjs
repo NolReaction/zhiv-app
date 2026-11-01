@@ -14,7 +14,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { mealDuration } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
-const { expeditionRewardRanges, ExpeditionLootPreview, ExpeditionReturnReport } = await vite.ssrLoadModule("/features/economy/ui/expeditions/expedition-loot.tsx");
+const { expeditionRewardRanges, ExpeditionFindChances, ExpeditionLootPreview, ExpeditionRelicChances, ExpeditionReturnReport } = await vite.ssrLoadModule("/features/economy/ui/expeditions/expedition-loot.tsx");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -65,6 +65,46 @@ test("supply preview shows honest quantity ranges and optional-resource odds wit
   const html = renderToStaticMarkup(createElement(ExpeditionLootPreview, { state, route: selected }));
   assert.match(html, /2–6/); assert.match(html, /0–2/); assert.match(html, /66,7%/); assert.match(html, /В каждом походе/);
   assert.deepEqual(selected, before);
+});
+
+test("compact route cards preserve every bonus outcome and quantity instead of selecting one rare item", () => {
+  const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])) });
+  const before = structuredClone(state), html = renderSector("forest", controller({ snapshot: state }));
+  for (const entry of state.catalog.explorations.filter(entry => !entry.retired && entry.finds)) {
+    const card = route(html, entry.id), total = entry.finds.emptyWeight + entry.finds.entries.reduce((sum, find) => sum + find.weight, 0);
+    assert.match(card, /Бонус: не более одного/);
+    assert.doesNotMatch(card, /<details\b|<summary\b/, "disclosures must never be nested in a navigation button");
+    for (const find of entry.finds.entries) {
+      const name = state.catalog.items.find(item => item.id === find.itemId).name;
+      const chance = `${(100 * find.weight / total).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
+      assert.ok(card.includes(`data-expedition-bonus="${find.itemId}"`), `${entry.id}: missing ${find.itemId}`);
+      assert.ok(card.includes(`${name}${find.quantity === 1 ? "" : ` ×${find.quantity}`}: ${chance}`));
+    }
+  }
+  const ruins = route(html, "ancient_ruins");
+  assert.match(ruins, /Стеклянная бутылка: 7%/); assert.match(ruins, /Кварц: 15%/); assert.match(ruins, /Линза: 8%/); assert.match(ruins, /Без бонуса 70%/);
+  assert.deepEqual(state, before);
+});
+
+test("bonus disclosure uses the whole weighted draw and keeps base resources separate", () => {
+  const state = snapshot(), selected = { ...state.catalog.explorations.find(entry => entry.id === "forest"),
+    rewards: { wood: 2 }, finds: { emptyWeight: 2, entries: [{ itemId: "wood", quantity: 2, weight: 1 }, { itemId: "lens", quantity: 1, weight: 5 }] } };
+  const html = renderToStaticMarkup(createElement(ExpeditionFindChances, { state, route: selected }));
+  assert.match(html, /<details\b/); assert.doesNotMatch(html, /<details[^>]*\bopen=/);
+  assert.match(html, /Бревно ×2: 12,5%/); assert.match(html, /Линза: 62,5%/);
+  assert.match(html, /Без дополнительной находки: 25%/); assert.match(html, /Один выбор на вылазку, сверх основной добычи/);
+});
+
+test("relic disclosure describes the conditional choice and claimed work without promising a per-trip roll", () => {
+  const state = snapshot(), before = structuredClone(state);
+  const html = renderToStaticMarkup(createElement(ExpeditionRelicChances, { state }));
+  assert.match(html, /С дома 3-го уровня/); assert.match(html, /48–144 ч/); assert.match(html, /Время засчитывается при получении/);
+  assert.match(html, /отмена не считается/); assert.match(html, /Это не шанс за отдельную вылазку/);
+  assert.equal((html.match(/33,3%/g) ?? []).length, 3);
+  for (const id of state.catalog.rareDrops.itemIds) assert.ok(html.includes(`data-expedition-relic="${id}"`));
+  assert.deepEqual(state, before);
+  state.catalog.rareDrops = null;
+  assert.equal(renderToStaticMarkup(createElement(ExpeditionRelicChances, { state })), "");
 });
 
 test("return report contains accepted items and XP, highlights actual rare goods, and rejects another owner", () => {

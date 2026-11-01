@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { personallyCaughtFish, recipeMasteryMet } from "../scripts/lib/recipe-mastery.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -103,7 +104,7 @@ test("a real one-slot 50-place house-three route funds new material chains and e
   const sourceOpen = source => !source.retired && state.buildings.home >= source.requiredHomeLevel
     && Object.entries(source.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
     && (!source.buildingId || (state.buildings[source.buildingId] ?? 0) >= source.buildingLevel);
-  const recipeOpen = source => Object.entries(source.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
+  const recipeOpen = source => recipeMasteryMet(catalog, state, source);
   const sources = id => [...catalog.recipes, ...catalog.explorations.filter(route => !catalog.fishing.routeIds.includes(route.id))]
     .filter(source => source.rewards[id] > 0 && sourceOpen(source) && recipeOpen(source))
     .sort((a, b) => a.seconds / a.rewards[id] - b.seconds / b.rewards[id]);
@@ -111,36 +112,43 @@ test("a real one-slot 50-place house-three route funds new material chains and e
     for (const id of Object.keys(state.inventory).filter(id => catalog.fishing.classes.some(group => group.itemId === id) && id !== "fish_common"))
       apply("sell_fish", id, state.inventory[id]);
   }
-  function run(source) {
+  function run(source, ancestors = []) {
+    assert(source, "every material and mastery requirement has an authored source");
+    assert(!ancestors.includes(source.id), `acquisition cycle: ${[...ancestors, source.id].join(" -> ")}`);
+    const path = [...ancestors, source.id];
     if (source.buildingId && state.jobs.some(job => job.kind === "construction" && job.targetId === source.buildingId)
       || source.requiredBuildings?.quarry && state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry")) waitBuilder();
+    assert(sourceOpen(source), `${source.id}: prerequisites cannot bypass building or home gates`);
+    for (const [id, count] of Object.entries(source.requiredRecipes ?? {}))
+      while ((state.progression.recipes[id] ?? 0) < count) run(catalog.recipes.find(recipe => recipe.id === id), path);
+    for (const [id, count] of Object.entries(source.requiredExplorations ?? {}))
+      while ((state.progression.routes[id] ?? 0) < count) run(catalog.explorations.find(route => route.id === id), path);
+    while (personallyCaughtFish(catalog, state) < (source.requiredFishCaught ?? 0)) {
+      run(catalog.explorations.find(route => route.id === "shore"), path); sellExtraFish();
+    }
+    assert(recipeOpen(source), `${source.id}: every lesson must be completed and claimed before production`);
     acquisitionTargets.push(source.cost.items);
     try {
       do {
-        for (const [id, count] of Object.entries(source.cost.items)) ensure(id, count);
+        for (const [id, count] of Object.entries(source.cost.items)) ensure(id, count, path);
       } while (!held(source.cost.items)); // A due project delivery may use previously prepared inputs.
     } finally { acquisitionTargets.pop(); }
-    apply(source.buildingId ? "start_production" : "start_exploration", source.id);
+    apply(source.buildingId ? "start_production" : catalog.fishing.routeIds.includes(source.id) ? "start_fishing" : "start_exploration", source.id);
     production[source.id] = (production[source.id] ?? 0) + 1;
     finish(state.jobs.find(job => job.recipeId === source.id || job.kind === "exploration" && job.targetId === source.id));
   }
-  function ensure(id, count) {
+  function ensure(id, count, ancestors = []) {
     let attempts = 0;
     while ((state.inventory[id] ?? 0) < count) {
       assert(++attempts <= 200, `bounded material acquisition: ${id}`);
       if (id === "fish_common") {
         apply("start_fishing", "shore"); finish(state.jobs.find(job => job.targetId === "shore")); sellExtraFish(); continue;
       }
-      let source = sources(id)[0];
+      const source = sources(id)[0] ?? catalog.recipes.find(recipe => recipe.rewards[id] > 0 && sourceOpen(recipe));
       if (!source) {
-        const locked = catalog.recipes.find(recipe => recipe.rewards[id] > 0 && sourceOpen(recipe));
-        if (locked && Object.keys(locked.requiredRecipes ?? {}).length) {
-          for (const [recipeId, required] of Object.entries(locked.requiredRecipes))
-            while ((state.progression.recipes[recipeId] ?? 0) < required) run(catalog.recipes.find(recipe => recipe.id === recipeId));
-          source = sources(id)[0];
-        } else { waitBuilder(); continue; }
+        waitBuilder(); continue;
       }
-      assert(source, `no available source for ${id}`); run(source);
+      run(source, ancestors);
     }
   }
   function bundle(items, deferRelics = false, courseId = null) {

@@ -107,14 +107,18 @@ class EconomyThirdStageTest {
         }
     }
 
-    @Test fun `soup waits for a claimed grilled recipe then uses one first level fire slot and sells for one hundred seventy`() {
+    @Test fun `soup waits for a claimed grilled recipe and four caught fish then uses one first level fire slot`() {
         val state = player().copy(inventory = mapOf("fish_common" to 3L, "berries" to 1L, "charcoal" to 1L))
         fails("ECONOMY_RECIPE_REQUIRED") { apply(state, "start_production", "cook_fish_soup") }
         val cooking = apply(state, "start_production", "cook_grilled_fish")
         val grilled = cooking.jobs.single()
         fails("ECONOMY_RECIPE_REQUIRED") { apply(cooking, "start_production", "cook_fish_soup", Instant.parse(grilled.finishesAt)) }
         val claimed = apply(cooking, "claim_job", grilled.id, Instant.parse(grilled.finishesAt))
-        val soup = apply(claimed, "start_production", "cook_fish_soup", Instant.parse(grilled.finishesAt))
+        fails("ECONOMY_RECIPE_REQUIRED") { apply(claimed, "start_production", "cook_fish_soup", Instant.parse(grilled.finishesAt)) }
+        val nearlyExperienced = claimed.copy(fishing = claimed.fishing.copy(catches = mapOf("fish" to 3L)))
+        fails("ECONOMY_RECIPE_REQUIRED") { apply(nearlyExperienced, "start_production", "cook_fish_soup", Instant.parse(grilled.finishesAt)) }
+        val experienced = nearlyExperienced.copy(fishing = nearlyExperienced.fishing.copy(catches = mapOf("fish" to 4L)))
+        val soup = apply(experienced, "start_production", "cook_fish_soup", Instant.parse(grilled.finishesAt))
         val job = soup.jobs.single()
         assertEquals(mapOf("fish_common" to 2L, "berries" to 1L, "charcoal" to 1L), job.cost.items)
         assertEquals(mapOf("fish_soup" to 1L), job.rewards)

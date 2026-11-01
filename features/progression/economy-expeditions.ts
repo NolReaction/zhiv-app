@@ -10,6 +10,13 @@ const price = (catalog: EconomyCatalog, id: string) => {
 const value = (catalog: EconomyCatalog, items: Record<string, number>) => Object.entries(items).reduce((sum, [id, quantity]) => sum + price(catalog, id) * quantity, 0);
 export type FishingReturnOptions = { routeId: string; rodId: string; hookId: string; baitId: string | null };
 
+/** The private completed-work clock has no fixed probability for one departure. */
+export function expeditionRelicRules(catalog: EconomyCatalog = economyCatalog) {
+  const spec = catalog.rareDrops;
+  return spec?.itemIds.length ? { requiredHomeLevel: spec.requiredHomeLevel, minimumSeconds: spec.minSeconds, maximumSeconds: spec.maxSeconds,
+    items: spec.itemIds.map(itemId => ({ itemId, conditionalProbability: 1 / spec.itemIds.length })) } : null;
+}
+
 /** Expected values describe many independent draws, never a deadline for a species. */
 export function fishingExpectedReturn(options: FishingReturnOptions, catalog: EconomyCatalog = economyCatalog) {
   const fishing = catalog.fishing, route = catalog.explorations.find(route => route.id === options.routeId && !route.retired);
@@ -21,7 +28,7 @@ export function fishingExpectedReturn(options: FishingReturnOptions, catalog: Ec
   const expectedFishCoins = classes.reduce((sum, group) => sum + group.probability * price(catalog, group.itemId) * draws, 0);
   const costCoins = route.cost.coins + value(catalog, route.cost.items) + (bait?.price ?? 0);
   const expectedGrossCoins = expectedFishCoins + value(catalog, guaranteed), expectedNetCoins = expectedGrossCoins - costCoins;
-  return { routeId: route.id, seconds: route.seconds, draws, guaranteed, costCoins, expectedGrossCoins, expectedNetCoins,
+  return { routeId: route.id, seconds: route.seconds, draws, guaranteed, costCoins, expectedGrossCoins, expectedNetCoins, relics: expeditionRelicRules(catalog),
     expectedNetCoinsPerMinute: expectedNetCoins * 60 / route.seconds,
     capitalCoins: (fishing.rods.find(rod => rod.id === options.rodId)?.price ?? 0) + (fishing.hooks.find(hook => hook.id === options.hookId)?.price ?? 0),
     species: fishingOdds({}, fishing, options).map(fish => ({ itemId: fish.itemId, probability: fish.probability,
@@ -44,6 +51,7 @@ export function expeditionExpectedReturns(catalog: EconomyCatalog = economyCatal
     const expectedNetCoins = guaranteedCoins + expectedVariableCoins + expectedBonusCoins - costCoins;
     return { id: route.id, name: route.name, homeLevel: route.requiredHomeLevel, seconds: route.seconds, actor: route.activity === "mining" ? "miner" : "hero",
       guaranteed, guaranteedCoins, costCoins, loot, finds, emptyProbability: totalWeight ? (route.finds?.emptyWeight ?? 0) / totalWeight : 1,
+      relics: expeditionRelicRules(catalog),
       expectedVariableCoins, expectedBonusCoins, expectedNetCoins,
       expectedNetCoinsPerMinute: expectedNetCoins * 60 / route.seconds };
   });
