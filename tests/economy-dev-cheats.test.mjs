@@ -357,3 +357,53 @@ test("DEV cannot remove or change an occupied mine until its actor delivery is c
   normal(p, "claim_job", before.jobs[0].id);
   assert.equal(cheat(p, "set_building_level", "quarry", 0).state.buildings.quarry, 0);
 });
+
+test("DEV ship arrival keeps an active voyage and wallet, bypasses only the wait and replays once", () => {
+  const p = player();
+  assert.throws(() => cheat(p, "prepare_ship", "ship"), { code: "ECONOMY_SHIP_LOCKED" });
+  cheat(p, "apply_settlement", "home", 3);
+  const before = read(p), cmd = command(p, "prepare_ship", "ship", 1);
+  assert.equal(model.economyCommandSchema.safeParse(cmd).success, false, "DEV cannot enter the player endpoint");
+  const prepared = economy.commandDevEconomyCheat(p.token, cmd, now);
+  assert.equal(prepared.state.ship.voyage.orders.length, 3);
+  assert.deepEqual(prepared.state.wallet, before.wallet);
+  assert.deepEqual(prepared.state.inventory, before.inventory);
+  assert.equal(prepared.state.ship.nextAvailableAt, null);
+  const replay = economy.commandDevEconomyCheat(p.token, cmd, now);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.state.ship.voyage.id, prepared.state.ship.voyage.id);
+  assert.deepEqual(cheat(p, "prepare_ship", "ship").state.ship.voyage, prepared.state.ship.voyage, "preparing twice never discards cargo");
+  assert.throws(() => cheat(p, "shorten_ship_wait", "ship"), { code: "ECONOMY_SHIP_ACTIVE" });
+});
+
+test("DEV cargo supply counts partial loading and shared materials without repeated grants", () => {
+  const p = player(); cheat(p, "apply_settlement", "home", 3); cheat(p, "prepare_ship", "ship");
+  const state = fixture(p).state, voyage = state.ship.voyage;
+  const [item, amount] = Object.entries(voyage.orders[0].items)[0];
+  voyage.orders[0].loadedItems = { [item]: Math.min(1, amount) };
+  const needed = {};
+  for (const order of voyage.orders) for (const [id, quantity] of Object.entries(order.items))
+    needed[id] = (needed[id] ?? 0) + quantity - (order.loadedItems[id] ?? 0);
+  state.inventory[item] = Math.min(needed[item], 1);
+  const before = read(p);
+  assert.throws(() => cheat(p, "grant_ship_cargo", crypto.randomUUID()), { code: "ECONOMY_SHIP_CHANGED" });
+  const supplied = cheat(p, "grant_ship_cargo", voyage.id).state;
+  for (const [id, quantity] of Object.entries(needed)) assert.equal(supplied.inventory[id], Math.max(quantity, before.inventory[id] ?? 0));
+  assert.deepEqual(supplied.ship, before.ship);
+  assert.deepEqual(supplied.wallet, before.wallet);
+  assert.deepEqual(cheat(p, "grant_ship_cargo", voyage.id).state.inventory, supplied.inventory);
+});
+
+test("DEV can shorten a departed ship wait without rewarding or replacing active cargo", () => {
+  const p = player(); cheat(p, "apply_settlement", "home", 3);
+  fixture(p).state.ship = { voyage: null, completedVoyages: 2, nextAvailableAt: new Date(now + 6 * 3600000).toISOString() };
+  const before = read(p), result = cheat(p, "shorten_ship_wait", "ship").state;
+  assert.equal(result.ship.nextAvailableAt, new Date(now + 5000).toISOString());
+  assert.equal(result.ship.completedVoyages, 2);
+  assert.deepEqual(result.wallet, before.wallet);
+  const arrived = cheat(p, "prepare_ship", "ship").state;
+  assert.equal(arrived.ship.voyage.number, 3);
+  assert.equal(arrived.ship.nextAvailableAt, null);
+  process.env.NODE_ENV = "production";
+  assert.throws(() => cheat(p, "prepare_ship", "ship"), { code: "DEV_TOOLS_DISABLED" });
+});

@@ -104,27 +104,35 @@ class JdbcEconomyRepositoryIntegrationTest {
         val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(persisted.copy(inventory = manifestStock)), p.id)
         var current = economy.snapshot(p.hash)
-        voyage.orders.forEach { order ->
+        val firstOrder = voyage.orders.first()
+        val firstItem = firstOrder.items.keys.first()
+        val partialLoad = command(p, current, "load_ship_cargo", firstOrder.id).copy(
+            voyageId = voyage.id, orderId = firstOrder.id, itemId = firstItem, quantity = 1)
+        val partialOutcomes = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, partialLoad) } }.awaitAll() }
+        assertEquals(1, partialOutcomes.count { it.replayed })
+        current = JdbcEconomyRepository(source).snapshot(p.hash)
+        assertEquals(1L, current.ship.voyage!!.orders.first().loadedItems[firstItem])
+        assertEquals(before.wallet, current.wallet)
+        var finalLoad: EconomyCommand? = null
+        voyage.orders.forEachIndexed { index, order ->
             val load = command(p, current, "complete_ship_order", order.id)
             val outcomes = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, load) } }.awaitAll() }
             assertEquals(1, outcomes.count { it.replayed })
             current = economy.snapshot(p.hash)
-            assertNotNull(current.ship.voyage!!.orders.single { it.id == order.id }.deliveredAt)
+            if (index < 2) assertNotNull(current.ship.voyage!!.orders.single { it.id == order.id }.deliveredAt)
+            else { assertNull(current.ship.voyage); finalLoad = load }
             assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${load.requestId}"))
             assertEquals(order.rewardCoins.toString(), scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${load.requestId}"))
         }
-        assertTrue(current.inventory.isEmpty())
+        val expectedRewards = voyage.orders.flatMap { it.rewardItems.entries }.groupBy { it.key }.mapValues { (_, entries) -> entries.sumOf { it.value } }
+        assertEquals(expectedRewards, current.inventory)
         assertEquals(before.wallet.coins + voyage.orders.sumOf { it.rewardCoins }, current.wallet.coins)
-        assertEquals(before.wallet.pearls, current.wallet.pearls)
-        val claim = command(p, current, "claim_ship_voyage", voyage.id)
-        val rewards = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, claim) } }.awaitAll() }
-        assertEquals(1, rewards.count { it.replayed })
         val after = JdbcEconomyRepository(source).snapshot(p.hash)
         assertNull(after.ship.voyage)
         assertEquals(1L, after.ship.completedVoyages)
-        assertEquals(before.wallet.pearls + voyage.rewardPearls, after.wallet.pearls)
-        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_ship_voyage'", p.id))
-        assertEquals(voyage.rewardPearls.toString(), scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${claim.requestId}"))
+        assertEquals(before.wallet.pearls + 20, after.wallet.pearls)
+        assertNotNull(after.ship.nextAvailableAt)
+        assertEquals("20", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${finalLoad!!.requestId}"))
         val replay = economy.command(p.hash, open)
         assertTrue(replay.replayed)
         assertNull(replay.state.ship.voyage, "Replaying an old open receipt cannot recreate a paid manifest")

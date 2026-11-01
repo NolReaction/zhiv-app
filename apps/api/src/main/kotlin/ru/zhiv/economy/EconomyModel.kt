@@ -287,6 +287,9 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val requestId: String, val ownerPublicId: String, val expectedRevision: Long,
     val action: String, val targetId: String, val quantity: Long = 1, val totalPrice: Long = 0,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val fishSelection: Map<String, Long>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val voyageId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val orderId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val itemId: String? = null,
 )
 @Serializable data class EconomyResult(val state: EconomyView, val message: String, val acceptedRevision: Long, val replayed: Boolean = false)
 interface EconomyRepository {

@@ -277,7 +277,7 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialH
             {stationId === "bridge" && <>
               <h3>Рынок игроков</h3><p className={styles.small}>Мост восстановлен. Торговля с игроками открывается нажатием на рынок на карте.</p>
             </>}
-            {stationId === "lighthouse" && <p className={styles.small}>Свет маяка отмечает причал. Пароход с крупными заказами появится в будущем обновлении.</p>}
+            {stationId === "lighthouse" && <p className={styles.small}>Свет маяка приводит корабль с тремя личными грузами. Нажмите на корабль и загружайте товары по частям.</p>}
             <h3>Маршруты экспедиций</h3>
             {state.catalog.explorations.filter(route => !route.retired && Boolean(route.requiredBuildings[stationId])).map(route => <section key={route.id} className={styles.detail}>
               <h4>{route.name}</h4><p className={styles.small}>{route.description} · {worldDuration(route.seconds)}</p>

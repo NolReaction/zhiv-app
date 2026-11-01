@@ -22,7 +22,7 @@ const ledgerLabels: Record<string, string> = {
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя", cancel_meal: "Возврат обеда",
   accept_weekly_order: "Выбор недельного поручения",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
-  open_ship_voyage: "Получение заказов корабля", complete_ship_order: "Отгрузка заказа корабля",
+  open_ship_voyage: "Прибытие корабля с грузами", load_ship_cargo: "Загрузка товара на корабль", complete_ship_order: "Отгрузка заказа корабля",
   claim_ship_voyage: "Награда за поставку кораблю", skip_ship_voyage: "Отказ от оставшихся заказов корабля",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",
   buy_production_slot: "Открытие места производства", buy_market_slot: "Открытие места прилавка", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",

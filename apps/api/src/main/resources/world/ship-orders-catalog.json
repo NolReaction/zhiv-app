@@ -1,13 +1,13 @@
 {
   "version": 1,
   "intervalSeconds": 21600,
-  "rewardPearls": 8,
+  "rewardPearls": 20,
   "payoutBps": 10500,
   "templates": [
     {
       "id": "rigging",
       "group": "supplies",
-      "title": "Такелаж для команды",
+      "title": "Верёвочная лестница для островной школы",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "workshop": 1
@@ -15,12 +15,14 @@
       "items": {
         "planks": 12,
         "rope": 8
-      }
+      },
+      "difficulty": "easy",
+      "rewardItems": {}
     },
     {
       "id": "shore_repairs",
       "group": "supplies",
-      "title": "Ремонт прибрежных причалов",
+      "title": "Причал после ночного шторма",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "kiln": 1,
@@ -29,12 +31,14 @@
       "items": {
         "bricks": 8,
         "planks": 8
-      }
+      },
+      "difficulty": "easy",
+      "rewardItems": {}
     },
     {
       "id": "warm_holds",
       "group": "supplies",
-      "title": "Запас для машинного отделения",
+      "title": "Топливо для заблудившегося буксира",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "kiln": 2
@@ -42,12 +46,16 @@
       "items": {
         "charcoal": 10,
         "iron_ingot": 2
+      },
+      "difficulty": "medium",
+      "rewardItems": {
+        "bricks": 1
       }
     },
     {
       "id": "strong_deck",
       "group": "supplies",
-      "title": "Прочная палуба",
+      "title": "Плавучая сцена к празднику",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "workshop": 3,
@@ -56,12 +64,16 @@
       "items": {
         "beams": 3,
         "rope": 10
+      },
+      "difficulty": "medium",
+      "rewardItems": {
+        "planks": 2
       }
     },
     {
       "id": "expedition_tools",
       "group": "supplies",
-      "title": "Инструменты дальней гавани",
+      "title": "Мастерская на необитаемом острове",
       "requiredHomeLevel": 4,
       "requiredBuildings": {
         "workshop": 3
@@ -69,12 +81,16 @@
       "items": {
         "tools": 3,
         "planks": 10
+      },
+      "difficulty": "hard",
+      "rewardItems": {
+        "rope": 2
       }
     },
     {
       "id": "stone_berth",
       "group": "supplies",
-      "title": "Каменная набережная",
+      "title": "Набережная затонувшего города",
       "requiredHomeLevel": 5,
       "requiredBuildings": {
         "kiln": 5,
@@ -84,12 +100,16 @@
       "items": {
         "stone_tile": 3,
         "mortar": 4
+      },
+      "difficulty": "hard",
+      "rewardItems": {
+        "stone_tile": 1
       }
     },
     {
       "id": "berry_provisions",
       "group": "provisions",
-      "title": "Ягодные припасы",
+      "title": "Чай для смотрителей маяков",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "dryer": 1
@@ -97,12 +117,14 @@
       "items": {
         "dried_berries": 6,
         "berry_compote": 8
-      }
+      },
+      "difficulty": "easy",
+      "rewardItems": {}
     },
     {
       "id": "smoked_provisions",
       "group": "provisions",
-      "title": "Обед для моряков",
+      "title": "Ужин команды спасателей",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "dryer": 2
@@ -110,12 +132,16 @@
       "items": {
         "smoked_fish": 5,
         "dried_berries": 4
+      },
+      "difficulty": "medium",
+      "rewardItems": {
+        "dried_berries": 1
       }
     },
     {
       "id": "packed_provisions",
       "group": "provisions",
-      "title": "Припасы в дорогу",
+      "title": "Ягодная почта северного берега",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "dryer": 2,
@@ -124,12 +150,14 @@
       "items": {
         "packed_berries": 4,
         "berry_compote": 6
-      }
+      },
+      "difficulty": "medium",
+      "rewardItems": {}
     },
     {
       "id": "bottled_provisions",
       "group": "provisions",
-      "title": "Напитки для рейса",
+      "title": "Пикник на песчаной косе",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "dryer": 3,
@@ -138,12 +166,16 @@
       "items": {
         "bottled_compote": 4,
         "dried_berries": 4
+      },
+      "difficulty": "medium",
+      "rewardItems": {
+        "glass_bottle": 1
       }
     },
     {
       "id": "trail_provisions",
       "group": "provisions",
-      "title": "Рационы исследователей",
+      "title": "Паёк искателей старой карты",
       "requiredHomeLevel": 4,
       "requiredBuildings": {
         "dryer": 2
@@ -151,12 +183,16 @@
       "items": {
         "trail_ration": 3,
         "smoked_fish": 4
+      },
+      "difficulty": "hard",
+      "rewardItems": {
+        "packed_berries": 1
       }
     },
     {
       "id": "festive_provisions",
       "group": "provisions",
-      "title": "Угощение дальнего берега",
+      "title": "Праздник первого снега",
       "requiredHomeLevel": 5,
       "requiredBuildings": {
         "dryer": 4,
@@ -165,12 +201,16 @@
       "items": {
         "cranberry_glaze": 2,
         "packed_berries": 4
+      },
+      "difficulty": "hard",
+      "rewardItems": {
+        "berry_compote": 2
       }
     },
     {
       "id": "cargo_packaging",
       "group": "craft",
-      "title": "Упаковка ценного груза",
+      "title": "Упаковка для морских находок",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "workshop": 2
@@ -178,12 +218,14 @@
       "items": {
         "trade_crate": 4,
         "cloth": 3
-      }
+      },
+      "difficulty": "medium",
+      "rewardItems": {}
     },
     {
       "id": "glass_delivery",
       "group": "craft",
-      "title": "Стекло для портовой лавки",
+      "title": "Бутылки для писем через море",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "kiln": 3
@@ -191,12 +233,14 @@
       "items": {
         "glass_bottle": 4,
         "ceramic_jar": 4
-      }
+      },
+      "difficulty": "medium",
+      "rewardItems": {}
     },
     {
       "id": "sailmakers",
       "group": "craft",
-      "title": "Заказ парусной мастерской",
+      "title": "Паруса для гонки маленьких лодок",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "workshop": 2
@@ -204,12 +248,14 @@
       "items": {
         "cloth": 5,
         "rope": 8
-      }
+      },
+      "difficulty": "medium",
+      "rewardItems": {}
     },
     {
       "id": "ship_fittings",
       "group": "craft",
-      "title": "Крепления для корабля",
+      "title": "Ремонт корабельного колокола",
       "requiredHomeLevel": 3,
       "requiredBuildings": {
         "workshop": 2,
@@ -218,12 +264,16 @@
       "items": {
         "metal_parts": 2,
         "trade_crate": 3
+      },
+      "difficulty": "hard",
+      "rewardItems": {
+        "iron_ingot": 1
       }
     },
     {
       "id": "coastal_research",
       "group": "craft",
-      "title": "Снаряжение картографов",
+      "title": "Картографы туманного архипелага",
       "requiredHomeLevel": 4,
       "requiredBuildings": {
         "workshop": 3
@@ -231,12 +281,16 @@
       "items": {
         "research_gear": 2,
         "cloth": 4
+      },
+      "difficulty": "hard",
+      "rewardItems": {
+        "trade_crate": 1
       }
     },
     {
       "id": "field_research",
       "group": "craft",
-      "title": "Полевые комплекты",
+      "title": "Экспедиция за полярным сиянием",
       "requiredHomeLevel": 4,
       "requiredBuildings": {
         "workshop": 4,
@@ -246,9 +300,85 @@
       "items": {
         "field_kit": 2,
         "lens": 2
+      },
+      "difficulty": "hard",
+      "rewardItems": {
+        "lens": 1
+      }
+    },
+    {
+      "id": "driftwood_post",
+      "group": "supplies",
+      "difficulty": "easy",
+      "title": "Новый знак на острове чаек",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 1
+      },
+      "items": {
+        "planks": 6,
+        "rope": 4
+      },
+      "rewardItems": {}
+    },
+    {
+      "id": "island_rescue",
+      "group": "supplies",
+      "difficulty": "hard",
+      "title": "Спасти лодку с дальнего рифа",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 1,
+        "kiln": 1
+      },
+      "items": {
+        "planks": 18,
+        "rope": 14,
+        "bricks": 10
+      },
+      "rewardItems": {
+        "bricks": 2
+      }
+    },
+    {
+      "id": "floating_garden",
+      "group": "craft",
+      "difficulty": "hard",
+      "title": "Плавучий сад капитана",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 2,
+        "kiln": 1
+      },
+      "items": {
+        "trade_crate": 5,
+        "ceramic_jar": 6,
+        "rope": 10
+      },
+      "rewardItems": {
+        "cloth": 1
+      }
+    },
+    {
+      "id": "storm_watch",
+      "group": "provisions",
+      "difficulty": "hard",
+      "title": "Ночная вахта перед большим штормом",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "dryer": 1,
+        "workshop": 1
+      },
+      "items": {
+        "berry_compote": 12,
+        "dried_berries": 10,
+        "rope": 8
+      },
+      "rewardItems": {
+        "dried_berries": 2
       }
     }
   ],
   "rewardValueCoins": 2000,
-  "maxRewardPearls": 16
+  "maxRewardPearls": 20
 }

@@ -21,20 +21,28 @@ class EconomyShipOrdersTest {
     private fun apply(state: EconomyState, action: String, target: String, at: Instant = now) =
         EconomyRules.apply(state, request(action, target), at).first
     private fun opened(state: EconomyState = stocked()) = EconomyShipOrders.open(state, now, voyageId)
+    private fun cargoRequest(order: EconomyShipOrder, item: String, amount: Long = 1) =
+        request("load_ship_cargo", order.id).copy(voyageId = voyageId, orderId = order.id, itemId = item, quantity = amount)
     private fun completed(state: EconomyState = opened(), at: Instant = now): EconomyState = state.ship.voyage!!.orders.filter { it.deliveredAt == null }.fold(state) { current, order ->
         apply(current, "complete_ship_order", order.id, at)
     }
     private fun failure(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
-    @Test fun `old saves default to empty port and accepted frozen manifests roundtrip`() {
+    @Test fun `old saves and manifests default new fields and partial manifests roundtrip`() {
         val old = JsonObject(economyJson.parseToJsonElement(economyJson.encodeToString(stocked())).jsonObject - "ship")
         assertEquals(EconomyShipState(), economyJson.decodeFromString<EconomyState>(old.toString()).ship)
         val accepted = opened()
-        assertEquals(accepted, economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(accepted)))
-        assertEquals(stocked().wallet, accepted.wallet)
+        assertNull(accepted.ship.nextAvailableAt)
+        assertEquals(20L, accepted.ship.voyage!!.rewardPearls)
         assertEquals(stocked().inventory, accepted.inventory)
-        assertEquals(1L, accepted.ship.voyage!!.number)
-        assertEquals(now.plusSeconds(21600).toString(), accepted.ship.nextAvailableAt)
+        val oldOrder = """{"id":"$voyageId:0","templateId":"legacy","title":"Груз","items":{"wood":3},"rewardCoins":15} """
+        val parsed = economyJson.decodeFromString<EconomyShipOrder>(oldOrder)
+        assertEquals(emptyMap(), parsed.loadedItems)
+        assertEquals(emptyMap(), parsed.rewardItems)
+        assertEquals("medium", parsed.difficulty)
+        val order = accepted.ship.voyage!!.orders.first()
+        val partial = EconomyRules.apply(accepted, cargoRequest(order, order.items.keys.first()), now).first
+        assertEquals(partial, economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(partial)))
     }
 
     @Test fun `lighthouse must be claimed and request id cannot choose a manifest`() {
@@ -47,13 +55,9 @@ class EconomyShipOrdersTest {
         assertNotEquals(command.requestId, EconomyRules.apply(stocked(), command, now).first.ship.voyage!!.id)
     }
 
-    @Test fun `three categories are deterministic for server seed and vary between players`() {
-        val accepted = opened()
-        val voyage = accepted.ship.voyage!!
-        assertEquals(3, voyage.orders.size)
-        assertEquals(listOf("supplies", "provisions", "craft"), voyage.orders.map { order ->
-            EconomyShipOrders.config.templates.single { it.id == order.templateId }.group
-        })
+    @Test fun `every ship has increasing difficulties deterministic for server seed and diverse manifests`() {
+        val voyage = opened().ship.voyage!!
+        assertEquals(listOf("easy", "medium", "hard"), voyage.orders.map { it.difficulty })
         assertEquals(voyage.orders, opened().ship.voyage!!.orders)
         assertEquals(listOf("$voyageId:0", "$voyageId:1", "$voyageId:2"), voyage.orders.map { it.id })
         val variants = (0 until 20).map { index ->
@@ -63,138 +67,144 @@ class EconomyShipOrdersTest {
         assertTrue(variants.size > 1)
     }
 
-    @Test fun `shared seed and minimum home three factories match TypeScript cargo vector`() {
-        val early = EconomyRules.initial().copy(buildings = mapOf("home" to 3, "garden" to 1, "woodlot" to 3,
-            "quarry" to 3, "workshop" to 3, "kiln" to 3, "dryer" to 1, "bridge" to 1, "lighthouse" to 1, "warehouse" to 1))
-        val voyage = EconomyShipOrders.open(early, now, "11111111-1111-4111-8111-111111111111").ship.voyage!!
-        assertEquals(listOf("rigging" to 1050L, "berry_provisions" to 1554L, "sailmakers" to 1575L),
-            voyage.orders.map { it.templateId to it.rewardCoins })
-        assertEquals(8L, voyage.rewardPearls)
-    }
-
-    @Test fun `earliest lighthouse receives only sustainable goods and higher recipes require real unlocks`() {
-        val source = stocked()
-        val early = source.copy(buildings = mapOf("home" to 3, "garden" to 1, "woodlot" to 2,
+    @Test fun `earliest lighthouse has all difficulties with sustainable cargo and bonus items`() {
+        val early = stocked().copy(buildings = mapOf("home" to 3, "garden" to 1, "woodlot" to 2,
             "quarry" to 2, "workshop" to 3, "kiln" to 3, "dryer" to 1, "bridge" to 1, "lighthouse" to 1, "warehouse" to 1),
             progression = EconomyProgression())
         val eligible = EconomyShipOrders.eligibleTemplates(early)
-        assertEquals(setOf("supplies", "provisions", "craft"), eligible.map { it.group }.toSet())
+        assertEquals(setOf("easy", "medium", "hard"), eligible.map { it.difficulty }.toSet())
         assertTrue(eligible.all { it.requiredHomeLevel <= 3 })
-        assertTrue(eligible.flatMap { it.items.keys }.all { it in EconomyFood.obtainableOrderItems(early) })
+        val obtainable = EconomyFood.obtainableOrderItems(early)
+        assertTrue(eligible.flatMap { it.items.keys + it.rewardItems.keys }.all { it in obtainable })
         assertFalse(eligible.any { "field_kit" in it.items || "tools" in it.items || "lens" in it.items })
-        val giftOnly = EconomyRules.initial().copy(buildings = mapOf("home" to 3, "lighthouse" to 1), inventory = source.inventory)
-        assertTrue(EconomyShipOrders.eligibleTemplates(giftOnly).isEmpty(), "Holding a gift cannot unlock its production chain")
+        val giftOnly = EconomyRules.initial().copy(buildings = mapOf("home" to 3, "lighthouse" to 1), inventory = stocked().inventory)
+        assertTrue(EconomyShipOrders.eligibleTemplates(giftOnly).isEmpty(), "Holding gifts cannot unlock a production chain")
         failure("ECONOMY_SHIP_UNAVAILABLE") { EconomyShipOrders.open(giftOnly, now, voyageId) }
-        val noRecipe = source.copy(progression = EconomyProgression())
-        val custom = EconomyShipOrders.config.copy(templates = EconomyShipOrders.config.templates.map {
-            if (it.id == "rigging") it.copy(items = mapOf("strawberries" to 2L)) else it
-        })
-        assertFalse(EconomyShipOrders.eligibleTemplates(noRecipe, ship = custom).any { it.id == "rigging" })
     }
 
-    @Test fun `payouts are based on whole cargo sale values with only five percent extra`() {
-        val ship = EconomyShipOrders.config
-        assertEquals(8L, ship.rewardPearls)
-        assertEquals(21600L, ship.intervalSeconds)
-        opened().ship.voyage!!.orders.forEach { order ->
-            val value = order.items.entries.sumOf { (id, count) -> EconomyRules.localSellPrice(
-                catalog.items.single { it.id == id }.baseSellPrice, count, itemId = id) }
-            assertEquals((value * 10500 + 9999) / 10000, order.rewardCoins)
-        }
+    @Test fun `shared TypeScript seed produces identical early home three difficulty and rewards`() {
+        val early = EconomyRules.initial().copy(buildings = mapOf("home" to 3, "garden" to 1, "woodlot" to 2,
+            "quarry" to 2, "workshop" to 3, "kiln" to 3, "dryer" to 1, "bridge" to 1, "lighthouse" to 1, "warehouse" to 1))
+        val voyage = EconomyShipOrders.open(early, now, "11111111-1111-4111-8111-111111111111").ship.voyage!!
+        assertEquals(listOf("driftwood_post", "warm_holds", "storm_watch"), voyage.orders.map { it.templateId })
+        assertEquals(listOf("easy", "medium", "hard"), voyage.orders.map { it.difficulty })
+        assertEquals(listOf(525L, 1575L, 2940L), voyage.orders.map { it.rewardCoins })
+        assertEquals(listOf(emptyMap(), mapOf("bricks" to 1L), mapOf("dried_berries" to 2L)), voyage.orders.map { it.rewardItems })
+        assertEquals(listOf(mapOf("planks" to 6L, "rope" to 4L), mapOf("charcoal" to 10L, "iron_ingot" to 2L),
+            mapOf("berry_compote" to 12L, "dried_berries" to 10L, "rope" to 8L)), voyage.orders.map { it.items })
+        assertEquals(20L, voyage.rewardPearls)
     }
 
-    @Test fun `one whole cargo is charged and paid once without touching other cards or reputation`() {
+    @Test fun `partial loading deducts only specified amount without early reward and resumes after reload`() {
         val before = opened()
         val order = before.ship.voyage!!.orders.first()
-        val after = apply(before, "complete_ship_order", order.id)
-        assertEquals(before.wallet.coins + order.rewardCoins, after.wallet.coins)
-        assertEquals(before.wallet.pearls, after.wallet.pearls)
-        before.inventory.forEach { (id, count) -> assertEquals(count - (order.items[id] ?: 0), after.inventory[id] ?: 0) }
-        assertEquals(now.toString(), after.ship.voyage!!.orders.first().deliveredAt)
-        assertTrue(after.ship.voyage!!.orders.drop(1).all { it.deliveredAt == null })
-        assertEquals(before.tradeRelations, after.tradeRelations)
-        failure("ECONOMY_SHIP_CHANGED") { apply(after, "complete_ship_order", order.id) }
+        val item = order.items.keys.first()
+        val after = EconomyRules.apply(before, cargoRequest(order, item), now).first
+        assertEquals(before.inventory.getValue(item) - 1, after.inventory.getValue(item))
+        assertEquals(before.wallet, after.wallet)
+        assertEquals(mapOf(item to 1L), after.ship.voyage!!.orders.first().loadedItems)
+        assertNull(after.ship.voyage!!.orders.first().deliveredAt)
+        val restored = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(after))
+        val paid = apply(restored, "complete_ship_order", order.id)
+        assertEquals(before.wallet.coins + order.rewardCoins, paid.wallet.coins)
+        for ((id, count) in before.inventory) assertEquals(count - (order.items[id] ?: 0) + (order.rewardItems[id] ?: 0), paid.inventory[id] ?: 0)
+        assertEquals(order.items, paid.ship.voyage!!.orders.first().loadedItems)
+        failure("ECONOMY_SHIP_CHANGED") { apply(paid, "complete_ship_order", order.id) }
     }
 
-    @Test fun `missing goods and wallet caps reject before any payment or cargo state changes`() {
+    @Test fun `unavailable goods oversized loads and cross voyage commands preserve state`() {
         val before = opened()
         val order = before.ship.voyage!!.orders.first()
-        val missing = before.copy(inventory = order.items.mapValues { (_, count) -> count - 1 })
-        val frozen = economyJson.encodeToString(missing)
-        failure("ECONOMY_RESOURCES") { apply(missing, "complete_ship_order", order.id) }
-        assertEquals(frozen, economyJson.encodeToString(missing))
-        val fullWallet = before.copy(wallet = before.wallet.copy(coins = ECONOMY_MAX_BALANCE))
-        failure("ECONOMY_CAPACITY") { apply(fullWallet, "complete_ship_order", order.id) }
-        assertNull(fullWallet.ship.voyage!!.orders.first().deliveredAt)
+        val item = order.items.keys.first()
+        val command = cargoRequest(order, item)
+        val empty = before.copy(inventory = emptyMap())
+        failure("ECONOMY_RESOURCES") { EconomyRules.apply(empty, command, now) }
+        failure("INVALID_ECONOMY_COMMAND") { EconomyRules.apply(before, command.copy(quantity = order.items.getValue(item) + 1), now) }
+        failure("INVALID_ECONOMY_COMMAND") { EconomyRules.apply(before, command.copy(itemId = "missing"), now) }
+        failure("ECONOMY_SHIP_CHANGED") { EconomyRules.apply(before, command.copy(voyageId = UUID.randomUUID().toString()), now) }
+        assertEquals(emptyMap(), before.ship.voyage!!.orders.first().loadedItems)
     }
 
-    @Test fun `accepted cargo and reward survive catalog replacement relocking and long absence`() {
+    @Test fun `final loading automatically pays ten pearls and next six hours start at departure`() {
         val before = opened()
-        val voyage = before.ship.voyage!!
-        val promised = voyage.orders.first().copy(title = "Сохранённый груз", templateId = "retired_template", items = mapOf("wood" to 1L), rewardCoins = 777)
-        val frozen = before.copy(buildings = mapOf("lighthouse" to 1),
-            ship = before.ship.copy(voyage = voyage.copy(orders = listOf(promised) + voyage.orders.drop(1), rewardPearls = 6)))
-        val returnedAt = now.plusSeconds(86400L * 365)
-        val after = apply(frozen, "complete_ship_order", promised.id, returnedAt)
-        assertEquals(frozen.wallet.coins + 777, after.wallet.coins)
-        assertEquals(frozen.inventory.getValue("wood") - 1, after.inventory.getValue("wood"))
-        val all = completed(after, returnedAt)
-        val claimed = apply(all, "claim_ship_voyage", voyage.id, returnedAt)
-        assertEquals(before.wallet.pearls + 6, claimed.wallet.pearls)
-    }
-
-    @Test fun `full reward requires three loads and only explicit claim grants pearls once`() {
-        val before = opened()
-        failure("ECONOMY_SHIP_INCOMPLETE") { apply(before, "claim_ship_voyage", voyageId) }
-        val ready = completed(before)
-        assertEquals(before.wallet.pearls, ready.wallet.pearls)
-        failure("ECONOMY_SHIP_COMPLETE") { apply(ready, "skip_ship_voyage", voyageId) }
-        val after = apply(ready, "claim_ship_voyage", voyageId)
-        assertEquals(before.wallet.pearls + before.ship.voyage!!.rewardPearls, after.wallet.pearls)
+        val finishAt = now.plusSeconds(5 * 3600 + 55 * 60)
+        val after = completed(before, finishAt)
+        assertEquals(before.wallet.pearls + 20, after.wallet.pearls)
+        assertEquals(before.wallet.coins + before.ship.voyage!!.orders.sumOf { it.rewardCoins }, after.wallet.coins)
         assertEquals(1L, after.ship.completedVoyages)
         assertNull(after.ship.voyage)
-        assertEquals(before.ship.nextAvailableAt, after.ship.nextAvailableAt)
+        assertEquals(finishAt.plusSeconds(21600).toString(), after.ship.nextAvailableAt)
+        failure("ECONOMY_SHIP_WAIT") { apply(after, "open_ship_voyage", "port", now.plusSeconds(21600)) }
+        failure("ECONOMY_SHIP_WAIT") { apply(after, "open_ship_voyage", "port", finishAt.plusSeconds(21599)) }
+        val next = apply(after, "open_ship_voyage", "port", finishAt.plusSeconds(21600))
+        assertEquals(2L, next.ship.voyage!!.number)
+        assertNull(next.ship.nextAvailableAt)
         failure("ECONOMY_SHIP_CHANGED") { apply(after, "claim_ship_voyage", voyageId) }
-        failure("ECONOMY_SHIP_CHANGED") { apply(after, "complete_ship_order", "$voyageId:2") }
+        failure("ECONOMY_SHIP_CHANGED") { apply(next, "complete_ship_order", "$voyageId:2", finishAt.plusSeconds(21600)) }
     }
 
-    @Test fun `full pearl wallet leaves ready reward intact for later claim`() {
-        val ready = completed().let { it.copy(wallet = it.wallet.copy(pearls = ECONOMY_MAX_PEARLS)) }
-        failure("ECONOMY_CAPACITY") { apply(ready, "claim_ship_voyage", voyageId) }
-        assertNotNull(ready.ship.voyage)
-        assertTrue(ready.ship.voyage!!.orders.all { it.deliveredAt != null })
-        assertEquals(0L, ready.ship.completedVoyages)
+    @Test fun `legacy promised goods remain unchanged while completed manifest gets fixed ten pearls`() {
+        val source = opened()
+        val voyage = source.ship.voyage!!
+        val frozen = source.copy(ship = source.ship.copy(voyage = voyage.copy(rewardPearls = 6,
+            orders = voyage.orders.map { it.copy(deliveredAt = now.toString()) })))
+        val after = apply(frozen, "claim_ship_voyage", voyage.id, now.plusSeconds(90000))
+        assertEquals(source.wallet.pearls + 20, after.wallet.pearls)
+        assertEquals(now.plusSeconds(111600).toString(), after.ship.nextAvailableAt)
+        failure("ECONOMY_SHIP_CHANGED") { apply(after, "claim_ship_voyage", voyage.id) }
     }
 
-    @Test fun `skip preserves paid cargo and cooldown and never refunds or completes the voyage`() {
+    @Test fun `skip never cancels paid or unpaid cargo even after several days`() {
         val accepted = opened()
+        failure("ECONOMY_SHIP_CANNOT_SKIP") { apply(accepted, "skip_ship_voyage", voyageId) }
         val paid = apply(accepted, "complete_ship_order", "$voyageId:0")
-        val skipped = apply(paid, "skip_ship_voyage", voyageId)
-        assertEquals(paid.wallet, skipped.wallet)
-        assertEquals(paid.inventory, skipped.inventory)
-        assertEquals(0L, skipped.ship.completedVoyages)
-        assertNull(skipped.ship.voyage)
-        failure("ECONOMY_SHIP_WAIT") { apply(skipped, "open_ship_voyage", "port", now.plusSeconds(21599)) }
-        val next = apply(skipped, "open_ship_voyage", "port", now.plusSeconds(21600))
-        assertNotEquals(voyageId, next.ship.voyage!!.id)
-        assertEquals(1L, next.ship.voyage!!.number)
-        failure("ECONOMY_SHIP_CHANGED") { apply(next, "complete_ship_order", "$voyageId:1", now.plusSeconds(21600)) }
+        failure("ECONOMY_SHIP_CANNOT_SKIP") { apply(paid, "skip_ship_voyage", voyageId, now.plusSeconds(86400 * 7)) }
+        failure("ECONOMY_SHIP_ACTIVE") { apply(paid, "open_ship_voyage", "port", now.plusSeconds(86400 * 7)) }
+        assertNotNull(paid.ship.voyage)
     }
 
-    @Test fun `active manifest cannot be replaced and malformed command extras are rejected`() {
+    @Test fun `optional item rewards paid once and excessive warehouse growth rolls back last load`() {
+        val source = opened()
+        val voyage = source.ship.voyage!!
+        val promised = voyage.orders.first().copy(items = mapOf("wood" to 1L), rewardItems = mapOf("stone" to 2L))
+        val before = source.copy(inventory = mapOf("wood" to 1L), ship = source.ship.copy(voyage = voyage.copy(orders = listOf(promised) + voyage.orders.drop(1))))
+        val after = apply(before, "complete_ship_order", promised.id)
+        assertEquals(mapOf("stone" to 2L), after.inventory)
+        failure("ECONOMY_SHIP_CHANGED") { apply(after, "complete_ship_order", promised.id) }
+        val full = before.copy(inventory = mapOf("wood" to 1L, "stone" to EconomyRules.storage(before).capacity - 1))
+        failure("ECONOMY_STORAGE_FULL") { apply(full, "complete_ship_order", promised.id) }
+        assertNull(full.ship.voyage!!.orders.first().deliveredAt)
+        val reserved = before.copy(inventory = mapOf("wood" to 1L))
+        failure("ECONOMY_STORAGE_FULL") { EconomyRules.apply(reserved, request("complete_ship_order", promised.id), now,
+            mapOf("stone" to EconomyRules.storage(reserved).capacity - 1)) }
+    }
+
+    @Test fun `full pearl wallet rejects final cargo atomically but allows earlier partial loads`() {
+        val source = opened()
+        var before = apply(source, "complete_ship_order", "$voyageId:0")
+        before = apply(before, "complete_ship_order", "$voyageId:1")
+        before = before.copy(wallet = before.wallet.copy(pearls = ECONOMY_MAX_PEARLS))
+        failure("ECONOMY_CAPACITY") { apply(before, "complete_ship_order", "$voyageId:2") }
+        assertNull(before.ship.voyage!!.orders.last().deliveredAt)
+        assertEquals(0L, before.ship.completedVoyages)
+    }
+
+    @Test fun `cargo protocol rejects missing contradictory extra and wrong typed fields`() {
         val before = opened()
-        failure("ECONOMY_SHIP_ACTIVE") { apply(before, "open_ship_voyage", "port", now.plusSeconds(86400)) }
-        failure("INVALID_ECONOMY_COMMAND") { apply(stocked(), "open_ship_voyage", voyageId) }
-        listOf(request("complete_ship_order", "$voyageId:0").copy(quantity = 2),
-            request("complete_ship_order", "$voyageId:0").copy(totalPrice = 1),
-            request("complete_ship_order", "$voyageId:0").copy(fishSelection = emptyMap())).forEach { command ->
-            failure("INVALID_ECONOMY_COMMAND") { EconomyRules.apply(before, command, now) }
-        }
-        failure("ECONOMY_CAPACITY") { EconomyShipOrders.open(stocked().copy(ship = EconomyShipState(completedVoyages = ECONOMY_MAX_REVISION)), now) }
+        val order = before.ship.voyage!!.orders.first()
+        val valid = cargoRequest(order, order.items.keys.first())
+        listOf(valid.copy(voyageId = null), valid.copy(orderId = null), valid.copy(itemId = null), valid.copy(targetId = "wrong"),
+            valid.copy(quantity = 0), valid.copy(quantity = 10001), valid.copy(totalPrice = 1), valid.copy(fishSelection = emptyMap()),
+            valid.copy(action = "sell")).forEach { failure("INVALID_ECONOMY_COMMAND") { EconomyRules.apply(before, it, now) } }
+        val json = economyJson.parseToJsonElement(economyJson.encodeToString(valid))
+        assertEquals(valid, decodeEconomyCommand(json))
+        val wrong = economyJson.parseToJsonElement(economyJson.encodeToString(valid).replace("\"itemId\":\"${valid.itemId}\"", "\"itemId\":3"))
+        failure("INVALID_ECONOMY_COMMAND") { decodeEconomyCommand(wrong) }
     }
 
-    @Test fun `merge preserves one paid manifest latest cooldown and rejects two active manifests`() {
-        val a = apply(opened(), "complete_ship_order", "$voyageId:0").ship
+    @Test fun `merge preserves partial loads and latest cooldown but rejects two active voyages`() {
+        val before = opened(); val order = before.ship.voyage!!.orders.first()
+        val a = EconomyRules.apply(before, cargoRequest(order, order.items.keys.first()), now).first.ship
         val b = EconomyShipState(completedVoyages = 8, nextAvailableAt = now.plusSeconds(86400).toString())
         val merged = EconomyShipOrders.merge(a, b)
         assertEquals(a.voyage, merged.voyage)

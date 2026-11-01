@@ -12,7 +12,7 @@ export const analyticsActions: Record<string, string> = {
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя", cancel_meal: "Возврат обеда",
   accept_weekly_order: "Выбор недельного поручения",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
-  open_ship_voyage: "Получение заказов корабля", complete_ship_order: "Отгрузка заказа корабля",
+  open_ship_voyage: "Прибытие корабля с грузами", load_ship_cargo: "Загрузка товара на корабль", complete_ship_order: "Отгрузка заказа корабля",
   claim_ship_voyage: "Награда за поставку кораблю", skip_ship_voyage: "Отказ от оставшихся заказов корабля",
   start_production: "Начало производства", cancel_production: "Отмена производства", buy_production_slot: "Место производства", buy_market_slot: "Место прилавка", start_collection: "Начало сбора",
   start_garden_collection: "Сбор всех созревших ягод", claim_garden_collection: "Получение корзины урожая", claim_production: "Сбор готового производства",

@@ -64,6 +64,23 @@ test("the full arrival uses continuous feet, finishes the greeting and leaves th
   assert.equal(JSON.stringify(scene), before);
 });
 
+test("refreshing account access preserves the same crossing and never restarts a completed arrival", () => {
+  const state = setup(); advanceLeaftailBoatArrival(state, .5);
+  const feet = { ...state.position }, path = state.path, progress = state.distance, age = state.age;
+  configureLeaftailBoatArrival(state, scene, { ...permission, confirmed: false, unlocked: false });
+  advanceLeaftailBoatArrival(state, .5);
+  assert.deepEqual(state.position, feet); assert.equal(state.path, path); assert.equal(state.distance, progress);
+  configureLeaftailBoatArrival(state, scene, permission);
+  assert.equal(state.phase, "sailing"); assert.deepEqual(state.position, feet); assert.equal(state.age, age);
+  finish(state); assert.equal(state.completed, true);
+  for (const changed of [{ confirmed: false }, { unlocked: false }]) {
+    configureLeaftailBoatArrival(state, scene, { ...permission, ...changed });
+    configureLeaftailBoatArrival(state, scene, permission);
+    assert.equal(state.completed, true); assert.equal(state.phase, "complete");
+    assert.equal(leaftailBoatArrivalFrame(state), null);
+  }
+});
+
 test("hidden, paused, reduced-motion and inactive views freeze both the boat and its active clock", () => {
   const state = setup(); advanceLeaftailBoatArrival(state, .5);
   for (const env of [{ hidden: true }, { paused: true }, { reducedMotion: true }, { active: false }]) {

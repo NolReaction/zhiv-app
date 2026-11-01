@@ -489,3 +489,29 @@ test("unrelated commands, foreign owners, stale revisions and mismatched sale qu
     assert.equal(lost, answer.ownerPublicId === other ? 1 : 0);
   }
 });
+
+
+test("partial ship cargo retains exact identifiers and quantity across a lost receipt", async () => {
+  const cache = storage(), sent = []; let authoritative = state();
+  const t = transport({ get: async () => authoritative, send: async command => {
+    sent.push(structuredClone(command));
+    if (sent.length === 1) { authoritative = state(1); throw Error("Committed cargo response lost"); }
+    return { ...result(authoritative), replayed: true };
+  } });
+  const original = createEconomySession(owner, t, () => assert.fail(), cache), stop = original.activate();
+  await original.refresh();
+  const voyageId = "7a58066f-b814-4ff0-8536-e21cfa9de196";
+  const cargo = { voyageId, orderId: `${voyageId}:1`, itemId: "planks" };
+  assert.equal(original.act("load_ship_cargo", cargo.orderId, 2, 0, undefined, cargo), true);
+  cargo.itemId = "rope";
+  await flush(); assert.equal(original.getSnapshot().uncertain, true); stop();
+  const restored = createEconomySession(owner, t, () => assert.fail(), cache), deactivate = restored.activate();
+  await restored.refresh(); await restored.retry();
+  assert.deepEqual(sent[1], sent[0]);
+  assert.equal(sent[1].voyageId, voyageId);
+  assert.equal(sent[1].orderId, `${voyageId}:1`);
+  assert.equal(sent[1].itemId, "planks");
+  assert.equal(sent[1].quantity, 2);
+  assert.equal(restored.getSnapshot().uncertain, false);
+  deactivate();
+});

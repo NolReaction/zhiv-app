@@ -23,7 +23,7 @@ import { WorldFeedback } from "@/features/world/ui/feedback/world-feedback";
 import { useMarketAudio } from "@/features/world/audio/use-market-audio";
 import { EconomyPanel, type EconomyTab } from "@/features/economy/ui/economy-panel";
 import { WorldShipPort } from "@/features/economy/ui/ship/world-ship-port";
-import { shipOrdersUnlocked } from "@/features/economy/domain/ship-orders";
+import { useShipOrdersArrival } from "@/features/economy/sync/use-ship-orders-arrival";
 import { economyMarketUnlocked } from "@/features/economy/domain/market-rules";
 import { economyBuildingDestination, economySceneJourney, economySceneProduction, economySceneConstruction, economySceneResidents, economyWorldState } from "@/features/economy/integration/world-adapter";
 import { TILED_WORLD, WORLD_PRESENTATION } from "@/features/world/scene/presentation";
@@ -178,6 +178,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const lopukhArrival = useLopukhArrival(ownerPublicId, {
     confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: woodlotBuilt,
+    suspended: Boolean(!open || suspended),
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !economy.busy && !economy.uncertain
       && !world.busy && !world.uncertain && observation?.memory.sync?.mode !== "other-device"),
@@ -191,6 +192,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const minerArrival = useMinerArrival(ownerPublicId, {
     confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: quarryBuilt,
+    suspended: Boolean(!open || suspended),
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled && !economy.busy && !economy.uncertain
       && !world.busy && !world.uncertain && observation?.memory.sync?.mode !== "other-device"),
@@ -201,6 +203,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const merchantArrival = useLeaftailArrival(ownerPublicId, {
     confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: merchantUnlocked,
+    suspended: Boolean(!open || suspended),
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled && !minerArrival.open && !minerArrival.enabled
       && !economy.busy && !economy.uncertain && !world.busy && !world.uncertain
@@ -230,6 +233,9 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled && !minerArrival.open && !minerArrival.enabled
     && !merchantArrival.open && !merchantArrival.enabled && !economy.busy && !economy.uncertain && !world.busy && !world.uncertain
     && observation?.memory.sync?.mode !== "other-device");
+  useShipOrdersArrival(economy, ownerPublicId, Boolean(open && !suspended && !mainCourseActive && !marketGuide.open
+    && !lopukhArrival.enabled && !lopukhArrival.open && !minerArrival.enabled && !minerArrival.open
+    && !merchantArrival.enabled && !merchantArrival.open && observation?.memory.sync?.mode !== "other-device"));
   const renderedState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const topHud = useRef<HTMLElement>(null), bottomHud = useRef<HTMLDivElement>(null);
   const hasWorld = Boolean(world.snapshot);
@@ -578,11 +584,11 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const orders = economy.snapshot?.ownerPublicId === ownerPublicId ? orderJournalSummary(economy.snapshot, economy.now, undefined, mainCourseActive, introducedResidents) : { total: 0, ready: 0 };
   const quickGuideEnabled = sectionsReady && !mainCourseActive && !panel && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen;
   const warehouseState = economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot : null;
-  const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : quickMenu === "ship" ? "Порт" : "Ещё";
+  const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : quickMenu === "ship" ? "Корабль" : "Ещё";
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : quickMenu === "ship" ? Anchor : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? economyTab === "market" ? Store : Package : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene tradeShipArrivalEnabled={shipArrivalEnabled} tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} audioSuppressed={marketOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene economyShip={economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot.ship ?? null : null} tradeShipArrivalEnabled={shipArrivalEnabled} tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} audioSuppressed={marketOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest} guidePlace={guidePlace}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
@@ -650,9 +656,8 @@ export default function WorldView({ open, suspended = false, world, economy, mai
           rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
         {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onFishSaleOpenChange={onFishSaleOpenChange} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: openStation, explore: () => openQuick("expeditions") }} onReturnToGift={giftPantryOwner === ownerPublicId ? returnToGift : undefined} onExplore={() => openQuick("expeditions")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={() => openResident("plesk")} />}
-        {quickMenu === "ship" && <WorldShipPort key={ownerPublicId} economy={economy} onNavigateStation={openStation} onNavigateExpeditions={() => openQuick("expeditions")} />}
+        {quickMenu === "ship" && economy.snapshot?.ownerPublicId === ownerPublicId && <WorldShipPort key={ownerPublicId} economy={economy} onNavigateStation={openStation} onNavigateExpeditions={() => openQuick("expeditions")} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
-          <button type="button" data-world-ship-trigger aria-haspopup="dialog" disabled={economy.snapshot?.ownerPublicId !== ownerPublicId} onClick={() => openQuick("ship")}><Anchor size={18} aria-hidden="true" /><span className={styles.moreLabel}>Порт<small>{economy.snapshot && shipOrdersUnlocked(economy.snapshot) ? "Личные заказы корабля" : "Откроется после маяка"}</small></span></button>
           {mailbox?.ownerPublicId === ownerPublicId && <button type="button" data-world-mailbox-trigger aria-haspopup="dialog" onClick={openMailbox}>
             <Mail size={18} aria-hidden="true" /><span className={styles.moreLabel}>Почта<small>{mailUnread > 0 ? `Непрочитанных: ${mailUnread}` : "Письма автора и события"}</small></span></button>}
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>

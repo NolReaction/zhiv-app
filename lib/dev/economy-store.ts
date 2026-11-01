@@ -25,6 +25,7 @@ import { migrateTradeActivity, tradeRelationsState } from "@/features/economy/do
 import { shipOrdersState } from "@/features/economy/domain/ship-orders";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
+import { applyDevShipCommand } from "@/features/economy/dev/dev-ship";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
 import { neighborCommandSchema, type NeighborCommand, type NeighborView, type NeighborAdminView } from "@/features/economy/domain/neighbor-model";
 import { neighborActiveHour, neighborListingReason, neighborOfferItems, neighborOfferPrice, neighborShopReason } from "@/features/economy/domain/neighbor-rules";
@@ -130,6 +131,8 @@ function commandSignature(command: ReceiptCommand) {
   const parts: unknown[] = [command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice];
   if ("fishSelection" in command && command.fishSelection != null)
     parts.push(Object.entries(command.fishSelection).sort(([first], [second]) => first < second ? -1 : first > second ? 1 : 0));
+  if (command.action === "load_ship_cargo" && "voyageId" in command)
+    parts.push(command.voyageId, command.orderId, command.itemId);
   return JSON.stringify(parts);
 }
 function removeFishEscrow(state: EconomyState, listingId: string) {
@@ -221,6 +224,11 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
   const next: EconomyState = structuredClone(value.state);
   let message: string;
   switch (command.action) {
+    case "prepare_ship":
+    case "grant_ship_cargo":
+    case "shorten_ship_wait":
+      message = applyDevShipCommand(next, command, now, () => crypto.randomUUID());
+      break;
     case "apply_settlement": {
       if (next.jobs.length) return fail("ECONOMY_BUILDING_BUSY", "Сначала завершите или отмените задания и заберите результаты");
       next.buildings = economyDevSettlement(command.quantity);

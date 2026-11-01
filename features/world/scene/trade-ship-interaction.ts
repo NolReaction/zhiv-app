@@ -40,14 +40,14 @@ export function tradeShipCanInteract(ship: SceneTradeShipFrame | null, access: {
 }): ship is SceneTradeShipFrame {
   return Boolean(!access.readOnly && !access.devRehearsal && access.imageReady && access.view === "world"
     && ship?.kind === "arrival" && !ship.pending && ship.motion.visible
-    && ship.motion.phase === "docked" && ship.motion.gangway === 1);
+    && ship.motion.phase === "docked");
 }
 
 /** Marker/roof geometry stays stable while the current paint pose drives taps. */
 export function createTradeShipMapObject(frame: TradeShipSpriteFrame, currentFrame: () => TradeShipSpriteFrame | null): MapInteractiveObject {
   const steady = { ...frame, still: true };
   return {
-    id: "trade-ship", place: "trade-ship", label: "Порт · заказы корабля", kind: "ship",
+    id: "trade-ship", place: "trade-ship", label: "Заказы корабля", kind: "ship",
     anchor: tradeShipSourceToWorld({ x: 1040, y: 480 }, steady)!, hitArea: tradeShipHitArea(steady),
     hitTest(point) {
       const current = currentFrame();

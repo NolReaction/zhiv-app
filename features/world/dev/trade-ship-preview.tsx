@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ArrowLeft, Download, Moon, Pause, Play, Sun } from "lucide-react";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { drawTradeShipSprite, TRADE_SHIP_SPRITE, type TradeShipSpriteFrame } from "@/features/world/objects/trade-ship/trade-ship-sprite";
-import { drawTradeShipGangway, drawTradeShipGangwayDeck } from "@/features/world/objects/trade-ship/trade-ship-gangway";
 import { drawTradeShipLighting } from "@/features/world/objects/trade-ship/trade-ship-lighting";
 import { advanceTradeShipMotion, createTradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import runtimeArt from "@/features/world/runtime-art.json";
@@ -63,8 +62,8 @@ export function TradeShipPreview() {
   const moving = playing && visible && !reducedMotion && Boolean(shipImage);
   const maneuvering = voyage.phase !== "docked" && voyage.phase !== "departed";
   const voyageProgress = Math.round(tradeShipPreviewLegProgress(voyage, leg) * 100);
-  const voyageStatus = { arriving: "Подходит к берегу", deploying: "Выдвигает мостик", docked: "У берега",
-    retracting: "Убирает мостик", departing: "Отходит кормой", departed: "Ушёл в море" }[voyage.phase];
+  const voyageStatus = { arriving: "Подходит к берегу", deploying: "Швартуется", docked: "У берега",
+    retracting: "Готовится к отходу", departing: "Отходит кормой", departed: "Ушёл в море" }[voyage.phase];
 
   useEffect(() => {
     const owner = ++lifetime.current;
@@ -143,9 +142,7 @@ export function TradeShipPreview() {
           heading: mode === "voyage" ? sailing.heading : 0,
           velocityX: mode === "voyage" ? sailing.velocityX : 0, velocityY: mode === "voyage" ? sailing.velocityY : 0,
           time: elapsed.current, night: Number(night), still: !moving };
-        if (mode !== "detail") drawTradeShipGangway(context, { ...frame, gangway: mode === "voyage" ? sailing.gangway : 1 });
         drawTradeShipSprite(context, shipImage, frame);
-        if (mode !== "detail") drawTradeShipGangwayDeck(context, { ...frame, gangway: mode === "voyage" ? sailing.gangway : 1 });
         drawTradeShipLighting(context, { ...frame, phase: mode === "voyage" ? sailing.phase : "docked" });
       }
       context.restore();
@@ -254,16 +251,16 @@ export function TradeShipPreview() {
           <div className={styles.voyageActions}>
             <button type="button" disabled={!shipImage || maneuvering} onClick={() => voyageCommand("arrive")}>Приплыть</button>
             <button type="button" disabled={!shipImage || voyage.phase !== "docked"} onClick={() => voyageCommand("depart")}>Отойти</button>
-            <button type="button" disabled={!shipImage} onClick={() => voyageCommand("dock")}>В порт</button>
+            <button type="button" disabled={!shipImage} onClick={() => voyageCommand("dock")}>К причалу</button>
           </div>
-          <label className={styles.field} htmlFor="trade-ship-voyage"><span>{leg === "arriving" ? "Прибытие и мостик" : "Мостик и отход"}<output>{voyageProgress}%</output></span>
+          <label className={styles.field} htmlFor="trade-ship-voyage"><span>{leg === "arriving" ? "Прибытие" : "Отплытие"}<output>{voyageProgress}%</output></span>
             <input id="trade-ship-voyage" disabled={!shipImage} type="range" min={0} max={100} step={1} value={voyageProgress} onChange={event => seekVoyage(Number(event.target.value))} /></label>
-          <p className={styles.note}>У берега мостик выдвигается. Перед отходом он полностью убирается, затем корабль идёт вправо и поворачивает вниз-влево.</p>
+          <p className={styles.note}>Корабль швартуется у берега. При отходе сначала идёт вправо, затем поворачивает вниз-влево.</p>
         </section>
         <h2>Изображение</h2>
         <button type="button" className={styles.download} disabled={!shipImage} onClick={downloadPng}><Download size={18} aria-hidden />Скачать PNG</button>
-        <p className={styles.note}>Корпус и дверь — одно изображение. Мостик показывается на карте и в рейсе; PNG скачивается без мостика.</p>
-        <p className={styles.note}>В игре первый корабль приходит после восстановления маяка. Заказов пока нет.</p>
+        <p className={styles.note}>Корпус и дверь — одно изображение. PNG скачивается на прозрачном фоне.</p>
+        <p className={styles.note}>В игре корабль приходит с заказами после восстановления маяка и отплывает после загрузки всех товаров.</p>
         {reducedMotion && <p className={styles.note}>В системе уменьшено движение. Рейс можно просмотреть ползунком. Автоматическое движение остановлено.</p>}
         <p className={styles.exportNotice} role="status">{exportNotice}</p>
       </aside>

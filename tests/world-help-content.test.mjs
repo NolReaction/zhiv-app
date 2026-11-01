@@ -533,9 +533,9 @@ test("landmark help separates claimed-lighthouse arrival, live port orders and f
   assert.match(landmarks, /С дома 2.*мост.*рынок игроков/);
   assert.match(landmarks, /С дома 3 доступен маяк/);
   assert.match(landmarks, /С дома 4.*тропу и рощу.*древним руинам/);
-  assert.match(landmarks, /получите результат стройки.*своей большой карты.*впервые подходит пароход и выдвигает мостик/);
-  assert.match(landmarks, /Пароход остаётся у берега с мостиком/);
-  assert.match(landmarks, /Личные заказы доступны.*Ещё → Порт/);
+  assert.match(landmarks, /получите результат стройки.*своей большой карты.*впервые подходит корабль с готовыми заказами/);
+  assert.match(landmarks, /После выполнения всех грузов он отплывает/);
+  assert.match(landmarks, /Личные заказы доступны нажатием на корабль/);
   assert.match(landmarks, /морские путешествия ещё готовятся/);
   assert.doesNotMatch(landmarks, /не запускает рейс парохода|будущий причал/);
   assert.match(answer("relics"), /после восстановления моста.*«Обмен»/);
@@ -591,19 +591,16 @@ test("intro help separates its only raspberry order from the house-two course", 
   assert.doesNotMatch([intro, answer("start"), construction, answer("workshop-starter")].join(" "), /четыре учебных|четвёртого заказа|трёх учебных/);
 });
 
-test("port help explains durable individual orders, separate rewards and the opening-based cooldown", () => {
-  const orders = answer("ship-orders"), cancel = answer("ship-orders-cancel");
-  assert.match(orders, /После получения восстановленного маяка/);
+test("ship help explains partial loading, automatic rewards and completion-based cooldown", () => {
+  const orders = answer("ship-orders"), waiting = answer("ship-orders-cancel");
   assert.match(orders, /три личных заказа на доступные вам товары/);
-  assert.match(orders, /Предметы спишутся целиком.*монеты поступят сразу/);
-  assert.match(orders, /отдельно заберите общий бонус: от 4 жемчужин\. Точная награда зависит от стоимости груза/);
-  assert.match(orders, /через 6 часов от открытия предыдущих/);
-  assert.match(orders, /Заказы не сгорают/);
+  assert.match(orders, /Загружайте товары по частям/);
+  assert.match(orders, /автоматически получите 10 жемчужин/);
+  assert.match(orders, /через 6 часов после завершения всей поставки/);
+  assert.match(orders, /Заказы не сгорают и не отменяются/);
   assert.match(orders, /смене устройства/);
-  assert.match(cancel, /не возвращаются.*монеты остаются/);
-  assert.match(cancel, /Неотгруженные товары останутся в кладовой/);
-  assert.match(cancel, /бонус.*при отказе не выдаётся/);
-  assert.match(cancel, /Отказ не сокращает этот срок; платного обновления нет/);
+  assert.match(waiting, /Отказаться от поставки нельзя/);
+  assert.match(waiting, /новый корабль не придёт сразу/);
+  assert.doesNotMatch(orders, /Ещё → Порт|отдельно заберите|от открытия предыдущих/);
   assert.ok(topic("trade-ship").relatedIds.includes("ship-orders"));
-  assert.doesNotMatch(answer("trade-ship"), /Заказов.*пока нет/);
 });

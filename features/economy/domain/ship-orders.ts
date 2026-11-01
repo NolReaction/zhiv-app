@@ -3,10 +3,12 @@ import { economyCatalog, type EconomyCatalog, type EconomyState } from "./model"
 import { economyShipSchema, shipOrdersConfigSchema, type EconomyShip, type ShipVoyage } from "./ship-model";
 import { obtainableResidentOrderItems } from "./order-effort";
 import { economyLocalSellPrice } from "./local-sale";
-import { ECONOMY_MAX_BALANCE } from "./money";
+import { ECONOMY_MAX_BALANCE, PEARL_DISPLAY_DIVISOR } from "./money";
 
 export const shipOrdersConfig = shipOrdersConfigSchema.parse(catalogJson);
 export const SHIP_ORDER_GROUPS = ["supplies", "provisions", "craft"] as const;
+export const SHIP_ORDER_DIFFICULTIES = ["easy", "medium", "hard"] as const;
+export const SHIP_COMPLETION_PEARLS = 10 * PEARL_DISPLAY_DIVISOR;
 function shipCargoValue(items: Record<string, number>, catalog = economyCatalog): number {
   return Object.entries(items).reduce((sum, [itemId, quantity]) => {
     const item = catalog.items.find(item => item.id === itemId);
@@ -25,6 +27,7 @@ export function shipOrderReward(items: Record<string, number>, catalog = economy
 }
 for (const template of shipOrdersConfig.templates) {
   shipOrderReward(template.items);
+  if (Object.keys(template.rewardItems).length) shipCargoValue(template.rewardItems);
   if (Object.entries(template.requiredBuildings).some(([id, level]) => !economyCatalog.buildings
     .find(building => building.id === id)?.levels.some(entry => entry.level === level))) throw new Error("Unknown ship building requirement");
 }
@@ -47,24 +50,23 @@ export function eligibleShipTemplates(state: EconomyState, catalog: EconomyCatal
   const reachable = obtainableResidentOrderItems(state, catalog);
   return config.templates.filter(template => (state.buildings.home ?? 1) >= template.requiredHomeLevel
     && Object.entries(template.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
-    && Object.keys(template.items).every(id => reachable.has(id)));
+    && [...Object.keys(template.items), ...Object.keys(template.rewardItems)].every(id => reachable.has(id)));
 }
 /** Called only by an accepted server command. All promised terms are copied into account state. */
 export function createShipVoyage(state: EconomyState, now: number, id: string,
   catalog: EconomyCatalog = economyCatalog, config = shipOrdersConfig): ShipVoyage | null {
   const eligible = eligibleShipTemplates(state, catalog, config);
-  const choices = SHIP_ORDER_GROUPS.map(group => {
-    const candidates = eligible.filter(template => template.group === group);
-    return candidates[shipOrderHash(`${id}:${group}`) % candidates.length];
+  const choices = SHIP_ORDER_DIFFICULTIES.map(difficulty => {
+    const candidates = eligible.filter(template => template.difficulty === difficulty);
+    return candidates[shipOrderHash(`${id}:${difficulty}`) % candidates.length];
   });
   if (choices.some(template => !template)) return null;
-  const cargoValue = choices.reduce((sum, template) => sum + shipCargoValue(template.items, catalog), 0);
   return {
     id, number: shipOrdersState(state).completedVoyages + 1, openedAt: new Date(now).toISOString(),
-    rewardPearls: Math.max(config.rewardPearls, Math.min(config.maxRewardPearls, Math.ceil(cargoValue / config.rewardValueCoins) * 2)),
+    rewardPearls: SHIP_COMPLETION_PEARLS,
     orders: choices.map((template, index) => {
       return { id: `${id}:${index}`, templateId: template.id, title: template.title,
-        items: { ...template.items }, rewardCoins: shipOrderReward(template.items, catalog, config), deliveredAt: null };
+        items: { ...template.items }, loadedItems: {}, difficulty: template.difficulty, rewardItems: { ...template.rewardItems }, rewardCoins: shipOrderReward(template.items, catalog, config), deliveredAt: null };
     }),
   };
 }

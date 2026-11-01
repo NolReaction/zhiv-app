@@ -7,7 +7,7 @@ export const economyDevCommandSchema = z.object({
   requestId: economyCommandSchema.shape.requestId,
   ownerPublicId: economyCommandSchema.shape.ownerPublicId,
   expectedRevision: economyCommandSchema.shape.expectedRevision,
-  action: z.enum(["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"]),
+  action: z.enum(["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement", "prepare_ship", "grant_ship_cargo", "shorten_ship_wait"]),
   targetId: economyCommandSchema.shape.targetId,
   quantity: z.number().int().min(0).max(10_000_000).prefault(1),
   totalPrice: z.literal(0).prefault(0),
@@ -24,6 +24,9 @@ export const economyDevCommandSchema = z.object({
     if (command.quantity !== 1) invalid("quantity");
     if (command.targetId !== "all" && !economyCatalog.fishing?.rods.some(rod => rod.id === command.targetId)
       && !economyCatalog.fishing?.hooks.some(hook => hook.id === command.targetId)) invalid("targetId");
+  } else if (command.action === "prepare_ship" || command.action === "shorten_ship_wait" || command.action === "grant_ship_cargo") {
+    if (command.quantity !== 1) invalid("quantity");
+    if (command.action === "grant_ship_cargo" ? !z.string().uuid().safeParse(command.targetId).success : command.targetId !== "ship") invalid("targetId");
   } else if (command.action === "apply_settlement") {
     if (command.targetId !== "home") invalid("targetId");
     if (!economyCatalog.buildings.find(building => building.id === "home")!.levels.some(level => level.level === command.quantity)) invalid("quantity");

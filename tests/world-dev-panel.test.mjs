@@ -650,3 +650,24 @@ test("builder page exposes six poses and independent directions with safe stop/r
   }
   assert.deepEqual(blocked.calls.patches, [{ builderPreview: null }, { builderPreview: null, builderDirection: "front" }]);
 });
+
+test("ship DEV scenarios describe actual voyage state and use only gated account commands", () => {
+  const closed = cheats();
+  assert.equal(cheatButton(closed, "prepare-ship").props.disabled, true);
+  const awaiting = cheats({}, { buildings: { home: 3, lighthouse: 1 }, ship: { voyage: null, completedVoyages: 1, nextAvailableAt: new Date(cheatNow + 3600000).toISOString() } });
+  assert.equal(cheatButton(awaiting, "shorten-ship-wait").props.disabled, false);
+  cheatButton(awaiting, "shorten-ship-wait").props.onClick();
+  assert.deepEqual(awaiting.commands.at(-1), ["shorten_ship_wait", "ship", 1]);
+  cheatButton(awaiting, "prepare-ship").props.onClick();
+  assert.deepEqual(awaiting.commands.at(-1), ["prepare_ship", "ship", 1]);
+  const id = "11111111-1111-4111-8111-111111111111";
+  const voyage = { id, number: 2, openedAt: new Date(cheatNow).toISOString(), rewardPearls: 20,
+    orders: [0, 1, 2].map(index => ({ id: `${id}:${index}`, templateId: `dev-${index}`, title: "Груз", items: { wood: 5 }, loadedItems: { wood: 1 }, rewardCoins: 100, deliveredAt: null })) };
+  const active = cheats({}, { buildings: { home: 3, lighthouse: 1 }, ship: { voyage, completedVoyages: 1, nextAvailableAt: null } });
+  assert.match(active.markup, /3 \/ 15/);
+  assert.equal(cheatButton(active, "prepare-ship").props.disabled, true);
+  assert.equal(cheatButton(active, "shorten-ship-wait").props.disabled, true);
+  cheatButton(active, "grant-ship-cargo").props.onClick();
+  assert.deepEqual(active.commands.at(-1), ["grant_ship_cargo", id, 1]);
+  assert.deepEqual(active.claims, []);
+});

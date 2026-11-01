@@ -8,6 +8,39 @@ function authority(owner, revision, lighthouse) {
   return { ownerPublicId: owner, revision, buildings: { lighthouse }, production: { ownerPublicId: owner, revision, jobs: [] } };
 }
 
+test("server cargo completion departs once, hides throughout cooldown, then reveals a new voyage", async () => {
+  const { mountHabitat, forgetForestSession, worldDevStore } = await modules();
+  const env = browser(), owner = "ship-server-cycle", key = `zhiv:mochlik:presence:${owner}`;
+  const started = 1_000_000, completed = started + 5 * 60 * 60 * 1000 + 55 * 60 * 1000;
+  const initial = { ...options, reducedMotion: true, view: "world", serverNow: started,
+    presenceKey: key, economyResidents: authority(owner, 1, 1), tradeShipArrivalEnabled: true,
+    economyShip: { voyage: { id: "cycle-one" }, completedVoyages: 0, nextAvailableAt: null } };
+  let scene;
+  try {
+    worldDevStore.reset(); worldDevStore.patch(quietClearing);
+    scene = mountHabitat(env.surface(), initial, callbacks); await finishVillagerArtwork(env);
+    scene.startTradeShipArrival();
+    assert.equal(scene.tradeShipFrame().motion.phase, "docked");
+    const cooldown = { voyage: null, completedVoyages: 1, nextAvailableAt: new Date(completed + 6 * 60 * 60 * 1000).toISOString() };
+    scene.configure({ ...initial, reducedMotion: false, tradeShipArrivalEnabled: false, serverNow: completed, economyShip: cooldown });
+    assert.equal(scene.tradeShipFrame().motion.phase, "departing");
+    assert.equal(scene.tradeShipFrame().pending, false);
+    scene.configure({ ...initial, reducedMotion: false, tradeShipArrivalEnabled: false, serverNow: completed + 10_000, economyShip: cooldown });
+    assert.ok(scene.tradeShipFrame().motion.elapsed >= 10, "open cargo panel cannot stop departure");
+    scene.dispose(); scene = null;
+    scene = mountHabitat(env.surface(), { ...initial, reducedMotion: false, serverNow: completed + 30_000, economyShip: cooldown }, callbacks);
+    await finishVillagerArtwork(env);
+    assert.equal(scene.tradeShipFrame(), null, "reopening after departure cannot replay the old ship");
+    scene.configure({ ...initial, reducedMotion: false, serverNow: started + 6 * 60 * 60 * 1000, economyShip: cooldown });
+    assert.equal(scene.tradeShipFrame(), null, "completing at 5:55 does not produce another ship at 6:00");
+    scene.configure({ ...initial, serverNow: completed + 6 * 60 * 60 * 1000,
+      economyShip: { voyage: { id: "cycle-two" }, completedVoyages: 1, nextAvailableAt: null } });
+    await finishVillagerArtwork(env);
+    assert.equal(scene.tradeShipFrame().pending, true, "new authoritative voyage gets a fresh arrival");
+    scene.startTradeShipArrival(); assert.equal(scene.tradeShipFrame().motion.phase, "docked");
+  } finally { scene?.dispose(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
+});
+
 test("confirmed lighthouse queues the first ship offscreen, then an uncovered map focuses and starts exactly once", async () => {
   const { mountHabitat, createMapEngine, forgetForestSession, connectTradeShipArrival, worldDevStore } = await modules();
   const env = browser(), owner = "first-production-ship", key = `zhiv:mochlik:presence:${owner}`;

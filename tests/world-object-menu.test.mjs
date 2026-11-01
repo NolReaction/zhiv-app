@@ -727,7 +727,7 @@ test("restored landmarks show expedition routes and their remaining prerequisite
   }
 });
 
-test("restored bridge explains the map market without a second trade launcher and lighthouse labels future content", () => {
+test("restored bridge explains the map market without a second trade launcher and lighthouse explains available cargo", () => {
   const bridge = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 1 }, completedExplorations: 0 }) }));
   assert.doesNotMatch(bridge, /Открыть рынок игроков/);
   assert.match(bridge, /Торговля с игроками открывается нажатием на рынок на карте/);
@@ -735,7 +735,9 @@ test("restored bridge explains the map market without a second trade launcher an
   const ruined = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 0 } }) }));
   assert.doesNotMatch(ruined, /Открыть рынок игроков/);
   const lighthouse = render("lighthouse", controller({ snapshot: snapshot({ buildings: { home: 3, warehouse: 1, bridge: 1, lighthouse: 1 } }) }));
-  assert.match(lighthouse, /Пароход с крупными заказами появится в будущем обновлении/);
+  assert.match(lighthouse, /Свет маяка приводит корабль с тремя личными грузами/);
+  assert.match(lighthouse, /Нажмите на корабль и загружайте товары по частям/);
+  assert.doesNotMatch(lighthouse, /Пароход с крупными заказами появится в будущем обновлении/);
   assert.doesNotMatch(lighthouse, /Получить заказ парохода|Отправить пароход/);
 });
 

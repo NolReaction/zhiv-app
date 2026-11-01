@@ -39,8 +39,11 @@ export function configureLeaftailBoatArrival(state: LeaftailBoatArrivalState, sc
   options: { unlocked: boolean; confirmed: boolean; seen: boolean; allowArrival: boolean }) {
   state.completionNotice ??= { delivered: false };
   state.allowed = options.confirmed && options.unlocked && options.allowArrival;
+  // A reconnect/background refresh is not a new account or a lost unlock.
+  // Keep both completed acknowledgements and unfinished physical progress.
+  if (!options.confirmed) return;
   state.unlocked = options.confirmed && options.unlocked;
-  if (!state.unlocked) { transition(state, "waiting"); state.completed = false; return; }
+  if (!state.unlocked) return;
   if (options.seen) { state.completionNotice.delivered = true; state.completed = true; transition(state, "complete"); return; }
   if (state.completed) return;
   const changed = state.scene !== scene; state.scene = scene;
@@ -136,7 +139,7 @@ export function advanceLeaftailBoatArrival(state: LeaftailBoatArrivalState, seco
   }
 }
 export function leaftailBoatArrivalFrame(state: LeaftailBoatArrivalState): LeaftailBoatArrivalFrame | null {
-  if (!state.route || ["waiting", "complete", "blocked"].includes(state.phase)) return null;
+  if (!state.unlocked || !state.route || ["waiting", "complete", "blocked"].includes(state.phase)) return null;
   const seated = state.phase === "sailing", opacity = seated ? Math.min(1, state.age / .8) : state.phase === "walking" ? Math.max(0, 1 - state.age / 2) : state.phase === "greeting" ? 0 : 1;
   return { phase: state.phase, boat: { ...(seated ? state.position : state.route.dock), opacity, rowing: seated, phase: state.elapsed },
     gangplank: seated && state.distance < state.path!.length - 45 || opacity <= 0 ? null
@@ -147,7 +150,7 @@ export function leaftailBoatArrivalFrame(state: LeaftailBoatArrivalState): Leaft
       opacity: seated ? Math.min(1, state.age / .8) : 1, arriving: true } };
 }
 export function leaftailBoatArrivalOccupant(state: LeaftailBoatArrivalState): ResidentOccupant | null {
-  if (!["landing", "walking", "greeting"].includes(state.phase)) return null;
+  if (!state.unlocked || !["landing", "walking", "greeting"].includes(state.phase)) return null;
   return { id: "leaftail", position: copy(state.position), size: LEAFTAIL_BOAT_GEOMETRY.size, moving: Boolean(state.path),
     intent: state.path ? residentRouteIntent(state.path, state.position, state.distance, LEAFTAIL_BOAT_GEOMETRY.size, 3) : undefined };
 }

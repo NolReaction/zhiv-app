@@ -9,7 +9,7 @@ function browserStorage() {
   try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; }
 }
 
-export type ResidentArrivalOptions = { unlocked: boolean; enabled: boolean; confirmed?: boolean; onboarding: MarketUnlockOnboardingCourse };
+export type ResidentArrivalOptions = { unlocked: boolean; enabled: boolean; suspended?: boolean; confirmed?: boolean; onboarding: MarketUnlockOnboardingCourse };
 
 export function useResidentArrival(storageKey: string, options: ResidentArrivalOptions) {
   const store = useMemo(() => createResidentArrivalStore(storageKey, browserStorage()), [storageKey]);
@@ -18,6 +18,7 @@ export function useResidentArrival(storageKey: string, options: ResidentArrivalO
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const prepared = options.confirmed === undefined || state.prepared;
   const allowed = prepared && residentArrivalCanStart({ loaded: state.loaded, ...options });
+  const presented = useRef<typeof store | null>(null);
   const current = useRef({ store, allowed, unlocked: options.unlocked });
   useLayoutEffect(() => { current.current = { store, allowed, unlocked: options.unlocked }; }, [store, allowed, options.unlocked]);
   useEffect(() => {
@@ -33,6 +34,24 @@ export function useResidentArrival(storageKey: string, options: ResidentArrivalO
     // an established world on another device must not replay old residents.
     store.prepare(options.unlocked);
   }, [store, state.loaded, state.prepared, options.confirmed, options.unlocked]);
+  useEffect(() => {
+    if (allowed && !state.progress?.arrived) presented.current = store;
+    // A modal or an in-flight economy command only pauses the scene. Consume
+    // the introduction when the player actually leaves that scene.
+    if (options.suspended && presented.current === store && !state.progress?.arrived) store.finishInterrupted();
+  }, [store, allowed, options.suspended, state.progress?.arrived]);
+  useEffect(() => {
+    const leave = () => {
+      if (presented.current === store && !store.getSnapshot().progress?.arrived) store.finishInterrupted();
+    };
+    const hidden = () => { if (document.visibilityState === "hidden") leave(); };
+    window.addEventListener("pagehide", leave);
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [store]);
   const complete = useCallback(() => {
     if (current.current.store === store && current.current.unlocked && store.complete()) setCompletionNotice(store);
   }, [store]);

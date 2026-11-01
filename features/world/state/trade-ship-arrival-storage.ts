@@ -1,7 +1,7 @@
 import { gameplayStorageKey } from "@/lib/gameplay-generation";
-import { TRADE_SHIP_GANGWAY, TRADE_SHIP_VOYAGE } from "@/features/world/objects/trade-ship/trade-ship-motion";
+import { TRADE_SHIP_VOYAGE } from "@/features/world/objects/trade-ship/trade-ship-motion";
 
-export const TRADE_SHIP_ARRIVAL_DURATION = TRADE_SHIP_VOYAGE.arrivalDuration + TRADE_SHIP_GANGWAY.deployDuration;
+export const TRADE_SHIP_ARRIVAL_DURATION = TRADE_SHIP_VOYAGE.arrivalDuration;
 export type TradeShipArrivalProgress = Readonly<{ version: 1; started: boolean; elapsed: number; hornClaimed: boolean }>;
 export type TradeShipArrivalSnapshot = Readonly<{ loaded: boolean; progress: TradeShipArrivalProgress | null }>;
 type ArrivalStorage = Pick<Storage, "getItem" | "setItem">;
@@ -9,7 +9,7 @@ const serverSnapshot: TradeShipArrivalSnapshot = { loaded: false, progress: null
 const memory = new Map<string, TradeShipArrivalProgress>();
 const peers = new Map<string, Set<(progress: TradeShipArrivalProgress) => void>>();
 
-export const tradeShipArrivalStorageKey = (owner: string) => gameplayStorageKey(`zhiv.trade-ship-arrival.v1:${encodeURIComponent(owner)}`);
+export const tradeShipArrivalStorageKey = (owner: string, voyageId?: string) => gameplayStorageKey(`zhiv.trade-ship-arrival.v1:${encodeURIComponent(owner)}${voyageId ? `:voyage:${encodeURIComponent(voyageId)}` : ""}`);
 
 function parse(value: string | null): TradeShipArrivalProgress | null {
   try {
@@ -33,8 +33,8 @@ function merge(a: TradeShipArrivalProgress | null, b: TradeShipArrivalProgress |
 }
 
 /** Cosmetic presentation only: this store never grants lighthouse access or gameplay rewards. */
-export function createTradeShipArrivalStore(owner: string, storage?: ArrivalStorage) {
-  const storageKey = tradeShipArrivalStorageKey(owner), validOwner = Boolean(owner.trim());
+export function createTradeShipArrivalStore(owner: string, storage?: ArrivalStorage, voyageId?: string) {
+  const storageKey = tradeShipArrivalStorageKey(owner, voyageId), validOwner = Boolean(owner.trim());
   let snapshot = serverSnapshot;
   const listeners = new Set<() => void>();
   const accept = (progress: TradeShipArrivalProgress | null) => {

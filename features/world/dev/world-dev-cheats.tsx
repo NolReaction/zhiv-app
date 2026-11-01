@@ -5,6 +5,8 @@ import { economyCatalog, type EconomyJob } from "@/features/economy/domain/model
 import { formatPearls } from "@/features/economy/domain/money";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
+import { missingDevShipCargo } from "@/features/economy/dev/dev-ship";
+import { shipOrdersState, shipOrdersUnlocked } from "@/features/economy/domain/ship-orders";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { WorldController } from "@/features/world/state/use-world";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -70,6 +72,13 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
   const unfinished = matchingJobs.filter(job => Date.parse(job.finishesAt) > (economy?.now ?? 0));
   const nextCostMissing = Boolean(snapshot && nextUpgrade && (snapshot.wallet.coins < nextUpgrade.cost.coins
     || Object.entries(nextUpgrade.cost.items).some(([id, needed]) => (snapshot.inventory[id] ?? 0) < needed)));
+  const ship = snapshot ? shipOrdersState(snapshot) : null;
+  const shipUnlocked = Boolean(snapshot && shipOrdersUnlocked(snapshot));
+  const shipWaitSeconds = ship?.nextAvailableAt ? Math.max(0, Math.ceil((Date.parse(ship.nextAvailableAt) - (economy?.now ?? 0)) / 1000)) : 0;
+  const shipMissing = snapshot ? missingDevShipCargo(snapshot) : {};
+  const shipMissingCount = Object.values(shipMissing).reduce((sum, count) => sum + count, 0);
+  const shipLoaded = ship?.voyage?.orders.reduce((sum, order) => sum + Object.values(order.loadedItems).reduce((total, count) => total + count, 0), 0) ?? 0;
+  const shipNeeded = ship?.voyage?.orders.reduce((sum, order) => sum + Object.values(order.items).reduce((total, count) => total + count, 0), 0) ?? 0;
 
   function act(action: Parameters<EconomyController["actDev"]>[0], target: string, count = 1) {
     if (!locked) economy?.actDev(action, target, count);
@@ -98,15 +107,40 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
         {catalog.buildings.find(entry => entry.id === "home")!.levels.map(entry => <button type="button" key={entry.level}
           aria-pressed={presetLevel === entry.level} onClick={() => setPresetLevel(entry.level)}>Дом {entry.level}</button>)}
       </div>
+      <details className={styles.presetDetails}><summary>Состав поселения · {Object.values(preset).filter(value => value > 0).length} построек</summary>
       <dl className={styles.presetBuildings}>{catalog.buildings.map(entry => <div key={entry.id}>
         <dt>{entry.name}</dt><dd>{preset[entry.id] ? `ур. ${preset[entry.id]}` : "закрыто"}</dd>
-      </div>)}</dl>
+      </div>)}</dl></details>
+      <p className={styles.hint}>{preset.lighthouse ? "Маяк восстановлен: можно проверять корабельные грузы." : "Корабль появится после восстановления маяка. Для готового сценария выберите дом 3 или выше."}</p>
       <p className={styles.hint}>Заменит уровни построек выбранным сценарием. Запасы, деньги и находки сохранятся.</p>
       <button type="button" disabled={locked || Boolean(snapshot?.jobs.length)} data-dev-action="apply-settlement"
         onClick={() => { if (!snapshot?.jobs.length) act("apply_settlement", "home", presetLevel); }}>Применить · полный дом {presetLevel}</button>
       {Boolean(snapshot?.jobs.length) && <p className={styles.cheatWarning}>Сначала завершите или отмените задания и заберите результаты. Таймеры доступны ниже.</p>}
       {previewBuildings && <p className={styles.cheatWarning}>Для проверки результата отключите предпросмотр в «Сцена → Здания».</p>}
     </section>
+
+    <details className={styles.cheatSection} open>
+      <summary>Корабль · {ship?.voyage ? "у причала" : shipWaitSeconds ? "в рейсе" : shipUnlocked ? "ожидается" : "нужен маяк"}</summary>
+      <div className={styles.cheatTools}>
+        {!shipUnlocked ? <p className={styles.hint}>Примените готовое поселение дома 3 или выше: появятся маяк и производства для корабельных грузов.</p>
+          : <dl className={styles.cheatBalance}>
+            <div><dt>{ship?.voyage ? `Поставка № ${ship.voyage.number}` : "Завершено поставок"}</dt><dd>{ship?.voyage ? `${shipLoaded} / ${shipNeeded}` : ship?.completedVoyages ?? 0}</dd></div>
+            <div><dt>{ship?.voyage ? "Грузов готово" : "До прибытия"}</dt><dd>{ship?.voyage ? `${ship.voyage.orders.filter(order => order.deliveredAt).length} / 3`
+              : shipWaitSeconds ? `${Math.floor(shipWaitSeconds / 3600)}:${String(Math.floor(shipWaitSeconds % 3600 / 60)).padStart(2, "0")}:${String(shipWaitSeconds % 60).padStart(2, "0")}` : "Готов"}</dd></div>
+          </dl>}
+        <button type="button" disabled={locked || !shipUnlocked || Boolean(ship?.voyage)} data-dev-action="prepare-ship"
+          onClick={() => act("prepare_ship", "ship")}>{shipWaitSeconds ? "Прибытие сейчас · пропустить рейс" : "Подготовить корабль с грузами"}</button>
+        {ship?.voyage && <>
+          <p className={styles.hint}>Добавит только недостающее для этой поставки, с учётом уже загруженного. Монеты, награды и загрузка останутся для обычной проверки.</p>
+          <button type="button" disabled={locked || !shipMissingCount} data-dev-action="grant-ship-cargo"
+            onClick={() => act("grant_ship_cargo", ship.voyage!.id)}>{shipMissingCount ? `Выдать недостающие товары · ${shipMissingCount} ед.` : "Товаров для всех грузов хватает"}</button>
+          {shipMissingCount > (snapshot?.storage.available ?? 0) && <p className={styles.cheatWarning}>DEV-выдача превысит вместимость кладовой. Загрузите полученное в корабль, чтобы освободить место.</p>}
+        </>}
+        <button type="button" disabled={locked || !shipUnlocked || Boolean(ship?.voyage) || !shipWaitSeconds} data-dev-action="shorten-ship-wait"
+          onClick={() => act("shorten_ship_wait", "ship")}>Оставить 5 секунд до прибытия</button>
+        <p className={styles.hint}>Для проверки: загрузите часть товара, смените вкладку, завершите три груза и проверьте отплытие. Сценарии не заменяют текущую поставку.</p>
+      </div>
+    </details>
 
     <details className={styles.cheatSection}>
       <summary>Валюта</summary>

@@ -14,7 +14,8 @@ export function createTradeShipArrivalRuntime(owner: string, store: ArrivalStore
   let eligible = false, elapsed = 0, lastFrame: number | null = null;
   let motion = createTradeShipMotion("arriving");
   const notify = () => { for (const listener of [...listeners]) listener(); };
-  const sample = () => advanceTradeShipMotion(createTradeShipMotion("arriving"), elapsed);
+  const sample = () => elapsed >= TRADE_SHIP_ARRIVAL_DURATION ? createTradeShipMotion("docked")
+    : advanceTradeShipMotion(createTradeShipMotion("arriving"), elapsed);
   function restored() {
     const progress = store.getSnapshot().progress;
     const next = Math.max(elapsed, progress?.started ? progress.elapsed : 0);
@@ -76,11 +77,11 @@ function storage() {
 }
 
 /** Scene remounts share one live clock; browser storage is a bounded resume checkpoint. */
-export function connectTradeShipArrival(owner: string, changed: () => void) {
-  const key = tradeShipArrivalStorageKey(owner);
+export function connectTradeShipArrival(owner: string, changed: () => void, voyageId?: string) {
+  const key = tradeShipArrivalStorageKey(owner, voyageId);
   let entry = entries.get(key);
   if (!entry) {
-    entry = { runtime: createTradeShipArrivalRuntime(owner, createTradeShipArrivalStore(owner, storage())), clients: new Set(), queued: false };
+    entry = { runtime: createTradeShipArrivalRuntime(owner, createTradeShipArrivalStore(owner, storage(), voyageId)), clients: new Set(), queued: false };
     const current = entry;
     current.runtime.subscribe(() => {
       if (current.queued) return;

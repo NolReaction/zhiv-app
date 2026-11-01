@@ -69,10 +69,12 @@ test("the PNG workshop waits for its ship asset and exposes only real voyage con
   assert.match(html, /Загружаем корабль/);
   assert.match(html, /Предпросмотр парохода/);
   assert.match(html, /Крупно/); assert.match(html, /На карте/); assert.match(html, /Рейс/);
-  assert.match(html, /Приплыть/); assert.match(html, /Отойти/); assert.match(html, /В порт/);
+  assert.match(html, /Приплыть/); assert.match(html, /Отойти/); assert.match(html, /К причалу/);
   assert.match(html, /Скачать PNG/);
+  assert.doesNotMatch(html, /В порт|мостик|Заказов пока нет/i);
+  assert.match(html, /приходит с заказами после восстановления маяка/);
   const buttons = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
-  for (const action of ["Приплыть", "Отойти", "В порт", "Скачать PNG"]) {
+  for (const action of ["Приплыть", "Отойти", "К причалу", "Скачать PNG"]) {
     const button = buttons.find(match => match[2].includes(action));
     assert.ok(button?.[1].includes('disabled=""'), `${action} cannot run before the image loads`);
   }

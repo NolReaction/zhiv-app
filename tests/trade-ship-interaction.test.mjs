@@ -45,14 +45,15 @@ test("port touch geometry follows the painter's mirror, rotation, native image i
   }
 });
 
-test("only a shown production ship with a fully deployed gangway can expose port controls", () => {
+test("only a shown docked production ship can expose cargo controls without a gangway", () => {
   const ship = { kind: "arrival", pending: false, voyageId: "owner", motion: sampleTradeShipMotion("docked", 0) };
   const access = { imageReady: true, view: "world" };
   assert.equal(tradeShipCanInteract(ship, access), true);
+  assert.equal(tradeShipCanInteract({ ...ship, motion: { ...ship.motion, gangway: 0 } }, access), true, "the removed gangway cannot block loading");
   for (const patch of [{ readOnly: true }, { devRehearsal: true }, { imageReady: false }, { view: "circle" }])
     assert.equal(tradeShipCanInteract(ship, { ...access, ...patch }), false);
   for (const patch of [{ kind: "dev" }, { pending: true }, { motion: { ...ship.motion, visible: false } },
-    { motion: { ...ship.motion, gangway: .5 } }, ...["arriving", "deploying", "retracting", "departing", "departed"].map(phase => ({ motion: sampleTradeShipMotion(phase, 0) }))])
+    ...["arriving", "deploying", "retracting", "departing", "departed"].map(phase => ({ motion: sampleTradeShipMotion(phase, 0) }))])
     assert.equal(tradeShipCanInteract({ ...ship, ...patch }, access), false);
   assert.equal(tradeShipCanInteract(null, access), false);
 });

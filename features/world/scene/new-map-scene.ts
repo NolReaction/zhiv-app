@@ -107,11 +107,11 @@ import { drawLopukhWoodpile } from "@/features/world/characters/lopukh/lopukh-wo
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 import { drawLeaftailBoatArrival } from "@/features/world/characters/leaftail/leaftail-boat-painter";
 import { drawTradeShipSprite, TRADE_SHIP_SPRITE } from "@/features/world/objects/trade-ship/trade-ship-sprite";
-import { drawTradeShipGangway, drawTradeShipGangwayDeck } from "@/features/world/objects/trade-ship/trade-ship-gangway";
 import { drawTradeShipLighting } from "@/features/world/objects/trade-ship/trade-ship-lighting";
 import type { TradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import { createTradeShipPreviewArtwork } from "@/features/world/dev/trade-ship-preview-artwork";
 import { connectTradeShipArrival, type SceneTradeShipFrame } from "@/features/world/state/trade-ship-arrival";
+import { tradeShipDepartureFrame } from "./trade-ship-schedule";
 import { tradeShipImageVisible } from "./trade-ship-visibility";
 import { createTradeShipMapObject, tradeShipCanInteract } from "./trade-ship-interaction";
 import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-diagnostics";
@@ -363,10 +363,8 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
       if (!options.readOnly && preview?.tradeShipImage && preview.tradeShipMotion?.visible
         && (preview.tradeShipKind === "arrival" || WORLD_DEV_ENABLED && dev?.tradeShipPreview)) {
         // Shared atmosphere below handles night; tinting the sprite here would darken it twice.
-        drawTradeShipGangway(ground, { ...preview.tradeShipMotion, time: elapsed, night: 0, still });
         drawTradeShipSprite(ground, preview.tradeShipImage, { ...preview.tradeShipMotion,
           time: elapsed, night: 0, still, water: true });
-        drawTradeShipGangwayDeck(ground, { ...preview.tradeShipMotion, time: elapsed, night: 0, still });
       }
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
@@ -488,18 +486,23 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (options.readOnly) return null;
     if (WORLD_DEV_ENABLED && dev?.tradeShipPreview) return { motion: worldDevStore.getTradeShipMotion(),
       voyageId: worldDevStore.getTradeShipVoyageId(), kind: "dev", pending: false };
+    if (options.economyShip !== undefined && !options.economyShip?.voyage) {
+      return tradeShipDepartureFrame(options.economyShip, explorationNow(), reducedMotion(options, dev));
+    }
     return productionShip?.getFrame() ?? null;
   }
   function syncTradeShip() {
     const owner = !options.readOnly && !options.devRehearsal && options.presenceKey?.startsWith("zhiv:mochlik:presence:")
       ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : null;
-    if (owner !== productionShipOwner) {
-      productionShip?.release(); productionShip = null; productionShipOwner = owner;
-      if (owner) productionShip = connectTradeShipArrival(owner, () => {
+    const voyageId = options.economyShip?.voyage?.id;
+    const cycleOwner = owner && (options.economyShip === undefined || voyageId) ? `${owner}:${voyageId ?? "legacy"}` : null;
+    if (cycleOwner !== productionShipOwner) {
+      productionShip?.release(); productionShip = null; productionShipOwner = cycleOwner;
+      if (owner && cycleOwner) productionShip = connectTradeShipArrival(owner, () => {
         if (disposed) return;
         tradeShipArtwork.setEnabled(Boolean(selectedTradeShip()));
         if (visible()) draw(); resume();
-      });
+      }, voyageId);
     }
     productionShip?.configure(options.economyResidents);
     tradeShipArtwork.setEnabled(Boolean(selectedTradeShip()));

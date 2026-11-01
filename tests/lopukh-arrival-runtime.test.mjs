@@ -102,6 +102,21 @@ test("seen existing owners restore normally, reduced motion settles only after p
   await new Promise(resolve => setImmediate(resolve)); assert.equal(delivered, 1);
 });
 
+test("an interrupted or externally completed introduction settles both walking residents without replay", () => {
+  for (const resident of ["lopukh", "kamneshmyg"]) {
+    const state = createForestVillagers(world);
+    const unlocked = { ...config, buildings: { woodlot: 1, quarry: 1 }, allowArrival: true };
+    configureForestVillagers(state, world, unlocked);
+    const phase = resident === "lopukh" ? "lopukhArrivalPhase" : "arrivalPhase";
+    assert.equal(state[phase], "running");
+    configureForestVillagers(state, world, { ...unlocked, arrivalSeen: resident === "kamneshmyg", lopukhArrivalSeen: resident === "lopukh" });
+    assert.equal(state[phase], "complete"); assert.equal(state.residents[resident].available, true);
+    assert.equal(forestVillagerFrames(state).find(frame => frame.id === resident)?.arriving, false);
+    configureForestVillagers(state, world, unlocked);
+    assert.equal(state[phase], "complete", "stale presentation props never start another run");
+  }
+});
+
 test("runtime fences foreign revisions, camera ownership, pause and reduced-motion arrival completion", async () => {
   const api = await modules(compactVillagerFixture()), env = browser(); let scene, probe, completions = 0;
   const owner = "lopukh-runtime", key = `zhiv:mochlik:presence:${owner}`;

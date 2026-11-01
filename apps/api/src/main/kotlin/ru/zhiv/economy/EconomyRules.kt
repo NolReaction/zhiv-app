@@ -20,6 +20,10 @@ fun validateEconomyCommand(command: EconomyCommand) {
         command.action.length !in 1..40 || command.quantity !in 1L..10_000L || command.totalPrice !in 0L..ECONOMY_MAX_BALANCE) invalidEconomy()
     if (command.action == "cancel_meal" && (command.targetId !in setOf("hero", "builder") ||
         command.quantity != 1L || command.totalPrice != 0L || command.fishSelection != null)) invalidEconomy()
+    if (command.action == "load_ship_cargo") {
+        if (parseCanonicalUuidV4(command.voyageId ?: "") == null || command.orderId?.length !in 1..80 ||
+            command.itemId?.length !in 1..80 || command.targetId != command.orderId) invalidEconomy()
+    } else if (command.voyageId != null || command.orderId != null || command.itemId != null) invalidEconomy()
     command.fishSelection?.let { selection ->
         if (command.action !in setOf("start_production", "complete_resident_order", "sell", "sell_fish", "create_listing") || selection.size > 100 ||
             selection.keys.any { it.length !in 1..80 }) invalidEconomy()
@@ -28,7 +32,7 @@ fun validateEconomyCommand(command: EconomyCommand) {
 
 fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Unit = ::validateEconomyCommand): EconomyCommand {
     val value = element as? JsonObject ?: invalidEconomy()
-    val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection")
+    val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection", "voyageId", "orderId", "itemId")
     if (value.keys.any { it !in fields }) invalidEconomy()
     for (field in listOf("requestId", "ownerPublicId", "action", "targetId"))
         if ((value[field] as? JsonPrimitive)?.isString != true) invalidEconomy()
@@ -36,6 +40,10 @@ fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Un
         val number = value[field] ?: if (field == "expectedRevision") invalidEconomy() else continue
         val primitive = number as? JsonPrimitive ?: invalidEconomy()
         if (primitive.isString || primitive.longOrNull == null) invalidEconomy()
+    }
+    for (field in listOf("voyageId", "orderId", "itemId")) {
+        val supplied = value[field]?.takeUnless { it == JsonNull } ?: continue
+        if ((supplied as? JsonPrimitive)?.isString != true) invalidEconomy()
     }
     value["fishSelection"]?.takeUnless { it == JsonNull }?.let { supplied ->
         val selection = supplied as? JsonObject ?: invalidEconomy()
@@ -418,9 +426,9 @@ object EconomyRules {
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot") && command.totalPrice != 0L) invalidEconomy()
-        if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item") && command.quantity != 1L) invalidEconomy()
+        if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
-            "open_ship_voyage", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage" -> EconomyShipOrders.command(state, command, now)
+            "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage" -> EconomyShipOrders.command(state, command, now, reservedItems)
             "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)

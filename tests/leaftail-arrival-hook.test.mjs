@@ -44,18 +44,25 @@ const { useMinerArrival } = await vite.ssrLoadModule("/features/world/state/use-
 const { useLopukhArrival } = await vite.ssrLoadModule("/features/world/state/use-lopukh-arrival.ts");
 const opts = { unlocked: true, enabled: true, onboarding: { loaded: true, isPaused: false, progress: { version: 2, status: "completed" } } };
 function browser(run, useArrival = useLeaftailArrival) {
-  const original = Object.getOwnPropertyDescriptor(globalThis, "window"), data = new Map(), listeners = new Map();
+  const original = Object.getOwnPropertyDescriptor(globalThis, "window"), originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document"),
+    data = new Map(), listeners = new Map(), documentListeners = new Map();
   Object.defineProperty(globalThis, "window", { configurable: true, value: {
     localStorage: { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) },
     addEventListener(type, callback) { listeners.set(callback, type); }, removeEventListener(_type, callback) { listeners.delete(callback); },
   } });
+  const document = { visibilityState: "visible", addEventListener(type, callback) { documentListeners.set(callback, type); },
+    removeEventListener(_type, callback) { documentListeners.delete(callback); } };
+  Object.defineProperty(globalThis, "document", { configurable: true, value: document });
   function useArrivalRender(owner, options = opts) { hooks.render(); const value = useArrival(owner, options); hooks.flushEffects(); return value; }
   function renderMany(entries) {
     hooks.render(); const values = entries.map(([owner, options = opts]) => useArrival(owner, options)); hooks.flushEffects(); return values;
   }
   hooks.reset();
-  try { run({ render: useArrivalRender, renderMany, data }); }
-  finally { hooks.reset(); if (original) Object.defineProperty(globalThis, "window", original); else delete globalThis.window; }
+  try { run({ render: useArrivalRender, renderMany, data,
+    hide() { document.visibilityState = "hidden"; for (const [callback, type] of documentListeners) if (type === "visibilitychange") callback(); },
+    pagehide() { for (const [callback, type] of listeners) if (type === "pagehide") callback(); } }); }
+  finally { hooks.reset(); if (original) Object.defineProperty(globalThis, "window", original); else delete globalThis.window;
+    if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument); else delete globalThis.document; }
 }
 
 test("closing the sailing coach still permits one completion message, while reload restores its dismissal", () => browser(({ render }) => {
@@ -99,6 +106,38 @@ test("two mounted views share an arrival immediately while other owners and comp
 }));
 
 for (const [resident, useArrival] of [["leaftail", useLeaftailArrival], ["miner", useMinerArrival], ["lopukh", useLopukhArrival]]) {
+  for (const interruption of ["section", "hidden", "pagehide"]) {
+    test(`${resident}: ${interruption} interruption consumes the introduction once without a replay or welcome toast`, () => browser(({ render, hide, pagehide }) => {
+      const owner = `${resident}-interrupted-${interruption}`, locked = { ...opts, confirmed: true, unlocked: false }, unlocked = { ...opts, confirmed: true };
+      render(owner, locked); render(owner, locked); render(owner, locked);
+      let value = render(owner, unlocked); assert.equal(value.enabled, true);
+      if (interruption === "section") render(owner, { ...unlocked, enabled: false, suspended: true });
+      else if (interruption === "hidden") hide(); else pagehide();
+      value = render(owner, unlocked);
+      assert.equal(value.seen, true); assert.equal(value.enabled, false); assert.equal(value.open, false);
+      assert.equal(value.completionNotice, false);
+      value.complete(); value = render(owner, unlocked); assert.equal(value.completionNotice, false);
+      hooks.reset(); render(owner, unlocked); render(owner, unlocked); value = render(owner, unlocked);
+      assert.equal(value.seen, true); assert.equal(value.enabled, false); assert.equal(value.open, false);
+    }, useArrival));
+  }
+
+  test(`${resident}: an ordinary modal or busy command pauses the arrival without consuming it`, () => browser(({ render }) => {
+    const owner = `${resident}-modal-pause`;
+    render(owner); let value = render(owner); assert.equal(value.enabled, true);
+    value = render(owner, { ...opts, enabled: false }); assert.equal(value.seen, false); assert.equal(value.enabled, false);
+    value = render(owner); assert.equal(value.seen, false); assert.equal(value.enabled, true);
+    value.complete(); value = render(owner); assert.equal(value.seen, true);
+  }, useArrival));
+
+  test(`${resident}: hiding before the arrival is allowed does not consume a queued introduction`, () => browser(({ render, hide }) => {
+    const owner = `${resident}-queued-hidden`, locked = { ...opts, confirmed: true, unlocked: false, enabled: false };
+    render(owner, locked); render(owner, locked); render(owner, locked); hide();
+    let value = render(owner, { ...locked, unlocked: true }); assert.equal(value.seen, false);
+    value = render(owner, { ...locked, unlocked: true, enabled: true });
+    assert.equal(value.enabled, true); assert.equal(value.seen, false);
+  }, useArrival));
+
   test(`${resident}: an established confirmed world never replays historical arrivals on a new browser or reload`, () => browser(({ render, data }) => {
     const owner = `${resident}-existing-world`, options = { ...opts, confirmed: false, unlocked: false };
     render(owner, options); let value = render(owner, options);

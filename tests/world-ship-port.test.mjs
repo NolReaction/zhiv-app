@@ -16,10 +16,11 @@ const now = Date.parse("2026-11-01T12:00:00Z");
 const voyageId = "7a58066f-b814-4ff0-8536-e21cfa9de196";
 const navigation = { onNavigateStation() {}, onNavigateExpeditions() {} };
 function voyage(delivered = 0) {
-  return { id: voyageId, number: 3, openedAt: new Date(now).toISOString(), rewardPearls: 8,
+  return { id: voyageId, number: 3, openedAt: new Date(now).toISOString(), rewardPearls: 20,
     orders: ["Запас досок", "Сухие припасы", "Груз для мастерской"].map((title, index) => ({
       id: `${voyageId}:${index}`, templateId: `template_${index}`, title,
       items: index === 0 ? { planks: 4, rope: 2 } : index === 1 ? { dried_berries: 3 } : { glass: 2 },
+      loadedItems: {}, difficulty: ["easy", "medium", "hard"][index], rewardItems: index === 2 ? { rope: 1 } : {},
       rewardCoins: 1000 + index * 100, deliveredAt: index < delivered ? new Date(now).toISOString() : null,
     })) };
 }
@@ -43,96 +44,117 @@ function portTree(economy) {
   render(Probe); return tree;
 }
 const buttons = tree => elements(tree).filter(node => node.type === "button");
-const text = tree => Children.toArray(tree).map(node => isValidElement(node) ? text(node.props.children) : node).join("");
 
-test("port inspection is read-only and the received lighthouse gates orders", () => {
+test("arrival manifest has no accept, skip or claim controls", () => {
   const locked = render(WorldShipPort, { economy: controller({ buildings: { home: 5, lighthouse: 0 } }), ...navigation });
   assert.match(locked, /Зажгите маяк/);
-  assert.doesNotMatch(locked, /Принять заказы|data-ship-order=/);
-  const open = render(WorldShipPort, { economy: controller(), ...navigation });
-  assert.match(open, /Принять заказы/);
-  assert.match(open, /от 4 жемчужин/);
-  assert.match(open, /Точная награда зависит от стоимости груза/);
-  assert.match(open, /Выполнено поставок: 2/);
-  assert.doesNotMatch(open, /4 часа|8 жемчуга|Отплыть/);
+  const arriving = render(WorldShipPort, { economy: controller(), ...navigation });
+  assert.match(arriving, /Корабль прибывает/);
+  const active = render(WorldShipPort, { economy: controller({ ship: { voyage: voyage(), completedVoyages: 2, nextAvailableAt: null } }), ...navigation });
+  assert.equal((active.match(/data-ship-order=/g) ?? []).length, 3);
+  assert.match(active, /Лёгкий/); assert.match(active, /Средний/); assert.match(active, /Сложный/);
+  assert.match(active, /За все три груза/); assert.match(active, /<strong>10<\/strong>/);
+  for (const markup of [locked, arriving, active]) assert.doesNotMatch(markup, /Принять заказы|Отказаться|Забрать награду|Порт|Южная бухта/);
 });
 
-test("opening explicitly requests a manifest once, and all pending modes block that request", () => {
-  const calls = [], economy = controller({}, { act(...args) { calls.push(args); return true; } });
-  const accept = buttons(portTree(economy)).find(button => text(button.props.children).includes("Принять заказы"));
-  assert.equal(accept.props.disabled, false);
-  accept.props.onClick(); accept.props.onClick();
-  assert.deepEqual(calls, [["open_ship_voyage", "port"]]);
-  for (const flag of [{ busy: true }, { uncertain: true }, { directActionsAvailable: false }, { snapshotConfirmed: false }, { pendingProductionCount: 1 }, { retryAt: now + 1000 }]) {
-    const blocked = buttons(portTree(controller({}, flag))).find(button => text(button.props.children).includes("Принять заказы"));
+test("cooldown is shown only after departure and uses the server clock", () => {
+  const ship = { voyage: null, completedVoyages: 3, nextAvailableAt: new Date(now + 21600000).toISOString() };
+  const waiting = render(WorldShipPort, { economy: controller({ ship }), ...navigation });
+  assert.match(waiting, /Корабль в пути/); assert.match(waiting, /6:00:00/);
+  const active = render(WorldShipPort, { economy: controller({ ship: { ...ship, voyage: voyage(1) } }), ...navigation });
+  assert.match(active, /1 \/ 3 грузов/);
+  assert.doesNotMatch(active, /6:00:00|Вернётся через/);
+});
+
+test("loads available resources separately while showing already loaded progress", () => {
+  const order = voyage().orders[0]; order.loadedItems = { planks: 1 };
+  const state = controller({ inventory: { planks: 2, rope: 9 } }).snapshot, calls = [];
+  const tree = ShipOrderCard({ state, order, index: 0, disabled: false, onLoad: (...args) => calls.push(args), ...navigation });
+  const planks = buttons(tree).find(button => button.props["aria-label"] === "Загрузить 2: Доска");
+  assert.ok(planks); planks.props.onClick();
+  const rope = buttons(tree).find(button => button.props["aria-label"] === "Загрузить 2: Верёвка");
+  assert.ok(rope); rope.props.onClick();
+  assert.deepEqual(calls, [[order.id, "planks", 2], [order.id, "rope", 2]]);
+  const markup = render(ShipOrderCard, { state, order, index: 0, disabled: false, onLoad() {}, ...navigation });
+  assert.match(markup, /Загружено 1 из 4: Доска/);
+  assert.match(markup, /Загружено 0 из 2: Верёвка/);
+});
+
+test("missing materials navigate to the correct recipe without a cargo command", () => {
+  const state = controller().snapshot, calls = [], order = voyage().orders[0];
+  const tree = ShipOrderCard({ state, order, index: 0, disabled: false, onLoad() { assert.fail("no stock"); }, ...navigation,
+    onNavigateStation: (...args) => calls.push(args) });
+  const sources = buttons(tree).filter(button => button.props["aria-label"]?.startsWith("Где получить:"));
+  sources.forEach(button => button.props.onClick());
+  assert.deepEqual(calls, [["workshop", "make_planks"], ["workshop", "make_rope"]]);
+  assert.equal(buttons(tree).filter(button => button.props["aria-label"]?.startsWith("Загрузить")).length, 0);
+});
+
+test("parent sends a scoped cargo command once and prevents rapid double loading", () => {
+  const calls = [], ship = { voyage: voyage(), completedVoyages: 2, nextAvailableAt: null };
+  const tree = portTree(controller({ ship }, { act(...args) { calls.push(args); return true; } }));
+  const card = elements(tree).find(node => node.type === ShipOrderCard);
+  card.props.onLoad(ship.voyage.orders[0].id, "planks", 2);
+  card.props.onLoad(ship.voyage.orders[0].id, "planks", 2);
+  assert.deepEqual(calls, [["load_ship_cargo", ship.voyage.orders[0].id, 2, 0, undefined,
+    { voyageId, orderId: ship.voyage.orders[0].id, itemId: "planks" }]]);
+  for (const flags of [{ busy: true }, { uncertain: true }, { snapshotConfirmed: false }, { directActionsAvailable: false }, { pendingProductionCount: 1 }]) {
+    const blocked = elements(portTree(controller({ ship }, flags))).find(node => node.type === ShipOrderCard);
     assert.equal(blocked.props.disabled, true);
-    blocked.props.onClick();
+    blocked.props.onLoad(ship.voyage.orders[0].id, "planks", 2);
   }
 });
 
-test("cooldown uses the server clock and does not replace an active saved shipment", () => {
-  const ship = { voyage: null, completedVoyages: 2, nextAvailableAt: new Date(now + 21600000).toISOString() };
-  const waiting = render(WorldShipPort, { economy: controller({ ship }), ...navigation });
-  assert.match(waiting, /6:00:00/);
-  assert.match(waiting, /data-ship-waiting="true"/);
-  assert.doesNotMatch(waiting, /Принять заказы/);
-  const active = render(WorldShipPort, { economy: controller({ ship: { ...ship, voyage: voyage(1) } }, { now: now + 30 * 86400000 }), ...navigation });
-  assert.equal((active.match(/data-ship-order=/g) ?? []).length, 3);
-  assert.match(active, /1 из 3 грузов отгружено/);
-  assert.match(active, /уже доступна после закрытия этой поставки/);
-  assert.doesNotMatch(active, /Принять заказы|Забрать награду/);
+test("completed cargo remains paid and cannot be loaded again", () => {
+  const order = voyage(1).orders[0];
+  const markup = render(ShipOrderCard, { state: controller().snapshot, order, index: 0, disabled: false, onLoad() {}, ...navigation });
+  assert.match(markup, /Получено/); assert.match(markup, /На борту/);
+  assert.doesNotMatch(markup, /Загрузить|Где получить|Нужно ещё/);
+  const bonusOrder = voyage().orders[2];
+  const bonus = render(ShipOrderCard, { state: controller().snapshot, order: bonusOrder, index: 2, disabled: false, onLoad() {}, ...navigation });
+  assert.match(bonus, /Верёвка: 1/);
 });
 
-test("missing cargo links to its exact recipe; fulfilled cargo is paid only through its order ID", () => {
-  const state = controller().snapshot, calls = [], order = voyage().orders[0];
-  const empty = ShipOrderCard({ state, order, index: 0, disabled: false, onDeliver: id => calls.push(["deliver", id]),
-    ...navigation, onNavigateStation: (...args) => calls.push(args) });
-  const sources = buttons(empty).filter(button => button.props["aria-label"]?.startsWith("Где получить:"));
-  assert.equal(sources.length, 2);
-  sources.forEach(button => button.props.onClick());
-  assert.deepEqual(calls, [["workshop", "make_planks"], ["workshop", "make_rope"]]);
-  const emptyDeliver = buttons(empty).find(button => button.props["aria-label"] === `Отгрузить: ${order.title}`);
-  assert.equal(emptyDeliver.props.disabled, true);
-  emptyDeliver.props.onClick();
-  assert.equal(calls.length, 2);
-  state.inventory = { ...order.items };
-  const ready = ShipOrderCard({ state, order, index: 0, disabled: false, onDeliver: id => calls.push(["deliver", id]), ...navigation });
-  buttons(ready).find(button => button.props["aria-label"] === `Отгрузить: ${order.title}`).props.onClick();
-  assert.deepEqual(calls.at(-1), ["deliver", order.id]);
+test("wallet limits block only finishing a load, allowing cargo to be accumulated", () => {
+  const order = voyage().orders[0], state = controller({ inventory: { planks: 2, rope: 2 }, wallet: { coins: ECONOMY_MAX_BALANCE, pearls: 0 } }).snapshot;
+  let calls = 0;
+  const first = ShipOrderCard({ state, order, index: 0, disabled: false, onLoad() { calls++; }, ...navigation });
+  const partial = buttons(first).find(button => button.props["aria-label"] === "Загрузить 2: Доска");
+  assert.equal(partial.props.disabled, false); partial.props.onClick(); assert.equal(calls, 1);
+  order.loadedItems = { planks: 4 };
+  const finishing = buttons(ShipOrderCard({ state, order, index: 0, disabled: false, onLoad() { assert.fail("full wallet"); }, ...navigation }))
+    .find(button => button.props["aria-label"] === "Загрузить 2: Верёвка");
+  assert.equal(finishing.props.disabled, true); finishing.props.onClick();
+  const ship = { voyage: voyage(2), completedVoyages: 2, nextAvailableAt: null }, last = ship.voyage.orders[2];
+  const pearlState = controller({ ship, inventory: { glass: 2 }, wallet: { coins: 0, pearls: ECONOMY_MAX_PEARLS - 15 } }).snapshot;
+  const pearlButton = buttons(ShipOrderCard({ state: pearlState, order: last, index: 2, disabled: false, onLoad() { assert.fail("ten visible pearls must fit"); }, ...navigation }))
+    .find(button => button.props["aria-label"]?.startsWith("Загрузить"));
+  assert.equal(pearlButton.props.disabled, true); pearlButton.props.onClick();
 });
 
-test("completed cards show paid cargo, without resubmission or current-stock shortfalls", () => {
-  const order = voyage(1).orders[0], markup = render(ShipOrderCard, { state: controller().snapshot, order, index: 0, disabled: false, onDeliver() {}, ...navigation });
-  assert.match(markup, /Груз принят и оплачен/);
-  assert.match(markup, /Отгружено/);
-  assert.doesNotMatch(markup, /Отгрузить|Не хватает|data-missing/);
-});
-
-test("only a full manifest exposes the one-time claim and currency caps retain rewards", () => {
-  const ship = { voyage: voyage(3), completedVoyages: 2, nextAvailableAt: null }, calls = [];
-  const economy = controller({ ship }, { act(...args) { calls.push(args); return true; } });
-  const tree = portTree(economy), claim = buttons(tree).find(button => text(button.props.children).includes("Забрать награду"));
-  assert.ok(claim);
-  assert.equal(claim.props.disabled, false);
-  assert.equal(buttons(tree).some(button => text(button.props.children).includes("Отказаться")), false);
-  claim.props.onClick(); claim.props.onClick();
-  assert.deepEqual(calls, [["claim_ship_voyage", voyageId]]);
-  const fullWallet = controller({ ship, wallet: { coins: 0, pearls: ECONOMY_MAX_PEARLS } });
-  const blockedClaim = buttons(portTree(fullWallet)).find(button => text(button.props.children).includes("Забрать награду"));
-  assert.equal(blockedClaim.props.disabled, true);
-  blockedClaim.props.onClick();
-  const order = voyage().orders[0], state = controller({ wallet: { coins: ECONOMY_MAX_BALANCE, pearls: 0 }, inventory: order.items }).snapshot;
-  const blockedDelivery = buttons(ShipOrderCard({ state, order, index: 0, disabled: false, onDeliver() { assert.fail("full wallet must retain cargo"); }, ...navigation })).find(button => button.props["aria-label"]?.startsWith("Отгрузить:"));
-  assert.equal(blockedDelivery.props.disabled, true);
-  blockedDelivery.props.onClick();
-});
-
-test("uncertain responses show recovery and keep manifest actions disabled", () => {
+test("uncertain loading offers recovery and disables every cargo card", () => {
   const economy = controller({ ship: { voyage: voyage(1), completedVoyages: 2, nextAvailableAt: null } }, { uncertain: true, error: "response lost" });
   const markup = render(WorldShipPort, { economy, ...navigation });
-  assert.match(markup, /Проверяем отгрузку/);
-  assert.match(markup, /Проверить результат/);
-  const tree = portTree(economy);
-  assert.equal(elements(tree).filter(node => node.type === ShipOrderCard).every(node => node.props.disabled), true);
-  assert.equal(buttons(tree).find(button => text(button.props.children).includes("Отказаться от оставшихся")).props.disabled, true);
+  assert.match(markup, /Проверяем загрузку/); assert.match(markup, /Проверить результат/);
+  assert.equal(elements(portTree(economy)).filter(node => node.type === ShipOrderCard).every(node => node.props.disabled), true);
+});
+
+
+test("a last partial load reserves room for its item gift without blocking earlier cargo", () => {
+  const order = voyage().orders[0];
+  order.loadedItems = { planks: 4, rope: 1 }; order.rewardItems = { planks: 2 };
+  const state = controller({ inventory: { rope: 1, wood: 99 }, storage: { used: 100, reserved: 0, capacity: 100, available: 0, overflow: 0 } }).snapshot;
+  const card = () => ShipOrderCard({ state, order, index: 0, disabled: false, onLoad() { assert.fail("no room for the gift"); }, ...navigation });
+  let button = buttons(card()).find(button => button.props["aria-label"] === "Загрузить 1: Верёвка");
+  assert.equal(button.props.disabled, true); assert.equal(button.props["aria-describedby"], "ship-gift-space-0"); button.props.onClick();
+  assert.match(render(ShipOrderCard, { state, order, index: 0, disabled: false, onLoad() {}, ...navigation }), /Освободите место в кладовой для подарка капитана/);
+  state.storage.used = 99;
+  button = buttons(card()).find(button => button.props["aria-label"] === "Загрузить 1: Верёвка");
+  assert.equal(button.props.disabled, false, "consumed cargo frees one slot and the gift uses two");
+  state.storage.used = 98; state.storage.reserved = 2;
+  button = buttons(card()).find(button => button.props["aria-label"] === "Загрузить 1: Верёвка");
+  assert.equal(button.props.disabled, true, "escrow stock still occupies storage");
+  order.loadedItems.planks = 3;
+  button = buttons(card()).find(button => button.props["aria-label"] === "Загрузить 1: Верёвка");
+  assert.equal(button.props.disabled, false, "incomplete loads do not receive the item gift yet");
 });

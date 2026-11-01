@@ -69,7 +69,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       export function useGameRewards() { return { data: guideContext.rewards ?? null, refresh: refreshRewards }; }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/state/use-world-market-sales.ts") || id.endsWith("/features/world/audio/use-market-audio.ts") || id.endsWith("/features/world/ui/hud/world-selected-object-menu.tsx") || id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-resident-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
+      if (id.endsWith("/features/economy/sync/use-ship-orders-arrival.ts") || id.endsWith("/features/world/state/use-world-market-sales.ts") || id.endsWith("/features/world/audio/use-market-audio.ts") || id.endsWith("/features/world/ui/hud/world-selected-object-menu.tsx") || id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-resident-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
         return source.replace('from "react";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-forest-observation";', `from "${hookModule}";`)
@@ -1876,6 +1876,42 @@ test("the real miner arrival hook keeps the physical run separate from coach dis
     assert.equal(nav.refreshes, 0);
   } finally { pointer.restore(); }
 });
+
+for (const [resident, building, threshold, presentation, coachName] of [
+  ["lopukh", "woodlot", 1, "lopukhArrival", "LopukhArrivalOnboarding"],
+  ["miner", "quarry", 1, "residentArrival", "MinerArrivalOnboarding"],
+  ["leaftail", "home", 3, "merchantArrival", "LeaftailArrivalOnboarding"],
+]) for (const interruption of ["closed", "suspended"]) {
+  test(`WorldView: ${resident} introduction cannot replay after the map is ${interruption} and reopened`, () => {
+    const pointer = pointerNavigation(), { nav } = pointer, values = new Map();
+    window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+    const owner = `arrival-return-${resident}-${interruption}`;
+    nav.props.ownerPublicId = owner;
+    nav.props.economy.snapshot.ownerPublicId = owner;
+    nav.props.economy.snapshotConfirmed = true;
+    Object.assign(nav.props.economy.snapshot.buildings, { home: 3, quarry: 1, woodlot: 1, [building]: threshold - 1 });
+    try {
+      pointer.render(); pointer.render(); pointer.render();
+      nav.props.economy.snapshot.buildings[building] = threshold;
+      pointer.render(); pointer.render();
+      const arrival = nav.component("WorldScene").props[presentation];
+      assert.equal(arrival.enabled, true); assert.equal(arrival.seen, false);
+      assert.equal(nav.component(coachName).props.open, true);
+      if (interruption === "closed") nav.props.open = false; else nav.props.suspended = true;
+      pointer.render(); pointer.render();
+      nav.props.open = true; nav.props.suspended = false;
+      pointer.render(); pointer.render();
+      const returned = nav.component("WorldScene").props[presentation];
+      assert.equal(returned.seen, true); assert.equal(returned.enabled, false);
+      assert.equal(nav.component(coachName).props.open, false);
+      assert.equal(nav.component("ResidentArrivalNotice"), undefined, "an interrupted introduction does not queue a new greeting");
+      arrival.onComplete(); pointer.render();
+      assert.equal(nav.component("ResidentArrivalNotice"), undefined, "a stale canvas completion cannot announce another arrival");
+      assert.deepEqual(JSON.parse(values.get(`zhiv.${resident}-arrival.v1:${owner}`)), { version: 1, arrived: true, dismissed: true });
+      assert.equal(nav.refreshes, 0);
+    } finally { pointer.restore(); }
+  });
+}
 
 test("route completion leaves the new miner greeting until Meet opens his own conversation", () => {
   const pointer = pointerNavigation(), { nav } = pointer;
