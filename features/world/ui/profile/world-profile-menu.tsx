@@ -6,6 +6,7 @@ import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { ChevronRight, CircleHelp, Heart, Leaf, Settings, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
+import { PlayerProgressionCard } from "@/features/game/player-progression-card";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { Person } from "@/lib/check-in-contract";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -177,6 +178,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
           <Leaf size={18} aria-hidden="true" /><span><small>{observation?.paused ? "Полянка на паузе" : "Как Мохлик?"}</small>
             <strong>{observation?.mood ?? "Полянка загружается"}</strong></span><ChevronRight size={16} aria-hidden="true" />
         </button>
+        {economy.snapshot && <PlayerProgressionCard progression={economy.snapshot.progression} now={economy.now} ownerKey={economy.snapshot.ownerPublicId} compact />}
         {achievements && <div className={styles.achievements}>{achievements}</div>}
         <dl className={styles.stats} aria-label="Достижения Мохлика">
           <div><dt>Дом</dt><dd>{houseLevel === undefined ? "-" : `${houseLevel} ур.`}</dd></div>

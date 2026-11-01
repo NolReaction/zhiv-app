@@ -215,6 +215,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             UPDATE game_sessions SET last_sequence=?,last_tap_count=?,last_accepted=?,last_run_id=?,last_batch_at=?,run_taps=?,run_id=?,run_updated_at=?,last_tap_times=?,last_rejection_code=?,event_tokens=?,event_updated_at=? WHERE id=?
         """.trimIndent(), sequence, tapCount, accepted, runId, instant, runTaps, if (accepted > 0) runId else game.runId, if (accepted > 0) eventEnd else game.runUpdatedAt, tapTimes?.let { c.createArrayOf("bigint", it.toTypedArray()) }, rejectionCode, eventTokens, if (validTimes?.isNotEmpty() == true) java.time.Instant.ofEpochMilli(eventAt).atOffset(ZoneOffset.UTC) else game.eventUpdated, sessionId)
         creditWorldTaps(c, actor.id, "tap:$sessionId:$sequence", accepted, instant)
+        creditEconomyTapBoost(c, actor.id, accepted, instant.toInstant())
         recordTapActivity(c, actor.id, instant, accepted, tapCount-accepted, eligible?.take(accepted),
             if(continuing) priorRun.runUpdatedAt?.toInstant()?.toEpochMilli() else null)
         GameBatchResponse(sessionId.toString(), sequence, accepted, tapCount - accepted, false, progress(c, actor, instant), if (accepted > 0 || game.runId == runId) runTaps else 0L, rejectionCode)

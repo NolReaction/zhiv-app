@@ -66,7 +66,7 @@ class JdbcGameProgressResetIntegrationTest {
         return postgres.execInContainer(*command.toTypedArray())
     }
 
-    @Test fun `release reset keeps auth and friends clears history restarts rewards and is idempotent`(): Unit = runBlocking {
+    @Test fun `release reset keeps auth friends and checkins restarts gameplay and is idempotent`(): Unit = runBlocking {
         val script = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
             .map { it.resolve("scripts/reset-game-progress.sql") }.first { Files.exists(it) }
         postgres.copyFileToContainer(MountableFile.forHostPath(script), "/tmp/reset-game-progress.sql")
@@ -223,12 +223,11 @@ class JdbcGameProgressResetIntegrationTest {
                   WHERE category='checkin';
             """.trimIndent())
             val protectedProjections = listOf(
-                "SELECT jsonb_agg(to_jsonb(u)-'last_check_in_at' ORDER BY id)::text FROM app_users u",
+                "SELECT jsonb_agg(to_jsonb(u) ORDER BY id)::text FROM app_users u",
                 "SELECT jsonb_agg(to_jsonb(a) ORDER BY user_id,achievement_id)::text FROM game_achievements a WHERE achievement_id IN ('linked_email','saved_recovery_code')",
                 "SELECT jsonb_agg(to_jsonb(a) ORDER BY user_id,achievement_id)::text FROM game_achievement_reward_claims a WHERE achievement_id IN ('linked_email','saved_recovery_code')",
                 "SELECT jsonb_agg(to_jsonb(m) ORDER BY id)::text FROM player_mail_messages m WHERE source_key<>'welcome:v1'",
                 "SELECT jsonb_agg(to_jsonb(b) ORDER BY id)::text FROM notification_batches b WHERE id='b1000000-0000-4000-8000-000000000001'",
-                "SELECT jsonb_agg(to_jsonb(l) ORDER BY id)::text FROM economy_market_listings l WHERE status='sold'",
             ).associateWith { selectedRows(source, it) }
             val before = snapshot(source)
             assertNotEquals("[]", before.getValue("earth_frozen_locations"), "The reset fixture includes a frozen recipient snapshot")
@@ -285,16 +284,12 @@ class JdbcGameProgressResetIntegrationTest {
             for (table in tables("preserved_tables") + "flyway_schema_history")
                 assertEquals(before.getValue(table), after.getValue(table), "Preserved full contents: $table")
             for (table in tables("cleared_tables")) assertEquals("[]", after.getValue(table), "Cleared: $table")
-            assertTrue(after.getValue("economy_market_listings").contains("61000000-0000-4000-8000-000000000006"),
-                "A confirmed neighbor purchase and its manually claimable proceeds survive the release reset")
-            assertTrue(!after.getValue("economy_market_listings").contains("60000000-0000-4000-8000-000000000006"),
-                "Active escrow from the discarded game is removed")
-            assertEquals(before.getValue("neighbor_receipts"), after.getValue("economy_market_receipts"),
-                "Persistent neighbor receipts must retain cross-endpoint request UUID fences after reset")
-            assertTrue(!after.getValue("notification_events").contains("checkin:test"))
+            assertEquals("[]", after.getValue("economy_market_listings"), "All old stock and unclaimed proceeds are reset")
+            assertEquals("[]", after.getValue("economy_market_receipts"), "Generation and revisions fence the cleared receipts")
+            assertTrue(after.getValue("notification_events").contains("checkin:test"))
             assertTrue(after.getValue("notification_events").contains("mail:b0000000-0000-4000-8000-00000000000b"))
             assertTrue(!after.getValue("notification_events").contains("job:test"))
-            assertTrue(!after.getValue("notification_batches").contains("b1000000-0000-4000-8000-000000000002"))
+            assertTrue(after.getValue("notification_batches").contains("b1000000-0000-4000-8000-000000000002"))
 
             val user = UUID.fromString("10000000-0000-4000-8000-000000000001")
             source.connection.use { connection ->
@@ -339,13 +334,13 @@ class JdbcGameProgressResetIntegrationTest {
             }.code)
             assertEquals(after, snapshot(source), "Rejected stale retries must not change any fresh or preserved data")
             source.connection.use { connection ->
-                assertEquals(0L, connection.economyRows("SELECT count(*) FROM app_users WHERE last_check_in_at IS NOT NULL") { it.getLong(1) }.single())
+                assertEquals(1L, connection.economyRows("SELECT count(*) FROM app_users WHERE last_check_in_at IS NOT NULL") { it.getLong(1) }.single())
                 assertEquals(setOf("linked_email", "saved_recovery_code"), connection.economyRows(
                     "SELECT achievement_id FROM game_achievements") { it.getString(1) }.toSet())
                 assertEquals(listOf("linked_email"), connection.economyRows(
                     "SELECT achievement_id FROM game_achievement_reward_claims") { it.getString(1) })
                 assertEquals(5L, connection.economyRows("SELECT count(*) FROM active_direct_friend_ids(?)", user) { it.getLong(1) }.single())
-                assertEquals(0L, connection.economyRows("SELECT check_in_count FROM account_check_in_summary(?)", user) { it.getLong(1) }.single())
+                assertEquals(1L, connection.economyRows("SELECT check_in_count FROM account_check_in_summary(?)", user) { it.getLong(1) }.single())
             }
             presence.requireGeneration(hash, 1)
             val rewards = JdbcProgressionRewardsRepository(source)
@@ -390,7 +385,7 @@ class JdbcGameProgressResetIntegrationTest {
             val repeated = reset(true)
             assertEquals(0, repeated.exitCode, repeated.stderr)
             assertTrue(repeated.stderr.contains("already completed"), repeated.stderr)
-            assertEquals(progressed, snapshot(source), "Repeating release 0.7.1 must preserve every new row and reward")
+            assertEquals(progressed, snapshot(source), "Repeating release 0.7.2 must preserve every new row and reward")
             assertEquals(1L, presence.currentGeneration(), "A repeated release does not advance generation")
         }
     }

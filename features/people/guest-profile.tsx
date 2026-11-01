@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { AchievementMedal } from "@/features/game/achievement-medal";
 import { GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
-import { getClickerLevel } from "@/features/game/clicker-story";
+import { getPlayerLevel } from "@/features/economy/domain/player-levels";
 import { ProfileFindings } from "./profile-findings";
 import { getGuestProfile } from "./guest-profile-api";
 import type { GuestProfile } from "./guest-profile-model";
@@ -15,7 +15,7 @@ import styles from "./guest-profile.module.css";
 
 export function GuestProfileContents({ profile, section = "overview" }: { profile: GuestProfile; section?: "overview" | "collections" }) {
   const collectionCount = Object.values(profile.collections).reduce((sum, ids) => sum + ids.length, 0);
-  const level = profile.tapStats ? getClickerLevel(profile.tapStats.lifetimeTaps) : null;
+  const level = profile.playerXp == null ? null : getPlayerLevel(profile.playerXp);
   return <div className={styles.contents}>
     {section === "overview" && <>
     {level && <div className={styles.playerLevel}><GameLevelIcon level={level.level} size={25} /><strong>Уровень {level.level}</strong><span>{level.title}</span></div>}
@@ -27,7 +27,7 @@ export function GuestProfileContents({ profile, section = "overview" }: { profil
     {profile.tapStats ? <dl className={styles.tapStats} aria-label="Рекорды по тапам">
       <div><dt>Всего тапов</dt><dd>{profile.tapStats.lifetimeTaps.toLocaleString("ru-RU")}</dd></div>
       <div><dt>Лучшая серия</dt><dd>×{profile.tapStats.bestSeries.toLocaleString("ru-RU")}</dd></div>
-    </dl> : <p className={styles.privateStats}>Уровень и рекорды по тапам скрыты настройкой рейтинга игрока.</p>}
+    </dl> : <p className={styles.privateStats}>Рекорды по тапам скрыты настройкой рейтинга игрока.</p>}
     <section aria-label="Достижения друга">
       <h4>Достижения мира · {profile.achievements.length}</h4>
       {profile.achievements.length === 0 ? <p>Первые игровые медали ещё впереди.</p> : <ul className={styles.awards}>

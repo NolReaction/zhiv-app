@@ -17,7 +17,9 @@ SET LOCAL statement_timeout = '3min';
 DO $$
 DECLARE
     cleared_tables text[] := ARRAY[
-        'check_in_audiences', 'check_ins', 'earth_latest_locations', 'earth_frozen_locations',
+        'economy_market_listings', 'economy_market_receipts',
+        'neighbor_shop_cycles', 'neighbor_identity', 'neighbor_daily_usage',
+        'neighbor_global_usage', 'neighbor_receipts', 'neighbor_purchases',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
         'economy_commands',
         'economy_market_daily_turnover',
@@ -33,6 +35,7 @@ DECLARE
         'economy_profiles', 'world_profiles', 'forest_memory', 'game_profiles', 'economy_conversion_audit', 'economy_ledger'
     ];
     preserved_tables text[] := ARRAY[
+        'app_users', 'check_in_audiences', 'check_ins', 'earth_latest_locations', 'earth_frozen_locations',
         'account_action_proofs', 'account_group_owner_transfers', 'account_identity_retirements',
         'account_login_flows', 'account_login_identities', 'account_merge_previews',
         'account_merge_sources', 'account_operation_receipts', 'account_recovery_attempts',
@@ -42,17 +45,16 @@ DECLARE
         'circle_sharing_preferences', 'circles', 'direct_invite_links', 'direct_invite_redemptions',
         'direct_person_favorites', 'direct_requests', 'earth_sharing_settings', 'earth_sharing_recipients',
         'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes',
-        'neighbor_settings', 'neighbor_shop_cycles', 'neighbor_identity', 'neighbor_daily_usage',
-        'neighbor_global_usage', 'neighbor_receipts', 'neighbor_purchases',
+        'neighbor_settings',
         'notification_preferences', 'notification_subscriptions', 'player_feedback',
         'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
         'recipient_sharing_preferences', 'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys'
     ];
-    -- Identity rows change only their obsolete check-in timestamp. Security badges
-    -- and non-welcome service mail are retained exactly; other progress is removed.
+    -- Identity and social/check-in data remain untouched. Security badges and
+    -- non-welcome service mail are retained exactly; other game progress is removed.
     partial_tables text[] := ARRAY[
-        'app_users', 'game_achievements', 'game_achievement_reward_claims', 'player_mail_messages', 'notification_events', 'notification_batches',
-        'gameplay_generations', 'gameplay_reset_runs', 'economy_market_listings', 'economy_market_receipts'
+        'game_achievements', 'game_achievement_reward_claims', 'player_mail_messages', 'notification_events', 'notification_batches',
+        'gameplay_generations', 'gameplay_reset_runs'
     ];
     expected_tables text[];
     actual_tables text[];
@@ -62,15 +64,12 @@ DECLARE
     preserved_fingerprints jsonb := '{}'::jsonb;
     service_fingerprint text;
     batch_fingerprint text;
-    account_fingerprint text;
     security_fingerprint text;
     security_claim_fingerprint text;
     mail_fingerprint text;
     reset_history_fingerprint text;
-    sold_market_fingerprint text;
-    neighbor_market_receipt_fingerprint text;
     previous_generation bigint;
-    release_reset_id constant text := '0.7.1';
+    release_reset_id constant text := '0.7.2';
     reset_time timestamptz;
     apply_mode boolean := current_setting('zhiv.reset_game_progress', true) = 'on';
 BEGIN
@@ -83,9 +82,10 @@ BEGIN
     END IF;
     -- V68 adds the reset generation and release ledger; migration itself never resets data.
     -- V69 onboarding progress is cleared; V70 expands achievement constraints without new tables.
-    -- V71 preserves neighbor configuration, lifetime/daily fences and confirmed sales, including unclaimed proceeds.
+    -- V71 neighbor settings stay; this explicit global release reset discards all personal trade progress.
     -- V76 only retunes default neighbor settings; V77 adds a reward-course column and tier constraints.
-    -- V78 adds resident activity inside economy state, which this reset reinitializes.
+    -- V78 adds resident activity inside economy state. Replacing the entire JSON also clears
+    -- progression XP, seasonal contribution and tap boosts without relying on a field allowlist.
     -- Every later migration still requires an explicit inventory/policy review.
     IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 78
         OR NOT (
@@ -136,14 +136,12 @@ BEGIN
             preserved_fingerprints := preserved_fingerprints || jsonb_build_object(table_name, fingerprint);
         END IF;
     END LOOP;
-    RAISE NOTICE 'RESET check-in timestamps, non-security achievements and welcome mail; retain auth, friends and service mail.';
+    RAISE NOTICE 'RESET gameplay, XP, tap boosts, seasonal progress, non-security achievements and welcome mail; retain auth, friends, check-ins, locations and service mail.';
     RAISE NOTICE 'Release %, gameplay generation % -> %', release_reset_id, previous_generation, previous_generation + 1;
     IF NOT apply_mode THEN
         RAISE NOTICE 'Preview only. No application data was changed.';
         RETURN;
     END IF;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO account_fingerprint
-    FROM (SELECT md5((to_jsonb(u) - 'last_check_in_at')::text) AS h FROM public.app_users u) rows;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO security_fingerprint
     FROM (SELECT md5(to_jsonb(a)::text) AS h FROM public.game_achievements a
         WHERE achievement_id IN ('linked_email','saved_recovery_code')) rows;
@@ -155,17 +153,13 @@ BEGIN
         WHERE source_key <> 'welcome:v1') rows;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO reset_history_fingerprint
     FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.gameplay_reset_runs r) rows;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO sold_market_fingerprint
-    FROM (SELECT md5(to_jsonb(l)::text) AS h FROM public.economy_market_listings l WHERE status='sold') rows;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO neighbor_market_receipt_fingerprint
-    FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.neighbor_receipts r) rows;
     -- Profile initialization synchronizes notifications. Restore only retained
-    -- service-mail events, never old check-in reminders or welcome-gift messages.
+    -- service-mail and check-in events; discard game and welcome-gift messages.
     CREATE TEMP TABLE game_reset_service_events ON COMMIT DROP AS
-    SELECT e.* FROM public.notification_events e WHERE category = 'mail' AND EXISTS (
+    SELECT e.* FROM public.notification_events e WHERE category = 'checkin' OR (category = 'mail' AND EXISTS (
         SELECT 1 FROM public.player_mail_messages m WHERE m.user_id=e.user_id
             AND e.source_key='mail:' || m.id::text AND m.source_key <> 'welcome:v1'
-    );
+    ));
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO service_fingerprint
     FROM (SELECT md5(to_jsonb(e)::text) AS h FROM game_reset_service_events e) rows;
 
@@ -199,19 +193,12 @@ BEGIN
         RAISE EXCEPTION 'Invalid or exhausted revision fence. Game reset rolled back.';
     END IF;
 
-    -- Retain confirmed sale snapshots and outstanding proceeds. Active escrow
-    -- belongs to the old game and is removed without granting it to the fresh stock.
-    DELETE FROM public.economy_market_listings WHERE status<>'sold';
+    -- All market stock, sold lots and unclaimed proceeds belong to the old game.
+    -- Generation and monotonic revisions fence every stale command after their receipts are removed.
     EXECUTE 'TRUNCATE TABLE ' || (
         SELECT string_agg(format('public.%I', name), ', ')
         FROM unnest(cleared_tables || reinitialized_tables) AS t(name)
     ) || ' RESTART IDENTITY RESTRICT';
-    -- Retain the cross-endpoint UUID fences for neighbor purchases. They are
-    -- receipts only and never transfer old stock, currency or proceeds again.
-    DELETE FROM public.economy_market_receipts;
-    INSERT INTO public.economy_market_receipts(user_id,request_id,signature,message,accepted_revision,created_at)
-    SELECT user_id,request_id,signature,message,accepted_revision,created_at FROM public.neighbor_receipts;
-    UPDATE public.app_users SET last_check_in_at = NULL WHERE last_check_in_at IS NOT NULL;
     DELETE FROM public.game_achievements WHERE achievement_id NOT IN ('linked_email','saved_recovery_code');
     DELETE FROM public.game_achievement_reward_claims WHERE achievement_id NOT IN ('linked_email','saved_recovery_code');
     DELETE FROM public.player_mail_messages WHERE source_key = 'welcome:v1';
@@ -273,22 +260,6 @@ BEGIN
         END IF;
     END LOOP;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
-    FROM (SELECT md5(to_jsonb(l)::text) AS h FROM public.economy_market_listings l) rows;
-    IF fingerprint IS DISTINCT FROM sold_market_fingerprint THEN
-        RAISE EXCEPTION 'Confirmed market sale preservation invariant failed. Game reset rolled back.';
-    END IF;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
-    FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.economy_market_receipts r) rows;
-    IF fingerprint IS DISTINCT FROM neighbor_market_receipt_fingerprint THEN
-        RAISE EXCEPTION 'Neighbor cross-endpoint receipt preservation invariant failed. Game reset rolled back.';
-    END IF;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
-    FROM (SELECT md5((to_jsonb(u) - 'last_check_in_at')::text) AS h FROM public.app_users u) rows;
-    IF fingerprint IS DISTINCT FROM account_fingerprint
-        OR EXISTS (SELECT 1 FROM public.app_users WHERE last_check_in_at IS NOT NULL) THEN
-        RAISE EXCEPTION 'Preserved table app_users changed outside the check-in timestamp. Game reset rolled back.';
-    END IF;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
     FROM (SELECT md5(to_jsonb(a)::text) AS h FROM public.game_achievements a) rows;
     IF fingerprint IS DISTINCT FROM security_fingerprint THEN
         RAISE EXCEPTION 'Security achievement preservation invariant failed. Game reset rolled back.';
@@ -326,6 +297,6 @@ BEGIN
             AND generation = previous_generation + 1 AND completed_at = reset_time) THEN
         RAISE EXCEPTION 'Reset generation invariant failed. Game reset rolled back.';
     END IF;
-    RAISE NOTICE 'Release % fresh start completed. Auth, friends and security achievements preserved; gameplay, check-ins and records cleared.', release_reset_id;
+    RAISE NOTICE 'Release % fresh start completed. Auth, friends, check-ins, locations and security achievements preserved; gameplay, XP and records cleared.', release_reset_id;
 END $$;
 COMMIT;

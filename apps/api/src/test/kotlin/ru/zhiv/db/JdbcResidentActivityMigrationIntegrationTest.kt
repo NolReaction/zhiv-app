@@ -48,7 +48,8 @@ class JdbcResidentActivityMigrationIntegrationTest {
                 assertEquals(10000, saved.pointsBps)
                 assertFalse(Instant.parse(saved.updatedAt).isBefore(began.minusSeconds(1)))
             }
-            assertEquals(0, EconomyTradeRelations.activityBps(relations, "builder", began.plusSeconds(11 * 86400L)))
+            assertEquals(10000, EconomyTradeRelations.activityBps(relations, "builder", began.plusSeconds(11 * 86400L)),
+                "Current permanent ranks ignore the preserved historical grace clock")
             assertEquals("9", scalar(source, "SELECT revision::text FROM economy_profiles WHERE user_id=?", earned))
             assertEquals(emptyBefore, scalar(source, "SELECT to_jsonb(p)::text FROM economy_profiles p WHERE user_id=?", empty))
             DatabaseFactory.migrate(source)

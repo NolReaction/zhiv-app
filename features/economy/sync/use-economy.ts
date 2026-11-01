@@ -4,6 +4,7 @@ import { getEconomy, getEconomyMarket, getEconomyNeighbor, sendEconomyCommand, s
 import { createEconomySession } from "./session";
 import { getEconomyBarter, sendBarterCommand } from "./barter-api";
 import { browserJournalCoordinator } from "./production-journal";
+import { projectEconomyTapBoost } from "../domain/tap-boost";
 
 function journalStorage() {
   try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; }
@@ -48,6 +49,8 @@ export function useEconomy(owner: string | null, onSessionLost: () => void, enab
       document.removeEventListener("visibilitychange", refresh); window.removeEventListener("online", refresh);
     };
   }, [session, owner]);
-  return { ...view, reconcile: session.reconcile, getReconciliationError: session.getReconciliationError, setAvailable: session.setAvailable, setLocalActionsAvailable: session.setLocalActionsAvailable, setDirectActionsAvailable: session.setDirectActionsAvailable, now: view.snapshot ? session.now() : now, act: session.act, actMarket: session.actMarket, actFriendMarket: session.actFriendMarket, actNeighbor: session.actNeighbor, actBarter: session.actBarter, actDev: session.actDev, devAvailable: session.devAvailable, retry: session.retry, retryGardenCollection: session.retryGardenCollection, refresh: session.refresh, refreshMarket: session.refreshMarket, refreshNeighbor: session.refreshNeighbor, refreshBarter: session.refreshBarter };
+  const currentTime = view.snapshot ? session.now() : now;
+  const snapshot = view.snapshot ? projectEconomyTapBoost(view.snapshot, currentTime) : null;
+  return { ...view, snapshot, reconcile: session.reconcile, getReconciliationError: session.getReconciliationError, setAvailable: session.setAvailable, setLocalActionsAvailable: session.setLocalActionsAvailable, setDirectActionsAvailable: session.setDirectActionsAvailable, now: currentTime, act: session.act, actMarket: session.actMarket, actFriendMarket: session.actFriendMarket, actNeighbor: session.actNeighbor, actBarter: session.actBarter, actDev: session.actDev, devAvailable: session.devAvailable, retry: session.retry, retryGardenCollection: session.retryGardenCollection, refresh: session.refresh, refreshMarket: session.refreshMarket, refreshNeighbor: session.refreshNeighbor, refreshBarter: session.refreshBarter };
 }
 export type EconomyController = ReturnType<typeof useEconomy>;

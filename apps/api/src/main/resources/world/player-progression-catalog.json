@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "maxLevel": 100,
+  "levelXpFactor": 50,
+  "workSecondsPerXp": 60,
+  "constructionXpPerLevel": 100,
+  "firstRecipeXp": 25,
+  "firstExplorationXp": 40,
+  "orderXp": 25,
+  "weeklyStageXp": 75,
+  "stageOrderXp": 35,
+  "shipCargoXp": 40,
+  "shipVoyageXp": 60,
+  "levelTitles": ["Росток", "Лесной житель", "Умелец", "Следопыт", "Хранитель поляны", "Мастер леса", "Друг долины", "Сказитель", "Старейшина", "Легенда леса"],
+  "levelRewards": [
+    {"level": 5, "rewardPearls": 2}, {"level": 10, "rewardPearls": 3},
+    {"level": 20, "rewardPearls": 5}, {"level": 30, "rewardPearls": 10},
+    {"level": 40, "rewardPearls": 10}, {"level": 50, "rewardPearls": 15},
+    {"level": 60, "rewardPearls": 15}, {"level": 70, "rewardPearls": 20},
+    {"level": 80, "rewardPearls": 20}, {"level": 90, "rewardPearls": 25},
+    {"level": 100, "rewardPearls": 25}
+  ],
+  "season": {
+    "orderPoints": 15, "weeklyStagePoints": 25, "shipCargoPoints": 10, "shipVoyagePoints": 30,
+    "titles": ["Тёплый очаг", "Зимняя взаимопомощь", "Пробуждение леса", "Весенние хлопоты", "Цветущая поляна", "Летние открытия", "Дары лета", "Щедрый урожай", "Осенние припасы", "Лесные заботы", "Подготовка к зиме", "Праздник огней"],
+    "milestones": [
+      {"points": 100, "rewardPearls": 2, "badge": "helper", "title": "Добрый сосед"},
+      {"points": 300, "rewardPearls": 3, "badge": "friend", "title": "Надёжный друг"},
+      {"points": 700, "rewardPearls": 5, "badge": "guardian", "title": "Хранитель сезона"}
+    ]
+  }
+}

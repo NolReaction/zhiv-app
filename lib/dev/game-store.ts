@@ -1,6 +1,7 @@
 import { devGameStore as store, type GameProfileRecord } from "./game-state";
 export { resetDevGameStoreForTests } from "./game-state";
 import { creditDevWorldTaps, getDevCollectionCount } from "@/lib/dev/world-store";
+import { creditDevEconomyTapBoost } from "./economy-store";
 import { naturalItems } from "@/features/game/game-rewards";
 import { getDevItemStreak, getDevIdentity, lookupDevUser, getDevFriendPublicIds, getDevAchievements, awardDevGameTaps } from "@/lib/dev/api-store";
 import type { GameProgress, GameLeaderboard, GameSession, GameBatchResponse, GameAchievements, GameLeaderboardMetric, GameLeaderboardScope } from "@/features/game/game-api";
@@ -202,6 +203,7 @@ export function submitDevGameBatch(
     awardDevGameTaps(own.ownerPublicId, own.lifetimeTaps, now, own.bestSeries);
   }
   creditDevWorldTaps(own.ownerPublicId, `tap:${session.id}:${payload.sequence}`, acceptedTaps, now);
+  creditDevEconomyTapBoost(own.ownerPublicId, acceptedTaps, now);
   session.lastReceipt = { ...payload, rejectionCode, acceptedTaps, rejectedTaps: payload.tapCount - acceptedTaps };
   session.nextSequence++;
   return { kind: "ok" as const, value: {

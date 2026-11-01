@@ -24,6 +24,8 @@ import { useEarthLocationPreference } from "@/features/earth/use-location-prefer
 import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
+import { TapBoostIndicator } from "@/features/game/tap-boost-indicator";
+import { getPlayerLevel, getPlayerProgression } from "@/features/economy/domain/player-progression";
 import { BetaInfo } from "@/features/updates/beta-info";
 
 import type {
@@ -67,7 +69,6 @@ import {
   createClickerRun,
   expireClickerSeries,
   getClickerLevel,
-  getClickerLevelProgress,
   getClickerSeriesTimer,
   mergeClickerProgress,
   parseClickerProgress,
@@ -108,6 +109,7 @@ import { currentProfileFriendVisit, profileFriendVisit, type ProfileFriendVisit 
 import { useWorld } from "@/features/world/state/use-world";
 import { useEconomy } from "@/features/economy/sync/use-economy";
 import { useEconomyAudioFeedback } from "@/features/economy/integration/use-economy-audio-feedback";
+import { useTapBoostRefresh } from "@/features/economy/integration/use-tap-boost-refresh";
 import { GardenCollectionContext, useGardenCollectionController } from "@/features/economy/integration/garden-collection-context";
 import { economySceneActivity, economySceneJourney, economySceneProduction, economySceneConstruction, economySceneResidents, economyWorldState } from "@/features/economy/integration/world-adapter";
 import { worldActivity } from "@/features/world/ui/hud/world-activity";
@@ -821,6 +823,8 @@ function CheckInContent() {
     return () => worldDevStore.reset();
   }, [worldDevOwner]);
   const worldRefresh = world.refresh;
+  useTapBoostRefresh(screen === "home" ? me?.user.publicId ?? null : null, game.progress?.lifetimeTaps ?? 0,
+    economy.snapshot?.jobs.some(job => job.kind === "production" || job.actorId === "miner") ?? false, economy.refresh);
   useEffect(() => { if (screen === "home" && me) void worldRefresh(); }, [game.progress?.lifetimeTaps, me, screen, worldRefresh]);
 
   const syncMeSnapshot = useCallback((identity: MeResponse) => {
@@ -1492,8 +1496,7 @@ function CheckInContent() {
   const adjustedNow = clientNowMs + clockOffsetMs;
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
   const buttonPalette = getCheckInPalette(ageMs);
-  const clickerLevel = getClickerLevel(game.progress?.lifetimeTaps ?? 0);
-  const clickerLevelProgress = getClickerLevelProgress(game.progress?.lifetimeTaps ?? 0);
+  const playerLevel = getPlayerLevel(getPlayerProgression(economy.snapshot?.progression).xp);
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
   const gameNotice = game.errorCode === "GAME_STARTING" ? "Получаем разрешение на игру. Первые нажатия в очереди; продолжить можно после подключения."
     : game.errorCode === "QUEUE_FULL" ? "Очередь на устройстве заполнена. Дождитесь отправки сохранённых нажатий, прежде чем продолжать."
@@ -1681,7 +1684,7 @@ function CheckInContent() {
               <div className={styles.nameRow}><strong><PlayerName name={me?.user.displayName} tag={me?.user.tag} /></strong></div>
               <div className={styles.identityBadges}>
                 {me && <BetaInfo key={me.user.publicId} ownerPublicId={me.user.publicId} />}
-                {game.progress && <GameLevelsButton lifetimeTaps={game.progress.lifetimeTaps} className={styles.levelBadge} />}
+                {economy.snapshot && <GameLevelsButton progression={economy.snapshot.progression} now={economy.now} className={styles.levelBadge} />}
               </div>
               <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
             </div>
@@ -1889,6 +1892,7 @@ function CheckInContent() {
           </div>
 
           {activeView === "check-in" && <div className={styles.statusBlock}>
+            <TapBoostIndicator snapshot={economy.snapshot} now={economy.now} />
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
               active={homeControlsActive}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}
@@ -1903,7 +1907,7 @@ function CheckInContent() {
             </CheckInReceipt>
             {me ? <StatusEditor me={me} nowMs={adjustedNow} isOnline={isOnline} onUpdated={syncMeSnapshot} onSessionLost={loseSession} open={statusOpen && homeControlsActive} onOpenChange={setStatusOpen} /> : null}
             <span className={styles.srOnly}>
-              Рекорд в аккаунте: {game.progress?.bestSeries ?? 0}. Уровень {clickerLevel.level}, {clickerLevel.title}.
+              Рекорд в аккаунте: {game.progress?.bestSeries ?? 0}. Уровень {playerLevel.level}, {playerLevel.title}.
               Серверная отметка: {serverStatus}.
             </span>
           </div>}
@@ -1955,17 +1959,16 @@ function CheckInContent() {
           onOpenGame={openGame}
           gameNotice={gameNotice}
           gameLoaded={Boolean(game.progress)}
+          progression={economy.snapshot?.progression}
           gamePendingTaps={game.pendingTaps}
           legacyGame={legacyGame}
-          onRefreshGame={() => { void game.refresh(); }}
+          onRefreshGame={() => { void game.refresh(); void economy.refresh(); }}
           onRewardsClaimed={() => { void economy.refresh(); }}
           nowMs={adjustedNow}
           isOnline={isOnline}
           clickerStats={{
             bestSeries: game.progress?.bestSeries ?? 0,
             lifetimeTaps: game.progress?.lifetimeTaps ?? 0,
-            level: clickerLevel,
-            levelProgress: clickerLevelProgress,
           }}
           onUpdated={(identity) => {
             syncMeSnapshot(identity);
@@ -2025,7 +2028,7 @@ function CheckInContent() {
         }}
         onDevBotsChanged={() => { void refreshPeople(); }} onDevVisitBot={target => { void visitDevBot(target); }}
         onOpenPeople={() => { worldPeopleReturn.current = true; closeWorld(); selectView("people"); }}
-        level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
+        level={playerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
       {me && screen === "home" && <MailboxDialog key={`mailbox:${me.user.publicId}`} mailbox={mailbox} />}
       {me && screen === "home" && <MailboxNotifications key={`mailbox-notifications:${me.user.publicId}`} mailbox={mailbox} />}

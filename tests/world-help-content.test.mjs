@@ -11,7 +11,8 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 const { fishingClassOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const { constructionTimePearlPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
-const { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
+const { CLICKER_IDLE_RESET_MS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
+const { PLAYER_LEVELS } = await vite.ssrLoadModule("/features/economy/domain/player-levels.ts");
 const { progressionRewardsCatalog } = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
 const topics = worldHelpTopics();
 const topic = id => {
@@ -412,8 +413,8 @@ test("campfire and mining guidance matches compact categories, duration filters 
     assert.ok(answer("campfire").includes(`«${label}»`));
   assert.match(answer("campfire"), /работы остаются видны при любом фильтре/);
   assert.match(answer("campfire"), /Рыбный рецепт сначала откроет выбор видов.*«Готовить»/);
-  assert.match(answer("mining"), /Выберите нужный ресурс.*один запуск даёт один предмет/);
-  assert.match(answer("mining"), /часовых и ночных партий больше нет/);
+  assert.match(answer("mining"), /Выберите ресурс и количество: 1, 5, 10.*до 100/);
+  assert.match(answer("mining"), /партию последовательно.*после закрытия приложения/);
   assert.match(answer("mining"), /Улучшения открывают новые материалы/);
   assert.match(answer("fishing"), /три ячейки: удочка, крючок, наживка/);
   assert.match(answer("fishing"), /Тап по снасти выбирает её, без покупки и отправления/);
@@ -421,7 +422,8 @@ test("campfire and mining guidance matches compact categories, duration filters 
 
 test("timers, production slots and prices derive from gameplay catalogs", () => {
   assert.ok(answer("check-in").includes(`${CLICKER_IDLE_RESET_MS / 1000} секунд`));
-  assert.ok(answer("level").includes(`уровней ${CLICKER_LEVELS.length}`));
+  assert.ok(answer("level").includes(`уровней ${PLAYER_LEVELS.length}`));
+  assert.match(answer("level"), /за общий XP.*постройки.*добычу.*выполненные заказы/);
   assert.ok(answer("resources").includes(`${economyCatalog.localBuyer.payoutBps / 100}%`));
   for (const upgrade of economyCatalog.productionSlots.upgrades) {
     assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
@@ -470,14 +472,16 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.match(answer("second-stage-orders"), /не исчезают и не заменяются/);
   assert.match(answer("second-house-stage"), /50 мест/);
   assert.match(answer("second-house-stage"), /один предмет/);
-  assert.match(answer("mining"), /одну глину за три минуты/);
-  assert.match(answer("mining"), /одну отдельную очередь без платных слотов/);
-  assert.match(answer("mining"), /Мохлик может гулять, рыбачить и собирать ягоды одновременно/);
-  assert.match(answer("mining"), /Обед Мохлика не ускоряет шахту/);
-  assert.match(answer("mining"), /Выберите нужный ресурс.*один запуск даёт один предмет/);
+  assert.match(answer("mining"), /Камень и глина: одна штука за три минуты до бонусов/);
+  assert.match(answer("mining"), /Одна бесплатная очередь/);
+  assert.match(answer("mining"), /Мохлик свободен для других занятий/);
+  assert.match(answer("mining"), /Обед Мохлика не действует на шахтёра/);
+  assert.match(answer("mining"), /Выберите ресурс и количество/);
   assert.doesNotMatch(answer("mining"), /Дольше 1 ч|Смешанные смены/);
-  assert.match(answer("mining"), /получение и отмена.*Месте 1.*над карточками ресурсов/);
-  assert.match(answer("mining"), /У начатой работы видны добыча и оставшееся время/);
+  assert.match(answer("mining"), /«Забрать готовое».*оставшаяся партия продолжает работу/);
+  assert.match(answer("mining"), /видны готовая часть и время всей партии/);
+  assert.match(answer("mining-control"), /затем подтвердите «Остановить».*готовая останется/);
+  assert.match(answer("mining-control"), /столько готовой добычи, сколько помещается.*Остаток сохранится/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
 });
 

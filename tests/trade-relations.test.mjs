@@ -131,7 +131,8 @@ test("v2 migration preserves exact old IDs goods money and zero XP while adding 
   const coins = state.wallet.coins;
   apply(state, "complete_resident_order", board.offers[2].id);
   assert.equal(state.wallet.coins, coins + 180); assert.equal(state.tradeRelations.reputation.builder ?? 0, 0);
-  assert.equal(relations.tradeActivityBps(state, "builder", catalog, now), 2500, "the old paid basket is still real help without retroactive XP");
+  assert.equal(relations.tradeActivityBps(state, "builder", catalog, now), 10000, "old activity records no longer gate the permanent rank");
+  assert.deepEqual(state.tradeRelations.activity, {}, "legacy delivery does not create a decaying support meter");
   assert.equal(state.residentOrders.slots[2].retired, true);
   assert(!food.residentOrderBoard(state, now).offers.some(offer => offer.slot === 2));
   const nextCycle = food.residentOrderBoard(state, now + catalog.food.orders.refreshSeconds * 1000);

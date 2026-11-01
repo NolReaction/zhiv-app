@@ -382,10 +382,11 @@ object EconomyRules {
      * In particular, claiming a new building must not reroll previously displayed cards. */
     fun apply(input: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap(),
         legacyHistory: Set<String> = emptySet()): Pair<EconomyState, String> {
-        val known = EconomyItemUnlocks.persist(EconomyFishInventory.state(input), legacyHistory + reservedItems.filterValues { it > 0 }.keys)
+        val known = EconomyItemUnlocks.persist(EconomyFishInventory.state(EconomyTapBoost.settle(input, now)), legacyHistory + reservedItems.filterValues { it > 0 }.keys)
         val state = EconomyStageOrders.pin(known, now = now)
         val (next, message) = applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
-        return EconomyItemUnlocks.persist(EconomyStageOrders.pin(next, now = now)) to message
+        val progressed = EconomyPlayerProgression.award(state, next, command, now)
+        return EconomyItemUnlocks.persist(EconomyStageOrders.pin(progressed, now = now)) to message
     }
 
     private fun requireClaimReady(job: EconomyJob, now: Instant) {
@@ -426,7 +427,7 @@ object EconomyRules {
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot") && command.totalPrice != 0L) invalidEconomy()
-        if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
+        if (command.action !in setOf("start_production", "start_exploration", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage" -> EconomyShipOrders.command(state, command, now, reservedItems)
             "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
@@ -534,6 +535,7 @@ object EconomyRules {
                 if (exploration.requiredBuildings.containsKey("quarry") && state.jobs.any { it.kind == "construction" && it.targetId == "quarry" })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения шахты и заберите результат")
                 val mining = exploration.activity == "mining"
+                if ((!mining && command.quantity != 1L) || command.quantity > EconomyMiningBatches.LIMIT) invalidEconomy()
                 if (mining) requireMinerAvailable(state) else requireActorAvailable(state, now)
                 val tackle = state.fishing
                 val spec = catalog.fishing
@@ -559,9 +561,10 @@ object EconomyRules {
                 val rareClock = if (mining) state.minerRareDropState else state.rareDropState
                 val rareCount = if (rareSpec != null && rareClock != null && rareClock.remainingSeconds <= tripSeconds) 1L else 0L
                 val cost = if (special && tackle.equippedBaitId != null) exploration.cost.copy(items = exploration.cost.items +
-                    (tackle.equippedBaitId to ((exploration.cost.items[tackle.equippedBaitId] ?: 0) + 1))) else exploration.cost
+                    (tackle.equippedBaitId to ((exploration.cost.items[tackle.equippedBaitId] ?: 0) + 1))) else if (mining)
+                    EconomyCost(exploration.cost.coins * command.quantity, exploration.cost.items.mapValues { it.value * command.quantity }) else exploration.cost
                 val maximumFind = exploration.finds?.entries?.maxOf { it.quantity } ?: 0L
-                if (exploration.rewards.values.sum() + maximumFind + rareCount > storage(state).capacity)
+                if (exploration.rewards.values.sum() * (if (mining) command.quantity else 1L) + maximumFind + rareCount > storage(state).capacity)
                     economyFailure("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Сначала расширьте склад.")
                 val spent = spend(state, cost)
                 // Validate every deterministic rejection before consuming private entropy.
@@ -579,10 +582,11 @@ object EconomyRules {
                 val rare = rareSpec?.let { EconomyRareDrops.prepare(rareClock, tripSeconds, it) }
                 rare?.let { rewards.putAll(it.rewards) }
                 val job = EconomyJob(id, "exploration", exploration.id, startedAt = now.toString(),
-                    finishesAt = now.plusSeconds(tripSeconds).toString(), rewards = rewards.filterValues { it > 0 }, cost = cost,
+                    finishesAt = now.plusSeconds(tripSeconds * (if (mining) command.quantity else 1L)).toString(), rewards = rewards.filterValues { it > 0 }, cost = cost,
                     catalogVersion = catalog.version, fishing = fishingCatch, rareDrop = rare?.delivery, meal = meal,
                     actorId = if (mining) "miner" else "mochlik", tradeSpeedBps = tradeSpeed,
-                    expeditionFinds = exploration.finds?.let { EconomyExpeditionLoot.draw(it) })
+                    expeditionFinds = exploration.finds?.let { EconomyExpeditionLoot.draw(it) },
+                    miningBatch = if (mining) EconomyMiningBatch(command.quantity.toInt(), unitSeconds = tripSeconds, unitRewards = exploration.rewards) else null)
                 spent.copy(jobs = state.jobs + job, fishingCastSeed = seed,
                     food = heroTrip?.food ?: state.food,
                     rareDropState = if (mining) state.rareDropState else rare?.clock ?: state.rareDropState,
@@ -607,6 +611,7 @@ object EconomyRules {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
                 if (job.kind != "exploration") economyFailure("ECONOMY_CANCEL_KIND", "Можно отменить только вылазку или работу в шахте")
                 if (isMinerJob(job)) {
+                    if (job.miningBatch != null) return EconomyMiningBatches.cancel(state, job, now, reservedItems)
                     if (job.cost.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) economyFailure("ECONOMY_CAPACITY", "Кошелёк заполнен")
                     val refunded = state.copy(wallet = state.wallet.copy(coins = state.wallet.coins + job.cost.coins),
                         inventory = addItems(state.inventory, job.cost.items), jobs = state.jobs.filterNot { it.id == job.id })
@@ -684,6 +689,7 @@ object EconomyRules {
             }
             "claim_job" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
+                if (isMinerJob(job) && job.miningBatch != null) return EconomyMiningBatches.claim(state, job, now, reservedItems)
                 if (job.collection?.batchId != null) economyFailure("ECONOMY_COLLECTION_BATCH_REQUIRED", "Заберите весь собранный урожай вместе")
                 claimJob(state, job, now, reservedItems) to
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"

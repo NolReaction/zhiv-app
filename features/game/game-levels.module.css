@@ -41,6 +41,7 @@
 .levels strong { font-size: 13px; overflow-wrap: anywhere; }
 .levels li > div > span { font-size: 11px; color: #aebda0; font-variant-numeric: tabular-nums; }
 .levels small { font: inherit; color: #c4ceae; }
+.levels .levelReward { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; color: #e0d7bb; }
 .currentTag { flex: 0 0 auto; margin-left: auto; color: #d4e7bf; font-size: 10px; white-space: nowrap; }
 @media (max-width: 360px) {
   .stage { flex-direction: column; gap: 3px; padding: 6px 2px; }

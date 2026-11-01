@@ -21,7 +21,7 @@ reset_game_progress_with_rehearsal() (
   cleanup_reset() {
     local result=$?
     if $restore_created; then dc exec -T db dropdb -U zhiv --if-exists "$restore_db" || true; fi
-    if $reset_committed; then echo 'The 0.7.1 game reset transaction completed. Repeating it preserves new progress.'; fi
+    if $reset_committed; then echo 'The 0.7.2 game reset transaction completed. Repeating it preserves new progress.'; fi
     if $backup_verified; then
       echo "Verified original backup retained: $backup_file"
     else
@@ -40,13 +40,13 @@ reset_game_progress_with_rehearsal() (
     --no-owner --no-acl --exit-on-error < "$backup_file"
   backup_verified=true
 
-  echo 'Rehearsing the 0.7.1 reset on the restored copy, including preservation checks.'
+  echo 'Rehearsing the 0.7.2 reset on the restored copy, including preservation checks.'
   dc exec -T db psql -X -U zhiv -d "$restore_db" -v ON_ERROR_STOP=1 \
     -v apply_reset=on < scripts/reset-game-progress.sql
   dc exec -T db dropdb -U zhiv "$restore_db"
   restore_created=false
 
-  echo 'Backup and rehearsal passed. Applying the one-time 0.7.1 fresh start.'
+  echo 'Backup and rehearsal passed. Applying the one-time 0.7.2 fresh start.'
   dc exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 \
     -v apply_reset=on < scripts/reset-game-progress.sql
   reset_committed=true

@@ -15,6 +15,7 @@ import java.util.UUID
     val homeLevel: Int, val completedExplorations: Long,
     val achievements: List<GuestAchievement>, val collections: GuestCollections, val serverTime: String,
     val tapStats: GuestTapStats? = null,
+    val playerXp: Long = 0,
 )
 interface GuestProfileRepository {
     suspend fun profile(sessionHash: ByteArray, circleId: UUID): GuestProfile

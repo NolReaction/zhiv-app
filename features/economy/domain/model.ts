@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { playerProgressionSchema } from "./player-progression-model";
 import { economyShipSchema, type EconomyShip } from "./ship-model";
+import { economyTapBoostSchema, type EconomyTapBoost } from "./tap-boost-model";
 import catalogJson from "@/apps/api/src/main/resources/world/economy-catalog.json";
 import { hasGardenBerryReward } from "./garden-berries";
 import { wardrobeItems } from "@/features/world/domain/wardrobe";
@@ -372,6 +374,7 @@ export const economyBookCollectionSchema = z.object({
 }).prefault({ finds: [], travelSeconds: 0, quarrySeconds: 0 });
 export const economyProgressionSchema = z.object({
   routes: quantities.prefault({}), recipes: quantities.prefault({}), collections: economyBookCollectionSchema,
+  player: playerProgressionSchema.optional(),
 }).prefault({ routes: {}, recipes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } });
 export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGranted: count.max(5000), woodGranted: count.max(30), stoneGranted: count.max(30) });
 export const economyJobSchema = z.object({
@@ -379,6 +382,8 @@ export const economyJobSchema = z.object({
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
   rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
   actorId: z.enum(["mochlik", "miner"]).nullish(),
+  miningBatch: z.object({ quantity: count.min(1).max(100), claimed: count.max(99), unitSeconds: count.positive().max(31_536_000), unitRewards: quantities })
+    .refine(batch => batch.claimed < batch.quantity, "Mining batch must retain an unclaimed unit").nullish(),
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.prefault("bare_hook"), baitId: id.nullable(), fishId: id,
     catchRevealed: z.boolean().nullish() }).nullish(),
@@ -389,6 +394,7 @@ export const economyJobSchema = z.object({
   tradeSpeedBps: count.max(1000).optional(),
   meal: z.object({ itemId: id, consumer: z.enum(["hero", "builder"]), speedBps: count.max(10000), workSeconds: count.positive().max(31_536_000).optional() }).nullish(),
 }).refine(job => !job.meal?.workSeconds || job.meal.consumer === "hero", "Only hero meals have active work")
+  .refine(job => !job.miningBatch || job.kind === "exploration" && job.actorId === "miner", "Batches belong to the miner")
   .refine(job => !job.expeditionFinds || job.kind === "exploration", "Finds belong to an exploration")
   .refine(job => !job.actorId || job.kind === "exploration", "Only exploration jobs have a saved actor")
   .refine(job => !job.tradeSpeedBps || job.kind === "construction" || job.kind === "production" && job.targetId === "woodlot"
@@ -413,6 +419,7 @@ export const economyViewSchema = z.object({
   wardrobe: z.array(id).max(100).prefault(["moss", "amber_scarf"]),
   completedExplorations: count, storage: economyStorageSchema, fishing: economyFishingSchema, progression: economyProgressionSchema,
   food: economyFoodSchema, residentOrders: economyResidentOrdersSchema, tradeRelations: economyTradeRelationsSchema, ship: economyShipSchema,
+  tapBoost: economyTapBoostSchema.prefault({}),
 });
 const commandBase = {
   requestId: uuid, ownerPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/), expectedRevision: count.max(Number.MAX_SAFE_INTEGER - 1), targetId: id,
@@ -468,7 +475,7 @@ export type EconomyFood = z.infer<typeof economyFoodSchema>;
 export type EconomyResidentOrders = z.infer<typeof economyResidentOrdersSchema>;
 export type EconomyTradeRelations = z.infer<typeof economyTradeRelationsSchema>;
 export type EconomyWeeklyOrder = z.infer<typeof economyWeeklyOrderSchema>;
-export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { marketSlots?: number; unlockedItems?: string[]; itemUnlockVersion?: 0 | 1; tutorialOrder?: EconomyTutorialOrder; stageOrders?: EconomyStageOrders; workshopStarterClaimed?: boolean; productionSlots?: Record<string, number>; wardrobe?: string[]; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50; fishingShop?: EconomyFishingShop | null; leaftailShop?: EconomyLeaftailShop; fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null; minerRareDropState?: EconomyRareDropClock | null; food?: EconomyFood; residentOrders?: EconomyResidentOrders; tradeRelations?: EconomyTradeRelations; ship?: EconomyShip };
+export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { marketSlots?: number; unlockedItems?: string[]; itemUnlockVersion?: 0 | 1; tutorialOrder?: EconomyTutorialOrder; stageOrders?: EconomyStageOrders; workshopStarterClaimed?: boolean; productionSlots?: Record<string, number>; wardrobe?: string[]; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50; fishingShop?: EconomyFishingShop | null; leaftailShop?: EconomyLeaftailShop; fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null; minerRareDropState?: EconomyRareDropClock | null; food?: EconomyFood; residentOrders?: EconomyResidentOrders; tradeRelations?: EconomyTradeRelations; ship?: EconomyShip; tapBoost?: EconomyTapBoost };
 
 export type EconomyFishing = z.infer<typeof economyFishingSchema>;
 export type EconomyFishingCatalog = z.infer<typeof economyFishingCatalogSchema>;

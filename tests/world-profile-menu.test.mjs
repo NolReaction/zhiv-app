@@ -43,6 +43,7 @@ function profile(overrides = {}) {
     economy: { snapshot: freshEconomy() }, displayName: "Дима", level: 12, bestStreakDays: 21, observation,
     onOpenMood: () => calls.push("open-mood"), onCall: () => calls.push("call"), onTakeOver: () => calls.push("takeover"), onTabChange: tab => calls.push(tab), ...overrides,
   };
+  props.economy = { now: Date.parse("2026-11-01T12:00:00Z"), ...props.economy };
   return { ...inspect(WorldProfileContent(props)), calls, props };
 }
 const buttonText = button => Children.toArray(button.props.children).filter(child => typeof child === "string").join("");

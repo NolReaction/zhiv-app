@@ -123,7 +123,7 @@ test("meal saving text compares against existing friendship speed instead of pro
   assert.equal(mealSpeedDescription(2500, 1000), "+25% скорости · время ≈ −18,5%");
 });
 
-test("a resumed tab uses the current activity clock for mining previews as well as its benefit badge", () => {
+test("a resumed tab keeps the earned mining bonus after a long absence", () => {
   const state = fresh({ kamneshmyg: 1600 });
   const route = economyCatalog.explorations.find(route => route.id === "quarry_stone");
   const economy = controller(state);
@@ -131,9 +131,11 @@ test("a resumed tab uses the current activity clock for mining previews as well 
   const shared = { sectorId: "caves", economy, state: economy.snapshot, exploring: false, onSelectRoute() {}, onOpenPantry() {} };
   const preparation = render(WorldExpeditionSector, { ...shared, selectedRoute: route.id });
   const listing = render(WorldExpeditionSector, { ...shared, selectedRoute: null });
-  assert.doesNotMatch(preparation, /data-mining-trade-bonus/);
-  assert(preparation.includes(miningDurationLabel(route.seconds)));
-  assert(listing.includes(miningDurationLabel(route.seconds)));
+  const expected = Math.ceil(route.seconds * 10000 / 11000);
+  assert.match(preparation, /data-mining-trade-bonus/);
+  assert.match(preparation, /Камнешмыг: \+10%/);
+  assert(preparation.includes(miningDurationLabel(expected)));
+  assert(listing.includes(miningDurationLabel(expected)));
   apply(state, "start_exploration", route.id, economy.now);
-  assert.equal(elapsed(state.jobs[0], economy.now), route.seconds);
+  assert.equal(elapsed(state.jobs[0], economy.now), expected);
 });

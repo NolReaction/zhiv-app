@@ -15,12 +15,12 @@ const { orderDifficulty } = await vite.ssrLoadModule("/features/economy/domain/o
 const now = Date.parse("2026-10-26T12:00:00Z"), day = 86400000;
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
 
-test("new accounts and rank-only imports have no free activity; previews do not refresh it", () => {
+test("rank-only profiles receive their permanent bonus and previews do not mutate history", () => {
   const state = fresh();
   state.tradeRelations.reputation.builder = 1600;
   const before = structuredClone(state);
   assert.equal(relations.tradeRelationProgress(state, "builder", catalog, now).rankBonusBps, 1000);
-  assert.equal(relations.tradeRelationBonusBps(state, "builder", catalog, now), 0);
+  assert.equal(relations.tradeRelationBonusBps(state, "builder", catalog, now), 1000);
   assert.deepEqual(state, before);
   for (const invalid of [-1, NaN, Infinity, .5]) {
     assert.equal(relations.awardTradeOrderXp(state, "builder", invalid, now), 0);
@@ -28,14 +28,14 @@ test("new accounts and rank-only imports have no free activity; previews do not 
   }
 });
 
-test("activity retains three full days then decays for seven while earned ranks remain permanent", () => {
+test("earned rank and its full bonus remain stable across long absences", () => {
   const state = fresh(); state.tradeRelations.reputation.builder = 1600;
   for (let index = 1; index <= 4; index++) {
     relations.awardTradeOrderXp(state, "builder", 10, now);
-    assert.equal(relations.tradeActivityBps(state, "builder", catalog, now), index * 2500);
+    assert.equal(relations.tradeActivityBps(state, "builder", catalog, now), 10000);
   }
   const before = structuredClone(state);
-  for (const [elapsed, bps] of [[0, 10000], [3, 10000], [6.5, 5000], [10, 0], [365, 0]]) {
+  for (const [elapsed, bps] of [[0, 10000], [3, 10000], [6.5, 10000], [10, 10000], [365, 10000]]) {
     const progress = relations.tradeRelationProgress(state, "builder", catalog, now + elapsed * day);
     assert.equal(progress.activityBps, bps); assert.equal(progress.bonusBps, bps / 10);
     assert.equal(progress.xp, 1640); assert.equal(progress.rankIndex, 4);
@@ -43,14 +43,14 @@ test("activity retains three full days then decays for seven while earned ranks 
   assert.deepEqual(state, before);
 });
 
-test("real help restores activity after daily XP is exhausted while purchases and clock rollback do not", () => {
+test("capped help and purchases preserve legacy support records without reducing the permanent bonus", () => {
   const state = fresh(), at = now + 10 * day;
   state.tradeRelations.reputation.builder = 1600;
   state.tradeRelations.activity.builder = { pointsBps: 10000, updatedAt: new Date(now).toISOString() };
   state.tradeRelations.dailyCycle = Math.floor(at / day);
   state.tradeRelations.dailyOrderXp.builder = catalog.tradeRelations.dailyOrderXpCap;
   assert.equal(relations.awardTradeOrderXp(state, "builder", 20, at), 0);
-  assert.equal(relations.tradeActivityBps(state, "builder", catalog, at), 2500);
+  assert.equal(relations.tradeActivityBps(state, "builder", catalog, at), 10000);
   assert.equal(state.tradeRelations.reputation.builder, 1600);
   const saved = structuredClone(state.tradeRelations.activity);
   relations.awardTradePurchaseXp(state, "plesk", at);
@@ -61,7 +61,7 @@ test("real help restores activity after daily XP is exhausted while purchases an
   assert.equal(relations.tradeActivityBps(state, "builder", catalog, at), 10000);
 });
 
-test("a rejected or repeated delivery cannot recharge support without consuming its actual basket", () => {
+test("a rejected or repeated delivery cannot advance reputation or seasonal contribution", () => {
   const state = fresh();
   state.inventory = {};
   const offer = food.residentOrderBoard(state, now).offers.find(offer => offer.residentId === "builder");
@@ -71,12 +71,14 @@ test("a rejected or repeated delivery cannot recharge support without consuming 
   assert.throws(run, { code: "ECONOMY_RESOURCES" });
   assert.deepEqual(state.tradeRelations.activity, {});
   state.inventory = { ...offer.items }; run();
-  assert.equal(relations.tradeActivityBps(state, "builder", catalog, now), 2500);
+  assert.equal(relations.tradeActivityBps(state, "builder", catalog, now), 10000);
+  assert.deepEqual(state.tradeRelations.activity, {});
+  const paid = structuredClone({ reputation: state.tradeRelations.reputation, player: state.progression.player });
   assert.throws(run, { code: "ECONOMY_ORDER_CHANGED" });
-  assert.equal(relations.tradeActivityBps(state, "builder", catalog, now), 2500);
+  assert.deepEqual({ reputation: state.tradeRelations.reputation, player: state.progression.player }, paid);
 });
 
-test("legacy local activity is anchored once and a fresh empty map never becomes a compatibility grant", () => {
+test("legacy activity migration remains readable while permanent rank does not depend on its age", () => {
   const state = fresh(); state.tradeRelations.reputation.builder = 800;
   relations.migrateTradeActivity(state, now);
   assert.deepEqual(state.tradeRelations.activity, {});
@@ -86,7 +88,8 @@ test("legacy local activity is anchored once and a fresh empty map never becomes
   const saved = structuredClone(state.tradeRelations.activity);
   relations.migrateTradeActivity(state, now + 30 * day);
   assert.deepEqual(state.tradeRelations.activity, saved);
-  assert.equal(relations.tradeActivityBps(state, "builder", catalog, now + 30 * day), 0);
+  assert.equal(relations.tradeActivityBps(state, "builder", catalog, now + 30 * day), 10000);
+  assert.equal(relations.tradeRelationBonusBps(state, "builder", catalog, now + 30 * day), 700);
 });
 
 test("weekly tiers expose choice and pay only their frozen final pearl reward", () => {
@@ -106,16 +109,18 @@ test("weekly tiers expose choice and pay only their frozen final pearl reward", 
   }
 });
 
-test("equal current support can retain different grace horizons and previews preserve the earned timestamp", () => {
+test("historical explicit activity configuration remains readable without changing current permanent bonuses", () => {
+  const legacyCatalog = { ...catalog, tradeRelations: { ...catalog.tradeRelations, activity: { graceSeconds: 259200, decaySeconds: 604800, recoveryBps: 2500 } } };
+  assert.equal(catalog.tradeRelations.activity, undefined);
   const older = fresh(), newer = fresh();
   older.tradeRelations.activity.builder = { pointsBps: 10000, updatedAt: new Date(now).toISOString() };
   newer.tradeRelations.activity.builder = { pointsBps: 10000, updatedAt: new Date(now + 2 * day).toISOString() };
-  for (const state of [older, newer]) assert.equal(relations.tradeActivityBps(state, "builder", catalog, now + 3 * day), 10000);
-  assert.equal(relations.tradeActivityBps(older, "builder", catalog, now + 4 * day), 8572);
-  assert.equal(relations.tradeActivityBps(newer, "builder", catalog, now + 4 * day), 10000);
-  assert.equal(relations.tradeActivityBps(newer, "builder", catalog, now + 12 * day), 0);
+  for (const state of [older, newer]) assert.equal(relations.tradeActivityBps(state, "builder", legacyCatalog, now + 3 * day), 10000);
+  assert.equal(relations.tradeActivityBps(older, "builder", legacyCatalog, now + 4 * day), 8572);
+  assert.equal(relations.tradeActivityBps(newer, "builder", legacyCatalog, now + 4 * day), 10000);
+  assert.equal(relations.tradeActivityBps(newer, "builder", legacyCatalog, now + 12 * day), 0);
   assert.equal(newer.tradeRelations.activity.builder.updatedAt, new Date(now + 2 * day).toISOString());
   newer.tradeRelations.activity.builder = { pointsBps: 5000, updatedAt: new Date(now + 6 * day).toISOString() };
-  for (const state of [older, newer]) assert.equal(relations.tradeActivityBps(state, "builder", catalog, now + 6.5 * day), 5000);
-  assert.equal(relations.tradeActivityBps(newer, "builder", catalog, now + 9 * day), 5000);
+  for (const state of [older, newer]) assert.equal(relations.tradeActivityBps(state, "builder", legacyCatalog, now + 6.5 * day), 5000);
+  assert.equal(relations.tradeActivityBps(newer, "builder", legacyCatalog, now + 9 * day), 5000);
 });

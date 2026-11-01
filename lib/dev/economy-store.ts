@@ -23,6 +23,8 @@ import { persistEconomyItemUnlocks, unlockedEconomyItems } from "@/features/econ
 import { foodState } from "@/features/economy/domain/food";
 import { migrateTradeActivity, tradeRelationsState } from "@/features/economy/domain/trade-relations";
 import { shipOrdersState } from "@/features/economy/domain/ship-orders";
+import { creditEconomyTapBoost, settleEconomyTapBoost } from "@/features/economy/domain/tap-boost";
+import { emptyTapBoost } from "@/features/economy/domain/tap-boost-model";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import { applyDevShipCommand } from "@/features/economy/dev/dev-ship";
@@ -95,6 +97,7 @@ function normalizeCurrency(value: Profile) {
 }
 function view(owner: string, value: Profile, now: number): EconomyView {
   const state = structuredClone(value.state);
+  settleEconomyTapBoost(state, now);
   ensureStageOrders(state, economyCatalog, now);
   const unlockedItems = unlockedEconomyItems(state, legacyItemHistory(owner));
   delete state.fishingCastSeed;
@@ -104,13 +107,25 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   state.jobs = state.jobs.map(job => publicEconomyJob(job, now));
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
-    tradeRelations: tradeRelationsState(state), ship: shipOrdersState(state),
+    tradeRelations: tradeRelationsState(state), ship: shipOrdersState(state), tapBoost: state.tapBoost ?? emptyTapBoost(),
     marketSlots: marketSlotCount(state), unlockedItems,
     productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, leaftailShop: state.leaftailShop ?? { cycle: -1, purchased: {} }, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
   if (value.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
   value.revision++;
+}
+
+/** The authenticated game store invokes this only after its one-use batch receipt check. */
+export function creditDevEconomyTapBoost(owner: string, acceptedTaps: number, now: number) {
+  const value = store().profiles.get(owner);
+  if (!value || acceptedTaps <= 0) return;
+  const next = structuredClone(value.state);
+  // Clock-only writes do not invalidate a material command created just before a tap.
+  if (creditEconomyTapBoost(next, acceptedTaps, now)) {
+    value.state.jobs = next.jobs;
+    value.state.tapBoost = next.tapBoost;
+  }
 }
 function receipt(value: Profile, owner: string, command: ReceiptCommand, now: number, scope = ""): EconomyResult | null {
   if (owner !== command.ownerPublicId) return fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите хозяйство");

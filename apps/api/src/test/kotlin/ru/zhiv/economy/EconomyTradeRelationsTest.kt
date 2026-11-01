@@ -67,8 +67,9 @@ class EconomyTradeRelationsTest {
         assertTrue(migrated.offers.size <= 7)
         val completed = apply(pinned, "complete_resident_order", before.first().id)
         assertEquals(0L, completed.tradeRelations.reputation[before.first().residentId] ?: 0L)
-        assertEquals(2500, completed.tradeRelations.activity[before.first().residentId]!!.pointsBps,
-            "A valid legacy delivery restores support while its promised XP stays zero")
+        assertNull(completed.tradeRelations.activity[before.first().residentId],
+            "A valid legacy delivery keeps its zero XP and no longer creates decaying support")
+        assertEquals(10000, EconomyTradeRelations.activityBps(completed.tradeRelations, before.first().residentId, now))
         val fresh = EconomyFood.normalizedOrders(completed, now.plusSeconds(catalog.food.orders.refreshSeconds))
         assertEquals(5, fresh.slots.size)
         assertEquals(3, fresh.version)

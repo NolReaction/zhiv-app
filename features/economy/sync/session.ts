@@ -245,7 +245,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
   }
   function adopt(value: EconomyView) {
     if (value.ownerPublicId !== owner) { onSessionLost(); return false; }
-    if (view.snapshotConfirmed && view.snapshot && value.revision < view.snapshot.revision) return true;
+    if (view.snapshotConfirmed && view.snapshot && (value.revision < view.snapshot.revision
+      || value.revision === view.snapshot.revision && Date.parse(value.serverTime) < Date.parse(view.snapshot.serverTime))) return true;
     serverClock = Date.parse(value.serverTime); localClock = performance.now();
     publish({ snapshot: value, snapshotConfirmed: true });
     if (journalReady && !journalFault) persistProduction();

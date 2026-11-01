@@ -33,7 +33,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId);
-const { MiningProduction } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-mining-production.tsx");
+const { MiningProduction, MiningBatchCard } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-mining-production.tsx");
 const { ActiveExpedition } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.parse("2026-10-27T10:00:00Z");
@@ -45,6 +45,30 @@ const controller = (snapshot, calls = []) => ({ snapshot, now, error: null, busy
 function nodes(tree) { const out = []; function walk(value) { if (!isValidElement(value)) return; out.push(value); Children.forEach(value.props.children, walk); } walk(tree); return out; }
 function overview(economy, props = {}) { hooks.render(); const tree = MiningProduction({ economy, state: economy.snapshot, onOpenPantry() {}, ...props }); return { tree, nodes: nodes(tree), html: renderToStaticMarkup(tree) }; }
 function active(economy, saved, props = {}) { hooks.render(); const tree = ActiveExpedition({ economy, state: economy.snapshot, job: saved, compact: true, onOpenPantry() {}, confirmationKey: null, onConfirmation() {}, onCancellationSent() {}, ...props }); return { tree, nodes: nodes(tree), html: renderToStaticMarkup(tree) }; }
+
+test("quantity presets launch one sequential batch and show the total time", () => {
+  hooks.reset(); const calls = [], economy = controller(state(), calls);
+  let view = overview(economy); hooks.flush();
+  view.nodes.find(node => node.type === "button" && node.props.children === 10).props.onClick();
+  view = overview(economy); hooks.flush();
+  const button = view.nodes.find(node => node.props["data-route"] === "quarry_stone");
+  assert.match(button.props["aria-label"], /30/);
+  button.props.onClick(); button.props.onClick();
+  assert.deepEqual(calls, [["start_exploration", "quarry_stone", 10, 0]]);
+});
+
+test("batch card collects completed units while displaying the still-running queue", () => {
+  hooks.reset(); const calls = [], saved = job({ startedAt: new Date(now - 600_000).toISOString(), finishesAt: new Date(now + 1200_000).toISOString(),
+    miningBatch: { quantity: 10, claimed: 0, unitSeconds: 180, unitRewards: { stone: 1 } } });
+  const economy = controller(state({ jobs: [saved] }), calls);
+  hooks.render(); const tree = MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} });
+  const html = renderToStaticMarkup(tree), controls = nodes(tree);
+  assert.match(html, /Добыто 3 из 10/); assert.match(html, /Забрать готовое · 3/);
+  const collect = controls.find(node => node.props["data-production-control"]);
+  assert.equal(collect.props.disabled, false); collect.props.onClick(); collect.props.onClick();
+  assert.deepEqual(calls, [["claim_job", saved.id, 1, 0]]);
+  assert.match(html, /Остановить остаток/); assert.doesNotMatch(html, /Отказаться от находок|потеряны/);
+});
 
 test("the mine renders exactly one permanent place and one compact card for each actual resource", () => {
   hooks.reset(); const calls = [], economy = controller(state(), calls), view = overview(economy);

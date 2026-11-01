@@ -24,6 +24,7 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                 SELECT viewer.public_id AS owner_public_id, other.public_id, other.display_name,
                        COALESCE((ep.state#>>'{buildings,home}')::integer,1) AS home_level,
                        COALESCE((ep.state->>'completedExplorations')::bigint,0) AS explorations,
+                       COALESCE((ep.state#>>'{progression,player,xp}')::bigint,0) AS player_xp,
                        COALESCE(ep.state#>'{progression,collections,finds}','[]'::jsonb)
                            || COALESCE(wp.state->'collection','[]'::jsonb) AS finds,
                        COALESCE(ep.state#>'{fishing,catches}','{}'::jsonb) AS catches,
@@ -59,7 +60,8 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                             GuestProfileRules.collections(Json.decodeFromString<List<String>>(r.getString("finds")),
                                 Json.decodeFromString<Map<String,Long>>(r.getString("catches"))),
                             r.getObject("server_time",OffsetDateTime::class.java).toInstant().toString(),
-                            r.getObject("lifetime_taps")?.let { GuestTapStats(r.getLong("lifetime_taps"), r.getLong("best_series")) })
+                            r.getObject("lifetime_taps")?.let { GuestTapStats(r.getLong("lifetime_taps"), r.getLong("best_series")) },
+                            r.getLong("player_xp").coerceIn(0, 9_007_199_254_740_991L))
                     }
                 } finally { ids.free() }
             }

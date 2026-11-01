@@ -1,0 +1,14 @@
+.panel { position: relative; width: 100%; min-width: 0; overflow: hidden; border: 1px solid rgba(172, 205, 140, .22); border-radius: 14px; background: rgba(27, 42, 24, .72); color: #e5eedb; }
+.panel[data-active] { border-color: rgba(200, 224, 136, .5); background: linear-gradient(115deg, rgba(63, 84, 34, .65), rgba(27, 42, 24, .78)); }
+.summary { display: flex; min-height: 48px; align-items: center; gap: 9px; padding: 10px 12px 12px; cursor: pointer; list-style: none; }
+.summary::-webkit-details-marker { display: none; }
+.summary > svg { flex-shrink: 0; color: #d2e6a1; }
+.summary:focus-visible { outline: 2px solid #d2e6a1; outline-offset: -3px; border-radius: 12px; }
+.label { display: grid; gap: 3px; min-width: 0; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.label small { font-weight: 400; font-size: 10px; color: #c0ceb1; }
+.limit { margin-left: auto; flex-shrink: 0; font-size: 11px; color: #e2edbb; font-variant-numeric: tabular-nums; }
+.description { padding: 0 12px 9px; font-size: 11px; line-height: 1.5; color: #cbd9bf; }
+.description p { margin: 0 0 7px; }
+.track { position: absolute; inset: auto 0 0; height: 3px; background: rgba(11, 22, 8, .25); }
+.track span { display: block; width: var(--boost-fill, 0%); height: 100%; background: linear-gradient(90deg, #94bf78, #e5ecb0); transition: width 250ms ease; }
+@media (prefers-reduced-motion: reduce) { .track span { transition: none; } }

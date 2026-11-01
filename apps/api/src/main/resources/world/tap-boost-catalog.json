@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "maxCharge": 1000,
+  "maxSeconds": 60,
+  "secondsPerTap": 1,
+  "powerPoints": [
+    { "charge": 0, "powerBps": 0 },
+    { "charge": 1, "powerBps": 100 },
+    { "charge": 10, "powerBps": 300 },
+    { "charge": 50, "powerBps": 600 },
+    { "charge": 100, "powerBps": 900 },
+    { "charge": 250, "powerBps": 1300 },
+    { "charge": 500, "powerBps": 1700 },
+    { "charge": 1000, "powerBps": 2000 }
+  ]
+}

@@ -1,3 +1,5 @@
+import { capturePlayerProgression, awardPlayerProgression } from "./player-progression";
+import { settleEconomyTapBoost } from "./tap-boost";
 import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features/world/domain/wardrobe";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, recipeBuildingLevel, type EconomyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
@@ -24,6 +26,7 @@ import { canStartTutorialWorkshop } from "./workshop-starter";
 import { acceptWeeklyOrder, awardTradeOrderXp, awardTradePurchaseXp, tradePurchaseXpEligible, tradeRelationBonusBps, tradeRelationsState, tradeWorkDuration, tradeMealDuration, weeklyOrderBoard } from "./trade-relations";
 import { drawExpeditionFinds, expeditionJobRewards } from "./expedition-finds";
 import { createShipVoyage, SHIP_COMPLETION_PEARLS, shipOrdersConfig, shipOrdersState, shipOrdersUnlocked } from "./ship-orders";
+import { MINING_BATCH_LIMIT, miningBatchProgress, miningUnitDelivery } from "./mining-batch";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -137,6 +140,12 @@ function requireActorAvailable(state: EconomyState, intent: "departure" | "colle
 }
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}, rareRandom: RareRandomInteger = secureRareInteger): string {
+  const previousJobs = state.jobs, previousTapBoost = state.tapBoost;
+  if (state.tapBoost?.jobId) {
+    state.jobs = state.jobs.map(job => ({ ...job }));
+    settleEconomyTapBoost(state, now);
+  }
+  const playerBefore = capturePlayerProgression(state);
   const previousInventory = state.inventory;
   const previousFishing = state.fishing;
   try { normalizeFishStockInventory(state); }
@@ -151,7 +160,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
     ensureStageOrders(state, economyCatalog, now);
     message = applyEconomyTransition(state, command, now, jobId, reservedItems, rareRandom);
     ensureStageOrders(state, economyCatalog, now);
-  } catch (error) { state.inventory = previousInventory; state.fishing = previousFishing; state.stageOrders = previousStageOrders; state.tutorialOrder = previousTutorial; throw error; }
+  } catch (error) { state.jobs = previousJobs; if (previousTapBoost === undefined) delete state.tapBoost; else state.tapBoost = previousTapBoost; state.inventory = previousInventory; state.fishing = previousFishing; state.stageOrders = previousStageOrders; state.tutorialOrder = previousTutorial; throw error; }
   reconcileFishStock(state);
   // Pin the board before this command unlocks a new building. Failed commands
   // never migrate it, and an order command already supplied its next board.
@@ -159,6 +168,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
   state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...previousUnlocks])];
   state.itemUnlockVersion = 1;
   persistEconomyItemUnlocks(state);
+  awardPlayerProgression(playerBefore, state, command, now);
   return message;
 }
 
@@ -168,7 +178,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
   if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
-  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, finds?: EconomyCatalog["explorations"][number]["finds"]) => {
+  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds" | "miningBatch">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, finds?: EconomyCatalog["explorations"][number]["finds"]) => {
     if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) + Math.max(0, ...(finds?.entries.map(entry => entry.quantity) ?? [])) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
@@ -179,7 +189,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     const fishStockCost = cost === null ? {} : debit(state, cost, fishSelection, exactSpecies);
     state.jobs.push({ ...job, ...hiddenFinds, ...(Object.keys(fishStockCost).length ? { fishStockCost } : {}), id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost: cost ?? { coins: 0, items: {} }, catalogVersion: economyCatalog.version });
   };
-  if (!["start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
+  if (!["start_production", "start_exploration", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
     case "open_ship_voyage": {
       if (command.targetId !== "port") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Некорректный запрос порта", 400);
@@ -368,6 +378,8 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (route.requiredBuildings.quarry && state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry"))
         return fail("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения шахты и заберите результат");
       const actorId = explorationActorId(route), miner = actorId === "miner";
+      if ((!miner && command.quantity !== 1) || !Number.isSafeInteger(command.quantity) || command.quantity < 1 || command.quantity > MINING_BATCH_LIMIT)
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выберите от 1 до 100 единиц добычи", 400);
       if (miner) {
         const conflict = economyMinerConflict(state.jobs, now);
         if (conflict) return fail(conflict.code, conflict.message);
@@ -391,11 +403,11 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const mealAnnotation = meal ? { meal: { itemId: meal.itemId, consumer: "hero" as const, speedBps: meal.heroSpeedBps, ...(heroMealWorkUsed(state, route.seconds) ? { workSeconds: heroMealWorkUsed(state, route.seconds) } : {}) } } : {};
       // Validate the complete offer before any private clock or bonus draw.
       if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
-      const tripCost = fishingRoute ? fishingTripCost(route.cost, state) : route.cost;
+      const tripCost = fishingRoute ? fishingTripCost(route.cost, state) : scaledEconomyCost(route.cost, miner ? command.quantity : 1);
       const rareEnabled = economyCatalog.rareDrops && (state.buildings.home ?? 1) >= economyCatalog.rareDrops.requiredHomeLevel;
       const clock = miner ? state.minerRareDropState : state.rareDropState;
       const rareCount = Number(Boolean(rareEnabled && clock && clock.remainingSeconds <= seconds));
-      if (Object.values(route.rewards).reduce((sum, count) => sum + count, 0) + rareCount
+      if (Object.values(route.rewards).reduce((sum, count) => sum + count, 0) * (miner ? command.quantity : 1) + rareCount
         + Math.max(0, ...(route.finds?.entries.map(entry => entry.quantity) ?? [])) > economyStorage(state).capacity)
         fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
       if (!canAffordEconomy(state, { ...tripCost, items: normalizedInventory(tripCost.items) }))
@@ -424,7 +436,8 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
         return "Мохлик отправился рыбачить. Снасти и наживка подготовлены";
       }
       createJob({ kind: "exploration", actorId, targetId: route.id, recipeId: null, targetLevel: null, ...(tradeSpeedBps ? { tradeSpeedBps } : {}), rewards: { ...route.rewards, ...rare?.rewards },
-        ...mealAnnotation, ...(rare ? { rareDrop: rare.delivery } : {}) }, seconds, route.cost, jobId(), undefined, false, route.finds);
+        ...(miner ? { miningBatch: { quantity: command.quantity, claimed: 0, unitSeconds: seconds, unitRewards: { ...route.rewards } } } : {}),
+        ...mealAnnotation, ...(rare ? { rareDrop: rare.delivery } : {}) }, seconds * (miner ? command.quantity : 1), tripCost, jobId(), undefined, false, route.finds);
       if (meal) spendHeroMealWork(state, route.seconds);
       if (rare) {
         if (miner) state.minerRareDropState = rare.clock;
@@ -457,6 +470,22 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
       if (job.kind !== "exploration") return fail("ECONOMY_CANCEL_KIND", "Можно отменить только вылазку или работу в шахте");
       if (isMinerJob(job)) {
+        if (job.miningBatch) {
+          const batch = job.miningBatch, progress = miningBatchProgress(job, now);
+          if (!progress.remaining) return fail("ECONOMY_CANCEL_READY", "Вся добыча уже готова. Заберите результат");
+          const refund = { coins: job.cost.coins / batch.quantity * progress.remaining,
+            items: Object.fromEntries(Object.entries(job.cost.items).map(([item, count]) => [item, count / batch.quantity * progress.remaining])) };
+          if (refund.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
+          const next = { ...state, inventory: { ...state.inventory } };
+          creditEconomyItems(next, refund.items);
+          assertEconomyStorageTransition(state, next, reservedItems);
+          state.inventory = next.inventory; state.wallet.coins += refund.coins;
+          state.jobs = state.jobs.flatMap(current => current.id !== job.id ? [current] : progress.completed <= batch.claimed ? [] : [{ ...job,
+            finishesAt: new Date(Date.parse(job.startedAt) + progress.completed * batch.unitSeconds * 1000).toISOString(),
+            cost: { coins: job.cost.coins - refund.coins, items: Object.fromEntries(Object.entries(job.cost.items).map(([item, count]) => [item, count - (refund.items[item] ?? 0)])) },
+            miningBatch: { ...batch, quantity: progress.completed } }]);
+          return progress.ready ? "Остаток заказа остановлен. Готовая добыча ждёт получения" : "Остаток добычи остановлен";
+        }
         if (job.cost.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
         const next = { ...state, inventory: { ...state.inventory } };
         creditEconomyItems(next, job.cost.items);
@@ -717,6 +746,34 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     case "claim_job": {
       const job = state.jobs.find(item => item.id === command.targetId);
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
+      if (job.miningBatch && isMinerJob(job)) {
+        const progress = miningBatchProgress(job, now);
+        if (!progress.ready) return fail("ECONOMY_JOB_NOT_READY", "Следующая единица добычи ещё не готова");
+        let current = job, received = 0;
+        for (let index = 0; index < progress.ready; index++) {
+          const rewards = expeditionJobRewards(current), next = { ...state, inventory: { ...state.inventory } };
+          try { creditEconomyItems(next, rewards); assertEconomyStorageTransition(state, next, reservedItems); }
+          catch (error) {
+            if (!(error instanceof EconomyRuleError) || !["ECONOMY_STORAGE_FULL", "ECONOMY_CAPACITY"].includes(error.code) || received === 0) throw error;
+            break;
+          }
+          state.inventory = next.inventory;
+          state.progression = advanceEconomyProgression(state.progression, miningUnitDelivery(current, rewards));
+          state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...Object.keys(rewards)])];
+          if (current.rareDrop) state.minerRareDropState = settleRareDrop(state.minerRareDropState, current.rareDrop, economyCatalog.rareDrops!, rareRandom);
+          received++;
+          const batch = current.miningBatch!, claimed = batch.claimed + 1;
+          if (claimed === batch.quantity) { state.jobs = state.jobs.filter(item => item.id !== job.id); break; }
+          const rare = economyCatalog.rareDrops && (state.buildings.home ?? 1) >= economyCatalog.rareDrops.requiredHomeLevel
+            ? prepareRareDrop(state.minerRareDropState, batch.unitSeconds, economyCatalog.rareDrops, rareRandom) : null;
+          if (rare) state.minerRareDropState = rare.clock;
+          const route = economyCatalog.explorations.find(item => item.id === current.targetId);
+          current = { ...current, miningBatch: { ...batch, claimed }, rewards: { ...batch.unitRewards, ...rare?.rewards },
+            rareDrop: rare?.delivery ?? null, expeditionFinds: route?.finds ? drawExpeditionFinds(route.finds, rareRandom) : null };
+          state.jobs = state.jobs.map(item => item.id === job.id ? current : item);
+        }
+        return `Добыча получена: ${received}. ${state.jobs.some(item => item.id === job.id) ? "Остаток заказа сохранён" : "Заказ завершён"}`;
+      }
       if (now < Date.parse(job.finishesAt)) fail("ECONOMY_JOB_NOT_READY", "Работа ещё не закончена");
       if (job.collection) {
         if (job.collection.batchId) return fail("ECONOMY_COLLECTION_BATCH_REQUIRED", "Заберите весь собранный урожай вместе");

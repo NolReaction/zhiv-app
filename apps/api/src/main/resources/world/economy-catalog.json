@@ -9673,11 +9673,6 @@
           ]
         }
       ]
-    },
-    "activity": {
-      "graceSeconds": 259200,
-      "decaySeconds": 604800,
-      "recoveryBps": 2500
     }
   },
   "timeEconomy": {

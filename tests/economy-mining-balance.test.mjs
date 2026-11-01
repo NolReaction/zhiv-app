@@ -36,7 +36,7 @@ const command = (action, targetId) => ({ requestId: crypto.randomUUID(), action,
 const apply = (state, action, targetId, time = now) => applyEconomyCommand(state, command(action, targetId), time,
   () => crypto.randomUUID(), {}, maximum => maximum - 1);
 
-test("each mine resource has one fixed unit timer with no unattended bulk choices", () => {
+test("each mine resource retains one fixed unit timer while queued quantities reuse it", () => {
   for (const [item, seconds] of [["stone", 180], ["ore", 600], ["clay", 180], ["sand", 300], ["quartz", 900], ["limestone", 1200]]) {
     const choices = focused(item);
     assert.equal(choices.length, 1, `${item}: exactly one active extraction method`);

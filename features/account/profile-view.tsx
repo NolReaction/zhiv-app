@@ -10,7 +10,9 @@ import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Check, CircleHelp, Clock3, Flame, Settings, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
-import type { ClickerLevel, ClickerLevelProgress } from "@/features/game/clicker-story";
+import type { EconomyProgression } from "@/features/economy/domain/model";
+import { getPlayerLevel, getPlayerProgression } from "@/features/economy/domain/player-progression";
+import { PlayerProgressionCard } from "@/features/game/player-progression-card";
 import {
   ApiError,
   isDisplayNameCooldownResponse,
@@ -45,9 +47,8 @@ type ProfileViewProps = {
   clickerStats: {
     bestSeries: number;
     lifetimeTaps: number;
-    level: ClickerLevel;
-    levelProgress: ClickerLevelProgress;
   };
+  progression?: EconomyProgression;
   onUpdated: (response: MeResponse) => void;
   onRecovered: (response: MeResponse) => void;
   onSessionLost: () => void;
@@ -96,6 +97,7 @@ export function ProfileView({
   nowMs,
   isOnline,
   clickerStats,
+  progression,
   onUpdated,
   onRecovered,
   onSessionLost,
@@ -110,6 +112,7 @@ export function ProfileView({
   gamePendingTaps,
   legacyGame,
 }: ProfileViewProps) {
+  const playerLevel = getPlayerLevel(getPlayerProgression(progression).xp);
   const [activeTab, setActiveTab] = useState("profile");
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideActionLabel, setGuideActionLabel] = useState("Начать обучение");
@@ -225,15 +228,16 @@ export function ProfileView({
             </div>
             <h2 className={styles.identityName}><PlayerName name={me.user.displayName} tag={me.user.tag} /></h2>
             <div className={styles.identityActions}>
-              {gameLoaded ? <GameLevelsButton lifetimeTaps={clickerStats.lifetimeTaps} className={styles.identityLevel}>
-                <GameLevelIcon level={clickerStats.level.level} size={18} />
-                <span><strong>Уровень {clickerStats.level.level}</strong><small>{clickerStats.level.title}</small></span>
+              {progression ? <GameLevelsButton progression={progression} now={nowMs} className={styles.identityLevel}>
+                <GameLevelIcon level={playerLevel.level} size={18} />
+                <span><strong>Уровень {playerLevel.level}</strong><small>{playerLevel.title}</small></span>
               </GameLevelsButton> : <span className={styles.identityLevelLoading} role="status">Уровень загружается…</span>}
               <div className={styles.identityAchievements}>
                 <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} onRewardsClaimed={onRewardsClaimed} />
               </div>
             </div>
           </div>
+          {progression && <PlayerProgressionCard progression={progression} now={nowMs} ownerKey={`${me.user.publicId}:${me.gameplayGeneration ?? 0}`} />}
           <div className={styles.stats} aria-label="Статистика профиля">
             <button type="button" onClick={event => onOpenCalendar(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть календарь моих отметок">
               <Flame size={18} aria-hidden="true" /><strong>{me.streak.currentDays}</strong>
@@ -241,7 +245,7 @@ export function ProfileView({
             </button>
             <div><Check size={18} aria-hidden="true" /><strong>{me.checkInCount}</strong>
               <span>{russianNoun(me.checkInCount, "отметка", "отметки", "отметок")}</span></div>
-            <div><GameLevelIcon level={clickerStats.level.level} size={18} /><strong>{gameLoaded ? clickerStats.lifetimeTaps.toLocaleString("ru-RU") : "—"}</strong><span>всего тапов</span></div>
+            <div><GameLevelIcon level={playerLevel.level} size={18} /><strong>{gameLoaded ? clickerStats.lifetimeTaps.toLocaleString("ru-RU") : "—"}</strong><span>всего тапов</span></div>
             <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг"><Trophy size={18} aria-hidden="true" /><strong>{gameLoaded ? `×${clickerStats.bestSeries.toLocaleString("ru-RU")}` : "-"}</strong><span>{gamePendingTaps > 0 ? "сохраняем…" : "рекорд игры"}</span></button>
           </div>
         </div>
@@ -303,41 +307,9 @@ export function ProfileView({
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="game" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger}><span><GameLevelIcon level={clickerStats.level.level} /><span>Игровой прогресс<small>{gameLoaded ? `Уровень ${clickerStats.level.level} · ${clickerStats.level.title}` : "Синхронизация с аккаунтом"}</small></span></span></AccordionTrigger>
+            <AccordionTrigger className={styles.settingsTrigger}><span><GameLevelIcon level={playerLevel.level} /><span>Игровой прогресс<small>{progression ? `Уровень ${playerLevel.level} · ${playerLevel.title}` : "Синхронизация с аккаунтом"}</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "game"} className={styles.settingsContent}>
-              {gameLoaded && <div className={styles.gameStats}>
-            <GameLevelsButton lifetimeTaps={clickerStats.lifetimeTaps} className={styles.levelButton}><GameLevelIcon level={clickerStats.level.level} /></GameLevelsButton>
-            <div>
-              <small>Уровень {clickerStats.level.level}</small>
-              <strong>{clickerStats.level.title}</strong>
-            </div>
-            <div>
-              <small>{clickerStats.level.nextMinimumLifetimeTaps ? "До повышения" : "Высший уровень"}</small>
-              <strong>
-                {clickerStats.level.nextMinimumLifetimeTaps
-                  ? `${clickerStats.levelProgress.remaining.toLocaleString("ru-RU")} ${russianNoun(clickerStats.levelProgress.remaining, "тап", "тапа", "тапов")}`
-                  : "Максимум"}
-              </strong>
-            </div>
-            <div className={styles.levelProgressMeta}>
-              <span>
-                Всего {clickerStats.lifetimeTaps.toLocaleString("ru-RU")} {russianNoun(clickerStats.lifetimeTaps, "тап", "тапа", "тапов")}
-              </span>
-              <span>{Math.round(clickerStats.levelProgress.ratio * 100)}%</span>
-            </div>
-            <div
-              className={styles.levelProgress}
-              role="progressbar"
-              aria-label="Прогресс игрового уровня"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(clickerStats.levelProgress.ratio * 100)}
-            >
-              <i style={{ transform: `scaleX(${clickerStats.levelProgress.ratio})` }} />
-            </div>
-          </div>
-
-          }
+              {progression && <PlayerProgressionCard progression={progression} now={nowMs} ownerKey={`${me.user.publicId}:${me.gameplayGeneration ?? 0}`} compact />}
           <p className={styles.localProgressNote} role="status">{gameNotice}</p>
           <div className={styles.gameActions}>
             <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog"><Trophy size={17} aria-hidden="true" />Открыть рейтинг</button>

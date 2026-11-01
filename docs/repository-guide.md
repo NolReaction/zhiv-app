@@ -129,6 +129,9 @@
 
 | Задача | Главные файлы | Инструкция |
 |---|---|---|
+| Общий XP, уровни, месячный вклад и награды профиля | `player-progression-catalog.json`, `player-progression.ts`, `EconomyPlayerProgression.kt`, `player-progression-card.tsx` | [Правила опыта и сезонов](game/player-progression.md); тапы больше не определяют отображаемый уровень |
+| Партии шахты и получение готовой части | `mining-batch.ts`, `EconomyMiningBatches.kt`, `world-mining-production.tsx` | [Контракт партий](game/quarry-batches.md); 1–100 единиц, один шахтёр, сохранение готового остатка |
+| Ускорение производства подтверждёнными тапами | `tap-boost-catalog.json`, `tap-boost.ts`, `EconomyTapBoost.kt`, `JdbcEconomyTapBoost.kt` | [Сила, длительность и синхронизация](game/tap-production-boost.md); одна работа, до 20% и 60 секунд |
 | Видимое изготовление и котелок на очаге | [`economy-production-state.ts`](../features/world/state/economy/economy-production-state.ts), [`forest-cooking-pot.ts`](../features/world/activities/cooking/forest-cooking-pot.ts), [`production-activity.tsx`](../features/economy/ui/production/production-activity.tsx) | [Подтверждённые задания и границы анимации](game/cooking.md) |
 | Персональные заказы корабля, отгрузка, награды и ожидание новой поставки | [`ship-orders-catalog.json`](../apps/api/src/main/resources/world/ship-orders-catalog.json), [`ship-model.ts`](../features/economy/domain/ship-model.ts), [`ship-orders.ts`](../features/economy/domain/ship-orders.ts), [`rules.ts`](../features/economy/domain/rules.ts), [`EconomyShipOrders.kt`](../apps/api/src/main/kotlin/ru/zhiv/economy/EconomyShipOrders.kt), [`world-ship-port.tsx`](../features/economy/ui/ship/world-ship-port.tsx) | [Порт и персональные заказы](game/trade-ship-prototype.md#порт-и-персональные-заказы): три сохранённых заказа после полученного маяка, отдельная оплата и общий жемчужный бонус, серверное ожидание от открытия. Проверять доступность товаров, повторы команд, кошелёк, отказ и сохранение между устройствами; UI открывается через корабль или «Ещё → Порт» |
 | Кнопки над картой, коллекции, гардероб, игровые панели | [`world-view.tsx`](../features/world/world-view.tsx), [`world.module.css`](../features/world/world.module.css) | [Устройство мира](game/world-foundation.md) |
@@ -195,6 +198,8 @@
 Проверьте: ⓘ рядом с кошельком → раздел → вопрос → назад; поиск обычной фразой, пустую выдачу, очистку и переход к действию. Для заблокированного рецепта откройте «Как продолжить?». Проверьте вкладки профиля, друзей и возврат фокуса при закрытии на 320 px и клавиатурой. [Набор тестов справки и профиля](game/help-and-profile.md#проверка-изменений).
 
 ## Приложение и сервер
+
+Память и короткие прогоны: [общий Node launcher](development/node-memory.md). Используйте `npm run test:targeted -- tests/имя.test.mjs`; build/typecheck/test в одном checkout выполняются последовательно. Сброс к выпуску: [игровой прогресс 0.7.2](operations/reset-game-progress.md).
 
 | Задача | Главные файлы | Инструкция |
 |---|---|---|

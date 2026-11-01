@@ -17,6 +17,7 @@ export const guestProfileSchema = z.object({
   ownerPublicId: publicId, circleId: z.guid(),
   user: z.object({ publicId, displayName: z.string().min(1).max(100) }).strict(),
   homeLevel: z.number().int().min(1).max(5), completedExplorations: z.number().int().nonnegative().safe(),
+  playerXp: z.number().int().nonnegative().safe().nullable().prefault(null),
   achievements: z.array(z.object({ id: z.string().refine(id => GUEST_ACHIEVEMENT_IDS.includes(id)),
     level: z.number().int().positive().max(4) }).strict().refine(award => {
       const levels = GAME_ACHIEVEMENT_TARGETS[award.id as keyof typeof GAME_ACHIEVEMENT_TARGETS];

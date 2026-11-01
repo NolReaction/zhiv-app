@@ -70,6 +70,6 @@ object EconomyCollectionProgress {
         remainderFind(travelFinds, travelSeconds, first.collections.travelSeconds, second.collections.travelSeconds, catalog.travel.secondsPerFind)
         remainderFind(quarryFinds, quarrySeconds, first.collections.quarrySeconds, second.collections.quarrySeconds, catalog.quarry.secondsPerFind)
         return EconomyProgression(counts(first.routes, second.routes), counts(first.recipes, second.recipes),
-            EconomyBookCollection(finds.sorted(), travelSeconds, quarrySeconds))
+            EconomyBookCollection(finds.sorted(), travelSeconds, quarrySeconds), EconomyPlayerProgression.merge(first.player, second.player))
     }
 }

@@ -27,7 +27,7 @@ const read = (a, circle) => ok(social.getDevGuestProfile(a.token, circle));
   const a = player(), b = player(), circle = connect(a, b);
   const before = structuredClone(globalThis.__zhivDevEconomyStore?.profiles);
   const result = read(a, circle);
-  assert.equal(result.homeLevel, 1); assert.equal(result.completedExplorations, 0);
+  assert.equal(result.homeLevel, 1); assert.equal(result.completedExplorations, 0); assert.equal(result.playerXp, 0);
   assert.deepEqual(result.collections, { travel: [], fishing: [], quarry: [] }); assert.deepEqual(result.achievements, []);
   assert.equal(result.ownerPublicId, a.me.user.publicId); assert.equal(result.user.publicId, b.me.user.publicId);
   assert.equal(model.guestProfileSchema.safeParse(result).success, true);
@@ -51,7 +51,7 @@ test("guest projection only contains known personal discoveries and safe earned 
   assert.deepEqual(result.collections, { travel: ["acorn"], fishing: [fish], quarry: ["quartz_cluster"] });
   assert.deepEqual(result.achievements, [{ id: "home_builder", level: 4 }]);
   assert.deepEqual(record, before);
-  assert.deepEqual(Object.keys(result).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "tapStats", "serverTime"].sort());
+  assert.deepEqual(Object.keys(result).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "tapStats", "playerXp", "serverTime"].sort());
   for (const secret of ["wallet", "inventory", "jobs", "fishingCastSeed", "rareDropState", "unlockedAt", "travelSeconds", "quarrySeconds", "linked_email", "saved_recovery_code", "status", "bestSeries"])
     assert.equal(JSON.stringify(result).includes(secret), false, secret);
   result.collections.travel.push("forged"); assert.deepEqual(read(a, circle).collections.travel, ["acorn"]);
@@ -184,4 +184,23 @@ test("tap statistics reject private fields malformed counts and impossible serie
   assert.equal(model.guestProfileSchema.safeParse({ ...value, tapStats: { lifetimeTaps: 200000, bestSeries: 100001 } }).success, true, "continued server sessions may exceed the local clicker legacy cap");
   const legacy = { ...value }; delete legacy.tapStats;
   assert.equal(model.guestProfileSchema.parse(legacy).tapStats, null, "older API responses do not invent a level");
+});
+
+
+test("friend level uses authoritative development XP while tap records remain private", () => {
+  const a = player(), b = player(), circle = connect(a, b);
+  economy.getDevEconomy(b.token);
+  const record = globalThis.__zhivDevEconomyStore.profiles.get(b.me.user.publicId);
+  record.state.progression.player = { version: 1, xp: 5000, workSeconds: 0, awardedLevels: [], badges: [],
+    season: { id: "2026-11", points: 123, awardedMilestones: [] } };
+  const before = structuredClone(record);
+  const result = read(a, circle);
+  assert.equal(result.playerXp, 5000);
+  assert.equal(result.tapStats, null);
+  assert.deepEqual(record, before);
+  assert.equal(model.guestProfileSchema.safeParse(result).success, true);
+  const html = renderToStaticMarkup(createElement(ui.GuestProfileContents, { profile: result }));
+  assert.match(html, /Уровень 11/);
+  assert.doesNotMatch(JSON.stringify(result), /workSeconds|awardedLevels|awardedMilestones|"season"/);
+  assert.equal(model.guestProfileSchema.safeParse({ ...result, playerXp: -1 }).success, false);
 });

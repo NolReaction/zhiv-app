@@ -1,3 +1,4 @@
+import { mergePlayerProgression } from "./player-progression";
 import collectionCatalog from "@/apps/api/src/main/resources/world/collections-catalog.json";
 import { ECONOMY_MAX_ITEMS, economyProgressionSchema, type EconomyJob, type EconomyProgression } from "./model";
 
@@ -64,7 +65,8 @@ export function mergeEconomyProgression(left: EconomyProgression | undefined, ri
       if (missing) finds.add(missing);
     }
   }
-  return { routes: mergeCounts(first.routes, second.routes), recipes: mergeCounts(first.recipes, second.recipes),
+  const player = mergePlayerProgression(first.player, second.player);
+  return { ...(player ? { player } : {}), routes: mergeCounts(first.routes, second.routes), recipes: mergeCounts(first.recipes, second.recipes),
     collections: { finds: [...finds].sort(), travelSeconds, quarrySeconds } };
 }
 

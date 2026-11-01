@@ -1102,6 +1102,7 @@ export function getDevGuestProfile(token: string | undefined, circleId: string):
   return { kind: "ok", value: { ownerPublicId: viewer.publicId, circleId,
     user: { publicId: target.publicId, displayName: target.displayName },
     homeLevel: Math.min(5, Math.max(1, state?.buildings.home ?? 1)), completedExplorations: state?.completedExplorations ?? 0,
+    playerXp: state?.progression.player?.xp ?? 0,
     achievements, tapStats: devSharedTapStats(target.publicId), collections: guestCollections(finds, state?.fishing.catches ?? {}), serverTime: new Date().toISOString() } };
 }
 
