@@ -68,14 +68,25 @@ test("same-session lost response retries celebrate once but recreated receipt se
 
 const gain = (id, xp = 25, fromLevel = 1, toLevel = 2, ownerPublicId = owner) => ({ id, xp, fromLevel, toLevel, ownerPublicId, revision: 1 });
 function playback(initial = []) {
-  const calls = [], timers = []; let time = 0;
+  const calls = [], timers = [], levels = []; let time = 0;
   const player = createPlayerXpPlayback(owner, initial, {
-    show: (value, entering) => calls.push({ value, entering }), hide: () => calls.push("hide"), now: () => time,
+    show: (value, entering) => calls.push({ value, entering }), levelUp: value => levels.push(value), hide: () => calls.push("hide"), now: () => time,
     schedule: (run, delay) => { const timer = { run, delay, cancelled: false }; timers.push(timer); return timer; },
     cancel: timer => { timer.cancelled = true; },
   });
-  return { player, calls, timers, advance: value => { time = value; } };
+  return { player, calls, timers, levels, advance: value => { time = value; } };
 }
+
+test("level sound follows the first actual crossing in each visible XP burst", () => {
+  const p = playback(), a = gain("small", 2, 1, 1), b = gain("level", 25, 1, 2), c = gain("another-level", 200, 2, 3);
+  p.player.receive(owner, [a], true); assert.equal(p.levels.length, 0);
+  p.player.receive(owner, [a, b], true); assert.deepEqual(p.levels, [b]);
+  p.player.receive(owner, [a, b, c], true); assert.deepEqual(p.levels, [b], "rapid level crossings share one chime");
+  p.player.receive(owner, [a, b, c], true); assert.equal(p.levels.length, 1, "polls and rerenders remain silent");
+  p.timers.at(-1).run();
+  const d = gain("later-level", 300, 3, 4);
+  p.player.receive(owner, [a, b, c, d], true); assert.deepEqual(p.levels, [b, d]);
+});
 
 test("quick XP awards coalesce and stale timeout cannot dismiss a fresh burst", () => {
   const p = playback(), a = gain("a"), b = gain("b", 30, 2, 2);
@@ -98,6 +109,7 @@ test("mount, hidden awards, returning to the screen and owner switches never rep
   assert.equal(p.calls.filter(item => item !== "hide").length, 0);
   p.player.receive(other, [foreign, gain("fresh", 2, 3, 3, other)], true);
   assert.equal(p.calls.at(-1).value.xp, 2);
+  assert.equal(p.levels.length, 0, "no level chime for hydration, hidden history, owner changes or ordinary XP");
 });
 
 test("level-up bar completes the previous level before filling the new confirmed fraction", () => {

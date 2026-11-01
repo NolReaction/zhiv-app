@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { Leaf, Sparkles } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { PlayerXpGain } from "@/features/economy/domain/player-xp-gain";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { createPlayerXpPlayback } from "./player-xp-playback";
 import styles from "./player-xp-feedback.module.css";
 
@@ -32,6 +33,14 @@ export function PlayerXpFeedback({ economy, active = true }: { economy: EconomyC
         }
       },
       hide() { animation.current?.cancel(); animation.current = null; if (card.current) card.current.hidden = true; },
+      levelUp(gain) {
+        if (document.hidden) return;
+        try {
+          const audio = getAudioRuntime();
+          audio.play({ id: `player-level:${gain.ownerPublicId}:${gain.id}`, cueId: "ui.level-up", occurredAt: Date.now(),
+            maxAgeMs: 600, ownerId: audio.getDiagnostics().playback?.activeOwnerId ?? undefined });
+        } catch { /* A silent or unavailable mixer must not interrupt the XP notice. */ }
+      },
       now: () => performance.now(), schedule: (finish, milliseconds) => setTimeout(finish, milliseconds),
       cancel: timer => clearTimeout(timer as ReturnType<typeof setTimeout>),
     });

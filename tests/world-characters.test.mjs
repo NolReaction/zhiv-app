@@ -156,6 +156,27 @@ test("the modal reveals only available residents and gives the others anonymous 
   }
 });
 
+test("resident cards show actual friendship progress and bonuses without exposing unknown residents", () => {
+  const economy = { catalog: economyCatalog, serverTime: "2026-11-01T12:00:00Z",
+    tradeRelations: { reputation: { builder: 175, plesk: 1600, leaftail: 9999 } } };
+  const render = snapshot => WorldCharacters({ open: true, economy: snapshot,
+    onClose() {}, onCloseAutoFocus() {}, onResident() {} });
+  const nodes = elements(render(economy));
+  const builder = nodes.find(element => element.props["data-world-character"] === "builder");
+  const builderHtml = renderToStaticMarkup(builder);
+  assert.match(builder.props["aria-label"], /Дружба: Приятель, 175 очков/);
+  assert.match(builderHtml, /Ещё 175 до «Друг»/);
+  assert.match(builderHtml, /width:30%/);
+  assert.match(builderHtml, /Скорость стройки \+2%/);
+  const pleskHtml = renderToStaticMarkup(nodes.find(element => element.props["data-world-character"] === "plesk"));
+  assert.match(pleskHtml, /Свой в лесу/); assert.match(pleskHtml, /Высший ранг дружбы/);
+  assert.match(pleskHtml, /width:100%/); assert.match(pleskHtml, /Скидка на снасти и наживку 10%/);
+  const hiddenHtml = renderToStaticMarkup(nodes.find(element => element.props["data-world-character"] === "leaftail"));
+  assert.doesNotMatch(hiddenHtml, /data-resident-reputation|Свой в лесу|9999|Листохвост/);
+  assert.doesNotMatch(renderToStaticMarkup(elements(render(null)).find(element => element.type === "ul")), /data-resident-reputation/,
+    "a missing confirmed economy must not invent zero friendship");
+});
+
 test("house level eligibility alone keeps the merchant anonymous while his physical arrival is pending", () => {
   const gallery = WorldCharacters({ open: true, quarryBuilt: true, leaftailUnlocked: true, onClose() {}, onCloseAutoFocus() {}, onResident() { assert.fail("an unintroduced resident cannot open"); } });
   const card = elements(gallery).find(element => element.props["data-world-character"] === "leaftail");

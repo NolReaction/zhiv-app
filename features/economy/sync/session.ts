@@ -421,8 +421,15 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && !result.state.jobs.some(job => job.id === value.command.targetId)
           && !view.snapshot?.jobs.some(job => job.id === value.command.targetId)
           && !view.cancelledExplorations?.includes(value.command.targetId) ? value.command.targetId : null;
-        const gain = value.kind !== "dev" && value.kind !== "barter" && value.kind !== "neighbor" && view.snapshot?.revision === result.state.revision
-          && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(before, result, value.command) : null;
+        const claimIntent = value.kind === "economy" && value.command.action === "claim_job" && localXpIntent?.requestId === value.command.requestId
+          ? localXpIntent : null;
+        let gain = value.kind !== "dev" && value.kind !== "barter" && value.kind !== "neighbor" && view.snapshot?.revision === result.state.revision
+          && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(claimIntent?.before ?? before, result, value.command) : null;
+        if (gain?.expedition && !claimIntent) {
+          // Restored commands may deliver items, but never replay the local trip report.
+          const withoutReport = { ...gain }; delete withoutReport.expedition;
+          gain = Object.freeze(withoutReport);
+        }
         const xpGain = value.kind === "economy" && localXpIntent?.requestId === value.command.requestId
           && view.snapshot?.revision === result.state.revision && !xpReceipts.has(value.command.requestId)
           ? playerXpGainFromReceipt(localXpIntent.before, result, value.command) : null;

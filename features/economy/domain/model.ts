@@ -243,6 +243,9 @@ export const economyCatalogSchema = z.object({
       "Fish recipes require exactly one replaceable fish ingredient")).max(1000),
   explorations: z.array(z.object({ id, name: z.string(), description: z.string(), requiredHomeLevel: count.positive(), activity: z.literal("mining").nullish(), retired: z.boolean().optional(),
     requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities,
+    loot: z.array(z.object({ itemId: id, min: count.max(ECONOMY_MAX_ITEMS), max: count.positive().max(ECONOMY_MAX_ITEMS) })
+      .refine(entry => entry.min <= entry.max, "Loot range must be ordered")).min(1).max(100)
+      .refine(entries => new Set(entries.map(entry => entry.itemId)).size === entries.length).nullish(),
     finds: z.object({ emptyWeight: count.max(1_000_000), entries: z.array(z.object({ itemId: id,
       quantity: count.positive().max(ECONOMY_MAX_ITEMS), weight: count.positive().max(1_000_000) })).min(1).max(100)
       .refine(entries => new Set(entries.map(entry => entry.itemId)).size === entries.length) }).nullish(),
@@ -257,6 +260,12 @@ export const economyCatalogSchema = z.object({
     return !item?.tradable || item.category === "special" || fishIds.has(entry.itemId)
       || catalog.fishing?.classes.some(group => group.itemId === entry.itemId);
   }))) invalid("Exploration finds require tradable non-special non-fish items");
+  if (catalog.explorations.some(route => route.loot && (route.activity === "mining" || catalog.fishing?.routeIds.includes(route.id)
+    || route.loot.some(entry => {
+      const item = catalog.items.find(item => item.id === entry.itemId);
+      return !item?.tradable || item.category === "special" || fishIds.has(entry.itemId)
+        || catalog.fishing?.classes.some(group => group.itemId === entry.itemId);
+    })))) invalid("Variable supply loot requires tradable non-special non-fish items on a supply route");
   if (catalog.version >= 13 && !catalog.timeEconomy) invalid("Time economy policy is required for catalog 13");
   const policy = catalog.timeEconomy;
   if (policy) {

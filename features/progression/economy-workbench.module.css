@@ -176,6 +176,8 @@
 .expeditionCard li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .expeditionCard li button { color: #d4e3c0; background: transparent; border: 0; font: inherit; padding: 3px 0; min-width: 0; text-align: left; overflow-wrap: anywhere; }
 .expeditionCard li > span:last-child { white-space: nowrap; }
+.expeditionCard .variableLoot li { flex-wrap: wrap; }
+.expeditionCard .variableLoot li > span:last-child { white-space: normal; }
 @media (max-width: 640px) { .returnStats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .expeditionCards { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 380px) { .expeditionControls { grid-template-columns: minmax(0, 1fr); } }
 

@@ -94,6 +94,12 @@ object EconomyRules {
                 catalog.fishing?.fish?.none { it.itemId == entry.itemId } != false &&
                 catalog.fishing?.classes?.none { it.itemId == entry.itemId } != false })
         } }
+        catalog.explorations.forEach { route -> route.loot?.let { loot ->
+            require(route.activity != "mining" && catalog.fishing?.routeIds?.contains(route.id) != true)
+            require(loot.all { entry -> catalog.items.any { it.id == entry.itemId && it.tradable && it.category != "special" } &&
+                catalog.fishing?.fish?.none { it.itemId == entry.itemId } != false &&
+                catalog.fishing?.classes?.none { it.itemId == entry.itemId } != false })
+        } }
         require(catalog.recipes.all { it.maxBatch == null || it.maxBatch in 1..catalog.maxBatch })
         require(catalog.recipes.all { recipe -> recipe.requiredRecipes.all { (id, amount) ->
             amount in 1L..ECONOMY_MAX_ITEMS && catalog.recipes.any { it.id == id } } })
@@ -535,7 +541,8 @@ object EconomyRules {
                 if (exploration.requiredBuildings.containsKey("quarry") && state.jobs.any { it.kind == "construction" && it.targetId == "quarry" })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения шахты и заберите результат")
                 val mining = exploration.activity == "mining"
-                if ((!mining && command.quantity != 1L) || command.quantity > EconomyMiningBatches.LIMIT) invalidEconomy()
+                val batchLimit = if (mining) EconomyMiningBatches.limit(state.buildings["quarry"] ?: 1, exploration.seconds) else 1
+                if (command.quantity !in 1L..batchLimit.toLong()) invalidEconomy()
                 if (mining) requireMinerAvailable(state) else requireActorAvailable(state, now)
                 val tackle = state.fishing
                 val spec = catalog.fishing
@@ -563,7 +570,7 @@ object EconomyRules {
                 val cost = if (special && tackle.equippedBaitId != null) exploration.cost.copy(items = exploration.cost.items +
                     (tackle.equippedBaitId to ((exploration.cost.items[tackle.equippedBaitId] ?: 0) + 1))) else if (mining)
                     EconomyCost(exploration.cost.coins * command.quantity, exploration.cost.items.mapValues { it.value * command.quantity }) else exploration.cost
-                val maximumFind = exploration.finds?.entries?.maxOf { it.quantity } ?: 0L
+                val maximumFind = EconomyExpeditionLoot.maximumBonus(exploration)
                 if (exploration.rewards.values.sum() * (if (mining) command.quantity else 1L) + maximumFind + rareCount > storage(state).capacity)
                     economyFailure("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Сначала расширьте склад.")
                 val spent = spend(state, cost)
@@ -585,7 +592,7 @@ object EconomyRules {
                     finishesAt = now.plusSeconds(tripSeconds * (if (mining) command.quantity else 1L)).toString(), rewards = rewards.filterValues { it > 0 }, cost = cost,
                     catalogVersion = catalog.version, fishing = fishingCatch, rareDrop = rare?.delivery, meal = meal,
                     actorId = if (mining) "miner" else "mochlik", tradeSpeedBps = tradeSpeed,
-                    expeditionFinds = exploration.finds?.let { EconomyExpeditionLoot.draw(it) },
+                    expeditionFinds = if (exploration.finds != null || exploration.loot != null) EconomyExpeditionLoot.draw(exploration) else null,
                     miningBatch = if (mining) EconomyMiningBatch(command.quantity.toInt(), unitSeconds = tripSeconds, unitRewards = exploration.rewards) else null)
                 spent.copy(jobs = state.jobs + job, fishingCastSeed = seed,
                     food = heroTrip?.food ?: state.food,

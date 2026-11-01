@@ -14,9 +14,9 @@ class EconomyMiningBatchesTest {
         EconomyRules.apply(state, EconomyCommand(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0, action, target, quantity), now.plusSeconds(seconds)).first
 
     @Test fun `offline queue supports partial claims without restarting the saved clock`() {
-        val started = act(player(), "start_exploration", "quarry_stone", 10)
+        val started = act(player(), "start_exploration", "quarry_stone", 8)
         val job = started.jobs.single()
-        assertEquals(now.plusSeconds(1800).toString(), job.finishesAt)
+        assertEquals(now.plusSeconds(1440).toString(), job.finishesAt)
         val partial = act(started, "claim_job", job.id, seconds = 600)
         assertEquals(3L, partial.inventory["stone"])
         assertEquals(3, partial.jobs.single().miningBatch?.claimed)
@@ -24,13 +24,13 @@ class EconomyMiningBatchesTest {
         assertEquals(540L, partial.progression.collections.quarrySeconds)
         assertEquals(job.finishesAt, partial.jobs.single().finishesAt)
         assertEquals("ECONOMY_JOB_NOT_READY", assertFailsWith<AuthFailure> { act(partial, "claim_job", job.id, seconds = 600) }.code)
-        val completed = act(partial, "claim_job", job.id, seconds = 1800)
-        assertEquals(10L, completed.inventory["stone"])
+        val completed = act(partial, "claim_job", job.id, seconds = 1440)
+        assertEquals(8L, completed.inventory["stone"])
         assertTrue(completed.jobs.isEmpty())
     }
 
     @Test fun `full storage preserves ready work when stopping the rest`() {
-        val started = act(player().copy(inventory = mapOf("wood" to 50L)), "start_exploration", "quarry_stone", 10)
+        val started = act(player().copy(inventory = mapOf("wood" to 50L)), "start_exploration", "quarry_stone", 8)
         val id = started.jobs.single().id
         val stopped = act(started, "cancel_exploration", id, seconds = 600)
         assertEquals(3, stopped.jobs.single().miningBatch?.quantity)
@@ -54,8 +54,30 @@ class EconomyMiningBatchesTest {
 
     @Test fun `ordinary expeditions remain single and the mining queue has finite bounds`() {
         for ((target, quantity, code) in listOf(Triple("forest", 2L, "INVALID_ECONOMY_COMMAND"),
-            Triple("quarry_stone", 101L, "INVALID_ECONOMY_COMMAND"), Triple("quarry_stone", 51L, "ECONOMY_STORAGE_FULL"))) {
+            Triple("quarry_stone", 101L, "INVALID_ECONOMY_COMMAND"), Triple("quarry_stone", 9L, "INVALID_ECONOMY_COMMAND"))) {
             assertEquals(code, assertFailsWith<AuthFailure> { act(player(), "start_exploration", target, quantity) }.code)
         }
+    }
+
+    @Test fun `new orders respect quarry level and an hour of base work`() {
+        assertEquals(listOf(5, 8, 10, 12, 15), (1..5).map { EconomyMiningBatches.limit(it, 180) })
+        assertEquals(listOf(12, 6, 4, 3), listOf(300L, 600L, 900L, 1200L).map { EconomyMiningBatches.limit(5, it) })
+        for ((route, cap) in listOf("quarry_ore" to 6L, "quarry_quartz" to 4L, "quarry_limestone" to 3L)) {
+            val state = player().let { it.copy(buildings = it.buildings + mapOf("home" to 5, "quarry" to 5)) }
+            assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { act(state, "start_exploration", route, cap + 1) }.code)
+            assertEquals(cap.toInt(), act(state, "start_exploration", route, cap).jobs.single().miningBatch?.quantity)
+        }
+    }
+
+    @Test fun `saved hundred unit queues drain through storage limits without the new launch cap`() {
+        val started = act(player(), "start_exploration", "quarry_stone", 5)
+        val job = started.jobs.single().let { it.copy(miningBatch = it.miningBatch!!.copy(quantity = 100), finishesAt = now.plusSeconds(18000).toString()) }
+        val partial = act(started.copy(jobs = listOf(job)), "claim_job", job.id, seconds = 18000)
+        assertEquals(50L, partial.inventory["stone"])
+        assertEquals(50, partial.jobs.single().miningBatch?.claimed)
+        val rest = act(partial.copy(inventory = emptyMap()), "claim_job", job.id, seconds = 18000)
+        assertEquals(50L, rest.inventory["stone"])
+        assertTrue(rest.jobs.isEmpty())
+        assertEquals(100L, rest.progression.routes["quarry_stone"])
     }
 }

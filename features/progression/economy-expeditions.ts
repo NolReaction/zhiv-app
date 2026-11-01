@@ -1,6 +1,7 @@
 import { economyCatalog, type EconomyCatalog } from "@/features/economy/domain/model";
 import { fishClassForItem, fishingBaitCompatible, fishingClassOdds, fishingCollectionDraws, fishingOdds } from "@/features/economy/domain/fishing";
 import { economyLocalSellPrice } from "@/features/economy/domain/local-sale";
+import { expeditionGuaranteedRewards } from "./economy-sources";
 
 const price = (catalog: EconomyCatalog, id: string) => {
   const item = catalog.items.find(item => item.id === id);
@@ -32,11 +33,18 @@ export function expeditionExpectedReturns(catalog: EconomyCatalog = economyCatal
   return catalog.explorations.filter(route => !route.retired && !catalog.fishing?.routeIds.includes(route.id)).map(route => {
     const totalWeight = (route.finds?.emptyWeight ?? 0) + (route.finds?.entries.reduce((sum, entry) => sum + entry.weight, 0) ?? 0);
     const finds = (route.finds?.entries ?? []).map(entry => ({ ...entry, probability: totalWeight ? entry.weight / totalWeight : 0 }));
-    const guaranteedCoins = value(catalog, route.rewards), costCoins = route.cost.coins + value(catalog, route.cost.items);
+    const guaranteed = expeditionGuaranteedRewards(route);
+    const loot = (route.loot ?? []).map(entry => ({ itemId: entry.itemId,
+      minimum: guaranteed[entry.itemId] ?? 0, maximum: (route.rewards[entry.itemId] ?? 0) + entry.max,
+      expectedQuantity: (route.rewards[entry.itemId] ?? 0) + (entry.min + entry.max) / 2,
+      probability: (guaranteed[entry.itemId] ?? 0) > 0 ? 1 : entry.max / (entry.max - entry.min + 1) }));
+    const guaranteedCoins = value(catalog, guaranteed), costCoins = route.cost.coins + value(catalog, route.cost.items);
+    const expectedVariableCoins = loot.reduce((sum, entry) => sum + (entry.expectedQuantity - entry.minimum) * price(catalog, entry.itemId), 0);
     const expectedBonusCoins = finds.reduce((sum, entry) => sum + entry.probability * entry.quantity * price(catalog, entry.itemId), 0);
+    const expectedNetCoins = guaranteedCoins + expectedVariableCoins + expectedBonusCoins - costCoins;
     return { id: route.id, name: route.name, homeLevel: route.requiredHomeLevel, seconds: route.seconds, actor: route.activity === "mining" ? "miner" : "hero",
-      guaranteed: { ...route.rewards }, guaranteedCoins, costCoins, finds, emptyProbability: totalWeight ? (route.finds?.emptyWeight ?? 0) / totalWeight : 1,
-      expectedBonusCoins, expectedNetCoins: guaranteedCoins + expectedBonusCoins - costCoins,
-      expectedNetCoinsPerMinute: (guaranteedCoins + expectedBonusCoins - costCoins) * 60 / route.seconds };
+      guaranteed, guaranteedCoins, costCoins, loot, finds, emptyProbability: totalWeight ? (route.finds?.emptyWeight ?? 0) / totalWeight : 1,
+      expectedVariableCoins, expectedBonusCoins, expectedNetCoins,
+      expectedNetCoinsPerMinute: expectedNetCoins * 60 / route.seconds };
   });
 }

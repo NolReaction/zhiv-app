@@ -2243,6 +2243,20 @@
       "fadeMs": 15
     },
     {
+      "id": "ui.level-up",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.daily-reward.01"
+      ],
+      "gainDb": -4,
+      "priority": 100,
+      "maxInstances": 1,
+      "cooldownMs": 2400,
+      "pitchVariation": 0,
+      "fadeMs": 20
+    },
+    {
       "id": "ui.construction-complete",
       "bus": "ui",
       "mode": "one-shot",

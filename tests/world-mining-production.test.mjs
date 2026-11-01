@@ -57,23 +57,56 @@ test("quantity presets launch one sequential batch and show the total time", () 
   assert.deepEqual(calls, [["start_exploration", "quarry_stone", 10, 0]]);
 });
 
+test("quantity controls respect the quarry level and slow resources show their smaller exact order", () => {
+  hooks.reset(); const low = controller(state({ buildings: { home: 2, quarry: 1 } }));
+  let view = overview(low);
+  assert.equal(view.nodes.find(node => node.props["aria-label"] === "Количество единиц добычи").props.max, 5);
+  assert.equal(view.nodes.some(node => node.type === "button" && node.props.children === 10), false);
+  hooks.reset(); const calls = [], high = controller(state(), calls);
+  view = overview(high); hooks.flush();
+  view.nodes.find(node => node.props["aria-label"] === "Максимальная партия: до 15").props.onClick();
+  view = overview(high); hooks.flush();
+  const limestone = view.nodes.find(node => node.props["data-route"] === "quarry_limestone");
+  assert.match(limestone.props["aria-label"], /×3/);
+  limestone.props.onClick();
+  assert.deepEqual(calls, [["start_exploration", "quarry_limestone", 3, 0]]);
+});
+
 test("batch card collects completed units while displaying the still-running queue", () => {
   hooks.reset(); const calls = [], saved = job({ startedAt: new Date(now - 600_000).toISOString(), finishesAt: new Date(now + 1200_000).toISOString(),
     miningBatch: { quantity: 10, claimed: 0, unitSeconds: 180, unitRewards: { stone: 1 } } });
   const economy = controller(state({ jobs: [saved] }), calls);
   hooks.render(); const tree = MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} });
   const html = renderToStaticMarkup(tree), controls = nodes(tree);
-  assert.match(html, /Добыто 3 из 10/); assert.match(html, /Забрать готовое · 3/);
+  assert.match(html, /Добыто 3 из 10/); assert.match(html, /Забрать доступное/);
+  assert.match(html, /До конца заказа/); assert.match(html, /Осталось 7/); assert.match(html, /aria-valuenow="33"/);
   const collect = controls.find(node => node.props["data-production-control"]);
   assert.equal(collect.props.disabled, false); collect.props.onClick(); collect.props.onClick();
   assert.deepEqual(calls, [["claim_job", saved.id, 1, 0]]);
   assert.match(html, /Остановить остаток/); assert.doesNotMatch(html, /Отказаться от находок|потеряны/);
 });
 
+test("partial collection explains capacity without promising that all ready units fit", () => {
+  hooks.reset(); const saved = job({ startedAt: new Date(now - 600_000).toISOString(), finishesAt: new Date(now + 840_000).toISOString(),
+    miningBatch: { quantity: 8, claimed: 0, unitSeconds: 180, unitRewards: { stone: 1 } } });
+  const economy = controller(state({ jobs: [saved], storage: { capacity: 50, available: 1, used: 49, reserved: 0 } }));
+  hooks.render(); const tree = MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} });
+  assert.match(renderToStaticMarkup(tree), /поместится до 1 из 3/);
+  assert.equal(nodes(tree).find(node => node.props["data-production-control"]).props.disabled, false);
+  hooks.reset(); economy.snapshot.storage.available = 0;
+  hooks.render(); const full = MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} });
+  assert.equal(nodes(full).find(node => node.props["data-production-control"]).props.disabled, true);
+  assert.match(renderToStaticMarkup(full), /Освободить кладовую/);
+  hooks.reset(); saved.rewards = { stone: 1, relic: 1 }; economy.snapshot.storage.available = 4;
+  hooks.render(); const firstRare = MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} });
+  assert.doesNotMatch(renderToStaticMarkup(firstRare), /поместится до 2/);
+  assert.equal(nodes(firstRare).find(node => node.props["data-production-control"]).props.disabled, false);
+});
+
 test("the mine renders exactly one permanent place and one compact card for each actual resource", () => {
   hooks.reset(); const calls = [], economy = controller(state(), calls), view = overview(economy);
   assert.equal(view.nodes.filter(n => n.props["data-production-slot"]).length, 1);
-  assert.match(view.html, /Свободно 1 из 1/); assert.match(view.html, /Что произвести\?/);
+  assert.match(view.html, /Свободно 1 из 1/); assert.match(view.html, /Что добывать\?/);
   assert.doesNotMatch(view.html, /Место 2|Место 3|Открыть место|data-miningSingle|Подготовиться|data-route-preparation/);
   const routes = economy.snapshot.catalog.explorations.filter(route => route.activity === "mining" && !route.retired);
   assert.deepEqual(view.nodes.filter(n => n.props["data-route"]).map(n => n.props["data-route"]).sort(), routes.map(r => r.id).sort());
@@ -97,7 +130,8 @@ test("working and ready mining keep the one slot occupied and prevent another la
     const calls = [], economy = controller(state({ jobs: [saved] }), calls), view = overview(economy); hooks.flush();
     assert.match(view.html, /Свободно 0 из 1/);
     assert.equal(view.nodes.filter(n => n.props["data-production-slot"]).length, 1);
-    view.nodes.find(n => n.props["data-route"] === "quarry_clay").props.onClick();
+    assert.equal(view.nodes.filter(n => n.props["data-route"]).length, 0);
+    assert.doesNotMatch(view.html, /Количество единиц добычи|Что добывать/);
     assert.deepEqual(calls, []);
   }
 });

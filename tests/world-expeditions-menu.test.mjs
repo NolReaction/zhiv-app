@@ -14,6 +14,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { mealDuration } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
+const { expeditionRewardRanges, ExpeditionLootPreview, ExpeditionReturnReport } = await vite.ssrLoadModule("/features/economy/ui/expeditions/expedition-loot.tsx");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -54,6 +55,28 @@ function button(html, label) {
   return found;
 }
 const disabled = value => /\bdisabled=/.test(value.attributes);
+
+test("supply preview shows honest quantity ranges and optional-resource odds without drawing an outcome", () => {
+  const state = snapshot(), selected = { ...state.catalog.explorations.find(item => item.id === "forest"),
+    rewards: { wood: 2 }, loot: [{ itemId: "wood", min: 0, max: 4 }, { itemId: "ore", min: 0, max: 2 }] };
+  const before = structuredClone(selected);
+  assert.deepEqual(expeditionRewardRanges(selected), [{ itemId: "wood", min: 2, max: 6, chance: 100 },
+    { itemId: "ore", min: 0, max: 2, chance: 100 * 2 / 3 }]);
+  const html = renderToStaticMarkup(createElement(ExpeditionLootPreview, { state, route: selected }));
+  assert.match(html, /2–6/); assert.match(html, /0–2/); assert.match(html, /66,7%/); assert.match(html, /В каждом походе/);
+  assert.deepEqual(selected, before);
+});
+
+test("return report contains accepted items and XP, highlights actual rare goods, and rejects another owner", () => {
+  const state = snapshot(), gain = { id: "accepted-trip", ownerPublicId: state.ownerPublicId, revision: 3, source: "claim",
+    items: [{ itemId: "wood", quantity: 6 }, { itemId: "lens", quantity: 1 }],
+    expedition: { routeId: "ancient_ruins", title: "Древние руины", xp: 100, rareItemIds: ["lens"] } };
+  const html = renderToStaticMarkup(createElement(ExpeditionReturnReport, { state, gain, onDismiss() {} }));
+  assert.match(html, /Мохлик принёс/); assert.match(html, /Древние руины/); assert.match(html, /\+6/); assert.match(html, /\+100 XP/);
+  assert.equal((html.match(/data-rare="true"/g) ?? []).length, 1);
+  assert.match(html, /Закрыть итоги вылазки/); assert.match(html, /Всё уже в кладовой/);
+  assert.equal(renderToStaticMarkup(createElement(ExpeditionReturnReport, { state, gain: { ...gain, ownerPublicId: "OTHER" }, onDismiss() {} })), "");
+});
 
 test("pending hero food quotes the same speed-adjusted time in route list, preparation and departure", () => {
   for (const id of ["forest", "shore"]) {
@@ -153,7 +176,11 @@ test("every catalog route belongs to exactly one sector and keeps its actual fin
         const name = itemId === "fish" && economyCatalog.fishing.routeIds.includes(id)
           ? "Рыбный улов" : economyCatalog.items.find(item => item.id === itemId).name;
         assert.ok(content.includes(name));
-        if (count !== 1) assert.ok(content.includes(`×${count}`));
+        if (entry.loot) {
+          const extra = entry.loot.find(item => item.itemId === itemId);
+          const min = count + (extra?.min ?? 0), max = count + (extra?.max ?? 0);
+          assert.ok(content.includes(min === max ? String(min) : `${min}–${max}`));
+        } else if (count !== 1) assert.ok(content.includes(`×${count}`));
         else assert.doesNotMatch(content, /×1(?!\d)/, "one unit is named without redundant ×1");
       }
       assert.ok(!content.includes(entry.description), "descriptive prose should not obscure route choices");
@@ -237,7 +264,7 @@ test("departure compares reward size with total capacity; a full pantry can be c
   let state = snapshot({ storage: { capacity: 10, available: 10, used: 0, reserved: 0, overflow: 0 } });
   let html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
   assert.equal(disabled(button(html, "Отправиться")), true);
-  assert.match(html, /Для находок нужно до 13 мест, вместимость - 10/);
+  assert.match(html, /Для находок нужно до 18 мест, вместимость - 10/);
   assert.equal(disabled(button(html, "Расширить кладовую")), false);
   state = snapshot({ storage: { capacity: 200, available: 0, used: 170, reserved: 30, overflow: 0 } });
   html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
@@ -639,8 +666,9 @@ test("route cards describe their duration, rewards and preparation reason beyond
   const catalogRoute = economyCatalog.explorations.find(entry => entry.id === "old_woodland");
   for (const [id, count] of Object.entries(catalogRoute.rewards)) {
     assert.ok(description.includes(economyCatalog.items.find(item => item.id === id).name));
-    if (count > 1) assert.match(description, new RegExp(`×\\s*${count}`));
-    else assert.doesNotMatch(description, /×1(?!\d)/);
+    const extra = catalogRoute.loot.find(item => item.itemId === id);
+    const min = count + (extra?.min ?? 0), max = count + (extra?.max ?? 0);
+    assert.ok(description.includes(min === max ? String(min) : `${min}–${max}`));
   }
 });
 

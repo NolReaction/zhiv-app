@@ -5,6 +5,7 @@ const MAX_VISIBLE_MS = 5000;
 export type PlayerXpBurst = Readonly<{ xp: number; fromLevel: number; toLevel: number }>;
 type Effects = {
   show: (burst: PlayerXpBurst, entering: boolean) => void;
+  levelUp?: (gain: PlayerXpGain) => void;
   hide: () => void;
   now: () => number;
   schedule: (finish: () => void, milliseconds: number) => unknown;
@@ -14,11 +15,11 @@ type Effects = {
 /** Coalesces a short harvest burst, discards hidden history and never replays on mount. */
 export function createPlayerXpPlayback(initialOwner: string | null, initial: readonly PlayerXpGain[], effects: Effects) {
   let owner = initialOwner, seen = new Set(initial.map(event => event.id));
-  let burst: PlayerXpBurst | null = null, started = 0, timer: unknown = null, generation = 0;
+  let burst: PlayerXpBurst | null = null, started = 0, timer: unknown = null, generation = 0, levelAnnounced = false;
   function clear() {
     generation++;
     if (timer !== null) effects.cancel(timer);
-    timer = null; burst = null; effects.hide();
+    timer = null; burst = null; levelAnnounced = false; effects.hide();
   }
   return {
     receive(nextOwner: string | null, events: readonly PlayerXpGain[], visible: boolean) {
@@ -37,6 +38,11 @@ export function createPlayerXpPlayback(initialOwner: string | null, initial: rea
         fromLevel: Math.min(burst?.fromLevel ?? Infinity, ...fresh.map(event => event.fromLevel)),
         toLevel: Math.max(burst?.toLevel ?? 0, ...fresh.map(event => event.toLevel)) });
       effects.show(burst, entering);
+      const crossing = fresh.find(event => event.toLevel > event.fromLevel);
+      if (crossing && !levelAnnounced) {
+        levelAnnounced = true;
+        effects.levelUp?.(crossing);
+      }
       if (timer !== null) effects.cancel(timer);
       const token = ++generation;
       timer = effects.schedule(() => { if (token === generation) clear(); }, Math.max(0,

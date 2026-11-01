@@ -3,6 +3,9 @@ package ru.zhiv.economy
 import kotlinx.serialization.Serializable
 import java.security.SecureRandom
 
+@Serializable data class EconomyExpeditionLootRange(val itemId: String, val min: Long, val max: Long) {
+    init { require(min in 0L..max && max in 1L..ECONOMY_MAX_ITEMS) }
+}
 @Serializable data class EconomyExpeditionFind(val itemId: String, val quantity: Long, val weight: Int) {
     init { require(quantity in 1L..ECONOMY_MAX_ITEMS && weight in 1..1_000_000) }
 }
@@ -17,6 +20,22 @@ import java.security.SecureRandom
 /** Private outcomes are drawn on acceptance and delivered only by an atomic claim. */
 object EconomyExpeditionLoot {
     private val entropy = SecureRandom()
+    fun maximumBonus(route: EconomyExploration): Long =
+        (route.loot?.sumOf { it.max } ?: 0L) + (route.finds?.entries?.maxOf { it.quantity } ?: 0L)
+
+    fun draw(route: EconomyExploration, random: (Int) -> Int = entropy::nextInt): Map<String, Long> {
+        val rewards = mutableMapOf<String, Long>()
+        route.loot?.forEach { entry ->
+            val size = (entry.max - entry.min + 1).toInt()
+            val roll = if (size == 1) 0 else random(size)
+            require(roll in 0 until size)
+            val quantity = entry.min + roll
+            if (quantity > 0) rewards[entry.itemId] = quantity
+        }
+        route.finds?.let { draw(it, random) }?.forEach { (id, quantity) -> rewards[id] = (rewards[id] ?: 0L) + quantity }
+        return rewards
+    }
+
     fun draw(spec: EconomyExpeditionFinds, random: (Int) -> Int = entropy::nextInt): Map<String, Long> {
         val total = spec.emptyWeight + spec.entries.sumOf { it.weight }
         var roll = random(total)

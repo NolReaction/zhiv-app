@@ -1,12 +1,21 @@
 package ru.zhiv.economy
 
 import ru.zhiv.auth.AuthFailure
+import kotlinx.serialization.Serializable
 import java.time.Duration
 import java.time.Instant
 
 /** One worker, saved per-unit terms, and a bounded offline queue. */
+@Serializable private data class MiningBatchCatalog(val version: Int, val maxUnitsByQuarryLevel: List<Int>, val maxBaseSeconds: Long)
 object EconomyMiningBatches {
-    const val LIMIT = 100
+    private val limits = economyJson.decodeFromString<MiningBatchCatalog>(
+        checkNotNull(EconomyMiningBatches::class.java.getResourceAsStream("/world/mining-batch-catalog.json"))
+            .bufferedReader().use { it.readText() }).also {
+        require(it.version == 1 && it.maxUnitsByQuarryLevel.isNotEmpty() && it.maxUnitsByQuarryLevel.all { amount -> amount in 1..100 } && it.maxBaseSeconds > 0)
+    }
+    fun limit(quarryLevel: Int, unitSeconds: Long): Int = minOf(
+        limits.maxUnitsByQuarryLevel[(quarryLevel - 1).coerceIn(0, limits.maxUnitsByQuarryLevel.lastIndex)],
+        (limits.maxBaseSeconds / unitSeconds.coerceAtLeast(1)).coerceAtLeast(1).toInt())
     fun completed(job: EconomyJob, now: Instant): Int {
         val batch = checkNotNull(job.miningBatch)
         return (Duration.between(Instant.parse(job.startedAt), now).toMillis().coerceAtLeast(0) / (batch.unitSeconds * 1000))

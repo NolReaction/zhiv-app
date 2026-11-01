@@ -222,6 +222,53 @@ test("prepared building completion plays once in the simple view without sharing
   } finally { f.runtime.dispose(); }
 });
 
+test("level-up chime reuses the warm reward asset and obeys mute, unlock, deduplication and visibility", async () => {
+  const f = fixture([], { catalog: AUDIO_CATALOG });
+  const event = id => ({ id, cueId: "ui.level-up", ownerId: "user-a", maxAgeMs: 600 });
+  try {
+    f.runtime.updateFrame(frame([], { soundscape: false }));
+    f.runtime.play(event("locked"));
+    await f.runtime.unlock();
+    await f.runtime.prepare(["ui.daily-reward"]);
+    f.runtime.play(event("locked")); await flush();
+    assert.equal(f.context.started.length, 0, "unlock never replays a missed level");
+    f.runtime.play({ id: "harvest", cueId: "ui.reward" }); await flush();
+    f.runtime.play(event("level-one")); await flush();
+    assert.equal(f.context.started.length, 2, "generic harvest feedback cannot swallow a level-up chime");
+    const path = "/audio/originals-v1/effect/ui.daily-reward.01.wav";
+    assert.equal(f.requests.filter(request => request.url === path).length, 1, "reuse the startup-prepared original recording");
+    f.advance(3000); f.runtime.play(event("level-one")); await flush();
+    assert.equal(f.context.started.length, 2, "the confirmed crossing remains consumed after cooldown");
+    for (const [id, mute, restore] of [
+      ["ui-muted", () => f.runtime.setSettings({ buses: { ui: 0 } }), () => f.runtime.setSettings({ buses: { ui: .5 } })],
+      ["master-muted", () => f.runtime.setSettings({ master: 0 }), () => f.runtime.setSettings({ master: .5 })],
+      ["disabled", () => f.runtime.setSettings({ enabled: false }), () => f.runtime.setSettings({ enabled: true })],
+      ["hidden", () => f.runtime.setVisible(false), () => f.runtime.setVisible(true)],
+    ]) {
+      f.advance(3000); mute(); f.runtime.play(event(id)); restore(); await f.runtime.unlock();
+      f.runtime.play(event(id)); await flush();
+      assert.equal(f.context.started.length, 2, `${id} cannot produce a delayed celebration`);
+    }
+  } finally { f.runtime.dispose(); }
+});
+
+test("level-up chime discards slow decoding after a view handoff or its short deadline", async () => {
+  for (const scenario of ["owner", "expired"]) {
+    const decoding = deferred(), f = fixture([], { catalog: AUDIO_CATALOG });
+    f.context.decode = () => decoding.promise;
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(frame([], { soundscape: false }));
+      f.runtime.play({ id: "level-old", cueId: "ui.level-up", ownerId: "user-a", maxAgeMs: 600 }); await flush();
+      if (scenario === "owner") {
+        f.runtime.updateFrame(frame([], { ownerId: "user-b", soundscape: false }));
+        f.runtime.updateFrame(frame([], { soundscape: false }));
+      } else f.advance(601);
+      decoding.resolve({ length: 44100, numberOfChannels: 1, duration: 1 }); await flush();
+      assert.equal(f.context.started.length, 0, scenario);
+    } finally { f.runtime.dispose(); }
+  }
+});
+
 test("slider feedback varies pitch and respects the edited channel even in a music-only menu", async () => {
   const f = fixture([cue("ui.slider", "one-shot", { bus: "ui", cooldownMs: 90, pitchVariation: 0 })]);
   await f.runtime.unlock(); f.runtime.updateFrame(frame([], { soundscape: false }));

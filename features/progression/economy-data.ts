@@ -5,7 +5,7 @@ import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
 import { currencyShopGoldOffers, GOLD_SHOP_PACKAGES, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { storefrontCatalog } from "@/features/economy/domain/storefront";
 import { VISIBLE_GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
-import { sourceRetired, timeEconomyPolicy } from "./economy-sources";
+import { expeditionGuaranteedRewards, sourceRetired, timeEconomyPolicy } from "./economy-sources";
 import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
 export type EconomyItemSource = {
@@ -310,15 +310,22 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
   }
   for (const route of catalog.explorations.filter(route => !sourceRetired(route))) {
     const isFishing = fish?.routeIds.includes(route.id);
+    const guaranteed = expeditionGuaranteedRewards(route);
     // Route reward `fish` denotes random catches, never guaranteed common fish.
-    for (const [id, quantity] of Object.entries(route.rewards)) {
+    for (const [id, quantity] of Object.entries(guaranteed)) {
       if (isFishing && id === "fish") continue;
       addSource(id, { id: `exploration:${route.id}`, kind: "exploration", name: route.name, homeLevel: route.requiredHomeLevel,
         quantity, seconds: route.seconds, guaranteed: true, routeId: route.id,
         cost: copyCost(route.cost), requiredBuildings: { ...route.requiredBuildings },
-        rewards: Object.fromEntries(Object.entries(route.rewards).filter(([rewardId]) => !isFishing || rewardId !== "fish")),
-        detail: `${route.activity === "mining" ? "Отдельная очередь шахтёра" : "Вылазка Мохлика"}. Набор гарантирован после успешного получения.` });
+        rewards: Object.fromEntries(Object.entries(guaranteed).filter(([rewardId]) => !isFishing || rewardId !== "fish")),
+        detail: `${route.activity === "mining" ? "Отдельная очередь шахтёра" : "Вылазка Мохлика"}. ${route.loot?.length ? "В плане учтён только гарантированный минимум; случайная прибавка показана отдельно." : "Набор гарантирован после успешного получения."}` });
     }
+    for (const entry of route.loot ?? []) if (entry.max > entry.min) addSource(entry.itemId, {
+      id: `loot:${route.id}:${entry.itemId}`, kind: "exploration", name: `${route.name} · переменная добыча`, homeLevel: route.requiredHomeLevel,
+      quantity: entry.max - entry.min, seconds: route.seconds, guaranteed: false, routeId: route.id,
+      cost: copyCost(route.cost), requiredBuildings: { ...route.requiredBuildings },
+      detail: `Дополнительно 0–${entry.max - entry.min} к минимуму: каждое количество равновероятно. Всего ${(route.rewards[entry.itemId] ?? 0) + entry.min}–${(route.rewards[entry.itemId] ?? 0) + entry.max} за поход без редкой находки. Случайная прибавка не включается в гарантированный план.`,
+    });
     if (route.finds) {
       const total = route.finds.emptyWeight + route.finds.entries.reduce((sum, entry) => sum + entry.weight, 0);
       route.finds.entries.forEach((entry, index) => addSource(entry.itemId, {

@@ -18,6 +18,13 @@ export function sourceRetired(source: object): boolean {
   return "retired" in source && source.retired === true;
 }
 
+/** Only lower bounds can support a guaranteed production schedule. */
+export function expeditionGuaranteedRewards(route: Pick<EconomyCatalog["explorations"][number], "rewards" | "loot">): Record<string, number> {
+  const rewards = { ...route.rewards };
+  for (const entry of route.loot ?? []) if (entry.min > 0) rewards[entry.itemId] = (rewards[entry.itemId] ?? 0) + entry.min;
+  return rewards;
+}
+
 /** Representative completed buildings, not a claim about the player's progress.
  * Every prerequisite must fit before the next level can be included. */
 export function buildingsAtHomeLevel(homeLevel: number, catalog: EconomyCatalog = economyCatalog): Record<string, number> {
@@ -54,7 +61,7 @@ export function productionSources(catalog: EconomyCatalog = economyCatalog): Pro
     ...catalog.explorations.filter(route => !catalog.fishing?.routeIds.includes(route.id)).map(route => ({
       id: `exploration:${route.id}`, kind: "exploration" as const, name: route.name,
       stationId: route.activity === "mining" ? "quarry" : "hero", seconds: route.seconds, collectionSeconds: 0,
-      cost: { coins: route.cost.coins, items: { ...route.cost.items } }, rewards: { ...route.rewards },
+      cost: { coins: route.cost.coins, items: { ...route.cost.items } }, rewards: expeditionGuaranteedRewards(route),
       homeLevel: earliest(route.requiredHomeLevel, route.requiredBuildings), requiredBuildings: { ...route.requiredBuildings },
       requiredRecipes: {}, retired: sourceRetired(route),
     })),

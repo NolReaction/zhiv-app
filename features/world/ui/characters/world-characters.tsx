@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, LockKeyhole, PawPrint, X } from "lucide-react";
+import { ArrowRight, Heart, LockKeyhole, PawPrint, Sparkles, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PleskPortrait } from "@/features/world/characters/plesk/plesk-portrait";
@@ -11,6 +11,7 @@ import { LeaftailPortrait } from "@/features/world/characters/leaftail/leaftail-
 import { WORLD_CHARACTERS, worldResidentAvailable, type WorldCharacterId, type WorldResidentId } from "@/features/world/characters/world-characters-model";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { tradeRelationProgress } from "@/features/economy/domain/trade-relations";
+import { orderReputationBenefit } from "@/features/economy/ui/orders/order-reputation-presentation";
 import styles from "./world-characters.module.css";
 
 const portraits = { builder: BuilderPortrait, plesk: PleskPortrait, lopukh: LopukhPortrait, kamneshmyg: KamneshmygPortrait, leaftail: LeaftailPortrait };
@@ -43,24 +44,33 @@ export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false
         }}>
         <header className={styles.header}>
           <div><DialogTitle className={styles.title}><PawPrint size={22} aria-hidden="true" />Персонажи</DialogTitle>
-            <DialogDescription className={styles.description}>Загляните к знакомым жителям леса.</DialogDescription></div>
+            <DialogDescription className={styles.description}>Помогайте жителям — крепкая дружба даёт постоянные бонусы.</DialogDescription></div>
           <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть персонажей"><X size={22} aria-hidden="true" /></button>
         </header>
         <ul className={styles.grid} aria-label="Персонажи леса">
           {WORLD_CHARACTERS.map(character => {
             const available = worldResidentAvailable(character.id, quarryBuilt, leaftailAvailable, lopukhAvailable), Portrait = portraits[character.id];
             const relationship = available && economy ? tradeRelationProgress(economy, character.id, economy.catalog) : null;
+            const remaining = relationship ? Math.max(0, relationship.requiredXp - relationship.progressXp) : 0;
+            const friendshipHint = relationship?.nextRank ? `Ещё ${remaining.toLocaleString("ru-RU")} до «${relationship.nextRank.name}»` : "Высший ранг дружбы";
+            const benefit = relationship ? orderReputationBenefit(character.id, relationship.bonusBps) : "";
+            const friendshipLabel = relationship ? ` Дружба: ${relationship.rank.name}, ${relationship.xp.toLocaleString("ru-RU")} очков. ${friendshipHint}. ${benefit}.` : "";
             const arrivalHint = character.id === "lopukh" ? lopukhUnlocked ? "Дождитесь прибытия" : "Откройте лесной участок"
               : character.id === "kamneshmyg" ? "Постройте каменоломню"
               : leaftailUnlocked ? "Дождитесь прибытия" : "Дом 3-го уровня";
             return <li key={character.id}>
               <button type="button" className={`${styles.card} ${available ? styles.available : styles.locked}`} data-world-character={character.id}
-                aria-label={available ? `${character.name}, ${character.role}. Открыть разговор` : `Незнакомый житель. ${arrivalHint}`}
+                aria-label={available ? `${character.name}, ${character.role}.${friendshipLabel} Открыть разговор` : `Незнакомый житель. ${arrivalHint}`}
                 aria-haspopup={available ? "dialog" : undefined} aria-disabled={!available || undefined}
                 onClick={() => { if (available) onResident(character.id); }}>
                 <span className={styles.stage}>{available ? <Portrait animated className={styles.portrait} /> : <UnknownResident />}</span>
                 <strong>{available ? character.name : "Незнакомый житель"}</strong><small>{available ? character.role : "Вы ещё не встречались"}</small>
-                {relationship && <small className={styles.relationship} data-resident-reputation={character.id}>{relationship.rank.name} · {relationship.xp.toLocaleString("ru-RU")} опыта</small>}
+                {relationship && <span className={styles.relationship} data-resident-reputation={character.id} data-rank={relationship.rankIndex + 1}>
+                  <span className={styles.friendshipHeading}><Heart size={14} aria-hidden="true" /><span>{relationship.rank.name}</span></span>
+                  <span className={styles.friendshipTrack} aria-hidden="true"><span style={{ width: `${relationship.nextRank ? Math.min(100, Math.max(0, relationship.progressXp / Math.max(1, relationship.requiredXp) * 100)) : 100}%` }} /></span>
+                  <span className={styles.friendshipHint}>{friendshipHint}</span>
+                  <span className={styles.friendshipBenefit}><Sparkles size={13} aria-hidden="true" />{benefit}</span>
+                </span>}
                 <span className={styles.visit}>{available ? <>Заглянуть <ArrowRight size={15} aria-hidden="true" /></> : <><LockKeyhole size={15} aria-hidden="true" />{arrivalHint}</>}</span>
               </button>
             </li>;
