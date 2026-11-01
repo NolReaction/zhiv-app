@@ -11,13 +11,14 @@ class EconomyOrderVarietyTest {
     private val now = Instant.parse("2026-10-16T09:00:00Z")
     @Serializable private data class Scenario(
         val label: String, val buildings: Map<String, Int>, val recipes: Map<String, Long> = emptyMap(),
+        val completedExplorations: Map<String, Long> = emptyMap(), val fishCatches: Map<String, Long> = emptyMap(),
         val ownedRods: List<String>, val ownedHooks: List<String>, val present: List<String>, val missing: List<String>,
     )
     private fun scenarios() = economyJson.decodeFromString<List<Scenario>>(checkNotNull(
         javaClass.getResourceAsStream("/world/orders-variety-vectors.json")).bufferedReader().use { it.readText() })
     private fun state(scenario: Scenario) = EconomyRules.initial().copy(buildings = scenario.buildings,
-        progression = EconomyProgression(recipes = scenario.recipes),
-        fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks))
+        progression = EconomyProgression(recipes = scenario.recipes, routes = scenario.completedExplorations),
+        fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks, catches = scenario.fishCatches))
 
     @Test fun `browser and server share varied requests with complete ingredient recipe and gear gates`() {
         val catalog = EconomyRules.catalog

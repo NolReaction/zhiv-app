@@ -48,8 +48,8 @@ class JdbcRewardMigrationCompatibilityIntegrationTest {
     private fun promises(source: DataSource): List<String> = listOf("economy_profiles", "game_daily_rewards", "player_mail_messages")
         .map { table -> scalar(source, "SELECT jsonb_agg(to_jsonb(t)-'achievement_reward_version')::text FROM $table t") }
     private fun assertFinished(source: DataSource) {
-        assertEquals("78", scalar(source, "SELECT max(version::int)::text FROM flyway_schema_history"))
-        assertEquals("30", scalar(source, "SELECT count(*)::text FROM flyway_schema_history"))
+        assertEquals("79", scalar(source, "SELECT max(version::int)::text FROM flyway_schema_history"))
+        assertEquals("31", scalar(source, "SELECT count(*)::text FROM flyway_schema_history"))
         assertEquals("V73__economy_reward_promises.sql", scalar(source, "SELECT script FROM flyway_schema_history WHERE version='73'"))
         assertEquals("7", scalar(source, "SELECT economy_v4_initial_state('{}',true)#>>'{tutorialOrder,rewardVersion}'"))
         assertEquals("true", scalar(source, "SELECT (to_regclass('neighbor_settings') IS NOT NULL)::text"))
@@ -94,7 +94,7 @@ class JdbcRewardMigrationCompatibilityIntegrationTest {
             "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='70'" to "UPDATE flyway_schema_history SET checksum=checksum-1 WHERE version='70'",
             "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='49'" to "UPDATE flyway_schema_history SET checksum=checksum-1 WHERE version='49'",
             "UPDATE flyway_schema_history SET success=false WHERE version='71'" to "UPDATE flyway_schema_history SET success=true WHERE version='71'",
-            "UPDATE flyway_schema_history SET version='79' WHERE version='71'" to "UPDATE flyway_schema_history SET version='71' WHERE version='79'",
+            "UPDATE flyway_schema_history SET version='80' WHERE version='71'" to "UPDATE flyway_schema_history SET version='71' WHERE version='80'",
         )
         changes.forEach { (change, restore) ->
             execute(source, change); val before = history(source); val data = promises(source)

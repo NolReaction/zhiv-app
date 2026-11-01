@@ -18,7 +18,7 @@ const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 beforeEach(() => { ids.resetDevStoreForTests(); game.resetDevGameStoreForTests(); });
 after(() => vite.close());
 
-test("new pearl course redistributes the same finite budget without changing any earlier milestone", () => {
+test("cooking variety adds a finite reward while preserving earlier milestone promises", () => {
   let current = 0, legacy = 0, oldMilestones = 0;
   for (const [id, targets] of Object.entries(progress.GAME_ACHIEVEMENT_TARGETS)) {
     assert.deepEqual(targets.slice(0, progress.LEGACY_GAME_ACHIEVEMENT_TARGETS[id].length), progress.LEGACY_GAME_ACHIEVEMENT_TARGETS[id]);
@@ -28,7 +28,7 @@ test("new pearl course redistributes the same finite budget without changing any
       if (index < progress.LEGACY_GAME_ACHIEVEMENT_TARGETS[id].length) oldMilestones += rules.achievementPearlsForVersion(id, index + 1, 6);
     }
   }
-  assert.equal(current, 4120); assert.equal(oldMilestones, 4120); assert.equal(legacy, 5820);
+  assert.equal(current, 4190); assert.equal(oldMilestones, 4120); assert.equal(legacy, 5890);
   assert.equal(rules.achievementPearlsForVersion("master_recipes", 1) + rules.achievementPearlsForVersion("master_recipes", 2), 40);
   assert.equal(rules.achievementPearlsForVersion("master_recipes", 1, 6) + rules.achievementPearlsForVersion("master_recipes", 2, 6), 300);
 });
@@ -71,13 +71,40 @@ test("late recipe and activity tiers require their real counters and old clients
   assert.ok(master().every(row => row.eligible));
   for (const id of ["explorer", "patient_angler", "campfire_cook", "helpful_neighbor", "generous_garden"])
     assert.equal(opened.achievementRewards.find(row => row.achievementId === id && row.level === 4).eligible, true);
-  assert.equal(opened.achievementRewards.length, 40);
-  for (const version of [4, 5, 6, 7, 8]) {
+  assert.equal(opened.achievementRewards.length, 43);
+  for (const version of [4, 5, 6, 7, 8, 9]) {
     const projected = compat.rewardCatalogView(opened, version);
-    assert.equal(projected.achievementRewards.length, version === 8 ? 40 : version === 4 ? 21 : 33);
+    assert.equal(projected.achievementRewards.length, version === 9 ? 43 : version === 8 ? 40 : version === 4 ? 21 : 33);
     assert.equal(api.gameRewardsSchema.safeParse(projected).success, true);
     if (version < 8) assert.ok(projected.achievementRewards.every(row => row.level <= progress.LEGACY_GAME_ACHIEVEMENT_TARGETS[row.achievementId].length));
   }
   const paid = rewards.claimDevProgressionReward(player.token, { requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "achievement", achievementId: "master_recipes", level: 4 }, now + 2);
   assert.equal(paid.claim.reward.pearls, 300);
+});
+
+test("forest cuisine grants each modest variety reward once without replacing former cooking milestones", () => {
+  const player = ids.createDevIdentity("Повар", crypto.randomUUID()), owner = player.me.user.publicId;
+  const now = Date.parse("2026-11-02T00:00:00Z");
+  economy.getDevEconomy(player.token, now);
+  const state = globalThis.__zhivDevEconomyStore.profiles.get(owner).state;
+  const cooking = model.economyCatalog.recipes.filter(recipe => !recipe.retired && recipe.buildingId === "dryer");
+  const initialPearls = state.wallet.pearls;
+  let paidPearls = 0;
+  for (const [index, target] of [3, 8, 16].entries()) {
+    globalThis.__zhivDevEconomyStore.profiles.get(owner).state.progression.recipes = Object.fromEntries(cooking.slice(0, target).map(recipe => [recipe.id, 1]));
+    const opened = rewards.getDevProgressionRewards(player.token, now + index);
+    const row = opened.achievementRewards.find(row => row.achievementId === "forest_cuisine" && row.level === index + 1);
+    assert.equal(row.eligible, true); assert.equal(row.pearls, [10, 20, 40][index]);
+    const command = { requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "achievement", achievementId: "forest_cuisine", level: index + 1 };
+    const first = rewards.claimDevProgressionReward(player.token, command, now + index);
+    assert.equal(first.replayed, false);
+    assert.equal(first.claim.reward.pearls, row.pearls);
+    paidPearls += row.pearls;
+    const replay = rewards.claimDevProgressionReward(player.token, command, now + index + 1);
+    assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, first.claim);
+    assert.equal(replay.economy.wallet.pearls, initialPearls + paidPearls);
+    assert.throws(() => rewards.claimDevProgressionReward(player.token, { ...command, requestId: crypto.randomUUID() }, now + index + 2), { code: "ACHIEVEMENT_REWARD_CLAIMED" });
+  }
+  assert.equal(paidPearls, 70, "35 visible pearls total, not a repeating cooking bonus");
+  assert.deepEqual(progress.GAME_ACHIEVEMENT_TARGETS.campfire_cook, [5, 25, 100, 500]);
 });

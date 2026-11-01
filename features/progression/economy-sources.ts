@@ -4,9 +4,16 @@ export type ProductionSource = {
   id: string; kind: "recipe" | "exploration"; name: string; stationId: string;
   seconds: number; collectionSeconds: number; cost: EconomyCost; rewards: Record<string, number>;
   homeLevel: number; requiredBuildings: Record<string, number>; requiredRecipes: Record<string, number>;
+  requiredExplorations: Record<string, number>; requiredFishCaught: number; unlockTitle?: string;
   retired: boolean;
 };
-export type ProductionAccess = { buildings?: Record<string, number>; completedRecipes?: Record<string, number> };
+export type ProductionAccess = { buildings?: Record<string, number>; completedRecipes?: Record<string, number>;
+  completedExplorations?: Record<string, number>; fishCaught?: number };
+/** An omitted access snapshot is a catalogue preview, not a new player's zero progress. */
+export function hasProductionAccess(access: ProductionAccess): boolean {
+  return access.buildings !== undefined || access.completedRecipes !== undefined
+    || access.completedExplorations !== undefined || access.fishCaught !== undefined;
+}
 export type TimeEconomyPolicy = {
   coinsPerMinute: number; orderBonusBps: number;
   baselineRecipes: Record<string, string>; baselineExplorations: Record<string, string>; externalPrices: Record<string, number>;
@@ -56,14 +63,15 @@ export function productionSources(catalog: EconomyCatalog = economyCatalog): Pro
         seconds: recipe.seconds, collectionSeconds: recipe.collection?.seconds ?? 0,
         cost: { coins: recipe.cost.coins, items: { ...recipe.cost.items } }, rewards: { ...recipe.rewards },
         homeLevel: earliest(recipe.requiredHomeLevel, requiredBuildings), requiredBuildings,
-        requiredRecipes: { ...recipe.requiredRecipes }, retired: sourceRetired(recipe) };
+        requiredRecipes: { ...recipe.requiredRecipes }, requiredExplorations: { ...recipe.requiredExplorations },
+        requiredFishCaught: recipe.requiredFishCaught ?? 0, unlockTitle: recipe.unlockTitle, retired: sourceRetired(recipe) };
     }),
     ...catalog.explorations.filter(route => !catalog.fishing?.routeIds.includes(route.id)).map(route => ({
       id: `exploration:${route.id}`, kind: "exploration" as const, name: route.name,
       stationId: route.activity === "mining" ? "quarry" : "hero", seconds: route.seconds, collectionSeconds: 0,
       cost: { coins: route.cost.coins, items: { ...route.cost.items } }, rewards: expeditionGuaranteedRewards(route),
       homeLevel: earliest(route.requiredHomeLevel, route.requiredBuildings), requiredBuildings: { ...route.requiredBuildings },
-      requiredRecipes: {}, retired: sourceRetired(route),
+      requiredRecipes: {}, requiredExplorations: {}, requiredFishCaught: 0, retired: sourceRetired(route),
     })),
   ];
 }
@@ -72,8 +80,11 @@ export function sourceAvailable(source: ProductionSource, access: ProductionAcce
   if (source.retired || source.homeLevel > 5) return false;
   if (access.buildings && ((access.buildings.home ?? 1) < source.homeLevel
     || Object.entries(source.requiredBuildings).some(([id, level]) => (access.buildings![id] ?? 0) < level))) return false;
-  if ((access.completedRecipes || access.buildings) && Object.entries(source.requiredRecipes)
-    .some(([id, count]) => (access.completedRecipes?.[id] ?? 0) < count)) return false;
+  if (hasProductionAccess(access)) {
+    if (Object.entries(source.requiredRecipes).some(([id, count]) => (access.completedRecipes?.[id] ?? 0) < count)) return false;
+    if (Object.entries(source.requiredExplorations).some(([id, count]) => (access.completedExplorations?.[id] ?? 0) < count)) return false;
+    if ((access.fishCaught ?? 0) < source.requiredFishCaught) return false;
+  }
   return true;
 }
 

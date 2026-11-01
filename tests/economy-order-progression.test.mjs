@@ -66,6 +66,8 @@ test("shared Kotlin reachability vectors require every production input and rods
   for (const scenario of vectors.availability) {
     const state = fresh(); state.buildings = scenario.buildings;
     state.progression.recipes = scenario.recipes ?? {};
+    state.progression.routes = scenario.completedExplorations ?? {};
+    state.fishing.catches = scenario.fishCatches ?? {};
     state.fishing.ownedRods = scenario.ownedRods; state.fishing.ownedHooks = scenario.ownedHooks;
     state.inventory = Object.fromEntries(catalog.items.map(item => [item.id, 100]));
     const reachable = food.obtainableResidentOrderItems(state);
@@ -83,6 +85,8 @@ test("new material templates unlock only with completed supply chains and includ
     assert(!initial.some(template => template.items[id]), `home alone must not open ${id}`);
   state.buildings = Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level]));
   state.progression.recipes = Object.fromEntries(catalog.recipes.map(recipe => [recipe.id, 10]));
+  state.progression.routes = Object.fromEntries(catalog.explorations.map(route => [route.id, 10]));
+  state.fishing.catches = { [catalog.fishing.fish[0].itemId]: 4 };
   const available = food.eligibleResidentOrderTemplates(state), requested = new Set(available.flatMap(template => Object.keys(template.items)));
   for (const item of catalog.items.filter(item => ["material", "crafted"].includes(item.category)))
     assert(requested.has(item.id), `missing ordinary material ${item.id}`);

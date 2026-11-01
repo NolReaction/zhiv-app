@@ -28,6 +28,8 @@ function developed() {
   const state = fresh();
   state.buildings = Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level]));
   state.progression.recipes = Object.fromEntries(catalog.recipes.map(recipe => [recipe.id, 100]));
+  state.progression.routes = Object.fromEntries(catalog.explorations.map(route => [route.id, 100]));
+  state.fishing.catches = { [catalog.fishing.fish[0].itemId]: 4 };
   state.wallet = { coins: 100_000, pearls: 10_000 };
   return state;
 }

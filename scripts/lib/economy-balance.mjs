@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { recipeMasteryReachable } from "./recipe-mastery.mjs";
 import { explorationLootSummary } from "./exploration-loot.mjs";
 import { createLiquidation, recipeBuildingLevel } from "./economy-math.mjs";
 
@@ -213,7 +214,7 @@ export function auditBuildingUnlocks(catalog) {
   const sources = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired);
   const rows = [];
   for (let home = 1; home <= 5; home++) {
-    const levels = { home, garden: 1, warehouse: 1 }, items = new Set(), recipes = new Set();
+    const levels = { home, garden: 1, warehouse: 1 }, items = new Set(), recipes = new Set(), routes = new Set();
     const permits = definition => home >= definition.requiredHomeLevel
       && Object.entries(definition.requiredBuildings ?? {}).every(([id, level]) => (levels[id] ?? 0) >= level);
     const materials = definition => Object.keys(definition.cost.items).every(id => items.has(id));
@@ -224,9 +225,10 @@ export function auditBuildingUnlocks(catalog) {
       for (const source of sources) {
         if (!permits(source) || !materials(source)
           || source.buildingId && (levels[source.buildingId] ?? 0) < recipeBuildingLevel(source)
-          || Object.keys(source.requiredRecipes ?? {}).some(id => !recipes.has(id))) continue;
+          || !recipeMasteryReachable(catalog, source, recipes, routes, home)) continue;
         for (const id of Object.keys(source.rewards)) obtain(id);
         if (source.buildingId && !recipes.has(source.id)) { recipes.add(source.id); changed = true; }
+        if (!source.buildingId && !routes.has(source.id)) { routes.add(source.id); changed = true; }
         if (!source.buildingId && home >= catalog.rareDrops.requiredHomeLevel)
           for (const id of catalog.rareDrops.itemIds) obtain(id);
         if (catalog.fishing.routeIds.includes(source.id)) for (const fish of catalog.fishing.classes)

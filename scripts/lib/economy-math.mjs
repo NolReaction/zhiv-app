@@ -46,6 +46,19 @@ export function economicMath(catalog) {
   const rare = new Set(catalog.rareDrops?.itemIds ?? []);
   const liquidation = createLiquidation(catalog);
   const recipes = new Map(catalog.recipes.map(recipe => [recipe.id, recipe]));
+  const routes = new Map(catalog.explorations.map(route => [route.id, route]));
+  const requirementSource = itemId => {
+    if (fish.has(itemId) || rare.has(itemId)) return null;
+    const baseline = catalog.timeEconomy?.baselineRecipes?.[itemId] ?? catalog.timeEconomy?.baselineExplorations?.[itemId];
+    return baseline ? recipes.get(baseline) ?? routes.get(baseline)
+      : [...recipes.values(), ...routes.values()].filter(source => source.rewards[itemId] > 0)
+        .sort((a, b) => a.requiredHomeLevel - b.requiredHomeLevel || a.seconds - b.seconds)[0];
+  };
+  const masteryDefinitions = d => [
+    ...Object.keys(d.requiredRecipes ?? {}).map(id => { const source = recipes.get(id); assert(source, `Unknown recipe unlock ${id}`); return source; }),
+    ...Object.keys(d.requiredExplorations ?? {}).map(id => { const source = routes.get(id); assert(source, `Unknown exploration unlock ${id}`); return source; }),
+    ...(d.requiredFishCaught > 0 ? [routes.get(catalog.fishing.routeIds[0])] : []),
+  ];
   const homeCache = new Map();
   function buildingHome(id, level, path = []) {
     if (id === "dryer" && level === 0) return 1;
@@ -63,24 +76,41 @@ export function economicMath(catalog) {
     return Math.max(d.requiredHomeLevel,
       ...(d.buildingId ? [buildingHome(d.buildingId, recipeBuildingLevel(d))] : []),
       ...Object.entries(d.requiredBuildings ?? {}).map(([id, level]) => buildingHome(id, level)),
-      ...Object.keys(d.requiredRecipes ?? {}).map(id => {
-        const prior = recipes.get(id); assert(prior, `Unknown recipe unlock ${id}`);
-        return definitionHome(prior, [...path, d.id]);
-      }));
+      ...(d.requiredFishCaught > 0 ? [fishingMasteryHome()] : []),
+      ...masteryDefinitions(d).map(prior => masteryHome(prior, [...path, d.id])));
   };
-  const unlockPrerequisites = (d, path = []) => {
+  const masteryHome = (d, path) => Math.max(definitionHome(d, path), ...Object.keys(d.cost.items).map(id => {
+    const source = requirementSource(id);
+    return source ? masteryHome(source, [...path, d.id]) : fish.has(id) ? fishingHome(id) : rare.has(id) ? catalog.rareDrops.requiredHomeLevel : 1;
+  }));
+  const unlockPrerequisites = (d, path = [], includeInputs = false) => {
     assert(!path.includes(d.id), `Recipe unlock cycle: ${[...path, d.id].join(" -> ")}`);
     const levels = { ...d.requiredBuildings, ...(d.buildingId ? { [d.buildingId]: recipeBuildingLevel(d) } : {}), home: d.requiredHomeLevel };
     const completedRecipes = { ...d.requiredRecipes };
-    for (const id of Object.keys(d.requiredRecipes ?? {})) {
-      const recipe = recipes.get(id); assert(recipe, `Unknown recipe unlock ${id}`);
-      const prior = unlockPrerequisites(recipe, [...path, d.id]);
-      requireLevels(levels, prior.levels); requireLevels(completedRecipes, prior.completedRecipes);
+    const completedRoutes = { ...d.requiredExplorations };
+    let caughtFish = d.requiredFishCaught ?? 0;
+    if (caughtFish > 0) levels.home = Math.max(levels.home, fishingMasteryHome());
+    for (const dependency of masteryDefinitions(d)) {
+      const prior = unlockPrerequisites(dependency, [...path, d.id], true);
+      requireLevels(levels, prior.levels); requireLevels(completedRecipes, prior.completedRecipes); requireLevels(completedRoutes, prior.completedRoutes);
+      caughtFish = Math.max(caughtFish, prior.caughtFish);
     }
-    return { levels, completedRecipes };
+    // Explicit mastery routes bring their provision-producing stations with them.
+    for (const input of includeInputs ? Object.keys(d.cost.items) : []) {
+      const source = requirementSource(input);
+      if (source) {
+        const prior = unlockPrerequisites(source, [...path, d.id], true);
+        requireLevels(levels, prior.levels); requireLevels(completedRecipes, prior.completedRecipes); requireLevels(completedRoutes, prior.completedRoutes);
+        caughtFish = Math.max(caughtFish, prior.caughtFish);
+      } else if (fish.has(input)) levels.home = Math.max(levels.home, fishingHome(input));
+    }
+    return { levels, completedRecipes, completedRoutes, caughtFish };
   };
   const rodCanCatch = (rod, rarity) => (rarity !== "legendary" || rod.rarity === "legendary")
     && (!rod.classOddsBps || rod.classOddsBps[rarity] > 0);
+  const fishingMasteryHome = () => Math.max(
+    Math.min(...catalog.fishing.rods.filter(rod => catalog.fishing.classes.some(group => rodCanCatch(rod, group.rarity))).map(rod => rod.requiredHomeLevel ?? 1)),
+    Math.min(...catalog.fishing.hooks.map(hook => hook.requiredHomeLevel ?? 1)));
   const fishingHome = itemId => {
     const spec = [...catalog.fishing.fish, ...(catalog.fishing.classes ?? [])].find(f => f.itemId === itemId);
     return Math.max(1, Math.min(...catalog.fishing.rods.filter(rod => rodCanCatch(rod, spec.rarity)).map(rod => rod.requiredHomeLevel ?? 1)));
@@ -131,11 +161,12 @@ export function economicMath(catalog) {
     if (profiles.has(id)) return profiles.get(id);
     assert(!path.includes(id), `Production cycle: ${[...path, id].join(" -> ")}`);
     const r = primitive.get(id);
-    const result = { itemId: id, slotMinutes: {}, rawInputs: {}, coins: 0, depth: 0, sourceHome: sourceHome(id), referenceHome: 1, byproducts: {}, producerLevels: {}, unlockRecipes: {} };
+    const result = { itemId: id, slotMinutes: {}, rawInputs: {}, coins: 0, depth: 0, sourceHome: sourceHome(id), referenceHome: 1, byproducts: {}, producerLevels: {}, unlockRecipes: {}, unlockExplorations: {}, requiredFishCaught: 0 };
     if (r) {
       const output = r.rewards[id]; result[r.buildingId ? "recipeId" : "routeId"] = r.id; result.referenceHome = definitionHome(r);
       const prerequisites = unlockPrerequisites(r);
       requireLevels(result.producerLevels, prerequisites.levels); requireLevels(result.unlockRecipes, prerequisites.completedRecipes);
+      requireLevels(result.unlockExplorations, prerequisites.completedRoutes); result.requiredFishCaught = prerequisites.caughtFish;
       add(result.slotMinutes, recipeSlots(r), 1 / output); result.coins += r.cost.coins / output;
       if (!Object.keys(r.cost.items).length) result.rawInputs[id] = 1;
       for (const [input, quantity] of Object.entries(r.cost.items)) {
@@ -143,6 +174,7 @@ export function economicMath(catalog) {
         add(result.slotMinutes, p.slotMinutes, scale); add(result.rawInputs, p.rawInputs, scale); add(result.byproducts, p.byproducts, scale);
         requireLevels(result.producerLevels, p.producerLevels);
         requireLevels(result.unlockRecipes, p.unlockRecipes);
+        requireLevels(result.unlockExplorations, p.unlockExplorations); result.requiredFishCaught = Math.max(result.requiredFishCaught, p.requiredFishCaught);
         result.coins += p.coins * scale; result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
       }
     } else if (rare.has(id)) {

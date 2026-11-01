@@ -12,7 +12,8 @@ class EconomyOrderProgressionTest {
     private val catalog = EconomyRules.catalog
     @Serializable private data class ScaleVector(val templateId: String, val home: Int, val items: Map<String, Long>, val coins: Long)
     @Serializable private data class AvailabilityVector(val label: String, val buildings: Map<String, Int>, val ownedRods: List<String>,
-        val ownedHooks: List<String>, val present: List<String>, val missing: List<String>, val recipes: Map<String, Long> = emptyMap())
+        val ownedHooks: List<String>, val present: List<String>, val missing: List<String>, val recipes: Map<String, Long> = emptyMap(),
+        val completedExplorations: Map<String, Long> = emptyMap(), val fishCatches: Map<String, Long> = emptyMap())
     @Serializable private data class Vectors(val scaling: List<ScaleVector>, val availability: List<AvailabilityVector>)
     private val vectors = economyJson.decodeFromString<Vectors>(checkNotNull(javaClass.getResourceAsStream("/world/orders-progression-vectors.json"))
         .bufferedReader().use { it.readText() })
@@ -125,9 +126,9 @@ class EconomyOrderProgressionTest {
         }
         vectors.availability.forEach { scenario ->
             val state = EconomyRules.initial().copy(buildings = scenario.buildings,
-                progression = EconomyProgression(recipes = scenario.recipes),
+                progression = EconomyProgression(recipes = scenario.recipes, routes = scenario.completedExplorations),
                 inventory = catalog.items.associate { it.id to 100L },
-                fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks))
+                fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks, catches = scenario.fishCatches))
             val reachable = EconomyFood.obtainableOrderItems(state)
             scenario.present.forEach { assertTrue(it in reachable, "${scenario.label}: expected $it") }
             scenario.missing.forEach { assertFalse(it in reachable, "${scenario.label}: unexpected $it") }
@@ -142,7 +143,8 @@ class EconomyOrderProgressionTest {
         val lockedItems = setOf("ore", "clay", "sand", "hardwood", "resin", "charcoal", "iron_ingot", "reinforced_parts")
         assertTrue(EconomyFood.eligibleOrderTemplates(onlyHome).all { order -> order.items.keys.none { it in lockedItems } })
         val allBuildings = onlyHome.copy(buildings = catalog.buildings.associate { it.id to it.levels.last().level },
-            progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 10L }))
+            progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 10L },
+                routes = catalog.explorations.associate { it.id to 10L }))
         val requested = EconomyFood.eligibleOrderTemplates(allBuildings).flatMap { it.items.keys }.toSet()
         catalog.items.filter { it.category in setOf("material", "crafted") }.forEach { assertTrue(it.id in requested, it.id) }
     }

@@ -11,6 +11,7 @@ export const residentOrderBaseRecipes = Object.freeze({ iron_ingot: "smelt_iron"
 export function residentOrderPricing(catalog) {
   const items = new Map(catalog.items.map(item => [item.id, item]));
   const allRecipes = new Map(catalog.recipes.map(recipe => [recipe.id, recipe]));
+  const routes = new Map(catalog.explorations.map(route => [route.id, route]));
   const recipes = new Map();
   for (const recipe of catalog.recipes.filter(recipe => !recipe.retired && Object.keys(recipe.cost.items).length > 0)) {
     assert.equal(Object.keys(recipe.rewards).length, 1, `${recipe.id}: pricing needs an explicit allocation for joint outputs`);
@@ -20,13 +21,29 @@ export function residentOrderPricing(catalog) {
   return template => {
     const levels = { home: template.requiredHomeLevel, garden: 1, warehouse: 1, ...template.requiredBuildings };
     const cache = new Map();
-    function assertAvailable(recipe, path = []) {
+    function assertAvailable(recipe, path = [], includeInputs = false) {
       assert(recipe, `${template.id}: unknown manufacturing prerequisite`);
       assert(!path.includes(recipe.id), `Order recipe prerequisite cycle: ${[...path, recipe.id].join(" -> ")}`);
-      assert(levels.home >= recipe.requiredHomeLevel && (levels[recipe.buildingId] ?? 0) >= recipeBuildingLevel(recipe)
+      assert(levels.home >= recipe.requiredHomeLevel && (!recipe.buildingId || (levels[recipe.buildingId] ?? 0) >= recipeBuildingLevel(recipe))
         && Object.entries(recipe.requiredBuildings ?? {}).every(([id, level]) => (levels[id] ?? 0) >= level),
       `${template.id}: baseline recipe ${recipe.id} is unavailable at the template's starting buildings`);
-      for (const id of Object.keys(recipe.requiredRecipes ?? {})) assertAvailable(allRecipes.get(id), [...path, recipe.id]);
+      for (const id of Object.keys(recipe.requiredRecipes ?? {})) assertAvailable(allRecipes.get(id), [...path, recipe.id], true);
+      for (const id of Object.keys(recipe.requiredExplorations ?? {})) assertAvailable(routes.get(id), [...path, recipe.id], true);
+      if (recipe.requiredFishCaught > 0) {
+        assertAvailable(routes.get(catalog.fishing.routeIds[0]), [...path, recipe.id], true);
+        assert(catalog.fishing.rods.some(rod => (rod.requiredHomeLevel ?? 1) <= levels.home)
+          && catalog.fishing.hooks.some(hook => (hook.requiredHomeLevel ?? 1) <= levels.home), `${template.id}: fishing mastery tackle is unavailable`);
+      }
+      if (includeInputs) for (const id of Object.keys(recipe.cost.items)) {
+        const baseline = catalog.timeEconomy?.baselineRecipes?.[id] ?? catalog.timeEconomy?.baselineExplorations?.[id];
+        let source = baseline ? allRecipes.get(baseline) ?? routes.get(baseline) : recipes.get(id)?.[0];
+        if (source && !Object.keys(source.cost.items).length && (source.requiredHomeLevel > levels.home
+          || source.buildingId && (levels[source.buildingId] ?? 0) < recipeBuildingLevel(source)
+          || Object.entries(source.requiredBuildings ?? {}).some(([key, level]) => (levels[key] ?? 0) < level)))
+          source = catalog.explorations.find(route => !route.retired && route.requiredHomeLevel <= levels.home
+            && !Object.keys(route.requiredBuildings).length && !Object.keys(route.cost.items).length && route.rewards[id] > 0) ?? source;
+        if (source) assertAvailable(source, [...path, recipe.id], true);
+      }
     }
     function manufacturingSeconds(itemId, path = []) {
       assert(items.has(itemId), `Unknown order item ${itemId}`);

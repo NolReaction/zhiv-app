@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { personallyCaughtFish, recipeMasteryMet } from "./recipe-mastery.mjs";
 
 /** A reproducible, deliberately sequential player policy using real domain
  * commands. No invented money/items, market, gifts, paid slots or speedups.
@@ -70,10 +71,23 @@ export function runEconomyCommandScenario({ catalog, rules, stages, tutorial }, 
       assert(prerequisite, `${source.id}: unavailable recipe prerequisite ${recipeId}`);
       while ((state.progression.recipes[recipeId] ?? 0) < count) run(prerequisite, path);
     }
+    for (const [routeId, count] of Object.entries(source.requiredExplorations ?? {})) {
+      const prerequisite = active.find(entry => !entry.buildingId && entry.id === routeId);
+      assert(prerequisite, `${source.id}: unavailable exploration prerequisite ${routeId}`);
+      while ((state.progression.routes[routeId] ?? 0) < count) run(prerequisite, path);
+    }
+    while (personallyCaughtFish(catalog, state) < (source.requiredFishCaught ?? 0)) {
+      const route = active.find(entry => catalog.fishing.routeIds.includes(entry.id) && open(entry));
+      assert(route, `${source.id}: no available fishing route`);
+      state.fishingCastSeed = uuid(); run(route, path);
+    }
   }
   function run(source, path = []) {
-    requirements(source, path);
-    ensureBundle(source.cost.items, path);
+    const key = `source:${source.id}`;
+    assert(!path.includes(key), `Scenario acquisition cycle: ${[...path, key].join(" -> ")}`);
+    const nextPath = [...path, key];
+    requirements(source, nextPath);
+    ensureBundle(source.cost.items, nextPath);
     earn(source.cost.coins);
     const fishing = catalog.fishing.routeIds.includes(source.id);
     apply(source.buildingId ? "start_production" : fishing ? "start_fishing" : "start_exploration", source.id);
@@ -116,7 +130,7 @@ export function runEconomyCommandScenario({ catalog, rules, stages, tutorial }, 
     while (state.wallet.coins < requiredCoins) {
       assert(++attempts <= 10000, "Coin earning must finish within a bounded number of unit jobs");
       const source = active.filter(source => source.buildingId && open(source) && source.cost.coins === 0
-        && !Object.keys(source.cost.items).length && !Object.keys(source.requiredRecipes ?? {}).length)
+        && !Object.keys(source.cost.items).length && recipeMasteryMet(catalog, state, source))
         .sort((a, b) => {
           const incomePerSecond = entry => Object.entries(entry.rewards).reduce((total, [id, count]) =>
             total + catalog.items.find(item => item.id === id).baseSellPrice * count, 0) / (entry.seconds + (entry.collection?.seconds ?? 0));

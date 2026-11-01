@@ -42,6 +42,7 @@ internal val canonicalTailScripts = mapOf(
     76 to "V76__neighbor_market_support.sql",
     77 to "V77__achievement_reward_distribution.sql",
     78 to "V78__resident_activity.sql",
+    79 to "V79__forest_cuisine_achievement.sql",
 )
 
 private data class AdminMigrationHistoryRow(

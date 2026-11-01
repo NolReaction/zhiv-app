@@ -415,7 +415,9 @@
         "workshop": 4,
         "woodlot": 3,
         "kiln": 2,
-        "quarry": 2
+        "quarry": 2,
+        "dryer": 1,
+        "garden": 1
       },
       "items": {
         "tools": 2,
@@ -435,7 +437,9 @@
         "workshop": 4,
         "woodlot": 4,
         "kiln": 2,
-        "quarry": 2
+        "quarry": 2,
+        "dryer": 1,
+        "garden": 1
       },
       "items": {
         "reinforced_parts": 2,
@@ -855,7 +859,9 @@
         "workshop": 3,
         "kiln": 2,
         "woodlot": 1,
-        "quarry": 2
+        "quarry": 2,
+        "dryer": 1,
+        "garden": 1
       },
       "items": {
         "research_gear": 1,
@@ -1607,7 +1613,9 @@
         "woodlot": 4,
         "workshop": 3,
         "kiln": 2,
-        "quarry": 2
+        "quarry": 2,
+        "dryer": 1,
+        "garden": 1
       },
       "items": {
         "resin": 3,
@@ -1944,7 +1952,9 @@
         "woodlot": 4,
         "workshop": 4,
         "kiln": 2,
-        "quarry": 2
+        "quarry": 2,
+        "dryer": 1,
+        "garden": 1
       },
       "items": {
         "research_gear": 1,
@@ -2108,7 +2118,8 @@
         "quarry": 4,
         "workshop": 3,
         "kiln": 3,
-        "woodlot": 3
+        "woodlot": 3,
+        "dryer": 2
       },
       "items": {
         "quartz": 2,
@@ -2130,7 +2141,8 @@
         "kiln": 4,
         "woodlot": 4,
         "dryer": 2,
-        "garden": 1
+        "garden": 1,
+        "bridge": 1
       },
       "items": {
         "field_kit": 1,
@@ -2276,7 +2288,8 @@
         "kiln": 3,
         "workshop": 2,
         "quarry": 3,
-        "woodlot": 2
+        "woodlot": 2,
+        "dryer": 2
       },
       "items": {
         "glass_bottle": 2,
@@ -2296,7 +2309,10 @@
         "workshop": 4,
         "quarry": 4,
         "kiln": 4,
-        "woodlot": 4
+        "woodlot": 4,
+        "dryer": 2,
+        "garden": 1,
+        "bridge": 1
       },
       "items": {
         "field_kit": 1,
@@ -2594,7 +2610,8 @@
       "home": 3,
       "requiredBuildings": {
         "quarry": 3,
-        "kiln": 3
+        "kiln": 3,
+        "dryer": 2
       },
       "items": {
         "sand": 4,
@@ -2634,7 +2651,8 @@
       "requiredBuildings": {
         "quarry": 4,
         "kiln": 3,
-        "workshop": 3
+        "workshop": 3,
+        "dryer": 2
       },
       "items": {
         "lens": 2,
@@ -2825,7 +2843,8 @@
       "requiredBuildings": {
         "kiln": 3,
         "quarry": 3,
-        "workshop": 2
+        "workshop": 2,
+        "dryer": 2
       },
       "items": {
         "glass_bottle": 3,
@@ -2888,7 +2907,8 @@
         "kiln": 3,
         "workshop": 4,
         "dryer": 3,
-        "garden": 1
+        "garden": 1,
+        "bridge": 1
       },
       "items": {
         "field_kit": 1,
@@ -3126,7 +3146,9 @@
         "woodlot": 3,
         "workshop": 3,
         "kiln": 3,
-        "quarry": 4
+        "quarry": 4,
+        "dryer": 2,
+        "garden": 1
       },
       "stages": [
         {
@@ -3137,7 +3159,9 @@
             "woodlot": 3,
             "workshop": 3,
             "kiln": 3,
-            "quarry": 4
+            "quarry": 4,
+            "dryer": 2,
+            "garden": 1
           },
           "items": {
             "trade_crate": 1,
@@ -3158,7 +3182,9 @@
             "woodlot": 3,
             "workshop": 3,
             "kiln": 3,
-            "quarry": 4
+            "quarry": 4,
+            "dryer": 2,
+            "garden": 1
           },
           "items": {
             "lens": 1,
@@ -3179,7 +3205,9 @@
             "woodlot": 3,
             "workshop": 3,
             "kiln": 3,
-            "quarry": 4
+            "quarry": 4,
+            "dryer": 2,
+            "garden": 1
           },
           "items": {
             "metal_parts": 2,
@@ -3472,7 +3500,8 @@
         "workshop": 4,
         "kiln": 3,
         "dryer": 2,
-        "garden": 1
+        "garden": 1,
+        "bridge": 1
       },
       "stages": [
         {
@@ -3485,7 +3514,8 @@
             "workshop": 4,
             "kiln": 3,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "quartz": 2,
@@ -3508,7 +3538,8 @@
             "workshop": 4,
             "kiln": 3,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "field_kit": 1,
@@ -3531,7 +3562,8 @@
             "workshop": 4,
             "kiln": 3,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "tools": 1,
@@ -3816,7 +3848,8 @@
         "kiln": 3,
         "quarry": 4,
         "dryer": 3,
-        "garden": 4
+        "garden": 4,
+        "bridge": 1
       },
       "stages": [
         {
@@ -3829,7 +3862,8 @@
             "kiln": 3,
             "quarry": 4,
             "dryer": 3,
-            "garden": 4
+            "garden": 4,
+            "bridge": 1
           },
           "items": {
             "trade_crate": 2,
@@ -3852,7 +3886,8 @@
             "kiln": 3,
             "quarry": 4,
             "dryer": 3,
-            "garden": 4
+            "garden": 4,
+            "bridge": 1
           },
           "items": {
             "glass_bottle": 2,
@@ -3875,7 +3910,8 @@
             "kiln": 3,
             "quarry": 4,
             "dryer": 3,
-            "garden": 4
+            "garden": 4,
+            "bridge": 1
           },
           "items": {
             "field_kit": 1,
@@ -4767,7 +4803,13 @@
             }
           ]
         }
-      ]
+      ],
+      "completedExplorations": {
+        "forest": 100,
+        "shore": 100,
+        "forest_camp": 100,
+        "shore_camp": 100
+      }
     },
     {
       "label": "home_3_confirmed_sources",
@@ -5926,7 +5968,31 @@
             }
           ]
         }
-      ]
+      ],
+      "completedExplorations": {
+        "forest": 100,
+        "shore": 100,
+        "cave": 100,
+        "deep_cave": 100,
+        "forest_camp": 100,
+        "shore_camp": 100,
+        "old_woodland": 100,
+        "coastal_deposits": 100,
+        "quarry_stone": 100,
+        "quarry_stone_overnight": 100,
+        "quarry_ore": 100,
+        "quarry_clay": 100,
+        "quarry_sand": 100,
+        "quarry_shift": 100,
+        "quarry_stone_hour": 100,
+        "quarry_ore_hour": 100,
+        "quarry_clay_hour": 100,
+        "quarry_clay_overnight": 100,
+        "quarry_sand_hour": 100
+      },
+      "fishCatches": {
+        "fish": 4
+      }
     },
     {
       "label": "home_5_confirmed_sources",
@@ -6614,7 +6680,7 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_builder_crossing_107913292",
+          "id": "weekly_choice1_week_builder_crossing_4074190828",
           "templateId": "week_builder_crossing",
           "residentId": "builder",
           "coins": 4989,
@@ -6623,7 +6689,7 @@
           "effortSeconds": 23940,
           "manufacturingSeconds": 12180,
           "fishingUncertain": false,
-          "savedWeeklyId": "weekly1_1792758896_374660016",
+          "savedWeeklyId": "weekly1_1792758896_459964305",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -6647,7 +6713,9 @@
                 "woodlot": 3,
                 "workshop": 3,
                 "kiln": 3,
-                "quarry": 4
+                "quarry": 4,
+                "dryer": 2,
+                "garden": 1
               }
             },
             {
@@ -6670,7 +6738,9 @@
                 "woodlot": 3,
                 "workshop": 3,
                 "kiln": 3,
-                "quarry": 4
+                "quarry": 4,
+                "dryer": 2,
+                "garden": 1
               }
             },
             {
@@ -6693,13 +6763,15 @@
                 "woodlot": 3,
                 "workshop": 3,
                 "kiln": 3,
-                "quarry": 4
+                "quarry": 4,
+                "dryer": 2,
+                "garden": 1
               }
             }
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_374660016_0_2714042048",
+              "id": "weekly1_1792758896_459964305_0_2714042048",
               "slot": -1,
               "templateId": "week_builder_crossing_1",
               "residentId": "builder",
@@ -6720,11 +6792,13 @@
                 "woodlot": 3,
                 "workshop": 3,
                 "kiln": 3,
-                "quarry": 4
+                "quarry": 4,
+                "dryer": 2,
+                "garden": 1
               }
             },
             {
-              "id": "weekly1_1792758896_374660016_1_2674770702",
+              "id": "weekly1_1792758896_459964305_1_2674770702",
               "slot": -1,
               "templateId": "week_builder_crossing_2",
               "residentId": "builder",
@@ -6745,11 +6819,13 @@
                 "woodlot": 3,
                 "workshop": 3,
                 "kiln": 3,
-                "quarry": 4
+                "quarry": 4,
+                "dryer": 2,
+                "garden": 1
               }
             },
             {
-              "id": "weekly1_1792758896_374660016_2_2690965663",
+              "id": "weekly1_1792758896_459964305_2_2690965663",
               "slot": -1,
               "templateId": "week_builder_crossing_3",
               "residentId": "builder",
@@ -6770,7 +6846,9 @@
                 "woodlot": 3,
                 "workshop": 3,
                 "kiln": 3,
-                "quarry": 4
+                "quarry": 4,
+                "dryer": 2,
+                "garden": 1
               }
             }
           ]
@@ -7280,7 +7358,7 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_kamneshmyg_survey_1066617675",
+          "id": "weekly_choice1_week_kamneshmyg_survey_3732797081",
           "templateId": "week_kamneshmyg_survey",
           "residentId": "kamneshmyg",
           "coins": 5801,
@@ -7289,7 +7367,7 @@
           "effortSeconds": 27968,
           "manufacturingSeconds": 15240,
           "fishingUncertain": true,
-          "savedWeeklyId": "weekly1_1792758896_2582429928",
+          "savedWeeklyId": "weekly1_1792758896_2573460526",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -7315,7 +7393,8 @@
                 "workshop": 4,
                 "kiln": 3,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             },
             {
@@ -7340,7 +7419,8 @@
                 "workshop": 4,
                 "kiln": 3,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             },
             {
@@ -7365,13 +7445,14 @@
                 "workshop": 4,
                 "kiln": 3,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             }
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_2582429928_0_1594275055",
+              "id": "weekly1_1792758896_2573460526_0_1594275055",
               "slot": -1,
               "templateId": "week_kamneshmyg_survey_1",
               "residentId": "kamneshmyg",
@@ -7394,11 +7475,12 @@
                 "workshop": 4,
                 "kiln": 3,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             },
             {
-              "id": "weekly1_1792758896_2582429928_1_2978705074",
+              "id": "weekly1_1792758896_2573460526_1_2978705074",
               "slot": -1,
               "templateId": "week_kamneshmyg_survey_2",
               "residentId": "kamneshmyg",
@@ -7421,11 +7503,12 @@
                 "workshop": 4,
                 "kiln": 3,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             },
             {
-              "id": "weekly1_1792758896_2582429928_2_1864527487",
+              "id": "weekly1_1792758896_2573460526_2_1864527487",
               "slot": -1,
               "templateId": "week_kamneshmyg_survey_3",
               "residentId": "kamneshmyg",
@@ -7448,7 +7531,8 @@
                 "workshop": 4,
                 "kiln": 3,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             }
           ]
@@ -7963,7 +8047,42 @@
             }
           ]
         }
-      ]
+      ],
+      "completedExplorations": {
+        "forest": 100,
+        "shore": 100,
+        "cave": 100,
+        "deep_cave": 100,
+        "forest_camp": 100,
+        "shore_camp": 100,
+        "old_woodland": 100,
+        "coastal_deposits": 100,
+        "uplands": 100,
+        "abandoned_quarry": 100,
+        "quarry_stone": 100,
+        "quarry_stone_overnight": 100,
+        "quarry_ore": 100,
+        "quarry_clay": 100,
+        "quarry_sand": 100,
+        "quarry_shift": 100,
+        "quarry_deep_face": 100,
+        "quarry_supply": 100,
+        "quarry_stone_hour": 100,
+        "quarry_ore_hour": 100,
+        "quarry_ore_overnight": 100,
+        "quarry_clay_hour": 100,
+        "quarry_clay_overnight": 100,
+        "quarry_sand_hour": 100,
+        "quarry_sand_overnight": 100,
+        "far_bank_path": 100,
+        "far_bank_grove": 100,
+        "ancient_ruins": 100,
+        "quarry_quartz": 100,
+        "quarry_limestone": 100
+      },
+      "fishCatches": {
+        "fish": 4
+      }
     }
   ],
   "hashCases": [

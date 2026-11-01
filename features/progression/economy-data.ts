@@ -24,6 +24,9 @@ export type EconomyItemSource = {
   rewards?: Record<string, number>;
   requiredBuildings?: Record<string, number>;
   requiredRecipes?: Record<string, number>;
+  requiredExplorations?: Record<string, number>;
+  requiredFishCaught?: number;
+  unlockTitle?: string;
 };
 export type EconomyItemUse = {
   id: string;
@@ -143,8 +146,15 @@ function recipeUnlockHomes(catalog: EconomyCatalog): Map<string, number> {
       if (!recipe) return 1;
       return Math.max(recipe.requiredHomeLevel, buildingHome(recipe.buildingId, recipeBuildingLevel(recipe)),
         ...Object.entries(recipe.requiredBuildings).map(([id, level]) => buildingHome(id, level)),
-        ...Object.keys(recipe.requiredRecipes ?? {}).map(recipeHome));
+        ...Object.keys(recipe.requiredRecipes ?? {}).map(recipeHome),
+        ...Object.keys(recipe.requiredExplorations ?? {}).map(routeHome),
+        recipe.requiredFishCaught ? Math.min(6, ...(catalog.fishing?.routeIds ?? []).map(routeHome)) : 1);
     });
+  }
+  function routeHome(id: string): number {
+    const route = catalog.explorations.find(route => route.id === id);
+    return route ? Math.max(route.requiredHomeLevel,
+      ...Object.entries(route.requiredBuildings).map(([id, level]) => buildingHome(id, level))) : 6;
   }
   for (const recipe of catalog.recipes) recipeHome(recipe.id);
   return recipeCache;
@@ -291,6 +301,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
     const inputNpcValue = npcValue(catalog, recipe.cost.items), outputNpcValue = npcValue(catalog, recipe.rewards);
     const count = Object.values(recipe.rewards).reduce((sum, value) => sum + value, 0);
     return { ...recipe, buildingLevel: recipeBuildingLevel(recipe), cost: copyCost(recipe.cost), rewards: { ...recipe.rewards }, requiredBuildings: { ...recipe.requiredBuildings }, requiredRecipes: { ...recipe.requiredRecipes },
+      requiredExplorations: { ...recipe.requiredExplorations }, requiredFishCaught: recipe.requiredFishCaught ?? 0,
       ...(recipe.collection ? { collection: { ...recipe.collection } } : {}), inputNpcValue, outputNpcValue,
       addedNpcValue: outputNpcValue - inputNpcValue - recipe.cost.coins, unitsPerHour: 3600 * count / recipe.seconds,
       grossNpcPerHour: 3600 * outputNpcValue / recipe.seconds, collectionSeconds: recipe.collection?.seconds ?? 0,
@@ -304,6 +315,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
       cost: copyCost(recipe.cost), requiredBuildings: { ...recipe.requiredBuildings,
         [recipe.buildingId]: Math.max(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?? 0) },
       requiredRecipes: { ...recipe.requiredRecipes },
+      requiredExplorations: { ...recipe.requiredExplorations }, requiredFishCaught: recipe.requiredFishCaught, unlockTitle: recipe.unlockTitle,
       detail: `${catalog.buildings.find(building => building.id === recipe.buildingId)?.name ?? recipe.buildingId}, уровень ${recipe.buildingLevel}. Один предмет за запуск; получение вручную.` });
     for (const [id, quantity] of Object.entries(recipe.cost.items)) addUse(id,
       { id: `recipe:${recipe.id}`, kind: "recipe", name: recipe.name, quantity, homeLevel: recipe.unlockHomeLevel });
@@ -391,6 +403,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
   const points = catalog.constructionSpeedup.pricingPoints ?? [];
   const proportional = points.length >= 2 && points.every(point => point.pearls * points[0].seconds === points[0].pearls * point.seconds);
   return { catalogVersion: catalog.version, items, recipes, stages, homeUnlocks: buildHomeUnlocks(catalog, recipes),
+    routeNames: Object.fromEntries(catalog.explorations.map(route => [route.id, route.name])),
     market: { homeLevel: catalog.market.requiredHomeLevel, requiredBuildings: { ...catalog.market.requiredBuildings },
       requiredExplorations: catalog.market.requiredExplorations },
     starter: { coins: catalog.onboarding?.startingWallet.coins ?? 0,

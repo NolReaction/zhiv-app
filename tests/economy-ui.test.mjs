@@ -200,6 +200,7 @@ test("new crafting lessons show the missing claimed product on the production ca
     const action = prerequisite.buildingId === "dryer" ? "Приготовьте" : "Произведите";
     assert.ok(html.includes(`${action} и заберите: ${prerequisiteName} (0 / ${requiredCount})`), id);
     state.progression.recipes = { ...recipe.requiredRecipes };
+    state.progression.routes = { ...recipe.requiredExplorations };
     assert.equal(productionBlocked(render("production", controller({ snapshot: state }), recipe.buildingId), itemId), false, id);
   }
 });

@@ -1,5 +1,5 @@
 import { economyCatalog, type EconomyCatalog } from "@/features/economy/domain/model";
-import { productionSources, sortItemSources, sourceAvailable, type ProductionAccess, type ProductionSource } from "./economy-sources";
+import { hasProductionAccess, productionSources, sortItemSources, sourceAvailable, type ProductionAccess, type ProductionSource } from "./economy-sources";
 
 export { buildingsAtHomeLevel } from "./economy-sources";
 export const MAX_PLAN_OPERATIONS = 5000;
@@ -37,6 +37,8 @@ export function planEconomyProduction(options: ProductionPlanOptions, catalog: E
     if (!knownItems.has(id)) throw new RangeError(`Unknown item: ${id}`);
   for (const value of Object.values(options.buildings ?? {})) if (!Number.isSafeInteger(value) || value < 0 || value > 100) throw new RangeError("Invalid building level");
   for (const value of Object.values(options.completedRecipes ?? {})) if (!Number.isSafeInteger(value) || value < 0) throw new RangeError("Invalid recipe completion count");
+  for (const value of Object.values(options.completedExplorations ?? {})) if (!Number.isSafeInteger(value) || value < 0) throw new RangeError("Invalid exploration completion count");
+  if (options.fishCaught !== undefined && (!Number.isSafeInteger(options.fishCaught) || options.fishCaught < 0)) throw new RangeError("Invalid fish catch count");
   for (const value of Object.values(options.slots ?? {})) if (!Number.isSafeInteger(value) || value < 1 || value > 3) throw new RangeError("Slots must be 1–3");
   for (const value of Object.values(options.speedBps ?? {})) if (!Number.isSafeInteger(value) || value < 0 || value > 10000) throw new RangeError("Speed bonus must be 0–100%");
   const sources = productionSources(catalog), sourceById = new Map(sources.map(source => [source.id, source]));
@@ -163,7 +165,7 @@ export function planEconomyProduction(options: ProductionPlanOptions, catalog: E
   const leftovers = Object.fromEntries([...lots].map(([id, entries]) => [id, entries.reduce((sum, lot) => sum + (lot.producerId && operationById.get(lot.producerId)?.blocked ? 0 : lot.quantity), 0)] as const).filter(([, count]) => count > 0));
   warnings.add("Расписание предполагает немедленный сбор и новый запуск. Это выполнимый план очередей, а не прогноз срока прохождения и не доказанный оптимум.");
   warnings.add("Запасы расходуются совместно всеми целями. Стройка, открытие рецептов, покупка ингредиентов и вместимость склада не включены в расписание.");
-  if (!options.buildings) warnings.add("Выбраны все открытые технологии. Реальные уровни зданий и освоение рецептов не ограничивают этот расчёт.");
+  if (!hasProductionAccess(options)) warnings.add("Выбраны все открытые технологии. Реальные уровни зданий, освоение рецептов, завершённые маршруты и личный улов не ограничивают этот расчёт.");
   return { complete, targets, inventoryUsed, leftovers, missingItems, rawInputs, operations, queues: [...queueMap.values()],
     workSeconds: workSeconds + collectionSeconds, collectionSeconds,
     elapsedSeconds: complete ? Math.max(0, ...operations.map(operation => operation.endSeconds ?? 0)) : null,

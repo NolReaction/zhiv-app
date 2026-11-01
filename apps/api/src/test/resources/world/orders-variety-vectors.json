@@ -231,7 +231,10 @@
       "plesk_blackberry_feast",
       "plesk_path_provisions",
       "plesk_preserve_and_catch"
-    ]
+    ],
+    "fishCatches": {
+      "fish": 4
+    }
   },
   {
     "label": "house-four-without-epic-tackle-or-sand",
@@ -262,7 +265,10 @@
       "plesk_preserve_and_catch",
       "plesk_cranberry_dinner",
       "plesk_legendary_dinner"
-    ]
+    ],
+    "fishCatches": {
+      "fish": 4
+    }
   },
   {
     "label": "complete-house-four-with-epic-tackle",
@@ -294,7 +300,10 @@
       "plesk_cranberry_dinner",
       "plesk_winter_table",
       "plesk_legendary_dinner"
-    ]
+    ],
+    "fishCatches": {
+      "fish": 4
+    }
   },
   {
     "label": "house-five-desserts-without-a-legendary-rod",
@@ -328,7 +337,13 @@
       "plesk_blackberry_feast",
       "plesk_legendary_dinner",
       "plesk_shadow_catch"
-    ]
+    ],
+    "fishCatches": {
+      "fish": 4
+    },
+    "completedExplorations": {
+      "quarry_clay": 2
+    }
   },
   {
     "label": "owned-starfall-rod-opens-all-cooking-tiers",
@@ -362,6 +377,12 @@
     ],
     "missing": [
       "plesk_preserve_and_catch"
-    ]
+    ],
+    "fishCatches": {
+      "fish": 4
+    },
+    "completedExplorations": {
+      "quarry_clay": 2
+    }
   }
 ]

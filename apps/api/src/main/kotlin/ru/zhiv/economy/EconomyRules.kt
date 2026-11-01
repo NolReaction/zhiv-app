@@ -103,6 +103,9 @@ object EconomyRules {
         require(catalog.recipes.all { it.maxBatch == null || it.maxBatch in 1..catalog.maxBatch })
         require(catalog.recipes.all { recipe -> recipe.requiredRecipes.all { (id, amount) ->
             amount in 1L..ECONOMY_MAX_ITEMS && catalog.recipes.any { it.id == id } } })
+        require(catalog.recipes.all { recipe -> recipe.requiredExplorations.all { (id, amount) ->
+            amount in 1L..ECONOMY_MAX_ITEMS && catalog.explorations.any { it.id == id && !it.retired } } })
+        require(catalog.fishing != null || catalog.recipes.none { it.requiredFishCaught > 0 })
         catalog.fishing?.let { fishing ->
             val rarities = setOf("common", "uncommon", "rare", "epic", "legendary")
             require(fishing.routeIds.isNotEmpty() && fishing.routeIds.all { id -> catalog.explorations.any { it.id == id && (it.rewards["fish"] ?: 0) > 0 } })
@@ -467,8 +470,8 @@ object EconomyRules {
                     economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание")
                 requireHome(state, recipe.requiredHomeLevel)
                 requireBuildings(state, recipe.requiredBuildings)
-                if (recipe.requiredRecipes.any { (id, amount) -> (state.progression.recipes[id] ?: 0L) < amount })
-                    economyFailure("ECONOMY_RECIPE_REQUIRED", "Сначала освоите нужные рецепты")
+                if (!EconomyRecipeUnlocks.met(state, recipe))
+                    economyFailure("ECONOMY_RECIPE_REQUIRED", "Выполните условия открытия рецепта и заберите результаты")
                 if (state.jobs.any { it.targetId == recipe.buildingId && it.kind == "construction" })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат")
                 if (state.jobs.count { it.targetId == recipe.buildingId && it.kind == "production" } >= productionSlotCount(state, recipe.buildingId))

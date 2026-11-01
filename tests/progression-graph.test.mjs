@@ -460,8 +460,8 @@ test("fifteen storage levels stay visible in economic sections with their true s
     assert.deepEqual(plain(storage.requirements), level.level === 1 ? { home: 1 }
       : { home: level.requiredHomeLevel, ...level.requiredBuildings, warehouse: level.level - 1 });
     const gates = getPrerequisiteIds(graph, id, false);
-    assert.equal(gates.has("b:home:2"), level.level >= 2);
-    assert.equal(gates.has("b:home:3"), level.level >= 3);
+    assert.equal(gates.has("b:home:2"), level.requiredHomeLevel >= 2);
+    assert.equal(gates.has("b:home:3"), level.requiredHomeLevel >= 3);
     assert.equal(gates.has("b:home:4"), level.requiredHomeLevel >= 4);
     assert.equal(gates.has("b:home:5"), level.requiredHomeLevel >= 5);
     assert.equal(storage.requirements.workshop, level.requiredBuildings.workshop);
@@ -625,4 +625,18 @@ test("the house-five graph distinguishes project funding and guaranteed relics f
   assert.equal(node("e:ancient_ruins").rewards.ancient_core, undefined);
   assert.equal(node("e:ancient_ruins").rewards.moon_crystal, undefined);
   for (const relic of ["ancient_core", "moon_crystal"]) assert.equal(getProgressionResourceSource(graph, relic).id, "rare_materials");
+});
+
+test("recipe discovery graph preserves route names, counts and every required progress gate", () => {
+  const changed = structuredClone(catalog), target = changed.recipes.find(recipe => recipe.id === "make_planks");
+  Object.assign(target, { requiredRecipes: { grow_berries: 2 }, requiredExplorations: { old_woodland: 3 }, requiredFishCaught: 4, unlockTitle: "Лесные открытия" });
+  const route = changed.explorations.find(route => route.id === "old_woodland");
+  route.requiredHomeLevel = 5;
+  const value = buildProgressionGraph(changed), result = value.nodes.find(node => node.id === "r:make_planks");
+  assert.equal(result.phase, 5);
+  assert.ok(result.description.includes(`${route.name} × 3`));
+  assert.match(result.description, /Лично поймайте и получите 4 рыб/);
+  assert.match(result.description, /Лесные открытия/);
+  for (const source of ["r:grow_berries", "e:old_woodland", "fishing_species"])
+    assert.ok(value.edges.some(edge => edge.source === source && edge.target === result.id && edge.kind === "requirement"));
 });

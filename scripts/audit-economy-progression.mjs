@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { auditBuildingUnlocks, auditFourthStageBudget, auditProductionBalance, auditProjectCourses } from "./lib/economy-balance.mjs";
 import { createLiquidation, recipeBuildingLevel } from "./lib/economy-math.mjs";
 import { auditConstructionEconomy } from "./lib/construction-economy.mjs";
+import { recipeMasteryReachable } from "./lib/recipe-mastery.mjs";
 
 const catalogPath = new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url);
 const startingBuildings = { home: 1, garden: 1, warehouse: 1 };
@@ -161,11 +162,20 @@ export function auditEconomyProgression(catalog) {
       for (const [id, count] of Object.entries(definition.requiredRecipes ?? {})) {
         assert(recipes.has(id) && Number.isSafeInteger(count) && count > 0, `${definition.id}: unknown or invalid recipe unlock ${id}`);
       }
+      for (const [id, count] of Object.entries(definition.requiredExplorations ?? {})) {
+        assert(catalog.explorations.some(route => route.id === id) && Number.isSafeInteger(count) && count > 0,
+          `${definition.id}: unknown or invalid exploration unlock ${id}`);
+      }
+      assert(Number.isSafeInteger(definition.requiredFishCaught ?? 0) && (definition.requiredFishCaught ?? 0) >= 0,
+        `${definition.id}: invalid personally caught fish requirement`);
     }
   }
+  const unlockSources = new Map(production.map(source => [source.id, source]));
   const recipeUnlocks = (id, path = new Set()) => {
     assert(!path.has(id), `Recipe unlock cycle at ${id}`);
-    for (const required of Object.keys(recipes.get(id).requiredRecipes ?? {})) recipeUnlocks(required, new Set(path).add(id));
+    const source = unlockSources.get(id);
+    for (const required of [...Object.keys(source.requiredRecipes ?? {}), ...Object.keys(source.requiredExplorations ?? {})])
+      recipeUnlocks(required, new Set(path).add(id));
   };
   for (const id of recipes.keys()) recipeUnlocks(id);
   const firstStageRecipes = catalog.recipes.filter(recipe => recipe.requiredHomeLevel === 1);
@@ -350,7 +360,7 @@ export function auditEconomyProgression(catalog) {
     changed = false;
     for (const definition of production) {
       if (!hasRequirements(definition) || !hasMaterials(definition.cost)
-        || Object.keys(definition.requiredRecipes ?? {}).some(id => !completedRecipes.has(id))) continue;
+        || !recipeMasteryReachable(catalog, definition, completedRecipes, completedRoutes, completed.home)) continue;
       if (definition.buildingId && (completed[definition.buildingId] ?? 0) < recipeBuildingLevel(definition)) continue;
       if (definition.buildingId && !completedRecipes.has(definition.id)) { completedRecipes.add(definition.id); changed = true; }
       if (!definition.buildingId && !completedRoutes.has(definition.id)) { completedRoutes.add(definition.id); changed = true; }

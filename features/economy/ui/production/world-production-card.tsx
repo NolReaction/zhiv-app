@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Clock3, LockKeyhole } from "lucide-react";
+import { Clock3, Flame, LockKeyhole } from "lucide-react";
 import { locked, productionLocked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { worldCostShortfalls, worldItemAvailable, worldRecipeCost, worldProductionReason, worldRecipeAccessReason, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
@@ -13,12 +13,14 @@ import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/dom
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import styles from "./world-production-card.module.css";
 
-export function WorldProductionCard({ economy, recipe, focused = false, tutorialHarvestActive = false, onHelpContextChange }: {
+export function WorldProductionCard({ economy, recipe, focused = false, tutorialHarvestActive = false, onHelpContextChange, actionOnly = false }: {
   economy: ReadyEconomy;
   recipe: WorldRecipe;
   focused?: boolean;
   tutorialHarvestActive?: boolean;
   onHelpContextChange?: (context: WorldHelpContext) => void;
+  /** The cookbook supplies its own ingredient/detail layout; command guards remain shared. */
+  actionOnly?: boolean;
 }) {
   const state = economy.productionSnapshot ?? economy.snapshot;
   const owner = state.ownerPublicId, revision = state.revision;
@@ -109,13 +111,13 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
     setNotice(durableProduction ? "Сохранено" : "Запускаем…");
     return true;
   }
-  return <div className={styles.entry} data-production-product={Object.keys(recipe.rewards).sort().join(":")}>
-    <button ref={button} type="button" className={styles.card} data-recipe={recipe.id} data-recipe-product={results[0]?.[0]}
+  return <div className={`${styles.entry} ${actionOnly ? styles.actionEntry : ""}`} data-production-product={Object.keys(recipe.rewards).sort().join(":")}>
+    <button ref={button} type="button" className={actionOnly ? styles.cookAction : styles.card} data-recipe={recipe.id} data-recipe-product={results[0]?.[0]}
       data-recipe-order data-recipe-focused={focused || undefined} data-blocked={Boolean(reason) || (durableProduction ? productionLocked(economy) : locked(economy)) || undefined}
-      aria-label={`Произвести: ${title}, ${duration}`}
+      aria-label={`${actionOnly ? "Приготовить" : "Произвести"}: ${title}, ${duration}`}
       aria-describedby={[description ? detailId : "", notice ? noticeId : ""].filter(Boolean).join(" ") || undefined}
       title={restriction ?? undefined} onFocus={context} onClick={() => start()}>
-      <span className={styles.header} data-production-header data-production-mixed={results.length > 1 || undefined}>
+      {actionOnly ? <><Flame size={17} aria-hidden="true" />Приготовить<small>{duration}</small></> : <><span className={styles.header} data-production-header data-production-mixed={results.length > 1 || undefined}>
         <span className={styles.outputs}>{results.map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={30} />{(amount !== 1 || results.length > 1) && <b>×{number(amount)}</b>}</span>)}</span>
         <strong title={title}>{title}</strong>
       </span>
@@ -133,7 +135,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
         })}</span>}
         {recipe.fishInput?.exactSpecies && <span className={styles.benefits}>Нужен указанный вид рыбы</span>}
         {meal && <span className={styles.benefits}><span>Вылазки +{number(meal.heroSpeedBps / 100)}%{meal.heroWorkSeconds ? ` · запас на ${worldRecipeDuration(meal.heroWorkSeconds)} работы` : " скорости"}</span><span>Одна стройка +{number(meal.builderSpeedBps / 100)}% скорости</span></span>}
-      </span>
+      </span></>}
     </button>
     {description && <span id={detailId} className={styles.accessible}>{description}</span>}
     {notice && <p id={noticeId} className={styles.notice} role="status" aria-live="polite">{notice}</p>}

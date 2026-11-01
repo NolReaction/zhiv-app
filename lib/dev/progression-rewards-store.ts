@@ -26,7 +26,7 @@ function profile(token: string | undefined, expectedOwner?: string) {
 function view(token: string | undefined, owner: string, value: Profile, now: number): GameRewards {
   // Reconcile verified progress before reading dates; dates are never inferred from ownership in the browser.
   const economy = getDevEconomy(token, now, owner);
-  const result = getDevGameAchievements(token, now, 7);
+  const result = getDevGameAchievements(token, now, 8);
   if (result.kind !== "ok") fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401);
   return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: progressionRewardsCatalog.version,
     onboarding: { claimedAt: value.onboardingClaimedAt ?? null },

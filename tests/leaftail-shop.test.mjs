@@ -186,7 +186,8 @@ test('purchase UI revalidates the account, revision, cycle, selected currency an
   const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: ready, isOnline: true, introduced: true }));
   assert.equal((html.match(/data-leaftail-item=/g) ?? []).length, 2); assert.match(html, /03:00 МСК/);
   assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>.*?Одежда/s); assert.match(html, />Припасы<\/button>/);
-  assert.match(html, /жемчуг/i); assert.doesNotMatch(html, /Заказы жителей|Редкие товары появятся/);
+  assert.match(html, /data-leaftail-currency="coins"/);
+  assert.doesNotMatch(html, />Монеты<|>Жемчуг<|Заказы жителей|Редкие товары появятся/, "the shop keeps item prices without duplicating the HUD wallet");
 });
 
 test('the travelling merchant shows no stock, tabs, purchase copy or delivery before home 3', () => {

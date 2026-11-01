@@ -20,7 +20,9 @@ class NeighborStockProgressionTest {
     @Test fun `learned fish soup is ordinary stock but raw fish never enters the shop`() {
         val state = EconomyRules.initial().copy(buildings = maximumBuildings)
         assertFalse("fish_soup" in opened(state))
-        val learned = state.copy(progression = state.progression.copy(recipes = mapOf("cook_grilled_fish" to 1L)))
+        val cooked = state.copy(progression = state.progression.copy(recipes = mapOf("cook_grilled_fish" to 1L)))
+        assertFalse("fish_soup" in opened(cooked), "Cooking alone does not prove a personal catch")
+        val learned = cooked.copy(fishing = cooked.fishing.copy(catches = mapOf(checkNotNull(EconomyRules.catalog.fishing).fish.first().itemId to 4L)))
         assertTrue("fish_soup" in opened(learned))
         val discovered = learned.copy(unlockedItems = EconomyRules.catalog.items.map { it.id })
         val fishing = checkNotNull(EconomyRules.catalog.fishing)
@@ -33,7 +35,9 @@ class NeighborStockProgressionTest {
         val middle = early.copy(buildings = early.buildings + mapOf("home" to 3, "warehouse" to 3, "workshop" to 2,
             "quarry" to 2, "garden" to 2, "kiln" to 1, "dryer" to 1, "woodlot" to 2))
         val late = early.copy(buildings = maximumBuildings,
-            progression = EconomyProgression(recipes = EconomyRules.catalog.recipes.associate { it.id to 10L }))
+            progression = EconomyProgression(recipes = EconomyRules.catalog.recipes.associate { it.id to 10L },
+                routes = EconomyRules.catalog.explorations.associate { it.id to 10L }),
+            fishing = early.fishing.copy(catches = mapOf(checkNotNull(EconomyRules.catalog.fishing).fish.first().itemId to 10L)))
         val untouched = listOf(early, middle, late).map { economyJson.encodeToString(it) }
         val first = opened(early); val second = opened(middle); val third = opened(late)
         assertTrue(first.containsAll(listOf("wood", "berries")))

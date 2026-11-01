@@ -126,3 +126,15 @@ test("CSV preserves exact values, escapes semicolons and quotes and neutralizes 
   assert(csv.includes('"\'=HYPERLINK(""example"")";"1234.5";""'));
   assert(csv.includes('"first;second";"-7";"\'@SUM(A1)"'));
 });
+
+test("production source cards name required fishing routes even when they are not guaranteed production sources", async () => {
+  const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+  const catalog = structuredClone(economyCatalog), route = catalog.explorations.find(route => catalog.fishing.routeIds.includes(route.id));
+  const recipe = catalog.recipes.find(recipe => recipe.id === "make_planks");
+  Object.assign(recipe, { requiredExplorations: { [route.id]: 2 }, requiredFishCaught: 4, unlockTitle: "Опыт у реки" });
+  const custom = buildEconomyAnalysis(catalog);
+  assert.equal(custom.sources.some(source => source.id === `exploration:${route.id}`), false);
+  const text = asText(harness(EconomyProductionGraph, { analysis: custom, selectedId: "planks", onSelect() {}, onPlan() {}, onInspect() {} }).render());
+  assert.ok(text.includes(`Завершить «${route.name}» ×2`));
+  assert.match(text, /Лично поймать 4 рыб/); assert.match(text, /Опыт у реки/);
+});

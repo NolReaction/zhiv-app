@@ -45,7 +45,7 @@ export function NeighborStationInfo({ world, stationId }: { world: NeighborView[
       <ul className={styles.products}>{visible.map(product => <li key={product.id}><strong>{product.name}</strong>
         <span>{product.outputs.map(output => `${output.name} × ${output.quantity}`).join(", ")}</span></li>)}</ul>
       {products.length > visible.length && <p className={styles.capability}>Ещё вариантов: {products.length - visible.length}</p>}
-      {visible.some(product => product.needsRecipeLearning) && <p className={styles.capability}>Для некоторых блюд сначала осваивают предыдущие рецепты.</p>}
+      {visible.some(product => product.needsRecipeLearning) && <p className={styles.capability}>Для некоторых изделий нужно освоить рецепты или получить результаты вылазок.</p>}
     </> : <p>{building?.description ?? "Тихое место на лесной полянке."}</p>}
   </section>;
 }

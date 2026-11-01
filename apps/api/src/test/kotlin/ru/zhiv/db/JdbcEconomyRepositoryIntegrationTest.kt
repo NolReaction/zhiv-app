@@ -1403,16 +1403,27 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(100_000 - homeUpgrade.cost.coins, completed.wallet.coins)
     }
 
-    @Test fun `warehouse levels two and three enforce their house gates without a workshop and charge only once`() = runBlocking<Unit> {
+    @Test fun `warehouse levels two and three enforce early house and material sources and charge only once`() = runBlocking<Unit> {
         val p = player(); economy.snapshot(p.hash)
         val stored = source.connection.use { readEconomyProfile(it, p.id).state }
         val targets = EconomyRules.catalog.buildings.single { it.id == "warehouse" }.levels.filter { it.level in 2..3 }
         val supplies = buildMap<String, Long> {
             targets.forEach { target -> target.cost.items.forEach { (id, amount) -> put(id, (get(id) ?: 0L) + amount) } }
-            put("wood", 2L)
+            put("wood", (get("wood") ?: 0L) + 2L)
+        }
+        val sourceBuildings = buildMap<String, Int> {
+            targets.forEach { target -> target.requiredBuildings.forEach { (id, level) -> put(id, maxOf(get(id) ?: 0, level)) } }
         }
         val supplied = stored.copy(wallet = EconomyWallet(targets.sumOf { it.cost.coins }, 77), inventory = supplies,
-            buildings = stored.buildings + mapOf("home" to 2, "workshop" to 0, "warehouse" to 1))
+            buildings = stored.buildings + sourceBuildings + mapOf("home" to 1, "warehouse" to 1))
+        val missingSource = supplied.copy(buildings = supplied.buildings + ("workshop" to 0))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(missingSource), p.id)
+        val blockedSource = economy.snapshot(p.hash)
+        assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, blockedSource, "start_construction", "warehouse"))
+        }.code)
+        assertEquals(blockedSource, economy.snapshot(p.hash).copy(serverTime = blockedSource.serverTime),
+            "Missing material sources cannot debit costs or record a command")
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(supplied), p.id)
         var current = economy.snapshot(p.hash)
         assertEquals((supplies.values.sum() - current.storage.capacity).coerceAtLeast(0), current.storage.overflow)

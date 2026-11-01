@@ -1,4 +1,5 @@
 import { economyCatalog, recipeBuildingLevel, type EconomyCatalog, type EconomyState } from "./model";
+import { recipeUnlocksMet } from "./recipe-unlock";
 import { fishingClassWeights, fishingState, fishingClassItemId, fishingCollectionDraws, fishingSpeciesWeights, fishingWeights, fishClassForItem } from "./fishing";
 
 export type OrderEffortSource = Pick<EconomyState, "buildings"> & Partial<Pick<EconomyState, "fishing" | "progression">> & { catalog?: EconomyCatalog };
@@ -23,7 +24,7 @@ export function obtainableResidentOrderItems(state: OrderEffortSource, catalog =
     for (const source of [...catalog.explorations, ...catalog.recipes]) {
       if (source.retired) continue;
       if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < recipeBuildingLevel(source)) continue;
-      if ("requiredRecipes" in source && Object.entries(source.requiredRecipes).some(([id, count]) => (state.progression?.recipes[id] ?? 0) < count)) continue;
+      if ("buildingId" in source && !recipeUnlocksMet(state, source, catalog)) continue;
       const fishInput = "fishInput" in source ? source.fishInput?.itemIds.map(id => source.fishInput?.exactSpecies ? id : fishing ? fishingClassItemId(id, fishing) : id) : undefined;
       if (Object.keys(source.cost.items).some(id => { const key = "fishInput" in source && !source.fishInput?.exactSpecies && fishing ? fishingClassItemId(id, fishing) : id; return !reachable.has(key) && !fishInput?.includes(key); })) continue;
       if (fishInput && !fishInput.some(id => reachable.has(id))) continue;
@@ -48,7 +49,7 @@ export function orderEffort(state: OrderEffortSource, items: Record<string, numb
   const sourceUnlocked = (source: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }) =>
     (state.buildings.home ?? 1) >= source.requiredHomeLevel && Object.entries(source.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
   const recipes = catalog.recipes.filter(recipe => !recipe.retired && sourceUnlocked(recipe) && (state.buildings[recipe.buildingId] ?? 0) >= recipeBuildingLevel(recipe)
-    && Object.entries(recipe.requiredRecipes).every(([id, count]) => (state.progression?.recipes[id] ?? 0) >= count));
+    && recipeUnlocksMet(state, recipe, catalog));
   const routes = catalog.explorations.filter(route => !route.retired && sourceUnlocked(route));
   const memo = new Map<string, Plan | null>();
   function plan(itemId: string, quantity: number, path: string[]): Plan | null {

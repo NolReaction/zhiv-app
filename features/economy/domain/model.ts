@@ -234,7 +234,9 @@ export const economyCatalogSchema = z.object({
     baseCampfire: z.literal(true).nullish().transform(value => value ?? undefined), requiredHomeLevel: count.positive(),
     maxBatch: count.positive().max(100).nullish(),
     fishInput: z.object({ exactSpecies: z.boolean().optional(), itemIds: z.array(id).min(1).max(100).refine(ids => new Set(ids).size === ids.length) }).nullish(),
-    requiredBuildings, requiredRecipes: quantities.prefault({}), seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
+    requiredBuildings, requiredRecipes: quantities.prefault({}), requiredExplorations: quantities.prefault({}),
+    requiredFishCaught: count.max(ECONOMY_MAX_ITEMS).prefault(0), unlockTitle: z.string().trim().min(1).max(80).optional(),
+    seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
     .refine(recipe => !recipe.baseCampfire || recipe.id === "cook_grilled_fish" && recipe.buildingId === "dryer" && recipe.buildingLevel === 1,
       "Only grilled fish is available at the base campfire")
     .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && hasGardenBerryReward(recipe.rewards),
@@ -354,6 +356,11 @@ export const economyCatalogSchema = z.object({
   const recipeIds = new Set(catalog.recipes.map(recipe => recipe.id));
   if (catalog.recipes.some(recipe => Object.entries(recipe.requiredRecipes).some(([recipeId, quantity]) => !recipeIds.has(recipeId) || quantity < 1)))
     invalid("Recipe unlocks require known completed recipes");
+  if (catalog.recipes.some(recipe => Object.entries(recipe.requiredExplorations).some(([routeId, quantity]) => quantity < 1
+    || !catalog.explorations.some(route => route.id === routeId && !route.retired))))
+    invalid("Recipe unlocks require known active exploration routes");
+  if (catalog.recipes.some(recipe => recipe.requiredFishCaught > 0) && !catalog.fishing)
+    invalid("Personal catch requirements need a fishing catalog");
   if (Object.keys(catalog.localBuyer?.unitPrices ?? {}).some(itemId => !itemIds.has(itemId)))
     invalid("Local buyer prices require known goods");
   const meals = catalog.food?.meals ?? [], orders = catalog.food?.orders.templates ?? [];

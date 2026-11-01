@@ -27,6 +27,10 @@ export type ProgressionNode = {
   fishingSource?: { itemIds: string[]; routeIds: string[] };
   /** Building ids map to minimum levels; completedExplorations is a cumulative counter. */
   requirements: Record<string, number>;
+  requiredRecipes?: Record<string, number>;
+  requiredExplorations?: Record<string, number>;
+  requiredFishCaught?: number;
+  unlockTitle?: string;
   children: string[];
   description?: string;
   warehouseCapacity?: number;
@@ -207,8 +211,10 @@ export function buildProgressionGraph(inputCatalog: EconomyCatalog = economyCata
           label: `${single ? outputLabel : "Партия"} · ${shortTime(recipe.seconds)}`,
           icon: single ? itemIcons[itemId] || "📦" : "📦", kind: "recipe", status: "active", phase: level,
           buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipeBuildingLevel(recipe), cost: cloneCost(recipe.cost), seconds: recipe.seconds,
-          rewards: { ...recipe.rewards }, requirements, children: [],
-          description: `${recipe.fishInput?.exactSpecies ? "Именной рецепт: нужен указанный вид в текущем запасе. Другая рыба той же редкости и запись в книге улова его не заменяют. " : ""}${fishIngredients.length ? `Рыбный ингредиент по классу: ${fishIngredients.map(group => items.get(group.itemId)?.name ?? group.itemId).join(", ")}. Виды внутри нужного класса взаимозаменяемы. Быстрый выбор показывает собственных подходящих рыб; автозаполнение сначала берёт неуточнённый остаток, затем самые многочисленные виды. Только «Готовить» расходует выбранное. Более редкий класс автоматически не подставляется. ` : ""}${recipe.collection ? "После созревания нажмите «Собрать всё»: Мохлик заберёт все уже готовые ягоды за один подход. Общая серверная фаза сбора длится не менее 8 секунд и сохраняется после перезагрузки. Во время активной вылазки он занят, сбор ждёт возвращения. " : ""}${Object.keys(recipe.requiredRecipes).length ? `Для открытия произведите и заберите: ${Object.entries(recipe.requiredRecipes).map(([id, count]) => `${recipeResultName(id, catalog)} × ${count}`).join(", ")}. ` : ""}${recipe.rewards.fish_soup && catalog.food ? `Рыбный суп даёт Мохлику +${(catalog.food.meals.find(meal => meal.itemId === "fish_soup")?.heroSpeedBps ?? 0) / 100}% скорости на запас обычного времени вылазок и строителю +${(catalog.food.meals.find(meal => meal.itemId === "fish_soup")?.builderSpeedBps ?? 0) / 100}% скорости одной стройки; шахтёра не ускоряет. ` : ""}В карточке рисунок и название предмета стоят рядом, ниже время и необходимые материалы с нехваткой. Одиночный результат не повторяет «×1», соседние карточки выровнены. ${fishIngredients.length || recipe.fishInput?.exactSpecies ? "Нажатие открывает выбор рыб и подтверждение готовки." : "Нажатие сразу запускает производство."} Незавершённую работу можно отменить вторым нажатием в её ячейке в течение 5 секунд после «Удалить?» с возвратом потраченного; таймаут ничего не отменяет. Живой таймер показывает секунды в MM:SS или H:MM:SS без повторных «Осталось» и «Ещё». Он идёт и после закрытия приложения; готовый результат нужно забрать. Каждый запуск выпускает один предмет и занимает отдельное место до получения. Изначально место одно; второе открывается за ${formatPearls(catalog.productionSlots.upgrades[0].pricePearls)} жемчужин с дома ${catalog.productionSlots.upgrades[0].requiredHomeLevel}, третье за ${formatPearls(catalog.productionSlots.upgrades[1].pricePearls)} с дома ${catalog.productionSlots.upgrades[1].requiredHomeLevel}. Перед получением проверьте место в кладовой.`,
+          rewards: { ...recipe.rewards }, requirements, requiredRecipes: { ...recipe.requiredRecipes },
+          requiredExplorations: { ...recipe.requiredExplorations }, requiredFishCaught: recipe.requiredFishCaught ?? 0,
+          unlockTitle: recipe.unlockTitle, children: [],
+          description: `${recipe.fishInput?.exactSpecies ? "Именной рецепт: нужен указанный вид в текущем запасе. Другая рыба той же редкости и запись в книге улова его не заменяют. " : ""}${fishIngredients.length ? `Рыбный ингредиент по классу: ${fishIngredients.map(group => items.get(group.itemId)?.name ?? group.itemId).join(", ")}. Виды внутри нужного класса взаимозаменяемы. Быстрый выбор показывает собственных подходящих рыб; автозаполнение сначала берёт неуточнённый остаток, затем самые многочисленные виды. Только «Готовить» расходует выбранное. Более редкий класс автоматически не подставляется. ` : ""}${recipe.collection ? "После созревания нажмите «Собрать всё»: Мохлик заберёт все уже готовые ягоды за один подход. Общая серверная фаза сбора длится не менее 8 секунд и сохраняется после перезагрузки. Во время активной вылазки он занят, сбор ждёт возвращения. " : ""}${Object.keys(recipe.requiredRecipes).length ? `Для открытия произведите и заберите: ${Object.entries(recipe.requiredRecipes).map(([id, count]) => `${recipeResultName(id, catalog)} × ${count}`).join(", ")}. ` : ""}${recipe.unlockTitle ? `Открытие «${recipe.unlockTitle}». ` : ""}${Object.keys(recipe.requiredExplorations ?? {}).length ? `Получите результат вылазки: ${Object.entries(recipe.requiredExplorations).map(([id, count]) => `${catalog.explorations.find(route => route.id === id)?.name ?? id} × ${count}`).join(", ")}. ` : ""}${recipe.requiredFishCaught ? `Лично поймайте и получите ${recipe.requiredFishCaught} рыб. Покупки и текущий запас не засчитываются. ` : ""}${recipe.rewards.fish_soup && catalog.food ? `Рыбный суп даёт Мохлику +${(catalog.food.meals.find(meal => meal.itemId === "fish_soup")?.heroSpeedBps ?? 0) / 100}% скорости на запас обычного времени вылазок и строителю +${(catalog.food.meals.find(meal => meal.itemId === "fish_soup")?.builderSpeedBps ?? 0) / 100}% скорости одной стройки; шахтёра не ускоряет. ` : ""}В карточке рисунок и название предмета стоят рядом, ниже время и необходимые материалы с нехваткой. Одиночный результат не повторяет «×1», соседние карточки выровнены. ${fishIngredients.length || recipe.fishInput?.exactSpecies ? "Нажатие открывает выбор рыб и подтверждение готовки." : "Нажатие сразу запускает производство."} Незавершённую работу можно отменить вторым нажатием в её ячейке в течение 5 секунд после «Удалить?» с возвратом потраченного; таймаут ничего не отменяет. Живой таймер показывает секунды в MM:SS или H:MM:SS без повторных «Осталось» и «Ещё». Он идёт и после закрытия приложения; готовый результат нужно забрать. Каждый запуск выпускает один предмет и занимает отдельное место до получения. Изначально место одно; второе открывается за ${formatPearls(catalog.productionSlots.upgrades[0].pricePearls)} жемчужин с дома ${catalog.productionSlots.upgrades[0].requiredHomeLevel}, третье за ${formatPearls(catalog.productionSlots.upgrades[1].pricePearls)} с дома ${catalog.productionSlots.upgrades[1].requiredHomeLevel}. Перед получением проверьте место в кладовой.`,
         });
         node.children.push(child.id);
         edge(node.id, child.id, "unlock");
@@ -247,6 +253,13 @@ export function buildProgressionGraph(inputCatalog: EconomyCatalog = economyCata
       const prerequisite = byId.get(buildingNodeId(buildingId, level));
       if (prerequisite && prerequisite !== node) phase = Math.max(phase, phaseFor(prerequisite));
     }
+    for (const id of [...Object.keys(node.requiredRecipes ?? {}).map(id => `r:${id}`),
+      ...Object.keys(node.requiredExplorations ?? {}).map(id => `e:${id}`)]) {
+      const prerequisite = byId.get(id);
+      if (prerequisite) phase = Math.max(phase, phaseFor(prerequisite));
+    }
+    if (node.requiredFishCaught) phase = Math.max(phase, Math.min(6, ...(catalog.fishing?.routeIds ?? [])
+      .flatMap(id => { const route = byId.get(`e:${id}`); return route ? [phaseFor(route)] : []; })));
     phasePending.delete(node.id);
     phaseCache.set(node.id, phase);
     return phase;
@@ -392,6 +405,11 @@ export function buildProgressionGraph(inputCatalog: EconomyCatalog = economyCata
     ["r:make_rope", "tackle"], ["tackle", "sea_trips"],
   ]) edge(source, target, "plan");
 
+  for (const node of nodes.filter(node => node.kind === "recipe")) {
+    for (const [id, count] of Object.entries(node.requiredRecipes ?? {})) if (count > 0 && byId.has(`r:${id}`)) edge(`r:${id}`, node.id);
+    for (const [id, count] of Object.entries(node.requiredExplorations ?? {})) if (count > 0 && byId.has(`e:${id}`)) edge(`e:${id}`, node.id);
+    if (node.requiredFishCaught && byId.has("fishing_species")) edge("fishing_species", node.id);
+  }
   for (const value of edges) {
     if (!byId.has(value.source) || !byId.has(value.target)) throw new Error(`Unknown progression edge endpoint: ${value.id}`);
   }

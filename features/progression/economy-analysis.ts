@@ -11,7 +11,7 @@ export type AnalysisItem = EconomyCatalog["items"][number] & {
   fullWorkSeconds: number | null; launches: number | null; recurringUses: number; warnings: string[];
 };
 export type EconomyAnalysis = { catalogVersion: number; coinsPerMinute: number | null; items: AnalysisItem[];
-  sources: ProductionSource[]; graph: { nodes: EconomyGraphNode[]; edges: EconomyGraphEdge[] } };
+  sources: ProductionSource[]; routeNames: Record<string, string>; graph: { nodes: EconomyGraphNode[]; edges: EconomyGraphEdge[] } };
 
 /** Catalogue analysis never reprices the live game. Direct margins use actual
  * liquidation prices; complete chain work includes collection once, as work of
@@ -61,5 +61,6 @@ export function buildEconomyAnalysis(catalog: EconomyCatalog = economyCatalog): 
     ...Object.entries(source.cost.items).map(([id, quantity]) => ({ id: `${source.id}:in:${id}`, from: `item:${id}`, to: source.id, quantity, kind: "input" as const })),
     ...Object.entries(source.rewards).map(([id, quantity]) => ({ id: `${source.id}:out:${id}`, from: source.id, to: `item:${id}`, quantity, kind: "output" as const })),
   ]);
-  return { catalogVersion: catalog.version, coinsPerMinute: policy?.coinsPerMinute ?? null, items, sources, graph: { nodes, edges } };
+  return { catalogVersion: catalog.version, coinsPerMinute: policy?.coinsPerMinute ?? null, items, sources,
+    routeNames: Object.fromEntries(catalog.explorations.map(route => [route.id, route.name])), graph: { nodes, edges } };
 }

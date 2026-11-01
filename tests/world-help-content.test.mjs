@@ -216,8 +216,8 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("production"), /нехватка выделена рядом с количеством/);
   assert.match(answer("production"), /видны время и материалы/);
   assert.match(answer("production"), /У закрытого продукта указан нужный уровень постройки/);
-  assert.match(answer("production"), /ячейка займётся сразу/);
-  assert.match(answer("production"), /Время начнётся после подтверждения сервера/);
+  assert.match(answer("production"), /В книге костра сначала откроется рецепт: нажмите «Приготовить»/);
+  assert.match(answer("production"), /Работа начинается после подтверждения сервера/);
   assert.match(answer("production"), /«Удалить\?» и таймер 5 секунд/);
   assert.match(answer("production"), /Второе нажатие за это время отменит работу и вернёт монеты и материалы/);
   assert.match(answer("production"), /Без второго нажатия работа продолжится/);
@@ -414,13 +414,16 @@ test("fish commerce answers require an explicit sale and keep market reservation
   assert.match(answer("production"), /Одно место даёт один предмет/);
 });
 
-test("campfire and mining guidance matches compact categories, duration filters and safe equipment choices", () => {
-  for (const label of ["Рыбные блюда", "Напитки", "Ягодные десерты", "Походные припасы"])
+test("campfire and mining guidance matches cookbook categories and safe equipment choices", () => {
+  for (const label of ["Рыбные блюда", "Напитки", "Десерты", "Припасы"])
     assert.ok(answer("campfire").includes(`«${label}»`));
-  for (const label of ["Все", "До 15 мин", "15 мин - 1 ч", "Дольше 1 ч"])
+  for (const label of ["Есть ингредиенты", "Готовится", "Приготовить", "Готовить"])
     assert.ok(answer("campfire").includes(`«${label}»`));
-  assert.match(answer("campfire"), /работы остаются видны при любом фильтре/);
-  assert.match(answer("campfire"), /Рыбный рецепт сначала откроет выбор видов.*«Готовить»/);
+  assert.match(answer("campfire"), /нажатие на рецепт открывает.*без траты запасов/i);
+  assert.match(answer("campfire"), /проверьте выбранные виды.*«Готовить»/);
+  assert.match(answer("recipe-unlocks"), /каждый пункт задания/);
+  assert.match(answer("recipe-unlocks"), /после получения результата.*Купленные вещи их не заменяют/);
+  assert.match(answer("cooking-achievements"), /Один рецепт увеличивает разнообразие только при первом получении/);
   assert.match(answer("mining"), /Выберите ресурс и количество/);
   assert.ok(answer("mining").includes(`Предел по уровням шахты: ${miningBatchCatalog.maxUnitsByQuarryLevel.join(" / ")} единиц`));
   assert.ok(answer("mining").includes(`не больше ${miningBatchCatalog.maxBaseSeconds / 60} минут базовой работы`));

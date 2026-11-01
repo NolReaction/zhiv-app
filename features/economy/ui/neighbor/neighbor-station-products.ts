@@ -10,7 +10,7 @@ export function neighborStationProducts(world: StationWorld, stationId: string, 
   const requirementsMet = (requiredHome: number, requiredBuildings: Record<string, number>) => home >= requiredHome
     && Object.entries(requiredBuildings).every(([id, level]) => (buildings[id] ?? 0) >= level);
   const sources = stationId === "quarry" ? catalog.explorations.filter(route => route.activity === "mining" && stationLevel > 0
-    && requirementsMet(route.requiredHomeLevel, route.requiredBuildings)).map(route => ({ ...route, requiredRecipes: {} }))
+    && requirementsMet(route.requiredHomeLevel, route.requiredBuildings)).map(route => ({ ...route, requiredRecipes: {}, requiredExplorations: {}, requiredFishCaught: 0 }))
     : catalog.recipes.filter(recipe => recipe.buildingId === stationId && stationLevel >= recipeBuildingLevel(recipe)
       && requirementsMet(recipe.requiredHomeLevel, recipe.requiredBuildings));
   const products = new Map<string, NeighborStationProduct>();
@@ -23,7 +23,8 @@ export function neighborStationProducts(world: StationWorld, stationId: string, 
     if (!outputs.length) continue;
     const key = outputs.map(output => `${output.itemId}:${output.quantity}`).sort().join("|");
     if (!products.has(key)) products.set(key, { id: source.id, name: source.name,
-      needsRecipeLearning: Object.keys(source.requiredRecipes ?? {}).length > 0, outputs });
+      needsRecipeLearning: Object.keys(source.requiredRecipes ?? {}).length > 0 || Object.keys(source.requiredExplorations ?? {}).length > 0
+        || source.requiredFishCaught > 0, outputs });
   }
   return [...products.values()];
 }

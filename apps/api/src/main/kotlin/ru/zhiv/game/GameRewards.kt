@@ -14,7 +14,7 @@ object GameRewards {
     val legacyTiers = catalog.legacyTargets
     val achievements = tiers.mapValues { (_, targets) -> targets.last() }
     val legacyRecipeIds = catalog.legacyRecipeIds.toSet()
-    init { require(catalog.version == 7 && tiers.size == 19 && tiers.values.all { targets ->
+    init { require(catalog.version == 8 && tiers.size == 20 && tiers.values.all { targets ->
         targets.isNotEmpty() && targets.size <= 4 && targets.first() > 0 && targets.zipWithNext().all { (a, b) -> a < b }
     } && legacyTiers.keys == tiers.keys && legacyTiers.all { (id,targets) -> tiers.getValue(id).take(targets.size) == targets }) }
 }

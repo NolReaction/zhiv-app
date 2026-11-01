@@ -71,8 +71,8 @@ test("the rotated PNG waterline stays in Water through tilted arrival, level ste
     const duration = phase === "arriving" ? TRADE_SHIP_VOYAGE.arrivalDuration : TRADE_SHIP_VOYAGE.departureDuration;
     for (let step = 0; step <= duration * 10; step++) {
       const state = sampleTradeShipMotion(phase, step / 10);
-      clockwiseArrival ||= phase === "arriving" && state.heading > .2;
-      counterclockwiseExit ||= phase === "departing" && state.heading < -.5;
+      clockwiseArrival ||= phase === "arriving" && Math.abs(state.heading - TRADE_SHIP_VOYAGE.arrivalHeading) < 1e-9;
+      counterclockwiseExit ||= phase === "departing" && Math.abs(state.heading - TRADE_SHIP_VOYAGE.departureHeading) < 1e-9;
       for (const point of waterline) for (const bob of [-.8, .8]) {
         const actual = placement(point, state, bob);
         assert.ok(wet(actual), `${phase} at ${step / 10}s: hull meets land/exclusion at ${actual.x},${actual.y}`);

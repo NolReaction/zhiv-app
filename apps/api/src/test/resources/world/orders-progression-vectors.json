@@ -155,6 +155,9 @@
       ],
       "recipes": {
         "make_metal_parts": 2
+      },
+      "completedExplorations": {
+        "old_woodland": 1
       }
     },
     {
@@ -255,6 +258,9 @@
       ],
       "recipes": {
         "make_metal_parts": 2
+      },
+      "completedExplorations": {
+        "old_woodland": 1
       }
     }
   ]

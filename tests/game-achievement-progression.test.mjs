@@ -111,7 +111,7 @@ test("familiar trails count different completed routes including restored far ba
     const visited = { ...initial, progression: { ...collection.newEconomyProgression(), routes: { [route.id]: 100, invented: 999 } } };
     assert.equal(math.economyAchievementProgress(visited).familiar_trails, 1, route.id);
   }
-  assert.equal(achievementCatalog.version, 7);
+  assert.equal(achievementCatalog.version, 8);
   const sameFormerBiome = { ...initial, progression: { ...collection.newEconomyProgression(),
     routes: { forest: 2, forest_camp: 1, old_woodland: 1, invented: 999 } } };
   assert.equal(math.economyAchievementProgress(sameFormerBiome).familiar_trails, 3);
@@ -248,4 +248,28 @@ test("a campfire batch advances one cooking result only after claim and duplicat
   assert.equal(first.replayed, false); assert.equal(card(p, "campfire_cook", now).progress, 1);
   assert.equal(economy.commandDevEconomy(p.token, request, now + 1000).replayed, true);
   assert.equal(card(p, "campfire_cook", now + 1000).progress, 1);
+});
+
+test("forest cuisine counts distinct personally claimed campfire recipes and stays absent from cached catalogs", () => {
+  const p = player(), now = Date.now();
+  economy.getDevEconomy(p.token, now);
+  const state = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state;
+  state.inventory = { grilled_fish: 100, berry_compote: 100, dried_berries: 100 };
+  assert.equal(math.economyAchievementProgress(state).forest_cuisine, 0, "purchased food is not cooking history");
+  state.progression.recipes = { cook_grilled_fish: 500, grow_berries: 500, made_up_dish: 500 };
+  assert.equal(math.economyAchievementProgress(state).forest_cuisine, 1, "repeats, garden and unknown IDs do not add variety");
+  const cooking = model.economyCatalog.recipes.filter(recipe => !recipe.retired && recipe.buildingId === "dryer");
+  for (const [index, target] of [3, 8, 16].entries()) {
+    state.progression.recipes = Object.fromEntries(cooking.slice(0, target).map(recipe => [recipe.id, 1]));
+    const current = awards(p, now + index, 8);
+    assert.equal(current.achievements.length, 20);
+    assert.equal(api.gameAchievementsSchema.safeParse(current).success, true);
+    const cuisine = current.achievements.find(row => row.id === "forest_cuisine");
+    assert.equal(cuisine.tiers.filter(row => row.unlockedAt).length, index + 1);
+  }
+  for (const version of [5, 6, 7]) {
+    const cached = awards(p, now + 10, version);
+    assert.equal(cached.achievements.some(row => row.id === "forest_cuisine"), false);
+    assert.equal(api.gameAchievementsSchema.safeParse(cached).success, true);
+  }
 });

@@ -31,7 +31,8 @@ test("house two opens blueberries, rope, the independent mine, kiln and bridge w
   assert.ok(result.upgrades.some(target => target.stationId === "bridge" && target.level === 1));
   assert.equal(unlocks("bridge", 1).market, true);
   assert.ok(!result.upgrades.some(target => target.stationId === "home"));
-  assert.ok(!result.upgrades.some(target => target.level === 3));
+  assert.ok(!result.upgrades.some(target => target.level >= 3 && target.stationId !== "warehouse"));
+  assert.deepEqual(result.upgrades.filter(target => target.stationId === "warehouse").map(target => target.level), [3]);
   assert.equal(unlocks("home", 3).market, false);
   const third = unlocks("home", 3);
   assert.ok(third.recipes.some(recipe => recipe.id === "smelt_iron"));

@@ -43,6 +43,8 @@ test("the neighbor can offer learned fish soup while raw fish species and classe
   const state = base(); state.buildings = { ...maxBuildings };
   assert.ok(!opened(state).includes("fish_soup"));
   state.progression.recipes.cook_grilled_fish = 1;
+  assert.ok(!opened(state).includes("fish_soup"), "cooking alone does not prove a personal catch");
+  state.fishing.catches[economyCatalog.fishing.fish[0].itemId] = 4;
   assert.ok(opened(state).includes("fish_soup"));
   state.unlockedItems = economyCatalog.items.map(item => item.id);
   for (const fish of [...economyCatalog.fishing.fish, ...economyCatalog.fishing.classes])
@@ -54,6 +56,8 @@ test("starter, developed and maximum player settlements receive progressively ri
   const middle = base(); Object.assign(middle.buildings, { home: 3, bridge: 1, warehouse: 3, workshop: 2, quarry: 2, garden: 2, kiln: 1, dryer: 1, woodlot: 2 });
   const late = base(); late.buildings = { ...maxBuildings };
   late.progression.recipes = Object.fromEntries(economyCatalog.recipes.map(recipe => [recipe.id, 10]));
+  late.progression.routes = Object.fromEntries(economyCatalog.explorations.map(route => [route.id, 10]));
+  late.fishing.catches = { [economyCatalog.fishing.fish[0].itemId]: 10 };
   const untouched = [early, middle, late].map(state => JSON.stringify(state));
   const first = opened(early), second = opened(middle), third = opened(late);
   for (const id of ["wood", "berries"]) assert.ok(first.includes(id));
@@ -89,7 +93,8 @@ test("newly unlocked goods wait for the next daily delivery without rerolling ex
   assert.deepEqual(first.map(offer => offer.itemId), ["wood"]);
   player.row.state.buildings = { ...maxBuildings };
   assert.ok(!opened(player.row.state).includes("tools"), "the workshop still needs its metalworking practice");
-  player.row.state.progression.recipes.make_metal_parts = 2;
+  player.row.state.progression.recipes.make_metal_parts = 1;
+  player.row.state.progression.routes.old_woodland = 1;
   const second = view(player, stamp + 1000).shop.offers;
   assert.deepEqual(second, first);
   assert.deepEqual(view(player, tomorrow).shop.offers.map(offer => offer.itemId).sort(), ["tools", "wood"]);

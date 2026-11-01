@@ -9,6 +9,7 @@ import { recipeResultName } from "./recipe-prerequisites";
 import { refreshFishingShop, fishingShopExpired, fishingShopRefreshPrice, fishingOfferUnitPrice } from "./fishing-shop";
 import { fishingState, fishingTripCost, fishingCollectionDraws, selectFishingCatch, fishClassForItem, fishClassInventory, fishingClassItemId, fishingBaitCompatible } from "./fishing";
 import { advanceEconomyProgression, newEconomyProgression } from "./collection-progress";
+import { recipeUnlockRequirements } from "./recipe-unlock";
 import { prepareRareDrop, settleRareDrop, secureRareInteger, type RareRandomInteger } from "./rare-drops";
 import { economyLocalSellPrice } from "./local-sale";
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "./actor-availability";
@@ -314,6 +315,8 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       requireBuildings(state, recipe.requiredBuildings);
       const missingRecipes = Object.entries(recipe.requiredRecipes).filter(([recipeId, count]) => (state.progression.recipes[recipeId] ?? 0) < count);
       if (missingRecipes.length) fail("ECONOMY_RECIPE_REQUIRED", `Произведите и заберите: ${missingRecipes.map(([recipeId]) => recipeResultName(recipeId, economyCatalog)).join(", ")}`);
+      if (recipeUnlockRequirements(state, recipe).some(requirement => !requirement.completed))
+        fail("ECONOMY_RECIPE_REQUIRED", "Выполните условия открытия рецепта и заберите результаты");
       if (state.jobs.some(job => job.targetId === recipe.buildingId && job.kind === "construction"))
         fail("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат");
       if (state.jobs.filter(job => job.targetId === recipe.buildingId && job.kind === "production").length >= productionSlotCount(state, recipe.buildingId))
@@ -750,7 +753,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
       if (command.action === "claim_mining_batch" && (!job.miningBatch || !isMinerJob(job)
         || !Number.isSafeInteger(command.quantity) || command.quantity < 1 || command.quantity > 100))
-        return fail("INVALID_ECONOMY_COMMAND", "Выберите готовую добычу из заказа шахтёра");
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выберите готовую добычу из заказа шахтёра", 400);
       if (job.miningBatch && isMinerJob(job)) {
         const progress = miningBatchProgress(job, now);
         if (!progress.ready) return fail("ECONOMY_JOB_NOT_READY", "Следующая единица добычи ещё не готова");

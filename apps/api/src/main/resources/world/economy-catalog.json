@@ -2299,7 +2299,7 @@
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
       "requiredRecipes": {
-        "make_metal_parts": 2
+        "make_metal_parts": 1
       },
       "seconds": 1500,
       "cost": {
@@ -2313,7 +2313,11 @@
       "rewards": {
         "tools": 1
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "unlockTitle": "Практика в старом лесу",
+      "requiredExplorations": {
+        "old_woodland": 1
+      }
     },
     {
       "id": "make_reinforced_parts",
@@ -2380,7 +2384,9 @@
       "maxBatch": 1,
       "requiredRecipes": {
         "cook_grilled_fish": 1
-      }
+      },
+      "unlockTitle": "Свой улов",
+      "requiredFishCaught": 4
     },
     {
       "id": "cook_berry_fish",
@@ -2956,7 +2962,7 @@
         "quarry": 2
       },
       "requiredRecipes": {
-        "fire_bricks": 2
+        "fire_bricks": 1
       },
       "seconds": 300,
       "cost": {
@@ -2969,7 +2975,11 @@
       "rewards": {
         "ceramic_jar": 1
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "unlockTitle": "Глина в дело",
+      "requiredExplorations": {
+        "quarry_clay": 2
+      }
     },
     {
       "id": "mix_mortar",
@@ -3002,7 +3012,7 @@
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
       "requiredRecipes": {
-        "make_glass": 2
+        "make_glass": 1
       },
       "seconds": 300,
       "cost": {
@@ -3014,7 +3024,11 @@
       "rewards": {
         "glass_bottle": 1
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "unlockTitle": "Секрет прибрежного песка",
+      "requiredExplorations": {
+        "coastal_deposits": 1
+      }
     },
     {
       "id": "grind_lens",
@@ -3072,7 +3086,7 @@
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
       "requiredRecipes": {
-        "make_planks": 3,
+        "make_planks": 2,
         "make_rope": 1
       },
       "seconds": 480,
@@ -3086,7 +3100,11 @@
       "rewards": {
         "trade_crate": 1
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "unlockTitle": "В дорогу",
+      "requiredExplorations": {
+        "forest": 1
+      }
     },
     {
       "id": "assemble_field_kit",
@@ -3113,7 +3131,11 @@
       "rewards": {
         "field_kit": 1
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "unlockTitle": "Пробный выход",
+      "requiredExplorations": {
+        "far_bank_path": 1
+      }
     },
     {
       "id": "fire_stone_tile",
@@ -5720,7 +5742,9 @@
             "workshop": 4,
             "woodlot": 3,
             "kiln": 2,
-            "quarry": 2
+            "quarry": 2,
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "tools": 2,
@@ -5742,7 +5766,9 @@
             "workshop": 4,
             "woodlot": 4,
             "kiln": 2,
-            "quarry": 2
+            "quarry": 2,
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "reinforced_parts": 2,
@@ -6210,7 +6236,9 @@
             "workshop": 3,
             "kiln": 2,
             "woodlot": 1,
-            "quarry": 2
+            "quarry": 2,
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "research_gear": 1,
@@ -7044,7 +7072,9 @@
             "woodlot": 4,
             "workshop": 3,
             "kiln": 2,
-            "quarry": 2
+            "quarry": 2,
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "resin": 3,
@@ -7415,7 +7445,9 @@
             "woodlot": 4,
             "workshop": 4,
             "kiln": 2,
-            "quarry": 2
+            "quarry": 2,
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "research_gear": 1,
@@ -7595,7 +7627,8 @@
             "quarry": 4,
             "workshop": 3,
             "kiln": 3,
-            "woodlot": 3
+            "woodlot": 3,
+            "dryer": 2
           },
           "items": {
             "quartz": 2,
@@ -7619,7 +7652,8 @@
             "kiln": 4,
             "woodlot": 4,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "field_kit": 1,
@@ -7779,7 +7813,8 @@
             "kiln": 3,
             "workshop": 2,
             "quarry": 3,
-            "woodlot": 2
+            "woodlot": 2,
+            "dryer": 2
           },
           "items": {
             "glass_bottle": 2,
@@ -7801,7 +7836,10 @@
             "workshop": 4,
             "quarry": 4,
             "kiln": 4,
-            "woodlot": 4
+            "woodlot": 4,
+            "dryer": 2,
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "field_kit": 1,
@@ -8129,7 +8167,8 @@
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "quarry": 3,
-            "kiln": 3
+            "kiln": 3,
+            "dryer": 2
           },
           "items": {
             "sand": 4,
@@ -8173,7 +8212,8 @@
           "requiredBuildings": {
             "quarry": 4,
             "kiln": 3,
-            "workshop": 3
+            "workshop": 3,
+            "dryer": 2
           },
           "items": {
             "lens": 2,
@@ -8384,7 +8424,8 @@
           "requiredBuildings": {
             "kiln": 3,
             "quarry": 3,
-            "workshop": 2
+            "workshop": 2,
+            "dryer": 2
           },
           "items": {
             "glass_bottle": 3,
@@ -8453,7 +8494,8 @@
             "kiln": 3,
             "workshop": 4,
             "dryer": 3,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "field_kit": 1,
@@ -9175,7 +9217,9 @@
             "woodlot": 3,
             "workshop": 3,
             "kiln": 3,
-            "quarry": 4
+            "quarry": 4,
+            "dryer": 2,
+            "garden": 1
           },
           "stages": [
             {
@@ -9421,7 +9465,8 @@
             "workshop": 4,
             "kiln": 3,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "stages": [
             {
@@ -9665,7 +9710,8 @@
             "kiln": 3,
             "quarry": 4,
             "dryer": 3,
-            "garden": 4
+            "garden": 4,
+            "bridge": 1
           },
           "stages": [
             {

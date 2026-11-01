@@ -54,6 +54,18 @@ export function repriceTimeEconomy(source) {
       for (const [id, level] of Object.entries(source.requiredBuildings)) building(id, level);
       if (source.buildingId) building(source.buildingId, source.baseCampfire ? 0 : source.buildingLevel);
       for (const id of Object.keys(source.requiredRecipes ?? {})) recipe(id);
+      for (const id of Object.keys(source.requiredExplorations ?? {})) {
+        const route = routeById.get(id); assert(route && !route.retired, `Unavailable exploration: ${id}`); visit(route);
+      }
+      if (source.requiredFishCaught > 0) {
+        const route = routeById.get(catalog.fishing.routeIds[0]); assert(route && !route.retired, "Unavailable fishing mastery route");
+        visit(route);
+        const rods = catalog.fishing.rods.filter(rod => catalog.fishing.classes.some(group =>
+          (!rod.classOddsBps || rod.classOddsBps[group.rarity] > 0) && (group.rarity !== "legendary" || rod.rarity === "legendary")));
+        assert(rods.length && catalog.fishing.hooks.length, "Unavailable fishing mastery tackle");
+        home = Math.max(home, Math.min(...rods.map(rod => rod.requiredHomeLevel ?? 1)),
+          Math.min(...catalog.fishing.hooks.map(hook => hook.requiredHomeLevel ?? 1)));
+      }
       for (const id of Object.keys(source.cost.items)) item(id);
     }
     function item(id) {

@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "targets": {
     "seven_day_streak": [
       7
@@ -78,6 +78,11 @@
       50,
       200,
       1000
+    ],
+    "forest_cuisine": [
+      3,
+      8,
+      16
     ]
   },
   "legacyRecipeIds": [
@@ -161,6 +166,7 @@
       10,
       50,
       200
-    ]
+    ],
+    "forest_cuisine": []
   }
 }

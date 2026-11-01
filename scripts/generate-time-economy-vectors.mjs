@@ -20,6 +20,8 @@ try {
     state.buildings = { ...row.buildings };
     state.fishing.ownedRods = [...row.ownedRods]; state.fishing.ownedHooks = [...row.ownedHooks];
     state.progression.recipes = { ...(row.completedRecipes ?? row.recipes ?? {}) };
+    state.progression.routes = { ...(row.completedExplorations ?? {}) };
+    state.fishing.catches = { ...(row.fishCatches ?? {}) };
     return state;
   };
   const quote = residentOrderPricing(catalog);

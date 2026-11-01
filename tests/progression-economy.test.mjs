@@ -106,6 +106,10 @@ test("source costs and prerequisites are complete catalog copies, including the 
     assert.deepEqual(plain(source.requiredBuildings), { ...recipe.requiredBuildings,
       [recipe.buildingId]: Math.max(recipeBuildingLevel(recipe), recipe.requiredBuildings[recipe.buildingId] ?? 0) });
     assert.deepEqual(plain(source.requiredRecipes), recipe.requiredRecipes);
+    assert.deepEqual(plain(source.requiredExplorations), recipe.requiredExplorations ?? {});
+    assert.equal(source.requiredFishCaught, recipe.requiredFishCaught ?? 0);
+    assert.equal(source.unlockTitle, recipe.unlockTitle);
+    source.requiredExplorations.modified_route = 1;
     source.cost.coins += 1;
     source.requiredBuildings[recipe.buildingId] += 1;
   }
@@ -394,4 +398,29 @@ test("cycles and unknown ingredients stop safely rather than recursively inventi
   assert.ok(plan.uncertainItemIds.includes("missing_item"));
   assert.match(plan.warnings.join(" "), /Цикл рецептов/);
   assert.match(plan.warnings.join(" "), /Неизвестный ингредиент/);
+});
+
+test("recipe unlock homes include required expedition buildings and propagate through claimed recipes", () => {
+  const changed = structuredClone(catalog), target = changed.recipes.find(recipe => recipe.id === "make_planks");
+  const route = changed.explorations.find(route => route.id === "old_woodland");
+  route.requiredHomeLevel = 1; route.requiredBuildings = { kiln: 5 };
+  target.requiredExplorations = { old_woodland: 2 };
+  const dependent = changed.recipes.find(recipe => recipe.id === "make_rope");
+  dependent.requiredRecipes = { make_planks: 1 };
+  const before = JSON.stringify(changed), reference = buildProgressionEconomy(changed);
+  assert.equal(reference.recipes.find(recipe => recipe.id === target.id).unlockHomeLevel, 5);
+  assert.equal(reference.recipes.find(recipe => recipe.id === dependent.id).unlockHomeLevel, 5);
+  assert.equal(reference.routeNames.old_woodland, route.name);
+  assert.equal(JSON.stringify(changed), before);
+});
+
+test("personal-fishing unlock uses the earliest real fishing route without treating all routes as mandatory", () => {
+  const changed = structuredClone(catalog), target = changed.recipes.find(recipe => recipe.id === "make_planks");
+  target.requiredRecipes = {}; target.requiredExplorations = {}; target.requiredFishCaught = 3;
+  changed.fishing.routeIds.forEach((id, index) => {
+    const route = changed.explorations.find(route => route.id === id);
+    route.requiredHomeLevel = index === 0 ? 3 : 5; route.requiredBuildings = {};
+  });
+  const reference = buildProgressionEconomy(changed);
+  assert.equal(reference.recipes.find(recipe => recipe.id === target.id).unlockHomeLevel, 3);
 });

@@ -142,7 +142,7 @@ test("reward reads negotiate new activity rows while cached clients retain their
   assert.equal(legacy.catalogVersion, 4); assert.equal(legacy.achievementRewards.length, 21);
   assert.equal(current.catalogVersion, 5); assert.equal(current.achievementRewards.length, 33);
   assert.deepEqual(current.achievementRewards.slice(0, 21), legacy.achievementRewards);
-  for (const suffix of ["?catalog=9", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
+  for (const suffix of ["?catalog=10", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
     assert.equal((await GET(read(suffix))).status, 400);
   }
 });
@@ -206,4 +206,24 @@ test("the update-required response is definitive for the reward transport and le
     assert.equal(accepted.replayed, false, "the rejected old request did not consume its UUID");
     assert.equal(api.gameRewardResultSchema.safeParse(accepted).success, true);
   } finally { stop(); globalThis.fetch = originalFetch; }
+});
+
+test("cooking variety uses the new reward contract and cached clients cannot claim an unreadable new medal", async () => {
+  const p = player(), owner = p.me.user.publicId;
+  economy.getDevEconomy(p.token);
+  const state = globalThis.__zhivDevEconomyStore.profiles.get(owner).state;
+  state.progression.recipes = { cook_grilled_fish: 1, cook_compote: 1, dry_berries: 1 };
+  const request = { requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "achievement", achievementId: "forest_cuisine", level: 1 };
+  const before = structuredClone(economy.getDevEconomy(p.token));
+  const denied = await POST(post(request));
+  assert.equal(denied.status, 409); assert.equal((await denied.json()).code, "APP_UPDATE_REQUIRED");
+  assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
+  const accepted = await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=9", post(request)));
+  assert.equal(accepted.status, 200);
+  const result = await accepted.json();
+  assert.equal(result.rewards.catalogVersion, 9); assert.equal(result.rewards.achievementRewards.length, 43);
+  assert.equal(result.claim.reward.pearls, 10); assert.equal(api.gameRewardResultSchema.safeParse(result).success, true);
+  const cached = await (await GET(read("?catalog=8"))).json();
+  assert.equal(cached.achievementRewards.length, 40);
+  assert.equal(cached.achievementRewards.some(row => row.achievementId === "forest_cuisine"), false);
 });

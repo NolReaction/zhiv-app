@@ -248,7 +248,7 @@ test("a saved retired bulk job keeps its accepted cost, clock and output and cla
 test("legacy overlapping hero jobs can fill eighteen slots but a nineteenth start cannot spend or consume a builder meal", () => {
   const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels[1];
   const stations = ["garden", "woodlot", "workshop", "dryer", "kiln"];
-  const row = fixture(p, { home: 3, coins: warehouse.cost.coins, items: { ...warehouse.cost.items, wood: 1 },
+  const row = fixture(p, { home: 3, coins: warehouse.cost.coins, items: { ...warehouse.cost.items, wood: (warehouse.cost.items.wood ?? 0) + 1 },
     buildings: { warehouse: 1, garden: 1, woodlot: 1, workshop: 1, dryer: 1, kiln: 1, quarry: 2 } });
   row.state.productionSlots = Object.fromEntries(stations.map(id => [id, 3]));
   row.state.food = { heroMeal: null, builderMeal: "grilled_fish" };

@@ -29,6 +29,8 @@ const developed = () => {
   const state = fresh();
   state.buildings = Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level]));
   state.progression.recipes = Object.fromEntries(catalog.recipes.map(recipe => [recipe.id, 100]));
+  state.progression.routes = Object.fromEntries(catalog.explorations.map(route => [route.id, 100]));
+  state.fishing.catches = { [catalog.fishing.fish[0].itemId]: 4 };
   state.fishing.ownedRods = catalog.fishing.rods.map(rod => rod.id);
   state.fishing.ownedHooks = catalog.fishing.hooks.map(hook => hook.id);
   state.wallet.coins = 1_000_000;
@@ -428,6 +430,8 @@ test("literal UTF-16 and live board vectors pin TS/Kotlin IDs, frozen weekly pro
     state.buildings = { ...scenario.buildings };
     state.fishing.ownedRods = [...scenario.ownedRods]; state.fishing.ownedHooks = [...scenario.ownedHooks];
     state.progression.recipes = { ...scenario.completedRecipes };
+    state.progression.routes = { ...(scenario.completedExplorations ?? {}) };
+    state.fishing.catches = { ...(scenario.fishCatches ?? {}) };
     const ordinary = food.residentOrderBoard(state, at).offers;
     assert.equal(ordinary.length, scenario.ordinary.length, scenario.label);
     ordinary.forEach((offer, index) => assert.deepEqual(project(offer, scenario.ordinary[index]), scenario.ordinary[index], `${scenario.label}:ordinary:${index}`));

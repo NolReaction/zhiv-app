@@ -25,7 +25,7 @@ data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null
 @Serializable data class AchievementRewardView(val achievementId: String, val level: Int, val target: Long, val pearls: Long,
     val earnedAt: String?, val claimedAt: String?, val eligible: Boolean, val blockedReason: String?)
 @Serializable data class OnboardingRewardView(val claimedAt: String? = null)
-@Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 8,
+@Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 9,
     val daily: DailyRewardsView, val achievementRewards: List<AchievementRewardView>, val onboarding: OnboardingRewardView = OnboardingRewardView())
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class ProgressionRewardClaim(val requestId: String, val ownerPublicId: String, val kind: String,
@@ -90,7 +90,7 @@ object ProgressionRewardRules {
         return progress.completed || progress.step>0
     }
     init {
-        require(catalog.version==8 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
+        require(catalog.version==9 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
         require(onboarding == ProgressionReward(coins=100,pearls=20))
         require(catalog.legacyOnboarding == ProgressionReward(coins=1_000,pearls=200))
         require(catalog.legacyDailyPearls == listOf(80L,100L,120L,140L,160L,180L,220L))
@@ -103,7 +103,7 @@ object ProgressionRewardRules {
                 && values.all { it in 0L..ECONOMY_MAX_PEARLS && it%2L==0L } })
         require(achievementPearls.keys==GameRewards.tiers.keys && achievementPearls.all { (id,values) ->
             values.size==GameRewards.tiers.getValue(id).size && values.all { it in 0L..ECONOMY_MAX_PEARLS } })
-        require(achievementPearls.values.flatten().sum()==4_120L && achievementPearls.all { (id,values) ->
+        require(achievementPearls.values.flatten().sum()==4_190L && achievementPearls.all { (id,values) ->
             values.all { it%2L==0L && (if(id=="full_collection") it==0L else it>0L) }
                 && values.zipWithNext().all { (before,after) -> after>=before } })
         val itemIds=setOf("wood","stone","fiber","berries","fish","hardwood","resin","planks","rope","bricks","iron_ingot",

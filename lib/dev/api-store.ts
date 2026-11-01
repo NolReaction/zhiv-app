@@ -818,7 +818,7 @@ export function getDevAchievements(token: string | undefined, lifetimeTaps: numb
     return { ...value, progress: unlockedAt ? value.target : Math.min(value.progress, value.target), unlockedAt };
   });
   const expanded = catalog >= 5 ? [...legacy.map(value => ({ ...value, tiers: [{ level: 1, target: value.target, progress: value.progress, unlockedAt: value.unlockedAt }] })),
-    ...Object.entries(economic).map(([id, progress]) => {
+    ...Object.entries(economic).filter(([id]) => catalog >= 8 || LEGACY_GAME_ACHIEVEMENT_TARGETS[id as GameAchievementId].length > 0).map(([id, progress]) => {
       const typedId = id as GameAchievementId, dates = store().achievementTierAwards.get(user.id)?.get(typedId);
       const targets = (catalog >= 7 ? GAME_ACHIEVEMENT_TARGETS : LEGACY_GAME_ACHIEVEMENT_TARGETS)[typedId];
       const floor = targets.filter((_, index) => dates?.has(index + 1)).at(-1) ?? 0;

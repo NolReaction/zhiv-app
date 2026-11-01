@@ -4,6 +4,7 @@ import { fishClassForItem, fishClassInventory } from "@/features/economy/domain/
 import { normalizedFishStock } from "@/features/economy/domain/fish-stock";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
+import { recipeUnlockRequirements } from "@/features/economy/domain/recipe-unlock";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { stageCourseRequired, stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import { explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
@@ -122,11 +123,22 @@ export function worldMissingRecipeRequirements(state: EconomyView, recipe: World
     .map(([id, count]) => ({ id, count, current: state.progression?.recipes?.[id] ?? 0,
       recipe: state.catalog.recipes.find(entry => entry.id === id) }));
 }
+export function worldRecipeUnlockRequirements(state: EconomyView, recipe: WorldRecipe) {
+  return recipeUnlockRequirements(state, recipe).map(requirement => ({ ...requirement,
+    label: requirement.kind === "recipe" ? `Изготовить и забрать: ${recipeResultName(requirement.id, state.catalog)}`
+      : requirement.kind === "exploration" ? `Получить результат: ${state.catalog.explorations.find(route => route.id === requirement.id)?.name ?? requirement.id}`
+      : "Поймать и забрать рыбу",
+  }));
+}
 export function worldRecipeUnlockReason(state: EconomyView, recipe: WorldRecipe) {
-  const first = worldMissingRecipeRequirements(state, recipe)[0];
+  const first = worldRecipeUnlockRequirements(state, recipe).find(requirement => !requirement.completed);
   if (!first) return null;
-  const action = first.recipe?.buildingId === "dryer" ? "Приготовьте" : "Произведите";
-  return `${action} и заберите: ${recipeResultName(first.id, state.catalog)} (${first.current} / ${first.count})`;
+  if (first.kind === "recipe") {
+    const prior = state.catalog.recipes.find(entry => entry.id === first.id);
+    const action = prior?.buildingId === "dryer" ? "Приготовьте" : "Произведите";
+    return `${action} и заберите: ${recipeResultName(first.id, state.catalog)} (${first.current} / ${first.required})`;
+  }
+  return `${first.label} (${first.current} / ${first.required})`;
 }
 /** Explain permanent access separately from temporary stock, queues and wallet limits. */
 export function worldRecipeAccessReason(state: EconomyView, recipe: WorldRecipe) {

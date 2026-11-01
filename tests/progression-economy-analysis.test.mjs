@@ -158,6 +158,49 @@ test("retired, inaccessible and unmastered sources cannot be selected", () => {
   assert.ok(!buildEconomyAnalysis(catalog).sources.some(source => source.id === "recipe:old_a"));
 });
 
+test("recipe, claimed-route and personal-catch gates are AND conditions only when access is supplied", () => {
+  const catalog = fixture();
+  Object.assign(catalog.recipes[0], { requiredRecipes: { starter: 3 }, requiredExplorations: { mine_clay: 2 }, requiredFishCaught: 4, unlockTitle: "Находки мастера" });
+  const all = { targets: { a: 1 }, buildings: { home: 1, garden: 1 }, completedRecipes: { starter: 3 }, completedExplorations: { mine_clay: 2 }, fishCaught: 4 };
+  const before = JSON.stringify({ catalog, all });
+  assert.equal(planEconomyProduction({ targets: { a: 1 } }, catalog).complete, true, "static catalogue remains an unrestricted reference");
+  assert.equal(planEconomyProduction(all, catalog).complete, true);
+  for (const patch of [{ completedRecipes: {} }, { completedExplorations: {} }, { fishCaught: 3 },
+    { completedRecipes: undefined }, { completedExplorations: undefined }, { fishCaught: undefined }]) {
+    const plan = planEconomyProduction({ ...all, ...patch }, catalog);
+    assert.equal(plan.complete, false); assert.equal(plan.elapsedSeconds, null); assert.equal(plan.launches, 0);
+  }
+  for (const access of [{ buildings: all.buildings }, { completedRecipes: {} }, { completedExplorations: {} }, { fishCaught: 0 }]) {
+    const plan = planEconomyProduction({ targets: { a: 1 }, ...access }, catalog);
+    assert.equal(plan.complete, false, "omitted counters in an explicit access snapshot mean zero");
+    assert.doesNotMatch(plan.warnings.join(" "), /Выбраны все открытые технологии/);
+  }
+  const source = buildEconomyAnalysis(catalog).sources.find(source => source.id === "recipe:grow_a");
+  assert.deepEqual(plain(source.requiredExplorations), { mine_clay: 2 });
+  assert.equal(source.requiredFishCaught, 4); assert.equal(source.unlockTitle, "Находки мастера");
+  source.requiredExplorations.mine_clay = 99;
+  assert.equal(JSON.stringify({ catalog, all }), before);
+});
+
+test("inventory and planned expeditions never invent confirmed fish catches or completed routes", () => {
+  const catalog = fixture();
+  Object.assign(catalog.recipes[0], { requiredExplorations: { mine_clay: 1 }, requiredFishCaught: 2 });
+  const options = { targets: { a: 1, clay: 1 }, inventory: { fish: 999 }, buildings: { home: 1, garden: 1, quarry: 1 } };
+  const plan = planEconomyProduction(options, catalog);
+  assert.equal(plan.complete, false); assert.equal(plan.elapsedSeconds, null);
+  assert.deepEqual(plain(plan.missingItems), { a: 1 });
+  assert.equal(plan.operations.filter(operation => operation.sourceId === "exploration:mine_clay").length, 1);
+  assert.equal(plan.operations.some(operation => operation.sourceId === "recipe:grow_a"), false);
+  assert.equal(planEconomyProduction({ ...options, completedExplorations: { mine_clay: 1 }, fishCaught: 2 }, catalog).complete, true);
+});
+
+test("planner rejects invalid route and personal-catch counters", () => {
+  for (const count of [-1, .5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => planEconomyProduction({ targets: { a: 1 }, completedExplorations: { mine_clay: count } }, fixture()), /Invalid exploration completion count/);
+    assert.throws(() => planEconomyProduction({ targets: { a: 1 }, fishCaught: count }, fixture()), /Invalid fish catch count/);
+  }
+});
+
 test("source override and speed model preserve fixed shared item prices", () => {
   const catalog = fixture(); catalog.recipes.push(recipe("fast_a", "woodlot", 30, {}, { a: 1 }));
   catalog.timeEconomy.baselineRecipes.a = "grow_a";

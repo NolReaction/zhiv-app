@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "dailyMinimumHours": 20,
   "onboarding": {
     "coins": 100,
@@ -143,6 +143,11 @@
       30,
       100,
       220
+    ],
+    "forest_cuisine": [
+      10,
+      20,
+      40
     ]
   },
   "currencyScale": 10,
@@ -484,6 +489,7 @@
       40,
       80,
       160
-    ]
+    ],
+    "forest_cuisine": []
   }
 }

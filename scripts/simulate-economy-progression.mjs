@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { personallyCaughtFish, recipeMasteryMet } from "./lib/recipe-mastery.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { createServer } from "vite";
@@ -311,12 +312,23 @@ export function simulateProgression(loaded, options = {}) {
         return false;
       }
     }
+    for (const [id, count] of Object.entries(source.requiredExplorations ?? {})) {
+      if ((state.progression.routes[id] ?? 0) < count) {
+        const route = catalog.explorations.find(route => route.id === id);
+        assert(route, `${source.id}: unknown mastery route ${id}`);
+        if (!state.jobs.some(job => job.kind === "exploration" && job.targetId === id) && run(route, path)) return true;
+        return false;
+      }
+    }
+    // Only claimed species counters satisfy this task. An in-flight catch or
+    // purchased fish stock cannot count as personal fishing experience.
+    if (personallyCaughtFish(catalog, state) < (source.requiredFishCaught ?? 0)) return fishNeed("fish_common");
     // The currently visible requirement may need several copies. Prepare a
     // bounded parallel batch of ingredients, never an unknown future order.
     const batches = Math.min(requestedBatches, source.buildingId ? slotCapacity(source.buildingId) : 1);
     for (const [id, count] of Object.entries(source.cost.items)) if (owned(id) < count * batches && need(id, count * batches, path)) return true;
     if (!held(source.cost.items) || state.wallet.coins < source.cost.coins || sourceBusy(source)) return false;
-    apply(source.buildingId ? "start_production" : "start_exploration", source.id);
+    apply(source.buildingId ? "start_production" : catalog.fishing.routeIds.includes(source.id) ? "start_fishing" : "start_exploration", source.id);
     production[source.id] = (production[source.id] ?? 0) + 1;
     return true;
   }
@@ -564,7 +576,7 @@ export function simulateProgression(loaded, options = {}) {
     expand(currentCourse()?.items ?? buildDefinition(nextConstruction())?.cost.items ?? social.demand(clock));
     const value = id => catalog.items.find(item => item.id === id)?.baseSellPrice ?? 0;
     const candidates = catalog.explorations.filter(route => route.activity !== "mining" && !catalog.fishing.routeIds.includes(route.id)
-      && sourceOpen(route) && Object.entries(route.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count))
+      && sourceOpen(route) && recipeMasteryMet(catalog, state, route))
       .map(route => ({ route, useful: Object.entries(route.rewards).reduce((sum, [id, count]) => sum + Math.min(count, desired[id] ?? 0) * value(id), 0),
         cost: route.cost.coins + Object.entries(route.cost.items).reduce((sum, [id, count]) => sum + count * value(id), 0) }))
       .filter(row => row.useful > row.cost && loaded.expeditionFinds.expeditionMaximumRewards(row.route) <= rules.economyStorage(state, escrowItems()).capacity)

@@ -39,27 +39,30 @@ fun Route.progressionRewardsRoutes(repository: ProgressionRewardsRepository,code
                 call.requireGameplayPresence(presence, hash)
                 val catalog = requestedRewardCatalog(call.request.queryParameters)
                 requireCurrentRewardClaimCatalog(catalog)
-                val result = repository.claim(hash,decodeRewardClaim(call.receive<JsonElement>()))
+                val command = decodeRewardClaim(call.receive<JsonElement>())
+                requireCurrentRewardClaimCatalog(catalog, achievementId = command.achievementId)
+                val result = repository.claim(hash,command)
                 call.respond(result.copy(rewards = rewardCatalogView(result.rewards, catalog)))
             }
         }
     }
 }
 
-/** Cached clients retain readable 21/33-row previews while their bundle updates. */
+/** Cached clients retain the exact 21/33/40-row previews their bundles can parse. */
 internal fun requestedRewardCatalog(parameters: Parameters): Int {
     if (parameters.isEmpty()) return 4
     if (parameters.names() != setOf("catalog") || parameters.getAll("catalog")?.size != 1) invalidRewardClaim()
-    return when (parameters["catalog"]) { "4" -> 4; "5" -> 5; "6" -> 6; "7" -> 7; "8" -> 8; else -> invalidRewardClaim() }
+    return when (parameters["catalog"]) { "4" -> 4; "5" -> 5; "6" -> 6; "7" -> 7; "8" -> 8; "9" -> 9; else -> invalidRewardClaim() }
 }
 internal fun rewardCatalogView(value: ProgressionRewardsView, catalog: Int): ProgressionRewardsView =
-    if (catalog >= 8) value.copy(catalogVersion = catalog)
+    if (catalog >= 9) value.copy(catalogVersion = catalog)
+    else if (catalog == 8) value.copy(catalogVersion = catalog, achievementRewards = value.achievementRewards.take(40))
     else value.copy(catalogVersion = catalog, achievementRewards = value.achievementRewards
         .filter { it.level <= GameRewards.legacyTiers.getValue(it.achievementId).size }.take(if (catalog >= 5) 33 else 21))
 
 /** A catalog <=7 client cannot parse the mandatory economy 15 claim snapshot.
  * Fail before repository.claim so a rejected response never hides a new payout. */
-internal fun requireCurrentRewardClaimCatalog(catalog: Int, economyVersion: Int = EconomyRules.catalog.version) {
-    if (catalog < 8 && economyVersion >= 15) rewardFailure("APP_UPDATE_REQUIRED",
+internal fun requireCurrentRewardClaimCatalog(catalog: Int, economyVersion: Int = EconomyRules.catalog.version, achievementId: String? = null) {
+    if (catalog < 8 && economyVersion >= 15 || catalog < 9 && achievementId == "forest_cuisine") rewardFailure("APP_UPDATE_REQUIRED",
         "Обновите приложение, чтобы получить награду. Сохранённые награды останутся доступны.")
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { personallyCaughtFish } from "../scripts/lib/recipe-mastery.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fourth-stage-mining-planner-vite",
@@ -178,6 +179,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false, maximumDay
     return sources(id)[0];
   }
   function run(source, ancestors = []) {
+    if (!sourceOpen(source)) return false;
     if (ancestors.includes(source.id)) throw new Error(`Acquisition cycle: ${ancestors.join(" -> ")} -> ${source.id}`);
     const path = [...ancestors, source.id];
     for (const [id, count] of Object.entries(source.requiredRecipes ?? {})) {
@@ -187,9 +189,22 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false, maximumDay
         return false;
       }
     }
+    for (const [id, count] of Object.entries(source.requiredExplorations ?? {})) {
+      if ((state.progression.routes[id] ?? 0) < count) {
+        const route = catalog.explorations.find(route => route.id === id);
+        assert(route, `${source.id}: known prerequisite route`);
+        if (!state.jobs.some(job => job.kind === "exploration" && job.targetId === id) && run(route, path)) return true;
+        return false;
+      }
+    }
+    if (personallyCaughtFish(catalog, state) < (source.requiredFishCaught ?? 0)) {
+      const route = catalog.explorations.find(route => route.id === "shore");
+      if (sourceBusy(route)) return false;
+      apply("start_fishing", route.id); production.shore = (production.shore ?? 0) + 1; return true;
+    }
     for (const [id, count] of Object.entries(source.cost.items)) if ((state.inventory[id] ?? 0) < count && need(id, count, path)) return true;
     if (!held(source.cost.items) || sourceBusy(source)) return false;
-    apply(source.buildingId ? "start_production" : "start_exploration", source.id);
+    apply(source.buildingId ? "start_production" : catalog.fishing.routeIds.includes(source.id) ? "start_fishing" : "start_exploration", source.id);
     production[source.id] = (production[source.id] ?? 0) + 1;
     return true;
   }
@@ -317,7 +332,8 @@ test("a real three-visits-per-day house-four chapter builds both landmarks and h
   assert.equal(catalog.stageOrders.find(stage => stage.homeLevel === 4).intervalSeconds, 0);
   for (let index = 1; index < courses.length; index++) assert(courses[index].at >= courses[index - 1].at);
   assert(clock - courses.at(-1).at >= builds.at(-1).seconds * 1000, "the final house uses its saved builder timer");
-  // The same unfunded strategy now pays 60,200 v15 coins: measured 26 days.
+  // The unfunded strategy pays 60,200 coins and earns its new recipe lessons;
+  // the original 27-day reachability budget still holds (current sample: 25.33).
   assert(clock - epoch <= 27 * 24 * hour, JSON.stringify(report));
   assert.equal(result.flow.ancient_core.received, 1); assert.equal(result.flow.moon_crystal.received, 1);
   assert.equal(result.flow.ancient_core.consumed, 1); assert.equal(result.flow.moon_crystal.consumed, 1);
@@ -376,7 +392,8 @@ test("three 15-minute visits per day can fund house five with independent mining
     + catalog.recipes.reduce((sum, recipe) => sum + (production[recipe.id] ?? 0) * (recipe.cost.items.fish_common ?? 0), 0);
   assert(requiredCommonFish > 0);
   assert((result.catches.fish_common ?? 0) >= requiredCommonFish, "every fish used by the project and provisions was genuinely caught");
-  assert.equal(production.prepare_trail_ration, 3); assert.equal(production.assemble_field_kit, 2);
+  assert.equal(production.prepare_trail_ration, 4, "two project rations, one trial crossing and one ruins expedition");
+  assert.equal(production.assemble_field_kit, 2);
   for (const id of ["ancient_core", "moon_crystal"]) {
     assert.equal(flow[id].received, 1); assert.equal(flow[id].consumed, 1); assert.equal(flow[id].sold, 0);
   }

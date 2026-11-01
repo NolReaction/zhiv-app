@@ -121,6 +121,11 @@ export const GAME_ACHIEVEMENTS = [
     description: "Заберите 10, 50, 200 и 1000 урожаев в саду.",
     hint: "Считаются полученные результаты садовых заказов, включая ягоды и волокно. Размер партии не умножает прогресс; покупка готовых товаров не считается урожаем.",
   },
+  {
+    id: "forest_cuisine", title: "Лесная кухня", target: 16, tiers: [3, 8, 16], category: "world",
+    description: "Освойте 3, 8 и 16 разных рецептов костра.",
+    hint: "Приготовьте и заберите разные блюда, напитки и припасы. Каждый рецепт считается один раз; покупки и повторная готовка не добавляют разнообразия.",
+  },
 ] as const;
 export type GameAchievementDefinition = (typeof GAME_ACHIEVEMENTS)[number];
 /** Retired collection ownership remains valid for the API and moderation. */

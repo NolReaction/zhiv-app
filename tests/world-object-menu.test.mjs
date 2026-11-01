@@ -210,7 +210,7 @@ test("a second recipe uses the remaining station slot while ready results and co
 
 test("idle production shows three places and reveals each expansion price only after the previous place opens", () => {
   const buildings = { home: 5, workshop: 5, kiln: 5, garden: 5, woodlot: 5, dryer: 5, warehouse: 5 };
-  for (const [place, stationId] of [["workshop", "workshop"], ["workshop", "kiln"], ["garden", "garden"], ["woodlot", "woodlot"], ["campfire", "dryer"]]) {
+  for (const [place, stationId] of [["workshop", "workshop"], ["workshop", "kiln"], ["garden", "garden"], ["woodlot", "woodlot"]]) {
     const state = snapshot({ buildings, wallet: { coins: 0, pearls: 10000 } });
     const economy = controller({ snapshot: state, act() { assert.fail("Viewing the next place must not buy it"); } });
     const html = render(place, economy, { initialStationId: stationId });
@@ -270,10 +270,11 @@ test("the basic campfire cooks fish before its paid first improvement at phone a
     const before = structuredClone(state);
     let html = render("campfire", economy, extra);
     assert.match(html, /Уровень 0/);
-    assert.match(html, /data-production-slots="dryer"/);
-    assert.deepEqual([...html.matchAll(/data-production-slot="(\d+)"/g)].map(match => match[1]), ["1"]);
-    assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_grilled_fish", "cook_compote"]);
-    assert.match(html, /data-recipe-access[^>]*>Доступно с 1 уровня костра/);
+    assert.match(html, /Книга рецептов/);
+    assert.match(html, /data-cookbook-queue/);
+    assert.doesNotMatch(html, /data-production-slot=/);
+    assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_compote"]);
+    assert.match(html, /Доступно с 1 уровня костра/);
     assert.doesNotMatch(html, /data-station-setup=|Сначала постройте|Пока не обустроено|data-cooking-duration=|Обустроить/);
     assert.equal(disabled(button(html, "Улучшить")), false);
     const upgrade = renderUpgrade("dryer", economy);
@@ -290,9 +291,9 @@ test("the basic campfire cooks fish before its paid first improvement at phone a
     state.jobs = []; state.buildings.dryer = 1;
     html = render("campfire", economy, extra);
     assert.match(html, /data-recipe="cook_compote"/);
-    assert.match(html, /data-cooking-duration=/);
-    assert.equal([...html.matchAll(/data-production-slot="/g)].length, 2);
-    assert.match(html, /Место 3 появится с домом 3 уровня/);
+    assert.match(html, /Разделы книги рецептов/);
+    assert.match(html, /data-cookbook-queue/);
+    assert.doesNotMatch(html, /data-production-slot=/);
   }
 });
 

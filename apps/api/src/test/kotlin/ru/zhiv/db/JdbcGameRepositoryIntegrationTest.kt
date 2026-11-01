@@ -478,7 +478,7 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(3,json.getValue("achievements").jsonArray.size)
         val legacy=client.get("/api/v1/game/achievements?catalog=2") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(3,Json.parseToJsonElement(legacy.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
-        for (query in listOf("catalog=8","catalog=3&catalog=3","catalog=6&catalog=6","catalog=7&catalog=7"))
+        for (query in listOf("catalog=9","catalog=3&catalog=3","catalog=6&catalog=6","catalog=7&catalog=7"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/achievements?$query") { header(HttpHeaders.Cookie,cookie) }.status)
         val expanded=client.get("/api/v1/game/achievements?catalog=3") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(6,Json.parseToJsonElement(expanded.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
@@ -529,6 +529,15 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(4,latestCards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="explorer" }.jsonObject.getValue("tiers").jsonArray.size)
         assertEquals(listOf(5L,10L,35L,61L),latestCards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="master_recipes" }
             .jsonObject.getValue("tiers").jsonArray.map { it.jsonObject.getValue("target").jsonPrimitive.long })
+        val cooking=client.get("/api/v1/game/achievements?catalog=8") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(HttpStatusCode.OK,cooking.status)
+        assertEquals("no-store",cooking.headers[HttpHeaders.CacheControl])
+        val cookingCards=Json.parseToJsonElement(cooking.bodyAsText()).jsonObject.getValue("achievements").jsonArray
+        assertEquals(20,cookingCards.size)
+        assertEquals(latestCards.toList(),cookingCards.take(19),"catalog7 retains exactly its previous cards")
+        val cookingCard=cookingCards.last().jsonObject
+        assertEquals("forest_cuisine",cookingCard.getValue("id").jsonPrimitive.content)
+        assertEquals(listOf(3L,8L,16L),cookingCard.getValue("tiers").jsonArray.map { it.jsonObject.getValue("target").jsonPrimitive.long })
         for (query in listOf("metric=unknown","metric=best_series&metric=best_series"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
 

@@ -6,7 +6,6 @@ import { useRef, useState } from "react";
 import { Tabs as TabsPrimitive } from "radix-ui";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
-import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Check, CircleHelp, Clock3, Flame, Settings, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
@@ -227,17 +226,10 @@ export function ProfileView({
               ) : <strong>{initials(me.user.displayName)}</strong>}
             </div>
             <h2 className={styles.identityName}><PlayerName name={me.user.displayName} tag={me.user.tag} /></h2>
-            <div className={styles.identityActions}>
-              {progression ? <GameLevelsButton progression={progression} now={nowMs} className={styles.identityLevel}>
-                <GameLevelIcon level={playerLevel.level} size={18} />
-                <span><strong>Уровень {playerLevel.level}</strong><small>{playerLevel.title}</small></span>
-              </GameLevelsButton> : <span className={styles.identityLevelLoading} role="status">Уровень загружается…</span>}
-              <div className={styles.identityAchievements}>
-                <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} onRewardsClaimed={onRewardsClaimed} />
-              </div>
+            <div className={styles.identityAchievements}>
+              <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} onRewardsClaimed={onRewardsClaimed} />
             </div>
           </div>
-          {progression && <PlayerProgressionCard progression={progression} now={nowMs} ownerKey={`${me.user.publicId}:${me.gameplayGeneration ?? 0}`} />}
           <div className={styles.stats} aria-label="Статистика профиля">
             <button type="button" onClick={event => onOpenCalendar(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть календарь моих отметок">
               <Flame size={18} aria-hidden="true" /><strong>{me.streak.currentDays}</strong>

@@ -107,4 +107,19 @@ class ProgressionRewardsRoutesTest {
         assertTrue(result.replayed); assertEquals(paid.claim, result.claim)
         assertEquals(paid.economy.wallet, result.economy.wallet); assertEquals(1, repository.receipts.size)
     }
+    @Test fun `new cooking medal is readable in catalog nine and cached claim rejects before repository write`() = testApplication {
+        val repository = Rewards(); setup(repository)
+        val command = ProgressionRewardClaim(UUID.randomUUID().toString(), repository.owner, "achievement", "forest_cuisine", 1)
+        val before = repository.state
+        val denied = client.post("/api/v1/game/rewards/claims?catalog=8") { authorized(command) }
+        assertEquals(HttpStatusCode.Conflict, denied.status)
+        assertTrue(denied.bodyAsText().contains("APP_UPDATE_REQUIRED"))
+        assertEquals(0, repository.calls); assertEquals(before, repository.state)
+        val current = client.get("/api/v1/game/rewards?catalog=9") { cookie(config.cookieName, "cached-reward-session") }
+        val view = progressionRewardsJson.decodeFromString<ProgressionRewardsView>(current.bodyAsText())
+        assertEquals(9, view.catalogVersion); assertEquals(43, view.achievementRewards.size)
+        assertEquals(listOf(10L, 20L, 40L), view.achievementRewards.filter { it.achievementId == "forest_cuisine" }.map { it.pearls })
+        assertEquals(0, repository.calls)
+    }
+
 }

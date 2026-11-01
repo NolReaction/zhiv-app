@@ -57,6 +57,10 @@ export function EconomyProductionGraph({ analysis, selectedId, onSelect, onPlan,
   const layout = useMemo(() => productionGraphLayout(graph.nodes, graph.edges), [graph]);
   const items = new Map(analysis.items.map(item => [item.id, item]));
   const sources = new Map(analysis.sources.map(source => [source.id, source]));
+  const recipeResultName = (id: string) => {
+    const source = sources.get(`recipe:${id}`), outputs = Object.keys(source?.rewards ?? {});
+    return outputs.length === 1 ? items.get(outputs[0])?.name ?? source?.name ?? id : source?.name ?? id;
+  };
   const selected = items.get(selectedId);
   useEffect(() => {
     const point = layout.positions.get(`item:${selectedId}`), element = viewport.current;
@@ -122,7 +126,13 @@ export function EconomyProductionGraph({ analysis, selectedId, onSelect, onPlan,
         <small>Затраты</small>
         <div className={styles.chips}>{Object.entries(source.cost.items).map(([id, count]) => <EconomyItemButton key={id} id={id} name={items.get(id)?.name ?? id} quantity={count} onSelect={onSelect} />)}{!Object.keys(source.cost.items).length && <span className={styles.note}>Без ингредиентов</span>}</div>
         <small>Результат</small><div className={styles.chips}>{Object.entries(source.rewards).map(([id, count]) => <EconomyItemButton key={id} id={id} name={items.get(id)?.name ?? id} quantity={count} onSelect={onSelect} />)}</div>
-        <small>{Object.entries(source.requiredBuildings).map(([id, level]) => `${stationName(id)} ${level}`).join(" · ")}{Object.keys(source.requiredRecipes).length > 0 && ` · Освоение: ${Object.entries(source.requiredRecipes).map(([id, count]) => `${sources.get(`recipe:${id}`)?.name ?? id} ×${count}`).join(", ")}`}{source.collectionSeconds > 0 && ` · Сбор ${economyDuration(source.collectionSeconds)}`}</small>
+        <small>{Object.entries(source.requiredBuildings).map(([id, level]) => `${stationName(id)} ${level}`).join(" · ")}{source.collectionSeconds > 0 && ` · Сбор ${economyDuration(source.collectionSeconds)}`}</small>
+        {(Object.keys(source.requiredRecipes).length > 0 || Object.keys(source.requiredExplorations).length > 0 || source.requiredFishCaught > 0) && <small>
+          {source.unlockTitle && <strong>{source.unlockTitle}: </strong>}
+          {[...Object.entries(source.requiredRecipes).map(([id, count]) => `Получить «${recipeResultName(id)}» ×${count}`),
+            ...Object.entries(source.requiredExplorations).map(([id, count]) => `Завершить «${analysis.routeNames[id] ?? id}» ×${count}`),
+            ...(source.requiredFishCaught > 0 ? [`Лично поймать ${economyNumber(source.requiredFishCaught)} рыб`] : [])].join(" · ")}
+        </small>}
       </article>)}</div>
       {selected.warnings.length > 0 && <ul className={styles.warnings}>{selected.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}
     </div>}

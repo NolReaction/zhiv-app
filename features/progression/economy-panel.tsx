@@ -19,6 +19,15 @@ const categoryNames: Record<string, string> = { produce: "Урожай", materia
 const sourceNames = { starter: "Старт", recipe: "Производство", exploration: "Добыча", fishing: "Рыбалка", rare: "Находка", daily: "Подарок", project: "Проект дома", shop: "Лавка" };
 const useNames = { recipe: "Рецепт", building: "Стройка", order: "Повторяемый заказ", weekly: "Недельное поручение", project: "Поставка дома", meal: "Бонус еды", fishing: "Рыбалка", exploration: "Вылазка" };
 
+function RecipeDiscovery({ source }: { source: Pick<EconomyItemSource, "requiredRecipes" | "requiredExplorations" | "requiredFishCaught" | "unlockTitle"> }) {
+  const conditions = [
+    ...Object.entries(source.requiredRecipes ?? {}).map(([id, count]) => `Сначала получить: ${recipeResultName(id, data)} ×${count}`),
+    ...Object.entries(source.requiredExplorations ?? {}).map(([id, count]) => `Завершить «${data.routeNames[id] ?? id}» ×${count}`),
+    ...(source.requiredFishCaught ? [`Лично поймать ${number(source.requiredFishCaught)} рыб`] : []),
+  ];
+  return conditions.length ? <p className={styles.hint}>{source.unlockTitle && <strong>{source.unlockTitle}: </strong>}{conditions.join(" · ")}</p> : null;
+}
+
 function time(seconds: number) {
   if (seconds <= 0) return "Мгновенно";
   const days = Math.floor(seconds / 86400), hours = Math.floor(seconds % 86400 / 3600);
@@ -126,14 +135,15 @@ function ItemDetails({ item, home, onSelect }: { item: EconomyItem; home: number
     <section className={styles.detailSection}><h4>Где получить</h4><div className={styles.sources}>{item.sources.map(source => <div key={source.id} className={styles.source}>
       <div><span className={styles.sourceKind}>{sourceNames[source.kind]} · дом {source.homeLevel}</span><strong>{source.name}</strong><p>{source.detail}</p>
         {!!Object.keys(source.requiredBuildings ?? {}).length && <p>Постройки: {Object.entries(source.requiredBuildings ?? {}).map(([id, level]) => `${buildingLabels[id] ?? id} ${level}`).join(" · ")}</p>}
-        {!!Object.keys(source.requiredRecipes ?? {}).length && <p>Сначала получить: {Object.entries(source.requiredRecipes ?? {}).map(([id, count]) => `${recipeResultName(id, data)} ×${count}`).join(" · ")}</p>}
+        <RecipeDiscovery source={source} />
         {source.cost && (source.cost.coins > 0 || Object.keys(source.cost.items).length > 0) && <div className={styles.sourceCosts}><span>На запуск{source.cost.coins > 0 && <> · {number(source.cost.coins)} монет</>}</span><Ingredients items={source.cost.items} onSelect={onSelect} /></div>}
         {source.rewards && Object.keys(source.rewards).length > 1 && <div className={styles.sourceCosts}><span>Весь гарантированный набор маршрута</span><Ingredients items={source.rewards} onSelect={onSelect} /></div>}
       </div>
       <div className={styles.sourceNumbers}>{source.quantity !== undefined && <b>×{number(source.quantity)}</b>}{source.seconds !== undefined && <span><Clock3 size={13} aria-hidden="true" />{time(source.seconds)}</span>}<small data-chance={!source.guaranteed || undefined}>{source.guaranteed ? "Фиксированная выдача" : "Зависит от находки / выбора"}</small>{source.recipeId && recipes.some(value => value.id === source.recipeId) && <button type="button" onClick={() => { setRecipeId(source.recipeId!); calculationRef.current?.scrollIntoView({ block: "start" }); calculationRef.current?.focus({ preventScroll: true }); }}>Рассчитать <ArrowDown size={12} aria-hidden="true" /></button>}</div>
     </div>)}</div>{!item.sources.length && <p className={styles.hint}>Действующий источник этого предмета в каталоге не задан.</p>}</section>
     {recipe && <section ref={calculationRef} tabIndex={-1} className={styles.detailSection}><label className={styles.recipeSelect}>Вариант производства<select aria-label="Вариант рецепта" value={recipe.id} onChange={event => setRecipeId(event.target.value)}>{recipes.map(value => <option key={value.id} value={value.id}>{value.name} · {time(value.seconds)}</option>)}</select></label>
-      <p className={styles.hint}>Дом {recipe.requiredHomeLevel} · {buildingLabels[recipe.buildingId] ?? recipe.buildingId} {recipe.buildingLevel}{Object.entries(recipe.requiredBuildings).map(([id, level]) => ` · ${buildingLabels[id] ?? id} ${level}`)}{Object.entries(recipe.requiredRecipes).map(([id, count]) => ` · сначала получить «${recipeResultName(id, data)}» ×${count}`)}</p>
+      <p className={styles.hint}>Дом {recipe.requiredHomeLevel} · {buildingLabels[recipe.buildingId] ?? recipe.buildingId} {recipe.buildingLevel}{Object.entries(recipe.requiredBuildings).map(([id, level]) => ` · ${buildingLabels[id] ?? id} ${level}`)}</p>
+      <RecipeDiscovery source={recipe} />
       <RecipeCalculator key={recipe.id} recipe={recipe} onSelect={onSelect} /></section>}
     {!recipe && route && <section className={styles.detailSection}><label className={styles.recipeSelect}>Вариант добычи<select aria-label="Маршрут добычи" value={route.id} onChange={event => setRouteId(event.target.value)}>{routes.map(source => <option key={source.id} value={source.id}>{source.name} · {time(source.seconds ?? 0)}</option>)}</select></label><SourceCalculator key={route.id} source={route} targetId={item.id} onSelect={onSelect} /></section>}
     <section className={styles.detailSection}><h4>Куда идёт дальше</h4>{item.uses.length ? <ul className={styles.uses}>{item.uses.map(use => <li key={use.id}><div><small>{useNames[use.kind]} · дом {use.homeLevel}</small>{use.kind === "recipe" && recipeById.has(use.id.replace(/^recipe:/, "")) ? <button type="button" onClick={() => {
@@ -179,7 +189,7 @@ function HomeUnlockCard({ unlock, onSelect }: { unlock: EconomyHomeUnlock; onSel
     <details className={styles.chain}><summary>Все новые рецепты: {unlock.recipes.length}</summary><div className={styles.chainBody}><ul className={styles.unlockRecipes}>{unlock.recipes.map(id => {
       const recipe = recipeById.get(id);
       if (!recipe) return null;
-      return <li key={id}><button type="button" onClick={() => onSelect(Object.keys(recipe.rewards)[0])}>{recipe.name}<ArrowRight size={13} aria-hidden="true" /></button><small>{buildingLabels[recipe.buildingId]} {recipe.buildingLevel} · {time(recipe.seconds)}</small></li>;
+      return <li key={id}><button type="button" onClick={() => onSelect(Object.keys(recipe.rewards)[0])}>{recipe.name}<ArrowRight size={13} aria-hidden="true" /></button><small>{buildingLabels[recipe.buildingId]} {recipe.buildingLevel} · {time(recipe.seconds)}</small><RecipeDiscovery source={recipe} /></li>;
     })}</ul></div></details>
   </article>;
 }

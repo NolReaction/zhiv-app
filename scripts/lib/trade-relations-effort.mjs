@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { explorationLootSummary } from "./exploration-loot.mjs";
 import { economicMath, recipeBuildingLevel } from "./economy-math.mjs";
 import { residentOrderBaseRecipes, residentOrderPricing } from "./resident-order-pricing.mjs";
+import { recipeMasteryReachable } from "./recipe-mastery.mjs";
 
 export const tradeResidentIds = Object.freeze(["builder", "lopukh", "kamneshmyg", "plesk", "leaftail"]);
 // The ten-completion hardwood shift is a later optimization, not an opening
@@ -19,17 +20,18 @@ const levelsPermit = (definition, buildings) => !definition.retired && buildings
 /** Independent fixed-point source proof. A recipe prerequisite must itself be
  * makeable; a bought item never substitutes for the required source chain. */
 export function tradeSourceAvailability(catalog, buildings) {
-  const items = new Set(), recipes = new Set();
+  const items = new Set(), recipes = new Set(), routes = new Set();
   let changed = true;
   while (changed) {
-    const before = items.size + recipes.size;
+    const before = items.size + recipes.size + routes.size;
     for (const source of [...catalog.explorations, ...catalog.recipes]) {
-      if (!levelsPermit(source, buildings) || Object.keys(source.requiredRecipes ?? {}).some(id => !recipes.has(id))) continue;
+      if (!levelsPermit(source, buildings) || !recipeMasteryReachable(catalog, source, recipes, routes, buildings.home)) continue;
       const fishOptions = source.fishInput?.itemIds;
       if (Object.keys(source.cost.items).some(id => !items.has(id) && !fishOptions?.includes(id))
         || fishOptions && !fishOptions.some(id => items.has(id))) continue;
       for (const [id, count] of Object.entries(source.rewards)) if (count > 0) items.add(id);
       if (source.buildingId) recipes.add(source.id);
+      else routes.add(source.id);
       if (catalog.fishing.routeIds.includes(source.id)) for (const group of catalog.fishing.classes) {
         if (catalog.fishing.rods.some(rod => rod.requiredHomeLevel <= buildings.home
           && (group.rarity !== "legendary" || rod.rarity === "legendary") && rod.classOddsBps[group.rarity] > 0)) {
@@ -38,9 +40,9 @@ export function tradeSourceAvailability(catalog, buildings) {
         }
       }
     }
-    changed = before !== items.size + recipes.size;
+    changed = before !== items.size + recipes.size + routes.size;
   }
-  return { items, recipes };
+  return { items, recipes, routes };
 }
 
 /** Work-scaled XP with bounded individual awards and a separate daily cap.
@@ -78,7 +80,7 @@ export function tradeOrderEffort(catalog) {
     const candidates = [];
     for (const source of [...catalog.recipes, ...catalog.explorations]) {
       if (!levelsPermit(source, buildings)
-        || Object.keys(source.requiredRecipes ?? {}).some(id => !reachable.recipes.has(id))
+        || !recipeMasteryReachable(catalog, source, reachable.recipes, reachable.routes, buildings.home)
         || Object.keys(source.cost.items).some(id => !reachable.items.has(id))) continue;
       for (const [itemId, output] of Object.entries(explorationLootSummary(source).expectedRewards)) {
         if (!known.has(itemId) || fish.has(itemId) || output <= 0) continue;
@@ -86,7 +88,7 @@ export function tradeOrderEffort(catalog) {
           ?? residentOrderBaseRecipes[itemId] ?? acquisitionBaselines[itemId];
         const reference = baseline && [...catalog.recipes, ...catalog.explorations].find(candidate => candidate.id === baseline);
         const baselineAvailable = reference && levelsPermit(reference, buildings)
-          && Object.keys(reference.requiredRecipes ?? {}).every(id => reachable.recipes.has(id))
+          && recipeMasteryReachable(catalog, reference, reachable.recipes, reachable.routes, buildings.home)
           && Object.keys(reference.cost.items).every(id => reachable.items.has(id));
         if (baselineAvailable && source.id !== baseline) continue;
         candidates.push({ itemId, id: source.id, output, seconds: source.seconds + (source.collection?.seconds ?? 0),

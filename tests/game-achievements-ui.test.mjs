@@ -48,17 +48,17 @@ function payload(changes = {}) {
 }
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
 
-test("catalog7 keeps all stable IDs while rendering exactly eighteen cards and thirty-nine visible tiers", () => {
-  assert.equal(GAME_ACHIEVEMENTS.length, 19);
-  assert.equal(VISIBLE_GAME_ACHIEVEMENTS.length, 18);
+test("catalog8 keeps all stable IDs while rendering nineteen cards and forty-two visible tiers", () => {
+  assert.equal(GAME_ACHIEVEMENTS.length, 20);
+  assert.equal(VISIBLE_GAME_ACHIEVEMENTS.length, 19);
   assert.deepEqual(GAME_ACHIEVEMENTS.slice(0, 7).map(item => item.id), ["seven_day_streak", "thousand_taps", "five_friends", "ten_thousand_series", "linked_email", "saved_recovery_code", "full_collection"]);
   assert.equal(gameAchievementsSchema.safeParse(payload()).success, true, "UI metadata thresholds agree with the server contract");
   const html = render(GameAchievementsList, { data: payload() });
-  assert.equal([...html.matchAll(/data-achievement-id=/g)].length, 18);
+  assert.equal([...html.matchAll(/data-achievement-id=/g)].length, 19);
   assert.doesNotMatch(html, /data-achievement-id="full_collection"/);
   for (const item of VISIBLE_GAME_ACHIEVEMENTS) assert.equal(html.split(`data-achievement-id="${item.id}"`).length - 1, 1);
   assert.match(html, /Мир и хозяйство/); assert.match(html, /Ритм и связи/);
-  assert.deepEqual(achievementSummary(payload()), { earned: 0, tiers: 0, total: 18, totalTiers: 39 });
+  assert.deepEqual(achievementSummary(payload()), { earned: 0, tiers: 0, total: 19, totalTiers: 42 });
 });
 
 test("a partially earned achievement is one colored card with progress toward the next tier", () => {
@@ -91,7 +91,7 @@ test("an admin grant can complete all tiers without producing activity counters"
   assert.match(html, /5 \/ 5/);
   assert.equal([...html.matchAll(/data-earned="true"/g)].length, 4);
   assert.doesNotMatch(html, /aria-current="step"/);
-  assert.deepEqual(achievementSummary(payload({ home_builder: awarded })), { earned: 1, tiers: 4, total: 18, totalTiers: 39 });
+  assert.deepEqual(achievementSummary(payload({ home_builder: awarded })), { earned: 1, tiers: 4, total: 19, totalTiers: 42 });
 });
 
 test("retired collection awards are preserved in legacy responses and excluded from player counts", () => {
@@ -99,7 +99,7 @@ test("retired collection awards are preserved in legacy responses and excluded f
     target: item.target, unlockedAt: ["full_collection", "linked_email"].includes(item.id) ? at : null }));
   const legacy = { ownerPublicId: owner, serverTime: at, achievements };
   assert.equal(gameAchievementsSchema.safeParse(legacy).success, true);
-  assert.deepEqual(achievementSummary(legacy), { earned: 1, tiers: 1, total: 18, totalTiers: 39 });
+  assert.deepEqual(achievementSummary(legacy), { earned: 1, tiers: 1, total: 19, totalTiers: 42 });
   const html = render(GameAchievementsList, { data: legacy });
   assert.doesNotMatch(html, /Хранитель находок/);
   const missing = render(AchievementCard, { quest: quest("master_recipes") });
@@ -109,9 +109,9 @@ test("retired collection awards are preserved in legacy responses and excluded f
 test("all cards expose keyboard-native conditions and named progress, with no client claims", () => {
   const html = render(GameAchievementsList, { data: payload(), loading: true });
   assert.match(html, /aria-busy="true"/);
-  assert.equal([...html.matchAll(/<details/g)].length, 18);
-  assert.equal([...html.matchAll(/<summary>Как получить<\/summary>/g)].length, 18);
-  assert.equal([...html.matchAll(/<progress[^>]+aria-label="Прогресс достижения/g)].length, 18);
+  assert.equal([...html.matchAll(/<details/g)].length, 19);
+  assert.equal([...html.matchAll(/<summary>Как получить<\/summary>/g)].length, 19);
+  assert.equal([...html.matchAll(/<progress[^>]+aria-label="Прогресс достижения/g)].length, 19);
   assert.doesNotMatch(html, /Получить награду|claim_achievement|NaN|Infinity|undefined/);
 });
 
@@ -119,7 +119,7 @@ test("achievement reads request catalog7 without caching and reject account swit
   let request;
   globalThis.fetch = async (url, options) => { request = { url, options }; return Response.json(payload()); };
   const data = await loadGameAchievements(owner, new AbortController().signal);
-  assert.equal(data.ownerPublicId, owner); assert.equal(request.url, "/api/v1/game/achievements?catalog=7");
+  assert.equal(data.ownerPublicId, owner); assert.equal(request.url, "/api/v1/game/achievements?catalog=8");
   assert.equal(request.options.credentials, "same-origin"); assert.equal(request.options.cache, "no-store");
   assert.equal(request.options.method, "GET"); assert.ok(request.options.signal instanceof AbortSignal);
   globalThis.fetch = async () => Response.json({ ...payload(), ownerPublicId: stranger });

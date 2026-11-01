@@ -205,12 +205,16 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val requiredBuildings: Map<String, Int> = emptyMap(), val collection: EconomyCollectionSpec? = null,
     val maxBatch: Int? = null, val fishInput: EconomyRecipeFishInput? = null,
     val requiredRecipes: Map<String, Long> = emptyMap(),
+    val requiredExplorations: Map<String, Long> = emptyMap(), val requiredFishCaught: Long = 0,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val unlockTitle: String? = null,
     // Older clients accept an omitted flag, but reject an explicit null.
     @EncodeDefault(EncodeDefault.Mode.NEVER) val baseCampfire: Boolean? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val retired: Boolean = false,
 ) {
     init {
         require(buildingLevel > 0)
+        require(requiredFishCaught in 0L..ECONOMY_MAX_ITEMS)
+        require(unlockTitle == null || unlockTitle.isNotBlank() && unlockTitle.length <= 80)
         require(baseCampfire == null || baseCampfire == true && id == "cook_grilled_fish" && buildingId == "dryer" && buildingLevel == 1)
         require(collection == null || buildingId == "garden" &&
             rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L })

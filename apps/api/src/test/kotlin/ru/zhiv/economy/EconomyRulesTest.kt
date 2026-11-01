@@ -793,18 +793,22 @@ class EconomyRulesTest {
         val fishing = EconomyRules.catalog.fishing
         val items = mutableSetOf<String>()
         val completedRecipes = mutableSetOf<String>()
+        val completedRoutes = mutableSetOf<String>()
+        var canClaimFish = false
         fun unlocked(home: Int, required: Map<String, Int>) = (buildings["home"] ?: 1) >= home && required.all { (id, level) -> (buildings[id] ?: 0) >= level }
         repeat(100) {
             val reachableExplorations = mutableSetOf<String>()
             for (exploration in EconomyRules.catalog.explorations.filterNot { it.retired }) {
                 if (unlocked(exploration.requiredHomeLevel, exploration.requiredBuildings) && items.containsAll(exploration.cost.items.keys)) {
                     reachableExplorations.add(exploration.id)
+                    completedRoutes.add(exploration.id)
                     items.addAll(exploration.rewards.keys)
                 }
             }
             for (recipe in EconomyRules.catalog.recipes.filterNot { it.retired }) {
                 if ((buildings[recipe.buildingId] ?: 0) >= recipe.buildingLevel && unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) &&
-                    items.containsAll(recipe.cost.items.keys) && completedRecipes.containsAll(recipe.requiredRecipes.keys)) {
+                    items.containsAll(recipe.cost.items.keys) && completedRecipes.containsAll(recipe.requiredRecipes.keys) &&
+                    completedRoutes.containsAll(recipe.requiredExplorations.keys) && (recipe.requiredFishCaught == 0L || canClaimFish)) {
                     items.addAll(recipe.rewards.keys)
                     completedRecipes.add(recipe.id)
                 }
@@ -823,8 +827,10 @@ class EconomyRulesTest {
                     val rodAvailable = fishing.rods.any { rod -> unlocked(rod.requiredHomeLevel, emptyMap()) &&
                         (rod.price == 0L || canEarnCoins) && EconomyRules.fishingClassWeights(rod.id, null)
                             .any { it.first.rarity == fish.rarity && it.second > 0 } }
-                    if (rodAvailable)
+                    if (rodAvailable) {
+                        canClaimFish = true
                         items.addAll(listOf(fish.itemId, EconomyFishInventory.itemId(fish.itemId)))
+                    }
                 }
             }
             for (building in EconomyRules.catalog.buildings) {

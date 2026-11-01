@@ -6,7 +6,7 @@ import { GAME_ACHIEVEMENT_TARGETS, LEGACY_GAME_ACHIEVEMENT_TARGETS } from "./ach
 import type { GameAchievementId } from "./game-api";
 import type { AchievementReward, GameReward, GameRewards } from "./game-rewards-api";
 
-const catalog = rawCatalog as unknown as { version: 8; currencyScale: number; pearlScale: number; dailyMinimumHours: number; daily: GameReward[];
+const catalog = rawCatalog as unknown as { version: 9; currencyScale: number; pearlScale: number; dailyMinimumHours: number; daily: GameReward[];
   onboarding: GameReward; legacyOnboarding: GameReward; legacyDailyPearls: number[]; v6Onboarding: GameReward; v6DailyPearls: number[];
   dailyByHomeLevel: Record<string, GameReward[]>;
   legacyAchievementPearls: Record<GameAchievementId, number[]>; achievementPearls: Record<GameAchievementId, number[]> };
@@ -82,7 +82,7 @@ export function achievementPearlsForVersion(id: GameAchievementId, level: number
 }
 /** Daily bundles are authoritative and finite; the finale also grants one relic. */
 export function assertProgressionRewardCatalog(): void {
-  if (catalog.version !== 8 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
+  if (catalog.version !== 9 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
   if (catalog.onboarding.coins !== 100 || catalog.onboarding.pearls !== 20 || Object.keys(catalog.onboarding.items).length !== 0)
     throw new Error("Invalid onboarding reward");
   if (catalog.legacyOnboarding.coins !== 1_000 || catalog.legacyOnboarding.pearls !== 200
@@ -98,7 +98,7 @@ export function assertProgressionRewardCatalog(): void {
       || catalog.legacyAchievementPearls[id].some(value => !Number.isSafeInteger(value) || value < 0 || value % 2 !== 0)))
     throw new Error("Invalid legacy achievement promises");
   if (Object.keys(catalog.achievementPearls).length !== ids.length || ids.some(id => catalog.achievementPearls[id].length !== GAME_ACHIEVEMENT_TARGETS[id].length)) throw new Error("Invalid achievement rewards");
-  if (Object.values(catalog.achievementPearls).flat().reduce((sum, value) => sum + value, 0) !== 4_120
+  if (Object.values(catalog.achievementPearls).flat().reduce((sum, value) => sum + value, 0) !== 4_190
     || ids.some(id => catalog.achievementPearls[id].some((value, index, values) => !Number.isSafeInteger(value)
       || value > ECONOMY_MAX_PEARLS || value % 2 !== 0 || (id === "full_collection" ? value !== 0 : value <= 0)
       || (index > 0 && value < values[index - 1])))) throw new Error("Invalid achievement pearl budget");

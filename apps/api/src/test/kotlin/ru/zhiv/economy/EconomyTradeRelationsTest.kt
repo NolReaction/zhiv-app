@@ -20,8 +20,10 @@ class EconomyTradeRelationsTest {
     private fun stocked() = EconomyRules.initial().copy(wallet = EconomyWallet(10_000_000, 100_000),
         buildings = catalog.buildings.associate { it.id to it.levels.last().level },
         inventory = catalog.items.filter { item -> catalog.fishing!!.fish.none { it.itemId == item.id } }.associate { it.id to 1000L },
-        fishing = EconomyFishing(ownedRods = catalog.fishing!!.rods.map { it.id }, ownedHooks = catalog.fishing.hooks.map { it.id }),
-        progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 100L }))
+        fishing = EconomyFishing(ownedRods = catalog.fishing!!.rods.map { it.id }, ownedHooks = catalog.fishing.hooks.map { it.id },
+            catches = catalog.fishing.fish.associate { it.itemId to 4L }),
+        progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 100L },
+            routes = catalog.explorations.associate { it.id to 100L }))
     private fun failure(code: String, block: () -> Unit) { assertEquals(code, assertFailsWith<AuthFailure>(block = block).code) }
     private fun maximum(state: EconomyState = stocked()) = state.copy(tradeRelations = EconomyTradeRelationsState(
         reputation = tradeResidentIds.associateWith { 1600L }, activity = tradeResidentIds.associateWith { EconomyTradeActivity(10000, now.toString()) }))
@@ -330,7 +332,8 @@ class EconomyTradeRelationsTest {
         val activeStages: List<OfferVector>, val pearls: Long = 0)
     @Serializable private data class IdCase(val label: String, val now: String, val buildings: Map<String, Int>,
         val ownedRods: List<String>, val ownedHooks: List<String>, val completedRecipes: Map<String, Long>,
-        val ordinary: List<OfferVector>, val weeklyChoices: List<ChoiceVector>)
+        val ordinary: List<OfferVector>, val weeklyChoices: List<ChoiceVector>,
+        val completedExplorations: Map<String, Long> = emptyMap(), val fishCatches: Map<String, Long> = emptyMap())
     @Serializable private data class HashVector(val input: String, val expected: Long)
     private fun EconomyResidentOrderOffer.vector() = OfferVector(id, slot, templateId, residentId, name, description,
         items, coins, reputationXp, effortSeconds, manufacturingSeconds, fishingUncertain, requiredBuildings, pearls)
@@ -346,8 +349,8 @@ class EconomyTradeRelationsTest {
         cases.forEach { row ->
             val instant = Instant.parse(row.now)
             val state = EconomyRules.initial().copy(buildings = row.buildings,
-                fishing = EconomyFishing(ownedRods = row.ownedRods, ownedHooks = row.ownedHooks),
-                progression = EconomyProgression(recipes = row.completedRecipes))
+                fishing = EconomyFishing(ownedRods = row.ownedRods, ownedHooks = row.ownedHooks, catches = row.fishCatches),
+                progression = EconomyProgression(recipes = row.completedRecipes, routes = row.completedExplorations))
             assertEquals(row.ordinary, EconomyFood.residentOrderBoard(state, instant).offers.map { it.vector() }, row.label)
             val choices = EconomyTradeRelations.weeklyBoard(state, instant).offers
             assertEquals(row.weeklyChoices.map { it.id }, choices.map { it.id }, row.label)

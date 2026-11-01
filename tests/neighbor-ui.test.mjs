@@ -116,7 +116,9 @@ test("station preview renders bounded real outputs and explains recipe learning 
     assert.doesNotMatch(html,/Осталось|Готово|Ожидает хозяина|<button|claim_job|start_production/);
   }
   const cook=renderToStaticMarkup(NeighborStationInfo({world:{...world,buildings:{...world.buildings,dryer:1,home:3}},stationId:"dryer"}));
-  assert.match(cook,/Для некоторых блюд сначала осваивают предыдущие рецепты/);
+  assert.doesNotMatch(cook,/Для некоторых изделий/,"the visible beginner recipes have no mastery gate");
+  const garden=renderToStaticMarkup(NeighborStationInfo({world:{...world,buildings:{...world.buildings,garden:3}},stationId:"garden"}));
+  assert.match(garden,/Для некоторых изделий нужно освоить рецепты или получить результаты вылазок/);
   const baseFire=renderToStaticMarkup(NeighborStationInfo({world:{...world,buildings:{...world.buildings,dryer:0}},stationId:"dryer"}));
   assert.match(baseFire,/Обычный костёр/);assert.match(baseFire,/Пожарить рыбу/);assert.doesNotMatch(baseFire,/Ещё не построено/);
   assert.match(renderToStaticMarkup(NeighborStationInfo({world,stationId:"workshop"})),/Верстак/);

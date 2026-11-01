@@ -131,3 +131,16 @@ test("schema-valid cached recipe durations outside the Date range cannot crash p
   assert.doesNotThrow(() => productionProjection(snapshot, [entry]));
   assert.deepEqual(productionProjection(snapshot, [entry]).jobs, []);
 });
+
+test("local reservations require confirmed expedition mastery and cannot invent its progress", () => {
+  const snapshot = state();
+  snapshot.inventory = { planks: 2, rope: 1 };
+  snapshot.progression.recipes = { make_planks: 2, make_rope: 1 };
+  const original = structuredClone(snapshot);
+  assert.equal(reserveProduction(snapshot, intent("make_trade_crate")), null);
+  assert.deepEqual(snapshot, original);
+  snapshot.progression.routes.forest = 1;
+  const projected = reserveProduction(snapshot, intent("make_trade_crate"));
+  assert.equal(projected.jobs[0].recipeId, "make_trade_crate");
+  assert.deepEqual(projected.progression, snapshot.progression);
+});

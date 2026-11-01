@@ -25,13 +25,14 @@ function profile(gameLoaded = true, progressionLoaded = true) {
   }));
 }
 
-test("account level and confirmed tap records are visible before opening game progress", () => {
+test("account overview keeps achievements and confirmed records while XP and season appear once in game progress", () => {
   const html = profile();
   const overview = html.slice(0, html.indexOf("Игровой прогресс"));
-  // Career level 16 spans 6,750..7,679 XP with the current factor of 30.
-  assert.match(overview, /Все уровни. Сейчас уровень 16/);
-  assert.match(overview, /Уровень 16/);
-  assert.match(overview, /7.200.*всего XP/);
+  assert.match(overview, /aria-label="Достижения"/);
+  assert.doesNotMatch(overview, /Все уровни|Уровень 16|всего XP|Сотрудничество с жителями в этом месяце/);
+  assert.equal((html.match(/aria-label="Общий игровой опыт"/g) ?? []).length, 1);
+  assert.equal((html.match(/aria-label="Сотрудничество с жителями в этом месяце"/g) ?? []).length, 1);
+  assert.match(html.slice(html.indexOf("Игровой прогресс")), /Уровень 16/);
   assert.match(overview, /12.345/);
   assert.match(overview, /×678/);
   assert.match(overview, /всего тапов/);
@@ -41,13 +42,14 @@ test("account level and confirmed tap records are visible before opening game pr
 
 test("account profile does not show stale tap totals while game progress is loading", () => {
   const html = profile(false);
-  assert.match(html, /Сейчас уровень 16/);
+  assert.match(html, /Игровой прогресс.*Уровень 16/);
   assert.doesNotMatch(html, /12.345|×678/);
 });
 
-test("account level waits for economy XP independently of loaded tap totals", () => {
+test("game progress waits for economy XP without an extra loading badge in the overview", () => {
   const html = profile(true, false);
-  assert.match(html, /Уровень загружается…/);
+  assert.match(html, /Игровой прогресс.*Синхронизация с аккаунтом/);
+  assert.doesNotMatch(html, /Уровень загружается|Общий игровой опыт|Сотрудничество с жителями в этом месяце/);
   assert.match(html, /12.345/);
   assert.doesNotMatch(html, /Сейчас уровень \d+/);
 });

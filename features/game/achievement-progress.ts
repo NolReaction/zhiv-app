@@ -32,5 +32,6 @@ export function economyAchievementProgress(state: AchievementProgressState | nul
     campfire_cook: completedRecipes("dryer", 500),
     helpful_neighbor: state?.residentOrders?.completed ?? 0,
     generous_garden: completedRecipes("garden", 1000),
+    forest_cuisine: economyCatalog.recipes.filter(recipe => !recipe.retired && recipe.buildingId === "dryer" && (recipes[recipe.id] ?? 0) > 0).length,
   };
 }

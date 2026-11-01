@@ -151,7 +151,7 @@ test("a selected claim cannot claim a different job kind or an invalid quantity"
   const state = player(); act(state, "start_exploration", "quarry_stone", 3);
   for (const quantity of [0, -1, 1.5, 101, NaN]) {
     const saved = structuredClone(state);
-    assert.throws(() => act(state, "claim_mining_batch", state.jobs[0].id, quantity, now + 600_000), { code: "INVALID_ECONOMY_COMMAND" });
+    assert.throws(() => act(state, "claim_mining_batch", state.jobs[0].id, quantity, now + 600_000), { code: "INVALID_ECONOMY_COMMAND", status: 400 });
     assert.deepEqual(state, saved);
   }
   for (const patch of [{ actorId: "mochlik" }, { miningBatch: null }, { kind: "construction" }]) {

@@ -25,6 +25,8 @@ internal fun economyAchievementProgress(state: EconomyState?, confirmedSale: Boo
         "campfire_cook" to completedRecipes("dryer", 500L),
         "helpful_neighbor" to (state?.residentOrders?.completed ?: 0L),
         "generous_garden" to completedRecipes("garden", 1000L),
+        "forest_cuisine" to EconomyRules.catalog.recipes.count { !it.retired && it.buildingId == "dryer"
+            && (state?.progression?.recipes?.get(it.id) ?: 0L) > 0L }.toLong(),
     )
 }
 

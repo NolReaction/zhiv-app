@@ -7,7 +7,7 @@ import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { stageCourseRequired, stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { worldBatchLimit, worldConstructionReason, worldCostShortfalls, worldDuration, worldMaterialSource, worldMissingRecipeRequirements, worldMissingRequirements, worldProductionReason, worldRequirements } from "@/features/economy/ui/shared/world-stations";
+import { worldBatchLimit, worldConstructionReason, worldCostShortfalls, worldDuration, worldMaterialSource, worldMissingRequirements, worldProductionReason, worldRecipeUnlockRequirements, worldRequirements } from "@/features/economy/ui/shared/world-stations";
 import type { ForestObservation } from "@/features/world/state/forest-observer";
 import type { WorldController } from "@/features/world/state/use-world";
 import type { WorldHelpContext, WorldHelpSuggestion, WorldHelpTarget } from "./world-help-types";
@@ -103,7 +103,8 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
   let instruction = "Проверьте состав рецепта и доступные материалы.";
   if (source?.kind === "production") {
     target = { kind: "station", stationId: source.stationId, recipeId: source.targetId };
-    instruction = `Источник: ${stationName(state, source.stationId)}. В карточке предмета уже показаны материалы; нажатие на неё сразу начнёт работу.`;
+    instruction = source.stationId === "dryer" ? "Откройте рецепт в книге костра, проверьте ингредиенты и подтвердите приготовление."
+      : `Источник: ${stationName(state, source.stationId)}. В карточке предмета показаны материалы для запуска.`;
   } else if (source?.kind === "exploration") {
     const mining = state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
     const conflict = mining ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now);
@@ -201,12 +202,25 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
   if (!worldProductionReason(state, recipe, quantity)) return null;
   const requirement = requirementAdvice(state, worldRequirements(recipe, recipe), now);
   if (requirement) return requirement;
-  const unlock = worldMissingRecipeRequirements(state, recipe)[0];
-  if (unlock) return {
-    id: `recipe:unlock:${unlock.id}`, title: "Получите результат производства", topicId: "production", severity: "next",
-    message: `Произведите и заберите «${recipeResultName(unlock.id, state.catalog)}»: ${unlock.current} / ${unlock.count}. После этого откроется ${recipeResultName(recipe.id, state.catalog).toLocaleLowerCase("ru-RU")}.`,
-    ...(unlock.recipe ? { action: { label: "Открыть рецепт", target: { kind: "station" as const, stationId: unlock.recipe.buildingId, recipeId: unlock.id } } } : {}),
-  };
+  const unlock = worldRecipeUnlockRequirements(state, recipe).find(entry => !entry.completed);
+  if (unlock) {
+    const title = recipe.unlockTitle ?? "Открытие рецепта";
+    if (unlock.kind === "recipe") {
+      const practice = state.catalog.recipes.find(entry => entry.id === unlock.id);
+      return { id: `recipe:unlock:${unlock.id}`, title, topicId: "recipe-unlocks", severity: "next",
+        message: `Произведите и заберите «${recipeResultName(unlock.id, state.catalog)}»: ${unlock.current} / ${unlock.required}. Это один из шагов открытия. Выполненное сохраняется после расхода предметов.`,
+        ...(practice ? { action: { label: "Открыть рецепт", target: { kind: "station" as const, stationId: practice.buildingId, recipeId: unlock.id } } } : {}) };
+    }
+    const route = unlock.kind === "exploration" ? state.catalog.explorations.find(entry => entry.id === unlock.id) : undefined;
+    const incoming = state.jobs.find(job => job.kind === "exploration" && (route ? job.targetId === route.id : state.catalog.fishing?.routeIds.includes(job.targetId)));
+    if (incoming) return jobAdvice(state, incoming, now);
+    const mining = route && explorationActorId(route) === "miner";
+    return { id: `recipe:unlock:${unlock.kind}:${unlock.id}`, title, topicId: "recipe-unlocks", severity: "next",
+      message: route ? `Завершите и заберите «${route.name}»: ${unlock.current} / ${unlock.required}. ${mining ? "Считается каждая полученная единица добычи." : "Считаются полученные результаты похода, а не случайные находки."}`
+        : `Поймайте и заберите любую рыбу: ${unlock.current} / ${unlock.required}. Купленная рыба не засчитывается; редкий вид не нужен.`,
+      action: mining ? { label: "Открыть шахту", target: { kind: "station", stationId: "quarry", recipeId: route.id } }
+        : { label: route ? "К походам" : "На рыбалку", target: { kind: "expeditions", sector: route ? sector(route.id) : "coast" } } };
+  }
   const buildingWork = state.jobs.find(job => job.kind === "construction" && job.targetId === recipe.buildingId);
   if (buildingWork) return jobAdvice(state, buildingWork, now);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId);

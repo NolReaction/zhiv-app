@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { recipeMasteryReachable } from "./lib/recipe-mastery.mjs";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { economicMath, recipeBuildingLevel } from "./lib/economy-math.mjs";
@@ -44,16 +45,17 @@ export function auditFoodEconomy(catalog) {
     && (!definition.buildingId || (buildings[definition.buildingId] ?? 0) >= recipeBuildingLevel(definition));
   // Independent fixed-point audit of prerequisites, including ingredient chains.
   const obtainable = buildings => {
-    const reachable = new Set(), completedRecipes = new Set(); let changed = true;
+    const reachable = new Set(), completedRecipes = new Set(), completedRoutes = new Set(); let changed = true;
     while (changed) {
-      const before = reachable.size + completedRecipes.size;
+      const before = reachable.size + completedRecipes.size + completedRoutes.size;
       for (const source of [...catalog.explorations, ...catalog.recipes]) {
         if (!hasRequirements(source, buildings)) continue;
-        if (Object.keys(source.requiredRecipes ?? {}).some(id => !completedRecipes.has(id))) continue;
+        if (!recipeMasteryReachable(catalog, source, completedRecipes, completedRoutes, buildings.home)) continue;
         const options = source.fishInput?.itemIds;
         if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !options?.includes(id)) || options && !options.some(id => reachable.has(id))) continue;
         for (const [id, count] of Object.entries(source.rewards)) if (count > 0) reachable.add(id);
         if (source.buildingId) completedRecipes.add(source.id);
+        else completedRoutes.add(source.id);
         if (catalog.fishing.routeIds.includes(source.id)) for (const spec of catalog.fishing.classes) {
           const rods = catalog.fishing.rods.filter(rod => rod.requiredHomeLevel <= buildings.home && (spec.rarity !== "legendary" || rod.rarity === "legendary")
             && (!rod.classOddsBps || rod.classOddsBps[spec.rarity] > 0));
@@ -64,7 +66,7 @@ export function auditFoodEconomy(catalog) {
           }
         }
       }
-      changed = before !== reachable.size + completedRecipes.size;
+      changed = before !== reachable.size + completedRecipes.size + completedRoutes.size;
     }
     return reachable;
   };

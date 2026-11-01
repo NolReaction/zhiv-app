@@ -511,3 +511,14 @@ test("inactive panels are actually hidden and narrow layouts have explicit singl
   assert.match(economy, /@media\s*\(max-width:\s*780px\)/);
   assert.match(economy, /\.stageGrid,\s*\.pearlGrid,\s*\.unlockGrid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
 });
+
+test("ingredient references show named claimed-route and personal-catch recipe discoveries", () => {
+  for (const id of ["make_ceramic_jar", "cook_fish_soup"]) {
+    const definition = recipe(id), itemId = Object.keys(definition.rewards)[0];
+    const value = text(renderToStaticMarkup(harness(ItemDetails, { item: item(itemId), home: 0, onSelect() {} }).render()));
+    assert.ok(value.includes(definition.unlockTitle));
+    for (const [routeId, count] of Object.entries(definition.requiredExplorations))
+      assert.ok(value.includes(`Завершить «${data.routeNames[routeId]}» ×${count}`));
+    if (definition.requiredFishCaught) assert.ok(value.includes(`Лично поймать ${definition.requiredFishCaught} рыб`));
+  }
+});

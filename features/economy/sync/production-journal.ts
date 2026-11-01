@@ -4,6 +4,7 @@ import { economyCommandSchema, economyViewSchema, recipeBuildingLevel, type Econ
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
+import { recipeUnlocksMet } from "@/features/economy/domain/recipe-unlock";
 
 export const PRODUCTION_JOURNAL_LIMIT = 12;
 export type ProductionIntent = { requestId: string; targetId: string; command?: EconomyCommand };
@@ -45,7 +46,7 @@ export function reserveProduction(state: EconomyView, entry: ProductionIntent): 
   if (!recipe || state.jobs.length >= 18 || (state.buildings.home ?? 1) < recipe.requiredHomeLevel
     || (state.buildings[recipe.buildingId] ?? 0) < recipeBuildingLevel(recipe)
     || Object.entries(recipe.requiredBuildings).some(([id, level]) => (state.buildings[id] ?? 0) < level)
-    || Object.entries(recipe.requiredRecipes).some(([id, count]) => (state.progression.recipes[id] ?? 0) < count)
+    || !recipeUnlocksMet(state, recipe)
     || state.jobs.some(job => job.targetId === recipe.buildingId && job.kind === "construction")
     || state.jobs.filter(job => job.targetId === recipe.buildingId && job.kind === "production").length >= productionSlotCount(state, recipe.buildingId)
     || Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) > state.storage.capacity

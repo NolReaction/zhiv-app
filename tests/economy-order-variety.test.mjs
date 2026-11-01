@@ -17,6 +17,8 @@ const make = scenario => {
   const state = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.buildings = scenario.buildings;
   state.progression.recipes = scenario.recipes ?? {};
+  state.progression.routes = scenario.completedExplorations ?? {};
+  state.fishing.catches = scenario.fishCatches ?? {};
   state.fishing.ownedRods = scenario.ownedRods;
   state.fishing.ownedHooks = scenario.ownedHooks;
   return state;

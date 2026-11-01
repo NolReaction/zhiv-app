@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { personallyCaughtFish } from "../scripts/lib/recipe-mastery.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-mining-continuous-journey-vite",
@@ -191,9 +192,21 @@ function completeJourney(regularActiveMinutes, maximumDays) {
         return false;
       }
     }
+    for (const [id, count] of Object.entries(source.requiredExplorations ?? {})) {
+      if ((state.progression.routes[id] ?? 0) < count) {
+        const route = catalog.explorations.find(route => route.id === id);
+        assert(route, `${source.id}: unknown mastery route ${id}`);
+        if (!state.jobs.some(job => job.kind === "exploration" && job.targetId === id) && run(route, path)) return true;
+        return false;
+      }
+    }
+    if (personallyCaughtFish(catalog, state) < (source.requiredFishCaught ?? 0)) {
+      const route = catalog.explorations.find(route => route.id === "shore");
+      return run(route, path);
+    }
     for (const [id, count] of Object.entries(source.cost.items)) if ((state.inventory[id] ?? 0) < count && need(id, count, path)) return true;
     if (!held(source.cost.items) || sourceBusy(source)) return false;
-    apply(source.buildingId ? "start_production" : "start_exploration", source.id);
+    apply(source.buildingId ? "start_production" : catalog.fishing.routeIds.includes(source.id) ? "start_fishing" : "start_exploration", source.id);
     production[source.id] = (production[source.id] ?? 0) + 1;
     return true;
   }
