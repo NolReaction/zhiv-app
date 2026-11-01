@@ -44,7 +44,7 @@ export function awardPlayerProgression(before: AwardBefore, state: EconomyState,
   if (player.season.id !== id) player.season = { id, points: 0, awardedMilestones: [] };
   let xp = 0, seconds = 0, points = 0;
   let source: NonNullable<PlayerProgression["lastAward"]>["source"] = "production";
-  const claims = ["claim_job", "claim_production", "claim_garden_collection"].includes(command.action);
+  const claims = ["claim_job", "claim_mining_batch", "claim_production", "claim_garden_collection"].includes(command.action);
   const firstRecipes = new Set<string>();
   if (claims) for (const job of before.jobs) {
     const removed = !state.jobs.some(item => item.id === job.id);

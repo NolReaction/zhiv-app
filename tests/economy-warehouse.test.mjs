@@ -19,7 +19,7 @@ beforeEach(() => identities.resetDevStoreForTests());
 const now = Date.parse("2026-10-06T23:00:00Z");
 const warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
 const capacity = Array.from({ length: 15 }, (_, index) => (index + 1) * 50);
-const relicCosts = [[1, 0, 0], [1, 1, 0], [1, 0, 1], [1, 1, 1], [2, 1, 1]];
+const relicCosts = [[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]];
 const relicIds = ["ancient_core", "moon_crystal", "living_resin"];
 const careerPearls = xp => playerProgressionCatalog.levelRewards
   .filter(reward => playerProgressionCatalog.levelXpFactor * (reward.level - 1) ** 2 <= xp)
@@ -48,17 +48,17 @@ test("fifteen warehouse tiers reserve relic-only costs for the final five expans
   assert.deepEqual(warehouse.levels.map(level => level.warehouseCapacity), capacity);
   assert.deepEqual(warehouse.levels.slice(0, 10).map(level => level.cost.coins), [0, 200, 1500, 8000, 12000, 18000, 30000, 45000, 65000, 95000]);
   const third = warehouse.levels[2];
-  assert.deepEqual(third.cost, { coins: 1500, items: { planks: 6, bricks: 6, iron_ingot: 2, cloth: 2 } });
+  assert.deepEqual(third.cost, { coins: 1500, items: { planks: 6, bricks: 6, rope: 4 } });
   for (const target of warehouse.levels) {
-    assert.equal(target.requiredHomeLevel, target.level <= 3 ? target.level : target.level <= 6 ? 4 : 5);
-    if (target.level <= 3) assert.deepEqual(target.requiredBuildings, {});
+    assert.equal(target.requiredHomeLevel, target.level <= 2 ? 1 : target.level === 3 ? 2 : target.level <= 6 ? 3 : target.level <= 13 ? 4 : 5);
+    if (target.level === 1) assert.deepEqual(target.requiredBuildings, {});
   }
   for (const target of warehouse.levels.slice(0, 10))
     assert.ok(relicIds.every(id => !target.cost.items[id]));
   for (const target of warehouse.levels.slice(3, 10)) {
     assert.ok(target.cost.coins > warehouse.levels[target.level - 2].cost.coins);
     assert.equal(Object.keys(target.cost.items).length, 3);
-    assert.equal(target.requiredHomeLevel, target.level <= 6 ? 4 : 5);
+    assert.equal(target.requiredHomeLevel, target.level <= 6 ? 3 : 4);
     assert.equal(target.seconds, target.level === 4 ? 7200 : 14400);
   }
   for (const [index, target] of warehouse.levels.slice(10).entries()) {
@@ -101,19 +101,21 @@ test("ordinary construction fits the base warehouse and never requires a warehou
 test("warehouse two and three charge current prices and require the home stage that opens their materials", () => {
   const state = initial(1);
   const costs = [
-    { coins: 200, items: { planks: 3, stone: 2, rope: 2 } },
-    { coins: 1500, items: { planks: 6, bricks: 6, iron_ingot: 2, cloth: 2 } },
+    { coins: 200, items: { planks: 3, stone: 2, wood: 2 } },
+    { coins: 1500, items: { planks: 6, bricks: 6, rope: 4 } },
   ];
   const seconds = [600, 3600];
   let at = now;
   for (const [index, target] of warehouse.levels.slice(1, 3).entries()) {
     assert.deepEqual(target.cost, costs[index]); assert.equal(target.seconds, seconds[index]);
     state.wallet.coins = target.cost.coins;
-    state.inventory = { ...target.cost.items, wood: 2 };
-    const missingHome = structuredClone(state), missingHomeBefore = structuredClone(missingHome);
+    state.inventory = { ...target.cost.items, wood: (target.cost.items.wood ?? 0) + 2 };
+    Object.assign(state.buildings, target.requiredBuildings, { home: target.requiredHomeLevel });
+    const missingHome = structuredClone(state); missingHome.buildings.home = target.requiredHomeLevel - 1;
+    const missingHomeBefore = structuredClone(missingHome);
     assert.throws(() => direct(missingHome, "start_construction", "warehouse", at), { code: "ECONOMY_HOME_REQUIRED" });
     assert.deepEqual(missingHome, missingHomeBefore);
-    state.buildings.home = target.level;
+    state.buildings.home = target.requiredHomeLevel;
     const buildings = structuredClone(state.buildings);
     const before = structuredClone(state);
     const missingCoins = structuredClone(state); missingCoins.wallet.coins--;
@@ -178,10 +180,10 @@ test("a developed settlement pays each crafted and relic basket exactly once thr
   assert.deepEqual(state, before);
 });
 
-test("the final five expansions need only their relics and home five even with no coins or production buildings", () => {
+test("the final five expansions need only their relics and the declared house even with no coins or production buildings", () => {
   for (const target of warehouse.levels.slice(10)) {
     const state = initial(target.level - 1);
-    state.buildings.home = 5;
+    state.buildings.home = target.requiredHomeLevel;
     state.wallet = { coins: 0, pearls: 0 };
     state.inventory = { ...target.cost.items };
     direct(state, "start_construction", "warehouse");

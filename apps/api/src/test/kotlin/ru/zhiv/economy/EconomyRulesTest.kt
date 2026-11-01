@@ -53,7 +53,7 @@ class EconomyRulesTest {
         assertEquals(EconomyRules.initial(), initial)
     }
 
-    @Test fun `first stage recipes produce one item and strawberries need no cooking history`() {
+    @Test fun `first stage recipes produce one item and strawberries need a claimed compote`() {
         val seconds = mapOf("grow_berries" to 60L, "grow_strawberries" to 300L, "gather_wood" to 180L,
             "make_planks" to 120L, "cook_compote" to 180L, "cook_grilled_fish" to 180L)
         val supplied = EconomyRules.initial().copy(inventory = mapOf("berries" to 2L, "wood" to 1L, "fish_common" to 1L),
@@ -68,7 +68,14 @@ class EconomyRulesTest {
             }.code, id)
         }
         assertTrue(supplied.progression.recipes.isEmpty())
-        val growing = apply(supplied, "start_production", "grow_strawberries")
+        assertEquals("ECONOMY_RECIPE_REQUIRED", assertFailsWith<AuthFailure> { apply(supplied, "start_production", "grow_strawberries") }.code)
+        val cooking = apply(supplied, "start_production", "cook_compote")
+        val job = cooking.jobs.single()
+        assertEquals("ECONOMY_RECIPE_REQUIRED", assertFailsWith<AuthFailure> {
+            apply(cooking, "start_production", "grow_strawberries", at = Instant.parse(job.finishesAt))
+        }.code)
+        val claimed = apply(cooking, "claim_job", job.id, at = Instant.parse(job.finishesAt))
+        val growing = apply(claimed, "start_production", "grow_strawberries", at = Instant.parse(job.finishesAt))
         assertEquals(mapOf("strawberries" to 1L), growing.jobs.single().rewards)
     }
 

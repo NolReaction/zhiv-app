@@ -145,10 +145,12 @@ try {
     for (const box of geometry) {
       assert.ok(box.width >= 44 && box.height >= 44, `${label}: portrait tabs need usable touch targets`);
       assert.ok(Math.abs(box.width - geometry[0].width) <= 1, `${label}: all tabs share the row evenly`);
-      assert.ok(box.photoWidth >= (size.width >= 620 ? 72 : size.width >= 390 ? 40 : 34), `${label}: portraits use the available column width`);
+      assert.ok(box.photoWidth >= 32 && box.photoWidth <= 36, `${label}: compact portraits leave space for the actual orders`);
       assert.ok(box.photoWidth <= box.width - 4 && box.photoHeight <= box.height - 12, `${label}: portraits stay inside their tabs`);
     }
     assert.equal(await page.locator('[data-order-journal] details').count(), 0, `${label}: journal has no instruction disclosures`);
+    assert.equal(await page.locator('[data-order-chapter]').count(), 1, `${label}: only the selected kind is mounted`);
+    assert.doesNotMatch(await page.locator('[data-order-journal]').innerText(), /работы с нуля|Награда учитывает|Оплата складывается/);
     const colors = new Set();
     for (const resident of residents) {
       await page.locator(`[data-order-filter="${resident}"]`).click();
@@ -182,6 +184,17 @@ try {
     await page.keyboard.press("End");
     assert.equal(await page.locator('[data-order-filter="leaftail"]').getAttribute("aria-selected"), "true");
     await page.keyboard.press("Home"); assert.equal(await all.getAttribute("aria-selected"), "true");
+    await page.locator('[data-order-section="requests"]').focus(); await page.keyboard.press("ArrowRight");
+    assert.equal(await page.locator('[data-order-section="weekly"]').getAttribute("aria-selected"), "true");
+    assert.equal(await page.locator('[data-order-chapter]').count(), 1);
+    assert.ok(await page.locator('[data-weekly-choice]').count() <= 3, `${label}: weekly choices are paginated`);
+    const nextPage = page.getByRole("button", { name: "Следующие поручения", exact: true });
+    if (await nextPage.count()) {
+      const firstNames = await page.locator('[data-weekly-choice] h4').allTextContents();
+      await nextPage.click(); assert.notDeepEqual(await page.locator('[data-weekly-choice] h4').allTextContents(), firstNames);
+      await page.getByRole("button", { name: "Предыдущие поручения", exact: true }).click();
+      assert.deepEqual(await page.locator('[data-weekly-choice] h4').allTextContents(), firstNames);
+    }
     await page.locator("[data-weekly-choice]").first().locator("button").click();
     const review = page.locator("[data-weekly-review]"); await review.waitFor();
     assert.equal(await review.locator("ol > li").count(), 3, `${label}: all three stages can be reviewed`);
@@ -205,6 +218,7 @@ try {
     cases++;
     await screenshot(`orders-${size.width}.png`);
     await mount();
+    await page.locator('[data-order-section="weekly"]').click();
     await page.locator("[data-weekly-choice]").first().locator("button").click();
     await page.evaluate(() => window.__tradeMutate("owner"));
     await page.locator("[data-weekly-review]").waitFor({ state: "hidden" });

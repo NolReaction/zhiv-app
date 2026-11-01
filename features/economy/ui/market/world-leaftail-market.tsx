@@ -34,7 +34,6 @@ const sections: ReadonlyArray<{ id: ShopSection; label: string; hint: string; Ic
 const number = (value: number) => value.toLocaleString("ru-RU");
 const money = (value: number, currency: Offer["currency"]) => currency === "pearls" ? formatPearls(value) : number(value);
 const currencyName = (currency: Offer["currency"]) => currency === "pearls" ? "жемчужин" : "монет";
-const walletName = (currency: Offer["currency"]) => currency === "pearls" ? "Жемчуг" : "Монеты";
 const descriptions: Record<string, string> = {
   ancient_core: "Для больших построек и расширения кладовой.",
   moon_crystal: "Для развития поселения и расширения кладовой.",
@@ -193,7 +192,6 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
         <Check size={16} aria-hidden="true" /><div>{receipt ? <><p>{receipt.destination === "wardrobe" ? "В гардероб" : receipt.destination === "tackle" ? "В ваши снасти" : "В кладовую"}: {receipt.items.map(item => `${item.name} ×${number(item.quantity)}`).join(", ")}.</p>
           <p>Потрачено {money(receipt.currency === "pearls" ? receipt.pearls : receipt.coins, receipt.currency)} {currencyName(receipt.currency)}.</p>{receipt.destination !== "pantry" && <p>{receipt.destination === "wardrobe" ? "Надеть можно в «Ещё» → «Гардероб» → «Мои вещи»." : "Выберите снасть перед рыбалкой в «В путь»."}</p>}</> : <p>{fallback}</p>}</div>
       </div>}
-      <div className={styles.wallet} aria-label="Ваш кошелёк"><span><small>Монеты</small><strong><ItemIcon itemId="coins" size={18} />{number(state.wallet.coins)}</strong></span><span><small>Жемчуг</small><strong><ItemIcon itemId="pearls" size={18} />{formatPearls(state.wallet.pearls)}</strong></span></div>
       <div className={styles.tabs} role="tablist" aria-label="Товары Листохвоста">{sections.map((entry, index) => <button key={entry.id}
         type="button" role="tab" ref={node => { tabButtons.current[index] = node; }} id={`${tabsId}-${entry.id}`} aria-controls={`${tabsId}-offers`}
         aria-selected={section === entry.id} tabIndex={section === entry.id ? 0 : -1} onClick={() => changeSection(entry.id)} onKeyDown={event => {
@@ -210,7 +208,6 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
           override={tackleOverride(quote.kind, quote.itemId)!} targetRarity={selected?.rarity} preview showLoadout collapsible />}
         {preview && <div className={styles.fitting}><WardrobePreview appearance={preview} /><div><strong>Примерка</strong><p>{selected?.description}</p><small>Покупка добавит вещь в гардероб. Образ можно поменять позже.</small></div></div>}
         <p>{quote.kind === "wardrobe" ? "Вещь навсегда в гардероб" : quote.kind === "rod" || quote.kind === "hook" ? "Снасть навсегда в вашу коллекцию" : `${number(quote.itemQuantity)} шт. в кладовую`} за <strong>{money(quote.price, quote.currency)} {currencyName(quote.currency)}</strong>.</p>
-        <p>{walletName(quote.currency)}: {money(state.wallet[quote.currency], quote.currency)} → {money(Math.max(0, state.wallet[quote.currency] - quote.price), quote.currency)}</p>
         {reason && <p className={styles.reason} role="status">{reason}</p>}
         <div className={styles.actions}><button type="button" onClick={() => setQuote(null)}>Назад</button><button className={styles.buy} type="button" disabled={Boolean(reason)} onClick={confirm}>Подтвердить<ItemIcon itemId={quote.currency} size={16} />{money(quote.price, quote.currency)}</button></div>
       </section> : <div role="tabpanel" id={`${tabsId}-offers`} aria-labelledby={`${tabsId}-${section}`} data-leaftail-section={section}>

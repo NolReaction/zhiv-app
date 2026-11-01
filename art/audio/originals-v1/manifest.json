@@ -24,11 +24,11 @@
     },
     {
       "path": "scripts/audio_originals/render.py",
-      "sha256": "4f65b0e44e6928a958a1b6222ac4a512bafeaef43649f06f7dee457ad6776d92"
+      "sha256": "4b01119b9902c69ac4c0a13df95e86eb2ee77afd17f4a6a6a77aa165de1a5515"
     },
     {
       "path": "scripts/audio_originals/steamship.py",
-      "sha256": "ac44cd684873fe2684c2daf6c66e7c4ba03437804220d9f28f8bdc22780baf62"
+      "sha256": "28896053febf0ca7ee28897b12f9d33921dfa27389f47ee3a2a3dc46f6671312"
     }
   ],
   "assets": [
@@ -3173,26 +3173,26 @@
     {
       "id": "ship.arrival.01",
       "kind": "effect",
-      "title": "Warm steamship arrival whistle",
-      "description": "A single low two-chamber steam whistle, gently opening under pressure and fading into breath; no repeated foghorn or recordings.",
+      "title": "Warm steamship arrival whistle, presence revision",
+      "description": "A single two-chamber steam whistle with warm low fundamentals and rounded mid harmonics audible through small speakers, gently opening under pressure and fading into breath; no repeated foghorn or recordings.",
       "sampleRate": 48000,
       "channels": 1,
       "frames": 124800,
       "durationSeconds": 2.6,
       "decodedBytes": 499200,
-      "masterSha256": "e2b085bc23021813228ea87856f434e1976c107e68ec3ee2f09e92f5fc58f90c",
+      "masterSha256": "f59d6aba03980976e6a403b873734b4d33d5b6bee56332ebfc7f3d62bc276c37",
       "measurements": {
-        "peakDb": -9.0,
-        "rmsDb": -22.1021,
-        "dc": 1e-09,
+        "peakDb": -5.0,
+        "rmsDb": -18.1787,
+        "dc": 2e-09,
         "seamDelta": 0.0,
-        "maxAdjacentDelta": 0.017387323
+        "maxAdjacentDelta": 0.029086173
       },
       "files": [
         {
-          "src": "/audio/originals-v1/effect/ship.arrival.01.wav",
+          "src": "/audio/originals-v1/effect/ship.arrival.01.presence-v2.wav",
           "bytes": 249644,
-          "sha256": "e2b085bc23021813228ea87856f434e1976c107e68ec3ee2f09e92f5fc58f90c"
+          "sha256": "f59d6aba03980976e6a403b873734b4d33d5b6bee56332ebfc7f3d62bc276c37"
         }
       ],
       "composition": {
@@ -3201,6 +3201,13 @@
           220.0
         ],
         "durationSeconds": 2.6,
+        "harmonicAmplitudes": [
+          1,
+          0.65,
+          0.32,
+          0.13,
+          0.045
+        ],
         "attackSeconds": 0.24,
         "releaseSeconds": 0.58,
         "method": "Deterministic additive resonators, seeded filtered steam noise, pressure envelope and two quiet early reflections"

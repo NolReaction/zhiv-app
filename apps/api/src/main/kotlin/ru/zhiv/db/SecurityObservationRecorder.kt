@@ -104,7 +104,7 @@ private val observedActions = setOf(
     "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage",
     "start_production", "start_tutorial_harvest", "buy_production_slot", "start_collection", "start_garden_collection", "start_exploration", "start_fishing",
     "cancel_production", "cancel_exploration", "start_tutorial_workshop", "start_construction", "speedup_construction",
-    "claim_garden_collection", "claim_production", "claim_job", "buy_market_slot", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "buy_wardrobe_item",
+    "claim_garden_collection", "claim_production", "claim_job", "claim_mining_batch", "buy_market_slot", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "buy_wardrobe_item",
     "buy_fishing_item", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "sell", "sell_fish",
     "create_listing", "buy_listing", "cancel_listing", "claim_sale", "create_offer", "accept_offer", "cancel_offer", "daily", "achievement", "onboarding",
 )

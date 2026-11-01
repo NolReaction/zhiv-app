@@ -7,7 +7,7 @@ export type PlayerXpGain = Readonly<{
 }>;
 export const PLAYER_XP_GAIN_HISTORY_LIMIT = 8;
 const awardedActions = new Set<EconomyCommand["action"]>([
-  "claim_job", "claim_production", "claim_garden_collection", "complete_resident_order",
+  "claim_job", "claim_mining_batch", "claim_production", "claim_garden_collection", "complete_resident_order",
   "load_ship_cargo", "complete_ship_order", "claim_ship_voyage",
 ]);
 

@@ -12,8 +12,8 @@ class EconomyWarehouseTest {
     private val warehouse = EconomyRules.catalog.buildings.single { it.id == "warehouse" }
     private val capacities = (1L..15L).map { it * 50L }
     private val relicIds = listOf("ancient_core", "moon_crystal", "living_resin")
-    private val relicCosts = listOf(listOf(1L, 0L, 0L), listOf(1L, 1L, 0L), listOf(1L, 0L, 1L),
-        listOf(1L, 1L, 1L), listOf(2L, 1L, 1L))
+    private val relicCosts = listOf(listOf(1L, 1L, 1L), listOf(1L, 1L, 1L), listOf(1L, 1L, 1L),
+        listOf(1L, 1L, 1L), listOf(1L, 1L, 1L))
     private fun initial(level: Int) = EconomyRules.initial().let { it.copy(buildings = it.buildings + mapOf("home" to 2, "warehouse" to level)) }
     private fun developed(level: Int) = initial(level).copy(buildings = EconomyRules.catalog.buildings.associate {
         it.id to it.levels.last().level } + ("warehouse" to level))
@@ -28,10 +28,10 @@ class EconomyWarehouseTest {
         assertEquals(listOf(0L, 200L, 1500L, 8000L, 12000L, 18000L, 30000L, 45000L, 65000L, 95000L),
             warehouse.levels.take(10).map { it.cost.coins })
         val third = warehouse.levels[2]
-        assertEquals(EconomyCost(1500, mapOf("planks" to 6L, "bricks" to 6L, "iron_ingot" to 2L, "cloth" to 2L)), third.cost)
+        assertEquals(EconomyCost(1500, mapOf("planks" to 6L, "bricks" to 6L, "rope" to 4L)), third.cost)
         warehouse.levels.forEach { target ->
-            assertEquals(if (target.level <= 3) target.level else if (target.level <= 6) 4 else 5, target.requiredHomeLevel)
-            if (target.level <= 3) assertTrue(target.requiredBuildings.isEmpty())
+            assertEquals(if (target.level <= 2) 1 else if (target.level == 3) 2 else if (target.level <= 6) 3 else if (target.level <= 13) 4 else 5, target.requiredHomeLevel)
+            if (target.level == 1) assertTrue(target.requiredBuildings.isEmpty())
         }
         warehouse.levels.take(10).forEach { target -> assertTrue(relicIds.none { it in target.cost.items }) }
         warehouse.levels.slice(3..9).forEachIndexed { index, target ->
@@ -49,20 +49,21 @@ class EconomyWarehouseTest {
         }
     }
 
-    @Test fun `ordinary warehouse upgrades follow house tiers without requiring a built workshop`() {
+    @Test fun `ordinary warehouse upgrades follow early house and material source requirements`() {
         val targets = warehouse.levels.filter { it.level in 2..3 }
         val supplies = buildMap<String, Long> {
             targets.forEach { target -> target.cost.items.forEach { (id, amount) -> put(id, (get(id) ?: 0L) + amount) } }
-            put("wood", 2L)
+            put("wood", (get("wood") ?: 0L) + 2L)
         }
         val base = initial(1)
-        var state = base.copy(buildings = base.buildings + ("home" to 3),
+        var state = base.copy(buildings = base.buildings + mapOf("home" to 2, "workshop" to 1, "quarry" to 2, "kiln" to 1),
             wallet = EconomyWallet(targets.sumOf { it.cost.coins }, 77), inventory = supplies)
-        val originalBuildings = state.buildings
-        assertEquals(3, state.buildings["home"]); assertEquals(0, state.buildings["workshop"])
+        assertEquals(2, state.buildings["home"]); assertEquals(1, state.buildings["workshop"])
         assertEquals((supplies.values.sum() - capacities.first()).coerceAtLeast(0), EconomyRules.storage(state).overflow)
         var at = now
         for (target in targets) {
+            state = state.copy(buildings = state.buildings + ("home" to target.requiredHomeLevel))
+            val originalBuildings = state.buildings
             val before = state
             val belowGate = before.copy(buildings = before.buildings + ("home" to target.requiredHomeLevel - 1))
             assertEquals("ECONOMY_HOME_REQUIRED", assertFailsWith<AuthFailure> {
@@ -134,10 +135,10 @@ class EconomyWarehouseTest {
         assertEquals(before, economyJson.encodeToString(state))
     }
 
-    @Test fun `last five expansions need only relics and home five without coins or production buildings`() {
+    @Test fun `last five expansions need only relics and their declared house without coins or production buildings`() {
         for (target in warehouse.levels.drop(10)) {
             val base = initial(target.level - 1)
-            val state = base.copy(buildings = base.buildings + ("home" to 5), wallet = EconomyWallet(), inventory = target.cost.items)
+            val state = base.copy(buildings = base.buildings + ("home" to target.requiredHomeLevel), wallet = EconomyWallet(), inventory = target.cost.items)
             val started = apply(state, "start_construction", "warehouse")
             assertEquals(EconomyWallet(), started.wallet); assertTrue(started.inventory.isEmpty())
             val job = started.jobs.single()

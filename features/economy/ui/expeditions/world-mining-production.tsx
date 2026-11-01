@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { Check, Clock3, LockKeyhole, PackageCheck, Pickaxe, Plus } from "lucide-react";
 import type { EconomyJob, EconomyView } from "@/features/economy/domain/model";
-import { miningBatchCatalog, miningBatchLimit, miningBatchProgress } from "@/features/economy/domain/mining-batch";
+import { miningBatchLimit, miningBatchProgress } from "@/features/economy/domain/mining-batch";
 import { economyMinerConflict, isMinerJob } from "@/features/economy/domain/actor-availability";
 import { tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { locked } from "@/features/economy/sync/controller-state";
@@ -107,7 +107,7 @@ function MiningProduction({ economy, state, initialRouteId, onOpenPantry, onOpen
       <header className={slotStyles.heading}><h3>Производство</h3><span aria-live="polite" aria-atomic="true">Свободно {current ? 0 : 1} из 1</span></header>
       <div className={slotStyles.track} data-slot-columns="1"><div className={`${slotStyles.slot} ${current ? slotStyles.job : ""} ${styles.slot}`} data-production-slot="1" data-state={current ? economy.now >= Date.parse(current.finishesAt) ? "ready" : "working" : "free"}>
         <span className={slotStyles.slotNumber}>Место 1</span>
-        {current ? current.miningBatch ? <MiningBatchCard economy={economy} state={state} job={current} onOpenPantry={onOpenPantry} isOnline={isOnline} />
+        {current ? current.miningBatch ? <MiningBatchCard key={current.id} economy={economy} state={state} job={current} onOpenPantry={onOpenPantry} isOnline={isOnline} />
           : <ActiveExpedition economy={economy} state={state} job={current} onOpenPantry={onOpenPantry} onOpenHelp={onOpenHelp} isOnline={isOnline} compact confirmationKey={confirmationKey} onConfirmation={onConfirmation} onCancellationSent={jobId => { cancellationSent.current = jobId; }} />
           : <><Plus size={25} aria-hidden="true" /><strong>Свободно</strong><span>Выберите добычу</span></>}
       </div></div>
@@ -119,7 +119,7 @@ function MiningProduction({ economy, state, initialRouteId, onOpenPantry, onOpen
           onChange={event => setQuantity(Math.max(1, Math.min(quantityLimit, Math.floor(Number(event.target.value) || 1))))} /></label>
         <button type="button" aria-label={`Максимальная партия: до ${quantityLimit}`} onClick={() => setQuantity(quantityLimit)}>Макс.</button>
       </div>
-      <p className={styles.batchHint}>До {quantityLimit} единиц за заказ, но не больше {miningBatchCatalog.maxBaseSeconds / 60} минут до ускорений. Для долгой добычи партия меньше; точное количество — на карточке.</p>
+      <p className={styles.batchHint}>До {quantityLimit} единиц за заказ. Лимит долгих ресурсов указан на карточках.</p>
       <div className={styles.grid}>{routes.map(route => {
         const count = routeQuantity(route), reason = routeReason(route), duration = miningDurationLabel(tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog, economy.now) * count);
         const outputs = Object.entries(route.rewards), name = outputs.length === 1 ? itemName(state, outputs[0][0]) : route.name;
@@ -140,9 +140,14 @@ function MiningProduction({ economy, state, initialRouteId, onOpenPantry, onOpen
 
 export function MiningBatchCard({ economy, state, job, onOpenPantry, isOnline }: Pick<MiningProps, "economy" | "onOpenPantry" | "isOnline"> & { state: EconomyView; job: EconomyJob }) {
   const card = useRef<HTMLDivElement>(null);
+  const stopButton = useRef<HTMLButtonElement>(null), confirmButton = useRef<HTMLButtonElement>(null), returnFocus = useRef(false);
   const progress = miningBatchProgress(job, economy.now), batch = job.miningBatch!;
   const boostPercent = jobTapBoostPercent(state, job.id, economy.now);
   const [confirming, setConfirming] = useState(false);
+  useEffect(() => {
+    if (confirming) confirmButton.current?.focus({ preventScroll: true });
+    else if (returnFocus.current) { returnFocus.current = false; stopButton.current?.focus({ preventScroll: true }); }
+  }, [confirming]);
   const command = useFishingCommand({ economy, state });
   const blocked = locked(economy) || isOnline === false || economy.directActionsAvailable === false;
   const itemId = Object.keys(batch.unitRewards)[0], unitSize = Object.values(job.rewards).reduce((sum, count) => sum + count, 0);
@@ -165,17 +170,26 @@ export function MiningBatchCard({ economy, state, job, onOpenPantry, isOnline }:
       <div className={styles.batchClock}>{progress.remaining ? <><Clock3 size={13} aria-hidden="true" /><span>До конца заказа</span><strong>{miningDurationLabel(remainingSeconds)}</strong></> : <><PackageCheck size={14} aria-hidden="true" /><span>Можно забрать оставшуюся добычу</span></>}</div>
     </div>
     <div className={styles.batchCounts} aria-live="polite" aria-atomic="true"><span><strong>{batch.claimed}</strong>получено</span><span data-ready={progress.ready > 0 || undefined}><strong>{progress.ready}</strong>ждёт сбора</span><span><strong>{progress.remaining}</strong>в работе</span></div>
-    {progress.remaining > 0 && <p className={styles.nextUnit}><Pickaxe size={13} aria-hidden="true" />Следующая единица через <strong>{miningDurationLabel(nextSeconds)}</strong></p>}
-    {progress.ready > 0 && <button type="button" className={styles.batchClaim} data-production-control disabled={blocked || full}
-      onClick={() => { if (!blocked && progress.ready > 0 && !full) command.send("claim_job", job.id, 1, 0); }}>
-      <PackageCheck size={16} aria-hidden="true" />Забрать доступное</button>}
-    {progress.ready > 0 && !full && <p className={styles.claimHint}>{fitsAtMost < progress.ready ? `В кладовую поместится до ${fitsAtMost} из ${progress.ready}. Остальное останется здесь.` : progress.remaining ? "Заберите готовую часть — оставшаяся добыча продолжится." : "Заберите готовую добычу, чтобы начать новый заказ."}</p>}
-    {full && progress.ready > 0 && <p className={styles.claimHint}>Добыча сохранена. В кладовой пока нет места.<button type="button" className={styles.batchLink} onClick={onOpenPantry}>Освободить кладовую</button></p>}
-    {progress.remaining > 0 && <button type="button" className={styles.batchLink} disabled={blocked} onClick={() => setConfirming(!confirming)} aria-expanded={confirming}>Остановить остаток</button>}
-    {confirming && progress.remaining > 0 && <div className={styles.batchConfirmation} role="group" aria-label="Остановить оставшуюся добычу">
-      <p>Готовая добыча останется здесь. Остановится только остаток: {progress.remaining}.</p>
-      <button type="button" disabled={blocked} onClick={() => { if (!blocked && command.send("cancel_exploration", job.id, 1, 0)) { setConfirming(false); card.current?.focus({ preventScroll: true }); } }}>Остановить</button>
-      <button type="button" onClick={() => setConfirming(false)}>Продолжить добычу</button>
-    </div>}
+    <div className={styles.batchActions} data-mining-actions>
+      {confirming && progress.remaining > 0 ? <div className={styles.batchConfirmation} role="group" aria-label="Остановить оставшуюся добычу">
+        <p><strong>Остановить остаток: {progress.remaining}?</strong><span>Готовые находки сохранятся.</span></p>
+        <div className={styles.batchActionRow}>
+          <button ref={confirmButton} type="button" disabled={blocked} onClick={() => { if (!blocked && command.send("cancel_exploration", job.id, 1, 0)) { setConfirming(false); card.current?.focus({ preventScroll: true }); } }}>Остановить</button>
+          <button type="button" onClick={() => { returnFocus.current = true; setConfirming(false); }}>Назад</button>
+        </div>
+      </div> : <>
+        {progress.remaining > 0 && <p className={styles.nextUnit}><Pickaxe size={13} aria-hidden="true" />Следующая единица через <strong>{miningDurationLabel(nextSeconds)}</strong></p>}
+        {progress.ready > 0 && <div className={styles.batchActionRow}>
+          <button type="button" className={styles.batchClaim} data-production-control disabled={blocked || full}
+            onClick={() => { if (!blocked && progress.ready > 0 && !full) command.send("claim_mining_batch", job.id, 1, 0); }}>
+            <PackageCheck size={16} aria-hidden="true" />Забрать 1</button>
+          {progress.ready > 1 && <button type="button" className={styles.batchClaimAll} disabled={blocked || full}
+            aria-label={`Забрать всё готовое: ${progress.ready}`} onClick={() => { if (!blocked && progress.ready > 0 && !full) command.send("claim_job", job.id, 1, 0); }}>Всё · {progress.ready}</button>}
+        </div>}
+        {progress.ready > 0 && !full && fitsAtMost < progress.ready && <p className={styles.claimHint}>В кладовую поместится до {fitsAtMost} из {progress.ready}. Остальное останется здесь.</p>}
+        {full && progress.ready > 0 && <p className={styles.claimHint}>Добыча сохранена. Нет места.<button type="button" className={styles.batchLink} onClick={onOpenPantry}>Освободить кладовую</button></p>}
+        {progress.remaining > 0 && <button ref={stopButton} type="button" className={styles.batchLink} data-mining-stop disabled={blocked} onClick={() => setConfirming(true)} aria-expanded={false}>Остановить остаток</button>}
+      </>}
+    </div>
   </div>;
 }

@@ -433,7 +433,7 @@ object EconomyRules {
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot") && command.totalPrice != 0L) invalidEconomy()
-        if (command.action !in setOf("start_production", "start_exploration", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
+        if (command.action !in setOf("start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage" -> EconomyShipOrders.command(state, command, now, reservedItems)
             "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
@@ -694,9 +694,11 @@ object EconomyRules {
                 assertStorageTransition(state, projected, reservedItems)
                 jobs.fold(state) { next, job -> claimJob(next, job, now, reservedItems) } to "Вся готовая продукция доставлена в кладовую"
             }
-            "claim_job" -> {
+            "claim_mining_batch", "claim_job" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
-                if (isMinerJob(job) && job.miningBatch != null) return EconomyMiningBatches.claim(state, job, now, reservedItems)
+                if (command.action == "claim_mining_batch" && (!isMinerJob(job) || job.miningBatch == null || command.quantity !in 1L..100L)) invalidEconomy()
+                if (isMinerJob(job) && job.miningBatch != null) return EconomyMiningBatches.claim(state, job, now, reservedItems,
+                    if (command.action == "claim_mining_batch") command.quantity.toInt() else null)
                 if (job.collection?.batchId != null) economyFailure("ECONOMY_COLLECTION_BATCH_REQUIRED", "Заберите весь собранный урожай вместе")
                 claimJob(state, job, now, reservedItems) to
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"

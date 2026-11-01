@@ -80,4 +80,51 @@ class EconomyMiningBatchesTest {
         assertTrue(rest.jobs.isEmpty())
         assertEquals(100L, rest.progression.routes["quarry_stone"])
     }
+
+    @Test fun `explicit one unit collection preserves the queue deadline and awards only its work`() {
+        val started = act(player(), "start_exploration", "quarry_stone", 8)
+        val job = started.jobs.single()
+        val first = act(started, "claim_mining_batch", job.id, seconds = 1440)
+        assertEquals(1L, first.inventory["stone"])
+        assertEquals(1, first.jobs.single().miningBatch!!.claimed)
+        assertEquals(job.startedAt, first.jobs.single().startedAt)
+        assertEquals(job.finishesAt, first.jobs.single().finishesAt)
+        assertEquals(44L, first.progression.player!!.xp)
+        assertEquals(180L, first.progression.player.workSeconds)
+        val second = act(first, "claim_mining_batch", job.id, seconds = 1440)
+        assertEquals(2L, second.inventory["stone"])
+        assertEquals(48L, second.progression.player!!.xp)
+        val rest = act(second, "claim_job", job.id, seconds = 1440)
+        assertEquals(8L, rest.inventory["stone"])
+        assertEquals(72L, rest.progression.player!!.xp)
+        assertTrue(rest.jobs.isEmpty())
+    }
+
+    @Test fun `selected collection after cancellation respects readiness and available capacity`() {
+        val started = act(player(), "start_exploration", "quarry_stone", 8)
+        val id = started.jobs.single().id
+        assertEquals("ECONOMY_JOB_NOT_READY", assertFailsWith<AuthFailure> { act(started, "claim_mining_batch", id, seconds = 179) }.code)
+        val first = act(started, "claim_mining_batch", id, seconds = 600)
+        val stopped = act(first, "cancel_exploration", id, seconds = 600)
+        assertEquals(3, stopped.jobs.single().miningBatch!!.quantity)
+        assertEquals(1, stopped.jobs.single().miningBatch!!.claimed)
+        val partial = act(stopped.copy(inventory = stopped.inventory + ("wood" to 48L)), "claim_mining_batch", id, 100, 600)
+        assertEquals(2L, partial.inventory["stone"])
+        assertEquals(2, partial.jobs.single().miningBatch!!.claimed)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { act(partial, "claim_mining_batch", id, seconds = 600) }.code)
+        val rest = act(partial.copy(inventory = partial.inventory - "wood"), "claim_mining_batch", id, 100, 600)
+        assertEquals(3L, rest.inventory["stone"])
+        assertTrue(rest.jobs.isEmpty())
+    }
+
+    @Test fun `selected collection rejects unrelated job kinds and invalid quantities`() {
+        val started = act(player(), "start_exploration", "quarry_stone", 3)
+        val job = started.jobs.single()
+        for (quantity in listOf(0L, -1L, 101L))
+            assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { act(started, "claim_mining_batch", job.id, quantity, 600) }.code)
+        val construction = EconomyJob(job.id, "construction", "home", targetLevel = 3,
+            startedAt = job.startedAt, finishesAt = job.finishesAt)
+        for (other in listOf(job.copy(actorId = "mochlik", miningBatch = null), job.copy(miningBatch = null), construction))
+            assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { act(started.copy(jobs = listOf(other)), "claim_mining_batch", other.id, seconds = 600) }.code)
+    }
 }

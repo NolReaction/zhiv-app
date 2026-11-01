@@ -17,7 +17,7 @@ export const analyticsActions: Record<string, string> = {
   start_production: "Начало производства", cancel_production: "Отмена производства", buy_production_slot: "Место производства", buy_market_slot: "Место прилавка", start_collection: "Начало сбора",
   start_garden_collection: "Сбор всех созревших ягод", claim_garden_collection: "Получение корзины урожая", claim_production: "Сбор готового производства",
   start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки", start_construction: "Начало стройки",
-  speedup_construction: "Ускорение стройки", claim_job: "Получение результата", sell: "Продажа припасов",
+  speedup_construction: "Ускорение стройки", claim_job: "Получение результата", claim_mining_batch: "Сбор части добычи", sell: "Продажа припасов",
   buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы",
   equip_fishing_rod: "Выбор удочки", equip_fishing_bait: "Выбор наживки", equip_fishing_hook: "Выбор крючка",
   refresh_fishing_shop: "Обновление лавки Плёски", start_fishing: "Начало рыбалки",

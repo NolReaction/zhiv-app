@@ -97,7 +97,7 @@ test("relic cards, confirmations and receipts price the pearl wallet with visibl
   h.switchTo("Реликвии");
   let current = h.render(); assert.match(current.html(), /Цена: 150 жемчужин/); assert.match(current.html(), /data-leaftail-currency="pearls"/);
   h.buy(offer.itemId).props.onClick(); current = h.render();
-  assert.match(current.html(), /за <strong>150 жемчужин/); assert.match(current.html(), /Жемчуг: 5\s000 → 4\s850/);
+  assert.match(current.html(), /за <strong>150 жемчужин/); assert.doesNotMatch(current.html(), /Жемчуг:|Ваш кошелёк/);
   const quote = leaftailPurchaseQuote(h.economy.snapshot, offer);
   h.economy.snapshot.wallet.pearls = 299; h.economy.snapshot.wallet.coins = 1_000_000;
   assert.match(leaftailPurchaseReason(h.economy, quote, true), /Не хватает 0,5 жемчужин/);
@@ -142,7 +142,7 @@ test("retained purchase and confirmation handlers cannot act after owner/revisio
 test("four keyboard-accessible departments expose only this delivery and a real empty state", () => {
   const h = harness(), initial = h.render();
   assert.equal(initial.nodes.filter(node => node.props.role === "tab").length, 4);
-  assert.match(initial.html(), /Ваш кошелёк/); assert.match(initial.html(), /Жемчуг/);
+  assert.doesNotMatch(initial.html(), /Ваш кошелёк|<small>Монеты<\/small>|<small>Жемчуг<\/small>/);
   const first = initial.nodes.find(node => node.props.role === "tab" && node.props["aria-selected"]);
   let prevented = false; first.props.onKeyDown({ key: "ArrowRight", preventDefault() { prevented = true; } });
   assert.equal(prevented, true); assert.match(h.render().html(), /data-leaftail-section="tackle"/);

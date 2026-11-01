@@ -38,7 +38,7 @@ const buttons = html => [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>
 
 test("warehouse expansion is ready with its owned cost and declared house and ingredient sources", () => {
   const warehouse = economyCatalog.buildings.find(building => building.id === "warehouse");
-  assert.equal(warehouse.levels.find(level => level.level === 2).requiredHomeLevel, 2);
+  assert.equal(warehouse.levels.find(level => level.level === 2).requiredHomeLevel, 1);
   for (const target of warehouse.levels.filter(level => level.level > 1)) {
     const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, ...target.requiredBuildings },
       inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 0 } });
@@ -59,7 +59,7 @@ test("warehouse expansion is ready with its owned cost and declared house and in
   const locked = render("warehouse", { snapshot: state({ buildings: { home: 1, warehouse: 1 },
     inventory: { ...first.cost.items }, wallet: { coins: first.cost.coins, pearls: 0 } }) });
   assert.match(locked, /aria-label="Недостающие условия"/);
-  assert.match(text(locked), /Дом Мохлика Сейчас ур\. 1 Нужен ур\. 2/);
+  assert.match(text(locked), /Мастерская Не построено Нужен ур\. 1/);
   assert.match(buttons(locked).find(button => /Улучшить до ур\. 2/.test(button.text)).attributes, /disabled/);
 });
 
@@ -201,7 +201,7 @@ test("late pantry expansion shows exact ordinary or relic-only costs and require
   const warehouse = economyCatalog.buildings.find(building => building.id === "warehouse");
   const ordinary = warehouse.levels.find(level => level.level === 10), final = warehouse.levels.at(-1);
   assert.deepEqual(ordinary.cost, { coins: 95_000, items: { reinforced_parts: 3, lens: 2, field_kit: 2 } });
-  assert.deepEqual(final.cost, { coins: 0, items: { ancient_core: 2, moon_crystal: 1, living_resin: 1 } });
+  assert.deepEqual(final.cost, { coins: 0, items: { ancient_core: 1, moon_crystal: 1, living_resin: 1 } });
   assert.equal(final.level, 15);
   for (const target of [ordinary, final]) {
     const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, ...target.requiredBuildings },
@@ -243,12 +243,12 @@ test("late pantry expansion shows exact ordinary or relic-only costs and require
 
 test("relic cost navigation separates an available project reward from chance finds and respects their actual home unlock", () => {
   const navigation = { canOpen() { return true; }, open() {}, explore() {} };
-  for (const [warehouse, item, inventory] of [[10, "Древнее ядро", {}], [11, "Лунный кристалл", { ancient_core: 1 }]]) {
+  for (const [warehouse, item, inventory] of [[10, "Древнее ядро", { moon_crystal: 1, living_resin: 1 }], [11, "Лунный кристалл", { ancient_core: 1, living_resin: 1 }]]) {
     const chance = render("warehouse", { snapshot: state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse }, inventory }), navigation });
     const find = buttons(chance).filter(button => /aria-label="Где искать:/.test(button.attributes));
     assert.equal(find.length, 1); assert.ok(find[0].attributes.includes(`Где искать: ${item}`));
   }
-  const snapshot = state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse: 12 }, inventory: { ancient_core: 1 } });
+  const snapshot = state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse: 12 }, inventory: { ancient_core: 1, moon_crystal: 1 } });
   const pending = render("warehouse", { snapshot, navigation });
   const pendingFinds = buttons(pending).filter(button => /aria-label="Где искать:/.test(button.attributes));
   assert.equal(pendingFinds.length, 0);
@@ -275,7 +275,7 @@ test("pantry expansion shows only its real capacity gain, without dependent buil
   assert.doesNotMatch(html, /Развитие хозяйства|Дом Мохлика|Ягодный куст|Можно развивать|Новые рецепты|другие постройки/);
   assert.match(text(html), /Доска 0 \/ 3/);
   assert.match(text(html), /Камень 0 \/ 2/);
-  assert.match(text(html), /Верёвка 0 \/ 2/);
+  assert.match(text(html), /Бревно 20 \/ 2/);
 });
 
 test("workshop upgrade presents its three current unit products with recipe details initially closed", () => {
@@ -308,7 +308,7 @@ test("the first furnace previews separate unit charcoal brick and ceramic jobs",
 
 test("home previews each opportunity with explicit collapsed disclosures for additional requirements", () => {
   const html = render("home");
-  assert.match(text(html), /Новый облик дома Можно развивать постройки до ур\. 2/);
+  assert.match(text(html), /Новый облик дома Можно развивать постройки до ур\. 3/);
   assert.match(html, /aria-roledescription="карусель"/);
   assert.doesNotMatch(html, /<details/);
   assert.match(text(html), /Каменоломня.*Печь.*Добыть камень.*Добыть глину.*Рынок между игроками/);

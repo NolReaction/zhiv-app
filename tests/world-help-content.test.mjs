@@ -83,7 +83,7 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["не могу забрать урожай", "storage"],
     ["где найти друзей", "friend-profile"],
     ["мастеркая", "production"],
-    ["клдаовая", "storage"],
+    ["клдаовая", "storage-upgrades"],
     ["магазин удочек", "plesk"],
     ["как варить уху", "campfire"],
     ["расскажи про заказы", "resident-orders"],
@@ -110,7 +110,7 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
 
 test("search responds while typing prefixes, preserving endings that resemble unfinished words", () => {
   for (const [query, expected] of [
-    ["моне", "resources"], ["моне нужжж", null], ["масте", "production"], ["клад", "storage"],
+    ["моне", "resources"], ["моне нужжж", null], ["масте", "production"], ["клад", "storage-upgrades"],
     ["плё", "plesk"], ["рыб", "fishing"], ["зак", "resident-orders"], ["строи", "construction"],
     ["строител занят", "construction"], ["как улуч дом", "construction"],
   ]) {
@@ -335,10 +335,10 @@ test("relationship guidance explains the actual limits, scoped benefits and pres
   assert.match(weekly, /семь суток после принятия/);
   assert.match(weekly, /уже полученные награды сохранятся/);
   assert.match(weekly, /условия|Условия/);
-  assert.match(preparation, /подготовка без собственных запасов/);
+  assert.match(preparation, /без запасов и ускорений/);
   assert.match(preparation, /Купленные дополнительные места позволяют готовить параллельно/);
   assert.match(preparation, /Время разных производств складывается как работа/);
-  assert.match(preparation, /не гарантирует нужный класс рыбы/);
+  assert.match(preparation, /нужный класс рыбы может не попасться за одну вылазку/);
   for (const id of ["trade-relations", "weekly-orders", "order-preparation"]) assert.deepEqual(topic(id).action.target, { kind: "orders" });
 });
 
@@ -400,7 +400,8 @@ test("fish commerce answers require an explicit sale and keep market reservation
   assert.match(answer("storage"), /улучшение в шапке кладовой/);
   assert.match(answer("storage"), /уровень 15 - 750/);
   assert.match(answer("storage"), /До уровня 10 нужны материалы и монеты, дальше - только реликвии/);
-  assert.match(answer("relics"), /уровни 11–15 - только за реликвии/);
+  assert.match(answer("relics"), /каждый уровень 11-15 стоит по одной реликвии каждого вида/);
+  assert.match(answer("storage-upgrades"), /дом 1 до 100 мест; дом 2 до 150 мест; дом 3 до 300 мест; дом 4 до 650 мест; дом 5 до 750 мест/);
   assert.match(answer("plesk"), /В «Улове» классы сначала свёрнуты. Нажмите класс и вид/);
   assert.match(answer("plesk"), /Повторный тап прибавляет 1 до доступного лимита; другой вид начинает с 1/);
   assert.match(answer("plesk"), /Поле и «Все» меняют количество. Только «Продать» спишет рыбу/);
@@ -490,7 +491,7 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.doesNotMatch(answer("mining"), /Дольше 1 ч|Смешанные смены/);
   assert.match(answer("mining"), /Забирайте доступную часть сразу.*остальная продолжает добываться/);
   assert.match(answer("mining"), /сколько готово, получено и осталось, время следующей единицы и всей партии/);
-  assert.match(answer("mining-control"), /«Забрать доступное»/);
+  assert.match(answer("mining-control"), /«Забрать 1».*одну готовую единицу.*«Всё»/);
   assert.match(answer("mining-control"), /затем подтвердите «Остановить».*готовая останется/);
   assert.match(answer("mining-control"), /столько готовой добычи, сколько помещается.*Остаток сохранится/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
@@ -574,7 +575,8 @@ test("berry ladder describes each source tier, preparation time and hero or buil
     assert.ok(ladder.includes(`${dishName}: костёр ${dish.buildingLevel}, ${dish.seconds / 60} мин`));
     assert.ok(ladder.includes(`вылазки +${meal.heroSpeedBps / 100}%, стройки +${meal.builderSpeedBps / 100}%`));
   }
-  assert.match(ladder, /Дом 1.*малина.*клубника/);
+  assert.match(ladder, /Дом 1.*малина.*клубники.*приготовьте и заберите один малиновый компот/);
+  assert.match(ladder, /У остальных ягод нет задания на готовку/);
   assert.match(ladder, /Один слот даёт один предмет/);
   assert.match(ladder, /У Мохлика блюдо даёт запас ускоряемой работы.*у строителя.*одну стройку/);
 });

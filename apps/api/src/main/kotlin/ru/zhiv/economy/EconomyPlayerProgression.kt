@@ -74,7 +74,7 @@ object EconomyPlayerProgression {
         if (player.season.id != id) player = player.copy(season = EconomyCooperationSeason(id))
         var xp = 0L; var seconds = 0L; var points = 0L; var source = "production"
         val recipes = mutableSetOf<String>()
-        if (command.action in setOf("claim_job", "claim_production", "claim_garden_collection")) before.jobs.forEach { job ->
+        if (command.action in setOf("claim_job", "claim_mining_batch", "claim_production", "claim_garden_collection")) before.jobs.forEach { job ->
             val removed = state.jobs.none { it.id == job.id }
             if (job.kind == "construction" && removed && (state.buildings[job.targetId] ?: 0) > (before.buildings[job.targetId] ?: 0)) {
                 xp += config.constructionXpPerLevel * (job.targetLevel ?: 1); source = "construction"

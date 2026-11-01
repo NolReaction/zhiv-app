@@ -79,9 +79,9 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     if (!jobs.length) return null;
     allowed = productionCollectionRewards(jobs); source = "claim";
     if (after.catalog.buildings.some(station => station.id === command.targetId)) stationId = command.targetId;
-  } else if (command.action === "claim_job") {
+  } else if (command.action === "claim_job" || command.action === "claim_mining_batch") {
     const job = before.jobs.find(item => item.id === command.targetId);
-    if (!job || job.kind === "construction") return null;
+    if (!job || job.kind === "construction" || command.action === "claim_mining_batch" && (!isMinerJob(job) || !job.miningBatch)) return null;
     const remaining = after.jobs.find(item => item.id === job.id);
     if (remaining && !(isMinerJob(job) && job.miningBatch)) return null;
     allowed = fishClassInventory(job.rewards); source = "claim";
@@ -92,7 +92,8 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
         || Date.parse(remaining.finishesAt) - Date.parse(remaining.startedAt) !== Date.parse(job.finishesAt) - Date.parse(job.startedAt)
         || remaining.miningBatch.quantity !== batch.quantity || remaining.miningBatch.unitSeconds !== batch.unitSeconds)) return null;
       const received = (remaining?.miningBatch?.claimed ?? batch.quantity) - batch.claimed;
-      if (!Number.isSafeInteger(received) || received < 1 || received > batch.quantity - batch.claimed) return null;
+      if (!Number.isSafeInteger(received) || received < 1 || received > batch.quantity - batch.claimed
+        || command.action === "claim_mining_batch" && received > command.quantity) return null;
       allowed = Object.fromEntries(Object.entries(batch.unitRewards).map(([id, quantity]) => [id, quantity * received]));
       // Each delivered unit may carry its saved rare find; use the exact inventory
       // delta below, never the next unit's newly prepared reward.

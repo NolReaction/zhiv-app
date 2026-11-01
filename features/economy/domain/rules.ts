@@ -189,7 +189,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     const fishStockCost = cost === null ? {} : debit(state, cost, fishSelection, exactSpecies);
     state.jobs.push({ ...job, ...hiddenFinds, ...(Object.keys(fishStockCost).length ? { fishStockCost } : {}), id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost: cost ?? { coins: 0, items: {} }, catalogVersion: economyCatalog.version });
   };
-  if (!["start_production", "start_exploration", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
+  if (!["start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
     case "open_ship_voyage": {
       if (command.targetId !== "port") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Некорректный запрос порта", 400);
@@ -744,14 +744,19 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...Object.entries(rewards).filter(([, quantity]) => quantity > 0).map(([item]) => item)])];
       return "Вся готовая продукция доставлена в кладовую";
     }
+    case "claim_mining_batch":
     case "claim_job": {
       const job = state.jobs.find(item => item.id === command.targetId);
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
+      if (command.action === "claim_mining_batch" && (!job.miningBatch || !isMinerJob(job)
+        || !Number.isSafeInteger(command.quantity) || command.quantity < 1 || command.quantity > 100))
+        return fail("INVALID_ECONOMY_COMMAND", "Выберите готовую добычу из заказа шахтёра");
       if (job.miningBatch && isMinerJob(job)) {
         const progress = miningBatchProgress(job, now);
         if (!progress.ready) return fail("ECONOMY_JOB_NOT_READY", "Следующая единица добычи ещё не готова");
         let current = job, received = 0;
-        for (let index = 0; index < progress.ready; index++) {
+        const limit = command.action === "claim_mining_batch" ? Math.min(progress.ready, command.quantity) : progress.ready;
+        for (let index = 0; index < limit; index++) {
           const rewards = expeditionJobRewards(current), next = { ...state, inventory: { ...state.inventory } };
           try { creditEconomyItems(next, rewards); assertEconomyStorageTransition(state, next, reservedItems); }
           catch (error) {

@@ -53,7 +53,8 @@ test("journal readiness counts only actual activated offers and customer filters
   const html = render(WorldOrderJournal, { economy });
   assert.match(html, /data-order-journal/); assert.match(html, /Все просьбы/);
   assert.ok(html.indexOf('aria-label="Заказчик"') < html.indexOf('data-order-chapter="progression"'));
-  assert.ok(html.indexOf('data-order-chapter="progression"') < html.indexOf('data-order-chapter="repeatable"'));
+  assert.doesNotMatch(html, /data-order-chapter="repeatable"/);
+  assert.match(html, /data-order-section="requests"/);
   assert.doesNotMatch(html, /role="dialog"|Угощения во вкладке|data-world-food-tab|Маленькие просьбы/);
   const plesk = render(WorldOrderJournal, { economy, residentId: "plesk" });
   assert.match(plesk, /Просьбы Плёски/); assert.doesNotMatch(plesk, /data-tutorial-order|data-resident="builder"/);
@@ -174,6 +175,11 @@ test("changing the customer keeps the contextual heading and readiness in sync w
     filter("all"); tree = journal(); boardTree = board(tree);
     assert.ok(elements(boardTree).some(entry => entry.props["data-order-chapter"] === "progression"));
     assert.ok(elements(tree).some(entry => entry.type === "h2" && entry.props.children === "Все просьбы"));
+    const { OrderSectionTabs: Sections } = await runtime.ssrLoadModule("/features/economy/ui/orders/order-section-tabs.tsx");
+    elements(boardTree).find(entry => entry.type === Sections).props.onSelect("requests");
+    boardTree = board(tree);
+    assert.ok(elements(boardTree).some(entry => entry.props["data-order-chapter"] === "repeatable"));
+    assert.ok(!elements(boardTree).some(entry => entry.props["data-order-chapter"] === "progression"));
     const introId = tutorialResidentOrder(economy.snapshot).id;
     const previousCard = elements(boardTree).find(entry => entry.props.offer?.id !== introId && entry.props.onComplete);
     assert.ok(previousCard);
@@ -233,7 +239,8 @@ test("the active main course shows only its one order and restores all later req
   assert.deepEqual(orderJournalSummary(state, now, undefined, true), { total: 0, ready: 0 });
   html = render(WorldOrderJournal, { economy, tutorialOnly: false });
   assert.match(html, /data-stage-order="true"/);
-  assert.match(html, /data-order-chapter="repeatable"/);
+  assert.match(html, /data-order-section="requests"/);
+  assert.doesNotMatch(html, /data-order-chapter="repeatable"/);
   assert.match(html, /data-guide-order-submit/);
   assert.ok(orderJournalSummary(state, now).total > 1);
   assert.deepEqual(state, completed, "pausing, skipping or completing the lesson reveals the same requests without awarding anything");

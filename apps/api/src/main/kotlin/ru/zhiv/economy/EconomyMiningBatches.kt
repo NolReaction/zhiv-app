@@ -22,14 +22,14 @@ object EconomyMiningBatches {
             .coerceAtMost(batch.quantity.toLong()).toInt()
     }
 
-    fun claim(state: EconomyState, saved: EconomyJob, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
+    fun claim(state: EconomyState, saved: EconomyJob, now: Instant, reservedItems: Map<String, Long>, requestedQuantity: Int? = null): Pair<EconomyState, String> {
         val initial = checkNotNull(saved.miningBatch)
         val ready = completed(saved, now) - initial.claimed
         if (ready <= 0) economyFailure("ECONOMY_JOB_NOT_READY", "Следующая единица добычи ещё не готова")
         var next = state
         var current = saved
         var received = 0
-        repeat(ready) {
+        repeat(minOf(ready, requestedQuantity ?: ready)) {
             val batch = checkNotNull(current.miningBatch)
             val start = Instant.parse(current.startedAt).plusSeconds(batch.claimed * batch.unitSeconds)
             val delivered = EconomyExpeditionLoot.delivery(current).copy(miningBatch = null,

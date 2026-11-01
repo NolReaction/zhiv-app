@@ -415,13 +415,13 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (adopt(result.state)) {
         // A local confirmed claim can celebrate once. Loading, polling or recovering
         // an already-applied receipt never manufactures a new completion event.
-        const completed = value.kind === "economy" && ["claim_job", "speedup_construction"].includes(value.command.action)
+        const completed = value.kind === "economy" && ["claim_job", "claim_mining_batch", "speedup_construction"].includes(value.command.action)
           ? constructionCompletions(before, result.state).filter(event => !view.completedConstructions.some(previous => previous.id === event.id)) : [];
         const cancelled = value.kind === "economy" && value.command.action === "cancel_exploration"
           && !result.state.jobs.some(job => job.id === value.command.targetId)
           && !view.snapshot?.jobs.some(job => job.id === value.command.targetId)
           && !view.cancelledExplorations?.includes(value.command.targetId) ? value.command.targetId : null;
-        const claimIntent = value.kind === "economy" && value.command.action === "claim_job" && localXpIntent?.requestId === value.command.requestId
+        const claimIntent = value.kind === "economy" && ["claim_job", "claim_mining_batch"].includes(value.command.action) && localXpIntent?.requestId === value.command.requestId
           ? localXpIntent : null;
         let gain = value.kind !== "dev" && value.kind !== "barter" && value.kind !== "neighbor" && view.snapshot?.revision === result.state.revision
           && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(claimIntent?.before ?? before, result, value.command) : null;

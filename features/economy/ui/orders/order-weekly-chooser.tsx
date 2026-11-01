@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, CalendarDays, Check, Clock3, HeartHandshake } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake } from "lucide-react";
 import { formatPearls } from "@/features/economy/domain/money";
 import { tradeRelationsState, weeklyOrderBoard } from "@/features/economy/domain/trade-relations";
 import { orderDifficulty, orderDifficultyNames } from "@/features/economy/domain/order-difficulty";
@@ -23,6 +23,7 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
   available: readonly OrderResidentId[];
 }) {
   const [quote, setQuote] = useState<WeeklyQuote | null>(null);
+  const [pageChoice, setPageChoice] = useState<{ key: string; page: number } | null>(null);
   const pending = economy.busy || economy.uncertain;
   const sent = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -35,13 +36,17 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
   const previous = tradeRelationsState(economy.snapshot).weekly;
   const expired = previous && Date.parse(previous.expiresAt) <= economy.now;
   const candidates = board.offers.filter(offer => available.includes(offer.residentId) && (customer === "all" || customer === offer.residentId));
+  const pageSize = 3, pageKey = `${economy.snapshot.ownerPublicId}:${customer}:${candidates.map(offer => offer.id).join(":")}`;
+  const pages = Math.max(1, Math.ceil(candidates.length / pageSize));
+  const page = pageChoice?.key === pageKey ? Math.min(pageChoice.page, pages - 1) : 0;
+  const visibleChoices = candidates.slice(page * pageSize, (page + 1) * pageSize);
   const selected = quote && quote.owner === economy.snapshot.ownerPublicId ? candidates.find(offer => offer.id === quote.id) : null;
   const selectedId = selected?.id;
   const titleId = useId();
   useEffect(() => { if (selectedId) heading.current?.focus({ preventScroll: true }); }, [selectedId]);
   if (board.active) return null;
   if (!board.canChoose) return <div className={styles.waiting} data-weekly-cooldown>
-    <CalendarDays size={18} aria-hidden="true" /><p>Следующее большое поручение{board.availableAt ? <> можно выбрать через <strong>{wait(board.availableAt, economy.now)}</strong>.</> : " появится позже."}<span>Репутация и награды за завершённые этапы сохраняются.</span></p>
+    <CalendarDays size={18} aria-hidden="true" /><p>Следующее поручение{board.availableAt ? <> через <strong>{wait(board.availableAt, economy.now)}</strong>.</> : " появится позже."}</p>
   </div>;
   const reason = selected && quote ? locked(economy) ? economy.uncertain ? "Проверяем последнее действие." : "Дождись подтверждения действия."
     : quote.revision !== economy.snapshot.revision ? "Хозяйство обновилось. Вернись к выбору и проверь поручение ещё раз." : null : null;
@@ -64,27 +69,30 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
   return <div className={styles.chooser} data-weekly-chooser>
     {!selected ? <>
       {expired && <p className={styles.expired} role="status">Срок прошлого поручения закончился. Репутация и награды за сданные этапы сохранены.</p>}
-      <div className={styles.choices}>{candidates.map(offer => {
+      {pages > 1 && <nav className={styles.pages} aria-label="Страницы поручений">
+        <span role="status">{page * pageSize + 1}-{Math.min((page + 1) * pageSize, candidates.length)} из {candidates.length}</span>
+        <button type="button" aria-label="Предыдущие поручения" disabled={page === 0} onClick={() => setPageChoice({ key: pageKey, page: page - 1 })}><ChevronLeft size={16} aria-hidden="true" /></button>
+        <button type="button" aria-label="Следующие поручения" disabled={page === pages - 1} onClick={() => setPageChoice({ key: pageKey, page: page + 1 })}><ChevronRight size={16} aria-hidden="true" /></button>
+      </nav>}
+      <div className={styles.choices}>{visibleChoices.map(offer => {
         const resident = orderResidents[offer.residentId];
         return <article className={styles.choice} key={offer.id} data-weekly-choice={offer.residentId}>
           <header><resident.Portrait className={styles.portrait} /><div><p>{resident.name}</p><h4>{offer.name}</h4></div></header>
-          <p className={styles.effort} data-order-difficulty={orderDifficulty(offer.effortSeconds, true)}>{orderDifficultyNames[orderDifficulty(offer.effortSeconds, true)]} поручение · жемчуг за последний этап</p>
+          <p className={styles.effort} data-order-difficulty={orderDifficulty(offer.effortSeconds, true)}>{orderDifficultyNames[orderDifficulty(offer.effortSeconds, true)]} поручение</p>
           <div className={styles.rewards}><span><ItemIcon itemId="coins" size={16} />{number(offer.coins)}</span>{(offer.pearls ?? 0) > 0 && <span data-weekly-pearls><ItemIcon itemId="pearls" size={16} />{formatPearls(offer.pearls ?? 0)}</span>}<span><HeartHandshake size={14} aria-hidden="true" />+{number(offer.reputationXp)} реп.</span></div>
-          <p className={styles.effort}><Clock3 size={13} aria-hidden="true" />Около {worldDuration(offer.effortSeconds)} работы с нуля{offer.fishingUncertain ? " · улов случаен" : ""}</p>
           <button type="button" disabled={locked(economy) || pending} onClick={() => review(offer)} aria-label={`Посмотреть поручение: ${offer.name}, ${resident.name}`}>Посмотреть три этапа</button>
         </article>;
       })}</div>
       {!candidates.length && <p className={styles.intro}>У этого жителя пока нет доступного большого поручения.</p>}
     </> : <section className={styles.review} aria-labelledby={titleId} data-weekly-review>
       <button type="button" className={styles.back} disabled={pending} onClick={() => setQuote(null)}><ArrowLeft size={14} aria-hidden="true" />К выбору поручения</button>
-      <header><p>{orderResidents[selected.residentId].name} · {orderDifficultyNames[orderDifficulty(selected.effortSeconds, true)].toLocaleLowerCase("ru-RU")} поручение</p><h4 id={titleId} ref={heading} tabIndex={-1}>{selected.name}</h4>{selected.description && <p>{selected.description}</p>}</header>
+      <header><p>{orderResidents[selected.residentId].name} · {orderDifficultyNames[orderDifficulty(selected.effortSeconds, true)].toLocaleLowerCase("ru-RU")} поручение</p><h4 id={titleId} ref={heading} tabIndex={-1}>{selected.name}</h4></header>
       <ol className={styles.stages}>{selected.stages.map((stage, index) => <li key={stage.id}>
         <div className={styles.stageHeading}><span>{index + 1}</span><h5>{stage.name}</h5></div>
-        {stage.description && <p>{stage.description}</p>}
         <ul aria-label={`Товары для этапа ${index + 1}`}>{Object.entries(stage.items).map(([id, amount]) => <li key={id}><ProductIcon state={economy.snapshot} itemId={id} size={19} /><span>{itemName(economy.snapshot, id)}</span><strong>×{number(amount)}</strong></li>)}</ul>
-        <div className={styles.stageReward}><span><ItemIcon itemId="coins" size={14} />{number(stage.coins)}</span>{(stage.pearls ?? 0) > 0 && <span data-weekly-stage-pearls><ItemIcon itemId="pearls" size={14} />{formatPearls(stage.pearls ?? 0)}</span>}<span>+{number(stage.reputationXp ?? 0)} репутации</span><span>≈ {worldDuration(stage.effortSeconds ?? 0)} работы</span></div>
+        <div className={styles.stageReward}><span><ItemIcon itemId="coins" size={14} />{number(stage.coins)}</span>{(stage.pearls ?? 0) > 0 && <span data-weekly-stage-pearls><ItemIcon itemId="pearls" size={14} />{formatPearls(stage.pearls ?? 0)}</span>}<span>+{number(stage.reputationXp ?? 0)} репутации</span></div>
       </li>)}</ol>
-      <p className={styles.promise}><CalendarDays size={16} aria-hidden="true" /><span>Семь дней на все этапы. Каждый этап оплачивается отдельно; уже полученные награды сохранятся, даже если срок закончится.</span></p>
+      <p className={styles.promise}><CalendarDays size={16} aria-hidden="true" /><span>7 дней на три этапа. Награда за каждый этап, жемчуг за последний.</span></p>
       {reason && <p className={styles.warning} role="status">{reason}</p>}
       <button type="button" className={styles.accept} disabled={Boolean(reason) || pending} onClick={accept}><Check size={16} aria-hidden="true" />{pending ? "Подтверждаем…" : "Взять поручение на 7 дней"}</button>
     </section>}

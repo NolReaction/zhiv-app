@@ -288,6 +288,9 @@ test("partial mining claims celebrate only the delivered prefix and preserve the
   const before = state(4, [trip], { stone: 9 }), after = state(5, [remaining], { stone: 11, moon_crystal: 1 });
   const event = inventoryGainFromReceipt(before, result(after), command("claim_job", trip.id, 4));
   assert.deepEqual(event.items, [{ itemId: "stone", quantity: 2 }, { itemId: "moon_crystal", quantity: 1 }]);
+  assert.deepEqual(inventoryGainFromReceipt(before, result(after), command("claim_mining_batch", trip.id, 4, 2)).items, event.items);
+  assert.equal(inventoryGainFromReceipt(before, result(after), command("claim_mining_batch", trip.id, 4, 1)), null,
+    "a selected receipt cannot credit more units than the player requested");
   assert.equal(event.stationId, "quarry"); assert.equal(event.expedition, undefined);
   assert.equal(inventoryGainFromReceipt(before, result({ ...after, jobs: [trip] }), command("claim_job", trip.id, 4)), null);
   const last = inventoryGainFromReceipt(after, result(state(6, [], { stone: 13, moon_crystal: 1 })), command("claim_job", trip.id, 5));

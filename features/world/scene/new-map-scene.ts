@@ -108,6 +108,7 @@ import { drawLopukhWoodpile } from "@/features/world/characters/lopukh/lopukh-wo
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 import { drawLeaftailBoatArrival } from "@/features/world/characters/leaftail/leaftail-boat-painter";
 import { drawTradeShipSprite, TRADE_SHIP_SPRITE } from "@/features/world/objects/trade-ship/trade-ship-sprite";
+import { tradeShipCargo } from "./trade-ship-cargo";
 import { drawTradeShipLighting } from "@/features/world/objects/trade-ship/trade-ship-lighting";
 import type { TradeShipMotion } from "@/features/world/objects/trade-ship/trade-ship-motion";
 import { createTradeShipPreviewArtwork } from "@/features/world/dev/trade-ship-preview-artwork";
@@ -192,6 +193,7 @@ export type NewMapPaintPreview = {
   merchantBoat?: ReturnType<typeof leaftailBoatArrivalFrame>;
   tradeShipImage?: HTMLImageElement | null;
   tradeShipMotion?: TradeShipMotion;
+  tradeShipCargo?: ReturnType<typeof tradeShipCargo>;
   tradeShipKind?: SceneTradeShipFrame["kind"];
 };
 
@@ -366,7 +368,7 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
         && (preview.tradeShipKind === "arrival" || WORLD_DEV_ENABLED && dev?.tradeShipPreview)) {
         // Shared atmosphere below handles night; tinting the sprite here would darken it twice.
         drawTradeShipSprite(ground, preview.tradeShipImage, { ...preview.tradeShipMotion,
-          time: elapsed, night: 0, still, water: true });
+          time: elapsed, night: 0, still, water: true, cargo: preview.tradeShipCargo });
       }
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
@@ -1045,6 +1047,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
     const cooking = cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev));
     const partner = socialPartnerPosition("mochlik");
+    const ship = selectedTradeShip();
     return { scene: world, water: dev?.waterSurface === false ? undefined : state.water, trees, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
       residents: residentFrames().map(resident => resident.id === "plesk"
         ? withForestWaterBuoyancy(resident, dev?.waterSurface === false ? undefined : state.water, reducedMotion(options, dev)) : resident),
@@ -1055,8 +1058,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       residentPresentation: residentScenePresentation(state, world),
       merchantBoat: state.leaftailBoat ? leaftailBoatArrivalFrame(state.leaftailBoat) : null,
       tradeShipImage: tradeShipArtwork.getImage(),
-      tradeShipMotion: selectedTradeShip()?.motion,
-      tradeShipKind: selectedTradeShip()?.kind,
+      tradeShipMotion: ship?.motion,
+      tradeShipCargo: ship?.kind === "arrival" ? tradeShipCargo(options.economyShip, ship.motion.phase === "departing") : [],
+      tradeShipKind: ship?.kind,
       mining: forestJourneyMiningFrame(state,world,reducedMotion(options,dev)),
       cooking: cooking ? { ...cooking, direction: dev?.direction ?? cooking.direction } : null,
       productions: forestProductionFrames(state.economyProduction, world, visuals, explorationNow(), state.elapsed, dev?.showBuildings !== false),

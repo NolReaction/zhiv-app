@@ -12,6 +12,7 @@ class EconomyRecipeUnlockTest {
     private val now = Instant.parse("2026-11-01T12:00:00Z")
     private val catalog = EconomyRules.catalog
     private val unlocks = mapOf(
+        "grow_strawberries" to mapOf("cook_compote" to 1L),
         "make_trade_crate" to mapOf("make_planks" to 3L, "make_rope" to 1L), "make_tools" to mapOf("make_metal_parts" to 2L),
         "make_ceramic_jar" to mapOf("fire_bricks" to 2L), "make_glass_bottle" to mapOf("make_glass" to 2L),
         "grind_lens" to mapOf("make_glass_bottle" to 1L), "assemble_field_kit" to mapOf("make_research_gear" to 1L),
@@ -32,7 +33,7 @@ class EconomyRecipeUnlockTest {
         assertEquals(before, economyJson.encodeToString(state), "Rejected starts cannot spend or alter jobs")
     }
 
-    @Test fun `six crafting lessons require personally claimed results and survive persistence`() {
+    @Test fun `crafting lessons and strawberry compote require personally claimed results and survive persistence`() {
         unlocks.forEach { (target, required) -> required.forEach { (prerequisite, count) ->
             assertEquals(required, catalog.recipes.single { it.id == target }.requiredRecipes)
             val initial = supplied(target, prerequisite, count)
@@ -58,10 +59,10 @@ class EconomyRecipeUnlockTest {
         } }
     }
 
-    @Test fun `berries open at their actual level without crafting lessons or a kitchen`() {
-        catalog.recipes.filter { it.buildingId == "garden" }.forEach { assertEquals(emptyMap(), it.requiredRecipes, it.id) }
+    @Test fun `berries other than strawberries open at their actual level without crafting lessons or a kitchen`() {
+        catalog.recipes.filter { it.buildingId == "garden" && it.id != "grow_strawberries" }.forEach { assertEquals(emptyMap(), it.requiredRecipes, it.id) }
         assertEquals(emptyMap(), catalog.recipes.single { it.id == "cook_strawberry_compote" }.requiredRecipes)
-        catalog.recipes.filter { it.buildingId == "garden" && it.collection != null && !it.retired }.forEach { crop ->
+        catalog.recipes.filter { it.buildingId == "garden" && it.collection != null && !it.retired && it.id != "grow_strawberries" }.forEach { crop ->
             val initial = EconomyRules.initial()
             val state = initial.copy(buildings = initial.buildings + mapOf("home" to crop.requiredHomeLevel, "garden" to crop.buildingLevel))
             assertEquals(emptyMap(), state.progression.recipes)

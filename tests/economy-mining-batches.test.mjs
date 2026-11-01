@@ -114,3 +114,86 @@ test("a batch earns the same rare-clock work and collections as identical indivi
   assert.deepEqual(batch.progression.collections, single.progression.collections);
   assert.equal(batch.progression.player?.xp, single.progression.player?.xp);
 });
+
+test("explicit collection takes one ready unit, keeps the original deadline and gives XP only for that unit", () => {
+  const state = player(3); act(state, "start_exploration", "quarry_stone", 10);
+  const job = structuredClone(state.jobs[0]);
+  act(state, "claim_mining_batch", job.id, 1, now + 1800_000);
+  assert.equal(state.inventory.stone, 1); assert.equal(state.jobs[0].miningBatch.claimed, 1);
+  assert.equal(state.jobs[0].startedAt, job.startedAt); assert.equal(state.jobs[0].finishesAt, job.finishesAt);
+  assert.equal(state.progression.routes.quarry_stone, 1); assert.equal(state.progression.player.workSeconds, 180);
+  assert.equal(state.progression.player.xp, 44);
+  act(state, "claim_mining_batch", job.id, 1, now + 1800_000);
+  assert.equal(state.inventory.stone, 2); assert.equal(state.progression.player.xp, 48);
+  act(state, "claim_job", job.id, 1, now + 1800_000);
+  assert.equal(state.inventory.stone, 10); assert.equal(state.progression.player.xp, 80); assert.equal(state.jobs.length, 0);
+});
+
+test("requested collection is bounded by readiness, storage and the saved queue, including stopped work", () => {
+  const state = player(); act(state, "start_exploration", "quarry_stone", 8);
+  const id = state.jobs[0].id;
+  assert.throws(() => act(state, "claim_mining_batch", id, 1, now + 179_000), { code: "ECONOMY_JOB_NOT_READY" });
+  act(state, "claim_mining_batch", id, 1, now + 600_000);
+  act(state, "cancel_exploration", id, 1, now + 600_000);
+  assert.equal(state.jobs[0].miningBatch.quantity, 3); assert.equal(state.jobs[0].miningBatch.claimed, 1);
+  state.inventory.wood = 48;
+  act(state, "claim_mining_batch", id, 100, now + 600_000);
+  assert.equal(state.inventory.stone, 2); assert.equal(state.jobs[0].miningBatch.claimed, 2);
+  const saved = structuredClone(state);
+  assert.throws(() => act(state, "claim_mining_batch", id, 1, now + 600_000), { code: "ECONOMY_STORAGE_FULL" });
+  assert.deepEqual(state, saved);
+  delete state.inventory.wood;
+  act(state, "claim_mining_batch", id, 100, now + 600_000);
+  assert.equal(state.inventory.stone, 3); assert.equal(state.jobs.length, 0);
+});
+
+test("a selected claim cannot claim a different job kind or an invalid quantity", () => {
+  const state = player(); act(state, "start_exploration", "quarry_stone", 3);
+  for (const quantity of [0, -1, 1.5, 101, NaN]) {
+    const saved = structuredClone(state);
+    assert.throws(() => act(state, "claim_mining_batch", state.jobs[0].id, quantity, now + 600_000), { code: "INVALID_ECONOMY_COMMAND" });
+    assert.deepEqual(state, saved);
+  }
+  for (const patch of [{ actorId: "mochlik" }, { miningBatch: null }, { kind: "construction" }]) {
+    const other = { ...state, jobs: [{ ...state.jobs[0], ...patch }] }, saved = structuredClone(other);
+    assert.throws(() => act(other, "claim_mining_batch", other.jobs[0].id, 1, now + 600_000), { code: "INVALID_ECONOMY_COMMAND" });
+    assert.deepEqual(other, saved);
+  }
+});
+
+test("one-by-one collection preserves rare finds, rare work, collections and XP compared with collect-all", () => {
+  const all = player(5), each = player(5);
+  const clock = { version: 1, remainingSeconds: 180, itemId: economyCatalog.rareDrops.itemIds[0] };
+  all.minerRareDropState = { ...clock }; each.minerRareDropState = { ...clock };
+  act(all, "start_exploration", "quarry_stone", 10); act(each, "start_exploration", "quarry_stone", 10);
+  act(all, "claim_job", all.jobs[0].id, 1, now + 1800_000);
+  for (let i = 0; i < 10; i++) act(each, "claim_mining_batch", each.jobs[0].id, 1, now + 1800_000);
+  assert.deepEqual(each.inventory, all.inventory); assert.deepEqual(each.minerRareDropState, all.minerRareDropState);
+  assert.deepEqual(each.progression.routes, all.progression.routes); assert.deepEqual(each.progression.collections, all.progression.collections);
+  assert.equal(each.progression.player.xp, all.progression.player.xp);
+  assert.equal(each.progression.player.workSeconds, all.progression.player.workSeconds); assert.equal(each.jobs.length, 0);
+});
+
+test("DEV partial receipt is owner-bound and replay-safe, with quantity in its signature", async () => {
+  const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+  const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
+  const { economyCommandSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+  identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests();
+  const p = identities.createDevIdentity("Шахтёр", crypto.randomUUID());
+  economy.getDevEconomy(p.token, now);
+  const initial = player(); act(initial, "start_exploration", "quarry_stone", 5);
+  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state = initial;
+  const before = economy.getDevEconomy(p.token, now + 900_000);
+  const request = economyCommandSchema.parse({ requestId: crypto.randomUUID(), ownerPublicId: before.ownerPublicId,
+    expectedRevision: before.revision, action: "claim_mining_batch", targetId: before.jobs[0].id, quantity: 1, totalPrice: 0 });
+  const done = economy.commandDevEconomy(p.token, request, now + 900_000);
+  assert.equal(done.state.inventory.stone, 1); assert.equal(done.state.jobs[0].miningBatch.claimed, 1);
+  assert.equal(done.state.progression.player.xp, 44);
+  const replay = economy.commandDevEconomy(p.token, request, now + 901_000);
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.state.inventory, done.state.inventory);
+  assert.deepEqual(replay.state.progression, done.state.progression);
+  assert.throws(() => economy.commandDevEconomy(p.token, { ...request, quantity: 2 }, now + 902_000), { code: "ECONOMY_REQUEST_CONFLICT" });
+  assert.throws(() => economy.commandDevEconomy(p.token, { ...request, requestId: crypto.randomUUID() }, now + 902_000), { code: "ECONOMY_REVISION_CONFLICT" });
+  const other = identities.createDevIdentity("Другой шахтёр", crypto.randomUUID()); economy.getDevEconomy(other.token, now);
+  assert.throws(() => economy.commandDevEconomy(other.token, request, now + 902_000), { code: "ECONOMY_OWNER_CHANGED" });
+});

@@ -1,10 +1,10 @@
-.strip { position: sticky; top: -1px; z-index: 2; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: stretch; gap: 2px; min-width: 0; width: 100%; max-width: 100%; padding: 3px 0 6px; background: #ede6cb; border-bottom: 1px solid #b7bd9355; }
-.strip > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 74px; padding: 7px 3px 6px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #5c684d; cursor: pointer; font: inherit; transition: background-color .15s, border-color .15s; }
+.strip { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: stretch; gap: 2px; min-width: 0; width: 100%; max-width: 100%; padding: 3px 0 6px; background: #ede6cb; border-bottom: 1px solid #b7bd9355; }
+.strip > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0; min-height: 62px; padding: 5px 2px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #5c684d; cursor: pointer; font: inherit; transition: background-color .15s, border-color .15s; }
 .strip > button:hover:not(:disabled) { border-color: #9ca47d80; background: #e2e5cb80; }
 .strip > button[aria-selected="true"] { border-color: var(--resident-accent, #70825b); background: var(--resident-tint, #dce3c5); color: var(--resident-ink, #3c5439); box-shadow: inset 0 -2px var(--resident-accent, #70825b); }
 .strip > button:focus-visible { outline: 2px solid #4c764a; outline-offset: -2px; }
 .strip > button:disabled { opacity: .6; cursor: default; }
-.photo { position: relative; display: grid; place-items: center; flex-shrink: 0; box-sizing: border-box; width: 100%; max-width: 80px; aspect-ratio: 1; overflow: visible; color: var(--resident-ink, #526746); border: 1px solid var(--resident-accent, #a0ac83); border-radius: 4px; background: linear-gradient(145deg, #ffffff80, var(--resident-tint, #d9dfc5)); box-shadow: 1px 2px 0 #84906620; }
+.photo { position: relative; display: grid; place-items: center; flex-shrink: 0; box-sizing: border-box; width: 100%; max-width: 36px; aspect-ratio: 1; overflow: visible; color: var(--resident-ink, #526746); border: 1px solid var(--resident-accent, #a0ac83); border-radius: 4px; background: linear-gradient(145deg, #ffffff80, var(--resident-tint, #d9dfc5)); box-shadow: 1px 2px 0 #84906620; }
 .portrait { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 .photo > svg { width: 52%; height: 52%; }
 .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(9px, 1.7cqi, 12px); font-weight: 650; line-height: 1.3; }

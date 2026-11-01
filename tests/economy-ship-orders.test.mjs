@@ -63,6 +63,20 @@ test("manifest contains one obtainable cargo per difficulty, ten visible pearls 
   unchangedFailure(state, "open_ship_voyage", "port", "ECONOMY_SHIP_ACTIVE", now + sixHours);
 });
 
+test("shared Kotlin seed produces identical early home three difficulty and rewards", () => {
+  const state = fresh();
+  state.buildings = { home: 3, garden: 1, woodlot: 2, quarry: 2, workshop: 3, kiln: 3, dryer: 1,
+    bridge: 1, lighthouse: 1, warehouse: 1 };
+  const voyage = ship.createShipVoyage(state, Date.parse("2026-11-01T12:00:00Z"), voyageId);
+  assert.deepEqual(voyage.orders.map(order => order.templateId), ["driftwood_post", "sailmakers", "storm_watch"]);
+  assert.deepEqual(voyage.orders.map(order => order.difficulty), ["easy", "medium", "hard"]);
+  assert.deepEqual(voyage.orders.map(order => order.rewardCoins), [525, 1575, 2940]);
+  assert.deepEqual(voyage.orders.map(order => order.rewardItems), [{}, {}, { dried_berries: 2 }]);
+  assert.deepEqual(voyage.orders.map(order => order.items), [{ planks: 6, rope: 4 }, { cloth: 5, rope: 8 },
+    { berry_compote: 12, dried_berries: 10, rope: 8 }]);
+  assert.equal(voyage.rewardPearls, 20);
+});
+
 test("gifted advanced goods do not unlock inaccessible cargo or rewards", () => {
   const state = fresh(); state.inventory.field_kit = 100; state.inventory.cranberry_glaze = 100;
   assert.ok(!ship.eligibleShipTemplates(state).some(template => ["field_research", "festive_provisions"].includes(template.id)));

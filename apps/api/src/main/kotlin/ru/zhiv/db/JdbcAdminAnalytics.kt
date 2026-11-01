@@ -12,7 +12,7 @@ import java.time.ZoneOffset
 import java.util.UUID
 
 private const val technicalKinds = "'legacy_conversion','starting_pack','account_merge','merged_receipt','dev_grant_currency','dev_grant_item','dev_set_building_level','grant_economy','admin_adjustment'"
-private const val jobKinds = "'claim_job','claim_garden_collection','claim_production','speedup_construction','start_collection','start_garden_collection','cancel_production','cancel_exploration'"
+private const val jobKinds = "'claim_job','claim_mining_batch','claim_garden_collection','claim_production','speedup_construction','start_collection','start_garden_collection','cancel_production','cancel_exploration'"
 private const val escrowKinds = "'market_create','market_cancel','barter_create','barter_cancel'"
 private const val passiveKinds = "'market_sell','market_sold','barter_exchange'"
 private const val constructionStartKinds = "'start_construction','start_tutorial_workshop'"

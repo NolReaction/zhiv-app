@@ -25,7 +25,7 @@
     ]
   },
   {
-    "label": "campfire-opens-strawberry-meals-without-cooking-history",
+    "label": "campfire-without-the-first-claimed-compote",
     "buildings": {
       "home": 1,
       "garden": 1,
@@ -42,16 +42,16 @@
       "plesk_compote_break",
       "plesk_picnic_lunch",
       "plesk_evening_basket",
-      "builder_drink_and_firewood",
-      "plesk_strawberry_lunch",
-      "starter_fresh_berries"
+      "builder_drink_and_firewood"
     ],
     "missing": [
-      "plesk_blueberry_lunch"
+      "plesk_blueberry_lunch",
+      "plesk_strawberry_lunch",
+      "starter_fresh_berries"
     ]
   },
   {
-    "label": "starter-workshop-and-campfire-open-the-strawberry-menu",
+    "label": "first-claimed-compote-opens-the-strawberry-menu",
     "buildings": {
       "home": 1,
       "garden": 1,
@@ -74,7 +74,10 @@
       "plesk_blueberry_lunch",
       "plesk_smoked_currants",
       "plesk_soup_and_compote"
-    ]
+    ],
+    "recipes": {
+      "cook_compote": 1
+    }
   },
   {
     "label": "house-two-does-not-upgrade-the-bush",
@@ -98,7 +101,10 @@
       "plesk_blueberry_lunch",
       "plesk_berry_assortment",
       "builder_blueberry_snack"
-    ]
+    ],
+    "recipes": {
+      "cook_compote": 1
+    }
   },
   {
     "label": "upgraded-bush-opens-blueberries-without-cooking-history",
@@ -116,14 +122,14 @@
     ],
     "present": [
       "plesk_picnic_lunch",
-      "plesk_strawberry_lunch",
       "plesk_blueberry_lunch",
       "plesk_berry_assortment",
       "builder_blueberry_snack"
     ],
     "missing": [
       "plesk_blackberry_feast",
-      "plesk_winter_table"
+      "plesk_winter_table",
+      "plesk_strawberry_lunch"
     ]
   },
   {

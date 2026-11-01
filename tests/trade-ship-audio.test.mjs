@@ -12,6 +12,7 @@ after(() => vite.close());
 const { createTradeShipAudioController, TRADE_SHIP_ARRIVAL_AUDIO: contact } =
   await vite.ssrLoadModule("/features/world/audio/trade-ship-audio.ts");
 const { sampleTradeShipMotion } = await vite.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
+const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
 
 const at = contact.contactAt;
 const frame = { ownerId: "world-owner-a", sceneId: "forest-a", soundscape: true, loops: [], musicDuck: 1,
@@ -150,7 +151,7 @@ test("arrival sound is original mono PCM48 with headroom, a smooth tail and a cl
   const catalog = JSON.parse(await readFile(root + "/features/audio/catalog/audio-catalog.json", "utf8"));
   const cue = catalog.cues.find(cue => cue.id === "ship.arrival"), asset = catalog.assets.find(asset => asset.id === cue.assets[0]);
   assert.equal(cue.bus, "world"); assert.equal(cue.mode, "one-shot"); assert.equal(cue.maxInstances, 1);
-  assert.equal(cue.pitchVariation, 0); assert.equal(cue.gainDb, -6); assert.ok(cue.cooldownMs >= 2600);
+  assert.equal(cue.pitchVariation, 0); assert.equal(cue.gainDb, 0); assert.ok(cue.cooldownMs >= 2600);
   assert.equal(asset.status, "ready"); assert.match(asset.license.sourceUrl, /manifest\.json$/);
   const bytes = await readFile(root + "/public" + asset.src);
   assert.equal(bytes.toString("ascii", 0, 4), "RIFF"); assert.equal(bytes.toString("ascii", 8, 12), "WAVE");
@@ -170,9 +171,20 @@ test("arrival sound is original mono PCM48 with headroom, a smooth tail and a cl
     square += value * value; sum += value; peak = Math.max(peak, Math.abs(value));
     if (n >= count - 4800) tail += value * value;
   }
-  assert.ok(20 * Math.log10(peak) <= -8.99, "no aggressive horn peaks");
+  assert.ok(20 * Math.log10(peak) <= -4.99, "the source retains five decibels of peak headroom");
   const rmsDb = 20 * Math.log10(Math.sqrt(square / count));
-  assert.ok(rmsDb >= -23 && rmsDb <= -20, "peak-safe mastering keeps a quiet sustained body");
+  assert.ok(rmsDb >= -19 && rmsDb <= -17, "a sustained body survives the default action and master attenuation");
+  const f = fixture();
+  const overview = { ...frame, listener: { position: { x: 640, y: 640 }, viewportWidth: 1280, zoom: .5, detail: 0 } };
+  f.update(f.input(at - .01, { frame: overview })); f.update(f.input(at + .01, { frame: overview }));
+  const eventGain = f.played[0].gain;
+  const outputGain = 10 ** (cue.gainDb / 20) * eventGain * DEFAULT_AUDIO_SETTINGS.buses.world * DEFAULT_AUDIO_SETTINGS.master;
+  const outputRmsDb = rmsDb + 20 * Math.log10(outputGain);
+  assert.ok(outputRmsDb >= -31.5 && outputRmsDb <= -26,
+    `default overview mix stays an audible arrival signal, measured ${outputRmsDb.toFixed(2)} dBFS before equal-power panning`);
+  assert.ok(20 * Math.log10(peak * outputGain) < -13, "default output remains well below the mix limiter");
+  assert.ok(peak * 10 ** (cue.gainDb / 20) < .6, "full user sliders remain peak-safe without compensating for their volume choices");
+  f.dispose();
   assert.ok(Math.abs(sum / count) < .0001, "no DC bias");
   assert.ok(Math.sqrt(tail / 4800) < .0001, "pressure fully releases before the file ends");
   assert.ok(Math.abs(samples.readInt16LE(0)) <= 2 && Math.abs(samples.readInt16LE(samples.length - 2)) <= 2);

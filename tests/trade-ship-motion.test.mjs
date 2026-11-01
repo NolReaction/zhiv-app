@@ -70,6 +70,7 @@ test("departure first slides strictly right, then drifts slightly left/down whil
   assert.ok(peakSpeed < 60);
   const turned = sampleTradeShipMotion("departing", voyage.backingDuration + voyage.turnDuration);
   assert.equal(turned.heading, voyage.departureHeading);
+  assert.equal(turned.heading, -.3, "the turn is half the previous -.6 rad without changing the backing leg");
   assert.ok(turned.y < docked.y + docked.width * .1, "the picture turns before the downward exit takes it off the map");
   assert.ok(cleared.x - previous.x < docked.width * .4, "only a small leftward drift after clearing");
   const departed = advanceTradeShipMotion(departing, voyage.departureDuration);

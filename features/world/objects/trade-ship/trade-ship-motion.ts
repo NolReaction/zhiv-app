@@ -21,7 +21,7 @@ export type TradeShipMotion = Readonly<{
 
 export const TRADE_SHIP_VOYAGE = {
   arrivalDuration: 18, departureDuration: 22, backingDuration: 6, turnDuration: 6,
-  arrivalHeading: .28, departureHeading: -.6,
+  arrivalHeading: .28, departureHeading: -.3,
 } as const;
 export const TRADE_SHIP_GANGWAY = { deployDuration: 2.4, retractDuration: 2 } as const;
 const DEFAULT_BERTH: TradeShipBerth = { x: 705, y: 1102, width: 310 };

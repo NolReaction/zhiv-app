@@ -152,12 +152,18 @@ test("the economy construction hub shares house-three stage-order gates with the
   assert.equal(state.storage.capacity, 50);
 });
 
-test("every berry opens at its house and bush level without a cooking lesson", () => {
-  for (const [level, itemId] of [[1, "strawberries"], [2, "blueberries"], [3, "currants"], [4, "blackberries"], [5, "cranberries"]]) {
+test("only strawberry needs a claimed compote while later berries open by their bush level", () => {
+  const first = snapshot({ progression: { recipes: {} }, inventory: { berry_compote: 1 } });
+  const locked = render("production", controller({ snapshot: first }), "garden");
+  assert.equal(productionBlocked(locked, "strawberries"), true);
+  assert.match(locked, /Приготовьте и заберите: Малиновый компот \(0 \/ 1\)/);
+  first.progression.recipes.cook_compote = 1;
+  assert.equal(productionBlocked(render("production", controller({ snapshot: first }), "garden"), "strawberries"), false);
+  for (const [level, itemId] of [[2, "blueberries"], [3, "currants"], [4, "blackberries"], [5, "cranberries"]]) {
     const state = snapshot({ buildings: { home: level, garden: level, warehouse: 1 }, progression: { recipes: {} } });
     const html = render("production", controller({ snapshot: state }), "garden");
     assert.equal(productionBlocked(html, itemId), false, itemId);
-    assert.doesNotMatch(html, /Приготовьте и заберите:/);
+    assert.equal(productionBlocked(html, "strawberries"), true, "later bush tiers do not grant the separate strawberry lesson");
     if (level > 1) {
       state.buildings.garden--;
       assert.equal(productionBlocked(render("production", controller({ snapshot: state }), "garden"), itemId), true, `${itemId} still requires its bush tier`);

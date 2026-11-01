@@ -1,4 +1,5 @@
 import { drawTradeShipWater } from "./trade-ship-water";
+import { drawTradeShipCargo, type TradeShipCargo } from "./trade-ship-cargo";
 
 /** The supplied PNG is the single master; all coordinates below refer to its unchanged pixels. */
 export const TRADE_SHIP_SPRITE = {
@@ -13,6 +14,7 @@ export type TradeShipSpriteFrame = {
   x: number; y: number; width: number;
   time?: number; night?: number; still?: boolean; facing?: "left" | "right"; heading?: number;
   water?: boolean; velocityX?: number; velocityY?: number;
+  cargo?: TradeShipCargo;
 };
 
 const finite = (value: number | undefined, fallback = 0) => Number.isFinite(value) ? value! : fallback;
@@ -73,6 +75,13 @@ export function drawTradeShipSprite(ctx: CanvasRenderingContext2D, image: Canvas
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
     const box = sprite.image;
     ctx.drawImage(image, box.x, box.y, box.width, box.height);
+    if (frame.cargo?.some(value => value > 0)) {
+      ctx.save();
+      try {
+        ctx.translate(box.x, box.y); ctx.scale(box.width / sprite.sourceWidth, box.height / sprite.sourceHeight);
+        drawTradeShipCargo(ctx, frame.cargo);
+      } finally { ctx.restore(); }
+    }
     ctx.filter = "none";
     if (!frame.still) paintSteam(ctx, time);
   } finally { ctx.restore(); }

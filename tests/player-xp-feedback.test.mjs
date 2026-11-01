@@ -27,6 +27,7 @@ const cache = () => { const data = new Map(); return { getItem: key => data.get(
 test("XP receipt requires the exact owner, revision, positive delta and an awarding action", () => {
   const gain = playerXpGainFromReceipt(state(), result(state(54, 1)), command());
   assert.equal(gain.xp, 25); assert.equal(gain.fromLevel, 1); assert.equal(gain.toLevel, 2);
+  assert.equal(playerXpGainFromReceipt(state(), result(state(33, 1)), command({ action: "claim_mining_batch" })).xp, 4);
   for (const [before, after, input] of [
     [state(), state(54, 1, other), command()], [state(), state(54, 2), command()],
     [state(54, 1), state(54, 1), command()], [state(), state(29, 1), command()],

@@ -11,6 +11,7 @@ const { economyCatalog: catalog } = await vite.ssrLoadModule("/features/economy/
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const now = Date.parse("2026-11-01T12:00:00Z");
 const unlocks = {
+  grow_strawberries: { cook_compote: 1 },
   make_trade_crate: { make_planks: 3, make_rope: 1 }, make_tools: { make_metal_parts: 2 },
   make_ceramic_jar: { fire_bricks: 2 }, make_glass_bottle: { make_glass: 2 },
   grind_lens: { make_glass_bottle: 1 }, assemble_field_kit: { make_research_gear: 1 },
@@ -60,10 +61,10 @@ for (const [target, required] of Object.entries(unlocks)) for (const [prerequisi
   });
 }
 
-test("all berry recipes and their retired variants have no crafting lesson requirements", () => {
-  for (const crop of catalog.recipes.filter(row => row.buildingId === "garden")) assert.deepEqual(crop.requiredRecipes, {}, crop.id);
+test("only strawberries require compote while all other berries open at their level", () => {
+  for (const crop of catalog.recipes.filter(row => row.buildingId === "garden" && row.id !== "grow_strawberries")) assert.deepEqual(crop.requiredRecipes, {}, crop.id);
   assert.deepEqual(recipe("cook_strawberry_compote").requiredRecipes, {});
-  for (const crop of catalog.recipes.filter(row => row.buildingId === "garden" && row.collection && !row.retired)) {
+  for (const crop of catalog.recipes.filter(row => row.buildingId === "garden" && row.collection && !row.retired && row.id !== "grow_strawberries")) {
     const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
     state.buildings.home = crop.requiredHomeLevel;
     state.buildings.garden = crop.buildingLevel;

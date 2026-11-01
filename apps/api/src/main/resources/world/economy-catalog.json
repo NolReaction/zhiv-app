@@ -1607,11 +1607,13 @@
             "items": {
               "planks": 3,
               "stone": 2,
-              "rope": 2
+              "wood": 2
             }
           },
-          "requiredHomeLevel": 2,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "workshop": 1
+          },
           "warehouseCapacity": 100
         },
         {
@@ -1622,12 +1624,15 @@
             "items": {
               "planks": 6,
               "bricks": 6,
-              "iron_ingot": 2,
-              "cloth": 2
+              "rope": 4
             }
           },
-          "requiredHomeLevel": 3,
-          "requiredBuildings": {},
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "workshop": 1,
+            "quarry": 2,
+            "kiln": 1
+          },
           "warehouseCapacity": 150
         },
         {
@@ -1641,7 +1646,7 @@
               "cloth": 2
             }
           },
-          "requiredHomeLevel": 4,
+          "requiredHomeLevel": 3,
           "requiredBuildings": {
             "workshop": 3,
             "woodlot": 3,
@@ -1661,7 +1666,7 @@
               "cloth": 2
             }
           },
-          "requiredHomeLevel": 4,
+          "requiredHomeLevel": 3,
           "requiredBuildings": {
             "workshop": 2,
             "kiln": 3,
@@ -1677,10 +1682,10 @@
             "items": {
               "beams": 3,
               "cut_stone": 2,
-              "tools": 1
+              "metal_parts": 2
             }
           },
-          "requiredHomeLevel": 4,
+          "requiredHomeLevel": 3,
           "requiredBuildings": {
             "workshop": 3,
             "woodlot": 3,
@@ -1700,7 +1705,7 @@
               "cloth": 2
             }
           },
-          "requiredHomeLevel": 5,
+          "requiredHomeLevel": 4,
           "requiredBuildings": {
             "workshop": 4,
             "woodlot": 4,
@@ -1716,15 +1721,15 @@
             "coins": 45000,
             "items": {
               "beams": 4,
-              "mortar": 3,
+              "cut_stone": 3,
               "trade_crate": 2
             }
           },
-          "requiredHomeLevel": 5,
+          "requiredHomeLevel": 4,
           "requiredBuildings": {
-            "workshop": 4,
+            "workshop": 3,
             "woodlot": 3,
-            "quarry": 5
+            "quarry": 3
           },
           "warehouseCapacity": 400
         },
@@ -1739,7 +1744,7 @@
               "tools": 2
             }
           },
-          "requiredHomeLevel": 5,
+          "requiredHomeLevel": 4,
           "requiredBuildings": {
             "workshop": 3,
             "kiln": 3,
@@ -1758,7 +1763,7 @@
               "field_kit": 2
             }
           },
-          "requiredHomeLevel": 5,
+          "requiredHomeLevel": 4,
           "requiredBuildings": {
             "workshop": 4,
             "woodlot": 4,
@@ -1773,10 +1778,12 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 1
+              "ancient_core": 1,
+              "moon_crystal": 1,
+              "living_resin": 1
             }
           },
-          "requiredHomeLevel": 5,
+          "requiredHomeLevel": 4,
           "requiredBuildings": {},
           "warehouseCapacity": 550
         },
@@ -1787,10 +1794,11 @@
             "coins": 0,
             "items": {
               "ancient_core": 1,
-              "moon_crystal": 1
+              "moon_crystal": 1,
+              "living_resin": 1
             }
           },
-          "requiredHomeLevel": 5,
+          "requiredHomeLevel": 4,
           "requiredBuildings": {},
           "warehouseCapacity": 600
         },
@@ -1801,10 +1809,11 @@
             "coins": 0,
             "items": {
               "ancient_core": 1,
+              "moon_crystal": 1,
               "living_resin": 1
             }
           },
-          "requiredHomeLevel": 5,
+          "requiredHomeLevel": 4,
           "requiredBuildings": {},
           "warehouseCapacity": 650
         },
@@ -1829,7 +1838,7 @@
           "cost": {
             "coins": 0,
             "items": {
-              "ancient_core": 2,
+              "ancient_core": 1,
               "moon_crystal": 1,
               "living_resin": 1
             }
@@ -2602,7 +2611,10 @@
         "kind": "berry_harvest",
         "seconds": 8
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "requiredRecipes": {
+        "cook_compote": 1
+      }
     },
     {
       "id": "cook_compote",

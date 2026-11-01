@@ -26,7 +26,7 @@ const ledgerLabels: Record<string, string> = {
   claim_ship_voyage: "Награда за поставку кораблю", skip_ship_voyage: "Отказ от оставшихся заказов корабля",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",
   buy_production_slot: "Открытие места производства", buy_market_slot: "Открытие места прилавка", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
-  start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата",
+  start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата", claim_mining_batch: "Сбор части добычи",
   sell: "Продажа припасов", buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы", equip_fishing_rod: "Выбор удочки",
   equip_fishing_bait: "Выбор наживки", equip_fishing_hook: "Выбор крючка", refresh_fishing_shop: "Обновление лавки Плёски",
   start_fishing: "Начало рыбалки", market_create: "Выставление на рынок",

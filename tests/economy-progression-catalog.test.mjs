@@ -73,7 +73,7 @@ test("warehouse keeps ten ordinary tiers before five optional relic-only expansi
   for (const mutate of [
     c => c.buildings.find(building => building.id === "warehouse").levels[2].cost.items.living_resin = 1,
     c => c.buildings.find(building => building.id === "warehouse").levels[3].cost.coins = 10,
-    c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredHomeLevel = 3,
+    c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredHomeLevel = 4,
     c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredBuildings = {},
     c => c.buildings.find(building => building.id === "warehouse").levels[3].cost.items.planks = 1,
     c => c.buildings.find(building => building.id === "warehouse").levels[9].cost.items.ancient_core = 1,
@@ -91,9 +91,9 @@ test("warehouse keeps ten ordinary tiers before five optional relic-only expansi
 test("storage gates follow accessible production without becoming prerequisites of the main journey", () => {
   const catalog = readEconomyCatalog();
   for (const level of catalog.buildings.find(building => building.id === "warehouse").levels) {
-    const expectedHome = level.level <= 3 ? level.level : level.level <= 6 ? 4 : 5;
+    const expectedHome = level.level <= 2 ? 1 : level.level === 3 ? 2 : level.level <= 6 ? 3 : level.level <= 13 ? 4 : 5;
     assert.equal(level.requiredHomeLevel, expectedHome);
-    if (level.level <= 3 || level.level >= 11) assert.deepEqual(level.requiredBuildings, {});
+    if (level.level === 1 || level.level >= 11) assert.deepEqual(level.requiredBuildings, {});
     else assert(Object.keys(level.requiredBuildings).length > 0);
     assert.equal(level.requiredBuildings.warehouse, undefined);
     const invalid = structuredClone(catalog), target = invalid.buildings.find(building => building.id === "warehouse").levels.find(candidate => candidate.level === level.level);
@@ -336,11 +336,11 @@ test("first-stage slots stay single-unit and recipe dependencies cannot silently
   assert.throws(() => auditEconomyProgression(cycle), /Recipe unlock cycle/);
 });
 
-test("berry cultivation cannot regain a recipe lesson even through retired crop variants", () => {
-  for (const id of ["grow_strawberries", "grow_blueberries", "grow_currants", "grow_blackberries", "grow_cranberries", "garden_supply", "garden_abundance"]) {
+test("only strawberries retain a compote lesson and other crop variants cannot regain one", () => {
+  for (const id of ["grow_blueberries", "grow_currants", "grow_blackberries", "grow_cranberries", "garden_supply", "garden_abundance"]) {
     const catalog = readEconomyCatalog();
     catalog.recipes.find(recipe => recipe.id === id).requiredRecipes = { cook_compote: 1 };
-    assert.throws(() => auditEconomyProgression(catalog), /Garden crops.*cannot require recipe mastery/, id);
+    assert.throws(() => auditEconomyProgression(catalog), /Other garden crops.*cannot require recipe mastery/, id);
   }
 });
 

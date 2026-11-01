@@ -496,7 +496,7 @@ test("starter stone sources use an available forest exploration instead of the l
   assert.equal(helpers.worldMaterialSource(state, "stone").targetId, "quarry_stone", "the second stage directs stone to its mine construction");
 });
 
-test("first-stage cards offer one item directly including strawberry without a compote prerequisite", () => {
+test("first-stage cards offer one item directly and explain the strawberry compote prerequisite", () => {
   const state = snapshot({ buildings: { home: 1, garden: 1, warehouse: 1, dryer: 1, workshop: 1, woodlot: 1 },
     inventory: { berries: 4, wood: 2, fish_common: 1 }, progression: { recipes: {} } });
   for (const [place, stationId, recipeId] of [["garden", "garden", "grow_berries"], ["workshop", "workshop", "make_planks"],
@@ -518,8 +518,10 @@ test("first-stage cards offer one item directly including strawberry without a c
   const html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id, onNavigate() {} });
   assert.deepEqual(state.progression.recipes, {});
   assert.equal(disabled(markedButton(html, "data-recipe", recipe.id)), false);
-  assert.doesNotMatch(html, /Приготовьте и заберите:|Открыть рецепт:/);
-  assert.doesNotMatch(markedButton(html, "data-recipe", recipe.id).attributes, /data-blocked="true"/);
+  assert.match(html, /Приготовьте и заберите: Малиновый компот \(0 \/ 1\)/);
+  assert.match(markedButton(html, "data-recipe", recipe.id).attributes, /data-blocked="true"/);
+  assert.match(helpers.worldRecipeUnlockReason(state, recipe), /Малиновый компот/);
+  state.progression.recipes.cook_compote = 1;
   assert.equal(helpers.worldRecipeUnlockReason(state, recipe), null);
 });
 
@@ -697,7 +699,7 @@ test("missing-navigation requirements remain honest text and landmarks offer act
   assert.equal(disabled(button(html, "Начать обустройство")), true);
   for (const place of ["bridge", "lighthouse"]) {
     const landmark = render(place);
-    assert.match(landmark, /Требует восстановления/);
+    assert.match(landmark, /Разрушено/);
     assert.match(landmark, /Восстановить/);
     assert.doesNotMatch(landmark, /Будущая ветка|Выберите рецепт|data-production-slots=/);
     const upgrade = renderUpgrade(place);
@@ -713,9 +715,10 @@ test("restored landmarks show expedition routes and their remaining prerequisite
   for (const place of ["bridge", "lighthouse"]) {
     const html = render(place, controller({ snapshot: snapshot({ buildings: { home: 4, warehouse: 1, bridge: 1, lighthouse: 1, workshop: 3 } }) }), { onExplore() {} });
     assert.match(html, /Восстановлено/);
-    assert.match(html, /Маршруты экспедиций/);
+    assert.match(html, /Маршруты/);
     assert.match(html, /Выбрать экспедицию/);
-    assert.match(html, /Восстановление завершено/);
+    assert.doesNotMatch(html, /Восстановление завершено/);
+    assert.match(html, /data-landmark-route=/);
     assert.doesNotMatch(html, /Выберите рецепт|Сначала обустройте|data-production-slots=|Место 2/);
     assert.doesNotMatch(html, /data-guide-station-upgrade=/);
   }
@@ -724,13 +727,13 @@ test("restored landmarks show expedition routes and their remaining prerequisite
 test("restored bridge explains the map market without a second trade launcher and lighthouse explains available cargo", () => {
   const bridge = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 1 }, completedExplorations: 0 }) }));
   assert.doesNotMatch(bridge, /Открыть рынок игроков/);
-  assert.match(bridge, /Торговля с игроками открывается нажатием на рынок на карте/);
+  assert.match(bridge, /Торгуйте на рынке на карте/);
   assert.doesNotMatch(bridge, /Будущая ветка|data-production-slots=/);
   const ruined = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 0 } }) }));
   assert.doesNotMatch(ruined, /Открыть рынок игроков/);
   const lighthouse = render("lighthouse", controller({ snapshot: snapshot({ buildings: { home: 3, warehouse: 1, bridge: 1, lighthouse: 1 } }) }));
-  assert.match(lighthouse, /Свет маяка приводит корабль с тремя личными грузами/);
-  assert.match(lighthouse, /Нажмите на корабль и загружайте товары по частям/);
+  assert.match(lighthouse, /Загружайте товары на корабль у причала/);
+  assert.doesNotMatch(lighthouse, /Полевой комплект и паёк позволят|Свет маяка приводит/);
   assert.doesNotMatch(lighthouse, /Пароход с крупными заказами появится в будущем обновлении/);
   assert.doesNotMatch(lighthouse, /Получить заказ парохода|Отправить пароход/);
 });

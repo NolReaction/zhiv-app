@@ -28,7 +28,10 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     for index, (frequency, level) in enumerate([(174.6, .72), (220.0, .43)]):
         for detune, weight in [(-.0012, .48), (.0012, .52)]:
             phase = 2 * math.pi * np.cumsum(frequency * (1 + detune) * pressure) / sample_rate
-            for harmonic, amount in [(1, 1), (2, .31), (3, .13), (4, .055), (5, .018)]:
+            # The first version put >80% of its energy below 300 Hz. Keep the
+            # low steam chambers, but carry their character through small
+            # speakers with rounded mid harmonics instead of extra hiss.
+            for harmonic, amount in [(1, 1), (2, .65), (3, .32), (4, .13), (5, .045)]:
                 body += level * weight * amount * np.sin(phase * harmonic + index * .37)
     # A soft steam bed keeps the call from reading as an electronic oscillator.
     noise = rng.standard_normal(len(t))
@@ -44,10 +47,11 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     audio *= np.sin(np.clip((duration - t) / .10, 0, 1) * math.pi / 2) ** 2
     audio[0] = audio[-1] = 0
     return audio.astype(np.float32), {
-        "title": "Warm steamship arrival whistle",
-        "description": "A single low two-chamber steam whistle, gently opening under pressure and fading into breath; no repeated foghorn or recordings.",
-        "targetRmsDb": -20, "peakDb": -9,
+        "title": "Warm steamship arrival whistle, presence revision",
+        "description": "A single two-chamber steam whistle with warm low fundamentals and rounded mid harmonics audible through small speakers, gently opening under pressure and fading into breath; no repeated foghorn or recordings.",
+        "targetRmsDb": -17.5, "peakDb": -5,
         "fundamentalsHz": [174.6, 220.0], "durationSeconds": duration,
+        "harmonicAmplitudes": [1, .65, .32, .13, .045],
         "attackSeconds": .24, "releaseSeconds": .58,
         "method": "Deterministic additive resonators, seeded filtered steam noise, pressure envelope and two quiet early reflections",
     }

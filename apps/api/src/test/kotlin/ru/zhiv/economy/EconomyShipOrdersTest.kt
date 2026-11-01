@@ -86,11 +86,11 @@ class EconomyShipOrdersTest {
         val early = EconomyRules.initial().copy(buildings = mapOf("home" to 3, "garden" to 1, "woodlot" to 2,
             "quarry" to 2, "workshop" to 3, "kiln" to 3, "dryer" to 1, "bridge" to 1, "lighthouse" to 1, "warehouse" to 1))
         val voyage = EconomyShipOrders.open(early, now, "11111111-1111-4111-8111-111111111111").ship.voyage!!
-        assertEquals(listOf("driftwood_post", "warm_holds", "storm_watch"), voyage.orders.map { it.templateId })
+        assertEquals(listOf("driftwood_post", "sailmakers", "storm_watch"), voyage.orders.map { it.templateId })
         assertEquals(listOf("easy", "medium", "hard"), voyage.orders.map { it.difficulty })
         assertEquals(listOf(525L, 1575L, 2940L), voyage.orders.map { it.rewardCoins })
-        assertEquals(listOf(emptyMap(), mapOf("bricks" to 1L), mapOf("dried_berries" to 2L)), voyage.orders.map { it.rewardItems })
-        assertEquals(listOf(mapOf("planks" to 6L, "rope" to 4L), mapOf("charcoal" to 10L, "iron_ingot" to 2L),
+        assertEquals(listOf(emptyMap(), emptyMap(), mapOf("dried_berries" to 2L)), voyage.orders.map { it.rewardItems })
+        assertEquals(listOf(mapOf("planks" to 6L, "rope" to 4L), mapOf("cloth" to 5L, "rope" to 8L),
             mapOf("berry_compote" to 12L, "dried_berries" to 10L, "rope" to 8L)), voyage.orders.map { it.items })
         assertEquals(20L, voyage.rewardPearls)
     }

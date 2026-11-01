@@ -38,12 +38,14 @@ function elements(tree) {
 test("orders retain All and five character tabs without exposing residents before their introduction", () => {
   const economy = controller();
   let html = render(WorldOrderJournal, { economy, introducedResidents: ids });
-  assert.equal((html.match(/role="tab"/g) ?? []).length, 6);
-  assert.equal((html.match(/aria-selected="true"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-order-filter=/g) ?? []).length, 6);
+  assert.equal((html.match(/data-order-section=/g) ?? []).length, 2);
+  assert.equal((html.match(/aria-selected="true"/g) ?? []).length, 2);
   assert.match(html, /data-order-filter="all"/);
   for (const id of ids) assert.match(html, new RegExp(`data-order-filter="${id}"`));
   assert.match(html, /data-order-chapter="repeatable"/);
-  assert.match(html, /data-order-chapter="weekly"/);
+  assert.doesNotMatch(html, /data-order-chapter="weekly"/);
+  assert.match(html, /data-order-section="weekly"/);
   assert.doesNotMatch(html, /<details|Обновление и замена просьб|Репутация и время подготовки|Выбери жителя|Выбери, кому помочь|Разные производства могут работать одновременно/);
   html = render(WorldOrderJournal, { economy, introducedResidents: ["builder", "plesk"], residentId: "lopukh" });
   assert.match(html, /Все просьбы/);
@@ -63,14 +65,15 @@ test("character view shows the real long-term rank, benefit and remaining daily 
   assert.match(html, /data-order-relations="builder"/);
   assert.match(html, /Близкий друг/);
   assert.match(html, /Скорость стройки \+7%/);
-  assert.match(html, /Следующий уровень: Скорость стройки \+10%/);
+  assert.match(html, /aria-label="Репутация: Шишколап, 800 из 1 600"/);
+  assert.doesNotMatch(html, /Заработанный бонус дружбы сохраняется|Следующий уровень:/);
   assert.match(html, /data-order-daily-reputation/);
   assert.match(html, /<strong>1 \/ 180<\/strong>/);
   const offer = residentOrderBoard(economy.snapshot, now).offers.find(entry => entry.residentId === "builder");
   const card = render(ResidentOrderCard, { economy, offer });
   assert.match(card, /\+1 репутации/);
   assert.match(card, /дневной остаток/);
-  assert.match(card, /data-order-preparation/);
+  assert.doesNotMatch(card, /data-order-preparation|работы с нуля|Награда учитывает/);
   economy.snapshot.tradeRelations.reputation.builder = 100000;
   const top = orderReputationPresentation(economy.snapshot, "builder", now);
   assert.equal(top.nextRankAt, null);
@@ -112,7 +115,7 @@ test("an accepted weekly stage keeps the difficulty of the complete frozen contr
   const active = weeklyOrderBoard(state, now).active;
   const html = render(ResidentOrderCard, { economy, offer: active });
   assert.match(html, /data-order-difficulty="masterful"/);
-  assert.match(html, /Мастерское поручение · этот этап:/);
+  assert.match(html, /Мастерское поручение/);
 });
 
 test("the initial world lesson stays focused on its single pinned request", () => {

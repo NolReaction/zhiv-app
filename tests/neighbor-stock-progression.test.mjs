@@ -62,13 +62,16 @@ test("starter, developed and maximum player settlements receive progressively ri
   assert.deepEqual([early, middle, late].map(state => JSON.stringify(state)), untouched, "Reading eligible stock cannot grant knowledge");
 });
 
-test("house alone cannot open missing stations while developed bushes need no cooking history", () => {
+test("developed bushes unlock later berries while strawberry still requires personal compote history", () => {
   const bare = base(); bare.buildings.home = 5;
   assert.ok(!opened(bare).includes("tools"));
   const developed = base(); developed.buildings = { ...maxBuildings };
-  for (const id of ["strawberries", "strawberry_compote", "blueberries", "currants", "blackberries", "cranberries"])
+  for (const id of ["blueberries", "currants", "blackberries", "cranberries"])
     assert.ok(opened(developed).includes(id), id);
+  for (const id of ["strawberries", "strawberry_compote"]) assert.ok(!opened(developed).includes(id), id);
   assert.deepEqual(developed.progression.recipes, {}, "reading stock never grants cooking history");
+  developed.progression.recipes.cook_compote = 1;
+  for (const id of ["strawberries", "strawberry_compote"]) assert.ok(opened(developed).includes(id), id);
 });
 
 test("gifted late stock does not open an item but prior confirmed discovery survives an empty warehouse", () => {

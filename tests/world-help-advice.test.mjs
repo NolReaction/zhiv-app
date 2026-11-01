@@ -90,9 +90,12 @@ test("batch limits send the player back to quantity before recommending a bigger
   assert.match(result[0].message, /не больше 1/);
 });
 
-test("berries have no mastery blocker and craft advice points to the missing practice", () => {
+test("strawberry and craft advice point to personally completed practice", () => {
   const berryContext = { intent: "production", stationId: "garden", recipeId: "grow_strawberries", quantity: 1 };
-  assert.deepEqual(advice({}, { context: berryContext }), []);
+  const berryAdvice = advice({}, { context: berryContext });
+  assert.equal(berryAdvice[0].id, "recipe:unlock:cook_compote");
+  assert.deepEqual(berryAdvice[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_compote" });
+  assert.deepEqual(advice({ progression: { recipes: { cook_compote: 1 } } }, { context: berryContext }), []);
   const context = { intent: "production", stationId: "workshop", recipeId: "make_trade_crate", quantity: 1 };
   const recipe = economyCatalog.recipes.find(row => row.id === context.recipeId);
   const patch = { buildings: { home: 5, warehouse: 15, workshop: 5, woodlot: 5, kiln: 5 }, inventory: { ...recipe.cost.items } };

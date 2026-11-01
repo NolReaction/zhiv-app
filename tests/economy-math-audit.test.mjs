@@ -83,8 +83,8 @@ test("first-stage fixed NPC prices are exact and berry profiles need no cooking 
     assert.equal(math.liquidation({ [id]: 3 }), price * 3);
   }
   const strawberry = math.profile("strawberries");
-  assert.deepEqual(strawberry.unlockRecipes, {});
-  assert.equal(strawberry.producerLevels.dryer, undefined);
+  assert.deepEqual(strawberry.unlockRecipes, { cook_compote: 1 });
+  assert.equal(strawberry.producerLevels.dryer, 1);
   near(strawberry.slotMinutes.garden, 308 / 60);
   near(math.batch(catalog.recipes.find(recipe => recipe.id === "grow_strawberries")).slotMinutes.garden, 308 / 60);
   const locked = structuredClone(catalog); locked.recipes.find(recipe => recipe.id === "make_glass_bottle").requiredHomeLevel = 5;

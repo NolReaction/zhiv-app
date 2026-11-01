@@ -78,11 +78,11 @@ test("batch card collects completed units while displaying the still-running que
   const economy = controller(state({ jobs: [saved] }), calls);
   hooks.render(); const tree = MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} });
   const html = renderToStaticMarkup(tree), controls = nodes(tree);
-  assert.match(html, /Добыто 3 из 10/); assert.match(html, /Забрать доступное/);
+  assert.match(html, /Добыто 3 из 10/); assert.match(html, /Забрать 1/); assert.match(html, /Всё · 3/);
   assert.match(html, /До конца заказа/); assert.match(html, /Осталось 7/); assert.match(html, /aria-valuenow="33"/);
   const collect = controls.find(node => node.props["data-production-control"]);
   assert.equal(collect.props.disabled, false); collect.props.onClick(); collect.props.onClick();
-  assert.deepEqual(calls, [["claim_job", saved.id, 1, 0]]);
+  assert.deepEqual(calls, [["claim_mining_batch", saved.id, 1, 0]]);
   assert.match(html, /Остановить остаток/); assert.doesNotMatch(html, /Отказаться от находок|потеряны/);
 });
 
@@ -168,4 +168,40 @@ test("confirmed mining or a new revision removes obsolete launch feedback", () =
   assert.doesNotMatch(overview(economy).html, /Запускаем добычу/);
   economy.snapshot = state({ revision: 8 });
   assert.doesNotMatch(overview(economy).html, /Запускаем добычу/);
+});
+
+test("collect all stays available beside a single-unit claim, sharing the same send latch", () => {
+  hooks.reset(); const calls = [], saved = job({ startedAt: new Date(now - 1800_000).toISOString(), finishesAt: new Date(now).toISOString(),
+    miningBatch: { quantity: 10, claimed: 0, unitSeconds: 180, unitRewards: { stone: 1 } } });
+  const economy = controller(state({ jobs: [saved] }), calls);
+  hooks.render(); const tree = MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} });
+  const controls = nodes(tree);
+  controls.find(node => node.props["aria-label"] === "Забрать всё готовое: 10").props.onClick();
+  controls.find(node => node.props["data-production-control"]).props.onClick();
+  assert.deepEqual(calls, [["claim_job", saved.id, 1, 0]]);
+  hooks.reset(); saved.miningBatch.claimed = 9;
+  hooks.render(); const last = MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} });
+  assert.equal(nodes(last).filter(node => node.props["data-production-control"]).length, 1);
+  assert.equal(nodes(last).some(node => node.props["aria-label"]?.startsWith("Забрать всё")), false);
+});
+
+test("stop confirmation replaces the lower action area and returning sends no command", () => {
+  hooks.reset(); const calls = [], saved = job({ startedAt: new Date(now - 600_000).toISOString(), finishesAt: new Date(now + 1200_000).toISOString(),
+    miningBatch: { quantity: 10, claimed: 0, unitSeconds: 180, unitRewards: { stone: 1 } } });
+  const economy = controller(state({ jobs: [saved] }), calls);
+  const render = () => { hooks.render(); return MiningBatchCard({ economy, state: economy.snapshot, job: saved, onOpenPantry() {} }); };
+  let tree = render(); hooks.flush();
+  nodes(tree).find(node => node.props["data-mining-stop"]).props.onClick();
+  tree = render(); hooks.flush();
+  assert.match(renderToStaticMarkup(tree), /Остановить остаток: 7\?/);
+  assert.match(renderToStaticMarkup(tree), /Готовые находки сохранятся/);
+  assert.doesNotMatch(renderToStaticMarkup(tree), /Следующая единица|Забрать 1|Всё ·/);
+  nodes(tree).find(node => node.type === "button" && node.props.children === "Назад").props.onClick();
+  tree = render(); hooks.flush();
+  assert.equal(nodes(tree).some(node => node.props["data-mining-stop"]), true);
+  assert.deepEqual(calls, []);
+  nodes(tree).find(node => node.props["data-mining-stop"]).props.onClick();
+  tree = render(); hooks.flush();
+  nodes(tree).find(node => node.type === "button" && node.props.children === "Остановить").props.onClick();
+  assert.deepEqual(calls, [["cancel_exploration", saved.id, 1, 0]]);
 });

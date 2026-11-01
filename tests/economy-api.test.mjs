@@ -344,7 +344,7 @@ test("HTTP gates warehouse tiers two and three at their home levels and preserve
   row.state.buildings = { ...row.state.buildings, home: 1, warehouse: 1, workshop: 0 };
   const targets = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.slice(1, 3);
   for (const target of targets) {
-    row.state.inventory = { ...target.cost.items, wood: 2 };
+    row.state.inventory = { ...target.cost.items, wood: (target.cost.items.wood ?? 0) + 2 };
     row.state.wallet = { coins: target.cost.coins, pearls: 0 };
     row.state.buildings.home = target.requiredHomeLevel - 1;
     {
@@ -353,7 +353,7 @@ test("HTTP gates warehouse tiers two and three at their home levels and preserve
       assert.equal(blocked.status, 409); assert.equal((await blocked.json()).code, "ECONOMY_HOME_REQUIRED");
       assert.deepEqual(row.state, before); assert.equal(row.revision, revision); assert.equal(row.receipts.size, receipts);
     }
-    row.state.buildings.home = target.requiredHomeLevel;
+    Object.assign(row.state.buildings, target.requiredBuildings, { home: target.requiredHomeLevel });
     const buildings = structuredClone(row.state.buildings);
     const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
     const response = await POST(post(order));
@@ -432,7 +432,7 @@ test("HTTP requires the final house and ingredient sources before paying for war
   assert.equal(claimedResponse.status, 200);
   const claimed = await claimedResponse.json();
   assert.equal(model.economyResultSchema.safeParse(claimed).success, true);
-  assert.equal(claimed.state.buildings.home, 5);
+  assert.equal(claimed.state.buildings.home, 4);
   assert.equal(claimed.state.buildings.warehouse, 10);
   assert.equal(claimed.state.storage.capacity, 500);
   assert.deepEqual(claimed.state.jobs, []);

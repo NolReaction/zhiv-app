@@ -172,7 +172,7 @@ test('warehouse keeps ordinary crafted upgrades through ten and a bounded relic-
     assert.ok(spec.itemIds.every(itemId => !target.cost.items[itemId]));
   const totals = Object.fromEntries(spec.itemIds.map(id => [id, 0]));
   for (const target of warehouse.levels.filter(row => row.level >= 4 && row.level <= 10)) {
-    assert.equal(target.requiredHomeLevel, target.level <= 6 ? 4 : 5);
+    assert.equal(target.requiredHomeLevel, target.level <= 6 ? 3 : 4);
     assert.ok(Object.keys(target.requiredBuildings).length > 0, 'crafted materials have their source prerequisites');
     assert.ok(target.cost.coins > warehouse.levels[target.level - 2].cost.coins,
       'each late warehouse tier consumes an increasing earned coin budget');
@@ -180,7 +180,7 @@ test('warehouse keeps ordinary crafted upgrades through ten and a bounded relic-
     assert.ok(Object.values(target.cost.items).every(quantity => Number.isInteger(quantity) && quantity >= 1));
   }
   for (const target of warehouse.levels.filter(row => row.level >= 11)) {
-    assert.equal(target.requiredHomeLevel, 5);
+    assert.equal(target.requiredHomeLevel, target.level <= 13 ? 4 : 5);
     assert.deepEqual(target.requiredBuildings, {});
     assert.equal(target.cost.coins, 0, 'the final five expansions cost relics without a second coin charge');
     const rare = Object.entries(target.cost.items);
@@ -188,6 +188,6 @@ test('warehouse keeps ordinary crafted upgrades through ten and a bounded relic-
     assert.ok(rare.every(([id, quantity]) => spec.itemIds.includes(id) && Number.isInteger(quantity) && quantity >= 1));
     for (const [id, quantity] of rare) totals[id] += quantity;
   }
-  assert.deepEqual(totals, { ancient_core: 6, moon_crystal: 3, living_resin: 3 });
-  assert.equal(warehouse.levels.find(row => row.level === 8).requiredBuildings.quarry, 5, 'mortar needs an accessible limestone source');
+  assert.deepEqual(totals, { ancient_core: 5, moon_crystal: 5, living_resin: 5 });
+  assert.equal(warehouse.levels.find(row => row.level === 8).requiredBuildings.quarry, 3, 'cut stone replaces the late limestone requirement');
 });

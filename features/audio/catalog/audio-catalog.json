@@ -1559,15 +1559,15 @@
     },
     {
       "id": "ship.arrival.01",
-      "src": "/audio/originals-v1/effect/ship.arrival.01.wav",
+      "src": "/audio/originals-v1/effect/ship.arrival.01.presence-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
-        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.2-ship/art/audio/originals-v1/PROVENANCE.md",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.2/art/audio/originals-v1/PROVENANCE.md",
         "author": "Original steamship sound design generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
-        "acquiredAt": "2026-10-26",
-        "changes": "Original low two-chamber steam whistle, seeded filtered breath, pressure envelope, quiet early reflections; mono PCM16 48 kHz with deterministic dither and conservative peak/RMS ceilings.",
+        "acquiredAt": "2026-11-01",
+        "changes": "Presence-v2 revision: original low steam chambers retained, rounded second-to-fifth harmonics raised for small speakers, peak ceiling -5 dBFS, existing pressure envelope and quiet tail preserved; deterministic PCM16/48 kHz, new cache-safe filename. No external samples.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -2441,7 +2441,7 @@
       "assets": [
         "ship.arrival.01"
       ],
-      "gainDb": -6,
+      "gainDb": 0,
       "priority": 60,
       "maxInstances": 1,
       "cooldownMs": 6000,

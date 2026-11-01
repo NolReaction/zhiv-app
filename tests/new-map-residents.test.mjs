@@ -788,7 +788,7 @@ test("a camera with unbuilt quarry art keeps a saved mining job off map and repl
   const env=browser();let camera,probe;
   try {
     worldDevStore.patch({...quietClearing,autoLife:false});
-    const journey={id:"paid-before-quarry-gate",routeId:"cave",startedAt:new Date(100_000).toISOString(),
+    const journey={id:"paid-before-quarry-gate",routeId:"quarry_work",startedAt:new Date(100_000).toISOString(),
       finishesAt:new Date(700_000).toISOString(),rewards:{stone:8,ore:4}},original=structuredClone(journey);
     const initial={...options,reducedMotion:false,serverNow:160_000,presenceKey:"quarry-ruins-saved-trip",
       economyBuildings:{quarry:0},economyJourney:journey};

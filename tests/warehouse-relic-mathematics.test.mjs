@@ -23,18 +23,18 @@ test("storage reaches 500 ordinary places before its five relic-only expansions 
   assert.equal(report.ordinaryExpansionMaximumCapacity, 500);
   assert.equal(report.firstRelicExpansionLevel, 11);
   assert.equal(report.totalWarehouseCoins, 274700);
-  assert.deepEqual(report.totalWarehouseRelics, { ancient_core: 6, moon_crystal: 3, living_resin: 3 });
-  assert.equal(report.totalWarehouseRelicCount, 12);
+  assert.deepEqual(report.totalWarehouseRelics, { ancient_core: 5, moon_crystal: 5, living_resin: 5 });
+  assert.equal(report.totalWarehouseRelicCount, 15);
   assert.deepEqual(report.levels.map(level => level.capacity), Array.from({ length: 15 }, (_, index) => (index + 1) * 50));
   assert.deepEqual(report.levels.map(level => level.capacityGain), Array(15).fill(50));
   assert.deepEqual(report.levels.map(level => level.cost.coins), [0, 200, 1500, 8000, 12000, 18000, 30000, 45000, 65000, 95000, 0, 0, 0, 0, 0],
     "ordinary storage retains its authored coin prices; only the five final tiers spend relics");
-  assert.equal(report.levels[1].requiredHomeLevel, 2);
+  assert.equal(report.levels[1].requiredHomeLevel, 1);
   assert(report.levels.slice(0, 10).every(level => Object.values(level.relicCost).every(quantity => quantity === 0)));
-  assert(report.levels.slice(3, 10).every(level => level.requiredHomeLevel === (level.level <= 6 ? 4 : 5)
+  assert(report.levels.slice(3, 10).every(level => level.requiredHomeLevel === (level.level <= 6 ? 3 : 4)
     && Object.keys(level.requiredBuildings).length));
   assert(report.levels.slice(10).every(level => Object.values(level.relicCost).some(quantity => quantity > 0)
-    && level.requiredHomeLevel === 5 && !Object.keys(level.requiredBuildings).length
+    && level.requiredHomeLevel === (level.level <= 13 ? 4 : 5) && !Object.keys(level.requiredBuildings).length
     && Object.keys(level.cost.items).every(id => catalog.rareDrops.itemIds.includes(id))));
   assert(catalog.buildings.filter(building => building.id !== "warehouse")
     .every(building => building.levels.every(level => !level.requiredBuildings.warehouse)), "earned storage is optional for every other building");
@@ -50,10 +50,10 @@ test("storage work time separates the full builder sum from partial random acqui
   assert(Math.abs(report.totalWarehouseConstructionDays - constructionSeconds / 86400) < 1e-9);
   assert.equal(report.levels[9].partialNonCoreAcquisition.expectedDraws, 0);
   assert.equal(report.levels[9].partialNonCoreAcquisition.expectedWorkHours, 0);
-  assert.equal(last.partialNonCoreAcquisition.cumulativeCrystals, 3);
-  assert.equal(last.partialNonCoreAcquisition.cumulativeResin, 3);
-  assert.equal(last.partialNonCoreAcquisition.expectedDraws, 11.8125);
-  assert.equal(last.partialNonCoreAcquisition.expectedWorkHours, 1134);
+  assert.equal(last.partialNonCoreAcquisition.cumulativeCrystals, 5);
+  assert.equal(last.partialNonCoreAcquisition.cumulativeResin, 5);
+  assert.equal(last.partialNonCoreAcquisition.expectedDraws, expectedUniformTwoTypeDraws(5, 5));
+  assert.equal(last.partialNonCoreAcquisition.expectedWorkHours, expectedUniformTwoTypeDraws(5, 5) * 96);
   assert.equal(report.method.meanIntervalHours, 96);
   assert.equal(report.method.requiredHomeLevelForExplorationDrops, 3);
   assert(report.method.excludes.some(value => value.includes("no assumption that gifts cover")));
@@ -65,8 +65,8 @@ test("the report reflects authored intervals and quota changes instead of fixed 
   const lastCost = catalog.buildings.find(building => building.id === "warehouse").levels.at(-1).cost.items;
   lastCost.moon_crystal = (lastCost.moon_crystal ?? 0) + 1;
   const report = reviewWarehouseRelics(catalog), last = report.levels.at(-1);
-  assert.equal(report.totalWarehouseRelics.moon_crystal, 4);
-  assert.equal(report.totalWarehouseRelicCount, 13);
+  assert.equal(report.totalWarehouseRelics.moon_crystal, 6);
+  assert.equal(report.totalWarehouseRelicCount, 16);
   assert.equal(report.method.meanIntervalHours, 192);
-  assert(last.partialNonCoreAcquisition.expectedWorkHours > 1134 * 2);
+  assert(last.partialNonCoreAcquisition.expectedWorkHours > expectedUniformTwoTypeDraws(5, 5) * 192);
 });

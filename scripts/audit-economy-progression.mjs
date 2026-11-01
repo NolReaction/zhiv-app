@@ -83,9 +83,10 @@ export function auditEconomyProgression(catalog) {
         const ordinaryExpansion = catalog.version >= 15 && level.level <= 10;
         const relicOnlyExpansion = catalog.version >= 15 && level.level >= 11;
         const craftedExpansion = catalog.version >= 14 && level.level >= 4 && !relicOnlyExpansion;
-        const houseGate = level.level === 2 ? 2 : catalog.version >= 13 && level.level === 3 ? 3
+        const houseGate = catalog.version >= 15 ? level.level <= 2 ? 1 : level.level === 3 ? 2 : level.level <= 6 ? 3 : level.level <= 13 ? 4 : 5
+          : level.level === 2 ? 2 : catalog.version >= 13 && level.level === 3 ? 3
           : relicOnlyExpansion ? 5 : craftedExpansion ? level.level <= 6 ? 4 : 5 : 1;
-        assert(level.requiredHomeLevel === houseGate && (craftedExpansion || !Object.keys(level.requiredBuildings ?? {}).length),
+        assert(level.requiredHomeLevel === houseGate && (craftedExpansion || catalog.version >= 15 && level.level >= 2 && level.level <= 3 || !Object.keys(level.requiredBuildings ?? {}).length),
           `${key}: storage must keep its declared material-availability house gate`);
         assert(Number.isSafeInteger(level.warehouseCapacity) && level.warehouseCapacity > 0, `${key}: warehouse capacity missing`);
         assert.equal(level.warehouseCapacity, level.level * 50, `${key}: storage must grow by 50 places per level`);
@@ -98,10 +99,10 @@ export function auditEconomyProgression(catalog) {
             `${key}: ordinary storage needs three compact crafted inputs with source gates`);
           }
         } else if (relicOnlyExpansion) {
-          const relicCount = Object.values(level.cost.items).reduce((sum, amount) => sum + amount, 0);
-          assert(rare && level.cost.coins === 0 && relicCount >= 1 && relicCount <= 4
-            && Object.keys(level.cost.items).every(id => rare.itemIds.includes(id)),
-          `${key}: relic storage must use only a small relic basket without coins`);
+          const perRelic = 1;
+          assert(rare && level.cost.coins === 0 && Object.keys(level.cost.items).length === rare.itemIds.length
+            && rare.itemIds.every(id => level.cost.items[id] === perRelic),
+          `${key}: relic storage must use equal small quantities of all three relics without coins`);
         } else {
           assert(rare && level.cost.coins === 0, `${key}: relic storage must follow its declared coin progression`);
           if (craftedExpansion) {
@@ -400,8 +401,9 @@ export function auditEconomyProgression(catalog) {
   auditBuildingUnlocks(catalog);
   const firstCrops = catalog.recipes.filter(recipe => recipe.requiredHomeLevel === 1 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length);
   assert(firstCrops.some(recipe => recipe.seconds === 60) && firstCrops.some(recipe => recipe.seconds === 300), "Starter needs one-minute raspberries and five-minute strawberries");
-  assert(allRecipes.filter(recipe => recipe.buildingId === "garden")
-    .every(recipe => Object.keys(recipe.requiredRecipes ?? {}).length === 0), "Garden crops, including retired variants, cannot require recipe mastery");
+  assert.deepEqual(allRecipes.find(recipe => recipe.id === "grow_strawberries")?.requiredRecipes, { cook_compote: 1 }, "Strawberries require exactly one personally claimed raspberry compote");
+  assert(allRecipes.filter(recipe => recipe.buildingId === "garden" && recipe.id !== "grow_strawberries")
+    .every(recipe => Object.keys(recipe.requiredRecipes ?? {}).length === 0), "Other garden crops, including retired variants, cannot require recipe mastery");
   if (catalog.version < 13) assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 3 && recipe.buildingId === "garden" && recipe.buildingLevel === 2
     && recipe.seconds < 60 && recipe.rewards.berries === 1 && recipe.maxBatch === 1
     && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Home three opens a faster free unit crop");

@@ -42,13 +42,16 @@ class NeighborStockProgressionTest {
         assertEquals(untouched, listOf(early, middle, late).map { economyJson.encodeToString(it) })
     }
 
-    @Test fun `house alone cannot open missing stations while developed bushes need no cooking history`() {
+    @Test fun `developed bushes unlock later berries while strawberry still requires personal compote history`() {
         val bare = EconomyRules.initial().copy(buildings = EconomyRules.initial().buildings + ("home" to 5))
         assertFalse("tools" in opened(bare))
         val developed = bare.copy(buildings = maximumBuildings)
-        for (id in listOf("strawberries", "strawberry_compote", "blueberries", "currants", "blackberries", "cranberries"))
+        for (id in listOf("blueberries", "currants", "blackberries", "cranberries"))
             assertTrue(id in opened(developed), id)
+        for (id in listOf("strawberries", "strawberry_compote")) assertFalse(id in opened(developed), id)
         assertTrue(developed.progression.recipes.isEmpty(), "Reading stock never grants cooking history")
+        val learned = developed.copy(progression = developed.progression.copy(recipes = mapOf("cook_compote" to 1L)))
+        for (id in listOf("strawberries", "strawberry_compote")) assertTrue(id in opened(learned), id)
     }
 
     @Test fun `gifts do not discover future goods and prior discoveries survive spent inventory`() {

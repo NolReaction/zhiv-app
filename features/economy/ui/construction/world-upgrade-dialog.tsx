@@ -102,7 +102,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation, now }: { now: nu
     <span className={styles.benefitKind}>Больше запасов</span><strong className={styles.benefitTitle}>Вместимость кладовой</strong>
     <span className={styles.capacityNumbers}><strong>{number(state.storage.capacity)}</strong><ArrowRight size={18} aria-label="увеличится до" /><strong>{number(target.warehouseCapacity)}</strong></span>
     <span className={styles.benefitGain}>+{number(target.warehouseCapacity - state.storage.capacity)} мест</span>
-    <span className={styles.benefitDescription}>{firstRelicLevel ? target.level < firstRelicLevel ? `Материалы и монеты до ур. ${firstRelicLevel - 1}. С ур. ${firstRelicLevel} — только реликвии.` : "Расширение только за реликвии. Монеты и обычные материалы не нужны." : "Для материалов, урожая и готовых заказов."}</span>
+    <span className={styles.benefitDescription}>{firstRelicLevel ? target.level < firstRelicLevel ? `Материалы и монеты до ур. ${firstRelicLevel - 1}. С ур. ${firstRelicLevel} только реликвии.` : "Расширение только за реликвии. Монеты и обычные материалы не нужны." : "Для материалов, урожая и готовых заказов."}</span>
   </> });
 
   if (stationId === "home") {
