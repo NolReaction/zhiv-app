@@ -93,6 +93,8 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["корабль", "trade-ship"],
     ["корабль не появился", "trade-ship"],
     ["гудок", "trade-ship-effects"],
+    ["порт", "ship-orders"],
+    ["отказаться от поставки", "ship-orders-cancel"],
     ["отменить добычу", "mining-control"],
   ]) {
     const results = searchWorldHelp(topics, query);
@@ -523,7 +525,7 @@ test("fish-soup guidance uses the authored recipe and distinct hero/builder bonu
   assert.deepEqual(topic("fish-soup").action.target, { kind: "station", stationId: "dryer", recipeId: recipe.id });
 });
 
-test("landmark help explains claimed-lighthouse first arrival while keeping sea orders in the future", () => {
+test("landmark help separates claimed-lighthouse arrival, live port orders and future sea travel", () => {
   assert.match(answer("market"), /С дома 2 восстановите мост и получите готовую стройку/);
   assert.match(answer("market"), /Вылазка для открытия не нужна/);
   assert.doesNotMatch(answer("market"), /хотя бы .* завершённая вылазка/);
@@ -533,8 +535,8 @@ test("landmark help explains claimed-lighthouse first arrival while keeping sea 
   assert.match(landmarks, /С дома 4.*тропу и рощу.*древним руинам/);
   assert.match(landmarks, /получите результат стройки.*своей большой карты.*впервые подходит пароход и выдвигает мостик/);
   assert.match(landmarks, /Пароход остаётся у берега с мостиком/);
-  assert.match(landmarks, /без заказов и новых наград/);
-  assert.match(landmarks, /Морские заказы.*ещё готовятся/);
+  assert.match(landmarks, /Личные заказы доступны.*Ещё → Порт/);
+  assert.match(landmarks, /морские путешествия ещё готовятся/);
   assert.doesNotMatch(landmarks, /не запускает рейс парохода|будущий причал/);
   assert.match(answer("relics"), /после восстановления моста.*«Обмен»/);
   assert.ok(topic("future-world").relatedIds.includes("trade-ship"));
@@ -587,4 +589,21 @@ test("intro help separates its only raspberry order from the house-two course", 
   assert.match(intro, /3 небольшие просьбы для дома 2/);
   assert.match(construction, /один учебный заказ и 3 просьбы этапа/);
   assert.doesNotMatch([intro, answer("start"), construction, answer("workshop-starter")].join(" "), /четыре учебных|четвёртого заказа|трёх учебных/);
+});
+
+test("port help explains durable individual orders, separate rewards and the opening-based cooldown", () => {
+  const orders = answer("ship-orders"), cancel = answer("ship-orders-cancel");
+  assert.match(orders, /После получения восстановленного маяка/);
+  assert.match(orders, /три личных заказа на доступные вам товары/);
+  assert.match(orders, /Предметы спишутся целиком.*монеты поступят сразу/);
+  assert.match(orders, /отдельно заберите общий бонус: от 4 жемчужин\. Точная награда зависит от стоимости груза/);
+  assert.match(orders, /через 6 часов от открытия предыдущих/);
+  assert.match(orders, /Заказы не сгорают/);
+  assert.match(orders, /смене устройства/);
+  assert.match(cancel, /не возвращаются.*монеты остаются/);
+  assert.match(cancel, /Неотгруженные товары останутся в кладовой/);
+  assert.match(cancel, /бонус.*при отказе не выдаётся/);
+  assert.match(cancel, /Отказ не сокращает этот срок; платного обновления нет/);
+  assert.ok(topic("trade-ship").relatedIds.includes("ship-orders"));
+  assert.doesNotMatch(answer("trade-ship"), /Заказов.*пока нет/);
 });

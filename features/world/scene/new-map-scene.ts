@@ -55,7 +55,7 @@ import { syncForestSceneRehearsal, advanceForestSceneRehearsal } from "@/feature
 import { forestPersistenceOverridden } from "@/features/world/dev/forest-dev-memory";
 import { WORLD_DEV_ENABLED, worldDevStore, type WorldDevState, type WorldDevLifeAction } from "@/features/world/dev/world-dev-store";
 import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
-import { interactiveMapObjects } from "./site-interactions";
+import { interactiveMapObjects, type MapInteractiveObject } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "@/features/world/activities/journeys/forest-journey-travel";
 import { forestJourneyGatheringFrame } from "@/features/world/activities/journeys/forest-supply-journey";
 import type { ForestGatheringFrame } from "@/features/world/activities/journeys/forest-gathering";
@@ -113,6 +113,7 @@ import type { TradeShipMotion } from "@/features/world/objects/trade-ship/trade-
 import { createTradeShipPreviewArtwork } from "@/features/world/dev/trade-ship-preview-artwork";
 import { connectTradeShipArrival, type SceneTradeShipFrame } from "@/features/world/state/trade-ship-arrival";
 import { tradeShipImageVisible } from "./trade-ship-visibility";
+import { createTradeShipMapObject, tradeShipCanInteract } from "./trade-ship-interaction";
 import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-diagnostics";
 import { forestPerformanceProfiler } from "@/features/world/dev/forest-performance-profiler";
 import { residentScenePresentation } from "./resident-scene-presentation";
@@ -1484,6 +1485,29 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   const lightingWorld = () => WORLD_DEV_ENABLED && !options.readOnly ? worldLightingEditorStore.applyToScene(world,
     accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
       { merchantArrived: options.merchantArrival?.seen })) : world;
+  let shipObjectMotion: TradeShipMotion | null = null, shipObject: MapInteractiveObject | null = null;
+  let baseMapObjects: readonly MapInteractiveObject[] | null = null, portMapObjects: readonly MapInteractiveObject[] = [];
+  function interactiveShipFrame() {
+    const ship = selectedTradeShip();
+    return tradeShipCanInteract(ship, { readOnly: options.readOnly, devRehearsal: Boolean(options.devRehearsal),
+      view: options.view, imageReady: Boolean(tradeShipArtwork.getImage()) })
+      ? { ...ship.motion, time: state.elapsed, still: reducedMotion(options, dev) } : null;
+  }
+  function mapObjects() {
+    if (disposed || !art) return [];
+    const base = interactiveMapObjects(world, { showBuildings: dev?.showBuildings });
+    const frame = interactiveShipFrame(), ship = selectedTradeShip();
+    if (!frame || !ship) return base;
+    if (shipObjectMotion !== ship.motion) {
+      shipObjectMotion = ship.motion;
+      shipObject = createTradeShipMapObject(frame, interactiveShipFrame);
+      baseMapObjects = null;
+    }
+    if (baseMapObjects !== base) {
+      baseMapObjects = base; portMapObjects = [...base, shipObject!];
+    }
+    return portMapObjects;
+  }
   return {
     tradeShipFrame() { return tradeShipArtwork.getImage() ? selectedTradeShip() : null; },
     startTradeShipArrival() {
@@ -1643,9 +1667,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (disposed || !art || dev?.showBuildings === false) return null;
       return world.sites.find(site => site.id === siteId)?.anchor ?? null;
     },
-    mapObjects() {
-      return disposed || !art ? [] : interactiveMapObjects(world, { showBuildings: dev?.showBuildings });
-    },
+    mapObjects,
     setTime(now) {
       if (disposed || !Number.isFinite(now)) return;
       const wasExploring = exploring();

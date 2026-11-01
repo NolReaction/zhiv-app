@@ -1,0 +1,4 @@
+.marker { display: flex; align-items: center; justify-content: center; }
+.marker.marker::after { content: none; }
+.label { padding: 4px 8px; border: 1px solid #b69761; border-radius: 8px; background: #f5edcfea; color: #364b3b; box-shadow: 0 2px 7px #10231866; font-size: 11px; font-weight: 750; line-height: 1.2; white-space: nowrap; }
+.marker:hover .label, .marker:focus-visible .label { background: #fff4d6; outline: 2px solid #d3b77a; outline-offset: 2px; }

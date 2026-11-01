@@ -126,6 +126,7 @@ object EconomyRules {
         }
         EconomyFood.validateCatalog(catalog)
         EconomyTradeRelations.validateCatalog(catalog)
+        EconomyShipOrders.validateCatalog(catalog)
     }
 
     internal fun validateTimeEconomy(catalog: EconomyCatalog) {
@@ -419,6 +420,7 @@ object EconomyRules {
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
+            "open_ship_voyage", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage" -> EconomyShipOrders.command(state, command, now)
             "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)

@@ -18,14 +18,16 @@ export function interactiveSites(scene: FixedWorldScene) {
 }
 
 export type MapObjectPlace = BuildingPlace | "garden" | "campfire" | "plesk-shop" | "builder-home"
-  | "market" | "leaftail-caravan" | "bulletin-board" | "lopukh-home";
+  | "market" | "leaftail-caravan" | "bulletin-board" | "lopukh-home" | "trade-ship";
 export type MapInteractiveObject = {
   id: string;
   place: MapObjectPlace;
   label: string;
-  kind: "site" | "garden" | "campfire";
+  kind: "site" | "garden" | "campfire" | "ship";
   anchor: WorldPoint;
   hitArea: readonly WorldPoint[];
+  /** Moving artwork may keep a stable marker while testing its current pose. */
+  hitTest?: (point: WorldPoint) => boolean;
 };
 const objectPlaces = { ...places, "plesk-shop": "plesk-shop", "builder-home": "builder-home",
   market: "market", "leaftail-caravan": "leaftail-caravan", "bulletin-board": "bulletin-board", "lopukh-home": "lopukh-home" } as const;
@@ -60,5 +62,5 @@ export function interactiveMapObjects(scene: FixedWorldScene, options: { showBui
 }
 
 export function mapObjectAt(objects: readonly MapInteractiveObject[], point: WorldPoint): MapInteractiveObject | null {
-  return [...objects].reverse().find(object => previewPointInPolygon(point, object.hitArea)) ?? null;
+  return [...objects].reverse().find(object => object.hitTest ? object.hitTest(point) : previewPointInPolygon(point, object.hitArea)) ?? null;
 }

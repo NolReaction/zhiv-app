@@ -23,6 +23,7 @@ import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWi
 import { canStartTutorialWorkshop } from "./workshop-starter";
 import { acceptWeeklyOrder, awardTradeOrderXp, awardTradePurchaseXp, tradePurchaseXpEligible, tradeRelationBonusBps, tradeRelationsState, tradeWorkDuration, tradeMealDuration, weeklyOrderBoard } from "./trade-relations";
 import { drawExpeditionFinds, expeditionJobRewards } from "./expedition-finds";
+import { createShipVoyage, shipOrdersConfig, shipOrdersState, shipOrdersUnlocked } from "./ship-orders";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -178,6 +179,47 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   };
   if (!["start_production", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
+    case "open_ship_voyage": {
+      if (command.targetId !== "port") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Некорректный запрос порта", 400);
+      if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
+      const ship = shipOrdersState(state);
+      if (ship.voyage) return fail("ECONOMY_SHIP_ACTIVE", "Сначала завершите текущие заказы корабля");
+      if (ship.nextAvailableAt && now < Date.parse(ship.nextAvailableAt)) return fail("ECONOMY_SHIP_WAIT", "Новые заказы ещё в пути");
+      if (ship.completedVoyages >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
+      const voyage = createShipVoyage(state, now, jobId());
+      if (!voyage) return fail("ECONOMY_SHIP_UNAVAILABLE", "Для корабля нужны доступные производства припасов и изделий");
+      state.ship = { ...ship, voyage, nextAvailableAt: new Date(now + shipOrdersConfig.intervalSeconds * 1000).toISOString() };
+      return "Капитан приготовил три личных заказа. Срока сгорания нет";
+    }
+    case "complete_ship_order": {
+      if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
+      const ship = shipOrdersState(state), voyage = ship.voyage;
+      const order = voyage?.orders.find(entry => entry.id === command.targetId);
+      if (!voyage || !order || order.deliveredAt) return fail("ECONOMY_SHIP_CHANGED", "Заказ уже выполнен или изменился. Обновите порт");
+      if (state.wallet.coins + order.rewardCoins > ECONOMY_MAX_BALANCE) return fail("ECONOMY_CAPACITY", "В кошельке не хватает места для награды");
+      debit(state, { coins: 0, items: order.items });
+      state.wallet.coins += order.rewardCoins;
+      state.ship = { ...ship, voyage: { ...voyage, orders: voyage.orders.map(entry => entry.id === order.id
+        ? { ...entry, deliveredAt: new Date(now).toISOString() } : entry) } };
+      return `Груз принят. Получено ${order.rewardCoins.toLocaleString("ru-RU")} монет`;
+    }
+    case "claim_ship_voyage":
+    case "skip_ship_voyage": {
+      if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
+      const ship = shipOrdersState(state), voyage = ship.voyage;
+      if (!voyage || voyage.id !== command.targetId) return fail("ECONOMY_SHIP_CHANGED", "Заказы корабля изменились. Обновите порт");
+      if (command.action === "skip_ship_voyage") {
+        if (voyage.orders.every(order => order.deliveredAt)) return fail("ECONOMY_SHIP_COMPLETE", "Все заказы выполнены. Заберите награду");
+        state.ship = { ...ship, voyage: null };
+        return "Оставшиеся заказы отменены. Оплата отгруженного товара сохранена";
+      }
+      if (voyage.orders.some(order => !order.deliveredAt)) return fail("ECONOMY_SHIP_INCOMPLETE", "Сначала отгрузите все три заказа");
+      if (state.wallet.pearls + voyage.rewardPearls > ECONOMY_MAX_PEARLS || ship.completedVoyages >= Number.MAX_SAFE_INTEGER)
+        return fail("ECONOMY_CAPACITY", "В кошельке не хватает места для награды");
+      state.wallet.pearls += voyage.rewardPearls;
+      state.ship = { ...ship, voyage: null, completedVoyages: ship.completedVoyages + 1 };
+      return "Все заказы выполнены. Награда капитана получена";
+    }
     case "buy_market_slot": {
       if (!marketUnlocked(state)) return fail("ECONOMY_MARKET_LOCKED", "Сначала откройте рынок");
       const offer = marketSlotOffer(state);

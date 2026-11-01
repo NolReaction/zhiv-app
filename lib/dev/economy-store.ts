@@ -22,6 +22,7 @@ import { ensureStageOrders, stageOrdersProgress } from "@/features/economy/domai
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "@/features/economy/domain/item-unlocks";
 import { foodState } from "@/features/economy/domain/food";
 import { migrateTradeActivity, tradeRelationsState } from "@/features/economy/domain/trade-relations";
+import { shipOrdersState } from "@/features/economy/domain/ship-orders";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
@@ -102,7 +103,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   state.jobs = state.jobs.map(job => publicEconomyJob(job, now));
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
-    tradeRelations: tradeRelationsState(state),
+    tradeRelations: tradeRelationsState(state), ship: shipOrdersState(state),
     marketSlots: marketSlotCount(state), unlockedItems,
     productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, leaftailShop: state.leaftailShop ?? { cycle: -1, purchased: {} }, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
@@ -202,7 +203,7 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   const reserved = escrowItems(owner);
   const fishing = command.action === "start_fishing" || command.action === "start_exploration"
     && economyCatalog.fishing?.routeIds.includes(command.targetId);
-  const message = applyEconomyCommand(next, command, now, () => fishing ? crypto.randomUUID() : command.requestId, reserved, randomInt);
+  const message = applyEconomyCommand(next, command, now, () => fishing || command.action === "open_ship_voyage" ? crypto.randomUUID() : command.requestId, reserved, randomInt);
   assertEconomyStorageTransition(value.state, next, reserved);
   const wardrobeChanged = JSON.stringify(value.state.wardrobe) !== JSON.stringify(next.wardrobe);
   const result = commit(owner, value, next, command, message, now);

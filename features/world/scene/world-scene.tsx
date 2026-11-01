@@ -20,6 +20,7 @@ import type { createMapEngine, MapObjectSelection, WorldPlace } from "./map-engi
 import { MAP_PLACES } from "@/features/world/legacy/map-layout";
 import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { interactiveMapObjects, type MapObjectPlace } from "./site-interactions";
+import portMarkerStyles from "./trade-ship-marker.module.css";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { WorldConstructionStatus } from "@/features/world/ui/hud/world-construction-status";
@@ -186,6 +187,9 @@ export function WorldScene({ readOnly = false, tradeShipArrivalEnabled = false, 
     {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} data-tap-hints={showTapHints} hidden={!ready} role="group" aria-label="Объекты на карте">
       {objects.map(({ id, place, label }) => <button key={id} data-map-anchor data-object-id={id} data-kind={place}
         onClick={event => { if (event.detail === 0) engine.current?.activateObject(id); }} aria-label={`Открыть: ${label}`} aria-expanded={selectedObjectId === id} title={label} />)}
+      {!readOnly && <button className={portMarkerStyles.marker} data-map-anchor data-object-id="trade-ship" data-kind="trade-ship"
+        style={{ visibility: "hidden" }} onClick={event => { if (event.detail === 0) engine.current?.activateObject("trade-ship"); }}
+        aria-label="Открыть порт и заказы корабля" title="Порт · заказы корабля"><span className={portMarkerStyles.label}>Порт</span></button>}
     </div> : <div className={styles.mapAnchors} data-tap-hints={showTapHints} hidden={!ready}>
       <button data-map-anchor data-kind="house" data-x={MAP_PLACES.house.marker.x} data-y={MAP_PLACES.house.marker.y} onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
       <button data-map-anchor data-kind="bush" data-x={MAP_PLACES.bush.marker.x} data-y={MAP_PLACES.bush.marker.y} onClick={() => engine.current?.visitBush()} aria-label="Позвать Мохлика к кустику" title="Кустик" />

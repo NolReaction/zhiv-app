@@ -1,0 +1,254 @@
+{
+  "version": 1,
+  "intervalSeconds": 21600,
+  "rewardPearls": 8,
+  "payoutBps": 10500,
+  "templates": [
+    {
+      "id": "rigging",
+      "group": "supplies",
+      "title": "Такелаж для команды",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 1
+      },
+      "items": {
+        "planks": 12,
+        "rope": 8
+      }
+    },
+    {
+      "id": "shore_repairs",
+      "group": "supplies",
+      "title": "Ремонт прибрежных причалов",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "kiln": 1,
+        "workshop": 1
+      },
+      "items": {
+        "bricks": 8,
+        "planks": 8
+      }
+    },
+    {
+      "id": "warm_holds",
+      "group": "supplies",
+      "title": "Запас для машинного отделения",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "kiln": 2
+      },
+      "items": {
+        "charcoal": 10,
+        "iron_ingot": 2
+      }
+    },
+    {
+      "id": "strong_deck",
+      "group": "supplies",
+      "title": "Прочная палуба",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 3,
+        "woodlot": 3
+      },
+      "items": {
+        "beams": 3,
+        "rope": 10
+      }
+    },
+    {
+      "id": "expedition_tools",
+      "group": "supplies",
+      "title": "Инструменты дальней гавани",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "workshop": 3
+      },
+      "items": {
+        "tools": 3,
+        "planks": 10
+      }
+    },
+    {
+      "id": "stone_berth",
+      "group": "supplies",
+      "title": "Каменная набережная",
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "kiln": 5,
+        "quarry": 5,
+        "workshop": 4
+      },
+      "items": {
+        "stone_tile": 3,
+        "mortar": 4
+      }
+    },
+    {
+      "id": "berry_provisions",
+      "group": "provisions",
+      "title": "Ягодные припасы",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "dryer": 1
+      },
+      "items": {
+        "dried_berries": 6,
+        "berry_compote": 8
+      }
+    },
+    {
+      "id": "smoked_provisions",
+      "group": "provisions",
+      "title": "Обед для моряков",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "dryer": 2
+      },
+      "items": {
+        "smoked_fish": 5,
+        "dried_berries": 4
+      }
+    },
+    {
+      "id": "packed_provisions",
+      "group": "provisions",
+      "title": "Припасы в дорогу",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "dryer": 2,
+        "kiln": 1
+      },
+      "items": {
+        "packed_berries": 4,
+        "berry_compote": 6
+      }
+    },
+    {
+      "id": "bottled_provisions",
+      "group": "provisions",
+      "title": "Напитки для рейса",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "dryer": 3,
+        "kiln": 3
+      },
+      "items": {
+        "bottled_compote": 4,
+        "dried_berries": 4
+      }
+    },
+    {
+      "id": "trail_provisions",
+      "group": "provisions",
+      "title": "Рационы исследователей",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "dryer": 2
+      },
+      "items": {
+        "trail_ration": 3,
+        "smoked_fish": 4
+      }
+    },
+    {
+      "id": "festive_provisions",
+      "group": "provisions",
+      "title": "Угощение дальнего берега",
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "dryer": 4,
+        "garden": 5
+      },
+      "items": {
+        "cranberry_glaze": 2,
+        "packed_berries": 4
+      }
+    },
+    {
+      "id": "cargo_packaging",
+      "group": "craft",
+      "title": "Упаковка ценного груза",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 2
+      },
+      "items": {
+        "trade_crate": 4,
+        "cloth": 3
+      }
+    },
+    {
+      "id": "glass_delivery",
+      "group": "craft",
+      "title": "Стекло для портовой лавки",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "kiln": 3
+      },
+      "items": {
+        "glass_bottle": 4,
+        "ceramic_jar": 4
+      }
+    },
+    {
+      "id": "sailmakers",
+      "group": "craft",
+      "title": "Заказ парусной мастерской",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 2
+      },
+      "items": {
+        "cloth": 5,
+        "rope": 8
+      }
+    },
+    {
+      "id": "ship_fittings",
+      "group": "craft",
+      "title": "Крепления для корабля",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "workshop": 2,
+        "kiln": 2
+      },
+      "items": {
+        "metal_parts": 2,
+        "trade_crate": 3
+      }
+    },
+    {
+      "id": "coastal_research",
+      "group": "craft",
+      "title": "Снаряжение картографов",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "workshop": 3
+      },
+      "items": {
+        "research_gear": 2,
+        "cloth": 4
+      }
+    },
+    {
+      "id": "field_research",
+      "group": "craft",
+      "title": "Полевые комплекты",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "workshop": 4,
+        "quarry": 4,
+        "kiln": 3
+      },
+      "items": {
+        "field_kit": 2,
+        "lens": 2
+      }
+    }
+  ],
+  "rewardValueCoins": 2000,
+  "maxRewardPearls": 16
+}

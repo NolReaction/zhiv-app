@@ -9,6 +9,7 @@ import ru.zhiv.economy.EconomyState
 import ru.zhiv.economy.EconomyTutorialOrders
 import ru.zhiv.economy.EconomyStageOrders
 import ru.zhiv.economy.EconomyTradeRelations
+import ru.zhiv.economy.EconomyShipOrders
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
@@ -73,6 +74,8 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
         if (pendingSales > ru.zhiv.economy.EconomyMarketRules.MAX_LISTINGS)
             add("Заберите выручку в лавках перед объединением профилей: вместе ожидают сбора больше десяти продаж.")
         if (states.any { it.jobs.isNotEmpty() }) add("Сначала получите результаты производства, строительства и исследований в обоих профилях. Затем повторите объединение.")
+        if (states.all { it.ship.voyage != null })
+            add("Завершите или пропустите корабельные заказы в одном из профилей перед объединением, чтобы сохранить оплаченные грузы.")
         if (states.all { it.food.heroMeal != null } || states.all { it.food.builderMeal != null })
             add("В обоих профилях есть сытый Мохлик или строитель. Сначала используйте бонус еды в одном профиле, чтобы сохранить второе угощение.")
         if (states.sumOf { it.wallet.coins } > ECONOMY_MAX_BALANCE || states.sumOf { it.wallet.pearls } > ECONOMY_MAX_PEARLS ||
@@ -122,6 +125,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
             builderMealSpeedBps = if (a.food.builderMeal != null) a.food.builderMealSpeedBps else b.food.builderMealSpeedBps),
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
         tradeRelations=EconomyTradeRelations.merge(a.tradeRelations,b.tradeRelations,now),
+        ship=EconomyShipOrders.merge(a.ship,b.ship),
         workshopStarterClaimed=a.workshopStarterClaimed || b.workshopStarterClaimed,
         tutorialOrder=EconomyTutorialOrders.merge(a.tutorialOrder,b.tutorialOrder),
         stageOrders=EconomyStageOrders.merge(a.stageOrders,b.stageOrders),

@@ -193,6 +193,7 @@
 /* Paper menus stay within the measured HUD space and retain independent scrolling. */
 .world .quickMenu[data-kind] { color: var(--forest-ink); border-color: #9aab7b; background: var(--forest-paper); box-shadow: 0 12px 32px #05110966, inset 0 0 0 1px #fff3; }
 .world .quickMenu[data-kind='more'] { width: min(280px, calc(100% - 24px)); }
+.world .quickMenu[data-kind='ship'] { width: min(620px, calc(100% - 24px)); max-height: calc(100% - var(--quick-top, 80px) - var(--quick-bottom, 70px) - 8px); }
 .quickMenu .quickHeader { padding: 8px 10px 8px 14px; border-bottom: 1px solid #9caf7760; background: linear-gradient(125deg, #2d4632, #213629); color: #f0e6ca; }
 .quickMenu .quickHeader h2 { color: #f0e6ca; }
 .quickMenu .quickHeader h2 > svg { color: #d9c591; }
