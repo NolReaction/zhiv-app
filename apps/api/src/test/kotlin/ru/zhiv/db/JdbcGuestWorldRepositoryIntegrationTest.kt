@@ -24,6 +24,7 @@ import ru.zhiv.security.TokenCodec
 import ru.zhiv.world.WorldEquipment
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
+import java.sql.SQLException
 import java.util.UUID
 import kotlin.test.*
 
@@ -94,7 +95,9 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         assertEquals(4,summary.market.count);assertEquals(3,summary.market.listings.size)
         assertTrue(summary.market.listings.all { it.id in lots.map { lot -> lot.id } && it.itemId=="berries" && it.totalPrice==20L })
         assertEquals(stateBefore,saved())
-        execute("UPDATE economy_market_listings SET total_price=2,currency_scale=1 WHERE id=?",UUID.fromString(lots.first().id))
+        assertEquals("23514", assertFailsWith<SQLException> {
+            execute("UPDATE economy_market_listings SET total_price=2,currency_scale=1 WHERE id=?",UUID.fromString(lots.first().id))
+        }.sqlState, "The current database rejects legacy denominations for active listings")
         assertEquals(4,ok(relationships.listPeople(buyer.hash)).people.single().gameSummary!!.market.count)
         edit(buyer) { it.copy(itemUnlockVersion=1,unlockedItems=it.unlockedItems+"tools") }
         assertEquals(5,ok(relationships.listPeople(buyer.hash)).people.single().gameSummary!!.market.count)

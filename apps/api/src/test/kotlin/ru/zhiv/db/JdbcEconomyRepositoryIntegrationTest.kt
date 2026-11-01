@@ -75,7 +75,9 @@ class JdbcEconomyRepositoryIntegrationTest {
         val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
         val finishedAt = Instant.parse("2000-01-01T00:00:00Z")
         val selected = state.jobs.map { it.id }.toSet()
-        val ready = persisted.copy(jobs = persisted.jobs.map { job -> if (job.id !in selected) job else job.copy(finishesAt = finishedAt.toString(),
+        val ready = persisted.copy(jobs = persisted.jobs.map { job -> if (job.id !in selected) job else job.copy(
+            startedAt = job.miningBatch?.let { finishedAt.minusSeconds(it.unitSeconds * it.quantity).toString() } ?: job.startedAt,
+            finishesAt = finishedAt.toString(),
             collection = job.collection?.let { collection -> if (collection.startedAt == null) collection
                 else collection.copy(startedAt = finishedAt.minusSeconds(collection.seconds).toString(), finishesAt = finishedAt.toString()) }) })
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
@@ -212,7 +214,9 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(accepted.state.revision + 1, after.revision)
         assertEquals(before.wallet.coins + stage.coins, after.wallet.coins)
         assertEquals(stage.reputationXp!!.toLong(), after.tradeRelations.reputation["builder"])
-        assertEquals(2500, after.tradeRelations.activity["builder"]!!.pointsBps)
+        assertTrue(after.tradeRelations.activity.isEmpty(), "Permanent reputation no longer requires a decaying activity meter")
+        assertEquals(75L, after.progression.player!!.xp)
+        assertEquals(25L, after.progression.player.season.points)
         assertEquals(1, after.tradeRelations.weekly!!.stage)
         assertTrue(after.tradeRelations.dailyOrderXp.isEmpty())
         assertTrue(JdbcEconomyRepository(source).command(p.hash, deliver).replayed)
@@ -223,6 +227,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(deliver.requestId)))
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${deliver.requestId}"))
         assertEquals(after.tradeRelations, JdbcEconomyRepository(source).snapshot(p.hash).tradeRelations)
+        assertEquals(after.progression, JdbcEconomyRepository(source).snapshot(p.hash).progression)
     }
 
     @Test fun `fish sales sign explicit species canonically and invalid choices leave no receipt`() = runBlocking<Unit> {

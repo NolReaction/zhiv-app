@@ -37,7 +37,8 @@ const constructionSequence = Object.values(chapters).flat();
  * actual money, stock, recipes, restored landmarks and unfinished work forward. */
 function completeJourney(regularActiveMinutes, maximumDays) {
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
-  const startingCoins = state.wallet.coins, startingItems = { ...state.inventory };
+  const startingCoins = state.wallet.coins, startingPearls = state.wallet.pearls, startingItems = { ...state.inventory };
+  let earnedPearls = 0;
   let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0, visitCount = 0;
   let constructionSeconds = 0, activeStart = epoch, activeEnd = epoch, activeSeconds = 0;
   const courses = [], builds = [], actions = {}, flow = {}, production = {}, catches = {}, repeatOrders = [];
@@ -88,7 +89,11 @@ function completeJourney(regularActiveMinutes, maximumDays) {
     }
     const storage = rules.economyStorage(state); peak = Math.max(peak, storage.used);
     assert.equal(storage.capacity, 50); assert(storage.used <= 50, `${action}:${targetId} exceeds the original warehouse`);
-    assert.equal(state.wallet.pearls, 0); assert.deepEqual(state.productionSlots ?? {}, {}); assert.equal(state.marketSlots, 5);
+    const pearlCredit = state.wallet.pearls - before.wallet.pearls;
+    assert(pearlCredit >= 0, `${action}: level and season pearls cannot fund acceleration in this route`);
+    earnedPearls += pearlCredit;
+    assert.equal(state.wallet.pearls, startingPearls + earnedPearls, "Every pearl is an earned command reward");
+    assert.deepEqual(state.productionSlots ?? {}, {}); assert.equal(state.marketSlots, 5);
     assert(state.jobs.filter(job => job.kind === "construction").length <= 1);
     for (const id of ["garden", "woodlot", "workshop", "dryer", "kiln"])
       assert(state.jobs.filter(job => job.kind === "production" && job.targetId === id).length <= 1);
@@ -301,17 +306,18 @@ function completeJourney(regularActiveMinutes, maximumDays) {
     activeSeconds += (clock - begin) / 1000;
   }
   return { state, clock, revision, peak, constructionCoins, courseCoins, repeatCoins, saleCoins, courses, builds,
-    actions, flow, production, catches, repeatOrders, visitCount, activeSeconds, constructionSeconds, berryClaims, checkpoints, windows, startingCoins, startingItems, regularActiveMinutes, completed: completed() };
+    actions, flow, production, catches, repeatOrders, visitCount, activeSeconds, constructionSeconds, berryClaims, checkpoints, windows, startingCoins, startingPearls, earnedPearls, startingItems, regularActiveMinutes, completed: completed() };
 }
 
 
 // This conservative reachability route uses one free slot and no food, purchases
-// or pearls. It also makes every berry product at its advertised house. The
+// or pearl spending. Earned level/season rewards remain in the wallet. It also
+// makes every berry product at its advertised house. The
 // monthly balance is measured separately by the unified gameplay simulator.
 // Visits happen eight hours apart; missed recipe finishes wait until the next.
-// v15 charges 129,850 coins for this optional recipe route. The unchanged policy
-// completes in 64/105 days and 11,031/10,618 commands; keep a small regression
-// margin rather than the v14 budget. This is reachability, not an optimal route.
+// This optional recipe route costs 129,850 construction coins. The bounds below
+// retain a small regression margin for both schedules. This is reachability,
+// not an optimal route or a monthly balance forecast.
 for (const [minutes, maximumDays, maximumCommands] of [[30, 66, 11400], [15, 108, 11000]]) test(`a conservative free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
   const result = completeJourney(minutes, maximumDays), { state, clock, flow, courses, builds, berryClaims, checkpoints, actions } = result;
   t.diagnostic(JSON.stringify({ elapsedDays: (clock - epoch) / (24 * hour), visits: result.visitCount,
@@ -325,7 +331,9 @@ for (const [minutes, maximumDays, maximumCommands] of [[30, 66, 11400], [15, 108
   assert(result.completed, "the bounded real command route completes all goals");
   assert.equal(state.buildings.home, 5); assert.equal(state.buildings.bridge, 1); assert.equal(state.buildings.lighthouse, 1);
   assert.equal(state.buildings.garden, 5); assert.equal(state.buildings.warehouse, 1); assert.equal(state.jobs.length, 0);
-  assert.equal(state.wallet.pearls, 0); assert.deepEqual(state.productionSlots ?? {}, {});
+  assert.equal(result.startingPearls, 0); assert.ok(result.earnedPearls > 0);
+  assert.equal(state.wallet.pearls, result.startingPearls + result.earnedPearls);
+  assert.deepEqual(state.productionSlots ?? {}, {});
   assert.equal(state.wallet.coins, result.startingCoins + result.courseCoins + result.repeatCoins + result.saleCoins - result.constructionCoins);
   for (const [id, counts] of Object.entries(flow))
     assert.equal(counts.received - counts.consumed - counts.sold, state.inventory[id] ?? 0, `${id} remains conserved across all chapters`);

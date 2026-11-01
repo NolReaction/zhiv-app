@@ -48,11 +48,19 @@ test("receipt corruption, replaced baseline and merely substituted source hashes
 async function sandbox(t) {
   const directory = await mkdtemp(join(tmpdir(), "zhiv-rerun-receipt-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const receipt = JSON.parse(await readFile(join(root, progressionRerunReceiptPath), "utf8"));
-  for (const path of [...Object.keys(receipt.sourceSha256), progressionEvidencePath, progressionRerunReceiptPath, progressionReportPath]) {
+  const current = await readResolvedProgressionEvidence({ repositoryRoot: root });
+  // Exercise receipt adoption against a synthetic older baseline even when
+  // canonical evidence was replaced by a genuinely different full run.
+  const older = { ...current, generatedAt: "2026-10-01T00:00:00.000Z",
+    sourceSha256: { ...current.sourceSha256, "lib/gameplay-generation.ts": "fixture-old-source" } };
+  const receipt = createProgressionRerunReceipt(bytes(older), bytes(current));
+  for (const path of [...Object.keys(current.sourceSha256), progressionReportPath]) {
     await mkdir(dirname(join(directory, path)), { recursive: true });
     await copyFile(join(root, path), join(directory, path));
   }
+  await mkdir(dirname(join(directory, progressionEvidencePath)), { recursive: true });
+  await writeFile(join(directory, progressionEvidencePath), bytes(older));
+  await writeFile(join(directory, progressionRerunReceiptPath), bytes(receipt));
   return directory;
 }
 

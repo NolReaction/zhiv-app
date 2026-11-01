@@ -8,7 +8,6 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.config.AppConfig
-import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.NeighborRules
 import ru.zhiv.economy.economyJson
 import java.sql.SQLException
@@ -23,6 +22,9 @@ class JdbcNeighborConfigurationMigrationIntegrationTest {
     private val oldBuildings = mapOf("home" to 3, "workshop" to 2, "quarry" to 2, "warehouse" to 2,
         "garden" to 2, "kiln" to 1, "dryer" to 1, "woodlot" to 2, "bridge" to 1, "lighthouse" to 0)
     private val oldStock = listOf("wood", "stone", "fiber", "berries", "planks", "rope", "clay", "sand", "ore")
+    // V72 is immutable: its maximum was warehouse 10, before the later 15-level catalog.
+    private val v72Buildings = mapOf("home" to 5, "garden" to 5, "woodlot" to 5, "quarry" to 5,
+        "workshop" to 5, "dryer" to 5, "kiln" to 5, "warehouse" to 10, "bridge" to 1, "lighthouse" to 1)
     private fun execute(source: DataSource, sql: String, vararg values: Any?) = source.connection.use { c ->
         c.economyUpdate(sql, *values).also { c.commit() }
     }
@@ -51,7 +53,7 @@ class JdbcNeighborConfigurationMigrationIntegrationTest {
         val receipt = scalar(source, "SELECT to_jsonb(r)::text FROM neighbor_receipts r")
         DatabaseFactory.migrate(source)
         val actual = economyJson.decodeFromString<ru.zhiv.economy.NeighborSettings>(scalar(source, "SELECT settings::text FROM neighbor_settings"))
-        assertEquals(settings.copy(buildings = EconomyRules.catalog.buildings.associate { it.id to it.levels.maxOf { level -> level.level } },
+        assertEquals(settings.copy(buildings = v72Buildings,
             allowedItemIds = NeighborRules.defaults.allowedItemIds), actual)
         assertEquals("9", scalar(source, "SELECT version::text FROM neighbor_settings"))
         assertEquals(history, scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=71"))
@@ -79,13 +81,12 @@ class JdbcNeighborConfigurationMigrationIntegrationTest {
         assertEquals(before, scalar(source, "SELECT to_jsonb(s)::text FROM neighbor_settings s"))
     }
     private fun independentDefaults(customWorld: Boolean) = legacy { source ->
-        val maximum = EconomyRules.catalog.buildings.associate { it.id to it.levels.maxOf { level -> level.level } }
         val settings = NeighborRules.defaults.copy(buildings = if (customWorld) oldBuildings + ("home" to 4) else oldBuildings,
             allowedItemIds = if (customWorld) oldStock else listOf("wood", "stone"))
         execute(source, "INSERT INTO neighbor_settings(singleton,version,settings) VALUES(true,7,?::jsonb)", economyJson.encodeToString(settings))
         DatabaseFactory.migrate(source)
         val actual = economyJson.decodeFromString<ru.zhiv.economy.NeighborSettings>(scalar(source, "SELECT settings::text FROM neighbor_settings"))
-        assertEquals(settings.copy(buildings = if (customWorld) settings.buildings else maximum,
+        assertEquals(settings.copy(buildings = if (customWorld) settings.buildings else v72Buildings,
             allowedItemIds = if (customWorld) NeighborRules.defaults.allowedItemIds else settings.allowedItemIds), actual)
         assertEquals(if (customWorld) "9" else "8", scalar(source, "SELECT version::text FROM neighbor_settings"))
     }

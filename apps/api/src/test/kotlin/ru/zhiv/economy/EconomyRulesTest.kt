@@ -230,6 +230,12 @@ class EconomyRulesTest {
         var at = now
         fun complete(action: String, target: String) {
             var started = apply(state, action, target, at = at)
+            if (action == "start_exploration" && target == "forest") {
+                // A reproducible valid draw keeps this progression scenario independent of private entropy.
+                // Loot ranges and empty outcomes are covered by EconomyExpeditionLootTest.
+                val route = EconomyRules.catalog.explorations.single { it.id == target }
+                started = started.copy(jobs = started.jobs.map { it.copy(expeditionFinds = EconomyExpeditionLoot.draw(route) { size -> size - 1 }) })
+            }
             val job = started.jobs.single()
             at = Instant.parse(job.finishesAt)
             job.collection?.let {
@@ -334,7 +340,20 @@ class EconomyRulesTest {
         assertEquals(1, state.buildings["kiln"])
         assertTrue(state.stageOrders.stages.getValue("2").completed)
         assertTrue(state.jobs.isEmpty())
-        assertEquals(0L, state.wallet.pearls)
+        val progress = checkNotNull(state.progression.player)
+        val rewards = economyJson.parseToJsonElement(checkNotNull(javaClass.getResourceAsStream("/world/player-progression-catalog.json"))
+            .bufferedReader().use { it.readText() }).jsonObject
+        val levelPearls = rewards.getValue("levelRewards").jsonArray.sumOf { entry ->
+            val reward = entry.jsonObject
+            if (reward.getValue("level").jsonPrimitive.int in progress.awardedLevels) reward.getValue("rewardPearls").jsonPrimitive.long else 0L
+        }
+        val seasonPearls = rewards.getValue("season").jsonObject.getValue("milestones").jsonArray.sumOf { entry ->
+            val reward = entry.jsonObject
+            if (reward.getValue("points").jsonPrimitive.long in progress.season.awardedMilestones) reward.getValue("rewardPearls").jsonPrimitive.long else 0L
+        }
+        assertTrue(levelPearls + seasonPearls > 0, "The recovery course now earns XP and cooperation rewards")
+        assertEquals(2 * (levelPearls + seasonPearls), state.wallet.pearls, "All earned pearls remain unspent")
+        assertEquals(0L, progress.pendingPearls)
         assertEquals(0L, EconomyRules.storage(state).overflow)
     }
 

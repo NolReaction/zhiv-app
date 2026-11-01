@@ -9,10 +9,10 @@ export function runEconomyCommandScenario({ catalog, rules, stages, tutorial }, 
   const epoch = Date.parse("2026-10-26T06:00:00Z");
   const state = initialState ? structuredClone(initialState) : rules.newEconomyState({
     resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
-  const initialCoins = state.wallet.coins, initialInventory = { ...state.inventory };
+  const initialCoins = state.wallet.coins, initialPearls = state.wallet.pearls, initialInventory = { ...state.inventory };
   const active = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired);
   const actions = {}, flows = {}, starts = {}, builds = [], deliveries = [];
-  let clock = epoch, sequence = 0, income = 0, expenses = 0, peak = rules.economyStorage(state).used;
+  let clock = epoch, sequence = 0, income = 0, expenses = 0, earnedPearls = 0, peak = rules.economyStorage(state).used;
   const uuid = () => `00000000-0000-4000-9000-${(++sequence).toString(16).padStart(12, "0")}`;
   const held = items => Object.entries(items).every(([id, count]) => (state.inventory[id] ?? 0) >= count);
   const effectiveLevel = source => source.baseCampfire ? 0 : source.buildingLevel;
@@ -33,7 +33,9 @@ export function runEconomyCommandScenario({ catalog, rules, stages, tutorial }, 
     }
     const storage = rules.economyStorage(state); peak = Math.max(peak, storage.used);
     assert(storage.used <= storage.capacity && storage.used <= 50, `${action}:${targetId} must fit the starter warehouse`);
-    assert.equal(state.wallet.pearls, 0, "No paid acceleration in this scenario");
+    const pearlCredit = state.wallet.pearls - before.wallet.pearls;
+    assert(pearlCredit >= 0, "Earned level and season pearls are never spent on acceleration");
+    earnedPearls += pearlCredit;
     assert.deepEqual(state.productionSlots ?? {}, {}, "The scenario uses one ordinary slot");
     assert(state.jobs.filter(job => job.kind === "construction").length <= 1);
     for (const id of ["garden", "woodlot", "workshop", "dryer", "kiln"])
@@ -156,12 +158,13 @@ export function runEconomyCommandScenario({ catalog, rules, stages, tutorial }, 
   }
   ensureBuilding("warehouse", warehouseLevel);
   assert.equal(state.wallet.coins, initialCoins + income - expenses, "Every coin must come from or go to a real command");
+  assert.equal(state.wallet.pearls, initialPearls + earnedPearls, "Every pearl must come from an earned command reward");
   for (const id of new Set([...Object.keys(initialInventory), ...Object.keys(flows)])) {
     const flow = flows[id] ?? { received: 0, consumed: 0, sold: 0 };
     assert.equal(state.inventory[id] ?? 0, (initialInventory[id] ?? 0) + flow.received - flow.consumed - flow.sold,
       `${id}: item conservation across crafting, claims and sales`);
   }
-  return { state, elapsedSeconds: (clock - epoch) / 1000, initialCoins, income, expenses,
+  return { state, elapsedSeconds: (clock - epoch) / 1000, initialCoins, income, expenses, initialPearls, earnedPearls,
     commandCount: sumActions(actions), actions, starts, builds, deliveries, peakStorage: peak, flows,
     timingBasis: "One sequential active player, immediate claims, no paid slots/gifts/speedups; feasible policy, not an optimal or calendar-visit forecast" };
 }

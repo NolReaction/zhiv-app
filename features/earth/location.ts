@@ -268,7 +268,7 @@ export function createEarthLocationController(
     automaticAttempted = true;
     automaticLookup = automatically;
     fallbackAttempted = false;
-    freshLookup = fresh;
+    freshLookup = fresh || !state.position;
     requested = true;
     reconcile();
     if (requested) observePermission();
@@ -280,9 +280,10 @@ export function createEarthLocationController(
     if (!mounted || !allowed || !ownerPublicId) return;
     automaticLookup = false;
     if (!requested) { startLookup(false, fresh); return; }
-    // A newly acquired sharing lease needs a post-consent fix even when the
-    // private entry lookup is still pending. Replace it once with no cache.
-    if (state.status === "requesting" && !fresh) return;
+    // The initial lookup is already uncached. Reuse it while pending instead
+    // of opening another native request for the newly acknowledged lease.
+    // Sharing independently rejects measurements captured before that lease.
+    if (state.status === "requesting" && (!fresh || freshLookup)) return;
     fallbackAttempted = false;
     freshLookup = fresh;
     clearWatch();

@@ -21,7 +21,8 @@ export async function loadProgressionRules(sourceRoot = defaultRoot) {
     slots: "features/economy/domain/production-slots.ts", market: "features/economy/domain/market-rules.ts", relations: "features/economy/domain/trade-relations.ts", fishing: "features/economy/domain/fishing.ts", fishingShop: "features/economy/domain/fishing-shop.ts", publicJobs: "features/economy/domain/public-jobs.ts", leaftail: "features/economy/domain/leaftail-shop.ts", relicExchange: "features/economy/domain/leaftail-relic-exchange.ts", rewards: "features/game/progression-rewards.ts", achievements: "features/game/achievement-progress.ts",
     welcome: "features/mailbox/welcome.ts", money: "features/economy/domain/money.ts", fishStock: "features/economy/domain/fish-stock.ts",
     identities: "lib/dev/api-store.ts", economyStore: "lib/dev/economy-store.ts", neighborStore: "lib/dev/neighbor-store.ts",
-    neighborRules: "features/economy/domain/neighbor-rules.ts", neighborModel: "features/economy/domain/neighbor-model.ts" };
+    neighborRules: "features/economy/domain/neighbor-rules.ts", neighborModel: "features/economy/domain/neighbor-model.ts",
+    expeditionFinds: "features/economy/domain/expedition-finds.ts" };
   const loaded = {};
   for (const [name, path] of Object.entries(paths)) loaded[name] = await vite.ssrLoadModule(`/${path}`);
   loaded.catalog = loaded.model.economyCatalog;
@@ -264,10 +265,11 @@ export function simulateProgression(loaded, options = {}) {
       }
       if (job.collection && Date.parse(job.collection.finishesAt) > clock) continue;
       // Species are grouped into classes by the normal claim transition.
-      const possibleFind = catalog.explorations.find(route => route.id === job.targetId)?.finds?.entries ?? [];
+      const expedition = catalog.explorations.find(route => route.id === job.targetId);
       // Reserve the public maximum bonus quantity without inspecting the saved
       // private find. The concrete item is revealed only by the successful claim.
-      makeRoom(Object.values(job.rewards).reduce((sum, count) => sum + count, 0) + Math.max(0,...possibleFind.map(row => row.quantity)));
+      makeRoom(Object.values(job.rewards).reduce((sum, count) => sum + count, 0)
+        + (expedition ? loaded.expeditionFinds.expeditionMaximumBonus(expedition) : 0));
       apply("claim_job", job.id); changed = true;
       if (incomeJobs.delete(job.id)) {
         // Keep a small working reserve and sell the claimed single item
@@ -299,6 +301,7 @@ export function simulateProgression(loaded, options = {}) {
   };
   function run(source, ancestors = [], requestedBatches = 1) {
     if (!sourceOpen(source)) return false;
+    if (!source.buildingId && loaded.expeditionFinds.expeditionMaximumRewards(source) > rules.economyStorage(state, escrowItems()).capacity) return false;
     if (ancestors.includes(source.id)) throw new Error(`Acquisition cycle: ${ancestors.join(" -> ")} -> ${source.id}`);
     const path = [...ancestors, source.id];
     for (const [id, count] of Object.entries(source.requiredRecipes ?? {})) {
@@ -564,7 +567,7 @@ export function simulateProgression(loaded, options = {}) {
       && sourceOpen(route) && Object.entries(route.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count))
       .map(route => ({ route, useful: Object.entries(route.rewards).reduce((sum, [id, count]) => sum + Math.min(count, desired[id] ?? 0) * value(id), 0),
         cost: route.cost.coins + Object.entries(route.cost.items).reduce((sum, [id, count]) => sum + count * value(id), 0) }))
-      .filter(row => row.useful > row.cost && Object.values(row.route.rewards).reduce((sum, count) => sum + count, 0) <= rules.economyStorage(state, escrowItems()).capacity)
+      .filter(row => row.useful > row.cost && loaded.expeditionFinds.expeditionMaximumRewards(row.route) <= rules.economyStorage(state, escrowItems()).capacity)
       .sort((a, b) => (b.useful - b.cost) - (a.useful - a.cost));
     for (const { route, useful, cost } of candidates) {
       const previous = state.jobs.length;

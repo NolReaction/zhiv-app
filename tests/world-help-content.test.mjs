@@ -8,6 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { miningBatchCatalog } = await vite.ssrLoadModule("/features/economy/domain/mining-batch.ts");
 const { fishingClassOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const { constructionTimePearlPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
@@ -231,7 +232,7 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("mining"), /Нажмите шахту, чтобы открыть добычу/);
   assert.match(answer("mining"), /После подтверждения постройки с северной тропы придёт шахтёр Камнешмыг/);
   assert.doesNotMatch(answer("mining"), /«В путь»/);
-  assert.match(answer("journeys"), /Отзыв теряет добычу.*не возвращаются/);
+  assert.match(answer("journeys"), /Отзыв не даёт XP и теряет добычу.*не возвращаются/);
   assert.match(answer("storage"), /Отмена лота не освобождает место/);
   assert.match(answer("storage"), /не пропадут/);
   assert.match(answer("saving"), /не очищайте данные браузера и не выходите из аккаунта/);
@@ -254,8 +255,11 @@ test("food guidance names the choice tile and makes spending an explicit second 
   assert.match(answer("builder-food"), /Выбор блюда покажет бонус и новое время.*Подтвердите «Угостить · 1 порция»: только эта кнопка потратит еду/);
   assert.match(answer("journeys"), /«Ускорение едой» под таймером/);
   assert.match(answer("journeys"), /открытие ничего не тратит/);
-  assert.match(answer("journeys"), /У начатой работы показаны оставшееся время и гарантированная добыча/);
-  assert.match(answer("journeys"), /Дополнительная находка раскрывается при получении/);
+  assert.match(answer("journeys"), /до отправления видны диапазоны добычи и шансы особых находок/);
+  assert.match(answer("journeys"), /снаряжение открывает более редкие находки/);
+  assert.match(answer("journeys"), /После получения появится отчёт о том, что Мохлик принёс/);
+  assert.match(answer("journeys"), /XP начисляется при получении результата.*первое прохождение/);
+  assert.doesNotMatch(answer("journeys"), /гарантированная добыча/);
 });
 
 test("premium shop guidance offers stage packs and costume previews while keeping checkout unavailable", () => {
@@ -416,9 +420,12 @@ test("campfire and mining guidance matches compact categories, duration filters 
     assert.ok(answer("campfire").includes(`«${label}»`));
   assert.match(answer("campfire"), /работы остаются видны при любом фильтре/);
   assert.match(answer("campfire"), /Рыбный рецепт сначала откроет выбор видов.*«Готовить»/);
-  assert.match(answer("mining"), /Выберите ресурс и количество: 1, 5, 10.*до 100/);
-  assert.match(answer("mining"), /партию последовательно.*после закрытия приложения/);
-  assert.match(answer("mining"), /Улучшения открывают новые материалы/);
+  assert.match(answer("mining"), /Выберите ресурс и количество/);
+  assert.ok(answer("mining").includes(`Предел по уровням шахты: ${miningBatchCatalog.maxUnitsByQuarryLevel.join(" / ")} единиц`));
+  assert.ok(answer("mining").includes(`не больше ${miningBatchCatalog.maxBaseSeconds / 60} минут базовой работы`));
+  assert.match(answer("mining"), /Для долгих ресурсов партия меньше.*Бонусы сокращают время, не увеличивая лимит/);
+  assert.match(answer("mining"), /остальная продолжает добываться, даже с закрытой игрой/);
+  assert.doesNotMatch(answer("mining"), /до 100/);
   assert.match(answer("fishing"), /три ячейки: удочка, крючок, наживка/);
   assert.match(answer("fishing"), /Тап по снасти выбирает её, без покупки и отправления/);
 });
@@ -477,12 +484,13 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.match(answer("second-house-stage"), /один предмет/);
   assert.match(answer("mining"), /Камень и глина: одна штука за три минуты до бонусов/);
   assert.match(answer("mining"), /Одна бесплатная очередь/);
-  assert.match(answer("mining"), /Мохлик свободен для других занятий/);
+  assert.match(answer("mining"), /Мохлик свободен/);
   assert.match(answer("mining"), /Обед Мохлика не действует на шахтёра/);
   assert.match(answer("mining"), /Выберите ресурс и количество/);
   assert.doesNotMatch(answer("mining"), /Дольше 1 ч|Смешанные смены/);
-  assert.match(answer("mining"), /«Забрать готовое».*оставшаяся партия продолжает работу/);
-  assert.match(answer("mining"), /видны готовая часть и время всей партии/);
+  assert.match(answer("mining"), /Забирайте доступную часть сразу.*остальная продолжает добываться/);
+  assert.match(answer("mining"), /сколько готово, получено и осталось, время следующей единицы и всей партии/);
+  assert.match(answer("mining-control"), /«Забрать доступное»/);
   assert.match(answer("mining-control"), /затем подтвердите «Остановить».*готовая останется/);
   assert.match(answer("mining-control"), /столько готовой добычи, сколько помещается.*Остаток сохранится/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");

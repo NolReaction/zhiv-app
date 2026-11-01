@@ -13,6 +13,7 @@ const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
 const tutorial = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
+const { miningBatchLimit } = await vite.ssrLoadModule("/features/economy/domain/mining-batch.ts");
 const now = Date.parse("2026-10-14T09:00:00Z");
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 after(() => vite.close());
@@ -47,7 +48,10 @@ for (const withWarehouse of [true, false]) test(`real one-slot commands earn hou
   assert.equal(delivered.reduce((sum, order) => sum + order.coins, 0), model.economyCatalog.stageOrders
     .find(stage => stage.homeLevel === 2).orders.reduce((sum, order) => sum + order.coins, 0));
   assert.ok(report.peakStorage <= 50, "optional capacity must not conceal a mandatory stock bottleneck");
-  assert.ok(state.wallet.coins >= 0); assert.equal(state.wallet.pearls, 0);
+  assert.ok(state.wallet.coins >= 0); assert.equal(report.initialPearls, 0);
+  assert.equal(state.wallet.pearls, report.initialPearls + report.earnedPearls);
+  assert.ok(report.earnedPearls > 0, "Development earns pearls while keeping every production slot free");
+  assert.deepEqual(state.productionSlots ?? {}, {});
   assert.ok(report.starts.quarry_stone > 0 && report.starts.quarry_clay > 0 && report.starts.shore > 0);
   assert.ok(Object.keys(report.starts).every(id => ![...model.economyCatalog.recipes, ...model.economyCatalog.explorations]
     .find(source => source.id === id).retired));
@@ -83,6 +87,8 @@ test("second-stage basic production and construction keep unit counts, exact tim
     const before = read(p); assert.throws(() => send(p, "start_production", id, 0, { quantity: 2 }), { code: "INVALID_ECONOMY_COMMAND" }); assert.deepEqual(read(p), before);
   }
   for (const id of ["quarry_stone", "quarry_clay"]) {
-    const before = read(p); assert.throws(() => send(p, "start_exploration", id, 0, { quantity: 2 }), { code: "INVALID_ECONOMY_COMMAND" }); assert.deepEqual(read(p), before);
+    const before = read(p), limit = miningBatchLimit(before.buildings.quarry, route(id).seconds);
+    assert.throws(() => send(p, "start_exploration", id, 0, { quantity: limit + 1 }), { code: "INVALID_ECONOMY_COMMAND" });
+    assert.deepEqual(read(p), before, "An oversized mining party must not spend or start anything");
   }
 });

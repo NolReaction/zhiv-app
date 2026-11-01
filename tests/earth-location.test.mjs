@@ -92,7 +92,7 @@ test("screen activation never requests coordinates; an explicit start opens only
   s.controller.start(); s.controller.start();
   assert.equal(s.watches.length, 1);
   assert.equal(s.controller.getSnapshot().status, "requesting");
-  assert.deepEqual(s.watches[0].options, { enableHighAccuracy: true, maximumAge: 15_000, timeout: 30_000 });
+  assert.deepEqual(s.watches[0].options, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
   s.watches[0].success(fix());
   assert.deepEqual(s.controller.getSnapshot(), {
     position: { latitude: 55.75, longitude: 37.61, accuracy: 30, timestamp: 1_000 }, status: "active", error: null,
@@ -565,7 +565,7 @@ test("a provider failure uses one balanced fallback watch and fences the earlier
   const previous = s.controller.getSnapshot().position;
   s.watches[0].failure({ code: 2 });
   assert.equal(s.watches.length, 2);
-  assert.deepEqual(s.watches[1].options, { enableHighAccuracy: false, maximumAge: 15_000, timeout: 20_000 });
+  assert.deepEqual(s.watches[1].options, { enableHighAccuracy: false, maximumAge: 0, timeout: 20_000 });
   assert.equal(s.controller.getSnapshot().position, previous);
   s.watches[0].success(fix({ latitude: 10, timestamp: 999_000 })); s.watches[0].failure({ code: 1 });
   assert.equal(s.controller.getSnapshot().position, previous);
@@ -689,23 +689,24 @@ test("OFF fences a delayed permission observer and an unmounted disabled control
 });
 
 
-test("a new publication lease replaces even a pending entry watch with an uncached high-accuracy fix", () => {
+test("a publication lease reuses the pending uncached entry request and refreshes an already acquired fix", () => {
   const s = session();
-  s.controller.start();
+  s.controller.setAutomaticStartPolicy(true);
   s.controller.locate({ fresh: true });
-  assert.equal(s.watches.length, 2);
+  s.controller.locate({ fresh: true });
+  assert.equal(s.watches.length, 1, "entry and publication must share one pending native request");
+  assert.deepEqual(s.cleared, []);
+  assert.deepEqual(s.watches[0].options, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
+  s.watches[0].success(fix({ timestamp: 10_000 }));
+  s.controller.locate({ fresh: true });
+  assert.equal(s.watches.length, 2, "an already acquired pre-lease fix needs a new uncached request");
   assert.deepEqual(s.cleared, [0]);
-  assert.deepEqual(s.watches[1].options, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
-  s.watches[0].success(fix({ timestamp: 9_000 }));
-  assert.equal(s.controller.getSnapshot().position, null, "the replaced pre-consent watch cannot supply the new lease");
-  s.watches[1].success(fix({ timestamp: 10_000 }));
-  assert.equal(s.controller.getSnapshot().position.timestamp, 10_000);
-  s.controller.locate({ fresh: true });
-  assert.equal(s.watches.length, 3, "a later lease also replaces an existing fresh watch");
-  s.watches[2].failure({ code: 2 });
-  assert.equal(s.watches.length, 4);
-  assert.equal(s.watches[3].options.maximumAge, 0, "the bounded fallback cannot return a pre-lease cached fix");
-  assert.equal(s.watches[3].options.enableHighAccuracy, false);
+  s.watches[0].success(fix({ timestamp: 99_000 }));
+  assert.equal(s.controller.getSnapshot().position.timestamp, 10_000, "retired watch callbacks cannot update the new request");
+  s.watches[1].failure({ code: 2 });
+  assert.equal(s.watches.length, 3);
+  assert.equal(s.watches[2].options.maximumAge, 0, "the bounded fallback cannot return a pre-lease cached fix");
+  assert.equal(s.watches[2].options.enableHighAccuracy, false);
   s.deactivate();
 });
 

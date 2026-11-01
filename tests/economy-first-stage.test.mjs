@@ -64,7 +64,10 @@ test("a fresh one-slot player earns the complete first house with real commands 
   const report = runEconomyCommandScenario({ rules, catalog: model.economyCatalog, stages, tutorial }, { targetHome: 2 });
   const state = report.state;
   assert.equal(state.buildings.home, 2); assert.equal(state.jobs.length, 0);
-  assert.equal(report.initialCoins, 100); assert.equal(state.wallet.pearls, 0);
+  assert.equal(report.initialCoins, 100); assert.equal(report.initialPearls, 0);
+  assert.equal(state.wallet.pearls, report.initialPearls + report.earnedPearls);
+  assert.ok(report.earnedPearls > 0, "Development earns level and season pearls without buying acceleration");
+  assert.deepEqual(state.productionSlots ?? {}, {});
   assert.equal(state.tutorialOrder.completed, true); assert.equal(state.stageOrders.stages["1"].completed, true);
   assert.equal(report.deliveries.length, 4); assert.equal(state.residentOrders.completed, 4);
   assert.equal(state.residentOrders.earnedCoins, report.deliveries.reduce((sum, order) => sum + order.coins, 0));
