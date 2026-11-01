@@ -5,7 +5,7 @@ import type { TradeShipMotion } from "@/features/world/objects/trade-ship/trade-
 // The opaque PNG has entered the real map by this point; the extended workshop sea is not a visibility signal.
 export const TRADE_SHIP_ARRIVAL_AUDIO = { cueId: "ship.arrival", contactAt: 10.5, maxAgeMs: 350 } as const;
 export type TradeShipAudioInput = {
-  /** Stable per introduction; DEV replays use their own monotonically new ID. */
+  /** Stable per voyage; DEV replays use their own monotonically new ID. */
   voyageId: string | null;
   motion: TradeShipMotion | null;
   /** The already published full-map AudioFrame, never a second audio owner. */
@@ -62,9 +62,11 @@ export function createTradeShipAudioController(runtime: Pick<AudioRuntime, "prep
       if (!newlyClaimed || !input.active || !input.visible || !soundEnabled || !frame || frame.soundscape === false || delta <= 0 || delta > .25) return;
       const position = { x: motion.x + motion.width * .5, y: motion.y + motion.width * .35 };
       const listener = frame.listener;
-      const gain = distanceGain(Math.hypot(position.x - listener.position.x, position.y - listener.position.y), 70, 480)
-        * Math.max(0, Math.min(1, Number.isFinite(listener.detail) ? listener.detail : 0));
-      if (gain <= .001) return;
+      const distance = Math.hypot(position.x - listener.position.x, position.y - listener.position.y);
+      if (!Number.isFinite(distance)) return;
+      // A horn announces the port, unlike tiny work/footstep sounds. The actual
+      // visible-sprite gate above still applies, but overview zoom must not mute it.
+      const gain = .65 + .35 * distanceGain(distance, 120, 1000);
       runtime.play({ id: `${voyageId}:arrival-horn-v1`, cueId: TRADE_SHIP_ARRIVAL_AUDIO.cueId, ownerId: frame.ownerId,
         occurredAt: Number.isFinite(input.now) ? input.now! : Date.now(), maxAgeMs: TRADE_SHIP_ARRIVAL_AUDIO.maxAgeMs,
         gain, pan: stereoPan(position, listener) * .65 });

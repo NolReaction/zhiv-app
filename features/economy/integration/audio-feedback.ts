@@ -17,12 +17,12 @@ export type EconomyAudioFeedbackView = {
 
 export type EconomyAudioFeedbackEvent = {
   id: string;
-  cueId: "ui.reward" | "ui.construction-complete" | "ui.confirm" | "ui.error" | "ui.click";
+  cueId: "ui.reward" | "ui.collect" | "ui.construction-complete" | "ui.confirm" | "ui.error" | "ui.production-start";
   occurredAt: number;
   maxAgeMs?: number;
 };
 
-type RewardFeedback = Pick<EconomyAudioFeedbackEvent, "id"> & { cueId: "ui.reward" | "ui.construction-complete" };
+type RewardFeedback = Pick<EconomyAudioFeedbackEvent, "id"> & { cueId: "ui.reward" | "ui.collect" | "ui.confirm" | "ui.construction-complete" };
 type PendingFeedback = { startRevision: number; id: string; suppressed: boolean; reward: RewardFeedback | null; productionStart: boolean };
 export const ECONOMY_AUDIO_RECEIPT_LIMIT = 128;
 let trackerSequence = 0;
@@ -97,7 +97,7 @@ export function createEconomyAudioFeedbackTracker() {
         if (!seen.has(key) && receipt.ownerPublicId === owner) {
           if (pending) pending.productionStart = true;
           if (!view.uncertain && !suppressUntilIdle && !pending?.suppressed) events.push({
-            id: `economy:${owner}:${key}`, cueId: "ui.click", occurredAt: receipt.occurredAt, maxAgeMs: 180,
+            id: `economy:${owner}:${key}`, cueId: "ui.production-start", occurredAt: receipt.occurredAt, maxAgeMs: 180,
           });
         }
         remember(key);
@@ -108,7 +108,8 @@ export function createEconomyAudioFeedbackTracker() {
       for (const receipt of view.inventoryGains ?? []) {
         const key = `gain:${receipt.id}`;
         if (!seen.has(key) && receipt.ownerPublicId === owner && Number.isSafeInteger(receipt.revision)
-          && receipt.revision > revisionFloor && receipt.revision <= snapshot.revision && allowReward) rewards.push({ id: key, cueId: "ui.reward" });
+          && receipt.revision > revisionFloor && receipt.revision <= snapshot.revision && allowReward) rewards.push({ id: key,
+          cueId: receipt.source === "purchase" ? "ui.confirm" : receipt.expedition ? "ui.reward" : "ui.collect" });
         remember(key);
       }
       for (const receipt of view.completedConstructions) {

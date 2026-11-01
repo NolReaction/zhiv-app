@@ -107,7 +107,7 @@
     ]
   },
   {
-    "label": "upgraded-bush-opens-blueberry-combinations",
+    "label": "upgraded-bush-without-the-first-strawberry-compote",
     "buildings": {
       "home": 2,
       "garden": 2,
@@ -116,6 +116,34 @@
     },
     "recipes": {
       "cook_compote": 1
+    },
+    "ownedRods": [
+      "reed_rod"
+    ],
+    "ownedHooks": [
+      "bare_hook"
+    ],
+    "present": [
+      "plesk_picnic_lunch",
+      "plesk_strawberry_lunch"
+    ],
+    "missing": [
+      "plesk_blueberry_lunch",
+      "plesk_berry_assortment",
+      "builder_blueberry_snack"
+    ]
+  },
+  {
+    "label": "upgraded-bush-and-first-strawberry-compote-open-blueberry-combinations",
+    "buildings": {
+      "home": 2,
+      "garden": 2,
+      "warehouse": 1,
+      "dryer": 1
+    },
+    "recipes": {
+      "cook_compote": 1,
+      "cook_strawberry_compote": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -143,7 +171,9 @@
       "dryer": 2
     },
     "recipes": {
-      "cook_compote": 1
+      "cook_compote": 1,
+      "cook_strawberry_compote": 1,
+      "cook_blueberry_compote": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -172,7 +202,9 @@
       "kiln": 1
     },
     "recipes": {
-      "cook_compote": 1
+      "cook_compote": 1,
+      "cook_strawberry_compote": 1,
+      "cook_blueberry_compote": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -200,7 +232,9 @@
     },
     "recipes": {
       "cook_compote": 1,
-      "cook_grilled_fish": 1
+      "cook_grilled_fish": 1,
+      "cook_strawberry_compote": 1,
+      "cook_blueberry_compote": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -231,7 +265,10 @@
     },
     "recipes": {
       "cook_compote": 1,
-      "cook_grilled_fish": 1
+      "cook_grilled_fish": 1,
+      "cook_strawberry_compote": 1,
+      "cook_blueberry_compote": 1,
+      "cook_currant_jelly": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -264,7 +301,10 @@
     },
     "recipes": {
       "cook_compote": 1,
-      "cook_grilled_fish": 1
+      "cook_grilled_fish": 1,
+      "cook_strawberry_compote": 1,
+      "cook_blueberry_compote": 1,
+      "cook_currant_jelly": 1
     },
     "ownedRods": [
       "reed_rod",
@@ -298,7 +338,11 @@
     },
     "recipes": {
       "cook_compote": 1,
-      "cook_grilled_fish": 1
+      "cook_grilled_fish": 1,
+      "cook_strawberry_compote": 1,
+      "cook_blueberry_compote": 1,
+      "cook_currant_jelly": 1,
+      "cook_blackberry_preserve": 1
     },
     "ownedRods": [
       "reed_rod"
@@ -332,7 +376,11 @@
     },
     "recipes": {
       "cook_compote": 1,
-      "cook_grilled_fish": 1
+      "cook_grilled_fish": 1,
+      "cook_strawberry_compote": 1,
+      "cook_blueberry_compote": 1,
+      "cook_currant_jelly": 1,
+      "cook_blackberry_preserve": 1
     },
     "ownedRods": [
       "reed_rod",

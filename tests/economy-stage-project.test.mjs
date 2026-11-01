@@ -10,6 +10,8 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
+const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-progression.ts");
+const { PEARL_DISPLAY_DIVISOR } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const now = Date.parse("2026-10-14T09:00:00Z"), interval = 23 * 3600000;
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 after(() => vite.close());
@@ -59,7 +61,13 @@ test("eight newly pinned deliveries can follow immediately when funded and award
     receipts.push([cmd, result.acceptedRevision]); paid += offer.coins;
     assert.equal(result.state.stageOrders.stages[3].step, step + 1);
     assert.equal(result.state.stageOrders.stages[3].completed, step === 7);
-    assert.equal(result.state.wallet.coins, 230 + paid); assert.equal(result.state.wallet.pearls, 0);
+    const progress = result.state.progression.player;
+    const earnedPearls = playerProgressionCatalog.levelRewards.filter(reward => progress.awardedLevels.includes(reward.level))
+      .reduce((sum, reward) => sum + reward.rewardPearls, 0)
+      + playerProgressionCatalog.season.milestones.filter(reward => progress.season.awardedMilestones.includes(reward.points))
+        .reduce((sum, reward) => sum + reward.rewardPearls, 0);
+    assert.equal(result.state.wallet.coins, 230 + paid);
+    assert.equal(result.state.wallet.pearls, earnedPearls * PEARL_DISPLAY_DIVISOR, "The project only adds recorded level and season pearl rewards");
     assert.deepEqual(result.state.inventory, step === 7 ? { living_resin: 1 } : {});
     if (step < 7) {
       const next = stages.stageResidentOrder(result.state);

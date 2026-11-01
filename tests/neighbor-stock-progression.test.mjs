@@ -52,7 +52,9 @@ test("the neighbor can offer learned fish soup while raw fish species and classe
 test("starter, developed and maximum player settlements receive progressively richer eligible goods", () => {
   const early = base(); Object.assign(early.buildings, { home: 2, bridge: 1 });
   const middle = base(); Object.assign(middle.buildings, { home: 3, bridge: 1, warehouse: 3, workshop: 2, quarry: 2, garden: 2, kiln: 1, dryer: 1, woodlot: 2 });
+  middle.progression.recipes = { cook_compote: 1, cook_strawberry_compote: 1 };
   const late = base(); late.buildings = { ...maxBuildings };
+  late.progression.recipes = Object.fromEntries(economyCatalog.recipes.map(recipe => [recipe.id, 10]));
   const untouched = [early, middle, late].map(state => JSON.stringify(state));
   const first = opened(early), second = opened(middle), third = opened(late);
   for (const id of ["wood", "berries"]) assert.ok(first.includes(id));
@@ -70,6 +72,9 @@ test("a high house alone does not reveal locked production or unlearned recipe c
   developed.progression.recipes.cook_compote = 1;
   assert.ok(opened(developed).includes("strawberries"));
   assert.ok(opened(developed).includes("strawberry_compote"));
+  assert.ok(!opened(developed).includes("blueberries"));
+  developed.progression.recipes.cook_strawberry_compote = 1;
+  assert.ok(opened(developed).includes("blueberries"));
 });
 
 test("gifted late stock does not open an item but prior confirmed discovery survives an empty warehouse", () => {

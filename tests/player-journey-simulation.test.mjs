@@ -175,7 +175,7 @@ test("an explicit research pearl balance pays only actual construction speedups 
     assert.deepEqual(casts.slice(0, pairedCasts), baseline.slice(0, pairedCasts), "The paired scenarios share the same nth-cast seeds");
     assert(result.actions.speedup_construction > 0);
     assert(result.pearlsSpent > 0 && result.pearlsSpent <= 1000);
-    assert.equal(result.pearlsRemaining + result.pearlsSpent, 1000);
+    assert.equal(result.pearlsRemaining + result.pearlsSpent, 1000 + result.pearlFlow.progression);
     assert.equal(result.actions.buy_fishing_item, undefined);
     assert.equal(result.failures.ECONOMY_PEARLS, undefined);
     assert.equal(result.failures.ECONOMY_BUILDING_REQUIRED, undefined);

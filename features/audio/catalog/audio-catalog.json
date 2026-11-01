@@ -1570,6 +1570,62 @@
         "changes": "Original low two-chamber steam whistle, seeded filtered breath, pressure envelope, quiet early reflections; mono PCM16 48 kHz with deterministic dither and conservative peak/RMS ceilings.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "ui.production-start.01",
+      "src": "/audio/originals-v1/effect/ui.production-start.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.2/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-11-01",
+        "changes": "Original compact padded felt signature for production-start; deterministic additive synthesis, soft envelope, peak-safe mastering and TPDF PCM16. No external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "ui.collect.01",
+      "src": "/audio/originals-v1/effect/ui.collect.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.2/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-11-01",
+        "changes": "Original compact padded felt signature for collect; deterministic additive synthesis, soft envelope, peak-safe mastering and TPDF PCM16. No external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "ui.boost-rise.01",
+      "src": "/audio/originals-v1/effect/ui.boost-rise.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.2/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-11-01",
+        "changes": "Original compact padded felt signature for boost-rise; deterministic additive synthesis, soft envelope, peak-safe mastering and TPDF PCM16. No external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "ui.boost-full.01",
+      "src": "/audio/originals-v1/effect/ui.boost-full.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.7.2/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-11-01",
+        "changes": "Original compact padded felt signature for boost-full; deterministic additive synthesis, soft envelope, peak-safe mastering and TPDF PCM16. No external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -2385,12 +2441,84 @@
       "assets": [
         "ship.arrival.01"
       ],
-      "gainDb": -13,
+      "gainDb": -6,
       "priority": 60,
       "maxInstances": 1,
       "cooldownMs": 6000,
       "pitchVariation": 0,
       "fadeMs": 250
+    },
+    {
+      "id": "ui.tap",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.click.01",
+        "ui.click.02",
+        "ui.click.03"
+      ],
+      "gainDb": -4,
+      "priority": 85,
+      "maxInstances": 2,
+      "cooldownMs": 160,
+      "pitchVariation": 0.008,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.production-start",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.production-start.01"
+      ],
+      "gainDb": -3,
+      "priority": 95,
+      "maxInstances": 2,
+      "cooldownMs": 120,
+      "pitchVariation": 0,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.collect",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.collect.01"
+      ],
+      "gainDb": -3,
+      "priority": 95,
+      "maxInstances": 1,
+      "cooldownMs": 250,
+      "pitchVariation": 0,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.boost-rise",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.boost-rise.01"
+      ],
+      "gainDb": -3,
+      "priority": 95,
+      "maxInstances": 1,
+      "cooldownMs": 550,
+      "pitchVariation": 0,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.boost-full",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.boost-full.01"
+      ],
+      "gainDb": -3,
+      "priority": 95,
+      "maxInstances": 1,
+      "cooldownMs": 900,
+      "pitchVariation": 0,
+      "fadeMs": 15
     }
   ],
   "profiles": [

@@ -26,7 +26,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false, maximumDay
   state.wallet = { coins: 3510, pearls: 0 }; state.inventory = {};
   state.tutorialOrder = { version: 2, step: 4, completed: true, ingredientsClaimed: true, terms: null };
   state.stageOrders = { version: 1, stages: { 2: { step: 7, completed: true, terms: null }, 3: { step: 8, completed: true, terms: null } } };
-  let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0, visitCount = 0;
+  let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0, visitCount = 0, earnedPearls = 0;
   let constructionSeconds = 0, activeStart = epoch, activeEnd = epoch, activeSeconds = 0;
   const courses = [], builds = [], actions = {}, flow = {}, production = {}, catches = {}, repeatOrders = [], miningDeliveries = [];
   const incomeJobs = new Set();
@@ -83,7 +83,10 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false, maximumDay
     }
     const storage = rules.economyStorage(state); peak = Math.max(peak, storage.used);
     assert.equal(storage.capacity, 50); assert(storage.used <= 50, `${action}:${targetId} exceeds the original warehouse`);
-    assert.equal(state.wallet.pearls, 0); assert.deepEqual(state.productionSlots ?? {}, {}); assert.equal(state.marketSlots, 5);
+    const pearlCredit = state.wallet.pearls - before.wallet.pearls;
+    assert(pearlCredit >= 0, "Earned level and season pearls are never spent on acceleration");
+    earnedPearls += pearlCredit;
+    assert.deepEqual(state.productionSlots ?? {}, {}); assert.equal(state.marketSlots, 5);
     assert(state.jobs.filter(job => job.kind === "construction").length <= 1);
     for (const id of ["garden", "woodlot", "workshop", "dryer", "kiln"])
       assert(state.jobs.filter(job => job.kind === "production" && job.targetId === id).length <= 1);
@@ -290,7 +293,8 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false, maximumDay
     }
     activeSeconds += (clock - begin) / 1000;
   }
-  return { state, clock, revision, peak, constructionCoins, courseCoins, repeatCoins, saleCoins, courses, builds,
+  assert.equal(state.wallet.pearls, earnedPearls, "Every pearl comes from an earned command reward");
+  return { state, clock, revision, peak, constructionCoins, courseCoins, repeatCoins, saleCoins, earnedPearls, courses, builds,
     actions, flow, production, catches, repeatOrders, miningDeliveries, visitCount, activeMinutes, activeSeconds, constructionSeconds };
 }
 

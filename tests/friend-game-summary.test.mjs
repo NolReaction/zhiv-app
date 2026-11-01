@@ -44,7 +44,7 @@ test("friend levels come from XP and unopened games remain read-only", () => {
   assert.equal(summary.level, 1); assert.equal(typeof summary.level, "number");
   assert.deepEqual(summary.market, { available: false, reason: "buyer_locked", count: 0, listings: [] });
   assert.deepEqual(globalThis.__zhivDevEconomyStore, before);
-  read(seller); row(seller).state.progression.player = { xp: 800 };
+  read(seller); row(seller).state.progression.player = { xp: 480 };
   row(seller).state.buildings.home = 2;
   assert.equal(people(buyer).people[0].gameSummary.level, 5);
   assert.deepEqual(Object.keys(people(buyer).people[0].gameSummary).sort(), ["level", "market"]);
@@ -69,7 +69,7 @@ test("preview counts only visible active lots then limits the newest first list 
 
 test("world OFF hides offers while the existing safe friend level remains visible", () => {
   const buyer = player(), seller = player(), circle = connect(buyer, seller); offer(seller);
-  row(seller).state.progression.player = { xp: 800 };
+  row(seller).state.progression.player = { xp: 480 };
   ok(social.updateDevSharing(seller.token, circle, "OFF"));
   assert.deepEqual(people(buyer).people[0].gameSummary, { level: 5,
     market: { available: false, reason: "world_hidden", count: 0, listings: [] } });

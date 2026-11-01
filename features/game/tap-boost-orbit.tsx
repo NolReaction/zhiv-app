@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type CSSProperties } from "react";
 import type { EconomyView } from "@/features/economy/domain/model";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { advanceTapOrbit, tapOrbitReading, type TapOrbitMemory } from "./tap-boost-orbit-model";
 import styles from "./tap-boost-orbit.module.css";
 
@@ -29,6 +30,13 @@ export function TapBoostOrbit({ snapshot, now, ownerKey, tapSignal, active }: Pr
   const css = { "--orbit-power": power, "--orbit-width": `${1.15 + power * .95}`,
     "--orbit-tip-angle": `${reading.remainingRatio * 360}deg`,
   } as CSSProperties;
+
+  useEffect(() => {
+    if (!active) return;
+    const controller = new AbortController();
+    void getAudioRuntime().prepare(["ui.tap", "ui.boost-rise", "ui.boost-full"], { signal: controller.signal }).catch(() => {});
+    return () => controller.abort();
+  }, [active]);
 
   useEffect(() => {
     const element = root.current;
@@ -84,6 +92,12 @@ export function TapBoostOrbit({ snapshot, now, ownerKey, tapSignal, active }: Pr
     environment.current.baseline = false; previouslyActive.current = active;
     if (!result.event || !active || !environment.current.visible || suppressed || !notice.current) return;
     const event = result.event;
+    if (event.kind === "milestone") getAudioRuntime().play({
+      id: `tap-boost:${ownerKey}:${next.jobId}:${next.grantedAt}:${next.charge}:${event.powerPercent}`,
+      cueId: event.powerPercent === 20 ? "ui.boost-full" : "ui.boost-rise",
+      playbackRate: event.powerPercent === 20 ? 1 : .9 + event.powerPercent * .014,
+      occurredAt: Date.now(), maxAgeMs: 450,
+    });
     notice.current.textContent = event.kind === "complete" ? `${event.targetName} · работа готова`
       : event.powerPercent === 20 ? "Максимальная мощность" : `Помощь производству +${event.powerPercent}%`;
     notice.current.dataset.feedback = event.kind;

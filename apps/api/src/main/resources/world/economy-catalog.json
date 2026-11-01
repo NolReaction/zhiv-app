@@ -2752,6 +2752,9 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 2,
       "requiredBuildings": {},
+      "requiredRecipes": {
+        "cook_strawberry_compote": 1
+      },
       "seconds": 180,
       "cost": {
         "coins": 0,
@@ -2773,6 +2776,9 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
+      "requiredRecipes": {
+        "cook_blueberry_compote": 1
+      },
       "seconds": 720,
       "cost": {
         "coins": 0,
@@ -2794,6 +2800,9 @@
       "buildingLevel": 4,
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
+      "requiredRecipes": {
+        "cook_currant_jelly": 1
+      },
       "seconds": 1800,
       "cost": {
         "coins": 0,
@@ -2815,6 +2824,9 @@
       "buildingLevel": 5,
       "requiredHomeLevel": 5,
       "requiredBuildings": {},
+      "requiredRecipes": {
+        "cook_blackberry_preserve": 1
+      },
       "seconds": 3600,
       "cost": {
         "coins": 0,
@@ -3017,6 +3029,9 @@
         "quarry": 4,
         "kiln": 3
       },
+      "requiredRecipes": {
+        "make_glass_bottle": 1
+      },
       "seconds": 900,
       "cost": {
         "coins": 0,
@@ -3081,6 +3096,9 @@
       "requiredBuildings": {
         "quarry": 4,
         "kiln": 3
+      },
+      "requiredRecipes": {
+        "make_research_gear": 1
       },
       "seconds": 1200,
       "cost": {

@@ -51,8 +51,8 @@ test("XP level groups cover 1–100 exactly once and render ten rows at each bou
 
 test("profile progress uses only confirmed XP including the cap and never invents a loaded value", () => {
   for (const [xp, percent, text] of [
-    [0, 0, "До уровня 2: 50 XP"], [25, 50, "До уровня 2: 25 XP"], [49, 98, "До уровня 2: 1 XP"],
-    [50, 0, "До уровня 3: 150 XP"], [125, 50, "До уровня 3: 75 XP"],
+    [0, 0, "До уровня 2: 30 XP"], [15, 50, "До уровня 2: 15 XP"], [29, 97, "До уровня 2: 1 XP"],
+    [30, 0, "До уровня 3: 90 XP"], [75, 50, "До уровня 3: 45 XP"],
     [PLAYER_LEVELS.at(-1).minimumXp, 100, "Все уровни открыты"], [Number.MAX_SAFE_INTEGER, 100, "Все уровни открыты"],
   ]) {
     const { elements, markup } = renderComponent(PlayerProgressionCard, { progression: progression(xp), now });
@@ -104,7 +104,7 @@ test("profile names the actual last XP source and next catalog reward without mu
 });
 
 test("season rotates in UTC without erasing career XP or showing last month's awarded milestones", () => {
-  const value = progression(200, { season: { id: "2026-10", points: 700, awardedMilestones: [100, 300, 700] } });
+  const value = progression(200, { season: { id: "2026-10", points: 1500, awardedMilestones: [100, 300, 700, 1500] } });
   const before = structuredClone(value);
   const oldMonth = renderComponent(CooperationSeasonCard, { progression: value, now: Date.parse("2026-10-31T23:59:59Z") });
   assert.match(oldMonth.markup, /Все цели месяца выполнены/);
@@ -118,7 +118,7 @@ test("season rotates in UTC without erasing career XP or showing last month's aw
 
 test("earned season badges remain visible after rollover and absent clock has a finite fallback", () => {
   const value = progression(200, { badges: ["2026-10:helper", "2026-10:friend"],
-    season: { id: "2026-10", points: 700, awardedMilestones: [100, 300, 700] } });
+    season: { id: "2026-10", points: 1500, awardedMilestones: [100, 300, 700, 1500] } });
   const html = renderComponent(CooperationSeasonCard, { progression: value, now }).markup;
   assert.match(html, /Полученные сезонные значки/);
   assert.match(html, /Память о сезонах · 2/);

@@ -205,6 +205,23 @@ def _ui(kind: str, variant: int, sample_rate: int,
         title = "A home made ready"
         description = "Two soft wooden finishing taps resolve into a short warm felt major chord for a confirmed building completion. No external samples."
         target = -22.5
+    elif kind in ("production-start", "collect", "boost-rise", "boost-full"):
+        # Small, distinct tactile signatures. Routine collecting is much
+        # shorter than a treasure fanfare, and boost tones leave space for taps.
+        designs = {
+            "production-start": (.24, [(294, 0, .70), (392, .055, .38)], -25,
+                                 "A little mechanism starts", "Two padded wooden tines accept a new production intent, without implying completed work."),
+            "collect": (.38, [(659.25, 0, .60), (523.25, .075, .48), (261.63, .09, .18)], -24,
+                        "Into the basket", "A compact descending felt pair settles softly into the basket for confirmed resources."),
+            "boost-rise": (.39, [(392, 0, .55), (587.33, .065, .44), (783.99, .12, .23)], -25,
+                           "A brighter ember", "A soft original rising fifth and octave mark a new confirmed boost threshold."),
+            "boost-full": (.65, [(392, 0, .48), (493.88, .065, .42), (587.33, .13, .36), (783.99, .22, .28), (196, .22, .18)], -23.5,
+                           "The hearth is glowing", "A short warm felt major arpeggio resolves at full production power, with a padded low octave."),
+        }
+        length, notes, target, title, description = designs[kind]
+        audio = np.zeros(round(length * sample_rate))
+        for pitch, when, strength in notes:
+            _add(audio, _felt_pluck(length - when, pitch, sample_rate, .055 if kind == "production-start" else .065), when, sample_rate, strength)
     elif kind == "confirm":
         audio = np.zeros(round(.72 * sample_rate))
         notes = [523.25, 783.99] if variant == 1 else [659.25, 880]
@@ -518,7 +535,8 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     variant = int(parts[-1])
     rng = _rng(asset_id)
     if parts[0] == "ui" and len(parts) == 3:
-        if variant > {"click": 3, "slider": 1, "startup": 1, "daily-reward": 1, "construction-complete": 1}.get(parts[1], 2):
+        if variant > {"click": 3, "slider": 1, "startup": 1, "daily-reward": 1, "construction-complete": 1,
+                      "production-start": 1, "collect": 1, "boost-rise": 1, "boost-full": 1}.get(parts[1], 2):
             raise ValueError(f"Unknown UI variation: {asset_id}")
         return _ui(parts[1], variant, sample_rate, rng)
     if parts[0] == "actor" and len(parts) == 4 and variant <= 3:

@@ -1,8 +1,8 @@
 {
   "version": 1,
   "maxLevel": 100,
-  "levelXpFactor": 50,
-  "workSecondsPerXp": 60,
+  "levelXpFactor": 30,
+  "workSecondsPerXp": 45,
   "constructionXpPerLevel": 100,
   "firstRecipeXp": 25,
   "firstExplorationXp": 40,
@@ -11,22 +11,200 @@
   "stageOrderXp": 35,
   "shipCargoXp": 40,
   "shipVoyageXp": 60,
-  "levelTitles": ["Росток", "Лесной житель", "Умелец", "Следопыт", "Хранитель поляны", "Мастер леса", "Друг долины", "Сказитель", "Старейшина", "Легенда леса"],
+  "levelTitles": [
+    "Росток",
+    "Лесной житель",
+    "Умелец",
+    "Следопыт",
+    "Хранитель поляны",
+    "Мастер леса",
+    "Друг долины",
+    "Сказитель",
+    "Старейшина",
+    "Легенда леса"
+  ],
   "levelRewards": [
-    {"level": 5, "rewardPearls": 2}, {"level": 10, "rewardPearls": 3},
-    {"level": 20, "rewardPearls": 5}, {"level": 30, "rewardPearls": 10},
-    {"level": 40, "rewardPearls": 10}, {"level": 50, "rewardPearls": 15},
-    {"level": 60, "rewardPearls": 15}, {"level": 70, "rewardPearls": 20},
-    {"level": 80, "rewardPearls": 20}, {"level": 90, "rewardPearls": 25},
-    {"level": 100, "rewardPearls": 25}
+    {
+      "level": 5,
+      "rewardPearls": 2
+    },
+    {
+      "level": 10,
+      "rewardPearls": 3
+    },
+    {
+      "level": 20,
+      "rewardPearls": 5
+    },
+    {
+      "level": 30,
+      "rewardPearls": 10
+    },
+    {
+      "level": 40,
+      "rewardPearls": 10
+    },
+    {
+      "level": 50,
+      "rewardPearls": 15
+    },
+    {
+      "level": 60,
+      "rewardPearls": 15
+    },
+    {
+      "level": 70,
+      "rewardPearls": 20
+    },
+    {
+      "level": 80,
+      "rewardPearls": 20
+    },
+    {
+      "level": 90,
+      "rewardPearls": 25
+    },
+    {
+      "level": 100,
+      "rewardPearls": 25
+    }
   ],
   "season": {
-    "orderPoints": 15, "weeklyStagePoints": 25, "shipCargoPoints": 10, "shipVoyagePoints": 30,
-    "titles": ["Тёплый очаг", "Зимняя взаимопомощь", "Пробуждение леса", "Весенние хлопоты", "Цветущая поляна", "Летние открытия", "Дары лета", "Щедрый урожай", "Осенние припасы", "Лесные заботы", "Подготовка к зиме", "Праздник огней"],
+    "orderPoints": 15,
+    "weeklyStagePoints": 25,
+    "shipCargoPoints": 10,
+    "shipVoyagePoints": 30,
     "milestones": [
-      {"points": 100, "rewardPearls": 2, "badge": "helper", "title": "Добрый сосед"},
-      {"points": 300, "rewardPearls": 3, "badge": "friend", "title": "Надёжный друг"},
-      {"points": 700, "rewardPearls": 5, "badge": "guardian", "title": "Хранитель сезона"}
+      {
+        "points": 100,
+        "rewardPearls": 10,
+        "badge": "helper",
+        "title": "Добрый сосед"
+      },
+      {
+        "points": 300,
+        "rewardPearls": 20,
+        "badge": "friend",
+        "title": "Надёжный друг"
+      },
+      {
+        "points": 700,
+        "rewardPearls": 30,
+        "badge": "guardian",
+        "title": "Хранитель сезона"
+      },
+      {
+        "points": 1500,
+        "rewardPearls": 40,
+        "badge": "beacon",
+        "title": "Свет леса"
+      }
+    ],
+    "months": [
+      {
+        "month": 1,
+        "title": "Тёплый очаг",
+        "description": "Согреваем соседей заботой в самый снежный месяц.",
+        "bonuses": {
+          "orderPoints": 5
+        }
+      },
+      {
+        "month": 2,
+        "title": "Зимняя взаимопомощь",
+        "description": "Объединяемся ради больших зимних поручений.",
+        "bonuses": {
+          "weeklyStagePoints": 10
+        }
+      },
+      {
+        "month": 3,
+        "title": "Пробуждение леса",
+        "description": "Помогаем жителям подготовить поляну к весне.",
+        "bonuses": {
+          "orderPoints": 3,
+          "weeklyStagePoints": 5
+        }
+      },
+      {
+        "month": 4,
+        "title": "Весенние хлопоты",
+        "description": "Встречаем первые поставки и новые заботы соседей.",
+        "bonuses": {
+          "orderPoints": 3,
+          "shipCargoPoints": 2
+        }
+      },
+      {
+        "month": 5,
+        "title": "Цветущая поляна",
+        "description": "Заботимся о соседях, пока лес набирается сил.",
+        "bonuses": {
+          "orderPoints": 5,
+          "weeklyStagePoints": 5
+        }
+      },
+      {
+        "month": 6,
+        "title": "Летние открытия",
+        "description": "Снаряжаем корабль для первых летних путешествий.",
+        "bonuses": {
+          "shipCargoPoints": 5
+        }
+      },
+      {
+        "month": 7,
+        "title": "Дары лета",
+        "description": "Отправляем лесные дары в дальние края.",
+        "bonuses": {
+          "shipVoyagePoints": 15
+        }
+      },
+      {
+        "month": 8,
+        "title": "Щедрый урожай",
+        "description": "Делимся урожаем с соседями и дальними друзьями.",
+        "bonuses": {
+          "orderPoints": 3,
+          "shipVoyagePoints": 10
+        }
+      },
+      {
+        "month": 9,
+        "title": "Осенние припасы",
+        "description": "Собираем грузы и завершаем рейсы до холодов.",
+        "bonuses": {
+          "shipCargoPoints": 3,
+          "shipVoyagePoints": 10
+        }
+      },
+      {
+        "month": 10,
+        "title": "Лесные заботы",
+        "description": "Вместе приводим поляну в порядок перед зимой.",
+        "bonuses": {
+          "orderPoints": 3,
+          "weeklyStagePoints": 10
+        }
+      },
+      {
+        "month": 11,
+        "title": "Подготовка к зиме",
+        "description": "Запасаемся сообща и пополняем корабельные трюмы.",
+        "bonuses": {
+          "weeklyStagePoints": 5,
+          "shipCargoPoints": 5
+        }
+      },
+      {
+        "month": 12,
+        "title": "Праздник огней",
+        "description": "Радуем соседей и отправляем подарки за реку.",
+        "bonuses": {
+          "orderPoints": 2,
+          "shipVoyagePoints": 10
+        }
+      }
     ]
   }
 }

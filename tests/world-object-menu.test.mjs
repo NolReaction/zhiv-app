@@ -635,14 +635,14 @@ test("the mine shares production layout with one permanent slot, compact resourc
   const built = render("quarry", controller({ snapshot: builtState, act() { assert.fail("Opening the mine catalogue cannot launch extraction"); } }));
   const stone = markedButton(built, "data-route", "quarry_stone");
   assert.doesNotMatch(stone.attributes, /data-locked="true"/);
-  assert.match(stone.attributes, /aria-label="Добыть: Камень, 3 мин"/);
+  assert.match(stone.attributes, /aria-label="Добыть: Камень ×1, 3 мин"/);
   assert.match(stone.text, /Камень/);
   assert.doesNotMatch(stone.text, /Добыть камень|×1/);
   assert.doesNotMatch(built, /aria-label="Время добычи"|data-mining-duration=/, "single-resource routes do not offer obsolete duration variants");
   assert.match(built, /data-production-slots="quarry"/);
   assert.equal([...built.matchAll(/data-production-slot="1"/g)].length, 1);
   assert.doesNotMatch(built, /Место 2|Место 3|Открыть место|жемчужин/);
-  assert.match(built, /Что произвести\?/);
+  assert.match(built, /Что добывать\?/);
   assert.match(built, /data-route="quarry_clay"/);
   assert.doesNotMatch(built, /Вход в пещеру|data-route-preparation=/);
   assert.equal(disabled(button(prepareMine(builtState), "Начать добычу")), false, "a completed quarry opens one stone per free launch");

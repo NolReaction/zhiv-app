@@ -10,6 +10,8 @@ after(() => vite.close());
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-progression.ts");
+const { PEARL_DISPLAY_DIVISOR } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const api = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/orders-v2-vectors.json", import.meta.url), "utf8"));
@@ -129,9 +131,16 @@ test("completion is immediately repeatable with new goods and never consumes rep
     const offer = board(state).offers[index % board(state).offers.length]; templates.push(offer.templateId);
     const neighbours = board(state).offers.filter(entry => entry.slot !== offer.slot);
     state.inventory = { ...offer.items };
-    const beforeCoins = state.wallet.coins;
+    const beforeCoins = state.wallet.coins, beforePearls = state.wallet.pearls;
     apply(state, "complete_resident_order", offer.id);
-    assert.equal(state.wallet.coins, beforeCoins + offer.coins); assert.equal(state.wallet.pearls, 10);
+    const player = state.progression.player;
+    const earnedPearls = playerProgressionCatalog.levelRewards.filter(reward => player.awardedLevels.includes(reward.level))
+      .reduce((sum, reward) => sum + reward.rewardPearls, 0)
+      + playerProgressionCatalog.season.milestones.filter(reward => player.season.awardedMilestones.includes(reward.points))
+        .reduce((sum, reward) => sum + reward.rewardPearls, 0);
+    assert.equal(state.wallet.coins, beforeCoins + offer.coins);
+    assert(state.wallet.pearls >= beforePearls, "Completing an order never spends pearls");
+    assert.equal(state.wallet.pearls, 10 + earnedPearls * PEARL_DISPLAY_DIVISOR, "Only recorded level and season rewards increase the pearl balance");
     assert.equal(board(state).freeReplacementsRemaining, 3); assert.equal(state.residentOrders.completed, index + 1);
     assert.deepEqual(board(state).offers.filter(entry => entry.slot !== offer.slot), neighbours);
     assert.ok(board(state).offers.every(entry => Date.parse(entry.availableAt) <= now));

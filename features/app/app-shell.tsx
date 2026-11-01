@@ -7,6 +7,7 @@ import { ConnectionStatus } from "@/features/activity/connection-status";
 import { gameplayPresentation } from "@/features/activity/gameplay-presentation";
 import { AudioProvider } from "@/features/audio/ui/audio-provider";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { playTapFeedback } from "@/features/audio/ui/tap-feedback";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useMenuAudio } from "./integration/use-menu-audio";
 import { PlayerName } from "@/components/player-name";
@@ -1219,7 +1220,7 @@ function CheckInContent() {
       const recorded = runId ? recordGameTap(steps, runId) : 0;
       if (recorded === 0) { setNotice("Не удалось сохранить нажатие на устройстве. Откройте значок сервера для проверки."); return false; }
       // Both touch and keyboard/mouse pass through the existing tap deduplication first.
-      playUiCue(getAudioRuntime(), "ui.click");
+      playTapFeedback(getAudioRuntime(), economy.snapshot ? tapBoostView(economy.snapshot, economy.now).powerPercent : 0, tappedAtMs);
       if (transition.finishedSeries) {
         reportFinishedSeries(transition.finishedSeries, transition.progress);
         triggerSeriesBreakEffect();
@@ -1236,6 +1237,8 @@ function CheckInContent() {
     },
     [
       recordGameTap,
+      economy.snapshot,
+      economy.now,
       game.progress?.bestSeries,
       commitClickerRun,
       persistClickerRun,

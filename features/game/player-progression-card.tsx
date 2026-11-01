@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Gem, Leaf, Sparkles } from "lucide-react";
 import type { EconomyProgression } from "@/features/economy/domain/model";
-import { getCooperationSeason, getPlayerIconStage, getPlayerLevelProgress, getPlayerProgression, playerProgressionCatalog, PLAYER_LEVELS } from "@/features/economy/domain/player-progression";
+import { getCooperationSeason, getCooperationSeasonTheme, getPlayerIconStage, getPlayerLevelProgress, getPlayerProgression, playerProgressionCatalog, PLAYER_LEVELS } from "@/features/economy/domain/player-progression";
 import { playerXpFillFrames } from "./player-xp-playback";
 import { GameLevelIcon } from "./game-level-icon";
 import styles from "./player-progression-card.module.css";
@@ -12,6 +12,7 @@ const number = (value: number) => value.toLocaleString("ru-RU");
 const sourceNames: Record<string, string> = {
   construction: "Строительство", production: "Производство", exploration: "Добыча и исследования", order: "Помощь жителям", ship: "Корабельная поставка",
 };
+const seasonActionNames = { orderPoints: "за просьбу", weeklyStagePoints: "за недельный этап", shipCargoPoints: "за груз", shipVoyagePoints: "за рейс" };
 
 type Props = {
   progression: EconomyProgression | null | undefined;
@@ -64,10 +65,12 @@ export function CooperationSeasonCard({ progression, now }: Pick<Props, "progres
   const badges = getPlayerProgression(progression).badges.flatMap(entry => {
     const match = /^(\d{4}-(?:0[1-9]|1[0-2])):(.+)$/.exec(entry);
     const award = playerProgressionCatalog.season.milestones.find(item => item.badge === match?.[2]);
-    return match && award ? [{ id: entry, month: match[1], title: award.title }] : [];
+    return match && award ? [{ id: entry, month: match[1], title: award.title,
+      seasonTitle: getCooperationSeasonTheme(Number(match[1].slice(5)) - 1).title }] : [];
   });
   const last = season.milestones.at(-1);
   const next = season.milestones.find(milestone => season.points < milestone.points);
+  const rewardTotal = season.milestones.reduce((total, milestone) => total + milestone.rewardPearls, 0);
   const ratio = last ? Math.min(1, season.points / last.points) : 0;
   const endDate = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" })
     .format(new Date(Date.parse(season.endsAt) - 1));
@@ -76,6 +79,10 @@ export function CooperationSeasonCard({ progression, now }: Pick<Props, "progres
       <span className={styles.seasonIcon}><Leaf size={19} aria-hidden="true" /></span>
       <div><small>Дела леса · до {endDate}</small><h4>{season.title}</h4></div>
       <strong>{number(season.points)}<small>вклад</small></strong>
+    </div>
+    <div className={styles.seasonFocus} aria-label="Дополнительный вклад в этом месяце">
+      <span>Бонус месяца</span>{Object.entries(season.bonuses).filter(([, amount]) => amount > 0).map(([action, amount]) =>
+        <strong key={action}>+{amount} {seasonActionNames[action as keyof typeof seasonActionNames]}</strong>)}
     </div>
     <div className={styles.seasonTrack} role="progressbar" aria-label="Вклад в дела леса"
       aria-valuemin={0} aria-valuemax={last?.points ?? 1} aria-valuenow={Math.min(season.points, last?.points ?? 1)}
@@ -87,17 +94,18 @@ export function CooperationSeasonCard({ progression, now }: Pick<Props, "progres
       : <><Check size={14} aria-hidden="true" /> Все цели месяца выполнены</>}</p>
     <details className={styles.seasonDetails}>
       <summary>Награды и правила месяца</summary>
-      <p>Помогайте жителям и загружайте корабль в удобное время. Каждый месяц начинается новый вклад; опыт, дружба и полученные награды сохраняются.</p>
+      <p>{season.description}</p>
+      <p>Вклад: просьба +{playerProgressionCatalog.season.orderPoints}, недельный этап +{playerProgressionCatalog.season.weeklyStagePoints}, груз +{playerProgressionCatalog.season.shipCargoPoints}, рейс +{playerProgressionCatalog.season.shipVoyagePoints}. Бонус месяца добавляется сверху.</p>
       <ul>{season.milestones.map(milestone => <li key={milestone.points} data-earned={milestone.awarded || undefined}>
         <span>{milestone.awarded ? <Check size={15} aria-label="Получено" /> : <Leaf size={15} aria-hidden="true" />}<strong>{number(milestone.points)}</strong></span>
         <span>{milestone.title}</span><span><Gem size={13} aria-hidden="true" /> {milestone.rewardPearls}</span>
       </li>)}</ul>
-      <p className={styles.seasonFootnote}>Награды начисляются автоматически. Новый месяц в 00:00 UTC.</p>
+      <p className={styles.seasonFootnote}>До {rewardTotal} жемчужин за месяц. Награды приходят автоматически. Новый сезон начинается 1-го числа в 00:00 UTC. Вклад обнуляется; опыт, дружба и награды сохраняются.</p>
       {badges.length > 0 && <section className={styles.badges} aria-label="Полученные сезонные значки">
         <h5>Память о сезонах · {badges.length}</h5>
         <ul>{badges.slice(-12).reverse().map(badge => <li key={badge.id}>
           <span className={styles.badgeIcon}><Leaf size={16} aria-hidden="true" /></span>
-          <span><strong>{badge.title}</strong><small>{new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${badge.month}-01T00:00:00Z`))}</small></span>
+          <span><strong>{badge.title}</strong><small>{badge.seasonTitle} · {new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${badge.month}-01T00:00:00Z`))}</small></span>
         </li>)}</ul>
         {badges.length > 12 && <p className={styles.seasonFootnote}>Показаны последние 12 значков. Все полученные значки сохранены.</p>}
       </section>}

@@ -32,7 +32,7 @@ test("a coalesced production input sounds once without needing a busy edge or an
   const tracker = createEconomyAudioFeedbackTracker(); tracker.update(feedback(8));
   const productionStarts = [inputReceipt("new-intent")];
   const events = tracker.update(feedback(8, { productionStarts, notice: "Сохранено на устройстве" }), true, 1001);
-  assert.deepEqual(events, [{ id: `economy:${owner}:production-start:new-intent`, cueId: "ui.click", occurredAt: 1000, maxAgeMs: 180 }]);
+  assert.deepEqual(events, [{ id: `economy:${owner}:production-start:new-intent`, cueId: "ui.production-start", occurredAt: 1000, maxAgeMs: 180 }]);
   assert.deepEqual(tracker.update(feedback(8, { productionStarts })), []);
   assert.deepEqual(tracker.update(feedback(9, { productionStarts, notice: "Производство запущено" })), []);
   assert.deepEqual(tracker.update(feedback(10, { productionStarts, notice: "Состояние обновлено" })), []);
@@ -70,13 +70,13 @@ test("each safe one-tap station starts with one quiet input cue; an ACK, refresh
       assert.equal(session.getSnapshot().snapshot.revision, 8, "local input is not a confirmed success");
       assert.deepEqual(session.getSnapshot().snapshot.jobs, []);
       assert.deepEqual(session.getSnapshot().inventoryGains, []);
-      assert.deepEqual(events.map(event => event.cueId), ["ui.click"]);
+      assert.deepEqual(events.map(event => event.cueId), ["ui.production-start"]);
       assert.equal(session.act("start_production", recipeId), false, "the occupied slot rejects another tap");
       assert.equal(events.length, 1);
       latest = { ...productionProjection(latest, [{ requestId: sent.requestId, targetId: recipeId }]), revision: 9 };
       finish(result(latest)); await flush();
       assert.equal(session.getSnapshot().pendingProductionCount, 0);
-      assert.deepEqual(events.map(event => event.cueId), ["ui.click"]);
+      assert.deepEqual(events.map(event => event.cueId), ["ui.production-start"]);
       await session.refresh(); await session.retry();
       assert.equal(events.length, 1);
     } finally { stop(); unsubscribe(); }
@@ -92,11 +92,11 @@ test("the direct fallback also sounds once at local input, and cancellation rema
   try {
     await session.refresh(); assert.equal(session.act("start_production", "make_planks"), true);
     assert.equal(session.getSnapshot().busy, true);
-    assert.deepEqual(events.map(event => event.cueId), ["ui.click"]);
+    assert.deepEqual(events.map(event => event.cueId), ["ui.production-start"]);
     latest = { ...latest, revision: 9 }; finish(result(latest)); await flush();
-    assert.deepEqual(events.map(event => event.cueId), ["ui.click"], "server acceptance must not repeat the input cue with ui.confirm");
+    assert.deepEqual(events.map(event => event.cueId), ["ui.production-start"], "server acceptance must not repeat the input cue with ui.confirm");
     session.act("cancel_production", "job"); latest = { ...latest, revision: 10 }; finish(result(latest)); await flush();
-    assert.deepEqual(events.map(event => event.cueId), ["ui.click", "ui.confirm"]);
+    assert.deepEqual(events.map(event => event.cueId), ["ui.production-start", "ui.confirm"]);
     assert.equal(session.getSnapshot().productionStarts.length, 1, "cancelling is never another production start");
   } finally { stop(); unsubscribe(); }
 });
@@ -115,9 +115,9 @@ test("a chosen fish recipe uses the same single input cue through the direct tra
     assert.equal(session.getSnapshot().pendingProductionCount, 0, "fish selection cannot enter the generic durable queue");
     assert.deepEqual(sent.fishSelection, selection);
     assert.notEqual(sent.fishSelection, selection, "transport keeps its own selection copy");
-    assert.deepEqual(events.map(event => event.cueId), ["ui.click"]);
+    assert.deepEqual(events.map(event => event.cueId), ["ui.production-start"]);
     latest = { ...latest, revision: 9 }; finish(result(latest)); await flush();
-    assert.deepEqual(events.map(event => event.cueId), ["ui.click"]);
+    assert.deepEqual(events.map(event => event.cueId), ["ui.production-start"]);
     await session.retry(); assert.equal(events.length, 1);
   } finally { stop(); unsubscribe(); }
 });
@@ -134,10 +134,10 @@ test("network loss and exact replay deliver the saved intent without a second st
   try {
     await session.refresh(); assert.equal(session.act("start_production", "make_planks"), true); await flush();
     assert.equal(session.getSnapshot().pendingProductionCount, 1);
-    assert.deepEqual(events.map(event => event.cueId), ["ui.click"]);
+    assert.deepEqual(events.map(event => event.cueId), ["ui.production-start"]);
     session.setAvailable(false); session.setAvailable(true); await session.retry();
     assert.equal(sends, 2); assert.equal(session.getSnapshot().pendingProductionCount, 0);
-    assert.deepEqual(events.map(event => event.cueId), ["ui.click"]);
+    assert.deepEqual(events.map(event => event.cueId), ["ui.production-start"]);
   } finally { stop(); unsubscribe(); }
 });
 

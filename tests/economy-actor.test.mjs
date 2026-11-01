@@ -89,7 +89,10 @@ test("active mining and quarry construction exclude one another through the uncl
       assert.deepEqual(p.row.state, before);
     }
     const tripFinish = Date.parse(trip.finishesAt);
-    issue(p, "cancel_exploration", trip.id, tripFinish);
+    const ready = structuredClone(p.row.state);
+    assert.throws(() => issue(p, "cancel_exploration", trip.id, tripFinish), { code: "ECONOMY_CANCEL_READY" });
+    assert.deepEqual(p.row.state, ready, "ready mining remains pending until its output is delivered");
+    issue(p, "claim_job", trip.id, tripFinish);
     const construction = issue(p, "start_construction", "quarry", tripFinish).state.jobs[0];
     for (const at of [tripFinish, Date.parse(construction.finishesAt)]) {
       read(p, at);

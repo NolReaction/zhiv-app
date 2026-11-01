@@ -391,7 +391,8 @@ test("HTTP requires the final house and ingredient sources before paying for war
   economy.getDevEconomy(p.token);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.buildings = { home: 1, warehouse: 9 };
-  const target = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.at(-1);
+  const warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
+  const target = warehouse.levels.find(level => level.level === 10);
   row.state.inventory = { ...target.cost.items };
   const retainedCoins = 321;
   row.state.wallet = { coins: target.cost.coins + retainedCoins, pearls: 0 };
@@ -435,14 +436,22 @@ test("HTTP requires the final house and ingredient sources before paying for war
   assert.equal(claimed.state.buildings.warehouse, 10);
   assert.equal(claimed.state.storage.capacity, 500);
   assert.deepEqual(claimed.state.jobs, []);
-  assert.deepEqual(claimed.state.wallet, { coins: retainedCoins, pearls: 0 });
+  assert.deepEqual(claimed.state.wallet, { coins: retainedCoins, pearls: 4 });
+  assert.equal(claimed.state.progression.player.xp, 1000);
+  assert.deepEqual(claimed.state.progression.player.awardedLevels, [5]);
   const repeated = await (await POST(post(claim))).json();
   assert.equal(repeated.replayed, true);
   assert.equal(repeated.state.revision, claimed.state.revision);
   assert.deepEqual(repeated.state.wallet, claimed.state.wallet);
+  const missingRelic = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
+  assert.equal(missingRelic.status, 409); assert.equal((await missingRelic.json()).code, "ECONOMY_RESOURCES");
+  assert.equal(row.state.buildings.warehouse, 10, 'tier ten still has optional relic expansions');
+  row.state.buildings.warehouse = warehouse.levels.at(-1).level;
+  const beforeMaximum = structuredClone(row.state);
   const maximum = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
   assert.equal(maximum.status, 409);
   assert.equal((await maximum.json()).code, "ECONOMY_MAX_LEVEL");
+  assert.deepEqual(row.state, beforeMaximum);
 });
 
 test("HTTP can claim an already paid legacy warehouse ten on a low house without new materials or refunds", async () => {
@@ -460,8 +469,12 @@ test("HTTP can claim an already paid legacy warehouse ten on a low house without
   const claimed = await response.json();
   assert.equal(claimed.state.buildings.home, 1); assert.equal(claimed.state.buildings.warehouse, 10);
   assert.equal(claimed.state.storage.capacity, 500); assert.deepEqual(claimed.state.jobs, []);
-  assert.deepEqual(claimed.state.inventory, { wood: 2 }); assert.deepEqual(claimed.state.wallet, { coins: 123, pearls: 50 });
-  assert.equal((await (await POST(post(claim))).json()).replayed, true);
+  assert.deepEqual(claimed.state.inventory, { wood: 2 }); assert.deepEqual(claimed.state.wallet, { coins: 123, pearls: 54 });
+  assert.equal(claimed.state.progression.player.xp, 1000);
+  assert.deepEqual(claimed.state.progression.player.awardedLevels, [5]);
+  const replayed = await (await POST(post(claim))).json();
+  assert.equal(replayed.replayed, true);
+  assert.deepEqual(replayed.state.wallet, claimed.state.wallet, 'claim replay cannot award the level pearls again');
 });
 
 test("cross-site writes and wrong content types cannot change economy", async () => {

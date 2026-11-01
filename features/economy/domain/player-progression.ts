@@ -10,10 +10,16 @@ export function getPlayerProgression(progression?: Pick<EconomyProgression, "pla
   return progression?.player ?? emptyPlayerProgression();
 }
 function seasonId(now: number): string { return new Date(now).toISOString().slice(0, 7); }
+type SeasonBonuses = Partial<Pick<typeof catalog.season, "orderPoints" | "weeklyStagePoints" | "shipCargoPoints" | "shipVoyagePoints">>;
+export function getCooperationSeasonTheme(monthIndex: number) {
+  const theme = catalog.season.months[monthIndex] ?? catalog.season.months[0];
+  const bonuses: SeasonBonuses = theme.bonuses;
+  return { ...theme, bonuses };
+}
 export function getCooperationSeason(progression: Pick<EconomyProgression, "player"> | undefined, now = Date.now()) {
   const date = new Date(now), id = seasonId(now), saved = getPlayerProgression(progression).season;
   const current = saved.id === id ? saved : { id, points: 0, awardedMilestones: [] };
-  return { id, title: catalog.season.titles[date.getUTCMonth()], points: current.points,
+  return { ...getCooperationSeasonTheme(date.getUTCMonth()), id, points: current.points,
     endsAt: new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)).toISOString(),
     milestones: catalog.season.milestones.map(item => ({ ...item, awarded: current.awardedMilestones.includes(item.points) })) };
 }
@@ -34,6 +40,7 @@ function productionQuantity(job: EconomyJob): number {
 export function awardPlayerProgression(before: AwardBefore, state: EconomyState, command: EconomyCommand, now: number): void {
   const saved = getPlayerProgression(state.progression), player = structuredClone(saved);
   const id = seasonId(now);
+  const bonuses = getCooperationSeasonTheme(new Date(now).getUTCMonth()).bonuses;
   if (player.season.id !== id) player.season = { id, points: 0, awardedMilestones: [] };
   let xp = 0, seconds = 0, points = 0;
   let source: NonNullable<PlayerProgression["lastAward"]>["source"] = "production";
@@ -62,7 +69,8 @@ export function awardPlayerProgression(before: AwardBefore, state: EconomyState,
   if (command.action === "complete_resident_order") {
     const weekly = command.targetId.startsWith("weekly1_");
     xp += weekly ? catalog.weeklyStageXp : command.targetId.startsWith("stage") ? catalog.stageOrderXp : catalog.orderXp;
-    points += weekly ? catalog.season.weeklyStagePoints : catalog.season.orderPoints; source = "order";
+    points += weekly ? catalog.season.weeklyStagePoints + (bonuses.weeklyStagePoints ?? 0)
+      : catalog.season.orderPoints + (bonuses.orderPoints ?? 0); source = "order";
   }
   if (["load_ship_cargo", "complete_ship_order", "claim_ship_voyage"].includes(command.action)) {
     const oldVoyage = before.ship?.voyage, currentVoyage = state.ship?.voyage;
@@ -70,7 +78,8 @@ export function awardPlayerProgression(before: AwardBefore, state: EconomyState,
     const cargo = oldVoyage?.orders.filter(order => !order.deliveredAt &&
       (completedVoyages > 0 || currentVoyage?.orders.some(next => next.id === order.id && next.deliveredAt))).length ?? 0;
     xp += cargo * catalog.shipCargoXp + completedVoyages * catalog.shipVoyageXp;
-    points += cargo * catalog.season.shipCargoPoints + completedVoyages * catalog.season.shipVoyagePoints;
+    points += cargo * (catalog.season.shipCargoPoints + (bonuses.shipCargoPoints ?? 0))
+      + completedVoyages * (catalog.season.shipVoyagePoints + (bonuses.shipVoyagePoints ?? 0));
     source = "ship";
   }
   const previousWork = player.workSeconds;
@@ -83,8 +92,11 @@ export function awardPlayerProgression(before: AwardBefore, state: EconomyState,
     player.awardedLevels.push(reward.level); player.pendingPearls = add(player.pendingPearls, reward.rewardPearls * PEARL_DISPLAY_DIVISOR);
   }
   for (const reward of catalog.season.milestones) if (player.season.points >= reward.points && !player.season.awardedMilestones.includes(reward.points)) {
-    player.season.awardedMilestones.push(reward.points); player.pendingPearls = add(player.pendingPearls, reward.rewardPearls * PEARL_DISPLAY_DIVISOR);
-    player.badges = [...new Set([...player.badges, `${id}:${reward.badge}`])].slice(-1200);
+    const badge = `${id}:${reward.badge}`;
+    player.season.awardedMilestones.push(reward.points);
+    // Permanent history is also a receipt if an older monthly snapshot is restored.
+    if (!player.badges.includes(badge)) player.pendingPearls = add(player.pendingPearls, reward.rewardPearls * PEARL_DISPLAY_DIVISOR);
+    player.badges = [...new Set([...player.badges, badge])].slice(-1200);
   }
   const delivered = Math.min(player.pendingPearls, Math.max(0, ECONOMY_MAX_PEARLS - state.wallet.pearls));
   if (delivered > 0) { state.wallet.pearls += delivered; player.pendingPearls -= delivered; }

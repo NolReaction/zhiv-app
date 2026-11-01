@@ -41,19 +41,22 @@ test("capacity policy keeps earning real weekly rewards after permanent ranks ar
   assert.equal(policy.snapshot(epoch).allMaximum, true);
 });
 
-test("a resident with a maximum permanent rank still receives real orders to restore the active bonus", () => {
+test("maximum permanent ranks ignore stale activity and keep real orders available without a recovery chore", () => {
   const state = advancedState(0), actions = [];
   const offer = loaded.food.residentOrderBoard(state, epoch).offers.find(row => Date.parse(row.availableAt) <= epoch);
   assert(offer, "test needs a reachable, currently available request");
   state.inventory = { ...offer.items };
   const before = loaded.relations.tradeRelationProgress(state, offer.residentId, loaded.catalog, epoch);
-  assert.equal(before.activityBps, 0);
+  assert.equal(before.activityBps, 10000);
+  assert.equal(before.bonusBps, before.rankBonusBps);
   const policy = createSocialPolicy({ catalog: loaded.catalog, relations: loaded.relations, food: loaded.food, state, mode: "reputation" });
-  assert.equal(policy.act(context(state, actions)), true);
+  assert.equal(policy.act(context(state, actions)), false, "A completed permanent rank does not need activity recovery");
+  assert.deepEqual(actions, []);
+  assert.equal(policy.snapshot(epoch).deliveries.length, 0);
+  context(state, actions).apply("complete_resident_order", offer.id);
   assert.deepEqual(actions, ["complete_resident_order"]);
-  assert.equal(policy.snapshot(epoch).deliveries.length, 1);
-  for (const id of Object.keys(offer.items)) assert.equal(state.inventory[id] ?? 0, 0, "restoring activity really consumes goods");
+  for (const id of Object.keys(offer.items)) assert.equal(state.inventory[id] ?? 0, 0, "An optional order still consumes its actual goods");
   const after = loaded.relations.tradeRelationProgress(state, offer.residentId, loaded.catalog, epoch);
-  assert(after.activityBps > 0 && after.bonusBps > 0);
-  assert(after.xp >= before.xp, "activity restoration does not erase lifetime progress");
+  assert.equal(after.activityBps, 10000); assert.equal(after.bonusBps, before.bonusBps);
+  assert(after.xp >= before.xp, "An optional order preserves permanent reputation");
 });

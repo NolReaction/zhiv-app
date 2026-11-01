@@ -89,7 +89,7 @@ test("parallel rare-material claims settle independent private clocks in either 
   }
 });
 
-test("failed mineral delivery and cancelled work cannot advance or refund either clock and receipts cannot recreate it", () => {
+test("failed mineral delivery and rejecting cancellation of ready work preserve both clocks", () => {
   const p = player(3), state = row(p).state;
   state.rareDropState = { version: 1, remainingSeconds: 1700, itemId: "ancient_core" };
   state.minerRareDropState = { version: 1, remainingSeconds: 180, itemId: "moon_crystal" };
@@ -98,7 +98,23 @@ test("failed mineral delivery and cancelled work cannot advance or refund either
   const claim = request(p, "claim_job", mine.id, 180);
   assert.throws(() => economy.commandDevEconomy(p.token, claim, now + 180000), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p, 180), before); assert.deepEqual(row(p).state, rawBefore); assert.equal(row(p).receipts.has(claim.requestId), false);
-  const cancel = request(p, "cancel_exploration", mine.id, 180), canceled = economy.commandDevEconomy(p.token, cancel, now + 180000).state;
+  const cancel = request(p, "cancel_exploration", mine.id, 180);
+  assert.throws(() => economy.commandDevEconomy(p.token, cancel, now + 180000), { code: "ECONOMY_CANCEL_READY" });
+  assert.deepEqual(row(p).state, rawBefore); assert.equal(row(p).receipts.has(cancel.requestId), false);
+  assert.deepEqual(row(p).state.rareDropState, clocks.hero); assert.deepEqual(row(p).state.minerRareDropState, clocks.miner);
+  row(p).state.inventory = {};
+  const paid = send(p, "claim_job", mine.id, 180).state;
+  assert.equal(paid.inventory.moon_crystal, 1); assert.equal(paid.inventory.stone, 1);
+  assert.deepEqual(row(p).state.rareDropState, clocks.hero); assert.notDeepEqual(row(p).state.minerRareDropState, clocks.miner);
+});
+
+test("cancelling unfinished mining preserves both clocks and replay cannot recreate its job", () => {
+  const p = player(3), state = row(p).state;
+  state.rareDropState = { version: 1, remainingSeconds: 1700, itemId: "ancient_core" };
+  state.minerRareDropState = { version: 1, remainingSeconds: 180, itemId: "moon_crystal" };
+  const mine = send(p, "start_exploration", "quarry_stone").state.jobs[0], clocks = structuredClone({ hero: state.rareDropState, miner: state.minerRareDropState });
+  row(p).state.inventory = { wood: 50 };
+  const cancel = request(p, "cancel_exploration", mine.id, 179), canceled = economy.commandDevEconomy(p.token, cancel, now + 179000).state;
   assert.deepEqual(row(p).state.rareDropState, clocks.hero); assert.deepEqual(row(p).state.minerRareDropState, clocks.miner);
   assert.deepEqual(canceled.inventory, { wood: 50 }); assert.equal(canceled.progression.routes.quarry_stone, undefined);
   row(p).state.inventory = {};

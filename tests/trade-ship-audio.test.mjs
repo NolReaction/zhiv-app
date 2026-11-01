@@ -65,6 +65,17 @@ test("horn contact occurs after the actual opaque PNG enters the real world clip
   assert.ok(minimumY(contact.contactAt) < mapBottom - 20, "the visible-view gate can hear a ship that has actually entered the map");
 });
 
+test("a visible horn stays audible at the overview scale that suppresses tiny world sounds", () => {
+  const f = fixture();
+  const overview = { ...frame, listener: { position: { x: 640, y: 640 }, viewportWidth: 1280, zoom: .5, detail: 0 } };
+  f.update(f.input(at - .01, { frame: overview }));
+  f.update(f.input(at + .01, { frame: overview }));
+  assert.equal(f.played.length, 1, "a visible ship farther than 480 world pixels still announces its arrival");
+  assert.ok(f.played[0].gain >= .65 && f.played[0].gain < 1, "the port signal has a bounded audible floor");
+  assert.ok(f.played[0].pan > 0, "the distant signal retains its direction");
+  f.dispose();
+});
+
 test("hidden, offscreen, paused, circle, mute and zero volume consume contacts without catch-up", () => {
   for (const mask of [
     { active: false }, { visible: false }, { frame: null }, { frame: { ...frame, soundscape: false } },
@@ -135,11 +146,11 @@ test("the persistent horn claim precedes playback and consumes muted or expired 
   }
 });
 
-test("arrival sound is original mono PCM48 with headroom, a smooth tail and a quiet world cue", async () => {
+test("arrival sound is original mono PCM48 with headroom, a smooth tail and a clear world cue", async () => {
   const catalog = JSON.parse(await readFile(root + "/features/audio/catalog/audio-catalog.json", "utf8"));
   const cue = catalog.cues.find(cue => cue.id === "ship.arrival"), asset = catalog.assets.find(asset => asset.id === cue.assets[0]);
   assert.equal(cue.bus, "world"); assert.equal(cue.mode, "one-shot"); assert.equal(cue.maxInstances, 1);
-  assert.equal(cue.pitchVariation, 0); assert.equal(cue.gainDb, -13); assert.ok(cue.cooldownMs >= 2600);
+  assert.equal(cue.pitchVariation, 0); assert.equal(cue.gainDb, -6); assert.ok(cue.cooldownMs >= 2600);
   assert.equal(asset.status, "ready"); assert.match(asset.license.sourceUrl, /manifest\.json$/);
   const bytes = await readFile(root + "/public" + asset.src);
   assert.equal(bytes.toString("ascii", 0, 4), "RIFF"); assert.equal(bytes.toString("ascii", 8, 12), "WAVE");

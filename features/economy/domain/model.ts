@@ -121,7 +121,7 @@ const economyWeeklyOrderStageSchema = z.object({ id, name: z.string().min(1), de
 });
 export const economyTradeRelationsCatalogSchema = z.object({
   version: z.literal(1), maxBonusBps: z.literal(1000),
-  activity: z.object({ graceSeconds: count.positive().max(31_536_000), decaySeconds: count.positive().max(31_536_000), recoveryBps: count.positive().max(10000) }).optional(),
+  activity: z.object({ graceSeconds: count.positive().max(31_536_000), decaySeconds: count.positive().max(31_536_000), recoveryBps: count.positive().max(10000) }).nullish(),
   ranks: z.array(z.object({ id, name: z.string().min(1), requiredXp: count.max(1_000_000), bonusBps: count.max(1000) })).length(5)
     .refine(ranks => ranks[0].requiredXp === 0 && ranks[0].bonusBps === 0
       && ranks.every((rank, index) => index === 0 || rank.requiredXp > ranks[index - 1].requiredXp && rank.bonusBps >= ranks[index - 1].bonusBps), "Reputation ranks must increase"),

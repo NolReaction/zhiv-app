@@ -186,7 +186,7 @@ test("stage budgets derive only required new buildings and the current short del
   assert.equal(first.orders.length, 4);
   assert.deepEqual(plain(economy.starter), { coins: 100, pearls: 0, items: { wood: 3, stone: 5 } });
   assert.equal(economy.starter.coins + first.orderCoins - first.buildingCoins, 38);
-  assert.deepEqual(plain(economy.storage.map(level => level.capacity)), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
+  assert.deepEqual(plain(economy.storage.map(level => level.capacity)), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750]);
   const second = economy.stages.find(stage => stage.homeLevel === 2);
   assert.equal(second.buildingCoins, 3050);
   assert.equal(second.orderCoins, second.orders.reduce((sum, order) => sum + order.coins, 0));

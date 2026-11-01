@@ -16,7 +16,7 @@
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "38a19119004879cd795f2925f8425c3140f58ebdbbbc77ab38e7c4a99255e917"
+      "sha256": "8661e3e6b70bbc3568add59aef6c6615d877981e755e3095dcc2baf66852af9b"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -3205,7 +3205,115 @@
         "releaseSeconds": 0.58,
         "method": "Deterministic additive resonators, seeded filtered steam noise, pressure envelope and two quiet early reflections"
       }
+    },
+    {
+      "id": "ui.production-start.01",
+      "kind": "effect",
+      "title": "A little mechanism starts 1",
+      "description": "Two padded wooden tines accept a new production intent, without implying completed work.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 11520,
+      "durationSeconds": 0.24,
+      "decodedBytes": 46080,
+      "masterSha256": "702d637b981811453130369dcbf3cc9fd0616aa7b5453bdd586b724e5e123aa7",
+      "measurements": {
+        "peakDb": -13.8448,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.009483755
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.production-start.01.wav",
+          "bytes": 23084,
+          "sha256": "702d637b981811453130369dcbf3cc9fd0616aa7b5453bdd586b724e5e123aa7"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.collect.01",
+      "kind": "effect",
+      "title": "Into the basket 1",
+      "description": "A compact descending felt pair settles softly into the basket for confirmed resources.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 18240,
+      "durationSeconds": 0.38,
+      "decodedBytes": 72960,
+      "masterSha256": "10f1607ec0e4504f61b44d260c5b15123a81866350e47c6e469a92f91f2db8c5",
+      "measurements": {
+        "peakDb": -12.0105,
+        "rmsDb": -24.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.02362065
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.collect.01.wav",
+          "bytes": 36524,
+          "sha256": "10f1607ec0e4504f61b44d260c5b15123a81866350e47c6e469a92f91f2db8c5"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.boost-rise.01",
+      "kind": "effect",
+      "title": "A brighter ember 1",
+      "description": "A soft original rising fifth and octave mark a new confirmed boost threshold.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 18720,
+      "durationSeconds": 0.39,
+      "decodedBytes": 74880,
+      "masterSha256": "2968f2531703bfe334e49b236134bdbe722cdf36a5e2d33b4dc1cb6ccf7a9433",
+      "measurements": {
+        "peakDb": -12.9213,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.016929526
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.boost-rise.01.wav",
+          "bytes": 37484,
+          "sha256": "2968f2531703bfe334e49b236134bdbe722cdf36a5e2d33b4dc1cb6ccf7a9433"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.boost-full.01",
+      "kind": "effect",
+      "title": "The hearth is glowing 1",
+      "description": "A short warm felt major arpeggio resolves at full production power, with a padded low octave.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 31200,
+      "durationSeconds": 0.65,
+      "decodedBytes": 124800,
+      "masterSha256": "54dbe636f1317cb8f1729b6e0b8a50c1a20a5b832af001d9c877d89922c6b1f3",
+      "measurements": {
+        "peakDb": -11.1289,
+        "rmsDb": -23.5,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.021526273
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.boost-full.01.wav",
+          "bytes": 62444,
+          "sha256": "54dbe636f1317cb8f1729b6e0b8a50c1a20a5b832af001d9c877d89922c6b1f3"
+        }
+      ],
+      "composition": {}
     }
   ],
-  "updatedAt": "2026-10-16"
+  "updatedAt": "2026-11-01"
 }

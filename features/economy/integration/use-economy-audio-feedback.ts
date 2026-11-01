@@ -16,7 +16,7 @@ export function useEconomyAudioFeedback(view: EconomyAudioFeedbackView, enabled 
     const controller = new AbortController();
     // Prepare construction and short production-input cues before the action.
     // Cold network/decode work must not consume their event lifetimes.
-    void getAudioRuntime().prepare(["ui.construction-complete", "ui.click"], { signal: controller.signal }).catch(() => {});
+    void getAudioRuntime().prepare(["ui.construction-complete", "ui.production-start", "ui.collect"], { signal: controller.signal }).catch(() => {});
     return () => controller.abort();
   }, [enabled, owner]);
   useEffect(() => {

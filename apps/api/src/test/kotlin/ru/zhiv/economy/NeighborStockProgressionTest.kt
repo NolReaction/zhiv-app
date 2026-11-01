@@ -31,8 +31,10 @@ class NeighborStockProgressionTest {
     @Test fun `the players development opens ordinary materials intermediate products and late crafted goods`() {
         val early = EconomyRules.initial().copy(buildings = EconomyRules.initial().buildings + mapOf("home" to 2, "bridge" to 1))
         val middle = early.copy(buildings = early.buildings + mapOf("home" to 3, "warehouse" to 3, "workshop" to 2,
-            "quarry" to 2, "garden" to 2, "kiln" to 1, "dryer" to 1, "woodlot" to 2))
-        val late = early.copy(buildings = maximumBuildings)
+            "quarry" to 2, "garden" to 2, "kiln" to 1, "dryer" to 1, "woodlot" to 2),
+            progression = EconomyProgression(recipes = mapOf("cook_compote" to 1L, "cook_strawberry_compote" to 1L)))
+        val late = early.copy(buildings = maximumBuildings,
+            progression = EconomyProgression(recipes = EconomyRules.catalog.recipes.associate { it.id to 10L }))
         val untouched = listOf(early, middle, late).map { economyJson.encodeToString(it) }
         val first = opened(early); val second = opened(middle); val third = opened(late)
         assertTrue(first.containsAll(listOf("wood", "berries")))
@@ -48,6 +50,9 @@ class NeighborStockProgressionTest {
         assertFalse("strawberries" in opened(developed)); assertFalse("strawberry_compote" in opened(developed))
         val learned = developed.copy(progression = developed.progression.copy(recipes = mapOf("cook_compote" to 1L)))
         assertTrue("strawberries" in opened(learned)); assertTrue("strawberry_compote" in opened(learned))
+        assertFalse("blueberries" in opened(learned))
+        assertTrue("blueberries" in opened(learned.copy(progression = learned.progression.copy(
+            recipes = learned.progression.recipes + ("cook_strawberry_compote" to 1L)))))
     }
 
     @Test fun `gifts do not discover future goods and prior discoveries survive spent inventory`() {

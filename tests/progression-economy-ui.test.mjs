@@ -342,7 +342,7 @@ test("stone defaults to unit mining and ten stones require ten jobs, thirty minu
   }
 });
 
-test("seven stones from the forest round up to three routes and retain every guaranteed output", () => {
+test("seven stones from the forest round up to four routes and retain every guaranteed output", () => {
   const source = item("stone").sources.find(value => value.routeId === "forest");
   assert.ok(source);
   assert.ok(!item("stone").sources.some(value => value.routeId === "deep_cave"), "Retired bulk routes are not new choices");
@@ -354,12 +354,12 @@ test("seven stones from the forest round up to three routes and retain every gua
   const h = harness(SourceCalculator, calculator.props);
   field(h.render(), "Нужное количество материала").props.onChange({ target: { value: "7" } });
   const html = renderToStaticMarkup(h.render()), value = text(html);
-  assert.match(value, /Цель: Камень ×7\. Запусков маршрута: 3/);
-  assert.match(value, /Бревно ×15 Камень ×9 Растительное волокно ×12/);
-  assert.match(value, /Очередь выбранного маршрута 1 ч 24 мин/);
+  assert.match(value, /Цель: Камень ×7\. Запусков маршрута: 4/);
+  assert.match(value, /Бревно ×12 Камень ×8 Растительное волокно ×8/);
+  assert.match(value, /Очередь выбранного маршрута 1 ч 52 мин/);
   assert.match(value, /Стоимость затрат у NPC 0 монет/);
-  assert.match(value, /Выкуп гарантированного набора NPC 840 монет/);
-  assert.match(value, /Прирост стоимости \+840 монет/);
+  assert.match(value, /Выкуп гарантированного набора NPC 680 монет/);
+  assert.match(value, /Прирост стоимости \+680 монет/);
   assert.deepEqual(new Set([...html.matchAll(/data-item-icon="([^"]+)"/g)].map(match => match[1])), new Set(["stone", "wood", "fiber"]));
   assert.match(value, /Случайные находки и улов не прибавлены/);
 });
@@ -458,7 +458,7 @@ test("house-four project displays one-time funding, actual restoration costs and
   const final = text(renderToStaticMarkup(deliveries.at(-1)));
   assert.match(final, /Возвращение из древних руин/);
   assert.match(final, /Сначала улучшить: Мост 1 · Маяк 1/);
-  assert.match(final, /Получить результат вылазки: Древние руины ×1/);
+  assert.match(final, /Получить результат вылазки: Древние руины · переменная добыча ×1/);
   assert.match(final, /Запуск или отмена не засчитываются/);
   assert.match(value, /Гарантированная награда за весь проект Древнее ядро ×1 Лунный кристалл ×1/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);

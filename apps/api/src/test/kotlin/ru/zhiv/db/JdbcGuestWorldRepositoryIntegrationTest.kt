@@ -83,7 +83,7 @@ class JdbcGuestWorldRepositoryIntegrationTest {
 
     @Test fun `people summaries batch friend XP and eligible active lots with privacy and no read writes`() = runBlocking<Unit> {
         val buyer=player();val seller=player();val circle=connect(buyer,seller)
-        edit(seller) { it.copy(progression=it.progression.copy(player=EconomyPlayerProgress(xp=800)),
+        edit(seller) { it.copy(progression=it.progression.copy(player=EconomyPlayerProgress(xp=480)),
             inventory=it.inventory+("tools" to 1L), unlockedItems=it.unlockedItems+"tools") }
         val lots=List(4) { offer(seller) }
         val toolsPrice=EconomyRules.catalog.items.single { it.id=="tools" }.baseSellPrice

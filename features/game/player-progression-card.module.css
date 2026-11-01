@@ -31,6 +31,9 @@
 .seasonHeading h4 { margin: 3px 0 0; color: #f4edda; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
 .seasonHeading > strong { display: grid; gap: 1px; margin-left: auto; font-size: 16px; font-variant-numeric: tabular-nums; text-align: right; }
 .seasonHeading > strong > small { font-size: 9px; color: #c3d4c6; font-weight: 400; }
+.seasonFocus { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 12px; font-size: 10px; line-height: 1.5; }
+.seasonFocus > span { color: #c3d4c6; margin-right: 2px; }
+.seasonFocus > strong { padding: 3px 7px; border: 1px solid #b6cd9c3d; border-radius: 7px; background: #aecf8e12; color: #e5d59f; font-weight: 600; }
 .seasonTrack { overflow: hidden; height: 5px; margin-top: 12px; border-radius: 6px; background: #152c25; }
 .seasonTrack > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #87c8ae, #e3c580); transition: width 500ms ease-out; }
 .seasonHint { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 8px 0 0; color: #cbdacb; font-size: 11px; line-height: 1.5; }

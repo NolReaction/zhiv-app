@@ -19,7 +19,7 @@ test("a real one-slot 50-place house-three route funds new material chains and e
   state.wallet = { coins: 230, pearls: 0 }; state.inventory = {};
   state.tutorialOrder = { version: 2, step: 4, completed: true, ingredientsClaimed: true, terms: null };
   state.stageOrders = { version: 1, stages: { 2: { step: 5, completed: true, terms: null } } };
-  let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0;
+  let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0, earnedPearls = 0;
   const courses = [], builds = [], actions = {}, flow = {}, production = {}, catches = {}, acquisitionTargets = [];
   const uuid = () => `00000000-0000-4000-9000-${(++sequence).toString(16).padStart(12, "0")}`;
   const record = id => flow[id] ??= { received: 0, consumed: 0, sold: 0 };
@@ -47,7 +47,10 @@ test("a real one-slot 50-place house-three route funds new material chains and e
     }
     const storage = rules.economyStorage(state); peak = Math.max(peak, storage.used);
     assert.equal(storage.capacity, 50); assert(storage.used <= 50, `${action}:${targetId} exceeds the original warehouse`);
-    assert.equal(state.wallet.pearls, 0); assert.deepEqual(state.productionSlots ?? {}, {}); assert.equal(state.marketSlots, 5);
+    const pearlCredit = state.wallet.pearls - before.wallet.pearls;
+    assert(pearlCredit >= 0, "Earned level and season pearls are never spent on acceleration");
+    earnedPearls += pearlCredit;
+    assert.deepEqual(state.productionSlots ?? {}, {}); assert.equal(state.marketSlots, 5);
     assert(state.jobs.filter(job => job.kind === "construction").length <= 1);
     for (const id of ["garden", "woodlot", "workshop", "dryer", "kiln"])
       assert(state.jobs.filter(job => job.kind === "production" && job.targetId === id).length <= 1);
@@ -224,6 +227,7 @@ test("a real one-slot 50-place house-three route funds new material chains and e
   assert.equal(record("living_resin").received, 1); assert.equal(record("living_resin").consumed, 1);
   assert.equal(state.inventory.living_resin, undefined);
   assert.equal(state.wallet.coins, 230 + courseCoins + repeatCoins + saleCoins - constructionCoins);
+  assert.equal(state.wallet.pearls, earnedPearls, "Every pearl comes from an earned command reward");
   for (const [id, counts] of Object.entries(flow)) assert.equal(counts.received - counts.consumed - counts.sold, state.inventory[id] ?? 0, `${id} is conserved`);
   for (const action of ["buy_market_slot", "buy_production_slot", "claim_tutorial_order", "claim_workshop_starter", "speedup_construction", "feed_hero", "feed_builder"])
     assert.equal(actions[action], undefined);

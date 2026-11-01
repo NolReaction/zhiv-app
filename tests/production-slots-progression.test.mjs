@@ -14,7 +14,7 @@ test("parallel progression buys capacity at real gates, reserves pending inputs 
     assert(Object.values(baseline.productionSlots.maximumProductionJobs).every(count => count <= 1));
     assert.equal(expanded.actions.buy_production_slot, 10);
     assert.equal(expanded.pearlsSpent, 3500);
-    assert.equal(expanded.pearlsRemaining, 0);
+    assert.equal(expanded.pearlsRemaining, expanded.pearlFlow.progression);
     assert.equal(expanded.actions.speedup_construction, undefined, "A slot budget must not silently speed up construction");
     assert(expanded.homeDays[3] > 0, "Staggered harvesting must drain so garden upgrades do not deadlock");
     assert(expanded.productionSlots.maximumProductionJobs.garden === 3);
@@ -48,7 +48,7 @@ test("one-time gift pearls cannot buy a second slot alone or regenerate after th
       assert.equal(report.dailyPearlProjection.pearlsReceived, earned);
       assert.equal(report.dailyPearlProjection.completed, claims === 7);
       assert.equal(report.pearlsSpent, 0);
-      assert.equal(report.pearlsRemaining, earned);
+      assert.equal(report.pearlsRemaining, earned + report.pearlFlow.progression);
       assert.deepEqual(report.productionSlots.purchases, [], "Purchases cannot spend tutorial, welcome or achievement pearls excluded from this projection");
       assert(Object.values(report.productionSlots.maximumProductionJobs).every(count => count <= 1));
       assert.equal(report.productionSlots.finalCapacity.quarry, undefined);

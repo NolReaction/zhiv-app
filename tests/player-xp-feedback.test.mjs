@@ -10,7 +10,7 @@ const { createPlayerXpPlayback, playerXpFillFrames } = await vite.ssrLoadModule(
 const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002";
-const state = (xp = 49, revision = 0, ownerPublicId = owner) => ({ ownerPublicId, revision, serverTime: "2026-11-01T12:00:00.000Z",
+const state = (xp = 29, revision = 0, ownerPublicId = owner) => ({ ownerPublicId, revision, serverTime: "2026-11-01T12:00:00.000Z",
   wallet: { coins: 1000, pearls: 0 }, inventory: {}, buildings: { home: 1, garden: 1, warehouse: 1, kiln: 0 },
   storage: { capacity: 200, used: 0, reserved: 0, available: 200, overflow: 0 }, jobs: [],
   migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: economyCatalog, completedExplorations: 0,
@@ -19,26 +19,26 @@ const result = snapshot => ({ state: snapshot, acceptedRevision: snapshot.revisi
 const command = (patch = {}) => ({ requestId: "00000000-0000-4000-8000-000000000001", ownerPublicId: owner, expectedRevision: 0,
   action: "complete_resident_order", targetId: "order", quantity: 1, totalPrice: 0, ...patch });
 const flush = () => new Promise(resolve => setImmediate(resolve));
-const transport = overrides => ({ get: async () => state(), send: async () => result(state(74, 1)),
+const transport = overrides => ({ get: async () => state(), send: async () => result(state(54, 1)),
   market: async () => ({ ownerPublicId: owner, listings: [], mine: [], nextCursor: null, serverTime: state().serverTime }),
-  trade: async () => result(state(74, 1)), ...overrides });
+  trade: async () => result(state(54, 1)), ...overrides });
 const cache = () => { const data = new Map(); return { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) }; };
 
 test("XP receipt requires the exact owner, revision, positive delta and an awarding action", () => {
-  const gain = playerXpGainFromReceipt(state(), result(state(74, 1)), command());
+  const gain = playerXpGainFromReceipt(state(), result(state(54, 1)), command());
   assert.equal(gain.xp, 25); assert.equal(gain.fromLevel, 1); assert.equal(gain.toLevel, 2);
   for (const [before, after, input] of [
-    [state(), state(74, 1, other), command()], [state(), state(74, 2), command()],
-    [state(74, 1), state(74, 1), command()], [state(), state(49, 1), command()],
-    [state(), state(74, 1), command({ action: "buy_fishing_item" })],
-    [state(), state(74, 1), command({ expectedRevision: 1 })],
+    [state(), state(54, 1, other), command()], [state(), state(54, 2), command()],
+    [state(54, 1), state(54, 1), command()], [state(), state(29, 1), command()],
+    [state(), state(54, 1), command({ action: "buy_fishing_item" })],
+    [state(), state(54, 1), command({ expectedRevision: 1 })],
   ]) assert.equal(playerXpGainFromReceipt(before, result(after), input), null);
 });
 
 test("local confirmed order emits one XP event and polling never invents another", async () => {
   let authoritative = state();
   const session = createEconomySession(owner, transport({ get: async () => authoritative, send: async () => {
-    authoritative = state(74, 1); return result(authoritative);
+    authoritative = state(54, 1); return result(authoritative);
   } }), () => assert.fail());
   const stop = session.activate(); await session.refresh();
   assert.equal(session.act("complete_resident_order", "order"), true); await flush();
@@ -51,7 +51,7 @@ test("same-session lost response retries celebrate once but recreated receipt se
   for (const recreate of [false, true]) {
     let attempts = 0, authoritative = state(); const storage = cache();
     const t = transport({ get: async () => authoritative, send: async () => {
-      authoritative = state(74, 1);
+      authoritative = state(54, 1);
       if (++attempts === 1) throw Error("Receipt response lost");
       return { ...result(authoritative), replayed: true };
     } });

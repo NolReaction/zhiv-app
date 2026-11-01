@@ -200,7 +200,7 @@ test("friend level uses authoritative development XP while tap records remain pr
   assert.deepEqual(record, before);
   assert.equal(model.guestProfileSchema.safeParse(result).success, true);
   const html = renderToStaticMarkup(createElement(ui.GuestProfileContents, { profile: result }));
-  assert.match(html, /Уровень 11/);
+  assert.match(html, /Уровень 13/);
   assert.doesNotMatch(JSON.stringify(result), /workSeconds|awardedLevels|awardedMilestones|"season"/);
   assert.equal(model.guestProfileSchema.safeParse({ ...result, playerXp: -1 }).success, false);
 });

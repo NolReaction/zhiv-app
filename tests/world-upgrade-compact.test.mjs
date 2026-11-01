@@ -197,46 +197,58 @@ test("maximum workshops, storage and restorations retain their own completion st
   }
 });
 
-test("late pantry expansion shows its exact coin crafted and relic costs and requires the full payment", () => {
-  const target = economyCatalog.buildings.find(building => building.id === "warehouse").levels.at(-1);
-  assert.equal(target.cost.coins, 95_000);
-  const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, ...target.requiredBuildings },
-    wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items } });
-  const before = structuredClone(snapshot);
-  const html = render("warehouse", { snapshot });
-  assert.match(text(html), /Вместимость кладовой 450 500 \+50 мест/);
-  assert.match(text(html), /Монеты 95 000 \/ 95 000/);
-  assert.match(html, /data-item-icon="coins"/);
-  const relics = economyCatalog.rareDrops.itemIds.filter(id => target.cost.items[id]);
-  for (const id of relics) assert.match(html, new RegExp(`data-relic="${id}"`));
-  assert.equal((html.match(/width="34" height="34"/g) ?? []).length, relics.length);
-  for (const [id, amount] of Object.entries(target.cost.items)) {
-    const name = economyCatalog.items.find(item => item.id === id).name;
-    assert.ok(text(html).includes(`${name} ${amount} / ${amount}`), id);
+test("late pantry expansion shows exact ordinary or relic-only costs and requires the full payment", () => {
+  const warehouse = economyCatalog.buildings.find(building => building.id === "warehouse");
+  const ordinary = warehouse.levels.find(level => level.level === 10), final = warehouse.levels.at(-1);
+  assert.deepEqual(ordinary.cost, { coins: 95_000, items: { reinforced_parts: 3, lens: 2, field_kit: 2 } });
+  assert.deepEqual(final.cost, { coins: 0, items: { ancient_core: 2, moon_crystal: 1, living_resin: 1 } });
+  assert.equal(final.level, 15);
+  for (const target of [ordinary, final]) {
+    const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, ...target.requiredBuildings },
+      wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items } });
+    const before = structuredClone(snapshot);
+    const html = render("warehouse", { snapshot });
+    const startButton = output => buttons(output).find(button => button.text.includes(`Улучшить до ур. ${target.level}`));
+    assert.ok(text(html).includes(`Вместимость кладовой ${target.warehouseCapacity - 50} ${target.warehouseCapacity} +50 мест`));
+    if (target.cost.coins > 0) {
+      assert.match(text(html), /Монеты 95 000 \/ 95 000/);
+      assert.match(html, /data-item-icon="coins"/);
+    } else assert.doesNotMatch(html, /data-item-icon="coins"/);
+    const relics = economyCatalog.rareDrops.itemIds.filter(id => target.cost.items[id]);
+    for (const id of relics) assert.match(html, new RegExp(`data-relic="${id}"`));
+    assert.equal((html.match(/width="34" height="34"/g) ?? []).length, relics.length);
+    for (const [id, amount] of Object.entries(target.cost.items)) {
+      const name = economyCatalog.items.find(item => item.id === id).name;
+      assert.ok(text(html).includes(`${name} ${amount} / ${amount}`), id);
+    }
+    assert.doesNotMatch(startButton(html).attributes, /disabled/);
+    assert.doesNotMatch(html, /Нужны улучшения|Купить.*жемч/);
+    assert.deepEqual(snapshot, before, "reading the exact upgrade cost cannot spend coins or materials");
+    if (target.cost.coins > 0) {
+      snapshot.wallet.coins--;
+      const shortCoins = render("warehouse", { snapshot });
+      assert.match(text(shortCoins), /Монеты 94 999 \/ 95 000/);
+      assert.match(startButton(shortCoins).attributes, /disabled/);
+      snapshot.wallet.coins = target.cost.coins;
+    }
+    const missingItem = target.level === 15 ? "living_resin" : "field_kit";
+    snapshot.inventory[missingItem]--;
+    const missing = render("warehouse", { snapshot });
+    const name = economyCatalog.items.find(item => item.id === missingItem).name;
+    assert.ok(text(missing).includes(`${name} ${snapshot.inventory[missingItem]} / ${target.cost.items[missingItem]}`));
+    if (target.level === 15) assert.match(missing, /data-relic="living_resin" data-missing="true"/);
+    assert.match(startButton(missing).attributes, /disabled/);
   }
-  assert.doesNotMatch(buttons(html).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
-  assert.doesNotMatch(html, /Нужны улучшения|Купить.*жемч/);
-  assert.deepEqual(snapshot, before, "reading the exact upgrade cost cannot spend coins or materials");
-  snapshot.wallet.coins--;
-  const shortCoins = render("warehouse", { snapshot });
-  assert.match(text(shortCoins), /Монеты 94 999 \/ 95 000/);
-  assert.match(buttons(shortCoins).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
-  snapshot.wallet.coins = target.cost.coins;
-  snapshot.inventory.living_resin--;
-  const missing = render("warehouse", { snapshot });
-  assert.ok(text(missing).includes(`Живая смола ${snapshot.inventory.living_resin} / ${target.cost.items.living_resin}`));
-  assert.match(missing, /data-relic="living_resin" data-missing="true"/);
-  assert.match(buttons(missing).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
 });
 
 test("relic cost navigation separates an available project reward from chance finds and respects their actual home unlock", () => {
   const navigation = { canOpen() { return true; }, open() {}, explore() {} };
-  for (const [warehouse, item] of [[3, "Древнее ядро"], [4, "Лунный кристалл"]]) {
-    const chance = render("warehouse", { snapshot: state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse }, inventory: {} }), navigation });
+  for (const [warehouse, item, inventory] of [[10, "Древнее ядро", {}], [11, "Лунный кристалл", { ancient_core: 1 }]]) {
+    const chance = render("warehouse", { snapshot: state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse }, inventory }), navigation });
     const find = buttons(chance).filter(button => /aria-label="Где искать:/.test(button.attributes));
     assert.equal(find.length, 1); assert.ok(find[0].attributes.includes(`Где искать: ${item}`));
   }
-  const snapshot = state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse: 5 }, inventory: {} });
+  const snapshot = state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse: 12 }, inventory: { ancient_core: 1 } });
   const pending = render("warehouse", { snapshot, navigation });
   const pendingFinds = buttons(pending).filter(button => /aria-label="Где искать:/.test(button.attributes));
   assert.equal(pendingFinds.length, 0);
@@ -252,7 +264,7 @@ test("relic cost navigation separates an available project reward from chance fi
   const locked = render("warehouse", { snapshot, navigation });
   assert.ok(!buttons(locked).some(button => /aria-label="Где искать:/.test(button.attributes)));
   assert.ok(text(locked).includes(`Находки реликвий в вылазках доступны с домом ур. ${economyCatalog.rareDrops.requiredHomeLevel}.`));
-  snapshot.inventory = { ...economyCatalog.buildings.find(building => building.id === "warehouse").levels.find(level => level.level === 6).cost.items };
+  snapshot.inventory = { ...economyCatalog.buildings.find(building => building.id === "warehouse").levels.find(level => level.level === 13).cost.items };
   assert.doesNotMatch(render("warehouse", { snapshot, navigation }), /Находки реликвий в вылазках доступны с домом/);
 });
 

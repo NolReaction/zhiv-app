@@ -140,7 +140,8 @@ class EconomyOrderProgressionTest {
         val onlyHome = EconomyRules.initial().copy(buildings = mapOf("home" to 5, "garden" to 1, "warehouse" to 1))
         val lockedItems = setOf("ore", "clay", "sand", "hardwood", "resin", "charcoal", "iron_ingot", "reinforced_parts")
         assertTrue(EconomyFood.eligibleOrderTemplates(onlyHome).all { order -> order.items.keys.none { it in lockedItems } })
-        val allBuildings = onlyHome.copy(buildings = catalog.buildings.associate { it.id to it.levels.last().level })
+        val allBuildings = onlyHome.copy(buildings = catalog.buildings.associate { it.id to it.levels.last().level },
+            progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 10L }))
         val requested = EconomyFood.eligibleOrderTemplates(allBuildings).flatMap { it.items.keys }.toSet()
         catalog.items.filter { it.category in setOf("material", "crafted") }.forEach { assertTrue(it.id in requested, it.id) }
     }

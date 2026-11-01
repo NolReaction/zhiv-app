@@ -64,7 +64,7 @@ test("one-time gift projection uses completed home tiers, ends after seven claim
     }
     assert.deepEqual(gifts.itemsReceived, earnedItems);
     assert.equal(gifts.coinsReceived, gifts.claimRows.reduce((sum, row) => sum + row.reward.coins, 0));
-    assert.equal(gifts.pearlsReceived, report.pearlsRemaining + report.pearlsSpent);
+    assert.equal(gifts.pearlsReceived + report.pearlFlow.progression, report.pearlsRemaining + report.pearlsSpent);
     assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.initial > 0)
       .map(([id, flow]) => [id, flow.initial])), { wood: 3, stone: 5 });
     assert.deepEqual(loaded.catalog.buildings.find(building => building.id === "warehouse").levels
@@ -100,7 +100,7 @@ test("gift capacity rejection does not credit its wallet or advance its seven-st
     assert.equal(report.dailyRewards.storageDeferrals, denied + naturalDeferrals);
     assert(report.dailyRewards.claims > 0);
     assert.equal(report.dailyRewards.claimRows[0].step, 1);
-    assert.equal(report.dailyRewards.pearlsReceived, report.pearlsRemaining);
+    assert.equal(report.dailyRewards.pearlsReceived + report.pearlFlow.progression, report.pearlsRemaining);
     assert.equal(report.dailyRewards.coinsReceived, report.dailyRewards.claimRows.reduce((sum, row) => sum + row.reward.coins, 0));
     assert.equal(report.dailyRewards.itemsReceived.wood, report.dailyRewards.claimRows.reduce((sum, row) => sum + (row.reward.items.wood ?? 0), 0));
     assert.equal(report.coinFlow.remaining, report.coinFlow.initial + report.coinFlow.sales + report.coinFlow.gifts + report.coinFlow.orders
@@ -151,6 +151,6 @@ test("the completed chain stops checking gifts while ordinary progression contin
     assert(commandsAfterCompletion > 0, "Production and upgrades continue after the last gift");
     assert.equal(report.dailyRewards.completed, true);
     assert.equal(report.dailyRewards.pearlsReceived, 140);
-    assert.equal(report.pearlsRemaining + report.pearlsSpent, 140);
+    assert.equal(report.pearlsRemaining + report.pearlsSpent, 140 + report.pearlFlow.progression);
   } finally { await loaded.close(); }
 });

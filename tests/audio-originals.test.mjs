@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 112);
+  assert.equal(manifest.assets.length, 116);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -84,6 +84,21 @@ test("three new neighbours have distinct original greeting timbres with three sh
   }
   assert.equal(sources.size, 9, "all greetings are original variants, rather than shared old audio");
   assert.ok(deliveryBytes < 700 * 1024, "nine short mono responses stay lightweight");
+});
+
+test("production and boost signatures stay compact, distinct and peak-safe", () => {
+  const ids = ["production-start", "collect", "boost-rise", "boost-full"];
+  let bytes = 0;
+  const hashes = new Set();
+  for (const name of ids) {
+    const item = manifest.assets.find(entry => entry.id === `ui.${name}.01`);
+    assert.equal(item.channels, 1);
+    assert.ok(item.durationSeconds >= .2 && item.durationSeconds <= .65);
+    assert.ok(item.measurements.peakDb <= -11 && item.measurements.rmsDb <= -23.5);
+    hashes.add(item.masterSha256); bytes += item.files[0].bytes;
+  }
+  assert.equal(hashes.size, ids.length);
+  assert.ok(bytes < 180 * 1024, "short feedback must not become a new startup download burden");
 });
 
 test("weather noise and overlapping close footsteps keep headroom even at full player volume", () => {

@@ -30,9 +30,13 @@ private const val DISPLAY_PEARL_UNITS = 2L
 }
 @Serializable private data class PlayerLevelReward(val level: Int, val rewardPearls: Long)
 @Serializable private data class CooperationMilestone(val points: Long, val rewardPearls: Long, val badge: String, val title: String)
+@Serializable private data class CooperationBonuses(
+    val orderPoints: Long = 0, val weeklyStagePoints: Long = 0, val shipCargoPoints: Long = 0, val shipVoyagePoints: Long = 0,
+)
+@Serializable private data class CooperationMonth(val month: Int, val title: String, val description: String, val bonuses: CooperationBonuses)
 @Serializable private data class CooperationCatalog(
     val orderPoints: Long, val weeklyStagePoints: Long, val shipCargoPoints: Long, val shipVoyagePoints: Long,
-    val titles: List<String>, val milestones: List<CooperationMilestone>,
+    val months: List<CooperationMonth>, val milestones: List<CooperationMilestone>,
 )
 @Serializable private data class PlayerProgressionCatalog(
     val version: Int, val maxLevel: Int, val levelXpFactor: Long, val workSecondsPerXp: Long,
@@ -48,7 +52,12 @@ object EconomyPlayerProgression {
     init {
         require(config.version == 1 && config.maxLevel == 100 && config.levelXpFactor > 0 && config.workSecondsPerXp > 0)
         require(config.levelRewards.map { it.level }.distinct().size == config.levelRewards.size && config.levelRewards.all { it.level in 1..100 && it.rewardPearls >= 0 })
-        require(config.season.titles.size == 12 && config.season.milestones.zipWithNext().all { (a, b) -> a.points < b.points })
+        require(config.season.months.map { it.month } == (1..12).toList())
+        require(config.season.months.all { it.title.isNotBlank() && it.description.isNotBlank() &&
+            it.bonuses.orderPoints in 0..5 && it.bonuses.weeklyStagePoints in 0..10 &&
+            it.bonuses.shipCargoPoints in 0..5 && it.bonuses.shipVoyagePoints in 0..15 })
+        require(config.season.milestones.all { it.points > 0 && it.rewardPearls >= 0 } &&
+            config.season.milestones.zipWithNext().all { (a, b) -> a.points < b.points })
     }
     private fun add(a: Long, b: Long): Long = minOf(MAX_PLAYER_PROGRESS, a + maxOf(0, b))
     fun level(xp: Long): Int = (sqrt(maxOf(0, xp).toDouble() / config.levelXpFactor).toInt() + 1).coerceIn(1, config.maxLevel)
@@ -61,6 +70,7 @@ object EconomyPlayerProgression {
         val original = state.progression.player
         var player = original ?: EconomyPlayerProgress()
         val id = seasonId(now)
+        val bonuses = config.season.months[now.atZone(ZoneOffset.UTC).monthValue - 1].bonuses
         if (player.season.id != id) player = player.copy(season = EconomyCooperationSeason(id))
         var xp = 0L; var seconds = 0L; var points = 0L; var source = "production"
         val recipes = mutableSetOf<String>()
@@ -86,7 +96,7 @@ object EconomyPlayerProgression {
         if (command.action == "complete_resident_order") {
             val weekly = command.targetId.startsWith("weekly1_")
             xp += if (weekly) config.weeklyStageXp else if (command.targetId.startsWith("stage")) config.stageOrderXp else config.orderXp
-            points += if (weekly) config.season.weeklyStagePoints else config.season.orderPoints
+            points += if (weekly) config.season.weeklyStagePoints + bonuses.weeklyStagePoints else config.season.orderPoints + bonuses.orderPoints
             source = "order"
         }
         if (command.action in setOf("load_ship_cargo", "complete_ship_order", "claim_ship_voyage")) {
@@ -94,7 +104,7 @@ object EconomyPlayerProgression {
             val cargo = before.ship.voyage?.orders?.count { order -> order.deliveredAt == null &&
                 (completed > 0 || state.ship.voyage?.orders?.any { it.id == order.id && it.deliveredAt != null } == true) } ?: 0
             xp += cargo * config.shipCargoXp + completed * config.shipVoyageXp
-            points += cargo * config.season.shipCargoPoints + completed * config.season.shipVoyagePoints
+            points += cargo * (config.season.shipCargoPoints + bonuses.shipCargoPoints) + completed * (config.season.shipVoyagePoints + bonuses.shipVoyagePoints)
             source = "ship"
         }
         val work = add(player.workSeconds, seconds)
@@ -107,7 +117,8 @@ object EconomyPlayerProgression {
         config.levelRewards.forEach { reward -> if (level(player.xp) >= reward.level && levels.add(reward.level))
             pending = add(pending, reward.rewardPearls * DISPLAY_PEARL_UNITS) }
         config.season.milestones.forEach { reward -> if (player.season.points >= reward.points && milestones.add(reward.points)) {
-            pending = add(pending, reward.rewardPearls * DISPLAY_PEARL_UNITS); badges.add("$id:${reward.badge}")
+            // Permanent history is also a receipt if an older monthly snapshot is restored.
+            if (badges.add("$id:${reward.badge}")) pending = add(pending, reward.rewardPearls * DISPLAY_PEARL_UNITS)
         } }
         val delivered = minOf(pending, maxOf(0, ECONOMY_MAX_PEARLS - state.wallet.pearls))
         player = player.copy(awardedLevels = levels.toList(), badges = badges.toList().takeLast(1200), pendingPearls = pending - delivered,

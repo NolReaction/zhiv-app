@@ -181,6 +181,23 @@ test("production hub uses one automatic product per crop and focuses source link
   assert.equal(productionBlocked(base, "hardwood"), false);
 });
 
+test("new crafting lessons show the missing claimed product on the production card", () => {
+  for (const id of ["grow_blueberries", "grow_currants", "grow_blackberries", "grow_cranberries", "grind_lens", "assemble_field_kit"]) {
+    const recipe = economyCatalog.recipes.find(row => row.id === id);
+    const prerequisite = economyCatalog.recipes.find(row => row.id === Object.keys(recipe.requiredRecipes)[0]);
+    const itemId = Object.keys(recipe.rewards)[0];
+    const prerequisiteName = economyCatalog.items.find(item => item.id === Object.keys(prerequisite.rewards)[0]).name;
+    const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])),
+      inventory: Object.fromEntries(economyCatalog.items.map(item => [item.id, 2])), progression: { recipes: {} } });
+    const html = render("production", controller({ snapshot: state }), recipe.buildingId);
+    assert.equal(productionBlocked(html, itemId), true, id);
+    const action = prerequisite.buildingId === "dryer" ? "Приготовьте" : "Произведите";
+    assert.ok(html.includes(`${action} и заберите: ${prerequisiteName} (0 / 1)`), id);
+    state.progression.recipes = { ...recipe.requiredRecipes };
+    assert.equal(productionBlocked(render("production", controller({ snapshot: state }), recipe.buildingId), itemId), false, id);
+  }
+});
+
 test("berry production owns its station and collection opens only after the server deadline", () => {
   const state = snapshot({ jobs: [job()] });
   let html = render("production", controller({ snapshot: state }));

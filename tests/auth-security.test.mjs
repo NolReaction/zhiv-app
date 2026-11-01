@@ -147,7 +147,8 @@ test("status OFF hides marks and visits while safe friend profiles retain friend
   const projection = await visible.json();
   assert.equal(projection.ownerPublicId, f.owner.me.user.publicId);
   assert.equal(projection.user.publicId, f.member.me.user.publicId);
-  assert.deepEqual(Object.keys(projection).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "serverTime"].sort());
+  assert.deepEqual(Object.keys(projection).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "playerXp", "completedExplorations", "achievements", "collections", "serverTime"].sort());
+  assert.equal(projection.playerXp, 0);
   globalThis.__authSecurityToken = f.outsider.token;
   const outsider = await (await status(await routes.guest.GET(request(path), context(f)), 404)).json();
   globalThis.__authSecurityToken = f.owner.token;

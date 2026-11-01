@@ -5,7 +5,7 @@ import { recipeBuildingLevel } from "./lib/economy-math.mjs";
 
 // Read-only player policy: every state change uses the shipped TS domain rules.
 // No market, achievement reward claims, legacy grant, admin command,
-// backdating or tap income. The default has no pearls; an explicit research
+// backdating or tap income. The default spends no pearls; an explicit research
 // scenario may start with a declared budget, project only the pearl component,
 // or claim full daily bundles using the real calendar, home tier and inventory
 // transition rules. The full reward projection is not an HTTP/receipt integration test.
@@ -83,7 +83,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.wallet.pearls = pearlBudget; // Hypothetical confirmed initial balance; not an earning or payment API.
   const initialCoins = state.wallet.coins, coinSpending = {};
-  let tutorialRevenue = 0;
+  let tutorialRevenue = 0, progressionPearls = 0;
   let clock = firstVisit, sequence = 0, castSequence = 0, targetIndex = 0, commands = 0, revenue = 0, storageRecovery = 0, lastFailure = null, pearlsSpent = 0;
   const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, explorationRoutes = {}, items = new Map(catalog.items.map(item => [item.id, item]));
   const itemFlow = Object.fromEntries(Object.entries(state.inventory).map(([id, quantity]) => [id,
@@ -123,6 +123,11 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
         ? `00000000-0000-4000-9000-${(castSequence + 1).toString(16).padStart(12, "0")}` : uuid();
       rules.applyEconomyCommand(next, { requestId: uuid(), ownerPublicId: "0000-0000-0001", expectedRevision: commands,
         action, targetId, quantity, totalPrice }, epoch + clock * 1000, jobId, {}, rareRandom.integer);
+      const paidPearls = ["speedup_construction", "buy_production_slot"].includes(action) ? totalPrice : 0;
+      const earnedPearls = next.wallet.pearls - state.wallet.pearls + paidPearls;
+      assert(earnedPearls >= 0, `${action}: undeclared pearl spending`);
+      progressionPearls += earnedPearls;
+      pearlsSpent += paidPearls;
       if (action === "start_fishing" && generated >= 2) castSequence++;
       if (action === "sell" || action === "sell_fish") revenue += next.wallet.coins - state.wallet.coins;
       if (action === "complete_resident_order") {
@@ -132,15 +137,12 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       if (next.wallet.coins < state.wallet.coins) coinSpending[action] = (coinSpending[action] ?? 0) + state.wallet.coins - next.wallet.coins;
       if (action === "speedup_construction") {
         const job = state.jobs.find(j => j.id === targetId);
-        pearlsSpent += state.wallet.pearls - next.wallet.pearls;
         milestones[`${job.targetId}:${job.targetLevel}`] = (clock - firstVisit) / day;
         events.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), building: `${job.targetId}:${job.targetLevel}`, coins: next.wallet.coins });
       }
       if (action === "buy_production_slot") {
-        const paid = state.wallet.pearls - next.wallet.pearls;
-        pearlsSpent += paid;
         slotPurchases.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), building: targetId,
-          houseLevel: state.buildings.home, slots: next.productionSlots[targetId], pricePearls: paid });
+          houseLevel: state.buildings.home, slots: next.productionSlots[targetId], pricePearls: paidPearls });
       }
       if (action === "claim_job" && previousJob?.rareDrop) {
         assert.equal(previousJob.kind, "exploration", "Only completed exploration jobs accrue relic time");
@@ -414,7 +416,10 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     if (buyProductionSlots) for (const id of productionStations) {
       if (!(state.buildings[id] > 0) || state.jobs.some(job => job.kind === "construction" && job.targetId === id)) continue;
       for (const upgrade of catalog.productionSlots.upgrades) {
-        if (upgrade.slots !== slotCapacity(id) + 1 || state.buildings.home < upgrade.requiredHomeLevel || state.wallet.pearls < upgrade.pricePearls) continue;
+        // These historical comparisons allocate only their declared budget and
+        // gifts. Automatically earned progression rewards remain in the wallet.
+        if (upgrade.slots !== slotCapacity(id) + 1 || state.buildings.home < upgrade.requiredHomeLevel
+          || pearlBudget + dailyPearls - pearlsSpent < upgrade.pricePearls) continue;
         assert(command("buy_production_slot", id, 1, upgrade.pricePearls), `Eligible slot purchase failed: ${lastFailure}`);
       }
     }
@@ -425,7 +430,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     const construction = state.jobs.find(j => j.kind === "construction");
     if (constructionSpeedups && pearlBudget > 0 && construction) {
       const price = rules.constructionSpeedupPrice(construction, epoch + clock * 1000);
-      if (price > 0 && price <= state.wallet.pearls) command("speedup_construction", construction.id, 1, price);
+      if (price > 0 && price <= pearlBudget + dailyPearls - pearlsSpent) command("speedup_construction", construction.id, 1, price);
     }
     target = goal(); if (!target) return;
     plan = demand(target);
@@ -534,6 +539,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     commands, saleRevenue: revenue, coinFlow: { initial: initialCoins, sales: revenue, gifts: dailyCoins, orders: tutorialRevenue,
       spendingByAction: coinSpending, remaining: state.wallet.coins }, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
     ...(pearlBudget > 0 || dailyPearlsOnly || dailyRewards ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
+    pearlFlow: { initial: pearlBudget, gifts: dailyPearls, progression: progressionPearls, spent: pearlsSpent, remaining: state.wallet.pearls },
     ...(dailyPearlsOnly ? { dailyPearlProjection: { claims: dailyClaims, completed: Boolean(dailyState.completed), pearlsReceived: dailyPearls,
       omitted: ["daily_reward_coins", "daily_reward_items", "daily_reward_relics", "achievement_rewards"] } } : {}),
     ...(dailyRewards ? { dailyRewards: { claims: dailyClaims, completed: Boolean(dailyState.completed), coinsReceived: dailyCoins, pearlsReceived: dailyPearls,
@@ -548,7 +554,10 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       eligibleExplorationHours: Number((eligibleExplorationSeconds / hour).toFixed(4)), received: relicReceived,
       stageRewards: stageRelics,
       spentOnConstruction: relicSpent, inventory: Object.fromEntries(relicIds.map(id => [id, state.inventory[id] ?? 0])), finds: relicFinds } };
-  assert.equal(state.wallet.pearls, pearlBudget + dailyPearls - pearlsSpent); assert(state.wallet.coins >= 0);
+  assert.equal(state.wallet.pearls, pearlBudget + dailyPearls + progressionPearls - pearlsSpent,
+    "Pearls must reconcile across the declared budget, gifts, earned progression rewards and actual fees");
+  assert(pearlsSpent <= pearlBudget + dailyPearls, "The research policy cannot spend undeclared progression rewards");
+  assert(state.wallet.coins >= 0);
   assert.equal(state.wallet.coins, initialCoins + revenue + dailyCoins + tutorialRevenue - Object.values(coinSpending).reduce((sum, value) => sum + value, 0), "Coins must reconcile across gifts, orders, sales and actual paid commands");
   assert(Object.values(state.inventory).every(q => Number.isSafeInteger(q) && q >= 0));
   for (const [id, flow] of Object.entries(itemFlow))

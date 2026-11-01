@@ -10,6 +10,8 @@ const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
+const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-progression.ts");
+const { PEARL_DISPLAY_DIVISOR } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const now = Date.now();
 beforeEach(() => identities.resetDevStoreForTests());
 after(() => vite.close());
@@ -110,7 +112,11 @@ test("an empty account can rebuild its first stage from the free bush and forest
   assert.equal(beforeHome.wallet.coins, 308);
   assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
   const upgraded = complete("start_construction", "home"); assert.equal(upgraded.buildings.home, 2);
-  assert.deepEqual(upgraded.productionSlots, {}); assert.equal(upgraded.wallet.pearls, 0); assert.ok(upgraded.storage.used <= 50);
+  const earned = upgraded.progression.player;
+  const earnedPearls = [...playerProgressionCatalog.levelRewards.filter(reward => earned.awardedLevels.includes(reward.level)),
+    ...playerProgressionCatalog.season.milestones.filter(reward => earned.season.awardedMilestones.includes(reward.points))]
+    .reduce((sum, reward) => sum + reward.rewardPearls * PEARL_DISPLAY_DIVISOR, 0);
+  assert.deepEqual(upgraded.productionSlots, {}); assert.equal(upgraded.wallet.pearls, earnedPearls); assert.ok(upgraded.storage.used <= 50);
   assert.equal(upgraded.buildings.bridge, 0, "Completing the first house stage does not gift a restored bridge");
   assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
   assert.deepEqual(economy.getDevEconomyMarket(p.token, {}, clock).listings, []);
@@ -189,7 +195,11 @@ test("the browser accepts explicit nullable Kotlin catalog fields and validates 
   }
   for (const definition of [...response.catalog.recipes, ...response.catalog.explorations]) definition.requiredBuildings ??= {};
   for (const route of response.catalog.explorations) route.activity ??= null;
+  response.catalog.tradeRelations.activity = null;
   assert.equal(model.economyViewSchema.safeParse(response).success, true, "Kotlin encodeDefaults/explicitNulls includes null capacity outside warehouses");
+  response.catalog.tradeRelations.activity = { graceSeconds: 0, decaySeconds: 86400, recoveryBps: 1000 };
+  assert.equal(model.economyViewSchema.safeParse(response).success, false, "present activity settings must still be valid");
+  response.catalog.tradeRelations.activity = null;
   const warehouseLevel = response.catalog.buildings.find(building => building.id === "warehouse").levels[0];
   for (const invalidCapacity of [-1, 0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     warehouseLevel.warehouseCapacity = invalidCapacity;
