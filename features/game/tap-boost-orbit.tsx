@@ -24,6 +24,8 @@ export function TapBoostOrbit({ snapshot, now, ownerKey, tapSignal, active }: Pr
   const pendingTapAt = useRef(-Infinity), previous = useRef<TapOrbitMemory | null>(null), previouslyActive = useRef(active);
   const reading = tapOrbitReading(snapshot, now, ownerKey);
   const power = Math.max(0, Math.min(1, reading.powerPercent / 20));
+  const tone = reading.powerPercent >= 20 ? "aurora" : reading.powerPercent >= 15 ? "ember"
+    : reading.powerPercent >= 10 ? "gold" : reading.powerPercent >= 5 ? "teal" : "moss";
   const css = { "--orbit-power": power, "--orbit-width": `${1.15 + power * .95}`,
     "--orbit-tip-angle": `${reading.remainingRatio * 360}deg`,
   } as CSSProperties;
@@ -99,7 +101,7 @@ export function TapBoostOrbit({ snapshot, now, ownerKey, tapSignal, active }: Pr
   }, [snapshot, now, ownerKey, active]);
 
   return <div ref={root} className={styles.orbit} data-tap-boost-orbit data-running="false"
-    data-boosting={reading.active || undefined} data-power={reading.powerPercent} style={css}>
+    data-boosting={reading.active || undefined} data-power={reading.powerPercent} data-tone={tone} style={css}>
     <div className={styles.visual} aria-hidden="true">
       <svg className={styles.ring} viewBox="0 0 120 120" focusable="false">
         <circle className={styles.rail} cx="60" cy="60" r="58" />

@@ -23,29 +23,29 @@
 .nextReward strong { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: #f0ead7; font-size: 12px; }
 .lastAward { margin: 10px 0 0; color: #acbca1; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .lastAward strong { color: #d2e6c2; font-weight: 600; }
-.season { min-width: 0; padding: 15px 17px; border: 1px solid rgba(216,184,127,.18); border-radius: 16px; color: #e0e7d7; background: linear-gradient(130deg, rgba(97,77,40,.2), rgba(26,38,26,.65)); }
+.season { min-width: 0; padding: 17px; border: 1px solid #698676; border-radius: 16px; color: #edf1e2; background: radial-gradient(ellipse at 100% 0, #48756745, transparent 72%), linear-gradient(130deg, #2b4740, #203832); box-shadow: inset 0 1px #c4e4ca0d; }
 .seasonHeading { display: flex; gap: 9px; align-items: center; min-width: 0; }
 .seasonIcon { display: flex; color: #ddbd82; flex: 0 0 auto; }
 .seasonHeading > div { min-width: 0; }
-.seasonHeading > div > small { display: block; color: #b8ba9e; font-size: 10px; line-height: 1.4; }
-.seasonHeading h4 { margin: 3px 0 0; color: #eae5d6; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.seasonHeading > div > small { display: block; color: #c3d4c6; font-size: 10px; line-height: 1.4; }
+.seasonHeading h4 { margin: 3px 0 0; color: #f4edda; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
 .seasonHeading > strong { display: grid; gap: 1px; margin-left: auto; font-size: 16px; font-variant-numeric: tabular-nums; text-align: right; }
-.seasonHeading > strong > small { font-size: 9px; color: #b9bda7; font-weight: 400; }
-.seasonTrack { overflow: hidden; height: 4px; margin-top: 12px; border-radius: 6px; background: rgba(10,19,11,.65); }
-.seasonTrack > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #9da475, #ddbd82); transition: width 500ms ease-out; }
-.seasonHint { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 8px 0 0; color: #c8ceb6; font-size: 11px; line-height: 1.5; }
+.seasonHeading > strong > small { font-size: 9px; color: #c3d4c6; font-weight: 400; }
+.seasonTrack { overflow: hidden; height: 5px; margin-top: 12px; border-radius: 6px; background: #152c25; }
+.seasonTrack > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #87c8ae, #e3c580); transition: width 500ms ease-out; }
+.seasonHint { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 8px 0 0; color: #cbdacb; font-size: 11px; line-height: 1.5; }
 .seasonHint svg { flex-shrink: 0; }
 .seasonHint strong { color: #e3e6d4; font-weight: 600; }
-.seasonDetails { margin-top: 7px; font-size: 11px; color: #bdc7af; }
-.seasonDetails summary { display: list-item; min-height: 44px; padding: 14px 0 10px; cursor: pointer; color: #d3d9c4; }
+.seasonDetails { margin-top: 7px; font-size: 11px; color: #c6d9c9; }
+.seasonDetails summary { display: list-item; min-height: 44px; padding: 14px 0 10px; cursor: pointer; color: #ecdbad; }
 .seasonDetails summary:focus-visible { outline: 2px solid #d5e7ab; outline-offset: 3px; border-radius: 3px; }
 .seasonDetails p { margin: 1px 0 12px; line-height: 1.6; }
 .seasonDetails ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.seasonDetails li { display: grid; grid-template-columns: 60px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: #a9b59e; }
+.seasonDetails li { display: grid; grid-template-columns: 60px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: #c1d4c6; }
 .seasonDetails li[data-earned] { color: #e2e8d6; }
 .seasonDetails li > span:first-child, .seasonDetails li > span:last-child { display: flex; align-items: center; gap: 5px; }
 .seasonDetails li > span:nth-child(2) { overflow-wrap: anywhere; }
-.seasonDetails .seasonFootnote { margin: 12px 0 0; color: #a6b19a; font-size: 10px; }
+.seasonDetails .seasonFootnote { margin: 12px 0 0; color: #b7cabc; font-size: 10px; }
 .badges { margin-top: 16px; padding-top: 13px; border-top: 1px solid rgba(216,184,127,.15); }
 .badges h5 { margin: 0 0 10px; color: #d5dcc6; font-size: 11px; font-weight: 600; }
 .badges ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -54,7 +54,7 @@
 .badges li > span:nth-child(2) { display: grid; gap: 3px; }
 .badges strong { font-size: 10px; font-weight: 600; color: #dbe2ce; }
 .badges small { color: #aab49d; font-size: 9px; }
-.loading { min-width: 0; padding: 20px 16px; border: 1px solid rgba(190,219,167,.15); border-radius: 18px; color: #bdc9b2; font-size: 12px; text-align: center; }
+.loading { min-width: 0; padding: 20px 16px; border: 1px solid rgba(190,219,167,.15); border-radius: 18px; background: #253522; color: #bdc9b2; font-size: 12px; text-align: center; }
 .wrapper[data-compact] .card { padding: 15px; }
 .wrapper[data-compact] .emblem { width: 46px; height: 46px; flex-basis: 46px; }
 @media (max-width: 380px) {

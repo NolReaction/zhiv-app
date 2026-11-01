@@ -175,10 +175,14 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const { open: marketGuideOpen, complete: completeMarketGuide } = marketGuide;
   const woodlotBuilt = Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId
     && (economy.snapshot.buildings.woodlot ?? 0) >= 1);
+  const residentProfileContinuation = Boolean(open && !suspended && world.snapshot && quickMenu === "profile" && !panel && !selection && !quickUpgrade
+    && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !economy.busy && !economy.uncertain
+    && !world.busy && !world.uncertain && observation?.memory.sync?.mode !== "other-device");
   const lopukhArrival = useLopukhArrival(ownerPublicId, {
     confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: woodlotBuilt,
     suspended: Boolean(!open || suspended),
+    continueEnabled: residentProfileContinuation,
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !economy.busy && !economy.uncertain
       && !world.busy && !world.uncertain && observation?.memory.sync?.mode !== "other-device"),
@@ -193,6 +197,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: quarryBuilt,
     suspended: Boolean(!open || suspended),
+    continueEnabled: residentProfileContinuation,
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled && !economy.busy && !economy.uncertain
       && !world.busy && !world.uncertain && observation?.memory.sync?.mode !== "other-device"),
@@ -204,6 +209,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     confirmed: Boolean(economy.snapshotConfirmed && economy.snapshot?.ownerPublicId === ownerPublicId),
     unlocked: merchantUnlocked,
     suspended: Boolean(!open || suspended),
+    continueEnabled: residentProfileContinuation,
     enabled: Boolean(open && !suspended && world.snapshot && !panel && !quickMenu && !selection && !quickUpgrade
       && !residentOpen && !charactersOpen && !dailyOpen && !marketGuide.open && !lopukhArrival.open && !lopukhArrival.enabled && !minerArrival.open && !minerArrival.enabled
       && !economy.busy && !economy.uncertain && !world.busy && !world.uncertain

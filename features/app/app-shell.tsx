@@ -1747,6 +1747,7 @@ function CheckInContent() {
               onClick={event => openGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг за месяц">
               <Trophy size={18} aria-hidden="true" /><strong>Рейтинг</strong>
             </button>
+            <TapBoostIndicator snapshot={economy.snapshot} now={economy.now} />
             </div>
             <div className={styles.buttonLayout}>
             <div className={styles.buttonGroup}>
@@ -1893,7 +1894,6 @@ function CheckInContent() {
           </div>
 
           {activeView === "check-in" && <div className={styles.statusBlock}>
-            <TapBoostIndicator snapshot={economy.snapshot} now={economy.now} />
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
               active={homeControlsActive}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}

@@ -9,7 +9,7 @@ function browserStorage() {
   try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; }
 }
 
-export type ResidentArrivalOptions = { unlocked: boolean; enabled: boolean; suspended?: boolean; confirmed?: boolean; onboarding: MarketUnlockOnboardingCourse };
+export type ResidentArrivalOptions = { unlocked: boolean; enabled: boolean; continueEnabled?: boolean; suspended?: boolean; confirmed?: boolean; onboarding: MarketUnlockOnboardingCourse };
 
 export function useResidentArrival(storageKey: string, options: ResidentArrivalOptions) {
   const store = useMemo(() => createResidentArrivalStore(storageKey, browserStorage()), [storageKey]);
@@ -18,7 +18,8 @@ export function useResidentArrival(storageKey: string, options: ResidentArrivalO
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const prepared = options.confirmed === undefined || state.prepared;
   const allowed = prepared && residentArrivalCanStart({ loaded: state.loaded, ...options });
-  const presented = useRef<typeof store | null>(null);
+  const continuing = prepared && state.presented && !options.suspended
+    && residentArrivalCanStart({ loaded: state.loaded, ...options, enabled: Boolean(options.continueEnabled) });
   const current = useRef({ store, allowed, unlocked: options.unlocked });
   useLayoutEffect(() => { current.current = { store, allowed, unlocked: options.unlocked }; }, [store, allowed, options.unlocked]);
   useEffect(() => {
@@ -35,14 +36,15 @@ export function useResidentArrival(storageKey: string, options: ResidentArrivalO
     store.prepare(options.unlocked);
   }, [store, state.loaded, state.prepared, options.confirmed, options.unlocked]);
   useEffect(() => {
-    if (allowed && !state.progress?.arrived) presented.current = store;
-    // A modal or an in-flight economy command only pauses the scene. Consume
-    // the introduction when the player actually leaves that scene.
-    if (options.suspended && presented.current === store && !state.progress?.arrived) store.finishInterrupted();
-  }, [store, allowed, options.suspended, state.progress?.arrived]);
+    if (allowed && !state.progress?.arrived) store.present();
+    // Profile hides the coach while an already started route keeps moving.
+    // Leaving the actual scene still consumes the introduction silently.
+    if (options.suspended && state.presented && !state.progress?.arrived) store.finishInterrupted();
+  }, [store, allowed, options.suspended, state.presented, state.progress?.arrived]);
   useEffect(() => {
     const leave = () => {
-      if (presented.current === store && !store.getSnapshot().progress?.arrived) store.finishInterrupted();
+      const snapshot = store.getSnapshot();
+      if (snapshot.presented && !snapshot.progress?.arrived) store.finishInterrupted();
     };
     const hidden = () => { if (document.visibilityState === "hidden") leave(); };
     window.addEventListener("pagehide", leave);
@@ -60,7 +62,7 @@ export function useResidentArrival(storageKey: string, options: ResidentArrivalO
     if (current.current.store === store && current.current.allowed) setCompletionNotice(null);
   }, [store]);
   const seen = Boolean(state.progress?.arrived);
-  return { loaded: state.loaded && prepared, seen, enabled: allowed && !seen,
+  return { loaded: state.loaded && prepared, seen, enabled: (allowed || continuing) && !seen,
     open: allowed && !state.progress?.dismissed, complete, dismiss,
     completionNotice: allowed && seen && completionNotice === store, dismissCompletion };
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { compactVillagerFixture } from "./helpers/new-map-scene.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url)), virtual = "virtual:leaftail-arrival-hooks";
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
@@ -42,6 +43,7 @@ const hooks = await vite.ssrLoadModule(virtual);
 const { useLeaftailArrival } = await vite.ssrLoadModule("/features/world/state/use-leaftail-arrival.ts");
 const { useMinerArrival } = await vite.ssrLoadModule("/features/world/state/use-miner-arrival.ts");
 const { useLopukhArrival } = await vite.ssrLoadModule("/features/world/state/use-lopukh-arrival.ts");
+const { createForestVillagers, configureForestVillagers, advanceForestVillagers } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-mind.ts");
 const opts = { unlocked: true, enabled: true, onboarding: { loaded: true, isPaused: false, progress: { version: 2, status: "completed" } } };
 function browser(run, useArrival = useLeaftailArrival) {
   const original = Object.getOwnPropertyDescriptor(globalThis, "window"), originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document"),
@@ -89,9 +91,10 @@ test("late arrival callbacks and completion messages stay with the account that 
 }));
 
 test("two mounted views share an arrival immediately while other owners and completion notices stay isolated", () => browser(({ renderMany }) => {
-  const entries = [["hook-shared-arrival", opts], ["hook-shared-arrival", { ...opts, enabled: false }], ["hook-shared-other", opts]];
+  const entries = [["hook-shared-arrival", opts], ["hook-shared-arrival", { ...opts, enabled: false, continueEnabled: true }], ["hook-shared-other", opts]];
   renderMany(entries); let [map, circle, other] = renderMany(entries);
   assert.equal(map.seen, false); assert.equal(circle.seen, false); assert.equal(other.seen, false);
+  assert.equal(map.enabled, true); assert.equal(circle.enabled, false, "a passive peer cannot borrow the map's continuation permission");
   map.dismiss(); [map, circle, other] = renderMany(entries);
   const lateCircleCompletion = circle.complete;
   map.complete(); [map, circle, other] = renderMany(entries);
@@ -128,6 +131,30 @@ for (const [resident, useArrival] of [["leaftail", useLeaftailArrival], ["miner"
     value = render(owner, { ...opts, enabled: false }); assert.equal(value.seen, false); assert.equal(value.enabled, false);
     value = render(owner); assert.equal(value.seen, false); assert.equal(value.enabled, true);
     value.complete(); value = render(owner); assert.equal(value.seen, true);
+  }, useArrival));
+
+  test(`${resident}: profile keeps a started arrival moving and defers its completion notice`, () => browser(({ render }) => {
+    const owner = `${resident}-profile-running`, profile = { ...opts, enabled: false, continueEnabled: true };
+    render(owner); let value = render(owner); value.dismiss();
+    value = render(owner, profile);
+    assert.equal(value.enabled, true); assert.equal(value.open, false); assert.equal(value.seen, false);
+    value.complete(); value = render(owner, profile);
+    assert.equal(value.seen, true); assert.equal(value.enabled, false); assert.equal(value.completionNotice, false);
+    value = render(owner); assert.equal(value.completionNotice, true);
+    value.dismissCompletion(); value = render(owner); assert.equal(value.completionNotice, false);
+  }, useArrival));
+
+  test(`${resident}: profile cannot begin an arrival or borrow continuation from another account`, () => browser(({ render }) => {
+    const owner = `${resident}-profile-queued`, profile = { ...opts, enabled: false, continueEnabled: true };
+    render(owner, profile); let value = render(owner, profile);
+    assert.equal(value.enabled, false); assert.equal(value.open, false);
+    value = render(owner); assert.equal(value.enabled, true);
+    value = render(owner, profile); assert.equal(value.enabled, true);
+    value = render(owner, { ...profile, continueEnabled: false });
+    assert.equal(value.enabled, false); assert.equal(value.seen, false, "an in-flight command still pauses movement");
+    value = render(owner, profile); assert.equal(value.enabled, true);
+    render(`${owner}-other`, profile); value = render(`${owner}-other`, profile);
+    assert.equal(value.enabled, false); assert.equal(value.open, false); assert.equal(value.seen, false);
   }, useArrival));
 
   test(`${resident}: hiding before the arrival is allowed does not consume a queued introduction`, () => browser(({ render, hide }) => {
@@ -210,3 +237,32 @@ for (const [resident, useArrival] of [["leaftail", useLeaftailArrival], ["miner"
     value = render(other); assert.equal(value.seen, false, "a removed unlock rejects completion");
   }, useArrival));
 }
+
+test("miner actually keeps moving under the profile and finishes the same route after a busy pause", () => browser(({ render }) => {
+  const owner = "miner-profile-physical-route", now = Date.parse("2026-11-01T12:00:00Z");
+  const scene = { schemaVersion: 1, id: owner, width: 1254, height: 1254,
+    focus: { x: 455, y: 480, width: 350, height: 350 }, actor: { spawn: { x: 630, y: 660 }, size: 36 },
+    terrain: [], paths: [], ...compactVillagerFixture() };
+  const state = createForestVillagers(scene), locked = { ...opts, confirmed: true, unlocked: false };
+  render(owner, locked); render(owner, locked); render(owner, locked);
+  let value = render(owner, { ...opts, confirmed: true }); value.dismiss();
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1, home: 1, woodlot: 0 }, allowArrival: value.enabled, now });
+  assert.equal(state.arrivalPhase, "running");
+  advanceForestVillagers(state, scene, .2, { now, arrivalActive: value.enabled });
+  const beforeProfile = { ...state.residents.kamneshmyg.position };
+  const profile = { ...opts, confirmed: true, enabled: false, continueEnabled: true };
+  value = render(owner, profile);
+  for (let i = 0; i < 5; i++) advanceForestVillagers(state, scene, .1, { now, arrivalActive: value.enabled });
+  const afterProfile = { ...state.residents.kamneshmyg.position };
+  assert.ok(Math.hypot(afterProfile.x - beforeProfile.x, afterProfile.y - beforeProfile.y) > 1, "profile leaves the physical arrival clock running");
+  value = render(owner, { ...profile, continueEnabled: false });
+  advanceForestVillagers(state, scene, .5, { now, arrivalActive: value.enabled });
+  assert.deepEqual(state.residents.kamneshmyg.position, afterProfile, "busy economy still pauses at the current feet");
+  value = render(owner, profile);
+  for (let i = 0; i < 400 && !state.arrivalCompleted; i++) advanceForestVillagers(state, scene, .1, { now, arrivalActive: value.enabled });
+  assert.equal(state.arrivalCompleted, true);
+  value.complete(); value = render(owner, profile);
+  assert.equal(value.seen, true); assert.equal(value.completionNotice, false);
+  value = render(owner); assert.equal(value.completionNotice, true);
+  value.complete(); value.dismissCompletion(); value = render(owner); assert.equal(value.completionNotice, false);
+}, useMinerArrival));

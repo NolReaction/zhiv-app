@@ -1,12 +1,12 @@
 "use client";
 
-import { ChevronDown, Sparkles, X } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { tapBoostView } from "@/features/economy/domain/tap-boost";
 import styles from "./tap-boost-indicator.module.css";
 
-/** Compact target companion to the button's time/power orbit. Details are opt-in. */
+/** One small control beside the calendar; the orbit carries the always-visible clock. */
 export function TapBoostIndicator({ snapshot, now }: { snapshot: EconomyView | null; now: number }) {
   const panel = useRef<HTMLDetailsElement>(null);
   function close(returnFocus = false) {
@@ -31,23 +31,23 @@ export function TapBoostIndicator({ snapshot, now }: { snapshot: EconomyView | n
   return <details ref={panel} className={styles.panel} data-active={boost.active || undefined}
     onKeyDown={event => { if (event.key === "Escape" && panel.current?.open) { event.preventDefault(); event.stopPropagation(); close(true); } }}
     onBlur={event => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) close(); }}>
-    <summary className={styles.summary}>
-      <span className={styles.emblem}><Sparkles size={16} aria-hidden="true" /></span>
-      <span className={styles.label}>{boost.active ? boost.targetName : "Помощь тапами"}
-        {!boost.active && <small>{available ? "Тапай, чтобы помочь текущей работе" : "Запусти производство или добычу"}</small>}
-      </span>
-      {boost.active && <strong className={styles.power}>+{percent}%<small>скорости</small></strong>}
-      <ChevronDown className={styles.chevron} size={14} aria-hidden="true" />
+    <summary className={styles.summary} aria-label={`Помощь тапами: +${percent}% к скорости. Открыть пояснение`}>
+      <Sparkles className={styles.emblem} size={16} aria-hidden="true" />
+      <strong className={styles.power}>+{percent}%</strong>
     </summary>
     <div className={styles.description} tabIndex={0} role="region" aria-label="Как работает помощь тапами">
-      <div className={styles.descriptionHeading}><strong>Помощь производству</strong><button type="button" aria-label="Закрыть помощь тапами" onClick={() => close(true)}><X size={16} aria-hidden="true" /></button></div>
-      {boost.active && <dl className={styles.stats}>
-        <div><dt>Время помощи</dt><dd>{boost.remainingSeconds} с</dd></div>
-        <div><dt>Заряд</dt><dd>{boost.charge} / 1000</dd></div>
-      </dl>}
-      <p>Светящаяся дуга вокруг кнопки показывает оставшееся время, а яркость — мощность. Каждый подтверждённый тап добавляет секунду действия; в запасе не больше минуты.</p>
-      <p>Мощность: 1 тап — 1%, 100 — 9%, 500 — 17%, 1000 — 20%. Пока помощь действует, сила сохраняется. Когда огонёк погаснет, новый заряд начинается с начала.</p>
-      <p>Помощь получает одна работа с ближайшим результатом. Стройка и путешествия не ускоряются. Минута помощи при +20% даёт 12 секунд дополнительной работы.</p>
+      <div className={styles.descriptionHeading}><strong>Помощь тапами</strong><button type="button" aria-label="Закрыть помощь тапами" onClick={() => close(true)}><X size={16} aria-hidden="true" /></button></div>
+      <div className={styles.target}>
+        <span>{boost.active ? <>Ускоряется <strong>{boost.targetName}</strong></>
+          : available ? "Нажимай «Я живой» — помогай работе" : "Запусти производство или добычу"}</span>
+        {boost.active && <strong className={styles.remaining} aria-label={`Время помощи: ${boost.remainingSeconds} с`}>{boost.remainingSeconds} с</strong>}
+      </div>
+      <div className={styles.rules}>
+        <div className={styles.timeRule}><strong>+1 секунда</strong><span>за тап · запас до 60 с</span></div>
+        <div className={styles.powerRule}><strong>до +20%</strong><span>больше тапов — сильнее</span></div>
+      </div>
+      <p><strong className={styles.timeAccent}>Дуга — оставшееся время.</strong> Пока она горит, мощность сохраняется.</p>
+      <p className={styles.footnote}>Ускоряется одна работа. Кольцо погаснет — заряд начнётся заново.</p>
     </div>
   </details>;
 }

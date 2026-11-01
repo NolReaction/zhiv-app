@@ -17,6 +17,7 @@ type Props = {
   progression: EconomyProgression | null | undefined;
   now: number;
   ownerKey?: string;
+  displayName?: string;
   compact?: boolean;
   showSeason?: boolean;
 };
@@ -103,7 +104,7 @@ export function CooperationSeasonCard({ progression, now }: Pick<Props, "progres
   </section>;
 }
 
-export function PlayerProgressionCard({ progression, now, ownerKey = "player", compact = false, showSeason = true }: Props) {
+export function PlayerProgressionCard({ progression, now, ownerKey = "player", displayName, compact = false, showSeason = true }: Props) {
   const player = getPlayerProgression(progression ?? undefined);
   const progress = getPlayerLevelProgress(player.xp);
   const { emblem, fill } = usePlayerCelebration(player.xp, progress.level, progress.ratio, ownerKey, Boolean(progression));
@@ -115,7 +116,7 @@ export function PlayerProgressionCard({ progression, now, ownerKey = "player", c
     <section className={styles.card} data-stage={getPlayerIconStage(progress.level)} aria-label="Общий игровой опыт">
       <div className={styles.heading}>
         <span className={styles.emblem} ref={emblem}><GameLevelIcon level={progress.level} size={31} /></span>
-        <div className={styles.identity}><span>Уровень <strong>{progress.level}</strong></span><h3>{progress.title}</h3></div>
+        <div className={styles.identity}><span>Уровень <strong>{progress.level}</strong></span><h3>{displayName ?? progress.title}</h3></div>
         <span className={styles.total}>{number(player.xp)}<small>всего XP</small></span>
       </div>
       <div className={styles.progressLine}><span>{atMax ? "Путь продолжается" : `${number(progress.levelXp)} / ${number(progress.requiredXp)} XP`}</span>

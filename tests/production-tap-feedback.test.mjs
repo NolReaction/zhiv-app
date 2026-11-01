@@ -58,13 +58,27 @@ test("a partially ready mining batch keeps its targeted help but never marks ano
   assert.doesNotMatch(render(), /data-tap-boost-power|Помощь тапами ·/);
 });
 
-test("compact companion offers exact details without a second always-visible countdown", () => {
+test("compact companion keeps only icon and power visible, with short opt-in rules and target", () => {
   const snapshot = state([job("one")]);
   const html = renderToStaticMarkup(createElement(TapBoostIndicator, { snapshot, now }));
   const summary = html.match(/<summary[\s\S]*?<\/summary>/)?.[0] ?? "";
   assert.match(summary, /\+20%/);
-  assert.doesNotMatch(summary, /60 с|1000/);
-  assert.match(html, /Время помощи.*60 с/);
-  assert.match(html, /Заряд.*1000 \/ 1000/);
+  assert.doesNotMatch(summary, /60 с|1000|Лесопилка|Мастерская|скорости<\/small>/);
+  assert.match(summary, /aria-label="Помощь тапами: \+20% к скорости/);
+  assert.match(html, /Время помощи: 60 с/);
+  assert.match(html, /Ускоряется/);
+  assert.match(html, /\+1 секунда/);
+  assert.match(html, /запас до 60 с/);
+  assert.match(html, /до \+20%/);
+  assert.match(html, /заряд начнётся заново/);
   assert.doesNotMatch(html, /role="progressbar"/);
+});
+
+test("idle companion shows zero and explains how to start help without promising an idle bonus", () => {
+  const snapshot = state([job("one")]);
+  const html = renderToStaticMarkup(createElement(TapBoostIndicator, { snapshot: { ...snapshot, jobs: [] }, now }));
+  const summary = html.match(/<summary[\s\S]*?<\/summary>/)?.[0] ?? "";
+  assert.match(summary, /\+0%/);
+  assert.match(html, /Запусти производство или добычу/);
+  assert.doesNotMatch(html, /Время помощи:|Ускоряется <strong>/);
 });

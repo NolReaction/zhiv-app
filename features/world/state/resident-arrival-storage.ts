@@ -1,8 +1,8 @@
 import { parseResidentArrivalProgress, type ResidentArrivalProgress } from "@/features/world/domain/resident-arrival-onboarding";
 
 type ArrivalStorage = Pick<Storage, "getItem" | "setItem">;
-type Snapshot = { loaded: boolean; prepared: boolean; progress: ResidentArrivalProgress | null };
-const serverSnapshot: Snapshot = { loaded: false, prepared: false, progress: null };
+type Snapshot = { loaded: boolean; prepared: boolean; presented: boolean; progress: ResidentArrivalProgress | null };
+const serverSnapshot: Snapshot = { loaded: false, prepared: false, presented: false, progress: null };
 const memory = new Map<string, ResidentArrivalProgress>();
 // Circle, map and DEV can observe separate stores in the same tab. Native
 // storage events only reach other tabs, so active peers share local changes.
@@ -12,10 +12,13 @@ const peers = new Map<string, Set<(progress: ResidentArrivalProgress) => void>>(
 export function createResidentArrivalStore(storageKey: string, storage?: ArrivalStorage) {
   let snapshot = serverSnapshot;
   let prepared = false;
+  // Only this mounted presentation can continue behind a profile window.
+  // Do not persist or broadcast this permission to another view or owner.
+  let presented = false;
   const listeners = new Set<() => void>();
   const update = (progress: ResidentArrivalProgress | null) => {
-    if (snapshot.loaded && snapshot.prepared === prepared && snapshot.progress?.arrived === progress?.arrived && snapshot.progress?.dismissed === progress?.dismissed) return;
-    snapshot = { loaded: true, prepared, progress };
+    if (snapshot.loaded && snapshot.prepared === prepared && snapshot.presented === presented && snapshot.progress?.arrived === progress?.arrived && snapshot.progress?.dismissed === progress?.dismissed) return;
+    snapshot = { loaded: true, prepared, presented, progress };
     for (const listener of listeners) listener();
   };
   const restore = () => {
@@ -61,6 +64,11 @@ export function createResidentArrivalStore(storageKey: string, storage?: Arrival
       };
     },
     restore, complete: () => save("arrived"), dismiss: () => save("dismissed"),
+    present() {
+      if (presented || !snapshot.loaded || snapshot.progress?.arrived) return;
+      presented = true;
+      update(snapshot.progress);
+    },
     // Leaving an introduction settles it silently; it is never a requirement
     // to watch the complete animation again before using an unlocked resident.
     finishInterrupted: () => save("existing"),

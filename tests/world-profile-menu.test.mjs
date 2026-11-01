@@ -55,10 +55,11 @@ function mood(overrides = {}) {
     onCall: () => calls.push("call"), onOpenHelp: () => calls.push("help"), onOpenExpeditions: () => calls.push("expeditions"), ...overrides })), calls };
 }
 
-test("profile keeps authoritative progress compact and leaves the full mood outside its three navigation tabs", () => {
+test("profile shows identity once in confirmed XP and leaves the full mood outside its three navigation tabs", () => {
   const { markup, elements } = profile();
-  assert.match(markup, /Дима/);
-  assert.match(markup, /Уровень 12/);
+  assert.equal((markup.match(/Дима/g) ?? []).length, 1);
+  assert.match(markup, /Уровень <strong>1<\/strong>/);
+  assert.doesNotMatch(markup, /Росток|Уровень 12/);
   assert.match(markup, /<dt>Дом<\/dt><dd>3 ур\.<\/dd>/);
   assert.match(markup, /<dt>Исследования<\/dt><dd>7<\/dd>/);
   assert.ok(markup.includes(`<dt>Книга находок</dt><dd>1 / ${BOOK_COLLECTION_COUNT}</dd>`));
