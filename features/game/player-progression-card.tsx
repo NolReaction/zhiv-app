@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Gem, Leaf, Sparkles } from "lucide-react";
 import type { EconomyProgression } from "@/features/economy/domain/model";
 import { getCooperationSeason, getPlayerIconStage, getPlayerLevelProgress, getPlayerProgression, playerProgressionCatalog, PLAYER_LEVELS } from "@/features/economy/domain/player-progression";
+import { playerXpFillFrames } from "./player-xp-playback";
 import { GameLevelIcon } from "./game-level-icon";
 import styles from "./player-progression-card.module.css";
 
@@ -20,23 +21,38 @@ type Props = {
   showSeason?: boolean;
 };
 
-/** Animates only a new confirmed level while mounted, never a restored snapshot. */
-function useLevelCelebration(level: number, ownerKey: string) {
-  const emblem = useRef<HTMLSpanElement>(null);
-  const previous = useRef({ level, ownerKey });
+/** The first loaded snapshot is a baseline. Hidden/restored cards never celebrate. */
+function usePlayerCelebration(xp: number, level: number, ratio: number, ownerKey: string, loaded: boolean) {
+  const emblem = useRef<HTMLSpanElement>(null), fill = useRef<HTMLSpanElement>(null);
+  const previous = useRef({ xp, level, ratio, ownerKey, loaded });
   useEffect(() => {
     const before = previous.current;
-    previous.current = { level, ownerKey };
-    if (before.ownerKey !== ownerKey || level <= before.level || typeof window === "undefined"
-      || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const animation = emblem.current?.animate?.([
-      { transform: "scale(1)", filter: "brightness(1)" },
-      { transform: "scale(1.14)", filter: "brightness(1.4)", offset: 0.4 },
-      { transform: "scale(1)", filter: "brightness(1)" },
-    ], { duration: 650, easing: "ease-out" });
-    return () => animation?.cancel();
-  }, [level, ownerKey]);
-  return emblem;
+    previous.current = { xp, level, ratio, ownerKey, loaded };
+    const element = fill.current;
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const bounds = element?.getBoundingClientRect();
+    if (!element || !bounds || !element.getClientRects().length || bounds.bottom < 0 || bounds.top > window.innerHeight
+      || document.hidden || motion.matches || !loaded || !before.loaded || before.ownerKey !== ownerKey || xp <= before.xp) return;
+    const animations: Animation[] = [];
+    const progressAnimation = element.animate?.(playerXpFillFrames(before, { level, ratio }), {
+      duration: level > before.level ? 1000 : 500, easing: "ease-out",
+    });
+    if (progressAnimation) animations.push(progressAnimation);
+    if (level > before.level) {
+      const animation = emblem.current?.animate?.([
+        { transform: "scale(1)", filter: "brightness(1)" },
+        { transform: "scale(1.14)", filter: "brightness(1.4)", offset: 0.4 },
+        { transform: "scale(1)", filter: "brightness(1)" },
+      ], { duration: 650, easing: "ease-out" });
+      if (animation) animations.push(animation);
+    }
+    const cancel = () => animations.forEach(animation => animation.cancel());
+    const visibility = () => { if (document.hidden) cancel(); };
+    const changedMotion = () => { if (motion.matches) cancel(); };
+    document.addEventListener("visibilitychange", visibility); motion.addEventListener("change", changedMotion);
+    return () => { cancel(); document.removeEventListener("visibilitychange", visibility); motion.removeEventListener("change", changedMotion); };
+  }, [xp, level, ratio, ownerKey, loaded]);
+  return { emblem, fill };
 }
 
 export function CooperationSeasonCard({ progression, now }: Pick<Props, "progression" | "now">) {
@@ -90,7 +106,7 @@ export function CooperationSeasonCard({ progression, now }: Pick<Props, "progres
 export function PlayerProgressionCard({ progression, now, ownerKey = "player", compact = false, showSeason = true }: Props) {
   const player = getPlayerProgression(progression ?? undefined);
   const progress = getPlayerLevelProgress(player.xp);
-  const emblem = useLevelCelebration(progress.level, ownerKey);
+  const { emblem, fill } = usePlayerCelebration(player.xp, progress.level, progress.ratio, ownerKey, Boolean(progression));
   const nextReward = PLAYER_LEVELS.find(level => level.level > progress.level && level.rewardPearls > 0);
   if (!progression) return <section className={styles.loading} role="status">Загружаем игровой опыт…</section>;
   const atMax = progress.remaining === 0 && progress.level === PLAYER_LEVELS.at(-1)?.level;
@@ -106,7 +122,7 @@ export function PlayerProgressionCard({ progression, now, ownerKey = "player", c
         <span>{atMax ? "100 уровней" : `Уровень ${progress.level + 1}`}</span></div>
       <div className={styles.track} role="progressbar" aria-label="Опыт до следующего уровня" aria-valuemin={0} aria-valuemax={100}
         aria-valuenow={Math.round(progress.ratio * 100)} aria-valuetext={label}>
-        <span style={{ width: `${progress.ratio * 100}%` }} />
+        <span ref={fill} style={{ width: `${progress.ratio * 100}%` }} />
       </div>
       <p className={styles.remaining}>{label}</p>
       {!compact && <p className={styles.explanation}>Стройте, производите, открывайте новое и помогайте жителям.</p>}

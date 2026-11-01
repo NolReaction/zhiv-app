@@ -886,10 +886,11 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
 });
 
 test("keeps the ten-second clicker lightweight and motion-safe", async () => {
-  const [app, appStyles, clicker] = await Promise.all([
+  const [app, appStyles, clicker, orbitStyles] = await Promise.all([
     readFile(new URL("../features/app/app-shell.tsx", import.meta.url), "utf8"),
     readFile(new URL("../features/app/app-shell.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/game/clicker-story.ts", import.meta.url), "utf8"),
+    readFile(new URL("../features/game/tap-boost-orbit.module.css", import.meta.url), "utf8"),
   ]);
 
   assert.doesNotMatch(clicker, /CLICKER_FINAL_TAP|rotateClickerStory/);
@@ -921,14 +922,15 @@ test("keeps the ten-second clicker lightweight and motion-safe", async () => {
   assert.match(timerFill, /transform:\s*scaleX\(var\(--series-remaining\)\);/);
   assert.match(timerFill, /transform-origin:\s*left center;/);
   assert.doesNotMatch(timerFill, /width:/);
-  assert.match(appStyles, /\.tapWave\s*\{[^}]*pointer-events:\s*none;/s);
+  assert.match(app, /<TapBoostOrbit/);
+  assert.match(orbitStyles, /\.orbit\s*\{[^}]*pointer-events:\s*none;/s);
   assert.match(appStyles, /\.seriesBreakBurst\s*\{[^}]*pointer-events:\s*none;/s);
 
   const reducedMotion = appStyles.slice(
     appStyles.indexOf("@media (prefers-reduced-motion: reduce)"),
   );
   assert.match(reducedMotion, /\.championBurst/);
-  assert.match(reducedMotion, /\.tapWave/);
+  assert.match(orbitStyles, /prefers-reduced-motion:\s*reduce[\s\S]*\.pulse\s*\{\s*display:\s*none/);
   assert.match(reducedMotion, /\.seriesBreakBurst/);
   assert.match(reducedMotion, /\.tapCounterProgress::after/);
   assert.match(reducedMotion, /display:\s*none;/);

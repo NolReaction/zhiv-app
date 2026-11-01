@@ -6,6 +6,7 @@ import { economyCommandSchema, marketCommandSchema, type EconomyCommand, type Ec
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { constructionCompletions, type ConstructionCompletion } from "@/features/economy/domain/construction-completion";
 import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryGain } from "@/features/economy/domain/inventory-gain";
+import { playerXpGainFromReceipt, PLAYER_XP_GAIN_HISTORY_LIMIT, type PlayerXpGain } from "@/features/economy/domain/player-xp-gain";
 import { localSaleFromReceipt, type LocalSaleReceipt } from "@/features/economy/domain/local-sale-receipt";
 import { localLeaftailPurchaseFromReceipt, type LocalLeaftailPurchase } from "@/features/economy/domain/local-leaftail-purchase";
 import { localExplorationFromReceipt, type LocalExplorationReceipt } from "@/features/economy/domain/local-exploration-receipt";
@@ -56,6 +57,8 @@ type View = {
   cancelledExplorations?: readonly string[];
   /** Local accepted inventory additions only; never inferred by polling. */
   inventoryGains?: readonly InventoryGain[];
+  /** XP earned by an exact in-memory local intent; never synthesized from a refresh. */
+  playerXpGains?: readonly PlayerXpGain[];
   /** Accepted local input only; never persisted or reconstructed from an ACK. */
   productionStarts?: readonly ProductionStart[];
   /** Latest confirmed local sale; transient, never reconstructed from a GET. */
@@ -75,16 +78,18 @@ export function createEconomySession(owner: string | null, transport: Transport,
   let pending: Pending | null = null, active = false, available = true, epoch = 0, readSequence = 0, marketSequence = 0, barterSequence = 0;
   // A reload may recover the command, but must not pretend the player just
   // started it in this course. Keep this intent out of receipt persistence.
+  let localXpIntent: { requestId: string; before: EconomyView } | null = null;
   let localExplorationIntent: { requestId: string; before: EconomyView } | null = null;
   let localLeaftailPurchaseIntent: { requestId: string; before: EconomyView } | null = null;
   let reading: Promise<void> | null = null, marketReading: Promise<void> | null = null, barterReading: Promise<void> | null = null;
   let neighborReading: Promise<void> | null = null, neighborSequence = 0, neighborBlockedUntil = 0;
   let barterBlockedUntil = 0, rateLimitedUntil = 0;
-  let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0;
+  let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0, successfulReads = 0;
   let serverClock = Date.now(), localClock = performance.now();
   const storageKey = gameplayStorageKey(`zhiv:economy:pending:v1:${owner}`);
   const listeners = new Set<() => void>(), requests = new Set<AbortController>();
   const inventoryReceipts = new Set<string>();
+  const xpReceipts = new Set<string>();
   let productionEntries: ProductionIntent[] = [], journalReady = false, journalInitializing = false, localActionsAvailable = true;
   let lifetime = 0;
   let journalFault = false, productionSending: Promise<void> | null = null, journalInitialization: Promise<void> | null = null;
@@ -214,7 +219,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   ].slice(-16));
   function remember(value: Pending | null) {
     pending = value;
-    if (!value) { localExplorationIntent = null; localLeaftailPurchaseIntent = null; }
+    if (!value) { localExplorationIntent = null; localLeaftailPurchaseIntent = null; localXpIntent = null; }
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Receipt remains in memory if browser storage is unavailable. */ }
   }
   function restore() {
@@ -263,11 +268,22 @@ export function createEconomySession(owner: string | null, transport: Transport,
     void task.finally(() => { if (reading === task) reading = null; });
     return task;
   }
+  /** A tap receipt needs a GET that started after it was accepted. A normal
+   * refresh can be skipped or swallow a network error, so it is not an ACK. */
+  async function refreshTapBoost(): Promise<boolean> {
+    const generation = epoch;
+    if (reading) await reading;
+    if (!valid(generation) || !available) return false;
+    const before = successfulReads;
+    await refresh();
+    return valid(generation) && available && successfulReads > before;
+  }
   async function read() {
     const generation = epoch, sequence = ++readSequence, request = controller();
     try {
       const snapshot = await transport.get(request.signal);
       if (valid(generation) && sequence === readSequence && adopt(snapshot)) {
+        successfulReads++;
         failures = 0; blockedUntil = 0;
         if (!pending && !productionEntries.length) publish({ error: null, syncError: null, retryAt: 0, rateLimited: false });
       }
@@ -407,6 +423,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && !view.cancelledExplorations?.includes(value.command.targetId) ? value.command.targetId : null;
         const gain = value.kind !== "dev" && value.kind !== "barter" && value.kind !== "neighbor" && view.snapshot?.revision === result.state.revision
           && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(before, result, value.command) : null;
+        const xpGain = value.kind === "economy" && localXpIntent?.requestId === value.command.requestId
+          && view.snapshot?.revision === result.state.revision && !xpReceipts.has(value.command.requestId)
+          ? playerXpGainFromReceipt(localXpIntent.before, result, value.command) : null;
         const sale = value.kind === "economy" && view.snapshot?.revision === result.state.revision
           && view.localSale?.id !== value.command.requestId ? localSaleFromReceipt(before, result, value.command) : null;
         const purchase = value.kind === "economy" && localLeaftailPurchaseIntent?.requestId === value.command.requestId
@@ -420,9 +439,14 @@ export function createEconomySession(owner: string | null, transport: Transport,
           inventoryReceipts.add(gain.id);
           if (inventoryReceipts.size > 64) inventoryReceipts.delete(inventoryReceipts.values().next().value!);
         }
+        if (xpGain) {
+          xpReceipts.add(xpGain.id);
+          if (xpReceipts.size > 64) xpReceipts.delete(xpReceipts.values().next().value!);
+        }
         remember(null); publish({ notice: result.message, uncertain: false, syncError: null,
           ...(value.kind === "neighbor" && view.neighbor ? { neighbor: { ...view.neighbor, shop: { ...view.neighbor.shop,
             offers: view.neighbor.shop.offers.map(offer => offer.id === value.command.targetId ? { ...offer, purchased: true } : offer) } } } : {}),
+          ...(xpGain ? { playerXpGains: Object.freeze([...(view.playerXpGains ?? []), xpGain].slice(-PLAYER_XP_GAIN_HISTORY_LIMIT)) } : {}),
           ...(sale ? { localSale: sale } : {}),
           ...(purchase ? { localLeaftailPurchase: purchase } : {}),
           ...(exploration ? { localExploration: exploration } : {}),
@@ -503,7 +527,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
         if (view.busy) publish({ busy: false, uncertain: Boolean(pending) });
       };
     },
-    refresh, refreshSoft: () => refresh(false), refreshMarket, refreshBarter, refreshNeighbor,
+    refresh, refreshTapBoost, refreshSoft: () => refresh(false), refreshMarket, refreshBarter, refreshNeighbor,
     act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>, shipCargo?: { voyageId: string; orderId: string; itemId: string }) {
       if (action === "start_production" && journalReady && !journalFault && view.snapshot && safeProductionRecipe(view.snapshot, targetId) && quantity === 1 && totalPrice === 0 && fishSelection == null) {
         if (!owner || !view.snapshot || !active || !localActionsAvailable || pending || view.busy || productionEntries.length >= PRODUCTION_JOURNAL_LIMIT) return false;
@@ -521,6 +545,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const command: EconomyCommand = { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
         ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }),
         ...(action === "load_ship_cargo" && shipCargo ? { voyageId: shipCargo.voyageId, orderId: shipCargo.orderId, itemId: shipCargo.itemId } : {}) };
+      localXpIntent = { requestId: command.requestId, before: view.snapshot };
       if (action === "start_exploration" || action === "start_fishing")
         localExplorationIntent = { requestId: command.requestId, before: view.snapshot };
       if (action === "buy_leaftail_item") localLeaftailPurchaseIntent = { requestId: command.requestId, before: view.snapshot };

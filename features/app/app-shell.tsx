@@ -25,6 +25,9 @@ import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboard
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { TapBoostIndicator } from "@/features/game/tap-boost-indicator";
+import { TapBoostOrbit } from "@/features/game/tap-boost-orbit";
+import { PlayerXpFeedback } from "@/features/game/player-xp-feedback";
+import { tapBoostView } from "@/features/economy/domain/tap-boost";
 import { getPlayerLevel, getPlayerProgression } from "@/features/economy/domain/player-progression";
 import { BetaInfo } from "@/features/updates/beta-info";
 
@@ -823,8 +826,9 @@ function CheckInContent() {
     return () => worldDevStore.reset();
   }, [worldDevOwner]);
   const worldRefresh = world.refresh;
-  useTapBoostRefresh(screen === "home" ? me?.user.publicId ?? null : null, game.progress?.lifetimeTaps ?? 0,
-    economy.snapshot?.jobs.some(job => job.kind === "production" || job.actorId === "miner") ?? false, economy.refresh);
+  useTapBoostRefresh(homeControlsActive && !statusOpen && activity.active ? me?.user.publicId ?? null : null, game.progress?.lifetimeTaps ?? 0,
+    economy.snapshot?.jobs.some(job => (job.kind === "production" || job.kind === "exploration" && job.actorId === "miner")
+      && Date.parse(job.finishesAt) > economy.now) ?? false, economy.refreshTapBoost);
   useEffect(() => { if (screen === "home" && me) void worldRefresh(); }, [game.progress?.lifetimeTaps, me, screen, worldRefresh]);
 
   const syncMeSnapshot = useCallback((identity: MeResponse) => {
@@ -1497,6 +1501,7 @@ function CheckInContent() {
   const ageMs = getCheckInAgeMs(lastCheckInAt, clockOffsetMs, clientNowMs);
   const buttonPalette = getCheckInPalette(ageMs);
   const playerLevel = getPlayerLevel(getPlayerProgression(economy.snapshot?.progression).xp);
+  const tapBoostActive = economy.snapshot ? tapBoostView(economy.snapshot, economy.now).active : false;
   const serverStatus = formatLastCheckIn(lastCheckInAt, adjustedNow);
   const gameNotice = game.errorCode === "GAME_STARTING" ? "Получаем разрешение на игру. Первые нажатия в очереди; продолжить можно после подключения."
     : game.errorCode === "QUEUE_FULL" ? "Очередь на устройстве заполнена. Дождитесь отправки сохранённых нажатий, прежде чем продолжать."
@@ -1520,8 +1525,8 @@ function CheckInContent() {
   const effectClass = storyEffect
     ? styles[`effect${storyEffect.type[0].toUpperCase()}${storyEffect.type.slice(1)}`]
     : "";
-  const pulseClass = effectClass || earlyTapClass;
-  const effectType = storyEffect?.type ?? null;
+  const pulseClass = tapBoostActive ? "" : effectClass || earlyTapClass;
+  const effectType = tapBoostActive ? null : storyEffect?.type ?? null;
   const showEffectRings = effectType !== null && [
     "rings", "finale", "orbit", "legend", "champion",
   ].includes(effectType);
@@ -1747,7 +1752,7 @@ function CheckInContent() {
             <div className={styles.buttonGroup}>
             <div
               className={`${styles.buttonStage} ${mochlikVisible ? styles.habitatStage : ""} ${tapActive ? styles.buttonStageActive : ""} ${
-                seriesBreakBurst !== null && !mochlikVisible ? styles.seriesBreaking : ""
+                seriesBreakBurst !== null && !mochlikVisible && !tapBoostActive ? styles.seriesBreaking : ""
               }`}
               onPointerDown={handleGameAreaPointerDown}
             >
@@ -1773,6 +1778,9 @@ function CheckInContent() {
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
             </button>
+            <TapBoostOrbit snapshot={economy.snapshot} now={economy.now}
+              ownerKey={`${me?.user.publicId ?? "guest"}:${me?.gameplayGeneration ?? 0}`} tapSignal={tapFeedbackBurst}
+              active={homeControlsActive && !statusOpen && activity.active && !gameplay.suspended && !startupActive} />
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
                 Текущая серия: {visualTapCount.toLocaleString("ru-RU")}. Сохранено: {creditedRunTaps}.
@@ -1782,14 +1790,7 @@ function CheckInContent() {
             <span className={styles.srOnly} role="status" aria-live="polite">
               {seriesSummary ? `${displayedRun?.pendingTaps ? "Сохраняем результат" : isConfirmedRecord ? "Рекорд" : "Результат"}: ${visualTapCount.toLocaleString("ru-RU")}` : ""}
             </span>
-            {tapFeedbackBurst > 0 ? (
-              <i
-                key={`tap-wave-${tapFeedbackBurst}`}
-                className={styles.tapWave}
-                aria-hidden="true"
-              />
-            ) : null}
-            {seriesBreakBurst !== null && !mochlikVisible ? (
+            {seriesBreakBurst !== null && !mochlikVisible && !tapBoostActive ? (
               <div
                 key={`series-break-${seriesBreakBurst}`}
                 className={styles.seriesBreakBurst}
@@ -2046,6 +2047,8 @@ function CheckInContent() {
         }}
       />}
     </main>
+    {me && <PlayerXpFeedback key={`xp:${me.user.publicId}:${me.gameplayGeneration ?? 0}`} economy={economy}
+      active={screen === "home" && activity.active && !gameplay.suspended && !startupActive} />}
     {!startupActive && gameplay.showGate && <ActivityGate key={`activity:${me?.user.publicId}`} activity={activity} retained={sceneCanMount} />}
     {!worldPortal.open && connectionStatus}
     </GardenCollectionContext.Provider>

@@ -11,6 +11,7 @@ import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types
 import { ProductIcon, itemName, number, stationName } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldCostShortfalls, worldMissingRequirements, worldRequirements } from "@/features/economy/ui/shared/world-stations";
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
+import { jobTapBoostPercent, TapBoostWorkBadge } from "@/features/economy/ui/production/tap-boost-work-badge";
 import { ActiveExpedition, expeditionSector, miningProductionRoutes, WorldExpeditionsMenu, type WorldExpeditionsMenuProps } from "./world-expeditions-menu";
 import { miningDurationLabel } from "./mining-resource-groups";
 import slotStyles from "@/features/economy/ui/production/world-production-slots.module.css";
@@ -129,15 +130,17 @@ function MiningProduction({ economy, state, initialRouteId, onOpenPantry, onOpen
 
 export function MiningBatchCard({ economy, state, job, onOpenPantry, isOnline }: Pick<MiningProps, "economy" | "onOpenPantry" | "isOnline"> & { state: EconomyView; job: EconomyJob }) {
   const progress = miningBatchProgress(job, economy.now), batch = job.miningBatch!;
+  const boostPercent = jobTapBoostPercent(state, job.id, economy.now);
   const [confirming, setConfirming] = useState(false);
   const command = useFishingCommand({ economy, state });
   const blocked = locked(economy) || isOnline === false || economy.directActionsAvailable === false;
   const itemId = Object.keys(batch.unitRewards)[0], unitSize = Object.values(job.rewards).reduce((sum, count) => sum + count, 0);
   const full = state.storage.available < unitSize;
   const nextSeconds = Math.max(0, Math.ceil((progress.nextAt - economy.now) / 1000));
-  return <div className={styles.batchWork} data-mining-batch data-job-id={job.id} data-ready={progress.ready > 0 || undefined}>
+  return <div className={styles.batchWork} data-mining-batch data-job-id={job.id} data-ready={progress.ready > 0 || undefined} data-tap-boost-power={boostPercent || undefined}>
     <div className={styles.batchTitle}><ProductIcon state={state} itemId={itemId} size={28} /><strong>{itemName(state, itemId)} · {batch.quantity}</strong></div>
     <span>Добыто {progress.completed} из {batch.quantity} · получено {batch.claimed}</span>
+    <TapBoostWorkBadge percent={boostPercent} />
     <progress aria-label="Прогресс заказа добычи" max={batch.quantity} value={progress.completed} />
     <span aria-live="polite">{progress.remaining ? `Следующая единица через ${miningDurationLabel(nextSeconds)}` : "Весь заказ готов"}</span>
     <button type="button" className={styles.batchClaim} data-production-control disabled={blocked || progress.ready === 0 || full}
