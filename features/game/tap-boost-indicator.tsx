@@ -38,16 +38,15 @@ export function TapBoostIndicator({ snapshot, now }: { snapshot: EconomyView | n
     <div className={styles.description} tabIndex={0} role="region" aria-label="Как работает помощь тапами">
       <div className={styles.descriptionHeading}><strong>Помощь тапами</strong><button type="button" aria-label="Закрыть помощь тапами" onClick={() => close(true)}><X size={16} aria-hidden="true" /></button></div>
       <div className={styles.target}>
-        <span>{boost.active ? <>Ускоряется <strong>{boost.targetName}</strong></>
-          : available ? "Нажимай «Я живой» — помогай работе" : "Запусти производство или добычу"}</span>
+        <span>{boost.active ? <>Помощь: <strong>{boost.targetName}</strong></>
+          : available ? "Нажимай «Я живой» и ускоряй работу" : "Запусти производство или добычу"}</span>
         {boost.active && <strong className={styles.remaining} aria-label={`Время помощи: ${boost.remainingSeconds} с`}>{boost.remainingSeconds} с</strong>}
       </div>
       <div className={styles.rules}>
-        <div className={styles.timeRule}><strong>+1 секунда</strong><span>за тап · запас до 60 с</span></div>
-        <div className={styles.powerRule}><strong>до +20%</strong><span>больше тапов — сильнее</span></div>
+        <div className={styles.timeRule}><strong>+1 с</strong><span>за каждый тап</span></div>
+        <div className={styles.powerRule}><strong>до +20%</strong><span>к скорости работы</span></div>
       </div>
-      <p><strong className={styles.timeAccent}>Дуга — оставшееся время.</strong> Пока она горит, мощность сохраняется.</p>
-      <p className={styles.footnote}>Ускоряется одна работа. Кольцо погаснет — заряд начнётся заново.</p>
+      <p className={styles.footnote}>Запас до <strong>60 с</strong>. Ускоряется одна работа.</p>
     </div>
   </details>;
 }

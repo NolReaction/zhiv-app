@@ -7,6 +7,7 @@ import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, format
 import { marketBudgetReset, marketDailyLimit, marketDay, marketHomeRange, marketItemUnlocked, marketListingEligible, marketMinimumPrice, marketSaleFee, marketCanTrade, marketShowcaseCurrent, marketSlotCount } from "@/features/economy/domain/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, getDevGuestWorldAccess, lookupDevUser } from "@/lib/dev/api-store";
 import type { GuestWorld } from "@/features/people/guest-world-model";
+import { friendGameSummary } from "@/features/people/friend-game-summary";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney, getDevLegacyWardrobe, syncDevWorldWardrobe } from "@/lib/dev/world-store";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandSchema, economyResidentOrdersSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/domain/model";
@@ -382,6 +383,17 @@ function requireMarket(state: EconomyState) {
 const compareListings = (a: Listing, b: Listing) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
 
 /** No profile(), normalization, legacy conversion, showcase writes or host initialization during a visit. */
+export function getDevFriendGameSummary(viewer: string, target: string, worldVisible: boolean) {
+  const saved = globalStore.__zhivDevEconomyStore;
+  const seller = saved?.profiles.get(target)?.state, buyer = saved?.profiles.get(viewer)?.state;
+  const known = buyer ? knownMarketState(viewer, buyer) : undefined;
+  const listings = worldVisible ? [...(saved?.listings.values() ?? [])]
+    .filter(listing => listing.sellerPublicId === target && listing.status === "active")
+    .sort(compareListings).map(listing => ({ id: listing.id, itemId: listing.itemId, quantity: listing.quantity,
+      totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1) })) : [];
+  return friendGameSummary(seller, known, worldVisible, listings);
+}
+
 export function getDevGuestWorldEconomy(viewer: string, target: string, sellerName: string, legacy: { homeLevel: number; workshopLevel: number }):
   { world: Pick<GuestWorld["world"], "buildings" | "jobs">; market: GuestWorld["market"] } {
   const saved = globalStore.__zhivDevEconomyStore;

@@ -20,6 +20,7 @@ type Props = {
   displayName?: string;
   compact?: boolean;
   showSeason?: boolean;
+  presentation?: "card" | "profile";
 };
 
 /** The first loaded snapshot is a baseline. Hidden/restored cards never celebrate. */
@@ -91,7 +92,7 @@ export function CooperationSeasonCard({ progression, now }: Pick<Props, "progres
         <span>{milestone.awarded ? <Check size={15} aria-label="Получено" /> : <Leaf size={15} aria-hidden="true" />}<strong>{number(milestone.points)}</strong></span>
         <span>{milestone.title}</span><span><Gem size={13} aria-hidden="true" /> {milestone.rewardPearls}</span>
       </li>)}</ul>
-      <p className={styles.seasonFootnote}>Награды начисляются автоматически. Смена месяца — в 00:00 UTC.</p>
+      <p className={styles.seasonFootnote}>Награды начисляются автоматически. Новый месяц в 00:00 UTC.</p>
       {badges.length > 0 && <section className={styles.badges} aria-label="Полученные сезонные значки">
         <h5>Память о сезонах · {badges.length}</h5>
         <ul>{badges.slice(-12).reverse().map(badge => <li key={badge.id}>
@@ -104,7 +105,7 @@ export function CooperationSeasonCard({ progression, now }: Pick<Props, "progres
   </section>;
 }
 
-export function PlayerProgressionCard({ progression, now, ownerKey = "player", displayName, compact = false, showSeason = true }: Props) {
+export function PlayerProgressionCard({ progression, now, ownerKey = "player", displayName, compact = false, showSeason = true, presentation = "card" }: Props) {
   const player = getPlayerProgression(progression ?? undefined);
   const progress = getPlayerLevelProgress(player.xp);
   const { emblem, fill } = usePlayerCelebration(player.xp, progress.level, progress.ratio, ownerKey, Boolean(progression));
@@ -112,7 +113,7 @@ export function PlayerProgressionCard({ progression, now, ownerKey = "player", d
   if (!progression) return <section className={styles.loading} role="status">Загружаем игровой опыт…</section>;
   const atMax = progress.remaining === 0 && progress.level === PLAYER_LEVELS.at(-1)?.level;
   const label = atMax ? "Все уровни открыты" : `До уровня ${progress.level + 1}: ${number(progress.remaining)} XP`;
-  return <div className={styles.wrapper} data-compact={compact || undefined}>
+  return <div className={styles.wrapper} data-compact={compact || undefined} data-presentation={presentation === "profile" ? presentation : undefined}>
     <section className={styles.card} data-stage={getPlayerIconStage(progress.level)} aria-label="Общий игровой опыт">
       <div className={styles.heading}>
         <span className={styles.emblem} ref={emblem}><GameLevelIcon level={progress.level} size={31} /></span>
@@ -126,7 +127,7 @@ export function PlayerProgressionCard({ progression, now, ownerKey = "player", d
         <span ref={fill} style={{ width: `${progress.ratio * 100}%` }} />
       </div>
       <p className={styles.remaining}>{label}</p>
-      {!compact && <p className={styles.explanation}>Стройте, производите, открывайте новое и помогайте жителям.</p>}
+      {!compact && presentation !== "profile" && <p className={styles.explanation}>Стройте, производите, открывайте новое и помогайте жителям.</p>}
       {nextReward && <div className={styles.nextReward}><Sparkles size={15} aria-hidden="true" />
         <span>На уровне {nextReward.level}</span><strong><Gem size={14} aria-hidden="true" /> {nextReward.rewardPearls} жемч.</strong>
       </div>}

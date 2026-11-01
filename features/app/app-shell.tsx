@@ -115,7 +115,7 @@ import { useEconomyAudioFeedback } from "@/features/economy/integration/use-econ
 import { useTapBoostRefresh } from "@/features/economy/integration/use-tap-boost-refresh";
 import { GardenCollectionContext, useGardenCollectionController } from "@/features/economy/integration/garden-collection-context";
 import { economySceneActivity, economySceneJourney, economySceneProduction, economySceneConstruction, economySceneResidents, economyWorldState } from "@/features/economy/integration/world-adapter";
-import { worldActivity } from "@/features/world/ui/hud/world-activity";
+import { worldActivity, worldMiningActivity } from "@/features/world/ui/hud/world-activity";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
 import styles from "./app-shell.module.css";
@@ -735,6 +735,7 @@ function CheckInContent() {
   const economicResidents = useMemo(() => economySceneResidents(economy.snapshot, economy.snapshotConfirmed, me?.user.publicId), [economy.snapshot, economy.snapshotConfirmed, me?.user.publicId]);
   const economicActivity = useMemo(() => economySceneActivity(economy.snapshot), [economy.snapshot]);
   const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);
+  const miningActivity = worldMiningActivity(economy.snapshot, economy.now);
   const gameStartupReady = Boolean(game.progress) || game.errorCode === "STORAGE_FAILED" || game.status === "blocked";
   const sceneCanMount = Boolean(world.snapshot && economy.snapshot && gameStartupReady);
   const gameplay = gameplayPresentation(activity, sceneCanMount);
@@ -1762,7 +1763,7 @@ function CheckInContent() {
               {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={gameplay.suspended || activeView !== "check-in" || !mochlikVisible || (worldPortal.open && worldPortal.sceneReady) || calendarOpen || gameOpen || statusOpen}
                 onLoadState={handleSceneLoadState} retrySignal={startupRetry}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} economyResidents={economicResidents} activity={currentActivity} />}
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} economyResidents={economicResidents} activity={currentActivity} miningActivity={miningActivity} />}
             </div>}
             <button
               type="button"
@@ -1775,7 +1776,7 @@ function CheckInContent() {
               onClick={handleGameClick}
               aria-busy={isSending}
               aria-label="Я живой: отметиться и поиграть"
-              aria-describedby={[visualTapCount >= 1 ? "clicker-total" : null, mochlikVisible && currentActivity ? "mochlik-activity-status" : null].filter(Boolean).join(" ") || undefined}
+              aria-describedby={[visualTapCount >= 1 ? "clicker-total" : null, mochlikVisible && currentActivity ? "mochlik-activity-status" : null, mochlikVisible && miningActivity ? "mining-activity-status" : null].filter(Boolean).join(" ") || undefined}
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
             </button>

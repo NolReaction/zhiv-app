@@ -21,10 +21,10 @@ import styles from "./mochlik-terrarium.module.css";
 import { useLeaftailArrival } from "@/features/world/state/use-leaftail-arrival";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 
-type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone: string; userId?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[]; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; economyResidents?: EconomySceneResidents | null; activity?: WorldActivity | null; onLoadState?: (state: SceneLoadState) => void; retrySignal?: number };
+type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone: string; userId?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[]; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; economyResidents?: EconomySceneResidents | null; activity?: WorldActivity | null; miningActivity?: WorldActivity | null; onLoadState?: (state: SceneLoadState) => void; retrySignal?: number };
 
 // Decorative content of the same native check-in button; it never records taps.
-export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZone, userId, bestStreakDays = 0, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, activity, onLoadState, retrySignal = 0 }: Props) {
+export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZone, userId, bestStreakDays = 0, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, activity, miningActivity, onLoadState, retrySignal = 0 }: Props) {
   const garden = useGardenCollection();
   const merchant = useLeaftailArrival(userId ?? "guest", {
     unlocked: (economyResidents?.buildings.home ?? 0) >= 3, enabled: false,
@@ -138,6 +138,10 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
     <canvas ref={canvas} className={styles.canvas} />
     <div className={styles.glass} />
     {!ready && <span className={styles.loadState}>{failed ? "Восстанавливаем лес… Нажми, чтобы повторить сейчас" : "Загружаем Мохлика…"}</span>}
-    {activity && <span className={styles.activity}><WorldActivityBadge activity={activity} /></span>}
-  </div>{activity && <WorldActivityDescription id="mochlik-activity-status" activity={activity} />}</>;
+    {(activity || miningActivity) && <span className={styles.activity}>
+      {activity && <WorldActivityBadge activity={activity} />}
+      {miningActivity && <WorldActivityBadge activity={miningActivity} />}
+    </span>}
+  </div>{activity && <WorldActivityDescription id="mochlik-activity-status" activity={activity} />}
+    {miningActivity && <WorldActivityDescription id="mining-activity-status" activity={miningActivity} />}</>;
 }

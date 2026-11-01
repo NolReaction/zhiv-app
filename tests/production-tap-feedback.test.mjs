@@ -67,10 +67,10 @@ test("compact companion keeps only icon and power visible, with short opt-in rul
   assert.match(summary, /aria-label="Помощь тапами: \+20% к скорости/);
   assert.match(html, /Время помощи: 60 с/);
   assert.match(html, /Ускоряется/);
-  assert.match(html, /\+1 секунда/);
-  assert.match(html, /запас до 60 с/);
+  assert.match(html, /\+1 с/);
+  assert.match(html, /Запас до <strong>60 с<\/strong>/);
   assert.match(html, /до \+20%/);
-  assert.match(html, /заряд начнётся заново/);
+  assert.doesNotMatch(html, /Дуга|Кольцо погаснет|заряд начнётся|[—–]|<br/);
   assert.doesNotMatch(html, /role="progressbar"/);
 });
 

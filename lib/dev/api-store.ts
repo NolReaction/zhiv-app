@@ -36,7 +36,7 @@ import { activeUserStatus, normalizeUserStatus, validStatusDuration } from "@/li
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
-import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales, getDevGuestWorldEconomy } from "@/lib/dev/economy-store";
+import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales, getDevGuestWorldEconomy, getDevFriendGameSummary } from "@/lib/dev/economy-store";
 import { resetDevWorldStoreForTests, getDevCollectionFinds, getDevGuestWorldAppearance } from "@/lib/dev/world-store";
 import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-rewards-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
@@ -591,6 +591,7 @@ function personDto(circle: DirectCircleRecord, currentUserId: string): Person {
         );
   return {
     circleId: circle.id,
+    gameSummary: getDevFriendGameSummary(store().users.get(currentUserId)!.publicId, relatedUser.publicId, theirSharing.mode !== "OFF"),
     user: publicUser(relatedUser),
     status: visibleStatus(relatedUser,currentUserId),
     isFavorite: store().favoritePeople.has(sharingKey(circle.id, currentUserId)),

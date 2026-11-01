@@ -17,20 +17,34 @@
 .searchField:focus-within { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
 .searchField input:focus-visible { outline: none; }
 .clear { border: 0; background: transparent; border-radius: 9px; }
-.list { display: grid; gap: 7px; padding: 0; margin: 0; list-style: none; min-width: 0; }
-.person { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 54px; padding: 8px 10px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 12px; background: #fff7df55; }
-.person:has(.visit) { padding: 0; overflow: visible; }
-.friends.friends .visit { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; min-height: 58px; padding: 9px 10px; border: 0; border-radius: 11px; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; touch-action: manipulation; }
-.friends.friends .visit:hover:enabled { background: #e9e3c5; }
-.friends.friends .visit:disabled { color: inherit; opacity: .65; cursor: default; }
+.list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); align-items: stretch; gap: 12px; padding: 0; margin: 0; list-style: none; min-width: 0; }
+.person { display: grid; min-width: 0; padding: 0; border: 1px solid var(--forest-border, #c8bd98); border-radius: 18px; background: #fff7df70; box-shadow: inset 0 1px #ffffff55; }
+.friends.friends .visit { display: flex; flex-direction: column; align-items: stretch; gap: 12px; width: 100%; min-width: 0; min-height: 58px; padding: 14px; border: 0; border-radius: 17px; background: transparent; color: inherit; text-align: left; font: inherit; }
+.friends.friends button.visit { cursor: pointer; touch-action: manipulation; transition: background-color 140ms ease, box-shadow 140ms ease; }
+.friends.friends button.visit:hover:enabled { background: #ede7ce; box-shadow: inset 0 0 0 1px #81936e; }
+.friends.friends button.visit:disabled { color: inherit; opacity: .72; cursor: default; }
 .friends.friends .visit:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }
-.arrow { flex-shrink: 0; color: var(--forest-muted, #59624d); }
-.avatar { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 11px; background: #dce2c6; font-size: .8125rem; font-weight: 650; }
-.names { display: grid; gap: 3px; flex: 1; min-width: 0; }
-.names strong { font-size: .8125rem; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.avatar { display: grid; place-items: center; flex: 0 0 46px; width: 46px; height: 46px; border: 1px solid #b9c3a0; border-radius: 15px; background: #dce2c6; color: #466347; font-size: 1.125rem; font-weight: 650; }
+.names { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.names strong { font-size: .875rem; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
 .names > span { font-size: .6875rem; line-height: 1.4; color: var(--forest-muted, #59624d); overflow-wrap: anywhere; }
-.names > small { font-size: .6875rem; line-height: 1.4; color: var(--forest-muted, #59624d); }
+.names > .level { display: inline-flex; align-items: center; gap: 4px; justify-self: start; color: #48683e; font-size: .75rem; font-weight: 650; }
 .favorite { flex-shrink: 0; color: #846426; fill: #d9c170; }
+.market { display: grid; gap: 8px; min-width: 0; padding-top: 11px; border-top: 1px solid #c8bd9870; }
+.marketHeader { display: flex; align-items: center; gap: 6px; color: #59664d; font-size: .6875rem; line-height: 1.4; }
+.marketHeader > strong { margin-left: auto; color: #394d3e; font-variant-numeric: tabular-nums; font-size: .75rem; }
+.offers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; min-width: 0; }
+.offer { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 7px 4px; border-radius: 11px; background: #f7efd7; box-shadow: inset 0 0 0 1px #c8bd9855; }
+.offerArt { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px; min-width: 0; max-width: 100%; }
+.offerArt > span { min-width: 0; font-size: .6875rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.offerName { display: block; min-width: 0; max-width: 100%; font-size: .625rem; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
+.offerPrice { display: flex; align-items: center; justify-content: center; gap: 3px; width: 100%; margin-top: auto; color: #76602f; font-size: .6875rem; line-height: 1.3; font-weight: 650; font-variant-numeric: tabular-nums; }
+.offerPrice > svg { flex-shrink: 0; }
+.offerPrice > span { min-width: 0; overflow-wrap: anywhere; }
+.marketMessage, .marketFootnote { min-width: 0; color: var(--forest-muted, #59624d); font-size: .6875rem; line-height: 1.4; overflow-wrap: anywhere; }
+.marketFootnote { font-size: .625rem; }
+.visitAction { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: auto; padding-top: 2px; color: #466347; font-size: .75rem; line-height: 1.4; font-weight: 600; }
 .empty { padding: 13px 12px; border: 1px dashed var(--forest-border, #c8bd98); border-radius: 12px; }
 .requests { display: flex; flex-wrap: wrap; gap: 3px 12px; }
 .manage { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #355339; border-radius: 12px; background: var(--forest-primary, #466347); color: #fff4d8; font: inherit; font-size: .75rem; line-height: 1.4; cursor: pointer; touch-action: manipulation; }
@@ -38,6 +52,9 @@
 .refresh:focus-visible, .clear:focus-visible, .manage:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }
 @media (forced-colors: active) { .refresh, .clear, .manage, .person, .searchField, .empty { border-color: ButtonText; } .favorite { color: CanvasText; fill: Canvas; } }
 
-.neighbor { border-color: #91a77a; background: #e5eacb80; }
+.neighbor { border-color: #a3b28e; background: #e4e7c980; }
 .neighborAvatar { flex-basis: 46px; width: 46px; height: 46px; overflow: hidden; background: #d4dfbb; }
 .portrait { display: block; width: 46px; height: 46px; image-rendering: pixelated; }
+
+@media (max-width: 360px) { .friends.friends .visit { padding: 11px; gap: 10px; } .offers { gap: 5px; } }
+@media (prefers-reduced-motion: reduce) { .friends.friends button.visit { transition: none; } }

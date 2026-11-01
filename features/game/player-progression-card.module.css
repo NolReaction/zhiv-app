@@ -57,6 +57,17 @@
 .loading { min-width: 0; padding: 20px 16px; border: 1px solid rgba(190,219,167,.15); border-radius: 18px; background: #253522; color: #bdc9b2; font-size: 12px; text-align: center; }
 .wrapper[data-compact] .card { padding: 15px; }
 .wrapper[data-compact] .emblem { width: 46px; height: 46px; flex-basis: 46px; }
+.wrapper[data-presentation="profile"] .card { padding: 20px; border-color: #71855a; border-radius: 20px; background: radial-gradient(ellipse at 90% 0, #7c9c5030, transparent 65%), linear-gradient(120deg, #2d472f, #1c3326); box-shadow: inset 0 1px #d8e7b31f, 0 5px 15px #293b2612; }
+.wrapper[data-presentation="profile"] .card::after { width: 115px; height: 190px; right: 10px; top: -100px; }
+.wrapper[data-presentation="profile"] .heading { gap: 15px; }
+.wrapper[data-presentation="profile"] .emblem { width: 56px; height: 56px; flex-basis: 56px; border-radius: 19px; }
+.wrapper[data-presentation="profile"] .identity h3 { font-size: clamp(23px, 3vw, 30px); letter-spacing: -.025em; }
+.wrapper[data-presentation="profile"] .total { max-width: 130px; font-size: 18px; }
+.wrapper[data-presentation="profile"] .total small { font-size: 10px; }
+.wrapper[data-presentation="profile"] .progressLine { margin-top: 14px; }
+.wrapper[data-presentation="profile"] .track { height: 12px; }
+.wrapper[data-presentation="profile"] .nextReward { margin-top: 10px; padding-top: 10px; }
+.wrapper[data-presentation="profile"] .lastAward { margin-top: 8px; }
 @media (max-width: 380px) {
   .card { padding: 15px; }
   .heading { gap: 9px; }
@@ -64,6 +75,13 @@
   .identity h3 { font-size: 15px; }
   .total { font-size: 11px; }
   .season { padding: 13px; }
+}
+@media (max-width: 480px) {
+  .wrapper[data-presentation="profile"] .card { padding: 17px; }
+  .wrapper[data-presentation="profile"] .heading { gap: 10px; }
+  .wrapper[data-presentation="profile"] .emblem { width: 50px; height: 50px; flex-basis: 50px; border-radius: 17px; }
+  .wrapper[data-presentation="profile"] .identity h3 { font-size: 22px; }
+  .wrapper[data-presentation="profile"] .total { max-width: 88px; font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .track > span, .seasonTrack > span { transition: none; }

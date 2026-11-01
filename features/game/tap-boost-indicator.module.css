@@ -16,7 +16,7 @@
 .description p:last-child { margin-bottom: 0; }
 .target { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; font-size: 11px; color: #becdb8; }
 .target span { min-width: 0; overflow-wrap: anywhere; }
-.target span strong { display: block; margin-top: 1px; color: #edf1da; font-size: 13px; }
+.target span strong { color: #edf1da; font-weight: 600; }
 .remaining { flex: 0 0 auto; padding: 4px 7px; border: 1px solid #8cd6bc40; border-radius: 8px; background: #75c5aa12; color: #b2e7cb; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 12px; }
 .rules > div { display: grid; align-content: start; gap: 3px; padding: 9px; border: 1px solid; border-radius: 11px; }
@@ -24,5 +24,4 @@
 .rules span { font-size: 10px; color: #c4d0bd; }
 .rules .timeRule { color: #aee6cc; border-color: #8cd6bc30; background: #75c5aa0c; }
 .rules .powerRule { color: #f5d993; border-color: #dfbc6d30; background: #dfbc6d0c; }
-.timeAccent { color: #b4e6cc; font-weight: 600; }
 .description .footnote { padding-top: 8px; border-top: 1px solid #bbc59a24; color: #b7c4ae; font-size: 11px; }

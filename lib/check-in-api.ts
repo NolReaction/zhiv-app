@@ -97,7 +97,22 @@ const directRequestSchema = z.object({
   createdAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
 });
+const friendGameSummarySchema = z.object({
+  level: z.number().int().min(1).max(100),
+  market: z.object({
+    available: z.boolean(),
+    reason: z.enum(["world_hidden", "buyer_locked", "seller_locked", "home_band"]).nullable(),
+    count: z.number().int().min(0).max(10),
+    listings: z.array(z.object({ id: z.guid(), itemId: z.string().min(1).max(128),
+      quantity: z.number().int().min(1).max(99), totalPrice: z.number().int().positive().safe() }).strict()).max(3),
+  }).strict(),
+}).strict().superRefine(({ market }, context) => {
+  if (market.available !== (market.reason === null) || (!market.available && (market.count !== 0 || market.listings.length !== 0))
+    || market.listings.length !== Math.min(3, market.count) || new Set(market.listings.map(listing => listing.id)).size !== market.listings.length)
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["market"], message: "Invalid friend storefront summary" });
+});
 const personSchema = z.object({
+  gameSummary: friendGameSummarySchema.nullish(),
   nickname: z.string().nullable().prefault(null),
   isFavorite: z.boolean().prefault(false),
   status: userStatusSchema.nullable().prefault(null),

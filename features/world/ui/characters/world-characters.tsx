@@ -15,6 +15,19 @@ import { orderReputationBenefit } from "@/features/economy/ui/orders/order-reput
 import styles from "./world-characters.module.css";
 
 const portraits = { builder: BuilderPortrait, plesk: PleskPortrait, lopukh: LopukhPortrait, kamneshmyg: KamneshmygPortrait, leaftail: LeaftailPortrait };
+const benefitLabels = { builder: "Стройка", lopukh: "Лесной участок", kamneshmyg: "Добыча", plesk: "Снасти и наживка", leaftail: "Снасти, наживка, одежда" };
+
+function FriendshipBenefit({ residentId, bonusBps, description }: { residentId: WorldResidentId; bonusBps: number; description: string }) {
+  const words = benefitLabels[residentId].split(" ");
+  const lastWord = words.pop();
+  const percent = Math.min(10, Math.max(0, bonusBps / 100));
+  const isDiscount = residentId === "plesk" || residentId === "leaftail";
+  const value = `${isDiscount ? percent > 0 ? "-" : "" : "+"}${percent.toLocaleString("ru-RU")}%`;
+  return <span className={styles.friendshipBenefit} title={description}>
+    <Sparkles size={13} aria-hidden="true" />{words.length > 0 && `${words.join(" ")} `}
+    <span className={styles.benefitTail}>{lastWord} <span className={styles.benefitValue}>{value}</span></span>
+  </span>;
+}
 
 /** A shared silhouette leaves the next resident's appearance a surprise. */
 function UnknownResident() {
@@ -44,7 +57,7 @@ export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false
         }}>
         <header className={styles.header}>
           <div><DialogTitle className={styles.title}><PawPrint size={22} aria-hidden="true" />Персонажи</DialogTitle>
-            <DialogDescription className={styles.description}>Помогайте жителям — крепкая дружба даёт постоянные бонусы.</DialogDescription></div>
+            <DialogDescription className={styles.description}>Знакомства и дружба в лесу</DialogDescription></div>
           <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть персонажей"><X size={22} aria-hidden="true" /></button>
         </header>
         <ul className={styles.grid} aria-label="Персонажи леса">
@@ -60,16 +73,17 @@ export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false
               : leaftailUnlocked ? "Дождитесь прибытия" : "Дом 3-го уровня";
             return <li key={character.id}>
               <button type="button" className={`${styles.card} ${available ? styles.available : styles.locked}`} data-world-character={character.id}
+                data-friendship-rank={relationship ? relationship.rankIndex + 1 : undefined}
                 aria-label={available ? `${character.name}, ${character.role}.${friendshipLabel} Открыть разговор` : `Незнакомый житель. ${arrivalHint}`}
                 aria-haspopup={available ? "dialog" : undefined} aria-disabled={!available || undefined}
                 onClick={() => { if (available) onResident(character.id); }}>
                 <span className={styles.stage}>{available ? <Portrait animated className={styles.portrait} /> : <UnknownResident />}</span>
-                <strong>{available ? character.name : "Незнакомый житель"}</strong><small>{available ? character.role : "Вы ещё не встречались"}</small>
+                <span className={styles.identity}><strong>{available ? character.name : "Незнакомый житель"}</strong><small>{available ? character.role : "Вы ещё не встречались"}</small></span>
                 {relationship && <span className={styles.relationship} data-resident-reputation={character.id} data-rank={relationship.rankIndex + 1}>
                   <span className={styles.friendshipHeading}><Heart size={14} aria-hidden="true" /><span>{relationship.rank.name}</span></span>
                   <span className={styles.friendshipTrack} aria-hidden="true"><span style={{ width: `${relationship.nextRank ? Math.min(100, Math.max(0, relationship.progressXp / Math.max(1, relationship.requiredXp) * 100)) : 100}%` }} /></span>
                   <span className={styles.friendshipHint}>{friendshipHint}</span>
-                  <span className={styles.friendshipBenefit}><Sparkles size={13} aria-hidden="true" />{benefit}</span>
+                  <FriendshipBenefit residentId={character.id} bonusBps={relationship.bonusBps} description={benefit} />
                 </span>}
                 <span className={styles.visit}>{available ? <>Заглянуть <ArrowRight size={15} aria-hidden="true" /></> : <><LockKeyhole size={15} aria-hidden="true" />{arrivalHint}</>}</span>
               </button>

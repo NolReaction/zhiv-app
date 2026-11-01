@@ -60,6 +60,10 @@ test("profile shows identity once in confirmed XP and leaves the full mood outsi
   assert.equal((markup.match(/Дима/g) ?? []).length, 1);
   assert.match(markup, /Уровень <strong>1<\/strong>/);
   assert.doesNotMatch(markup, /Росток|Уровень 12/);
+  assert.match(markup, /data-game-profile="true" data-profile-section="profile"/);
+  assert.match(markup, /data-presentation="profile"/);
+  assert.equal((markup.match(/aria-label="Сотрудничество с жителями в этом месяце"/g) ?? []).length, 1);
+  assert.doesNotMatch(markup, /Стройте, производите, открывайте новое/);
   assert.match(markup, /<dt>Дом<\/dt><dd>3 ур\.<\/dd>/);
   assert.match(markup, /<dt>Исследования<\/dt><dd>7<\/dd>/);
   assert.ok(markup.includes(`<dt>Книга находок</dt><dd>1 / ${BOOK_COLLECTION_COUNT}</dd>`));
@@ -245,6 +249,18 @@ test("friends tab receives parent data, visit navigation and friend management",
   assert.equal(component.props.onVisitFriend, onVisitFriend);
   assert.match(view.markup, /Загружаем/);
   assert.doesNotMatch(view.markup, /Достижения Мохлика|Бонус от еды/);
+});
+
+test("friends receive only the current owner's neighbor shop and its real loading error", () => {
+  const shop = { offers: [] };
+  const economy = { snapshot: { ...freshEconomy(), ownerPublicId: "viewer" },
+    neighbor: { ownerPublicId: "viewer", shop }, neighborError: "failed" };
+  const component = overrides => profile({ activeTab: "friends", economy: { ...economy, ...overrides } }).elements
+    .find(element => element.type?.name === "WorldProfileFriends");
+  assert.equal(component({}).props.neighborMarket.shop, shop);
+  assert.equal(component({}).props.neighborMarket.error, true);
+  assert.equal(component({ neighbor: { ownerPublicId: "previous-owner", shop } }).props.neighborMarket.shop, null);
+  assert.equal(component({ neighbor: null, snapshot: null }).props.neighborMarket.shop, null);
 });
 
 test("settings are available inline in their own profile tab without a nested audio dialog", () => {

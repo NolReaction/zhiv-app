@@ -66,6 +66,7 @@ data class PersonSnapshot(
     val statusExpiresAt: OffsetDateTime? = null,
     val isFavorite: Boolean = false,
     val nickname: String? = null,
+    val gameSummary: FriendGameSummary? = null,
 )
 
 data class PeopleSnapshot(

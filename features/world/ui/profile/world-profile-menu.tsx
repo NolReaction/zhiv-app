@@ -5,7 +5,7 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { ChevronRight, CircleHelp, Heart, Leaf, Settings, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
-import { PlayerProgressionCard } from "@/features/game/player-progression-card";
+import { CooperationSeasonCard, PlayerProgressionCard } from "@/features/game/player-progression-card";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { Person } from "@/lib/check-in-contract";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -95,8 +95,15 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
     props.onCall?.();
     callTimer.current = setTimeout(() => setCallPulse(0), 1200);
   } : undefined;
+  const friends = props.friends && props.onVisitNeighbor ? {
+    ...props.friends,
+    onRefresh: async () => {
+      if (props.friends?.isOnline === false) return;
+      await Promise.allSettled([props.friends?.onRefresh(), refreshNeighbor()]);
+    },
+  } : props.friends;
   return <>
-    <WorldProfileContent {...props} observation={observation} onCall={call} callPulse={callPulse}
+    <WorldProfileContent {...props} friends={friends} observation={observation} onCall={call} callPulse={callPulse}
       tapHintSetting={<WorldTapHintSetting owner={ownerPublicId} tone="forest" />}
       activeTab={activeTab} onTabChange={setActiveTab} idPrefix={idPrefix} onTakeOver={() => takeOverForestSession(presenceKey)}
       onOpenMood={() => setMoodOpen(true)} moodTriggerRef={moodTrigger}
@@ -150,7 +157,7 @@ export function WorldProfileContent({ world, economy, displayName, bestStreakDay
     {sync?.canTakeOver && onTakeOver && <button type="button" className={styles.action} onClick={onTakeOver}>Продолжить здесь</button>}
   </div>;
 
-  return <div className={styles.profile}>
+  return <div className={styles.profile} data-game-profile data-profile-section={activeTab}>
     <div className={styles.navigation} data-guide-profile-tabs>
     <div className={styles.tabs} role="tablist" aria-label="Разделы профиля">
       {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" aria-label={tab.label} title={tab.id === "settings" ? tab.label : undefined} id={`${idPrefix}-tab-${tab.id}`}
@@ -169,7 +176,10 @@ export function WorldProfileContent({ world, economy, displayName, bestStreakDay
     {memoryWarning && memory}
     <div className={styles.panel} role="tabpanel" id={`${idPrefix}-panel-${activeTab}`} aria-labelledby={`${idPrefix}-tab-${activeTab}`} tabIndex={0}>
       {activeTab === "profile" && <div className={styles.overview}>
-        <PlayerProgressionCard progression={economy.snapshot?.progression} now={economy.now} ownerKey={economy.snapshot?.ownerPublicId} displayName={displayName} />
+        <div className={styles.identity}>
+          <PlayerProgressionCard progression={economy.snapshot?.progression} now={economy.now} ownerKey={economy.snapshot?.ownerPublicId}
+            displayName={displayName} presentation="profile" showSeason={false} />
+        </div>
         <div className={styles.life}>
           <button ref={moodTriggerRef} type="button" className={styles.moodPreview} onClick={onOpenMood} aria-label="Как Мохлик?" aria-haspopup="dialog" data-audio-cue="ui.open">
             <Leaf size={18} aria-hidden="true" /><span><small>{observation?.paused ? "Полянка на паузе" : "Как Мохлик?"}</small>
@@ -190,8 +200,13 @@ export function WorldProfileContent({ world, economy, displayName, bestStreakDay
             </button>}
           </div>}
         </div>
+        <div className={styles.season}>
+          <CooperationSeasonCard progression={economy.snapshot?.progression} now={economy.now} />
+        </div>
       </div>}
-      {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onVisitNeighbor={onVisitNeighbor} neighbor={neighbor} />}
+      {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onVisitNeighbor={onVisitNeighbor} neighbor={neighbor}
+        neighborMarket={{ shop: economy.neighbor && economy.neighbor.ownerPublicId === economy.snapshot?.ownerPublicId ? economy.neighbor.shop : null,
+          error: Boolean(economy.neighborError), now: economy.now }} />}
       {activeTab === "settings" && <><AudioSettingsPanel tone="forest" />{tapHintSetting}</>}
     </div>
     {!memoryWarning && memory}

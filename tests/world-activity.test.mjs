@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { worldActivity, activityRouteKind, activityStatus, activityTime } = await vite.ssrLoadModule("/features/world/ui/hud/world-activity.ts");
+const { worldActivity, worldMiningActivity, activityRouteKind, activityStatus, activityTime } = await vite.ssrLoadModule("/features/world/ui/hud/world-activity.ts");
 const { WorldActivityBadge, WorldActivityDescription } = await vite.ssrLoadModule("/features/world/ui/hud/world-activity-badge.tsx");
 const { MochlikTerrarium } = await vite.ssrLoadModule("/features/mochlik/mochlik-terrarium.tsx");
 const { economySceneJourney, economySceneActivity } = await vite.ssrLoadModule("/features/economy/integration/world-adapter.ts");
@@ -121,4 +121,58 @@ test("ready expeditions are explicit in the keyboard-accessible map dock", async
   snapshot.jobs[0].finishesAt = time(30_000);
   html = renderToStaticMarkup(createElement(WorldView, props));
   assert.doesNotMatch(html, /data-expedition-ready="true"/); assert.match(html, /aria-label="В путь\. Мохлик в пути"/);
+});
+
+
+test("the circle keeps the miner clock independent from the hero journey and production", () => {
+  const mine = { ...activity(), kind: "exploration", actorId: "miner", targetId: "quarry_stone", startedAt: time(0), finishesAt: time(540_000),
+    rewards: { stone: 3 }, miningBatch: { quantity: 3, claimed: 0, unitSeconds: 180 } };
+  const trip = { ...activity(), actorId: "mochlik", targetId: "forest", rewards: { wood: 1 } };
+  const state = economy([trip, mine]);
+  const before = structuredClone(state);
+  const hero = worldActivity(economySceneActivity(state), undefined, now);
+  const miner = worldMiningActivity(state, now);
+  assert.equal(hero.kind, "forest"); assert.equal(miner.kind, "mining");
+  assert.equal(miner.remainingSeconds, 180); assert.equal(miner.readyCount, 0);
+  assert.equal(economySceneJourney(economy([mine])), null, "mining does not send the hero away");
+  assert.equal(worldMiningActivity(economy([trip, production()]), now), null);
+  assert.equal(worldMiningActivity(null, now), null);
+  assert.equal(worldMiningActivity(state, now - 1), null);
+  assert.equal(worldMiningActivity(state, NaN), null);
+  assert.deepEqual(state, before, "rendering never claims a unit or mutates a clock");
+});
+
+test("the miner dial shows the next unit and preserves partial collection without resetting the timer", () => {
+  const mine = { ...activity(), actorId: "miner", targetId: "quarry_stone", startedAt: time(0), finishesAt: time(540_000),
+    rewards: { stone: 3 }, miningBatch: { quantity: 3, claimed: 0, unitSeconds: 180 } };
+  const at = now + 210_000;
+  const first = worldMiningActivity(economy([mine]), at);
+  assert.equal(first.remainingSeconds, 150); assert.equal(first.readyCount, 1); assert.equal(first.ready, false);
+  assert(Math.abs(first.progress - 1 / 6) < 1e-9);
+  assert.equal(activityStatus(first), "Готово 1. Следующая единица через 2:30");
+  const claimed = { ...mine, miningBatch: { ...mine.miningBatch, claimed: 1 } };
+  const after = worldMiningActivity(economy([claimed]), at);
+  assert.equal(after.readyCount, 0); assert.equal(after.remainingSeconds, first.remainingSeconds); assert.equal(after.progress, first.progress);
+  const completed = worldMiningActivity(economy([claimed]), now + 540_000);
+  assert.equal(completed.ready, true); assert.equal(completed.readyCount, 2); assert.equal(completed.remainingSeconds, 0);
+  assert.equal(activityStatus(completed), "Добыча готова: 2");
+  assert.equal(worldMiningActivity(economy([]), at), null);
+  assert.equal(worldMiningActivity(economy([{ ...claimed, miningBatch: { ...claimed.miningBatch, claimed: 3 } }]), now + 540_000), null);
+  const accelerated = { ...mine, startedAt: time(-12_000), finishesAt: time(528_000) };
+  assert.equal(worldMiningActivity(economy([accelerated]), at).remainingSeconds, 138, "a confirmed boost clock shortens the next-unit timer");
+});
+
+test("miner and hero badges coexist and partial-ready units have an accessible description", () => {
+  const mine = { ...activity(), actorId: "miner", targetId: "quarry_stone", startedAt: time(-210_000), finishesAt: time(330_000),
+    rewards: { stone: 3 }, miningBatch: { quantity: 3, claimed: 0, unitSeconds: 180 } };
+  const miner = worldMiningActivity(economy([mine]), now);
+  const hero = worldActivity(activity(), undefined, now);
+  const badge = renderToStaticMarkup(createElement(WorldActivityBadge, { activity: miner }));
+  assert.match(badge, /data-world-activity="mining"/); assert.match(badge, /data-mining-ready-count="1"/);
+  assert.match(badge, /2:30/); assert.doesNotMatch(badge, /data-ready="true"/);
+  const html = renderToStaticMarkup(createElement(MochlikTerrarium, { wakeSignal: 0, nowMs: now, timeZone: "UTC", activity: hero, miningActivity: miner }));
+  assert.equal((html.match(/data-world-activity=/g) ?? []).length, 2);
+  assert.match(html, /id="mochlik-activity-status"/); assert.match(html, /id="mining-activity-status"/);
+  assert.match(html, /aria-label="Шахта"[\s\S]*aria-valuetext="Готово 1. Следующая единица через 2:30"/);
+  assert.match(html, /Откройте мир, чтобы забрать/);
 });
