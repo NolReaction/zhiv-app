@@ -39,6 +39,30 @@ test("repricing goods preserves authored v15 construction fees and rejects broke
   assert.throws(() => repriceTimeEconomy(invalid), /later construction must not cost less|permanent construction price/);
 });
 
+test("only the final warehouse tiers replace coin construction fees with relics", () => {
+  const warehouse = catalog.buildings.find(row => row.id === "warehouse");
+  assert.equal(warehouse.levels[9].cost.coins, 95000);
+  assert(warehouse.levels.slice(10).every(level => level.cost.coins === 0));
+  assert.deepEqual(repriceTimeEconomy(catalog).buildings, catalog.buildings,
+    "repricing must preserve the paid-to-relic boundary and all authored relic baskets");
+  for (const [buildingId, index] of [["warehouse", 9], ["workshop", 4]]) {
+    const invalid = structuredClone(catalog);
+    invalid.buildings.find(row => row.id === buildingId).levels[index].cost.coins = 0;
+    assert.throws(() => auditConstructionEconomy(invalid), /later construction must not cost less|permanent construction price/,
+      `${buildingId}: ordinary construction must still pay its coin price`);
+  }
+  for (const change of [
+    level => { level.cost.coins = 1; },
+    level => { level.cost.items.planks = 1; },
+    level => { level.cost.items = {}; },
+    level => { level.cost.items.ancient_core = 0; },
+  ]) {
+    const invalid = structuredClone(catalog);
+    change(invalid.buildings.find(row => row.id === "warehouse").levels[10]);
+    assert.throws(() => repriceTimeEconomy(invalid), /relic storage must use only relics without coins/);
+  }
+});
+
 test("a newly started late upgrade pays its full new price atomically", () => {
   const target = catalog.buildings.find(row => row.id === "workshop").levels[3];
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });

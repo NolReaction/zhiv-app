@@ -74,11 +74,15 @@ test("hero food pays for useful active work across many manual departures; build
   assert(21600 / 2 / 60 * 10 > price.price(cranberry.itemId), "a fully used six-hour construction justifies the best crop meal");
 });
 
-test("random expedition bonuses are useful bounded upside, separately disclosed from guaranteed route value", () => {
+test("random expedition bonuses are useful bounded upside, separately disclosed from mean base route value", () => {
   const catalog = read(), report = auditTimeEconomy(catalog);
   assert.equal(report.expeditionFinds.length, report.activeHeroMaterialRoutes);
   for (const row of report.expeditionFinds) {
-    assert(row.chance >= .3 && row.chance <= .5);
+    const finds = catalog.explorations.find(route => route.id === row.routeId).finds;
+    const totalWeight = finds.emptyWeight + finds.entries.reduce((sum, entry) => sum + entry.weight, 0);
+    assert.equal(row.chance, 1 - finds.emptyWeight / totalWeight);
+    assert(row.chance >= .2 && row.chance <= .5);
+    assert(row.expectedBaseNetCoins >= row.guaranteedNetCoins);
     assert(row.expectedNetCoinsPerMinute >= 10.5 && row.expectedNetCoinsPerMinute <= 11.5);
   }
   const mint = read(); mint.explorations.find(route => route.id === "forest").finds.entries[0].quantity = 20;

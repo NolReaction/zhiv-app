@@ -55,6 +55,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
   const soupRecipe = economyCatalog.recipes.find(recipe => recipe.id === "cook_fish_soup");
   const soupMeal = food?.meals.find(meal => meal.itemId === "fish_soup");
   const storageLevels = economyCatalog.buildings.find(building => building.id === "warehouse")?.levels ?? [];
+  const firstRelicStorageLevel = storageLevels.find(level => Object.keys(level.cost.items).some(id => economyCatalog.items.some(item => item.id === id && item.category === "special")))?.level;
   const dailyPearls = progressionRewardsCatalog.daily.reduce((sum, reward) => sum + reward.pearls, 0);
   const berryTiers = [
     [2, "grow_blueberries", "cook_blueberry_compote"], [3, "grow_currants", "cook_currant_jelly"],
@@ -247,7 +248,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "Продайте излишки, приготовьте блюдо или выполните заказ жителей, затем снова заберите готовый результат.",
         "Для расширения нажмите улучшение в шапке кладовой. Стоимость и новая вместимость видны заранее; понадобится свободный строитель.",
       ],
-      note: `Первый уровень кладовой - ${storageLevels[0]?.warehouseCapacity ?? 50} мест; каждый следующий добавляет 50, десятый - ${storageLevels.at(-1)?.warehouseCapacity ?? 500}. Одна вещь занимает одно место. Готовые работы не пропадут; сохранённый излишек не удаляется. Расширение удобно для запасов, но улучшение дома не требует уровня кладовой.`,
+      note: `Первый уровень кладовой - ${storageLevels[0]?.warehouseCapacity ?? 50} мест; каждый следующий добавляет 50, уровень ${storageLevels.at(-1)?.level ?? 15} - ${storageLevels.at(-1)?.warehouseCapacity ?? 750}. До уровня ${(firstRelicStorageLevel ?? 11) - 1} нужны материалы и монеты, дальше - только реликвии. Одна вещь занимает одно место. Готовые работы не пропадут; сохранённый излишек не удаляется. Расширение удобно для запасов, но улучшение дома не требует уровня кладовой.`,
       action: { label: "Освободить место", target: { kind: "pantry" } },
       relatedIds: ["resources", "construction", "relics"],
     },
@@ -367,7 +368,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "С полученного дома 4 у Листохвоста в «Реликвиях» обменяйте две одинаковые лишние находки и 20 000 монет на одну выбранную другую. Предметы и цена видны до подтверждения.",
         `С дома ${BARTER_HOME_LEVEL} и после восстановления моста откройте на рынке «Обмен»: реликвия за реликвию. Один успешный обмен за сутки UTC учитывается у обоих игроков.`,
       ],
-      note: "Реликвии занимают место. Кладовая 4–6 требует дом 4, кладовая 7–10 требует дом 5, изделия и реликвии. Отмена и ожидание после таймера не приближают находку.",
+      note: `Реликвии занимают место. Кладовая до уровня ${(firstRelicStorageLevel ?? 11) - 1} расширяется за материалы и монеты; уровни ${firstRelicStorageLevel ?? 11}–${storageLevels.at(-1)?.level ?? 15} - только за реликвии. Кладовая 4–6 требует дом 4, с 7-го уровня нужен дом 5. Отмена и ожидание после таймера не приближают находку.`,
       action: { label: "Посмотреть запасы", target: { kind: "pantry" } },
       relatedIds: ["journeys", "rewards", "storage", ...(economyCatalog.leaftailShop ? ["leaftail-shop"] : [])],
     },

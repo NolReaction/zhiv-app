@@ -87,6 +87,9 @@ function UpgradeUnlocks({ state, stationId, target, navigation, now }: { now: nu
   const firstBuildings = stationId === "home" ? unlocks.upgrades.filter(upgrade => upgrade.level === 1) : [];
   const nextBuildingLevel = stationId === "home" ? Math.max(0, ...unlocks.upgrades.map(upgrade => upgrade.level)) : 0;
   const cards: UpgradeBenefitCard[] = [];
+  const warehouse = state.catalog.buildings.find(building => building.id === "warehouse");
+  const relicIds = new Set(state.catalog.items.filter(item => item.category === "special").map(item => item.id));
+  const firstRelicLevel = warehouse?.levels.find(level => Object.keys(level.cost.items).some(id => relicIds.has(id)))?.level;
   const requirements = (required: Record<string, number>) => worldMissingRequirements(futureState, required).length > 0
     ? <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>
     : <span className={styles.benefitReady}><Check size={13} aria-hidden="true" />После этого улучшения</span>;
@@ -99,7 +102,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation, now }: { now: nu
     <span className={styles.benefitKind}>Больше запасов</span><strong className={styles.benefitTitle}>Вместимость кладовой</strong>
     <span className={styles.capacityNumbers}><strong>{number(state.storage.capacity)}</strong><ArrowRight size={18} aria-label="увеличится до" /><strong>{number(target.warehouseCapacity)}</strong></span>
     <span className={styles.benefitGain}>+{number(target.warehouseCapacity - state.storage.capacity)} мест</span>
-    <span className={styles.benefitDescription}>Для материалов, урожая и готовых заказов.</span>
+    <span className={styles.benefitDescription}>{firstRelicLevel ? target.level < firstRelicLevel ? `Материалы и монеты до ур. ${firstRelicLevel - 1}. С ур. ${firstRelicLevel} — только реликвии.` : "Расширение только за реликвии. Монеты и обычные материалы не нужны." : "Для материалов, урожая и готовых заказов."}</span>
   </> });
 
   if (stationId === "home") {

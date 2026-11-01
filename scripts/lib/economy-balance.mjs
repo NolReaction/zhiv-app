@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { explorationLootSummary } from "./exploration-loot.mjs";
 import { createLiquidation, recipeBuildingLevel } from "./economy-math.mjs";
 
 /** Timed production can create value; an unattended bundle must not create
@@ -69,9 +70,11 @@ export function auditProductionBalance(catalog) {
       net: net(recipe), netPerHour: net(recipe) * 3600 / recipe.seconds, activeWorkHours: activeSeconds / 3600 });
   }
   for (const route of catalog.explorations.filter(route => !mining.includes(route))) {
-    assert(net(route) > 0, `${route.id}: expedition consumes more sale value than it returns`);
-    rows.push({ id: route.id, hours: route.seconds / 3600, output: Object.values(route.rewards).reduce((a, b) => a + b, 0),
-      revenue: value(route.rewards), inputValue: value(route.cost.items) + route.cost.coins, net: net(route), netPerHour: net(route) * 3600 / route.seconds });
+    const { expectedRewards } = explorationLootSummary(route), expectedRoute = { ...route, rewards: expectedRewards };
+    assert(net(expectedRoute) > 0, `${route.id}: expedition consumes more sale value than it returns on average`);
+    rows.push({ id: route.id, hours: route.seconds / 3600, output: Object.values(expectedRewards).reduce((a, b) => a + b, 0),
+      revenue: value(expectedRewards), inputValue: value(route.cost.items) + route.cost.coins, net: net(expectedRoute),
+      netPerHour: net(expectedRoute) * 3600 / route.seconds });
   }
   // Every recipe edge must move towards a later product. A new conversion back
   // to raw inputs requires an explicit new audit, rather than a silent cycle.
@@ -237,7 +240,7 @@ export function auditBuildingUnlocks(catalog) {
       }
     }
     for (const building of catalog.buildings) for (const level of building.levels) {
-      if (building.id === "warehouse" && level.level >= 4) continue; // Optional relic levels deliberately have no home gate.
+      if (catalog.version < 14 && building.id === "warehouse" && level.level >= 4) continue; // Legacy relic levels had no home gate.
       const advertisedHome = building.id === "home" ? level.level - 1 : level.requiredHomeLevel;
       if (advertisedHome !== home) continue;
       const missing = Object.keys(level.cost.items).filter(id => !items.has(id));

@@ -170,12 +170,16 @@ test("fresh tier berries stay with supplies while their prepared dishes appear i
 test("pantry content retains real capacity and relic stock without duplicating the header upgrade action", () => {
   const job = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "construction", targetId: "warehouse", recipeId: null, targetLevel: 10,
     startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 45_000).toISOString(), rewards: {}, cost: { coins: 200, items: {} }, catalogVersion: 2 };
-  for (const [level, jobs] of [[1, []], [9, []], [9, [job]], [10, []]]) {
+  for (const [level, jobs] of [[1, []], [9, []], [9, [job]], [10, []], [14, []], [15, []]]) {
     const state = snapshot({ buildings: { home: 5, warehouse: level }, jobs, inventory: { wood: 4, ancient_core: 10, moon_crystal: 1, living_resin: 3 } });
     const before = structuredClone(state), economy = controller({ snapshot: state });
     const html = render(economy);
     assert.ok(html.includes(`aria-label="Кладовая: занято ${state.storage.used} из ${state.storage.capacity} мест"`));
     assert.match(html, /aria-label="Бревно: 4"/);
+    assert.ok(html.includes(`Ур. ${level} / 15`));
+    assert.match(html, /До ур. 10 — материалы и монеты. Дальше — только реликвии./);
+    if (level < 15) assert.ok(html.includes(`${jobs.length ? "После улучшения" : "Следующее улучшение"}: +50 мест`));
+    else assert.match(html, /Все улучшения получены/);
     assert.doesNotMatch(html, /Расширить кладовую|Кладовая расширяется|Расширение готово|Максимальная вместимость|Реликвии для следующего расширения/);
     const relics = render(economy, { initialTab: "relics" });
     for (const [id, quantity] of [["ancient_core", 10], ["moon_crystal", 1], ["living_resin", 3]]) {

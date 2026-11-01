@@ -28,6 +28,9 @@
 .capacity[data-full="true"] progress { accent-color: #a57937; }
 .capacity[data-full="true"] progress::-webkit-progress-value { background: #a57937; }
 .capacity[data-full="true"] progress::-moz-progress-bar { background: #a57937; }
+.capacity > .expansion { gap: 2px 8px; margin-top: 3px; }
+.capacity > .expansion > span { color: #526e45; font-size: 10px; }
+.expansionCost { color: #6a654c; font-size: 10px; line-height: 1.45; }
 .muted { color: var(--forest-muted, #59624d); font-size: 10px; }
 .fishBuyer { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 7px; color: #4f6c44; font-size: 11px; }
 .pantry .fishBuyer .textButton { min-height: 36px; white-space: nowrap; }

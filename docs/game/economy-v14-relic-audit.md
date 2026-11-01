@@ -1,6 +1,8 @@
 # Реликвии и необязательный максимум v14
 
-Источник — текущие `economy-catalog.json`, `progression-rewards-catalog.json` и серверные правила жемчуга. [Воспроизводимый отчёт](../research/economy-v14-relic-audit.json) создаётся командой:
+Исторический расчёт v14: теперь кладовая имеет 15 уровней, а прежние 6/3/3 реликвии перенесены в последние пять. [Актуальная ветка](rewards-and-relics.md#пятнадцать-уровней-кладовой). Команды ниже считают текущий checkout и не воспроизводят старые числа без соответствующей версии исходников.
+
+Источник — тогдашние `economy-catalog.json`, `progression-rewards-catalog.json` и серверные правила жемчуга. [Воспроизводимый отчёт](../research/economy-v14-relic-audit.json) создаётся командой:
 
 ```bash
 node scripts/audit-endgame-relics.mjs > docs/research/economy-v14-relic-audit.json

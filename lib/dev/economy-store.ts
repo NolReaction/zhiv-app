@@ -300,7 +300,13 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
     case "finish_jobs": {
       const jobs = next.jobs.filter(job => (command.targetId === "all" || job.kind === command.targetId) && Date.parse(job.finishesAt) > now);
       if (!jobs.length) return fail("ECONOMY_DEV_NO_JOBS", "Нет незавершённых работ этого типа");
-      for (const job of jobs) job.finishesAt = new Date(now).toISOString();
+      for (const job of jobs) {
+        if (job.miningBatch) {
+          job.startedAt = new Date(now - job.miningBatch.quantity * job.miningBatch.unitSeconds * 1000).toISOString();
+          if (next.tapBoost?.jobId === job.id) next.tapBoost.appliedAt = new Date(now).toISOString();
+        }
+        job.finishesAt = new Date(now).toISOString();
+      }
       message = `DEV: ускорено работ: ${jobs.length}. Заберите результат у объекта или в путешествиях`;
       break;
     }

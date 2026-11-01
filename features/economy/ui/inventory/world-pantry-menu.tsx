@@ -302,6 +302,13 @@ export function WorldPantryMenu({ economy, onExplore, onOpenFishingShop, constru
 
   const { used, reserved, capacity, available, overflow } = state.storage;
   const occupied = used + reserved;
+  const warehouse = state.catalog.buildings.find(building => building.id === "warehouse");
+  const warehouseLevel = state.buildings.warehouse ?? 1;
+  const maximumLevel = warehouse?.levels.at(-1)?.level ?? warehouseLevel;
+  const nextLevel = warehouse?.levels.find(level => level.level === warehouseLevel + 1);
+  const warehouseConstruction = state.jobs.some(job => job.kind === "construction" && job.targetId === "warehouse");
+  const relicIds = new Set(state.catalog.items.filter(item => item.category === "special").map(item => item.id));
+  const firstRelicLevel = warehouse?.levels.find(level => Object.keys(level.cost.items).some(id => relicIds.has(id)))?.level;
   // This is a view of the same inventory, not another capacity or reward store.
   const fishIds = new Set<string>([...FISH_SPECIES_IDS, ...(state.catalog.fishing?.classes.map(fish => fish.itemId) ?? []), ...(state.catalog.food?.meals.map(meal => meal.itemId) ?? []), ...state.catalog.items.filter(item => item.category === "provisions").map(item => item.id)]);
   const ownedItems = state.catalog.items.filter(item => item.category !== "special" && (state.inventory[item.id] ?? 0) > 0);
@@ -327,6 +334,11 @@ export function WorldPantryMenu({ economy, onExplore, onOpenFishingShop, constru
     <div className={styles.capacity} data-guide-pantry-capacity data-full={available === 0 || undefined}>
       <div><span className={styles.capacityLabel}><Package size={14} aria-hidden="true" />Занято <strong>{number(occupied)} <span>/ {number(capacity)}</span></strong></span><span>{available > 0 ? `Свободно ${number(available)}` : "Все места заняты"}</span></div>
       <progress value={Math.min(capacity, occupied)} max={Math.max(1, capacity)} aria-label={`Кладовая: занято ${occupied} из ${capacity} мест`} />
+      <div className={styles.expansion} data-warehouse-expansion>
+        <span>Ур. {warehouseLevel} / {maximumLevel}</span>
+        <span>{nextLevel?.warehouseCapacity ? `${warehouseConstruction ? "После улучшения" : "Следующее улучшение"}: +${number(nextLevel.warehouseCapacity - capacity)} мест` : "Все улучшения получены"}</span>
+      </div>
+      {firstRelicLevel && <p className={styles.expansionCost} data-warehouse-cost>До ур. {firstRelicLevel - 1} — материалы и монеты. Дальше — только реликвии.</p>}
       {reserved > 0 && <p className={styles.muted}>На рынке {number(reserved)}</p>}
     </div>
     {overflow > 0 && <p className={styles.hint}>Сверх вместимости: {number(overflow)}. Запасы сохранены. Продайте или используйте часть вещей, чтобы получать новые.</p>}

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Download } from "lucide-react";
+import { economyCatalog } from "@/features/economy/domain/model";
 import { buildingLabels } from "./graph";
 import { progressionScenarioReport, scenarioCsvRows, scenarioGoalNames, scenarioHighlights, scenarioReportState, scenarioResidentNames, scenarioSchedule, type ProgressionScenarioReport } from "./economy-scenarios";
 import { downloadEconomyFile, economyCsv, economyNumber } from "./economy-workbench-common";
@@ -27,7 +28,7 @@ export function EconomyScenarioReport({ report = progressionScenarioReport }: { 
     <header className={styles.heading}><div><h3>Сколько занимает развитие</h3><p>Результаты прохождений с настоящими игровыми командами. Сравнивайте одинаковые цели и режимы игры.</p></div></header>
     <dl className={styles.goals}>
       <div><dt>Дом 5</dt><dd>Получение последнего уровня дома — текущий финал основной главы.</dd></div>
-      <div><dt>Полное хозяйство</dt><dd>Максимумы всех построек, включая кладовую 10. Рецепты отмечены отдельно.</dd></div>
+      <div><dt>Полное хозяйство</dt><dd>Максимумы всех построек, включая кладовую {economyCatalog.buildings.find(building => building.id === "warehouse")?.levels.at(-1)?.level}. Рецепты отмечены отдельно.</dd></div>
       <div><dt>Репутация</dt><dd>Постоянный ранг и бонусы у каждого жителя. Месячный вклад учитывается отдельно.</dd></div>
     </dl>
     {!available ? <p className={styles.warning} role="status">{state === "stale" ? "Каталог изменился после расчёта. Прежние сроки скрыты до повторного прогона." : "Итоговые прогоны ещё не опубликованы. Промежуточные расчёты не используются как прогноз."}</p> : <>

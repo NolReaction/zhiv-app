@@ -394,6 +394,9 @@ test("fish commerce answers require an explicit sale and keep market reservation
   assert.match(answer("resources"), /Другой вид меняется в том же окне/);
   assert.match(answer("resources"), /Еда стоит отдельно; только кнопка продажи тратит запас/);
   assert.match(answer("storage"), /улучшение в шапке кладовой/);
+  assert.match(answer("storage"), /уровень 15 - 750/);
+  assert.match(answer("storage"), /До уровня 10 нужны материалы и монеты, дальше - только реликвии/);
+  assert.match(answer("relics"), /уровни 11–15 - только за реликвии/);
   assert.match(answer("plesk"), /В «Улове» классы сначала свёрнуты. Нажмите класс и вид/);
   assert.match(answer("plesk"), /Повторный тап прибавляет 1 до доступного лимита; другой вид начинает с 1/);
   assert.match(answer("plesk"), /Поле и «Все» меняют количество. Только «Продать» спишет рыбу/);

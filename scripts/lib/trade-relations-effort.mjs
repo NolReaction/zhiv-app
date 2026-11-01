@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { explorationLootSummary } from "./exploration-loot.mjs";
 import { economicMath, recipeBuildingLevel } from "./economy-math.mjs";
 import { residentOrderBaseRecipes, residentOrderPricing } from "./resident-order-pricing.mjs";
 
@@ -63,6 +64,7 @@ export function weeklyPearlsForEffort(seconds) {
  * Includes ingredient acquisition and upstream processing. Parallel stations
  * can overlap; joint expedition byproducts and existing stock can reduce time.
  * A mining job counts once even though it occupies both quarry and miner.
+ * Variable material trips use their mean base yield, excluding weighted finds.
  * Fish use expected stock with the first affordable eligible tackle and have
  * no finite guarantee. Production bonuses, merchant stock waits and unlock
  * construction are deliberately outside this intrinsic work reference. */
@@ -78,7 +80,7 @@ export function tradeOrderEffort(catalog) {
       if (!levelsPermit(source, buildings)
         || Object.keys(source.requiredRecipes ?? {}).some(id => !reachable.recipes.has(id))
         || Object.keys(source.cost.items).some(id => !reachable.items.has(id))) continue;
-      for (const [itemId, output] of Object.entries(source.rewards)) {
+      for (const [itemId, output] of Object.entries(explorationLootSummary(source).expectedRewards)) {
         if (!known.has(itemId) || fish.has(itemId) || output <= 0) continue;
         const baseline = catalog.timeEconomy?.baselineRecipes[itemId] ?? catalog.timeEconomy?.baselineExplorations[itemId]
           ?? residentOrderBaseRecipes[itemId] ?? acquisitionBaselines[itemId];

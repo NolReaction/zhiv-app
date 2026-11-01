@@ -10,7 +10,7 @@ test("economy catalog has useful chains, reachable actual tiers and separate pro
   assert.equal(report.buildingCount, catalog.buildings.length);
   assert.equal(report.buildingCount, 10);
   assert.equal(report.constructionOrder.length, catalog.buildings.reduce((sum, building) => sum + building.levels.length, 0) - 3);
-  assert.equal(report.completionLevels.warehouse, 10);
+  assert.equal(report.completionLevels.warehouse, 15);
   assert.equal(report.completionLevels.bridge, 1);
   assert.equal(report.completionLevels.lighthouse, 1);
   assert.deepEqual(report.completionLevels, Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level])));
@@ -66,20 +66,25 @@ test("catalog audit rejects compression of the authored stage construction contr
   assert.throws(() => auditEconomyProgression(catalog), /Third stage home construction.*declared tier|Fourth stage.*declared tier|construction price must follow builder time/);
 });
 
-test("warehouse has ten increasing tiers with modest optional crafted and relic expansions", () => {
+test("warehouse keeps ten ordinary tiers before five optional relic-only expansions", () => {
   const catalog = readEconomyCatalog();
   const warehouse = catalog.buildings.find(building => building.id === "warehouse");
-  assert.deepEqual(warehouse.levels.map(level => level.level), Array.from({ length: 10 }, (_, index) => index + 1));
+  assert.deepEqual(warehouse.levels.map(level => level.level), Array.from({ length: 15 }, (_, index) => index + 1));
   for (const mutate of [
     c => c.buildings.find(building => building.id === "warehouse").levels[2].cost.items.living_resin = 1,
     c => c.buildings.find(building => building.id === "warehouse").levels[3].cost.coins = 10,
     c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredHomeLevel = 3,
     c => c.buildings.find(building => building.id === "warehouse").levels[3].requiredBuildings = {},
     c => c.buildings.find(building => building.id === "warehouse").levels[3].cost.items.planks = 1,
+    c => c.buildings.find(building => building.id === "warehouse").levels[9].cost.items.ancient_core = 1,
     c => c.buildings.find(building => building.id === "warehouse").levels[9].warehouseCapacity = 8200,
+    c => c.buildings.find(building => building.id === "warehouse").levels[10].cost.coins = 1,
+    c => c.buildings.find(building => building.id === "warehouse").levels[10].cost.items.planks = 1,
+    c => c.buildings.find(building => building.id === "warehouse").levels[10].cost.items = {},
+    c => c.buildings.find(building => building.id === "warehouse").levels[14].warehouseCapacity = 1000,
   ]) {
     const invalid = structuredClone(catalog); mutate(invalid);
-    assert.throws(() => auditEconomyProgression(invalid), /early storage|relic storage|storage must grow|storage must keep/);
+    assert.throws(() => auditEconomyProgression(invalid), /ordinary storage|relic storage|storage must grow|storage must keep/);
   }
 });
 
@@ -88,7 +93,7 @@ test("storage gates follow accessible production without becoming prerequisites 
   for (const level of catalog.buildings.find(building => building.id === "warehouse").levels) {
     const expectedHome = level.level <= 3 ? level.level : level.level <= 6 ? 4 : 5;
     assert.equal(level.requiredHomeLevel, expectedHome);
-    if (level.level <= 3) assert.deepEqual(level.requiredBuildings, {});
+    if (level.level <= 3 || level.level >= 11) assert.deepEqual(level.requiredBuildings, {});
     else assert(Object.keys(level.requiredBuildings).length > 0);
     assert.equal(level.requiredBuildings.warehouse, undefined);
     const invalid = structuredClone(catalog), target = invalid.buildings.find(building => building.id === "warehouse").levels.find(candidate => candidate.level === level.level);

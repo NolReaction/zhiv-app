@@ -22,7 +22,7 @@ const text = node => typeof node === "string" ? node : Array.isArray(node) ? nod
 
 test("a fresh neighbor has every catalog building at its real maximum", () => {
   assert.deepEqual(neighborDefaultSettings.buildings, maximum);
-  assert.equal(maximum.home, 5); assert.equal(maximum.warehouse, 10);
+  assert.equal(maximum.home, 5); assert.equal(maximum.warehouse, 15);
 });
 
 test("maximum-settlement preset stages all buildings without saving or overwriting unrelated settings", () => {

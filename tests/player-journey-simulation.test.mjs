@@ -38,7 +38,7 @@ test("the comparison base, final home and all current upgrades are distinct repr
   assert.deepEqual(journeyConstructionOrder(catalog), journeyOrder);
   const full = journeyConstructionOrder(catalog, "all-current-buildings");
   assert.deepEqual(full.slice(-5),
-    ["warehouse:6", "warehouse:7", "warehouse:8", "warehouse:9", "warehouse:10"]);
+    ["warehouse:11", "warehouse:12", "warehouse:13", "warehouse:14", "warehouse:15"]);
   assert(full.indexOf("quarry:5") < full.indexOf("warehouse:8"), "mortar source must precede its optional storage upgrade");
   const home = journeyConstructionOrder(catalog, "home-5");
   assert.equal(home.at(-1), "home:5");
@@ -49,7 +49,7 @@ test("the comparison base, final home and all current upgrades are distinct repr
     const fullStart = simulateJourney(loaded, "active16h", 1, { completionGoal: "all-current-buildings" });
     const comparisonStart = simulateJourney(loaded, "active16h", 1);
     assert.equal(fullStart.completionGoal, "all-current-buildings");
-    assert.equal(fullStart.targetBuildingLevels.warehouse, 10);
+    assert.equal(fullStart.targetBuildingLevels.warehouse, 15);
     assert.equal(fullStart.complete, false);
     assert.deepEqual(fullStart.milestones, comparisonStart.milestones, "Optional expansion goals cannot change the opening route");
     assert.deepEqual(fullStart.finalBuildingLevels, comparisonStart.finalBuildingLevels);
@@ -58,7 +58,7 @@ test("the comparison base, final home and all current upgrades are distinct repr
 
 // The old journey helper remains useful for opening-route/lookahead research.
 // Full progression is tested with the same current command policy as /branch.
-test("the canonical eight-hour daily player earns every building and storage ten with real relics", async t => {
+test("the canonical eight-hour daily player earns every building and storage fifteen with real relics", async t => {
   const loaded = await loadProgressionRules();
   try {
     const exchangeReceipts = [], exchangeConfig = loaded.catalog.leaftailShop.relicExchange;
@@ -90,7 +90,7 @@ test("the canonical eight-hour daily player earns every building and storage ten
     const report = summarizeProgression(result);
     assert.equal(report.completed, true, JSON.stringify({ elapsedDays: report.elapsedDays, buildings: report.buildings, waits: report.lastWaits }));
     assert.equal(result.externalSlotBudget, 0);
-    assert.equal(result.state.buildings.warehouse, 10);
+    assert.equal(result.state.buildings.warehouse, 15);
     for (const building of loaded.catalog.buildings) assert.equal(result.state.buildings[building.id], building.levels.at(-1).level);
     assert(exchangeReceipts.length > 0, "This seeded route exercises the paid duplicate exchange");
     assert.equal(report.actions.exchange_leaftail_relic, exchangeReceipts.length);
@@ -106,7 +106,7 @@ test("the canonical eight-hour daily player earns every building and storage ten
       assert.equal(result.flow[id].received - required - exchanged, result.state.inventory[id] ?? 0,
         `${id}: grants, claimed finds and exchange outputs are conserved`);
     }
-    assert(result.builds.some(build => build.target === "warehouse" && build.level === 10));
+    assert(result.builds.some(build => build.target === "warehouse" && build.level === 15));
     const daily = result.rewardClaims.filter(claim => claim.kind === "daily");
     assert.equal(daily.length, 7);
     assert.equal(new Set(daily.map(claim => claim.id)).size, 7, "the gift chain never repeats");

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { explorationLootSummary } from "./lib/exploration-loot.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { auditBuildingUnlocks, auditFourthStageBudget, auditProductionBalance, auditProjectCourses } from "./lib/economy-balance.mjs";
@@ -78,17 +79,30 @@ export function auditEconomyProgression(catalog) {
       assert(Number.isSafeInteger(level.seconds) && level.seconds >= 0, `${key}: invalid duration`);
       assert(Number.isSafeInteger(level.cost.coins) && level.cost.coins >= 0, `${key}: invalid price`);
       if (building.id === "warehouse") {
-        const craftedExpansion = catalog.version >= 14 && level.level >= 4;
+        const ordinaryExpansion = catalog.version >= 15 && level.level <= 10;
+        const relicOnlyExpansion = catalog.version >= 15 && level.level >= 11;
+        const craftedExpansion = catalog.version >= 14 && level.level >= 4 && !relicOnlyExpansion;
         const houseGate = level.level === 2 ? 2 : catalog.version >= 13 && level.level === 3 ? 3
-          : craftedExpansion ? level.level <= 6 ? 4 : 5 : 1;
+          : relicOnlyExpansion ? 5 : craftedExpansion ? level.level <= 6 ? 4 : 5 : 1;
         assert(level.requiredHomeLevel === houseGate && (craftedExpansion || !Object.keys(level.requiredBuildings ?? {}).length),
           `${key}: storage must keep its declared material-availability house gate`);
         assert(Number.isSafeInteger(level.warehouseCapacity) && level.warehouseCapacity > 0, `${key}: warehouse capacity missing`);
         assert.equal(level.warehouseCapacity, level.level * 50, `${key}: storage must grow by 50 places per level`);
-        if (level.level <= 3) assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: early storage must use ordinary materials`);
-        else {
-          assert(rare && (catalog.version >= 15 ? level.cost.coins > building.levels[level.level - 2].cost.coins : level.cost.coins === 0),
-            `${key}: relic storage must follow its declared coin progression`);
+        if (ordinaryExpansion || level.level <= 3) {
+          assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: ordinary storage must use ordinary materials`);
+          if (craftedExpansion) {
+            assert(level.cost.coins > building.levels[level.level - 2].cost.coins, `${key}: ordinary storage must follow its declared coin progression`);
+            assert(Object.keys(level.cost.items).length === 3 && Object.values(level.cost.items).every(amount => amount <= 4)
+              && Object.keys(level.requiredBuildings ?? {}).length > 0,
+            `${key}: ordinary storage needs three compact crafted inputs with source gates`);
+          }
+        } else if (relicOnlyExpansion) {
+          const relicCount = Object.values(level.cost.items).reduce((sum, amount) => sum + amount, 0);
+          assert(rare && level.cost.coins === 0 && relicCount >= 1 && relicCount <= 4
+            && Object.keys(level.cost.items).every(id => rare.itemIds.includes(id)),
+          `${key}: relic storage must use only a small relic basket without coins`);
+        } else {
+          assert(rare && level.cost.coins === 0, `${key}: relic storage must follow its declared coin progression`);
           if (craftedExpansion) {
             const relicCount = rare.itemIds.reduce((sum, id) => sum + (level.cost.items[id] ?? 0), 0);
             const crafted = Object.entries(level.cost.items).filter(([id]) => !rare.itemIds.includes(id));
@@ -316,7 +330,7 @@ export function auditEconomyProgression(catalog) {
     const storageLevel = Math.max(1, ...[...prerequisites].filter(id => id.startsWith("warehouse:")).map(id => nodes.get(id).level));
     const capacity = buildings.get("warehouse").levels[storageLevel - 1].warehouseCapacity;
     assert(Object.values(definition.cost.items).reduce((sum, amount) => sum + amount, 0) <= capacity, `${definition.id}: one batch input exceeds available storage`);
-    const outputCount = Object.values(definition.rewards).reduce((sum, amount) => sum + amount, 0);
+    const outputCount = explorationLootSummary(definition).maximumOutputCount;
     assert(outputCount + (!definition.buildingId && rare ? 1 : 0) <= capacity, `${definition.id}: one batch output and possible rare find exceed available storage`);
   }
 

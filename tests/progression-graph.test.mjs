@@ -442,9 +442,9 @@ test("display phases follow transitive catalog gates without moving unrelated pl
   assert.equal(find("r:dry_berries").requirements.home, catalog.recipes.find(value => value.id === "dry_berries").requiredHomeLevel);
 });
 
-test("ten storage levels stay visible in economic sections with their true sequential gates and relic sources", () => {
+test("fifteen storage levels stay visible in economic sections with their true sequential gates and relic sources", () => {
   const warehouse = catalog.buildings.find(value => value.id === "warehouse");
-  assert.equal(warehouse.levels.length, 10);
+  assert.equal(warehouse.levels.length, 15);
   const layout = buildProgressionLayout(graph);
   for (const level of warehouse.levels) {
     const id = `b:warehouse:${level.level}`, storage = node(id), position = layout.positions.get(id);
@@ -465,7 +465,7 @@ test("ten storage levels stay visible in economic sections with their true seque
     assert.equal(gates.has("b:home:4"), level.requiredHomeLevel >= 4);
     assert.equal(gates.has("b:home:5"), level.requiredHomeLevel >= 5);
     assert.equal(storage.requirements.workshop, level.requiredBuildings.workshop);
-    if (level.level >= 4) {
+    if (level.level >= 11) {
       for (const relic of Object.keys(level.cost.items).filter(id => catalog.rareDrops.itemIds.includes(id))) {
         assert.equal(getProgressionResourceSource(graph, relic).id, "rare_materials");
       }

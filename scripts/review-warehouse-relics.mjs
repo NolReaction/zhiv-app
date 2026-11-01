@@ -44,7 +44,13 @@ export function reviewWarehouseRelics(catalog) {
     previousCapacity = level.warehouseCapacity;
     return row;
   });
+  const firstRelicLevel = levels.find(level => Object.values(level.relicCost).some(quantity => quantity > 0));
+  const ordinaryMaximum = levels.filter(level => !firstRelicLevel || level.level < firstRelicLevel.level).at(-1);
   return { catalogVersion: catalog.version, warehouseMaximumLevel: warehouse.levels.at(-1).level,
+    warehouseMaximumCapacity: warehouse.levels.at(-1).warehouseCapacity,
+    ordinaryExpansionMaximumLevel: ordinaryMaximum?.level ?? null, ordinaryExpansionMaximumCapacity: ordinaryMaximum?.capacity ?? 0,
+    firstRelicExpansionLevel: firstRelicLevel?.level ?? null,
+    totalWarehouseCoins: levels.reduce((sum, level) => sum + level.cost.coins, 0),
     totalWarehouseRelics: { ...cumulativeRelics }, totalWarehouseRelicCount: Object.values(cumulativeRelics).reduce((sum, count) => sum + count, 0),
     totalWarehouseConstructionHours: cumulativeConstructionHours, totalWarehouseConstructionDays: cumulativeConstructionHours / 24,
     method: { source: "Shared authenticated completed-exploration clock; independent uniform interval and relic type draws.",

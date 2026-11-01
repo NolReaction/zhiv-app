@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { explorationLootSummary } from "./lib/exploration-loot.mjs";
 import { auditConstructionEconomy } from "./lib/construction-economy.mjs";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -77,9 +78,11 @@ export function auditTimeEconomy(catalog) {
   const expeditionFinds = [];
   for (const source of materialTrips) {
     assert(source.seconds > 0 && source.seconds <= 3600, `${source.id}: material exploration must take at most one hour`);
-    assert.equal((value(source.rewards) - value(source.cost.items) - source.cost.coins) * 60,
-      source.seconds * policy.coinsPerMinute, `${source.id}: hero material trip must earn only its own time value after inputs`);
-    assert(sum(Object.values(source.rewards)) + 1 <= 50, `${source.id}: full trip and one possible relic must fit initial storage`);
+    const { expectedRewards, maximumBaseCount } = explorationLootSummary(source);
+    const expectedBaseNetCoins = value(expectedRewards) - value(source.cost.items) - source.cost.coins;
+    assert.equal(expectedBaseNetCoins * 60,
+      source.seconds * policy.coinsPerMinute, `${source.id}: hero material trip must earn only its own time value after inputs on average`);
+    assert(maximumBaseCount + 1 <= 50, `${source.id}: full trip and one possible relic must fit initial storage`);
     if (source.finds) {
       const { emptyWeight, entries } = source.finds;
       assert(Number.isSafeInteger(emptyWeight) && emptyWeight >= 0 && entries.length > 0, `${source.id}: invalid find weights`);
@@ -88,14 +91,14 @@ export function auditTimeEconomy(catalog) {
         assert(Number.isSafeInteger(entry.weight) && entry.weight > 0 && Number.isSafeInteger(entry.quantity) && entry.quantity > 0,
           `${source.id}: finds need positive integer weights and quantities`);
         assert(items.has(entry.itemId) && items.get(entry.itemId).tradable, `${source.id}: random bonus must be ordinary useful goods`);
-        assert(sum(Object.values(source.rewards)) + entry.quantity + 1 <= 50, `${source.id}: maximum find and relic must fit starter storage`);
+        assert(maximumBaseCount + entry.quantity + 1 <= 50, `${source.id}: maximum find and relic must fit starter storage`);
       }
       const expectedBonusCoins = sum(entries.map(entry => value({ [entry.itemId]: entry.quantity }) * entry.weight / totalWeight));
       const guaranteedNetCoins = value(source.rewards) - value(source.cost.items) - source.cost.coins;
-      assert(expectedBonusCoins >= guaranteedNetCoins * .05 && expectedBonusCoins <= guaranteedNetCoins * .15,
-        `${source.id}: expected bonus must stay between five and fifteen percent of guaranteed work value`);
-      expeditionFinds.push({ routeId: source.id, chance: 1 - emptyWeight / totalWeight, guaranteedNetCoins,
-        expectedBonusCoins, expectedNetCoinsPerMinute: (guaranteedNetCoins + expectedBonusCoins) * 60 / source.seconds });
+      assert(expectedBonusCoins >= expectedBaseNetCoins * .05 && expectedBonusCoins <= expectedBaseNetCoins * .15,
+        `${source.id}: expected bonus must stay between five and fifteen percent of expected base work value`);
+      expeditionFinds.push({ routeId: source.id, chance: 1 - emptyWeight / totalWeight, guaranteedNetCoins, expectedBaseNetCoins,
+        expectedBonusCoins, expectedNetCoinsPerMinute: (expectedBaseNetCoins + expectedBonusCoins) * 60 / source.seconds });
     }
   }
   if (catalog.version >= 15) auditConstructionEconomy(catalog);

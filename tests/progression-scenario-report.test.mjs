@@ -60,6 +60,7 @@ test("stale and unfinished reports hide historical numeric results rather than i
   const stale = report(); stale.catalogFingerprint = "old";
   const text = html(stale);
   assert.match(text, /Прежние сроки скрыты/); assert.doesNotMatch(text, /data-scenario="fixture-free"/);
+  assert.match(text, /включая кладовую 15/); assert.doesNotMatch(text, /включая кладовую 10/);
   const pending = report(); pending.status = "pending";
   assert.match(html(pending), /Итоговые прогоны ещё не опубликованы/);
   const review = report(); review.releaseValidated = false;

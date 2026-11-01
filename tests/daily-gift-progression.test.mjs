@@ -68,7 +68,7 @@ test("one-time gift projection uses completed home tiers, ends after seven claim
     assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.initial > 0)
       .map(([id, flow]) => [id, flow.initial])), { wood: 3, stone: 5 });
     assert.deepEqual(loaded.catalog.buildings.find(building => building.id === "warehouse").levels
-      .map(level => level.warehouseCapacity), Array.from({ length: 10 }, (_, index) => (index + 1) * 50));
+      .map(level => level.warehouseCapacity), Array.from({ length: 15 }, (_, index) => (index + 1) * 50));
     assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.orderInputs > 0)
       .map(([id, flow]) => [id, flow.orderInputs])), orderInputs);
     for (const [id, flow] of Object.entries(report.itemFlow))

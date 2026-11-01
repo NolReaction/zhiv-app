@@ -193,9 +193,9 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
   assert.equal(read(p).storage.reserved, 2); assert.deepEqual(read(p).jobs, [production]);
 });
 
-test("DEV storage controls fund every independent upgrade through level 10 without changing home or other buildings", () => {
+test("DEV storage controls fund every independent upgrade through level 15 without changing home or other buildings", () => {
   const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
-  assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 10);
+  assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 15);
   for (const building of model.economyCatalog.buildings.filter(entry => entry.id !== "warehouse"))
     cheat(p, "set_building_level", building.id, building.levels.at(-1).level);
   const ordinaryBuildings = structuredClone(read(p).buildings);
@@ -223,7 +223,7 @@ test("DEV storage controls fund every independent upgrade through level 10 witho
     assert.equal(finished.storage.capacity, target.warehouseCapacity);
     assert.deepEqual(finished.buildings, { ...ordinaryBuildings, warehouse: target.level });
   }
-  assert.throws(() => cheat(p, "set_building_level", "warehouse", 11), { code: "INVALID_ECONOMY_COMMAND" });
+  assert.throws(() => cheat(p, "set_building_level", "warehouse", 16), { code: "INVALID_ECONOMY_COMMAND" });
   assert.throws(() => cheat(p, "grant_upgrade_cost", "warehouse"), { code: "ECONOMY_MAX_LEVEL" });
 });
 
@@ -356,6 +356,34 @@ test("DEV cannot remove or change an occupied mine until its actor delivery is c
   assert.throws(() => cheat(p, "set_building_level", "quarry", 0), { code: "ECONOMY_BUILDING_BUSY" });
   normal(p, "claim_job", before.jobs[0].id);
   assert.equal(cheat(p, "set_building_level", "quarry", 0).state.buildings.quarry, 0);
+});
+
+test("DEV finish aligns a partially claimed mining batch clock once and keeps boosted delivery collectible", () => {
+  const p = player();
+  cheat(p, "apply_settlement", "home", 2);
+  fixture(p).state.inventory = {};
+  normal(p, "start_exploration", "quarry_stone", 3);
+  const job = fixture(p).state.jobs[0], unitMillis = job.miningBatch.unitSeconds * 1000;
+  job.startedAt = new Date(now - unitMillis).toISOString();
+  job.finishesAt = new Date(now + unitMillis * 2).toISOString();
+  normal(p, "claim_job", job.id);
+  assert.equal(read(p).inventory.stone, 1);
+  fixture(p).state.tapBoost = { charge: 1000, powerBps: 2000, jobId: job.id,
+    grantedAt: new Date(now - 1000).toISOString(), appliedAt: new Date(now - 1000).toISOString(), expiresAt: new Date(now + 59000).toISOString() };
+  const finish = command(p, "finish_jobs", "exploration", 1);
+  const finished = economy.commandDevEconomyCheat(p.token, finish, now);
+  const ready = finished.state.jobs[0];
+  assert.equal(ready.miningBatch.claimed, 1);
+  assert.equal(ready.startedAt, new Date(now - unitMillis * 3).toISOString());
+  assert.equal(ready.finishesAt, new Date(now).toISOString());
+  assert.equal(finished.state.inventory.stone, 1, "DEV completion does not collect any unit");
+  const replay = economy.commandDevEconomyCheat(p.token, finish, now + 1000);
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.state.jobs, finished.state.jobs);
+  const collected = normal(p, "claim_job", job.id).state;
+  assert.equal(collected.inventory.stone, 3);
+  assert.equal(collected.progression.routes.quarry_stone, 3);
+  assert.equal(collected.jobs.length, 0);
+  assert.throws(() => normal(p, "claim_job", job.id), { code: "ECONOMY_JOB_GONE" });
 });
 
 test("DEV ship arrival keeps an active voyage and wallet, bypasses only the wait and replays once", () => {

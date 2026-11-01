@@ -3,7 +3,7 @@
   "autoBuyEnabled": true,
   "name": "Берест",
   "description": "Лесной сосед. Иногда покупает небольшие партии и держит собственную лавку.",
-  "buildings": {"home": 5, "garden": 5, "woodlot": 5, "quarry": 5, "workshop": 5, "dryer": 5, "kiln": 5, "warehouse": 10, "bridge": 1, "lighthouse": 1},
+  "buildings": {"home": 5, "garden": 5, "woodlot": 5, "quarry": 5, "workshop": 5, "dryer": 5, "kiln": 5, "warehouse": 15, "bridge": 1, "lighthouse": 1},
   "equipment": { "palette": "berest_birch_moss", "head": "berest_trail_hat", "neck": "berest_lantern_scarf", "rod": null },
   "offerSlots": 3,
   "offerQuantity": 1,
