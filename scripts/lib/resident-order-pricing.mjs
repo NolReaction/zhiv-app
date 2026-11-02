@@ -22,7 +22,7 @@ export function residentOrderPricing(catalog) {
     const levels = { home: template.requiredHomeLevel, garden: 1, warehouse: 1, ...template.requiredBuildings };
     const cache = new Map();
     function assertAvailable(recipe, path = [], includeInputs = false) {
-      assert(recipe, `${template.id}: unknown manufacturing prerequisite`);
+      assert(recipe && !recipe.experiment, `${template.id}: unknown or optional manufacturing prerequisite`);
       assert(!path.includes(recipe.id), `Order recipe prerequisite cycle: ${[...path, recipe.id].join(" -> ")}`);
       assert(levels.home >= recipe.requiredHomeLevel && (!recipe.buildingId || (levels[recipe.buildingId] ?? 0) >= recipeBuildingLevel(recipe))
         && Object.entries(recipe.requiredBuildings ?? {}).every(([id, level]) => (levels[id] ?? 0) >= level),

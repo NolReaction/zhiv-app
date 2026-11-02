@@ -1,7 +1,7 @@
 import { ECONOMY_MAX_ITEMS, economyCatalog, type EconomyCatalog, type EconomyState } from "./model";
 
 type UnlockSource = Partial<Pick<EconomyState, "progression" | "fishing">> & { catalog?: EconomyCatalog };
-type UnlockRecipe = Pick<EconomyCatalog["recipes"][number], "requiredRecipes" | "requiredExplorations" | "requiredFishCaught">;
+type UnlockRecipe = Pick<EconomyCatalog["recipes"][number], "id" | "experiment" | "requiredRecipes" | "requiredExplorations" | "requiredFishCaught">;
 export type RecipeUnlockRequirement = { kind: "recipe" | "exploration" | "fishing"; id: string;
   current: number; required: number; completed: boolean };
 
@@ -14,6 +14,8 @@ export function personallyCaughtFish(state: UnlockSource, catalog = state.catalo
 /** All conditions are cumulative AND conditions; earlier confirmed work remains useful. */
 export function recipeUnlockRequirements(state: UnlockSource, recipe: UnlockRecipe,
   catalog = state.catalog ?? economyCatalog): RecipeUnlockRequirement[] {
+  // A received ordinary recipe remains learned when catalog practice tasks change.
+  if (!recipe.experiment && (state.progression?.recipes?.[recipe.id] ?? 0) > 0) return [];
   const result: RecipeUnlockRequirement[] = [];
   const add = (kind: RecipeUnlockRequirement["kind"], id: string, current: number, required: number) => {
     if (required > 0) result.push({ kind, id, current, required, completed: current >= required });

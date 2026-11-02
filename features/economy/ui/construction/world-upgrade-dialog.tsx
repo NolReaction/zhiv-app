@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Dialog } from "radix-ui";
-import { ArrowRight, Check, CircleHelp, Clock3, Compass, Hammer, LockKeyhole, Package, Pickaxe, Pin, RefreshCw, Store, X } from "lucide-react";
+import { ArrowRight, Check, CircleHelp, Clock3, Compass, Hammer, LockKeyhole, Package, Pickaxe, Pin, RefreshCw, Soup, Store, X } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
@@ -16,6 +16,7 @@ import { UpgradeBenefitCarousel, type UpgradeBenefitCard } from "./upgrade-benef
 import { WorldHomeFinale } from "./world-home-finale";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { mealSpeedDescription } from "@/features/economy/ui/food/meal-speed-description";
+import { experimentDiscovered } from "@/features/economy/domain/craft-skill";
 import { pendingMeal } from "@/features/economy/domain/food";
 import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
@@ -23,7 +24,7 @@ import { explorationActorId } from "@/features/economy/domain/actor-availability
 import { stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { Work, ProductIcon, itemName, stationName, number, type StationNavigation } from "@/features/economy/ui/shared/world-economy-parts";
-import { worldConstructionReason, worldCountdown, worldDuration, worldMaterialSource, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "@/features/economy/ui/shared/world-stations";
+import { worldConstructionReason, worldCountdown, worldDuration, worldMaterialSource, worldRecipeAccessReason, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "@/features/economy/ui/shared/world-stations";
 import menuStyles from "@/features/economy/ui/stations/world-object-menu.module.css";
 import styles from "./world-upgrade-dialog.module.css";
 
@@ -139,16 +140,18 @@ function UpgradeUnlocks({ state, stationId, target, navigation, now }: { now: nu
   for (const entry of recipes) {
     const rewards = Object.entries(entry.rewards);
     const missing = worldMissingRequirements(futureState, worldRequirements(entry, entry));
-    const title = rewards.length === 1 ? itemName(state, rewards[0][0]) : `Набор · ${rewards.length} вида`;
+    const hidden = Boolean(entry.experiment && !experimentDiscovered(state, entry));
+    const title = hidden ? entry.experiment!.title : rewards.length === 1 ? itemName(state, rewards[0][0]) : `Набор · ${rewards.length} вида`;
+    const access = worldRecipeAccessReason(futureState, entry);
     const meal = state.catalog.food?.meals.find(meal => (entry.rewards[meal.itemId] ?? 0) > 0);
-    cards.push({ id: `recipe:${entry.id}`, label: entry.name, recipeId: entry.id, detailLabel: "Состав и условия",
-      details: <div className={styles.recipeDetail}><strong>{entry.name}</strong><ul aria-label="Результат рецепта">{Object.entries(entry.rewards).map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><b>×{number(amount)}</b></li>)}</ul><p className={styles.recipeInputs}><span>Нужно:</span>{entry.cost.coins > 0 && <span><ItemIcon itemId="coins" size={16} />{number(entry.cost.coins)}</span>}{Object.entries(entry.cost.items).map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={16} />{itemName(state, id)} ×{number(amount)}</span>)}{!entry.cost.coins && !Object.keys(entry.cost.items).length && <span>без затрат</span>}</p><ConstructionRequirements state={futureState} required={worldRequirements(entry, entry)} navigation={navigation} /></div>,
+    cards.push({ id: `recipe:${entry.id}`, label: hidden ? title : entry.name, recipeId: entry.id, detailLabel: "Состав и условия",
+      details: <div className={styles.recipeDetail}><strong>{hidden ? title : entry.name}</strong>{hidden ? <p className={styles.muted}>{entry.experiment!.hint} Название блюда откроется после первого удачного приготовления.</p> : <ul aria-label="Результат рецепта">{Object.entries(entry.rewards).map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><b>×{number(amount)}</b></li>)}</ul>}<p className={styles.recipeInputs}><span>Нужно:</span>{entry.cost.coins > 0 && <span><ItemIcon itemId="coins" size={16} />{number(entry.cost.coins)}</span>}{Object.entries(entry.cost.items).map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={16} />{itemName(state, id)} ×{number(amount)}</span>)}{!entry.cost.coins && !Object.keys(entry.cost.items).length && <span>без затрат</span>}</p><ConstructionRequirements state={futureState} required={worldRequirements(entry, entry)} navigation={navigation} />{!missing.length && access && <p className={styles.muted}>{access}</p>}</div>,
       content: <>
-      <span className={styles.benefitArt} data-kind="recipe">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={44} />)}</span>
-      <span className={styles.benefitKind}>Новый рецепт{stationId === "home" ? ` · ${stationName(state, entry.buildingId)}` : ""}</span><strong className={styles.benefitTitle}>{title}</strong>
-      <span className={styles.benefitDescription}>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.buildingId === "woodlot" ? tradeWorkDuration(state, entry.seconds, "lopukh", 0, state.catalog, now) : entry.seconds)}</span>
-      {meal && <span className={styles.benefitDescription}>Вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}% скорости</span>}
-      {missing.length > 0 && <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>}
+      <span className={styles.benefitArt} data-kind="recipe">{hidden ? <Soup size={44} aria-hidden="true" /> : rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={44} />)}</span>
+      <span className={styles.benefitKind}>{entry.experiment ? "Кулинарный опыт" : "Новый рецепт"}{stationId === "home" ? ` · ${stationName(state, entry.buildingId)}` : ""}</span><strong className={styles.benefitTitle}>{title}</strong>
+      <span className={styles.benefitDescription}>{!hidden && rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.buildingId === "woodlot" ? tradeWorkDuration(state, entry.seconds, "lopukh", 0, state.catalog, now) : entry.seconds)}</span>
+      {meal && <span className={styles.benefitDescription}>{entry.experiment ? "При успехе: " : ""}Вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}% скорости</span>}
+      {access && <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>}
     </> });
   }
 

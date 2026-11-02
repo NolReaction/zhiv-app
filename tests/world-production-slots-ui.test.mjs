@@ -290,7 +290,8 @@ test("the basic campfire exposes its existing capacity without selling extra slo
       : TestSlotProduction({ economy, focusId: "cook_compote", navigate() {} });
     const nodes = elements(parent);
     assert.equal(nodes.some(node => node.type === WorldStationSetup), false, entry);
-    assert.equal(nodes.some(node => node.type === WorldProductionSlots), true, entry);
+    assert.equal(nodes.some(node => node.type === WorldProductionSlots), entry === "hub", entry);
+    if (entry === "map") assert.ok(nodes.some(node => node.type?.name === "WorldCookbook"), "campfire opens the dedicated book with its own queue tab");
     if (entry === "hub") {
       assert.deepEqual(nodes.filter(node => node.props.recipe).map(node => node.props.recipe.id), ["cook_grilled_fish"]);
     }

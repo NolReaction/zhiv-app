@@ -47,6 +47,17 @@ test("production statuses use paid job clocks without claiming or displaying idl
   assert.deepEqual(mapProductionGroups(saved, NaN), []);
 });
 
+test("a cooking experiment reveals neither its potential reward nor its outcome in the map timer", () => {
+  const recipe = catalog.recipes.find(recipe => recipe.experiment);
+  const pending = job("dryer", { recipeId: recipe.id, rewards: recipe.rewards, cooking: { successChanceBps: 8500, workSeconds: recipe.seconds } });
+  for (const now of [start, finish]) {
+    const entry = mapProductionGroups(state([pending]), now)[0].entries[0];
+    assert.equal(entry.recipeName, "Кулинарный опыт");
+    assert.equal(entry.itemId, undefined);
+    assert.equal(entry.phase, now === start ? "working" : "ready");
+  }
+});
+
 test("garden separates growth, ripe waiting, real gathering, paused gathering and stored-ready crops", () => {
   const crop = job("garden"), get = (value, now, collection = null, available = 100) => mapProductionGroups(state([value], available), now, collection)[0].entries[0];
   assert.equal(get(crop, start).phase, "working");

@@ -1,5 +1,6 @@
 "use client";
 
+import { CraftSkillsCard } from "@/features/economy/ui/food/craft-skills-card";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
@@ -180,6 +181,7 @@ export function WorldProfileContent({ world, economy, displayName, bestStreakDay
           <PlayerProgressionCard progression={economy.snapshot?.progression} now={economy.now} ownerKey={economy.snapshot?.ownerPublicId}
             displayName={displayName} presentation="profile" showSeason={false} />
         </div>
+        {economy.snapshot && <div className={styles.skills}><CraftSkillsCard state={economy.snapshot} /></div>}
         <div className={styles.life}>
           <button ref={moodTriggerRef} type="button" className={styles.moodPreview} onClick={onOpenMood} aria-label="Как Мохлик?" aria-haspopup="dialog" data-audio-cue="ui.open">
             <Leaf size={18} aria-hidden="true" /><span><small>{observation?.paused ? "Полянка на паузе" : "Как Мохлик?"}</small>

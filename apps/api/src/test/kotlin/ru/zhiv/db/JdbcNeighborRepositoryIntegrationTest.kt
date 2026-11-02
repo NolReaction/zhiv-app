@@ -146,12 +146,14 @@ class JdbcNeighborRepositoryIntegrationTest {
             "An NPC purchase cannot award the achievement that requires another player")
     }
 
-    @Test fun `composer price is bought at twice base while bait cannot be flipped at the same multiplier`() = runBlocking<Unit> {
+    @Test fun `rounded composer price is bought while bait cannot be flipped above acquisition`() = runBlocking<Unit> {
         val p=player(); val repository=JdbcNeighborRepository(source,AdminConfig(emptySet()))
         val first=listing(p,quantity=1,price=20)
         val buying=repository.neighbor(p.hash).buying
         assertEquals(true,buying.firstSale)
         assertEquals(20000L,buying.buyPriceBps)
+        assertEquals(12500L,buying.sellPriceBps)
+        assertEquals(1L,buying.offerQuantity)
         assertTrue("berries" in buying.allowedItemIds.orEmpty())
         age(first,minutes=4)
         assertEquals(1,repository.runAutomaticBatch())

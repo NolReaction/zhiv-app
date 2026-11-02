@@ -118,7 +118,7 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
     val s = EconomyTapBoost.settle(EconomyStageOrders.pin(row.state, now=now), now)
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map { EconomyPublicJobs.project(it, now) }, s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
-        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders, tradeRelations = s.tradeRelations, ship = s.ship,
+        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders, tradeRelations = s.tradeRelations, ship = EconomyShipOrders.project(s.ship, now),
         workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder, stageOrders = s.stageOrders,
         marketSlots = s.marketSlots, unlockedItems = s.unlockedItems, leaftailShop = s.leaftailShop, tapBoost = s.tapBoost)
 }

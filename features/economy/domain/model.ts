@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { craftSkillsSchema, craftSkillsCatalogSchema } from "./craft-skill-model";
 import { playerProgressionSchema } from "./player-progression-model";
 import { economyShipSchema, type EconomyShip } from "./ship-model";
 import { economyTapBoostSchema, type EconomyTapBoost } from "./tap-boost-model";
@@ -206,6 +207,7 @@ export const economyCatalogSchema = z.object({
     supplyOffers: z.array(economyLeaftailSupplySchema).max(32).optional(),
     pearlOffers: z.array(economyLeaftailPearlSchema).max(12).optional(),
   }).optional(),
+  skills: craftSkillsCatalogSchema.nullish(),
   rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
   food: economyFoodCatalogSchema.nullish(),
@@ -236,7 +238,12 @@ export const economyCatalogSchema = z.object({
     fishInput: z.object({ exactSpecies: z.boolean().optional(), itemIds: z.array(id).min(1).max(100).refine(ids => new Set(ids).size === ids.length) }).nullish(),
     requiredBuildings, requiredRecipes: quantities.prefault({}), requiredExplorations: quantities.prefault({}),
     requiredFishCaught: count.max(ECONOMY_MAX_ITEMS).prefault(0), unlockTitle: z.string().trim().min(1).max(80).optional(),
+    experiment: z.object({ title: z.string().min(1).max(80), hint: z.string().min(1).max(240), successBps: count.min(5000).max(9500),
+      requiredCookingLevel: count.min(1).max(10), failureRewards: quantities }).optional(),
     seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
+    .refine(recipe => !recipe.experiment || recipe.buildingId === "dryer" && recipe.maxBatch === 1
+      && Object.values(recipe.rewards).reduce((sum, n) => sum + n, 0) === 1
+      && Object.values(recipe.experiment.failureRewards).reduce((sum, n) => sum + n, 0) === 1, "Experiments produce one portion in either outcome")
     .refine(recipe => !recipe.baseCampfire || recipe.id === "cook_grilled_fish" && recipe.buildingId === "dryer" && recipe.buildingLevel === 1,
       "Only grilled fish is available at the base campfire")
     .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && hasGardenBerryReward(recipe.rewards),
@@ -269,6 +276,15 @@ export const economyCatalogSchema = z.object({
         || catalog.fishing?.classes.some(group => group.itemId === entry.itemId);
     })))) invalid("Variable supply loot requires tradable non-special non-fish items on a supply route");
   if (catalog.version >= 13 && !catalog.timeEconomy) invalid("Time economy policy is required for catalog 13");
+  const experiments = catalog.recipes.filter(recipe => recipe.experiment);
+  const experimentOutputs = new Set(experiments.flatMap(recipe => Object.keys(recipe.rewards)));
+  if (experiments.some(recipe => !catalog.skills || Object.keys(recipe.rewards).some(id => !catalog.food?.meals.some(meal => meal.itemId === id))
+    || Object.keys(recipe.experiment!.failureRewards).some(id => experimentOutputs.has(id)
+      || !catalog.items.some(item => item.id === id && item.category === "provisions" && item.tradable))))
+    invalid("Cooking experiments require skills and distinct edible success and failure rewards");
+  if (catalog.recipes.some(recipe => !recipe.experiment && (Object.keys(recipe.cost.items).some(id => experimentOutputs.has(id))
+    || Object.keys(recipe.requiredRecipes).some(id => experiments.some(experiment => experiment.id === id)))))
+    invalid("Optional discoveries cannot gate ordinary production");
   const policy = catalog.timeEconomy;
   if (policy) {
     const pricedItems = [...Object.keys(policy.baselineRecipes), ...Object.keys(policy.baselineExplorations), ...Object.keys(policy.externalPrices)];
@@ -391,6 +407,7 @@ export const economyBookCollectionSchema = z.object({
 export const economyProgressionSchema = z.object({
   routes: quantities.prefault({}), recipes: quantities.prefault({}), collections: economyBookCollectionSchema,
   player: playerProgressionSchema.optional(),
+  skills: craftSkillsSchema.optional(),
 }).prefault({ routes: {}, recipes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } });
 export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGranted: count.max(5000), woodGranted: count.max(30), stoneGranted: count.max(30) });
 export const economyJobSchema = z.object({
@@ -407,9 +424,13 @@ export const economyJobSchema = z.object({
   // Private server delivery; public projections never expose even a completed draw.
   expeditionFinds: z.record(id, count.positive().max(ECONOMY_MAX_ITEMS)).nullish(),
   rareDrop: economyRareDropDeliverySchema.nullish(),
+  cooking: z.object({ successChanceBps: count.min(1).max(10000), workSeconds: count.positive().max(31_536_000),
+    successful: z.boolean().optional() }).optional(),
+  skillWorkSeconds: count.positive().max(31_536_000).optional(),
   tradeSpeedBps: count.max(1000).optional(),
   meal: z.object({ itemId: id, consumer: z.enum(["hero", "builder"]), speedBps: count.max(10000), workSeconds: count.positive().max(31_536_000).optional() }).nullish(),
-}).refine(job => !job.meal?.workSeconds || job.meal.consumer === "hero", "Only hero meals have active work")
+}).refine(job => !job.cooking || job.kind === "production" && job.targetId === "dryer", "Cooking outcomes belong to the campfire")
+  .refine(job => !job.meal?.workSeconds || job.meal.consumer === "hero", "Only hero meals have active work")
   .refine(job => !job.miningBatch || job.kind === "exploration" && job.actorId === "miner", "Batches belong to the miner")
   .refine(job => !job.expeditionFinds || job.kind === "exploration", "Finds belong to an exploration")
   .refine(job => !job.actorId || job.kind === "exploration", "Only exploration jobs have a saved actor")
@@ -442,7 +463,7 @@ const commandBase = {
   quantity: z.number().int().min(1).max(10_000).prefault(1), totalPrice: balance.prefault(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_mining_batch", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order", "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage"]),
+  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_mining_batch", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order", "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage"]),
   fishSelection: quantities.nullish(),
   voyageId: uuid.nullish(), orderId: id.nullish(), itemId: id.nullish(),
 }).strict();

@@ -14,7 +14,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { mealDuration } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
-const { expeditionRewardRanges, ExpeditionFindChances, ExpeditionLootPreview, ExpeditionRelicChances, ExpeditionReturnReport } = await vite.ssrLoadModule("/features/economy/ui/expeditions/expedition-loot.tsx");
+const { expeditionRewardRanges, ExpeditionFindChances, ExpeditionLootPreview, ExpeditionReturnReport } = await vite.ssrLoadModule("/features/economy/ui/expeditions/expedition-loot.tsx");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -95,16 +95,14 @@ test("bonus disclosure uses the whole weighted draw and keeps base resources sep
   assert.match(html, /Без дополнительной находки: 25%/); assert.match(html, /Один выбор на вылазку, сверх основной добычи/);
 });
 
-test("relic disclosure describes the conditional choice and claimed work without promising a per-trip roll", () => {
-  const state = snapshot(), before = structuredClone(state);
-  const html = renderToStaticMarkup(createElement(ExpeditionRelicChances, { state }));
-  assert.match(html, /С дома 3-го уровня/); assert.match(html, /48–144 ч/); assert.match(html, /Время засчитывается при получении/);
-  assert.match(html, /отмена не считается/); assert.match(html, /Это не шанс за отдельную вылазку/);
-  assert.equal((html.match(/33,3%/g) ?? []).length, 3);
-  for (const id of state.catalog.rareDrops.itemIds) assert.ok(html.includes(`data-expedition-relic="${id}"`));
-  assert.deepEqual(state, before);
-  state.catalog.rareDrops = null;
-  assert.equal(renderToStaticMarkup(createElement(ExpeditionRelicChances, { state })), "");
+test("route selection and preparation omit the global relic tutorial while preserving local finds", () => {
+  const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])) });
+  const economy = controller({ snapshot: state });
+  for (const html of [renderSector("forest", economy), renderSector("caves", economy), renderPreparation("ancient_ruins", economy)]) {
+    assert.doesNotMatch(html, /Редкие реликвии|data-expedition-relics|48–144|33,3%/);
+  }
+  const ruins = renderPreparation("ancient_ruins", economy);
+  for (const item of ["glass_bottle", "quartz", "lens"]) assert.ok(ruins.includes(`data-expedition-bonus="${item}"`));
 });
 
 test("return report contains accepted items and XP, highlights actual rare goods, and rejects another owner", () => {
@@ -304,7 +302,7 @@ test("departure compares reward size with total capacity; a full pantry can be c
   let state = snapshot({ storage: { capacity: 10, available: 10, used: 0, reserved: 0, overflow: 0 } });
   let html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
   assert.equal(disabled(button(html, "Отправиться")), true);
-  assert.match(html, /Для находок нужно до 18 мест, вместимость - 10/);
+  assert.match(html, /Для находок нужно до 20 мест, вместимость - 10/);
   assert.equal(disabled(button(html, "Расширить кладовую")), false);
   state = snapshot({ storage: { capacity: 200, available: 0, used: 170, reserved: 30, overflow: 0 } });
   html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");

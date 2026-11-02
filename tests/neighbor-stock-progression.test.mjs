@@ -35,6 +35,8 @@ test("the default assortment includes the entire ordinary tradable catalog rathe
   assert.deepEqual([...neighborDefaultSettings.allowedItemIds].sort(), neighborStockItems.map(item => item.id).sort());
   for (const id of ["tools", "research_gear", "cranberry_glaze", "strawberry_compote", "fish_soup", "lens", "festive_sturgeon"])
     assert.ok(neighborDefaultSettings.allowedItemIds.includes(id), id);
+  for (const recipe of economyCatalog.recipes.filter(recipe => recipe.experiment))
+    for (const itemId of Object.keys(recipe.rewards)) assert.ok(!neighborStockItems.some(item => item.id === itemId), itemId);
   const rawFishIds = new Set([...economyCatalog.fishing.fish, ...economyCatalog.fishing.classes].map(fish => fish.itemId));
   assert.ok(neighborStockItems.every(item => item.tradable && item.baseSellPrice > 0 && item.category !== "special" && !rawFishIds.has(item.id)));
 });
@@ -44,7 +46,7 @@ test("the neighbor can offer learned fish soup while raw fish species and classe
   assert.ok(!opened(state).includes("fish_soup"));
   state.progression.recipes.cook_grilled_fish = 1;
   assert.ok(!opened(state).includes("fish_soup"), "cooking alone does not prove a personal catch");
-  state.fishing.catches[economyCatalog.fishing.fish[0].itemId] = 4;
+  state.fishing.catches[economyCatalog.fishing.fish[0].itemId] = 8;
   assert.ok(opened(state).includes("fish_soup"));
   state.unlockedItems = economyCatalog.items.map(item => item.id);
   for (const fish of [...economyCatalog.fishing.fish, ...economyCatalog.fishing.classes])
@@ -92,9 +94,9 @@ test("newly unlocked goods wait for the next daily delivery without rerolling ex
   const first = view(player).shop.offers;
   assert.deepEqual(first.map(offer => offer.itemId), ["wood"]);
   player.row.state.buildings = { ...maxBuildings };
-  assert.ok(!opened(player.row.state).includes("tools"), "the workshop still needs its metalworking practice");
-  player.row.state.progression.recipes.make_metal_parts = 1;
-  player.row.state.progression.routes.old_woodland = 1;
+  assert.ok(!opened(player.row.state).includes("tools"), "the workshop still needs its exploration practice");
+  player.row.state.progression.routes.old_woodland = 2;
+  player.row.state.progression.routes.coastal_deposits = 1;
   const second = view(player, stamp + 1000).shop.offers;
   assert.deepEqual(second, first);
   assert.deepEqual(view(player, tomorrow).shop.offers.map(offer => offer.itemId).sort(), ["tools", "wood"]);

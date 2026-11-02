@@ -76,10 +76,10 @@ class NeighborRulesTest {
     }
 
     @Test fun `whole lot prices use one ceil ten step and never permit profitable resell to the neighbor`() {
-        assertEquals(30L, NeighborRules.sellPrice(10, 1, settings))
-        assertEquals(50L, NeighborRules.sellPrice(10, 2, settings))
-        assertEquals(130L, NeighborRules.sellPrice(55, 1, settings))
-        assertEquals(250L, NeighborRules.sellPrice(55, 2, settings))
+        assertEquals(20L, NeighborRules.sellPrice(10, 1, settings))
+        assertEquals(30L, NeighborRules.sellPrice(10, 2, settings))
+        assertEquals(70L, NeighborRules.sellPrice(55, 1, settings))
+        assertEquals(140L, NeighborRules.sellPrice(55, 2, settings))
         assertEquals(20L, NeighborRules.buyCap(10, 1, settings))
         assertEquals(110L, NeighborRules.buyCap(55, 1, settings))
         assertEquals(220L, NeighborRules.buyCap(55, 2, settings))
@@ -91,8 +91,8 @@ class NeighborRulesTest {
             NeighborRules.validate(config)
             for (item in EconomyRules.catalog.items.filter { it.tradable && it.baseSellPrice > 0 }) {
                 for (quantity in 1L..5L) {
-                    val buy = NeighborRules.buyCap(item.baseSellPrice, quantity, config)
-                    val purchase = NeighborRules.sellPrice(item.baseSellPrice, quantity, config)
+                    val buy = NeighborRules.itemBuyCap(item.id, quantity, config)
+                    val purchase = NeighborRules.sellPrice(maxOf(item.baseSellPrice, EconomyRules.localSellPrice(item.baseSellPrice, itemId = item.id)), config.offerQuantity, config) * quantity / config.offerQuantity
                     assertTrue(buy <= purchase, "${item.id}: no gross buyback profit on a whole purchased lot")
                     assertTrue(buy - EconomyMarketRules.sellerFee(buy, 500) <= purchase,
                         "${item.id}: normal seller fee cannot create a profit")
@@ -104,8 +104,8 @@ class NeighborRulesTest {
 
     @Test fun `default buybacks of every stock item cannot profit from any resident acquisition or split lot`() {
         assertEquals(20000L,settings.buyPriceBps)
-        assertEquals(22500L,settings.sellPriceBps)
-        assertEquals(60L,NeighborRules.itemBuyCap("wood",1,settings))
+        assertEquals(12500L,settings.sellPriceBps)
+        assertEquals(40L,NeighborRules.itemBuyCap("wood",1,settings))
         assertEquals(10L,NeighborRules.itemBuyCap("crumb_bait",10,settings))
         assertEquals(10L,NeighborRules.itemBuyCap("crumb_bait",10,settings.copy(buyPriceBps=100000)))
         assertEquals(0L,NeighborRules.itemBuyCap("crumb_bait",5,settings))
@@ -114,12 +114,31 @@ class NeighborRulesTest {
             for(quantity in 1L..99L) {
                 val cap=NeighborRules.itemBuyCap(id,quantity,settings)
                 val proceeds=cap-EconomyMarketRules.sellerFee(cap,500)
-                val stock=NeighborRules.sellPrice(item.baseSellPrice,quantity,settings)
+                val stock=NeighborRules.sellPrice(maxOf(item.baseSellPrice, EconomyRules.localSellPrice(item.baseSellPrice, itemId = item.id)), settings.offerQuantity, settings) * quantity / settings.offerQuantity
                 assertTrue(proceeds<stock,"$id × $quantity: neighbor resale")
                 NeighborRules.cheapestUnitAcquisition(id)?.let { cost ->
                     assertTrue(proceeds<cost*quantity,"$id × $quantity: another resident resale")
                 }
                 assertTrue(quantity*NeighborRules.itemBuyCap(id,1,settings)<=stock,"$id: splitting cannot help")
+            }
+        }
+    }
+
+    @Test fun `discounted administrator packs cannot fund split or cross day buybacks`() {
+        val bulk=settings.copy(offerQuantity=20)
+        assertEquals(750L,NeighborRules.sellPrice(30,20,bulk))
+        assertEquals(30L,NeighborRules.itemBuyCap("wood",1,bulk))
+        assertEquals(750L,NeighborRules.itemBuyCap("wood",20,bulk))
+        for(pack in listOf(1L,3L,20L)) for(bps in listOf(0L,1000L,12500L,22500L)) {
+            val config=settings.copy(offerQuantity=pack,sellPriceBps=bps,buyPriceBps=100000)
+            for(id in settings.allowedItemIds) {
+                val item=EconomyRules.catalog.items.single { it.id==id }
+                val paid=NeighborRules.sellPrice(maxOf(item.baseSellPrice,EconomyRules.localSellPrice(item.baseSellPrice,itemId=id)),pack,config)
+                for(quantity in 1L..99L) {
+                    val cap=NeighborRules.itemBuyCap(id,quantity,config)
+                    assertTrue((cap-EconomyMarketRules.sellerFee(cap,500))*pack<=paid*quantity,"$id pack $pack quantity $quantity")
+                    assertTrue(quantity*NeighborRules.itemBuyCap(id,1,config)*pack<=paid*quantity,"$id split pack $pack")
+                }
             }
         }
     }

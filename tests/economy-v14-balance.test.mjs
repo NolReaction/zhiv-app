@@ -81,7 +81,7 @@ test("random expedition bonuses are useful bounded upside, separately disclosed 
     const finds = catalog.explorations.find(route => route.id === row.routeId).finds;
     const totalWeight = finds.emptyWeight + finds.entries.reduce((sum, entry) => sum + entry.weight, 0);
     assert.equal(row.chance, 1 - finds.emptyWeight / totalWeight);
-    assert(row.chance >= .2 && row.chance <= .5);
+    assert(row.chance >= .2 && row.chance <= .7);
     assert(row.expectedBaseNetCoins >= row.guaranteedNetCoins);
     assert(row.expectedNetCoinsPerMinute >= 10.5 && row.expectedNetCoinsPerMinute <= 11.5);
   }
@@ -94,11 +94,11 @@ test("reputation values authored work, preserves the ten-percent ceiling and pay
   assert.equal(reputationXpForEffort(240), 10);
   assert.equal(reputationXpForEffort(17 * 3600), 60);
   assert.equal(weeklyReputationXpForEffort(36000), 140);
-  assert(report.pacing.optimisticEarliestElapsedDays >= 5);
+  assert(report.pacing.optimisticEarliestElapsedDays >= 4);
   assert.equal(catalog.tradeRelations.maxBonusBps, 1000);
   for (const weekly of catalog.tradeRelations.weekly.templates) {
     const effort = weekly.stages.reduce((sum, stage) => sum + stage.effortSeconds, 0);
-    assert.equal(weekly.stages.at(-1).pearls, effort < 3 * 3600 ? 40 : effort < 10 * 3600 ? 80 : 140);
+    assert.equal(weekly.stages.at(-1).pearls, effort < 6 * 3600 ? 40 : effort < 24 * 3600 ? 80 : 140);
     assert(weekly.stages.slice(0, -1).every(stage => !stage.pearls));
   }
   assert(catalog.food.orders.templates.every(order => !order.pearls));

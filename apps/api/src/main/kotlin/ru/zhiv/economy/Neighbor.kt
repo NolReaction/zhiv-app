@@ -17,7 +17,7 @@ import java.time.ZoneOffset
     val name: String = "Берест", val description: String = "Лесной сосед и персонаж мира.",
     val buildings: Map<String, Int> = emptyMap(), val equipment: WorldEquipment = WorldEquipment(),
     val offerSlots: Long = 3, val offerQuantity: Long = 1, val allowedItemIds: List<String> = emptyList(),
-    val sellPriceBps: Long = 22500, val buyPriceBps: Long = 20000,
+    val sellPriceBps: Long = 12500, val buyPriceBps: Long = 20000,
     val firstDelaySeconds: Long = 180, val staleAfterSeconds: Long = 21600,
     val maxLotsPerDay: Long = 2, val dailyBudgetCoins: Long = 10000, val maxLotCoins: Long = 5000,
     val globalDailyBudgetCoins: Long = 10000000, val activeFromHourUtc: Int = 0, val activeUntilHourUtc: Int = 24,
@@ -31,7 +31,8 @@ import java.time.ZoneOffset
 @Serializable data class NeighborBuying(val enabled: Boolean, val firstDelaySeconds: Long, val staleAfterSeconds: Long,
     val maxLotsPerDay: Long, val dailyBudgetCoins: Long, val maxLotCoins: Long, val usedLots: Long, val spentCoins: Long,
     val firstSale: Boolean? = null, val buyPriceBps: Long? = null, val globalRemainingCoins: Long? = null,
-    val allowedItemIds: List<String>? = null, val boughtItemIds: List<String>? = null)
+    val allowedItemIds: List<String>? = null, val boughtItemIds: List<String>? = null,
+    val sellPriceBps: Long? = null, val offerQuantity: Long? = null)
 @Serializable data class NeighborView(val ownerPublicId: String, val serverTime: String, val character: NeighborCharacter,
     val shop: NeighborShop, val buying: NeighborBuying)
 @Serializable data class NeighborAdminPlayer(val publicId: String, val name: String)
@@ -62,7 +63,8 @@ object NeighborRules {
         ((EconomyRules.catalog.fishing?.fish ?: emptyList()).map { it.itemId } +
             (EconomyRules.catalog.fishing?.classes ?: emptyList()).map { it.itemId }).toSet()
     }
-    private fun stockItem(item: EconomyItem) = item.tradable && item.baseSellPrice > 0 && item.id !in rawFishIds && item.category != "special"
+    private val experimentalItems = EconomyRules.catalog.recipes.filter { it.experiment != null }.flatMap { it.rewards.keys }.toSet()
+    private fun stockItem(item: EconomyItem) = item.tradable && item.baseSellPrice > 0 && item.id !in rawFishIds && item.id !in experimentalItems && item.category != "special"
     val exclusiveWardrobe: List<NeighborGarment> by lazy {
         NeighborRules::class.java.getResourceAsStream("/world/neighbor-wardrobe.json")!!.bufferedReader().use {
             economyJson.decodeFromString<List<NeighborGarment>>(it.readText())
@@ -130,10 +132,16 @@ object NeighborRules {
     fun itemBuyCap(itemId: String, quantity: Long, settings: NeighborSettings): Long {
         val item = EconomyRules.catalog.items.find { it.id == itemId && it.tradable } ?: return 0
         val price = buyCap(item.baseSellPrice, quantity, settings)
-        val acquisition = cheapestUnitAcquisition(itemId) ?: return price
         if (quantity !in 1..ECONOMY_MAX_ITEMS) return 0
-        val cap = BigInteger.valueOf(acquisition).multiply(BigInteger.valueOf(quantity)).divide(BigInteger.TEN).multiply(BigInteger.TEN)
-        return cap.min(BigInteger.valueOf(price)).toLong()
+        val acquisition = cheapestUnitAcquisition(itemId)
+        val otherCap = acquisition?.let { BigInteger.valueOf(it).multiply(BigInteger.valueOf(quantity)).divide(BigInteger.TEN).multiply(BigInteger.TEN) }
+        // Divide the exact quoted stock pack before rounding down. Splitting a
+        // pack, waiting for another day or using another seller cannot add value.
+        val stockPrice = quoted(maxOf(item.baseSellPrice, EconomyRules.localSellPrice(item.baseSellPrice,itemId=itemId)),
+            settings.offerQuantity, settings.sellPriceBps, true) ?: return 0
+        val ownCap = stockPrice.multiply(BigInteger.valueOf(quantity)).divide(BigInteger.valueOf(settings.offerQuantity))
+            .divide(BigInteger.TEN).multiply(BigInteger.TEN)
+        return listOfNotNull(BigInteger.valueOf(price), otherCap, ownCap).minOrNull()!!.toLong()
     }
     /** A broad, PostgreSQL-safe scan cutoff; the final exact age check remains authoritative. */
     fun candidateCutoff(at: Instant, settings: NeighborSettings): Instant =

@@ -13,7 +13,7 @@ export function tradeGuaranteedBuildings(template) {
   return { home: template.requiredHomeLevel, garden: 1, warehouse: 1, ...template.requiredBuildings };
 }
 
-const levelsPermit = (definition, buildings) => !definition.retired && buildings.home >= definition.requiredHomeLevel
+const levelsPermit = (definition, buildings) => !definition.retired && !definition.experiment && buildings.home >= definition.requiredHomeLevel
   && Object.entries(definition.requiredBuildings ?? {}).every(([id, level]) => (buildings[id] ?? 0) >= level)
   && (!definition.buildingId || (buildings[definition.buildingId] ?? 0) >= recipeBuildingLevel(definition));
 

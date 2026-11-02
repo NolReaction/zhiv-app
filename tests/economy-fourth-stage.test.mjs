@@ -370,9 +370,8 @@ test("three 15-minute visits per day can fund house five with independent mining
   assert.equal(catalog.stageOrders.find(stage => stage.homeLevel === 4).intervalSeconds, 0);
   for (let index = 1; index < courses.length; index++) assert(courses[index].at >= courses[index - 1].at);
   assert(clock - courses.at(-1).at >= builds.at(-1).seconds * 1000);
-  // Each extraction still yields one item. With v15 construction prices this
-  // same no-repeat-order policy takes 69 1/3 days, 43.7425 active timer hours
-  // and 2,989 commands; all income below remains earned through real claims.
+  // Each extraction still yields one item. New practice gates and earned travel
+  // skill use real claims; preserve the original time and command ceilings.
   assert(clock - epoch <= 72 * 24 * hour);
   assert.equal(result.activeMinutes, 15); assert(result.activeSeconds <= 45 * 3600);
   assert(actions.start_fishing >= 8); assert(actions.start_fishing <= 20);
@@ -392,7 +391,7 @@ test("three 15-minute visits per day can fund house five with independent mining
     + catalog.recipes.reduce((sum, recipe) => sum + (production[recipe.id] ?? 0) * (recipe.cost.items.fish_common ?? 0), 0);
   assert(requiredCommonFish > 0);
   assert((result.catches.fish_common ?? 0) >= requiredCommonFish, "every fish used by the project and provisions was genuinely caught");
-  assert.equal(production.prepare_trail_ration, 4, "two project rations, one trial crossing and one ruins expedition");
+  assert.equal(production.prepare_trail_ration, 5, "two project rations, two trial crossings and one ruins expedition");
   assert.equal(production.assemble_field_kit, 2);
   for (const id of ["ancient_core", "moon_crystal"]) {
     assert.equal(flow[id].received, 1); assert.equal(flow[id].consumed, 1); assert.equal(flow[id].sold, 0);

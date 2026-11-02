@@ -22,7 +22,7 @@ export function obtainableResidentOrderItems(state: OrderEffortSource, catalog =
   while (changed) {
     const before = reachable.size;
     for (const source of [...catalog.explorations, ...catalog.recipes]) {
-      if (source.retired) continue;
+      if (source.retired || "experiment" in source && source.experiment) continue;
       if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < recipeBuildingLevel(source)) continue;
       if ("buildingId" in source && !recipeUnlocksMet(state, source, catalog)) continue;
       const fishInput = "fishInput" in source ? source.fishInput?.itemIds.map(id => source.fishInput?.exactSpecies ? id : fishing ? fishingClassItemId(id, fishing) : id) : undefined;
@@ -48,7 +48,7 @@ export function orderEffort(state: OrderEffortSource, items: Record<string, numb
   type Plan = { work: number; manufacturing: number; critical: number; uncertain: boolean };
   const sourceUnlocked = (source: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }) =>
     (state.buildings.home ?? 1) >= source.requiredHomeLevel && Object.entries(source.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
-  const recipes = catalog.recipes.filter(recipe => !recipe.retired && sourceUnlocked(recipe) && (state.buildings[recipe.buildingId] ?? 0) >= recipeBuildingLevel(recipe)
+  const recipes = catalog.recipes.filter(recipe => !recipe.retired && !recipe.experiment && sourceUnlocked(recipe) && (state.buildings[recipe.buildingId] ?? 0) >= recipeBuildingLevel(recipe)
     && recipeUnlocksMet(state, recipe, catalog));
   const routes = catalog.explorations.filter(route => !route.retired && sourceUnlocked(route));
   const memo = new Map<string, Plan | null>();

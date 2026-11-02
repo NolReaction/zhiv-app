@@ -17,6 +17,7 @@ import kotlin.test.*
 
 @Testcontainers(disabledWithoutDocker = true)
 class JdbcNeighborConfigurationMigrationIntegrationTest {
+    private val v75Stock = listOf("berries","wood","stone","ore","fiber","planks","rope","metal_parts","dried_berries","smoked_fish","clay","sand","charcoal","iron_ingot","bricks","glass","hardwood","resin","cloth","beams","tools","reinforced_parts","cut_stone","crumb_bait","worm_bait","glow_bait","firefly_bait","star_bait","grilled_fish","fish_soup","berry_fish","hearty_fish","epic_fish","legendary_fish","strawberries","berry_compote","trail_ration","research_gear","blueberries","currants","blackberries","cranberries","strawberry_compote","blueberry_compote","currant_jelly","blackberry_preserve","cranberry_glaze","spice_bait","dusk_bait","quartz","limestone","ceramic_jar","mortar","glass_bottle","lens","packed_berries","trade_crate","field_kit","stone_tile","bottled_compote","berry_gift","grilled_silverfin","smoked_bream","mooncarp_blueberries","pike_berry_sauce","eel_in_jar","festive_sturgeon")
     private class Postgres : PostgreSQLContainer<Postgres>("postgres:18-alpine")
     @Container private val postgres = Postgres()
     private val oldBuildings = mapOf("home" to 3, "workshop" to 2, "quarry" to 2, "warehouse" to 2,
@@ -51,10 +52,10 @@ class JdbcNeighborConfigurationMigrationIntegrationTest {
         val history = scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h")
         val issued = scalar(source, "SELECT to_jsonb(c)::text FROM neighbor_shop_cycles c")
         val receipt = scalar(source, "SELECT to_jsonb(r)::text FROM neighbor_receipts r")
-        DatabaseFactory.migrate(source)
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("75").load().migrate()
         val actual = economyJson.decodeFromString<ru.zhiv.economy.NeighborSettings>(scalar(source, "SELECT settings::text FROM neighbor_settings"))
         assertEquals(settings.copy(buildings = v72Buildings,
-            allowedItemIds = NeighborRules.defaults.allowedItemIds), actual)
+            allowedItemIds = v75Stock), actual)
         assertEquals("9", scalar(source, "SELECT version::text FROM neighbor_settings"))
         assertEquals(history, scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=71"))
         assertEquals(issued, scalar(source, "SELECT to_jsonb(c)::text FROM neighbor_shop_cycles c"))
@@ -62,7 +63,7 @@ class JdbcNeighborConfigurationMigrationIntegrationTest {
         assertEquals("20", scalar(source, "SELECT spent_coins::text FROM neighbor_daily_usage"))
         assertEquals("20", scalar(source, "SELECT spent_coins::text FROM neighbor_global_usage"))
         val upgraded = scalar(source, "SELECT to_jsonb(s)::text FROM neighbor_settings s")
-        DatabaseFactory.migrate(source)
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("75").load().migrate()
         assertEquals(upgraded, scalar(source, "SELECT to_jsonb(s)::text FROM neighbor_settings s"), "Restart never rewrites configured defaults twice")
         val offers = "[" + List(4) { "{\"itemId\":\"wood\"}" }.joinToString(",") + "]"
         execute(source, "INSERT INTO neighbor_shop_cycles(user_id,cycle_day,offers) VALUES(?,'2026-10-26',?::jsonb)", user, offers)
@@ -77,17 +78,17 @@ class JdbcNeighborConfigurationMigrationIntegrationTest {
         val settings = NeighborRules.defaults.copy(buildings = oldBuildings + ("home" to 4), allowedItemIds = listOf("wood", "stone"))
         execute(source, "INSERT INTO neighbor_settings(singleton,version,settings) VALUES(true,12,?::jsonb)", economyJson.encodeToString(settings))
         val before = scalar(source, "SELECT to_jsonb(s)::text FROM neighbor_settings s")
-        DatabaseFactory.migrate(source)
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("75").load().migrate()
         assertEquals(before, scalar(source, "SELECT to_jsonb(s)::text FROM neighbor_settings s"))
     }
     private fun independentDefaults(customWorld: Boolean) = legacy { source ->
         val settings = NeighborRules.defaults.copy(buildings = if (customWorld) oldBuildings + ("home" to 4) else oldBuildings,
             allowedItemIds = if (customWorld) oldStock else listOf("wood", "stone"))
         execute(source, "INSERT INTO neighbor_settings(singleton,version,settings) VALUES(true,7,?::jsonb)", economyJson.encodeToString(settings))
-        DatabaseFactory.migrate(source)
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("75").load().migrate()
         val actual = economyJson.decodeFromString<ru.zhiv.economy.NeighborSettings>(scalar(source, "SELECT settings::text FROM neighbor_settings"))
         assertEquals(settings.copy(buildings = if (customWorld) settings.buildings else v72Buildings,
-            allowedItemIds = if (customWorld) NeighborRules.defaults.allowedItemIds else settings.allowedItemIds), actual)
+            allowedItemIds = if (customWorld) v75Stock else settings.allowedItemIds), actual)
         assertEquals(if (customWorld) "9" else "8", scalar(source, "SELECT version::text FROM neighbor_settings"))
     }
     @Test fun `custom world survives while old default stock receives the full progression pool`() = independentDefaults(customWorld = true)

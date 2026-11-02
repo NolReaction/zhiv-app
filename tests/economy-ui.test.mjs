@@ -47,6 +47,20 @@ const render = (tab, economy = controller(), focusId) => {
   marketHooks.reset(); marketHooks.render();
   return renderToStaticMarkup(createElement(EconomyPanel, { initialTab: tab, initialFocusId: focusId, economy }));
 };
+
+test("inventory catalog and ingredient guides preserve cooking secrets until collection or ownership", () => {
+  const recipe = economyCatalog.recipes.find(recipe => recipe.id === "experiment_berry_pastila");
+  const itemId = Object.keys(recipe.rewards)[0], itemName = economyCatalog.items.find(item => item.id === itemId).name;
+  const economy = controller({ snapshot: snapshot({ progression: { recipes: {}, routes: {} }, buildings: { home: 5, dryer: 5, warehouse: 5 } }) });
+  const unknown = render("inventory", economy, "berries");
+  assert.ok(!unknown.includes(itemName));
+  assert.ok(unknown.includes(recipe.experiment.title), "ingredient guide gives the playable experiment clue");
+  assert.ok(!render("inventory", economy, itemId).includes(itemName), "a direct unknown item focus cannot bypass discovery");
+  economy.snapshot.progression.recipes[recipe.id] = 1;
+  assert.ok(render("inventory", economy, itemId).includes(itemName));
+  economy.snapshot.progression.recipes = {}; economy.snapshot.inventory[itemId] = 1;
+  assert.ok(render("inventory", economy, itemId).includes(itemName), "owned gifts remain inspectable and usable");
+});
 function renderBrowse(economy) {
   marketHooks.reset(); marketHooks.render();
   const tree = Market({ economy, navigate() {} });
@@ -186,21 +200,25 @@ test("production hub uses one automatic product per crop and focuses source link
   assert.equal(productionBlocked(base, "hardwood"), false);
 });
 
-test("new crafting lessons show the missing claimed product on the production card", () => {
+test("crafting lessons show personally completed routes and catches instead of repeating their ingredient costs", () => {
   for (const id of ["make_trade_crate", "make_tools", "make_ceramic_jar", "make_glass_bottle", "grind_lens", "assemble_field_kit"]) {
     const recipe = economyCatalog.recipes.find(row => row.id === id);
-    const prerequisite = economyCatalog.recipes.find(row => row.id === Object.keys(recipe.requiredRecipes)[0]);
-    const requiredCount = recipe.requiredRecipes[prerequisite.id];
+    const [routeId, requiredCount] = Object.entries(recipe.requiredExplorations)[0];
+    const routeName = economyCatalog.explorations.find(route => route.id === routeId).name;
     const itemId = Object.keys(recipe.rewards)[0];
-    const prerequisiteName = economyCatalog.items.find(item => item.id === Object.keys(prerequisite.rewards)[0]).name;
     const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])),
-      inventory: Object.fromEntries(economyCatalog.items.map(item => [item.id, 2])), progression: { recipes: {} } });
+      inventory: Object.fromEntries(economyCatalog.items.map(item => [item.id, 2])), progression: { recipes: {}, routes: {} } });
     const html = render("production", controller({ snapshot: state }), recipe.buildingId);
     assert.equal(productionBlocked(html, itemId), true, id);
-    const action = prerequisite.buildingId === "dryer" ? "Приготовьте" : "Произведите";
-    assert.ok(html.includes(`${action} и заберите: ${prerequisiteName} (0 / ${requiredCount})`), id);
-    state.progression.recipes = { ...recipe.requiredRecipes };
+    assert.deepEqual(recipe.requiredRecipes, {}, "unlocking no longer asks to produce the recipe's own ingredients");
+    assert.ok(html.includes(`Получить результат: ${routeName} (0 / ${requiredCount})`), id);
     state.progression.routes = { ...recipe.requiredExplorations };
+    if (recipe.requiredFishCaught) {
+      const awaitingCatch = render("production", controller({ snapshot: state }), recipe.buildingId);
+      assert.equal(productionBlocked(awaitingCatch, itemId), true, id);
+      assert.ok(awaitingCatch.includes(`Поймать и забрать рыбу (0 / ${recipe.requiredFishCaught})`), id);
+      state.fishing = { catches: { fish: recipe.requiredFishCaught } };
+    }
     assert.equal(productionBlocked(render("production", controller({ snapshot: state }), recipe.buildingId), itemId), false, id);
   }
 });
@@ -409,7 +427,8 @@ test("material guide includes zero-stock goods, production sources, construction
   assert.match(html, /Для чего пригодится/);
   assert.ok(button(html, "Стройка: Дом Мохлика"));
   assert.ok(button(html, "Доска"));
-  const stockItems = economyCatalog.items.filter(item => !economyCatalog.fishing.fish.some(fish => fish.itemId === item.id));
+  const secretItems = new Set(economyCatalog.recipes.filter(recipe => recipe.experiment).flatMap(recipe => Object.keys(recipe.rewards)));
+  const stockItems = economyCatalog.items.filter(item => !secretItems.has(item.id) && !economyCatalog.fishing.fish.some(fish => fish.itemId === item.id));
   assert.ok(html.includes(`Все товары · ${stockItems.length}`));
   assert.match(html, /<option value="fishing">Рыболовные товары<\/option>/);
   for (const fish of economyCatalog.fishing.classes) {

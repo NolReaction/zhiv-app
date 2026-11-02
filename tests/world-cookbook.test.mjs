@@ -20,7 +20,8 @@ function job(extra = {}) { return { id: 'cooking', kind: 'production', targetId:
 test('book categories contain every product exactly once and group named fish by their actual ingredient rarity', () => {
   const state = snapshot(), before = structuredClone(state), products = cookbookProducts(state, recipes);
   assert.equal(products.length, new Set(products.map(product => product.key)).size);
-  for (const recipe of recipes) assert.ok(products.some(product => product.methods.some(method => method.id === recipe.id)));
+  for (const recipe of recipes.filter(recipe => !recipe.experiment)) assert.ok(products.some(product => product.methods.some(method => method.id === recipe.id)));
+  for (const recipe of recipes.filter(recipe => recipe.experiment)) assert.equal(products.some(product => product.methods.some(method => method.id === recipe.id)), false);
   assert.equal(cookbookFishRarity(state, recipes.find(recipe => recipe.id === 'cook_grilled_silverfin')), 'common');
   assert.equal(cookbookFishRarity(state, recipes.find(recipe => recipe.id === 'cook_hearty_fish')), 'rare');
   assert.equal(cookbookFishRarity(state, recipes.find(recipe => recipe.id === 'cook_compote')), null);
@@ -30,7 +31,7 @@ test('book categories contain every product exactly once and group named fish by
 test('standalone book opens a read-only recipe list, with only one category and no production queue consuming the screen', () => {
   const html = render(snapshot());
   assert.match(html, /aria-modal="true"/); assert.match(html, /Книга рецептов/); assert.match(html, /data-cookbook-view="recipes"/);
-  assert.equal((html.match(/role="tab"/g) ?? []).length, 4);
+  assert.equal((html.match(/role="tab"/g) ?? []).length, 5);
   assert.match(html, /data-cookbook-rarity="common"/); assert.match(html, /data-cookbook-rarity="legendary"/);
   assert.doesNotMatch(html, /data-production-slots=|data-recipe-order|data-cooking-duration=/);
   assert.match(html, /data-cookbook-queue/); assert.match(html, /Найти рецепт/); assert.match(html, /Есть ингредиенты/);
@@ -68,4 +69,31 @@ test('diversity and cooking totals come from confirmed recipe receipts and show 
   const state = snapshot({ jobs: [job()], progression: { recipes: { cook_grilled_fish: 4, cook_compote: 3 }, routes: {} } });
   const html = render(state, undefined, { achievements: createElement('button', { 'data-kitchen-achievements': true }, 'Достижения') });
   assert.match(html, /Освоено 2 из /); assert.match(html, /приготовлено 7/); assert.match(html, /data-kitchen-achievements/);
+});
+
+test('undiscovered experiments expose their clue and exact wager without revealing the dish before collection', () => {
+  for (const recipe of recipes.filter(recipe => recipe.experiment)) {
+    const state = snapshot(), before = structuredClone(state), output = Object.keys(recipe.rewards)[0];
+    const name = state.catalog.items.find(item => item.id === output).name;
+    const html = render(state, recipe.id);
+    assert.match(html, /data-experiment-terms/); assert.match(html, /Успех 85%/);
+    assert.ok(html.includes(recipe.experiment.title)); assert.ok(html.includes(recipe.experiment.hint));
+    assert.match(html, /При неудаче:/); assert.match(html, /Практика сохранится/);
+    assert.ok(!html.includes(name), name); assert.ok(!html.includes(`data-item-icon="${output}"`));
+    const running = render(snapshot({ jobs: [job({ recipeId: recipe.id, rewards: recipe.rewards, cooking: { successChanceBps: 8500, workSeconds: recipe.seconds } })] }));
+    assert.match(running, /Кулинарный опыт/); assert.ok(!running.includes(name));
+    const discovered = snapshot({ progression: { recipes: { [recipe.id]: 1 }, routes: {} } });
+    assert.ok(render(discovered, recipe.id).includes(name));
+    assert.ok(cookbookProducts(discovered, recipes).some(product => product.recipe.id === recipe.id));
+    assert.deepEqual(state, before);
+  }
+});
+
+test('cooking skill gates experiments and improves the displayed chance without affecting guaranteed recipes', () => {
+  const recipe = recipes.find(recipe => recipe.experiment?.requiredCookingLevel > 1);
+  assert.ok(recipe);
+  assert.match(render(snapshot(), recipe.id), /Нужна кулинария/);
+  const skilled = snapshot({ progression: { recipes: {}, routes: {}, skills: { version: 1, cookingSeconds: economyCatalog.skills.levels.at(-1).requiredSeconds, travelSeconds: 0 } } });
+  assert.match(render(skilled, recipe.id), /Успех 95%/);
+  assert.doesNotMatch(render(skilled, 'cook_grilled_fish'), /data-experiment-terms/);
 });

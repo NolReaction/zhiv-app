@@ -152,8 +152,12 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val fishStockCost: Map<String, Long>? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val expeditionFinds: Map<String, Long>? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val miningBatch: EconomyMiningBatch? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val cooking: EconomyCookingAttempt? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val skillWorkSeconds: Long? = null,
 ) {
     init {
+        require(cooking == null || kind == "production" && targetId == "dryer")
+        require(skillWorkSeconds == null || skillWorkSeconds in 1L..31_536_000L)
         require(actorId == null || kind == "exploration" && actorId in setOf("mochlik", "miner"))
         require(miningBatch == null || kind == "exploration" && actorId == "miner")
         require(tradeSpeedBps in 0..1000)
@@ -173,6 +177,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val routes: Map<String, Long> = emptyMap(), val recipes: Map<String, Long> = emptyMap(),
     val collections: EconomyBookCollection = EconomyBookCollection(),
     @EncodeDefault(EncodeDefault.Mode.NEVER) val player: EconomyPlayerProgress? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val skills: EconomyCraftSkills? = null,
 )
 @Serializable data class EconomyState(
     val schemaVersion: Int = 1, val wallet: EconomyWallet, val inventory: Map<String, Long>,
@@ -207,12 +212,14 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val requiredRecipes: Map<String, Long> = emptyMap(),
     val requiredExplorations: Map<String, Long> = emptyMap(), val requiredFishCaught: Long = 0,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val unlockTitle: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val experiment: EconomyCookingExperiment? = null,
     // Older clients accept an omitted flag, but reject an explicit null.
     @EncodeDefault(EncodeDefault.Mode.NEVER) val baseCampfire: Boolean? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val retired: Boolean = false,
 ) {
     init {
         require(buildingLevel > 0)
+        require(experiment == null || buildingId == "dryer" && maxBatch == 1 && rewards.values.sum() == 1L)
         require(requiredFishCaught in 0L..ECONOMY_MAX_ITEMS)
         require(unlockTitle == null || unlockTitle.isNotBlank() && unlockTitle.length <= 80)
         require(baseCampfire == null || baseCampfire == true && id == "cook_grilled_fish" && buildingId == "dryer" && buildingLevel == 1)
@@ -272,6 +279,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val recipes: List<EconomyRecipe>, val explorations: List<EconomyExploration>, val market: EconomyMarketConfig = EconomyMarketConfig(),
     val constructionSpeedup: EconomyConstructionSpeedup, val fishing: EconomyFishingCatalog? = null,
     val localBuyer: EconomyLocalBuyer = EconomyLocalBuyer(),
+    val skills: EconomySkillsCatalog? = null,
     val rareDrops: EconomyRareDropSpec? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
     val productionSlots: EconomyProductionSlots = EconomyProductionSlots(),
     val food: EconomyFoodCatalog? = null, val onboarding: EconomyOnboardingCatalog? = null,

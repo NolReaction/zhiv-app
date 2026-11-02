@@ -483,7 +483,11 @@ test("every house's berry and processing unlock is visible and opens its actual 
   const lighthouse = text(renderToStaticMarkup(HomeUnlockCard(cards[2].props)));
   assert.match(bridge, /1 200 монет · 1 ч/);
   assert.match(bridge, /После получения восстановления открывается рынок игроков/);
-  assert.match(lighthouse, /Пароход с большими заказами запланирован; сейчас его нет/);
+  assert.match(lighthouse, /приходит корабль с тремя грузами/);
+  assert.match(lighthouse, /Стоянка 24 ч, следующий рейс через 6 ч после отплытия/);
+  assert.match(lighthouse, /3 бесплатные замены нетронутых грузов/);
+  assert.match(lighthouse, /досрочное отправление стоит 10 жемчужин/);
+  assert.doesNotMatch(lighthouse, /запланирован; сейчас его нет/);
 });
 
 test("new meals expose their real effects and premium examples agree with the live command price", () => {

@@ -1,10 +1,10 @@
+import { awardCraftSkills, experimentCanPractice, prepareCookingAttempt } from "./craft-skill";
 import { capturePlayerProgression, awardPlayerProgression } from "./player-progression";
 import { settleEconomyTapBoost } from "./tap-boost";
 import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features/world/domain/wardrobe";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, recipeBuildingLevel, type EconomyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
 import { productionCollectionRewards, readyProductionJobs } from "./production-collection";
-import { recipeResultName } from "./recipe-prerequisites";
 
 import { refreshFishingShop, fishingShopExpired, fishingShopRefreshPrice, fishingOfferUnitPrice } from "./fishing-shop";
 import { fishingState, fishingTripCost, fishingCollectionDraws, selectFishingCatch, fishClassForItem, fishClassInventory, fishingClassItemId, fishingBaitCompatible } from "./fishing";
@@ -26,7 +26,7 @@ import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWi
 import { canStartTutorialWorkshop } from "./workshop-starter";
 import { acceptWeeklyOrder, awardTradeOrderXp, awardTradePurchaseXp, tradePurchaseXpEligible, tradeRelationBonusBps, tradeRelationsState, tradeWorkDuration, tradeMealDuration, weeklyOrderBoard } from "./trade-relations";
 import { drawExpeditionFinds, drawExpeditionLoot, expeditionMaximumBonus, expeditionJobRewards } from "./expedition-finds";
-import { createShipVoyage, SHIP_COMPLETION_PEARLS, shipOrdersConfig, shipOrdersState, shipOrdersUnlocked } from "./ship-orders";
+import { createShipVoyage, replaceableShipOrder, shipCargoFractions, SHIP_COMPLETION_PEARLS, shipOrdersConfig, shipOrdersState, shipOrdersUnlocked } from "./ship-orders";
 import { miningBatchLimit, miningBatchProgress, miningUnitDelivery } from "./mining-batch";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
@@ -169,6 +169,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
   state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...previousUnlocks])];
   state.itemUnlockVersion = 1;
   persistEconomyItemUnlocks(state);
+  awardCraftSkills(playerBefore.jobs, state, command.action, now);
   awardPlayerProgression(playerBefore, state, command, now);
   return message;
 }
@@ -178,8 +179,8 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Груз не используется в этом действии", 400);
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
-  if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
-  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds" | "miningBatch">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, expedition?: Pick<EconomyCatalog["explorations"][number], "finds" | "loot">) => {
+  if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order", "skip_ship_voyage"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds" | "miningBatch" | "cooking" | "skillWorkSeconds">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, expedition?: Pick<EconomyCatalog["explorations"][number], "finds" | "loot">) => {
     if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) + (expedition ? expeditionMaximumBonus(expedition) : 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
@@ -188,28 +189,30 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     if (cost && !canAffordEconomy(state, { ...cost, items: normalizedInventory(cost.items) })) fail("ECONOMY_RESOURCES", "Не хватает монет или материалов");
     const hiddenFinds = expedition && (expedition.finds || expedition.loot) ? { expeditionFinds: drawExpeditionLoot(expedition, rareRandom) } : {};
     const fishStockCost = cost === null ? {} : debit(state, cost, fishSelection, exactSpecies);
-    state.jobs.push({ ...job, ...hiddenFinds, ...(Object.keys(fishStockCost).length ? { fishStockCost } : {}), id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost: cost ?? { coins: 0, items: {} }, catalogVersion: economyCatalog.version });
+    const travelSeconds = job.kind === "exploration" && job.actorId !== "miner" ? economyCatalog.explorations.find(route => route.id === job.targetId)?.seconds : undefined;
+    state.jobs.push({ ...job, ...(travelSeconds ? { skillWorkSeconds: travelSeconds } : {}), ...hiddenFinds, ...(Object.keys(fishStockCost).length ? { fishStockCost } : {}), id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost: cost ?? { coins: 0, items: {} }, catalogVersion: economyCatalog.version });
   };
   if (!["start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
     case "open_ship_voyage": {
       if (command.targetId !== "port") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Некорректный запрос порта", 400);
       if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
-      const ship = shipOrdersState(state);
+      const ship = shipOrdersState(state, now);
       if (ship.voyage) return fail("ECONOMY_SHIP_ACTIVE", "Сначала завершите текущие заказы корабля");
       if (ship.nextAvailableAt && now < Date.parse(ship.nextAvailableAt)) return fail("ECONOMY_SHIP_WAIT", "Новые заказы ещё в пути");
       if (ship.completedVoyages >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
       const voyage = createShipVoyage(state, now, jobId());
       if (!voyage) return fail("ECONOMY_SHIP_UNAVAILABLE", "Для корабля нужны доступные производства припасов и изделий");
-      state.ship = { ...ship, voyage, nextAvailableAt: null };
-      return "Капитан приготовил три личных заказа. Срока сгорания нет";
+      state.ship = { ...ship, voyage, nextAvailableAt: null, departureCargo: null };
+      return "Капитан приготовил три заказа. Корабль пробудет у причала сутки";
     }
     case "load_ship_cargo":
     case "complete_ship_order": {
       if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
-      const ship = shipOrdersState(state), voyage = ship.voyage;
+      const ship = shipOrdersState(state, now), voyage = ship.voyage;
       const order = voyage?.orders.find(entry => entry.id === command.targetId);
       if (!voyage || !order || order.deliveredAt) return fail("ECONOMY_SHIP_CHANGED", "Груз уже загружен или корабль изменился");
+      if (now < Date.parse(voyage.openedAt)) return fail("ECONOMY_SHIP_WAIT", "Дождитесь прибытия корабля");
       const remaining = Object.fromEntries(Object.entries(order.items).map(([id, amount]) => [id, amount - (order.loadedItems[id] ?? 0)]).filter(([, amount]) => Number(amount) > 0)) as Record<string, number>;
       let cargo = remaining;
       if (command.action === "load_ship_cargo") {
@@ -246,25 +249,60 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (complete) state.wallet.coins += order.rewardCoins;
       if (finished) state.wallet.pearls += SHIP_COMPLETION_PEARLS;
       state.ship = finished ? { ...ship, voyage: null, completedVoyages: ship.completedVoyages + 1,
-        nextAvailableAt: new Date(now + shipOrdersConfig.intervalSeconds * 1000).toISOString() }
+        departureCargo: [1, 1, 1], nextAvailableAt: new Date(now + shipOrdersConfig.intervalSeconds * 1000).toISOString() }
         : { ...ship, voyage: { ...voyage, orders }, nextAvailableAt: null };
       return finished ? "Корабль загружен и отправляется в путь. Получено 10 жемчужин"
         : complete ? `Груз загружен. Получено ${order.rewardCoins.toLocaleString("ru-RU")} монет${Object.keys(order.rewardItems).length ? " и подарок капитана" : ""}`
         : "Товар загружен. Остальное можно привезти позже";
     }
-    case "skip_ship_voyage":
-      return fail("ECONOMY_SHIP_CANNOT_SKIP", "Заказы корабля нельзя отменить. Загружайте товары постепенно");
+    case "expire_ship_voyage": {
+      if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
+      const before = shipOrdersState(state), next = shipOrdersState(state, now);
+      if (!before.voyage || before.voyage.id !== command.targetId || next.voyage)
+        return fail("ECONOMY_SHIP_CHANGED", "Срок этой поставки ещё не истёк или корабль уже отправился");
+      state.ship = next;
+      return "Корабль отправился. Следующий рейс через 6 часов после отхода";
+    }
+    case "replace_ship_order": {
+      const ship = shipOrdersState(state, now), voyage = ship.voyage;
+      const order = voyage?.orders.find(entry => entry.id === command.targetId);
+      if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
+      if (!voyage || !order || order.deliveredAt) return fail("ECONOMY_SHIP_CHANGED", "Этот груз уже принят или корабль отправился");
+      if (now < Date.parse(voyage.openedAt)) return fail("ECONOMY_SHIP_WAIT", "Дождитесь прибытия корабля");
+      if (Object.values(order.loadedItems).some(amount => amount > 0)) return fail("ECONOMY_SHIP_CARGO_STARTED", "Можно заменить только груз, который ещё не начали загружать");
+      if ((voyage.replacementsUsed ?? 0) >= shipOrdersConfig.freeReplacements) return fail("ECONOMY_SHIP_REPLACEMENTS", "Бесплатные замены в этом рейсе закончились");
+      const replacement = replaceableShipOrder(state, voyage, order);
+      if (!replacement) return fail("ECONOMY_SHIP_UNAVAILABLE", "Других доступных грузов этой сложности пока нет");
+      state.ship = { ...ship, voyage: { ...voyage, replacementsUsed: (voyage.replacementsUsed ?? 0) + 1,
+        orders: voyage.orders.map(entry => entry.id === order.id ? replacement : entry) } };
+      return "Заказ заменён. Срок стоянки корабля сохранён";
+    }
+    case "skip_ship_voyage": {
+      const ship = shipOrdersState(state, now), voyage = ship.voyage;
+      if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
+      if (!voyage || voyage.id !== command.targetId) return fail("ECONOMY_SHIP_CHANGED", "Корабль уже отправился");
+      if (now < Date.parse(voyage.openedAt) || ship.resetAvailableAt && now < Date.parse(ship.resetAvailableAt))
+        return fail("ECONOMY_SHIP_WAIT", "Досрочная отправка ещё недоступна");
+      if (voyage.orders.every(order => order.deliveredAt)) return fail("ECONOMY_SHIP_CHANGED", "Все грузы уже приняты. Дождитесь награды");
+      if (command.totalPrice !== shipOrdersConfig.resetPricePearls) return fail("ECONOMY_SHIP_PRICE_CHANGED", "Цена отправки изменилась. Подтвердите её снова");
+      if (state.wallet.pearls < shipOrdersConfig.resetPricePearls) return fail("ECONOMY_PEARLS", "Не хватает жемчуга для отправки");
+      const nextAvailableAt = new Date(now + shipOrdersConfig.intervalSeconds * 1000).toISOString();
+      state.wallet.pearls -= shipOrdersConfig.resetPricePearls;
+      state.ship = { ...ship, voyage: null, nextAvailableAt, resetAvailableAt: nextAvailableAt, departureCargo: shipCargoFractions(voyage) };
+      return "Корабль отправлен. Новый рейс прибудет через 6 часов";
+    }
     case "claim_ship_voyage": {
       // Compatibility for an old client/save whose three paid orders await the former claim button.
       if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
-      const ship = shipOrdersState(state), voyage = ship.voyage;
+      const ship = shipOrdersState(state, now), voyage = ship.voyage;
       if (!voyage || voyage.id !== command.targetId) return fail("ECONOMY_SHIP_CHANGED", "Заказы корабля изменились");
+      if (now < Date.parse(voyage.openedAt)) return fail("ECONOMY_SHIP_WAIT", "Дождитесь прибытия корабля");
       if (voyage.orders.some(order => !order.deliveredAt)) return fail("ECONOMY_SHIP_INCOMPLETE", "Сначала загрузите все три груза");
       if (state.wallet.pearls + SHIP_COMPLETION_PEARLS > ECONOMY_MAX_PEARLS || ship.completedVoyages >= Number.MAX_SAFE_INTEGER)
         return fail("ECONOMY_CAPACITY", "В кошельке не хватает места для награды");
       state.wallet.pearls += SHIP_COMPLETION_PEARLS;
       state.ship = { ...ship, voyage: null, completedVoyages: ship.completedVoyages + 1,
-        nextAvailableAt: new Date(now + shipOrdersConfig.intervalSeconds * 1000).toISOString() };
+        departureCargo: [1, 1, 1], nextAvailableAt: new Date(now + shipOrdersConfig.intervalSeconds * 1000).toISOString() };
       return "Корабль отправляется в путь. Получено 10 жемчужин";
     }
     case "buy_market_slot": {
@@ -313,8 +351,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if ((state.buildings[recipe.buildingId] ?? 0) < recipeBuildingLevel(recipe)) fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание");
       requireHome(state, recipe.requiredHomeLevel);
       requireBuildings(state, recipe.requiredBuildings);
-      const missingRecipes = Object.entries(recipe.requiredRecipes).filter(([recipeId, count]) => (state.progression.recipes[recipeId] ?? 0) < count);
-      if (missingRecipes.length) fail("ECONOMY_RECIPE_REQUIRED", `Произведите и заберите: ${missingRecipes.map(([recipeId]) => recipeResultName(recipeId, economyCatalog)).join(", ")}`);
+      if (!experimentCanPractice(state, recipe)) return fail("ECONOMY_COOKING_SKILL", "Сначала наберите опыт готовки для этого опыта");
       if (recipeUnlockRequirements(state, recipe).some(requirement => !requirement.completed))
         fail("ECONOMY_RECIPE_REQUIRED", "Выполните условия открытия рецепта и заберите результаты");
       if (state.jobs.some(job => job.targetId === recipe.buildingId && job.kind === "construction"))
@@ -322,10 +359,14 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (state.jobs.filter(job => job.targetId === recipe.buildingId && job.kind === "production").length >= productionSlotCount(state, recipe.buildingId))
         fail("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат");
       const firstHarvest = tutorialHarvest;
+      const cooking = prepareCookingAttempt(state, recipe, rareRandom);
+      const rewards = cooking?.successful === false ? recipe.experiment!.failureRewards : recipe.rewards;
       const tradeSpeedBps = recipe.buildingId === "woodlot" ? tradeRelationBonusBps(state, "lopukh", economyCatalog, now) : 0;
       createJob({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null, ...(tradeSpeedBps ? { tradeSpeedBps } : {}),
         ...(recipe.collection ? { collection: { ...recipe.collection, startedAt: null, finishesAt: null } } : {}),
-        rewards: Object.fromEntries(Object.entries(recipe.rewards).map(([item, amount]) => [item, amount * command.quantity])) },
+        ...(recipe.buildingId === "dryer" ? { skillWorkSeconds: recipe.seconds * command.quantity } : {}),
+        ...(cooking ? { cooking } : {}),
+        rewards: Object.fromEntries(Object.entries(rewards).map(([item, amount]) => [item, amount * command.quantity])) },
       // Keep a positive saved interval for the scene's crop clock. One millisecond
       // has elapsed before a real next command, without a visible growth wait.
       firstHarvest ? .001 : recipe.buildingId === "woodlot" ? tradeWorkDuration(state, recipe.seconds * command.quantity, "lopukh", 0, economyCatalog, now) : recipe.seconds * command.quantity, scaledEconomyCost(recipe.cost, command.quantity), jobId(), command.fishSelection ?? undefined, recipe.fishInput?.exactSpecies === true);

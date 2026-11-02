@@ -23,10 +23,11 @@ export const neighborEquipmentSchema = z.object({
 export const neighborBuildingsSchema = z.record(z.string().refine(id => buildingIds.has(id)), count)
   .refine(buildings => Object.entries(buildings).every(([id, level]) => level <= buildingIds.get(id)!), "Уровень постройки вне каталога");
 
-/** Relics, individual fish species and legacy fish aliases cannot enter the NPC stock. */
+/** Relics, fish and experimental discoveries cannot enter the NPC stock. */
 const rawFishIds = new Set([...(economyCatalog.fishing?.fish ?? []), ...(economyCatalog.fishing?.classes ?? [])].map(fish => fish.itemId));
+const experimentalItems = new Set(economyCatalog.recipes.filter(recipe => recipe.experiment).flatMap(recipe => Object.keys(recipe.rewards)));
 export const neighborStockItems = economyCatalog.items.filter(item => item.tradable && item.category !== "special"
-  && item.baseSellPrice > 0 && !rawFishIds.has(item.id));
+  && item.baseSellPrice > 0 && !rawFishIds.has(item.id) && !experimentalItems.has(item.id));
 const stockIds = new Set(neighborStockItems.map(item => item.id));
 export const neighborSettingsSchema = z.object({
   enabled: z.boolean(), autoBuyEnabled: z.boolean(),
@@ -62,7 +63,7 @@ export const neighborViewSchema = z.object({
   shop: z.object({ cycleId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), refreshAt: clock, available: z.boolean(), reason: z.string().nullable(), offers: z.array(neighborOfferSchema).max(stockIds.size) }).strict(),
   buying: z.object({ enabled: z.boolean(), firstDelaySeconds: count, staleAfterSeconds: count,
     maxLotsPerDay: count, dailyBudgetCoins: count, maxLotCoins: count, usedLots: count, spentCoins: count,
-    firstSale: z.boolean().nullish(), buyPriceBps: count.nullish(), globalRemainingCoins: count.nullish(),
+    firstSale: z.boolean().nullish(), buyPriceBps: count.nullish(), sellPriceBps: count.nullish(), offerQuantity: count.positive().max(ECONOMY_MAX_ITEMS).nullish(), globalRemainingCoins: count.nullish(),
     allowedItemIds: z.array(itemId).max(stockIds.size).nullish(), boughtItemIds: z.array(itemId).max(stockIds.size).nullish(),
   }).strict(),
 }).strict().superRefine((value, context) => {

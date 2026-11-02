@@ -10,6 +10,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { WorldShipPort, ShipOrderCard } = await vite.ssrLoadModule("/features/economy/ui/ship/world-ship-port.tsx");
+const { ShipPortStatus } = await vite.ssrLoadModule("/features/economy/ui/ship/ship-port-status.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const now = Date.parse("2026-11-01T12:00:00Z");
@@ -45,7 +46,7 @@ function portTree(economy) {
 }
 const buttons = tree => elements(tree).filter(node => node.type === "button");
 
-test("arrival manifest has no accept, skip or claim controls", () => {
+test("arrival manifest shows deadline and free replacements without manual acceptance or reward claim", () => {
   const locked = render(WorldShipPort, { economy: controller({ buildings: { home: 5, lighthouse: 0 } }), ...navigation });
   assert.match(locked, /Зажгите маяк/);
   const arriving = render(WorldShipPort, { economy: controller(), ...navigation });
@@ -53,6 +54,7 @@ test("arrival manifest has no accept, skip or claim controls", () => {
   const active = render(WorldShipPort, { economy: controller({ ship: { voyage: voyage(), completedVoyages: 2, nextAvailableAt: null } }), ...navigation });
   assert.equal((active.match(/data-ship-order=/g) ?? []).length, 3);
   assert.match(active, /Лёгкий/); assert.match(active, /Средний/); assert.match(active, /Сложный/);
+  assert.match(active, /24:00:00/); assert.match(active, /Бесплатные замены:/); assert.match(active, /Отправить раньше/);
   assert.match(active, /За все три груза/); assert.match(active, /<strong>10<\/strong>/);
   for (const markup of [locked, arriving, active]) assert.doesNotMatch(markup, /Принять заказы|Отказаться|Забрать награду|Порт|Южная бухта/);
 });
@@ -135,7 +137,7 @@ test("wallet limits block only finishing a load, allowing cargo to be accumulate
 test("uncertain loading offers recovery and disables every cargo card", () => {
   const economy = controller({ ship: { voyage: voyage(1), completedVoyages: 2, nextAvailableAt: null } }, { uncertain: true, error: "response lost" });
   const markup = render(WorldShipPort, { economy, ...navigation });
-  assert.match(markup, /Проверяем загрузку/); assert.match(markup, /Проверить результат/);
+  assert.match(markup, /Проверяем действие/); assert.match(markup, /Проверить результат/);
   assert.equal(elements(portTree(economy)).filter(node => node.type === ShipOrderCard).every(node => node.props.disabled), true);
 });
 
@@ -157,4 +159,31 @@ test("a last partial load reserves room for its item gift without blocking earli
   order.loadedItems.planks = 3;
   button = buttons(card()).find(button => button.props["aria-label"] === "Загрузить 1: Верёвка");
   assert.equal(button.props.disabled, false, "incomplete loads do not receive the item gift yet");
+});
+
+
+test("lighthouse and port share expiry and next arrival clocks", () => {
+  const state = controller({ ship: { voyage: voyage(), completedVoyages: 2, nextAvailableAt: null } }).snapshot;
+  const status = at => render(ShipPortStatus, { state, now: at });
+  assert.match(status(now), /Корабль у причала.*24:00:00/);
+  assert.match(status(now + 86400000), /Новый корабль через.*6:00:00/);
+  assert.match(status(now + 108000000), /Корабль прибывает с новыми заказами/);
+  const expiredPort = render(WorldShipPort, { economy: controller({ ship: state.ship }, { now: now + 86400000 }), ...navigation });
+  assert.match(expiredPort, /Корабль в пути/); assert.match(expiredPort, /6:00:00/);
+  assert.doesNotMatch(expiredPort, /data-ship-order=|Отправить раньше/);
+});
+
+test("only untouched unpaid orders expose replacement and exhausted budget disables it", () => {
+  const state = controller().snapshot, order = voyage().orders[0];
+  const card = changed => render(ShipOrderCard, { state, order: { ...order, ...changed }, index: 0, disabled: false,
+    onLoad() {}, onReplace() {}, replacementAvailable: true, ...navigation });
+  assert.match(card({}), /Заменить бесплатно/);
+  assert.doesNotMatch(card({ loadedItems: { planks: 1 } }), /Заменить бесплатно/);
+  assert.doesNotMatch(card({ deliveredAt: new Date(now).toISOString() }), /Заменить бесплатно/);
+  const exhausted = voyage(); exhausted.replacementsUsed = 3;
+  const tree = portTree(controller({ ship: { voyage: exhausted, completedVoyages: 2, nextAvailableAt: null } }));
+  const cards = elements(tree).filter(node => node.type === ShipOrderCard);
+  assert.equal(cards.length, 3); assert.ok(cards.every(node => node.props.replacementAvailable === false));
+  const noPearls = portTree(controller({ wallet: { coins: 100, pearls: 19 }, ship: { voyage: voyage(), completedVoyages: 0, nextAvailableAt: null } }));
+  assert.equal(buttons(noPearls).at(-1).props.disabled, true);
 });

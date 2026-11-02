@@ -424,3 +424,22 @@ test("personal-fishing unlock uses the earliest real fishing route without treat
   const reference = buildProgressionEconomy(changed);
   assert.equal(reference.recipes.find(recipe => recipe.id === target.id).unlockHomeLevel, 3);
 });
+
+test("optional cooking experiments use expected value and never become guaranteed planning sources", () => {
+  const experiments = economy.recipes.filter(recipe => recipe.experiment);
+  assert.equal(experiments.length, 4);
+  const guaranteed = sources.productionSources(catalog);
+  for (const trial of experiments) {
+    const p = trial.experiment.successBps / 10000;
+    const fallback = Object.entries(trial.experiment.failureRewards).reduce((sum, [id, count]) => sum + item(id).npcSellPrice * count, 0);
+    const expected = p * trial.outputNpcValue + (1 - p) * fallback;
+    assert.ok(Math.abs(trial.expectedOutputNpcValue - expected) < 1e-8);
+    assert.ok(Math.abs(trial.grossNpcPerHour - expected * 3600 / trial.seconds) < 1e-8);
+    assert.ok(Math.abs(trial.addedNpcValue - (expected - trial.inputNpcValue - trial.cost.coins)) < 1e-8);
+    assert.ok(!guaranteed.some(source => source.id === `recipe:${trial.id}`));
+    for (const id of Object.keys(trial.rewards)) assert.equal(item(id).sources.find(source => source.recipeId === trial.id).guaranteed, false);
+    const attempts = calculateRecipePlan(trial.id, 3);
+    assert.equal(attempts.steps.find(step => step.recipeId === trial.id).runs, 3);
+    assert.ok(attempts.warnings.some(warning => warning.includes("затраты на попытки")));
+  }
+});

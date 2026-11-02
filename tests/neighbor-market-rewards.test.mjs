@@ -32,14 +32,14 @@ const claim = (p, at = now) => rewards.claimDevProgressionReward(p.token, {
 }, at);
 
 test("Berest first sale pays only its coins and never qualifies the real-player sale medal", () => {
-  const p = player({ wood: 3 }), before = read(p), lot = command(p, "create_listing", "wood", 1, 60).listing;
+  const p = player({ wood: 3 }), before = read(p), lot = command(p, "create_listing", "wood", 1, 40).listing;
   assert.equal(economy.runDevNeighborTick(now + 180000), 1);
   assert.equal(economy.getDevConfirmedMarketSales(p.me.user.publicId), 0);
   assert.equal(firstSale(p, now + 180001).eligible, false);
   assert.equal(firstSale(p, now + 180001).earnedAt, null);
   assert.throws(() => claim(p, now + 180002), { code: "ACHIEVEMENT_REWARD_UNAVAILABLE" });
   command(p, "claim_sale", lot.id, 1, 0, now + 180003);
-  assert.equal(read(p, now + 180004).wallet.coins, before.wallet.coins + 57);
+  assert.equal(read(p, now + 180004).wallet.coins, before.wallet.coins + 38);
   assert.equal(read(p, now + 180004).wallet.pearls, before.wallet.pearls);
   assert.equal(firstSale(p, now + 180004).earnedAt, null, "a later normal write/read must not award the NPC sale indirectly");
   const next = command(p, "create_listing", "wood", 1, 60, now + 180005).listing;

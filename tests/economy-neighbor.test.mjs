@@ -117,19 +117,19 @@ test("GET neither buys a stale lot nor consumes a first-sale subsidy", () => {
 });
 
 test("first sale has a 180-second floor, preserves the usual fee and waits for manual proceeds", () => {
-  const owner = player(), lot = listing(owner, 1, 60), before = read(owner);
+  const owner = player(), lot = listing(owner, 1, 40), before = read(owner);
   assert.equal(economy.runDevNeighborTick(now + 179999), 0);
   assert.equal(economy.runDevNeighborTick(now + 180000), 1);
   assert.equal(economy.runDevNeighborTick(now + 180001), 0);
   const sold = mine(owner, now + 180000).find(row => row.id === lot.id);
   assert.equal(economyMarketListingSchema.safeParse(sold).success, true);
   assert.deepEqual(sold.sale, { buyerKind: "world_character", buyerCharacterId: "berest", buyerPublicId: null,
-    buyerName: "Берест", buyerAvatarUrl: null, proceedsCoins: 57, claimedAt: null });
+    buyerName: "Берест", buyerAvatarUrl: null, proceedsCoins: 38, claimedAt: null });
   assert.equal(read(owner, now + 180000).wallet.coins, before.wallet.coins);
   const claim = { requestId: crypto.randomUUID(), ownerPublicId: owner.me.user.publicId, expectedRevision: read(owner, now + 180000).revision,
     action: "claim_sale", targetId: lot.id, quantity: 1, totalPrice: 0 };
   const result = economy.commandDevEconomyMarket(owner.token, claim, now + 180000);
-  assert.equal(result.state.wallet.coins, before.wallet.coins + 57);
+  assert.equal(result.state.wallet.coins, before.wallet.coins + 38);
   assert.equal(economy.commandDevEconomyMarket(owner.token, claim, now + 180001).replayed, true);
 });
 
@@ -326,7 +326,7 @@ test("extreme multipliers do not overflow or produce invalid public quotes", () 
 
 test("the actual composer default qualifies all standard stock without subsidised resident shop roundtrips", async () => {
   const { suggestedMarketListing } = await vite.ssrLoadModule("/features/economy/ui/market/neighbor-listing-guidance.ts");
-  for (const item of model.neighborStockItems) {
+  for (const item of model.neighborStockItems.filter(item => settings().allowedItemIds.includes(item.id))) {
     const suggested = suggestedMarketListing(item.id, 99);
     assert.ok(suggested.price >= market.marketMinimumPrice(item.id, suggested.quantity), item.id);
     assert.ok(suggested.price <= rules.neighborBuyPriceCeiling(item.id, suggested.quantity, settings()), item.id);
@@ -334,14 +334,14 @@ test("the actual composer default qualifies all standard stock without subsidise
     for (let quantity = 1; quantity <= 99; quantity++) {
       const cap = rules.neighborBuyPriceCeiling(item.id, quantity, settings());
       const income = cap - market.marketSaleFee(cap, economyCatalog.market.feeBps);
-      assert.ok(income < rules.neighborOfferPrice(item.id, quantity, settings()), `${item.id} × ${quantity}: Berest roundtrip`);
+      assert.ok(income < rules.neighborOfferPrice(item.id, settings().offerQuantity, settings()) * quantity / settings().offerQuantity, `${item.id} × ${quantity}: Berest roundtrip`);
       const acquisition = rules.neighborCheapestUnitAcquisition(item.id);
       if (Number.isFinite(acquisition)) assert.ok(income < acquisition * quantity, `${item.id} × ${quantity}: other resident roundtrip`);
       const split = quantity * rules.neighborBuyPriceCeiling(item.id, 1, settings());
-      assert.ok(split <= rules.neighborOfferPrice(item.id, quantity, settings()), `${item.id}: split-lot roundtrip`);
+      assert.ok(split <= rules.neighborOfferPrice(item.id, settings().offerQuantity, settings()) * quantity / settings().offerQuantity, `${item.id}: split-lot roundtrip`);
     }
   }
-  assert.deepEqual(suggestedMarketListing("wood", 20), { quantity: 1, minimumQuantity: 1, price: 60 });
+  assert.deepEqual(suggestedMarketListing("wood", 20), { quantity: 1, minimumQuantity: 1, price: 40 });
   assert.deepEqual(suggestedMarketListing("crumb_bait", 20), { quantity: 10, minimumQuantity: 10, price: 10 });
 });
 
@@ -359,7 +359,7 @@ test("full late crafted lots qualify within higher budgets and proceeds exceed i
   const owner = player(5, { festive_sturgeon: 2 });
   row(owner).state.unlockedItems.push("festive_sturgeon");
   const item = economyCatalog.items.find(item => item.id === "festive_sturgeon");
-  const price = Math.floor(item.baseSellPrice * 2 / economyCatalog.currencyScale) * economyCatalog.currencyScale;
+  const price = rules.neighborBuyPriceCeiling(item.id, 1, settings());
   const lot = economy.commandDevEconomyMarket(owner.token, { requestId: crypto.randomUUID(), ownerPublicId: owner.me.user.publicId,
     expectedRevision: read(owner).revision, action: "create_listing", targetId: item.id, quantity: 1, totalPrice: price }, now).listing;
   assert.equal(economy.buyDevNeighborListing(lot.id, { now: now + 180000 }), true);
@@ -367,4 +367,39 @@ test("full late crafted lots qualify within higher budgets and proceeds exceed i
   assert.ok(sold.sale.proceedsCoins > item.baseSellPrice);
   assert.equal(shop(owner, now + 180000).buying.globalRemainingCoins, settings().globalDailyBudgetCoins - price);
   assert.equal(shop(owner, now + 180000).buying.firstSale, false);
+});
+
+
+test("discounted stock uses its actual rounded pack cost as the cross-day and split-lot buyback limit", () => {
+  assert.equal(settings().sellPriceBps, 12500);
+  assert.equal(rules.neighborOfferPrice("wood", 1, settings()), 40);
+  assert.equal(rules.neighborBuyPriceCeiling("wood", 1, settings()), 40);
+  const bulk = settings({ offerQuantity: 20 });
+  assert.equal(rules.neighborOfferPrice("wood", 20, bulk), 750);
+  assert.equal(rules.neighborBuyPriceCeiling("wood", 1, bulk), 30);
+  assert.equal(rules.neighborBuyPriceCeiling("wood", 20, bulk), 750);
+  for (const pack of [1, 3, 20]) for (const sellPriceBps of [0, 1000, 12500, 22500]) {
+    const config = settings({ offerQuantity: pack, sellPriceBps, buyPriceBps: 100000 });
+    for (const item of model.neighborStockItems) {
+      const paid = rules.neighborOfferPrice(item.id, pack, config);
+      for (let quantity = 1; quantity <= 99; quantity++) {
+        const cap = rules.neighborBuyPriceCeiling(item.id, quantity, config);
+        const proceeds = cap - market.marketSaleFee(cap, economyCatalog.market.feeBps);
+        assert.ok(proceeds <= paid * quantity / pack, `${item.id} pack ${pack} quantity ${quantity}`);
+        const split = quantity * rules.neighborBuyPriceCeiling(item.id, 1, config);
+        assert.ok(split <= paid * quantity / pack, `${item.id} split pack ${pack}`);
+      }
+    }
+  }
+});
+
+test("authenticated buying terms expose pack pricing while legacy terms stay readable", () => {
+  const owner = player(), view = shop(owner);
+  assert.equal(view.buying.sellPriceBps, 12500);
+  assert.equal(view.buying.offerQuantity, 1);
+  assert.equal(model.neighborViewSchema.safeParse(view).success, true);
+  delete view.buying.sellPriceBps;
+  delete view.buying.offerQuantity;
+  assert.equal(model.neighborViewSchema.safeParse(view).success, true);
+  assert.equal(rules.neighborBuyPriceCeiling("wood", 1, { buyPriceBps: 20000 }), 60);
 });

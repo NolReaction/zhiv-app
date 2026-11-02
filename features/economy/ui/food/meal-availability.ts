@@ -12,9 +12,9 @@ export function availableMealRecipe(state: EconomyView, itemId: string) {
     && !worldRecipeUnlockReason(state, recipe));
 }
 
-/** Owned meals remain usable even when their recipe has not been unlocked. */
+/** The picker is a pantry, not a recipe catalog. Gifted meals remain usable. */
 export function visibleMeals(state: EconomyView) {
-  return state.catalog.food?.meals.filter(meal => (state.inventory[meal.itemId] ?? 0) > 0 || availableMealRecipe(state, meal.itemId)) ?? [];
+  return state.catalog.food?.meals.filter(meal => (state.inventory[meal.itemId] ?? 0) > 0) ?? [];
 }
 
 /** Feeding describes one explicit meal debit; local mood is not hunger. */

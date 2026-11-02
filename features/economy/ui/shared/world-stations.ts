@@ -1,3 +1,4 @@
+import { experimentCanPractice } from "@/features/economy/domain/craft-skill";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
 import { recipeBuildingLevel, type EconomyCatalog, type EconomyCost, type EconomyJob, type EconomyView } from "@/features/economy/domain/model";
 import { fishClassForItem, fishClassInventory } from "@/features/economy/domain/fishing";
@@ -148,6 +149,7 @@ export function worldRecipeAccessReason(state: EconomyView, recipe: WorldRecipe)
     kiln: "печи", warehouse: "кладовой", woodlot: "лесного участка", quarry: "шахты", bridge: "моста", lighthouse: "маяка" };
   if (required.length) return required.map(({ id, level }) => `Доступно с ${level} уровня ${names[id]
     ?? `постройки «${state.catalog.buildings.find(building => building.id === id)?.name ?? id}»`}`).join(". ");
+  if (!experimentCanPractice(state, recipe, state.catalog)) return `Нужна кулинария ${recipe.experiment!.requiredCookingLevel} уровня`;
   return worldRecipeUnlockReason(state, recipe);
 }
 export function worldMaterialAccessReason(state: EconomyView, itemId: string) {

@@ -93,6 +93,12 @@ class EconomyShipOrdersTest {
         assertEquals(listOf(mapOf("planks" to 6L, "rope" to 4L), mapOf("cloth" to 5L, "rope" to 8L),
             mapOf("berry_compote" to 12L, "dried_berries" to 10L, "rope" to 8L)), voyage.orders.map { it.items })
         assertEquals(20L, voyage.rewardPearls)
+        var current = early.copy(ship = EconomyShipState(voyage = voyage))
+        val replacements = (1..3).map {
+            current = apply(current, "replace_ship_order", current.ship.voyage!!.orders.first().id)
+            current.ship.voyage!!.orders.first().let { it.templateId to it.rewardCoins }
+        }
+        assertEquals(listOf("shore_repairs" to 1344L, "driftwood_post" to 525L, "shore_repairs" to 1344L), replacements)
     }
 
     @Test fun `partial loading deducts only specified amount without early reward and resumes after reload`() {
@@ -154,13 +160,71 @@ class EconomyShipOrdersTest {
         failure("ECONOMY_SHIP_CHANGED") { apply(after, "claim_ship_voyage", voyage.id) }
     }
 
-    @Test fun `skip never cancels paid or unpaid cargo even after several days`() {
-        val accepted = opened()
-        failure("ECONOMY_SHIP_CANNOT_SKIP") { apply(accepted, "skip_ship_voyage", voyageId) }
-        val paid = apply(accepted, "complete_ship_order", "$voyageId:0")
-        failure("ECONOMY_SHIP_CANNOT_SKIP") { apply(paid, "skip_ship_voyage", voyageId, now.plusSeconds(86400 * 7)) }
-        failure("ECONOMY_SHIP_ACTIVE") { apply(paid, "open_ship_voyage", "port", now.plusSeconds(86400 * 7)) }
-        assertNotNull(paid.ship.voyage)
+    @Test fun `unfinished ships expire at 24 hours and offline return is anchored to that deadline`() {
+        val source = opened(); val voyage = source.ship.voyage!!; val first = voyage.orders.first()
+        val partial = EconomyRules.apply(source, cargoRequest(first, first.items.keys.first()), now).first
+        val deadline = now.plusSeconds(86400)
+        assertEquals(voyage.id, EconomyShipOrders.project(partial.ship, deadline.minusMillis(1)).voyage!!.id)
+        val expired = EconomyShipOrders.project(partial.ship, deadline)
+        assertNull(expired.voyage); assertEquals(0L, expired.completedVoyages)
+        assertEquals(deadline.plusSeconds(21600).toString(), expired.nextAvailableAt)
+        assertEquals(EconomyShipOrders.cargoFractions(partial.ship.voyage!!), expired.departureCargo)
+        assertNotNull(partial.ship.voyage, "Reading a projection does not mutate the saved manifest")
+        failure("ECONOMY_SHIP_CHANGED") { apply(partial, "complete_ship_order", first.id, deadline) }
+        failure("ECONOMY_SHIP_CHANGED") { apply(partial, "replace_ship_order", first.id, deadline) }
+        failure("ECONOMY_SHIP_WAIT") { apply(partial, "open_ship_voyage", "port", deadline.plusSeconds(21599)) }
+        val departed = apply(partial, "expire_ship_voyage", voyage.id, deadline)
+        assertEquals(expired, departed.ship); assertEquals(partial.wallet, departed.wallet); assertEquals(partial.inventory, departed.inventory)
+        failure("ECONOMY_SHIP_CHANGED") { apply(departed, "expire_ship_voyage", voyage.id, deadline) }
+        val next = apply(partial, "open_ship_voyage", "port", now.plusSeconds(86400 * 7))
+        assertEquals(now.plusSeconds(86400 * 7).toString(), next.ship.voyage!!.openedAt)
+        assertEquals(1L, next.ship.voyage!!.number); assertEquals(partial.wallet, next.wallet)
+    }
+
+    @Test fun `three free replacements change only untouched cargo and invalidate old commands`() {
+        val source = opened(); val voyage = source.ship.voyage!!
+        var current = source
+        for (count in 1..3) {
+            val old = current.ship.voyage!!.orders.first()
+            current = apply(current, "replace_ship_order", old.id)
+            val next = current.ship.voyage!!.orders.first()
+            assertEquals("$voyageId:0:r$count", next.id); assertNotEquals(old.templateId, next.templateId)
+            assertEquals(old.difficulty, next.difficulty); assertEquals(count, current.ship.voyage!!.replacementsUsed)
+            assertEquals(voyage.openedAt, current.ship.voyage!!.openedAt)
+            assertEquals(voyage.orders.drop(1), current.ship.voyage!!.orders.drop(1))
+            assertEquals(emptyMap(), next.loadedItems); assertNull(next.deliveredAt)
+            assertEquals(current, economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(current)))
+            failure("ECONOMY_SHIP_CHANGED") { apply(current, "complete_ship_order", old.id) }
+        }
+        failure("ECONOMY_SHIP_REPLACEMENTS") { apply(current, "replace_ship_order", current.ship.voyage!!.orders[1].id) }
+        assertEquals(source.wallet, current.wallet); assertEquals(source.inventory, current.inventory)
+        val first = voyage.orders.first()
+        val partial = EconomyRules.apply(source, cargoRequest(first, first.items.keys.first()), now).first
+        failure("ECONOMY_SHIP_CARGO_STARTED") { apply(partial, "replace_ship_order", first.id) }
+        val paid = apply(partial, "complete_ship_order", first.id)
+        failure("ECONOMY_SHIP_CHANGED") { apply(paid, "replace_ship_order", first.id) }
+    }
+
+    @Test fun `paid departure costs ten visible pearls keeps rewards and does not refund loaded goods`() {
+        val source = opened(); val voyage = source.ship.voyage!!
+        val paid = apply(source, "complete_ship_order", voyage.orders.first().id)
+        val order = voyage.orders[1]
+        val partial = EconomyRules.apply(paid, cargoRequest(order, order.items.keys.first()), now).first
+        val command = request("skip_ship_voyage", voyage.id).copy(totalPrice = 20)
+        failure("ECONOMY_SHIP_PRICE_CHANGED") { apply(partial, "skip_ship_voyage", voyage.id) }
+        failure("ECONOMY_PEARLS") { EconomyRules.apply(partial.copy(wallet = partial.wallet.copy(pearls = 19)), command, now) }
+        failure("ECONOMY_SHIP_WAIT") { EconomyRules.apply(partial, command, now.minusMillis(1)) }
+        val departure = now.plusSeconds(3600)
+        val sent = EconomyRules.apply(partial, command, departure).first
+        assertEquals(partial.wallet.copy(pearls = partial.wallet.pearls - 20), sent.wallet)
+        assertEquals(partial.inventory, sent.inventory); assertNull(sent.ship.voyage); assertEquals(0L, sent.ship.completedVoyages)
+        assertEquals(departure.plusSeconds(21600).toString(), sent.ship.nextAvailableAt)
+        assertEquals(sent.ship.nextAvailableAt, sent.ship.resetAvailableAt)
+        assertEquals(EconomyShipOrders.cargoFractions(partial.ship.voyage!!), sent.ship.departureCargo)
+        failure("ECONOMY_SHIP_CHANGED") { EconomyRules.apply(sent, command, departure) }
+        failure("ECONOMY_SHIP_WAIT") { apply(sent, "open_ship_voyage", "port", departure.plusSeconds(21599)) }
+        val merged = sent.copy(ship = sent.ship.copy(voyage = partial.ship.voyage))
+        failure("ECONOMY_SHIP_WAIT") { EconomyRules.apply(merged, command, departure.plusSeconds(21599)) }
     }
 
     @Test fun `optional item rewards paid once and excessive warehouse growth rolls back last load`() {
@@ -205,12 +269,17 @@ class EconomyShipOrdersTest {
     @Test fun `merge preserves partial loads and latest cooldown but rejects two active voyages`() {
         val before = opened(); val order = before.ship.voyage!!.orders.first()
         val a = EconomyRules.apply(before, cargoRequest(order, order.items.keys.first()), now).first.ship
-        val b = EconomyShipState(completedVoyages = 8, nextAvailableAt = now.plusSeconds(86400).toString())
+        val b = EconomyShipState(completedVoyages = 8, nextAvailableAt = now.plusSeconds(86400).toString(),
+            resetAvailableAt = now.plusSeconds(21600).toString(), departureCargo = listOf(0.0, 0.5, 1.0))
         val merged = EconomyShipOrders.merge(a, b)
         assertEquals(a.voyage, merged.voyage)
         assertEquals(8L, merged.completedVoyages)
         assertEquals(b.nextAvailableAt, merged.nextAvailableAt)
+        assertEquals(b.resetAvailableAt, merged.resetAvailableAt); assertEquals(b.departureCargo, merged.departureCargo)
         assertEquals(merged, EconomyShipOrders.merge(b, a))
         failure("ACCOUNT_MERGE_CONFLICT") { EconomyShipOrders.merge(a, a) }
+        val expiredA = EconomyShipOrders.project(a, now.plusSeconds(86400))
+        val expiredB = EconomyShipOrders.project(a, now.plusSeconds(86400))
+        assertNull(EconomyShipOrders.merge(expiredA, expiredB).voyage)
     }
 }

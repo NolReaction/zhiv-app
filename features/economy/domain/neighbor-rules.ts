@@ -24,7 +24,7 @@ export function neighborOfferPrice(itemId: string, quantity: number, settings: N
   return value !== null && value <= BigInt(ECONOMY_MAX_BALANCE) ? Number(value) : Infinity;
 }
 /** Seller market limits still apply; rounding down preserves the administrator's maximum quote. */
-export function neighborBuyPriceCeiling(itemId: string, quantity: number, settings: Pick<NeighborSettings, "buyPriceBps">,
+export function neighborBuyPriceCeiling(itemId: string, quantity: number, settings: Pick<NeighborSettings, "buyPriceBps"> & Partial<Pick<NeighborSettings, "sellPriceBps" | "offerQuantity">>,
   catalog: EconomyCatalog = economyCatalog): number {
   const item = catalog.items.find(item => item.id === itemId && item.tradable);
   if (!item) return 0;
@@ -34,7 +34,14 @@ export function neighborBuyPriceCeiling(itemId: string, quantity: number, settin
   // Use the best possible discount, not the seller's current rank or activity.
   const acquisition = neighborCheapestUnitAcquisition(itemId, catalog);
   const acquisitionCap = Number.isFinite(acquisition) ? BigInt(acquisition) * BigInt(quantity) / BigInt(10) * BigInt(10) : null;
-  return Number([value, BigInt(ECONOMY_MAX_BALANCE), ...(acquisitionCap === null ? [] : [acquisitionCap])]
+  // The actual rounded stock pack is the acquisition cost. Pro-rating it before
+  // rounding a buyback down also closes cross-day, split-pack and cross-account resale.
+  const packQuantity = settings.offerQuantity ?? 1;
+  const stockPrice = settings.sellPriceBps == null ? null : quote(Math.max(item.baseSellPrice, catalog.localBuyer?.unitPrices?.[itemId] ?? 0),
+    packQuantity, settings.sellPriceBps, true);
+  if (settings.sellPriceBps != null && stockPrice === null) return 0;
+  const ownStockCap = stockPrice === null ? null : stockPrice * BigInt(quantity) / BigInt(packQuantity) / BigInt(10) * BigInt(10);
+  return Number([value, BigInt(ECONOMY_MAX_BALANCE), ...(acquisitionCap === null ? [] : [acquisitionCap]), ...(ownStockCap === null ? [] : [ownStockCap])]
     .reduce((minimum, candidate) => candidate < minimum ? candidate : minimum));
 }
 /** Gross buyback cannot exceed even the cheapest discounted resident supply. */

@@ -33,8 +33,8 @@ function withScenario(run, state = marketFixture()) {
 test("funded listings retain escrow, wait three minutes, then settle and require a real proceeds claim", () => {
   withScenario((scenario, state) => {
     const coins = state.wallet.coins, pearls = state.wallet.pearls;
-    assert.equal(scenario.quote("wood", 1), 60);
-    const listed = scenario.command("create_listing", "wood", 1, 60, now).listing;
+    assert.equal(scenario.quote("wood", 1), 40);
+    const listed = scenario.command("create_listing", "wood", 1, 40, now).listing;
     assert.equal(state.inventory.wood, 11);
     assert.deepEqual(scenario.escrowItems(), { wood: 1 });
     const storage = modules.rules.economyStorage(state, scenario.escrowItems());
@@ -43,7 +43,7 @@ test("funded listings retain escrow, wait three minutes, then settle and require
     assert.deepEqual(scenario.tick(now + 179_999), { sales: [], automaticTransactions: 0 });
     const sold = scenario.tick(now + 180_000);
     assert.equal(sold.automaticTransactions, 1);
-    assert.deepEqual(sold.sales, [{ itemId: "wood", quantity: 1, totalPrice: 60, proceedsCoins: 57, feeCoins: 3,
+    assert.deepEqual(sold.sales, [{ itemId: "wood", quantity: 1, totalPrice: 40, proceedsCoins: 38, feeCoins: 2,
       createdAt: new Date(now).toISOString(), closedAt: new Date(now + 180_000).toISOString() }]);
     assert.deepEqual(scenario.escrowItems(), {});
     assert.equal(state.wallet.coins, coins, "A sale reserves proceeds until the seller claims them");
@@ -53,19 +53,19 @@ test("funded listings retain escrow, wait three minutes, then settle and require
     assert.equal(globalThis.__zhivDevStore.achievementTierAwards.get(uid)?.get("first_sale")?.size ?? 0, 0);
     assert.equal(scenario.tick(now + 180_001).automaticTransactions, 0);
     scenario.command("claim_sale", listed.id, 1, 0, now + 182_000);
-    assert.equal(state.wallet.coins, coins + 57);
+    assert.equal(state.wallet.coins, coins + 38);
     assert.throws(() => scenario.command("claim_sale", listed.id, 1, 0, now + 184_000), { code: "ECONOMY_MARKET_NOT_PENDING" });
-    assert.equal(state.wallet.coins, coins + 57);
+    assert.equal(state.wallet.coins, coins + 38);
   });
 });
 
 test("later sales wait six hours and a third lot waits for the next UTC daily allowance", () => {
   withScenario((scenario) => {
-    scenario.command("create_listing", "wood", 1, 60, now);
+    scenario.command("create_listing", "wood", 1, 40, now);
     scenario.tick(now + 180_000);
     const secondAt = now + 240_000;
-    scenario.command("create_listing", "wood", 1, 60, secondAt);
-    scenario.command("create_listing", "wood", 1, 60, secondAt + 2000);
+    scenario.command("create_listing", "wood", 1, 40, secondAt);
+    scenario.command("create_listing", "wood", 1, 40, secondAt + 2000);
     assert.equal(scenario.nextDue(secondAt + 2000), secondAt + 6 * HOUR);
     assert.equal(scenario.tick(secondAt + 6 * HOUR - 1).automaticTransactions, 0);
     assert.equal(scenario.tick(secondAt + 6 * HOUR).automaticTransactions, 1);
@@ -76,7 +76,7 @@ test("later sales wait six hours and a third lot waits for the next UTC daily al
     assert.equal(scenario.tick(midnight - 1).automaticTransactions, 0);
     assert.equal(scenario.tick(midnight).automaticTransactions, 1);
     assert.equal(scenario.usage(midnight).usedLots, 1);
-    assert.equal(scenario.usage(midnight).spentCoins, 60);
+    assert.equal(scenario.usage(midnight).spentCoins, 40);
     assert.equal(scenario.nextDue(midnight), null);
   });
 });
@@ -103,7 +103,7 @@ test("market transactions preserve private production state and close restores t
   const original = globalThis.__zhivDevStore;
   const scenario = createNeighborScenario({ ...modules, state, now, ownerPublicId });
   try {
-    const listing = scenario.command("create_listing", "wood", 1, 60, now).listing;
+    const listing = scenario.command("create_listing", "wood", 1, 40, now).listing;
     scenario.tick(now + 180_000); scenario.command("claim_sale", listing.id, 1, 0, now + 182_000);
     assert.deepEqual(state.jobs[0], job, "Do not replace private stored jobs with public response projections");
     assert.strictEqual(globalThis.__zhivDevEconomyStore.profiles.get(ownerPublicId).state, state);
@@ -114,17 +114,17 @@ test("market transactions preserve private production state and close restores t
 
 test("renewable budgets and configured active hours affect the next actual purchase time", () => {
   withScenario((scenario) => {
-    modules.neighborStore.configureDevNeighbor({ ...scenario.settings, dailyBudgetCoins: 100, maxLotsPerDay: 5,
+    modules.neighborStore.configureDevNeighbor({ ...scenario.settings, dailyBudgetCoins: 70, maxLotsPerDay: 5,
       activeFromHourUtc: 10, activeUntilHourUtc: 20 });
-    scenario.command("create_listing", "wood", 1, 60, now);
+    scenario.command("create_listing", "wood", 1, 40, now);
     assert.equal(scenario.nextDue(now), now + HOUR);
     assert.equal(scenario.tick(now + 180_000).automaticTransactions, 0);
     assert.equal(scenario.tick(now + HOUR).automaticTransactions, 1);
-    scenario.command("create_listing", "wood", 1, 60, now + HOUR + 2000);
+    scenario.command("create_listing", "wood", 1, 40, now + HOUR + 2000);
     const due = Date.parse("2026-10-15T10:00:00Z");
     assert.equal(scenario.nextDue(now + 8 * HOUR), due);
     assert.equal(scenario.tick(now + 8 * HOUR).automaticTransactions, 0);
     assert.equal(scenario.tick(due).automaticTransactions, 1);
-    assert.equal(scenario.usage(due).spentCoins, 60);
+    assert.equal(scenario.usage(due).spentCoins, 40);
   });
 });

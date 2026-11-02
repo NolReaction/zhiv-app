@@ -51,7 +51,9 @@ private fun economyStateForReview(c: Connection, user: UUID): EconomyState {
 
 /** Review is read-only: in particular, it cannot mint a migration grant. */
 internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): List<String> {
+    val now = c.economyRows("SELECT clock_timestamp()") { it.getObject(1, OffsetDateTime::class.java).toInstant() }.single()
     val states = listOf(economyStateForReview(c, target), economyStateForReview(c, source))
+        .map { it.copy(ship = EconomyShipOrders.project(it.ship, now)) }
     val escrow = c.prepareStatement("""SELECT item_id,sum(quantity) FROM (
         SELECT item_id,quantity FROM economy_market_listings WHERE seller_id IN (?,?) AND status='active'
         UNION ALL SELECT offered_item_id,1::bigint FROM economy_barter_offers WHERE seller_id IN (?,?) AND status='active'
@@ -125,7 +127,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
             builderMealSpeedBps = if (a.food.builderMeal != null) a.food.builderMealSpeedBps else b.food.builderMealSpeedBps),
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
         tradeRelations=EconomyTradeRelations.merge(a.tradeRelations,b.tradeRelations,now),
-        ship=EconomyShipOrders.merge(a.ship,b.ship),
+        ship=EconomyShipOrders.merge(EconomyShipOrders.project(a.ship,now),EconomyShipOrders.project(b.ship,now)),
         workshopStarterClaimed=a.workshopStarterClaimed || b.workshopStarterClaimed,
         tutorialOrder=EconomyTutorialOrders.merge(a.tutorialOrder,b.tutorialOrder),
         stageOrders=EconomyStageOrders.merge(a.stageOrders,b.stageOrders),

@@ -42,9 +42,10 @@
 .speed small { color: inherit; font-size: 8px; font-weight: 400; line-height: 1.2; }
 .selection { display: grid; place-items: center; flex: 0 0 17px; width: 17px; height: 17px; border: 1px solid #a8b68b; border-radius: 50%; background: #fff8e3; }
 [data-selected="true"] > .selection { border-color: #466347; color: #fff3d9; background: #466347; }
-.picker .cook { background: #ede9d2; }
-.cook .speed, .unavailable .speed { color: #64694d; background: #e3e0c7; }
-.empty { color: #5a664e; font-size: 10px; }
+.emptyStock { display: grid; justify-items: center; gap: 7px; padding: 18px 12px; text-align: center; color: #526947; }
+.emptyStock strong { font-size: 12px; }
+.emptyStock p { max-width: 230px; margin: 0; font-size: 11px; line-height: 1.5; }
+.picker .cookbookLink { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; margin-top: 7px; padding: 8px; border-color: #b7bd96; background: #e3e8ce; color: #355a3c; }
 .confirmation { flex: 0 0 auto; display: flex; flex-direction: column; gap: 7px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #c5c5a3; }
 .preview { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 5px 10px; font-size: 10px; color: #5a664e; }
 .preview > span:first-child { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; }

@@ -1,7 +1,6 @@
 .port { display: grid; gap: 8px; min-width: 0; color: #344b43; }
 .port h3, .port p { margin: 0; }
 .port button { font: inherit; touch-action: manipulation; }
-.port button:disabled { opacity: .5; cursor: default; }
 .summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #64705a; font-size: 11px; }
 .orders { display: grid; gap: 8px; min-width: 0; }
 .order { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px; min-width: 0; border: 1px solid #b5b695; border-radius: 10px; background: #faf3df; box-shadow: inset 0 1px #fff9; }
@@ -56,3 +55,16 @@
 }
 @media (max-width: 359px) { .order { padding: 8px; }.orderHeader h3 { font-size: 11px; }.difficulty { font-size: 8px; }.items { gap: 5px; }.material { gap: 4px; } }
 @media (forced-colors: active) { .order, .orderNumber, .items li, .bonus, .load, .source { border-color: CanvasText; } }
+
+.timing { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; color: #526747; font-size: 11px; }
+.timing > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.timing strong { font-variant-numeric: tabular-nums; }
+.port .replace { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 6px 8px; border: 1px solid #b5b294; border-radius: 7px; background: #e8e4ce; color: #4d634b; font-size: 11px; }
+.order > .replace { justify-self: start; }
+.port button:disabled { opacity: .55; cursor: not-allowed; }
+.confirmation { display: grid; gap: 8px; padding: 12px; border: 1px solid #aa9669; border-radius: 9px; background: #f5e8bf; color: #574b30; font-size: 12px; }
+.confirmation p { line-height: 1.5; }
+.confirmation > div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.confirmation button { min-height: 40px; padding: 8px 12px; border: 1px solid #8f9571; border-radius: 7px; background: #f6f0d8; color: #40563f; }
+.confirmation button:last-child { background: #395d4b; color: #f6eed7; }
+.departure { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 10px; color: #6a715e; }

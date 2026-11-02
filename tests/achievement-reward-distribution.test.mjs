@@ -58,13 +58,14 @@ test("late recipe and activity tiers require their real counters and old clients
   const now = Date.parse("2026-10-26T12:00:00Z");
   economy.getDevEconomy(player.token, now);
   const state = globalThis.__zhivDevEconomyStore.profiles.get(owner).state;
-  const recipes = model.economyCatalog.recipes.filter(recipe => !recipe.retired);
-  assert.equal(recipes.length, 61);
-  state.progression.recipes = Object.fromEntries(recipes.slice(0, 60).map(recipe => [recipe.id, 1]));
+  const recipes = model.economyCatalog.recipes.filter(recipe => !recipe.retired && !recipe.experiment);
+  const finalRecipeTarget = progress.GAME_ACHIEVEMENT_TARGETS.master_recipes.at(-1);
+  assert.ok(recipes.length >= finalRecipeTarget, "the existing final reward remains reachable without optional random discoveries");
+  state.progression.recipes = Object.fromEntries(recipes.slice(0, finalRecipeTarget - 1).map(recipe => [recipe.id, 1]));
   let opened = rewards.getDevProgressionRewards(player.token, now);
   const master = () => opened.achievementRewards.filter(row => row.achievementId === "master_recipes");
   assert.deepEqual(master().map(row => row.eligible), [true, true, true, false]);
-  state.progression.recipes[recipes[60].id] = 1;
+  state.progression.recipes[recipes[finalRecipeTarget - 1].id] = 1;
   state.completedExplorations = 1000; state.fishing.catches.fish = 1000; state.residentOrders.completed = 500;
   state.progression.recipes.cook_grilled_fish = 500; state.progression.recipes.grow_berries = 1000;
   opened = rewards.getDevProgressionRewards(player.token, now + 1);

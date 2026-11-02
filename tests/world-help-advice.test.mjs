@@ -100,12 +100,15 @@ test("strawberry and craft advice point to personally completed practice", () =>
   const recipe = economyCatalog.recipes.find(row => row.id === context.recipeId);
   const patch = { buildings: { home: 5, warehouse: 15, workshop: 5, woodlot: 5, kiln: 5 }, inventory: { ...recipe.cost.items } };
   const result = advice(patch, { context });
-  assert.equal(result[0].id, "recipe:unlock:make_planks");
-  assert.match(result[0].message, /Произведите и заберите.*0 \/ 2/);
-  assert.deepEqual(result[0].action.target, { kind: "station", stationId: "workshop", recipeId: "make_planks" });
-  const running = job({ targetId: "workshop", recipeId: "make_planks", rewards: { planks: 1 } });
-  assert.equal(advice({ ...patch, jobs: [running] }, { context })[0].id, "recipe:unlock:make_planks");
-  const practice = { recipes: { make_planks: 2, make_rope: 1 }, routes: {} };
+  assert.equal(result[0].id, "recipe:unlock:exploration:forest");
+  assert.match(result[0].message, /Завершите и заберите.*0 \/ 2/);
+  assert.deepEqual(result[0].action.target, { kind: "expeditions", sector: "forest" });
+  const running = job({ kind: "exploration", targetId: "forest", recipeId: null, rewards: { wood: 1 } });
+  const ongoing = advice({ ...patch, jobs: [running] }, { context })[0];
+  assert.equal(ongoing.id, `job:${running.id}`);
+  assert.equal(ongoing.title, "Мохлик ещё в пути");
+  assert.deepEqual(ongoing.action.target, { kind: "expeditions", sector: "forest" });
+  const practice = { recipes: {}, routes: { forest: 2 } };
   const journey = advice({ ...patch, progression: practice }, { context });
   assert.equal(journey[0].action.target.kind, "expeditions");
   assert.match(journey[0].message, /Завершите и заберите.*0 \/ 1/);
@@ -118,10 +121,10 @@ test("recipe advice distinguishes personal catches from owned fish and leads to 
   const patch = { buildings: { home: 3, warehouse: 5, dryer: 3 }, inventory: { ...recipe.cost.items, fish_common: 20 },
     progression: { recipes: { cook_grilled_fish: 1 } } };
   const result = advice(patch, { context });
-  assert.match(result[0].message, /Поймайте и заберите любую рыбу: 0 \/ 4/);
+  assert.match(result[0].message, /Поймайте и заберите любую рыбу: 0 \/ 8/);
   assert.deepEqual(result[0].action.target, { kind: "expeditions", sector: "coast" });
   const species = economyCatalog.fishing.fish[0];
-  assert.deepEqual(advice({ ...patch, fishing: { catches: { [species.itemId]: 4 } } }, { context }), []);
+  assert.deepEqual(advice({ ...patch, fishing: { catches: { [species.itemId]: 8 } } }, { context }), []);
   const incoming = job({ kind: "exploration", targetId: economyCatalog.fishing.routeIds[0], recipeId: null,
     finishesAt: new Date(now).toISOString(), rewards: { fish_common: 1 } });
   const waiting = advice({ ...patch, jobs: [incoming] }, { context });

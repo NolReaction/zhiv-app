@@ -47,3 +47,13 @@ test("each server voyage gets one persisted arrival while tabs share its exact p
   assert.equal(otherTab.getFrame().motion, next.getFrame().motion);
   next.release(); otherTab.release();
 });
+
+
+test("uncompleted automatic and paid departures animate without a completion count and never before their server time", () => {
+  const departedAt = Date.parse("2026-11-02T12:00:00Z");
+  const ship = { voyage: null, completedVoyages: 0, departureCargo: [0, .5, 0],
+    nextAvailableAt: new Date(departedAt + shipOrdersConfig.intervalSeconds * 1000).toISOString() };
+  assert.equal(tradeShipDepartureFrame(ship, departedAt - 1), null);
+  assert.equal(tradeShipDepartureFrame(ship, departedAt).motion.elapsed, 0);
+  assert.equal(tradeShipDepartureFrame(ship, departedAt + 22000), null);
+});

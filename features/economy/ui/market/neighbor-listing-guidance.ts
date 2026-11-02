@@ -35,7 +35,8 @@ export function neighborListingGuidance(neighbor: NeighborView | null | undefine
   const name = neighbor.character.name;
   const remaining = Math.max(0, Math.min(buying.dailyBudgetCoins - buying.spentCoins, buying.globalRemainingCoins));
   const marketMaximum = marketMinimumPrice(itemId, quantity, catalog) * catalog.market.maxPriceMultiplier;
-  const ceiling = Math.floor(Math.min(neighborBuyPriceCeiling(itemId, quantity, { buyPriceBps: buying.buyPriceBps }, catalog),
+  const ceiling = Math.floor(Math.min(neighborBuyPriceCeiling(itemId, quantity, { buyPriceBps: buying.buyPriceBps,
+    sellPriceBps: buying.sellPriceBps ?? undefined, offerQuantity: buying.offerQuantity ?? undefined }, catalog),
     buying.maxLotCoins, remaining, marketMaximum) / catalog.currencyScale) * catalog.currencyScale;
   let reason: string | null = null;
   if (now >= Date.parse(neighbor.shop.refreshAt)) reason = "Обновите условия соседа: начался новый день.";

@@ -23,7 +23,7 @@ import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-com
 import { WorldTacklePicker, fishingTackleChoice } from "@/features/economy/ui/fishing/world-tackle-picker";
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob, isQuarryProduction } from "@/features/economy/domain/actor-availability";
 import { expeditionMaximumRewards } from "@/features/economy/domain/expedition-finds";
-import { ExpeditionFindChances, ExpeditionLootPreview, ExpeditionRelicChances, ExpeditionReturnReport } from "./expedition-loot";
+import { ExpeditionFindChances, ExpeditionLootPreview, ExpeditionReturnReport } from "./expedition-loot";
 import { ExpeditionActivityArt } from "./expedition-activity-art";
 import { miningDurationFilters, miningDurationLabel, miningDurationMatches, miningResourceGroups, type MiningDurationFilter } from "./mining-resource-groups";
 import workStyles from "@/features/economy/ui/production/production-work.module.css";
@@ -220,7 +220,6 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
     {fishing ? <ExpeditionFishingSummary state={state} route={route} /> : route.loot ? <div className={styles.routeRewards}><span className={styles.caption}>Основная добыча · количество меняется</span><ExpeditionLootPreview state={state} route={route} /><span className={styles.caption}>Количество каждого ресурса выбирается отдельно.</span></div>
       : <div className={styles.routeRewards}>{route.finds && <span className={styles.caption}>Гарантированно</span>}<Findings state={state} rewards={route.rewards} /></div>}
     {!fishing && <ExpeditionFindChances state={state} route={route} />}
-    <ExpeditionRelicChances state={state} />
     {fishing && <WorldTacklePicker state={state} economy={economy} disabled={command.blocked} onOpenFishingShop={onOpenFishingShop} onChoose={(kind, itemId) => {
       const action = kind === "rod" ? "equip_fishing_rod" : kind === "hook" ? "equip_fishing_hook" : "equip_fishing_bait";
       return command.send(action, itemId, 1, 0, Boolean(fishingTackleChoice(state, kind, itemId)));
@@ -292,7 +291,6 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
         </section>;
       })}
       {!groups.length && <p className={styles.miningEmpty} role="status">{routes.length ? "Нет добычи с таким временем. Выберите другой фильтр." : "Добыча откроется после улучшения дома."}</p>}
-      <ExpeditionRelicChances state={state} />
     </section>;
   }
   return <section className={styles.routes} data-section-guide-target="expedition-routes" data-guide-spotlight-group aria-label={`Маршруты: ${sector.name}`} data-sector={sectorId}>
@@ -312,7 +310,6 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
       })}
     </div>)}
     {!routes.length && <p className={styles.intro}>Маршруты пока недоступны.</p>}
-    <ExpeditionRelicChances state={state} />
   </section>;
 }
 

@@ -57,7 +57,8 @@ export function productionSources(catalog: EconomyCatalog = economyCatalog): Pro
     return index < 0 ? 6 : index + 1;
   };
   return [
-    ...catalog.recipes.map(recipe => {
+    // Chance discoveries cannot guarantee an ingredient or a production deadline.
+    ...catalog.recipes.filter(recipe => !recipe.experiment).map(recipe => {
       const requiredBuildings = { ...recipe.requiredBuildings, [recipe.buildingId]: Math.max(recipeBuildingLevel(recipe), recipe.requiredBuildings[recipe.buildingId] ?? 0) };
       return { id: `recipe:${recipe.id}`, kind: "recipe" as const, name: recipe.name, stationId: recipe.buildingId,
         seconds: recipe.seconds, collectionSeconds: recipe.collection?.seconds ?? 0,

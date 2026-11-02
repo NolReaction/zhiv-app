@@ -53,8 +53,8 @@ export function awardPlayerProgression(before: AwardBefore, state: EconomyState,
     } else if (job.kind === "production" && removed) {
       const recipe = economyCatalog.recipes.find(item => item.id === job.recipeId);
       if (!recipe) continue;
-      seconds += recipe.seconds * productionQuantity(job);
-      if (!(before.progression.recipes[recipe.id] > 0)) firstRecipes.add(recipe.id);
+      seconds += job.cooking?.workSeconds ?? recipe.seconds * productionQuantity(job);
+      if (job.cooking?.successful !== false && !(before.progression.recipes[recipe.id] > 0)) firstRecipes.add(recipe.id);
       source = "production";
     } else if (job.kind === "exploration") {
       const route = economyCatalog.explorations.find(item => item.id === job.targetId);

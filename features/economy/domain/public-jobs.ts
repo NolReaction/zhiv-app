@@ -8,6 +8,11 @@ const fishIds = new Set([...(economyCatalog.fishing?.fish.map(fish => fish.itemI
 export function publicEconomyJob(job: EconomyJob, now = Date.now()): EconomyJob {
   // A ready random find is still secret: cancellation must never reveal a free reroll.
   if (job.expeditionFinds != null) { job = { ...job }; delete job.expeditionFinds; }
+  if (job.cooking) {
+    const recipe = economyCatalog.recipes.find(recipe => recipe.id === job.recipeId);
+    job = { ...job, cooking: { successChanceBps: job.cooking.successChanceBps, workSeconds: job.cooking.workSeconds },
+      rewards: recipe ? { ...recipe.rewards } : {} };
+  }
   if (!job.fishing) return job;
   const finishesAt = Date.parse(job.finishesAt);
   if (Number.isFinite(now) && Number.isFinite(finishesAt) && now >= finishesAt)

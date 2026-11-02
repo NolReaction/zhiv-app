@@ -74,8 +74,8 @@ test("campfire sections include every selected product once and leave the catalo
   const economy = controller(), products = worldRecipeGroups(economy.snapshot, recipes(economy)), before = structuredClone(products);
   const groups = campfireRecipeGroups(products, "all");
   assert.deepEqual(groups.map(group => group.id), ["fish", "drinks", "desserts", "provisions"]);
-  assert.equal(products.length, 24);
-  assert.deepEqual(groups.map(group => group.recipes.length), [12, 4, 4, 4]);
+  assert.equal(products.length, 30);
+  assert.deepEqual(groups.map(group => group.recipes.length), [15, 5, 5, 5]);
   assert.deepEqual(groups.flatMap(group => group.recipes.map(product => product.key)).sort(), products.map(product => product.key).sort());
   for (const group of groups) assert.deepEqual(group.recipes.map(product => product.recipe.seconds), group.recipes.map(product => product.recipe.seconds).toSorted((left, right) => left - right));
   assert.deepEqual(products, before);
@@ -103,7 +103,7 @@ test("cookbook tabs show every product once and filters use real fish rarity and
   assert.equal(view.tab("fish").props["aria-selected"], true);
   for (const name of ["Рыбные блюда", "Напитки", "Десерты", "Припасы"]) assert.ok(view.html.includes(name));
   const seen = [];
-  for (const [category, count] of [["fish", 12], ["drinks", 4], ["desserts", 4], ["provisions", 4]]) {
+  for (const [category, count] of [["fish", 13], ["drinks", 5], ["desserts", 4], ["provisions", 4], ["discoveries", 4]]) {
     view.tab(category).props.onClick(); view = catalog(economy);
     assert.equal(view.tab(category).props["aria-selected"], true);
     assert.equal(view.ids.length, count);
@@ -111,17 +111,33 @@ test("cookbook tabs show every product once and filters use real fish rarity and
     seen.push(...view.ids);
   }
   assert.deepEqual(seen.toSorted(), recipes(economy).map(recipe => recipe.id).toSorted());
-  assert.equal(new Set(seen).size, 24);
+  assert.equal(new Set(seen).size, 30);
   view.tab("fish").props.onClick(); view = catalog(economy);
   view.rarity.props.onChange({ target: { value: "common" } }); view = catalog(economy);
-  assert.deepEqual(view.ids.toSorted(), ["cook_fish_soup", "cook_grilled_fish", "cook_grilled_silverfin"]);
+  assert.deepEqual(view.ids.toSorted(), ["cook_fish_soup", "cook_forest_pan", "cook_grilled_fish", "cook_grilled_silverfin"]);
   assert.doesNotMatch(view.html, /data-cookbook-rarity="(?:uncommon|rare|epic|legendary)"/);
   view.tab("drinks").props.onClick(); view = catalog(economy);
   view.available.props.onChange({ target: { checked: true } }); view = catalog(economy);
   assert.deepEqual(view.ids, ["cook_compote"]);
   view.available.props.onChange({ target: { checked: false } }); view = catalog(economy);
-  assert.equal(view.ids.length, 4);
+  assert.equal(view.ids.length, 5);
   assert.deepEqual(economy.snapshot, before);
+});
+
+test("experiments search only their clues until successful collection, then move to their dish category", () => {
+  hooks.reset(); const economy = controller(), secret = economy.snapshot.catalog.recipes.find(recipe => recipe.id === "experiment_river_aspic");
+  let view = catalog(economy);
+  view.tab("discoveries").props.onClick(); view = catalog(economy);
+  view.search.props.onChange({ target: { value: secret.name } }); view = catalog(economy);
+  assert.deepEqual(view.ids, [], "the real dish name cannot discover a hidden recipe through search");
+  view.search.props.onChange({ target: { value: secret.experiment.title } }); view = catalog(economy);
+  assert.deepEqual(view.ids, [secret.id]);
+  economy.snapshot.progression.recipes[secret.id] = 1;
+  view.search.props.onChange({ target: { value: "" } }); view = catalog(economy);
+  assert.ok(!view.ids.includes(secret.id));
+  view.tab("fish").props.onClick(); view = catalog(economy);
+  assert.ok(view.ids.includes(secret.id), "a discovered dish from prepared soup remains in the book");
+  assert.match(view.html, /Блюда из заготовок/);
 });
 
 test("source navigation clears conflicting filters and a repeated target reopens its detail", () => {

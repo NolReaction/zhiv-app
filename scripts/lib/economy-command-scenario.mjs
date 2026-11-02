@@ -11,7 +11,7 @@ export function runEconomyCommandScenario({ catalog, rules, stages, tutorial }, 
   const state = initialState ? structuredClone(initialState) : rules.newEconomyState({
     resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   const initialCoins = state.wallet.coins, initialPearls = state.wallet.pearls, initialInventory = { ...state.inventory };
-  const active = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired);
+  const active = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired && !source.experiment);
   const actions = {}, flows = {}, starts = {}, builds = [], deliveries = [];
   let clock = epoch, sequence = 0, income = 0, expenses = 0, earnedPearls = 0, peak = rules.economyStorage(state).used;
   const uuid = () => `00000000-0000-4000-9000-${(++sequence).toString(16).padStart(12, "0")}`;

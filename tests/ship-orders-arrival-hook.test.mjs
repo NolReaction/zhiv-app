@@ -119,3 +119,15 @@ test("a command rejected locally before dispatch can be retried after the write 
   controller.act = () => false; render(); assert.equal(calls.length, 0);
   render({ act: send, now: now + 1000 }); assert.equal(calls.length, 1);
 });
+
+
+test("a live voyage expires once at 24 hours and the next manifest waits until 30 hours", () => {
+  const { render, calls, state, snapshot } = fixture(); render(); render({ snapshot: snapshot(2), now: now + 86400000 - 1 });
+  assert.equal(calls.length, 1);
+  render({ now: now + 86400000 }); assert.equal(calls.length, 2); assert.equal(calls[1].action, "expire_ship_voyage");
+  assert.equal(state.ship.voyage, null); assert.equal(state.ship.nextAvailableAt, new Date(now + 108000000).toISOString());
+  render({ now: now + 86401000 }); assert.equal(calls.length, 2, "the unacknowledged expired revision cannot send twice");
+  render({ snapshot: snapshot(3), now: now + 108000000 - 1 }); assert.equal(calls.length, 2);
+  render({ now: now + 108000000 }); assert.equal(calls.length, 3); assert.equal(calls[2].action, "open_ship_voyage");
+  assert.equal(state.ship.voyage.number, 1, "expiry does not count as completion");
+});

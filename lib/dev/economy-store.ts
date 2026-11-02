@@ -108,7 +108,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   state.jobs = state.jobs.map(job => publicEconomyJob(job, now));
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
-    tradeRelations: tradeRelationsState(state), ship: shipOrdersState(state), tapBoost: state.tapBoost ?? emptyTapBoost(),
+    tradeRelations: tradeRelationsState(state), ship: shipOrdersState(state, now), tapBoost: state.tapBoost ?? emptyTapBoost(),
     marketSlots: marketSlotCount(state), unlockedItems,
     productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, leaftailShop: state.leaftailShop ?? { cycle: -1, purchased: {} }, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
@@ -615,6 +615,7 @@ export function getDevEconomyNeighbor(token: string | undefined, now = Date.now(
       staleAfterSeconds: settings.staleAfterSeconds, maxLotsPerDay: settings.maxLotsPerDay, dailyBudgetCoins: settings.dailyBudgetCoins,
       maxLotCoins: settings.maxLotCoins, usedLots: usage.usedLots, spentCoins: usage.spentCoins,
       firstSale: !devNeighborExperienced(owner) && !getDevConfirmedMarketSales(owner), buyPriceBps: settings.buyPriceBps,
+      sellPriceBps: settings.sellPriceBps, offerQuantity: settings.offerQuantity,
       globalRemainingCoins: Math.max(0, settings.globalDailyBudgetCoins - devNeighborGlobalSpent(now)),
       allowedItemIds: [...visibleItems], boughtItemIds: [...devNeighborBoughtItems(owner, now)] },
   };

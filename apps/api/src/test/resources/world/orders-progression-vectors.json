@@ -157,7 +157,8 @@
         "make_metal_parts": 2
       },
       "completedExplorations": {
-        "old_woodland": 1
+        "old_woodland": 2,
+        "coastal_deposits": 1
       }
     },
     {
@@ -260,7 +261,8 @@
         "make_metal_parts": 2
       },
       "completedExplorations": {
-        "old_woodland": 1
+        "old_woodland": 2,
+        "coastal_deposits": 1
       }
     }
   ]

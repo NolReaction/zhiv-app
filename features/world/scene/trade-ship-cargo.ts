@@ -4,7 +4,7 @@ import type { TradeShipCargo } from "@/features/world/objects/trade-ship/trade-s
 /** Confirmed loaded goods only. Inventory, pending commands and rewards never
  * create deck props. The server removes a fully loaded voyage on departure. */
 export function tradeShipCargo(ship: EconomyShip | null | undefined, departing = false): TradeShipCargo {
-  if (!ship?.voyage) return departing && ship?.nextAvailableAt ? [1, 1, 1] : [];
+  if (!ship?.voyage) return departing && ship?.nextAvailableAt ? ship.departureCargo ?? [1, 1, 1] : [];
   if (!Array.isArray(ship.voyage.orders)) return [];
   return ship.voyage.orders.slice(0, 3).map(order => {
     const entries = Object.entries(order.items).filter(([, amount]) => Number.isFinite(amount) && amount > 0);

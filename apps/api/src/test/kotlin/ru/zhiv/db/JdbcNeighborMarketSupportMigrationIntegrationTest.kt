@@ -42,14 +42,14 @@ class JdbcNeighborMarketSupportMigrationIntegrationTest {
         execute(source,"INSERT INTO neighbor_daily_usage(user_id,trade_day,used_lots,spent_coins) VALUES(?,'2026-10-26',1,30)",user)
         val stock=scalar(source,"SELECT to_jsonb(c)::text FROM neighbor_shop_cycles c")
         val usage=scalar(source,"SELECT to_jsonb(c)::text FROM neighbor_daily_usage c")
-        DatabaseFactory.migrate(source)
-        val expected=NeighborRules.defaults.copy(name=before.name,allowedItemIds=before.allowedItemIds)
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("76").load().migrate()
+        val expected=NeighborRules.defaults.copy(sellPriceBps=22500,name=before.name,allowedItemIds=before.allowedItemIds)
         assertEquals(expected,economyJson.decodeFromString<NeighborSettings>(scalar(source,"SELECT settings::text FROM neighbor_settings")))
         assertEquals("13",scalar(source,"SELECT version::text FROM neighbor_settings"))
         assertEquals(stock,scalar(source,"SELECT to_jsonb(c)::text FROM neighbor_shop_cycles c"))
         assertEquals(usage,scalar(source,"SELECT to_jsonb(c)::text FROM neighbor_daily_usage c"))
         val after=scalar(source,"SELECT to_jsonb(s)::text FROM neighbor_settings s")
-        DatabaseFactory.migrate(source)
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("76").load().migrate()
         assertEquals(after,scalar(source,"SELECT to_jsonb(s)::text FROM neighbor_settings s"))
     }
 
@@ -57,7 +57,7 @@ class JdbcNeighborMarketSupportMigrationIntegrationTest {
         val before=previous().copy(dailyBudgetCoins=700)
         execute(source,"INSERT INTO neighbor_settings(singleton,version,settings) VALUES(true,12,?::jsonb)",economyJson.encodeToString(before))
         val saved=scalar(source,"SELECT to_jsonb(s)::text FROM neighbor_settings s")
-        DatabaseFactory.migrate(source)
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("76").load().migrate()
         assertEquals(saved,scalar(source,"SELECT to_jsonb(s)::text FROM neighbor_settings s"))
     }
 }

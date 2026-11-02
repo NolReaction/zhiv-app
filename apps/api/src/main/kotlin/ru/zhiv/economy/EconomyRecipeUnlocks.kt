@@ -8,7 +8,8 @@ object EconomyRecipeUnlocks {
         }
 
     fun met(state: EconomyState, recipe: EconomyRecipe, catalog: EconomyCatalog = EconomyRules.catalog): Boolean =
-        recipe.requiredRecipes.all { (id, amount) -> (state.progression.recipes[id] ?: 0L) >= amount } &&
+        (recipe.experiment == null && (state.progression.recipes[recipe.id] ?: 0L) > 0L) ||
+            recipe.requiredRecipes.all { (id, amount) -> (state.progression.recipes[id] ?: 0L) >= amount } &&
             recipe.requiredExplorations.all { (id, amount) -> (state.progression.routes[id] ?: 0L) >= amount } &&
             (recipe.requiredFishCaught == 0L || personallyCaughtFish(state, catalog) >= recipe.requiredFishCaught)
 }

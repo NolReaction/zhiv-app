@@ -1,4 +1,5 @@
 import type { EconomyView } from "@/features/economy/domain/model";
+import { experimentDiscovered } from "@/features/economy/domain/craft-skill";
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 import { campfireRecipeGroups } from "./campfire-recipe-groups";
 import { worldRecipeGroups, type WorldRecipeGroup } from "@/features/economy/ui/stations/world-recipe-groups";
@@ -23,7 +24,7 @@ export function cookbookFishRarity(state: EconomyView, recipe: WorldRecipe): str
 }
 
 export function cookbookProducts(state: EconomyView, recipes: readonly WorldRecipe[]): (WorldRecipeGroup & { category: CookbookCategory })[] {
-  const products = worldRecipeGroups(state, recipes, { includeFuture: true });
+  const products = worldRecipeGroups(state, recipes.filter(recipe => experimentDiscovered(state, recipe)), { includeFuture: true });
   return campfireRecipeGroups(products, "all").flatMap(section => section.recipes.map(product => ({
     ...product, category: cookbookCategories.some(entry => entry.id === section.id) ? section.id as CookbookCategory : "provisions" as const,
   })));

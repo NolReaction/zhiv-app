@@ -72,3 +72,11 @@ test("a failed cargo paint restores caller Canvas state through the nested ship 
   assert.throws(() => drawTradeShipSprite(canvas.ctx, {}, { x: 0, y: 0, width: 310, cargo: [1], still: true }), /canvas failure/);
   assert.equal(canvas.depth(), 0); assert.deepEqual(canvas.snapshot(), canvas.original);
 });
+
+
+test("expired and paid departures preserve only the goods actually loaded", () => {
+  const cooldown = { voyage: null, completedVoyages: 0, nextAvailableAt: "2026-11-01T18:00:00Z" };
+  assert.deepEqual(tradeShipCargo({ ...cooldown, departureCargo: [1, .2, 0] }, true), [1, .2, 0]);
+  assert.deepEqual(tradeShipCargo({ ...cooldown, departureCargo: [0, 0, 0] }, true), [0, 0, 0]);
+  assert.deepEqual(tradeShipCargo({ ...cooldown, departureCargo: [1, .2, 0] }, false), []);
+});

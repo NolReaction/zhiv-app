@@ -49,7 +49,7 @@ class EconomyExpeditionLootTest {
         data class FindCase(val routeId: String, val itemId: String, val quantity: Long, val weight: Int, val emptyWeight: Int, val maximum: Long)
         for ((routeId, itemId, quantity, weight, emptyWeight, maximum) in listOf(
             FindCase("forest", "worm_bait", 3L, 20, 30, 20L),
-            FindCase("far_bank_grove", "currant_jelly", 1L, 6, 49, 22L))) {
+            FindCase("far_bank_grove", "currant_jelly", 1L, 6, 64, 22L))) {
             val route = EconomyRules.catalog.explorations.first { it.id == routeId }
             val finds = requireNotNull(route.finds)
             assertEquals(emptyWeight, finds.emptyWeight)

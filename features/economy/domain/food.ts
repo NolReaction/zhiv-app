@@ -1,3 +1,4 @@
+import { skillProgress } from "./craft-skill";
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState, type TradeResidentId } from "./model";
 
 import { fishClassInventory, fishClassForItem } from "./fishing";
@@ -6,7 +7,7 @@ import { obtainableResidentOrderItems } from "./order-effort";
 import { tradeOrderFingerprint, tradeResidentAvailable, TRADE_RESIDENT_IDS } from "./trade-relations";
 export { obtainableResidentOrderItems } from "./order-effort";
 
-type FoodSource = Pick<EconomyState, "food"> & { catalog?: EconomyCatalog };
+type FoodSource = Pick<EconomyState, "food"> & Partial<Pick<EconomyState, "progression">> & { catalog?: EconomyCatalog };
 type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & Partial<Pick<EconomyState, "fishing" | "progression">> & { catalog?: EconomyCatalog };
 type Recipe = EconomyCatalog["recipes"][number];
 export type ResidentOrderOffer = {
@@ -48,12 +49,11 @@ export function heroMealWorkUsed(state: FoodSource, seconds: number): number {
 }
 /** Budget is measured in baseline active work, never idle time or the number of trips. */
 export function heroMealWorkDuration(state: FoodSource, seconds: number): number {
-  const meal = pendingMeal(state, "hero");
-  if (!meal) return seconds;
-  const effect = pendingHeroMealEffect(state);
-  if (!effect) return mealDuration(seconds, meal.heroSpeedBps);
-  const used = heroMealWorkUsed(state, seconds);
-  return mealWorkDuration(seconds, effect.speedBps, used);
+  const meal = pendingMeal(state, "hero"), effect = pendingHeroMealEffect(state);
+  const fed = !meal ? seconds : !effect ? mealDuration(seconds, meal.heroSpeedBps)
+    : mealWorkDuration(seconds, effect.speedBps, heroMealWorkUsed(state, seconds));
+  const skill = state.progression ? skillProgress({ progression: state.progression }, "travel", state.catalog ?? economyCatalog).bonusBps : 0;
+  return mealDuration(fed, skill);
 }
 /** Preview the same bounded work boost before selecting a serving. */
 export function mealWorkDuration(seconds: number, speedBps: number, remainingWorkSeconds: number): number {

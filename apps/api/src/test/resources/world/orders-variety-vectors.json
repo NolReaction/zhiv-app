@@ -233,7 +233,7 @@
       "plesk_preserve_and_catch"
     ],
     "fishCatches": {
-      "fish": 4
+      "fish": 8
     }
   },
   {
@@ -339,10 +339,10 @@
       "plesk_shadow_catch"
     ],
     "fishCatches": {
-      "fish": 4
+      "fish": 8
     },
     "completedExplorations": {
-      "quarry_clay": 2
+      "forest": 2
     }
   },
   {
@@ -379,10 +379,10 @@
       "plesk_preserve_and_catch"
     ],
     "fishCatches": {
-      "fish": 4
+      "fish": 8
     },
     "completedExplorations": {
-      "quarry_clay": 2
+      "forest": 2
     }
   }
 ]

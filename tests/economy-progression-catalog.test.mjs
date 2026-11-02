@@ -170,7 +170,7 @@ test("unit production, short mining and ingredient value cannot silently regress
 
 test("the authored v14 catalog keeps every current production unit-sized and every storage gate optional", () => {
   const catalog = readEconomyCatalog();
-  assert.equal(catalog.version, 15); assert.equal(catalog.recipes.filter(recipe => !recipe.retired).length, 61);
+  assert.equal(catalog.version, 15); assert.equal(catalog.recipes.filter(recipe => !recipe.retired).length, 67);
   for (const recipe of catalog.recipes.filter(recipe => !recipe.retired)) {
     assert.equal(recipe.maxBatch, 1, recipe.id);
     assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);
@@ -333,6 +333,7 @@ test("first-stage slots stay single-unit and recipe dependencies cannot silently
   const invalidUnlock = readEconomyCatalog(); invalidUnlock.recipes.find(recipe => recipe.id === "make_tools").requiredRecipes = { missing_parts: 1 };
   assert.throws(() => auditEconomyProgression(invalidUnlock), /unknown or invalid recipe unlock/);
   const cycle = readEconomyCatalog(); cycle.recipes.find(recipe => recipe.id === "make_metal_parts").requiredRecipes = { make_tools: 1 };
+  cycle.recipes.find(recipe => recipe.id === "make_tools").requiredRecipes = { make_metal_parts: 1 };
   assert.throws(() => auditEconomyProgression(cycle), /Recipe unlock cycle/);
 });
 

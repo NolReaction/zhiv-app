@@ -1,7 +1,6 @@
 import { fishClassForItem, fishClassInventory } from "./fishing";
 import { isMinerJob } from "./actor-availability";
 import { hasGardenBerryReward } from "./garden-berries";
-import { productionCollectionRewards } from "./production-collection";
 import { leaftailOfferTarget, leaftailShopOffers } from "./leaftail-shop";
 import { leaftailRelicExchangeOffer } from "./leaftail-relic-exchange";
 import type { EconomyCommand, EconomyJob, EconomyResult, EconomyView, MarketCommand } from "./model";
@@ -19,6 +18,16 @@ export type InventoryGain = Readonly<{
   expedition?: Readonly<{ routeId: string; title: string; xp: number; rareItemIds: readonly string[] }>;
 }>;
 export const INVENTORY_GAIN_HISTORY_LIMIT = 8;
+
+/** Public experiments conceal their saved draw. Authorize the possible goods,
+ * then use only the accepted inventory delta below to reveal the actual dish. */
+function productionGainLimits(job: EconomyJob, catalog: EconomyView["catalog"]): Record<string, number> {
+  const recipe = job.cooking ? catalog.recipes.find(recipe => recipe.id === job.recipeId) : undefined;
+  if (!recipe?.experiment) return job.rewards;
+  const limits = { ...recipe.rewards };
+  for (const [id, count] of Object.entries(recipe.experiment.failureRewards)) limits[id] = Math.max(limits[id] ?? 0, count);
+  return limits;
+}
 
 /** A receipt may replace class drawings with its own actual species. A previous
  * masked snapshot can recover species from the accepted collection delta, but
@@ -77,14 +86,16 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     const jobs = before.jobs.filter(job => job.kind === "production" && job.targetId === command.targetId
       && !job.collection && !(job.targetId === "garden" && hasGardenBerryReward(job.rewards)) && !after.jobs.some(item => item.id === job.id));
     if (!jobs.length) return null;
-    allowed = productionCollectionRewards(jobs); source = "claim";
+    allowed = {}; source = "claim";
+    for (const job of jobs) for (const [id, count] of Object.entries(productionGainLimits(job, before.catalog)))
+      allowed[id] = (allowed[id] ?? 0) + count;
     if (after.catalog.buildings.some(station => station.id === command.targetId)) stationId = command.targetId;
   } else if (command.action === "claim_job" || command.action === "claim_mining_batch") {
     const job = before.jobs.find(item => item.id === command.targetId);
     if (!job || job.kind === "construction" || command.action === "claim_mining_batch" && (!isMinerJob(job) || !job.miningBatch)) return null;
     const remaining = after.jobs.find(item => item.id === job.id);
     if (remaining && !(isMinerJob(job) && job.miningBatch)) return null;
-    allowed = fishClassInventory(job.rewards); source = "claim";
+    allowed = fishClassInventory(job.kind === "production" ? productionGainLimits(job, before.catalog) : job.rewards); source = "claim";
     const route = before.catalog.explorations.find(item => item.id === job.targetId);
     if (isMinerJob(job) && job.miningBatch) {
       const batch = job.miningBatch;

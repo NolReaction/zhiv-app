@@ -46,6 +46,10 @@ export type EconomyItem = EconomyCatalog["items"][number] & {
 export type EconomyRecipe = EconomyCatalog["recipes"][number] & {
   inputNpcValue: number;
   outputNpcValue: number;
+  /** Baseline expectation includes the edible fallback, before skill bonuses. */
+  expectedOutputNpcValue: number;
+  failureOutputNpcValue: number;
+  successProbability: number;
   addedNpcValue: number;
   /** Theoretical output of the production timer alone, with all inputs supplied. */
   unitsPerHour: number;
@@ -114,7 +118,7 @@ function npcValue(catalog: EconomyCatalog, items: Record<string, number>): numbe
 /** Stable baseline: the earliest recipe, before optional mastery variants. */
 function baselineRecipe(catalog: EconomyCatalog, itemId: string) {
   const baseline = timeEconomyPolicy(catalog)?.baselineRecipes[itemId];
-  return catalog.recipes.filter(recipe => !sourceRetired(recipe) && (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
+  return catalog.recipes.filter(recipe => !sourceRetired(recipe) && !recipe.experiment && (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
     Number(b.id === baseline) - Number(a.id === baseline) || a.requiredHomeLevel - b.requiredHomeLevel || recipeBuildingLevel(a) - recipeBuildingLevel(b)
     || Object.keys(a.requiredRecipes ?? {}).length - Object.keys(b.requiredRecipes ?? {}).length
     || a.id.localeCompare(b.id))[0];
@@ -234,6 +238,7 @@ export function calculateRecipePlan(recipeId: string, quantity = 1, catalog: Eco
   }
 
   run(chosen, quantity, new Set(Object.keys(chosen.rewards)));
+  if (chosen.experiment) warnings.add("Это затраты на попытки: число удачных блюд случайно. При промахе выдаётся указанная простая порция; навык повышает шанс следующих попыток.");
   // For a freely gathered chosen item, show its own units as the raw material.
   if (!Object.keys(chosen.cost.items).length && chosen.cost.coins === 0) addCounts(rawInputs, chosen.rewards, quantity);
   if (outside.size) warnings.add("Добыча сырья вне производств не включена в очереди: маршрут выбирается отдельно; улов и конкретная реликвия не гарантированы.");
@@ -299,24 +304,28 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
   const unlockHomes = recipeUnlockHomes(catalog);
   const recipes: EconomyRecipe[] = catalog.recipes.filter(recipe => !sourceRetired(recipe)).map(recipe => {
     const inputNpcValue = npcValue(catalog, recipe.cost.items), outputNpcValue = npcValue(catalog, recipe.rewards);
+    const successProbability = (recipe.experiment?.successBps ?? 10000) / 10000;
+    const failureOutputNpcValue = recipe.experiment ? npcValue(catalog, recipe.experiment.failureRewards) : 0;
+    const expectedOutputNpcValue = successProbability * outputNpcValue + (1 - successProbability) * failureOutputNpcValue;
     const count = Object.values(recipe.rewards).reduce((sum, value) => sum + value, 0);
     return { ...recipe, buildingLevel: recipeBuildingLevel(recipe), cost: copyCost(recipe.cost), rewards: { ...recipe.rewards }, requiredBuildings: { ...recipe.requiredBuildings }, requiredRecipes: { ...recipe.requiredRecipes },
       requiredExplorations: { ...recipe.requiredExplorations }, requiredFishCaught: recipe.requiredFishCaught ?? 0,
       ...(recipe.collection ? { collection: { ...recipe.collection } } : {}), inputNpcValue, outputNpcValue,
-      addedNpcValue: outputNpcValue - inputNpcValue - recipe.cost.coins, unitsPerHour: 3600 * count / recipe.seconds,
-      grossNpcPerHour: 3600 * outputNpcValue / recipe.seconds, collectionSeconds: recipe.collection?.seconds ?? 0,
+      expectedOutputNpcValue, failureOutputNpcValue, successProbability,
+      addedNpcValue: expectedOutputNpcValue - inputNpcValue - recipe.cost.coins, unitsPerHour: 3600 * count / recipe.seconds,
+      grossNpcPerHour: 3600 * expectedOutputNpcValue / recipe.seconds, collectionSeconds: recipe.collection?.seconds ?? 0,
       unlockHomeLevel: unlockHomes.get(recipe.id) ?? recipe.requiredHomeLevel };
   });
   for (const [id, quantity] of Object.entries(catalog.onboarding?.startingItems ?? {})) addSource(id,
     { id: "starter", kind: "starter", name: "Стартовый запас", homeLevel: 1, quantity, guaranteed: true, detail: "Однократно при создании хозяйства." });
   for (const recipe of recipes) {
     for (const [id, quantity] of Object.entries(recipe.rewards)) addSource(id, { id: `recipe:${recipe.id}`, kind: "recipe", name: recipe.name,
-      homeLevel: recipe.unlockHomeLevel, quantity, seconds: recipe.seconds, guaranteed: true, recipeId: recipe.id,
+      homeLevel: recipe.unlockHomeLevel, quantity, seconds: recipe.seconds, guaranteed: !recipe.experiment, recipeId: recipe.id,
       cost: copyCost(recipe.cost), requiredBuildings: { ...recipe.requiredBuildings,
         [recipe.buildingId]: Math.max(recipe.buildingLevel, recipe.requiredBuildings[recipe.buildingId] ?? 0) },
       requiredRecipes: { ...recipe.requiredRecipes },
       requiredExplorations: { ...recipe.requiredExplorations }, requiredFishCaught: recipe.requiredFishCaught, unlockTitle: recipe.unlockTitle,
-      detail: `${catalog.buildings.find(building => building.id === recipe.buildingId)?.name ?? recipe.buildingId}, уровень ${recipe.buildingLevel}. Один предмет за запуск; получение вручную.` });
+      detail: `${catalog.buildings.find(building => building.id === recipe.buildingId)?.name ?? recipe.buildingId}, уровень ${recipe.buildingLevel}. ${recipe.experiment ? `Необязательный опыт: базовый шанс ${recipe.experiment.successBps / 100}%, кулинария от уровня ${recipe.experiment.requiredCookingLevel}.` : "Один предмет за запуск; получение вручную."}` });
     for (const [id, quantity] of Object.entries(recipe.cost.items)) addUse(id,
       { id: `recipe:${recipe.id}`, kind: "recipe", name: recipe.name, quantity, homeLevel: recipe.unlockHomeLevel });
   }

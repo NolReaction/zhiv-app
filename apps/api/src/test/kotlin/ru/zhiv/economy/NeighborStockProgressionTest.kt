@@ -12,7 +12,8 @@ class NeighborStockProgressionTest {
     @Test fun `default stock contains the full ordinary catalog without premium currencies relics or raw fish`() {
         val fishing = checkNotNull(EconomyRules.catalog.fishing)
         val rawFishIds = (fishing.fish.map { it.itemId } + fishing.classes.map { it.itemId }).toSet()
-        val ordinary = EconomyRules.catalog.items.filter { it.tradable && it.baseSellPrice > 0 && it.category != "special" && it.id !in rawFishIds }
+        val experiments=EconomyRules.catalog.recipes.filter { it.experiment != null }.flatMap { it.rewards.keys }.toSet()
+        val ordinary = EconomyRules.catalog.items.filter { it.tradable && it.baseSellPrice > 0 && it.category != "special" && it.id !in rawFishIds && it.id !in experiments }
         assertEquals(ordinary.map { it.id }.toSet(), settings.allowedItemIds.toSet())
         assertTrue(settings.allowedItemIds.containsAll(listOf("tools", "research_gear", "cranberry_glaze", "strawberry_compote", "fish_soup", "lens", "festive_sturgeon")))
     }
@@ -22,7 +23,7 @@ class NeighborStockProgressionTest {
         assertFalse("fish_soup" in opened(state))
         val cooked = state.copy(progression = state.progression.copy(recipes = mapOf("cook_grilled_fish" to 1L)))
         assertFalse("fish_soup" in opened(cooked), "Cooking alone does not prove a personal catch")
-        val learned = cooked.copy(fishing = cooked.fishing.copy(catches = mapOf(checkNotNull(EconomyRules.catalog.fishing).fish.first().itemId to 4L)))
+        val learned = cooked.copy(fishing = cooked.fishing.copy(catches = mapOf(checkNotNull(EconomyRules.catalog.fishing).fish.first().itemId to 8L)))
         assertTrue("fish_soup" in opened(learned))
         val discovered = learned.copy(unlockedItems = EconomyRules.catalog.items.map { it.id })
         val fishing = checkNotNull(EconomyRules.catalog.fishing)

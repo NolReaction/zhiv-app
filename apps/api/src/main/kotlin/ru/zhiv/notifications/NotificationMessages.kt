@@ -64,6 +64,9 @@ private val resourceWords = mapOf(
     "grilled_silverfin" to "серебропёрки на углях", "smoked_bream" to "копчёного леща",
     "mooncarp_blueberries" to "лунного карася с черникой", "pike_berry_sauce" to "щуки в ягодном соусе",
     "eel_in_jar" to "угря в горшочке", "festive_sturgeon" to "праздничного осетра",
+    "berry_tea" to "ягодного чая", "forest_pan" to "лесного жаркого",
+    "currant_glazed_fish" to "рыбы в смородиновой глазури", "berry_pastila" to "ягодной пастилы",
+    "trail_feast" to "таёжного пайка", "river_aspic" to "лесного рыбного студня",
 ).mapValues { (_, food) -> CountedResource("порция $food", "порции $food", "порций $food") }
 
 private fun quantityForm(quantity: Long): Int = when {
@@ -166,8 +169,15 @@ private fun productionSection(events: List<NotificationMessageEvent>): Notificat
             add(if (resources.isEmpty()) "Урожай собран. $takeResult" else "Урожай собран: $resources. $takeResult")
         }
         if (ready.isNotEmpty()) {
-            val resources = joinedResources(totalRewards(ready.filter { it.job?.kind == "production" }))
-            add(if (resources.isEmpty()) "Производство завершено. $takeResult" else "Готово: $resources. $takeResult")
+            val (experiments, ordinary) = ready.partition { event -> event.job?.let { job ->
+                job.cooking != null || EconomyRules.catalog.recipes.any { it.id == job.recipeId && it.experiment != null }
+            } == true }
+            // Push is delivered before collection: neither saved outcome nor fallback may leak.
+            if (experiments.isNotEmpty()) add("Кулинарный опыт готов. Получите результат у костра.")
+            if (ordinary.isNotEmpty()) {
+                val resources = joinedResources(totalRewards(ordinary.filter { it.job?.kind == "production" }))
+                add(if (resources.isEmpty()) "Производство завершено. $takeResult" else "Готово: $resources. $takeResult")
+            }
         }
     }
     val short = when {

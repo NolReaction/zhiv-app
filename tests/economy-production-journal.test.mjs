@@ -139,7 +139,8 @@ test("local reservations require confirmed expedition mastery and cannot invent 
   const original = structuredClone(snapshot);
   assert.equal(reserveProduction(snapshot, intent("make_trade_crate")), null);
   assert.deepEqual(snapshot, original);
-  snapshot.progression.routes.forest = 1;
+  snapshot.progression.routes.forest = 2;
+  snapshot.progression.routes.old_woodland = 1;
   const projected = reserveProduction(snapshot, intent("make_trade_crate"));
   assert.equal(projected.jobs[0].recipeId, "make_trade_crate");
   assert.deepEqual(projected.progression, snapshot.progression);

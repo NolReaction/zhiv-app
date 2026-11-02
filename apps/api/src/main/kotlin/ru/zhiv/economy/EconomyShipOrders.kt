@@ -20,8 +20,10 @@ private const val shipCompletionPearls = 20L
     val version: Int, val intervalSeconds: Long, val rewardPearls: Long, val payoutBps: Int,
     val rewardValueCoins: Long, val maxRewardPearls: Long,
     val templates: List<EconomyShipOrderTemplate>,
+    val staySeconds: Long = 86400, val resetPricePearls: Long = 20, val freeReplacements: Int = 3,
 ) {
     init {
+        require(staySeconds in 3600L..172800L && resetPricePearls in 1L..1000L && freeReplacements == 3)
         require(version == 1 && intervalSeconds in 3600L..86400L && rewardPearls in 1L..40L)
         require(payoutBps in 10000..11000 && templates.size in 3..100)
         require(rewardValueCoins in 1L..ECONOMY_MAX_BALANCE && maxRewardPearls in rewardPearls..40L)
@@ -40,9 +42,10 @@ private const val shipCompletionPearls = 20L
     val id: String, val templateId: String, val title: String, val items: Map<String, Long>,
     val rewardCoins: Long, val deliveredAt: String? = null,
     val loadedItems: Map<String, Long> = if (deliveredAt != null) items else emptyMap(), val difficulty: String = "medium",
-    val rewardItems: Map<String, Long> = emptyMap(),
+    val rewardItems: Map<String, Long> = emptyMap(), val revision: Int = 0,
 ) {
     init {
+        require(revision in 0..3)
         require(id.length in 1..80 && templateId.length in 1..80 && title.length in 1..120)
         require(items.size in 1..8 && items.keys.all { it.length in 1..80 } && items.values.all { it in 1L..ECONOMY_MAX_ITEMS })
         require(rewardCoins in 1L..ECONOMY_MAX_BALANCE)
@@ -55,11 +58,12 @@ private const val shipCompletionPearls = 20L
 
 @Serializable data class EconomyShipVoyage(
     val id: String, val number: Long, val openedAt: String, val orders: List<EconomyShipOrder>,
-    val rewardPearls: Long,
+    val rewardPearls: Long, val replacementsUsed: Int = 0,
 ) {
     init {
         require(parseCanonicalUuidV4(id) != null && number in 1L..ECONOMY_MAX_REVISION)
-        require(orders.size == 3 && orders.withIndex().all { (index, order) -> order.id == "$id:$index" })
+        require(replacementsUsed in 0..3)
+        require(orders.size == 3 && orders.withIndex().all { (index, order) -> order.id == "$id:$index" + (if (order.revision > 0) ":r${order.revision}" else "") })
         require(orders.map { it.templateId }.distinct().size == 3)
         require(rewardPearls in 0L..ECONOMY_MAX_PEARLS)
         Instant.parse(openedAt)
@@ -68,10 +72,13 @@ private const val shipCompletionPearls = 20L
 
 @Serializable data class EconomyShipState(
     val voyage: EconomyShipVoyage? = null, val completedVoyages: Long = 0, val nextAvailableAt: String? = null,
+    val resetAvailableAt: String? = null, val departureCargo: List<Double>? = null,
 ) {
     init {
         require(completedVoyages in 0L..ECONOMY_MAX_REVISION)
         nextAvailableAt?.let(Instant::parse)
+        resetAvailableAt?.let(Instant::parse)
+        require(departureCargo == null || departureCargo.size == 3 && departureCargo.all { it.isFinite() && it in 0.0..1.0 })
     }
 }
 
@@ -132,8 +139,37 @@ object EconomyShipOrders {
         return (hash xor (hash ushr 16)) and 0xffffffffL
     }
 
-    fun open(state: EconomyState, now: Instant, voyageId: String = UUID.randomUUID().toString(),
+    fun departureAt(voyage: EconomyShipVoyage): Instant = Instant.parse(voyage.openedAt).plusSeconds(config.staySeconds)
+
+    fun cargoFractions(voyage: EconomyShipVoyage): List<Double> = voyage.orders.map { order ->
+        val total = order.items.values.sum()
+        if (total == 0L) 0.0 else order.items.entries.sumOf { (id, count) ->
+            if (order.deliveredAt != null) count else minOf(count, order.loadedItems[id] ?: 0L)
+        }.toDouble() / total
+    }
+
+    /** Server reads and commands use the same deadline, even after an offline week. */
+    fun project(ship: EconomyShipState, now: Instant): EconomyShipState {
+        val voyage = ship.voyage ?: return ship
+        if (now.isBefore(departureAt(voyage)) || voyage.orders.all { it.deliveredAt != null }) return ship
+        return ship.copy(voyage = null, departureCargo = cargoFractions(voyage),
+            nextAvailableAt = departureAt(voyage).plusSeconds(config.intervalSeconds).toString())
+    }
+
+    private fun replacement(state: EconomyState, voyage: EconomyShipVoyage, order: EconomyShipOrder): EconomyShipOrder? {
+        val revision = voyage.replacementsUsed + 1
+        val pool = eligibleTemplates(state).filter { it.difficulty == order.difficulty && voyage.orders.none { other -> other.templateId == it.id } }
+        if (pool.isEmpty()) return null
+        val template = pool[(drawHash("${voyage.id}:${order.id}:replacement:$revision") % pool.size).toInt()]
+        val index = voyage.orders.indexOfFirst { it.id == order.id }
+        return EconomyShipOrder("${voyage.id}:$index:r$revision", template.id, template.title, template.items.toMap(),
+            rewardCoins(template, EconomyRules.catalog, config), difficulty = template.difficulty,
+            rewardItems = template.rewardItems.toMap(), revision = revision)
+    }
+
+    fun open(input: EconomyState, now: Instant, voyageId: String = UUID.randomUUID().toString(),
         catalog: EconomyCatalog = EconomyRules.catalog, ship: EconomyShipCatalog = config): EconomyState {
+        val state = input.copy(ship = project(input.ship, now))
         if ((state.buildings["lighthouse"] ?: 0) < 1) economyFailure("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк")
         if (state.ship.voyage != null) economyFailure("ECONOMY_SHIP_ACTIVE", "Сначала загрузите текущую поставку")
         if (state.ship.nextAvailableAt?.let { now.isBefore(Instant.parse(it)) } == true)
@@ -148,7 +184,7 @@ object EconomyShipOrders {
                 difficulty = template.difficulty, rewardItems = template.rewardItems.toMap())
         }
         val voyage = EconomyShipVoyage(voyageId, state.ship.completedVoyages + 1, now.toString(), orders, shipCompletionPearls)
-        return state.copy(ship = state.ship.copy(voyage = voyage, nextAvailableAt = null))
+        return state.copy(ship = state.ship.copy(voyage = voyage, nextAvailableAt = null, departureCargo = null))
     }
 
     private fun finishVoyage(state: EconomyState, now: Instant): EconomyState {
@@ -156,20 +192,47 @@ object EconomyShipOrders {
             economyFailure("ECONOMY_CAPACITY", "Кошелёк достиг предела")
         return state.copy(wallet = state.wallet.copy(pearls = state.wallet.pearls + shipCompletionPearls),
             ship = state.ship.copy(voyage = null, completedVoyages = state.ship.completedVoyages + 1,
-                nextAvailableAt = now.plusSeconds(config.intervalSeconds).toString()))
+                nextAvailableAt = now.plusSeconds(config.intervalSeconds).toString(), departureCargo = listOf(1.0, 1.0, 1.0)))
     }
 
-    fun command(state: EconomyState, command: EconomyCommand, now: Instant,
+    fun command(input: EconomyState, command: EconomyCommand, now: Instant,
         reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
-        if (command.totalPrice != 0L || command.fishSelection != null ||
+        val state = input.copy(ship = project(input.ship, now))
+        if (command.action != "skip_ship_voyage" && command.totalPrice != 0L || command.fishSelection != null ||
             command.action != "load_ship_cargo" && command.quantity != 1L) invalidEconomy()
-        if (command.action == "skip_ship_voyage") economyFailure("ECONOMY_SHIP_CANNOT_SKIP", "Корабль ждёт загрузки всех заказов")
         if ((state.buildings["lighthouse"] ?: 0) < 1) economyFailure("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк")
+        if (command.action == "expire_ship_voyage") {
+            if (input.ship.voyage?.id != command.targetId || state.ship.voyage != null)
+                economyFailure("ECONOMY_SHIP_CHANGED", "Срок этой поставки ещё не истёк или корабль уже отправился")
+            return state to "Корабль отправился. Следующий рейс через 6 часов после отхода"
+        }
         if (command.action == "open_ship_voyage") {
             if (command.targetId != "port") invalidEconomy()
             return open(state, now) to "Корабль прибыл с тремя заказами"
         }
         val voyage = state.ship.voyage ?: economyFailure("ECONOMY_SHIP_CHANGED", "Корабль уже отправился. Обновите заказы")
+        if (now.isBefore(Instant.parse(voyage.openedAt))) economyFailure("ECONOMY_SHIP_WAIT", "Дождитесь прибытия корабля")
+        if (command.action == "skip_ship_voyage") {
+            if (command.targetId != voyage.id) economyFailure("ECONOMY_SHIP_CHANGED", "Корабль уже отправился")
+            if (state.ship.resetAvailableAt?.let { now.isBefore(Instant.parse(it)) } == true)
+                economyFailure("ECONOMY_SHIP_WAIT", "Досрочная отправка ещё недоступна")
+            if (voyage.orders.all { it.deliveredAt != null }) economyFailure("ECONOMY_SHIP_CHANGED", "Все грузы уже приняты. Дождитесь награды")
+            if (command.totalPrice != config.resetPricePearls) economyFailure("ECONOMY_SHIP_PRICE_CHANGED", "Цена отправки изменилась. Подтвердите её снова")
+            if (state.wallet.pearls < config.resetPricePearls) economyFailure("ECONOMY_PEARLS", "Не хватает жемчуга для отправки")
+            val nextAt = now.plusSeconds(config.intervalSeconds).toString()
+            return state.copy(wallet = state.wallet.copy(pearls = state.wallet.pearls - config.resetPricePearls),
+                ship = state.ship.copy(voyage = null, nextAvailableAt = nextAt, resetAvailableAt = nextAt,
+                    departureCargo = cargoFractions(voyage))) to "Корабль отправлен. Новый рейс прибудет через 6 часов"
+        }
+        if (command.action == "replace_ship_order") {
+            val order = voyage.orders.find { it.id == command.targetId && it.deliveredAt == null }
+                ?: economyFailure("ECONOMY_SHIP_CHANGED", "Этот груз уже принят или корабль отправился")
+            if (order.loadedItems.values.any { it > 0 }) economyFailure("ECONOMY_SHIP_CARGO_STARTED", "Можно заменить только груз, который ещё не начали загружать")
+            if (voyage.replacementsUsed >= config.freeReplacements) economyFailure("ECONOMY_SHIP_REPLACEMENTS", "Бесплатные замены в этом рейсе закончились")
+            val updated = replacement(state, voyage, order) ?: economyFailure("ECONOMY_SHIP_UNAVAILABLE", "Других доступных грузов этой сложности пока нет")
+            return state.copy(ship = state.ship.copy(voyage = voyage.copy(replacementsUsed = voyage.replacementsUsed + 1,
+                orders = voyage.orders.map { if (it.id == order.id) updated else it }))) to "Заказ заменён. Срок стоянки корабля сохранён"
+        }
         if (command.action == "load_ship_cargo" || command.action == "complete_ship_order") {
             if (command.action == "load_ship_cargo" && command.voyageId != voyage.id)
                 economyFailure("ECONOMY_SHIP_CHANGED", "Эта поставка уже закрыта")
@@ -194,7 +257,7 @@ object EconomyShipOrders {
                     inventory = EconomyRules.addItems(next.inventory, order.rewardItems)), order.rewardItems)
                 EconomyRules.assertStorageTransition(state, next, reservedItems)
                 if (next.ship.voyage!!.orders.all { it.deliveredAt != null })
-                    return finishVoyage(next, now) to "Все грузы загружены. Получено 10 жемчужин — корабль отправляется"
+                    return finishVoyage(next, now) to "Все грузы загружены. Получено 10 жемчужин. Корабль отправляется"
             }
             return next to if (complete) "Груз загружен. Награда получена" else "Товар загружен на корабль"
         }
@@ -202,13 +265,15 @@ object EconomyShipOrders {
         if (command.action != "claim_ship_voyage") invalidEconomy()
         // Compatibility for manifests fully loaded before automatic departure was introduced.
         if (voyage.orders.any { it.deliveredAt == null }) economyFailure("ECONOMY_SHIP_INCOMPLETE", "Сначала загрузите все три заказа")
-        return finishVoyage(state, now) to "Все грузы загружены. Получено 10 жемчужин — корабль отправляется"
+        return finishVoyage(state, now) to "Все грузы загружены. Получено 10 жемчужин. Корабль отправляется"
     }
 
     /** Never discard a second paid manifest or copy its reward into a new one. */
     fun merge(a: EconomyShipState, b: EconomyShipState): EconomyShipState {
         if (a.voyage != null && b.voyage != null) economyFailure("ACCOUNT_MERGE_CONFLICT", "Завершите корабельные заказы в одном из профилей перед объединением")
         val nextAvailableAt = listOfNotNull(a.nextAvailableAt, b.nextAvailableAt).maxByOrNull { Instant.parse(it) }
-        return EconomyShipState(a.voyage ?: b.voyage, maxOf(a.completedVoyages, b.completedVoyages), nextAvailableAt)
+        val resetAt = listOfNotNull(a.resetAvailableAt, b.resetAvailableAt).maxByOrNull { Instant.parse(it) }
+        val cargo = if (nextAvailableAt == a.nextAvailableAt) a.departureCargo else b.departureCargo
+        return EconomyShipState(a.voyage ?: b.voyage, maxOf(a.completedVoyages, b.completedVoyages), nextAvailableAt, resetAt, cargo)
     }
 }

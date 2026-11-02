@@ -3,6 +3,7 @@ import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { Children, isValidElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
@@ -22,7 +23,7 @@ test("house two opens blueberries, rope, the independent mine, kiln and bridge w
   const result = unlocks("home", 2);
   assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 1));
   assert.ok(result.upgrades.some(target => target.stationId === "kiln" && target.level === 1));
-  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["gather_fiber", "make_rope", "make_charcoal", "fire_bricks", "grow_blueberries", "cook_blueberry_compote", "make_ceramic_jar", "cook_grilled_silverfin"]);
+  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["gather_fiber", "make_rope", "make_charcoal", "fire_bricks", "grow_blueberries", "cook_blueberry_compote", "make_ceramic_jar", "cook_grilled_silverfin", "cook_berry_tea", "cook_forest_pan", "experiment_berry_pastila"]);
   assert.deepEqual(result.routes.map(route => route.id), ["quarry_stone", "quarry_clay"]);
   assert.deepEqual(result.routes.map(route => route.rewards), [{ stone: 1 }, { clay: 1 }]);
   assert.ok(result.routes.every(route => !route.retired));
@@ -89,6 +90,33 @@ function content(controller, navigation) {
   return elements(WorldUpgradeContent({ stationId: "warehouse", economy: controller, navigation, onClose() {} }));
 }
 const startButton = nodes => nodes.find(element => element.type === "button" && element.props.className?.includes("confirm"));
+
+test("home and campfire upgrade previews keep experiment names and result art hidden until a successful recipe claim", () => {
+  for (const recipe of economyCatalog.recipes.filter(recipe => recipe.experiment)) for (const stationId of ["home", "dryer"]) {
+    const controller = economy();
+    const targetLevel = stationId === "home" ? recipe.requiredHomeLevel : recipe.buildingLevel;
+    controller.snapshot.buildings = { ...Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])), [stationId]: targetLevel - 1 };
+    controller.snapshot.progression = { recipes: {}, routes: {} };
+    const output = Object.keys(recipe.rewards)[0], name = economyCatalog.items.find(item => item.id === output).name;
+    function preview() {
+      const node = elements(WorldUpgradeContent({ stationId, economy: controller, onClose() {} })).find(node => node.type?.name === "UpgradeUnlocks");
+      assert.ok(node, `${stationId}/${recipe.id}: preview exists`);
+      return node.type(node.props).props.cards.find(card => card.recipeId === recipe.id);
+    }
+    const hidden = preview();
+    assert.ok(hidden); assert.equal(hidden.label, recipe.experiment.title);
+    for (const section of [hidden.content, hidden.details]) {
+      const html = renderToStaticMarkup(section);
+      assert.ok(!html.includes(name), `${stationId}/${recipe.id}: no result name`);
+      assert.ok(!html.includes(`data-item-icon="${output}"`), `${stationId}/${recipe.id}: no result artwork`);
+      assert.ok(html.includes(recipe.experiment.title));
+    }
+    assert.match(renderToStaticMarkup(hidden.content), /Кулинарный опыт/);
+    controller.snapshot.progression.recipes[recipe.id] = 1;
+    const learned = renderToStaticMarkup(preview().content);
+    assert.ok(learned.includes(name)); assert.ok(learned.includes(`data-item-icon="${output}"`));
+  }
+});
 
 test("pending builder food quotes the server speed formula without spending or applying it twice", () => {
   const controller = economy(), catalog = structuredClone(economyCatalog);

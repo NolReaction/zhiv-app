@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { recipeMasteryReachable } from "./recipe-mastery.mjs";
 import { explorationLootSummary } from "./exploration-loot.mjs";
-import { createLiquidation, recipeBuildingLevel } from "./economy-math.mjs";
+import { createLiquidation, expectedRecipeRewards, recipeBuildingLevel } from "./economy-math.mjs";
 
 /** Timed production can create value; an unattended bundle must not create
  * extra raw materials or outperform its unlocked elementary station jobs. */
 export function auditProductionBalance(catalog) {
   catalog = { ...catalog, recipes: catalog.recipes.filter(source => !source.retired), explorations: catalog.explorations.filter(source => !source.retired) };
   const value = createLiquidation(catalog);
-  const net = recipe => value(recipe.rewards) - value(recipe.cost.items) - recipe.cost.coins;
+  const net = recipe => value(expectedRecipeRewards(recipe)) - value(recipe.cost.items) - recipe.cost.coins;
   const rows = [];
   const mining = catalog.explorations.filter(route => route.activity === "mining" && route.requiredBuildings?.quarry && (catalog.version >= 13 || route.id.startsWith("quarry_")));
   const station = recipe => recipe.buildingId ?? (recipe.activity === "mining" ? "quarry" : null);
@@ -67,7 +67,7 @@ export function auditProductionBalance(catalog) {
       }
     }
     rows.push({ id: recipe.id, hours: recipe.seconds / 3600, output: Object.values(recipe.rewards).reduce((a, b) => a + b, 0),
-      revenue: value(recipe.rewards), inputValue: value(recipe.cost.items) + recipe.cost.coins,
+      revenue: value(expectedRecipeRewards(recipe)), inputValue: value(recipe.cost.items) + recipe.cost.coins,
       net: net(recipe), netPerHour: net(recipe) * 3600 / recipe.seconds, activeWorkHours: activeSeconds / 3600 });
   }
   for (const route of catalog.explorations.filter(route => !mining.includes(route))) {
@@ -183,7 +183,7 @@ export function auditFourthStageBudget(catalog, requiredConstruction) {
   const runs = new Map(), queueSeconds = {};
   const expand = (itemId, count, path = new Set()) => {
     assert(!path.has(itemId), `Fourth stage recipe cycle at ${itemId}`);
-    const recipe = catalog.recipes.filter(recipe => !recipe.retired && (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
+    const recipe = catalog.recipes.filter(recipe => !recipe.retired && !recipe.experiment && (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
       a.requiredHomeLevel - b.requiredHomeLevel || recipeBuildingLevel(a) - recipeBuildingLevel(b)
       || Object.keys(a.requiredRecipes ?? {}).length - Object.keys(b.requiredRecipes ?? {}).length
       || a.id.localeCompare(b.id))[0];
@@ -211,7 +211,7 @@ export function auditFourthStageBudget(catalog, requiredConstruction) {
  * NPC purchases or player-market stock. This proves availability, not quantity,
  * affordability, random-fish deadlines or a feasible visit schedule. */
 export function auditBuildingUnlocks(catalog) {
-  const sources = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired);
+  const sources = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired && !source.experiment);
   const rows = [];
   for (let home = 1; home <= 5; home++) {
     const levels = { home, garden: 1, warehouse: 1 }, items = new Set(), recipes = new Set(), routes = new Set();

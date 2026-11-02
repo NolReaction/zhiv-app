@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowRight, Calculator, Clock3, Coins, Gem, Package, Search, Sprout } from "lucide-react";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
+import { shipOrdersConfig } from "@/features/economy/domain/ship-orders";
+import { formatPearls } from "@/features/economy/domain/money";
 import { buildingLabels } from "./graph";
 import { EconomyWorkbench } from "./economy-workbench";
 import { calculateRecipePlan, progressionEconomy, type EconomyHomeUnlock, type EconomyItem, type EconomyItemSource, type EconomyRecipe, type EconomyStage } from "./economy-data";
@@ -49,7 +51,7 @@ function RecipeFlow({ recipe, runs = 1, onSelect }: { recipe: EconomyRecipe; run
   return <div className={styles.flow}>
     <div>{Object.keys(recipe.cost.items).length ? <Ingredients items={Object.fromEntries(Object.entries(recipe.cost.items).map(([id, count]) => [id, count * runs]))} onSelect={onSelect} /> : <span className={styles.freeInput}><Sprout size={17} aria-hidden="true" />Сбор без ингредиентов</span>}
       {!!recipe.cost.coins && <small>{number(recipe.cost.coins * runs)} монет</small>}</div>
-    <ArrowRight className={styles.flowArrow} size={20} aria-label="Получится" />
+    <ArrowRight className={styles.flowArrow} size={20} aria-label={recipe.experiment ? "При удаче" : "Получится"} />
     <Ingredients items={Object.fromEntries(Object.entries(recipe.rewards).map(([id, count]) => [id, count * runs]))} onSelect={onSelect} />
   </div>;
 }
@@ -61,18 +63,23 @@ function RecipeCalculator({ recipe, onSelect }: { recipe: EconomyRecipe; onSelec
   const plan = useMemo(() => valid ? calculateRecipePlan(recipe.id, quantity) : null, [recipe.id, quantity, valid]);
   return <section className={styles.calculator} aria-label="Расчёт рецепта">
     <div className={styles.sectionTitle}><h4><Calculator size={18} aria-hidden="true" />Расчёт производства</h4>
-      <label className={styles.quantity}>Количество<input type="number" min="1" max="999" step="1" inputMode="numeric" value={quantityText} aria-label="Количество готовых предметов" aria-invalid={!valid || undefined} onChange={event => setQuantityText(event.target.value)} /></label></div>
+      <label className={styles.quantity}>{recipe.experiment ? "Попытки" : "Количество"}<input type="number" min="1" max="999" step="1" inputMode="numeric" value={quantityText} aria-label={recipe.experiment ? "Количество попыток приготовления" : "Количество готовых предметов"} aria-invalid={!valid || undefined} onChange={event => setQuantityText(event.target.value)} /></label></div>
     {!valid ? <p className={styles.notice} role="alert">Введите целое количество от 1 до 999.</p> : plan && <>
       <RecipeFlow recipe={recipe} runs={quantity} onSelect={onSelect} />
+      {recipe.experiment && <div className={styles.notice} data-experiment-odds>
+        <p>Необязательный опыт. Базовый шанс удачи {number(recipe.successProbability * 100)}%; навык кулинарии повышает его до 95%. Ниже считается среднее при базовом шансе.</p>
+        <p>При промахе вместо нового блюда получится:</p><Ingredients items={recipe.experiment.failureRewards} onSelect={onSelect} />
+        <p>Количество попыток не гарантирует столько же удачных блюд. Обычные рецепты готовятся без риска.</p>
+      </div>}
       <dl className={styles.calculationStats}>
         <div><dt>Стоимость ингредиентов у NPC</dt><dd>{number(recipe.inputNpcValue * quantity)} монет</dd></div>
         {!!recipe.cost.coins && <div><dt>Монеты на запуск</dt><dd>{number(recipe.cost.coins * quantity)}</dd></div>}
-        <div><dt>Выкуп готового товара NPC</dt><dd>{number(recipe.outputNpcValue * quantity)} монет</dd></div>
+        <div><dt>{recipe.experiment ? "Ожидаемый выкуп с учётом промахов" : "Выкуп готового товара NPC"}</dt><dd>{number(recipe.expectedOutputNpcValue * quantity)} монет</dd></div>
         <div data-positive={recipe.addedNpcValue > 0 || undefined}><dt>Прирост стоимости переработки</dt><dd>{signed(recipe.addedNpcValue * quantity)} монет</dd></div>
         <div><dt>Таймер выбранного производства</dt><dd>{time(recipe.seconds * quantity)}</dd></div>
         {!!recipe.collectionSeconds && <div><dt>Анимации сбора отдельно</dt><dd>{time(recipe.collectionSeconds * quantity)}</dd></div>}
       </dl>
-      <p className={styles.hint}>Прирост — цена результата минус цена ингредиентов и монеты на запуск. Для сбора без ингредиентов это полная стоимость урожая. Один запуск занимает одно место; следующий запускается вручную.</p>
+      <p className={styles.hint}>Прирост: {recipe.experiment ? "ожидаемая цена удачного и простого блюда" : "цена результата"} минус цена ингредиентов и монеты на запуск. Для сбора без ингредиентов это полная стоимость урожая. Один запуск занимает одно место; следующий запускается вручную.</p>
       <details className={styles.chain} open><summary>Вся цепочка до сырья</summary>
         <div className={styles.chainBody}>
           <p className={styles.hint}>Базовые рецепты раннего открытия, одно место каждого производства. Количество учитывает все промежуточные ингредиенты.</p>
@@ -92,7 +99,7 @@ function RecipeCalculator({ recipe, onSelect }: { recipe: EconomyRecipe; onSelec
         </div>
       </details>
       <details className={styles.chain}><summary>Теоретический выпуск и выручка за час</summary><div className={styles.chainBody}>
-        <p>{number(recipe.unitsPerHour)} предметов · {number(recipe.grossNpcPerHour)} монет за час на одном месте.</p>
+        <p>{number(recipe.unitsPerHour)} {recipe.experiment ? "порций с учётом промахов" : "предметов"} · {number(recipe.grossNpcPerHour)} {recipe.experiment ? "монет в среднем" : "монет"} за час на одном месте.</p>
         <p>Прирост стоимости за час: {signed(recipe.addedNpcValue * 3600 / recipe.seconds)} монет.</p>
         <p className={styles.hint}>Считается только таймер выбранного рецепта при готовых ингредиентах и мгновенном перезапуске. Добыча, сбор урожая, ходьба и простои уменьшают реальный доход; это валовая выручка.</p>
       </div></details>
@@ -185,7 +192,7 @@ function HomeUnlockCard({ unlock, onSelect }: { unlock: EconomyHomeUnlock; onSel
       </button>;
     })}</div>
     {products.length > 0 && <><h4>Новые товары</h4><Ingredients items={Object.fromEntries(products.map(id => [id, 1]))} onSelect={onSelect} /></>}
-    {unlock.landmarks.map(landmark => <div className={styles.guarantee} key={`${landmark.id}:${landmark.level}`}><strong>{landmark.name}: {number(landmark.cost.coins)} монет · {time(landmark.seconds)}</strong><Ingredients items={landmark.cost.items} onSelect={onSelect} /><p className={styles.hint}>{landmark.id === "bridge" ? "После получения восстановления открывается рынок игроков. Для следующего дома мост необязателен; поздний проект потребует его." : "После получения восстановления включается ночной свет. Пароход с большими заказами запланирован; сейчас его нет. Для следующего дома маяк необязателен."}</p></div>)}
+    {unlock.landmarks.map(landmark => <div className={styles.guarantee} key={`${landmark.id}:${landmark.level}`}><strong>{landmark.name}: {number(landmark.cost.coins)} монет · {time(landmark.seconds)}</strong><Ingredients items={landmark.cost.items} onSelect={onSelect} /><p className={styles.hint}>{landmark.id === "bridge" ? "После получения восстановления открывается рынок игроков. Для следующего дома мост необязателен; поздний проект потребует его." : `После получения восстановления включается ночной свет и приходит корабль с тремя грузами. Стоянка ${shipOrdersConfig.staySeconds / 3600} ч, следующий рейс через ${shipOrdersConfig.intervalSeconds / 3600} ч после отплытия. За рейс ${shipOrdersConfig.freeReplacements} бесплатные замены нетронутых грузов; досрочное отправление стоит ${formatPearls(shipOrdersConfig.resetPricePearls)} жемчужин. Маяк показывает время прибытия. Для следующего дома маяк необязателен.`}</p></div>)}
     <details className={styles.chain}><summary>Все новые рецепты: {unlock.recipes.length}</summary><div className={styles.chainBody}><ul className={styles.unlockRecipes}>{unlock.recipes.map(id => {
       const recipe = recipeById.get(id);
       if (!recipe) return null;

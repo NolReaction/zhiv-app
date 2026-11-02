@@ -105,14 +105,16 @@ test("paid-capacity stress preserves future slot funds while earned pearls speed
     + report.speedups.reduce((total,row) => total + row.paid,0));
 });
 
-test("a fresh player can fund the fishing gear needed to produce every active recipe", () => {
+test("a fresh player can fund the fishing gear needed to produce every guaranteed recipe", () => {
   const result = simulateProgression(loaded, { regularActiveMinutes: 480, firstVisitMinutes: 480, visitsPerDay: 1,
     completionGoal: "all-recipes", maxDays: 90 });
   const report = summarizeProgression(result);
   assert(result.completed, `Unproduced recipes: ${report.missingRecipes.join(", ")}`);
   assert.equal(report.missingRecipes.length, 0);
-  assert.equal(report.recipesCompleted, loaded.catalog.recipes.filter(recipe => !recipe.retired).length);
+  assert.equal(report.recipesCompleted, loaded.catalog.recipes.filter(recipe => !recipe.retired && !recipe.experiment).length);
   assert(report.allRecipesDays >= report.home5Days);
+  for (const recipe of loaded.catalog.recipes.filter(recipe => recipe.experiment))
+    assert.equal(result.state.progression.recipes[recipe.id] ?? 0, 0, "Optional experiments are not guaranteed-source planner work");
   assert((report.actions.equip_fishing_rod ?? 0) <= (report.actions.start_fishing ?? 0), "A cast follows every useful gear choice instead of endlessly swapping rods");
   assert(report.coinLedger.debits.buy_fishing_item > 0);
 });

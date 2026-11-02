@@ -495,7 +495,8 @@ test("seller sees the net fee and a quantity which fits the full daily limit", (
   const view = harness(ListingPriceForm, { economy: e, item }).render();
   assert.equal(view.nodes.find(node => node.type === "input").props.max,
     Math.min(e.snapshot.catalog.market.maxLotQuantity, 100, Math.floor(e.snapshot.catalog.market.dailyTradeValueByHome[1] / item.baseSellPrice)));
-  const totalPrice = item.baseSellPrice * 2, received = totalPrice - Math.ceil(totalPrice * e.snapshot.catalog.market.feeBps / 10000);
+  const totalPrice = Number(view.nodes.find(node => node.type === "input" && node.props.step === e.snapshot.catalog.currencyScale).props.value);
+  const received = totalPrice - Math.ceil(totalPrice * e.snapshot.catalog.market.feeBps / 10000);
   assert.match(view.html, new RegExp(`Получите ${received} монет после сбора ${e.snapshot.catalog.market.feeBps / 100}%`));
   const old = harness(OfferCard, { economy: e, offer: { ...offer("legacy"), feeBps: 0 }, owned: true, navigate() {} }).render();
   assert.match(old.html, /После продажи: 300 монет/); assert.match(old.html, /без сбора/);

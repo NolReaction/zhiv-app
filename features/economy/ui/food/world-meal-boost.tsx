@@ -2,12 +2,13 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
-import { ArrowRight, Check, ChevronRight, Clock3, Soup, X } from "lucide-react";
+import { ArrowRight, BookOpen, Check, ChevronRight, Clock3, Soup, X } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { mealDuration, mealWorkDuration, pendingHeroMealEffect, pendingMeal } from "@/features/economy/domain/food";
+import { skillProgress } from "@/features/economy/domain/craft-skill";
 import { tradeMealDuration, tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
-import { availableMealRecipe, mealBlockedReason, visibleMeals, type MealConsumer } from "./meal-availability";
+import { mealBlockedReason, visibleMeals, type MealConsumer } from "./meal-availability";
 import { mealSpeedDescription } from "./meal-speed-description";
 import { locked } from "@/features/economy/sync/controller-state";
 import { itemName, ProductIcon } from "@/features/economy/ui/shared/world-economy-parts";
@@ -60,9 +61,9 @@ export function mealBoostSeconds({ economy, seconds, jobId, consumer }: Pick<Wor
     return Number.isSafeInteger(milliseconds) ? Math.ceil(tradeMealDuration(milliseconds, job.tradeSpeedBps ?? 0, speedBps) / 1000) : null;
   }
   if (seconds === undefined || !Number.isSafeInteger(seconds) || seconds < 0) return null;
-  return consumer === "builder" && economy.snapshot
-    ? tradeWorkDuration(economy.snapshot, seconds, "builder", speedBps, economy.snapshot.catalog, economy.now)
-    : remainingWorkSeconds === undefined ? mealDuration(seconds, speedBps) : mealWorkDuration(seconds, speedBps, remainingWorkSeconds);
+  if (consumer === "builder" && economy.snapshot) return tradeWorkDuration(economy.snapshot, seconds, "builder", speedBps, economy.snapshot.catalog, economy.now);
+  const fed = remainingWorkSeconds === undefined ? mealDuration(seconds, speedBps) : mealWorkDuration(seconds, speedBps, remainingWorkSeconds);
+  return consumer === "hero" && economy.snapshot?.progression ? mealDuration(fed, skillProgress(economy.snapshot, "travel", economy.snapshot.catalog).bonusBps) : fed;
 }
 
 const duration = worldRecipeDuration;
@@ -97,7 +98,6 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
   const saved = applied ?? (pending ? { itemId: pending.itemId, speedBps: consumer === "hero" ? pending.heroSpeedBps : pending.builderSpeedBps } : null);
   const tradeSpeedBps = consumer === "builder" ? (applied && active || jobId)
     ? active?.tradeSpeedBps ?? 0 : tradeRelationBonusBps(state, "builder", state.catalog, economy.now) : 0;
-  if (!meals.length && !saved) return null;
   const reason = mealBoostReason(props);
   const open = Boolean(quote && quote.owner === state.ownerPublicId && quote.revision === state.revision && quote.consumer === consumer && quote.jobId === jobId && quote.stationId === stationId);
   const baseSeconds = applied && active ? Math.max(0, Math.ceil((Date.parse(active.finishesAt) - economy.now) / 1000)) : mealBoostSeconds(props, 0);
@@ -112,6 +112,14 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
     selection.current = itemId;
     setSelectedItemId(itemId);
     setSubmissionError(null);
+  }
+  function openCookbook() {
+    if (sent.current || !onNavigateStation) return;
+    navigating.current = true;
+    selection.current = null;
+    setSelectedItemId(null);
+    setQuote(null);
+    onNavigateStation("dryer");
   }
   function consume(itemId: string) {
     const current = latest.current;
@@ -180,7 +188,7 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
     <Popover.Trigger asChild><button ref={trigger} type="button" className={styles.trigger} data-meal-boost={consumer} disabled={Boolean(reason) || sending}
       aria-label={reason ?? (consumer === "hero" ? "Еда: ускорить вылазку" : "Еда: ускорить стройку")} title={reason ?? "Ускорить едой"}>
       <span className={styles.tileIcon}><Soup size={24} aria-hidden="true" /></span>
-      <span className={styles.tileDescription}><span className={styles.tileLabel}>Ускорение едой</span><strong>Выбрать блюдо</strong><small>{reason ?? "1 порция ускорит работу"}</small></span>
+      <span className={styles.tileDescription}><span className={styles.tileLabel}>Ускорение едой</span><strong>{meals.length ? "Выбрать блюдо" : "Приготовить обед"}</strong><small>{reason ?? (meals.length ? "1 порция ускорит работу" : "Готовых блюд пока нет")}</small></span>
       <ChevronRight className={styles.tileControl} size={17} aria-hidden="true" />
     </button></Popover.Trigger>
     {open && <Popover.Portal><Popover.Content className={styles.picker} data-meal-picker={consumer} side="top" align="end" sideOffset={7} collisionPadding={12}
@@ -192,20 +200,18 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
       <div className={styles.meals} aria-label="Готовые блюда">{meals.map(meal => {
         const stock = state.inventory[meal.itemId] ?? 0;
         const speed = consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps;
-        const recipe = availableMealRecipe(state, meal.itemId);
-        const cook = recipe && onNavigateStation ? () => onNavigateStation(recipe.buildingId, recipe.id) : null;
         const chosen = selected?.itemId === meal.itemId;
         const content = <><span className={styles.mealIcon}><ProductIcon state={state} itemId={meal.itemId} size={28} /></span>
-          <span className={styles.description}><strong>{itemName(state, meal.itemId)}</strong><small>{stock > 0 ? `В запасе ${stock}` : "Нет в запасе"}</small>{consumer === "hero" && meal.heroWorkSeconds && <small>На {duration(meal.heroWorkSeconds)} работы</small>}</span>
+          <span className={styles.description}><strong>{itemName(state, meal.itemId)}</strong><small>В запасе {stock}</small>{consumer === "hero" && meal.heroWorkSeconds && <small>На {duration(meal.heroWorkSeconds)} работы</small>}</span>
           <span className={styles.speed}>+{speed / 100}%<small>к скорости</small></span></>;
         return <article key={meal.itemId} data-boost-meal={meal.itemId}>
-          {stock > 0 ? <button type="button" className={styles.meal} data-selected={chosen || undefined} aria-pressed={chosen} disabled={locked(economy) || Boolean(reason) || sending}
+          <button type="button" className={styles.meal} data-selected={chosen || undefined} aria-pressed={chosen} disabled={locked(economy) || Boolean(reason) || sending}
             aria-label={`Выбрать: ${itemName(state, meal.itemId)}, в запасе ${stock}, ${mealSpeedDescription(speed, tradeSpeedBps)}`} onClick={() => choose(meal.itemId)}>{content}<span className={styles.selection} aria-hidden="true">{chosen && <Check size={13} />}</span></button>
-            : cook ? <button type="button" className={`${styles.meal} ${styles.cook}`} disabled={sending} aria-label={`Приготовить: ${itemName(state, meal.itemId)}`} onClick={() => { if (sent.current) return; navigating.current = true; selection.current = null; setSelectedItemId(null); setQuote(null); cook(); }}>{content}<ChevronRight size={16} aria-hidden="true" /></button>
-              : <span className={`${styles.meal} ${styles.unavailable}`}>{content}<span className={styles.empty}>Нет</span></span>}
         </article>;
       })}</div>
-      <div className={styles.confirmation} aria-busy={sending}>
+      {!meals.length && <div className={styles.emptyStock} data-meal-empty><Soup size={26} aria-hidden="true" /><strong>Готовых блюд нет</strong><p>Приготовьте обед у костра. Он появится здесь после получения.</p></div>}
+      {onNavigateStation && <button type="button" className={styles.cookbookLink} data-meal-cookbook disabled={sending} onClick={openCookbook}><BookOpen size={15} aria-hidden="true" />Книга рецептов<ArrowRight size={14} aria-hidden="true" /></button>}
+      {meals.length > 0 && <div className={styles.confirmation} aria-busy={sending}>
         {selected ? <div className={styles.preview} data-meal-preview={selected.itemId}>
           <span>{selectedSeconds !== null && baseSeconds !== null ? <>{jobId ? "Останется" : "Время"}<strong><s>{duration(baseSeconds)}</s><ArrowRight size={12} aria-hidden="true" /><b>{duration(selectedSeconds)}</b></strong></> : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</span>
           <span className={styles.bonus}>{mealSpeedDescription(selectedSpeed, tradeSpeedBps)}{consumer === "hero" && selected.heroWorkSeconds ? " на время действия" : ""}</span>
@@ -217,7 +223,7 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
         <button type="button" className={styles.consume} data-meal-confirm disabled={!selected || locked(economy) || Boolean(reason) || sending}
           aria-label={selected ? `${consumer === "hero" ? "Съесть" : "Угостить строителя"}: ${itemName(state, selected.itemId)}, 1 порция` : "Сначала выберите блюдо"}
           onClick={() => { if (selected) consume(selected.itemId); }}><Soup size={15} aria-hidden="true" />{sending ? "Подтверждаем…" : selected ? consumer === "hero" ? "Съесть 1 порцию" : "Угостить · 1 порция" : "Выберите блюдо"}</button>
-      </div>
+      </div>}
     </Popover.Content></Popover.Portal>}
   </Popover.Root>;
 }

@@ -9,6 +9,7 @@ after(()=>vite.close());
 const {coastalGatheringGesture,gatheringStow,GATHERING_PACK_SECONDS}=await vite.ssrLoadModule("/features/world/activities/journeys/forest-gathering.ts");
 const {drawForestGatheringBasket,drawForestGatheringHero,forestGatheringBounds}=await vite.ssrLoadModule("/features/world/activities/journeys/forest-gathering-painter.ts");
 const {drawForestGardenBasket}=await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
+const {forestGatheringCarryPoint,forestGatheringArms}=await vite.ssrLoadModule("/features/world/activities/journeys/forest-gathering-rig.ts");
 const makeFrame=(age,seed=0)=>({...coastalGatheringGesture(age,seed),x:120,y:130,size:50,pose:"idle",frame:0,held:false,filled:false,basket:{x:138,y:130,size:14,berries:4}});
 function context(){
   const calls=[],stack=[],target={globalAlpha:.37,fillStyle:"before",imageSmoothingEnabled:true};
@@ -47,6 +48,45 @@ test("woodland basket keeps the actual garden weave, handle, scale and preserved
   drawForestGatheringBasket(supplies.ctx,frame);
   drawForestGardenBasket(garden.ctx,{...frame.basket,grounded:true,behind:false});
   assert.deepEqual(supplies.calls,garden.calls,"a supply assignment paints the same physical prop rather than a second basket design");
+});
+
+test("a carried basket uses one short arm on its own side and leaves the opposite hand free",()=>{
+  for(const direction of ["front","back","left","right"])for(const step of [0,1,2,3])for(const still of [false,true]) {
+    const frame={...makeFrame(0),tool:"basket",action:"walk",pose:"walk",direction,frame:step,crouch:0,lean:0,held:true};
+    frame.basket={...frame.basket,...forestGatheringCarryPoint(frame,frame.size,still)};
+    const before=structuredClone(frame),arms=forestGatheringArms(frame,still),side=direction==="left"||direction==="back"?-1:1;
+    assert.equal(Math.sign(frame.basket.x-frame.x),side,"the prop follows the facing instead of staying on the opposite side");
+    assert.deepEqual(arms.holding.hand,{x:frame.basket.x,y:frame.basket.y-frame.basket.size*12/14});
+    for(const arm of [arms.holding,arms.free]) {
+      const points=[arm.shoulder,arm.elbow,arm.hand],sign=Math.sign(arm.shoulder.x-frame.x);
+      assert.ok(points.every(point=>Math.sign(point.x-frame.x)===sign),"no arm crosses the middle of the chest");
+      assert.ok(Math.hypot(arm.elbow.x-arm.shoulder.x,arm.elbow.y-arm.shoulder.y)+Math.hypot(arm.hand.x-arm.elbow.x,arm.hand.y-arm.elbow.y)<frame.size*.32,"a paw cannot stretch across the whole body");
+    }
+    assert.notEqual(Math.sign(arms.free.hand.x-frame.x),side);
+    assert.deepEqual(frame,before,"posing cannot move the shared basket or simulation feet");
+  }
+});
+
+test("basket arm layers keep the far arm behind clothing and the holding paw above its handle",()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,"document");
+  Object.defineProperty(globalThis,"document",{configurable:true,value:{createElement(){return {width:48,height:48,getContext:()=>context().ctx};}}});
+  try {
+    for(const direction of ["front","back","left","right"]) {
+      const frame={...makeFrame(0),tool:"basket",action:"walk",pose:"walk",direction,frame:1,crouch:0,lean:0,held:true};
+      frame.basket={...frame.basket,...forestGatheringCarryPoint(frame,frame.size)};
+      const draw=context(),before=structuredClone(frame);
+      drawForestGatheringHero(draw.ctx,frame,{palette:"berest_birch_moss",head:"berest_trail_hat",neck:"berest_lantern_scarf"});
+      const body=draw.calls.findIndex(call=>call.method==="drawImage"),strokes=draw.calls.flatMap((call,index)=>call.method==="stroke"?[index]:[]);
+      const baskets=draw.calls.flatMap((call,index)=>call.method==="fillRect"&&JSON.stringify(call.args)==="[-7,-8,14,7]"?[index]:[]);
+      const paw=draw.calls.findLastIndex(call=>call.method==="ellipse"&&call.args[2]===frame.size*.026);
+      assert.equal(baskets.length,1,"the actual garden basket paints once");
+      assert.ok(strokes[0]<body,"free arm belongs behind the body and its clothes");
+      assert.equal(baskets[0]<body,direction==="back");
+      assert.ok(paw>baskets[0],"paw overlaps the painted handle");
+      assert.equal(paw<body,direction==="back","a rear paw cannot float through the spine");
+      assert.deepEqual(frame,before);assert.equal(draw.ctx.globalAlpha,.37);assert.equal(draw.ctx.fillStyle,"before");
+    }
+  } finally {if(previous)Object.defineProperty(globalThis,"document",previous);else delete globalThis.document;}
 });
 
 test("shovel painter supports both facing directions, pauses and carrying without mutating its frame",()=>{

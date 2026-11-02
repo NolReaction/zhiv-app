@@ -27,6 +27,7 @@ import { worldConstructionReason, worldCountdown } from "@/features/economy/ui/s
 import { Market } from "@/features/economy/ui/market/player-market";
 import { BarterMarket } from "@/features/economy/ui/market/barter-market";
 import { worldRecipeGroups } from "@/features/economy/ui/stations/world-recipe-groups";
+import { experimentDiscovered } from "@/features/economy/domain/craft-skill";
 import { WorldProductionCard } from "@/features/economy/ui/production/world-production-card";
 import { fishSelectionMatches, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
@@ -193,7 +194,7 @@ function Unlocks({ state, building, level, navigate }: { state: EconomyView; bui
     <span className={styles.sectionLabel}>Что даёт этот уровень</span>
     {level.warehouseCapacity && <p className={styles.hint}><Package size={15} aria-hidden />Вместимость склада: {number(level.warehouseCapacity)} предметов.</p>}
     <ul className={styles.unlocks}>
-      {recipes.map(recipe => <li key={`recipe:${recipe.id}`}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {recipes.map(recipe => <li key={`recipe:${recipe.id}`}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.experiment && !experimentDiscovered(state, recipe) ? recipe.experiment.title : recipe.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {routes.map(route => <li key={`route:${route.id}`}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />{route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {upgrades.map(target => <li key={`building:${target.building.id}:${target.level}`}><button className={styles.textButton} onClick={() => navigate("buildings", target.building.id)}><House size={15} aria-hidden />{target.building.name} · ур. {target.level}<ChevronRight size={14} aria-hidden /></button></li>)}
       {(building.id === "home" && level.level === state.catalog.market.requiredHomeLevel || state.catalog.market.requiredBuildings[building.id] === level.level) && <li><Store size={15} aria-hidden />Торговля с игроками на рынке на карте</li>}
@@ -385,12 +386,12 @@ function ItemGuide({ economy, item, navigate }: { economy: ReadyEconomy; item: I
   const provisions = state.catalog.explorations.filter(route => !route.retired && route.cost.items[item.id] > 0);
   return <div className={styles.card}><h3>{item.name} · на складе {number(state.inventory[item.id] ?? 0)}</h3>
     <div><span className={styles.sectionLabel}>Где получить</span><ul className={styles.unlocks}>
-      {recipes.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name} · {buildingName(state, recipe.buildingId)}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {recipes.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.experiment && !experimentDiscovered(state, recipe) ? recipe.experiment.title : recipe.name} · {buildingName(state, recipe.buildingId)}<ChevronRight size={14} aria-hidden /></button></li>)}
       {routes.map(route => <li key={route.id}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />{route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {item.tradable && <li><button className={styles.textButton} onClick={() => navigate("market")}><Store size={15} aria-hidden />Предложения игроков<ChevronRight size={14} aria-hidden /></button></li>}
     </ul></div>
     <div><span className={styles.sectionLabel}>Для чего пригодится</span><ul className={styles.unlocks}>
-      {ingredients.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name} · нужно {number(recipe.cost.items[item.id])}<ChevronRight size={14} aria-hidden /></button></li>)}
+      {ingredients.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.experiment && !experimentDiscovered(state, recipe) ? recipe.experiment.title : recipe.name} · нужно {number(recipe.cost.items[item.id])}<ChevronRight size={14} aria-hidden /></button></li>)}
       {buildings.map(building => <li key={building.id}><button className={styles.textButton} onClick={() => navigate("buildings", building.id)}><House size={15} aria-hidden />Стройка: {building.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {provisions.map(route => <li key={route.id}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />Припасы: {route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
     </ul>{item.tradable && <p className={styles.muted}>{state.catalog.localBuyer?.unitPrices?.[item.id] !== undefined
@@ -407,11 +408,12 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
   const [all, setAll] = useState(Boolean(focusId));
   const [category, setCategory] = useState("all");
   const categoryId = useId();
-  const stockItems = state.catalog.items.filter(item => !state.catalog.fishing?.fish.some(species => species.itemId === item.id));
+  const known = (id: string) => (state.inventory[id] ?? 0) > 0 || !state.catalog.recipes.some(recipe => recipe.experiment && (recipe.rewards[id] ?? 0) > 0 && !experimentDiscovered(state, recipe));
+  const stockItems = state.catalog.items.filter(item => !state.catalog.fishing?.fish.some(species => species.itemId === item.id)).filter(item => known(item.id));
   const categories = [...new Set(stockItems.map(item => item.category))];
   const owned = stockItems.filter(item => (state.inventory[item.id] ?? 0) > 0);
   const items = (all ? stockItems : owned).filter(item => category === "all" || category === item.category);
-  const item = state.catalog.items.find(entry => entry.id === selected);
+  const item = state.catalog.items.find(entry => entry.id === selected && known(entry.id));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Ваши запасы</h2><p className={styles.muted}>Материалы пригодятся для строительства и производства. Выберите товар, чтобы увидеть, где его добывать и использовать.</p></div></div>
     <StorageStatus state={state} navigate={navigate} />
     <div className={styles.subnav} aria-label="Товары на складе"><button aria-pressed={!all} onClick={() => setAll(false)}>В наличии · {owned.length}</button><button aria-pressed={all} onClick={() => setAll(true)}>Все товары · {stockItems.length}</button></div>

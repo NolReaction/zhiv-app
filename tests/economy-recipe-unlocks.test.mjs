@@ -14,9 +14,6 @@ const { obtainableResidentOrderItems } = await vite.ssrLoadModule("/features/eco
 const now = Date.parse("2026-11-01T12:00:00Z");
 const unlocks = {
   grow_strawberries: { cook_compote: 1 },
-  make_trade_crate: { make_planks: 2, make_rope: 1 }, make_tools: { make_metal_parts: 1 },
-  make_ceramic_jar: { fire_bricks: 1 }, make_glass_bottle: { make_glass: 1 },
-  grind_lens: { make_glass_bottle: 1 }, assemble_field_kit: { make_research_gear: 1 },
   cook_fish_soup: { cook_grilled_fish: 1 },
 };
 const recipe = id => catalog.recipes.find(row => row.id === id);
@@ -28,13 +25,13 @@ const apply = (state, action, targetId, at = now, quantity = 1) => rules.applyEc
   requestId: crypto.randomUUID(), ownerPublicId: "0123-4567-89AB", expectedRevision: 0,
   action, targetId, quantity, totalPrice: 0,
 }, at, () => crypto.randomUUID());
-const supplied = (target, prerequisite, count) => {
+const supplied = (target, prerequisite = null, count = 1) => {
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.buildings = Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level]));
   state.inventory = Object.fromEntries(catalog.items.map(item => [item.id, 4]));
   state.wallet.coins = 100_000;
   // Every other condition is met; this particular skill still needs one claimed result.
-  state.progression.recipes = { ...mastered("requiredRecipes"), [prerequisite]: count - 1 };
+  state.progression.recipes = { ...mastered("requiredRecipes"), ...(prerequisite ? { [prerequisite]: count - 1 } : {}) };
   state.progression.routes = mastered("requiredExplorations");
   state.fishing.catches = { [catalog.fishing.fish[0].itemId]: recipe(target).requiredFishCaught };
   return state;
@@ -83,11 +80,10 @@ test("only strawberries require compote while all other berries open at their le
   }
 });
 
-test("every expedition lesson requires delivered work and keeps its AND recipe condition", () => {
+test("every expedition lesson requires delivered work and every other practice condition", () => {
   for (const target of catalog.recipes.filter(row => Object.keys(row.requiredExplorations).length)) {
     for (const [routeId, required] of Object.entries(target.requiredExplorations)) {
-      const prerequisite = Object.keys(target.requiredRecipes)[0];
-      const state = supplied(target.id, prerequisite, target.requiredRecipes[prerequisite] + 1);
+      const state = supplied(target.id);
       state.progression.routes[routeId] = required - 1;
       assert.equal(recipeUnlocksMet(state, target), false);
       locked(state, target.id);
@@ -99,18 +95,26 @@ test("every expedition lesson requires delivered work and keeps its AND recipe c
       assert.equal(state.progression.routes[routeId], required);
       assert.equal(recipeUnlocksMet(state, target), true);
       assert.equal(obtainableResidentOrderItems(state).has(Object.keys(target.rewards)[0]), true, target.id);
-      state.progression.recipes[prerequisite]--;
-      locked(state, target.id, readyAt);
-      state.progression.recipes[prerequisite]++;
+      for (const [otherRoute, count] of Object.entries(target.requiredExplorations).filter(([id]) => id !== routeId)) {
+        state.progression.routes[otherRoute] = count - 1;
+        locked(state, target.id, readyAt);
+        state.progression.routes[otherRoute] = count;
+      }
+      if (target.requiredFishCaught) {
+        const saved = state.fishing.catches;
+        state.fishing.catches = {};
+        locked(state, target.id, readyAt);
+        state.fishing.catches = saved;
+      }
       apply(state, "start_production", target.id, readyAt);
       assert.equal(state.jobs[0].recipeId, target.id);
     }
   }
 });
 
-test("clay mastery counts delivered mining units equally for partial and full collection", () => {
+test("partial and full clay claims preserve counters but cannot substitute for exploration practice", () => {
   const target = recipe("make_ceramic_jar");
-  const state = supplied(target.id, "fire_bricks", 2);
+  const state = supplied(target.id);
   state.progression.routes = {};
   apply(state, "start_exploration", "quarry_clay", now, 2);
   const id = state.jobs[0].id, readyAt = Date.parse(state.jobs[0].finishesAt), all = structuredClone(state);
@@ -121,8 +125,8 @@ test("clay mastery counts delivered mining units equally for partial and full co
   apply(all, "claim_job", id, readyAt);
   assert.equal(state.progression.routes.quarry_clay, 2);
   assert.deepEqual(state.progression.routes, all.progression.routes);
-  assert.equal(recipeUnlocksMet(state, target), true);
-  assert.equal(recipeUnlocksMet(all, target), true);
+  assert.equal(recipeUnlocksMet(state, target), false);
+  assert.equal(recipeUnlocksMet(all, target), false);
 });
 
 test("personal fishing lesson counts both fishing routes only after claim, never bought stock", () => {
@@ -137,7 +141,7 @@ test("personal fishing lesson counts both fishing routes only after claim, never
     assert.equal(personallyCaughtFish(state), 0);
     locked(state, target.id);
     let clock = now;
-    while (personallyCaughtFish(state) < 4) {
+    while (personallyCaughtFish(state) < target.requiredFishCaught) {
       apply(state, "start_fishing", routeId, clock);
       const job = state.jobs[0], before = personallyCaughtFish(state);
       clock = Date.parse(job.finishesAt);
@@ -161,8 +165,50 @@ test("unlock schema defaults and progress ignore class counters and unrelated fi
   state.fishing.catches = { fish_common: 100, unknown_fish: 100, [catalog.fishing.fish[0].itemId]: 3 };
   assert.equal(personallyCaughtFish(state), 3);
   assert.deepEqual(recipeUnlockRequirements(state, recipe("cook_fish_soup")).map(row => [row.kind, row.current, row.required, row.completed]),
-    [["recipe", 1, 1, true], ["fishing", 3, 4, false]]);
+    [["recipe", 1, 1, true], ["fishing", 3, recipe("cook_fish_soup").requiredFishCaught, false]]);
   const invalid = structuredClone(catalog);
   invalid.recipes[0].requiredExplorations = { missing_route: 1 };
   assert.equal(economyCatalogSchema.safeParse(invalid).success, false);
+});
+
+
+test("new item lessons explore distinct places without repeating the target ingredient recipe", () => {
+  const expected = {
+    make_trade_crate: { forest: 2, old_woodland: 1 },
+    make_ceramic_jar: { forest: 2 },
+    make_glass_bottle: { coastal_deposits: 2 },
+    make_tools: { old_woodland: 2, coastal_deposits: 1 },
+    grind_lens: { coastal_deposits: 2, far_bank_path: 1 },
+    assemble_field_kit: { far_bank_path: 2, far_bank_grove: 1 },
+  };
+  for (const [id, routes] of Object.entries(expected)) {
+    const target = recipe(id);
+    assert.deepEqual(target.requiredExplorations, routes);
+    assert.deepEqual(target.requiredRecipes, {}, `${id}: obtaining its ingredients is not a separate unlock lesson`);
+    for (const routeId of Object.keys(routes)) {
+      const route = catalog.explorations.find(entry => entry.id === routeId);
+      assert.ok(route.requiredHomeLevel <= target.requiredHomeLevel, `${id}: route must exist at this house tier`);
+      assert.ok(!Object.keys(route.cost.items).some(itemId => target.rewards[itemId]), `${id}: its lesson cannot consume its own output`);
+    }
+  }
+  assert.equal(recipe("make_ceramic_jar").requiredFishCaught, 6);
+  assert.equal(recipe("make_glass_bottle").requiredFishCaught, 8);
+});
+
+
+test("claimed ordinary recipes survive redesigned practice requirements without treating stock as learning", () => {
+  for (const target of ["make_trade_crate", "grind_lens", "cook_fish_soup"]) {
+    const state = supplied(target);
+    state.progression.recipes = {};
+    state.progression.routes = {};
+    state.fishing.catches = {};
+    state.unlockedItems = Object.keys(recipe(target).rewards);
+    locked(state, target);
+    state.progression.recipes[target] = 1;
+    const restored = JSON.parse(JSON.stringify(state));
+    assert.equal(recipeUnlocksMet(restored, recipe(target)), true);
+    assert.deepEqual(recipeUnlockRequirements(restored, recipe(target)), []);
+    apply(restored, "start_production", target);
+    assert.equal(restored.jobs[0].recipeId, target);
+  }
 });

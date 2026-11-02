@@ -69,6 +69,8 @@ test("profile shows identity once in confirmed XP and leaves the full mood outsi
   assert.ok(markup.includes(`<dt>Книга находок</dt><dd>1 / ${BOOK_COLLECTION_COUNT}</dd>`));
   assert.match(markup, /21 день/);
   assert.match(markup, /Любопытничает/);
+  assert.match(markup, /data-craft-skill="cooking"/); assert.match(markup, /data-craft-skill="travel"/);
+  assert.equal((markup.match(/aria-label="Навыки Мохлика"/g) ?? []).length, 1);
   assert.doesNotMatch(markup, /Самочувствие Мохлика|Полон сил|Хочется открытий|Кладовая|Гардероб|Обустроить дом|Прежние походы/);
   const tabs = elements.filter(element => element.props.role === "tab");
   assert.deepEqual(tabs.map(buttonText), ["Профиль", "Друзья", ""]);

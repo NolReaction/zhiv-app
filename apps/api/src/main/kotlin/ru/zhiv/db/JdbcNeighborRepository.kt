@@ -99,7 +99,7 @@ class JdbcNeighborRepository(private val source: DataSource, private val adminCo
                 first(c,a.id),s.buyPriceBps,maxOf(0L,s.globalDailyBudgetCoins-u.globalSpentCoins),visibleItems.toList(),
                 c.economyRows("SELECT purchased_items FROM neighbor_shop_cycles WHERE user_id=? AND cycle_day=?",a.id,economyTradeDay(at)) {
                     economyJson.decodeFromString<List<String>>(it.getString(1))
-                }.singleOrNull().orEmpty()))
+                }.singleOrNull().orEmpty(),s.sellPriceBps,s.offerQuantity))
     }
     override suspend fun purchase(sessionHash: ByteArray, command: EconomyCommand): EconomyResult {
         NeighborRules.validatePurchase(command)

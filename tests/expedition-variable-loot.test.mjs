@@ -46,10 +46,10 @@ test("independent ranges include both endpoints and merge a rare find of the sam
   for (const invalid of [-1, 1.5, NaN, 3]) assert.throws(() => drawExpeditionLoot({ loot: route.loot }, () => invalid));
 });
 
-test("bait and ready food replace empty rolls with exact bounded chances and useful ordinary sources", () => {
+test("bait and ready food have exact bounded chances and useful ordinary sources", () => {
   const additions = [
     ["forest", "worm_bait", 3, 20, 30, 20, 303.6, 0.6],
-    ["far_bank_grove", "currant_jelly", 1, 6, 49, 22, 1085.2, 34.2],
+    ["far_bank_grove", "currant_jelly", 1, 6, 64, 22, 1052.2, 34.2],
   ];
   for (const [id, itemId, quantity, weight, emptyWeight, capacity, expectedValue, addedValue] of additions) {
     const route = catalog.explorations.find(row => row.id === id), counts = {};

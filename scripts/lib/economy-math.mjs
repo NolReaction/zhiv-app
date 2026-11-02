@@ -19,6 +19,16 @@ const recipeSlots = recipe => {
   if (actorSeconds) slots[recipe.activity === "mining" ? "miner" : "mochlik"] = actorSeconds / 60;
   return slots;
 };
+/** Expected output for one optional attempt, including its guaranteed fallback branch. */
+export function expectedRecipeRewards(recipe, successBps = recipe.experiment?.successBps ?? 10000) {
+  if (!recipe.experiment) return { ...recipe.rewards };
+  assert(Number.isSafeInteger(successBps) && successBps > 0 && successBps <= 10000, `${recipe.id}: invalid success probability`);
+  const rewards = {};
+  add(rewards, recipe.rewards, successBps / 10000);
+  add(rewards, recipe.experiment.failureRewards, 1 - successBps / 10000);
+  return rewards;
+}
+
 /** Fish use their specialist buyer; configured first-stage goods have exact NPC prices. */
 export function createLiquidation(catalog) {
   const items = new Map(catalog.items.map(item => [item.id, item]));
@@ -163,7 +173,15 @@ export function economicMath(catalog) {
     const r = primitive.get(id);
     const result = { itemId: id, slotMinutes: {}, rawInputs: {}, coins: 0, depth: 0, sourceHome: sourceHome(id), referenceHome: 1, byproducts: {}, producerLevels: {}, unlockRecipes: {}, unlockExplorations: {}, requiredFishCaught: 0 };
     if (r) {
-      const output = r.rewards[id]; result[r.buildingId ? "recipeId" : "routeId"] = r.id; result.referenceHome = definitionHome(r);
+      const chance = r.experiment ? r.experiment.successBps / 10000 : 1;
+      const output = r.rewards[id] * chance;
+      if (r.experiment) {
+        result.reference = "optional cooking experiment, expected attempts at baseline skill; no finite success guarantee";
+        result.acquisition = { kind: "cooking_experiment", successBps: r.experiment.successBps,
+          expectedAttempts: 1 / chance, finiteGuarantee: false, requiredCookingLevel: r.experiment.requiredCookingLevel };
+        add(result.byproducts, r.experiment.failureRewards, (1 - chance) / output);
+      }
+      result[r.buildingId ? "recipeId" : "routeId"] = r.id; result.referenceHome = definitionHome(r);
       const prerequisites = unlockPrerequisites(r);
       requireLevels(result.producerLevels, prerequisites.levels); requireLevels(result.unlockRecipes, prerequisites.completedRecipes);
       requireLevels(result.unlockExplorations, prerequisites.completedRoutes); result.requiredFishCaught = prerequisites.caughtFish;
@@ -236,20 +254,21 @@ export function economicMath(catalog) {
       const p = profile(id); add(slotMinutes, p.slotMinutes, quantity); add(rawInputs, p.rawInputs, quantity); add(byproducts, p.byproducts, quantity); coins += p.coins * quantity;
       referenceHome = Math.max(referenceHome, p.referenceHome);
     }
+    const expectedOutput = expectedRecipeRewards(recipe);
     const elementaryOutputMinutes = {};
-    for (const [id, quantity] of Object.entries(recipe.rewards)) add(elementaryOutputMinutes, profile(id).slotMinutes, quantity);
+    for (const [id, quantity] of Object.entries(expectedOutput)) add(elementaryOutputMinutes, profile(id).slotMinutes, quantity);
     const baseValue = quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => sum + items.get(id).baseSellPrice * quantity, 0);
-    const baseMarketMargin = baseValue(recipe.rewards) - baseValue(recipe.cost.items) - recipe.cost.coins;
-    return { id: recipe.id, directHome: definitionHome(recipe), referenceHome, output: { ...recipe.rewards }, directInputs: { ...recipe.cost.items },
+    const baseMarketMargin = baseValue(expectedOutput) - baseValue(recipe.cost.items) - recipe.cost.coins;
+    return { id: recipe.id, directHome: definitionHome(recipe), referenceHome, output: expectedOutput, optionalExperiment: Boolean(recipe.experiment), directInputs: { ...recipe.cost.items },
       slotMinutes, rawInputs, byproducts, coins, elementaryOutputMinutes,
-      directRevenue: liquidation(recipe.rewards), directInputOpportunity: liquidation(recipe.cost.items) + recipe.cost.coins,
-      incrementalMargin: liquidation(recipe.rewards) - liquidation(recipe.cost.items) - recipe.cost.coins,
+      directRevenue: liquidation(expectedOutput), directInputOpportunity: liquidation(recipe.cost.items) + recipe.cost.coins,
+      incrementalMargin: liquidation(expectedOutput) - liquidation(recipe.cost.items) - recipe.cost.coins,
       baseMarketMargin, baseMarketMarginPerStationHour: baseMarketMargin / (stationMinutes / 60),
       maxBatch: recipe.maxBatch, processMinutes: recipe.seconds / 60, stationMinutes };
   }
   const stationBenchmarks = {};
   for (const r of [...catalog.recipes, ...catalog.explorations.filter(r => productionStation(r))]) {
-    const margin = liquidation(r.rewards) - liquidation(r.cost.items) - r.cost.coins;
+    const margin = liquidation(expectedRecipeRewards(r)) - liquidation(r.cost.items) - r.cost.coins;
     const stationMinutes = (r.seconds + (r.collection?.seconds ?? 0)) / 60;
     const rate = margin / stationMinutes, prior = stationBenchmarks[productionStation(r)];
     if (!prior || rate > prior.coinsPerMinute) stationBenchmarks[productionStation(r)] = { recipeId: r.id, coinsPerMinute: rate, marginPerBatch: margin, stationMinutes };

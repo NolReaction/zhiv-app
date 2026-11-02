@@ -306,7 +306,8 @@ test("premium shop guidance offers stage packs and costume previews while keepin
 
 test("food, building speed and orders are distinct and use current catalog numbers", () => {
   const food = economyCatalog.food;
-  for (const meal of food.meals) {
+  const hiddenDishes = new Set(economyCatalog.recipes.filter(recipe => recipe.experiment).flatMap(recipe => Object.keys(recipe.rewards)));
+  for (const meal of food.meals.filter(meal => !hiddenDishes.has(meal.itemId))) {
     const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
     assert.ok(answer("food-bonuses").includes(`${name} +${meal.heroSpeedBps / 100}%`));
   }
@@ -317,9 +318,9 @@ test("food, building speed and orders are distinct and use current catalog numbe
   assert.match(answer("food"), /остаток сохранится для следующих отправлений/);
   assert.match(answer("food"), /После первого расхода.*вернуть порцию уже нельзя/);
   assert.ok(topic("food").relatedIds.includes("food-bonuses"));
-  assert.match(answer("food"), /Голодать.*не нужно/);
+  assert.match(answer("food"), /Есть необязательно/);
   assert.match(answer("food"), /офлайн/);
-  for (const meal of food.meals) {
+  for (const meal of food.meals.filter(meal => !hiddenDishes.has(meal.itemId))) {
     const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
     assert.ok(answer("builder-food-bonuses").includes(`${name} +${meal.builderSpeedBps / 100}%`));
   }
@@ -630,16 +631,33 @@ test("intro help separates its only raspberry order from the house-two course", 
   assert.doesNotMatch([intro, answer("start"), construction, answer("workshop-starter")].join(" "), /четыре учебных|четвёртого заказа|трёх учебных/);
 });
 
-test("ship help explains partial loading, automatic rewards and completion-based cooldown", () => {
+test("ship help explains partial loading, expiry, replacements and departure-based cooldown", () => {
   const orders = answer("ship-orders"), waiting = answer("ship-orders-cancel");
   assert.match(orders, /три личных заказа на доступные вам товары/);
   assert.match(orders, /Загружайте товары по частям/);
   assert.match(orders, /автоматически получите 10 жемчужин/);
   assert.match(orders, /через 6 часов после завершения всей поставки/);
-  assert.match(orders, /Заказы не сгорают и не отменяются/);
-  assert.match(orders, /смене устройства/);
-  assert.match(waiting, /Отказаться от поставки нельзя/);
-  assert.match(waiting, /новый корабль не придёт сразу/);
+  assert.match(orders, /Стоянка ограничена 24 часами/);
+  assert.match(orders, /бесплатно заменить 3 нетронутых груза/);
+  assert.match(waiting, /досрочно за 10 жемчужин с подтверждением/);
+  assert.match(waiting, /Новый придёт через 6 часов/);
+  assert.match(waiting, /незавершённые грузы не оплатятся.*товары не вернутся/);
   assert.doesNotMatch(orders, /Ещё → Порт|отдельно заберите|от открытия предыдущих/);
   assert.ok(topic("trade-ship").relatedIds.includes("ship-orders"));
+});
+
+test("cooking help explains optional risk and slow skills without spoiling discoveries", () => {
+  assert.match(answer("cooking-experiments"), /при промахе простую порцию/);
+  assert.match(answer("cooking-experiments"), /Обычные рецепты всегда удаются/);
+  assert.match(answer("craft-skills"), /базовой длительности работы/);
+  assert.match(answer("craft-skills"), /800 часов/);
+  assert.match(answer("craft-skills"), /до \+5%/);
+  assert.match(answer("craft-skills"), /с 85% до 95%/);
+  assert.match(answer("food"), /только ваши готовые порции/);
+  const playerHelp = topics.map(entry => answer(entry.id)).join(" ");
+  for (const recipe of economyCatalog.recipes.filter(recipe => recipe.experiment)) {
+    for (const id of Object.keys(recipe.rewards)) {
+      assert.ok(!playerHelp.includes(economyCatalog.items.find(item => item.id === id).name), id);
+    }
+  }
 });

@@ -416,7 +416,7 @@
         "woodlot": 3,
         "kiln": 2,
         "quarry": 2,
-        "dryer": 1,
+        "dryer": 2,
         "garden": 1
       },
       "items": {
@@ -438,7 +438,7 @@
         "woodlot": 4,
         "kiln": 2,
         "quarry": 2,
-        "dryer": 1,
+        "dryer": 2,
         "garden": 1
       },
       "items": {
@@ -860,7 +860,7 @@
         "kiln": 2,
         "woodlot": 1,
         "quarry": 2,
-        "dryer": 1,
+        "dryer": 2,
         "garden": 1
       },
       "items": {
@@ -1614,7 +1614,7 @@
         "workshop": 3,
         "kiln": 2,
         "quarry": 2,
-        "dryer": 1,
+        "dryer": 2,
         "garden": 1
       },
       "items": {
@@ -1775,7 +1775,7 @@
         "woodlot": 1,
         "workshop": 3,
         "kiln": 2,
-        "dryer": 1,
+        "dryer": 2,
         "garden": 1
       },
       "items": {
@@ -1953,7 +1953,7 @@
         "workshop": 4,
         "kiln": 2,
         "quarry": 2,
-        "dryer": 1,
+        "dryer": 2,
         "garden": 1
       },
       "items": {
@@ -1994,7 +1994,9 @@
         "workshop": 2,
         "woodlot": 2,
         "kiln": 2,
-        "quarry": 2
+        "quarry": 2,
+        "dryer": 1,
+        "garden": 1
       },
       "items": {
         "trade_crate": 2,
@@ -2119,7 +2121,9 @@
         "workshop": 3,
         "kiln": 3,
         "woodlot": 3,
-        "dryer": 2
+        "dryer": 2,
+        "bridge": 1,
+        "garden": 1
       },
       "items": {
         "quartz": 2,
@@ -2289,7 +2293,8 @@
         "workshop": 2,
         "quarry": 3,
         "woodlot": 2,
-        "dryer": 2
+        "dryer": 2,
+        "garden": 1
       },
       "items": {
         "glass_bottle": 2,
@@ -2473,7 +2478,9 @@
       "home": 4,
       "requiredBuildings": {
         "workshop": 2,
-        "woodlot": 4
+        "woodlot": 4,
+        "dryer": 1,
+        "garden": 1
       },
       "items": {
         "trade_crate": 2,
@@ -2652,7 +2659,9 @@
         "quarry": 4,
         "kiln": 3,
         "workshop": 3,
-        "dryer": 2
+        "dryer": 2,
+        "bridge": 1,
+        "garden": 1
       },
       "items": {
         "lens": 2,
@@ -2690,7 +2699,9 @@
       "home": 4,
       "requiredBuildings": {
         "quarry": 4,
-        "workshop": 2
+        "workshop": 2,
+        "dryer": 1,
+        "garden": 1
       },
       "items": {
         "quartz": 3,
@@ -3148,7 +3159,8 @@
         "kiln": 3,
         "quarry": 4,
         "dryer": 2,
-        "garden": 1
+        "garden": 1,
+        "bridge": 1
       },
       "stages": [
         {
@@ -3161,7 +3173,8 @@
             "kiln": 3,
             "quarry": 4,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "trade_crate": 4,
@@ -3184,7 +3197,8 @@
             "kiln": 3,
             "quarry": 4,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "lens": 4,
@@ -3207,7 +3221,8 @@
             "kiln": 3,
             "quarry": 4,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "items": {
             "metal_parts": 8,
@@ -6680,7 +6695,7 @@
           ]
         },
         {
-          "id": "weekly_choice1_week_builder_crossing_3251340056",
+          "id": "weekly_choice1_week_builder_crossing_979281302",
           "templateId": "week_builder_crossing",
           "residentId": "builder",
           "coins": 20475,
@@ -6689,7 +6704,7 @@
           "effortSeconds": 98280,
           "manufacturingSeconds": 50160,
           "fishingUncertain": false,
-          "savedWeeklyId": "weekly1_1792758896_583103825",
+          "savedWeeklyId": "weekly1_1792758896_1747657641",
           "acceptedAt": "2026-10-23T12:34:56.789Z",
           "expiresAt": "2026-10-30T12:34:56.789Z",
           "stages": [
@@ -6715,7 +6730,8 @@
                 "kiln": 3,
                 "quarry": 4,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             },
             {
@@ -6740,7 +6756,8 @@
                 "kiln": 3,
                 "quarry": 4,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             },
             {
@@ -6765,13 +6782,14 @@
                 "kiln": 3,
                 "quarry": 4,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             }
           ],
           "activeStages": [
             {
-              "id": "weekly1_1792758896_583103825_0_3557727372",
+              "id": "weekly1_1792758896_1747657641_0_3557727372",
               "slot": -1,
               "templateId": "week_builder_crossing_1",
               "residentId": "builder",
@@ -6794,11 +6812,12 @@
                 "kiln": 3,
                 "quarry": 4,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             },
             {
-              "id": "weekly1_1792758896_583103825_1_2063047948",
+              "id": "weekly1_1792758896_1747657641_1_2063047948",
               "slot": -1,
               "templateId": "week_builder_crossing_2",
               "residentId": "builder",
@@ -6821,11 +6840,12 @@
                 "kiln": 3,
                 "quarry": 4,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             },
             {
-              "id": "weekly1_1792758896_583103825_2_812325999",
+              "id": "weekly1_1792758896_1747657641_2_812325999",
               "slot": -1,
               "templateId": "week_builder_crossing_3",
               "residentId": "builder",
@@ -6848,7 +6868,8 @@
                 "kiln": 3,
                 "quarry": 4,
                 "dryer": 2,
-                "garden": 1
+                "garden": 1,
+                "bridge": 1
               }
             }
           ]

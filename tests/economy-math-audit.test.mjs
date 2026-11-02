@@ -76,7 +76,7 @@ test("catch expectation accounts for every fish as class stock and separately pr
   near(charged.slotMinutes.woodlot, 6 / initial.output.fish_common);
 });
 
-test("first-stage fixed NPC prices are exact and berry profiles need no cooking unlock", () => {
+test("fixed NPC prices are exact and mastery gates remain distinct from repeat-production work", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   for (const [id, price] of Object.entries(catalog.localBuyer.unitPrices)) {
     assert.equal(math.liquidation({ [id]: 1 }), price);
@@ -87,9 +87,9 @@ test("first-stage fixed NPC prices are exact and berry profiles need no cooking 
   assert.equal(strawberry.producerLevels.dryer, 1);
   near(strawberry.slotMinutes.garden, 308 / 60);
   near(math.batch(catalog.recipes.find(recipe => recipe.id === "grow_strawberries")).slotMinutes.garden, 308 / 60);
-  const locked = structuredClone(catalog); locked.recipes.find(recipe => recipe.id === "make_glass_bottle").requiredHomeLevel = 5;
+  const locked = structuredClone(catalog); locked.explorations.find(route => route.id === "far_bank_path").requiredHomeLevel = 5;
   assert.equal(economicMath(locked).sourceHome("lens"), 5);
-  locked.recipes.find(recipe => recipe.id === "make_glass_bottle").requiredRecipes = { grind_lens: 1 };
+  locked.explorations.find(route => route.id === "far_bank_path").cost.items.lens = 1;
   assert.throws(() => economicMath(locked).sourceHome("lens"), /Recipe unlock cycle/);
 });
 
@@ -141,7 +141,7 @@ test("the longer catch gives eight class draws and consumes one bait per trip", 
 
 test("rare-material expectations describe each independent actor clock without invented NPC price or additive ingredient work", () => {
   const report = auditEconomicMath(readEconomyCatalog());
-  for (const p of report.profiles.filter(profile => profile.acquisition)) {
+  for (const p of report.profiles.filter(profile => profile.acquisition?.kind === "rare_drop")) {
     assert.equal(p.sourceHome, 3); assert.equal(p.referenceHome, 3);
     assert.deepEqual(p.slotMinutes, {});
     assert.equal(p.oneUnitNpcRevenue, 0); assert.equal(p.slotOpportunityCoins, null);
@@ -153,7 +153,7 @@ test("rare-material expectations describe each independent actor clock without i
     assert.equal(p.acquisition.expectedCompleteSetSeconds / 3600, 528);
     assert.equal(p.acquisition.finiteSpecificGuarantee, false);
   }
-  assert.equal(report.profiles.filter(profile => profile.acquisition).length, 3);
+  assert.equal(report.profiles.filter(profile => profile.acquisition?.kind === "rare_drop").length, 3);
 });
 
 test("fish references use the least expensive eligible rod and allow legendary fish with the free hook", () => {

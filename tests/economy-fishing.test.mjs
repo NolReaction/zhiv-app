@@ -29,7 +29,10 @@ test("old snapshots and profiles receive a free starter rod, never retroactive c
   delete old.catalog.leaftailShop.travelOffers;
   // Before fishing existed, catalogs had neither personal catch gates, selectable fish ingredients nor the food extension.
   delete old.food; delete old.residentOrders; delete old.catalog.food;
+  // The same snapshot predates optional cooking experiments and their skill extension.
+  delete old.catalog.skills; delete old.progression.skills;
   for (const recipe of old.catalog.recipes) {
+    delete recipe.experiment;
     delete recipe.fishInput;
     delete recipe.requiredFishCaught;
   }

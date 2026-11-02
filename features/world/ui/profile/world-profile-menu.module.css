@@ -63,3 +63,5 @@
 .guideHelp { display: grid; gap: 10px; min-width: 0; padding: 11px 12px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 12px; background: #e5e8cb; color: var(--forest-ink, #394d3e); font-size: .75rem; line-height: 1.45; }
 .guideHelp p { margin: 0; }
 .guideHelp .action { justify-self: start; }
+
+.skills { grid-column: 1 / -1; min-width: 0; }

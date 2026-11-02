@@ -252,6 +252,7 @@ jobs:
             --tests ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcNeighborDiscountMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest \
@@ -265,7 +266,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.game.ProgressionRewardsRoutesTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest', 'ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest', 'ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest', 'ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest', 'ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
+          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.game.ProgressionRewardsRoutesTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest', 'ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest', 'ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest', 'ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborDiscountMigrationIntegrationTest', 'ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
               report = ET.parse(Path('apps/api/build/test-results/test') / f'TEST-{name}.xml').getroot()
               count = int(report.get('tests', '0'))
               assert report.get('name') == name and count > 0, f'{name}: missing or empty suite'
@@ -294,6 +295,7 @@ jobs:
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborDiscountMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest.xml
@@ -357,7 +359,7 @@ jobs:
             echo "Security observations must run with real PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest JdbcNeighborRepositoryIntegrationTest JdbcNeighborConfigurationMigrationIntegrationTest JdbcEconomyRewardPromisesMigrationIntegrationTest JdbcRewardMigrationCompatibilityIntegrationTest JdbcNewPlayerRewardCourseMigrationIntegrationTest JdbcNeighborV14StockMigrationIntegrationTest JdbcNeighborMarketSupportMigrationIntegrationTest JdbcAchievementCourseMigrationIntegrationTest JdbcResidentActivityMigrationIntegrationTest; do
+          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest JdbcNeighborRepositoryIntegrationTest JdbcNeighborConfigurationMigrationIntegrationTest JdbcEconomyRewardPromisesMigrationIntegrationTest JdbcRewardMigrationCompatibilityIntegrationTest JdbcNewPlayerRewardCourseMigrationIntegrationTest JdbcNeighborV14StockMigrationIntegrationTest JdbcNeighborMarketSupportMigrationIntegrationTest JdbcNeighborDiscountMigrationIntegrationTest JdbcAchievementCourseMigrationIntegrationTest JdbcResidentActivityMigrationIntegrationTest; do
             mail_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${mail_report}"
             grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${mail_report}"

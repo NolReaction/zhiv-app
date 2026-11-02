@@ -1,5 +1,8 @@
 {
   "version": 1,
+  "staySeconds": 86400,
+  "resetPricePearls": 20,
+  "freeReplacements": 3,
   "intervalSeconds": 21600,
   "rewardPearls": 20,
   "payoutBps": 10500,

@@ -51,7 +51,7 @@ test("only a claimed lighthouse unlocks orders", () => {
   unchangedFailure(fresh(), "open_ship_voyage", "lighthouse", "INVALID_ECONOMY_COMMAND");
 });
 
-test("manifest contains one obtainable cargo per difficulty, ten visible pearls and no departure countdown", () => {
+test("manifest contains one obtainable cargo per difficulty, ten visible pearls and a server arrival time", () => {
   const state = fresh(); open(state);
   assert.deepEqual(state.ship.voyage.orders.map(order => order.difficulty), ["easy", "medium", "hard"]);
   assert.equal(state.ship.voyage.rewardPearls, 20);
@@ -75,6 +75,13 @@ test("shared Kotlin seed produces identical early home three difficulty and rewa
   assert.deepEqual(voyage.orders.map(order => order.items), [{ planks: 6, rope: 4 }, { cloth: 5, rope: 8 },
     { berry_compote: 12, dried_berries: 10, rope: 8 }]);
   assert.equal(voyage.rewardPearls, 20);
+  state.ship = { ...ship.shipOrdersState(state), voyage };
+  const replacements = [];
+  for (let index = 0; index < 3; index++) {
+    apply(state, "replace_ship_order", state.ship.voyage.orders[0].id, Date.parse("2026-11-01T12:00:00Z"));
+    const order = state.ship.voyage.orders[0]; replacements.push([order.templateId, order.rewardCoins]);
+  }
+  assert.deepEqual(replacements, [["shore_repairs", 1344], ["driftwood_post", 525], ["shore_repairs", 1344]]);
 });
 
 test("gifted advanced goods do not unlock inaccessible cargo or rewards", () => {
@@ -176,11 +183,117 @@ test("last cargo at 5h55 grants ten visible pearls and starts a fresh six hour r
   assert.equal(state.ship.voyage.number, 2); assert.equal(state.ship.nextAvailableAt, null);
 });
 
-test("abandoning either an untouched or partially loaded ship is forbidden", () => {
+test("an unfinished voyage expires exactly after 24 hours even without an expiry command", () => {
+  const state = fresh(); open(state); const voyage = state.ship.voyage;
+  const order = voyage.orders[0], item = Object.keys(order.items)[0];
+  state.inventory[item] = 4; load(state, order, item, 1);
+  const before = structuredClone(state), deadline = now + 86400000;
+  assert.equal(ship.shipDepartureAt(voyage), deadline);
+  assert.equal(ship.shipOrdersState(state, deadline - 1).voyage.id, voyage.id);
+  const expired = ship.shipOrdersState(state, deadline);
+  assert.equal(expired.voyage, null); assert.equal(expired.completedVoyages, 0);
+  assert.equal(expired.nextAvailableAt, new Date(deadline + sixHours).toISOString());
+  assert.deepEqual(expired.departureCargo, ship.shipCargoFractions(state.ship.voyage));
+  assert.deepEqual(state, before, "a read projection does not mutate or grant rewards");
+  unchangedFailure(state, "complete_ship_order", order.id, "ECONOMY_SHIP_CHANGED", deadline);
+  unchangedFailure(state, "replace_ship_order", voyage.orders[1].id, "ECONOMY_SHIP_CHANGED", deadline);
+  unchangedFailure(state, "skip_ship_voyage", voyage.id, "ECONOMY_SHIP_CHANGED", deadline, { totalPrice: 20 });
+  unchangedFailure(state, "open_ship_voyage", "port", "ECONOMY_SHIP_WAIT", deadline + sixHours - 1);
+  apply(state, "open_ship_voyage", "port", deadline + sixHours);
+  assert.equal(state.ship.voyage.openedAt, new Date(deadline + sixHours).toISOString());
+  assert.equal(state.ship.voyage.number, 1); assert.equal(state.ship.departureCargo, null);
+  assert.deepEqual(state.wallet, before.wallet); assert.deepEqual(state.inventory, before.inventory);
+});
+
+test("expiry is idempotent through revisions and long offline time does not postpone the return", () => {
+  const player = identities.createDevIdentity("Вдали от берега", crypto.randomUUID());
+  api.getDevEconomy(player.token, now);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(player.me.user.publicId); row.state = fresh(); open(row.state);
+  const before = structuredClone(row.state), deadline = now + 86400000;
+  const read = api.getDevEconomy(player.token, deadline);
+  assert.equal(read.ship.voyage, null); assert.equal(read.ship.nextAvailableAt, new Date(deadline + sixHours).toISOString());
+  assert.deepEqual(row.state.ship, before.ship); assert.deepEqual(row.state.wallet, before.wallet);
+  assert.deepEqual(row.state.inventory, before.inventory); assert.equal(api.getDevEconomy(player.token, deadline + 1000).revision, read.revision);
+  const input = { ...command("expire_ship_voyage", before.ship.voyage.id), ownerPublicId: player.me.user.publicId, expectedRevision: read.revision };
+  const first = api.commandDevEconomy(player.token, input, deadline), replay = api.commandDevEconomy(player.token, input, deadline + 1000);
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.state.wallet, first.state.wallet); assert.deepEqual(replay.state.ship, first.state.ship);
+  assert.equal(first.state.ship.completedVoyages, 0);
+  const offline = structuredClone(before);
+  apply(offline, "open_ship_voyage", "port", now + 7 * 86400000);
+  assert.equal(offline.ship.voyage.openedAt, new Date(now + 7 * 86400000).toISOString());
+  assert.deepEqual(offline.wallet, before.wallet);
+});
+
+test("three free untouched cargo replacements preserve other progress and reject stale cargo ids", () => {
   const state = fresh(); open(state);
-  unchangedFailure(state, "skip_ship_voyage", state.ship.voyage.id, "ECONOMY_SHIP_CANNOT_SKIP");
-  const order = state.ship.voyage.orders[0], item = Object.keys(order.items)[0]; state.inventory[item] = 1; load(state, order, item, 1);
-  unchangedFailure(state, "skip_ship_voyage", state.ship.voyage.id, "ECONOMY_SHIP_CANNOT_SKIP");
+  const voyage = structuredClone(state.ship.voyage), beforeWallet = structuredClone(state.wallet), beforeInventory = structuredClone(state.inventory);
+  for (let count = 1; count <= 3; count++) {
+    const old = state.ship.voyage.orders[0];
+    apply(state, "replace_ship_order", old.id);
+    const next = state.ship.voyage.orders[0];
+    assert.notEqual(next.templateId, old.templateId); assert.equal(next.id, `${voyage.id}:0:r${count}`);
+    assert.equal(next.difficulty, old.difficulty); assert.equal(state.ship.voyage.replacementsUsed, count);
+    assert.equal(state.ship.voyage.openedAt, voyage.openedAt);
+    assert.deepEqual(state.ship.voyage.orders.slice(1), voyage.orders.slice(1));
+    assert.deepEqual(next.loadedItems, {}); assert.equal(next.deliveredAt, null);
+    assert.equal(schema.economyShipSchema.safeParse(state.ship).success, true);
+    unchangedFailure(state, "complete_ship_order", old.id, "ECONOMY_SHIP_CHANGED");
+    unchangedFailure(state, "replace_ship_order", old.id, "ECONOMY_SHIP_CHANGED");
+  }
+  unchangedFailure(state, "replace_ship_order", state.ship.voyage.orders[1].id, "ECONOMY_SHIP_REPLACEMENTS");
+  assert.deepEqual(state.wallet, beforeWallet); assert.deepEqual(state.inventory, beforeInventory);
+});
+
+test("a started or paid cargo cannot be replaced or rerolled for another reward", () => {
+  const state = fresh(); open(state); const order = state.ship.voyage.orders[0], item = Object.keys(order.items)[0];
+  stock(state, order); load(state, order, item, 1);
+  unchangedFailure(state, "replace_ship_order", order.id, "ECONOMY_SHIP_CARGO_STARTED");
+  apply(state, "complete_ship_order", order.id);
+  unchangedFailure(state, "replace_ship_order", order.id, "ECONOMY_SHIP_CHANGED");
+  const paid = structuredClone(state.ship.voyage.orders[0]);
+  apply(state, "replace_ship_order", state.ship.voyage.orders[1].id);
+  assert.deepEqual(state.ship.voyage.orders[0], paid);
+});
+
+test("paid send away validates price and balance and keeps loaded goods and earned rewards", () => {
+  const state = fresh(); state.wallet.pearls = 100; open(state); const voyage = state.ship.voyage;
+  const [first, second] = voyage.orders; stock(state, first); apply(state, "complete_ship_order", first.id);
+  const item = Object.keys(second.items)[0]; state.inventory[item] = 2; load(state, second, item, 1);
+  const wallet = structuredClone(state.wallet), inventory = structuredClone(state.inventory), departureCargo = ship.shipCargoFractions(state.ship.voyage);
+  unchangedFailure(state, "skip_ship_voyage", voyage.id, "ECONOMY_SHIP_PRICE_CHANGED");
+  state.wallet.pearls = 19;
+  unchangedFailure(state, "skip_ship_voyage", voyage.id, "ECONOMY_PEARLS", now, { totalPrice: 20 });
+  state.wallet.pearls = wallet.pearls;
+  unchangedFailure(state, "skip_ship_voyage", voyage.id, "ECONOMY_SHIP_WAIT", now - 1, { totalPrice: 20 });
+  const departure = now + 3600000;
+  apply(state, "skip_ship_voyage", voyage.id, departure, { totalPrice: 20 });
+  assert.deepEqual(state.wallet, { ...wallet, pearls: wallet.pearls - 20 }); assert.deepEqual(state.inventory, inventory);
+  assert.equal(state.ship.voyage, null); assert.equal(state.ship.completedVoyages, 0);
+  assert.deepEqual(state.ship.departureCargo, departureCargo);
+  assert.equal(state.ship.nextAvailableAt, new Date(departure + sixHours).toISOString());
+  assert.equal(state.ship.resetAvailableAt, state.ship.nextAvailableAt);
+  unchangedFailure(state, "skip_ship_voyage", voyage.id, "ECONOMY_SHIP_CHANGED", departure, { totalPrice: 20 });
+  unchangedFailure(state, "open_ship_voyage", "port", "ECONOMY_SHIP_WAIT", departure + sixHours - 1);
+  state.ship.voyage = voyage; // A merged active manifest cannot bypass the reset cooldown.
+  unchangedFailure(state, "skip_ship_voyage", voyage.id, "ECONOMY_SHIP_WAIT", departure + sixHours - 1, { totalPrice: 20 });
+});
+
+test("replacement and paid departure receipts survive lost responses and competing devices", () => {
+  const player = identities.createDevIdentity("Замена груза", crypto.randomUUID());
+  api.getDevEconomy(player.token, now);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(player.me.user.publicId); row.state = fresh(); row.state.wallet.pearls = 100; open(row.state);
+  const payload = (action, targetId, extra = {}) => ({ ...command(action, targetId), ownerPublicId: player.me.user.publicId,
+    expectedRevision: api.getDevEconomy(player.token, now).revision, ...extra });
+  const replace = payload("replace_ship_order", row.state.ship.voyage.orders[0].id);
+  const first = api.commandDevEconomy(player.token, replace, now), replay = api.commandDevEconomy(player.token, replace, now + 1000);
+  assert.equal(first.state.ship.voyage.replacementsUsed, 1); assert.equal(replay.replayed, true);
+  assert.deepEqual(replay.state.ship, first.state.ship);
+  assert.throws(() => api.commandDevEconomy(player.token, { ...replace, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
+  const skip = payload("skip_ship_voyage", row.state.ship.voyage.id, { totalPrice: 20 });
+  const sent = api.commandDevEconomy(player.token, skip, now), sentAgain = api.commandDevEconomy(player.token, skip, now + 1000);
+  assert.equal(sent.state.wallet.pearls, 80); assert.equal(sentAgain.replayed, true);
+  assert.deepEqual(sentAgain.state.wallet, sent.state.wallet); assert.deepEqual(sentAgain.state.ship, sent.state.ship);
+  assert.throws(() => api.commandDevEconomy(player.token, { ...skip, totalPrice: 0 }, now), { code: "ECONOMY_REQUEST_CONFLICT" });
 });
 
 test("old saved completed voyages settle once for ten visible pearls and a new cooldown", () => {

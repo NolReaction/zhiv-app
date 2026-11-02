@@ -70,3 +70,26 @@ test("hero material baskets cannot regain a hidden mint or a long unattended tim
   overnight.explorations.find(source => source.id === "forest").seconds = 8 * 3600;
   assert.throws(() => auditTimeEconomy(overnight), /forest: material exploration must take at most one hour/);
 });
+
+
+test("optional kitchen experiments compensate failed attempts and keep maximum skill within the work-value cap", () => {
+  assert.equal(report.experiments.length, 4);
+  for (const experiment of report.experiments) {
+    assert(experiment.expectedNet >= experiment.workValue && experiment.expectedNet < experiment.workValue + 1);
+    assert(experiment.masteredNet > experiment.expectedNet && experiment.masteredNet <= experiment.workValue * 1.15);
+    const profile = report.items.find(item => item.sourceId === experiment.recipeId);
+    assert.equal(profile.optionalExperiment, true);
+    assert.equal(profile.finiteSuccessGuarantee, false);
+    assert(profile.expectedAttempts > 1);
+    assert(Object.values(profile.expectedFailureRewards).some(quantity => quantity > 0));
+  }
+  const uncompensated = readEconomyCatalog();
+  const recipe = uncompensated.recipes.find(recipe => recipe.experiment);
+  const output = Object.keys(recipe.rewards)[0];
+  uncompensated.items.find(item => item.id === output).baseSellPrice -= 1;
+  uncompensated.localBuyer.unitPrices[output] -= 1;
+  assert.throws(() => auditTimeEconomy(uncompensated), /price must equal inputs plus its own reference time/);
+  const mandatory = readEconomyCatalog();
+  mandatory.buildings.find(building => building.id === "workshop").levels[0].cost.items[output] = 1;
+  assert.throws(() => auditTimeEconomy(mandatory), /Optional experiments cannot block/);
+});

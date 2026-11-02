@@ -171,13 +171,14 @@ object EconomyFood {
 
     data class HeroTrip(val seconds: Long, val meal: EconomyJobMeal?, val food: EconomyFoodState)
     fun heroTrip(state: EconomyState, seconds: Long): HeroTrip {
-        val meal = pendingMeal(state, "hero") ?: return HeroTrip(seconds, null, state.food)
+        val skill = EconomySkills.bonus(state, "travel")
+        val meal = pendingMeal(state, "hero") ?: return HeroTrip(mealDuration(seconds, skill), null, state.food)
         val effect = state.food.heroMealEffect
-        if (effect == null) return HeroTrip(mealDuration(seconds, meal.speedBps), meal,
+        if (effect == null) return HeroTrip(mealDuration(mealDuration(seconds, meal.speedBps), skill), meal,
             state.food.copy(heroMeal = null, heroMealEffect = null))
         val used = minOf(seconds, effect.remainingWorkSeconds)
         val left = effect.remainingWorkSeconds - used
-        return HeroTrip(seconds - used + mealDuration(used, effect.speedBps), meal.copy(workSeconds = used),
+        return HeroTrip(mealDuration(seconds - used + mealDuration(used, effect.speedBps), skill), meal.copy(workSeconds = used),
             if (left == 0L) state.food.copy(heroMeal = null, heroMealEffect = null)
             else state.food.copy(heroMealEffect = effect.copy(remainingWorkSeconds = left)))
     }
@@ -285,7 +286,7 @@ object EconomyFood {
                     }
                 }
             }
-            catalog.recipes.filterNot { it.retired }.forEach { recipe ->
+            catalog.recipes.filterNot { it.retired || it.experiment != null }.forEach { recipe ->
                 val options = recipe.fishInput?.itemIds
                 if (unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) && (state.buildings[recipe.buildingId] ?: 0) >= recipe.effectiveBuildingLevel &&
                     EconomyRecipeUnlocks.met(state, recipe, catalog) &&

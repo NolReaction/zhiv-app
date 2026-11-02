@@ -42,7 +42,7 @@ export function mapProductionGroups(state: EconomyView | null, now: number, coll
     // Already paid quarry orders outlive the retired production catalog.
     // Keep their badge based on the saved clock/reward, including unknown old recipes.
     const recipeName = miner ? state.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Добыча шахтёра"
-      : recipe?.name ?? (job.targetId === "quarry"
+      : job.cooking || recipe?.experiment ? "Кулинарный опыт" : recipe?.name ?? (job.targetId === "quarry"
       ? state.catalog.explorations.find(route => route.id === job.recipeId)?.name ?? "Сохранённая добыча" : null);
     const place = constructionMapPlace(stationId), start = Date.parse(job.startedAt), finish = Date.parse(job.finishesAt);
     if (!recipeName || !place || !Number.isFinite(start) || !Number.isFinite(finish) || finish <= start || now < start) continue;
@@ -65,7 +65,7 @@ export function mapProductionGroups(state: EconomyView | null, now: number, coll
       else { phase = "ready"; label = "Можно забрать"; }
     }
     const entry: MapProduction = { jobId: job.id, kind: miner ? "exploration" : "production", stationId, place, recipeName,
-      itemId: Object.keys(job.rewards).find(id => (job.rewards[id] ?? 0) > 0), phase, label,
+      itemId: job.cooking || recipe?.experiment ? undefined : Object.keys(job.rewards).find(id => (job.rewards[id] ?? 0) > 0), phase, label,
       remaining: Math.max(0, Math.ceil((clockFinish - now) / 1000)),
       progress: Math.min(1, Math.max(0, (now - clockStart) / (clockFinish - clockStart))) };
     groups.set(place, [...(groups.get(place) ?? []), entry]);

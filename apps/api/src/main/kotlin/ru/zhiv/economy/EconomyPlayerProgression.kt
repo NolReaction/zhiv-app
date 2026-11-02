@@ -80,8 +80,8 @@ object EconomyPlayerProgression {
                 xp += config.constructionXpPerLevel * (job.targetLevel ?: 1); source = "construction"
             } else if (job.kind == "production" && removed) {
                 val recipe = EconomyRules.catalog.recipes.find { it.id == job.recipeId } ?: return@forEach
-                seconds += recipe.seconds * quantity(job, recipe)
-                if ((before.progression.recipes[recipe.id] ?: 0) == 0L) recipes.add(recipe.id)
+                seconds += job.cooking?.workSeconds ?: recipe.seconds * quantity(job, recipe)
+                if (job.cooking?.successful != false && (before.progression.recipes[recipe.id] ?: 0) == 0L) recipes.add(recipe.id)
                 source = "production"
             } else if (job.kind == "exploration") {
                 val route = EconomyRules.catalog.explorations.find { it.id == job.targetId } ?: return@forEach

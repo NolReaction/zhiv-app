@@ -1576,13 +1576,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       const identityChanged = next.presenceKey !== options.presenceKey;
       const waking = Boolean(options.backgrounded && !next.backgrounded);
       options = { ...next }; stop();
+      // Apply the server clock with its ship snapshot before evaluating departure.
+      if (Number.isFinite(next.serverNow) && (identityChanged || next.serverNow !== configuredTimestamp)) setEconomicTime(next.serverNow!);
       syncTradeShip();
       if (waking) retryTradeShipArtwork();
       if (identityChanged) {
         clearForestTreeInteractions(trees);
         artworkPreparation?.dispose(); artworkPreparation = null;
       }
-      if (Number.isFinite(next.serverNow) && (identityChanged || next.serverNow !== configuredTimestamp)) setEconomicTime(next.serverNow!);
       if (identityChanged) { session.release(); session = connect(); state = session.state; pendingTimestamp = null; }
       syncOwner();
       if (reducedMotion(options, dev)) state.dusk = Number(options.dusk);

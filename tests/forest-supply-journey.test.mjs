@@ -30,6 +30,10 @@ function tick(s,j,now,{still=false,cancelled=[],dusk=0}={}) {
   if(!s.clearing.activeInteraction)assert.ok(canTraverse(s.clearing.navigation,before,s.clearing.position));
   const frame=forestJourneyGatheringFrame(s,world,still);
   if(frame)assert.deepEqual({x:frame.x,y:frame.y},s.clearing.position,"drawing and reservations share actual feet");
+  if(frame?.tool==="basket"&&frame.held&&frame.action==="walk") {
+    assert.equal(Math.sign(frame.basket.x-frame.x),frame.direction==="left"||frame.direction==="back"?-1:1,"walking carries the real basket on the facing side");
+    assert.ok(Math.abs(frame.basket.x-frame.x)<frame.size*.4,"the handle stays within the carrying arm's reach");
+  }
 }
 function walkUntil(s,j,now,predicate,options) {
   for(let n=0;n<3000&&!predicate();n++)tick(s,j,now+n*50,options);
@@ -202,7 +206,9 @@ test("arriving lowers the real carried basket and cancellation preserves its cur
     const first=forestJourneyGatheringFrame(s,world);assert.equal(first.action,"setdown");assert.equal(first.held,true);
     s.director.elapsed=s.journeyTravel.gathering.phaseAt+.6;
     const midway=forestJourneyGatheringFrame(s,world);
-    assert.ok(midway.basket.y>first.basket.y&&midway.basket.y<midway.y,"basket approaches its actual floor gradually");
+    const ground=s.journeyTravel.gathering.groundBasket;
+    const distance=point=>Math.hypot(point.x-ground.x,point.y-ground.y);
+    assert.ok(distance(midway.basket)>0&&distance(midway.basket)<distance(first.basket),"basket approaches its actual parked point gradually, including a point behind the feet");
     syncForestJourneyTravel(s,world,j,start+100_000,false,[j.id]);
     const stowing=forestJourneyGatheringFrame(s,world);
     assert.ok(Math.abs(stowing.basket.y-midway.basket.y)<1e-10);

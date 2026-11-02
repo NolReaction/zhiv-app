@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Clock3, PackageCheck, RefreshCw, Ship, TowerControl } from "lucide-react";
 import type { EconomyView } from "@/features/economy/domain/model";
-import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, PEARL_DISPLAY_DIVISOR } from "@/features/economy/domain/money";
-import { shipOrdersUnlocked } from "@/features/economy/domain/ship-orders";
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, PEARL_DISPLAY_DIVISOR, formatPearls } from "@/features/economy/domain/money";
+import { replaceableShipOrder, shipDepartureAt, shipOrdersConfig, shipOrdersState, shipOrdersUnlocked } from "@/features/economy/domain/ship-orders";
 import { explorationActorId } from "@/features/economy/domain/actor-availability";
 import { locked } from "@/features/economy/sync/controller-state";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -30,9 +30,10 @@ function materialDestination(state: EconomyView, itemId: string, navigation: Por
   return null;
 }
 
-export function ShipOrderCard({ state, order, index, disabled, onLoad, ...navigation }: PortNavigation & {
+export function ShipOrderCard({ state, order, index, disabled, onLoad, onReplace, replacementAvailable, ...navigation }: PortNavigation & {
   state: EconomyView; order: ShipOrder; index: number; disabled: boolean;
   onLoad: (orderId: string, itemId: string, quantity: number) => void;
+  onReplace?: (orderId: string) => void; replacementAvailable?: boolean;
 }) {
   const delivered = Boolean(order.deliveredAt);
   const loaded = order.loadedItems ?? {};
@@ -88,15 +89,33 @@ export function ShipOrderCard({ state, order, index, disabled, onLoad, ...naviga
       </span>
       <span className={styles.paymentStatus}>{delivered ? <><PackageCheck size={13} aria-hidden="true" />Получено</> : "За полный груз"}</span>
     </footer>
+    {onReplace && !delivered && !Object.values(loaded).some(amount => amount > 0) && <button type="button" className={styles.replace}
+      disabled={disabled || !replacementAvailable} onClick={() => onReplace(order.id)} aria-label={`Заменить заказ «${order.title}» бесплатно`}>
+      <RefreshCw size={13} aria-hidden="true" />Заменить бесплатно
+    </button>}
     {needsGiftSpace && <p id={`ship-gift-space-${index}`} className={styles.hint}>Освободите место в кладовой для подарка капитана.</p>}
     {!delivered && (walletFull || pearlsFull) && <p className={styles.hint}>Перед завершением груза потратьте часть {walletFull ? "монет" : "жемчуга"}, чтобы получить награду.</p>}
   </article>;
 }
 
-/** Arrival opens the saved manifest automatically; this panel only loads its cargo. */
+/** Server-owned cargo, free replacements and confirmed early departure. */
 export function WorldShipPort({ economy, ...navigation }: PortNavigation & { economy: EconomyController }) {
   const pending = useRef(false);
+  const confirmationPanel = useRef<HTMLElement>(null);
+  const confirmationTrigger = useRef<HTMLElement | null>(null);
+  const [confirmation, setConfirmation] = useState<{ kind: "skip" | "replace"; target: string; voyageId: string } | null>(null);
   const state = economy.snapshot;
+  useEffect(() => {
+    if (confirmation) confirmationPanel.current?.focus();
+    else {
+      confirmationTrigger.current?.focus();
+      confirmationTrigger.current = null;
+    }
+  }, [confirmation]);
+  const requestConfirmation = (next: NonNullable<typeof confirmation>) => {
+    confirmationTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setConfirmation(next);
+  };
   useEffect(() => {
     if (!economy.busy && !economy.uncertain) pending.current = false;
   }, [economy.busy, economy.uncertain, economy.error, state?.revision]);
@@ -110,7 +129,7 @@ export function WorldShipPort({ economy, ...navigation }: PortNavigation & { eco
   const retrySeconds = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const failure = economy.syncError || economy.error;
   const recovery = (failure || economy.uncertain) && <div className={styles.recovery} role="alert">
-    <p>{economy.uncertain ? "Проверяем загрузку. Дождитесь подтверждения." : failure}</p>
+    <p>{economy.uncertain ? "Проверяем действие. Дождитесь подтверждения." : failure}</p>
     <button type="button" disabled={economy.busy || retrySeconds > 0} onClick={() => {
       if (!economy.busy && retrySeconds <= 0) void economy.retry();
     }}><RefreshCw size={15} aria-hidden="true" />{retrySeconds ? `Повторить через ${retrySeconds} с` : "Проверить результат"}</button>
@@ -120,19 +139,48 @@ export function WorldShipPort({ economy, ...navigation }: PortNavigation & { eco
     <div className={styles.empty}><TowerControl size={28} aria-hidden="true" /><h3>Зажгите маяк</h3><p>Его свет приведёт корабль к вашему берегу.</p>
       <button type="button" className={styles.load} onClick={() => navigation.onNavigateStation("lighthouse")}>К маяку<ArrowRight size={15} aria-hidden="true" /></button></div>
   </div>;
-  const ship = state.ship, voyage = ship.voyage;
+  const ship = shipOrdersState(state, economy.now), voyage = ship.voyage;
   const delivered = voyage?.orders.filter(order => order.deliveredAt).length ?? 0;
   const seconds = ship.nextAvailableAt ? Math.max(0, Math.ceil((Date.parse(ship.nextAvailableAt) - economy.now) / 1000)) : 0;
-  return <div className={styles.port} data-ship-port aria-busy={economy.busy || undefined}>
+  const freeReplacements = Math.max(0, shipOrdersConfig.freeReplacements - (voyage?.replacementsUsed ?? 0));
+  const leaveSeconds = voyage ? Math.max(0, Math.ceil((shipDepartureAt(voyage) - economy.now) / 1000)) : 0;
+  const resetSeconds = ship.resetAvailableAt ? Math.max(0, Math.ceil((Date.parse(ship.resetAvailableAt) - economy.now) / 1000)) : 0;
+  const confirm = confirmation?.voyageId === voyage?.id ? confirmation : null;
+  const submitConfirmed = () => {
+    if (!confirm || disabled || pending.current) return;
+    pending.current = true;
+    const accepted = economy.act(confirm.kind === "skip" ? "skip_ship_voyage" : "replace_ship_order", confirm.target, 1,
+      confirm.kind === "skip" ? shipOrdersConfig.resetPricePearls : 0);
+    if (!accepted) pending.current = false;
+    else setConfirmation(null);
+  };
+  return <div className={styles.port} data-ship-port aria-busy={economy.busy || undefined} onKeyDown={event => {
+    if (event.key === "Escape" && confirm) { event.preventDefault(); event.stopPropagation(); setConfirmation(null); }
+  }}>
     {recovery}
     {voyage ? <>
       <div className={styles.summary}><span>Рейс № {number(voyage.number)}</span><span>{delivered} / {voyage.orders.length} грузов</span></div>
+      <div className={styles.timing}><span><Clock3 size={14} aria-hidden="true" />Уйдёт через <strong>{worldCountdown(leaveSeconds)}</strong></span>
+        <span>Бесплатные замены: <strong>{freeReplacements} / 3</strong></span></div>
+      {confirm && <section ref={confirmationPanel} tabIndex={-1} className={styles.confirmation} aria-label={confirm.kind === "skip" ? "Подтверждение отправки корабля" : "Подтверждение замены заказа"}>
+        <strong>{confirm.kind === "skip" ? `Отправить за ${formatPearls(shipOrdersConfig.resetPricePearls)} жемчужин?` : "Заменить этот заказ бесплатно?"}</strong>
+        <p>{confirm.kind === "skip" ? "Загруженные товары не вернутся. Полученные награды сохранятся, бонус за весь рейс не начислится. Новый корабль через 6 часов."
+          : "Изменится только этот нетронутый груз. Сложность и срок стоянки сохранятся. Остальные грузы останутся на месте."}</p>
+        <div><button type="button" disabled={disabled} onClick={() => setConfirmation(null)}>Оставить</button>
+          <button type="button" disabled={disabled} onClick={submitConfirmed}>{confirm.kind === "skip" ? "Отправить корабль" : "Заменить заказ"}</button></div>
+      </section>}
       <div className={styles.orders}>{voyage.orders.map((order, index) => <ShipOrderCard key={order.id} state={state} order={order} index={index} disabled={disabled}
-        onLoad={load} {...navigation} />)}</div>
+        onLoad={load} onReplace={id => requestConfirmation({ kind: "replace", target: id, voyageId: voyage.id })}
+        replacementAvailable={freeReplacements > 0 && Boolean(replaceableShipOrder(state, voyage, order))} {...navigation} />)}</div>
       <section className={styles.bonus} data-ship-bonus aria-label="Награда за все грузы">
         <ItemIcon itemId="pearls" size={24} /><strong>10</strong><span>За все три груза</span><span className={styles.bonusProgress}>{delivered} / 3</span>
       </section>
-      <p className={styles.hint}>Загружайте по частям. После последнего груза корабль отправится в путь на 6 часов.</p>
+      <div className={styles.departure}><button type="button" className={styles.replace}
+        disabled={disabled || resetSeconds > 0 || state.wallet.pearls < shipOrdersConfig.resetPricePearls}
+        onClick={() => requestConfirmation({ kind: "skip", target: voyage.id, voyageId: voyage.id })}>
+        <Ship size={15} aria-hidden="true" />Отправить раньше <ItemIcon itemId="pearls" size={16} />{formatPearls(shipOrdersConfig.resetPricePearls)}
+      </button>{resetSeconds > 0 && <span>Доступно через {worldCountdown(resetSeconds)}</span>}</div>
+      <p className={styles.hint}>После последнего груза или окончания суток корабль уйдёт. Следующий рейс через 6 часов. Заменять можно только ещё не загруженные заказы.</p>
     </> : <section className={styles.empty} data-ship-waiting={seconds > 0 || undefined}>
       <Ship size={28} aria-hidden="true" /><h3>{seconds > 0 ? "Корабль в пути" : "Корабль прибывает"}</h3>
       {seconds > 0 ? <p className={styles.countdown}><Clock3 size={16} aria-hidden="true" />Вернётся через <strong>{worldCountdown(seconds)}</strong></p>

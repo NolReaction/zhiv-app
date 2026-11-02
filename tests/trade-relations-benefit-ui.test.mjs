@@ -28,7 +28,7 @@ const now = Date.parse("2026-10-23T12:00:00Z");
 
 function fresh(reputation = {}) {
   const state = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
-  state.buildings = { home: 3, warehouse: 2, garden: 1, workshop: 1, woodlot: 1, quarry: 1, dryer: 1 };
+  state.buildings = { home: 3, warehouse: 2, garden: 1, workshop: 1, woodlot: 1, quarry: 2, kiln: 1, dryer: 1 };
   state.wallet = { coins: 100_000, pearls: 0 };
   state.inventory = {};
   state.tradeRelations = { version: 1, reputation, activity: Object.fromEntries(Object.keys(reputation).map(id => [id, { pointsBps: 10000, updatedAt: new Date(now).toISOString() }])), dailyCycle: -1, dailyOrderXp: {}, dailyPurchaseXp: {}, weekly: null,

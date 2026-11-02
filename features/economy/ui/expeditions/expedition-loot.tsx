@@ -63,22 +63,6 @@ export function ExpeditionFindChances({ state, route, compact = false }: { state
   </details>;
 }
 
-export function ExpeditionRelicChances({ state }: { state: EconomyView }) {
-  const relics = state.catalog.rareDrops;
-  if (!relics?.itemIds.length) return null;
-  const available = (state.buildings.home ?? 1) >= relics.requiredHomeLevel;
-  return <details className={`${styles.discovery} ${styles.relics}`} data-expedition-relics>
-    <summary><Sparkles size={16} aria-hidden="true" /><span>Редкие реликвии<small>{available ? "За накопленное время в пути" : `С дома ${relics.requiredHomeLevel}-го уровня`}</small></span><ChevronDown size={16} aria-hidden="true" /></summary>
-    <div className={styles.discoveryBody}>
-      <p>С дома {relics.requiredHomeLevel}-го уровня для каждой реликвии выбирается порог {number(relics.minSeconds / 3600)}–{number(relics.maxSeconds / 3600)} ч вылазок и добычи. Время засчитывается при получении. Реликвия приходит с результатом достигшей порога работы. У Мохлика и шахтёра отдельный счёт, отмена не считается.</p>
-      <p>При выпадении реликвии все варианты равновероятны. Это не шанс за отдельную вылазку.</p>
-      <div role="list" aria-label="Варианты при выпадении реликвии" className={styles.bonusList}>{relics.itemIds.map(itemId => <span key={itemId} role="listitem" className={styles.bonusItem} data-expedition-relic={itemId}>
-        <ProductIcon state={state} itemId={itemId} size={21} /><span>{itemName(state, itemId)}</span><strong>{percent(100 / relics.itemIds.length)}</strong>
-      </span>)}</div>
-    </div>
-  </details>;
-}
-
 export function ExpeditionReturnReport({ gain, state, onDismiss }: { gain: InventoryGain; state: EconomyView; onDismiss: () => void }) {
   const report = useRef<HTMLElement>(null);
   useEffect(() => {

@@ -936,6 +936,48 @@
       "category": "provisions",
       "baseSellPrice": 2332,
       "tradable": true
+    },
+    {
+      "id": "berry_tea",
+      "name": "Ягодный чай",
+      "category": "provisions",
+      "baseSellPrice": 120,
+      "tradable": true
+    },
+    {
+      "id": "forest_pan",
+      "name": "Лесное жаркое",
+      "category": "provisions",
+      "baseSellPrice": 175,
+      "tradable": true
+    },
+    {
+      "id": "currant_glazed_fish",
+      "name": "Рыба в смородиновой глазури",
+      "category": "provisions",
+      "baseSellPrice": 823,
+      "tradable": true
+    },
+    {
+      "id": "berry_pastila",
+      "name": "Ягодная пастила",
+      "category": "provisions",
+      "baseSellPrice": 349,
+      "tradable": true
+    },
+    {
+      "id": "trail_feast",
+      "name": "Таёжный паёк",
+      "category": "provisions",
+      "baseSellPrice": 1017,
+      "tradable": true
+    },
+    {
+      "id": "river_aspic",
+      "name": "Лесной рыбный студень",
+      "category": "provisions",
+      "baseSellPrice": 559,
+      "tradable": true
     }
   ],
   "buildings": [
@@ -2298,9 +2340,6 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
-      "requiredRecipes": {
-        "make_metal_parts": 1
-      },
       "seconds": 1500,
       "cost": {
         "coins": 0,
@@ -2314,9 +2353,10 @@
         "tools": 1
       },
       "maxBatch": 1,
-      "unlockTitle": "Практика в старом лесу",
+      "unlockTitle": "Практика исследователя",
       "requiredExplorations": {
-        "old_woodland": 1
+        "old_woodland": 2,
+        "coastal_deposits": 1
       }
     },
     {
@@ -2386,7 +2426,7 @@
         "cook_grilled_fish": 1
       },
       "unlockTitle": "Свой улов",
-      "requiredFishCaught": 4
+      "requiredFishCaught": 8
     },
     {
       "id": "cook_berry_fish",
@@ -2961,9 +3001,6 @@
       "requiredBuildings": {
         "quarry": 2
       },
-      "requiredRecipes": {
-        "fire_bricks": 1
-      },
       "seconds": 300,
       "cost": {
         "coins": 0,
@@ -2976,10 +3013,11 @@
         "ceramic_jar": 1
       },
       "maxBatch": 1,
-      "unlockTitle": "Глина в дело",
+      "unlockTitle": "Лес и речной берег",
       "requiredExplorations": {
-        "quarry_clay": 2
-      }
+        "forest": 2
+      },
+      "requiredFishCaught": 6
     },
     {
       "id": "mix_mortar",
@@ -3011,9 +3049,6 @@
       "buildingLevel": 3,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "requiredRecipes": {
-        "make_glass": 1
-      },
       "seconds": 300,
       "cost": {
         "coins": 0,
@@ -3025,10 +3060,11 @@
         "glass_bottle": 1
       },
       "maxBatch": 1,
-      "unlockTitle": "Секрет прибрежного песка",
+      "unlockTitle": "Береговые наблюдения",
       "requiredExplorations": {
-        "coastal_deposits": 1
-      }
+        "coastal_deposits": 2
+      },
+      "requiredFishCaught": 8
     },
     {
       "id": "grind_lens",
@@ -3039,9 +3075,6 @@
       "requiredBuildings": {
         "quarry": 4,
         "kiln": 3
-      },
-      "requiredRecipes": {
-        "make_glass_bottle": 1
       },
       "seconds": 900,
       "cost": {
@@ -3054,7 +3087,12 @@
       "rewards": {
         "lens": 1
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "requiredExplorations": {
+        "coastal_deposits": 2,
+        "far_bank_path": 1
+      },
+      "unlockTitle": "Разведка дальнего берега"
     },
     {
       "id": "pack_berries",
@@ -3085,10 +3123,6 @@
       "buildingLevel": 2,
       "requiredHomeLevel": 3,
       "requiredBuildings": {},
-      "requiredRecipes": {
-        "make_planks": 2,
-        "make_rope": 1
-      },
       "seconds": 480,
       "cost": {
         "coins": 0,
@@ -3101,9 +3135,10 @@
         "trade_crate": 1
       },
       "maxBatch": 1,
-      "unlockTitle": "В дорогу",
+      "unlockTitle": "Припасы для дороги",
       "requiredExplorations": {
-        "forest": 1
+        "forest": 2,
+        "old_woodland": 1
       }
     },
     {
@@ -3115,9 +3150,6 @@
       "requiredBuildings": {
         "quarry": 4,
         "kiln": 3
-      },
-      "requiredRecipes": {
-        "make_research_gear": 1
       },
       "seconds": 1200,
       "cost": {
@@ -3132,9 +3164,10 @@
         "field_kit": 1
       },
       "maxBatch": 1,
-      "unlockTitle": "Пробный выход",
+      "unlockTitle": "Первые дальние тропы",
       "requiredExplorations": {
-        "far_bank_path": 1
+        "far_bank_path": 2,
+        "far_bank_grove": 1
       }
     },
     {
@@ -3385,6 +3418,163 @@
           "fish_sturgeon"
         ],
         "exactSpecies": true
+      }
+    },
+    {
+      "id": "cook_berry_tea",
+      "name": "Заварить ягодный чай",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 480,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "berries": 1,
+          "blueberries": 1
+        }
+      },
+      "rewards": {
+        "berry_tea": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "cook_forest_pan",
+      "name": "Приготовить лесное жаркое",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_common": 1,
+          "berries": 1,
+          "charcoal": 1
+        }
+      },
+      "rewards": {
+        "forest_pan": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "experiment_currant_fish",
+      "name": "Рыба в смородиновой глазури",
+      "buildingId": "dryer",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "currant_jelly": 1,
+          "fish_common": 1
+        }
+      },
+      "rewards": {
+        "currant_glazed_fish": 1
+      },
+      "maxBatch": 1,
+      "experiment": {
+        "title": "Кислая глазурь",
+        "hint": "Попробуйте соединить речную рыбу и густое ягодное желе.",
+        "successBps": 8500,
+        "requiredCookingLevel": 1,
+        "failureRewards": {
+          "currant_jelly": 1
+        }
+      }
+    },
+    {
+      "id": "experiment_berry_pastila",
+      "name": "Ягодная пастила",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 900,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "strawberry_compote": 1,
+          "berries": 1
+        }
+      },
+      "rewards": {
+        "berry_pastila": 1
+      },
+      "maxBatch": 1,
+      "experiment": {
+        "title": "Тягучая ягодная сладость",
+        "hint": "Медленно прогрейте клубничный компот со свежей малиной.",
+        "successBps": 8500,
+        "requiredCookingLevel": 1,
+        "failureRewards": {
+          "strawberry_compote": 1
+        }
+      }
+    },
+    {
+      "id": "experiment_trail_feast",
+      "name": "Таёжный паёк",
+      "buildingId": "dryer",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "trail_ration": 1,
+          "berries": 2
+        }
+      },
+      "rewards": {
+        "trail_feast": 1
+      },
+      "maxBatch": 1,
+      "experiment": {
+        "title": "Дорожное угощение",
+        "hint": "Оживите обычный паёк ягодами, сохранив его сытность.",
+        "successBps": 8500,
+        "requiredCookingLevel": 2,
+        "failureRewards": {
+          "trail_ration": 1
+        }
+      }
+    },
+    {
+      "id": "experiment_river_aspic",
+      "name": "Лесной рыбный студень",
+      "buildingId": "dryer",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_soup": 1,
+          "blueberries": 1
+        }
+      },
+      "rewards": {
+        "river_aspic": 1
+      },
+      "maxBatch": 1,
+      "experiment": {
+        "title": "Холодный речной секрет",
+        "hint": "Дайте густой ухе соединиться с терпкой черникой.",
+        "successBps": 8500,
+        "requiredCookingLevel": 3,
+        "failureRewards": {
+          "fish_soup": 1
+        }
       }
     }
   ],
@@ -4124,17 +4314,17 @@
         "clay": 2
       },
       "finds": {
-        "emptyWeight": 49,
+        "emptyWeight": 64,
         "entries": [
           {
             "itemId": "packed_berries",
             "quantity": 1,
-            "weight": 10
+            "weight": 5
           },
           {
             "itemId": "resin",
             "quantity": 2,
-            "weight": 20
+            "weight": 10
           },
           {
             "itemId": "hardwood",
@@ -5155,7 +5345,13 @@
       "mooncarp_blueberries": 425,
       "pike_berry_sauce": 865,
       "eel_in_jar": 915,
-      "festive_sturgeon": 2332
+      "festive_sturgeon": 2332,
+      "berry_tea": 120,
+      "forest_pan": 175,
+      "currant_glazed_fish": 823,
+      "berry_pastila": 349,
+      "trail_feast": 1017,
+      "river_aspic": 559
     }
   },
   "rareDrops": {
@@ -5274,6 +5470,42 @@
         "heroSpeedBps": 9000,
         "builderSpeedBps": 7500,
         "heroWorkSeconds": 37800
+      },
+      {
+        "itemId": "berry_tea",
+        "heroSpeedBps": 1000,
+        "builderSpeedBps": 1500,
+        "heroWorkSeconds": 9900
+      },
+      {
+        "itemId": "forest_pan",
+        "heroSpeedBps": 1800,
+        "builderSpeedBps": 2200,
+        "heroWorkSeconds": 9000
+      },
+      {
+        "itemId": "currant_glazed_fish",
+        "heroSpeedBps": 2200,
+        "builderSpeedBps": 5500,
+        "heroWorkSeconds": 35100
+      },
+      {
+        "itemId": "berry_pastila",
+        "heroSpeedBps": 1000,
+        "builderSpeedBps": 3500,
+        "heroWorkSeconds": 28800
+      },
+      {
+        "itemId": "trail_feast",
+        "heroSpeedBps": 5000,
+        "builderSpeedBps": 5500,
+        "heroWorkSeconds": 23400
+      },
+      {
+        "itemId": "river_aspic",
+        "heroSpeedBps": 3500,
+        "builderSpeedBps": 4000,
+        "heroWorkSeconds": 16200
       }
     ],
     "orders": {
@@ -5753,7 +5985,7 @@
             "woodlot": 3,
             "kiln": 2,
             "quarry": 2,
-            "dryer": 1,
+            "dryer": 2,
             "garden": 1
           },
           "items": {
@@ -5777,7 +6009,7 @@
             "woodlot": 4,
             "kiln": 2,
             "quarry": 2,
-            "dryer": 1,
+            "dryer": 2,
             "garden": 1
           },
           "items": {
@@ -6247,7 +6479,7 @@
             "kiln": 2,
             "woodlot": 1,
             "quarry": 2,
-            "dryer": 1,
+            "dryer": 2,
             "garden": 1
           },
           "items": {
@@ -7083,7 +7315,7 @@
             "workshop": 3,
             "kiln": 2,
             "quarry": 2,
-            "dryer": 1,
+            "dryer": 2,
             "garden": 1
           },
           "items": {
@@ -7260,7 +7492,7 @@
             "woodlot": 1,
             "workshop": 3,
             "kiln": 2,
-            "dryer": 1,
+            "dryer": 2,
             "garden": 1
           },
           "items": {
@@ -7456,7 +7688,7 @@
             "workshop": 4,
             "kiln": 2,
             "quarry": 2,
-            "dryer": 1,
+            "dryer": 2,
             "garden": 1
           },
           "items": {
@@ -7501,7 +7733,9 @@
             "workshop": 2,
             "woodlot": 2,
             "kiln": 2,
-            "quarry": 2
+            "quarry": 2,
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "trade_crate": 2,
@@ -7638,7 +7872,9 @@
             "workshop": 3,
             "kiln": 3,
             "woodlot": 3,
-            "dryer": 2
+            "dryer": 2,
+            "bridge": 1,
+            "garden": 1
           },
           "items": {
             "quartz": 2,
@@ -7824,7 +8060,8 @@
             "workshop": 2,
             "quarry": 3,
             "woodlot": 2,
-            "dryer": 2
+            "dryer": 2,
+            "garden": 1
           },
           "items": {
             "glass_bottle": 2,
@@ -8026,7 +8263,9 @@
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "workshop": 2,
-            "woodlot": 4
+            "woodlot": 4,
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "trade_crate": 2,
@@ -8223,7 +8462,9 @@
             "quarry": 4,
             "kiln": 3,
             "workshop": 3,
-            "dryer": 2
+            "dryer": 2,
+            "bridge": 1,
+            "garden": 1
           },
           "items": {
             "lens": 2,
@@ -8265,7 +8506,9 @@
           "requiredHomeLevel": 4,
           "requiredBuildings": {
             "quarry": 4,
-            "workshop": 2
+            "workshop": 2,
+            "dryer": 1,
+            "garden": 1
           },
           "items": {
             "quartz": 3,
@@ -9229,7 +9472,8 @@
             "kiln": 3,
             "quarry": 4,
             "dryer": 2,
-            "garden": 1
+            "garden": 1,
+            "bridge": 1
           },
           "stages": [
             {
@@ -10016,7 +10260,13 @@
       "mooncarp_blueberries": "cook_mooncarp_blueberries",
       "pike_berry_sauce": "cook_pike_berry_sauce",
       "eel_in_jar": "cook_eel_in_jar",
-      "festive_sturgeon": "cook_festive_sturgeon"
+      "festive_sturgeon": "cook_festive_sturgeon",
+      "berry_tea": "cook_berry_tea",
+      "forest_pan": "cook_forest_pan",
+      "currant_glazed_fish": "experiment_currant_fish",
+      "berry_pastila": "experiment_berry_pastila",
+      "trail_feast": "experiment_trail_feast",
+      "river_aspic": "experiment_river_aspic"
     },
     "baselineExplorations": {
       "stone": "quarry_stone",
@@ -10052,5 +10302,60 @@
       "spice_bait": 1,
       "dusk_bait": 1
     }
+  },
+  "skills": {
+    "version": 1,
+    "levels": [
+      {
+        "requiredSeconds": 0,
+        "cookingBonusBps": 0,
+        "travelSpeedBps": 0
+      },
+      {
+        "requiredSeconds": 18000,
+        "cookingBonusBps": 100,
+        "travelSpeedBps": 50
+      },
+      {
+        "requiredSeconds": 54000,
+        "cookingBonusBps": 200,
+        "travelSpeedBps": 100
+      },
+      {
+        "requiredSeconds": 126000,
+        "cookingBonusBps": 300,
+        "travelSpeedBps": 150
+      },
+      {
+        "requiredSeconds": 252000,
+        "cookingBonusBps": 400,
+        "travelSpeedBps": 200
+      },
+      {
+        "requiredSeconds": 450000,
+        "cookingBonusBps": 500,
+        "travelSpeedBps": 250
+      },
+      {
+        "requiredSeconds": 756000,
+        "cookingBonusBps": 600,
+        "travelSpeedBps": 300
+      },
+      {
+        "requiredSeconds": 1224000,
+        "cookingBonusBps": 700,
+        "travelSpeedBps": 350
+      },
+      {
+        "requiredSeconds": 1872000,
+        "cookingBonusBps": 850,
+        "travelSpeedBps": 400
+      },
+      {
+        "requiredSeconds": 2880000,
+        "cookingBonusBps": 1000,
+        "travelSpeedBps": 500
+      }
+    ]
   }
 }

@@ -15,8 +15,9 @@ export function createRandom(seed) {
 }
 export async function loadProgressionRules(sourceRoot = defaultRoot) {
   const root = resolve(sourceRoot);
+  // Batch workers load a frozen source snapshot; file watching only duplicates build-tree watches.
   const vite = await createServer({ appType: "custom", configFile: false, root, logLevel: "silent", cacheDir: `/tmp/zhiv-v14-progression-${root.includes("baseline") ? "baseline" : "working"}`,
-    resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+    resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   const paths = { rules: "features/economy/domain/rules.ts", model: "features/economy/domain/model.ts", stages: "features/economy/domain/stage-orders.ts",
     food: "features/economy/domain/food.ts", actors: "features/economy/domain/actor-availability.ts", tutorial: "features/economy/domain/tutorial-order.ts",
     slots: "features/economy/domain/production-slots.ts", market: "features/economy/domain/market-rules.ts", relations: "features/economy/domain/trade-relations.ts", fishing: "features/economy/domain/fishing.ts", fishingShop: "features/economy/domain/fishing-shop.ts", publicJobs: "features/economy/domain/public-jobs.ts", leaftail: "features/economy/domain/leaftail-shop.ts", relicExchange: "features/economy/domain/leaftail-relic-exchange.ts", rewards: "features/game/progression-rewards.ts", achievements: "features/game/achievement-progress.ts",
@@ -89,7 +90,7 @@ export function simulateProgression(loaded, options = {}) {
   const milestones = {};
   const targetHome = Math.max(...catalog.buildings.find(row => row.id === "home").levels.map(row => row.level));
   const maximumBuildings = Object.fromEntries(catalog.buildings.map(row => [row.id, Math.max(...row.levels.map(level => level.level))]));
-  const activeRecipes = catalog.recipes.filter(row => !row.retired);
+  const activeRecipes = catalog.recipes.filter(row => !row.retired && !row.experiment);
   const maximumProduction = () => Object.entries(maximumBuildings).filter(([id]) => id !== "warehouse").every(([id,level]) => state.buildings[id] >= level);
   const maximumSettlement = () => Object.entries(maximumBuildings).every(([id,level]) => state.buildings[id] >= level);
   const recipesComplete = () => activeRecipes.every(row => (state.progression.recipes[row.id] ?? 0) > 0);
@@ -121,7 +122,7 @@ export function simulateProgression(loaded, options = {}) {
   const currentCourse = () => tutorial.tutorialResidentOrder(state) ?? stages.stageResidentOrder(state);
   const held = items => Object.entries(items).every(([id, count]) => owned(id) >= count);
   const buildingOpen = requirements => Object.entries(requirements ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
-  const sourceOpen = source => !source.retired && state.buildings.home >= source.requiredHomeLevel && buildingOpen(source.requiredBuildings)
+  const sourceOpen = source => !source.retired && !source.experiment && state.buildings.home >= source.requiredHomeLevel && buildingOpen(source.requiredBuildings)
     && (!source.buildingId || (state.buildings[source.buildingId] ?? 0) >= source.buildingLevel);
   // Seeded server entropy is shared by real trusted draws, never inspected by
   // the policy. The guaranteed chapter rewards do not depend on random relics.
@@ -448,7 +449,7 @@ export function simulateProgression(loaded, options = {}) {
     for (const id of Object.keys(items ?? {})) {
       if (visited.has(id)) continue;
       const path = new Set([...visited, id]);
-      const candidates = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired && source.rewards[id] > 0
+      const candidates = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired && !source.experiment && source.rewards[id] > 0
         && source.requiredHomeLevel <= state.buildings.home).sort((a, b) => Number(!sourceOpen(a)) - Number(!sourceOpen(b))
           || Number(Object.keys(a.cost.items).length > 0) - Number(Object.keys(b.cost.items).length > 0) || a.seconds - b.seconds);
       const source = candidates[0];
@@ -789,6 +790,7 @@ export function summarizeProgression(result) {
     production: result.production, builderHours: result.constructionSeconds / 3600,
     recipesCompleted: result.activeRecipeIds.filter(id => result.state.progression.recipes[id] > 0).length,
     missingRecipes: result.activeRecipeIds.filter(id => !(result.state.progression.recipes[id] > 0)),
+    skills: result.state.progression.skills ?? null,
     buildings: result.state.buildings, coins: result.state.wallet.coins, pearls: result.state.wallet.pearls,
     lastWaits: result.waits.slice(-5), nextCourse: result.state.stageOrders, inventory: result.state.inventory };
 }

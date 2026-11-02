@@ -441,7 +441,9 @@ test("DEV fishing rehearses the real trip, stops with a safe return and yields t
     worldDevStore.triggerScenario("fishing");
     assert.equal(probe.state.fishingPreview, undefined, "a local rehearsal cannot steal a server-owned actor");
     assert.equal(probe.state.explorationId, confirmed.id);
-    assert.equal(sampleHero(scene, env, pixelSprite).body, undefined);
+    assert.ok(sampleHero(scene, env, pixelSprite).body, "a confirmed distant trip starts with the real departure walk, not a disappearing actor");
+    assert.equal(probe.state.journeyTravel?.jobId, confirmed.id);
+    assert.equal(probe.state.journeyTravel?.phase, "leaving");
     scene.configure({ ...initial, economyJourney: confirmed, serverNow: 700_000 });
     assert.equal(probe.state.fishingPreview, undefined, "a rejected rehearsal is not queued behind a real job");
     assert.equal(probe.state.explorationId, null);

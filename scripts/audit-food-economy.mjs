@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { recipeMasteryReachable } from "./lib/recipe-mastery.mjs";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { economicMath, recipeBuildingLevel } from "./lib/economy-math.mjs";
+import { economicMath, expectedRecipeRewards, recipeBuildingLevel } from "./lib/economy-math.mjs";
 import { residentOrderPricing } from "./lib/resident-order-pricing.mjs";
 import { auditEconomyProgression } from "./audit-economy-progression.mjs";
 
@@ -49,7 +49,7 @@ export function auditFoodEconomy(catalog) {
     while (changed) {
       const before = reachable.size + completedRecipes.size + completedRoutes.size;
       for (const source of [...catalog.explorations, ...catalog.recipes]) {
-        if (!hasRequirements(source, buildings)) continue;
+        if (source.experiment || !hasRequirements(source, buildings)) continue;
         if (!recipeMasteryReachable(catalog, source, completedRecipes, completedRoutes, buildings.home)) continue;
         const options = source.fishInput?.itemIds;
         if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !options?.includes(id)) || options && !options.some(id => reachable.has(id))) continue;
@@ -100,7 +100,7 @@ export function auditFoodEconomy(catalog) {
     assert.equal(original.length, 1, `${recipe.id}: exactly one fish placeholder is required`);
     assert.equal(new Set(options).size, options.length, `${recipe.id}: duplicate fish option`);
     assert(options.every(id => fish.has(id)), `${recipe.id}: unknown fish option`);
-    const quantity = recipe.cost.items[original[0]], revenue = math.liquidation(recipe.rewards);
+    const quantity = recipe.cost.items[original[0]], output = expectedRecipeRewards(recipe), revenue = math.liquidation(output);
     const variants = options.map(id => {
       const cost = { ...recipe.cost.items }; delete cost[original[0]]; cost[id] = quantity;
       const opportunity = math.liquidation(cost) + recipe.cost.coins;
@@ -109,7 +109,7 @@ export function auditFoodEconomy(catalog) {
       const purchaseCost = fish.get(id).rarity === "common" ? shopPrice(id) * quantity + math.liquidation(nonFish) + recipe.cost.coins : null;
       const batch = recipe.maxBatch ?? 1;
       const batchCost = Object.fromEntries(Object.entries(cost).map(([item, count]) => [item, count * batch]));
-      const batchOutput = Object.fromEntries(Object.entries(recipe.rewards).map(([item, count]) => [item, count * batch]));
+      const batchOutput = Object.fromEntries(Object.entries(output).map(([item, count]) => [item, count * batch]));
       const batchProfit = math.liquidation(batchOutput) - math.liquidation(batchCost) - recipe.cost.coins * batch;
       assert(batchProfit > 0, `${recipe.id}@${id}: full batch destroys actual sale proceeds`);
       return { fishItemId: id, quantity, inputReferenceCoins: valueOf(items, cost) + recipe.cost.coins,
@@ -121,7 +121,7 @@ export function auditFoodEconomy(catalog) {
         fullBatchSaleProfitCoins: batchProfit };
     });
     return { recipeId: recipe.id, homeLevel: recipe.requiredHomeLevel, stationLevel: recipeBuildingLevel(recipe),
-      minutes: recipe.seconds / 60, output: recipe.rewards, maxBatch: recipe.maxBatch,
+      minutes: recipe.seconds / 60, output, optionalExperiment: Boolean(recipe.experiment), maxBatch: recipe.maxBatch,
       singleSlotBatchesPerDay: rounded(86400 / recipe.seconds), outputSaleCoins: revenue, variants,
       defaultInputSourceSlotMinutes: Object.fromEntries(Object.entries(math.batch(recipe).slotMinutes).map(([id, minutes]) => [id, rounded(minutes)])) };
   });

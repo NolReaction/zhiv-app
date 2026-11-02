@@ -86,7 +86,7 @@ export function AdminNeighborSettingsForm({ settings, disabled, onReview }: {
     <fieldset disabled={disabled} className={styles.fieldset}>
       <legend>Лавка, цены и выкуп</legend>
       <p className={styles.hint}>10 000 базисных пунктов = 100%. Тарифы задаются напрямую: 0% делает поставку бесплатной. Округление и комиссию учитывает сервер. Выкуп также не превышает стоимость приобретения такого товара у других жителей, чтобы наживка и готовые поставки не давали монеты по кругу. Действующий ассортимент игрока сохраняется до следующего дня; запрещённый товар перестаёт продаваться.</p>
-      {draft.sellPriceBps < draft.buyPriceBps && <p className={styles.hint}>Предел выкупа выше цены лавки: покупка сегодня и обратная продажа в другой день могут давать прибыль. Эти тарифы сохраняются по вашему решению.</p>}
+      {draft.sellPriceBps < draft.buyPriceBps && <p className={styles.hint}>Выкуп дополнительно ограничен стоимостью товара в вашей партии и у других жителей. Обратная продажа не покрывает комиссию.</p>}
       <div className={styles.grid}>{numericFields.map(field => <label key={field.key} className={styles.field}>{field.label}
         <input type="number" min={field.min} max={field.max} step={field.step ?? 1} value={Number.isNaN(draft[field.key]) ? "" : String(draft[field.key])}
           onChange={event => change(field.key, event.target.value === "" ? Number.NaN : Number(event.target.value))} />

@@ -1,6 +1,6 @@
 import catalogJson from "@/apps/api/src/main/resources/world/ship-orders-catalog.json";
 import { economyCatalog, type EconomyCatalog, type EconomyState } from "./model";
-import { economyShipSchema, shipOrdersConfigSchema, type EconomyShip, type ShipVoyage } from "./ship-model";
+import { economyShipSchema, shipOrdersConfigSchema, type EconomyShip, type ShipVoyage, type ShipOrder } from "./ship-model";
 import { obtainableResidentOrderItems } from "./order-effort";
 import { economyLocalSellPrice } from "./local-sale";
 import { ECONOMY_MAX_BALANCE, PEARL_DISPLAY_DIVISOR } from "./money";
@@ -34,8 +34,37 @@ for (const template of shipOrdersConfig.templates) {
 export function shipOrdersUnlocked(state: Pick<EconomyState, "buildings">): boolean {
   return (state.buildings.lighthouse ?? 0) >= 1;
 }
-export function shipOrdersState(state: Pick<EconomyState, "ship">): EconomyShip {
-  return economyShipSchema.parse(state.ship);
+export function shipDepartureAt(voyage: Pick<ShipVoyage, "openedAt">): number {
+  return Date.parse(voyage.openedAt) + shipOrdersConfig.staySeconds * 1000;
+}
+export function shipCargoFractions(voyage: ShipVoyage): number[] {
+  return voyage.orders.map(order => {
+    const total = Object.values(order.items).reduce((sum, amount) => sum + amount, 0);
+    const loaded = Object.entries(order.items).reduce((sum, [id, amount]) => sum + (order.deliveredAt ? amount : Math.min(amount, order.loadedItems[id] ?? 0)), 0);
+    return total > 0 ? loaded / total : 0;
+  });
+}
+/** Projection is also used by server reads: a missed client timer never extends a voyage. */
+export function shipOrdersState(state: Pick<EconomyState, "ship">, now?: number): EconomyShip {
+  const ship = economyShipSchema.parse(state.ship);
+  if (ship.voyage && now != null && Number.isFinite(now) && now >= shipDepartureAt(ship.voyage)
+    && !ship.voyage.orders.every(order => order.deliveredAt)) return { ...ship, voyage: null,
+      departureCargo: shipCargoFractions(ship.voyage),
+      nextAvailableAt: new Date(shipDepartureAt(ship.voyage) + shipOrdersConfig.intervalSeconds * 1000).toISOString() };
+  return ship;
+}
+/** New IDs reject stale loads, even if a replacement happens to need the same item. */
+export function replaceableShipOrder(state: EconomyState, voyage: ShipVoyage, order: ShipOrder,
+  catalog: EconomyCatalog = economyCatalog, config = shipOrdersConfig): ShipOrder | null {
+  const revision = (voyage.replacementsUsed ?? 0) + 1;
+  const candidates = eligibleShipTemplates(state, catalog, config).filter(template => template.difficulty === order.difficulty
+    && !voyage.orders.some(other => other.templateId === template.id));
+  if (!candidates.length) return null;
+  const template = candidates[shipOrderHash(`${voyage.id}:${order.id}:replacement:${revision}`) % candidates.length];
+  const index = voyage.orders.findIndex(entry => entry.id === order.id);
+  return { id: `${voyage.id}:${index}:r${revision}`, revision, templateId: template.id, title: template.title,
+    items: { ...template.items }, loadedItems: {}, difficulty: template.difficulty, rewardItems: { ...template.rewardItems },
+    rewardCoins: shipOrderReward(template.items, catalog, config), deliveredAt: null };
 }
 /** Same unsigned FNV-1a as Kotlin. Entropy is a server-generated UUID, never a request ID. */
 export function shipOrderHash(value: string): number {

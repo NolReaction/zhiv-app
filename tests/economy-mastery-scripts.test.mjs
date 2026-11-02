@@ -34,11 +34,11 @@ test("reachability requires the fishing route and both eligible tackle kinds", (
 test("math propagates required trips and their provision stations without repricing repeat production", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   const bottle = math.profile("glass_bottle"), kit = math.profile("field_kit"), soup = math.profile("fish_soup");
-  assert.equal(bottle.unlockExplorations.coastal_deposits, 1);
+  assert.equal(bottle.unlockExplorations.coastal_deposits, 2);
   assert.equal(bottle.producerLevels.dryer, 2);
-  assert.equal(kit.unlockExplorations.far_bank_path, 1);
+  assert.equal(kit.unlockExplorations.far_bank_path, 2);
   assert.equal(kit.producerLevels.bridge, 1);
-  assert.equal(soup.requiredFishCaught, 4);
+  assert.equal(soup.requiredFishCaught, 8);
   const ungated = structuredClone(catalog);
   for (const source of ungated.recipes) { delete source.requiredRecipes; delete source.requiredExplorations; delete source.requiredFishCaught; }
   assert.deepEqual(math.profile("glass_bottle").slotMinutes, economicMath(ungated).profile("glass_bottle").slotMinutes,

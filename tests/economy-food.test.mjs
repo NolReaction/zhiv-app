@@ -407,7 +407,10 @@ test("Ktor's explicit null recipe extensions remain readable alongside old catal
   for (const recipe of wire.recipes) recipe.fishInput ??= null;
   assert.equal(model.economyCatalogSchema.safeParse(wire).success, true);
   wire.food = null;
-  for (const recipe of wire.recipes) recipe.fishInput = null;
+  assert.equal(model.economyCatalogSchema.safeParse(wire).success, false, "current experiments require their edible result catalog");
+  // A pre-food snapshot also predates experiments and skills; nullable fish extensions remain valid.
+  delete wire.skills;
+  for (const recipe of wire.recipes) { recipe.fishInput = null; delete recipe.experiment; }
   assert.equal(model.economyCatalogSchema.safeParse(wire).success, true);
   const duration = Number.MAX_SAFE_INTEGER, bps = 2500;
   const expected = Number((BigInt(duration) * 10000n + BigInt(10000 + bps) - 1n) / BigInt(10000 + bps));

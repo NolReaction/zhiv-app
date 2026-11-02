@@ -46,7 +46,7 @@ export function scenarioReportState(report: ProgressionScenarioReport, currentFi
 }
 
 export const scenarioGoalNames: Record<string, string> = {
-  "home-5": "Дом 5", "all-production": "Все производства", "all-buildings": "Все постройки", "all-recipes": "Все рецепты", "max-reputation": "Репутация всех жителей", "reputation": "Репутация всех жителей", "observation": "Наблюдение за развитием", "full": "Хозяйство, рецепты и ранги", "all-capacity": "Хозяйство, рецепты, ранги и все места",
+  "home-5": "Дом 5", "all-production": "Все производства", "all-buildings": "Все постройки", "all-recipes": "Все обычные рецепты", "max-reputation": "Репутация всех жителей", "reputation": "Репутация всех жителей", "observation": "Наблюдение за развитием", "full": "Хозяйство, рецепты и ранги", "all-capacity": "Хозяйство, рецепты, ранги и все места",
 };
 export const scenarioResidentNames: Record<string, string> = { builder: "Шишколап", lopukh: "Лопоух", kamneshmyg: "Камнешмыг", plesk: "Плёска", leaftail: "Листохвост" };
 export function scenarioSchedule(row: Pick<ProgressionScenario, "visitsPerDay" | "regularMinutes">) {

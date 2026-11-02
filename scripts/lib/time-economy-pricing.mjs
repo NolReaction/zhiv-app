@@ -28,7 +28,12 @@ export function timeEconomyPricing(catalog) {
     assert.equal(Object.keys(source.rewards).length, 1, `${itemId}: joint outputs need a separate allocation policy`);
     assert.equal(source.rewards[itemId], 1, `${itemId}: current normal technology must produce one item`);
     const inputs = Object.entries(source.cost.items).reduce((sum, [id, count]) => sum + price(id, [...path, itemId]) * count, 0);
-    const value = Math.ceil(inputs + source.cost.coins + source.seconds * policy.coinsPerMinute / 60);
+    const workAndInputs = inputs + source.cost.coins + source.seconds * policy.coinsPerMinute / 60;
+    const chance = source.experiment ? source.experiment.successBps / 10000 : 1;
+    const fallbackValue = Object.entries(source.experiment?.failureRewards ?? {}).reduce((sum, [id, count]) =>
+      sum + price(id, [...path, itemId]) * count, 0);
+    assert(chance > 0 && chance <= 1, `${itemId}: invalid experiment probability`);
+    const value = Math.ceil((workAndInputs - (1 - chance) * fallbackValue) / chance);
     assert(Number.isSafeInteger(value) && value > 0, `${itemId}: invalid derived value`);
     cache.set(itemId, value); return value;
   }

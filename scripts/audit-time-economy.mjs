@@ -54,7 +54,21 @@ export function auditTimeEconomy(catalog) {
       add(result.stationSeconds, child.stationSeconds, quantity); add(result.sourceStarts, child.sourceStarts, quantity);
       add(result.externalItems, child.externalItems, quantity);
     }
-    // Price is rounded once per item, after all the input values and own work.
+    if (source.experiment) {
+      const chance = source.experiment.successBps / 10000;
+      assert(chance > 0 && chance < 1, `${itemId}: experiment needs a real, nonzero success chance`);
+      const fallbackValue = sum(Object.entries(source.experiment.failureRewards).map(([id, quantity]) =>
+        profile(id, [...path, itemId]).value * quantity));
+      result.value = (result.value - (1 - chance) * fallbackValue) / chance;
+      result.optionalExperiment = true; result.successBps = source.experiment.successBps;
+      result.expectedAttempts = 1 / chance; result.finiteSuccessGuarantee = false;
+      result.workSeconds /= chance; result.starts /= chance;
+      for (const values of [result.stationSeconds, result.sourceStarts, result.externalItems])
+        for (const id of Object.keys(values)) values[id] /= chance;
+      result.expectedFailureRewards = Object.fromEntries(Object.entries(source.experiment.failureRewards)
+        .map(([id, quantity]) => [id, quantity * (1 - chance) / chance]));
+    }
+    // Price is rounded once after inputs, own work and any expected fallback credit.
     result.value = Math.ceil(result.value);
     profiles.set(itemId, result); values.set(itemId, result.value); return result;
   }
@@ -73,6 +87,35 @@ export function auditTimeEconomy(catalog) {
     if (source.buildingId) assert.equal(source.maxBatch, 1, `${source.id}: bulk production cannot be restarted`);
     assert(value(source.rewards) > value(source.cost.items) + source.cost.coins, `${source.id}: processing must add sale value`);
   }
+  const experiments = [];
+  const optionalItems = new Set(active.filter(source => source.experiment).flatMap(source => Object.keys(source.rewards)));
+  for (const source of active.filter(source => source.experiment)) {
+    const experiment = source.experiment, chance = experiment.successBps / 10000;
+    assert.equal(experiment.successBps, 8500, `${source.id}: the baseline experiment chance must remain explicit`);
+    assert(Number.isInteger(experiment.requiredCookingLevel) && experiment.requiredCookingLevel >= 1 && experiment.requiredCookingLevel <= 10,
+      `${source.id}: invalid cooking level`);
+    assert(Object.keys(experiment.failureRewards).length > 0 && Object.entries(experiment.failureRewards).every(([id, count]) =>
+      items.has(id) && !optionalItems.has(id) && Number.isSafeInteger(count) && count > 0), `${source.id}: fallback needs guaranteed existing food`);
+    const inputValue = value(source.cost.items) + source.cost.coins, workValue = source.seconds * policy.coinsPerMinute / 60;
+    const successValue = value(source.rewards), failureValue = value(experiment.failureRewards);
+    const expectedNet = chance * successValue + (1 - chance) * failureValue - inputValue;
+    const masteredNet = .95 * successValue + .05 * failureValue - inputValue;
+    assert(expectedNet + 1e-8 >= workValue && expectedNet < workValue + 1,
+      `${source.id}: baseline expected output must compensate ingredients, work and failed attempts with only rounding surplus`);
+    assert(masteredNet >= expectedNet && masteredNet <= workValue * 1.15,
+      `${source.id}: maximum cooking skill must add at most fifteen percent of work value`);
+    experiments.push({ recipeId: source.id, successBps: experiment.successBps, maximumSuccessBps: 9500,
+      inputValue, workValue, successValue, failureValue, expectedNet, masteredNet, optional: true });
+  }
+  const mandatoryBundles = [
+    ...active.filter(source => !source.experiment).map(source => source.cost.items),
+    ...catalog.buildings.flatMap(building => building.levels.map(level => level.cost.items)),
+    ...catalog.food.orders.templates.map(order => order.items),
+    ...catalog.stageOrders.flatMap(stage => stage.orders.map(order => order.items)),
+    ...catalog.tradeRelations.weekly.templates.flatMap(template => template.stages.map(stage => stage.items)),
+  ];
+  assert(mandatoryBundles.every(bundle => Object.keys(bundle).every(id => !optionalItems.has(id))),
+    "Optional experiments cannot block ordinary recipes, buildings or authored orders");
   const materialTrips = active.filter(source => !source.buildingId && source.activity !== "mining"
     && !catalog.fishing.routeIds.includes(source.id));
   const expeditionFinds = [];
@@ -153,10 +196,11 @@ export function auditTimeEconomy(catalog) {
   }
   return { catalogVersion: catalog.version, coinsPerMinute: policy.coinsPerMinute, orderBonusBps: policy.orderBonusBps,
     buildingUnlocks: auditBuildingUnlocks(catalog),
-    activeHeroMaterialRoutes: materialTrips.length, expeditionFinds,
+    activeHeroMaterialRoutes: materialTrips.length, expeditionFinds, experiments,
     activeRecipes: active.filter(source => source.buildingId).length, activeMiningRoutes: active.filter(source => source.activity === "mining").length,
     retiredSources: [...recipes.values(), ...routes.values()].filter(source => source.retired).map(source => source.id),
     assumptions: ["Reference unboosted technology; input value and operation time are each counted once.",
+      "Optional experiments use expected success and fallback values; required progression excludes them and success has no finite deadline.",
       "Work excludes eight-second berry collection; collection and manual visits still affect actual completion.",
       "Capacity bounds assume all required buildings and inputs can be scheduled continuously; dependency/collection/storage/visit constraints can only make play slower.",
       "Fish, bait and relic acquisition is reported as external quantities, never invented as guaranteed production time.",

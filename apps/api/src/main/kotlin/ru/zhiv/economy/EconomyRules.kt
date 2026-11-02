@@ -89,6 +89,14 @@ object EconomyRules {
         }
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)
+        val experiments = catalog.recipes.filter { it.experiment != null }
+        val experimentOutputs = experiments.flatMap { it.rewards.keys }.toSet()
+        require(experiments.all { recipe -> catalog.skills != null &&
+            recipe.rewards.keys.all { id -> catalog.food?.meals?.any { it.itemId == id } == true } &&
+            recipe.experiment!!.failureRewards.keys.all { id -> id !in experimentOutputs &&
+                catalog.items.any { it.id == id && it.category == "provisions" && it.tradable } } })
+        require(catalog.recipes.filter { it.experiment == null }.all { recipe -> recipe.cost.items.keys.none { it in experimentOutputs } &&
+            recipe.requiredRecipes.keys.none { id -> experiments.any { it.id == id } } })
         catalog.explorations.forEach { route -> route.finds?.let { finds ->
             require(finds.entries.all { entry -> catalog.items.any { it.id == entry.itemId && it.tradable && it.category != "special" } &&
                 catalog.fishing?.fish?.none { it.itemId == entry.itemId } != false &&
@@ -394,7 +402,8 @@ object EconomyRules {
         val known = EconomyItemUnlocks.persist(EconomyFishInventory.state(EconomyTapBoost.settle(input, now)), legacyHistory + reservedItems.filterValues { it > 0 }.keys)
         val state = EconomyStageOrders.pin(known, now = now)
         val (next, message) = applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
-        val progressed = EconomyPlayerProgression.award(state, next, command, now)
+        val trained = EconomySkills.award(state, next, command, now)
+        val progressed = EconomyPlayerProgression.award(state, trained, command, now)
         return EconomyItemUnlocks.persist(EconomyStageOrders.pin(progressed, now = now)) to message
     }
 
@@ -435,10 +444,10 @@ object EconomyRules {
 
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot", "skip_ship_voyage") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
-            "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage" -> EconomyShipOrders.command(state, command, now, reservedItems)
+            "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage" -> EconomyShipOrders.command(state, command, now, reservedItems)
             "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)
@@ -470,6 +479,7 @@ object EconomyRules {
                     economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание")
                 requireHome(state, recipe.requiredHomeLevel)
                 requireBuildings(state, recipe.requiredBuildings)
+                if (!EconomySkills.canPractice(state, recipe)) economyFailure("ECONOMY_COOKING_SKILL", "Сначала наберите опыт готовки для этого опыта")
                 if (!EconomyRecipeUnlocks.met(state, recipe))
                     economyFailure("ECONOMY_RECIPE_REQUIRED", "Выполните условия открытия рецепта и заберите результаты")
                 if (state.jobs.any { it.targetId == recipe.buildingId && it.kind == "construction" })
@@ -478,6 +488,8 @@ object EconomyRules {
                     economyFailure("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат")
                 requireJobCapacity(state)
                 val firstHarvest = tutorialHarvest
+                val cooking = EconomySkills.prepare(state, recipe)
+                val rewards = if (cooking?.successful == false) checkNotNull(recipe.experiment).failureRewards else recipe.rewards
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
                 val spent = spend(state, cost, command.fishSelection, exactSpecies = recipe.fishInput?.exactSpecies == true)
                 val beforeStock = EconomyFishStock.normalized(state).orEmpty()
@@ -486,7 +498,8 @@ object EconomyRules {
                 val tradeSpeed = if (recipe.buildingId == "woodlot") EconomyTradeRelations.bonusBps(state, "lopukh", now = now) else 0
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
                     startedAt = now.toString(), finishesAt = (if (firstHarvest) now.plusMillis(1) else now.plusSeconds(EconomyFood.workDuration(recipe.seconds * command.quantity, 0, tradeSpeed))).toString(),
-                    rewards = recipe.rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version,
+                    rewards = rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version,
+                    cooking = cooking, skillWorkSeconds = if (recipe.buildingId == "dryer") recipe.seconds * command.quantity else null,
                     collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) },
                     fishStockCost = fishStockCost.takeIf { it.isNotEmpty() }, tradeSpeedBps = tradeSpeed)
                 requireRewardCapacity(state, job.rewards)
@@ -595,6 +608,7 @@ object EconomyRules {
                     finishesAt = now.plusSeconds(tripSeconds * (if (mining) command.quantity else 1L)).toString(), rewards = rewards.filterValues { it > 0 }, cost = cost,
                     catalogVersion = catalog.version, fishing = fishingCatch, rareDrop = rare?.delivery, meal = meal,
                     actorId = if (mining) "miner" else "mochlik", tradeSpeedBps = tradeSpeed,
+                    skillWorkSeconds = if (mining) null else exploration.seconds,
                     expeditionFinds = if (exploration.finds != null || exploration.loot != null) EconomyExpeditionLoot.draw(exploration) else null,
                     miningBatch = if (mining) EconomyMiningBatch(command.quantity.toInt(), unitSeconds = tripSeconds, unitRewards = exploration.rewards) else null)
                 spent.copy(jobs = state.jobs + job, fishingCastSeed = seed,

@@ -27,6 +27,7 @@ import type { ConstructionGoalController } from "@/features/economy/ui/construct
 import { ConstructionGoalSummary } from "@/features/economy/ui/construction/construction-goal-summary";
 import { worldRecipeGroups } from "./world-recipe-groups";
 import { WorldProductionCard } from "@/features/economy/ui/production/world-production-card";
+import { ShipPortStatus } from "@/features/economy/ui/ship/ship-port-status";
 import { WorldCookbook } from "@/features/economy/ui/food/world-cookbook";
 import { WorldCookbookDialog, WorldCookbookTitle } from "@/features/economy/ui/food/world-cookbook-dialog";
 import styles from "./world-object-menu.module.css";
@@ -257,6 +258,7 @@ function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, tutorialH
           <div className={styles.landmarkFeature}><Icon size={24} aria-hidden="true" /><div>
             <strong>{stationId === "bridge" ? "Рынок и другой берег" : "Корабль и древние руины"}</strong>
             <p>{current ? stationId === "bridge" ? "Торгуйте на рынке на карте." : "Загружайте товары на корабль у причала." : stationId === "bridge" ? "Восстановите мост, чтобы открыть рынок." : "Восстановите маяк, чтобы принимать корабли."}</p>
+            {current && stationId === "lighthouse" && <ShipPortStatus state={state} now={economy.now} />}
           </div></div>
           {current > 0 && <>
             <h3>Маршруты</h3>

@@ -1083,7 +1083,7 @@ test("uses a wide desktop dashboard without changing the mobile navigation contr
   assert.match(desktopPeople, /grid-template-columns:\s*minmax\(260px, 0\.72fr\) minmax\(420px, 1\.28fr\);/);
   assert.match(desktopPeople, /\.tabPanel, \.freshnessRow\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
   assert.match(desktopPeople, /\.tabPanel:not\(\.sections\) > \.sections\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
-  assert.match(desktopProfile, /grid-template-columns:\s*minmax\(280px, 0\.8fr\) minmax\(0, 1\.2fr\);/);
+  assert.match(desktopProfile, /\.overviewColumn\s*\{[^}]*grid-template-columns:\s*minmax\(280px, 1fr\) minmax\(0, 1\.5fr\);/s);
   // Dashboard panels follow document order. Local icon/label rows inside a
   // button do not pin a dashboard panel or change mobile navigation.
   assert.doesNotMatch(profileStyles, /[^{}]*\.(?:columns|overviewColumn|settingsList)[^{}]*\{[^}]*\bgrid-row(?:-[a-z]+)?:/);
