@@ -273,8 +273,11 @@ test("the basic campfire cooks fish before its paid first improvement at phone a
     assert.match(html, /Книга рецептов/);
     assert.match(html, /data-cookbook-queue/);
     assert.doesNotMatch(html, /data-production-slot=/);
-    assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_compote"]);
-    assert.match(html, /Доступно с 1 уровня костра/);
+    assert.deepEqual([...html.matchAll(/data-cookbook-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_grilled_fish"]);
+    assert.doesNotMatch(html, /data-recipe=|Малиновый компот|Доступно с 1 уровня костра/);
+    const grilled = render("campfire", economy, { ...extra, initialRecipeId: "cook_grilled_fish" });
+    assert.match(grilled, /data-recipe="cook_grilled_fish"/);
+    assert.equal(disabled(button(grilled, "Приготовить")), false, "the basic recipe is actionable before the first improvement");
     assert.doesNotMatch(html, /data-station-setup=|Сначала постройте|Пока не обустроено|data-cooking-duration=|Обустроить/);
     assert.equal(disabled(button(html, "Улучшить")), false);
     const upgrade = renderUpgrade("dryer", economy);
