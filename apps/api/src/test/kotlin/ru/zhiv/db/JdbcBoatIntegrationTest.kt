@@ -3,6 +3,7 @@ package ru.zhiv.db
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -60,7 +61,12 @@ class JdbcBoatIntegrationTest {
         val admin = source.connection.use { readAdminEconomyPlayer(it, p.publicId, OffsetDateTime.now()) }!!.economy!!
         for (view in listOf(first.state, admin, JdbcEconomyRepository(source).snapshot(p.hash))) {
             val json = economyJson.encodeToString(view)
-            assertFalse("\"slots\"" in json); assertFalse("challengeSeed" in json)
+            val voyage = economyJson.parseToJsonElement(json).jsonObject
+                .getValue("boat").jsonObject.getValue("voyage").jsonObject
+            // Other public systems legitimately expose slots; only the voyage draw is private.
+            assertFalse("slots" in voyage, "Public voyage must not expose future catches")
+            assertFalse("challengeSeed" in json)
+            assertTrue(assertNotNull(view.boat.voyage).catches.isEmpty())
             assertEquals(first.state.boat, view.boat)
         }
         assertEquals(saved, raw(p), "Public observations do not advance or reselect the voyage")

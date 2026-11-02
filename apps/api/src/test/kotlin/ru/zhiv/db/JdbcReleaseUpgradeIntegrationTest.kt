@@ -449,7 +449,9 @@ class JdbcReleaseUpgradeIntegrationTest {
             source.connection.use { c ->
                 val row = readEconomyProfile(c, player.id)
                 assertEquals(20L, row.revision)
-                assertEquals(EconomyItemUnlocks.persist(expected, setOf("berries")).copy(wardrobe = expected.wardrobe.sorted()), row.state)
+                // Current reads recognize owned stock and active escrow; building access alone adds no familiarity.
+                assertEquals(EconomyItemUnlocks.persist(expected, setOf("berries")).copy(wardrobe = expected.wardrobe.sorted(),
+                    familiarItems = listOf("berries", "planks", "wood")), row.state)
                 assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", player.id) {
                     economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "V34 changes only storage buildings")
             }

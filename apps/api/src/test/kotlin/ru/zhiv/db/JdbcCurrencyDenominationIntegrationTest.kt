@@ -63,7 +63,9 @@ class JdbcCurrencyDenominationIntegrationTest {
             assertEquals(10L, persisted.revision)
             val expected = EconomyMoney.redenominate(old).copy(marketSlots = 5,
                 unlockedItems = listOf("berries", "wood"), itemUnlockVersion = 1)
-            assertEquals(EconomyItemUnlocks.persist(expected).copy(wardrobe = expected.wardrobe.sorted()), persisted.state)
+            // Current reads project familiarity from owned stock and active escrow without rewriting historical JSON.
+            assertEquals(EconomyItemUnlocks.persist(expected).copy(wardrobe = expected.wardrobe.sorted(),
+                familiarItems = listOf("berries", "wood")), persisted.state)
             source.connection.use { c ->
                 // Migration preserves the stored wardrobe; the repository orders ownership on read.
                 assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", seller.id) {

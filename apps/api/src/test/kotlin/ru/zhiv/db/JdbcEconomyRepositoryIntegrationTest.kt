@@ -1705,11 +1705,25 @@ class JdbcEconomyRepositoryIntegrationTest {
             cookie(config.cookieName, p.raw); header(HttpHeaders.Origin, origin); contentType(ContentType.Application.Json); setBody(body)
         }
         val body = economyJson.encodeToString(command)
+        val beforeRejected = source.connection.use { readEconomyProfile(it, p.id) }
         assertEquals(HttpStatusCode.Forbidden, post(body, "https://foreign.example").status)
         assertEquals(HttpStatusCode.BadRequest, post(body.dropLast(1) + ",\"wallet\":{\"coins\":10000}}").status)
         assertEquals(HttpStatusCode.BadRequest, post(body.replace("\"quantity\":1", "\"quantity\":\"1\"")).status)
-        assertEquals(HttpStatusCode.PayloadTooLarge, post(" ".repeat(4097) + body).status)
+        val boundaryBody = body + " ".repeat(32_768 - body.encodeToByteArray().size)
+        assertEquals(32_768, boundaryBody.encodeToByteArray().size)
+        assertEquals(HttpStatusCode.PayloadTooLarge, post(boundaryBody + " ").status)
+        val afterRejected = source.connection.use { readEconomyProfile(it, p.id) }
+        assertEquals(initial.revision, afterRejected.revision,
+            "Rejected input must not mutate the profile")
+        assertEquals(beforeRejected, afterRejected)
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(command.requestId)))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${command.requestId}"))
+        assertEquals(HttpStatusCode.OK, post(boundaryBody).status)
         assertEquals(HttpStatusCode.OK, post(body).status)
+        assertEquals(initial.revision + 1, economy.snapshot(p.hash).revision,
+            "Retrying the accepted boundary request must not apply it twice")
+        assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(command.requestId)))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${command.requestId}"))
     }
 
     @Test fun `V35 adds zero pearl deltas to historical ledger without changing populated profiles or receipts`() = runBlocking<Unit> {

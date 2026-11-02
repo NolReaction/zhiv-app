@@ -42,14 +42,18 @@ class EconomyRateLimitTest {
         val command = EconomyCommand(UUID.randomUUID().toString(), fixture.owner(fixture.first), 0, "submit_boat_cast", UUID.randomUUID().toString(),
             reel = EconomyBoatReelSubmission(UUID.randomUUID().toString(), (0 until 600).map { EconomyBoatReelInput(it, it % 2 == 0) }, 600))
         val body = economyJson.encodeToString(command)
-        assertTrue(body.length > 4096 && body.length < 32768)
+        assertTrue(body.encodeToByteArray().size > 4096 && body.encodeToByteArray().size < 32768)
+        val boundaryBody = body + " ".repeat(32_768 - body.encodeToByteArray().size)
+        assertEquals(32_768, boundaryBody.encodeToByteArray().size)
         suspend fun send(payload: String) = client.post("/api/v1/economy/commands") {
             header(HttpHeaders.Cookie, fixture.first); header(HttpHeaders.Origin, "http://localhost")
             contentType(ContentType.Application.Json); setBody(payload)
         }
-        assertEquals(HttpStatusCode.OK, send(body).status, "Transport accepts all 600 controls; the domain independently validates their result")
+        assertEquals(HttpStatusCode.PayloadTooLarge, send(boundaryBody + " ").status)
+        assertEquals(0, fixture.commands, "One byte over the limit cannot reach the repository")
+        assertEquals(HttpStatusCode.OK, send(boundaryBody).status, "Transport accepts all 600 controls at the exact byte limit; the domain independently validates their result")
         assertEquals(1, fixture.commands)
-        assertEquals(HttpStatusCode.PayloadTooLarge, send(body + " ".repeat(32769)).status)
+        assertEquals(HttpStatusCode.PayloadTooLarge, send(boundaryBody + " ").status)
         assertEquals(1, fixture.commands, "Oversized input cannot reach the repository")
     }
     @Test fun `ordinary active play continues for ninety minutes and permits the next construction on either device`() = testApplication {
