@@ -1,5 +1,6 @@
 import { forestBoatActorAway, forestBoatWalking, forestFishingBoatFrame, syncForestBoatTravel, type ForestFishingBoatFrame } from "@/features/world/activities/fishing/forest-boat-travel";
 import { drawFishingBoat } from "@/features/world/objects/fishing-boat/fishing-boat-painter";
+import { createFishingBoatArtwork } from "@/features/world/objects/fishing-boat/fishing-boat-artwork-loader";
 import { fishingBoatMapObject } from "@/features/world/objects/fishing-boat/fishing-boat-interaction";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
@@ -195,6 +196,7 @@ export type NewMapPaintPreview = {
   residentPresentation?: ReturnType<typeof residentScenePresentation>;
   merchantBoat?: ReturnType<typeof leaftailBoatArrivalFrame>;
   fishingBoat?: ForestFishingBoatFrame | null;
+  fishingBoatImages?: ReadonlyMap<string, HTMLImageElement>;
   tradeShipImage?: HTMLImageElement | null;
   tradeShipMotion?: TradeShipMotion;
   tradeShipCargo?: ReturnType<typeof tradeShipCargo>;
@@ -376,7 +378,7 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
           time: elapsed, night: 0, still, water: true, cargo: preview.tradeShipCargo });
       }
       if (fishingBoat) drawFishingBoat(ground, dev?.showHero === false ? { ...fishingBoat, passenger: false, crossing: undefined } : fishingBoat,
-        dev?.equipment ?? options.worldState?.equipment, actor.size, still);
+        dev?.equipment ?? options.worldState?.equipment, actor.size, still, preview?.fishingBoatImages);
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
         groundExclusions });
@@ -492,6 +494,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (visible()) draw();
     },
     () => worldDevStore.reportArtError(shipArtworkError),
+  );
+  const boatArtworkError = "Не удалось загрузить модуль лодки. Загрузка повторится при восстановлении сети.";
+  const fishingBoatArtwork = createFishingBoatArtwork(
+    src => loadHabitatImage(src, "low"),
+    () => {
+      if (worldDevStore.getSnapshot().artError === boatArtworkError) worldDevStore.reportArtError(null);
+      if (visible()) draw();
+    },
+    () => worldDevStore.reportArtError(boatArtworkError),
   );
   function selectedTradeShip(): SceneTradeShipFrame | null {
     if (options.readOnly) return null;
@@ -1067,6 +1078,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const cooking = cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev));
     const partner = socialPartnerPosition("mochlik");
     const ship = selectedTradeShip();
+    const boat = options.economyBoatFishing ?? state.boatTravel?.boat;
+    fishingBoatArtwork.update(!options.readOnly && boat ? { repaired: boat.level > 0, upgrades: boat.upgrades, artifacts: boat.artifacts } : null);
     return { scene: world, water: dev?.waterSurface === false ? undefined : state.water, trees, state: dev, visuals, animation: state.animation, life: state.life, wetness: state.wetness, actorAway: actorAway(),
       residents: residentFrames().map(resident => resident.id === "plesk"
         ? withForestWaterBuoyancy(resident, dev?.waterSurface === false ? undefined : state.water, reducedMotion(options, dev)) : resident),
@@ -1078,6 +1091,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       residentPresentation: residentScenePresentation(state, world),
       merchantBoat: state.leaftailBoat ? leaftailBoatArrivalFrame(state.leaftailBoat) : null,
       fishingBoat: forestFishingBoatFrame(state, world, options.economyBoatFishing, explorationNow(), reducedMotion(options, dev)),
+      fishingBoatImages: fishingBoatArtwork.getImages(),
       tradeShipImage: tradeShipArtwork.getImage(),
       tradeShipMotion: ship?.motion,
       tradeShipCargo: ship?.kind === "arrival" ? tradeShipCargo(options.economyShip, ship.motion.phase === "departing") : [],
@@ -1310,13 +1324,16 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function visibilityChanged() { stop(); syncOwner(); if (visible()) draw(); resume(); }
   document.addEventListener("visibilitychange", visibilityChanged);
   function retryTradeShipArtwork() {
-    if (disposed || !selectedTradeShip() || tradeShipArtwork.getImage()) return;
+    if (disposed) return;
+    fishingBoatArtwork.retry();
+    if (!selectedTradeShip() || tradeShipArtwork.getImage()) return;
     tradeShipArtwork.setEnabled(false); tradeShipArtwork.setEnabled(true);
   }
   window.addEventListener?.("online", retryTradeShipArtwork); window.addEventListener?.("focus", retryTradeShipArtwork);
   function dispose() {
     if (disposed) return;
     tradeShipArtwork.dispose();
+    fishingBoatArtwork.dispose();
     productionShip?.release(); productionShip = null; shipAudio.dispose();
     window.removeEventListener?.("online", retryTradeShipArtwork); window.removeEventListener?.("focus", retryTradeShipArtwork);
     artworkPreparation?.dispose(); artworkPreparation = null;

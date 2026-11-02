@@ -32,6 +32,7 @@ import { emptyTapBoost } from "@/features/economy/domain/tap-boost-model";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import { applyDevShipCommand } from "@/features/economy/dev/dev-ship";
+import { applyDevBoatCommand, finishDevBoatWork } from "@/features/economy/dev/dev-boat";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
 import { neighborCommandSchema, type NeighborCommand, type NeighborView, type NeighborAdminView } from "@/features/economy/domain/neighbor-model";
 import { neighborActiveHour, neighborListingReason, neighborOfferItems, neighborOfferPrice, neighborShopReason } from "@/features/economy/domain/neighbor-rules";
@@ -199,7 +200,8 @@ function commit(owner: string, value: Profile, next: EconomyState, command: Rece
   reconcileFishStock(next);
   persistItemUnlocks(owner, value.state, next);
   bump(value); value.state = next;
-  if (!["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"].includes(command.action))
+  if (!["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement",
+    "prepare_boat", "grant_boat_upgrade_cost", "finish_boat_work", "finish_boat_travel", "set_boat_blueprint"].includes(command.action))
     awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
     signature: scope + commandSignature(command),
@@ -247,6 +249,13 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
   const next: EconomyState = structuredClone(value.state);
   let message: string;
   switch (command.action) {
+    case "prepare_boat":
+    case "grant_boat_upgrade_cost":
+    case "finish_boat_work":
+    case "finish_boat_travel":
+    case "set_boat_blueprint":
+      message = applyDevBoatCommand(next, command, now);
+      break;
     case "prepare_ship":
     case "grant_ship_cargo":
     case "shorten_ship_wait":
@@ -307,7 +316,8 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
     }
     case "finish_jobs": {
       const jobs = next.jobs.filter(job => (command.targetId === "all" || job.kind === command.targetId) && Date.parse(job.finishesAt) > now);
-      if (!jobs.length) return fail("ECONOMY_DEV_NO_JOBS", "Нет незавершённых работ этого типа");
+      const boatWork = (command.targetId === "all" || command.targetId === "construction") && finishDevBoatWork(next, now);
+      if (!jobs.length && !boatWork) return fail("ECONOMY_DEV_NO_JOBS", "Нет незавершённых работ этого типа");
       for (const job of jobs) {
         if (job.miningBatch) {
           job.startedAt = new Date(now - job.miningBatch.quantity * job.miningBatch.unitSeconds * 1000).toISOString();
@@ -315,7 +325,7 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
         }
         job.finishesAt = new Date(now).toISOString();
       }
-      message = `DEV: ускорено работ: ${jobs.length}. Заберите результат у объекта или в путешествиях`;
+      message = `DEV: ускорено работ: ${jobs.length + Number(boatWork)}. Заберите результат у объекта или в путешествиях`;
       break;
     }
   }

@@ -6,6 +6,7 @@ import { formatPearls } from "@/features/economy/domain/money";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import { missingDevShipCargo } from "@/features/economy/dev/dev-ship";
+import { BoatDevControls } from "@/features/economy/dev/boat-dev-controls";
 import { shipOrdersState, shipOrdersUnlocked } from "@/features/economy/domain/ship-orders";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { WorldController } from "@/features/world/state/use-world";
@@ -70,6 +71,9 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
   const validLevel = levelOptions.includes(requestedLevel) && requestedLevel !== currentLevel && !buildingJobs.length;
   const matchingJobs = snapshot?.jobs.filter(job => jobFilter === "all" || job.kind === jobFilter) ?? [];
   const unfinished = matchingJobs.filter(job => Date.parse(job.finishesAt) > (economy?.now ?? 0));
+  const boatWork = jobFilter === "all" || jobFilter === "construction" ? snapshot?.boat?.work : undefined;
+  const waitingBoatWork = Boolean(boatWork && Date.parse(boatWork.finishesAt) > (economy?.now ?? 0));
+  const unfinishedCount = unfinished.length + Number(waitingBoatWork);
   const nextCostMissing = Boolean(snapshot && nextUpgrade && (snapshot.wallet.coins < nextUpgrade.cost.coins
     || Object.entries(nextUpgrade.cost.items).some(([id, needed]) => (snapshot.inventory[id] ?? 0) < needed)));
   const ship = snapshot ? shipOrdersState(snapshot) : null;
@@ -118,6 +122,8 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       {Boolean(snapshot?.jobs.length) && <p className={styles.cheatWarning}>Сначала завершите или отмените задания и заберите результаты. Таймеры доступны ниже.</p>}
       {previewBuildings && <p className={styles.cheatWarning}>Для проверки результата отключите предпросмотр в «Сцена → Здания».</p>}
     </section>
+
+    {permitted && economy && <BoatDevControls economy={economy} />}
 
     <details className={styles.cheatSection} open>
       <summary>Корабль · {ship?.voyage ? "у причала" : shipWaitSeconds ? "в рейсе" : shipUnlocked ? "ожидается" : "нужен маяк"}</summary>
@@ -221,14 +227,16 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       <label className={styles.field}><span>Какие задания завершить</span><select value={jobFilter} disabled={locked} onChange={event => setJobFilter(event.target.value as JobFilter)}>
         {JOB_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label>
-      <button type="button" disabled={locked || !unfinished.length} data-dev-action="finish-jobs"
-        onClick={() => { if (unfinished.length) act("finish_jobs", jobFilter); }}>Убрать ожидание · {unfinished.length}</button>
+      <button type="button" disabled={locked || !unfinishedCount} data-dev-action="finish-jobs"
+        onClick={() => { if (unfinishedCount) act("finish_jobs", jobFilter); }}>Убрать ожидание · {unfinishedCount}</button>
       <p className={styles.hint}>Результат останется в задании. Заберите его здесь или в обычном меню объекта.</p>
+      {boatWork && <div className={styles.cheatJobs}><div><strong>{catalog.boat?.upgrades.find(entry => entry.id === boatWork.upgradeId)?.name ?? "Работа лодки"}</strong><span>{waitingBoatWork ? "Установка на лодке" : "Готово к получению"}</span></div>
+        {!waitingBoatWork && <button type="button" disabled={locked} onClick={() => { if (!locked) economy?.act("claim_boat_upgrade", boatWork.id); }}>Завершить установку</button>}</div>}
       {matchingJobs.length ? <ul className={styles.cheatJobs}>{matchingJobs.map(job => {
         const ready = Date.parse(job.finishesAt) <= (economy?.now ?? 0);
         return <li key={job.id}><div><strong>{jobName(job)}</strong><span>{ready ? "Готово к получению" : `Осталось ${Math.max(1, Math.ceil((Date.parse(job.finishesAt) - (economy?.now ?? 0)) / 60000))} мин.`}</span></div>
           {ready && <button type="button" disabled={locked} onClick={() => { if (!locked) economy?.act(job.collection?.batchId ? "claim_garden_collection" : "claim_job", job.collection?.batchId ?? job.id); }}>{job.kind === "construction" ? "Завершить стройку" : "Забрать"}</button>}</li>;
-      })}</ul> : <p className={styles.hint}>Таких заданий сейчас нет.</p>}
+      })}</ul> : !boatWork && <p className={styles.hint}>Таких заданий сейчас нет.</p>}
       </div>
     </details>
   </div>;

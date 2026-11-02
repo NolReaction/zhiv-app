@@ -82,7 +82,7 @@ test("live and expired challenges preserve their identity and do not expose a pr
 test("blueprint pages and an owned telescope expose real forecast commands, never invented rewards", () => {
   const value = state(); value.boat.level = 1;
   const renderBook = () => renderToStaticMarkup(createElement(BoatBlueprints, { state: view(value), boat: publicBoatState(value.boat), config: boatConfig(), now: at, disabled: false, onUpgrade() { assert.fail(); }, onInspect() { assert.fail(); } }));
-  assert.match(renderBook(), /Первая страница ещё впереди/); assert.doesNotMatch(renderBook(), />Изготовить</);
+  assert.match(renderBook(), /Первый фрагмент ещё впереди/); assert.doesNotMatch(renderBook(), />Изготовить</);
   value.boat.blueprints.landing_net = 3; assert.match(renderBook(), />Изготовить</);
   value.boat.blueprints.telescope = 3; value.boat.artifacts = ["telescope"];
   assert.match(renderBook(), /Посмотреть будущий груз/); assert.match(renderBook(), /Сначала восстановите маяк/);

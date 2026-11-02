@@ -1,0 +1,24 @@
+.panel { color: #f0e5c9; background: #242d29; border: 1px solid #8c7950; border-radius: 10px; min-width: 0; }
+.panel summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 11px 13px; font-size: 12px; list-style: none; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary::after { content: "+"; margin-left: auto; font-size: 20px; line-height: 1; color: #d4b77c; }
+.panel[open] summary::after { content: "−"; }
+.badge { background: #d4b77c; color: #212820; border-radius: 3px; font-size: 9px; font-weight: 900; letter-spacing: 1px; padding: 3px 5px; }
+.summaryState { color: #c1c6b4; font-size: 11px; }
+.content { padding: 0 13px 13px; display: grid; gap: 10px; }
+.content p { margin: 0; font-size: 11px; line-height: 1.5; color: #b9c2b4; }
+.actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.content button, .content select { min-width: 0; min-height: 38px; color: #f1e5c8; background: #36453b; border: 1px solid #63745b; border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 12px; }
+.content button { cursor: pointer; }
+.content button:hover:not(:disabled) { background: #425741; border-color: #c1aa72; }
+.content :disabled { opacity: .45; cursor: default; }
+.content :focus-visible, .panel summary:focus-visible { outline: 2px solid #edc77d; outline-offset: 3px; }
+.cost { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.cost label { display: grid; gap: 5px; color: #c8cbb8; font-size: 11px; }
+.blueprints { border: 1px solid #52604b; border-radius: 7px; padding: 9px; margin: 0; display: grid; gap: 7px; min-width: 0; }
+.blueprints legend { font-size: 11px; padding: 0 5px; color: #c8cbb8; }
+.blueprints label { display: grid; grid-template-columns: minmax(0, 1fr) 70px; gap: 8px; align-items: center; font-size: 12px; }
+.content p.notice { color: #c0e4ab; }
+.content p.error { color: #ffc2ac; }
+.compact summary { padding: 9px 12px; }
+@media (max-width: 480px) { .summaryState { display: none; } .cost { grid-template-columns: minmax(0, 1fr); } .actions { grid-template-columns: minmax(0, 1fr); } }

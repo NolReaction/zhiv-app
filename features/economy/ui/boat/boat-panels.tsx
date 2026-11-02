@@ -1,23 +1,18 @@
-import { Check, Clock3, Hammer, Package, Telescope, Trophy } from "lucide-react";
+import { Check, Clock3, Hammer, Package, Trophy } from "lucide-react";
 import type { BoatCatalog, BoatState, BoatUpgradeId } from "@/features/economy/domain/boat-model";
 import { boatUpgradeReason } from "@/features/economy/domain/boat-fishing";
-import type { EconomyCost, EconomyView } from "@/features/economy/domain/model";
+import type { EconomyView } from "@/features/economy/domain/model";
 import { ItemIcon } from "@/features/items/item-icon";
-import { itemName, number, ProductIcon } from "@/features/economy/ui/shared/world-economy-parts";
+import { itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldCountdown, worldDuration } from "@/features/economy/ui/shared/world-stations";
-import { BlueprintArt } from "./boat-art";
+import { BoatCost } from "./boat-cost";
+export { BoatCost } from "./boat-cost";
+export { BoatBlueprints } from "./boat-blueprints";
 import styles from "./boat-fishing.module.css";
 
 export const boatFishWeightLabel = (grams: number) => grams < 1000 ? `${number(grams)} г` : `${(grams / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 3 })} кг`;
 type Upgrade = BoatCatalog["upgrades"][number];
 type UpgradeProps = { state: EconomyView; boat: BoatState; upgrade: Upgrade; now: number; disabled: boolean; onUpgrade: (id: BoatUpgradeId) => void };
-
-export function BoatCost({ state, cost }: { state: EconomyView; cost: EconomyCost }) {
-  return <ul className={styles.cost} aria-label="Стоимость работы">
-    {cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins || undefined}><ItemIcon itemId="coins" size={17} /><strong>{number(cost.coins)}</strong><span className={styles.srOnly}>монет</span></li>}
-    {Object.entries(cost.items).map(([id, quantity]) => <li key={id} data-missing={(state.inventory[id] ?? 0) < quantity || undefined} title={itemName(state, id)}><ProductIcon state={state} itemId={id} size={19} /><span>{itemName(state, id)}</span><strong>×{quantity}</strong></li>)}
-  </ul>;
-}
 
 export function BoatUpgradeCard({ state, boat, upgrade, now, disabled, onUpgrade }: UpgradeProps) {
   const owned = upgrade.id === "repair" ? boat.level > 0 : [...boat.upgrades, ...boat.artifacts].some(id => id === upgrade.id);
@@ -43,35 +38,6 @@ export function BoatWork({ boat, config, now, disabled, onClaim }: { boat: BoatS
     <progress className={styles.progress} value={progress} max={1} aria-label={`Готовность: ${name}`} />
     {!seconds && <button type="button" className={styles.primary} disabled={disabled} onClick={() => onClaim(work.id)}><Check size={16} />Завершить работу</button>}
   </section>;
-}
-
-export function BoatBlueprints({ state, boat, config, now, disabled, onUpgrade, onInspect }: Omit<UpgradeProps, "upgrade"> & { config: BoatCatalog; onInspect: () => void }) {
-  return <div>
-    <p className={styles.muted}>Страницы складываются в чертёж. Соберите его целиком, чтобы изготовить новое снаряжение.</p>
-    <div className={styles.blueprints} style={{ marginTop: 15 }}>{config.blueprints.map(blueprint => {
-      const count = boat.blueprints[blueprint.id], upgrade = config.upgrades.find(entry => entry.id === blueprint.id)!;
-      const owned = boat.artifacts.includes(blueprint.id), reason = boatUpgradeReason(state, blueprint.id, now);
-      return <article key={blueprint.id} className={styles.blueprint} data-boat-blueprint={blueprint.id}>
-        <div className={styles.blueprintTop}><BlueprintArt kind={blueprint.id} complete={count === 3} /><div><h3>{blueprint.name}</h3><p>{owned ? "Изготовлено и установлено" : count ? `Найдено ${count} из 3 страниц` : "Первая страница ещё впереди"}</p></div></div>
-        <p className={styles.muted}>{upgrade.description}</p>
-        <div className={styles.sheets} aria-label={`Найдено ${count} из 3 страниц`}>{[1, 2, 3].map(page => <span key={page} className={styles.sheet} data-found={page <= count || undefined} aria-hidden="true">{page <= count ? <Check size={15} /> : page}</span>)}</div>
-        {owned ? <><span className={styles.owned}><Check size={15} />Снаряжение готово</span>{blueprint.id === "telescope" && <BoatForecast state={state} disabled={disabled} onInspect={onInspect} />}</> : count === 3 ? <>
-          <BoatCost state={state} cost={upgrade.cost} /><button type="button" className={styles.primary} disabled={disabled || Boolean(reason)} onClick={() => onUpgrade(blueprint.id)}><Hammer size={16} />Изготовить</button>
-          {reason && <p className={styles.note}>{reason}</p>}
-        </> : <p className={styles.note}>Используйте все забросы и привезите хотя бы одну рыбу, чтобы находить страницы чертежей.</p>}
-      </article>;
-    })}</div>
-  </div>;
-}
-
-function BoatForecast({ state, disabled, onInspect }: { state: EconomyView; disabled: boolean; onInspect: () => void }) {
-  const forecast = state.ship.nextVoyage;
-  return <div className={styles.forecast}>
-    {!forecast ? <><button type="button" className={styles.secondary} disabled={disabled || !(state.buildings.lighthouse > 0)} onClick={onInspect}><Telescope size={17} />Посмотреть будущий груз</button>{!(state.buildings.lighthouse > 0) && <p className={styles.note}>Сначала восстановите маяк.</p>}</>
-      : <><strong>Следующий корабль</strong><p className={styles.note}>Эти товары понадобятся капитану. Можно подготовить их заранее.</p>{forecast.orders.map((order, index) => <details key={order.id} open={index === 0} className={styles.forecastOrder}>
-        <summary>Груз {index + 1} · {order.title}</summary><ul className={styles.cost}>{Object.entries(order.items).map(([itemId, quantity]) => <li key={itemId}><ProductIcon state={state} itemId={itemId} size={19} /><span>{itemName(state, itemId)}</span><strong>×{quantity}</strong></li>)}</ul>
-      </details>)}</>}
-  </div>;
 }
 
 export function BoatRecords({ state, boat }: { state: EconomyView; boat: BoatState }) {
