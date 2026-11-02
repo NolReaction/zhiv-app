@@ -12,12 +12,12 @@ after(() => vite.close());
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyShipSchema } = await vite.ssrLoadModule("/features/economy/domain/ship-model.ts");
 const { newEconomyState, economyStorage, applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
-const { publicBoatState, boatConfig } = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
+const { publicBoatState } = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
 const { initialBoatReel, stepBoatReel, replayBoatReel } = await vite.ssrLoadModule("/features/economy/domain/boat-reel.ts");
 const checkpoint = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
 const { WorldBoatFishingDialog } = await vite.ssrLoadModule("/features/economy/ui/boat/world-boat-fishing-dialog.tsx");
 const { WorldExpeditionsMenu } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
-const { BoatBlueprints, BoatRecords, BoatCatchList } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-panels.tsx");
+const { BoatRecords, BoatCatchList } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-panels.tsx");
 const at = Date.parse("2026-11-03T10:00:00Z");
 const uuid = () => crypto.randomUUID();
 function state() {
@@ -79,13 +79,14 @@ test("live and expired challenges preserve their identity and do not expose a pr
   assert.deepEqual(value, before);
 });
 
-test("blueprint pages and an owned telescope expose real forecast commands, never invented rewards", () => {
+test("boat menus show only physical upgrades and preserve legacy fragments and permanent items without exposing a blueprint workshop", () => {
   const value = state(); value.boat.level = 1;
-  const renderBook = () => renderToStaticMarkup(createElement(BoatBlueprints, { state: view(value), boat: publicBoatState(value.boat), config: boatConfig(), now: at, disabled: false, onUpgrade() { assert.fail(); }, onInspect() { assert.fail(); } }));
-  assert.match(renderBook(), /Первый фрагмент ещё впереди/); assert.doesNotMatch(renderBook(), />Изготовить</);
-  value.boat.blueprints.landing_net = 3; assert.match(renderBook(), />Изготовить</);
-  value.boat.blueprints.telescope = 3; value.boat.artifacts = ["telescope"];
-  assert.match(renderBook(), /Посмотреть будущий груз/); assert.match(renderBook(), /Сначала восстановите маяк/);
+  value.boat.blueprints = { landing_net: 3, telescope: 2 }; value.boat.artifacts = ["landing_net"];
+  const before = structuredClone(value), html = render(value);
+  assert.equal([...html.matchAll(/role="tab"/g)].length, 2);
+  assert.doesNotMatch(html, /Чертежи|Фрагменты схемы|Изготовить|data-boat-module="(?:landing_net|telescope)"/);
+  assert.match(html, /data-boat-module="repair"/); assert.match(html, /data-boat-module="oars"/); assert.match(html, /data-boat-module="crate"/);
+  assert.deepEqual(value, before);
 });
 
 test("a caught fish remains onboard until delivery; personal records do not depend on stock", () => {

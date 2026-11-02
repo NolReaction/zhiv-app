@@ -7,7 +7,6 @@ import { itemName, number } from "@/features/economy/ui/shared/world-economy-par
 import { worldCountdown, worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { BoatCost } from "./boat-cost";
 export { BoatCost } from "./boat-cost";
-export { BoatBlueprints } from "./boat-blueprints";
 import styles from "./boat-fishing.module.css";
 
 export const boatFishWeightLabel = (grams: number) => grams < 1000 ? `${number(grams)} г` : `${(grams / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 3 })} кг`;

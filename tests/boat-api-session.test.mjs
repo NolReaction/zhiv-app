@@ -81,11 +81,15 @@ test("delivered species and records survive repeated claim without duplicating i
   const caught = send(p, "submit_boat_cast", voyage.id, done, { reel }).state.boat.voyage.catches[0];
   assert(caught);
   assert.deepEqual(read(p, done).inventory, {});
+  // A complete saved outing with one catch must not mint blueprint fragments.
+  row(p).state.boat.voyage.castsUsed = row(p).state.boat.voyage.maxCasts;
   const returning = send(p, "return_boat", voyage.id, done).state.boat.voyage;
   const at = Date.parse(returning.returnsAt), command = request(p, "claim_boat", voyage.id, at);
   const delivered = api.commandDevEconomy(p.token, command, at);
   assert.equal(delivered.state.fishing.stock[caught.fishId], 1);
   assert.equal(delivered.state.boat.records[caught.fishId].weightGrams, caught.weightGrams);
+  assert.equal(delivered.state.boat.qualifiedVoyages, 1);
+  assert.deepEqual(delivered.state.boat.blueprints, { landing_net: 0, telescope: 0 });
   const repeated = api.commandDevEconomy(p.token, command, at + 1000);
   assert.equal(repeated.replayed, true);
   assert.deepEqual(repeated.state.inventory, delivered.state.inventory);

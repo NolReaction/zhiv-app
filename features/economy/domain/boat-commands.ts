@@ -122,10 +122,6 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
   boat.completedVoyages = addCount(boat.completedVoyages);
   if (voyage.castsUsed === voyage.maxCasts && voyage.catches.length > 0) {
     boat.qualifiedVoyages = addCount(boat.qualifiedVoyages);
-    for (const blueprint of config.blueprints) {
-      const earned = blueprint.milestones.filter(milestone => milestone <= boat.qualifiedVoyages).length;
-      if (boat.blueprints[blueprint.id] < earned) { boat.blueprints[blueprint.id]++; break; }
-    }
   }
   if (voyage.catches.length) {
     state.completedExplorations = Math.min(ECONOMY_MAX_ITEMS, state.completedExplorations + 1);

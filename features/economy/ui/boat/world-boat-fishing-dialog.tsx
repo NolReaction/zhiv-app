@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
-import { Anchor, ArrowRight, BookOpen, Clock3, Coins, Fish, FishingRod, Sailboat, Trophy, X } from "lucide-react";
+import { Anchor, ArrowRight, Clock3, Coins, Fish, FishingRod, Sailboat, Trophy, X } from "lucide-react";
 import { boatConfig, boatDepartureReason, boatPhase, boatState } from "@/features/economy/domain/boat-fishing";
 import type { BoatReelCommand, BoatUpgradeId } from "@/features/economy/domain/boat-model";
 import type { EconomyCommand } from "@/features/economy/domain/model";
@@ -12,12 +12,12 @@ import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-st
 import { WorldTacklePicker } from "@/features/economy/ui/fishing/world-tackle-picker";
 import { number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldDuration } from "@/features/economy/ui/shared/world-stations";
-import { BoatBlueprints, BoatRecords, BoatWork } from "./boat-panels";
+import { BoatRecords, BoatWork } from "./boat-panels";
 import { BoatGarage } from "./boat-garage";
 import { BoatVoyagePanel } from "./boat-voyage-panel";
 import styles from "./boat-fishing.module.css";
 
-const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "blueprints", label: "Чертежи", icon: BookOpen }, { id: "records", label: "Рекорды", icon: Trophy }] as const;
+const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "records", label: "Рекорды", icon: Trophy }] as const;
 type Tab = typeof tabs[number]["id"];
 type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void };
 export type BoatSend = (action: EconomyCommand["action"], targetId: string, reel?: BoatReelCommand) => boolean;
@@ -66,7 +66,7 @@ function BoatDialogSession({ economy, onClose, onOpenPantry }: Props) {
       onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
       onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => event.stopPropagation()}>
       <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{boat.voyage ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
-      <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Лодочная рыбалка, улучшения, книга чертежей и личные рекорды.</Dialog.Description>
+      <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Лодочная рыбалка, ремонт, улучшения и личные рекорды.</Dialog.Description>
       <nav className={styles.tabs} role="tablist" aria-label="Разделы лодки">{tabs.map((entry, index) => <button key={entry.id} id={`${id}-${entry.id}`} type="button" role="tab" className={styles.tab} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {
         const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
         if (next !== null) { event.preventDefault(); setTab(tabs[next].id); event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus(); }
@@ -75,9 +75,8 @@ function BoatDialogSession({ economy, onClose, onOpenPantry }: Props) {
       {economy.uncertain && <div className={styles.recovery}><span>Проверим, сохранилось ли последнее действие.</span><button type="button" className={styles.secondary} disabled={economy.busy} onClick={() => economy.retry()}>Проверить</button></div>}
       <div ref={content} className={styles.body} id={`${id}-panel`} role="tabpanel" tabIndex={0} aria-labelledby={`${id}-${tab}`}>
         <BoatDevControls economy={economy} compact />
-        {tab === "blueprints" ? <BoatBlueprints state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onInspect={() => send("inspect_telescope", "port")} />
-          : tab === "records" ? <BoatRecords state={state} boat={boat} /> : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
-            <BoatGarage state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onClaim={workId => send("claim_boat_upgrade", workId)} onOpenBlueprints={() => setTab("blueprints")} />
+        {tab === "records" ? <BoatRecords state={state} boat={boat} /> : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
+            <BoatGarage state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onClaim={workId => send("claim_boat_upgrade", workId)} />
             {boat.level > 0 ? <BoatDockDeparture economy={economy} disabled={disabled} send={send} /> : <p className={styles.dockNote}>Береговая рыбалка на пирсе остаётся доступной во время ремонта.</p>}
           </>}
         {tab !== "boat" && <BoatWork boat={boat} config={config} now={economy.now} disabled={disabled} onClaim={workId => send("claim_boat_upgrade", workId)} />}

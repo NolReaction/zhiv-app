@@ -52,7 +52,6 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
   const food = economyCatalog.food;
   const boat = economyCatalog.boat!;
   const boatRepair = boat.upgrades.find(upgrade => upgrade.id === "repair")!;
-  const boatPages = (id: string) => boat.blueprints.find(blueprint => blueprint.id === id)!.milestones.join(", ");
   const hiddenDishes = new Set(economyCatalog.recipes.filter(recipe => recipe.experiment).flatMap(recipe => Object.keys(recipe.rewards)));
   const knownMeals = food?.meals.filter(meal => !hiddenDishes.has(meal.itemId) && ["grilled_fish", "fish_soup", "hearty_fish"].includes(meal.itemId)) ?? [];
   const skillLevels = economyCatalog.skills?.levels ?? [];
@@ -556,13 +555,13 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       id: "boat-fishing", group: "travel", title: "Как выйти на рыбалку в лодке?", summary: "Ремонт, дорога и возвращение с уловом",
       keywords: "лодка лодочная рыбалка починить ремонт причал плыть река забрать улов мохлик занят вернуться",
       steps: [
-        `Нажмите лодку у причала или «В путь» → «На рыбалку» → «Лодочная рыбалка». Нужны дом ${boatRepair.requiredHomeLevel} и мастерская ${boatRepair.requiredBuildings.workshop}. Оплатите ремонт и после ${boatRepair.seconds / 60} минут нажмите «Завершить работу».`,
+        `Откройте «В путь» → «На рыбалку» → «Лодочная рыбалка». Нужны дом ${boatRepair.requiredHomeLevel} и мастерская ${boatRepair.requiredBuildings.workshop}. Оплатите ремонт и после ${boatRepair.seconds / 60} минут нажмите «Завершить работу».`,
         `Выберите свои снасти и отправляйтесь. Дорога занимает ${boat.outboundSeconds / 60} минут в каждую сторону. Удочки и крючки остаются; одна порция выбранной наживки расходуется на весь выход. Можно плыть без наживки.`,
         "На месте вываживайте рыбу сами. Затем нажмите «Вернуться с уловом», дождитесь берега и заберите рыбу. При полной кладовой освободите место: улов останется в лодке.",
       ],
       note: "Мохлик занят до получения улова. Рыбалка у берега по таймеру остаётся доступной отдельно.",
       action: { label: "К лодочной рыбалке", target: { kind: "expeditions", sector: "coast" } },
-      relatedIds: ["boat-controls", "boat-upgrades", "boat-blueprints", "boat-records", "storage"],
+      relatedIds: ["boat-controls", "boat-upgrades", "boat-records", "storage"],
     },
     {
       id: "boat-controls", group: "travel", title: "Как вываживать рыбу и не потерять заброс?", summary: "Удерживание, пауза и число попыток",
@@ -574,7 +573,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       ],
       note: "Можно вернуться раньше. Пойманная рыба сохранится, текущая поклёвка и неиспользованные забросы закончатся.",
       action: { label: "К лодке", target: { kind: "expeditions", sector: "coast" } },
-      relatedIds: ["boat-fishing", "boat-upgrades", "boat-blueprints"],
+      relatedIds: ["boat-fishing", "boat-upgrades"],
     },
     {
       id: "boat-upgrades", group: "travel", title: "Что дают улучшения лодки?", summary: "Ящик, вёсла и общий строитель",
@@ -584,21 +583,9 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "Улучшать лодку можно у причала, после получения улова. Ремонт и улучшения занимают того же строителя, что и постройки. Завершённую работу нужно забрать.",
         "Еда, навыки, тапы и жемчуг не сокращают дорогу лодки. Приготовленный обед сохраняется для других занятий. Параметры уже начатого выхода не меняются.",
       ],
-      note: "Подсак и подзорная труба открываются по чертежам. Лодка и её улучшения не требуются для следующего уровня дома.",
+      note: "Лодка и её улучшения не требуются для следующего уровня дома.",
       action: { label: "К лодке", target: { kind: "expeditions", sector: "coast" } },
-      relatedIds: ["boat-fishing", "boat-blueprints", "construction"],
-    },
-    {
-      id: "boat-blueprints", group: "travel", title: "Где найти чертежи подсака и подзорной трубы?", summary: "Три страницы и полезное снаряжение",
-      keywords: "лодка чертежи страницы фрагменты подсачек сачок подзорная труба телескоп будущий груз корабля",
-      steps: [
-        "Используйте все забросы выхода и доставьте хотя бы одну рыбу. После получения улова такой выход засчитывается для чертежей; пустой выход и оставленные забросы не засчитываются.",
-        `Фрагменты подсака гарантированы за выходы ${boatPages("landing_net")}, подзорной трубы за ${boatPages("telescope")}. Во вкладке «Чертежи» три найденные части складываются в единый рисунок; ненайденные части скрыты.`,
-        "Собрав чертёж, подготовьте указанные материалы и изготовьте предмет у причала. Подсак расширяет зелёную зону. Подзорная труба после восстановления маяка показывает товары следующего корабля, чтобы вы могли подготовить их заранее.",
-      ],
-      note: "Готовые предметы остаются навсегда. Повторный просмотр в трубу не меняет будущий груз.",
-      action: { label: "К лодке", target: { kind: "expeditions", sector: "coast" } },
-      relatedIds: ["boat-fishing", "boat-controls", "boat-upgrades", "ship-orders"],
+      relatedIds: ["boat-fishing", "construction"],
     },
     {
       id: "boat-records", group: "travel", title: "От чего зависит вес рыбы и где мой рекорд?", summary: "Личный трофей каждого вида",

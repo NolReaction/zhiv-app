@@ -154,16 +154,8 @@ object EconomyBoats {
         val records = b.records.toMutableMap()
         v.catches.forEach { fish -> if ((records[fish.fishId]?.weightGrams ?: 0) < fish.weightGrams) records[fish.fishId] = EconomyBoatRecord(fish.weightGrams, fish.caughtAt) }
         val qualified = minOf(1_000_000_000L, b.qualifiedVoyages + if (v.castsUsed == v.maxCasts && v.catches.isNotEmpty()) 1 else 0)
-        var pages = b.blueprints
-        if (v.castsUsed == v.maxCasts && v.catches.isNotEmpty()) for (spec in config.blueprints) {
-            val earned = spec.milestones.count { it <= qualified }
-            if (pages.pages(spec.id) < earned) {
-                pages = if (spec.id == "landing_net") pages.copy(landing_net = pages.landing_net + 1) else pages.copy(telescope = pages.telescope + 1)
-                break
-            }
-        }
         next = next.copy(fishing = next.fishing.copy(catches = catches), boat = b.copy(voyage = null,
-            records = records, completedVoyages = minOf(1_000_000_000L, b.completedVoyages + 1), qualifiedVoyages = qualified, blueprints = pages))
+            records = records, completedVoyages = minOf(1_000_000_000L, b.completedVoyages + 1), qualifiedVoyages = qualified))
         if (v.catches.isNotEmpty()) next = next.copy(completedExplorations = minOf(ECONOMY_MAX_ITEMS, next.completedExplorations + 1),
             progression = next.progression.copy(routes = next.progression.routes + (v.routeId to minOf(ECONOMY_MAX_ITEMS, (next.progression.routes[v.routeId] ?: 0L) + 1))),
             unlockedItems = (next.unlockedItems + rewards.keys).distinct())

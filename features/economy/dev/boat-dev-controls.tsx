@@ -16,7 +16,8 @@ export function BoatDevControls({ economy, compact = false }: { economy: Economy
     || economy.pendingProductionCount > 0 || economy.retryAt > economy.now;
   const waitingWork = Boolean(work && Date.parse(work.finishesAt) > economy.now);
   const travelling = phase === "outbound" || phase === "returning";
-  const upgrade = config.upgrades.find(entry => entry.id === selectedUpgrade) ?? config.upgrades[0];
+  const upgrades = config.upgrades.filter(entry => !entry.blueprint);
+  const upgrade = upgrades.find(entry => entry.id === selectedUpgrade) ?? upgrades[0];
   const missingCost = state.wallet.coins < upgrade.cost.coins || Object.entries(upgrade.cost.items).some(([id, count]) => (state.inventory[id] ?? 0) < count);
   const act = (action: Parameters<EconomyController["actDev"]>[0], targetId: string, quantity = 1) => {
     if (!locked) economy.actDev(action, targetId, quantity);
@@ -37,14 +38,14 @@ export function BoatDevControls({ economy, compact = false }: { economy: Economy
       {phase === "fishing" && <p>Для проверки обратной дороги сначала нажмите «Вернуться с уловом».</p>}
       <div className={styles.cost}>
         <label>Стоимость модуля<select value={selectedUpgrade} onChange={event => setSelectedUpgrade(event.target.value as BoatUpgradeId)} disabled={locked}>
-          {config.upgrades.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+          {upgrades.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
         </select></label>
         <button type="button" disabled={locked || !missingCost} data-dev-action="grant-boat-upgrade-cost" onClick={() => act("grant_boat_upgrade_cost", upgrade.id)}>{missingCost ? "Выдать недостающее" : "Ресурсов хватает"}</button>
       </div>
-      <fieldset className={styles.blueprints}><legend>Фрагменты чертежей</legend>{config.blueprints.map(entry => <label key={entry.id}><span>{entry.name}</span>
+      {!compact && <fieldset className={styles.blueprints}><legend>Фрагменты чертежей</legend>{config.blueprints.map(entry => <label key={entry.id}><span>{entry.name}</span>
         <select aria-label={`Фрагменты: ${entry.name}`} value={boat.blueprints[entry.id]} disabled={locked || work?.upgradeId === entry.id}
           onChange={event => act("set_boat_blueprint", entry.id, Number(event.target.value))}>{[0, 1, 2, 3].map(value => <option key={value} value={value}>{value} / 3</option>)}</select>
-      </label>)}</fieldset>
+      </label>)}</fieldset>}
       {economy.notice && <p className={styles.notice} role="status">{economy.notice}</p>}
       {economy.error && <p className={styles.error} role="alert">{economy.error}</p>}
       {economy.uncertain && <button type="button" disabled={economy.busy || economy.retryAt > economy.now} onClick={() => void economy.retry()}>Проверить результат прежнего запроса</button>}

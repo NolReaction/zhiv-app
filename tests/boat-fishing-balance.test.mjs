@@ -68,6 +68,7 @@ test("all legal existing tackle and every boat upgrade combination stay below th
   assert(report.modes.every(mode => mode.maximumRatioToSameShoreLoadout < 1));
   assert.equal(report.upgrades.find(upgrade => upgrade.id === "repair").totalForegoneSaleValue, 700);
   assert.equal(report.upgrades.find(upgrade => upgrade.id === "telescope").totalForegoneSaleValue, 2080);
+  assert(report.blueprints.every(blueprint => blueprint.awardedByBoat === false && !("guaranteedAtQualifiedVoyage" in blueprint)));
 });
 
 test("the audit rejects inflation, missing species, unreachable materials and duplicate blueprint milestones", () => {
@@ -146,7 +147,7 @@ test("a successful control trace keeps the preselected grams and cannot credit i
   run("claim_boat", id, returns);
   assert.equal(current.boat.records[chosen.fishId].weightGrams, chosen.weightGrams);
   assert.equal(current.fishing.catches[chosen.fishId], 1);
-  assert.equal(current.boat.qualifiedVoyages, 0, "an early one-cast return cannot farm blueprint pages");
+  assert.equal(current.boat.qualifiedVoyages, 0, "an early one-cast return is not a completed full-attempt outing");
 });
 
 test("letting every challenge expire spends every fixed attempt and never creates fish or blueprint progress", () => {
@@ -171,27 +172,26 @@ test("letting every challenge expire spends every fixed attempt and never create
   assert.deepEqual(current.fishing.catches, {}); assert.deepEqual(current.boat.records, {});
 });
 
-test("three distinct pages arrive at the promised qualified-voyage milestones with no duplicate claim reward", () => {
+test("full qualifying voyages cross all legacy thresholds without creating pages or duplicate claim rewards", () => {
   const current = state(); current.fishing.equippedBaitId = null;
-  const run = driver(current), net = new Set([1, 3, 5]), telescope = new Set([8, 11, 14]);
-  let at = epoch, expectedNet = 0, expectedTelescope = 0;
+  const run = driver(current);
+  let at = epoch;
   for (let trip = 1; trip <= 16; trip++) {
     run("depart_boat", catalog.boat.routeId, at);
     const voyage = current.boat.voyage, id = voyage.id, slot = voyage.slots[0];
     at = Date.parse(voyage.arrivesAt);
-    // Supplied persisted outcome isolates the return/milestone rule from skill.
+    // Supplied persisted outcome isolates delivery and qualification from control skill.
     voyage.castsUsed = voyage.maxCasts;
     voyage.catches = [{ castIndex: 0, fishId: slot.fishId, weightGrams: slot.weightGrams, caughtAt: new Date(at).toISOString() }];
     run("return_boat", id, at); at = Date.parse(current.boat.voyage.returnsAt);
     const before = structuredClone(current.boat);
     run("claim_boat", id, at);
     assert.equal(boatClaimPracticeSeconds(before, current.boat, "claim_boat"), 150);
-    if (net.has(trip)) expectedNet++; if (telescope.has(trip)) expectedTelescope++;
-    assert.deepEqual(current.boat.blueprints, { landing_net: expectedNet, telescope: expectedTelescope });
+    assert.deepEqual(current.boat.blueprints, { landing_net: 0, telescope: 0 });
     const claimed = structuredClone(current);
     assert.throws(() => run("claim_boat", id, at), { code: "ECONOMY_BOAT_VOYAGE_GONE" });
     assert.deepEqual(current, claimed);
   }
   assert.equal(current.boat.qualifiedVoyages, 16);
-  assert.equal(Object.values(current.boat.blueprints).reduce((sum, count) => sum + count, 0), 6);
+  assert.deepEqual(current.boat.blueprints, { landing_net: 0, telescope: 0 });
 });

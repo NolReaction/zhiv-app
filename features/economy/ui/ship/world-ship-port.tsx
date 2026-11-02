@@ -11,6 +11,7 @@ import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { ItemIcon } from "@/features/items/item-icon";
 import { ProductIcon, itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldCountdown, worldMaterialSource } from "@/features/economy/ui/shared/world-stations";
+import { ShipTelescopeForecast } from "./ship-telescope-forecast";
 import styles from "./world-ship-port.module.css";
 
 type ShipOrder = NonNullable<EconomyView["ship"]["voyage"]>["orders"][number];
@@ -120,6 +121,11 @@ export function WorldShipPort({ economy, ...navigation }: PortNavigation & { eco
     if (!economy.busy && !economy.uncertain) pending.current = false;
   }, [economy.busy, economy.uncertain, economy.error, state?.revision]);
   const disabled = locked(economy) || !economy.snapshotConfirmed;
+  const inspect = () => {
+    if (disabled || pending.current || !state?.boat?.artifacts.includes("telescope") || !shipOrdersUnlocked(state)) return;
+    pending.current = true;
+    if (!economy.act("inspect_telescope", "port", 1, 0)) pending.current = false;
+  };
   const load = (orderId: string, itemId: string, quantity: number) => {
     const voyageId = state?.ship.voyage?.id;
     if (disabled || pending.current || !voyageId) return;
@@ -186,5 +192,6 @@ export function WorldShipPort({ economy, ...navigation }: PortNavigation & { eco
       {seconds > 0 ? <p className={styles.countdown}><Clock3 size={16} aria-hidden="true" />Вернётся через <strong>{worldCountdown(seconds)}</strong></p>
         : <p role="status">Капитан везёт новые заказы.</p>}
     </section>}
+    <ShipTelescopeForecast state={state} disabled={disabled} onInspect={inspect} />
   </div>;
 }

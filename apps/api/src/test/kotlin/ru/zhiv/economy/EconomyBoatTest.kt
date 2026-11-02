@@ -57,7 +57,16 @@ class EconomyBoatTest {
         failure("ECONOMY_BOAT_UPGRADE") { call(repaired, "start_boat_upgrade", "repair") }
         failure("ECONOMY_BOAT_UPGRADE") { call(repaired, "start_boat_upgrade", "landing_net") }
         val withPages = repaired.copy(boat = repaired.boat!!.copy(blueprints = EconomyBoatBlueprints(3, 0)))
-        assertEquals("landing_net", call(withPages, "start_boat_upgrade", "landing_net").boat!!.work!!.upgradeId)
+        val paid = call(withPages, "start_boat_upgrade", "landing_net")
+        val saved = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(paid))
+        val artifactWork = saved.boat!!.work!!
+        assertEquals("landing_net", artifactWork.upgradeId)
+        val installed = call(saved, "claim_boat_upgrade", artifactWork.id, Instant.parse(artifactWork.finishesAt))
+        assertEquals(listOf("landing_net"), installed.boat!!.artifacts)
+        assertEquals(saved.boat!!.blueprints, installed.boat!!.blueprints)
+        assertEquals(saved.wallet, installed.wallet); assertEquals(saved.inventory, installed.inventory)
+        assertNull(installed.boat!!.work)
+        failure("ECONOMY_BOAT_WORK_GONE") { call(installed, "claim_boat_upgrade", artifactWork.id, Instant.parse(artifactWork.finishesAt)) }
     }
 
     @Test fun `departure freezes loadout slots and timing spends one bait and ignores meals and skill speed`() {
@@ -123,7 +132,7 @@ class EconomyBoatTest {
         failure("ECONOMY_BOAT_CAST_GONE") { call(caught, "submit_boat_cast", id, now.plusSeconds(320), reel) }
     }
 
-    @Test fun `claim delivers exact stock records progress one blueprint page and bounded practice only once`() {
+    @Test fun `claim delivers exact stock records progress and bounded practice without new blueprint pages`() {
         val state = ready(); val v = state.boat!!.voyage!!
         val claimed = call(state, "claim_boat", v.id, now.plusSeconds(2400))
         assertEquals(1L, claimed.inventory["fish_common"])
@@ -132,11 +141,25 @@ class EconomyBoatTest {
         assertTrue(claimed.familiarItems.orEmpty().containsAll(listOf("fish_common", "fish_silverfin")))
         assertEquals(500, claimed.boat!!.records.getValue("fish_silverfin").weightGrams)
         assertEquals(1L, claimed.boat!!.completedVoyages); assertEquals(1L, claimed.boat!!.qualifiedVoyages)
-        assertEquals(EconomyBoatBlueprints(1, 0), claimed.boat!!.blueprints)
+        assertEquals(EconomyBoatBlueprints(), claimed.boat!!.blueprints)
         assertEquals(150L, claimed.progression.skills!!.fishingSeconds)
         assertEquals(0L, claimed.progression.skills!!.travelSeconds)
         assertEquals(1L, claimed.progression.routes[config.routeId])
         failure("ECONOMY_BOAT_VOYAGE_GONE") { call(claimed, "claim_boat", v.id, now.plusSeconds(2401)) }
+    }
+
+    @Test fun `qualifying voyages crossing legacy thresholds preserve earned pages and permanent items`() {
+        for (qualified in listOf(0L, 2L, 4L, 7L, 10L, 13L, 15L)) {
+            val pages = EconomyBoatBlueprints(2, 1)
+            val artifacts = listOf("landing_net", "telescope")
+            val state = ready().let { it.copy(boat = it.boat!!.copy(completedVoyages = qualified, qualifiedVoyages = qualified,
+                blueprints = pages, artifacts = artifacts)) }
+            val claimed = call(state, "claim_boat", state.boat!!.voyage!!.id, now.plusSeconds(2400))
+            assertEquals(qualified + 1, claimed.boat!!.qualifiedVoyages)
+            assertEquals(qualified + 1, claimed.boat!!.completedVoyages)
+            assertEquals(pages, claimed.boat!!.blueprints)
+            assertEquals(artifacts, claimed.boat!!.artifacts)
+        }
     }
 
     @Test fun `full warehouse preserves ready catch while empty or partial trips never manufacture blueprint pages`() {

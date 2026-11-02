@@ -34,10 +34,10 @@ export function auditBoatFishingBalance(catalog) {
   });
   assert.deepEqual(boat.blueprints.map(blueprint => blueprint.id).sort(), ["landing_net", "telescope"]);
   const blueprints = boat.blueprints.map(blueprint => {
-    assert.equal(blueprint.milestones.length, 3, `${blueprint.id}: exactly three distinct pages`);
+    assert.equal(blueprint.milestones.length, 3, `${blueprint.id}: retain the three legacy page thresholds`);
     assert(blueprint.milestones.every((value, index) => Number.isSafeInteger(value) && value > 0
-      && (!index || value > blueprint.milestones[index - 1])), `${blueprint.id}: milestones strictly increase`);
-    return { id: blueprint.id, milestones: blueprint.milestones, guaranteedAtQualifiedVoyage: blueprint.milestones.at(-1) };
+      && (!index || value > blueprint.milestones[index - 1])), `${blueprint.id}: legacy thresholds strictly increase`);
+    return { id: blueprint.id, legacyMilestones: blueprint.milestones, awardedByBoat: false };
   });
 
   const loadouts = [];
@@ -76,6 +76,7 @@ export function auditBoatFishingBalance(catalog) {
       "The same owned rod, hook and bait are compared with the existing short shore route.",
       "Roads are not accelerated by food, skill, taps or pearls. Those runtime invariants are checked separately.",
       "Repair, materials, failed casts, travel scheduling, full storage and player absence can only lower realized returns.",
+      "Boat claims preserve legacy blueprint pages and permanent items but award no new pages.",
       "This audit does not simulate progression or certify a fair human-only leaderboard."],
     shore: { seconds: shore.seconds, catches: shore.rewards.fish, maxFishPerHour: shore.rewards.fish * 3600 / shore.seconds,
       minNetCoinsPerHour: rounded(Math.min(...loadouts.map(row => row.shoreNetCoinsPerHour))),

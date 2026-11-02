@@ -72,9 +72,11 @@ class JdbcBoatIntegrationTest {
         assertEquals(saved, raw(p), "Public observations do not advance or reselect the voyage")
     }
 
-    @Test fun `ready claim persists exact fish once and the same receipt replays after reconnect`() = runBlocking<Unit> {
+    @Test fun `ready claim persists exact fish and legacy fragments once and the receipt replays after reconnect`() = runBlocking<Unit> {
         val p = player(); val time = Instant.now().minusSeconds(2500)
-        val departed = EconomyBoats.command(state(p).copy(boat = EconomyBoatState(level = 1), inventory = emptyMap()),
+        val pages = EconomyBoatBlueprints(2, 1)
+        val artifacts = listOf("telescope")
+        val departed = EconomyBoats.command(state(p).copy(boat = EconomyBoatState(level = 1, blueprints = pages, artifacts = artifacts), inventory = emptyMap()),
             EconomyCommand(UUID.randomUUID().toString(), p.publicId, 0, "depart_boat", "river_reach"), time, random = { 0L }).first
         val b = departed.boat!!; val v = b.voyage!!
         put(p, departed.copy(boat = b.copy(voyage = v.copy(castsUsed = v.maxCasts,
@@ -83,7 +85,8 @@ class JdbcBoatIntegrationTest {
         val first = economy.command(p.hash, request)
         assertNull(first.state.boat.voyage); assertEquals(1L, first.state.inventory["fish_common"])
         assertEquals(1L, first.state.fishing.stock!!["fish_silverfin"])
-        assertEquals(1L, first.state.boat.qualifiedVoyages); assertEquals(1, first.state.boat.blueprints.landing_net)
+        assertEquals(1L, first.state.boat.qualifiedVoyages)
+        assertEquals(pages, first.state.boat.blueprints); assertEquals(artifacts, first.state.boat.artifacts)
         val after = raw(p)
         val replay = JdbcEconomyRepository(source).command(p.hash, request)
         assertTrue(replay.replayed); assertEquals(first.state.boat, replay.state.boat)

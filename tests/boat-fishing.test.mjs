@@ -139,20 +139,38 @@ test("automatic return is a pure time projection; empty arrival gives no skill o
   const skill = state.progression.skills.fishingSeconds; run(state, "claim_boat", voyage.id, end);
   assert.equal(state.progression.skills.fishingSeconds, skill); assert.equal(state.boat.qualifiedVoyages, 0); assert.equal(state.boat.blueprints.landing_net, 0);
 });
-test("pages use qualifying voyage milestones, never duplicates or a partial-trip shortcut", () => {
+test("qualifying and partial voyages preserve legacy pages and permanent items without awarding new fragments", () => {
   const state = ready(); let now = at;
+  state.boat.blueprints = { landing_net: 2, telescope: 1 };
+  state.boat.artifacts = ["landing_net", "telescope"];
+  const pages = structuredClone(state.boat.blueprints), artifacts = [...state.boat.artifacts];
   for (let trip = 1; trip <= 14; trip++) {
     const voyage = depart(state, now); now = Date.parse(voyage.arrivesAt);
     for (let i = 0; i < voyage.maxCasts; i++) now = catchOne(state, now + 1);
     run(state, "return_boat", voyage.id, now); now += voyage.inboundSeconds * 1000;
     run(state, "claim_boat", voyage.id, now); state.inventory = {};
-    assert.equal(state.boat.blueprints.landing_net, [1, 3, 5].filter(value => value <= trip).length);
-    assert.equal(state.boat.blueprints.telescope, [8, 11, 14].filter(value => value <= trip).length);
+    assert.deepEqual(state.boat.blueprints, pages);
+    assert.deepEqual(state.boat.artifacts, artifacts);
   }
   const voyage = depart(state, now); now = catchOne(state, Date.parse(voyage.arrivesAt));
   run(state, "return_boat", voyage.id, now); now += voyage.inboundSeconds * 1000; run(state, "claim_boat", voyage.id, now);
   assert.equal(state.boat.completedVoyages, 15); assert.equal(state.boat.qualifiedVoyages, 14);
-  assert.deepEqual(state.boat.blueprints, { landing_net: 3, telescope: 3 });
+  assert.deepEqual(state.boat.blueprints, pages);
+  assert.deepEqual(state.boat.artifacts, artifacts);
+});
+test("a saved paid artifact job remains claimable once without a second cost or losing old pages", () => {
+  const state = ready(), id = uuid(), upgrade = model.economyCatalog.boat.upgrades.find(entry => entry.id === "landing_net");
+  state.boat.blueprints = { landing_net: 3, telescope: 1 };
+  state.boat.work = { id, upgradeId: "landing_net", startedAt: new Date(at).toISOString(),
+    finishesAt: new Date(at + upgrade.seconds * 1000).toISOString(), cost: structuredClone(upgrade.cost) };
+  const saved = JSON.parse(JSON.stringify(state)), wallet = structuredClone(saved.wallet), inventory = structuredClone(saved.inventory);
+  run(saved, "claim_boat_upgrade", id, Date.parse(saved.boat.work.finishesAt));
+  assert.deepEqual(saved.wallet, wallet); assert.deepEqual(saved.inventory, inventory);
+  assert.deepEqual(saved.boat.blueprints, { landing_net: 3, telescope: 1 });
+  assert.deepEqual(saved.boat.artifacts, ["landing_net"]); assert.equal(saved.boat.work, undefined);
+  const claimed = structuredClone(saved);
+  assert.throws(() => run(saved, "claim_boat_upgrade", id, at + upgrade.seconds * 1000), { code: "ECONOMY_BOAT_WORK_GONE" });
+  assert.deepEqual(saved, claimed);
 });
 test("full storage failure is atomic, then claim awards once including species, mass and bounded practice", () => {
   const state = ready(), voyage = depart(state); let now = Date.parse(voyage.arrivesAt);
@@ -165,7 +183,7 @@ test("full storage failure is atomic, then claim awards once including species, 
   assert.equal(state.boat.voyage, undefined); assert.equal(Object.values(state.inventory).reduce((a, b) => a + b, 0), 4);
   assert.equal(Object.values(state.fishing.catches).reduce((a, b) => a + b, 0), 4);
   assert.equal(Object.values(state.fishing.stock).reduce((a, b) => a + b, 0), 4);
-  assert.equal(state.boat.blueprints.landing_net, 1); assert.equal(state.boat.qualifiedVoyages, 1);
+  assert.deepEqual(state.boat.blueprints, { landing_net: 0, telescope: 0 }); assert.equal(state.boat.qualifiedVoyages, 1);
   assert.equal(state.progression.skills.fishingSeconds - skill, 600);
   for (const fish of delivery) assert.ok(state.boat.records[fish.fishId].weightGrams >= fish.weightGrams);
   const claimed = structuredClone(state); assert.throws(() => run(state, "claim_boat", voyage.id, now), { code: "ECONOMY_BOAT_VOYAGE_GONE" }); assert.deepEqual(state, claimed);

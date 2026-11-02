@@ -34,7 +34,7 @@ export function StageCard({ stage, onSelect }: { stage: EconomyStage; onSelect: 
 export function HomeUnlockCard({ unlock, onSelect }: { unlock: EconomyHomeUnlock; onSelect: (id: string) => void }) {
   const berries = new Set(unlock.berries.map(berry => berry.itemId));
   const products = unlock.newItems.filter(id => !berries.has(id));
-  const boatUpgrades = economyCatalog.boat?.upgrades.filter(upgrade => upgrade.requiredHomeLevel === unlock.homeLevel) ?? [];
+  const boatUpgrades = economyCatalog.boat?.upgrades.filter(upgrade => !upgrade.blueprint && upgrade.requiredHomeLevel === unlock.homeLevel) ?? [];
   return <article className={styles.unlockCard} data-home-unlocks={unlock.homeLevel}>
     <h3>Дом {unlock.homeLevel}</h3>
     <div className={styles.berryUnlocks}>{unlock.berries.map(berry => {
@@ -50,9 +50,9 @@ export function HomeUnlockCard({ unlock, onSelect }: { unlock: EconomyHomeUnlock
       {boatUpgrades.map(upgrade => <div className={styles.buildingCost} key={upgrade.id} data-boat-upgrade={upgrade.id}>
         <div><strong>{upgrade.name}</strong><span>{number(upgrade.cost.coins)} монет · {time(upgrade.seconds)}</span></div>
         <Ingredients items={upgrade.cost.items} onSelect={onSelect} /><p className={styles.hint}>{upgrade.description}</p>
-        <small>Нужны: {Object.entries(upgrade.requiredBuildings).map(([id, level]) => `${buildingLabels[id] ?? id} ${level}`).join(" · ")}{upgrade.blueprint && ` · чертёж: ${economyCatalog.boat?.blueprints.find(blueprint => blueprint.id === upgrade.blueprint)?.milestones.length} страницы`}</small>
+        <small>Нужны: {Object.entries(upgrade.requiredBuildings).map(([id, level]) => `${buildingLabels[id] ?? id} ${level}`).join(" · ")}</small>
       </div>)}
-      <p className={styles.hint}>Это отдельное развитие лодки у существующего причала. Работы занимают общего строителя и требуют получения после таймера. Они не входят в обязательный бюджет следующего дома. Подсак помогает вытащить рыбу; подзорная труба показывает будущий груз после восстановления маяка.</p>
+      <p className={styles.hint}>Это отдельное развитие лодки у существующего причала. Работы занимают общего строителя и требуют получения после таймера. Они не входят в обязательный бюджет следующего дома. Чертежи и постоянные предметы относятся к отдельной системе находок.</p>
     </div></details>}
     <details className={styles.chain}><summary>Все новые рецепты: {unlock.recipes.length}</summary><div className={styles.chainBody}><ul className={styles.unlockRecipes}>{unlock.recipes.map(id => {
       const recipe = recipeById.get(id);
