@@ -57,10 +57,10 @@ internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow {
         EconomyProfileRow(it.getLong(1), state.copy(progression = EconomyCollectionProgress.inherit(state.progression, inherited),
             wardrobe = (state.wardrobe + legacyWardrobe).filter { id -> id in clothing }.distinct().sorted()))
     }.single()
-    val history = if (row.state.itemUnlockVersion == 0) legacyEconomyItemHistory(c, user) else emptySet()
+    val history = if (row.state.itemUnlockVersion == 0 || row.state.familiarItems == null) legacyEconomyItemHistory(c, user) else emptySet()
     // Seal the legacy projection in the returned value before a reward writer adds
     // gifted stock. Reading still leaves stored JSON and its revision untouched.
-    return row.copy(state = EconomyItemUnlocks.persist(row.state, history))
+    return row.copy(state = EconomyFamiliarItems.persist(EconomyItemUnlocks.persist(row.state, history), history))
 }
 
 /** Caller holds app_users FOR NO KEY UPDATE. The audit remains a permanent
@@ -108,8 +108,8 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
 }
 
 internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, recordAwards: Boolean = true) {
-    val history = if (state.itemUnlockVersion == 0) legacyEconomyItemHistory(c, user) else emptySet()
-    val persisted = EconomyItemUnlocks.persist(EconomyFishInventory.state(state), history)
+    val history = if (state.itemUnlockVersion == 0 || state.familiarItems == null) legacyEconomyItemHistory(c, user) else emptySet()
+    val persisted = EconomyItemUnlocks.persist(EconomyFishInventory.state(EconomyFamiliarItems.persist(state, history)), history)
     val count = c.economyUpdate("""UPDATE economy_profiles SET state=?::jsonb,revision=revision+1,updated_at=clock_timestamp()
         WHERE user_id=? AND revision<9007199254740991""", economyJson.encodeToString(persisted), user)
     if (count != 1) economyFailure("ECONOMY_REVISION_CONFLICT", "Состояние хозяйства изменилось. Обновите страницу.")
@@ -122,7 +122,7 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
         productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders, tradeRelations = s.tradeRelations, ship = EconomyShipOrders.project(s.ship, now),
         workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder, stageOrders = s.stageOrders,
-        marketSlots = s.marketSlots, unlockedItems = s.unlockedItems, leaftailShop = s.leaftailShop, tapBoost = s.tapBoost)
+        marketSlots = s.marketSlots, unlockedItems = s.unlockedItems, familiarItems = EconomyFamiliarItems.project(s), leaftailShop = s.leaftailShop, tapBoost = s.tapBoost)
 }
 
 /** Save only public action context before a consumed job disappears. In

@@ -1,3 +1,4 @@
+import { familiarEconomyItems } from "./familiar-items";
 import { currencyExchangeOffer } from "./currency-exchange";
 import { awardCraftSkills, experimentCanPractice, prepareCookingAttempt, skillForProduction, skillForExploration, skillWorkDuration, skillProgress, newCraftSkills, effectiveCraftSkills } from "./craft-skill";
 import { capturePlayerProgression, awardPlayerProgression } from "./player-progression";
@@ -105,6 +106,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     workshopStarterClaimed: false, wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: { ...newEconomyProgression(), skills: legacy.houseLevel > 1 || legacy.workshopLevel > 0 ? undefined : newCraftSkills() },
     food: foodState({}), residentOrders: initialResidentOrders(), tradeRelations: tradeRelationsState({}) };
   state.progression.skills = effectiveCraftSkills(state);
+  state.familiarItems = familiarEconomyItems(state);
   return state;
 }
 function debit(state: EconomyState, cost: EconomyCost, fishSelection?: FishSelection, exactSpecies = false): FishSelection {
@@ -159,6 +161,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
   const previousStageOrders = state.stageOrders;
   const previousTutorial = state.tutorialOrder;
   const previousUnlocks = unlockedEconomyItems(state);
+  const previousFamiliar = familiarEconomyItems(state);
   const boardBefore = economyCatalog.food ? normalizedResidentOrders(state, now) : undefined;
   let message: string;
   try {
@@ -172,6 +175,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
   if (boardBefore && state.residentOrders === previousOrders) state.residentOrders = boardBefore;
   state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...previousUnlocks])];
   state.itemUnlockVersion = 1;
+  state.familiarItems = [...new Set([...previousFamiliar, ...familiarEconomyItems(state)])].sort();
   persistEconomyItemUnlocks(state);
   state.progression = { ...state.progression, skills: skillsBefore };
   awardCraftSkills(playerBefore.jobs, state, command.action, now);

@@ -183,6 +183,7 @@ object EconomyRules {
         if (grant.woodGranted > 0) inventory["wood"] = (inventory["wood"] ?: 0) + grant.woodGranted
         if (grant.stoneGranted > 0) inventory["stone"] = (inventory["stone"] ?: 0) + grant.stoneGranted
         return EconomySkills.normalized(EconomyState(currencyScale=10,pearlScale=50,itemUnlockVersion=1,
+            familiarItems = EconomyFamiliarItems.canonical(inventory.filterValues { it > 0L }.keys),
             wallet = EconomyWallet(grant.coinsGranted + (starting?.startingWallet?.coins ?: 0), starting?.startingWallet?.pearls ?: 0), inventory = EconomyFishInventory.items(inventory),
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
                 "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0,
@@ -399,12 +400,13 @@ object EconomyRules {
      * In particular, claiming a new building must not reroll previously displayed cards. */
     fun apply(input: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap(),
         legacyHistory: Set<String> = emptySet()): Pair<EconomyState, String> {
-        val known = EconomyItemUnlocks.persist(EconomyFishInventory.state(EconomyTapBoost.settle(input, now)), legacyHistory + reservedItems.filterValues { it > 0 }.keys)
+        val familiar = EconomyFamiliarItems.persist(EconomyTapBoost.settle(input, now), legacyHistory + reservedItems.filterValues { it > 0 }.keys)
+        val known = EconomyItemUnlocks.persist(EconomyFishInventory.state(familiar), legacyHistory + reservedItems.filterValues { it > 0 }.keys)
         val state = EconomySkills.normalized(EconomyStageOrders.pin(known, now = now))
         val (next, message) = applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
         val trained = EconomySkills.award(state, next, command, now)
         val progressed = EconomyPlayerProgression.award(state, trained, command, now)
-        return EconomyItemUnlocks.persist(EconomyStageOrders.pin(progressed, now = now)) to message
+        return EconomyFamiliarItems.persist(EconomyItemUnlocks.persist(EconomyStageOrders.pin(progressed, now = now))) to message
     }
 
     private fun requireClaimReady(job: EconomyJob, now: Instant) {

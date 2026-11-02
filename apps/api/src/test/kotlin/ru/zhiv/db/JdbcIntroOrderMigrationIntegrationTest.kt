@@ -55,7 +55,8 @@ class JdbcIntroOrderMigrationIntegrationTest {
                     val initialized = c.economyRows("SELECT economy_v4_initial_state('{}',?)", include) {
                         economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single()
                     val expected = EconomyRules.initial(includeStartingPack = include)
-                    assertEquals(expected.copy(buildings = expected.buildings - setOf("bridge", "lighthouse")),
+                    assertEquals(expected.copy(progression = expected.progression.copy(skills = null), familiarItems = null,
+                        buildings = expected.buildings - setOf("bridge", "lighthouse")),
                         EconomyFishInventory.state(initialized), "SQL and Kotlin initial states agree with and without the starter pack")
                 }
             }

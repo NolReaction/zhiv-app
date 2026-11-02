@@ -181,6 +181,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val player: EconomyPlayerProgress? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val skills: EconomyCraftSkills? = null,
 )
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyState(
     val schemaVersion: Int = 1, val wallet: EconomyWallet, val inventory: Map<String, Long>,
     val buildings: Map<String, Int>, val jobs: List<EconomyJob> = emptyList(), val migration: EconomyMigration,
@@ -197,8 +198,10 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val workshopStarterClaimed: Boolean = false, val tutorialOrder: EconomyTutorialOrder = EconomyTutorialOrder(),
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
     val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(), val itemUnlockVersion: Int = 0,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val familiarItems: List<String>? = null,
     val leaftailShop: EconomyLeaftailShopState = EconomyLeaftailShopState(),
-) { init { require(marketSlots in 5..10 && unlockedItems.distinct().size == unlockedItems.size && itemUnlockVersion in 0..1) } }
+) { init { require(marketSlots in 5..10 && unlockedItems.distinct().size == unlockedItems.size && itemUnlockVersion in 0..1)
+    require(familiarItems == null || familiarItems.distinct().size == familiarItems.size) } }
 @Serializable data class EconomyItem(val id: String, val name: String, val category: String, val baseSellPrice: Long, val tradable: Boolean = true)
 @Serializable data class EconomyBuildingLevel(
     val level: Int, val seconds: Long, val cost: EconomyCost, val requiredHomeLevel: Int = 1,
@@ -307,6 +310,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val workshopStarterClaimed: Boolean = false, val tutorialOrder: EconomyTutorialOrder = EconomyTutorialOrder(),
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
     val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(),
+    val familiarItems: List<String> = emptyList(),
     val leaftailShop: EconomyLeaftailShopState = EconomyLeaftailShopState(),
 )
 @OptIn(ExperimentalSerializationApi::class)

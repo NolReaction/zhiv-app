@@ -19,6 +19,7 @@ import ru.zhiv.economy.EconomyFoodState
 import ru.zhiv.economy.EconomyFishStock
 import ru.zhiv.economy.EconomyFishInventory
 import ru.zhiv.economy.EconomyItemUnlocks
+import ru.zhiv.economy.EconomyFamiliarItems
 import ru.zhiv.economy.EconomyLeaftailShops
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
@@ -119,6 +120,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         leaftailShop=EconomyLeaftailShops.merge(a.leaftailShop,b.leaftailShop),
         marketSlots=maxOf(a.marketSlots,b.marketSlots),
         unlockedItems=(EconomyItemUnlocks.project(a)+EconomyItemUnlocks.project(b)).distinct().sorted(),
+        familiarItems=(EconomyFamiliarItems.project(a)+EconomyFamiliarItems.project(b)).distinct().sorted(),
         itemUnlockVersion=1,
         productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },

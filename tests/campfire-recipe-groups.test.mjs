@@ -38,7 +38,8 @@ const now = Date.parse("2026-10-14T23:45:00Z");
 function controller(overrides = {}) {
   return { snapshot: { ownerPublicId: "ME", revision: 1, serverTime: new Date(now).toISOString(), catalog: structuredClone(economyCatalog),
     wallet: { coins: 200, pearls: 0 }, inventory: {}, buildings: { home: 5, dryer: 5, garden: 5, kiln: 5, woodlot: 5, workshop: 5, quarry: 5, warehouse: 5 },
-    jobs: [], progression: { recipes: { cook_grilled_fish: 1, cook_compote: 1 } }, storage: { capacity: 500, available: 500, used: 0, reserved: 0 }, ...overrides },
+    familiarItems: economyCatalog.items.map(item => item.id),
+    jobs: [], progression: { recipes: { cook_grilled_fish: 1, cook_compote: 1 }, skills: { version: 1, cookingSeconds: economyCatalog.skills.levels[2].requiredSeconds } }, storage: { capacity: 500, available: 500, used: 0, reserved: 0 }, ...overrides },
     now, busy: false, uncertain: false, retryAt: 0, error: null, act() { assert.fail("Reading or filtering recipes must never send a command"); }, retry() {} };
 }
 const recipes = economy => economy.snapshot.catalog.recipes.filter(recipe => recipe.buildingId === "dryer");
@@ -178,38 +179,32 @@ test("an unchanged source preserves manual filters while foreign station targets
   }
 });
 
-test("future dishes remain discoverable while their selected detail explains the lock", () => {
+test("future dishes stay hidden even through an explicit source link", () => {
   hooks.reset(); const economy = controller({ buildings: { home: 1, dryer: 1, garden: 1, warehouse: 1 } });
   const before = structuredClone(economy.snapshot), ordinary = catalog(economy);
-  assert.ok(ordinary.ids.includes("cook_legendary_fish"));
-  assert.ok(ordinary.ids.includes("cook_epic_fish"));
-  assert.deepEqual(ordinary.cards, [], "browsing does not expose production actions before a recipe is selected");
+  assert.ok(!ordinary.ids.includes("cook_legendary_fish"));
+  assert.ok(!ordinary.ids.includes("cook_epic_fish"));
   const preview = catalog(economy, "cook_legendary_fish");
-  assert.match(preview.html, /data-recipe="cook_legendary_fish"[^>]*data-recipe-focused="true"[^>]*data-blocked="true"/);
-  assert.match(preview.html, /Доступно с 5 уровня костра/);
-  assert.match(preview.html, /data-item-icon="fish_legendary"/);
+  assert.deepEqual(preview.cards, []);
+  assert.doesNotMatch(preview.html, /data-recipe="cook_legendary_fish"|data-item-icon="fish_legendary"|Легендарное рыбное жаркое/);
   assert.deepEqual(economy.snapshot, before);
 });
 
-test("the level-zero cookbook keeps the free fish recipe and locked upgrades inspectable", () => {
-  const economy = controller({ buildings: { home: 1, dryer: 0, garden: 1, warehouse: 1 } });
+test("the level-zero cookbook starts with fish and introduces compote after improving the campfire", () => {
+  const economy = controller({ buildings: { home: 1, dryer: 0, garden: 1, warehouse: 1 }, familiarItems: [], progression: { recipes: {}, routes: {} } });
   const before = structuredClone(economy.snapshot);
   for (const target of [null, "cook_grilled_fish", "cook_compote", "cook_legendary_fish"]) {
     hooks.reset(); const view = catalog(economy, target);
-    assert.equal(view.cards.length, target ? 1 : 0);
-    if (target) assert.equal(view.cards[0].props.focused, true);
-    if (target && target !== "cook_grilled_fish") {
-      assert.match(view.html, /data-recipe-access/);
-      assert.match(view.html, /Доступно с [1-5] уровня костра/);
-      assert.match(view.html, /data-blocked="true"/);
-    } else {
-      assert.ok(view.ids.includes("cook_grilled_fish"));
-      assert.doesNotMatch(view.html, /data-recipe-access/);
-    }
-    assert.doesNotMatch(view.html, /data-cooking-duration=|Сначала обустройте/);
+    assert.equal(view.cards.length, target === "cook_grilled_fish" ? 1 : 0);
+    assert.deepEqual(view.ids, ["cook_grilled_fish"]);
+    assert.doesNotMatch(view.html, /data-recipe-access|Доступно с [1-5] уровня костра/);
     assert.match(view.html, /data-campfire-catalog/);
   }
   assert.deepEqual(economy.snapshot, before);
+  economy.snapshot.buildings.dryer = 1;
+  hooks.reset(); const view = catalog(economy, "cook_compote");
+  assert.equal(view.cards[0].props.recipe.id, "cook_compote");
+  assert.doesNotMatch(view.html, /data-recipe-access/);
 });
 
 test("an empty search explains how to recover and clearing it restores the selected category", () => {
@@ -266,4 +261,19 @@ test("unknown cooking experiments hide the future dish and its effects until a s
   assert.match(discovered, /Ягодная пастила/);
   assert.match(discovered, /data-known-meal-benefits/);
   assert.match(discovered, /1 ч →/);
+});
+
+
+test("an unknown experiment cannot be exposed through search or a recipe link before ingredient familiarity", () => {
+  const economy = controller({ familiarItems: [], progression: { recipes: {}, routes: {} } });
+  hooks.reset(); let view = catalog(economy, "experiment_berry_pastila");
+  assert.deepEqual(view.cards, []);
+  assert.doesNotMatch(view.html, /Тягучая ягодная сладость|Ягодная пастила/);
+  view.tab("discoveries").props.onClick(); view = catalog(economy, "experiment_berry_pastila");
+  assert.deepEqual(view.ids, []);
+  assert.match(view.html, /Новые опыты появятся/);
+  economy.snapshot.familiarItems = ["strawberry_compote", "berries"];
+  view = catalog(economy, "experiment_berry_pastila", 1);
+  assert.equal(view.cards[0].props.recipe.id, "experiment_berry_pastila");
+  assert.doesNotMatch(view.html, /Ягодная пастила|data-known-meal-benefits/);
 });

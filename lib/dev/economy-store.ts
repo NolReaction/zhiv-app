@@ -1,3 +1,4 @@
+import { familiarEconomyItems } from "@/features/economy/domain/familiar-items";
 import { effectiveCraftSkills } from "@/features/economy/domain/craft-skill";
 import { promoRequestSchema, type PromoRequest, type PromoResult } from "@/features/promo/model";
 import type { PromoCatalog } from "@/lib/server/promo-catalog";
@@ -111,7 +112,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
     tradeRelations: tradeRelationsState(state), ship: shipOrdersState(state, now), tapBoost: state.tapBoost ?? emptyTapBoost(),
-    marketSlots: marketSlotCount(state), unlockedItems,
+    marketSlots: marketSlotCount(state), unlockedItems, familiarItems: familiarEconomyItems(state, legacyItemHistory(owner)),
     productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, leaftailShop: state.leaftailShop ?? { cycle: -1, purchased: {} }, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
@@ -187,6 +188,7 @@ function knownMarketState(owner: string, state: EconomyState): EconomyState {
 /** Seal discovery from the prior state before inspecting any newly transferred goods. */
 function persistItemUnlocks(owner: string, previous: EconomyState, next: EconomyState, confirmedRewards: readonly string[] = []) {
   const prior = unlockedEconomyItems(previous, legacyItemHistory(owner));
+  next.familiarItems = [...new Set([...familiarEconomyItems(previous, legacyItemHistory(owner)), ...familiarEconomyItems(next)])].sort();
   next.unlockedItems = [...new Set([...prior, ...(next.unlockedItems ?? [])])].sort();
   next.itemUnlockVersion = 1;
   persistEconomyItemUnlocks(next, confirmedRewards);

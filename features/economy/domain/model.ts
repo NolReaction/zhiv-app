@@ -452,6 +452,7 @@ export const economyViewSchema = z.object({
   wallet: z.object({ coins: balance, pearls: count.max(ECONOMY_MAX_PEARLS) }), inventory: quantities, buildings: z.record(id, count.max(100)),
   productionSlots: z.record(id, count.min(1).max(3)).prefault({}),
   marketSlots: count.min(5).max(10).prefault(5), unlockedItems: z.array(id).max(1000).refine(items => new Set(items).size === items.length).prefault([]),
+  familiarItems: z.array(id).max(1000).refine(items => new Set(items).size === items.length).prefault([]),
   workshopStarterClaimed: z.boolean().prefault(false), tutorialOrder: economyTutorialOrderSchema, stageOrders: economyStageOrdersSchema,
   jobs: z.array(economyJobSchema).max(100), migration: economyMigrationSchema, catalog: economyCatalogSchema,
   fishingShop: economyFishingShopSchema.nullable().prefault(null), leaftailShop: economyLeaftailShopSchema,
@@ -514,7 +515,7 @@ export type EconomyFood = z.infer<typeof economyFoodSchema>;
 export type EconomyResidentOrders = z.infer<typeof economyResidentOrdersSchema>;
 export type EconomyTradeRelations = z.infer<typeof economyTradeRelationsSchema>;
 export type EconomyWeeklyOrder = z.infer<typeof economyWeeklyOrderSchema>;
-export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { marketSlots?: number; unlockedItems?: string[]; itemUnlockVersion?: 0 | 1; tutorialOrder?: EconomyTutorialOrder; stageOrders?: EconomyStageOrders; workshopStarterClaimed?: boolean; productionSlots?: Record<string, number>; wardrobe?: string[]; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50; fishingShop?: EconomyFishingShop | null; leaftailShop?: EconomyLeaftailShop; fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null; minerRareDropState?: EconomyRareDropClock | null; food?: EconomyFood; residentOrders?: EconomyResidentOrders; tradeRelations?: EconomyTradeRelations; ship?: EconomyShip; tapBoost?: EconomyTapBoost };
+export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { marketSlots?: number; unlockedItems?: string[]; familiarItems?: string[]; itemUnlockVersion?: 0 | 1; tutorialOrder?: EconomyTutorialOrder; stageOrders?: EconomyStageOrders; workshopStarterClaimed?: boolean; productionSlots?: Record<string, number>; wardrobe?: string[]; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50; fishingShop?: EconomyFishingShop | null; leaftailShop?: EconomyLeaftailShop; fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null; minerRareDropState?: EconomyRareDropClock | null; food?: EconomyFood; residentOrders?: EconomyResidentOrders; tradeRelations?: EconomyTradeRelations; ship?: EconomyShip; tapBoost?: EconomyTapBoost };
 
 export type EconomyFishing = z.infer<typeof economyFishingSchema>;
 export type EconomyFishingCatalog = z.infer<typeof economyFishingCatalogSchema>;

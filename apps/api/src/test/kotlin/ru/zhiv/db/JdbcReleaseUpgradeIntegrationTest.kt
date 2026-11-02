@@ -468,7 +468,8 @@ class JdbcReleaseUpgradeIntegrationTest {
                     economyJson.decodeFromString<EconomyState>(it.getString(1))
                 }.single()
                 val expected = EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = false)
-                assertEquals(expected.copy(itemUnlockVersion = 0, buildings = expected.buildings - setOf("bridge", "lighthouse")),
+                assertEquals(expected.copy(itemUnlockVersion = 0, progression = expected.progression.copy(skills = null), familiarItems = null,
+                    buildings = expected.buildings - setOf("bridge", "lighthouse")),
                     EconomyMoney.redenominate(initialized), "Historical initializers predate the permanent-knowledge marker")
             }
             DatabaseFactory.migrate(source)
