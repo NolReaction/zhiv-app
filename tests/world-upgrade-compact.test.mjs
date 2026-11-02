@@ -12,6 +12,7 @@ const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/c
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage, constructionSpeedupPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
+const { mealTimeExample } = await vite.ssrLoadModule("/features/economy/ui/food/meal-speed-description.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -332,7 +333,7 @@ test("every next home tier previews its new berry and dish with the real station
     const meal = economyCatalog.food.meals.find(entry => recipe.rewards[entry.itemId]);
     assert.match(text(html), /Новый рецепт · Ягодный куст/);
     assert.match(text(html), /Новый рецепт · Костёр/);
-    assert.ok(text(html).includes(`Вылазка +${meal.heroSpeedBps / 100}% · стройка +${meal.builderSpeedBps / 100}% скорости`));
+    assert.ok(text(html).includes(`Пример: вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)} · стройка ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds, "builder")}`));
     assert.match(text(html), /Ещё условия/);
   }
 });

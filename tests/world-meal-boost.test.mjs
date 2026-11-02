@@ -62,7 +62,7 @@ function choose(props, view, itemId = "grilled_fish") { action(view, itemId).pro
 const job = (overrides = {}) => ({ id: "construction-1", kind: "construction", targetId: "home", targetLevel: 4, startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 66_000).toISOString(), cost: { coins: 0, items: {} }, rewards: {}, ...overrides });
 
 test("trip meal quotes apply the learned travel speed after the meal with the same two rounding steps", () => {
-  const economy = controller({ progression: { recipes: {}, routes: {}, skills: { version: 1, cookingSeconds: 0, travelSeconds: economyCatalog.skills.levels.at(-1).requiredSeconds } } });
+  const economy = controller({ progression: { recipes: {}, routes: {}, skills: { version: 1, buildingHistoryVersion: 1, cookingSeconds: 0, travelSeconds: economyCatalog.skills.levels.at(-1).requiredSeconds } } });
   assert.equal(mealBoostSeconds({ economy, consumer: "hero", seconds: 3600 }, 0), 3429);
   assert.equal(mealBoostSeconds({ economy, consumer: "hero", seconds: 3600 }, 5000), 2286);
   assert.equal(mealBoostSeconds({ economy, consumer: "hero", seconds: 3600 }, 5000, 1800), 2858);
@@ -218,7 +218,7 @@ test("speed previews divide duration, preserve remaining millisecond precision a
 });
 
 test("bounded builder portion shows only the two hours it covers in a six-hour construction", () => {
-  const economy = controller({ inventory: { fish_soup: 1 } });
+  const economy = controller({ inventory: { fish_soup: 1 }, progression: { skills: { buildingHistoryVersion: 1 } } });
   const props = { economy, consumer: "builder", seconds: 6 * 3600 };
   const view = choose(props, open(props), "fish_soup");
   const preview = view.nodes.find(node => node.props["data-meal-preview"] === "fish_soup");
@@ -492,7 +492,9 @@ test("fishing food previews use fishing mastery instead of the travel skill", ()
 });
 
 test("construction food preview uses its limited allowance and the job's frozen assistance", () => {
-  const economy = controller({ progression: { skills: { version: 1, buildingSeconds: 999999999 } }, jobs: [job({ tradeSpeedBps: 1000, skillSpeedBps: 0, finishesAt: new Date(now + 5 * 3600_000).toISOString() })] });
+  const economy = controller({ progression: { skills: { version: 1, buildingHistoryVersion: 1,
+    buildingSeconds: Math.ceil(economyCatalog.skills.levels.at(-1).requiredSeconds / economyCatalog.skills.buildingPracticeDivisor) } },
+    jobs: [job({ tradeSpeedBps: 1000, skillSpeedBps: 0, finishesAt: new Date(now + 5 * 3600_000).toISOString() })] });
   assert.equal(mealBoostSeconds({ economy, consumer: "builder", jobId: "construction-1" }, 2500, 7200), 16788);
   assert.equal(mealBoostSeconds({ economy, consumer: "builder", seconds: 21600 }, 2500, 7200), 19573);
   assert.equal(mealBoostSeconds({ economy, consumer: "builder", seconds: 21600 }, 2500), 16777);

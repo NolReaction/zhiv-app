@@ -46,7 +46,8 @@ test("catalog6 adds current activity cards while catalog5 and catalog4 remain re
 test("successful claim persists first path and each explorer tier once, start cancel and replay cannot award", () => {
   const p = player(); let now = Date.now();
   economy.getDevEconomy(p.token, now);
-  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.buildings.warehouse = 3;
+  // Isolate achievement receipts from random expedition finds and level gifts.
+  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.buildings.warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.at(-1).level;
   const canceled = issue(p, "start_exploration", "forest", now).state.jobs[0];
   assert.equal(card(p, "first_path", now).unlockedAt, null);
   issue(p, "cancel_exploration", canceled.id, now + 1000);

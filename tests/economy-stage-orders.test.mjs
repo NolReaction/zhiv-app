@@ -42,7 +42,8 @@ test("new stage quotes and failed commands do not persist a course, alter revisi
 
 test("claiming house two pins the first permanent request without minting its supplies", () => {
   const p = player(1), state = row(p).state;
-  state.wallet.coins = 300; state.inventory = { wood: 3, stone: 2, planks: 2 };
+  state.wallet.coins = model.economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2).cost.coins;
+  state.inventory = { wood: 3, stone: 2, planks: 2 };
   assert.equal(quote(p), null);
   const started = send(p, "start_construction", "home").state, job = started.jobs[0];
   assert.equal(started.stageOrders.stages["2"], undefined);

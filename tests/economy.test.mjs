@@ -111,6 +111,10 @@ test("an empty account can rebuild its first stage from the free bush and forest
   assert.equal(beforeHome.tutorialOrder.step, 1); assert.equal(beforeHome.stageOrders.stages["1"].completed, true);
   assert.equal(beforeHome.wallet.coins, 308);
   assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
+  const homeCost = model.economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2).cost.coins;
+  const berryPrice = model.economyCatalog.localBuyer.unitPrices.berries;
+  const extraBerries = Math.max(0, Math.ceil((homeCost - beforeHome.wallet.coins) / berryPrice));
+  for (let count = 0; count < extraBerries; count++) { berries(1); issue(p, "sell", "berries", 1, clock); }
   const upgraded = complete("start_construction", "home"); assert.equal(upgraded.buildings.home, 2);
   const earned = upgraded.progression.player;
   const earnedPearls = [...playerProgressionCatalog.levelRewards.filter(reward => earned.awardedLevels.includes(reward.level)),

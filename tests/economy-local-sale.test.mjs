@@ -25,8 +25,8 @@ test("sale discount belongs to the server catalog and older snapshots retain ful
   assert.equal(economyCatalogSchema.parse(legacy).localBuyer, undefined);
   assert.equal(quote(30, 9), 270); assert.equal(quote(30, 9, config), 160);
   assert.equal(minimum(10), 1); assert.equal(minimum(10, config), 2);
-  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "river_rod").price, 400);
-  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "willow_rod").price, 1800);
+  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "river_rod").price, 600);
+  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "willow_rod").price, 2400);
 });
 
 test("whole-stack flooring cannot be improved by splitting and large quotes retain exact integer arithmetic", () => {

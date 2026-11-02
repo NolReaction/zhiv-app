@@ -187,7 +187,8 @@ test("malformed commands cannot complete or replace a legacy request and account
 
 test("home two needs the teaching request and three small stage deliveries while older paid courses remain complete", () => {
   const p = player(), saved = row(p);
-  const ready = () => { saved.state.wallet.coins = 300; saved.state.inventory = { wood: 3, stone: 2, planks: 2 };
+  const homeCost = model.economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2).cost.coins;
+  const ready = () => { saved.state.wallet.coins = homeCost; saved.state.inventory = { wood: 3, stone: 2, planks: 2 };
     Object.assign(saved.state.buildings, { woodlot: 1, dryer: 1, workshop: 1 }); };
   ready(); assert.throws(() => send(p, "start_construction", { targetId: "home" }), { code: "ECONOMY_TUTORIAL_REQUIRED" });
   saved.state.inventory.berries = 1; send(p); ready();
@@ -195,7 +196,7 @@ test("home two needs the teaching request and three small stage deliveries while
   saved.state.stageOrders.stages["1"] = { ...saved.state.stageOrders.stages["1"], step: 3, completed: true };
   assert.equal(send(p, "start_construction", { targetId: "home" }).state.jobs[0].targetLevel, 2);
   for (const version of [1, 2]) {
-    const other = player(), previous = row(other); previous.state.wallet.coins = 300;
+    const other = player(), previous = row(other); previous.state.wallet.coins = homeCost;
     previous.state.inventory = { wood: 3, stone: 2, planks: 2 };
     Object.assign(previous.state.buildings, { woodlot: 1, dryer: 1, workshop: 1 });
     previous.state.tutorialOrder = { version, step: version === 2 ? 4 : 0, ingredientsClaimed: true, completed: true, terms: null };

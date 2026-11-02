@@ -328,10 +328,10 @@ function completeJourney(regularActiveMinutes, maximumDays) {
 // makes every berry product at its advertised house. The
 // monthly balance is measured separately by the unified gameplay simulator.
 // Visits happen eight hours apart; missed recipe finishes wait until the next.
-// This optional recipe route costs 129,850 construction coins. The bounds below
+// This optional recipe route costs 147,750 construction coins. The bounds below
 // retain a small regression margin for both schedules. This is reachability,
 // not an optimal route or a monthly balance forecast.
-for (const [minutes, maximumDays, maximumCommands] of [[30, 66, 11400], [15, 108, 11000]]) test(`a conservative free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
+for (const [minutes, maximumDays, maximumCommands] of [[30, 72, 13000], [15, 120, 13000]]) test(`a conservative free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
   const result = completeJourney(minutes, maximumDays), { state, clock, flow, courses, builds, berryClaims, checkpoints, actions } = result;
   t.diagnostic(JSON.stringify({ elapsedDays: (clock - epoch) / (24 * hour), visits: result.visitCount,
     firstVisitMinutes: 60, laterVisitMinutes: result.regularActiveMinutes, activeTimerHours: result.activeSeconds / 3600,

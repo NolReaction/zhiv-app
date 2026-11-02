@@ -32,15 +32,16 @@ function customState(cost, recipes, inventory) {
 
 test("home target reads current catalog, deficits and craft ingredients without mutating the snapshot", () => {
   const view = state(), before = structuredClone(view);
+  const homeCost = view.catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2).cost.coins;
   const details = constructionGoalDetails(view, goal);
   assert.equal(details.name, "Дом Мохлика");
-  assert.deepEqual(details.missing, { coins: 200, items: { stone: 1, planks: 1 } });
+  assert.deepEqual(details.missing, { coins: homeCost - view.wallet.coins, items: { stone: 1, planks: 1 } });
   assert.deepEqual(details.keepItems, { wood: 4, stone: 2, planks: 2 });
   assert.deepEqual(details.excessItems, { wood: 0, stone: 0, planks: 0, fiber: 10 });
   assert.equal(details.reservesComplete, true);
   assert.deepEqual(view, before);
   view.inventory.planks = 2; view.inventory.stone = 2;
-  view.wallet.coins = 300;
+  view.wallet.coins = homeCost;
   assert.deepEqual(constructionGoalDetails(view, goal).missing, { coins: 0, items: {} });
   assert.equal(constructionGoalDetails(view, goal).keepItems.wood, 3);
   assert.equal(constructionGoalDetails(view, goal).keepItems.fiber, undefined);

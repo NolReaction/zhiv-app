@@ -39,8 +39,9 @@ test('rare recipe preview shows exact class and both bonuses without substitutin
   assert.doesNotMatch(html, /<select|data-item-icon="fish_epic"/);
   assert.match(html, /data-blocked="true"/);
   assert.doesNotMatch(html, /disabled=|Все рецепты|Способ производства/);
-  assert.match(html, /Вылазки \+60% · запас на 2 ч работы/);
-  assert.match(html, /Одна стройка \+50% скорости/);
-  assert.match(html, /Скорость вылазки \+60%, стройки \+50%/);
+  assert.match(html, /Пример вылазки: 1 ч → 37 мин 30 с/);
+  assert.match(html, /Одна стройка: 1 ч → 40 мин/);
+  assert.match(html, /Хватит на 2 ч вылазок без еды/);
+  assert.match(html, /Хватит на 2 ч 30 мин обычной работы/);
   assert.deepEqual(state.inventory, { fish_epic: 5 });
 });
