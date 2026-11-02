@@ -14,7 +14,7 @@ function load(name) {
     if (id.startsWith("./")) return load(id.slice(2));
     throw new Error(`Unexpected dependency: ${id}`);
   } };
-  const source = readFileSync(new URL(`../features/progression/${name}.ts`, import.meta.url), "utf8");
+  const source = readFileSync(new URL(`../features/progression/domain/${name}.ts`, import.meta.url), "utf8");
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, context);
   modules.set(name, context.exports); return context.exports;
 }

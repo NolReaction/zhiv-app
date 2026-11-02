@@ -33,7 +33,7 @@
     }
     encode zstd gzip
 
-    @admin path /admin /admin/* /api/v1/admin/*
+    @admin path /admin /admin/* /branch /branch/* /api/v1/admin/*
     header @admin >Cache-Control "no-store"
     header @admin >X-Robots-Tag "noindex, nofollow"
 

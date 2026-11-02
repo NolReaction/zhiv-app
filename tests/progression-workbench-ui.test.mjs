@@ -19,20 +19,23 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export function useRef(value){const index=cursor++;if(!(index in state))state[index]={current:value};return state[index];}
       export function useMemo(factory){return factory();}
       export function useEffect(){}
+      export function useBranchState(key, initial){ return useState(initial); }
+      export { Suspense, lazy } from "react";
     `; },
     transform(source, id) {
-      if (!/\/features\/progression\/economy-(workbench|production-graph|production-planner)\.tsx$/.test(id)) return;
-      return source.replace('from "react";', `from "${hookId}";`);
+      if (!/\/features\/progression\/ui\/analysis\/economy-(workbench|balance-table|production-graph|production-planner)\.tsx$/.test(id)) return;
+      return source.replace('from "react";', `from "${hookId}";`).replace('from "@/features/progression/ui/shell/branch-session";', `from "${hookId}";`);
     },
   }],
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hookId);
-const { EconomyWorkbench, EconomyBalanceTable, sortEconomyRows } = await vite.ssrLoadModule("/features/progression/economy-workbench.tsx");
-const { EconomyProductionGraph, productionGraphSelection, productionGraphLayout } = await vite.ssrLoadModule("/features/progression/economy-production-graph.tsx");
-const { EconomyProductionPlanner } = await vite.ssrLoadModule("/features/progression/economy-production-planner.tsx");
-const { economyCsv } = await vite.ssrLoadModule("/features/progression/economy-workbench-common.tsx");
-const { buildEconomyAnalysis } = await vite.ssrLoadModule("/features/progression/economy-analysis.ts");
+const { EconomyWorkbench } = await vite.ssrLoadModule("/features/progression/ui/analysis/economy-workbench.tsx");
+const { EconomyBalanceTable, sortEconomyRows } = await vite.ssrLoadModule("/features/progression/ui/analysis/economy-balance-table.tsx");
+const { EconomyProductionGraph, productionGraphSelection, productionGraphLayout } = await vite.ssrLoadModule("/features/progression/ui/analysis/economy-production-graph.tsx");
+const { EconomyProductionPlanner } = await vite.ssrLoadModule("/features/progression/ui/analysis/economy-production-planner.tsx");
+const { economyCsv } = await vite.ssrLoadModule("/features/progression/ui/analysis/economy-workbench-common.tsx");
+const { buildEconomyAnalysis } = await vite.ssrLoadModule("/features/progression/domain/economy-analysis.ts");
 const analysis = buildEconomyAnalysis();
 function elements(tree) {
   const result = [];
@@ -43,22 +46,24 @@ function harness(Component, props = {}) { hooks.reset(); return { render() { hoo
 function field(tree, label) { const node = elements(tree).find(value => value.props["aria-label"] === label); assert(node, label); return node; }
 const asText = tree => renderToStaticMarkup(tree).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
-test("analysis tabs have a single focusable tab, linked hidden panels and preserve planner targets across navigation", () => {
+test("analysis tabs have a single focusable tab, only the active panel and preserve planner targets across navigation", () => {
   const h = harness(EconomyWorkbench, { onInspectItem() {} });
   let tree = h.render();
   const tabs = elements(tree).filter(node => node.props.role === "tab");
   assert.deepEqual(tabs.map(node => node.props["aria-selected"]), [true, false, false, false, false]);
   const panels = elements(tree).filter(node => node.props.role === "tabpanel");
-  assert.deepEqual(panels.map(node => node.props.hidden), [false, true, true, true, true]);
-  for (const tab of tabs) assert.equal(panels.find(panel => panel.props.id === tab.props["aria-controls"])?.props["aria-labelledby"], tab.props.id);
-  elements(tree).find(node => node.type === EconomyProductionGraph).props.onPlan("ceramic_jar");
+  assert.equal(panels.length, 1);
+  assert.equal(panels[0].props["aria-labelledby"], tabs[0].props.id);
+
+  elements(tree).find(node => typeof node.props.onPlan === "function").props.onPlan("ceramic_jar");
   tree = h.render();
-  assert.deepEqual(elements(tree).find(node => node.type === EconomyProductionPlanner).props.targets, { dried_berries: 1, ceramic_jar: 1 });
+  assert.deepEqual(elements(tree).find(node => node.props.targets !== undefined).props.targets, { dried_berries: 1, ceramic_jar: 1 });
   assert.equal(elements(tree).find(node => node.props["data-economy-tab"] === "plan").props["aria-selected"], true);
-  elements(tree).find(node => node.type === EconomyProductionPlanner).props.onSelect("glass");
+  elements(tree).find(node => node.props.targets !== undefined).props.onSelect("glass");
   tree = h.render();
-  assert.equal(elements(tree).find(node => node.type === EconomyProductionGraph).props.selectedId, "glass");
-  assert.equal(elements(tree).find(node => node.type === EconomyProductionPlanner).props.targets.ceramic_jar, 1);
+  assert.equal(elements(tree).find(node => typeof node.props.onPlan === "function").props.selectedId, "glass");
+  elements(tree).find(node => node.props["data-economy-tab"] === "plan").props.onClick();
+  assert.equal(elements(h.render()).find(node => node.props.targets !== undefined).props.targets.ceramic_jar, 1);
 });
 
 test("analysis tab keyboard navigation wraps, focuses selected controls and leaves ordinary Tab alone", () => {
@@ -75,7 +80,7 @@ test("analysis tab keyboard navigation wraps, focuses selected controls and leav
 test("balance shows all items, filters by name and category, and sort keeps undefined estimates last", () => {
   const h = harness(EconomyBalanceTable, { onSelect() {} });
   const rows = tree => elements(tree).filter(node => node.props["data-balance-item"]);
-  assert.equal(rows(h.render()).length, analysis.items.length);
+  assert.equal(rows(h.render()).length, 30);
   field(h.render(), "Поиск в таблице баланса").props.onChange({ target: { value: "МАЛИНА" } });
   assert.deepEqual(rows(h.render()).map(row => row.props["data-balance-item"]), ["berries"]);
   field(h.render(), "Категория в таблице баланса").props.onChange({ target: { value: "crafted" } });

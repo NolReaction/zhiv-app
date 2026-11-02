@@ -1,18 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useBranchState } from "@/features/progression/ui/shell/branch-session";
+
+import { useRef } from "react";
 import { Download } from "lucide-react";
 import { economyCatalog } from "@/features/economy/domain/model";
-import { buildingLabels } from "./graph";
-import { progressionScenarioReport, scenarioCsvRows, scenarioGoalNames, scenarioHighlights, scenarioReportState, scenarioResidentNames, scenarioSchedule, type ProgressionScenarioReport } from "./economy-scenarios";
+import { buildingLabels } from "@/features/progression/domain/labels";
+import { scenarioCsvRows, scenarioGoalNames, scenarioHighlights, scenarioReportState, scenarioResidentNames, scenarioSchedule, type ProgressionScenarioReport } from "@/features/progression/domain/economy-scenarios";
 import { downloadEconomyFile, economyCsv, economyNumber } from "./economy-workbench-common";
 import styles from "./economy-scenario-report.module.css";
 
-const days = (value: number | null) => value === null ? "—" : `${economyNumber(value)} дн.`;
+const days = (value: number | null) => value === null ? "-" : `${economyNumber(value)} дн.`;
 
-export function EconomyScenarioReport({ report = progressionScenarioReport }: { report?: ProgressionScenarioReport }) {
-  const [funding, setFunding] = useState("all"), [goal, setGoal] = useState("all"), [selectedId, setSelectedId] = useState("");
-  const [exportError, setExportError] = useState("");
+export function EconomyScenarioReport({ report }: { report: ProgressionScenarioReport }) {
+  const [funding, setFunding] = useBranchState("scenarios.funding", "all"), [goal, setGoal] = useBranchState("scenarios.goal", "all"), [selectedId, setSelectedId] = useBranchState("scenarios.selectedId", "");
+  const [exportError, setExportError] = useBranchState("scenarios.exportError", "");
   const detailRef = useRef<HTMLElement>(null);
   const state = scenarioReportState(report), available = state === "validated" || state === "review";
   const rows = available ? report.scenarios.filter(row => (goal === "all" || row.goal === goal)
@@ -27,7 +29,7 @@ export function EconomyScenarioReport({ report = progressionScenarioReport }: { 
   return <section className={styles.report} aria-label="Сроки прохождения" data-scenario-state={state}>
     <header className={styles.heading}><div><h3>Сколько занимает развитие</h3><p>Результаты прохождений с настоящими игровыми командами. Сравнивайте одинаковые цели и режимы игры.</p></div></header>
     <dl className={styles.goals}>
-      <div><dt>Дом 5</dt><dd>Получение последнего уровня дома — текущий финал основной главы.</dd></div>
+      <div><dt>Дом 5</dt><dd>Получение последнего уровня дома: текущий финал основной главы.</dd></div>
       <div><dt>Полное хозяйство</dt><dd>Максимумы всех построек, включая кладовую {economyCatalog.buildings.find(building => building.id === "warehouse")?.levels.at(-1)?.level}. Рецепты отмечены отдельно.</dd></div>
       <div><dt>Репутация</dt><dd>Постоянный ранг и бонусы у каждого жителя. Месячный вклад учитывается отдельно.</dd></div>
     </dl>
@@ -41,7 +43,7 @@ export function EconomyScenarioReport({ report = progressionScenarioReport }: { 
         <div className={styles.actions}><button type="button" onClick={() => exportReport("csv")}><Download size={15} aria-hidden="true" />CSV прогонов</button><button type="button" onClick={() => exportReport("json")}><Download size={15} aria-hidden="true" />JSON прогонов</button></div>
       </div>
       {exportError && <p className={styles.warning} role="alert">{exportError}</p>}
-      <p className={styles.note}>Дни — прошедшее календарное время от старта. «—» означает, что цель не достигнута к концу данного прогона; это не оценка невозможности её достичь. Seed задаёт повторяемый вариант случайных находок.</p>
+      <p className={styles.note}>Дни: прошедшее календарное время от старта. «-» означает, что цель не достигнута к концу данного прогона; это не оценка невозможности её достичь. Seed задаёт повторяемый вариант случайных находок.</p>
       <div className={styles.tableViewport} tabIndex={0} role="region" aria-label="Сравнение прохождений, горизонтальная прокрутка"><table>
         <caption>Каталог v{report.economyVersion} · семейство стратегий {report.policyVersion} · {rows.length} прогонов</caption>
         <thead><tr><th scope="col">Режим и цель</th><th scope="col">Дом 5</th><th scope="col">Производства</th><th scope="col">Все постройки</th><th scope="col">Обычные рецепты</th><th scope="col">Ранги</th><th scope="col">Все места</th><th scope="col">Время в игре</th></tr></thead>
@@ -55,8 +57,8 @@ export function EconomyScenarioReport({ report = progressionScenarioReport }: { 
       {selected && <section ref={detailRef} tabIndex={-1} className={styles.detail} aria-label="Подробности прохождения">
         <label className={styles.scenarioSelect}>Подробности прогона<select aria-label="Выбрать прогон" value={selected.id} onChange={event => setSelectedId(event.target.value)}>{rows.map(row => <option key={row.id} value={row.id}>{scenarioSchedule(row)} · {scenarioGoalNames[row.goal] ?? row.goal} · seed {row.seed} · {row.externalPearls ? "внешний бюджет" : "бесплатно"} · {row.manualSeconds} с · {row.id}</option>)}</select></label>
         <dl className={styles.metrics}><div><dt>Первый заход</dt><dd>{selected.firstMinutes} мин</dd></div><div><dt>Ручные команды</dt><dd>{economyNumber(selected.commandCount)}</dd></div><div><dt>Осталось жемчуга</dt><dd>{economyNumber(selected.pearlsRemaining)}</dd></div><div><dt>Осталось монет</dt><dd>{economyNumber(selected.coinsRemaining)}</dd></div></dl>
-        <p className={styles.note}>Время в игре включает ожидание производства внутри заходов. Время действий — число команд × {selected.manualSeconds} секунды; скорость кликов является допущением, а не измерением поведения людей.</p>
-        <p className={styles.note}>{selected.slotPolicy === "second-only" ? "Покупаются только вторые места." : selected.slotPolicy === "none" ? "Места не покупаются." : "Места покупаются по мере доступности и накопления жемчуга."} {selected.speedupPolicy === "earned" ? "Стройка ускоряется за доступный жемчуг." : "Ускорение строек за жемчуг выключено."} {selected.useMeals ? "Используется доступная еда." : "Без бонусов еды."} {selected.buySupplies ? "Открытые припасы можно покупать в лавках." : "Без закупки припасов."} {selected.opportunisticRoutes ? "Походы используются для нужных материалов." : "Без дополнительных материальных походов."} {selected.socialMode === "reputation" ? "Приоритет — ранги жителей и поддержание действующих бонусов." : selected.socialMode === "balanced" ? "Просьбы выполняются вместе с развитием хозяйства." : "Обычные просьбы используются для заработка."}</p>
+        <p className={styles.note}>Время в игре включает ожидание производства внутри заходов. Время действий: число команд × {selected.manualSeconds} секунды; скорость кликов является допущением, а не измерением поведения людей.</p>
+        <p className={styles.note}>{selected.slotPolicy === "second-only" ? "Покупаются только вторые места." : selected.slotPolicy === "none" ? "Места не покупаются." : "Места покупаются по мере доступности и накопления жемчуга."} {selected.speedupPolicy === "earned" ? "Стройка ускоряется за доступный жемчуг." : "Ускорение строек за жемчуг выключено."} {selected.useMeals ? "Используется доступная еда." : "Без бонусов еды."} {selected.buySupplies ? "Открытые припасы можно покупать в лавках." : "Без закупки припасов."} {selected.opportunisticRoutes ? "Походы используются для нужных материалов." : "Без дополнительных материальных походов."} {selected.socialMode === "reputation" ? "Приоритет: ранги жителей и поддержание действующих бонусов." : selected.socialMode === "balanced" ? "Просьбы выполняются вместе с развитием хозяйства." : "Обычные просьбы используются для заработка."}</p>
         <p className={styles.note}>{selected.relicPolicy === "earned" ? "Недостающие редкости для текущей стройки покупаются за заработанный жемчуг из доступной личной поставки." : "Редкости за жемчуг не покупаются."} {selected.goal === "all-capacity" ? "После производственных мест покупаются все торговые места; недельные поручения продолжают приносить жемчуг после максимальных рангов." : "Достижение целей этого прогона не требует покупки всех мест."}</p>
         <p className={styles.note}>{selected.neighborPolicy === "auto" ? `Берест купил ${selected.neighborSales} партий: выручка после комиссии ${economyNumber(selected.neighborProceeds)} монет. Товары произведены в этом прохождении; соблюдены ожидание и дневной бюджет. Конкуренция других игроков за общий бюджет не моделируется.` : "Автоматический выкуп Берестом в этом сценарии не используется."}</p>
         <p className={styles.note}>{selected.exchangePolicy === "duplicates" ? `Для текущей стройки обмениваются только лишние реликвии сверх всех будущих строительных требований. Обменов: ${selected.relicExchanges}; потрачено ${economyNumber(selected.exchangeCoins)} монет.` : "Обмен лишних реликвий отключён: этот сценарий отдельно показывает риск ожидания случайного типа находки."}</p>
@@ -66,7 +68,7 @@ export function EconomyScenarioReport({ report = progressionScenarioReport }: { 
         {selected.social && <><h4>Репутация в этом прохождении</h4><dl className={styles.snapshot}>{Object.entries(selected.social.reputation).map(([id, xp]) => <div key={id}><dt>{scenarioResidentNames[id] ?? id}</dt><dd>{economyNumber(xp)} / {economyNumber(selected.social!.maximumXp)}<small>бонус {economyNumber(selected.social!.bonusPercent[id] ?? 0)}% · тепло отношений {economyNumber(selected.social!.activityPercent[id] ?? 0)}%</small></dd></div>)}</dl><p className={styles.note}>Выполнено обычных просьб: {selected.social.ordinaryOrdersCompleted}. Завершено недельных договоров: {selected.social.completedWeekly}. Просрочено: {selected.social.expiredWeeklyCount}. {selected.social.funded ? "Материалы получены в игре и списаны настоящими командами." : "Этот прогон не подтверждает самостоятельное получение материалов."}</p></>}
       </section>}
       <details className={styles.assumptions}><summary>Как читать результаты и воспроизвести расчёт</summary><div>
-        <p>Это воспроизводимые стратегии с указанными приоритетами, а не гарантия срока для каждого человека и не доказательство самого быстрого прохождения. Рынок с другими игроками, ручная помощь администратора и социальные награды могут изменить результат.</p>
+        <p>Обмен жемчуга на золото в этих маршрутах не используется. Это воспроизводимые стратегии с указанными приоритетами, а не гарантия срока для каждого человека и не доказательство самого быстрого прохождения. Рынок с другими игроками, ручная помощь администратора и социальные награды могут изменить результат.</p>
         <p>Режим «с внешним бюджетом» отдельно добавляет указанный жемчуг, затем тратит его обычными командами с действующими ограничениями. Использование ускорений указано в подробностях прогона. Это проверка чувствительности, а не бесплатный подарок или включённая оплата.</p>
         <p>Разные seed показывают отдельные варианты случайности, а не доверительный интервал. Неполные прогоны не заменяются расчётом по средней находке.</p>
         <p>Полные журналы: <code>{report.evidencePath}</code>. Повтор: <code>node scripts/audit-progression-scenarios.mjs</code>; проверка публикации: <code>node scripts/build-progression-report.mjs --check</code>.</p>

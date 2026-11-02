@@ -323,7 +323,7 @@ test("offline product and other pages never receive the cached game at the wrong
   await prepareOfflineShell(harness);
   harness.responses.set(origin + "/", new Error("Offline"));
   assert.equal(await (await harness.dispatchFetch("/")).text(), shell.html);
-  for (const path of ["/site", "/site/", "/branch"]) {
+  for (const path of ["/site", "/site/"]) {
     harness.responses.set(origin + path, new Error("Offline"));
     const response = await harness.dispatchFetch(path);
     assert.equal(response.type, "error");
@@ -694,7 +694,7 @@ test("admin navigation and data always bypass offline cache and root-shell fallb
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "admin-network-only");
   await prepareOfflineShell(harness);
-  for (const path of ["/admin", "/admin/users", "/api/v1/admin/overview"]) {
+  for (const path of ["/admin", "/admin/users", "/branch", "/branch/reports", "/api/v1/admin/overview"]) {
     assert.equal(await harness.dispatchFetch(path), null);
   }
 });

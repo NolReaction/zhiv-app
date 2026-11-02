@@ -1,3 +1,4 @@
+import { currencyExchangeOffer } from "./currency-exchange";
 import { awardCraftSkills, experimentCanPractice, prepareCookingAttempt } from "./craft-skill";
 import { capturePlayerProgression, awardPlayerProgression } from "./player-progression";
 import { settleEconomyTapBoost } from "./tap-boost";
@@ -179,7 +180,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Груз не используется в этом действии", 400);
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
-  if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order", "skip_ship_voyage"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order", "skip_ship_voyage", "exchange_pearls_for_gold"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds" | "miningBatch" | "cooking" | "skillWorkSeconds">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, expedition?: Pick<EconomyCatalog["explorations"][number], "finds" | "loot">) => {
     if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) + (expedition ? expeditionMaximumBonus(expedition) : 0) > economyStorage(state).capacity)
@@ -194,6 +195,15 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   };
   if (!["start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
+    case "exchange_pearls_for_gold": {
+      const offer = currencyExchangeOffer(command.targetId);
+      if (!offer) return fail("ECONOMY_EXCHANGE_CHANGED", "Предложение изменилось. Обновите магазин");
+      if (command.totalPrice !== offer.pearls) return fail("ECONOMY_EXCHANGE_PRICE_CHANGED", "Цена обмена изменилась. Подтвердите её снова");
+      if (state.wallet.pearls < offer.pearls) return fail("ECONOMY_PEARLS", "Не хватает жемчуга для обмена");
+      if (state.wallet.coins > ECONOMY_MAX_BALANCE - offer.coins) return fail("ECONOMY_CAPACITY", "В кошельке не хватает места для золота");
+      state.wallet = { coins: state.wallet.coins + offer.coins, pearls: state.wallet.pearls - offer.pearls };
+      return `Обмен выполнен. Получено ${offer.coins.toLocaleString("ru-RU")} монет`;
+    }
     case "open_ship_voyage": {
       if (command.targetId !== "port") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Некорректный запрос порта", 400);
       if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");

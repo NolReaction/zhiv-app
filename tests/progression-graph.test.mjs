@@ -11,7 +11,7 @@ for (const recipe of catalog.recipes) recipe.requiredRecipes ??= {};
 const activeRecipes = catalog.recipes.filter(recipe => !recipe.retired);
 const activeExplorations = catalog.explorations.filter(route => !route.retired);
 const progressionRewards = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8"));
-const source = readFileSync(new URL("../features/progression/graph.ts", import.meta.url), "utf8");
+const source = readFileSync(new URL("../features/progression/domain/graph.ts", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const moneyContext = { exports: {}, structuredClone };
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/money.ts", import.meta.url), "utf8"),
@@ -22,7 +22,11 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/
 const prerequisiteContext = { exports: {} };
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/recipe-prerequisites.ts", import.meta.url), "utf8"),
   { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, prerequisiteContext);
+const labelsContext = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/progression/domain/labels.ts", import.meta.url), "utf8"),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, labelsContext);
 const context = { exports: {}, require: specifier => {
+  if (specifier === "./labels") return labelsContext.exports;
   if (specifier === "@/features/economy/domain/recipe-prerequisites") return prerequisiteContext.exports;
   if (specifier === "@/features/economy/domain/money") return moneyContext.exports;
   if (specifier === "@/features/economy/domain/rules") return { constructionTimePearlPrice: (seconds, config) => timeContext.exports.durationPearlPrice(seconds * 1000,
@@ -33,7 +37,7 @@ const context = { exports: {}, require: specifier => {
 } };
 vm.runInNewContext(code, context);
 const { progressionGraph: graph, buildProgressionGraph, getPrerequisiteIds, getProgressionResourceSource, buildingLabels, progressionLocations } = context.exports;
-const layoutSource = readFileSync(new URL("../features/progression/layout.ts", import.meta.url), "utf8");
+const layoutSource = readFileSync(new URL("../features/progression/domain/layout.ts", import.meta.url), "utf8");
 const layoutCode = ts.transpileModule(layoutSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const layoutContext = { exports: {}, require: specifier => {
   assert.equal(specifier, "./graph");

@@ -10,6 +10,7 @@ const catalog = readJson("../apps/api/src/main/resources/world/economy-catalog.j
 for (const recipe of catalog.recipes) recipe.requiredRecipes ??= {};
 const rewards = readJson("../apps/api/src/main/resources/world/progression-rewards-catalog.json");
 const storefrontCatalog = readJson("../apps/api/src/main/resources/world/storefront-catalog.json");
+const currencyExchangeCatalog = readJson("../apps/api/src/main/resources/world/currency-exchange-catalog.json");
 const plain = value => JSON.parse(JSON.stringify(value));
 function load(path, dependencies = {}) {
   const context = { exports: {}, structuredClone, require: id => {
@@ -27,10 +28,11 @@ const timePrice = load("../features/economy/domain/time-price.ts");
 const sale = load("../features/economy/domain/local-sale.ts", { "./model": money });
 const currencyShop = load("../features/economy/domain/currency-shop.ts", {
   "./money": money, "./time-price": timePrice, "./storefront": { storefrontCatalog },
+  "./currency-exchange": { currencyExchangeCatalog },
 });
 const gameRewards = load("../features/game/game-rewards.ts");
-const sources = load("../features/progression/economy-sources.ts", { "@/features/economy/domain/model": { economyCatalog: catalog, recipeBuildingLevel } });
-const model = load("../features/progression/economy-data.ts", {
+const sources = load("../features/progression/domain/economy-sources.ts", { "@/features/economy/domain/model": { economyCatalog: catalog, recipeBuildingLevel } });
+const model = load("../features/progression/domain/economy-data.ts", {
   "./economy-sources": sources,
   "@/features/economy/domain/model": { economyCatalog: catalog, recipeBuildingLevel },
   "@/features/economy/domain/money": money,
@@ -248,9 +250,9 @@ test("currency shop reference uses visible pearls and home quotes, excluding sto
   assert.deepEqual(plain(economy.currencyShop.pearlPackages.map(pack => [pack.pearls, pack.priceRub])), [[100, 99], [350, 299], [800, 599]]);
   assert.deepEqual(plain(economy.currencyShop.goldPrices), [20, 50, 100]);
   assert.deepEqual(plain(economy.currencyShop.goldByHome.map(row => row.offers.map(offer => offer.coins))),
-    Array.from({ length: 5 }, () => [1000, 2500, 5000]));
+    Array.from({ length: 5 }, () => [1000, 2750, 6000]));
   assert.equal(economy.currencyShop.productionBonusPercent, 0);
-  assert.equal(economy.currencyShop.maximumGold, 5000);
+  assert.equal(economy.currencyShop.maximumGold, 6000);
 });
 
 test("branch references all five stage packs and cosmetic prices without turning preview contents into free item sources", () => {

@@ -9,7 +9,7 @@ import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
 import { shipOrdersConfig } from "@/features/economy/domain/ship-orders";
 import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
 import { BARTER_HOME_LEVEL } from "@/features/economy/domain/barter-model";
-import { BASE_COINS_PER_PEARL, GOLD_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
+import { GOLD_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { storefrontCatalog } from "@/features/economy/domain/storefront";
 import { TRAVEL_COLLECTION_SECONDS, QUARRY_COLLECTION_SECONDS } from "@/features/world/domain/collection-book";
 import type { WorldHelpTarget } from "./world-help-types";
@@ -419,7 +419,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "Большие поручения повторяются: обычное даёт 20, сложное 40, мастерское 70 жемчужин. Новый выбор доступен через семь суток после принятия предыдущего.",
         "«Ещё» → «Магазин» открывает наборы. «+» рядом с монетами открывает «Золото», рядом с жемчугом - «Жемчуг». Для промокода внизу магазина нажмите «Ввести промокод»; код действует один раз на аккаунт.",
       ],
-      note: "Для подарка с предметами понадобится место в кладовой. Покупка за реальные деньги и обмен жемчуга на золото пока недоступны.",
+      note: "Для подарка с предметами понадобится место в кладовой. Во вкладке «Золото» можно обменять накопленный жемчуг на монеты. Покупки за реальные деньги пока недоступны.",
       action: { label: "К профилю и подаркам", target: { kind: "profile", tab: "profile" } },
       relatedIds: ["rewards", "pearls", "currency-shop-starters", "currency-shop-costumes", "currency-shop-exchange"],
     },
@@ -447,14 +447,15 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["wardrobe", "currency-shop-starters", "currency-shop"],
     },
     {
-      id: "currency-shop-exchange", group: "economy", title: "Как считается золото в магазине?", summary: "Единый курс для всех уровней дома",
+      id: "currency-shop-exchange", group: "economy", title: "Как обменять жемчуг на золото?", summary: "Пакеты монет с бонусом за объём",
       keywords: "магазин обмен золото монеты курс бонус дом производства постройки жемчуг пакет витрина",
-      paragraphs: [`Витрина показывает обмен для ${GOLD_SHOP_PACKAGES.map(pack => formatPearls(pack.pearls)).join(" / ")} жемчужин. Базовый курс: ${BASE_COINS_PER_PEARL * 2} монет за видимую жемчужину; большой пакет не даёт дополнительной скидки.`],
+      paragraphs: [`Доступные пакеты: ${GOLD_SHOP_PACKAGES.map(pack => `${formatPearls(pack.pearls)} жемчужин → ${pack.coins.toLocaleString("ru-RU")} монет`).join("; ")}. Бонус большого пакета уже включён в показанную сумму.`],
       steps: [
-        "Уровень дома, постройки и купленные места не меняют курс.",
-        "Пять минут базового труда стоят столько же монет, сколько одна видимая жемчужина в витрине.",
+        "Нажмите «+» рядом с монетами, выберите пакет во вкладке «Золото» и подтвердите обмен.",
+        "Жемчуг списывается, монеты приходят сразу после подтверждения сервером. Обратного обмена нет.",
+        "Уровень дома и постройки не меняют состав пакетов. При потере связи проверьте результат прежнего обмена, прежде чем начинать новый.",
       ],
-      note: "«+» рядом с монетами вверху карты открывает вкладку «Золото». Обмен пока недоступен. Монеты можно зарабатывать продажей NPC и заказами без жемчуга.",
+      note: "Покупки за реальные деньги не подключены. Монеты также можно заработать продажей товаров и заказами без жемчуга.",
       relatedIds: ["currency-shop", "production-slots", "resident-orders"],
     },
     {

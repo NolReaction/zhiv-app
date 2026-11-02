@@ -444,10 +444,11 @@ object EconomyRules {
 
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot", "skip_ship_voyage") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "exchange_pearls_for_gold", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot", "skip_ship_voyage") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage" -> EconomyShipOrders.command(state, command, now, reservedItems)
+            "exchange_pearls_for_gold" -> EconomyCurrencyExchange.exchange(state, command)
             "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)

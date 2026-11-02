@@ -246,4 +246,24 @@ class EconomyFishingShopTest {
             request.copy(totalPrice = 2), Instant.parse(shop.refreshAt).minusNanos(1)).first.wallet.pearls)
     }
 
+    @Test fun `mixed epic hooks keep their displayed coin price and improve weights instead of percentage points`() {
+        val spec=checkNotNull(EconomyRules.catalog.fishing)
+        val state=ready(4).copy(tradeRelations=EconomyTradeRelationsState(
+            reputation=mapOf("plesk" to 1600L,"leaftail" to 1600L),
+            activity=listOf("plesk","leaftail").associateWith { EconomyTradeActivity(10000,now.toString()) }))
+        for(id in listOf("dusk_hook","deep_hook")) {
+            val hook=spec.hooks.single { it.id==id }
+            assertEquals(400L,hook.price)
+            val travelling=checkNotNull(EconomyRules.catalog.leaftailShop).travelOffers.single { it.itemId==id }
+            assertEquals(hook.price,travelling.priceCoins)
+            assertEquals(1L,travelling.quantity)
+            for(resident in listOf("plesk","leaftail"))
+                assertEquals(360L,EconomyTradeRelations.discount(state,resident,hook.price,true,now=now))
+            val weights=EconomyRules.fishingClassWeights("dusk_rod",null,id)
+            val strong=weights.filter { it.first.rarity in setOf("epic","legendary") }.sumOf { it.second }.toDouble()/weights.sumOf { it.second }
+            assertEquals(0.6989247311827957,strong,1e-12)
+            assertTrue(strong-.65<.05)
+        }
+    }
+
 }

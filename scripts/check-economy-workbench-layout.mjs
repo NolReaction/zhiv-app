@@ -11,16 +11,17 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const runtime = process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES;
 const require = createRequire(runtime ? join(runtime, "package.json") : import.meta.url);
 const { chromium } = require("playwright");
+const reportFixture = await readFile(join(root, "features/progression/data/progression-scenarios.json"), "utf8");
 const entry = "virtual:economy-workbench-layout";
 const source = `
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { BranchPage } from "/features/progression/branch-page.tsx";
-import { buildEconomyAnalysis } from "/features/progression/economy-analysis.ts";
-import { progressionScenarioReport, scenarioReportState } from "/features/progression/economy-scenarios.ts";
+import { buildEconomyAnalysis } from "/features/progression/domain/economy-analysis.ts";
+import { scenarioReportState } from "/features/progression/domain/economy-scenarios.ts";
 import "/app/globals.css";
 window.__economyAnalysis = buildEconomyAnalysis();
-window.__scenarioReport = { state: scenarioReportState(progressionScenarioReport), report: progressionScenarioReport };
+window.__readScenarioReport = async () => { const report = await fetch("/branch/reports").then(response => response.json()); return { state: scenarioReportState(report), report }; };
 window.location.hash = "economy-analysis";
 createRoot(document.getElementById("root")).render(React.createElement(BranchPage));
 `;
@@ -36,6 +37,7 @@ try {
       resolveId(id) { if (id === entry) return `\0${id}`; },
       load(id) { if (id === `\0${entry}`) return source; },
       configureServer(vite) { vite.middlewares.use((request, response, next) => {
+        if (request.url === "/branch/reports") { response.setHeader("Content-Type", "application/json"); response.end(reportFixture); return; }
         if (request.url !== "/") return next();
         response.setHeader("Content-Type", "text/html");
         response.end('<!doctype html><html lang="ru"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Проверка экономики</title><script>globalThis.process={env:{NODE_ENV:"development"},browser:true};</script></head><body style="margin:0"><div id="root"></div><script type="module" src="/@id/__x00__virtual:economy-workbench-layout"></script></body></html>');
@@ -53,15 +55,15 @@ try {
   }
   async function noOverflow(label) {
     const size = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth,
-      panel: document.querySelector('[aria-label="Ингредиенты и расчёты экономики"]').clientWidth,
-      scroll: document.querySelector('[aria-label="Ингредиенты и расчёты экономики"]').scrollWidth }));
+      panel: document.querySelector('[aria-label="Анализ производства и баланса"]').clientWidth,
+      scroll: document.querySelector('[aria-label="Анализ производства и баланса"]').scrollWidth }));
     assert(size.document <= size.viewport + 1, `${label}: document overflow`);
     assert(size.scroll <= size.panel + 1, `${label}: economy panel overflow`);
   }
   for (const width of [320, 1024]) {
     await page.setViewportSize({ width, height: 850 });
     await page.goto(server.resolvedUrls.local[0]);
-    await page.getByRole("tab", { name: "Цепочки", exact: true }).waitFor();
+    await page.locator("[data-production-node]").first().waitFor();
     await page.locator("#economy-analysis").scrollIntoViewIfNeeded();
     await screenshot(`chains-${width}.png`);
     await noOverflow(`${width}/initial`);
@@ -92,7 +94,8 @@ try {
     cases++;
 
     await page.getByRole("tab", { name: "Баланс", exact: true }).click();
-    assert.equal(await page.locator("[data-balance-item]").count(), stats.items);
+    await page.locator("[data-balance-item]").first().waitFor();
+    assert.equal(await page.locator("[data-balance-item]").count(), Math.min(30, stats.items));
     await page.getByLabel("Поиск в таблице баланса").fill("малина");
     assert.equal(await page.locator("[data-balance-item]").count(), 1);
     assert.equal(await page.locator("[data-balance-item]").getAttribute("data-balance-item"), "berries");
@@ -122,7 +125,8 @@ try {
     await page.keyboard.press("End");
     assert.equal(await page.getByRole("tab", { name: "Прохождение", exact: true }).getAttribute("aria-selected"), "true");
     assert.equal(await page.getByRole("tab", { name: "Прохождение", exact: true }).evaluate(node => document.activeElement === node), true);
-    const scenarios = await page.evaluate(() => window.__scenarioReport);
+    const scenarios = await page.evaluate(() => window.__readScenarioReport());
+    await page.locator("[data-scenario-state]").waitFor();
     if (["validated", "review"].includes(scenarios.state)) {
       assert.equal(await page.locator("[data-scenario]").count(), scenarios.report.scenarios.length);
       await page.getByLabel("Бюджет в сценариях").selectOption("free");
@@ -150,6 +154,7 @@ try {
     cases++;
 
     await page.getByRole("tab", { name: "План", exact: true }).click();
+    await page.locator("[data-plan-launches]").waitFor();
     const initialLaunches = await page.locator("[data-plan-launches]").textContent();
     await page.getByLabel("Добавить запас", { exact: true }).selectOption("dried_berries");
     await page.getByRole("button", { name: "Добавить запас в список", exact: true }).click();

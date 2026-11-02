@@ -117,6 +117,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      ADMIN_API_ORIGIN: http://api:8080
     init: true
     # The bounded public weather proxy fetches MET Norway from the web runtime.
     # Keep the database network private and allow only outbound connectivity here.

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useId, useMemo, useRef, type PointerEvent } from "react";
 import { ArrowDown, ArrowRight, Expand, Minus, Plus } from "lucide-react";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
-import { buildEconomyAnalysis } from "./economy-analysis";
+import { buildEconomyAnalysis } from "@/features/progression/domain/economy-analysis";
 import { EconomyItemButton, economyDuration, economyNumber, stationName } from "./economy-workbench-common";
+import { useBranchState } from "@/features/progression/ui/shell/branch-session";
 import styles from "./economy-workbench.module.css";
 
 type Analysis = ReturnType<typeof buildEconomyAnalysis>;
@@ -50,7 +51,7 @@ export function productionGraphLayout(nodes: readonly Node[], edges: readonly Ed
 export function EconomyProductionGraph({ analysis, selectedId, onSelect, onPlan, onInspect }: {
   analysis: Analysis; selectedId: string; onSelect: (id: string) => void; onPlan: (id: string) => void; onInspect: (id: string) => void;
 }) {
-  const [all, setAll] = useState(false), [includeUses, setIncludeUses] = useState(false), [zoom, setZoom] = useState(0.85);
+  const [all, setAll] = useBranchState("chains.all", false), [includeUses, setIncludeUses] = useBranchState("chains.uses", false), [zoom, setZoom] = useBranchState("chains.zoom", 0.85);
   const viewport = useRef<HTMLDivElement>(null), drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const marker = useId().replaceAll(":", "");
   const graph = useMemo(() => productionGraphSelection(analysis.graph, selectedId, all, includeUses), [analysis, selectedId, all, includeUses]);
@@ -82,7 +83,7 @@ export function EconomyProductionGraph({ analysis, selectedId, onSelect, onPlan,
       </div>
       <div className={styles.zoom}><button type="button" aria-label="Уменьшить схему" disabled={zoom <= 0.45} onClick={() => setZoom(value => Math.max(0.45, value - 0.15))}><Minus size={16} /></button><output aria-label="Масштаб схемы">{Math.round(zoom * 100)}%</output><button type="button" aria-label="Увеличить схему" disabled={zoom >= 1.3} onClick={() => setZoom(value => Math.min(1.3, value + 0.15))}><Plus size={16} /></button></div>
     </div>
-    <div className={styles.graphLegend}>{!all && <label className={styles.checkbox}><input type="checkbox" checked={includeUses} onChange={event => setIncludeUses(event.target.checked)} />Показать применения</label>}<span><i />Товар</span><span><i data-operation />Операция</span><span><ArrowRight size={14} />Число на связи — количество за запуск</span></div>
+    <div className={styles.graphLegend}>{!all && <label className={styles.checkbox}><input type="checkbox" checked={includeUses} onChange={event => setIncludeUses(event.target.checked)} />Показать применения</label>}<span><i />Товар</span><span><i data-operation />Операция</span><span><ArrowRight size={14} />Число на связи: количество за запуск</span></div>
     <div ref={viewport} className={styles.graphViewport} style={{ maxHeight: Math.max(180, layout.height * zoom + 16) }} tabIndex={0} role="region" aria-label="Схема производства: прокрутка или перетаскивание, товары открываются нажатием" data-production-graph onPointerDown={pointerDown} onPointerMove={event => {
       if (!drag.current) return;
       event.currentTarget.scrollLeft = drag.current.left - (event.clientX - drag.current.x);
@@ -116,9 +117,9 @@ export function EconomyProductionGraph({ analysis, selectedId, onSelect, onPlan,
     {selected && <div className={styles.productCard}>
       <div className={styles.productHeading}><PlayerItemIcon itemId={selected.id} size={43} /><div><span className={styles.eyebrow}>Выбранный товар</span><h3>{selected.name}</h3></div><div className={styles.actions}><button type="button" onClick={() => onPlan(selected.id)}>В план <Plus size={15} /></button><button type="button" onClick={() => onInspect(selected.id)}>Все применения <ArrowDown size={15} /></button></div></div>
       <dl className={styles.metrics}>
-        <div><dt>Базовая продажа</dt><dd>{selected.npcPrice === null ? "—" : economyNumber(selected.npcPrice)} <small>монет</small></dd></div>
+        <div><dt>Базовая продажа</dt><dd>{selected.npcPrice === null ? "-" : economyNumber(selected.npcPrice)} <small>монет</small></dd></div>
         <div><dt>Полная работа</dt><dd>{economyDuration(selected.fullWorkSeconds)}</dd></div>
-        <div><dt>Запусков с нуля</dt><dd>{selected.launches === null ? "—" : selected.launches}</dd></div>
+        <div><dt>Запусков с нуля</dt><dd>{selected.launches === null ? "-" : selected.launches}</dd></div>
         <div><dt>Повторяемых применений</dt><dd>{selected.recurringUses}</dd></div>
       </dl>
       <div className={styles.sourceGrid}>{selected.sourceIds.map(id => sources.get(id)).filter(source => !!source).map(source => <article className={styles.sourceCard} key={source.id}>

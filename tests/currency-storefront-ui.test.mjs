@@ -109,7 +109,7 @@ test("wallet currency entries keep their page and show visible pearls with ruble
   assert.doesNotMatch(pearl.html, /6500|6 500|starter_home_/);
   const gold = harness(state(1), "gold").render();
   assert.match(gold.html, /Золото за жемчуг/);
-  assert.equal(gold.nodes.filter(node => node.props["data-shop-offer"]).length, 3);
+  assert.equal((gold.html.match(/data-shop-offer=/g) ?? []).length, 3);
   assert.doesNotMatch(gold.html, /starter_home_|₽/);
 });
 
@@ -130,7 +130,8 @@ test("browsing every store department never reads or modifies balances and retai
   const before = structuredClone({ buildings: snapshot.buildings, jobs: snapshot.jobs });
   for (const page of ["starters", "costumes", "pearls", "gold"]) {
     const { html, nodes } = harness(snapshot, page).render();
-    assert.match(html, /Покупки и обмен пока недоступны/);
+    if (page !== "gold") assert.match(html, /Покупки за реальные деньги пока недоступны/);
+    else assert.doesNotMatch(html, /Обмен скоро|обмен пока недоступны/);
     assert.match(html, /У меня есть промокод/);
     for (const action of nodes.filter(node => node.type === "button" && node.props.role !== "tab")) {
       assert.equal(action.props.disabled, true);

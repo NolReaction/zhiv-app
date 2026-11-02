@@ -36909,7 +36909,7 @@
                         {
                          "name":"radius",
                          "type":"float",
-                         "value":85
+                         "value":102
                         }],
                  "rotation":0,
                  "type":"",
@@ -36948,7 +36948,7 @@
                         {
                          "name":"radius",
                          "type":"float",
-                         "value":78
+                         "value":112
                         }],
                  "rotation":0,
                  "type":"",
@@ -36987,7 +36987,7 @@
                         {
                          "name":"radius",
                          "type":"float",
-                         "value":85
+                         "value":112
                         }],
                  "rotation":0,
                  "type":"",
@@ -37026,7 +37026,7 @@
                         {
                          "name":"radius",
                          "type":"float",
-                         "value":85
+                         "value":112
                         }],
                  "rotation":0,
                  "type":"",
@@ -37065,7 +37065,7 @@
                         {
                          "name":"radius",
                          "type":"float",
-                         "value":85
+                         "value":100
                         }],
                  "rotation":0,
                  "type":"",
@@ -37181,6 +37181,126 @@
                  "width":0,
                  "x":503.8,
                  "y":589.5
+                },
+                {
+                 "height":0,
+                 "id":612,
+                 "name":"workshop-path-torch",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                  {
+                   "name":"color",
+                   "type":"color",
+                   "value":"#ffffc47e"
+                  },
+                  {
+                   "name":"flicker",
+                   "type":"float",
+                   "value":0.055
+                  },
+                  {
+                   "name":"intensity",
+                   "type":"float",
+                   "value":0.82
+                  },
+                  {
+                   "name":"kind",
+                   "type":"string",
+                   "value":"torch"
+                  },
+                  {
+                   "name":"radius",
+                   "type":"float",
+                   "value":115
+                  }
+                 ],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":390,
+                 "y":724
+                },
+                {
+                 "height":0,
+                 "id":613,
+                 "name":"noticeboard-path-torch",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                  {
+                   "name":"color",
+                   "type":"color",
+                   "value":"#ffffd395"
+                  },
+                  {
+                   "name":"flicker",
+                   "type":"float",
+                   "value":0.055
+                  },
+                  {
+                   "name":"intensity",
+                   "type":"float",
+                   "value":0.92
+                  },
+                  {
+                   "name":"kind",
+                   "type":"string",
+                   "value":"torch"
+                  },
+                  {
+                   "name":"radius",
+                   "type":"float",
+                   "value":122
+                  }
+                 ],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":805,
+                 "y":413
+                },
+                {
+                 "height":0,
+                 "id":614,
+                 "name":"market-path-torch",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                  {
+                   "name":"color",
+                   "type":"color",
+                   "value":"#ffffc887"
+                  },
+                  {
+                   "name":"flicker",
+                   "type":"float",
+                   "value":0.055
+                  },
+                  {
+                   "name":"intensity",
+                   "type":"float",
+                   "value":0.88
+                  },
+                  {
+                   "name":"kind",
+                   "type":"string",
+                   "value":"torch"
+                  },
+                  {
+                   "name":"radius",
+                   "type":"float",
+                   "value":116
+                  }
+                 ],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":348,
+                 "y":1131
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -57621,7 +57741,7 @@
          "y":0
         }],
  "nextlayerid":205,
- "nextobjectid":612,
+ "nextobjectid":615,
  "orientation":"orthogonal",
  "properties":[
         {

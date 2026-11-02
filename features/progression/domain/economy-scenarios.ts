@@ -1,7 +1,6 @@
 import { z } from "zod";
 import economy from "@/apps/api/src/main/resources/world/economy-catalog.json";
 import rewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
-import reportJson from "./data/progression-scenarios.json";
 import { progressionCatalogFingerprint } from "./scenario-fingerprint";
 
 const nonnegative = z.number().finite().nonnegative();
@@ -35,9 +34,6 @@ export const progressionScenarioReportSchema = z.object({
 }).strict();
 export type ProgressionScenario = z.infer<typeof scenarioSchema>;
 export type ProgressionScenarioReport = z.infer<typeof progressionScenarioReportSchema>;
-// JSON unions infer absent ledger keys as optional undefined. Validate the actual
-// sparse dictionaries instead of asserting that every inferred value is numeric.
-export const progressionScenarioReport = progressionScenarioReportSchema.parse(reportJson);
 
 export function scenarioReportState(report: ProgressionScenarioReport, currentFingerprint = progressionCatalogFingerprint(economy, rewards)) {
   if (report.status !== "ready" || report.scenarios.length === 0) return "pending";

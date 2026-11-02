@@ -780,7 +780,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
         <div className={styles.sheetBody}>
           {panel === "orders" && <WorldOrderJournal tutorialOnly={mainCourseActive} key={`${ownerPublicId}:${orderEntry.request}`} economy={economy} residentId={orderEntry.residentId} introducedResidents={introducedResidents} onNavigateExpeditions={openExpeditions} onNavigateStation={openStation} />}
           {panel === "help" && <WorldHelp key={`${ownerPublicId}:${helpEntry.request}`} economy={economy} world={world} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} isOnline={isOnline} context={helpEntry.context} initialTopicId={helpEntry.topicId} onNavigate={navigateHelp} onReplayTutorial={replayOnboarding} />}
-          {panel === "shop" && <CurrencyShopPanel key={`${ownerPublicId}:${shopPage}`} state={economy.snapshot} initialPage={shopPage} onRedeemed={economy.reconcile} />}
+          {panel === "shop" && <CurrencyShopPanel key={`${ownerPublicId}:${shopPage}`} state={economy.snapshot} economy={economy} initialPage={shopPage} onRedeemed={economy.reconcile} />}
           {panel === "economy" && <EconomyPanel key={`${economyTab}:${economyFocusId ?? ""}`} economy={economy} initialTab={economyTab} initialFocusId={economyFocusId} standalone onNavigate={openEconomy} onOpenNeighbor={openNeighbor} />}
           {WORLD_PRESENTATION.streakDecor && panel === "customize" && <div className={styles.panel}>
             <div className={styles.panelHeading}><span className={styles.eyebrow}>ДОМИК ПО ТВОЕМУ ВКУСУ</span><p>Выбирай, что оставить у дома. Подарки сохраняются, даже когда выключены.</p></div>

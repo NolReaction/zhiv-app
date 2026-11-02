@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Children, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
@@ -32,37 +31,21 @@ const { CurrencyShopPanel } = await vite.ssrLoadModule("/features/economy/ui/mar
 const { worldHelpTopics } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 
-test("gold preview explains the current production bonus and has no exchange action", () => {
-  const state = { catalog: economyCatalog, buildings: { home: 3, workshop: 3, garden: 2, woodlot: 2,
-    warehouse: 10, bridge: 1, lighthouse: 1 }, jobs: [] };
-  const tree = CurrencyShopPanel({ state });
-  const html = renderToStaticMarkup(tree);
-  assert.match(html, /50 монет/);
-  assert.match(html, /Одинаковый курс на всех уровнях дома/);
-  assert.doesNotMatch(html, /Как растёт бонус|Ваш бонус/);
-  assert.match(html, /Покупки и обмен пока недоступны/);
-  const actions = [];
-  function visit(element) {
-    if (!isValidElement(element)) return;
-    if (element.type === "button" && element.props.role !== "tab") actions.push(element);
-    Children.forEach(element.props.children, visit);
-  }
-  visit(tree);
-  assert.equal(actions.length, shop.GOLD_SHOP_PACKAGES.length);
-  for (const action of actions) {
-    assert.equal(action.props.disabled, true);
-    assert.equal(action.props.onClick, undefined);
-    assert.equal(action.props.formAction, undefined);
-  }
+test("gold offers show totals and bonuses without service mathematics or enabled cash purchases", () => {
+  const state = { catalog: economyCatalog, buildings: { home: 3 }, jobs: [] };
+  const html = renderToStaticMarkup(CurrencyShopPanel({ state }));
+  assert.match(html, /Включая \+250 бонусом \(10%\)/);
+  assert.match(html, /Включая \+1 000 бонусом \(20%\)/);
+  assert.doesNotMatch(html, /пяти минут|базовой работы|Одинаковый курс|Обмен скоро|₽/);
+  assert.equal((html.match(/data-shop-offer=/g) ?? []).length, shop.GOLD_SHOP_PACKAGES.length);
+  assert.equal((html.match(/<button[^>]*disabled=""[^>]*aria-label="Обменять/g) ?? []).length, 3, "missing controller cannot exchange");
 });
 
-test("shop help gives the same current unit ratio, costs and completed-production terms", () => {
+test("shop help describes the active exchange and matching visible package sizes", () => {
   const topic = worldHelpTopics().find(entry => entry.id === "currency-shop-exchange");
-  assert.ok(topic);
   const answer = [...topic.paragraphs ?? [], ...topic.steps ?? [], topic.note ?? ""].join(" ");
-  assert.ok(answer.includes(shop.GOLD_SHOP_PACKAGES.map(pack => formatPearls(pack.pearls)).join(" / ")));
-  assert.ok(answer.includes(`${shop.BASE_COINS_PER_PEARL * 2} монет за видимую жемчужину`));
-  assert.match(answer, /курс.*не меня|не.*меня.*курс/i);
-  assert.match(answer, /Обмен пока недоступен/);
-  assert.ok(answer.length <= 900);
+  for (const pack of shop.GOLD_SHOP_PACKAGES) assert.ok(answer.includes(formatPearls(pack.pearls)));
+  assert.doesNotMatch(answer, /Обмен пока недоступен|пяти минут|базовой работы/);
+  assert.match(answer, /подтверд|Подтверд/);
+  assert.ok(answer.length <= 1100);
 });

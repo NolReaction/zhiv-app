@@ -480,6 +480,7 @@ export function AdminDashboard() {
       <div className={styles.workspace}>
         <header className={styles.header}>
           <div><Link className={styles.brand} href="/">Я живой <span>/ Управление</span></Link><p><ShieldCheck size={15} />Закрытая панель<span className={styles.headerDivider}>·</span>{access.displayName}</p></div>
+          <Link href="/branch" className={styles.backLink} prefetch={false}>Мастерская мира<ArrowUpRight size={17} /></Link>
           <Link href="/" className={styles.backLink}><ArrowLeft size={17} />В приложение</Link>
         </header>
         <Tabs value={tab} onValueChange={value => setTab(value as AdminTab)} className={styles.tabs}>

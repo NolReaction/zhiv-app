@@ -61,8 +61,8 @@ test("moving a torch gets new geometry and memory identity while light styling i
     forestTorchGeometryKey([torch({ id: "second" }), torch()]));
 });
 
-test("all six authored torch feet stay blocked without disconnecting travel markers at any building tier", () => {
-  assert.equal(TILED_WORLD.lights.filter(light => light.kind === "torch" && light.enabled !== false).length, 6);
+test("all nine authored path torch feet stay blocked without disconnecting travel markers at any building tier", () => {
+  assert.equal(TILED_WORLD.lights.filter(light => light.kind === "torch" && light.enabled !== false).length, 9);
   for (let level = 0; level <= 5; level++) {
     const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: Math.max(1, level), workshop: level, quarry: level });
     const nav = createWorldNavigation(scene);

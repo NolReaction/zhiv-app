@@ -1,5 +1,5 @@
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
-import { buildingLabels } from "./graph";
+import { buildingLabels } from "@/features/progression/domain/labels";
 import styles from "./economy-workbench.module.css";
 
 export const economyNumber = (value: number) => value.toLocaleString("ru-RU", { maximumFractionDigits: 2 });

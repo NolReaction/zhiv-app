@@ -243,7 +243,7 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("saving"), /очередь восстанавливается после перезагрузки/);
   assert.match(answer("saving"), /покупки, продажи и получение наград требуют подтверждённой связи/);
   assert.match(answer("saving"), /Продолжить здесь/);
-  assert.match(answer("currency-shop"), /Покупка за реальные деньги.*недоступны/);
+  assert.match(answer("currency-shop"), /Покупки за реальные деньги.*недоступны/);
 });
 
 test("food guidance names the choice tile and makes spending an explicit second action", () => {
@@ -285,8 +285,10 @@ test("premium shop guidance offers stage packs and costume previews while keepin
   assert.match(answer("currency-shop"), /«\+» рядом с монетами.*«Золото».*рядом с жемчугом - «Жемчуг»/);
   assert.match(answer("currency-shop"), /«Ещё» → «Магазин» открывает наборы/);
   assert.match(answer("currency-shop"), /внизу магазина нажмите «Ввести промокод»/);
-  assert.match(answer("currency-shop"), /Покупка за реальные деньги и обмен жемчуга на золото пока недоступны/);
-  assert.match(answer("currency-shop-exchange"), /«\+» рядом с монетами.*вкладку «Золото». Обмен пока недоступен/);
+  assert.match(answer("currency-shop"), /Покупки за реальные деньги пока недоступны/);
+  assert.match(answer("currency-shop-exchange"), /выберите пакет во вкладке «Золото» и подтвердите обмен/);
+  assert.match(answer("currency-shop-exchange"), /Обратного обмена нет/);
+  assert.doesNotMatch(answer("currency-shop-exchange"), /Пять минут|базового труда|Обмен пока недоступен/);
   const starters = answer("currency-shop-starters");
   assert.match(starters, /текущего завершённого уровня дома/);
   assert.match(starters, /149 ₽ \/ 299 ₽ \/ 399 ₽ \/ 499 ₽ \/ 599 ₽/);

@@ -122,6 +122,32 @@ test("actual map uses one aligned home lamp at every level plus the working mine
     "Tiled intensity=0 still disables a lamp that follows its building");
 });
 
+test("market and fishing shop light their painted glass while the ruined market stays dark", async () => {
+  const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const lamps = forestLightSources(map, { levels: { market: 1 } }).filter(light => ["market", "plesk-shop"].includes(light.siteId));
+  assert.equal(lamps.length, 3);
+  assert.equal(forestLightSources(map, { levels: { market: 0 } }).some(light => light.siteId === "market"), false);
+  assert.equal(forestLightSources(map, { levels: { market: 1 }, showBuildings: false })
+    .some(light => ["market", "plesk-shop"].includes(light.siteId)), false);
+  for (const lamp of lamps) {
+    const site = map.sites.find(site => site.id === lamp.siteId), visual = site.states.find(state => state.level === 1);
+    const file = fileURLToPath(new URL(`../public${visual.image.split("?")[0]}`, import.meta.url));
+    const { width, height } = await sharp(file).metadata();
+    const pixelMap = { ...map, lights: [], sites: [{ ...site, bounds: { x: 0, y: 0, width, height },
+      states: [{ ...visual, geometry: { bounds: { x: 0, y: 0, width, height } } }] }] };
+    const pixel = forestLightSources(pixelMap).find(light => light.id === lamp.id);
+    const { data, info } = await sharp(file).ensureAlpha().extract({
+      left: Math.round(pixel.position.x - pixel.glass.width / 2), top: Math.round(pixel.position.y - pixel.glass.height / 2),
+      width: Math.round(pixel.glass.width), height: Math.round(pixel.glass.height),
+    }).raw().toBuffer({ resolveWithObject: true });
+    let warm = 0;
+    for (let offset = 0; offset < data.length; offset += 4) {
+      if (data[offset] > 210 && data[offset + 1] > 130 && data[offset] > data[offset + 2] && data[offset + 3] > 240) warm++;
+    }
+    assert.ok(warm > info.width * info.height * .2, `${lamp.id} follows actual amber glass, preserving its dark frame`);
+  }
+});
+
 test("disabled authored lamps suppress their automatic building source without hiding other lights", async () => {
   const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
   const authored = map.lights.find(light => light.id === "home-lantern");

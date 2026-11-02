@@ -30705,7 +30705,7 @@
         "y": 277.398453627629
       },
       "kind": "torch",
-      "radius": 85,
+      "radius": 102,
       "intensity": 1,
       "color": "#ffb45d",
       "flicker": 0.1
@@ -30717,7 +30717,7 @@
         "y": 249
       },
       "kind": "torch",
-      "radius": 78,
+      "radius": 112,
       "intensity": 1,
       "color": "#ffbc72",
       "flicker": 0.13
@@ -30729,7 +30729,7 @@
         "y": 791.502015265696
       },
       "kind": "torch",
-      "radius": 85,
+      "radius": 112,
       "intensity": 1,
       "color": "#ffb45d",
       "flicker": 0.1
@@ -30741,7 +30741,7 @@
         "y": 998.474779387733
       },
       "kind": "torch",
-      "radius": 85,
+      "radius": 112,
       "intensity": 1,
       "color": "#ffb45d",
       "flicker": 0.1
@@ -30753,7 +30753,7 @@
         "y": 684.858008048534
       },
       "kind": "torch",
-      "radius": 85,
+      "radius": 100,
       "intensity": 1,
       "color": "#ffb45d",
       "flicker": 0.1
@@ -30787,6 +30787,42 @@
       "height": 24,
       "enabled": false,
       "manualPosition": true
+    },
+    {
+      "id": "workshop-path-torch",
+      "position": {
+        "x": 390,
+        "y": 724
+      },
+      "kind": "torch",
+      "radius": 115,
+      "intensity": 0.82,
+      "color": "#ffc47e",
+      "flicker": 0.055
+    },
+    {
+      "id": "noticeboard-path-torch",
+      "position": {
+        "x": 805,
+        "y": 413
+      },
+      "kind": "torch",
+      "radius": 122,
+      "intensity": 0.92,
+      "color": "#ffd395",
+      "flicker": 0.055
+    },
+    {
+      "id": "market-path-torch",
+      "position": {
+        "x": 348,
+        "y": 1131
+      },
+      "kind": "torch",
+      "radius": 116,
+      "intensity": 0.88,
+      "color": "#ffc887",
+      "flicker": 0.055
     }
   ],
   "occluders": [

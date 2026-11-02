@@ -183,3 +183,6 @@
 
 @media (max-width: 600px) { .expeditionAnalysis { padding: 14px 12px 18px; } }
 @media (max-width: 360px) { .tabs button { padding-inline: 6px; } .tabs button svg { display: none; } }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0; font-size: 12px; }
+.pagination button { background: #243621; color: #d7e8c7; border: 1px solid #a4bb8040; border-radius: 8px; padding: 9px 13px; }
+.pagination button:disabled { opacity: .4; }

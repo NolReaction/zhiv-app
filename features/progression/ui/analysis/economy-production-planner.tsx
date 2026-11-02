@@ -1,10 +1,12 @@
 "use client";
 
+import { useBranchState } from "@/features/progression/ui/shell/branch-session";
+
 import { useMemo, useState } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
 import { economyCatalog } from "@/features/economy/domain/model";
-import { buildEconomyAnalysis } from "./economy-analysis";
-import { buildingsAtHomeLevel, planEconomyProduction } from "./economy-plan";
+import { buildEconomyAnalysis } from "@/features/progression/domain/economy-analysis";
+import { buildingsAtHomeLevel, planEconomyProduction } from "@/features/progression/domain/economy-plan";
 import { EconomyItemButton, downloadEconomyFile, economyCsv, economyDuration, economyNumber, stationName } from "./economy-workbench-common";
 import styles from "./economy-workbench.module.css";
 
@@ -32,8 +34,8 @@ function QuantityEditor({ title, label, items, value, onChange, maximum = 20 }: 
 export function EconomyProductionPlanner({ analysis, targets, onTargets, onSelect }: {
   analysis: Analysis; targets: Counts; onTargets: (targets: Counts) => void; onSelect: (id: string) => void;
 }) {
-  const [inventory, setInventory] = useState<Counts>({}), [home, setHome] = useState(0), [slots, setSlots] = useState(1);
-  const [sources, setSources] = useState<Record<string, string>>({}), [shown, setShown] = useState(40), [exportError, setExportError] = useState("");
+  const [inventory, setInventory] = useBranchState<Counts>("planner.inventory", {}), [home, setHome] = useBranchState("planner.home", 0), [slots, setSlots] = useBranchState("planner.slots", 1);
+  const [sources, setSources] = useBranchState<Record<string, string>>("planner.sources", {}), [shown, setShown] = useBranchState("planner.shown", 40), [exportError, setExportError] = useBranchState("planner.exportError", "");
   const options = useMemo(() => ({ targets, inventory,
     ...(home ? { buildings: buildingsAtHomeLevel(home) } : {}),
     slots: Object.fromEntries(["garden", "woodlot", "workshop", "kiln", "dryer"].map(id => [id, slots])), sourceByItem: sources }), [targets, inventory, home, slots, sources]);

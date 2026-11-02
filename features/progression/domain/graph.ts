@@ -45,9 +45,8 @@ export type ProgressionEdge = {
 
 export type ProgressionGraph = { nodes: ProgressionNode[]; edges: ProgressionEdge[] };
 
-export const buildingLabels: Record<string, string> = {
-  home: "Дом", garden: "Ягодный куст", woodlot: "Лесозаготовки", quarry: "Шахта", kiln: "Печь", workshop: "Верстак", dryer: "Костёр", warehouse: "Кладовая", bridge: "Мост", lighthouse: "Маяк",
-};
+import { buildingLabels } from "./labels";
+export { buildingLabels } from "./labels";
 export const progressionLocations = [
   { id: "place:home", title: "Дом", icon: "🏠", buildingIds: ["home", "warehouse"], description: "Дом на полянке. Уровень дома открывает новые возможности хозяйства; кладовая расширяется отдельно. Её улучшение открывается из верхнего заголовка окна запасов рядом с названием и уровнем." },
   { id: "bush", title: "Ягодный куст", icon: "🫐", buildingIds: ["garden"], description: "Нажмите карточку ягоды: выращивание начнётся сразу, состав и нехватка видны на ней. Ягоды на кусте созревают по таймеру. По нажатию «Собрать всё» Мохлик за один подход принесёт все уже созревшие ягоды. Общая серверная фаза длится не менее 8 секунд; перезагрузка сохраняет сбор. Затем урожай поступит в кладовую. Полив сохраняет влажность, но не сокращает срок заказа." },

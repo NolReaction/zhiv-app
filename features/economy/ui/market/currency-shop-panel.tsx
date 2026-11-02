@@ -2,13 +2,15 @@
 
 import { PromoCodeForm } from "@/features/promo/promo-code-form";
 import { useId, useRef, useState } from "react";
-import { ArrowRight, Coins, Gem, Gift, Shirt } from "lucide-react";
+import { Coins, Gem, Gift, Shirt } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EconomyView } from "@/features/economy/domain/model";
-import { currencyShopGoldOffers, BASE_COINS_PER_PEARL, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
+import { PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { formatPearls } from "@/features/economy/domain/money";
+import type { EconomyController } from "@/features/economy/sync/use-economy";
+import { CurrencyGoldExchange } from "./currency-gold-exchange";
 import { CostumeOffers, StarterOffer } from "./currency-shop-offers";
 import styles from "./currency-shop-panel.module.css";
 
@@ -23,8 +25,8 @@ function CurrencyPile({ kind, tier }: { kind: "pearls" | "coins"; tier: number }
   </div>;
 }
 
-/** Purchases remain a preview; the separate promo form redeems a server-confirmed gift. */
-export function CurrencyShopPanel({ state, onRedeemed, initialPage = "starters" }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown>; initialPage?: CurrencyShopPage }) {
+/** Cash offers remain previews; gold exchange and promo gifts use server commands. */
+export function CurrencyShopPanel({ state, economy, onRedeemed, initialPage = "starters" }: { state: EconomyView | null; economy?: EconomyController; onRedeemed?: () => void | Promise<unknown>; initialPage?: CurrencyShopPage }) {
   const [page, setPage] = useState<CurrencyShopPage>(initialPage);
   const id = useId(), tabs = useRef<Array<HTMLButtonElement | null>>([]);
   function changePage(next: CurrencyShopPage) {
@@ -49,7 +51,7 @@ export function CurrencyShopPanel({ state, onRedeemed, initialPage = "starters" 
         else return;
         event.preventDefault(); changePage(pages[next].id); tabs.current[next]?.focus();
       }}><entry.icon size={18} aria-hidden="true" />{entry.label}</button>)}</div>
-    <p className={styles.preview} id={`${id}-preview`}>Витрина готовится к открытию. Покупки и обмен пока недоступны.</p>
+    {page !== "gold" && <p className={styles.preview} id={`${id}-preview`}>Покупки за реальные деньги пока недоступны.</p>}
     <div className={styles.page} role="tabpanel" id={`${id}-page`} aria-labelledby={`${id}-${page}`} tabIndex={0}>
       {page === "starters" && <StarterOffer state={state} previewId={`${id}-preview`} />}
       {page === "costumes" && <CostumeOffers previewId={`${id}-preview`} />}
@@ -61,19 +63,8 @@ export function CurrencyShopPanel({ state, onRedeemed, initialPage = "starters" 
           <button type="button" disabled aria-describedby={`${id}-preview`}><span>{number(pack.priceRub)} ₽</span><small>Скоро</small></button>
         </article>)}</div>
       </> : page === "gold" ? <>
-        <div className={styles.heading}><h3>Золото за жемчуг</h3><p>Одинаковый курс на всех уровнях дома</p></div>
-        {state ? <>
-          <div className={styles.development}>
-            <strong>1 жемчужина <span>= {BASE_COINS_PER_PEARL * 2} монет</span></strong>
-            <p>Цена пяти минут базовой работы. Размер пакета и уровень построек не меняют курс.</p>
-          </div>
-          <div className={styles.packages} data-gold="true">{currencyShopGoldOffers(state).map((pack, index) => <article className={styles.package} key={pack.id} data-shop-offer={`gold-${pack.id}`}>
-            <CurrencyPile kind="coins" tier={index + 1} /><h4>{pack.name}</h4>
-            <strong className={styles.amount}><ItemIcon itemId="coins" size={22} />{number(pack.coins)}</strong>
-            <div className={styles.exchange}><ItemIcon itemId="pearls" size={18} /><span>{formatPearls(pack.pearls)}</span><ArrowRight size={14} aria-hidden="true" /><span>золото</span></div>
-            <button type="button" disabled aria-describedby={`${id}-preview`}>Обмен скоро</button>
-          </article>)}</div>
-        </> : <p className={styles.loading} role="status">Загружаем полянку…</p>}
+        <div className={styles.heading}><h3>Золото за жемчуг</h3></div>
+        {state ? <CurrencyGoldExchange key={state.ownerPublicId} state={state} economy={economy} /> : <p className={styles.loading} role="status">Загружаем полянку…</p>}
       </> : null}
     </div>
     <div className={styles.promo}><PromoCodeForm key={state?.ownerPublicId ?? "loading"} state={state} onRedeemed={onRedeemed} /></div>

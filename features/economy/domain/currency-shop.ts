@@ -2,15 +2,12 @@ import type { EconomyCatalog, EconomyView } from "./model";
 import { ECONOMY_PEARL_SCALE } from "./money";
 import { durationPearlPrice } from "./time-price";
 import { storefrontCatalog } from "./storefront";
+import { currencyExchangeCatalog } from "./currency-exchange";
 
 /** Preview terms only. A future purchase must receive a fresh server-authoritative quote. */
 export const PEARL_SHOP_PACKAGES = storefrontCatalog.pearlPacks;
 
-export const GOLD_SHOP_PACKAGES = [
-  { id: "pouch", name: "Кошель золота", pearls: 40 },
-  { id: "casket", name: "Шкатулка золота", pearls: 100 },
-  { id: "chest", name: "Сундук золота", pearls: 200 },
-] as const;
+export const GOLD_SHOP_PACKAGES = currencyExchangeCatalog.offers;
 
 export const HOME_BONUS_PERCENT = [0, 0, 0, 0, 0] as const;
 /** 5 minutes × 10 coins/minute = 50 coins per visible pearl (two stored units).
@@ -44,12 +41,12 @@ export function currencyShopDevelopment({ buildings, catalog }: Development) {
     bonusPercent: homeBonusPercent + buildingBonusPercent };
 }
 
-export function currencyShopGoldOffers(state: Development) {
-  const development = currencyShopDevelopment(state);
+export function currencyShopGoldOffers(state?: Development) {
+  // Existing callers may pass a snapshot; package values do not depend on it.
+  void state;
   return GOLD_SHOP_PACKAGES.map(pack => {
     const baseCoins = pack.pearls * BASE_COINS_PER_PEARL;
-    const bonusCoins = Math.floor(baseCoins * development.bonusPercent / 100);
-    return { ...pack, baseCoins, bonusCoins, coins: baseCoins + bonusCoins };
+    return { ...pack, baseCoins, bonusCoins: pack.coins - baseCoins };
   });
 }
 

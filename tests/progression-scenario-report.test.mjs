@@ -11,9 +11,9 @@ import { progressionCases } from "../scripts/audit-progression-scenarios.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { progressionCatalogFingerprint } = await vite.ssrLoadModule("/features/progression/scenario-fingerprint.ts");
-const { progressionScenarioReportSchema, scenarioHighlights, scenarioReportState, scenarioCsvRows, scenarioSchedule } = await vite.ssrLoadModule("/features/progression/economy-scenarios.ts");
-const { EconomyScenarioReport } = await vite.ssrLoadModule("/features/progression/economy-scenario-report.tsx");
+const { progressionCatalogFingerprint } = await vite.ssrLoadModule("/features/progression/domain/scenario-fingerprint.ts");
+const { progressionScenarioReportSchema, scenarioHighlights, scenarioReportState, scenarioCsvRows, scenarioSchedule } = await vite.ssrLoadModule("/features/progression/domain/economy-scenarios.ts");
+const { EconomyScenarioReport } = await vite.ssrLoadModule("/features/progression/ui/analysis/economy-scenario-report.tsx");
 const { default: economy } = await vite.ssrLoadModule("/apps/api/src/main/resources/world/economy-catalog.json");
 const { default: rewards } = await vite.ssrLoadModule("/apps/api/src/main/resources/world/progression-rewards-catalog.json");
 const row = { label: "fixture-free", completed: false, seed: 7, visitsPerDay: 1, regularMinutes: 480, firstMinutes: 480,

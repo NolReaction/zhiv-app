@@ -230,3 +230,11 @@
   .stageCard, .pearlGrid article, .unlockCard { padding: 16px 13px; }
 }
 @media (prefers-reduced-motion: reduce) { .panel { scroll-behavior: auto; } }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 0; font-size: 12px; }
+.pagination button { background: #243621; color: #d7e8c7; border: 1px solid #a4bb8040; border-radius: 8px; padding: 9px 13px; }
+.pagination button:disabled { opacity: .4; cursor: default; }
+.catalogHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.catalogHeading h2 { margin: 0 0 6px; font-size: 24px; }
+.catalogHeading p, .catalogHeading > span { margin: 0; font-size: 12px; line-height: 1.6; color: #acbca2; }
+.sectionHeading h3 { margin: 0; font-size: 15px; }
+@media(max-width:780px) { .catalogHeading { display: block; margin-bottom: 18px; } .catalogHeading h2 { font-size: 21px; } .catalogHeading > span { display: block; margin-top: 8px; } }

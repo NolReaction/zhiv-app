@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useBranchState } from "@/features/progression/ui/shell/branch-session";
+
 import { economyCatalog } from "@/features/economy/domain/model";
 import { fishingBaitCompatible } from "@/features/economy/domain/fishing";
-import { expeditionExpectedReturns, expeditionRelicRules, fishingExpectedReturn } from "./economy-expeditions";
+import { expeditionExpectedReturns, expeditionRelicRules, fishingExpectedReturn } from "@/features/progression/domain/economy-expeditions";
 import { economyDuration, economyNumber, EconomyItemButton } from "./economy-workbench-common";
 import styles from "./economy-workbench.module.css";
 import detailStyles from "./economy-expedition-analysis.module.css";
@@ -15,8 +16,8 @@ const routes = expeditionExpectedReturns();
 const relics = expeditionRelicRules();
 
 export function EconomyExpeditionAnalysis({ onSelect }: { onSelect: (id: string) => void }) {
-  const [rodId, setRod] = useState(fishing?.rods[0]?.id ?? ""), [hookId, setHook] = useState(fishing?.hooks[0]?.id ?? "");
-  const [baitChoice, setBait] = useState<string>(""), [routeId, setRoute] = useState(fishing?.routeIds[0] ?? "");
+  const [rodId, setRod] = useBranchState("expeditions.rod", fishing?.rods[0]?.id ?? ""), [hookId, setHook] = useBranchState("expeditions.hook", fishing?.hooks[0]?.id ?? "");
+  const [baitChoice, setBait] = useBranchState<string>("expeditions.baitChoice", ""), [routeId, setRoute] = useBranchState("expeditions.route", fishing?.routeIds[0] ?? "");
   const baitId = baitChoice && fishing && fishingBaitCompatible(rodId, baitChoice, fishing) ? baitChoice : null;
   const report = fishingExpectedReturn({ routeId, rodId, hookId, baitId });
   return <div className={styles.expeditionAnalysis}>
@@ -39,7 +40,7 @@ export function EconomyExpeditionAnalysis({ onSelect }: { onSelect: (id: string)
       </div>}
       {report && <>
         <dl className={styles.returnStats}><div><dt>Один поход</dt><dd>{economyDuration(report.seconds)} · {report.draws} рыб</dd></div><div><dt>Средняя продажа улова</dt><dd>{economyNumber(report.expectedGrossCoins)} мон.</dd></div><div><dt>Припасы и наживка</dt><dd>−{economyNumber(report.costCoins)} мон.</dd></div><div><dt>Средний остаток / мин</dt><dd>{economyNumber(report.expectedNetCoinsPerMinute)} мон.</dd></div></dl>
-        <p className={styles.note}>Снасти: {economyNumber(report.capitalCoins)} монет однократно, без скидки репутации. Они не вычитаются повторно из каждого похода. Расчёт без еды, дороги и пауз; наживка оценена по цене покупки, остальные припасы — по цене продажи NPC.</p>
+        <p className={styles.note}>Снасти: {economyNumber(report.capitalCoins)} монет однократно, без скидки репутации. Они не вычитаются повторно из каждого похода. Расчёт без еды, дороги и пауз; наживка оценена по цене покупки, остальные припасы: по цене продажи NPC.</p>
         <div className={styles.tableViewport} tabIndex={0} role="region" aria-label="Шансы видов рыб"><table className={styles.balanceTable}><caption>Шанс одной рыбы и хотя бы одной за весь поход</caption><thead><tr><th>Вид</th><th>Одна рыба</th><th>Хотя бы одна за поход</th><th>Среднее количество</th></tr></thead><tbody>{report.species.map(fish => <tr key={fish.itemId}><th><button type="button" onClick={() => onSelect(fish.itemId)}>{itemName(fish.itemId)}</button></th><td>{percent(fish.probability)}</td><td>{percent(fish.atLeastOneProbability)}</td><td>{economyNumber(fish.expectedQuantity)}</td></tr>)}</tbody></table></div>
       </>}
     </section>

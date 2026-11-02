@@ -41,6 +41,7 @@ export function AdminLocalDashboard({ access, onAccessLost }: { access: AdminAcc
         }}>Закрыть доступ</button></header>
       <p className={neighborStyles.notice}>Сервер разработки · данные хранятся в памяти и очищаются при перезапуске. Здесь доступны настоящее управление Берестом и журнал локальных операций. Производственные разделы админки открываются на сервере приложения.</p>
       <nav className={neighborStyles.actions} aria-label="Локальная панель">
+        <Link className={neighborStyles.button} href="/branch" prefetch={false}>Мастерская мира</Link>
         <button className={neighborStyles.button} aria-current={tab === "neighbor" ? "page" : undefined} onClick={() => setTab("neighbor")}>Лесной сосед</button>
         <button className={neighborStyles.button} aria-current={tab === "audit" ? "page" : undefined} onClick={() => { setTab("audit"); setReload(value => value + 1); }}>Журнал администратора</button>
       </nav>

@@ -1,6 +1,7 @@
 import type { FixedWorldScene, WorldBounds, WorldPoint, WorldShadowCaster, WorldShadowReceiver } from "@/features/world/tiled/types";
 import { boundsInCanvas, canvasWorldViewport } from "@/features/world/scene/canvas-viewport";
 import { validateForestReceiverHoles } from "./forest-receiver-geometry";
+import { drawForestNightAmbient } from "./forest-night-ambient";
 import { forestActorShadowFootprintKey, prepareForestShadowGeometry, projectForestShadow, type PreparedForestShadowGeometry,
   FOREST_SHADOW_GEOMETRY, type PointShadowLight, type ShadowLight } from "./forest-shadow-geometry";
 
@@ -49,9 +50,12 @@ type SceneCache = {
   scratchClaimed: boolean; directionalSignature?: string; fieldSignature?: string;
 };
 // Weak scene ownership prevents a disposed world retaining its textures. Each
-// geometry has at most two quality variants, 16 cropped lamp pools (each with at
+// geometry has at most two quality variants, 24 cropped lamp pools (each with at
 // most one cropped actor mask) and two sun masks.
 const caches = new WeakMap<FixedWorldScene, Map<string, SceneCache>>();
+// Includes the restored market/shop lamps, path markers and working fires in a
+// full-map view. Evicting a still-visible pool would rebuild it every flicker.
+const MAX_LIGHT_POOLS = 24;
 // Editing only lamp properties creates a new preview scene but retains both
 // immutable geometry arrays. Share its masks without tying them to light edits.
 // Retain only the two most recent caster-array variants per receiving geometry;
@@ -127,12 +131,7 @@ function receiverGroups(receivers: WorldShadowReceiver[]): ReceiverGroup[] {
 function ambient(cache: SceneCache, scene: FixedWorldScene) {
   const ctx = cache.base.ctx;
   ctx.setTransform(cache.scale, 0, 0, cache.scale, 0, 0);
-  ctx.fillStyle = "#2d3d62"; ctx.fillRect(0, 0, scene.width, scene.height);
-  const moon = ctx.createRadialGradient(scene.width * .68, scene.height * .12, 0,
-    scene.width * .68, scene.height * .12, Math.max(scene.width, scene.height) * .98);
-  moon.addColorStop(0, "rgba(112,151,198,.28)"); moon.addColorStop(.55, "rgba(87,121,176,.12)");
-  moon.addColorStop(1, "rgba(76,101,156,0)");
-  ctx.globalCompositeOperation = "screen"; ctx.fillStyle = moon; ctx.fillRect(0, 0, scene.width, scene.height);
+  drawForestNightAmbient(ctx, scene.width, scene.height);
 }
 function sceneCache(scene: FixedWorldScene, frame: ForestShadowFrame): SceneCache | undefined {
   if (!Number.isFinite(scene.width) || !Number.isFinite(scene.height) || scene.width <= 0 || scene.height <= 0) return;
@@ -207,7 +206,7 @@ function stableSourceKey(cache: SceneCache, source: ForestShadowSource): string 
   if (old && old.x === source.position.x && old.y === source.position.y && old.height === source.height
     && old.radius === source.radius && old.color === source.color && old.ownerSiteId === source.ownerSiteId) return old.key;
   const key = sourceKey(source);
-  if (!old && cache.sourceKeys.size >= 16) cache.sourceKeys.delete(cache.sourceKeys.keys().next().value!);
+  if (!old && cache.sourceKeys.size >= MAX_LIGHT_POOLS) cache.sourceKeys.delete(cache.sourceKeys.keys().next().value!);
   cache.sourceKeys.set(source.id, { x: source.position.x, y: source.position.y, height: source.height,
     radius: source.radius, color: source.color, ownerSiteId: source.ownerSiteId, key });
   return key;
@@ -257,7 +256,7 @@ function pool(cache: SceneCache, source: ForestShadowSource, key = sourceKey(sou
   // Refresh insertion order so invisible old lamps are evicted before an active
   // edited source. Preserve its dynamic canvas, invalidating the old projection.
   cache.pools.delete(source.id);
-  return remember(cache.pools, source.id, result, 16);
+  return remember(cache.pools, source.id, result, MAX_LIGHT_POOLS);
 }
 function directionalActors(cache: SceneCache, light: ShadowLight, actors: readonly WorldShadowCaster[], view: WorldBounds | null) {
   if (!view || light.kind !== "directional") return actors.filter(actor => clamp(actor.opacity) > 0);

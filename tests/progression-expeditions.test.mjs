@@ -8,10 +8,10 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
-const { fishingExpectedReturn, expeditionExpectedReturns, expeditionRelicRules } = await vite.ssrLoadModule("/features/progression/economy-expeditions.ts");
-const { EconomyExpeditionAnalysis } = await vite.ssrLoadModule("/features/progression/economy-expedition-analysis.tsx");
-const { planEconomyProduction } = await vite.ssrLoadModule("/features/progression/economy-plan.ts");
-const { buildProgressionEconomy } = await vite.ssrLoadModule("/features/progression/economy-data.ts");
+const { fishingExpectedReturn, expeditionExpectedReturns, expeditionRelicRules } = await vite.ssrLoadModule("/features/progression/domain/economy-expeditions.ts");
+const { EconomyExpeditionAnalysis } = await vite.ssrLoadModule("/features/progression/ui/analysis/economy-expedition-analysis.tsx");
+const { planEconomyProduction } = await vite.ssrLoadModule("/features/progression/domain/economy-plan.ts");
+const { buildProgressionEconomy } = await vite.ssrLoadModule("/features/progression/domain/economy-data.ts");
 const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
 
 test("fishing expected value uses class odds and every actual draw without inventing a guaranteed species", () => {

@@ -21,20 +21,24 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export function useMemo(factory) { return factory(); }
       export function useCallback(callback) { return callback; }
       export function useEffect() {}
+      export { lazy, Suspense } from "react";
+      export function useBranchState(key, initial) { return useState(initial); }
       export function useSyncExternalStore(subscribe, read, server) { return globalThis.window ? read() : server(); }
     `; },
     transform(source, id) {
-      if (!/\/features\/progression\/(?:economy-panel|branch-page)\.tsx$/.test(id)) return;
-      let code = source.replace('from "react";', `from "${hookModule}";`);
-      if (id.endsWith("/economy-panel.tsx")) code += "\nexport { RecipeCalculator, SourceCalculator, ItemDetails, StageCard, HomeUnlockCard };\n";
+      if (!/\/features\/progression\/(?:branch-page|ui\/(?:catalog\/(?:economy-panel|item-details)|development\/development-panel|rewards\/rewards-panel))\.tsx$/.test(id)) return;
+      const code = source.replace('from "react";', `from "${hookModule}";`).replace('from "@/features/progression/ui/shell/branch-session";', `from "${hookModule}";`);
       return code;
     },
   }],
 });
 after(() => vite.close());
-const { EconomyPanel, RecipeCalculator, SourceCalculator, ItemDetails, StageCard, HomeUnlockCard } = await vite.ssrLoadModule("/features/progression/economy-panel.tsx");
+const { EconomyPanel } = await vite.ssrLoadModule("/features/progression/ui/catalog/economy-panel.tsx");
+const { RecipeCalculator, SourceCalculator, ItemDetails } = await vite.ssrLoadModule("/features/progression/ui/catalog/item-details.tsx");
+const { StageCard, HomeUnlockCard, DevelopmentPanel } = await vite.ssrLoadModule("/features/progression/ui/development/development-panel.tsx");
+const { RewardsPanel } = await vite.ssrLoadModule("/features/progression/ui/rewards/rewards-panel.tsx");
 const { BranchPage } = await vite.ssrLoadModule("/features/progression/branch-page.tsx");
-const { progressionEconomy: data } = await vite.ssrLoadModule("/features/progression/economy-data.ts");
+const { progressionEconomy: data } = await vite.ssrLoadModule("/features/progression/domain/economy-data.ts");
 const { constructionTimePearlPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { pearlDisplayAmount } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
@@ -71,38 +75,33 @@ function withWindow(hash, run) {
   finally { if (previous) Object.defineProperty(globalThis, "window", previous); else delete globalThis.window; }
 }
 
-test("branch tabs connect their panels and retain the full economy catalog in server markup", () => {
+test("branch mounts one selected section and keeps costly reference chunks out of the shell", () => {
   const tree = harness(BranchPage).render(), nodes = elements(tree);
   const tabs = nodes.filter(node => node.props.role === "tab"), panels = nodes.filter(node => node.props.role === "tabpanel");
-  assert.deepEqual(tabs.map(node => node.props["data-branch-tab"]), ["world", "economy"]);
-  assert.deepEqual(tabs.map(node => [node.props["aria-selected"], node.props.tabIndex]), [[true, 0], [false, -1]]);
-  assert.deepEqual(panels.map(node => node.props.hidden), [false, true]);
-  for (const tab of tabs) {
-    const panel = panels.find(node => node.props.id === tab.props["aria-controls"]);
-    assert.ok(panel); assert.equal(panel.props["aria-labelledby"], tab.props.id);
-  }
-  const html = renderToStaticMarkup(tree);
-  assert.match(html, /Ингредиенты и расчёты/);
-  assert.equal((html.match(/data-item-id=/g) ?? []).length, data.items.length);
-  assert.match(html, new RegExp(`Рецептов<\\/dt><dd>${data.recipes.length}`));
-  assert.doesNotMatch(html, /\b(?:NaN|Infinity|undefined)\b/);
+  assert.deepEqual(tabs.map(node => node.props["data-branch-tab"]), ["catalog", "development", "analysis", "rewards", "world"]);
+  assert.equal(tabs.filter(node => node.props.tabIndex === 0).length, 1);
+  assert.equal(panels.length, 1);
+  assert.equal(panels[0].props["aria-labelledby"], tabs[0].props.id);
+  const source = readFileSync(new URL("../features/progression/branch-page.tsx", import.meta.url), "utf8");
+  assert.equal((source.match(/lazy\(\(\) => import/g) ?? []).length, 5);
+  assert.doesNotMatch(source, /from ["'].*(?:economy-data|economy-analysis|graph|economy-scenarios)["']/);
 });
 
 test("economy tab links preserve path, query and history ownership and initialize from deep links", () => {
   withWindow("#economy-ingredients", ({ window, state, writes, events }) => {
     const h = harness(BranchPage); let tree = h.render();
-    assert.equal(tree.props["data-view"], "economy");
+    assert.equal(elements(tree).find(node => node.type === "main").props["data-view"], "catalog");
     const tabs = elements(tree).filter(node => node.props.role === "tab");
-    assert.deepEqual(tabs.map(node => node.props["aria-selected"]), [false, true]);
-    tabs[0].props.onClick();
+    assert.deepEqual(tabs.map(node => node.props["aria-selected"]), [true, false, false, false, false]);
+    tabs[4].props.onClick();
     assert.equal(window.location.hash, "#world");
     assert.equal(writes[0].url, "/branch?from=test#world");
     assert.equal(writes[0].value, state);
     assert.deepEqual(events, ["hashchange"]);
     tree = h.render();
-    elements(tree).find(node => node.props["data-branch-tab"] === "economy").props.onClick();
-    assert.equal(h.render().props["data-view"], "economy");
-    assert.equal(writes[1].url, "/branch?from=test#economy");
+    elements(tree).find(node => node.props["data-branch-tab"] === "catalog").props.onClick();
+    assert.equal(elements(h.render()).find(node => node.type === "main").props["data-view"], "catalog");
+    assert.equal(writes[1].url, "/branch?from=test#catalog");
     assert.equal(writes[1].value, state);
   });
 });
@@ -110,26 +109,32 @@ test("economy tab links preserve path, query and history ownership and initializ
 test("tab keyboard navigation selects and focuses the matching tab without swallowing ordinary keys", () => {
   withWindow("#world", ({ writes }) => {
     const h = harness(BranchPage), focused = [];
-    for (const [key, expected] of [["ArrowRight", "economy"], ["ArrowRight", "world"], ["ArrowLeft", "economy"], ["Home", "world"], ["End", "economy"]]) {
-      const nav = field(h.render(), "Представление развития"); let prevented = 0;
+    for (const [key, expected] of [["ArrowRight", "catalog"], ["ArrowRight", "development"], ["ArrowLeft", "catalog"], ["Home", "catalog"], ["End", "world"]]) {
+      const nav = field(h.render(), "Разделы рабочего стола"); let prevented = 0;
       nav.props.onKeyDown({ key, preventDefault() { prevented++; }, currentTarget: { querySelector(selector) {
         assert.equal(selector, `[data-branch-tab="${expected}"]`); return { focus() { focused.push(expected); } };
       } } });
       assert.equal(prevented, 1);
       const tree = h.render(), tabs = elements(tree).filter(node => node.props.role === "tab");
-      assert.equal(tree.props["data-view"], expected);
+      assert.equal(elements(tree).find(node => node.type === "main").props["data-view"], expected);
       assert.equal(tabs.find(tab => tab.props["data-branch-tab"] === expected).props.tabIndex, 0);
       assert.equal(tabs.filter(tab => tab.props.tabIndex === 0).length, 1);
     }
     const count = writes.length;
-    field(h.render(), "Представление развития").props.onKeyDown({ key: "Tab", preventDefault() { assert.fail("Tab must retain native focus traversal"); } });
+    field(h.render(), "Разделы рабочего стола").props.onKeyDown({ key: "Tab", preventDefault() { assert.fail("Tab must retain native focus traversal"); } });
     assert.equal(writes.length, count); assert.equal(focused.length, 5);
   });
 });
 
 test("ingredient browser contains every real item, filters without changing prices, and can recover an empty search", () => {
   const h = harness(EconomyPanel); let tree = h.render();
-  assert.deepEqual(new Set(listItems(tree).map(node => node.props["data-item-id"])), new Set(data.items.map(value => value.id)));
+  const all = new Set();
+  do { tree = h.render(); for (const node of listItems(tree)) all.add(node.props["data-item-id"]);
+    const next = elements(tree).find(node => node.type === "button" && node.props.children === "Далее");
+    if (!next || next.props.disabled) break; next.props.onClick();
+  } while (true);
+  assert.deepEqual(all, new Set(data.items.map(value => value.id)));
+  field(tree, "Найти ингредиент").props.onChange({ target: { value: "" } }); tree = h.render();
   assert.equal(listItems(tree).filter(node => node.props["aria-pressed"]).length, 1);
   field(tree, "Найти ингредиент").props.onChange({ target: { value: "балка" } });
   tree = h.render(); assert.deepEqual(listItems(tree).map(node => node.props["data-item-id"]), ["beams"]);
@@ -143,7 +148,7 @@ test("ingredient browser contains every real item, filters without changing pric
   field(h.render(), "Категория ингредиентов").props.onChange({ target: { value: "special" } });
   tree = h.render(); assert.deepEqual(new Set(listItems(tree).map(node => node.props["data-item-id"])), new Set(["ancient_core", "living_resin", "moon_crystal"]));
   elements(tree).find(node => node.type === ItemDetails).props.onSelect("fiber");
-  tree = h.render(); assert.equal(listItems(tree).length, data.items.length); assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.id, "fiber");
+  tree = h.render(); assert.equal(listItems(tree).length, 24); assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.id, "fiber");
   assert.equal(field(tree, "Категория ингредиентов").props.value, "all");
 });
 
@@ -168,6 +173,7 @@ test("selecting an item on a narrow view scrolls to its detail after the frame; 
         assert.equal(id, "economy-item-details"); return { scrollIntoView(options) { scrolls.push(options); } };
       } } });
       const h = harness(EconomyPanel);
+      field(h.render(), "Найти ингредиент").props.onChange({ target: { value: "балка" } });
       listItems(h.render()).find(node => node.props["data-item-id"] === "beams").props.onClick();
       assert.equal(elements(h.render()).find(node => node.type === ItemDetails).props.item.id, "beams");
       assert.deepEqual(scrolls, []);
@@ -193,8 +199,6 @@ test("following an ingredient clears filters then scrolls and focuses the new ke
     field(h.render(), "Найти ингредиент").props.onChange({ target: { value: "бревно" } });
     const tree = h.render(), detail = elements(tree).find(node => node.type === ItemDetails);
     assert.equal(detail.props.item.id, "wood");
-    const library = elements(tree).find(node => node.props.id === "economy-ingredients");
-    library.props.ref.current = { scrollIntoView() { assert.fail("navigation should reveal the card rather than the filters"); } };
     const oldCard = ItemDetails(detail.props);
     const link = elements(oldCard).find(node => node.type === "button" && text(renderToStaticMarkup(node)).includes("Распилить доску"));
     assert.ok(link); link.props.onClick();
@@ -204,7 +208,7 @@ test("following an ingredient clears filters then scrolls and focuses the new ke
     assert.equal(field(updated, "Найти ингредиент").props.value, "");
     assert.equal(field(updated, "Категория ингредиентов").props.value, "all");
     assert.equal(field(updated, "Уровень дома для справочника").props.value, 0);
-    assert.equal(listItems(updated).length, data.items.length);
+    assert.equal(listItems(updated).length, 24);
     currentCard = { itemId: "planks", scrollIntoView(options) { calls.push(["scroll", options]); }, focus(options) { calls.push(["focus", options]); } };
     frames[0]();
     assert.deepEqual(lookups, [["economy-item-details", "planks"]]);
@@ -378,7 +382,7 @@ test("invalid quantities suppress calculations and recover with valid integral i
 });
 
 test("stage and pearl summaries distinguish guaranteed project gates from chance rewards and optional warehouse", () => {
-  const value = text(renderToStaticMarkup(harness(EconomyPanel).render()));
+  const value = text(data.stages.map(stage => renderToStaticMarkup(harness(StageCard, { stage, onSelect() {} }).render())).join("") + renderToStaticMarkup(harness(DevelopmentPanel, { onInspectItem() {} }).render()) + renderToStaticMarkup(harness(RewardsPanel, { onInspectItem() {} }).render()));
   assert.ok(data.stages.every(stage => stage.minimumGateSeconds === (stage.orders.length - 1) * stage.intervalSeconds));
   assert.doesNotMatch(value, /6 дн\. 17 ч/);
   if (data.stages.some(stage => stage.intervalSeconds > 0)) assert.match(value, /Жемчуг не сокращает интервалы поставок/);
@@ -400,7 +404,7 @@ test("legacy board summary keeps its supplied capacity without promising one req
   const original = { ...data.orderBoard };
   try {
     Object.assign(data.orderBoard, { slots: 3, perResident: false });
-    const value = text(renderToStaticMarkup(harness(EconomyPanel).render()));
+    const value = text(renderToStaticMarkup(harness(DevelopmentPanel, { onInspectItem() {} }).render()));
     assert.match(value, /до 3 активных карточек/);
     assert.doesNotMatch(value, /по одной у жителя|3 активные карточки/);
   } finally {
@@ -409,8 +413,8 @@ test("legacy board summary keeps its supplied capacity without promising one req
 });
 
 test("branch shop shows the disabled preview and current visible amounts alongside clean recipe prerequisites", () => {
-  const tree = harness(EconomyPanel).render();
-  const table = elements(tree).find(node => node.type === "table" && text(renderToStaticMarkup(node)).includes("Монеты за жемчуг"));
+  const tree = harness(RewardsPanel, { onInspectItem() {} }).render();
+  const table = elements(tree).find(node => node.type === "table" && text(renderToStaticMarkup(node)).includes("Обмен жемчуга на монеты"));
   assert.ok(table);
   assert.equal(elements(table).filter(node => node.type === "tbody").flatMap(node => elements(node).filter(entry => entry.type === "tr")).length, 5);
   const value = text(renderToStaticMarkup(tree));
@@ -427,7 +431,7 @@ test("branch shop shows the disabled preview and current visible amounts alongsi
   assert.match(value, /Особые костюмы/);
   assert.match(value, /без бонусов к скорости или добыче/);
   for (const offer of data.currencyShop.costumeOffers) assert.ok(value.includes(`${offer.name}: ${offer.priceRub} ₽`));
-  assert.match(value, /Максимум: 5\s?000 монет за 100 жемчужин/);
+  assert.match(value, /Максимум: 6\s?000 монет за 100 жемчужин/);
   const details = text(renderToStaticMarkup(harness(ItemDetails, { item: item("strawberries"), home: 0, onSelect() {} }).render()));
   assert.match(details, /Сначала получить: Малиновый компот ×1/);
   assert.doesNotMatch(details, /[Сс]начала получить[^·<]*Приготовить/);
@@ -466,18 +470,20 @@ test("house-four project displays one-time funding, actual restoration costs and
 });
 
 test("every house's berry and processing unlock is visible and opens its actual ingredient reference", () => {
-  const h = harness(EconomyPanel), tree = h.render();
-  const cards = elements(tree).filter(node => node.type === HomeUnlockCard);
-  assert.deepEqual(cards.map(card => card.props.unlock.homeLevel), [1, 2, 3, 4, 5]);
+  const selected = [];
+  const h = harness(DevelopmentPanel, { onInspectItem(id) { selected.push(id); } });
+  const cards = [];
+  for (const level of [1, 2, 3, 4, 5]) {
+    field(h.render(), "Уровень дома для развития").props.onChange({ target: { value: String(level) } });
+    const tree = h.render(), visible = elements(tree).filter(node => node.type === HomeUnlockCard);
+    assert.equal(visible.length, 1); assert.equal(visible[0].props.unlock.homeLevel, level); cards.push(visible[0]);
+  }
   const expected = ["strawberries", "blueberries", "currants", "blackberries", "cranberries"];
-  const html = renderToStaticMarkup(tree);
-  assert.equal((html.match(/data-home-unlocks=/g) ?? []).length, 5);
   for (const [index, id] of expected.entries()) {
     const card = HomeUnlockCard(cards[index].props);
     const berry = elements(card).find(node => node.props["data-unlock-item"] === id);
     assert.ok(berry, `${id} is a visible reward for home ${index + 1}`);
-    berry.props.onClick();
-    assert.equal(elements(h.render()).find(node => node.type === ItemDetails).props.item.id, id);
+    berry.props.onClick(); assert.equal(selected.at(-1), id);
   }
   const bridge = text(renderToStaticMarkup(HomeUnlockCard(cards[1].props)));
   const lighthouse = text(renderToStaticMarkup(HomeUnlockCard(cards[2].props)));
@@ -498,7 +504,7 @@ test("new meals expose their real effects and premium examples agree with the li
   for (const quote of data.pearls.construction.prices) {
     assert.equal(quote.pearls, pearlDisplayAmount(constructionTimePearlPrice(quote.seconds, economyCatalog.constructionSpeedup)));
   }
-  const html = renderToStaticMarkup(harness(EconomyPanel).render()), value = text(html);
+  const html = renderToStaticMarkup(harness(RewardsPanel, { onInspectItem() {} }).render()), value = text(html);
   assert.match(html, /<caption>Примеры ускорения одной стройки<\/caption>/);
   assert.match(value, /1 мин 1 1 ч 12/);
   assert.match(value, /1 дн\. 288 2 дн\. 576 7 дн\. 2 016/);
@@ -507,10 +513,10 @@ test("new meals expose their real effects and premium examples agree with the li
   assert.doesNotMatch(value, /жемчужина за начатые 10 мин/);
 });
 
-test("inactive panels are actually hidden and narrow layouts have explicit single-column scroll containment", () => {
-  const branch = readFileSync(new URL("../features/progression/branch-page.module.css", import.meta.url), "utf8");
-  const economy = readFileSync(new URL("../features/progression/economy-panel.module.css", import.meta.url), "utf8");
-  assert.match(branch, /\.viewPanel\[hidden\]\s*\{[^}]*display:\s*none/);
+test("active panels and narrow layouts have explicit single-column scroll containment", () => {
+  const branch = readFileSync(new URL("../features/progression/ui/shell/branch-page.module.css", import.meta.url), "utf8");
+  const economy = readFileSync(new URL("../features/progression/ui/shared/economy-reference.module.css", import.meta.url), "utf8");
+  assert.match(branch, /\.panel\s*\{[^}]*overflow:\s*auto/);
   assert.match(economy, /\.panel\s*\{[^}]*overflow:\s*auto/);
   assert.match(economy, /@media\s*\(max-width:\s*780px\)/);
   assert.match(economy, /\.stageGrid,\s*\.pearlGrid,\s*\.unlockGrid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/);

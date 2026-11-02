@@ -35,6 +35,7 @@ const nextConfig: NextConfig = {
 
   async headers() {
     return [
+      { source: "/branch/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }, { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }] },
       { source: "/world/runtime/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
       { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
       { source: "/updates.json", headers: [{ key: "Cache-Control", value: "no-store" }] },
