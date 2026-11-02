@@ -119,8 +119,8 @@ test("mine list, preparation and saved extraction agree without consuming hero f
 });
 
 test("meal saving text compares against existing friendship speed instead of promising the old reduction", () => {
-  assert.equal(mealSpeedDescription(2500), "+25% скорости · время −20%");
-  assert.equal(mealSpeedDescription(2500, 1000), "+25% скорости · время ≈ −18,5%");
+  assert.equal(mealSpeedDescription(2500), "Время короче на 20%");
+  assert.equal(mealSpeedDescription(2500, 1000), "Время короче примерно на 18,5%");
 });
 
 test("a resumed tab keeps the earned mining bonus after a long absence", () => {

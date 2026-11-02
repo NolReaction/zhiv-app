@@ -133,8 +133,10 @@ test("pending hero food quotes the same speed-adjusted time in route list, prepa
     assert.ok(button(preparation, `Отправиться: ${selected.name}`).text.includes(expected));
     const heading = preparation.match(/<header\b[^>]*>([\s\S]*?)<\/header>/)?.[1];
     assert.ok(heading?.includes(expected), "preparation heading and departure action agree");
-    assert.match(preparation, new RegExp(`\\+${speedBps / 100}% скорости`, "i"));
-    assert.match(preparation, /время ≈ −37,5%/);
+    assert.match(preparation, /Порция подготовлена/);
+    const mealTime = preparation.match(/<span\b[^>]*data-meal-duration="true"[^>]*>([\s\S]*?)<\/span>/)?.[1]?.replace(/<[^>]*>/g, "");
+    assert.ok(mealTime?.includes(worldDuration(selected.seconds)), "the prepared portion shows the original route time");
+    assert.ok(mealTime?.includes(expected), "the portion and departure show the same shortened time");
     assert.ok(preparation.indexOf('data-meal-boost="hero"') > preparation.indexOf("</header>"), "food is an explicit choice below the route timer");
     assert.doesNotMatch(heading, /data-meal-boost=/);
     assert.ok(button(renderPreparation(id, economy), `Отправиться: ${selected.name}`).text.includes(expected));

@@ -20,7 +20,7 @@ test("permanent investment grows mostly after the affordable tutorial without bi
   assert(audit.coins >= 400_000 && audit.coins <= 700_000, "whole-settlement investment must be meaningful but bounded");
   const starter = ["woodlot", "dryer", "workshop"].reduce((sum, id) => sum + catalog.buildings.find(row => row.id === id).levels[0].cost.coins, 0);
   const homeTwo = catalog.buildings.find(row => row.id === "home").levels[1].cost.coins;
-  assert.equal(starter + homeTwo, 400, "the first working settlement retains the funded tutorial cost");
+  assert.equal(starter + homeTwo, 700, "the first working settlement remains accessible while later houses require saving");
   const late = catalog.buildings.reduce((sum, building) => sum + building.levels.filter(level =>
     building.id === "warehouse" ? level.level >= 4 : level.level === 5).reduce((cost, level) => cost + level.cost.coins, 0), 0);
   assert(late > audit.coins * 0.7, "the main investment belongs to optional storage and final upgrades");

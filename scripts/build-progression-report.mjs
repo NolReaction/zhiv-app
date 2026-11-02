@@ -38,12 +38,16 @@ export function compactProgressionReport(source, economy, rewards) {
       externalPearls: finite(row.externalSlotBudget ?? 0, "external pearls") / 2,
       elapsedDays: finite(row.elapsedDays, "elapsed days"), activeHours: finite(row.activeHours, "active hours"),
       manualHours: finite(row.manualHours, "manual hours"), commandCount: finite(row.commandCount, "commands"),
+      home2Days: milestone(row.home2Days, "home 2"), home3Days: milestone(row.home3Days, "home 3"),
       home5Days: milestone(row.home5Days, "home 5"), allProductionDays: milestone(row.allProductionDays, "production maximum"),
       allBuildingsDays: milestone(row.allBuildingsDays, "building maximum"), allRecipesDays: milestone(row.allRecipesDays, "all recipes"),
       reputationMaxDays: milestone(row.reputationMaxDays, "reputation maximum"),
       ownerPublicId: row.ownerPublicId ?? "0000-0000-0001", neighborPolicy: row.neighborPolicy ?? "none",
       neighborSales: row.neighbor?.sales.length ?? 0, neighborProceeds: row.neighbor?.sales.reduce((sum, sale) => sum + sale.proceedsCoins, 0) ?? 0,
       relicPolicy: row.relicPolicy ?? "none", exchangePolicy: row.exchangePolicy ?? "duplicates",
+      currencyExchangePolicy: row.currencyExchangePolicy ?? "none", goldConversions: row.goldConversions?.length ?? 0,
+      goldConversionCoins: finite(row.goldConversions?.reduce((sum, entry) => sum + entry.receivedCoins, 0) ?? 0, "converted gold"),
+      goldConversionPearls: finite(row.goldConversions?.reduce((sum, entry) => sum + entry.paidPearls, 0) ?? 0, "conversion pearls") / 2,
       relicExchanges: row.relicExchanges?.length ?? 0, exchangeCoins: row.relicExchanges?.reduce((sum, exchange) => sum + exchange.paidCoins, 0) ?? 0,
       allProductionSlotsDays: milestone(row.allProductionSlotsDays, "production slots"), allCapacityDays: milestone(row.allCapacityDays, "all paid capacity"),
       productionSlots: row.productionSlots ?? {}, marketSlots: row.marketSlots ?? economy.market.baseSlots,
@@ -58,6 +62,8 @@ export function compactProgressionReport(source, economy, rewards) {
         pearlSpending: Object.values(snapshot.pearlLedger.debits).reduce((sum, value) => sum + finite(value, "snapshot pearl spending"), 0) / 2,
       })),
       buildings: row.buildings ?? {},
+      skillSeconds: Object.fromEntries(Object.entries(row.skills ?? {}).filter(([key, value]) => key.endsWith("Seconds") && typeof value === "number")
+        .map(([key, value]) => [key, finite(value, `skill practice ${key}`)])),
       social: row.social ? { mode: row.social.mode, funded: row.social.funded === true, maximumXp: row.social.maximumXp,
         reputation: row.social.reputation, bonusPercent: row.social.bonusPercent, activityPercent: row.social.activityPercent ?? {}, rankBonusPercent: row.social.rankBonusPercent ?? {}, allMaximum: row.social.allMaximum === true,
         completedWeekly: row.social.completedWeekly, ordinaryOrdersCompleted: row.social.ordinaryOrdersCompleted ?? 0, acceptedWeeklyCount: row.social.acceptedWeeklies?.length ?? 0,
@@ -68,7 +74,11 @@ export function compactProgressionReport(source, economy, rewards) {
     };
     assert(result.visitsPerDay > 0 && result.regularMinutes > 0 && result.manualSeconds > 0);
     assert(result.manualHours <= result.activeHours + 1 / 3600, "Manual time cannot exceed active time");
-    for (const key of ["home5Days", "allProductionDays", "allBuildingsDays", "allRecipesDays", "reputationMaxDays", "allProductionSlotsDays", "allCapacityDays"])
+    assert(["none", "construction-shortfall"].includes(result.currencyExchangePolicy), "Unknown published currency exchange policy");
+    assert(result.currencyExchangePolicy !== "none" || result.goldConversions === 0, "Standard controls cannot convert pearls");
+    assert.equal(result.goldConversionCoins, result.coinIncome.exchange_pearls_for_gold ?? 0, "Conversion income differs from coin ledger");
+    assert.equal(result.goldConversionPearls, result.pearlSpending.exchange_pearls_for_gold ?? 0, "Conversion cost differs from pearl ledger");
+    for (const key of ["home2Days", "home3Days", "home5Days", "allProductionDays", "allBuildingsDays", "allRecipesDays", "reputationMaxDays", "allProductionSlotsDays", "allCapacityDays"])
       assert(result[key] === null || result[key] <= result.elapsedDays + 1 / 86400, `${key} is after the end of the run`);
     let previousSnapshotDay = 0;
     for (const snapshot of result.calendarSnapshots) {

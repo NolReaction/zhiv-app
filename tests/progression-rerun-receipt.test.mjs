@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import { progressionCases } from "../scripts/audit-progression-scenarios.mjs";
 import { mkdtemp, mkdir, copyFile, readFile, writeFile, appendFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -67,7 +68,7 @@ async function sandbox(t) {
 test("canonical receipt retains strict source freshness and catalog checks", async t => {
   const directory = await sandbox(t);
   const report = await buildProgressionReport({ repositoryRoot: directory, check: true });
-  assert.equal(report.scenarios.length, 56);
+  assert.equal(report.scenarios.length, progressionCases.length);
   const receipt = JSON.parse(await readFile(join(directory, progressionRerunReceiptPath), "utf8"));
   const resolved = await readResolvedProgressionEvidence({ repositoryRoot: directory });
   resolved.releaseValidated = receipt.runReleaseValidated;
@@ -86,7 +87,7 @@ test("malformed canonical receipt fails closed while explicit independent eviden
   await writeFile(join(directory, progressionRerunReceiptPath), "null");
   await assert.rejects(buildProgressionReport({ repositoryRoot: directory, check: true }));
   const report = await buildProgressionReport({ sourcePath: "custom-evidence.json", repositoryRoot: directory, check: true });
-  assert.equal(report.scenarios.length, 56);
+  assert.equal(report.scenarios.length, progressionCases.length);
 });
 
 test("adoption checks current catalogs and source manifest before persisting a new receipt", async t => {

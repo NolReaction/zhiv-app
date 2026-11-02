@@ -1,23 +1,26 @@
 import { baseClearingNavigation, clearingActivityFrame, isClearingAtPoint, releaseClearingPoint, requestClearingOutside, requestClearingPoint, setClearingNavigationObstacle } from "@/features/world/simulation/clearing-activity";
 import { cancelForestDirector } from "@/features/world/simulation/forest-director";
 import { forestTrailDestination } from "@/features/world/navigation/forest-trails";
-import { isWalkable } from "@/features/world/navigation/navigation";
+import { findWorldPath, isWalkable } from "@/features/world/navigation/navigation";
 import { economyJourneyAway, type EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import { gardenBasketFootprint, parkForestGardenBasket } from "@/features/world/activities/garden/forest-garden";
-import { GATHERING_PACK_SECONDS, GATHERING_SETDOWN_SECONDS, coastalGatheringGesture, gatheringGesture, gatheringSeed, gatheringStow, isForestSupplyRoute, type ForestGatheringFrame, type GatheringGesture } from "./forest-gathering";
-import { forestGatheringCarryPoint } from "./forest-gathering-rig";
+import { forestBasketCarryPoint } from "@/features/world/activities/garden/forest-basket-motion";
+import { FORAGING_BASKET_CYCLE, GATHERING_DEPOSIT_SECONDS, GATHERING_PACK_SECONDS, GATHERING_SETDOWN_SECONDS, coastalGatheringGesture, gatheringSeed, coastalGatheringStow, isForestSupplyRoute, type ForestGatheringFrame, type GatheringGesture } from "./forest-gathering";
+import { forestGatheringBasketVisual } from "./forest-gathering-rig";
+
+import type { ForestGardenVisualFrame } from "@/features/world/activities/garden/forest-garden-painter";
 
 export type ForestSupplyTravel = {
   seed: number; phaseAt: number; frozenAt?: number; filled: boolean; tool: "basket" | "shovel";
   basketStage?: "approach" | "pickup" | "carry" | "deposit" | "returned";
   basketFrom?: WorldPoint; groundBasket?: WorldPoint; keepBasketHeld?: boolean;
-  resumeGathering?: boolean; stowing?: GatheringGesture; stowLift?: number; released?: boolean;
+  searchOrigin?: WorldPoint; stopIndex?: number; stowingBasket?: ForestGardenVisualFrame;
+  resumeGathering?: boolean; stowing?: GatheringGesture; released?: boolean;
 };
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const unit = (n: number) => Math.max(0, Math.min(1, n));
-const mix = (a: WorldPoint, b: WorldPoint, n: number) => { const p = unit(n), t = p * p * (3 - 2 * p); return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; };
 export const isForestLocalSupplyRoute = (route: string | undefined) => isForestSupplyRoute(route) || route === "coastal_deposits";
 const destination = (scene: FixedWorldScene, tool: ForestSupplyTravel["tool"]) => forestTrailDestination(scene, tool === "shovel" ? "fishing" : "foraging");
 
@@ -38,44 +41,52 @@ export function forestJourneyGatheringFrame(state: ForestSessionState, scene: Fi
     || supply.basketStage === "approach" || supply.basketStage === "returned") return null;
   const body = clearingActivityFrame(state.clearing, { still });
   if (body.residing || body.homeSleeping || body.bush?.occupied || body.opacity < 1) return null;
-  const age = Math.max(0, (supply.frozenAt ?? state.director.elapsed) - supply.phaseAt), walking = travel.phase === "leaving" || travel.phase === "returning";
-  const realBasket = state.life.garden.basket;
-  const basketSize = realBasket?.size ?? state.clearing.size * .28;
-  const ground = supply.groundBasket ?? { x: body.x + state.clearing.size * .37, y: body.y };
-  let gesture = travel.phase === "packing" && supply.stowing ? gatheringStow(supply.stowing, still ? 0 : age)
-    : supply.tool === "shovel" ? coastalGatheringGesture(age, supply.seed, still)
-      : gatheringGesture(Math.max(0, age - GATHERING_SETDOWN_SECONDS), supply.seed, still);
-  const carry = forestGatheringCarryPoint({ ...body, direction: walking ? body.direction : gesture.direction }, state.clearing.size, still);
-  const working = travel.phase === "gathering" || travel.phase === "packing";
-  const setdown = supply.tool === "basket" && travel.phase === "gathering" && age < GATHERING_SETDOWN_SECONDS && !still;
-  let held = !working, basketPoint = carry;
-  if (supply.tool === "basket") {
-    if (supply.basketStage === "pickup") {
-      const p = unit(age / GATHERING_SETDOWN_SECONDS);
-      basketPoint = mix(supply.basketFrom ?? realBasket?.position ?? ground, carry, p);
-      held = p > 0;
-      gesture = { ...gesture, action: "setdown", progress: p, crouch: 2 * Math.sin(p * Math.PI), lean: 0, itemVisible: false };
-    } else if (supply.basketStage === "deposit") {
-      const p = unit(age / GATHERING_SETDOWN_SECONDS);
-      basketPoint = mix(supply.basketFrom ?? carry, realBasket?.homePosition ?? ground, p);
-      held = p < 1;
-      gesture = { ...gesture, action: "setdown", progress: p, crouch: 2 * Math.sin(p * Math.PI), lean: 0, itemVisible: false };
-    } else if (setdown) {
-      const p = age / GATHERING_SETDOWN_SECONDS; basketPoint = mix(supply.basketFrom ?? carry, ground, p); held = true;
-      gesture = { ...gesture, action: "setdown", progress: p, crouch: 2 * Math.sin(p * Math.PI), lean: 0, itemVisible: false };
-    } else if (travel.phase === "packing") {
-      const lift = unit((gesture.progress - .55) / .45), from = supply.basketFrom ?? ground;
-      basketPoint = mix(from, carry, lift); held = lift > 0 || (supply.stowLift ?? 0) > 0;
-    } else if (working) { basketPoint = supply.keepBasketHeld ? carry : ground; held = Boolean(supply.keepBasketHeld); }
-    if (held || supply.basketStage === "pickup" || supply.basketStage === "deposit") {
-      gesture = { ...gesture, hand: { x: (basketPoint.x - body.x) / state.clearing.size,
-        y: (basketPoint.y - basketSize * 12 / 14 - body.y) / state.clearing.size } };
-    }
+  const age = Math.max(0, (supply.frozenAt ?? state.director.elapsed) - supply.phaseAt);
+  const walking = travel.phase === "leaving" || travel.phase === "returning";
+  const realBasket = state.life.garden.basket, size = state.clearing.size;
+  const basket = { ...(supply.groundBasket ?? realBasket?.position ?? body), size: realBasket?.size ?? size * .28,
+    berries: realBasket && state.life.garden.production === undefined ? realBasket.berries : 0 };
+  if (supply.tool === "shovel") {
+    const gesture = travel.phase === "packing" && supply.stowing ? coastalGatheringStow(supply.stowing, still ? 0 : age)
+      : coastalGatheringGesture(age, supply.seed, still);
+    return { ...gesture, tool: "shovel", x: body.x, y: body.y, size, held: walking, filled: !travel.cancelled && supply.filled,
+      pose: walking ? body.pose : "idle", frame: still ? 0 : body.frame, basket,
+      ...(walking ? { action: "walk", direction: body.direction, itemVisible: false, crouch: 0, lean: 0 } : {}) };
   }
-  return { ...gesture, tool: supply.tool, x: body.x, y: body.y, size: state.clearing.size, held,
-    filled: !travel.cancelled && supply.filled, pose: walking ? body.pose : "idle", frame: still ? 0 : body.frame,
-    ...(walking ? { action: "walk" as const, direction: body.direction, itemVisible: false, crouch: 0, lean: 0 } : {}),
-    basket: { ...basketPoint, size: basketSize, berries: realBasket && state.life.garden.production === undefined ? realBasket.berries : 0 } };
+  const phase = supply.basketStage === "pickup" ? "pickup" : supply.basketStage === "deposit" ? "deposit"
+    : walking ? "carry" : travel.phase === "packing" ? "stow" : "collect";
+  const clock = FORAGING_BASKET_CYCLE, pickPhase = unit((age - clock.pickStart) / clock.pickSeconds);
+  const action = phase === "carry" ? "walk" : phase === "pickup" || phase === "deposit" ? "setdown"
+    : phase === "stow" ? "pack" : age < clock.lowerEnd ? "setdown" : age < clock.pickStart ? "look"
+      : age >= clock.liftStart ? "lift" : pickPhase < .35 ? "pick" : pickPhase < .6 ? "lift" : pickPhase < .8 ? "pack" : "rest";
+  const base: ForestGatheringFrame = { x: body.x, y: body.y, size, tool: "basket", pose: body.pose,
+    frame: still ? 0 : body.frame, direction: body.direction, action, progress: pickPhase, crouch: 0, lean: 0,
+    hand: { x: 0, y: 0 }, item: (["twig", "fiber", "stone"] as const)[(supply.seed + (supply.stopIndex ?? 0)) % 3],
+    itemVisible: false, held: true, filled: !travel.cancelled && supply.filled, basket,
+    basketActivity: { phase, elapsed: age, ground: phase === "deposit" ? realBasket?.homePosition ?? basket : supply.groundBasket ?? basket,
+      from: supply.basketFrom, keepHeld: supply.keepBasketHeld, source: supply.stowingBasket } };
+  const visual = forestGatheringBasketVisual(base, still), hand = visual.pickedBerry ?? visual.arms[0].hand;
+  return { ...base, pose: visual.pose, direction: visual.direction, frame: visual.frame, crouch: visual.rig?.crouch ?? 0,
+    basket: { ...basket, x: visual.basket!.x, y: visual.basket!.y }, held: !visual.basket!.grounded,
+    itemVisible: Boolean(visual.pickedBerry), hand: { x: (hand.x - body.x) / size, y: (hand.y - body.y) / size } };
+}
+
+/** A short walk starts only after lifting the basket. All feet still use the
+ * ordinary navigation walker; searching never teleports or invents loot. */
+function nextForagingStop(state: ForestSessionState, scene: FixedWorldScene): WorldPoint | null {
+  const supply = state.journeyTravel?.gathering, nav = baseClearingNavigation(state.clearing);
+  if (!supply || !nav) return null;
+  const origin = supply.searchOrigin ?? destination(scene, "basket");
+  if (!origin) return null;
+  const index = (supply.stopIndex ?? 0) + 1, phase = supply.seed % 12;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const angle = (phase + index * 3 + attempt) * Math.PI / 6;
+    const candidate = { x: origin.x + Math.cos(angle) * 22, y: origin.y + Math.sin(angle) * 16 };
+    if (distance(candidate, state.clearing.position) < 12) continue;
+    const path = findWorldPath(nav, state.clearing.position, candidate);
+    if (path && path.reduce((total, point, i) => total + (i ? distance(path[i - 1], point) : 0), 0) < 75) return candidate;
+  }
+  return null;
 }
 
 function ownBasket(state: ForestSessionState) {
@@ -126,13 +137,13 @@ export function syncForestSupplyJourney(state: ForestSessionState, scene: FixedW
     state.reaction = 0; state.animation = null;
     travel = { jobId: journey!.id, finishesAt: Date.parse(journey!.finishesAt), phase: active ? "leaving" : "ready", shore: place,
       home: { ...state.clearing.home }, beganAt: state.clearing.elapsed, requested: false, scene,
-      gathering: { seed: gatheringSeed(journey!.id), phaseAt: state.director.elapsed, filled: !active, tool,
+      gathering: { seed: gatheringSeed(journey!.id), phaseAt: state.director.elapsed, filled: !active, tool, searchOrigin: { ...place }, stopIndex: 0,
         ...(tool === "basket" ? { basketStage: active ? state.life.garden.basket!.held ? "carry" : "approach" : "returned" } : {}) } };
     state.journeyTravel = travel; state.explorationId = journey!.id;
     if (active && first && (age > 15 || still)) {
       restoreSupplyFeet(state, place); travel.phase = "gathering";
       if (tool === "basket") { travel.gathering!.basketStage = "carry"; ownBasket(state); workingBasket(state); }
-      travel.gathering!.phaseAt = state.director.elapsed - GATHERING_SETDOWN_SECONDS - age % 28;
+      travel.gathering!.phaseAt = state.director.elapsed - (tool === "basket" ? age % FORAGING_BASKET_CYCLE.end : GATHERING_SETDOWN_SECONDS + age % 28);
     } else if (active) { if (travel.gathering!.basketStage === "carry") ownBasket(state); requestClearingOutside(state.clearing); }
   }
   if (!travel?.gathering) return false;
@@ -146,11 +157,12 @@ export function syncForestSupplyJourney(state: ForestSessionState, scene: FixedW
     }
     if (travel.phase === "gathering") {
       const source = forestJourneyGatheringFrame(state, travel.scene, still);
-      supply.stowing = source ?? undefined; supply.basketFrom = source ? { ...source.basket } : undefined;
-      supply.stowLift = source?.held ? 1 : 0; supply.phaseAt = state.director.elapsed;
+      supply.stowing = source ?? undefined; supply.stowingBasket = source?.tool === "basket" ? forestGatheringBasketVisual(source, still) : undefined;
+      supply.basketFrom = source ? { ...source.basket } : undefined;
+      supply.phaseAt = state.director.elapsed;
       supply.resumeGathering = true; travel.phase = "packing";
     }
-    travel.scene = scene; travel.shore = place; releaseClearingPoint(state.clearing); travel.requested = false;
+    travel.scene = scene; travel.shore = place; supply.searchOrigin = { ...place }; releaseClearingPoint(state.clearing); travel.requested = false;
   }
   if (travel.phase === "away") { if (!same || !active) { releaseBasket(state); state.journeyTravel = undefined; } return true; }
   const finished = !same || !active || travel.cancelled;
@@ -169,19 +181,34 @@ export function syncForestSupplyJourney(state: ForestSessionState, scene: FixedW
     } else { syncBasket(state, scene, still); return true; }
   }
   if (supply.basketStage === "deposit") {
-    if (still || state.director.elapsed - supply.phaseAt >= GATHERING_SETDOWN_SECONDS) {
+    if (still || state.director.elapsed - supply.phaseAt >= GATHERING_DEPOSIT_SECONDS) {
       releaseBasket(state, true); supply.basketStage = "returned"; travel.phase = "returning"; travel.beganAt = state.clearing.elapsed;
       travel.requested = false; releaseClearingPoint(state.clearing);
     } else { syncBasket(state, scene, still); return true; }
   }
   if (travel.phase === "gathering") {
-    if (state.director.elapsed - supply.phaseAt >= GATHERING_SETDOWN_SECONDS + 19) supply.filled = !travel.cancelled;
+    const worked = (supply.frozenAt ?? state.director.elapsed) - supply.phaseAt;
+    if (worked >= (supply.tool === "basket" ? FORAGING_BASKET_CYCLE.pickStart + FORAGING_BASKET_CYCLE.pickSeconds * .8 : GATHERING_SETDOWN_SECONDS + 19))
+      supply.filled = !travel.cancelled;
     if (finished) {
       const source = forestJourneyGatheringFrame(state, scene, still);
-      supply.stowing = source ?? undefined; supply.basketFrom = source ? { ...source.basket } : undefined;
-      supply.stowLift = source?.held ? 1 : 0; supply.phaseAt = state.director.elapsed;
+      supply.stowing = source ?? undefined; supply.stowingBasket = source?.tool === "basket" ? forestGatheringBasketVisual(source, still) : undefined;
+      supply.basketFrom = source ? { ...source.basket } : undefined;
+      supply.phaseAt = state.director.elapsed;
       travel.phase = still ? "returning" : "packing"; travel.beganAt = state.clearing.elapsed; travel.requested = false;
       if (still) releaseClearingPoint(state.clearing);
+    } else if (supply.tool === "basket" && !still && worked >= FORAGING_BASKET_CYCLE.end) {
+      const next = nextForagingStop(state, scene);
+      if (next) {
+        syncBasket(state, scene, false); ownBasket(state);
+        supply.stopIndex = (supply.stopIndex ?? 0) + 1;
+        supply.basketFrom = undefined; supply.stowingBasket = undefined; supply.phaseAt = state.director.elapsed;
+        travel.shore = next; travel.phase = "leaving"; travel.beganAt = state.clearing.elapsed; travel.requested = false;
+        releaseClearingPoint(state.clearing);
+      } else {
+        supply.basketFrom = forestJourneyGatheringFrame(state, scene)?.basket;
+        supply.phaseAt = state.director.elapsed;
+      }
     }
   } else if (finished && travel.phase === "leaving") {
     travel.phase = "returning"; travel.requested = false; travel.beganAt = state.clearing.elapsed; releaseClearingPoint(state.clearing);
@@ -217,7 +244,10 @@ export function syncForestSupplyJourney(state: ForestSessionState, scene: FixedW
       supply.basketFrom = { ...basket.position }; ownBasket(state); supply.basketStage = "pickup"; travel.phase = "packing"; supply.phaseAt = state.director.elapsed;
     } else if (travel.phase === "leaving") {
       travel.phase = "gathering"; supply.phaseAt = state.director.elapsed;
-      if (supply.tool === "basket") { supply.basketFrom = basket ? { ...basket.position } : undefined; workingBasket(state); }
+      if (supply.tool === "basket") {
+        supply.basketFrom = forestBasketCarryPoint({ ...state.clearing.position, size: state.clearing.size });
+        workingBasket(state);
+      }
     } else if (basket?.journeyOwner === travel.jobId) {
       supply.basketFrom = forestJourneyGatheringFrame(state, scene)?.basket; supply.basketStage = "deposit";
       travel.phase = "packing"; supply.phaseAt = state.director.elapsed;

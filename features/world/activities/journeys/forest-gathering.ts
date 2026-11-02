@@ -1,5 +1,6 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { WorldPoint } from "@/features/world/tiled/types";
+import type { ForestGardenVisualFrame } from "@/features/world/activities/garden/forest-garden-painter";
 
 /** Woodland gathering uses the shared garden basket. Coastal digging and
  * distant journeys are selected separately by the presentation controller. */
@@ -15,33 +16,19 @@ export type GatheringGesture = {
 export type ForestGatheringFrame = GatheringGesture & {
   x: number; y: number; size: number; pose: PixelPose; frame: number;
   held: boolean; filled: boolean; basket: { x: number; y: number; size: number; berries?: number; itemIds?: (string | undefined)[] };
+  basketActivity?: { phase: "carry" | "pickup" | "deposit" | "collect" | "stow"; elapsed: number;
+    from?: WorldPoint; ground: WorldPoint; keepHeld?: boolean; source?: ForestGardenVisualFrame };
 };
 export const GATHERING_PACK_SECONDS = 1.2;
 export const GATHERING_SETDOWN_SECONDS = 1.2;
+export const GATHERING_DEPOSIT_SECONDS = 1.5;
+export const FORAGING_BASKET_CYCLE = { lowerEnd: .65, pickStart: 3, pickSeconds: 3, liftStart: 7, end: 8.2 } as const;
 const smooth = (n: number) => { const p = Math.max(0, Math.min(1,n)); return p*p*(3-2*p); };
 const mix = (a: number,b: number,p: number) => a+(b-a)*smooth(p);
 
 export function gatheringSeed(id: string) {
   let value=0; for (const ch of id) value=(value*31+ch.charCodeAt(0))>>>0;
   return value;
-}
-
-/** Small purposeful loops, with long quiet pauses and alternating finds.
- * This never counts inventory: findings on the shared basket are cosmetic. */
-export function gatheringGesture(elapsed: number, seed: number, still=false): GatheringGesture {
-  const age=Number.isFinite(elapsed) ? Math.max(0,elapsed) : 0;
-  const cycle=still?0:Math.floor(age/28), local=age%28;
-  const side=(cycle+seed)%2 ? 1 : -1;
-  const item=(["twig","fiber","stone"] as const)[(cycle+seed)%3];
-  let action: GatheringAction="rest", progress=0,crouch=0,lean=0,hand={x:side*.22,y:-.30},itemVisible=false;
-  if (still) return {action:"look",progress:0,crouch:0,lean:0,hand,item,itemVisible:false,direction:side<0?"left":"right"};
-  if(local<4) { action="look";progress=local/4;hand={x:side*.20,y:-.35}; }
-  else if(local<9) { action="search";progress=(local-4)/5;crouch=mix(0,7,progress);lean=mix(0,side*3,progress);hand={x:mix(side*.20,side*.35,progress),y:mix(-.35,-.08,progress)}; }
-  else if(local<12) { action="pick";progress=(local-9)/3;crouch=7;lean=side*3;hand={x:side*(.35+Math.sin(progress*Math.PI)*.025),y:-.08};itemVisible=progress>.58; }
-  else if(local<15) { action="lift";progress=(local-12)/3;crouch=mix(7,1,progress);lean=mix(side*3,0,progress);hand={x:mix(side*.35,side*.22,progress),y:mix(-.08,-.34,progress)};itemVisible=true; }
-  else if(local<19) { action="pack";progress=(local-15)/4;crouch=mix(1,3,Math.sin(progress*Math.PI));hand={x:mix(side*.22,.37,progress),y:mix(-.34,-.12,progress)};itemVisible=progress<.78; }
-  else if(local<22) { action="look";progress=(local-19)/3;crouch=mix(3,0,progress);hand={x:mix(.37,side*.22,progress),y:mix(-.12,-.30,progress)}; }
-  return {action,progress,crouch,lean,hand,item,itemVisible,direction:side<0?"left":"right"};
 }
 
 type DigKeyframe = { at: number; action: GatheringAction; handle: WorldPoint; blade: WorldPoint; crouch: number; lean: number; soil: number };
@@ -71,7 +58,7 @@ export function coastalGatheringGesture(elapsed: number, seed: number, still=fal
 }
 
 /** Finish the currently displayed gesture without snapping a bent body upright. */
-export function gatheringStow(source: GatheringGesture, elapsed: number): GatheringGesture {
+export function coastalGatheringStow(source: GatheringGesture, elapsed: number): GatheringGesture {
   const p=Math.max(0,Math.min(1,elapsed/GATHERING_PACK_SECONDS));
   if (source.tool === "shovel" && source.shovel) {
     const side=source.direction==="left"?-1:1;
@@ -79,6 +66,5 @@ export function gatheringStow(source: GatheringGesture, elapsed: number): Gather
     return {...source,action:"pack",progress:p,crouch:mix(source.crouch,0,p),lean:mix(source.lean,0,p),
       hand:handle,itemVisible:false,shovel:{handle,blade:{x:mix(source.shovel.blade.x,side*.41,p),y:mix(source.shovel.blade.y,-.04,p)},soil:source.shovel.soil*(1-smooth(p))}};
   }
-  return {...source,action:"pack",progress:p,crouch:mix(source.crouch,0,p),lean:mix(source.lean,0,p),
-    hand:{x:mix(source.hand.x,.37,p/.55),y:mix(source.hand.y,-.32*.82,p/.55)},itemVisible:source.itemVisible&&p<.55};
+  return { ...source, action: "pack", progress: p, itemVisible: false };
 }

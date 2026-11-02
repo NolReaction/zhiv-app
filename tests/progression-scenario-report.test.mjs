@@ -100,7 +100,7 @@ test("published branch results match the full evidence and current economy sourc
       maxDays: options.maxDays ?? 160, manualSeconds: options.manualSeconds ?? 2,
       externalPearls: (options.externalSlotBudget ?? 0) / 2, goal: options.completionGoal ?? "home-5",
       socialMode: options.socialMode ?? "income", speedupPolicy: options.speedupPolicy ?? "none",
-      ownerPublicId: options.ownerPublicId ?? "0000-0000-0001", neighborPolicy: options.neighborPolicy ?? "none", relicPolicy: options.relicPolicy ?? "none", exchangePolicy: options.exchangePolicy ?? "duplicates",
+      ownerPublicId: options.ownerPublicId ?? "0000-0000-0001", neighborPolicy: options.neighborPolicy ?? "none", relicPolicy: options.relicPolicy ?? "none", exchangePolicy: options.exchangePolicy ?? "duplicates", currencyExchangePolicy: options.currencyExchangePolicy ?? "none",
       useMeals: options.useMeals ?? true, buySupplies: options.buySupplies ?? true, opportunisticRoutes: options.opportunisticRoutes ?? true,
     };
     assert.deepEqual(Object.fromEntries(Object.keys(expected).map(key => [key, row[key]])), expected, `${row.id} metadata must describe the actual runner options`);
@@ -168,4 +168,33 @@ test("full relic purchases and all-capacity goals are visible without blending t
     { title: "Все три цели · 16 ч · покупка реликвий", minimum: 30, maximum: 30, count: 1 },
     { title: "Все три цели и все места · 8 часов", minimum: 84, maximum: 84, count: 1 },
   ]);
+});
+
+test("currency conversion is explicit, balanced and exported separately from ordinary free-play highlights", () => {
+  const converted = { ...structuredClone(row), label: "gold-fixture-free", currencyExchangePolicy: "construction-shortfall",
+    home2Days: 1, home3Days: 3, goldConversions: [{ paidPearls: 40, receivedCoins: 1000 }],
+    coinLedger: { initial: 100, credits: { exchange_pearls_for_gold: 1000 }, debits: {} }, coins: 1100,
+    pearlLedger: { initial: 40, credits: {}, debits: { exchange_pearls_for_gold: 40 } }, pearls: 0,
+    skills: { version: 1, cookingSeconds: 120, travelSeconds: 600, lastCooking: { jobId: "private-result" } } };
+  const value = compactProgressionReport({ ...source, scenarios: [converted] }, economy, rewards), result = value.scenarios[0];
+  assert.equal(result.goldConversions, 1);
+  assert.equal(result.goldConversionPearls, 20);
+  assert.equal(result.goldConversionCoins, 1000);
+  assert.deepEqual(result.skillSeconds, { cookingSeconds: 120, travelSeconds: 600 });
+  assert.equal(result.home2Days, 1); assert.equal(result.home3Days, 3);
+  const highlight = { ...result, completed: true, goal: "home-5", visitsPerDay: 3, regularMinutes: 30, slotPolicy: "earned", socialMode: "income" };
+  assert.equal(scenarioHighlights({ ...value, scenarios: [highlight] }).length, 0, "Gold conversion cannot enter ordinary free-play ranges");
+  assert.equal(scenarioHighlights({ ...value, scenarios: [{ ...highlight, currencyExchangePolicy: "none" }] }).length, 1);
+  assert.equal(progressionScenarioReportSchema.safeParse(value).success, true);
+  const csv = scenarioCsvRows(value);
+  assert.equal(csv[1][csv[0].indexOf("currency_exchange_policy")], "construction-shortfall");
+  assert.equal(csv[1][csv[0].indexOf("conversion_visible_pearls")], 20);
+  assert.match(html(value), /получено 1\s?000 монет/);
+  assert.match(html(value), /Обмен жемчуга в сценариях/);
+  const misleading = structuredClone(converted); misleading.currencyExchangePolicy = "none";
+  assert.throws(() => compactProgressionReport({ ...source, scenarios: [misleading] }, economy, rewards), /Standard controls cannot convert/);
+  const wrongLedger = structuredClone(converted); wrongLedger.goldConversions[0].receivedCoins++;
+  assert.throws(() => compactProgressionReport({ ...source, scenarios: [wrongLedger] }, economy, rewards), /Conversion income differs/);
+  const beyondEnd = structuredClone(converted); beyondEnd.home2Days = beyondEnd.elapsedDays + 1;
+  assert.throws(() => compactProgressionReport({ ...source, scenarios: [beyondEnd] }, economy, rewards), /home2Days is after/);
 });

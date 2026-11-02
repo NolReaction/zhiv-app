@@ -17,7 +17,7 @@ test("economy catalog has useful chains, reachable actual tiers and separate pro
   assert.ok(report.fullBaseMinimumSeconds > report.fiveTierBaseMinimumSeconds);
   assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 0);
   assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 0);
-  assert.equal(report.fourthStage.constructionCoins, 61200);
+  assert.equal(report.fourthStage.constructionCoins, 71200);
   assert.equal(report.fourthStage.constructionSeconds, 32 * 3600);
   assert.equal(report.fourthStage.longWorkshopJobs, 6);
   assert.match(report.timingBasis, /construction queue.*actual play duration are separate/);
@@ -313,7 +313,7 @@ test("arcade production improvements do not make earlier tiers slower than later
 
 test("third-stage material bundles fit starter storage while daily delivery waits are removed", () => {
   const catalog = readEconomyCatalog(), report = auditEconomyProgression(catalog);
-  assert.deepEqual(report.thirdStage, { constructionCount: 7, constructionCoins: 22100,
+  assert.deepEqual(report.thirdStage, { constructionCount: 7, constructionCoins: 26100,
     constructionSeconds: 15 * 3600, largestMaterialBundle: 32 });
   assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 0);
   const home = catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4);

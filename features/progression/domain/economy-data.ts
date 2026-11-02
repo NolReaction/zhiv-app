@@ -41,7 +41,7 @@ export type EconomyItem = EconomyCatalog["items"][number] & {
   inventoryItemId?: string;
   sources: EconomyItemSource[];
   uses: EconomyItemUse[];
-  meal?: { heroSpeedBps: number; builderSpeedBps: number; heroWorkSeconds?: number };
+  meal?: { heroSpeedBps: number; builderSpeedBps: number; heroWorkSeconds?: number; builderWorkSeconds?: number };
 };
 export type EconomyRecipe = EconomyCatalog["recipes"][number] & {
   inputNpcValue: number;
@@ -390,7 +390,7 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
     { id: `weekly:${weekly.id}:${stage.id}`, kind: "weekly", name: `${weekly.name}: ${stage.name}`, quantity, homeLevel: weekly.requiredHomeLevel });
   for (const meal of catalog.food?.meals ?? []) {
     const item = byId.get(meal.itemId);
-    if (item) item.meal = { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps, ...(meal.heroWorkSeconds ? { heroWorkSeconds: meal.heroWorkSeconds } : {}) };
+    if (item) item.meal = { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps, ...(meal.heroWorkSeconds ? { heroWorkSeconds: meal.heroWorkSeconds } : {}), ...(meal.builderWorkSeconds ? { builderWorkSeconds: meal.builderWorkSeconds } : {}) };
     addUse(meal.itemId, { id: "meal", kind: "meal", name: `Обед: Мохлик +${meal.heroSpeedBps / 100}%, строитель +${meal.builderSpeedBps / 100}% скорости`, quantity: 1,
       homeLevel: unlockHomes.get(baselineRecipe(catalog, meal.itemId)?.id ?? "") ?? 1 });
   }

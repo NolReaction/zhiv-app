@@ -182,13 +182,13 @@ object EconomyRules {
         val inventory = (starting?.startingItems ?: emptyMap()).toMutableMap()
         if (grant.woodGranted > 0) inventory["wood"] = (inventory["wood"] ?: 0) + grant.woodGranted
         if (grant.stoneGranted > 0) inventory["stone"] = (inventory["stone"] ?: 0) + grant.stoneGranted
-        return EconomyState(currencyScale=10,pearlScale=50,itemUnlockVersion=1,
+        return EconomySkills.normalized(EconomyState(currencyScale=10,pearlScale=50,itemUnlockVersion=1,
             wallet = EconomyWallet(grant.coinsGranted + (starting?.startingWallet?.coins ?: 0), starting?.startingWallet?.pearls ?: 0), inventory = EconomyFishInventory.items(inventory),
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
                 "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0,
-                "bridge" to 0, "lighthouse" to 0), migration = grant,
+                "bridge" to 0, "lighthouse" to 0), migration = grant, progression = EconomyProgression(skills = if (homeLevel > 1 || workshopLevel > 0) null else EconomySkills.initial()),
             tutorialOrder = if (starting == null) EconomyTutorialOrder() else EconomyTutorialOrder(
-                version = 3, step = 0, ingredientsClaimed = true, terms = EconomyTutorialOrders.orders(starting).first(), rewardVersion = 7))
+                version = 3, step = 0, ingredientsClaimed = true, terms = EconomyTutorialOrders.orders(starting).first(), rewardVersion = 7)))
     }
 
     /** Escrow keeps its space until sold, so putting goods on the market cannot expand the warehouse. */
@@ -400,7 +400,7 @@ object EconomyRules {
     fun apply(input: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap(),
         legacyHistory: Set<String> = emptySet()): Pair<EconomyState, String> {
         val known = EconomyItemUnlocks.persist(EconomyFishInventory.state(EconomyTapBoost.settle(input, now)), legacyHistory + reservedItems.filterValues { it > 0 }.keys)
-        val state = EconomyStageOrders.pin(known, now = now)
+        val state = EconomySkills.normalized(EconomyStageOrders.pin(known, now = now))
         val (next, message) = applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
         val trained = EconomySkills.award(state, next, command, now)
         val progressed = EconomyPlayerProgression.award(state, trained, command, now)
@@ -498,9 +498,9 @@ object EconomyRules {
                 val fishStockCost = beforeStock.mapValues { (id, amount) -> amount - (afterStock[id] ?: 0L) }.filterValues { it > 0L }
                 val tradeSpeed = if (recipe.buildingId == "woodlot") EconomyTradeRelations.bonusBps(state, "lopukh", now = now) else 0
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
-                    startedAt = now.toString(), finishesAt = (if (firstHarvest) now.plusMillis(1) else now.plusSeconds(EconomyFood.workDuration(recipe.seconds * command.quantity, 0, tradeSpeed))).toString(),
+                    startedAt = now.toString(), finishesAt = (if (firstHarvest) now.plusMillis(1) else now.plusSeconds(EconomySkills.workDuration(state, EconomySkills.production(recipe.buildingId), EconomyFood.workDuration(recipe.seconds * command.quantity, 0, tradeSpeed)))).toString(),
                     rewards = rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version,
-                    cooking = cooking, skillWorkSeconds = if (recipe.buildingId == "dryer") recipe.seconds * command.quantity else null,
+                    cooking = cooking, skillWorkSeconds = if (firstHarvest) 0 else recipe.seconds * command.quantity,
                     collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) },
                     fishStockCost = fishStockCost.takeIf { it.isNotEmpty() }, tradeSpeedBps = tradeSpeed)
                 requireRewardCapacity(state, job.rewards)
@@ -577,10 +577,10 @@ object EconomyRules {
                     requireFishingBaitCompatible(tackle.equippedRodId, tackle.equippedBaitId)
                 }
                 requireJobCapacity(state)
-                val heroTrip = if (mining) null else EconomyFood.heroTrip(state, exploration.seconds)
+                val heroTrip = if (mining) null else EconomyFood.heroTrip(state, exploration.seconds, EconomySkills.exploration(exploration))
                 val meal = heroTrip?.meal
                 val tradeSpeed = if (mining) EconomyTradeRelations.bonusBps(state, "kamneshmyg", now = now) else 0
-                val tripSeconds = heroTrip?.seconds ?: EconomyFood.workDuration(exploration.seconds, 0, tradeSpeed)
+                val tripSeconds = heroTrip?.seconds ?: EconomySkills.workDuration(state, "mining", EconomyFood.workDuration(exploration.seconds, 0, tradeSpeed))
                 val rareSpec = catalog.rareDrops?.takeIf { (state.buildings["home"] ?: 1) >= it.requiredHomeLevel }
                 val rareClock = if (mining) state.minerRareDropState else state.rareDropState
                 val rareCount = if (rareSpec != null && rareClock != null && rareClock.remainingSeconds <= tripSeconds) 1L else 0L
@@ -609,7 +609,7 @@ object EconomyRules {
                     finishesAt = now.plusSeconds(tripSeconds * (if (mining) command.quantity else 1L)).toString(), rewards = rewards.filterValues { it > 0 }, cost = cost,
                     catalogVersion = catalog.version, fishing = fishingCatch, rareDrop = rare?.delivery, meal = meal,
                     actorId = if (mining) "miner" else "mochlik", tradeSpeedBps = tradeSpeed,
-                    skillWorkSeconds = if (mining) null else exploration.seconds,
+                    skillWorkSeconds = exploration.seconds,
                     expeditionFinds = if (exploration.finds != null || exploration.loot != null) EconomyExpeditionLoot.draw(exploration) else null,
                     miningBatch = if (mining) EconomyMiningBatch(command.quantity.toInt(), unitSeconds = tripSeconds, unitRewards = exploration.rewards) else null)
                 spent.copy(jobs = state.jobs + job, fishingCastSeed = seed,
@@ -670,14 +670,16 @@ object EconomyRules {
                 val meal = EconomyFood.pendingMeal(state, "builder")
                 val cost = if (tutorialWorkshop) EconomyCost(0, emptyMap()) else upgrade.cost
                 val tradeSpeed = EconomyTradeRelations.bonusBps(state, "builder", now = now)
+                val skillSpeed = EconomySkills.bonus(state, "building")
                 val job = EconomyJob(command.requestId, "construction", building.id, targetLevel = next,
-                    startedAt = now.toString(), finishesAt = now.plusSeconds(EconomyFood.workDuration(upgrade.seconds, meal?.speedBps ?: 0, tradeSpeed)).toString(),
-                    cost = cost, catalogVersion = catalog.version, meal = meal, tradeSpeedBps = tradeSpeed)
+                    startedAt = now.toString(), finishesAt = now.plusSeconds(EconomyFood.builderWorkDuration(upgrade.seconds, meal?.speedBps ?: 0, tradeSpeed, meal?.workSeconds, skillSpeed)).toString(),
+                    cost = cost, catalogVersion = catalog.version, meal = meal?.copy(workSeconds = meal.workSeconds?.let { minOf(upgrade.seconds, it) }), tradeSpeedBps = tradeSpeed,
+                    skillWorkSeconds = if (tutorialWorkshop) 0 else upgrade.seconds, skillSpeedBps = skillSpeed)
                 // The aid is earmarked for this job, without changing inventory,
                 // reserved market stock or a legacy negative coin balance.
                 val funded = if (tutorialWorkshop) state else spend(state, cost)
                 funded.copy(jobs = state.jobs + job, workshopStarterClaimed = state.workshopStarterClaimed || tutorialWorkshop,
-                    food = if (meal == null) state.food else state.food.copy(builderMeal = null, builderMealSpeedBps = null)) to
+                    food = if (meal == null) state.food else state.food.copy(builderMeal = null, builderMealSpeedBps = null, builderMealWorkSeconds = null)) to
                     if (tutorialWorkshop) "Учебные материалы переданы Шишколапу, строительство мастерской началось" else "Материалы внесены, строительство началось"
             }
             "speedup_construction" -> {

@@ -5,6 +5,7 @@ import { Check, Clock3, LockKeyhole, PackageCheck, Pickaxe, Plus } from "lucide-
 import type { EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { miningBatchLimit, miningBatchProgress } from "@/features/economy/domain/mining-batch";
 import { economyMinerConflict, isMinerJob } from "@/features/economy/domain/actor-availability";
+import { skillWorkDuration } from "@/features/economy/domain/craft-skill";
 import { tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { locked } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
@@ -121,7 +122,7 @@ function MiningProduction({ economy, state, initialRouteId, onOpenPantry, onOpen
       </div>
       <p className={styles.batchHint}>До {quantityLimit} единиц за заказ. Лимит долгих ресурсов указан на карточках.</p>
       <div className={styles.grid}>{routes.map(route => {
-        const count = routeQuantity(route), reason = routeReason(route), duration = miningDurationLabel(tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog, economy.now) * count);
+        const count = routeQuantity(route), reason = routeReason(route), duration = miningDurationLabel(skillWorkDuration(state, "mining", tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog, economy.now), state.catalog) * count);
         const outputs = Object.entries(route.rewards), name = outputs.length === 1 ? itemName(state, outputs[0][0]) : route.name;
         const costs = [...(route.cost.coins > 0 ? [["coins", route.cost.coins] as const] : []), ...Object.entries(route.cost.items)];
         return <div key={route.id} className={cardStyles.entry}><button type="button" className={cardStyles.card} data-route={route.id} data-recipe-focused={initialRouteId === route.id || undefined} data-blocked={Boolean(reason) || undefined}

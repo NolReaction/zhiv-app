@@ -1,3 +1,4 @@
+import { effectiveCraftSkills } from "@/features/economy/domain/craft-skill";
 import { promoRequestSchema, type PromoRequest, type PromoResult } from "@/features/promo/model";
 import type { PromoCatalog } from "@/lib/server/promo-catalog";
 import { wardrobeItems, wardrobeOwned } from "@/features/world/domain/wardrobe";
@@ -98,6 +99,7 @@ function normalizeCurrency(value: Profile) {
 }
 function view(owner: string, value: Profile, now: number): EconomyView {
   const state = structuredClone(value.state);
+  state.progression = { ...state.progression, skills: effectiveCraftSkills(state) };
   settleEconomyTapBoost(state, now);
   ensureStageOrders(state, economyCatalog, now);
   const unlockedItems = unlockedEconomyItems(state, legacyItemHistory(owner));

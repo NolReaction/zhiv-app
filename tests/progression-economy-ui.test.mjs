@@ -397,7 +397,7 @@ test("stage and pearl summaries distinguish guaranteed project gates from chance
   assert.match(value, /Ускорение стройки считается по оставшемуся времени/);
   assert.doesNotMatch(value, /Предварительный баланс/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);
-  assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 338 − 400 = 38 монет/);
+  assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 338 − 700 = -262 монет/);
 });
 
 test("legacy board summary keeps its supplied capacity without promising one request per resident", () => {
@@ -442,7 +442,7 @@ test("house-four project displays one-time funding, actual restoration costs and
   const tree = harness(StageCard, { stage, onSelect() {} }).render();
   const value = text(renderToStaticMarkup(tree));
   assert.equal(stage.preliminary, false);
-  assert.match(value, /Обязательные стройки 61 200 монет/);
+  assert.match(value, /Обязательные стройки 71 200 монет/);
   assert.ok(value.includes(`Поставки этапа ${stage.orders.length} · +${stage.orderCoins.toLocaleString("ru-RU").replaceAll("\u00a0", " ")} монет`));
   assert.match(value, /Заказы минус стройки/);
   assert.match(value, /Очередь одного строителя/);
@@ -499,7 +499,9 @@ test("every house's berry and processing unlock is visible and opens its actual 
 test("new meals expose their real effects and premium examples agree with the live command price", () => {
   const jelly = text(renderToStaticMarkup(harness(ItemDetails, { item: item("currant_jelly"), home: 0, onSelect() {} }).render()));
   assert.match(jelly, /Характеристики обеда Мохлик: \+20% скорости на/);
-  assert.ok(jelly.includes(`Строитель: +${item("currant_jelly").meal.builderSpeedBps / 100}% скорости одной стройки`));
+  assert.ok(jelly.includes(`Строитель: +${item("currant_jelly").meal.builderSpeedBps / 100}% скорости на 3 ч обычной работы в одной стройке`));
+  assert.equal(item("currant_jelly").meal.builderWorkSeconds, 10800);
+  assert.match(jelly, /остаток идёт с обычной скоростью/);
   assert.match(jelly, /Шахтёра обед не ускоряет/);
   for (const quote of data.pearls.construction.prices) {
     assert.equal(quote.pearls, pearlDisplayAmount(constructionTimePearlPrice(quote.seconds, economyCatalog.constructionSpeedup)));

@@ -106,7 +106,7 @@ test("unused hero and builder portions return exactly once without touching the 
   const jobs = structuredClone(state.jobs), wallet = structuredClone(state.wallet);
   apply(state, "cancel_meal", "hero");
   assert.deepEqual(state.inventory, { grilled_fish: 2 });
-  assert.deepEqual(state.food, { heroMeal: null, builderMeal: "fish_soup", builderMealSpeedBps: catalog.food.meals.find(meal => meal.itemId === "fish_soup").builderSpeedBps });
+  assert.deepEqual(state.food, { heroMeal: null, builderMeal: "fish_soup", builderMealSpeedBps: catalog.food.meals.find(meal => meal.itemId === "fish_soup").builderSpeedBps, builderMealWorkSeconds: 7200 });
   failWithoutChanges(state, "cancel_meal", "hero", "ECONOMY_MEAL_UNAVAILABLE");
   apply(state, "cancel_meal", "builder");
   assert.deepEqual(state.inventory, { grilled_fish: 2, fish_soup: 1 });
@@ -206,9 +206,39 @@ test("a one-hour workshop upgrade with 25 percent extra speed takes 48m and save
   assert.equal(boostedSeconds, 48 * 60);
   assert.equal(level.seconds - boostedSeconds, 12 * 60, "25% more work per second saves 20% of the time");
   assert.equal(food.mealDuration(6 * 3600, 2500), 4 * 3600 + 48 * 60, "historic six-hour jobs follow the same speed rule");
-  assert.deepEqual(state.jobs[0].meal, { itemId: "fish_soup", consumer: "builder", speedBps: 2500 });
+  assert.deepEqual(state.jobs[0].meal, { itemId: "fish_soup", consumer: "builder", speedBps: 2500, workSeconds: 3600 });
   assert.equal(state.inventory.fish_soup, undefined);
   assert.deepEqual(state.jobs[0].cost, level.cost);
+});
+
+test("a new serving caps a four-hour build while an old pending serving keeps its promise", () => {
+  const level = catalog.buildings.find(item => item.id === "workshop").levels.find(item => item.level === 4);
+  assert.equal(level.seconds, 14400);
+  const stocked = () => {
+    const state = fresh();
+    state.buildings = { ...state.buildings, ...level.requiredBuildings, workshop: 3, home: level.requiredHomeLevel };
+    state.wallet.coins = level.cost.coins;
+    state.inventory = { ...level.cost.items, grilled_fish: 1 };
+    return state;
+  };
+  const before = stocked();
+  apply(before, "feed_builder", "grilled_fish");
+  assert.equal(before.food.builderMealWorkSeconds, 1800);
+  apply(before, "start_construction", "workshop");
+  assert.equal((Date.parse(before.jobs[0].finishesAt) - now) / 1000, 14237);
+  assert.equal(before.jobs[0].meal.workSeconds, 1800);
+  assert.equal(before.food.builderMealWorkSeconds, undefined);
+  const active = stocked();
+  apply(active, "start_construction", "workshop");
+  apply(active, "feed_builder", "grilled_fish");
+  assert.equal(Math.ceil((Date.parse(active.jobs[0].finishesAt) - now) / 1000), 14237);
+  assert.equal(active.inventory.grilled_fish, undefined);
+  const legacy = stocked();
+  legacy.food = { heroMeal: null, builderMeal: "grilled_fish" };
+  assert.equal(food.pendingMeal(legacy, "builder").builderWorkSeconds, undefined);
+  apply(legacy, "start_construction", "workshop");
+  assert.equal((Date.parse(legacy.jobs[0].finishesAt) - now) / 1000, 13091);
+  assert.equal(legacy.jobs[0].meal.workSeconds, undefined);
 });
 
 test("feeding an active builder speeds up only remaining milliseconds once and preserves paid job fields", () => {

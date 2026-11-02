@@ -117,7 +117,7 @@ class EconomyFoodTest {
         val fed = apply(apply(original, "eat_food", "grilled_fish"), "feed_builder", "fish_soup")
         val heroReturned = apply(fed, "cancel_meal", "hero")
         assertEquals(mapOf("grilled_fish" to 2L), heroReturned.inventory)
-        assertEquals(EconomyFoodState(null, "fish_soup", builderMealSpeedBps = 2500), heroReturned.food)
+        assertEquals(EconomyFoodState(null, "fish_soup", builderMealSpeedBps = 2500, builderMealWorkSeconds = 7200), heroReturned.food)
         failure("ECONOMY_MEAL_UNAVAILABLE") { apply(heroReturned, "cancel_meal", "hero") }
         val returned = apply(heroReturned, "cancel_meal", "builder")
         assertEquals(original.inventory, returned.inventory)
@@ -186,7 +186,7 @@ class EconomyFoodTest {
         val upgrade = EconomyRules.catalog.buildings.single { it.id == "garden" }.levels.single { it.level == 2 }
         val job = started.jobs.single()
         assertEquals(now.plusSeconds(EconomyFood.mealDuration(upgrade.seconds, 1000)), Instant.parse(job.finishesAt))
-        assertEquals(EconomyJobMeal("grilled_fish", "builder", 1000), job.meal)
+        assertEquals(EconomyJobMeal("grilled_fish", "builder", 1000, 1800), job.meal)
         assertNull(started.food.builderMeal)
         assertNull(started.food.heroMeal)
     }
@@ -212,6 +212,7 @@ class EconomyFoodTest {
         assertEquals(fed.jobs, returned.jobs, "returning a distinct pending portion cannot alter an applied job bonus")
         assertEquals((fed.inventory["grilled_fish"] ?: 0L) + 1, returned.inventory["grilled_fish"])
         failure("ECONOMY_JOB_READY") { apply(state, "feed_builder", "grilled_fish", Instant.parse(job.finishesAt)) }
+        failure("ECONOMY_JOB_READY") { apply(state, "feed_builder", "grilled_fish", Instant.parse(job.finishesAt).minusNanos(1)) }
         assertTrue(EconomyRules.constructionSpeedupPrice(updated, now) <= EconomyRules.constructionSpeedupPrice(job, now))
     }
 
@@ -223,7 +224,7 @@ class EconomyFoodTest {
         val job = started.jobs.single()
         assertEquals(now.plusSeconds(48 * 60L), Instant.parse(job.finishesAt))
         assertEquals(12 * 60L, upgrade.seconds - java.time.Duration.between(now, Instant.parse(job.finishesAt)).seconds)
-        assertEquals(EconomyJobMeal("fish_soup", "builder", 2500), job.meal)
+        assertEquals(EconomyJobMeal("fish_soup", "builder", 2500, 3600), job.meal)
         assertEquals(upgrade.cost, job.cost)
         assertEquals(state.wallet.coins - upgrade.cost.coins, started.wallet.coins)
         assertEquals((state.inventory["fish_soup"] ?: 0L) - 1, started.inventory["fish_soup"])

@@ -1,9 +1,9 @@
 import { drawGroundedHero } from "@/features/world/scene/grounding";
 import { mossPalette } from "@/features/mochlik/appearance-palette";
-import { drawForestGardenBasket } from "@/features/world/activities/garden/forest-garden-painter";
+import { drawForestGardenBasket, drawForestGardenProps } from "@/features/world/activities/garden/forest-garden-painter";
 import type { WorldPoint } from "@/features/world/tiled/types";
 import type { ForestGatheringFrame } from "./forest-gathering";
-import { forestGatheringArms, type GatheringArm } from "./forest-gathering-rig";
+import { forestGatheringBasketVisual } from "./forest-gathering-rig";
 
 /** Includes the leaning body, outstretched paws and held prop. A parked basket
  * gets its own depth/occlusion entry at the exact ground contact. */
@@ -32,15 +32,6 @@ function gatheringArm(ctx:CanvasRenderingContext2D,frame:ForestGatheringFrame,si
   ctx.lineCap="round";ctx.lineJoin="round";
   for(const [width,color] of [[size*.064,rear?palette.mossDark:"#d8bf83"],[size*.039,rear?palette.moss:"#f4e4ae"]] as const) {
     ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(shoulder.x,shoulder.y);ctx.lineTo(elbow.x,elbow.y);ctx.lineTo(hand.x,hand.y);ctx.stroke();
-  }
-}
-
-function basketArm(ctx:CanvasRenderingContext2D,frame:ForestGatheringFrame,arm:GatheringArm,palette:ReturnType<typeof mossPalette>) {
-  const rear=frame.direction==="back";
-  ctx.lineCap="round";ctx.lineJoin="round";
-  for(const [width,color] of [[.071,rear?palette.mossDark:"#b39a66"],[.045,rear?palette.moss:"#f4e4ae"]] as const) {
-    ctx.strokeStyle=color;ctx.lineWidth=frame.size*width;ctx.beginPath();ctx.moveTo(arm.shoulder.x,arm.shoulder.y);
-    ctx.lineTo(arm.elbow.x,arm.elbow.y);ctx.lineTo(arm.hand.x,arm.hand.y);ctx.stroke();
   }
 }
 
@@ -90,30 +81,27 @@ export function drawForestGatheringHero(ctx:CanvasRenderingContext2D, frame:Fore
   const {x,y,size}=frame;
   if(![x,y,size].every(Number.isFinite)||size<=0)return;
   if(frame.tool==="shovel"){drawCoastalGatheringHero(ctx,frame,appearance,still,shadow);return;}
-  const palette=mossPalette(appearance?.palette), arms=forestGatheringArms(frame,still), main=arms.holding.hand;
-  const rear=frame.direction==="back";
-  const prop=()=>{
-    if(!frame.itemVisible)return;
-    ctx.save();ctx.translate(main.x,main.y);
-    if(frame.item==="twig") {ctx.strokeStyle="#7d5934";ctx.lineWidth=size*.036;ctx.beginPath();ctx.moveTo(-size*.04,size*.035);ctx.lineTo(size*.07,-size*.07);ctx.moveTo(size*.02,-size*.02);ctx.lineTo(size*.065,-size*.015);ctx.stroke();}
-    else if(frame.item==="stone") {ctx.fillStyle="#c1c3a7";ctx.beginPath();ctx.ellipse(0,-size*.02,size*.055,size*.036,-.3,0,Math.PI*2);ctx.fill();}
-    else {ctx.strokeStyle="#a9b376";ctx.lineWidth=size*.023;for(const dx of [-.03,0,.03]) {ctx.beginPath();ctx.moveTo(0,size*.02);ctx.lineTo(size*dx,-size*.07);ctx.stroke();}}
-    ctx.restore();
-  };
-  const holding=()=>{
-    basketArm(ctx,frame,arms.holding,palette);
-    if(frame.held)drawForestGatheringBasket(ctx,frame);
-    prop();
-    // Draw the paw after the handle, but in the same depth layer as its arm.
-    ctx.fillStyle=rear?palette.moss:"#f4e4ae";
-    ctx.beginPath();ctx.ellipse(main.x,main.y,size*.026,size*.027,0,0,Math.PI*2);ctx.fill();
-  };
+  const visual = forestGatheringBasketVisual(frame, still), props = { ...visual, pickedBerry: null };
+  const paintBasket = () => drawForestGatheringBasket(ctx, { ...frame, basket: visual.basket!, held: !visual.basket!.grounded });
   ctx.save();
-  // The far arm is occluded by the body and clothing. It never joins the handle.
-  basketArm(ctx,frame,arms.free,palette);
-  if(rear)holding();
-  drawGroundedHero(ctx,{x,y,size,pose:frame.pose,direction:frame.direction,frame:still?0:frame.frame,appearance,shadow,
-    rig:{gardening:true,crouch:frame.crouch,lean:frame.lean}});
-  if(!rear)holding();
+  drawForestGardenProps(ctx, props, "behind", true, paintBasket);
+  drawGroundedHero(ctx, { x, y, size, pose: visual.pose, direction: visual.direction, frame: visual.frame,
+    appearance, shadow, rig: visual.rig });
+  drawForestGardenProps(ctx, props, "front", true, paintBasket);
+  const finding = visual.pickedBerry;
+  if (finding) {
+    ctx.save(); ctx.translate(finding.x, finding.y);
+    if (frame.item === "twig") {
+      ctx.strokeStyle = "#7d5934"; ctx.lineWidth = size * .025; ctx.beginPath();
+      ctx.moveTo(-size * .025, size * .02); ctx.lineTo(size * .045, -size * .045);
+      ctx.moveTo(size * .01, -size * .01); ctx.lineTo(size * .04, -size * .01); ctx.stroke();
+    } else if (frame.item === "stone") {
+      ctx.fillStyle = "#c1c3a7"; ctx.beginPath(); ctx.ellipse(0, 0, size * .035, size * .025, -.3, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.strokeStyle = "#a9b376"; ctx.lineWidth = size * .018;
+      for (const dx of [-.02, 0, .02]) { ctx.beginPath(); ctx.moveTo(0, size * .02); ctx.lineTo(size * dx, -size * .04); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
   ctx.restore();
 }

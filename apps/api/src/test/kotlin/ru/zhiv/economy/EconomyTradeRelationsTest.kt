@@ -22,7 +22,7 @@ class EconomyTradeRelationsTest {
         inventory = catalog.items.filter { item -> catalog.fishing!!.fish.none { it.itemId == item.id } }.associate { it.id to 1000L },
         fishing = EconomyFishing(ownedRods = catalog.fishing!!.rods.map { it.id }, ownedHooks = catalog.fishing.hooks.map { it.id },
             catches = catalog.fishing.fish.associate { it.itemId to 4L }),
-        progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 100L },
+        progression = EconomyProgression(skills = EconomySkills.initial(), recipes = catalog.recipes.associate { it.id to 100L },
             routes = catalog.explorations.associate { it.id to 100L }))
     private fun failure(code: String, block: () -> Unit) { assertEquals(code, assertFailsWith<AuthFailure>(block = block).code) }
     private fun maximum(state: EconomyState = stocked()) = state.copy(tradeRelations = EconomyTradeRelationsState(

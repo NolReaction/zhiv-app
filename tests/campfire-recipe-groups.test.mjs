@@ -249,3 +249,21 @@ test("the campfire catalogue does not replace other station product lists", () =
   assert.match(html, /data-recipe="make_planks"/);
   assert.doesNotMatch(html, /data-campfire-catalog|data-cooking-duration|Время приготовления/);
 });
+
+
+test("unknown cooking experiments hide the future dish and its effects until a successful discovery", () => {
+  const recipeId = "experiment_berry_pastila";
+  const economy = controller();
+  hooks.reset();
+  const hidden = catalog(economy, recipeId).html;
+  assert.match(hidden, /Ингредиенты будут потрачены в любом случае/);
+  assert.match(hidden, /При неудаче блюдо не получится/);
+  assert.match(hidden, /Успех/);
+  assert.doesNotMatch(hidden, /data-known-meal-benefits|Ягодная пастила|Поможет в работе|При неудаче получите/);
+  economy.snapshot.progression.recipes[recipeId] = 1;
+  hooks.reset();
+  const discovered = catalog(economy, recipeId).html;
+  assert.match(discovered, /Ягодная пастила/);
+  assert.match(discovered, /data-known-meal-benefits/);
+  assert.match(discovered, /1 ч →/);
+});

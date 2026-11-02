@@ -86,8 +86,10 @@ export const economyFoodSchema = z.object({ heroMeal: id.nullable().prefault(nul
   heroMealEffect: z.object({ remainingWorkSeconds: count.positive().max(31_536_000), totalWorkSeconds: count.positive().max(31_536_000),
     speedBps: count.max(10000) }).refine(effect => effect.remainingWorkSeconds <= effect.totalWorkSeconds).nullish(),
   builderMealSpeedBps: count.max(10000).nullish(),
+  builderMealWorkSeconds: count.positive().max(31_536_000).nullish(),
 }).refine(food => !food.heroMealEffect || food.heroMeal !== null, "Hero work requires a pending meal")
   .refine(food => food.builderMealSpeedBps == null || food.builderMeal !== null, "Builder speed requires a pending meal")
+  .refine(food => food.builderMealWorkSeconds == null || food.builderMeal !== null, "Builder work requires a pending meal")
   .prefault({ heroMeal: null, builderMeal: null });
 export const economyTradeResidentIdSchema = z.enum(["plesk", "builder", "lopukh", "kamneshmyg", "leaftail"]);
 export type TradeResidentId = z.infer<typeof economyTradeResidentIdSchema>;
@@ -160,7 +162,7 @@ export const economyResidentOrdersSchema = z.object({
   replacementCycle: z.number().int().min(-1).safe().prefault(-1), freeReplacementsUsed: count.max(100).prefault(0),
 }).prefault({ version: 1, cycle: -1, slots: [], completed: 0, earnedCoins: 0, recentTemplateIds: [], replacementCycle: -1, freeReplacementsUsed: 0 });
 export const economyFoodCatalogSchema = z.object({
-  meals: z.array(z.object({ itemId: id, heroSpeedBps: count.max(10000), builderSpeedBps: count.max(10000), heroWorkSeconds: count.positive().max(31_536_000).nullish() })).min(1).max(100),
+  meals: z.array(z.object({ itemId: id, heroSpeedBps: count.max(10000), builderSpeedBps: count.max(10000), builderWorkSeconds: count.positive().max(31_536_000).nullish(), heroWorkSeconds: count.positive().max(31_536_000).nullish() })).min(1).max(100),
   orders: z.object({ slots: z.union([z.literal(3), z.literal(5)]), refreshSeconds: count.min(3600).max(86400),
     replacementSeconds: count.max(86400), completionSeconds: count.max(86400),
     freeReplacements: count.max(100).prefault(3), replacementWindowSeconds: count.min(3600).max(86400).prefault(43200),
@@ -243,7 +245,7 @@ export const economyCatalogSchema = z.object({
     seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
     .refine(recipe => !recipe.experiment || recipe.buildingId === "dryer" && recipe.maxBatch === 1
       && Object.values(recipe.rewards).reduce((sum, n) => sum + n, 0) === 1
-      && Object.values(recipe.experiment.failureRewards).reduce((sum, n) => sum + n, 0) === 1, "Experiments produce one portion in either outcome")
+      && Object.keys(recipe.experiment.failureRewards).length <= 1 && Object.values(recipe.experiment.failureRewards).every(n => n === 1), "Experiments produce one portion and at most one legacy fallback")
     .refine(recipe => !recipe.baseCampfire || recipe.id === "cook_grilled_fish" && recipe.buildingId === "dryer" && recipe.buildingLevel === 1,
       "Only grilled fish is available at the base campfire")
     .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && hasGardenBerryReward(recipe.rewards),
@@ -426,11 +428,11 @@ export const economyJobSchema = z.object({
   rareDrop: economyRareDropDeliverySchema.nullish(),
   cooking: z.object({ successChanceBps: count.min(1).max(10000), workSeconds: count.positive().max(31_536_000),
     successful: z.boolean().optional() }).optional(),
-  skillWorkSeconds: count.positive().max(31_536_000).optional(),
+  skillWorkSeconds: count.max(31_536_000).optional(),
+  skillSpeedBps: count.max(500).optional(),
   tradeSpeedBps: count.max(1000).optional(),
   meal: z.object({ itemId: id, consumer: z.enum(["hero", "builder"]), speedBps: count.max(10000), workSeconds: count.positive().max(31_536_000).optional() }).nullish(),
 }).refine(job => !job.cooking || job.kind === "production" && job.targetId === "dryer", "Cooking outcomes belong to the campfire")
-  .refine(job => !job.meal?.workSeconds || job.meal.consumer === "hero", "Only hero meals have active work")
   .refine(job => !job.miningBatch || job.kind === "exploration" && job.actorId === "miner", "Batches belong to the miner")
   .refine(job => !job.expeditionFinds || job.kind === "exploration", "Finds belong to an exploration")
   .refine(job => !job.actorId || job.kind === "exploration", "Only exploration jobs have a saved actor")

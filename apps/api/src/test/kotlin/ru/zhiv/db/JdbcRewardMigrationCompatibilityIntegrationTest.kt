@@ -49,7 +49,7 @@ class JdbcRewardMigrationCompatibilityIntegrationTest {
         .map { table -> scalar(source, "SELECT jsonb_agg(to_jsonb(t)-'achievement_reward_version')::text FROM $table t") }
     private fun assertFinished(source: DataSource) {
         assertEquals("80", scalar(source, "SELECT max(version::int)::text FROM flyway_schema_history"))
-        assertEquals("31", scalar(source, "SELECT count(*)::text FROM flyway_schema_history"))
+        assertEquals("32", scalar(source, "SELECT count(*)::text FROM flyway_schema_history"))
         assertEquals("V73__economy_reward_promises.sql", scalar(source, "SELECT script FROM flyway_schema_history WHERE version='73'"))
         assertEquals("7", scalar(source, "SELECT economy_v4_initial_state('{}',true)#>>'{tutorialOrder,rewardVersion}'"))
         assertEquals("true", scalar(source, "SELECT (to_regclass('neighbor_settings') IS NOT NULL)::text"))

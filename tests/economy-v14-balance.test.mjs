@@ -26,18 +26,19 @@ test("every fishing loadout has a bounded return and paid bait never turns a dep
   assert(combinations > 2000); assert(best > 20 && best < 25.34);
 });
 
-test("durable rod and hook prices repay over active hours, not hundreds of hours after fish compression", () => {
+test("permanent gear has bounded long-term returns while advanced hooks require saving beyond one small gold exchange", () => {
   const catalog = read(), math = economicMath(catalog), starter = math.catchPortfolio().expectedFishRevenue / 3;
   for (const rod of catalog.fishing.rods.filter(row => row.price > 0)) {
     const advantage = math.catchPortfolio(rod.id).expectedFishRevenue / 3 - starter;
     const activeHours = rod.price / advantage / 60;
-    assert(activeHours >= 2 && activeHours <= 16, `${rod.id}: ${activeHours} active-hour return`);
+    assert(activeHours >= 2 && activeHours <= 24, `${rod.id}: ${activeHours} active-hour return`);
   }
   for (const hook of catalog.fishing.hooks.filter(row => row.price > 0)) {
+    if (["epic", "legendary"].includes(hook.rarity)) assert(hook.price > 1000, "advanced permanent tackle must exceed the smallest gold package");
     const marginal = Math.max(...catalog.fishing.rods.filter(rod => rod.requiredHomeLevel <= hook.requiredHomeLevel)
       .map(rod => (math.catchPortfolio(rod.id, null, "shore", hook.id).expectedFishRevenue - math.catchPortfolio(rod.id).expectedFishRevenue) / 3));
     const activeHours = hook.price / marginal / 60;
-    assert(activeHours >= 6 && activeHours <= 17, `${hook.id}: ${activeHours} active-hour marginal return`);
+    assert(activeHours >= 10 && activeHours <= 100, `${hook.id}: ${activeHours} active-hour marginal return`);
   }
 });
 

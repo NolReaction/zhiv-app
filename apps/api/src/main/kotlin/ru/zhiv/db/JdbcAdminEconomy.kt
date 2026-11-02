@@ -101,9 +101,9 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
     val time = now.toInstant()
     val view = state?.let { raw ->
         val history = if (raw.itemUnlockVersion == 0) legacyEconomyItemHistory(c, profile.id) else emptySet()
-        val it = EconomyStageOrders.pin(raw.copy(unlockedItems=EconomyItemUnlocks.project(raw,history)), now=time)
+        val it = EconomySkills.normalized(EconomyStageOrders.pin(raw.copy(unlockedItems=EconomyItemUnlocks.project(raw,history)), now=time))
         EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs.map { job -> EconomyPublicJobs.project(job, time) },it.migration,
-            EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing,
+            EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing,progression=it.progression,
             wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders, tradeRelations=it.tradeRelations, ship=it.ship,
             stageOrders=it.stageOrders, tutorialOrder=it.tutorialOrder, workshopStarterClaimed=it.workshopStarterClaimed,
             marketSlots=it.marketSlots, unlockedItems=it.unlockedItems)

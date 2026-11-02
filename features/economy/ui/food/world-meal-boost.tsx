@@ -4,12 +4,12 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
 import { ArrowRight, BookOpen, Check, ChevronRight, Clock3, Soup, X } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { mealDuration, mealWorkDuration, pendingHeroMealEffect, pendingMeal } from "@/features/economy/domain/food";
-import { skillProgress } from "@/features/economy/domain/craft-skill";
-import { tradeMealDuration, tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
+import { builderWorkDuration, fedConstructionDuration, mealDuration, mealWorkDuration, pendingHeroMealEffect, pendingMeal } from "@/features/economy/domain/food";
+import { skillForExploration, skillProgress } from "@/features/economy/domain/craft-skill";
+import { tradeRelationBonusBps } from "@/features/economy/domain/trade-relations";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { mealBlockedReason, visibleMeals, type MealConsumer } from "./meal-availability";
-import { mealSpeedDescription } from "./meal-speed-description";
+import { mealSpeedDescription, mealWorkDescription } from "./meal-speed-description";
 import { locked } from "@/features/economy/sync/controller-state";
 import { itemName, ProductIcon } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldRecipeDuration } from "@/features/economy/ui/stations/world-recipe-groups";
@@ -22,6 +22,7 @@ export type WorldMealBoostProps = {
   seconds?: number;
   jobId?: string;
   stationId?: string;
+  routeId?: string;
   isOnline?: boolean;
   onNavigateStation?: (stationId: string, recipeId?: string) => void;
 };
@@ -53,17 +54,19 @@ export function mealReturnReason({ economy, consumer, isOnline }: WorldMealBoost
 }
 
 /** Whole seconds for display; an active construction divides its remaining milliseconds. */
-export function mealBoostSeconds({ economy, seconds, jobId, consumer }: Pick<WorldMealBoostProps, "economy" | "seconds" | "jobId"> & Partial<Pick<WorldMealBoostProps, "consumer">>, speedBps: number, remainingWorkSeconds?: number) {
+export function mealBoostSeconds({ economy, seconds, jobId, consumer, routeId }: Pick<WorldMealBoostProps, "economy" | "seconds" | "jobId"> & Partial<Pick<WorldMealBoostProps, "consumer" | "routeId">>, speedBps: number, remainingWorkSeconds?: number) {
   if (jobId) {
     const job = economy.snapshot?.jobs.find(job => job.kind === "construction" && job.id === jobId);
     if (!job) return null;
     const milliseconds = Math.max(0, Math.ceil(Date.parse(job.finishesAt) - economy.now));
-    return Number.isSafeInteger(milliseconds) ? Math.ceil(tradeMealDuration(milliseconds, job.tradeSpeedBps ?? 0, speedBps) / 1000) : null;
+    return Number.isSafeInteger(milliseconds) ? Math.ceil(fedConstructionDuration(milliseconds, speedBps, job.tradeSpeedBps ?? 0, remainingWorkSeconds === undefined ? undefined : remainingWorkSeconds * 1000, job.skillSpeedBps ?? 0) / 1000) : null;
   }
   if (seconds === undefined || !Number.isSafeInteger(seconds) || seconds < 0) return null;
-  if (consumer === "builder" && economy.snapshot) return tradeWorkDuration(economy.snapshot, seconds, "builder", speedBps, economy.snapshot.catalog, economy.now);
+  if (consumer === "builder" && economy.snapshot) return builderWorkDuration(seconds, speedBps, tradeRelationBonusBps(economy.snapshot, "builder", economy.snapshot.catalog, economy.now), remainingWorkSeconds, skillProgress(economy.snapshot, "building", economy.snapshot.catalog).bonusBps);
   const fed = remainingWorkSeconds === undefined ? mealDuration(seconds, speedBps) : mealWorkDuration(seconds, speedBps, remainingWorkSeconds);
-  return consumer === "hero" && economy.snapshot?.progression ? mealDuration(fed, skillProgress(economy.snapshot, "travel", economy.snapshot.catalog).bonusBps) : fed;
+  const route = economy.snapshot?.catalog.explorations.find(entry => entry.id === routeId);
+  const skill = route ? skillForExploration(route, economy.snapshot!.catalog) : "travel";
+  return consumer === "hero" && economy.snapshot?.progression ? mealDuration(fed, skillProgress(economy.snapshot, skill, economy.snapshot.catalog).bonusBps) : fed;
 }
 
 const duration = worldRecipeDuration;
@@ -103,7 +106,7 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
   const baseSeconds = applied && active ? Math.max(0, Math.ceil((Date.parse(active.finishesAt) - economy.now) / 1000)) : mealBoostSeconds(props, 0);
   const selected = meals.find(meal => meal.itemId === selectedItemId && (state.inventory[meal.itemId] ?? 0) > 0);
   const selectedSpeed = selected ? consumer === "hero" ? selected.heroSpeedBps : selected.builderSpeedBps : 0;
-  const selectedSeconds = selected ? mealBoostSeconds(props, selectedSpeed, consumer === "hero" ? selected.heroWorkSeconds ?? undefined : undefined) : null;
+  const selectedSeconds = selected ? mealBoostSeconds(props, selectedSpeed, (consumer === "hero" ? selected.heroWorkSeconds : selected.builderWorkSeconds) ?? undefined) : null;
   const sending = submitted !== null;
   const feedback = reason ?? submissionError ?? economy.error;
   function choose(itemId: string) {
@@ -154,17 +157,18 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
     } else setSubmissionError(null);
   }
   if (saved) return <span ref={savedBadge} tabIndex={-1} className={styles.saved} data-meal-boost={consumer} data-meal-applied={saved.itemId}
-    title={`${itemName(state, saved.itemId)} · ${applied ? "текущая" : "следующая"} ${consumer === "hero" ? "вылазка" : "стройка"}`} aria-label={`${itemName(state, saved.itemId)}: ${mealSpeedDescription(saved.speedBps, tradeSpeedBps)}`}>
+    title={`${itemName(state, saved.itemId)} · ${applied ? "текущая" : "следующая"} ${consumer === "hero" ? "вылазка" : "стройка"}`} aria-label={`${itemName(state, saved.itemId)}: ${applied ? "обед учтён во времени" : "порция подготовлена"}`}>
     <span className={styles.savedSummary}>
     <span className={styles.tileIcon}><ProductIcon state={state} itemId={saved.itemId} size={30} /></span>
-    <span className={styles.tileDescription}><span className={styles.tileLabel}>{applied ? "Обед учтён" : heroEffect ? "Запас сил для вылазок" : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</span><strong>{itemName(state, saved.itemId)}<small>{mealSpeedDescription(saved.speedBps, tradeSpeedBps)}{consumer === "hero" && (heroEffect || applied?.workSeconds) ? " на время действия" : ""}</small></strong>
+    <span className={styles.tileDescription}><span className={styles.tileLabel}>{applied ? "Обед учтён" : heroEffect ? "Запас сил для вылазок" : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</span><strong>{itemName(state, saved.itemId)}<small>{applied ? "Поможет закончить раньше" : "Порция подготовлена"}</small></strong>
       {baseSeconds !== null && <span className={styles.tileDuration} data-meal-duration><Clock3 size={11} aria-hidden="true" />
-        {applied ? duration(baseSeconds) : <>{duration(baseSeconds)}<ArrowRight size={10} aria-hidden="true" /><b>{duration(mealBoostSeconds(props, saved.speedBps, heroEffect?.remainingWorkSeconds) ?? baseSeconds)}</b></>}
+        {applied ? duration(baseSeconds) : <>{duration(baseSeconds)}<ArrowRight size={10} aria-hidden="true" /><b>{duration(mealBoostSeconds(props, saved.speedBps, consumer === "hero" ? heroEffect?.remainingWorkSeconds : pending?.builderWorkSeconds ?? undefined) ?? baseSeconds)}</b></>}
       </span>}
-      {tradeSpeedBps > 0 && <small data-meal-trade-bonus>Шишколап: +{tradeSpeedBps / 100}% к скорости уже учтено</small>}
+      {tradeSpeedBps > 0 && <small data-meal-trade-bonus>Помощь Шишколапа уже учтена во времени</small>}
     </span><Check className={styles.tileControl} size={17} aria-hidden="true" />
     </span>
-    {heroEffect && <span className={styles.savedNote} data-meal-work-remaining>Осталось {duration(heroEffect.remainingWorkSeconds)} из {duration(heroEffect.totalWorkSeconds)} обычного времени вылазок. Во время отдыха запас не тратится.</span>}
+    {!applied && consumer === "builder" && pending?.builderWorkSeconds && <span className={styles.savedNote} data-meal-work-budget>{mealWorkDescription(pending.builderWorkSeconds, "builder")}</span>}
+    {heroEffect && <span className={styles.savedNote} data-meal-work-remaining>Остатка хватит на {duration(heroEffect.remainingWorkSeconds)} вылазок по времени без еды. Во время отдыха он не тратится.</span>}
     {applied && <span className={styles.savedNote} data-meal-used>Бонус этой {consumer === "hero" ? "вылазки" : "стройки"} уже учтён. Потраченную часть вернуть нельзя.</span>}
     {pending && <span className={styles.returnMeal}>
       {applied && <span className={styles.pendingMeal} data-meal-pending={pending.itemId}><span>Для следующей {consumer === "hero" ? "вылазки" : "стройки"}</span><strong>{itemName(state, pending.itemId)}</strong></span>}
@@ -196,27 +200,31 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
       onEscapeKeyDown={event => event.stopPropagation()} onCloseAutoFocus={event => {
         event.preventDefault(); if (navigating.current) return; const target = trigger.current?.isConnected ? trigger.current : savedBadge.current; target?.focus({ preventScroll: true });
       }} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}>
-      <header className={styles.heading}><div><h3 ref={heading} tabIndex={-1} id={headingId}>{consumer === "hero" ? "Обед перед вылазкой" : jobId ? "Обед для строителя" : "Обед перед стройкой"}</h3><p>{jobId ? "Ускорит оставшееся время" : consumer === "hero" ? "Запас сил на несколько вылазок" : "Бонус на одну стройку"}</p></div><Popover.Close asChild><button type="button" data-meal-picker-close aria-label="Закрыть выбор еды"><X size={17} aria-hidden="true" /></button></Popover.Close></header>
+      <header className={styles.heading}><div><h3 ref={heading} tabIndex={-1} id={headingId}>{consumer === "hero" ? "Обед перед вылазкой" : jobId ? "Обед для строителя" : "Обед перед стройкой"}</h3><p>{jobId ? "Ускорит оставшееся время" : consumer === "hero" ? "Запас сил на несколько вылазок" : "Одна порция на стройку"}</p></div><Popover.Close asChild><button type="button" data-meal-picker-close aria-label="Закрыть выбор еды"><X size={17} aria-hidden="true" /></button></Popover.Close></header>
       <div className={styles.meals} aria-label="Готовые блюда">{meals.map(meal => {
         const stock = state.inventory[meal.itemId] ?? 0;
         const speed = consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps;
         const chosen = selected?.itemId === meal.itemId;
+        const example = baseSeconds === null;
+        const rowProps = example ? { ...props, seconds: 3600 } : props;
+        const before = baseSeconds ?? mealBoostSeconds(rowProps, 0);
+        const after = mealBoostSeconds(rowProps, speed, (consumer === "hero" ? meal.heroWorkSeconds : meal.builderWorkSeconds) ?? undefined);
         const content = <><span className={styles.mealIcon}><ProductIcon state={state} itemId={meal.itemId} size={28} /></span>
-          <span className={styles.description}><strong>{itemName(state, meal.itemId)}</strong><small>В запасе {stock}</small>{consumer === "hero" && meal.heroWorkSeconds && <small>На {duration(meal.heroWorkSeconds)} работы</small>}</span>
-          <span className={styles.speed}>+{speed / 100}%<small>к скорости</small></span></>;
+          <span className={styles.description}><strong>{itemName(state, meal.itemId)}</strong><small>В запасе {stock}</small>{(consumer === "hero" ? meal.heroWorkSeconds : meal.builderWorkSeconds) && <small>Запас на {duration((consumer === "hero" ? meal.heroWorkSeconds : meal.builderWorkSeconds)!)} {consumer === "hero" ? "вылазок" : "работы"}</small>}</span>
+          <span className={styles.speed}>{after !== null ? duration(after) : "Быстрее"}{before !== null && <small>{example ? "пример: вместо" : "вместо"} {duration(before)}</small>}</span></>;
         return <article key={meal.itemId} data-boost-meal={meal.itemId}>
           <button type="button" className={styles.meal} data-selected={chosen || undefined} aria-pressed={chosen} disabled={locked(economy) || Boolean(reason) || sending}
-            aria-label={`Выбрать: ${itemName(state, meal.itemId)}, в запасе ${stock}, ${mealSpeedDescription(speed, tradeSpeedBps)}`} onClick={() => choose(meal.itemId)}>{content}<span className={styles.selection} aria-hidden="true">{chosen && <Check size={13} />}</span></button>
+            aria-label={`Выбрать: ${itemName(state, meal.itemId)}, в запасе ${stock}, ${before !== null && after !== null ? `время ${duration(before)} станет ${duration(after)}${example ? ", пример для часа работы" : ""}` : mealSpeedDescription(speed, tradeSpeedBps)}`} onClick={() => choose(meal.itemId)}>{content}<span className={styles.selection} aria-hidden="true">{chosen && <Check size={13} />}</span></button>
         </article>;
       })}</div>
       {!meals.length && <div className={styles.emptyStock} data-meal-empty><Soup size={26} aria-hidden="true" /><strong>Готовых блюд нет</strong><p>Приготовьте обед у костра. Он появится здесь после получения.</p></div>}
-      {onNavigateStation && <button type="button" className={styles.cookbookLink} data-meal-cookbook disabled={sending} onClick={openCookbook}><BookOpen size={15} aria-hidden="true" />Книга рецептов<ArrowRight size={14} aria-hidden="true" /></button>}
+      {onNavigateStation && !meals.length && <button type="button" className={styles.cookbookLink} data-meal-cookbook disabled={sending} onClick={openCookbook}><BookOpen size={15} aria-hidden="true" />Книга рецептов<ArrowRight size={14} aria-hidden="true" /></button>}
       {meals.length > 0 && <div className={styles.confirmation} aria-busy={sending}>
         {selected ? <div className={styles.preview} data-meal-preview={selected.itemId}>
           <span>{selectedSeconds !== null && baseSeconds !== null ? <>{jobId ? "Останется" : "Время"}<strong><s>{duration(baseSeconds)}</s><ArrowRight size={12} aria-hidden="true" /><b>{duration(selectedSeconds)}</b></strong></> : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</span>
-          <span className={styles.bonus}>{mealSpeedDescription(selectedSpeed, tradeSpeedBps)}{consumer === "hero" && selected.heroWorkSeconds ? " на время действия" : ""}</span>
-          {consumer === "hero" && selected.heroWorkSeconds && <span className={styles.saving} data-meal-work-budget>Запас: {duration(selected.heroWorkSeconds)} обычного времени вылазок. Остаток сохранится на следующие походы.</span>}
-          {tradeSpeedBps > 0 && <span className={styles.saving} data-meal-trade-bonus>Шишколап: +{tradeSpeedBps / 100}% к скорости уже учтено</span>}
+
+          {(consumer === "hero" ? selected.heroWorkSeconds : selected.builderWorkSeconds) && <span className={styles.allowance} data-meal-work-budget>{consumer === "hero" ? `Запас: ${duration(selected.heroWorkSeconds!)} вылазок. В отдыхе не тратится.` : `Запас: ${duration(selected.builderWorkSeconds!)} обычной работы. На одну стройку.`}</span>}
+          {tradeSpeedBps > 0 && <span className={styles.saving} data-meal-trade-bonus>Помощь Шишколапа уже учтена во времени</span>}
           {selectedSeconds !== null && baseSeconds !== null && selectedSeconds < baseSeconds && <span className={styles.saving} data-meal-saving>Экономия {duration(baseSeconds - selectedSeconds)}</span>}
         </div> : <p className={styles.hint}>Выберите блюдо · спишется 1 порция</p>}
         {feedback && <p className={styles.reason} role="status">{feedback}</p>}

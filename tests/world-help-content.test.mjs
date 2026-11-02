@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-nonmodal-pantry-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
+const { mealTimeExample } = await vite.ssrLoadModule("/features/economy/ui/food/meal-speed-description.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { miningBatchCatalog } = await vite.ssrLoadModule("/features/economy/domain/mining-batch.ts");
 const { fishingClassOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
@@ -182,7 +183,7 @@ test("topic navigation points to existing buildings and valid destinations", () 
       assert.ok(economyCatalog.buildings.some(building => building.id === target.stationId), entry.id);
       if (target.recipeId) assert.ok(economyCatalog.recipes.some(recipe => recipe.id === target.recipeId && recipe.buildingId === target.stationId));
     }
-    if (target.kind === "profile") assert.ok(["profile", "mood", "friends", "settings"].includes(target.tab));
+    if (target.kind === "profile") assert.ok(["profile", "mood", "skills", "friends", "settings"].includes(target.tab));
     if (target.kind === "expeditions" && target.sector) assert.ok(["forest", "coast", "caves"].includes(target.sector));
     assert.notEqual(target.kind, "food", `${entry.id}: released help uses real orders or contextual boost surfaces`);
     if (target.kind === "orders" && target.residentId) assert.ok(["plesk", "builder"].includes(target.residentId));
@@ -309,9 +310,9 @@ test("premium shop guidance offers stage packs and costume previews while keepin
 test("food, building speed and orders are distinct and use current catalog numbers", () => {
   const food = economyCatalog.food;
   const hiddenDishes = new Set(economyCatalog.recipes.filter(recipe => recipe.experiment).flatMap(recipe => Object.keys(recipe.rewards)));
-  for (const meal of food.meals.filter(meal => !hiddenDishes.has(meal.itemId))) {
+  for (const meal of food.meals.filter(meal => !hiddenDishes.has(meal.itemId) && ["grilled_fish", "fish_soup", "hearty_fish"].includes(meal.itemId))) {
     const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
-    assert.ok(answer("food-bonuses").includes(`${name} +${meal.heroSpeedBps / 100}%`));
+    assert.ok(answer("food-bonuses").includes(`${name}: ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}`));
   }
   assert.match(answer("food"), /не повышает|шансы рыбы не меняются/);
   assert.match(answer("food"), /бонусы не складываются/);
@@ -322,12 +323,12 @@ test("food, building speed and orders are distinct and use current catalog numbe
   assert.ok(topic("food").relatedIds.includes("food-bonuses"));
   assert.match(answer("food"), /Есть необязательно/);
   assert.match(answer("food"), /офлайн/);
-  for (const meal of food.meals.filter(meal => !hiddenDishes.has(meal.itemId))) {
+  for (const meal of food.meals.filter(meal => !hiddenDishes.has(meal.itemId) && ["grilled_fish", "fish_soup", "hearty_fish"].includes(meal.itemId))) {
     const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
-    assert.ok(answer("builder-food-bonuses").includes(`${name} +${meal.builderSpeedBps / 100}%`));
+    assert.ok(answer("builder-food-bonuses").includes(`${name}: ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds)}`));
   }
-  assert.match(answer("builder-food"), /оставшуюся часть/);
-  assert.match(answer("builder-food"), /только один раз/);
+  assert.match(answer("builder-food"), /остаток стройки идёт без еды/);
+  assert.match(answer("builder-food"), /Одна порция на стройку/);
   assert.ok(topic("builder-food").relatedIds.includes("builder-food-bonuses"));
   assert.match(answer("resident-orders"), /Обычные заказы дают монеты, не сытость/);
   assert.match(answer("resident-orders"), /не резервируются/);
@@ -560,8 +561,8 @@ test("fish-soup guidance uses the authored recipe and distinct hero/builder bonu
     assert.ok(answer("fish-soup").includes(`${economyCatalog.items.find(item => item.id === id).name} × ${count}`));
   }
   assert.ok(answer("fish-soup").includes(`${recipe.seconds / 60} минут`));
-  assert.ok(answer("fish-soup").includes(`Мохлику +${meal.heroSpeedBps / 100}%`));
-  assert.ok(answer("fish-soup").includes(`строителю +${meal.builderSpeedBps / 100}%`));
+  assert.ok(answer("fish-soup").includes(`вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}`));
+  assert.ok(answer("fish-soup").includes(`стройка ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds)}`));
   assert.match(answer("fish-soup"), /Шахтёра не ускоряет/);
   assert.deepEqual(topic("fish-soup").action.target, { kind: "station", stationId: "dryer", recipeId: recipe.id });
 });
@@ -598,12 +599,12 @@ test("berry ladder describes each source tier, preparation time and hero or buil
     const dishName = economyCatalog.items.find(item => item.id === meal.itemId).name;
     assert.ok(ladder.includes(`Дом ${home}, куст ${crop.buildingLevel}: ${cropName}, ${crop.seconds / 60} мин`));
     assert.ok(ladder.includes(`${dishName}: костёр ${dish.buildingLevel}, ${dish.seconds / 60} мин`));
-    assert.ok(ladder.includes(`вылазки +${meal.heroSpeedBps / 100}%, стройки +${meal.builderSpeedBps / 100}%`));
+    assert.ok(ladder.includes(`вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}`));
   }
   assert.match(ladder, /Дом 1.*малина.*клубники.*приготовьте и заберите один малиновый компот/);
   assert.match(ladder, /У остальных ягод нет задания на готовку/);
   assert.match(ladder, /Один слот даёт один предмет/);
-  assert.match(ladder, /У Мохлика блюдо даёт запас ускоряемой работы.*у строителя.*одну стройку/);
+  assert.match(ladder, /Пользу блюд для походов и стройки сравните в книге рецептов/);
 });
 
 test("gift budgets and project timing remain distinct from build durations and all help avoids em dashes", () => {
@@ -649,11 +650,12 @@ test("ship help explains partial loading, expiry, replacements and departure-bas
 });
 
 test("cooking help explains optional risk and slow skills without spoiling discoveries", () => {
-  assert.match(answer("cooking-experiments"), /при промахе простую порцию/);
+  assert.match(answer("cooking-experiments"), /При неудаче ингредиенты сгорают, предметов и возврата нет/);
   assert.match(answer("cooking-experiments"), /Обычные рецепты всегда удаются/);
   assert.match(answer("craft-skills"), /базовой длительности работы/);
-  assert.match(answer("craft-skills"), /800 часов/);
-  assert.match(answer("craft-skills"), /до \+5%/);
+  assert.doesNotMatch(answer("craft-skills"), /\d+ час|Навыки Мохлика/);
+  assert.deepEqual(topic("craft-skills").action.target, { kind: "profile", tab: "skills" });
+  assert.match(answer("craft-skills"), /рыбалка, ремесло, печь, собирательство, лесозаготовка, добыча и строительство/);
   assert.match(answer("craft-skills"), /с 85% до 95%/);
   assert.match(answer("food"), /только ваши готовые порции/);
   const playerHelp = topics.map(entry => answer(entry.id)).join(" ");

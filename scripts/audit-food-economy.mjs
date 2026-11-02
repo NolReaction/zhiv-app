@@ -12,6 +12,10 @@ const add = (target, source, multiplier = 1) => { if (!multiplier) return target
 const signature = quantities => JSON.stringify(Object.entries(quantities).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
 const valueOf = (items, quantities) => sum(Object.entries(quantities).map(([id, count]) => items.get(id).baseSellPrice * count));
 const duration = (seconds, bps) => Math.ceil(seconds * 10000 / (10000 + bps));
+const builderDuration = (seconds, meal) => {
+  const used = Math.min(seconds, meal?.builderWorkSeconds ?? seconds);
+  return seconds - used + duration(used, meal?.builderSpeedBps ?? 0);
+};
 
 /** Exact arithmetic in current visible coins. Board selection itself is tested
  * through the production helper: there is no second copy of its rotation here. */
@@ -170,13 +174,14 @@ export function auditFoodEconomy(catalog) {
     return { itemId: meal.itemId, heroSpeedPercent: meal.heroSpeedBps / 100, builderSpeedPercent: meal.builderSpeedBps / 100,
       mealSaleOpportunityCoins: mealValue, preparationMinutes: producer.seconds / 60,
       heroWorkSeconds: budget ?? null,
+      builderWorkSeconds: meal.builderWorkSeconds ?? null,
       fullHeroBudgetSavedSeconds: budget ? budget - heroDuration(budget) : null,
-      sixHourBuildSeconds: duration(21600, meal.builderSpeedBps),
-      sixHourBuilderSavedValueMinusMealCoins: rounded((21600 - duration(21600, meal.builderSpeedBps)) / 60 * catalog.timeEconomy.coinsPerMinute - mealValue),
+      sixHourBuildSeconds: builderDuration(21600, meal),
+      sixHourBuilderSavedValueMinusMealCoins: rounded((21600 - builderDuration(21600, meal)) / 60 * catalog.timeEconomy.coinsPerMinute - mealValue),
       minimumBaseTripHoursForSavedTimeToMatchMealSaleValue: rounded(mealValue / referenceFishingCoinsPerHour * (10000 + meal.heroSpeedBps) / meal.heroSpeedBps),
       eightHourHeroTripSeconds: heroDuration(28800), eightHourHeroMinutesSaved: rounded((28800 - heroDuration(28800)) / 60),
-      twentyFourHourBuildSeconds: duration(86400, meal.builderSpeedBps), twentyFourHourBuildMinutesSaved: rounded((86400 - duration(86400, meal.builderSpeedBps)) / 60),
-      sevenDayBuildSeconds: duration(604800, meal.builderSpeedBps), fishingReturn };
+      twentyFourHourBuildSeconds: builderDuration(86400, meal), twentyFourHourBuildMinutesSaved: rounded((86400 - builderDuration(86400, meal)) / 60),
+      sevenDayBuildSeconds: builderDuration(604800, meal), fishingReturn };
   });
   const templates = orders.templates.map(order => {
     assert(["plesk", "builder", "lopukh", "kamneshmyg", "leaftail"].includes(order.residentId), `${order.id}: unknown resident`);
@@ -304,15 +309,16 @@ export function auditFoodEconomy(catalog) {
   // This is one feasible topological build ordering with stocked ingredients and
   // meals from ALREADY opened kitchens, not a promise of elapsed player progress.
   const buildProgression = auditEconomyProgression(catalog), levels = { home: 1, garden: 1, warehouse: 1 }, fedCounts = {};
-  let baseBuildSeconds = 0, stockedFoodBuildSeconds = 0, mealPreparationMinutes = 0;
+  let baseBuildSeconds = 0, stockedFoodBuildSeconds = 0, mealPreparationMinutes = 0, absoluteAllLegendaryTheoreticalSeconds = 0;
   for (const key of buildProgression.constructionOrder) {
     const [id, levelText] = key.split(":"), level = Number(levelText);
     if (level > 5) continue;
     const target = catalog.buildings.find(building => building.id === id).levels.find(row => row.level === level);
     if (level <= (levels[id] ?? 0)) continue;
     const possible = food.meals.filter(meal => hasRequirements(defaultProducer(meal.itemId), levels));
-    const meal = possible.toSorted((a, b) => b.builderSpeedBps - a.builderSpeedBps)[0];
-    baseBuildSeconds += target.seconds; stockedFoodBuildSeconds += duration(target.seconds, meal?.builderSpeedBps ?? 0);
+    const meal = possible.toSorted((a, b) => builderDuration(target.seconds, a) - builderDuration(target.seconds, b))[0];
+    baseBuildSeconds += target.seconds; stockedFoodBuildSeconds += builderDuration(target.seconds, meal);
+    absoluteAllLegendaryTheoreticalSeconds += Math.min(...food.meals.map(meal => builderDuration(target.seconds, meal)));
     if (meal) { fedCounts[meal.itemId] = (fedCounts[meal.itemId] ?? 0) + 1; mealPreparationMinutes += defaultProducer(meal.itemId).seconds / 60; }
     levels[id] = level;
   }
@@ -328,14 +334,15 @@ export function auditFoodEconomy(catalog) {
       "Delivery optimizations relax offer availability and repeat-history restrictions; auxiliary goods must already exist and their aggregate sale value is deducted",
       "Food speed bonuses divide duration and do not stack; meal opportunity is its ordinary sale price, not a free ingredient",
       "Fishing meal ROI amortizes meal sale value over its complete active-work budget; unused remaining work has no assumed cash refund. Expected catches include paid bait but exclude gear acquisition/stock waits and meal preparation time",
-      "Construction projection assumes stocked meals and build inputs in one topological order; it excludes gathering, rarity, claim waits and cooking elapsed time"],
+      "Construction projection assumes stocked meals and build inputs in one topological order; each portion accelerates only its work budget in that job. It excludes gathering, rarity, claim waits and cooking elapsed time",
+      "The all-legendary theoretical lower bound allows any meal before its unlock but retains each portion's work budget"],
     boardPolicy: { slots: orders.slots, refreshHours: orders.refreshSeconds / 3600, freeReplacements: orders.freeReplacements,
       replacementWindowHours: orders.replacementWindowSeconds / 3600, paidReplacementStoredPearls: orders.replacementPricePearls,
       recentLimit: orders.recentLimit, progression, starterTemplates: earlyOrders.length, tutorialTemplates: tutorials.length,
       secondStageTemplates: secondStageOrders.length, completionCooldownSeconds: 0 },
     meals, recipes, templates, shopDeliveryBudgets,
     construction: { baseBuildSeconds, stockedFoodBuildSeconds, savedPercent: rounded((1 - stockedFoodBuildSeconds / baseBuildSeconds) * 100),
-      mealCounts: fedCounts, mealPreparationMinutes, absoluteAllLegendaryTheoreticalSeconds: duration(baseBuildSeconds, Math.max(...food.meals.map(meal => meal.builderSpeedBps))) } };
+      mealCounts: fedCounts, mealPreparationMinutes, absoluteAllLegendaryTheoreticalSeconds } };
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {

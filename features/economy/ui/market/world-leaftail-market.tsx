@@ -222,6 +222,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
           const adjustable = !permanent(offer.kind) && offer.stock > 1;
           return <article className={styles.offer} key={offer.id} data-leaftail-item={offer.itemId} data-leaftail-kind={offer.kind} data-leaftail-currency={offer.currency} data-leaftail-quantity={nextQuote.itemQuantity}>
             <div className={styles.item}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={40} /> : <ItemIcon itemId={offer.itemId} size={section === "wardrobe" ? 40 : 36} />}<div><strong>{name}</strong>{rarity && <FishRarityBadge rarity={rarity} />}{section !== "wardrobe" && <small>{section === "tackle" ? shortDescription(description) : description}</small>}</div>{!permanent(offer.kind) && <span className={styles.stock}>Осталось {number(offer.remaining * offer.quantity)} шт.</span>}</div>
+            {offer.kind === "bait" && <p className={styles.hint}>1 порция на весь выход.</p>}
             {state.catalog.fishing && tackleOverride(offer.kind, offer.itemId) && <FishingCatchOdds state={state} catalog={state.catalog.fishing}
               override={tackleOverride(offer.kind, offer.itemId)!} targetRarity={rarity} preview showLoadout collapsible />}
             {adjustable && <div className={styles.quantityRow}><span>{money(offer.unitPrice, offer.currency)} {currencyName(offer.currency)} / {offer.quantity === 1 ? "шт." : `${number(offer.quantity)} шт.`}</span><div className={styles.quantity} role="group" aria-label={`Количество: ${name}`}>

@@ -1,4 +1,5 @@
 import { skillProgress } from "./craft-skill";
+import type { CraftSkillId } from "./craft-skill-model";
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState, type TradeResidentId } from "./model";
 
 import { fishClassInventory, fishClassForItem } from "./fishing";
@@ -6,6 +7,7 @@ import { normalizedFishStock } from "./fish-stock";
 import { obtainableResidentOrderItems } from "./order-effort";
 import { tradeOrderFingerprint, tradeResidentAvailable, TRADE_RESIDENT_IDS } from "./trade-relations";
 export { obtainableResidentOrderItems } from "./order-effort";
+export { builderWorkDuration, fedConstructionDuration, builderMealWorkUsed } from "./construction-meal";
 
 type FoodSource = Pick<EconomyState, "food"> & Partial<Pick<EconomyState, "progression">> & { catalog?: EconomyCatalog };
 type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & Partial<Pick<EconomyState, "fishing" | "progression">> & { catalog?: EconomyCatalog };
@@ -21,7 +23,8 @@ export type ResidentOrderOffer = {
 export function foodState(state: FoodSource): EconomyFood {
   return { heroMeal: state.food?.heroMeal ?? null, builderMeal: state.food?.builderMeal ?? null,
     ...(state.food?.heroMealEffect ? { heroMealEffect: { ...state.food.heroMealEffect } } : {}),
-    ...(state.food?.builderMealSpeedBps != null ? { builderMealSpeedBps: state.food.builderMealSpeedBps } : {}) };
+    ...(state.food?.builderMealSpeedBps != null ? { builderMealSpeedBps: state.food.builderMealSpeedBps } : {}),
+    ...(state.food?.builderMealWorkSeconds != null ? { builderMealWorkSeconds: state.food.builderMealWorkSeconds } : {}) };
 }
 
 export function pendingMeal(state: FoodSource, consumer: "hero" | "builder", catalog = state.catalog ?? economyCatalog) {
@@ -30,7 +33,8 @@ export function pendingMeal(state: FoodSource, consumer: "hero" | "builder", cat
   if (!meal) return null;
   const legacy = LEGACY_MEAL_SPEEDS[meal.itemId];
   return { ...meal, heroSpeedBps: state.food?.heroMealEffect?.speedBps ?? legacy?.[0] ?? meal.heroSpeedBps,
-    builderSpeedBps: state.food?.builderMealSpeedBps ?? legacy?.[1] ?? meal.builderSpeedBps };
+    builderSpeedBps: state.food?.builderMealSpeedBps ?? legacy?.[1] ?? meal.builderSpeedBps,
+    builderWorkSeconds: state.food?.builderMealWorkSeconds ?? undefined };
 }
 
 /** Prepared v13 servings retain their paid effect after catalog rebalancing. */
@@ -48,11 +52,11 @@ export function heroMealWorkUsed(state: FoodSource, seconds: number): number {
   return effect ? Math.min(seconds, effect.remainingWorkSeconds) : 0;
 }
 /** Budget is measured in baseline active work, never idle time or the number of trips. */
-export function heroMealWorkDuration(state: FoodSource, seconds: number): number {
+export function heroMealWorkDuration(state: FoodSource, seconds: number, skillId: CraftSkillId = "travel"): number {
   const meal = pendingMeal(state, "hero"), effect = pendingHeroMealEffect(state);
   const fed = !meal ? seconds : !effect ? mealDuration(seconds, meal.heroSpeedBps)
     : mealWorkDuration(seconds, effect.speedBps, heroMealWorkUsed(state, seconds));
-  const skill = state.progression ? skillProgress({ progression: state.progression }, "travel", state.catalog ?? economyCatalog).bonusBps : 0;
+  const skill = state.progression ? skillProgress({ progression: state.progression }, skillId, state.catalog ?? economyCatalog).bonusBps : 0;
   return mealDuration(fed, skill);
 }
 /** Preview the same bounded work boost before selecting a serving. */

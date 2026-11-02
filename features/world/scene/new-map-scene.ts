@@ -50,6 +50,7 @@ import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "@/features/
 import { connectForestSession } from "@/features/world/state/forest-session";
 import { publishForestObservation } from "@/features/world/state/forest-observer";
 import { forestSceneFingerprint } from "@/features/world/state/memory/forest-memory";
+import { subscribeWorldLightingRefresh } from "./lighting-refresh";
 import { applyForestDevScenario } from "@/features/world/dev/forest-dev-scenarios";
 import { syncForestSceneRehearsal, advanceForestSceneRehearsal } from "@/features/world/dev/forest-scene-rehearsal";
 import { forestPersistenceOverridden } from "@/features/world/dev/forest-dev-memory";
@@ -61,6 +62,7 @@ import { forestJourneyGatheringFrame } from "@/features/world/activities/journey
 import { forestOutsideJourneyBackpack, forestOutsideJourneyFrame } from "@/features/world/activities/journeys/forest-outside-journey";
 import type { ForestGatheringFrame } from "@/features/world/activities/journeys/forest-gathering";
 import { drawForestGatheringBasket, drawForestGatheringHero, forestGatheringBounds } from "@/features/world/activities/journeys/forest-gathering-painter";
+import { resizeForestGatheringFrame } from "@/features/world/activities/journeys/forest-gathering-rig";
 
 import { advancePleskMind, rehydratePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade, pleskAvailableForLeisure,
   pleskCanPausePassing, pleskCanReceiveVisit, requestPleskSocialVisit, cancelPleskSocialVisit } from "@/features/world/characters/plesk/plesk-mind";
@@ -156,10 +158,7 @@ function drawHomeSleep(ctx: CanvasRenderingContext2D, door: WorldPoint, elapsed:
 
 type ManualAnimation = { pose: PixelPose; elapsed: number };
 function gatheringAtSize(frame: ForestGatheringFrame | null | undefined, size: number): ForestGatheringFrame | null {
-  if (!frame) return null;
-  const scale = size / frame.size;
-  return { ...frame, size, basket: { ...frame.basket, x: frame.x + (frame.basket.x - frame.x) * scale,
-    y: frame.y + (frame.basket.y - frame.y) * scale, size: frame.basket.size * scale } };
+  return frame ? resizeForestGatheringFrame(frame, size) : null;
 }
 export type NewMapPaintPreview = {
   scene?: FixedWorldScene;
@@ -1286,6 +1285,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
   const unsubscribeLightingEditor = WORLD_DEV_ENABLED && !options.readOnly ? worldLightingEditorStore.subscribe(() => { if (visible()) draw(); }) : () => {};
+  const unsubscribeLightingRefresh = WORLD_DEV_ENABLED ? subscribeWorldLightingRefresh(() => {
+    if (!disposed) prepareArtwork(true);
+  }) : () => {};
   const unsubscribeAudioDebug = WORLD_DEV_ENABLED && !options.readOnly ? audioDevStore.subscribe(() => { if (visible()) draw(); }) : () => {};
   function visibilityChanged() { stop(); syncOwner(); if (visible()) draw(); resume(); }
   document.addEventListener("visibilitychange", visibilityChanged);
@@ -1300,30 +1302,39 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     productionShip?.release(); productionShip = null; shipAudio.dispose();
     window.removeEventListener?.("online", retryTradeShipArtwork); window.removeEventListener?.("focus", retryTradeShipArtwork);
     artworkPreparation?.dispose(); artworkPreparation = null;
-    disposed = true; artworkVersion++; stop(); clearForestTreeInteractions(trees); unsubscribe(); unsubscribeAudioDebug(); unsubscribeLightingEditor(); audio.dispose(); observer.disconnect(); art = null;
+    disposed = true; artworkVersion++; stop(); clearForestTreeInteractions(trees); unsubscribe(); unsubscribeAudioDebug(); unsubscribeLightingEditor(); unsubscribeLightingRefresh(); audio.dispose(); observer.disconnect(); art = null;
     residentDiagnosticsStore.clear(options.presenceKey ?? "forest", residentDiagnosticsOwner);
     document.removeEventListener("visibilitychange", visibilityChanged); session.release({ retain: !options.readOnly && !options.devRehearsal });
   }
-  function prepareArtwork() {
+  function prepareArtwork(refreshLighting = false) {
     const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
       { merchantArrived: options.merchantArrival?.seen });
     const nextWorld = previewWorldScene(TILED_WORLD, selected);
     const next = visualsFor(selected), urls = worldArtworkUrls(nextWorld, next);
     const key = JSON.stringify([options.view ?? "circle", Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image])]);
-    if (key === requestedKey) return;
+    // A saved torch moves its physical obstacle without changing artwork URLs.
+    // Reuse loaded images, then hand off navigation through the existing writer.
+    if (key === requestedKey && !refreshLighting) return;
     requestedKey = key;
     artworkPreparation?.dispose(); artworkPreparation = null;
     const version = ++artworkVersion;
     // A first circle needs only its visible artwork. Full-map entry and every
     // later geometry replacement still require a complete atomic scene.
-    const required = art === null && options.view !== "world" ? worldArtworkUrls(nextWorld, next, nextWorld.focus) : urls;
+    const sameArtwork = refreshLighting && art && JSON.stringify(worldArtworkUrls(world, visuals)) === JSON.stringify(urls)
+      && JSON.stringify(Object.entries(visuals).map(([id, visual]) => [id, visual.level, visual.image]))
+        === JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));
+    // A ready circle can have an unavailable distant image. Saving its light
+    // must not make that optional image a prerequisite for live navigation.
+    const required = sameArtwork ? [...art!.keys()]
+      : art === null && options.view !== "world" ? worldArtworkUrls(nextWorld, next, nextWorld.focus) : urls;
     const background = urls.filter(url => !required.includes(url));
     const load = async (url: string, priority: "high" | "low" = "high") => {
       const image = await loadHabitatImage(url, priority);
       if (image.naturalWidth <= 0 || image.naturalHeight <= 0) throw new Error("Invalid world artwork dimensions");
       return [url, image] as const;
     };
-    void Promise.all(required.map(url => load(url))).then(images => {
+    const imagesReady = sameArtwork ? Promise.resolve([...art!.entries()]) : Promise.all(required.map(url => load(url)));
+    void imagesReady.then(images => {
       if (disposed || version !== artworkVersion) return;
       const first = art === null;
       // Commit artwork and its geometry together; stale/failed loads retain the
@@ -1332,7 +1343,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         const changed = forestSceneFingerprint(world) !== forestSceneFingerprint(nextWorld);
         world = nextWorld;
         trees = createForestTreeInteractions(world);
-        if (changed) {
+        if (!changed) {
+          // A flame or shadow edit changes the immutable scene identity, not
+          // anyone's path. Keep fishing, gathering and resident phases intact.
+          for (const actor of [state.journeyTravel, state.builderMind, state.pleskMind, state.villagers, state.leaftailBoat]) {
+            if (actor) actor.scene = world;
+          }
+        } else {
           const timestamp = state.timestamp;
           const persistence = !options.readOnly && !forestPersistenceOverridden(dev, levels);
           stop();

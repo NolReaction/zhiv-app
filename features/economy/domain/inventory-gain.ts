@@ -19,6 +19,13 @@ export type InventoryGain = Readonly<{
 }>;
 export const INVENTORY_GAIN_HISTORY_LIMIT = 8;
 
+// Paid attempts from the first experiment catalog keep their one-portion fallback.
+// These are historical delivery terms, not ingredients for newly started attempts.
+const legacyCookingFallbacks: Readonly<Record<string, string>> = {
+  experiment_currant_fish: "currant_jelly", experiment_berry_pastila: "strawberry_compote",
+  experiment_trail_feast: "trail_ration", experiment_river_aspic: "fish_soup",
+};
+
 /** Public experiments conceal their saved draw. Authorize the possible goods,
  * then use only the accepted inventory delta below to reveal the actual dish. */
 function productionGainLimits(job: EconomyJob, catalog: EconomyView["catalog"]): Record<string, number> {
@@ -26,6 +33,8 @@ function productionGainLimits(job: EconomyJob, catalog: EconomyView["catalog"]):
   if (!recipe?.experiment) return job.rewards;
   const limits = { ...recipe.rewards };
   for (const [id, count] of Object.entries(recipe.experiment.failureRewards)) limits[id] = Math.max(limits[id] ?? 0, count);
+  const legacy = legacyCookingFallbacks[recipe.id];
+  if (legacy && (job.cost.items[legacy] ?? 0) >= 1) limits[legacy] = Math.max(limits[legacy] ?? 0, 1);
   return limits;
 }
 

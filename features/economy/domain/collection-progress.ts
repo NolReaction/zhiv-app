@@ -1,4 +1,4 @@
-import { mergeCraftSkills } from "./craft-skill";
+import { mergeCraftSkills, effectiveCraftSkills, type BuildingSkillHistory } from "./craft-skill";
 import { mergePlayerProgression } from "./player-progression";
 import collectionCatalog from "@/apps/api/src/main/resources/world/collections-catalog.json";
 import { ECONOMY_MAX_ITEMS, economyProgressionSchema, type EconomyJob, type EconomyProgression } from "./model";
@@ -47,7 +47,7 @@ export function advanceEconomyProgression(value: EconomyProgression | undefined,
   return next;
 }
 
-export function mergeEconomyProgression(left: EconomyProgression | undefined, right: EconomyProgression | undefined): EconomyProgression {
+export function mergeEconomyProgression(left: EconomyProgression | undefined, right: EconomyProgression | undefined, leftHistory?: BuildingSkillHistory, rightHistory?: BuildingSkillHistory): EconomyProgression {
   const first = left ?? newEconomyProgression(), second = right ?? newEconomyProgression();
   const mergeCounts = (a: Record<string, number>, b: Record<string, number>) =>
     Object.fromEntries([...new Set([...Object.keys(a), ...Object.keys(b)])].map(id => [id, add(a[id] ?? 0, b[id] ?? 0)]));
@@ -67,7 +67,8 @@ export function mergeEconomyProgression(left: EconomyProgression | undefined, ri
     }
   }
   const player = mergePlayerProgression(first.player, second.player);
-  const skills = mergeCraftSkills(first.skills, second.skills);
+  const skills = mergeCraftSkills(leftHistory ? effectiveCraftSkills({ ...leftHistory, progression: first }) : first.skills,
+    rightHistory ? effectiveCraftSkills({ ...rightHistory, progression: second }) : second.skills);
   return { ...(player ? { player } : {}), ...(skills ? { skills } : {}), routes: mergeCounts(first.routes, second.routes), recipes: mergeCounts(first.recipes, second.recipes),
     collections: { finds: [...finds].sort(), travelSeconds, quarrySeconds } };
 }

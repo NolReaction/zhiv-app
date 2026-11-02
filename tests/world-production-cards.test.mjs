@@ -230,8 +230,8 @@ test("locked food cards show the prerequisite along with ingredients and bonuses
   assert.match(contents, /data-item-icon="berries"/);
   assert.match(contents, /data-item-icon="charcoal"/);
   assert.match(contents, /0 \/ 2/);
-  assert.match(contents, /Вылазки \+25% · запас на 2 ч работы/);
-  assert.match(contents, /Одна стройка \+25% скорости/);
+  assert.match(contents, /Пример вылазки: 1 ч → 48 мин/);
+  assert.match(contents, /Одна стройка: 1 ч → 48 мин/);
   assert.match(html, /aria-describedby=/);
   assert.equal(card.props.disabled, undefined, "a locked card still explains its reason on tap");
 });

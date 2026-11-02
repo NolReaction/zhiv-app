@@ -69,7 +69,7 @@ test("trip meal quotes apply the learned travel speed after the meal with the sa
   assert.equal(mealBoostSeconds({ economy, consumer: "builder", seconds: 3600 }, 5000), 2400);
 });
 
-test("meal picker opens without spending and shows only owned meals with actual stock and speed", () => {
+test("meal picker opens without spending and shows only owned meals with actual stock and time saved", () => {
   const economy = controller(), before = structuredClone(economy.snapshot), props = { economy, consumer: "hero", seconds: 7200, onNavigateStation() {} };
   const view = open(props);
   const visibleIds = view.nodes.filter(node => node.props["data-boost-meal"]).map(node => node.props["data-boost-meal"]);
@@ -78,7 +78,8 @@ test("meal picker opens without spending and shows only owned meals with actual 
   const visible = economy.snapshot.catalog.food.meals.filter(meal => visibleIds.includes(meal.itemId));
   for (const meal of visible) {
     const markup = renderToStaticMarkup(row(view, meal.itemId));
-    assert.ok(markup.includes(`+${meal.heroSpeedBps / 100}%`));
+    assert.match(markup, /вместо/);
+    assert.doesNotMatch(markup, /\+\d+%/);
     assert.ok(markup.includes(economy.snapshot.inventory[meal.itemId] ? `В запасе ${economy.snapshot.inventory[meal.itemId]}` : "Нет в запасе"));
   }
   assert.deepEqual(economy.calls, []); assert.deepEqual(economy.snapshot, before);
@@ -106,7 +107,7 @@ test("changing the selected dish invalidates an old confirmation before rerender
   assert.equal(action(view, "grilled_fish").props["aria-pressed"], true);
   assert.equal(view.nodes.filter(node => node.props["data-meal-preview"]).length, 1);
   const preview = view.nodes.find(node => node.props["data-meal-preview"] === "grilled_fish");
-  assert.match(renderToStaticMarkup(preview), /\+10% скорости/);
+  assert.match(renderToStaticMarkup(preview), /Экономия/);
   action(view, "legendary_fish").props.onClick();
   previousConfirm();
   assert.deepEqual(economy.calls, [], "a retained handler cannot spend the previously selected dish");
@@ -212,20 +213,20 @@ test("speed previews divide duration, preserve remaining millisecond precision a
   economy.snapshot.jobs = [job({ meal: { itemId: "hearty_fish", consumer: "builder", speedBps: 1000 } })];
   hooks.reset(); const historical = render({ economy, consumer: "builder", jobId: "construction-1" });
   assert.equal(historical.tree.props["data-meal-applied"], "hearty_fish");
-  assert.match(historical.tree.props["aria-label"], /\+10%/);
+  assert.match(historical.tree.props["aria-label"], /обед учтён/);
   assert.equal(historical.nodes.some(node => node.type === "button"), false);
 });
 
-test("25 percent speed preview explains the six-hour duration and actual saving before spending", () => {
+test("bounded builder portion shows only the two hours it covers in a six-hour construction", () => {
   const economy = controller({ inventory: { fish_soup: 1 } });
   const props = { economy, consumer: "builder", seconds: 6 * 3600 };
   const view = choose(props, open(props), "fish_soup");
   const preview = view.nodes.find(node => node.props["data-meal-preview"] === "fish_soup");
   const markup = renderToStaticMarkup(preview);
-  assert.match(markup, /\+25% скорости · время −20%/);
+  assert.match(markup, /На одну стройку/);
   assert.match(markup, /6 ч/);
-  assert.match(markup, /4 ч 48 мин/);
-  assert.match(markup, /Экономия 1 ч 12 мин/);
+  assert.match(markup, /5 ч 36 мин/);
+  assert.match(markup, /Экономия 24 мин/);
   assert.deepEqual(economy.calls, [], "the true time and saving are shown before confirmation");
 });
 
@@ -238,8 +239,8 @@ test("active builder preview shows the saving on the remaining time rather than 
   const preview = view.nodes.find(node => node.props["data-meal-preview"] === "fish_soup");
   const markup = renderToStaticMarkup(preview);
   assert.match(markup, /5 ч/);
-  assert.match(markup, />4 ч</);
-  assert.match(markup, /Экономия 1 ч</);
+  assert.match(markup, />4 ч 36 мин</);
+  assert.match(markup, /Экономия 24 мин</);
   assert.deepEqual(economy.calls, []);
 });
 
@@ -297,10 +298,9 @@ test("closed selector names the food boost and explicit choice for both workers 
 
 test("saved next-route meal names the dish and shows the true time improvement with an explicit return action", () => {
   const economy = controller({ food: { heroMeal: "grilled_fish", builderMeal: null } }); hooks.reset();
-  const meal = economy.snapshot.catalog.food.meals.find(value => value.itemId === "grilled_fish");
   const view = render({ economy, consumer: "hero", seconds: 7200 }), html = renderToStaticMarkup(view.tree);
   assert.match(html, /Жареная рыба/);
-  assert.ok(html.includes(`+${meal.heroSpeedBps / 100}% скорости`));
+  assert.match(html, /Порция подготовлена/);
   assert.match(html, /Для следующей вылазки/);
   const timer = view.nodes.find(node => node.props["data-meal-duration"] !== undefined);
   assert.match(renderToStaticMarkup(timer), /arrow-right/);
@@ -434,7 +434,7 @@ test("browser connectivity blocks a pending meal return even when the surroundin
 test("applied builder meal shows its saved speed and remaining timer without speeding the timer a second time", () => {
   const economy = controller({ jobs: [job({ finishesAt: new Date(now + 49_000).toISOString(), meal: { itemId: "hearty_fish", consumer: "builder", speedBps: 1000 } })] }); hooks.reset();
   const view = render({ economy, consumer: "builder", jobId: "construction-1" }), html = renderToStaticMarkup(view.tree);
-  assert.match(html, /\+10% скорости/);
+  assert.match(html, /Обед учтён/);
   assert.match(html, /Обед учтён/);
   const timer = view.nodes.find(node => node.props["data-meal-duration"] !== undefined), timerHtml = renderToStaticMarkup(timer);
   assert.match(timerHtml, /49 с/);
@@ -474,10 +474,26 @@ test("hero work budget previews only the covered work and shows frozen remaining
   assert.equal(mealBoostSeconds({ economy, consumer: "hero", seconds: 600 }, 2500, 300), 540);
   hooks.reset(); const view = render({ economy, consumer: "hero", seconds: 600 });
   const html = renderToStaticMarkup(view.tree);
-  assert.match(html, /\+25%/); assert.doesNotMatch(html, /\+90%/);
-  assert.match(html, /Осталось 5 мин из 30 мин/);
+  assert.doesNotMatch(html, /\+25%|\+90%/);
+  assert.match(html, /Остатка хватит на 5 мин/);
   assert.match(html, /9 мин/);
   assert.match(html, /Убрать остаток/); assert.match(html, /Порция в кладовую не вернётся/);
   view.nodes.find(node => node.props["data-meal-return"]).props.onClick();
   assert.deepEqual(economy.calls, [["cancel_meal", "hero", 1, 0]]);
+});
+
+
+test("fishing food previews use fishing mastery instead of the travel skill", () => {
+  const economy = controller({ progression: { skills: { version: 1, cookingSeconds: 0, travelSeconds: economyCatalog.skills.levels.at(-1).requiredSeconds, fishingSeconds: 0 } } });
+  const routeId = economyCatalog.fishing.routeIds[0];
+  assert.equal(mealBoostSeconds({ economy, consumer: "hero", routeId, seconds: 3600 }, 5000), 2400);
+  economy.snapshot.progression.skills.fishingSeconds = economyCatalog.skills.levels.at(-1).requiredSeconds;
+  assert.equal(mealBoostSeconds({ economy, consumer: "hero", routeId, seconds: 3600 }, 5000), 2331);
+});
+
+test("construction food preview uses its limited allowance and the job's frozen assistance", () => {
+  const economy = controller({ progression: { skills: { version: 1, buildingSeconds: 999999999 } }, jobs: [job({ tradeSpeedBps: 1000, skillSpeedBps: 0, finishesAt: new Date(now + 5 * 3600_000).toISOString() })] });
+  assert.equal(mealBoostSeconds({ economy, consumer: "builder", jobId: "construction-1" }, 2500, 7200), 16788);
+  assert.equal(mealBoostSeconds({ economy, consumer: "builder", seconds: 21600 }, 2500, 7200), 19573);
+  assert.equal(mealBoostSeconds({ economy, consumer: "builder", seconds: 21600 }, 2500), 16777);
 });

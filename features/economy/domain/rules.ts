@@ -1,5 +1,5 @@
 import { currencyExchangeOffer } from "./currency-exchange";
-import { awardCraftSkills, experimentCanPractice, prepareCookingAttempt } from "./craft-skill";
+import { awardCraftSkills, experimentCanPractice, prepareCookingAttempt, skillForProduction, skillForExploration, skillWorkDuration, skillProgress, newCraftSkills, effectiveCraftSkills } from "./craft-skill";
 import { capturePlayerProgression, awardPlayerProgression } from "./player-progression";
 import { settleEconomyTapBoost } from "./tap-boost";
 import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features/world/domain/wardrobe";
@@ -16,7 +16,7 @@ import { economyLocalSellPrice } from "./local-sale";
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "./actor-availability";
 import { durationPearlPrice, remainingTimePearlPrice, type PearlPricePoint } from "./time-price";
 import { hasGardenBerryReward } from "./garden-berries";
-import { advanceResidentOrder, foodState, initialResidentOrders, normalizedResidentOrders, pendingMeal, heroMealWorkDuration, heroMealWorkUsed, spendHeroMealWork, recipeWithFish, residentOrderBoard } from "./food";
+import { advanceResidentOrder, foodState, initialResidentOrders, normalizedResidentOrders, pendingMeal, builderWorkDuration, fedConstructionDuration, builderMealWorkUsed, heroMealWorkDuration, heroMealWorkUsed, spendHeroMealWork, recipeWithFish, residentOrderBoard } from "./food";
 import { canPrepareTutorialHarvest, isTutorialOrderId, newTutorialOrder, TUTORIAL_ORDER_ID, tutorialOrderProgress, tutorialResidentOrder } from "./tutorial-order";
 import { ensureStageOrders, isStageOrderId, stageCourseRequired, stageOrderProgress, stageOrdersProgress, stageResidentOrder } from "./stage-orders";
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "./item-unlocks";
@@ -25,7 +25,7 @@ import { leaftailRelicExchangeOffer } from "./leaftail-relic-exchange";
 import { leaftailShopStock, leaftailShopUsesUnits, leaftailShopView } from "./leaftail-shop";
 import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock, type FishSelection } from "./fish-stock";
 import { canStartTutorialWorkshop } from "./workshop-starter";
-import { acceptWeeklyOrder, awardTradeOrderXp, awardTradePurchaseXp, tradePurchaseXpEligible, tradeRelationBonusBps, tradeRelationsState, tradeWorkDuration, tradeMealDuration, weeklyOrderBoard } from "./trade-relations";
+import { acceptWeeklyOrder, awardTradeOrderXp, awardTradePurchaseXp, tradePurchaseXpEligible, tradeRelationBonusBps, tradeRelationsState, tradeWorkDuration, weeklyOrderBoard } from "./trade-relations";
 import { drawExpeditionFinds, drawExpeditionLoot, expeditionMaximumBonus, expeditionJobRewards } from "./expedition-finds";
 import { createShipVoyage, replaceableShipOrder, shipCargoFractions, SHIP_COMPLETION_PEARLS, shipOrdersConfig, shipOrdersState, shipOrdersUnlocked } from "./ship-orders";
 import { miningBatchLimit, miningBatchProgress, miningUnitDelivery } from "./mining-batch";
@@ -96,14 +96,16 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
   const inventory = { ...starting?.startingItems };
   if (migration.woodGranted) inventory.wood = (inventory.wood ?? 0) + migration.woodGranted;
   if (migration.stoneGranted) inventory.stone = (inventory.stone ?? 0) + migration.stoneGranted;
-  return { currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
+  const state: EconomyState = { currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     wallet: { coins: migration.coinsGranted + (starting?.startingWallet.coins ?? 0), pearls: starting?.startingWallet.pearls ?? 0 }, inventory,
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
     jobs: [], tutorialOrder: newTutorialOrder(), stageOrders: stageOrdersProgress({}), minerRareDropState: null,
     marketSlots: economyCatalog.market.baseSlots, unlockedItems: [], itemUnlockVersion: 1,
-    workshopStarterClaimed: false, wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression(),
+    workshopStarterClaimed: false, wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: { ...newEconomyProgression(), skills: legacy.houseLevel > 1 || legacy.workshopLevel > 0 ? undefined : newCraftSkills() },
     food: foodState({}), residentOrders: initialResidentOrders(), tradeRelations: tradeRelationsState({}) };
+  state.progression.skills = effectiveCraftSkills(state);
+  return state;
 }
 function debit(state: EconomyState, cost: EconomyCost, fishSelection?: FishSelection, exactSpecies = false): FishSelection {
   const items = normalizedInventory(cost.items);
@@ -148,6 +150,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
     settleEconomyTapBoost(state, now);
   }
   const playerBefore = capturePlayerProgression(state);
+  const skillsBefore = effectiveCraftSkills(state);
   const previousInventory = state.inventory;
   const previousFishing = state.fishing;
   try { normalizeFishStockInventory(state); }
@@ -170,6 +173,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
   state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...previousUnlocks])];
   state.itemUnlockVersion = 1;
   persistEconomyItemUnlocks(state);
+  state.progression = { ...state.progression, skills: skillsBefore };
   awardCraftSkills(playerBefore.jobs, state, command.action, now);
   awardPlayerProgression(playerBefore, state, command, now);
   return message;
@@ -181,7 +185,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
   if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order", "skip_ship_voyage", "exchange_pearls_for_gold"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
-  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds" | "miningBatch" | "cooking" | "skillWorkSeconds">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, expedition?: Pick<EconomyCatalog["explorations"][number], "finds" | "loot">) => {
+  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds" | "miningBatch" | "cooking" | "skillWorkSeconds" | "skillSpeedBps">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, expedition?: Pick<EconomyCatalog["explorations"][number], "finds" | "loot">) => {
     if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) + (expedition ? expeditionMaximumBonus(expedition) : 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
@@ -190,7 +194,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     if (cost && !canAffordEconomy(state, { ...cost, items: normalizedInventory(cost.items) })) fail("ECONOMY_RESOURCES", "Не хватает монет или материалов");
     const hiddenFinds = expedition && (expedition.finds || expedition.loot) ? { expeditionFinds: drawExpeditionLoot(expedition, rareRandom) } : {};
     const fishStockCost = cost === null ? {} : debit(state, cost, fishSelection, exactSpecies);
-    const travelSeconds = job.kind === "exploration" && job.actorId !== "miner" ? economyCatalog.explorations.find(route => route.id === job.targetId)?.seconds : undefined;
+    const travelSeconds = job.kind === "exploration" ? economyCatalog.explorations.find(route => route.id === job.targetId)?.seconds : undefined;
     state.jobs.push({ ...job, ...(travelSeconds ? { skillWorkSeconds: travelSeconds } : {}), ...hiddenFinds, ...(Object.keys(fishStockCost).length ? { fishStockCost } : {}), id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost: cost ?? { coins: 0, items: {} }, catalogVersion: economyCatalog.version });
   };
   if (!["start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
@@ -374,12 +378,12 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const tradeSpeedBps = recipe.buildingId === "woodlot" ? tradeRelationBonusBps(state, "lopukh", economyCatalog, now) : 0;
       createJob({ kind: "production", targetId: recipe.buildingId, recipeId: recipe.id, targetLevel: null, ...(tradeSpeedBps ? { tradeSpeedBps } : {}),
         ...(recipe.collection ? { collection: { ...recipe.collection, startedAt: null, finishesAt: null } } : {}),
-        ...(recipe.buildingId === "dryer" ? { skillWorkSeconds: recipe.seconds * command.quantity } : {}),
+        skillWorkSeconds: firstHarvest ? 0 : recipe.seconds * command.quantity,
         ...(cooking ? { cooking } : {}),
         rewards: Object.fromEntries(Object.entries(rewards).map(([item, amount]) => [item, amount * command.quantity])) },
       // Keep a positive saved interval for the scene's crop clock. One millisecond
       // has elapsed before a real next command, without a visible growth wait.
-      firstHarvest ? .001 : recipe.buildingId === "woodlot" ? tradeWorkDuration(state, recipe.seconds * command.quantity, "lopukh", 0, economyCatalog, now) : recipe.seconds * command.quantity, scaledEconomyCost(recipe.cost, command.quantity), jobId(), command.fishSelection ?? undefined, recipe.fishInput?.exactSpecies === true);
+      firstHarvest ? .001 : skillWorkDuration(state, skillForProduction(recipe.buildingId), recipe.buildingId === "woodlot" ? tradeWorkDuration(state, recipe.seconds * command.quantity, "lopukh", 0, economyCatalog, now) : recipe.seconds * command.quantity), scaledEconomyCost(recipe.cost, command.quantity), jobId(), command.fishSelection ?? undefined, recipe.fishInput?.exactSpecies === true);
       if (firstHarvest) state.tutorialOrder = { ...tutorialOrderProgress(state), firstHarvestPrepared: true };
       return firstHarvest ? "Первый учебный урожай созрел. Отправьте Мохлика собрать малину" : "Производство запущено";
     }
@@ -454,7 +458,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       }
       const meal = miner ? null : pendingMeal(state, "hero");
       const tradeSpeedBps = miner ? tradeRelationBonusBps(state, "kamneshmyg", economyCatalog, now) : 0;
-      const seconds = miner ? tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, economyCatalog, now) : heroMealWorkDuration(state, route.seconds);
+      const seconds = miner ? skillWorkDuration(state, "mining", tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, economyCatalog, now)) : heroMealWorkDuration(state, route.seconds, skillForExploration(route));
       const mealAnnotation = meal ? { meal: { itemId: meal.itemId, consumer: "hero" as const, speedBps: meal.heroSpeedBps, ...(heroMealWorkUsed(state, route.seconds) ? { workSeconds: heroMealWorkUsed(state, route.seconds) } : {}) } } : {};
       // Validate the complete offer before any private clock or bonus draw.
       if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
@@ -579,11 +583,12 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
         return fail("ECONOMY_BUILDING_BUSY", "Перед улучшением дождитесь окончания добычи и заберите результат");
       if (state.jobs.some(job => job.kind === "production" && job.targetId === building.id)) fail("ECONOMY_BUILDING_BUSY", "Перед улучшением заберите результат производства");
       const meal = pendingMeal(state, "builder"), tradeSpeedBps = tradeRelationBonusBps(state, "builder", economyCatalog, now);
-      createJob({ kind: "construction", targetId: building.id, recipeId: null, targetLevel: target.level, rewards: {}, ...(tradeSpeedBps ? { tradeSpeedBps } : {}),
-        ...(meal ? { meal: { itemId: meal.itemId, consumer: "builder", speedBps: meal.builderSpeedBps } } : {}) },
-      tradeWorkDuration(state, target.seconds, "builder", meal?.builderSpeedBps ?? 0, economyCatalog, now), tutorialWorkshop ? null : target.cost);
+      const skillSpeedBps = skillProgress(state, "building").bonusBps;
+      createJob({ kind: "construction", targetId: building.id, recipeId: null, targetLevel: target.level, rewards: {}, skillWorkSeconds: tutorialWorkshop ? 0 : target.seconds, skillSpeedBps, ...(tradeSpeedBps ? { tradeSpeedBps } : {}),
+        ...(meal ? { meal: { itemId: meal.itemId, consumer: "builder", speedBps: meal.builderSpeedBps, ...(meal.builderWorkSeconds ? { workSeconds: Math.min(target.seconds, meal.builderWorkSeconds) } : {}) } } : {}) },
+      builderWorkDuration(target.seconds, meal?.builderSpeedBps ?? 0, tradeSpeedBps, meal?.builderWorkSeconds, skillSpeedBps), tutorialWorkshop ? null : target.cost);
       if (tutorialWorkshop) state.workshopStarterClaimed = true;
-      if (meal) { const food = foodState(state); delete food.builderMealSpeedBps; state.food = { ...food, builderMeal: null }; }
+      if (meal) { const food = foodState(state); delete food.builderMealSpeedBps; delete food.builderMealWorkSeconds; state.food = { ...food, builderMeal: null }; }
       return tutorialWorkshop ? "Учебные материалы переданы Шишколапу, строительство мастерской началось" : "Строительство началось";
     }
     case "cancel_meal": {
@@ -598,7 +603,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const used = command.targetId === "hero" && food.heroMealEffect
         && food.heroMealEffect.remainingWorkSeconds < food.heroMealEffect.totalWorkSeconds;
       if (command.targetId === "hero") delete next.food.heroMealEffect;
-      else delete next.food.builderMealSpeedBps;
+      else { delete next.food.builderMealSpeedBps; delete next.food.builderMealWorkSeconds; }
       if (!used) creditEconomyItems(next, { [itemId]: 1 });
       assertEconomyStorageTransition(state, next, reservedItems);
       state.inventory = next.inventory;
@@ -627,10 +632,10 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       debit(state, { coins: 0, items: { [meal.itemId]: 1 } });
       if (construction) {
         const remaining = Date.parse(construction.finishesAt) - now;
-        construction.finishesAt = new Date(now + tradeMealDuration(remaining, construction.tradeSpeedBps ?? 0, meal.builderSpeedBps)).toISOString();
-        construction.meal = { itemId: meal.itemId, consumer: "builder", speedBps: meal.builderSpeedBps };
-      } else state.food = { ...food, builderMeal: meal.itemId, builderMealSpeedBps: meal.builderSpeedBps };
-      return construction ? `Шишколап поел и строит на ${meal.builderSpeedBps / 100}% быстрее` : "Шишколап поел. Следующая стройка будет быстрее";
+        construction.finishesAt = new Date(now + fedConstructionDuration(remaining, meal.builderSpeedBps, construction.tradeSpeedBps ?? 0, meal.builderWorkSeconds ? meal.builderWorkSeconds * 1000 : undefined, construction.skillSpeedBps ?? 0)).toISOString();
+        construction.meal = { itemId: meal.itemId, consumer: "builder", speedBps: meal.builderSpeedBps, ...(meal.builderWorkSeconds ? { workSeconds: builderMealWorkUsed(remaining, construction.tradeSpeedBps ?? 0, construction.skillSpeedBps ?? 0, meal.builderWorkSeconds) } : {}) };
+      } else state.food = { ...food, builderMeal: meal.itemId, builderMealSpeedBps: meal.builderSpeedBps, ...(meal.builderWorkSeconds ? { builderMealWorkSeconds: meal.builderWorkSeconds } : {}) };
+      return construction ? "Шишколап поел. Стройка закончится раньше" : "Шишколап поел. Следующая стройка будет быстрее";
     }
     case "accept_weekly_order": {
       const board = weeklyOrderBoard(state, now);

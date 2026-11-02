@@ -2,6 +2,7 @@ import { CLICKER_IDLE_RESET_MS } from "@/features/game/clicker-story";
 import { PLAYER_LEVELS, playerProgressionCatalog } from "@/features/economy/domain/player-levels";
 import { miningBatchCatalog } from "@/features/economy/domain/mining-batch";
 import { economyCatalog, economyProgressionSchema, recipeBuildingLevel } from "@/features/economy/domain/model";
+import { mealTimeExample } from "@/features/economy/ui/food/meal-speed-description";
 import { experimentSuccessBps } from "@/features/economy/domain/craft-skill";
 import { fishingClassOdds } from "@/features/economy/domain/fishing";
 import { formatPearls } from "@/features/economy/domain/money";
@@ -50,7 +51,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
   void _legacyRebuilding;
   const food = economyCatalog.food;
   const hiddenDishes = new Set(economyCatalog.recipes.filter(recipe => recipe.experiment).flatMap(recipe => Object.keys(recipe.rewards)));
-  const knownMeals = food?.meals.filter(meal => !hiddenDishes.has(meal.itemId)) ?? [];
+  const knownMeals = food?.meals.filter(meal => !hiddenDishes.has(meal.itemId) && ["grilled_fish", "fish_soup", "hearty_fish"].includes(meal.itemId)) ?? [];
   const skillLevels = economyCatalog.skills?.levels ?? [];
   const maxSkill = skillLevels.at(-1);
   const mastery = economyProgressionSchema.parse({ skills: { cookingSeconds: maxSkill?.requiredSeconds ?? 0 } });
@@ -79,7 +80,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
     const crop = economyCatalog.recipes.find(recipe => recipe.id === cropId)!;
     const dish = economyCatalog.recipes.find(recipe => recipe.id === dishId)!;
     const meal = food!.meals.find(meal => (dish.rewards[meal.itemId] ?? 0) > 0)!;
-    return `Дом ${home}, куст ${recipeBuildingLevel(crop)}: ${itemName(Object.keys(crop.rewards)[0])}, ${crop.seconds / 60} мин. ${itemName(meal.itemId)}: костёр ${recipeBuildingLevel(dish)}, ${dish.seconds / 60} мин; скорость вылазки +${meal.heroSpeedBps / 100}%, стройки +${meal.builderSpeedBps / 100}%.`;
+    return `Дом ${home}, куст ${recipeBuildingLevel(crop)}: ${itemName(Object.keys(crop.rewards)[0])}, ${crop.seconds / 60} мин. ${itemName(meal.itemId)}: костёр ${recipeBuildingLevel(dish)}, ${dish.seconds / 60} мин; вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}.`;
   };
   const legendaryChance = economyCatalog.fishing ? fishingClassOdds({}, economyCatalog.fishing,
     { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "star_bait" })
@@ -694,8 +695,8 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       id: "cooking-experiments", group: "food", title: "Как открыть скрытые блюда?", summary: "Подсказки, опыт и шанс удачи",
       keywords: "кухня скрытый секрет рецепт опыт эксперимент успех неудача шанс промах открытие",
       steps: [
-        "Откройте «Опыты» в книге костра. Подсказка намекает на блюдо; состав, нужный навык, шанс и результат при неудаче видны до приготовления. Название откроется после первого успешного получения.",
-        "Одна попытка занимает место у костра и тратит указанные ингредиенты. При удаче получите новое блюдо, при промахе простую порцию, указанную в карточке. Обе попытки дают практику кулинарии после получения.",
+        "Откройте «Опыты» в книге костра. Рисунок и подсказка намекают на сочетание. Состав, нужный навык и шанс видны до приготовления. Название и польза блюда откроются после первого успешного получения.",
+        "Одна попытка занимает место у костра и тратит указанные ингредиенты. При удаче получите новое блюдо. При неудаче ингредиенты сгорают, предметов и возврата нет. Завершите попытку, чтобы освободить место и сохранить практику кулинарии.",
         "Навык постепенно повышает шанс. Он фиксируется при начале работы; перезагрузка и задержка получения его не меняют. Обычные рецепты всегда удаются.",
       ],
       note: "Особые блюда сильнее и дороже с учётом риска. Они не обязательны для построек и заказов. Покупка блюда не открывает рецепт и не считается вашим приготовлением.",
@@ -703,15 +704,15 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["craft-skills", "campfire", "cooking-achievements"],
     },
     {
-      id: "craft-skills", group: "mochlik", title: "Как развивать навыки Мохлика?", summary: "Кулинария и путешествия, по десять уровней",
-      keywords: "навык навыки мастерство практика кулинария путешествия опыт уровень прокачка",
+      id: "craft-skills", group: "mochlik", title: "Как развивать навыки леса?", summary: "Девять направлений, по десять уровней",
+      keywords: "навык навыки лес мастерство практика кулинария путешествия рыбалка ремесло печь собирательство лесозаготовка добыча строительство опыт уровень прокачка",
       steps: [
-        "Навыки находятся в игровом профиле. Кулинария растёт после получения приготовленной еды, путешествия после получения вылазок и улова. Покупки, отмена и повторное получение ответа прогресс не дают.",
-        `Практика считается по базовой длительности работы, без ускорений. Следующий уровень требует всё больше практики: первый прирост после ${(skillLevels[1]?.requiredSeconds ?? 0) / 3600} часов, высший уровень после ${(maxSkill?.requiredSeconds ?? 0) / 3600} часов. Ожидание готового результата лишнюю практику не даёт.`,
-        `Путешествия постепенно дают до +${(maxSkill?.travelSpeedBps ?? 0) / 100}% скорости вылазок. Кулинария повышает шанс опытов с ${baseCookingChance}% до ${maxCookingChance}%. Доход, редкие находки и шансы рыбалки эти навыки не повышают.`,
+        "Откройте вкладку «Навыки леса» в игровом профиле. Здесь кулинария, путешествия, рыбалка, ремесло, печь, собирательство, лесозаготовка, добыча и строительство. Получайте результат соответствующей работы, чтобы развивать её навык.",
+        "Уровни растут постепенно. Прогресс зависит от базовой длительности работы, ускорения его не уменьшают. Покупки, отмена, ожидание готового результата и повторное получение ответа не дают дополнительного прогресса.",
+        `Кулинария повышает шанс опытов с ${baseCookingChance}% до ${maxCookingChance}%. Другие навыки понемногу сокращают время своих работ. Они не увеличивают количество предметов и вероятность редкой рыбы или находок. Дружба с жителями развивается отдельно через помощь и заказы.`,
       ],
-      note: "Общий уровень Мохлика и уровни навыков считаются отдельно. Навыки сохраняются на аккаунте; старые выполненные работы задним числом не пересчитываются.",
-      action: { label: "Посмотреть навыки", target: { kind: "profile", tab: "profile" } },
+      note: "Общий уровень и навыки считаются отдельно. Прогресс сохраняется. Старым игрокам строительство зачтётся по готовым постройкам; остальные новые навыки растут с этого обновления.",
+      action: { label: "Посмотреть навыки", target: { kind: "profile", tab: "skills" } },
       relatedIds: ["cooking-experiments", "level", "journeys"],
     },
     {
@@ -734,7 +735,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         `Нажмите «${itemName("fish_soup")}" у костра, проверьте выбранную рыбу и нажмите «Готовить». Состав: ${Object.entries(soupRecipe.cost.items).map(([id, count]) => `${itemName(id)} × ${count}`).join(" + ")}. Приготовление занимает ${soupRecipe.seconds / 60} минут.`,
         "Заберите готовую порцию. Её можно отдать в просьбу, продать из кладовой или подать как обед.",
       ],
-      note: `Суп даёт Мохлику +${soupMeal.heroSpeedBps / 100}% скорости на ${(soupMeal.heroWorkSeconds ?? 0) / 60} минут базовой работы в походах, строителю +${soupMeal.builderSpeedBps / 100}% скорости одной стройки. Шахтёра не ускоряет.${economyCatalog.localBuyer?.unitPrices?.fish_soup ? ` NPC покупает порцию за ${economyCatalog.localBuyer.unitPrices.fish_soup} монет.` : ""}`,
+      note: `Пример для супа: вылазка ${mealTimeExample(soupMeal.heroSpeedBps, soupMeal.heroWorkSeconds)}, стройка ${mealTimeExample(soupMeal.builderSpeedBps, soupMeal.builderWorkSeconds)}. Запас на походы ${(soupMeal.heroWorkSeconds ?? 0) / 60} мин, на стройку ${(soupMeal.builderWorkSeconds ?? 0) / 60} мин работы по времени без бонусов. Шахтёра не ускоряет.${economyCatalog.localBuyer?.unitPrices?.fish_soup ? ` NPC покупает порцию за ${economyCatalog.localBuyer.unitPrices.fish_soup} монет.` : ""}`,
       action: { label: "К рыбному супу", target: { kind: "station", stationId: "dryer", recipeId: soupRecipe.id } },
       relatedIds: ["campfire", "food", "builder-food", "third-house-stage"],
     }] satisfies WorldHelpTopic[] : []),
@@ -753,30 +754,32 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         relatedIds: ["food-bonuses", "campfire", "builder-food", "resident-orders"],
       },
       {
-        id: "food-bonuses", group: "food", title: "Какие блюда сильнее ускоряют Мохлика?", summary: "Скорость и запас рабочих минут",
+        id: "food-bonuses", group: "food", title: "Какие блюда сильнее ускоряют Мохлика?", summary: "Сколько времени сбережёт порция",
         keywords: "блюда сравнение процент запас минуты скорость вылазки",
-        paragraphs: [`Бонус к скорости: ${knownMeals.map(meal => `${itemName(meal.itemId)} +${meal.heroSpeedBps / 100}%`).join("; ")}.`],
+        paragraphs: ["Сравнение на вылазке длительностью один час без еды и навыков. Остальные блюда сравните в книге рецептов."],
+        steps: knownMeals.map(meal => `${itemName(meal.itemId)}: ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}. Запас ${(meal.heroWorkSeconds ?? 0) / 60} мин работы.`),
         note: "В выборе блюда показаны запас базовых минут и новое время. Запас тратится только на начатую вылазку или рыбалку; остаток сохраняется. Бонус не меняет добычу и шансы рыбы.",
         action: { label: "К вылазкам", target: { kind: "expeditions" } },
         relatedIds: ["food", "builder-food-bonuses", "campfire"],
       },
       {
-        id: "builder-food", group: "food", title: "Как еда ускоряет строителя?", summary: "Сложное блюдо даёт более сильный бонус",
+        id: "builder-food", group: "food", title: "Как еда ускоряет строителя?", summary: "Запас работы и сокращение таймера",
         keywords: "строитель шишколап ёжик накормить угостить сыт еда обед быстрее строительство скорость бонус",
         paragraphs: ["Бонус выбранного блюда и новое время видны перед подтверждением."],
         steps: [
           "Откройте «Выбрать блюдо» в блоке «Ускорение едой» у таймера стройки или в разговоре с Шишколапом. Выбор блюда покажет бонус и новое время. Подтвердите «Угостить · 1 порция»: только эта кнопка потратит еду.",
-          "Подайте готовое блюдо. Свободный строитель сохранит бонус для следующей стройки; занятый быстрее выполнит её оставшуюся часть.",
+          "Подайте готовое блюдо. Свободный строитель сохранит его для следующей стройки; занятый начнёт использовать его сейчас. У порции есть запас ускоряемой работы: после его исчерпания остаток стройки идёт без еды.",
         ],
-        note: "Обед действует только один раз: +25% скорости сокращают время на 20% (6 ч → 4 ч 48 мин). Репутация Шишколапа учитывается вместе с едой в новом таймере. Неиспользованный обед вернёт «Забрать блюдо», применённый не возвращается. Сдача заказа не кормит.",
+        note: "Одна порция на стройку, неизрасходованный запас на другую стройку не переносится. Простая еда удобна для коротких работ, сытные блюда помогают дольше. Таймер учитывает еду, навык и дружбу с Шишколапом. Неиспользованную порцию можно забрать, применённую нельзя. Сдача заказа не кормит.",
         action: { label: "К Шишколапу", target: { kind: "resident", residentId: "builder" } },
         relatedIds: ["builder-food-bonuses", "construction", "pearls", "resident-orders"],
       },
       {
         id: "builder-food-bonuses", group: "food", title: "Какие блюда сильнее ускоряют стройку?", summary: "Бонусы еды для одной стройки",
         keywords: "блюда сравнение процент скорость стройка строитель",
-        paragraphs: [`Бонус к скорости: ${knownMeals.map(meal => `${itemName(meal.itemId)} +${meal.builderSpeedBps / 100}%`).join("; ")}.`],
-        note: "Одно блюдо ускоряет одну стройку. Точный оставшийся срок с учётом еды и репутации Шишколапа показан перед подтверждением.",
+        paragraphs: ["Сравнение на стройке длительностью один час без навыка и дружбы. Для долгой работы выбирайте порцию с большим запасом."],
+        steps: knownMeals.map(meal => `${itemName(meal.itemId)}: ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds)}. Запас ${(meal.builderWorkSeconds ?? 0) / 60} мин работы.`),
+        note: "Одна порция ускоряет работу в пределах своего запаса. На долгой стройке дешёвое блюдо закончится раньше сытного. Точная экономия с учётом оставшегося времени, навыка и дружбы показана перед подтверждением.",
         action: { label: "К Шишколапу", target: { kind: "resident", residentId: "builder" } },
         relatedIds: ["builder-food", "food-bonuses", "construction"],
       },
@@ -868,7 +871,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         berryTierStep(berryTiers[1]),
         `${berryTierStep(berryTiers[2])} ${berryTierStep(berryTiers[3])}`,
       ],
-      note: "У остальных ягод нет задания на готовку: нужны уровни дома и куста. Один слот даёт один предмет; сбор ягод занимает ещё 8 секунд. У Мохлика блюдо даёт запас ускоряемой работы, у строителя ускоряет одну стройку; бонусы еды не складываются.",
+      note: "У остальных ягод нет задания на готовку. Один слот даёт один предмет, сбор занимает 8 секунд. Пользу блюд для походов и стройки сравните в книге рецептов.",
       action: { label: "К ягодному кусту", target: { kind: "station", stationId: "garden" } },
       relatedIds: ["berry-garden", "campfire", "food", "builder-food", "item-unlocks"],
     },
@@ -919,10 +922,10 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["storage", "saving", "relics"],
     },
     {
-      id: "profile", group: "account", title: "Что находится в профиле?", summary: "Общая статистика, друзья и настройки",
+      id: "profile", group: "account", title: "Что находится в профиле?", summary: "Общий прогресс, навыки леса, друзья и настройки",
       keywords: "профиль статистика достижения друзья настройки шестеренка вопрос обучение повтор продолжить",
       steps: [
-        "Нажмите уровень слева сверху. В профиле находятся общая статистика, друзья и настройки.",
+        "Нажмите уровень слева сверху. В профиле находятся общая статистика, отдельная вкладка «Навыки леса», друзья и настройки.",
         "«Как Мохлик?» открывает отдельное окно самочувствия. Шестерёнка открывает настройки звука и вида.",
         "Знак «?» показывает краткое пояснение профиля. Для продолжения или повтора обучения нажмите отдельную кнопку внутри пояснения.",
       ],

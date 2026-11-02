@@ -324,23 +324,48 @@ test("a local supply report survives lost reply plus GET exactly once; reloaded 
   }
 });
 
-test("masked cooking claims reveal only accepted success or fallback goods, including a mixed collection", () => {
+test("masked cooking claims reveal accepted success and zero failure, including a mixed collection", () => {
   const recipe = economyCatalog.recipes.find(recipe => recipe.experiment);
-  assert.ok(recipe);
   const [successId, successCount] = Object.entries(recipe.rewards)[0];
-  const [failureId, failureCount] = Object.entries(recipe.experiment.failureRewards)[0];
-  const trial = { ...job("production", {}), targetId: "dryer", recipeId: recipe.id,
+  const trial = { ...job("production", recipe.rewards), targetId: "dryer", recipeId: recipe.id, cost: recipe.cost,
     cooking: { successChanceBps: recipe.experiment.successBps, workSeconds: recipe.seconds } };
-  for (const [id, quantity] of [[successId, successCount], [failureId, failureCount]]) {
-    const before = state(0, [trial]), after = state(1, [], { [id]: quantity, wood: 999 });
-    const receipt = command("claim_job", trial.id);
+  const before = state(0, [trial]), after = state(1, [], { [successId]: successCount, wood: 999 });
+  const receipt = command("claim_job", trial.id);
+  const gain = inventoryGainFromReceipt(before, result(after), receipt);
+  assert.deepEqual(gain.items, [{ itemId: successId, quantity: successCount }]);
+  assert.equal(gain.stationId, "dryer");
+  assert.equal(inventoryGainFromReceipt(after, { ...result(after), replayed: true }, receipt), null);
+  assert.equal(inventoryGainFromReceipt(before, result(state(1, [], { wood: 999 })), receipt), null);
+  const ordinary = { ...job("production", { grilled_fish: 2 }), targetId: "dryer" };
+  const batch = inventoryGainFromReceipt(state(0, [trial, ordinary]), result(state(1, [], { grilled_fish: 2 })), command("claim_production", "dryer"));
+  assert.deepEqual(batch.items, [{ itemId: "grilled_fish", quantity: 2 }]);
+  assert.equal(inventoryGainFromReceipt(before, result(state(1, [trial], { [successId]: 1 })), receipt), null);
+});
+
+test("old paid experimental fallbacks still surface only the actual accepted saved delivery", async () => {
+  const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/domain/public-jobs.ts");
+  const { newEconomyState, applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+  const historical = { experiment_currant_fish: "currant_jelly", experiment_berry_pastila: "strawberry_compote",
+    experiment_trail_feast: "trail_ration", experiment_river_aspic: "fish_soup" };
+  for (const [recipeId, fallback] of Object.entries(historical)) {
+    const recipe = economyCatalog.recipes.find(recipe => recipe.id === recipeId);
+    assert.deepEqual(recipe.experiment.failureRewards, {});
+    const saved = { ...job("production", { [fallback]: 1 }), targetId: "dryer", recipeId, cost: recipe.cost,
+      cooking: { successChanceBps: 8500, workSeconds: recipe.seconds, successful: false } };
+    const live = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
+    live.jobs = [saved]; live.inventory = {};
+    const before = state(0, [publicEconomyJob(saved)]), receipt = command("claim_job", saved.id);
+    assert.deepEqual(before.jobs[0].rewards, recipe.rewards, "old fallback does not leak before claim");
+    applyEconomyCommand(live, receipt, Date.parse(saved.finishesAt));
+    const after = { ...state(1, live.jobs, live.inventory), progression: live.progression };
+    assert.deepEqual(after.inventory, { [fallback]: 1 });
     const gain = inventoryGainFromReceipt(before, result(after), receipt);
-    assert.deepEqual(gain.items, [{ itemId: id, quantity }]);
-    assert.equal(gain.stationId, "dryer");
+    assert.deepEqual(gain.items, [{ itemId: fallback, quantity: 1 }]);
     assert.equal(inventoryGainFromReceipt(after, { ...result(after), replayed: true }, receipt), null);
+    const mixed = { ...job("production", { [fallback]: 2 }), targetId: "dryer" };
+    const batch = inventoryGainFromReceipt(state(0, [publicEconomyJob(saved), mixed]), result(state(1, [], { [fallback]: 3, wood: 999 })), command("claim_production", "dryer"));
+    assert.deepEqual(batch.items, [{ itemId: fallback, quantity: 3 }]);
+    const unfunded = { ...publicEconomyJob(saved), cost: { coins: 0, items: {} } };
+    assert.equal(inventoryGainFromReceipt(state(0, [unfunded]), result(after), receipt), null, "legacy allowance requires the paid input");
   }
-  const ordinary = { ...job("production", { [failureId]: 2 }), targetId: "dryer" };
-  const batch = inventoryGainFromReceipt(state(0, [trial, ordinary]), result(state(1, [], { [failureId]: failureCount + 2 })), command("claim_production", "dryer"));
-  assert.deepEqual(batch.items, [{ itemId: failureId, quantity: failureCount + 2 }]);
-  assert.equal(inventoryGainFromReceipt(state(0, [trial]), result(state(1, [trial], { [failureId]: 1 })), command("claim_job", trial.id)), null);
 });

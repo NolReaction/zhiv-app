@@ -31,7 +31,6 @@ export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, o
   const meal = snapshot ? pendingMeal(snapshot, "hero") : null;
   const effect = snapshot ? pendingHeroMealEffect(snapshot) : null;
   const jobMeal = snapshot?.jobs.find(job => job.kind === "exploration" && !isMinerJob(job) && job.meal?.consumer === "hero")?.meal;
-  const speedBps = meal?.heroSpeedBps ?? jobMeal?.speedBps;
   return <div className={styles.module}>
     {observation ? <>
       <section className={styles.current} aria-label="Настроение Мохлика">
@@ -53,8 +52,8 @@ export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, o
 
     {snapshot?.catalog.food && <section className={styles.food} aria-label="Бонус от еды">
       <Soup size={18} aria-hidden="true" />
-      <div><h3>{speedBps ? `Еда: +${speedBps / 100}% к скорости` : "Еда для вылазки"}</h3>
-        <p>{effect ? `Осталось ${worldDuration(effect.remainingWorkSeconds)} обычного времени вылазок. Запас сохранится между походами.` : meal ? "Сохранённый обед ускорит одну следующую вылазку." : jobMeal ? "Бонус учтён в текущей вылазке. Потраченную часть вернуть нельзя." : "Блюдо даёт запас скорости для вылазок. Он расходуется в пути, а не во время отдыха."}</p></div>
+      <div><h3>{effect ? "Запас сил для вылазок" : "Еда для вылазки"}</h3>
+        <p>{effect ? `Осталось ${worldDuration(effect.remainingWorkSeconds)} обычного времени вылазок. Запас сохранится между походами.` : meal ? "Сохранённый обед ускорит одну следующую вылазку." : jobMeal ? "Бонус учтён в текущей вылазке. Потраченную часть вернуть нельзя." : "Блюдо помогает закончить вылазки раньше. Запас расходуется в пути, а не во время отдыха."}</p></div>
       {onOpenExpeditions && <button type="button" className={styles.foodAction} onClick={onOpenExpeditions}>К вылазкам</button>}
       {meal && <div className={styles.foodMeal}><WorldMealBoost economy={economy} consumer="hero" /></div>}
     </section>}

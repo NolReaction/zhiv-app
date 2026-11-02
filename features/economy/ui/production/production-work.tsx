@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, Check, Clock3, Soup } from "lucide-react";
+import { ArrowRight, Check, Clock3 } from "lucide-react";
+import { CookingExperimentIcon } from "@/features/items/item-icon";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, type EconomyJob } from "@/features/economy/domain/model";
 import { productionStationSupported } from "@/features/economy/domain/production-slots";
@@ -137,7 +138,7 @@ function ProductionWorkCell({ economy, job, openPantry, compact }: { economy: Re
     onBlurCapture={event => { if (confirming && !event.currentTarget.contains(event.relatedTarget as Node | null)) resetConfirmation(); }}>
     <button ref={button} type="button" className={styles.main} data-production-control="true" disabled={disabled} aria-expanded={confirming} aria-describedby={confirming ? descriptionId : undefined}
       aria-label={`${confirming ? "Подтвердить отмену" : status.ready ? berry?.button ?? "Забрать" : "Отменить производство"}: ${title}`} title={confirming ? refund : undefined} onClick={interact}>
-      <span className={styles.products}>{experimental ? <Soup size={compact ? 32 : 38} aria-hidden="true" /> : outputs.map(([id]) => <PlayerItemIcon key={id} state={state} itemId={id} size={compact ? 32 : 38} />)}</span>
+      <span className={styles.products}>{experimental ? <CookingExperimentIcon recipeId={job.recipeId ?? ""} size={compact ? 32 : 38} /> : outputs.map(([id]) => <PlayerItemIcon key={id} state={state} itemId={id} size={compact ? 32 : 38} />)}</span>
       <strong>{title}</strong><span className={styles.time} data-job-countdown={!status.ready && (!berry || berry.growing) || undefined} data-boost-time={boostPercent > 0 || undefined}>
         {boostPercent > 0 ? <>{timeLabel}<TapBoostWorkBadge percent={boostPercent} compact /></> : timeLabel}
       </span>

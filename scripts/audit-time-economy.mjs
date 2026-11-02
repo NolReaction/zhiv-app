@@ -94,18 +94,21 @@ export function auditTimeEconomy(catalog) {
     assert.equal(experiment.successBps, 8500, `${source.id}: the baseline experiment chance must remain explicit`);
     assert(Number.isInteger(experiment.requiredCookingLevel) && experiment.requiredCookingLevel >= 1 && experiment.requiredCookingLevel <= 10,
       `${source.id}: invalid cooking level`);
-    assert(Object.keys(experiment.failureRewards).length > 0 && Object.entries(experiment.failureRewards).every(([id, count]) =>
-      items.has(id) && !optionalItems.has(id) && Number.isSafeInteger(count) && count > 0), `${source.id}: fallback needs guaranteed existing food`);
+    assert.equal(Object.keys(experiment.failureRewards).length, 0,
+      `${source.id}: new failed experiments must consume ingredients without returning a serving`);
     const inputValue = value(source.cost.items) + source.cost.coins, workValue = source.seconds * policy.coinsPerMinute / 60;
     const successValue = value(source.rewards), failureValue = value(experiment.failureRewards);
     const expectedNet = chance * successValue + (1 - chance) * failureValue - inputValue;
     const masteredNet = .95 * successValue + .05 * failureValue - inputValue;
     assert(expectedNet + 1e-8 >= workValue && expectedNet < workValue + 1,
       `${source.id}: baseline expected output must compensate ingredients, work and failed attempts with only rounding surplus`);
-    assert(masteredNet >= expectedNet && masteredNet <= workValue * 1.15,
-      `${source.id}: maximum cooking skill must add at most fifteen percent of work value`);
+    const totalCost = inputValue + workValue, masteredGross = masteredNet + inputValue;
+    // With complete ingredient loss the skill saves inputs as well as cooking.
+    // 95% / 85% raises gross output by 11.765%; rounding adds less than one coin.
+    assert(masteredNet >= expectedNet && masteredGross <= totalCost * 1.12 + 1,
+      `${source.id}: maximum cooking skill must stay within twelve percent of total ingredient-and-work value`);
     experiments.push({ recipeId: source.id, successBps: experiment.successBps, maximumSuccessBps: 9500,
-      inputValue, workValue, successValue, failureValue, expectedNet, masteredNet, optional: true });
+      inputValue, workValue, totalCost, successValue, failureValue, expectedNet, masteredNet, masteredGross, optional: true });
   }
   const mandatoryBundles = [
     ...active.filter(source => !source.experiment).map(source => source.cost.items),
@@ -200,7 +203,7 @@ export function auditTimeEconomy(catalog) {
     activeRecipes: active.filter(source => source.buildingId).length, activeMiningRoutes: active.filter(source => source.activity === "mining").length,
     retiredSources: [...recipes.values(), ...routes.values()].filter(source => source.retired).map(source => source.id),
     assumptions: ["Reference unboosted technology; input value and operation time are each counted once.",
-      "Optional experiments use expected success and fallback values; required progression excludes them and success has no finite deadline.",
+      "Optional experiments consume all inputs on failure; expected success value covers inputs and work, and maximum skill adds at most 12% of their total value plus coin rounding. Required progression excludes them; success has no finite deadline.",
       "Work excludes eight-second berry collection; collection and manual visits still affect actual completion.",
       "Capacity bounds assume all required buildings and inputs can be scheduled continuously; dependency/collection/storage/visit constraints can only make play slower.",
       "Fish, bait and relic acquisition is reported as external quantities, never invented as guaranteed production time.",

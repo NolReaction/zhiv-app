@@ -114,9 +114,9 @@ test("orders cannot offer an unopened kitchen's meals", () => {
 test("stronger dishes improve both consumers and divide duration rather than subtracting percentages", () => {
   assert.deepEqual(report.meals.slice(0, 6).map(meal => meal.heroSpeedPercent), [10, 25, 40, 60, 80, 100]);
   assert.deepEqual(report.meals.slice(0, 6).map(meal => meal.builderSpeedPercent), [10, 25, 35, 50, 70, 90]);
-  assert.equal(report.meals[0].twentyFourHourBuildSeconds, 78546);
+  assert.equal(report.meals[0].twentyFourHourBuildSeconds, 86237);
   assert.equal(report.meals.find(meal => meal.itemId === "legendary_fish").eightHourHeroTripSeconds, 22050, "only the first 225 active minutes are boosted");
-  assert.equal(report.meals.find(meal => meal.itemId === "legendary_fish").twentyFourHourBuildSeconds, 45474);
+  assert.equal(report.meals.find(meal => meal.itemId === "legendary_fish").twentyFourHourBuildSeconds, 76169);
   const data = catalog(); data.food.meals.at(-1).heroSpeedBps = 10001;
   assert.throws(() => auditFoodEconomy(data), /Unbounded hero meal bonus/);
 });

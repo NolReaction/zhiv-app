@@ -55,7 +55,7 @@ function mood(overrides = {}) {
     onCall: () => calls.push("call"), onOpenHelp: () => calls.push("help"), onOpenExpeditions: () => calls.push("expeditions"), ...overrides })), calls };
 }
 
-test("profile shows identity once in confirmed XP and leaves the full mood outside its three navigation tabs", () => {
+test("profile shows identity once in confirmed XP and leaves the full mood outside its four navigation tabs", () => {
   const { markup, elements } = profile();
   assert.equal((markup.match(/Дима/g) ?? []).length, 1);
   assert.match(markup, /Уровень <strong>1<\/strong>/);
@@ -69,16 +69,15 @@ test("profile shows identity once in confirmed XP and leaves the full mood outsi
   assert.ok(markup.includes(`<dt>Книга находок</dt><dd>1 / ${BOOK_COLLECTION_COUNT}</dd>`));
   assert.match(markup, /21 день/);
   assert.match(markup, /Любопытничает/);
-  assert.match(markup, /data-craft-skill="cooking"/); assert.match(markup, /data-craft-skill="travel"/);
-  assert.equal((markup.match(/aria-label="Навыки Мохлика"/g) ?? []).length, 1);
+  assert.doesNotMatch(markup, /data-craft-skill=/);
   assert.doesNotMatch(markup, /Самочувствие Мохлика|Полон сил|Хочется открытий|Кладовая|Гардероб|Обустроить дом|Прежние походы/);
   const tabs = elements.filter(element => element.props.role === "tab");
-  assert.deepEqual(tabs.map(buttonText), ["Профиль", "Друзья", ""]);
-  assert.equal(tabs[2].props["aria-label"], "Настройки");
-  assert.equal(tabs[2].props.title, "Настройки");
+  assert.deepEqual(tabs.map(buttonText), ["Профиль", "Навыки леса", "Друзья", ""]);
+  assert.equal(tabs[3].props["aria-label"], "Настройки");
+  assert.equal(tabs[3].props.title, "Настройки");
   assert.ok(tabs.every(tab => tab.props["data-audio-cue"] === undefined), "explicit handlers own tab audio");
-  assert.deepEqual(tabs.map(tab => tab.props["aria-selected"]), [true, false, false]);
-  assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1, -1]);
+  assert.deepEqual(tabs.map(tab => tab.props["aria-selected"]), [true, false, false, false]);
+  assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1, -1, -1]);
   assert.equal(elements.filter(element => element.props.role === "tabpanel").length, 1);
 });
 
@@ -109,11 +108,11 @@ test("tabs activate with arrows, Home and End, move focus and do not consume unr
     return tabs.map((_, index) => ({ focus: () => focused.push(index) }));
   } };
   const key = (index, key) => tabs[index].props.onKeyDown({ key, preventDefault: () => prevented++, currentTarget: { parentElement } });
-  key(0, "ArrowLeft"); key(2, "ArrowRight"); key(0, "End"); key(1, "Home"); key(1, "Tab");
+  key(0, "ArrowLeft"); key(3, "ArrowRight"); key(0, "End"); key(1, "Home"); key(1, "Tab");
   assert.deepEqual(view.calls, ["settings", "settings"], "reselecting the current profile is silent and does not change state");
-  assert.deepEqual(focused, [2, 0, 2, 0]);
+  assert.deepEqual(focused, [3, 0, 3, 0]);
   assert.equal(prevented, 4);
-  tabs[1].props.onClick();
+  tabs[2].props.onClick();
   assert.equal(view.calls.at(-1), "friends");
   const friends = profile({ activeTab: "friends", idPrefix: "profile-test" });
   const panel = friends.elements.find(element => element.props.role === "tabpanel");
@@ -155,9 +154,9 @@ test("unknown state disables calling and does not claim zero progress or an inve
   assert.match(profile({ world: { snapshot: { state: { ...newWorldState(), completedJourneys: 2 } } } }).markup, /<dt>Прежние походы<\/dt><dd>2<\/dd>/);
 });
 
-test("memory warnings and takeover remain available from all three tabs", () => {
+test("memory warnings and takeover remain available from all four tabs", () => {
   const elsewhere = { ...observation, paused: true, memory: { ...observation.memory, sync: { ...observation.memory.sync, mode: "other-device", canTakeOver: true } } };
-  for (const activeTab of ["profile", "friends", "settings"]) {
+  for (const activeTab of ["profile", "skills", "friends", "settings"]) {
     const view = profile({ activeTab, observation: elsewhere });
     assert.match(view.markup, /другом устройстве или в другой вкладке/);
     assert.match(view.markup, /полянка на паузе/);
@@ -216,7 +215,7 @@ test("the meal card uses saved pending or active work bonuses independently of m
   const before = structuredClone(state);
   const pending = mood({ economy: { snapshot: state }, observation: { ...observation, needs: { ...observation.needs, energy: .1 } } });
   assert.match(pending.markup, /Пора передохнуть/);
-  assert.match(pending.markup, /Еда: \+25% к скорости/);
+  assert.match(pending.markup, /Еда для вылазки/);
   assert.match(pending.markup, /Сохранённый обед ускорит одну следующую вылазку/);
   assert.match(pending.markup, /data-meal-return="hero"/);
   assert.match(pending.markup, /Забрать блюдо/);
@@ -230,7 +229,7 @@ test("the meal card uses saved pending or active work bonuses independently of m
   state.jobs = [{ kind: "construction", meal: { itemId: recipeMeal.itemId, consumer: "builder", speedBps: 1000 } }];
   const builderOnly = mood({ economy: { snapshot: state } });
   assert.doesNotMatch(builderOnly.markup, /Еда: \+/);
-  assert.match(builderOnly.markup, /Он расходуется в пути, а не во время отдыха/);
+  assert.match(builderOnly.markup, /Запас расходуется в пути, а не во время отдыха/);
   state.jobs = [{ kind: "exploration", actorId: "miner", targetId: "quarry_stone",
     meal: { itemId: recipeMeal.itemId, consumer: "hero", speedBps: 2500 } }];
   assert.doesNotMatch(mood({ economy: { snapshot: state } }).markup, /Еда: \+|Бонус учтён в текущей вылазке/,
@@ -293,7 +292,7 @@ test("profile selection emits exactly one soft tab cue for a change, including k
     const view = profile();
     const tabs = view.elements.filter(element => element.props.role === "tab");
     tabs[0].props.onClick();
-    tabs[1].props.onClick();
+    tabs[2].props.onClick();
     tabs[0].props.onKeyDown({ key: "ArrowLeft", preventDefault() {}, currentTarget: { parentElement: null } });
     tabs[0].props.onKeyDown({ key: "Home", preventDefault() {}, currentTarget: { parentElement: null } });
     assert.deepEqual(view.calls, ["friends", "settings"]);
@@ -318,7 +317,7 @@ test("profile question opens only local help, outside tab semantics, without sta
   assert.equal(button.props["aria-expanded"], false);
   assert.equal(button.props.title, "О профиле");
   const tablist = view.elements.find(element => element.props.role === "tablist");
-  assert.equal(Children.toArray(tablist.props.children).length, 3);
+  assert.equal(Children.toArray(tablist.props.children).length, 4);
   assert.ok(!Children.toArray(tablist.props.children).includes(button));
   button.props.onClick();
   assert.deepEqual(calls, ["help"]);
@@ -331,7 +330,7 @@ test("local profile explanation offers the saved course status and only its expl
     const calls = [];
     const view = profile({ guideOpen: true, onboardingStatus: status,
       onToggleGuide: () => calls.push("hide-help"), onOpenOnboarding: () => calls.push("guide") });
-    assert.match(view.markup, /Тут общая статистика, друзья и настройки\./);
+    assert.match(view.markup, /Тут общая статистика, навыки леса, друзья и настройки\./);
     assert.equal(namedButton(view, "О профиле").props["aria-expanded"], true);
     assert.deepEqual(calls, []);
     namedButton(view, "О профиле").props.onClick();
@@ -345,7 +344,28 @@ test("profile shows remaining frozen work budget without consulting changed reci
   const state = freshEconomy();
   state.food = { heroMeal: "grilled_fish", builderMeal: null, heroMealEffect: { speedBps: 2700, remainingWorkSeconds: 600, totalWorkSeconds: 3600 } };
   const view = mood({ economy: { snapshot: state } });
-  assert.match(view.markup, /Еда: \+27% к скорости/);
+  assert.match(view.markup, /Запас сил для вылазок/);
   assert.match(view.markup, /Осталось 10 мин обычного времени вылазок/);
   assert.match(view.markup, /Убрать остаток/);
+});
+
+
+test("forest skills have their own complete tab with percentages and no practice-hour counters", () => {
+  const view = profile({ activeTab: "skills" });
+  for (const skill of ["cooking", "travel", "fishing", "crafting", "smelting", "gathering", "forestry", "mining", "building"]) {
+    assert.equal((view.markup.match(new RegExp(`data-craft-skill="${skill}"`, "g")) ?? []).length, 1);
+  }
+  assert.equal((view.markup.match(/<progress /g) ?? []).length, 9);
+  assert.match(view.markup, /0% до следующего уровня/);
+  assert.doesNotMatch(view.markup, /часов практики|ч практики|практики:|data-presentation="profile"|Сотрудничество с жителями в этом месяце/);
+  assert.match(profile({ activeTab: "skills", economy: { snapshot: null } }).markup, /Загружаем навыки/);
+});
+
+
+test("cooking skill explains its extra chance using the actual chance before and after", () => {
+  const state = freshEconomy();
+  state.progression.skills = { version: 1, cookingSeconds: economyCatalog.skills.levels[2].requiredSeconds };
+  const view = profile({ activeTab: "skills", economy: { snapshot: state } });
+  assert.match(view.markup, /Пример: 85% → 87%/);
+  assert.doesNotMatch(view.markup, /Дополнительный шанс успеха/);
 });

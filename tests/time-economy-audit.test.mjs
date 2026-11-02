@@ -25,9 +25,9 @@ test("each chapter separates earned project payouts, fees and one-versus-three-s
     assert(chapter.productionCapacityLowerBoundSeconds.threeSlots <= chapter.productionCapacityLowerBoundSeconds.oneSlot);
     assert(chapter.productionCapacityLowerBoundSeconds.threeSlots >= (chapter.stationSeconds.miner ?? 0));
   }
-  assert.deepEqual(report.chapters.map(chapter => chapter.constructionCoins), [400, 3050, 22100, 61200]);
+  assert.deepEqual(report.chapters.map(chapter => chapter.constructionCoins), [700, 6650, 26100, 71200]);
   assert.deepEqual(report.chapters.map(chapter => chapter.projectCoins), [325, 1457, 15689, 21152]);
-  assert.equal(report.chapters[3].buildingFeesMinusProjectRewards, 40048, "the late chapter requires earned coins beyond its project proceeds");
+  assert.equal(report.chapters[3].buildingFeesMinusProjectRewards, 50048, "the late chapter requires earned coins beyond its project proceeds");
   assert(report.assumptions.some(text => text.includes("not calendar-playthrough")));
 });
 
@@ -72,16 +72,17 @@ test("hero material baskets cannot regain a hidden mint or a long unattended tim
 });
 
 
-test("optional kitchen experiments compensate failed attempts and keep maximum skill within the work-value cap", () => {
+test("optional kitchen experiments compensate failed attempts and bound skill benefits against full ingredient-and-work cost", () => {
   assert.equal(report.experiments.length, 4);
   for (const experiment of report.experiments) {
     assert(experiment.expectedNet >= experiment.workValue && experiment.expectedNet < experiment.workValue + 1);
-    assert(experiment.masteredNet > experiment.expectedNet && experiment.masteredNet <= experiment.workValue * 1.15);
+    assert(experiment.masteredNet > experiment.expectedNet && experiment.masteredGross <= experiment.totalCost * 1.12 + 1);
     const profile = report.items.find(item => item.sourceId === experiment.recipeId);
     assert.equal(profile.optionalExperiment, true);
     assert.equal(profile.finiteSuccessGuarantee, false);
     assert(profile.expectedAttempts > 1);
-    assert(Object.values(profile.expectedFailureRewards).some(quantity => quantity > 0));
+    assert.deepEqual(profile.expectedFailureRewards, {});
+    assert.equal(experiment.failureValue, 0);
   }
   const uncompensated = readEconomyCatalog();
   const recipe = uncompensated.recipes.find(recipe => recipe.experiment);

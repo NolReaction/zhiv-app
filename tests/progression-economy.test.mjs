@@ -187,18 +187,18 @@ test("unit mining is counted independently without choosing a multi-output exped
 
 test("stage budgets derive only required new buildings and the current short delivery cadence", () => {
   const first = economy.stages.find(stage => stage.homeLevel === 1);
-  assert.equal(first.buildingCoins, 400);
+  assert.equal(first.buildingCoins, 700);
   assert.equal(first.orderCoins, 338);
   assert.equal(first.orders.length, 4);
   assert.deepEqual(plain(economy.starter), { coins: 100, pearls: 0, items: { wood: 3, stone: 5 } });
-  assert.equal(economy.starter.coins + first.orderCoins - first.buildingCoins, 38);
+  assert.equal(economy.starter.coins + first.orderCoins - first.buildingCoins, -262);
   assert.deepEqual(plain(economy.storage.map(level => level.capacity)), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750]);
   const second = economy.stages.find(stage => stage.homeLevel === 2);
-  assert.equal(second.buildingCoins, 3050);
+  assert.equal(second.buildingCoins, 6650);
   assert.equal(second.orderCoins, second.orders.reduce((sum, order) => sum + order.coins, 0));
   assert.equal(second.orders.length, 7);
   const third = economy.stages.find(stage => stage.homeLevel === 3);
-  assert.equal(third.buildingCoins, 22100);
+  assert.equal(third.buildingCoins, 26100);
   assert.equal(third.orderCoins, third.orders.reduce((sum, order) => sum + order.coins, 0));
   assert.equal(third.orders.length, 8);
   assert.equal(third.intervalSeconds, catalog.stageOrders.find(course => course.homeLevel === 3).intervalSeconds);
@@ -278,7 +278,7 @@ test("branch references all five stage packs and cosmetic prices without turning
 
 test("house four has a separate twelve-delivery course, restored landmarks and guaranteed home-five relics", () => {
   const fourth = economy.stages.find(stage => stage.homeLevel === 4);
-  assert.equal(fourth.buildingCoins, 61200);
+  assert.equal(fourth.buildingCoins, 71200);
   assert.equal(fourth.buildSeconds, fourth.buildings.reduce((sum, building) => sum + building.seconds, 0), "one builder's queue excludes delivery waits and resource preparation");
   assert.equal(fourth.orders.length, 12);
   assert.equal(fourth.orderCoins, fourth.orders.reduce((sum, order) => sum + order.coins, 0));
@@ -341,7 +341,7 @@ test("each house adds a real berry and useful processing chain, with catalog mea
     assert.equal(processing.unlockHomeLevel, home);
     assert.ok(processing.addedNpcValue > 0, `Processing ${product} must add value`);
     const meal = catalog.food.meals.find(meal => meal.itemId === product);
-    assert.deepEqual(plain(item(product).meal), { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps, heroWorkSeconds: meal.heroWorkSeconds });
+    assert.deepEqual(plain(item(product).meal), { heroSpeedBps: meal.heroSpeedBps, builderSpeedBps: meal.builderSpeedBps, heroWorkSeconds: meal.heroWorkSeconds, builderWorkSeconds: meal.builderWorkSeconds });
   }
   assert.deepEqual(plain(economy.market), { homeLevel: 2, requiredBuildings: { bridge: 1 }, requiredExplorations: 0 });
   assert.deepEqual(plain(economy.homeUnlocks.filter(unlock => unlock.landmarks.length).map(unlock => [unlock.homeLevel, unlock.landmarks[0].id])), [[2, "bridge"], [3, "lighthouse"]]);
@@ -359,7 +359,7 @@ test("unlock overview follows changed station gates and owns its copies while ea
   const fourth = economy.stages.find(stage => stage.homeLevel === 4);
   const landmarks = fourth.buildings.filter(building => ["bridge", "lighthouse"].includes(building.id));
   assert.deepEqual(plain(landmarks.map(building => [building.id, building.availableHomeLevel])), [["bridge", 2], ["lighthouse", 3]]);
-  assert.equal(fourth.buildingCoins - landmarks.reduce((sum, building) => sum + building.cost.coins, 0), 55000);
+  assert.equal(fourth.buildingCoins - landmarks.reduce((sum, building) => sum + building.cost.coins, 0), 65000);
   assert.equal(fourth.buildSeconds - landmarks.reduce((sum, building) => sum + building.seconds, 0), fourth.buildings.filter(building => !["bridge", "lighthouse"].includes(building.id)).reduce((sum, building) => sum + building.seconds, 0));
   custom.homeUnlocks.find(unlock => unlock.homeLevel === 2).landmarks[0].cost.items.rope = 100;
   custom.items.find(item => item.id === "currant_jelly").meal.heroSpeedBps = 9999;

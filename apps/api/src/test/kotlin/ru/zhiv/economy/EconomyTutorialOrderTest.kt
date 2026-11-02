@@ -144,7 +144,7 @@ class EconomyTutorialOrderTest {
     }
 
     @Test fun `home two needs the tutorial then three house deliveries while older courses stay completed`() {
-        val before = EconomyRules.initial().copy(wallet = EconomyWallet(300), inventory = mapOf("wood" to 3L, "stone" to 2L, "planks" to 2L))
+        val before = EconomyRules.initial().copy(wallet = EconomyWallet(600), inventory = mapOf("wood" to 3L, "stone" to 2L, "planks" to 2L))
         fails("ECONOMY_TUTORIAL_REQUIRED") { EconomyRules.apply(before, command("start_construction", "home"), now) }
         val built = before.copy(buildings = before.buildings + mapOf("woodlot" to 1, "dryer" to 1, "workshop" to 1),
             tutorialOrder = before.tutorialOrder.copy(step = 1, completed = true))

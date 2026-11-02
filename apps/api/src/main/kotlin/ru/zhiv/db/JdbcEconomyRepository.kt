@@ -75,12 +75,14 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
             ELSE coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb) END,?)
         ON CONFLICT DO NOTHING
     """.trimIndent(), user, user, user, user, !converted)
-    if (inserted == 1 && EconomyRules.catalog.fishing != null) {
-        val state = readEconomyProfile(c, user).state
+    if (inserted == 1) {
+        val initialized = readEconomyProfile(c, user).state
+        val importedBuildings = initialized.buildings.any { (id, level) -> level > if (id in setOf("home", "garden", "warehouse")) 1 else 0 }
+        val state = if (importedBuildings) EconomySkills.normalized(initialized) else initialized.copy(progression = initialized.progression.copy(skills = EconomySkills.initial()))
         val now = c.economyRows("SELECT clock_timestamp()") { it.getObject(1, OffsetDateTime::class.java).toInstant() }.single()
         // Initial merchant stock belongs to revision zero, just like starter tackle.
         c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
-            economyJson.encodeToString(state.copy(fishingShop = EconomyFishingShops.create(state, now))), user)
+            economyJson.encodeToString(state.copy(fishingShop = if (EconomyRules.catalog.fishing != null) EconomyFishingShops.create(state, now) else null)), user)
     }
     c.economyUpdate("""
         INSERT INTO economy_conversion_audit(user_id,legacy_sparks,legacy_wood,legacy_stone,coins_granted,wood_granted,stone_granted)
@@ -115,7 +117,7 @@ internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, 
 }
 internal fun economyView(c: Connection, user: UUID, publicId: String, now: Instant): EconomyView {
     val row = readEconomyProfile(c, user)
-    val s = EconomyTapBoost.settle(EconomyStageOrders.pin(row.state, now=now), now)
+    val s = EconomySkills.normalized(EconomyTapBoost.settle(EconomyStageOrders.pin(row.state, now=now), now))
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map { EconomyPublicJobs.project(it, now) }, s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
         productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders, tradeRelations = s.tradeRelations, ship = EconomyShipOrders.project(s.ship, now),

@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import { Dialog } from "radix-ui";
-import { ArrowRight, Check, CircleHelp, Clock3, Compass, Hammer, LockKeyhole, Package, Pickaxe, Pin, RefreshCw, Soup, Store, X } from "lucide-react";
+import { ArrowRight, Check, CircleHelp, Clock3, Compass, Hammer, LockKeyhole, Package, Pickaxe, Pin, RefreshCw, Store, X } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
-import { ItemIcon } from "@/features/items/item-icon";
+import { CookingExperimentIcon, ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
 import { economyCatalog, type EconomyCost, type EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -15,9 +15,9 @@ import { ConstructionRequirements } from "./construction-requirements";
 import { UpgradeBenefitCarousel, type UpgradeBenefitCard } from "./upgrade-benefit-carousel";
 import { WorldHomeFinale } from "./world-home-finale";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
-import { mealSpeedDescription } from "@/features/economy/ui/food/meal-speed-description";
-import { experimentDiscovered } from "@/features/economy/domain/craft-skill";
-import { pendingMeal } from "@/features/economy/domain/food";
+import { mealTimeExample } from "@/features/economy/ui/food/meal-speed-description";
+import { experimentDiscovered, skillForExploration, skillForProduction, skillProgress, skillWorkDuration } from "@/features/economy/domain/craft-skill";
+import { builderWorkDuration, heroMealWorkDuration, pendingMeal } from "@/features/economy/domain/food";
 import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
 import { explorationActorId } from "@/features/economy/domain/actor-availability";
@@ -130,7 +130,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation, now }: { now: nu
     const ActivityIcon = mining ? Pickaxe : Compass;
     cards.push({ id: `route:${route.id}`, label: route.name, details: requirementDetails(worldRequirements(route), mining ? "Для этой добычи" : "Для этого маршрута"), content: <>
       <span className={styles.benefitArt} data-kind="route">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={42} />)}<ActivityIcon size={20} className={styles.benefitArtBadge} aria-hidden="true" /></span>
-      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(mining ? tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog, now) : route.seconds)}</span><strong className={styles.benefitTitle}>{route.name.replace(/ · \d+ ч$/, "")}</strong>
+      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(mining ? skillWorkDuration(state, "mining", tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog, now), state.catalog) : heroMealWorkDuration(state, route.seconds, skillForExploration(route, state.catalog)))}</span><strong className={styles.benefitTitle}>{route.name.replace(/ · \d+ ч$/, "")}</strong>
       <span className={styles.benefitRewards} role="list" aria-label="Находки маршрута">{rewards.map(([id, amount]) => <span role="listitem" key={id}>{itemName(state, id)} <b>×{number(amount)}</b></span>)}</span>
       {requirements(worldRequirements(route))}
       {mining && <span className={styles.benefitDescription}>Шахта работает независимо от Мохлика.</span>}
@@ -147,10 +147,10 @@ function UpgradeUnlocks({ state, stationId, target, navigation, now }: { now: nu
     cards.push({ id: `recipe:${entry.id}`, label: hidden ? title : entry.name, recipeId: entry.id, detailLabel: "Состав и условия",
       details: <div className={styles.recipeDetail}><strong>{hidden ? title : entry.name}</strong>{hidden ? <p className={styles.muted}>{entry.experiment!.hint} Название блюда откроется после первого удачного приготовления.</p> : <ul aria-label="Результат рецепта">{Object.entries(entry.rewards).map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><b>×{number(amount)}</b></li>)}</ul>}<p className={styles.recipeInputs}><span>Нужно:</span>{entry.cost.coins > 0 && <span><ItemIcon itemId="coins" size={16} />{number(entry.cost.coins)}</span>}{Object.entries(entry.cost.items).map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={16} />{itemName(state, id)} ×{number(amount)}</span>)}{!entry.cost.coins && !Object.keys(entry.cost.items).length && <span>без затрат</span>}</p><ConstructionRequirements state={futureState} required={worldRequirements(entry, entry)} navigation={navigation} />{!missing.length && access && <p className={styles.muted}>{access}</p>}</div>,
       content: <>
-      <span className={styles.benefitArt} data-kind="recipe">{hidden ? <Soup size={44} aria-hidden="true" /> : rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={44} />)}</span>
+      <span className={styles.benefitArt} data-kind="recipe">{hidden ? <CookingExperimentIcon recipeId={entry.id} size={44} /> : rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={44} />)}</span>
       <span className={styles.benefitKind}>{entry.experiment ? "Кулинарный опыт" : "Новый рецепт"}{stationId === "home" ? ` · ${stationName(state, entry.buildingId)}` : ""}</span><strong className={styles.benefitTitle}>{title}</strong>
-      <span className={styles.benefitDescription}>{!hidden && rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.buildingId === "woodlot" ? tradeWorkDuration(state, entry.seconds, "lopukh", 0, state.catalog, now) : entry.seconds)}</span>
-      {meal && <span className={styles.benefitDescription}>{entry.experiment ? "При успехе: " : ""}Вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}% скорости</span>}
+      <span className={styles.benefitDescription}>{!hidden && rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(skillWorkDuration(state, skillForProduction(entry.buildingId), entry.buildingId === "woodlot" ? tradeWorkDuration(state, entry.seconds, "lopukh", 0, state.catalog, now) : entry.seconds, state.catalog))}</span>
+      {!hidden && meal && <span className={styles.benefitDescription}>Пример: вылазка {mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)} · стройка {mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds, "builder")}</span>}
       {access && <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>}
     </> });
   }
@@ -254,7 +254,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(tradeWorkDuration(state, target.seconds, "builder", meal?.builderSpeedBps ?? 0, state.catalog, economy.now))}</strong>{meal && <small>{`Сыт · ${mealSpeedDescription(meal.builderSpeedBps, tradeSpeedBps)}`}</small>}{tradeSpeedBps > 0 && <small data-construction-trade-bonus>Шишколап: +{tradeSpeedBps / 100}% к скорости</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(builderWorkDuration(target.seconds, meal?.builderSpeedBps ?? 0, tradeSpeedBps, meal?.builderWorkSeconds, skillProgress(state, "building", state.catalog).bonusBps))}</strong>{meal && <small>Обед учтён во времени</small>}{tradeSpeedBps > 0 && <small data-construction-trade-bonus>Шишколап: +{tradeSpeedBps / 100}% к скорости</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{homeFinale ? "В лес!" : state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

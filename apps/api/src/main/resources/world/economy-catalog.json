@@ -95,7 +95,7 @@
         "itemId": "traveller_rod",
         "kind": "rod",
         "requiredHomeLevel": 3,
-        "priceCoins": 1700,
+        "priceCoins": 2200,
         "stock": 1,
         "quantity": 1
       },
@@ -104,7 +104,7 @@
         "itemId": "marsh_rod",
         "kind": "rod",
         "requiredHomeLevel": 3,
-        "priceCoins": 2200,
+        "priceCoins": 3000,
         "stock": 1,
         "quantity": 1
       },
@@ -113,7 +113,7 @@
         "itemId": "dusk_rod",
         "kind": "rod",
         "requiredHomeLevel": 4,
-        "priceCoins": 7000,
+        "priceCoins": 9500,
         "stock": 1,
         "quantity": 1
       },
@@ -122,7 +122,7 @@
         "itemId": "braided_hook",
         "kind": "hook",
         "requiredHomeLevel": 3,
-        "priceCoins": 120,
+        "priceCoins": 300,
         "stock": 1,
         "quantity": 1
       },
@@ -131,7 +131,7 @@
         "itemId": "dusk_hook",
         "kind": "hook",
         "requiredHomeLevel": 4,
-        "priceCoins": 400,
+        "priceCoins": 1800,
         "stock": 1,
         "quantity": 1
       },
@@ -158,7 +158,7 @@
         "itemId": "abyss_rod",
         "kind": "rod",
         "requiredHomeLevel": 4,
-        "priceCoins": 7000,
+        "priceCoins": 9500,
         "stock": 1,
         "quantity": 1
       },
@@ -167,7 +167,7 @@
         "itemId": "deep_hook",
         "kind": "hook",
         "requiredHomeLevel": 4,
-        "priceCoins": 400,
+        "priceCoins": 1800,
         "stock": 1,
         "quantity": 1
       },
@@ -176,7 +176,7 @@
         "itemId": "float_rod",
         "kind": "rod",
         "requiredHomeLevel": 3,
-        "priceCoins": 250,
+        "priceCoins": 350,
         "stock": 1,
         "quantity": 1
       },
@@ -185,7 +185,7 @@
         "itemId": "predator_rod",
         "kind": "rod",
         "requiredHomeLevel": 3,
-        "priceCoins": 1800,
+        "priceCoins": 2400,
         "stock": 1,
         "quantity": 1
       },
@@ -194,7 +194,7 @@
         "itemId": "mirror_rod",
         "kind": "rod",
         "requiredHomeLevel": 3,
-        "priceCoins": 5000,
+        "priceCoins": 7000,
         "stock": 1,
         "quantity": 1
       },
@@ -203,7 +203,7 @@
         "itemId": "spoon_hook",
         "kind": "hook",
         "requiredHomeLevel": 3,
-        "priceCoins": 80,
+        "priceCoins": 160,
         "stock": 1,
         "quantity": 1
       },
@@ -212,7 +212,7 @@
         "itemId": "weedless_hook",
         "kind": "hook",
         "requiredHomeLevel": 3,
-        "priceCoins": 180,
+        "priceCoins": 450,
         "stock": 1,
         "quantity": 1
       },
@@ -221,7 +221,7 @@
         "itemId": "moth_hook",
         "kind": "hook",
         "requiredHomeLevel": 3,
-        "priceCoins": 600,
+        "priceCoins": 2800,
         "stock": 1,
         "quantity": 1
       }
@@ -955,28 +955,28 @@
       "id": "currant_glazed_fish",
       "name": "Рыба в смородиновой глазури",
       "category": "provisions",
-      "baseSellPrice": 823,
+      "baseSellPrice": 924,
       "tradable": true
     },
     {
       "id": "berry_pastila",
       "name": "Ягодная пастила",
       "category": "provisions",
-      "baseSellPrice": 349,
+      "baseSellPrice": 377,
       "tradable": true
     },
     {
       "id": "trail_feast",
       "name": "Таёжный паёк",
       "category": "provisions",
-      "baseSellPrice": 1017,
+      "baseSellPrice": 1130,
       "tradable": true
     },
     {
       "id": "river_aspic",
       "name": "Лесной рыбный студень",
       "category": "provisions",
-      "baseSellPrice": 559,
+      "baseSellPrice": 589,
       "tradable": true
     }
   ],
@@ -1000,7 +1000,7 @@
           "level": 2,
           "seconds": 1800,
           "cost": {
-            "coins": 300,
+            "coins": 600,
             "items": {
               "wood": 3,
               "stone": 2,
@@ -1018,7 +1018,7 @@
           "level": 3,
           "seconds": 7200,
           "cost": {
-            "coins": 2400,
+            "coins": 6000,
             "items": {
               "planks": 12,
               "bricks": 12,
@@ -1037,7 +1037,7 @@
           "level": 4,
           "seconds": 14400,
           "cost": {
-            "coins": 7000,
+            "coins": 11000,
             "items": {
               "beams": 5,
               "cut_stone": 5,
@@ -1059,7 +1059,7 @@
           "level": 5,
           "seconds": 21600,
           "cost": {
-            "coins": 20000,
+            "coins": 30000,
             "items": {
               "beams": 5,
               "cut_stone": 5,
@@ -3485,9 +3485,7 @@
         "hint": "Попробуйте соединить речную рыбу и густое ягодное желе.",
         "successBps": 8500,
         "requiredCookingLevel": 1,
-        "failureRewards": {
-          "currant_jelly": 1
-        }
+        "failureRewards": {}
       }
     },
     {
@@ -3514,9 +3512,7 @@
         "hint": "Медленно прогрейте клубничный компот со свежей малиной.",
         "successBps": 8500,
         "requiredCookingLevel": 1,
-        "failureRewards": {
-          "strawberry_compote": 1
-        }
+        "failureRewards": {}
       }
     },
     {
@@ -3543,9 +3539,7 @@
         "hint": "Оживите обычный паёк ягодами, сохранив его сытность.",
         "successBps": 8500,
         "requiredCookingLevel": 2,
-        "failureRewards": {
-          "trail_ration": 1
-        }
+        "failureRewards": {}
       }
     },
     {
@@ -3572,9 +3566,7 @@
         "hint": "Дайте густой ухе соединиться с терпкой черникой.",
         "successBps": 8500,
         "requiredCookingLevel": 3,
-        "failureRewards": {
-          "fish_soup": 1
-        }
+        "failureRewards": {}
       }
     }
   ],
@@ -4611,7 +4603,7 @@
         "id": "river_rod",
         "name": "Речная удочка",
         "description": "Для необычной рыбы: базовый шанс 65%, выше, чем у Ручьевой удочки.",
-        "price": 400,
+        "price": 600,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -4630,7 +4622,7 @@
         "id": "brook_rod",
         "name": "Ручьевая удочка",
         "description": "Доступная удочка для необычной рыбы: базовый шанс 55%. Крючок и наживка усиливают выбранный класс.",
-        "price": 250,
+        "price": 350,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -4650,7 +4642,7 @@
         "id": "willow_rod",
         "name": "Ивовая удочка",
         "description": "Для редкой рыбы: базовый шанс 60%. Подходящие крючок и наживка повышают его ещё сильнее.",
-        "price": 1800,
+        "price": 2400,
         "rareBonus": 5,
         "rarity": "rare",
         "requiredHomeLevel": 2,
@@ -4669,7 +4661,7 @@
         "id": "tide_rod",
         "name": "Приливная удочка",
         "description": "Для эпической рыбы: базовый шанс 65%. Подходящие крючок и наживка повышают его ещё сильнее.",
-        "price": 5000,
+        "price": 7000,
         "rareBonus": 8,
         "rarity": "epic",
         "requiredHomeLevel": 3,
@@ -4688,7 +4680,7 @@
         "id": "starfall_rod",
         "name": "Звёздная удочка",
         "description": "Для легендарной рыбы: базовый шанс 60% с любым крючком. Крючок Левиафана и Звёздная наживка усиливают этот класс.",
-        "price": 9500,
+        "price": 14000,
         "rareBonus": 12,
         "rarity": "legendary",
         "requiredHomeLevel": 4,
@@ -4707,7 +4699,7 @@
         "id": "traveller_rod",
         "name": "Походная удочка",
         "description": "Для смешанного улова: по 40% необычной и редкой рыбы. Можно собирать припасы для разных заказов, меняя крючок и наживку.",
-        "price": 1700,
+        "price": 2200,
         "rareBonus": 5,
         "rarity": "rare",
         "requiredHomeLevel": 3,
@@ -4729,7 +4721,7 @@
         "id": "marsh_rod",
         "name": "Болотная удочка",
         "description": "Для кухни и находок: 50% обычной и 40% эпической рыбы. Приливная удочка точнее ловит эпическую, Камышовая — обычную.",
-        "price": 2200,
+        "price": 3000,
         "rareBonus": 7,
         "rarity": "epic",
         "requiredHomeLevel": 3,
@@ -4751,7 +4743,7 @@
         "id": "dusk_rod",
         "name": "Сумеречная удочка",
         "description": "Для смешанного крупного улова: 35% эпической и 30% легендарной рыбы. Уступает Приливной и Звёздной в ловле одного выбранного класса.",
-        "price": 7000,
+        "price": 9500,
         "rareBonus": 10,
         "rarity": "legendary",
         "requiredHomeLevel": 4,
@@ -4772,7 +4764,7 @@
         "id": "float_rod",
         "name": "Поплавочная удочка",
         "description": "Лёгкая удочка с пробковым поплавком. Чаще ловит краснопёрку и камышового окунька своего класса.",
-        "price": 250,
+        "price": 350,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -4793,7 +4785,7 @@
         "id": "predator_rod",
         "name": "Хищная удочка",
         "description": "Жёсткая удочка с зубчатой катушкой. Среди редкой рыбы чаще попадается изумрудная щука.",
-        "price": 1800,
+        "price": 2400,
         "rareBonus": 5,
         "rarity": "rare",
         "requiredHomeLevel": 2,
@@ -4814,7 +4806,7 @@
         "id": "mirror_rod",
         "name": "Зеркальная удочка",
         "description": "Перламутровая удочка с плоской катушкой. Среди эпической рыбы чаще попадается зеркальный кои.",
-        "price": 5000,
+        "price": 7000,
         "rareBonus": 8,
         "rarity": "epic",
         "requiredHomeLevel": 3,
@@ -4835,7 +4827,7 @@
         "id": "abyss_rod",
         "name": "Глубинная удочка",
         "description": "Тяжёлая дорожная удочка с закрытой катушкой. Чаще ловит угря и осетра внутри их классов.",
-        "price": 7000,
+        "price": 9500,
         "rareBonus": 10,
         "rarity": "legendary",
         "requiredHomeLevel": 4,
@@ -4983,7 +4975,7 @@
         "id": "barbed_hook",
         "name": "Бородатый крючок",
         "description": "Повышает шанс необычной рыбы. Наживка на тот же класс усиливает набор ещё больше.",
-        "price": 80,
+        "price": 160,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -4999,7 +4991,7 @@
         "id": "round_hook",
         "name": "Круглый крючок",
         "description": "Немного повышает шанс необычной рыбы. Доступный первый крючок; Бородатый усиливает этот класс заметнее.",
-        "price": 40,
+        "price": 80,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -5015,7 +5007,7 @@
         "id": "silver_hook",
         "name": "Серебряный крючок",
         "description": "Повышает шанс редкой рыбы. Наживка на тот же класс усиливает набор ещё больше.",
-        "price": 180,
+        "price": 450,
         "rareBonus": 4,
         "rarity": "rare",
         "requiredHomeLevel": 2,
@@ -5031,7 +5023,7 @@
         "id": "tide_hook",
         "name": "Приливный крючок",
         "description": "Повышает шанс эпической рыбы. Наживка на тот же класс усиливает набор ещё больше.",
-        "price": 600,
+        "price": 2800,
         "rareBonus": 7,
         "rarity": "epic",
         "requiredHomeLevel": 3,
@@ -5047,7 +5039,7 @@
         "id": "leviathan_hook",
         "name": "Крючок Левиафана",
         "description": "Повышает шанс легендарной рыбы у удочек, которым доступен этот класс. Звёздная наживка усиливает набор ещё больше.",
-        "price": 750,
+        "price": 4400,
         "rareBonus": 10,
         "rarity": "legendary",
         "requiredHomeLevel": 4,
@@ -5063,7 +5055,7 @@
         "id": "braided_hook",
         "name": "Плетёный крючок",
         "description": "Усиливает веса необычной и редкой рыбы в 1,3 раза. Удобен для смешанного улова; профильные крючки сильнее в одном классе.",
-        "price": 120,
+        "price": 300,
         "rareBonus": 4,
         "rarity": "rare",
         "requiredHomeLevel": 3,
@@ -5080,7 +5072,7 @@
         "id": "dusk_hook",
         "name": "Сумеречный крючок",
         "description": "Усиливает веса эпической и легендарной рыбы в 1,25 раза. Сохраняет оба направления; не открывает недоступные удочке классы.",
-        "price": 400,
+        "price": 1800,
         "rareBonus": 7,
         "rarity": "epic",
         "requiredHomeLevel": 4,
@@ -5097,7 +5089,7 @@
         "id": "spoon_hook",
         "name": "Крючок-блесна",
         "description": "Медная блесна: чаще попадается камышовый окунёк своего класса.",
-        "price": 80,
+        "price": 160,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -5118,7 +5110,7 @@
         "id": "weedless_hook",
         "name": "Незацепляйка",
         "description": "Защищённое жало: среди редкой рыбы чаще попадается изумрудная щука.",
-        "price": 180,
+        "price": 450,
         "rareBonus": 4,
         "rarity": "rare",
         "requiredHomeLevel": 2,
@@ -5138,7 +5130,7 @@
         "id": "moth_hook",
         "name": "Крючок-бабочка",
         "description": "Перламутровые крылья: среди эпической рыбы чаще попадается зеркальный кои.",
-        "price": 600,
+        "price": 2800,
         "rareBonus": 7,
         "rarity": "epic",
         "requiredHomeLevel": 3,
@@ -5158,7 +5150,7 @@
         "id": "deep_hook",
         "name": "Глубинный крючок",
         "description": "Тяжёлое жало: чаще попадаются угорь и осётр внутри их классов.",
-        "price": 400,
+        "price": 1800,
         "rareBonus": 7,
         "rarity": "epic",
         "requiredHomeLevel": 4,
@@ -5348,10 +5340,10 @@
       "festive_sturgeon": 2332,
       "berry_tea": 120,
       "forest_pan": 175,
-      "currant_glazed_fish": 823,
-      "berry_pastila": 349,
-      "trail_feast": 1017,
-      "river_aspic": 559
+      "currant_glazed_fish": 924,
+      "berry_pastila": 377,
+      "trail_feast": 1130,
+      "river_aspic": 589
     }
   },
   "rareDrops": {
@@ -5373,139 +5365,162 @@
         "itemId": "grilled_fish",
         "heroSpeedBps": 1000,
         "builderSpeedBps": 1000,
-        "heroWorkSeconds": 4500
+        "heroWorkSeconds": 4500,
+        "builderWorkSeconds": 1800
       },
       {
         "itemId": "fish_soup",
         "heroSpeedBps": 2500,
         "builderSpeedBps": 2500,
-        "heroWorkSeconds": 7200
+        "heroWorkSeconds": 7200,
+        "builderWorkSeconds": 7200
       },
       {
         "itemId": "berry_fish",
         "heroSpeedBps": 4000,
         "builderSpeedBps": 3500,
-        "heroWorkSeconds": 6300
+        "heroWorkSeconds": 6300,
+        "builderWorkSeconds": 7200
       },
       {
         "itemId": "hearty_fish",
         "heroSpeedBps": 6000,
         "builderSpeedBps": 5000,
-        "heroWorkSeconds": 7200
+        "heroWorkSeconds": 7200,
+        "builderWorkSeconds": 9000
       },
       {
         "itemId": "epic_fish",
         "heroSpeedBps": 8000,
         "builderSpeedBps": 7000,
-        "heroWorkSeconds": 10800
+        "heroWorkSeconds": 10800,
+        "builderWorkSeconds": 14400
       },
       {
         "itemId": "legendary_fish",
         "heroSpeedBps": 10000,
         "builderSpeedBps": 9000,
-        "heroWorkSeconds": 13500
+        "heroWorkSeconds": 13500,
+        "builderWorkSeconds": 21600
       },
       {
         "itemId": "strawberry_compote",
         "heroSpeedBps": 800,
         "builderSpeedBps": 2500,
-        "heroWorkSeconds": 16200
+        "heroWorkSeconds": 16200,
+        "builderWorkSeconds": 3600
       },
       {
         "itemId": "blueberry_compote",
         "heroSpeedBps": 1200,
         "builderSpeedBps": 2000,
-        "heroWorkSeconds": 9000
+        "heroWorkSeconds": 9000,
+        "builderWorkSeconds": 3600
       },
       {
         "itemId": "currant_jelly",
         "heroSpeedBps": 2000,
         "builderSpeedBps": 5000,
-        "heroWorkSeconds": 26100
+        "heroWorkSeconds": 26100,
+        "builderWorkSeconds": 10800
       },
       {
         "itemId": "blackberry_preserve",
         "heroSpeedBps": 4500,
         "builderSpeedBps": 8000,
-        "heroWorkSeconds": 27000
+        "heroWorkSeconds": 27000,
+        "builderWorkSeconds": 18000
       },
       {
         "itemId": "cranberry_glaze",
         "heroSpeedBps": 7500,
         "builderSpeedBps": 10000,
-        "heroWorkSeconds": 27900
+        "heroWorkSeconds": 27900,
+        "builderWorkSeconds": 21600
       },
       {
         "itemId": "grilled_silverfin",
         "heroSpeedBps": 1800,
         "builderSpeedBps": 1500,
-        "heroWorkSeconds": 7200
+        "heroWorkSeconds": 7200,
+        "builderWorkSeconds": 5400
       },
       {
         "itemId": "smoked_bream",
         "heroSpeedBps": 3000,
         "builderSpeedBps": 2000,
-        "heroWorkSeconds": 12600
+        "heroWorkSeconds": 12600,
+        "builderWorkSeconds": 21600
       },
       {
         "itemId": "mooncarp_blueberries",
         "heroSpeedBps": 4000,
         "builderSpeedBps": 3500,
-        "heroWorkSeconds": 11700
+        "heroWorkSeconds": 11700,
+        "builderWorkSeconds": 14400
       },
       {
         "itemId": "pike_berry_sauce",
         "heroSpeedBps": 5000,
         "builderSpeedBps": 4000,
-        "heroWorkSeconds": 19800
+        "heroWorkSeconds": 19800,
+        "builderWorkSeconds": 21600
       },
       {
         "itemId": "eel_in_jar",
         "heroSpeedBps": 6500,
         "builderSpeedBps": 5500,
-        "heroWorkSeconds": 18000
+        "heroWorkSeconds": 18000,
+        "builderWorkSeconds": 21600
       },
       {
         "itemId": "festive_sturgeon",
         "heroSpeedBps": 9000,
         "builderSpeedBps": 7500,
-        "heroWorkSeconds": 37800
+        "heroWorkSeconds": 37800,
+        "builderWorkSeconds": 21600
       },
       {
         "itemId": "berry_tea",
         "heroSpeedBps": 1000,
         "builderSpeedBps": 1500,
-        "heroWorkSeconds": 9900
+        "heroWorkSeconds": 9900,
+        "builderWorkSeconds": 5400
       },
       {
         "itemId": "forest_pan",
         "heroSpeedBps": 1800,
-        "builderSpeedBps": 2200,
-        "heroWorkSeconds": 9000
+        "builderSpeedBps": 3000,
+        "heroWorkSeconds": 9000,
+        "builderWorkSeconds": 5400
       },
       {
         "itemId": "currant_glazed_fish",
         "heroSpeedBps": 2200,
         "builderSpeedBps": 5500,
-        "heroWorkSeconds": 35100
+        "heroWorkSeconds": 38700,
+        "builderWorkSeconds": 18000
       },
       {
         "itemId": "berry_pastila",
         "heroSpeedBps": 1000,
-        "builderSpeedBps": 3500,
-        "heroWorkSeconds": 28800
+        "builderSpeedBps": 4000,
+        "heroWorkSeconds": 31500,
+        "builderWorkSeconds": 14400
       },
       {
         "itemId": "trail_feast",
         "heroSpeedBps": 5000,
-        "builderSpeedBps": 5500,
-        "heroWorkSeconds": 23400
+        "builderSpeedBps": 6500,
+        "heroWorkSeconds": 26100,
+        "builderWorkSeconds": 21600
       },
       {
         "itemId": "river_aspic",
         "heroSpeedBps": 3500,
-        "builderSpeedBps": 4000,
-        "heroWorkSeconds": 16200
+        "builderSpeedBps": 4500,
+        "heroWorkSeconds": 17100,
+        "builderWorkSeconds": 14400
       }
     ],
     "orders": {
@@ -10309,53 +10324,64 @@
       {
         "requiredSeconds": 0,
         "cookingBonusBps": 0,
-        "travelSpeedBps": 0
+        "travelSpeedBps": 0,
+        "workSpeedBps": 0
       },
       {
         "requiredSeconds": 18000,
         "cookingBonusBps": 100,
-        "travelSpeedBps": 50
+        "travelSpeedBps": 50,
+        "workSpeedBps": 25
       },
       {
         "requiredSeconds": 54000,
         "cookingBonusBps": 200,
-        "travelSpeedBps": 100
+        "travelSpeedBps": 100,
+        "workSpeedBps": 50
       },
       {
         "requiredSeconds": 126000,
         "cookingBonusBps": 300,
-        "travelSpeedBps": 150
+        "travelSpeedBps": 150,
+        "workSpeedBps": 75
       },
       {
         "requiredSeconds": 252000,
         "cookingBonusBps": 400,
-        "travelSpeedBps": 200
+        "travelSpeedBps": 200,
+        "workSpeedBps": 100
       },
       {
         "requiredSeconds": 450000,
         "cookingBonusBps": 500,
-        "travelSpeedBps": 250
+        "travelSpeedBps": 250,
+        "workSpeedBps": 140
       },
       {
         "requiredSeconds": 756000,
         "cookingBonusBps": 600,
-        "travelSpeedBps": 300
+        "travelSpeedBps": 300,
+        "workSpeedBps": 180
       },
       {
         "requiredSeconds": 1224000,
         "cookingBonusBps": 700,
-        "travelSpeedBps": 350
+        "travelSpeedBps": 350,
+        "workSpeedBps": 220
       },
       {
         "requiredSeconds": 1872000,
         "cookingBonusBps": 850,
-        "travelSpeedBps": 400
+        "travelSpeedBps": 400,
+        "workSpeedBps": 260
       },
       {
         "requiredSeconds": 2880000,
         "cookingBonusBps": 1000,
-        "travelSpeedBps": 500
+        "travelSpeedBps": 500,
+        "workSpeedBps": 300
       }
-    ]
+    ],
+    "buildingPracticeDivisor": 8
   }
 }

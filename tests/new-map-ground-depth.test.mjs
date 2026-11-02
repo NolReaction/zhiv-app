@@ -102,15 +102,18 @@ test("carried berry baskets stay in their owner's hand pass without duplicate gr
   }
 }));
 
-function gathering(held = false) {
-  return { ...foot, size: 36, action: "look", progress: 0, crouch: 0, lean: 0, direction: "front", hand: { x: .2, y: -.3 },
-    item: "twig", itemVisible: false, pose: "idle", frame: 0, held, filled: true,
-    basket: { x: 645, y: foot.y, size: 16 } };
+function gathering(held = false, heroY = foot.y, groundY = foot.y) {
+  const ground = { x: 645, y: groundY };
+  return { ...foot, y: heroY, size: 36, action: held ? "walk" : "look", progress: 0, crouch: 0, lean: 0,
+    direction: "front", hand: { x: .2, y: -.3 }, item: "twig", itemVisible: false,
+    pose: held ? "carry" : "idle", frame: 0, held, filled: true,
+    basket: { ...(held ? { x: foot.x, y: heroY - 36 * .15 } : ground), size: 16 },
+    basketActivity: { phase: held ? "carry" : "collect", elapsed: held ? 0 : 1, ground } };
 }
 
 test("supply baskets share feet depth and held supply baskets remain a single owner prop", async () => harness(async (loaded, paint) => {
   for (const [held, heroY] of [[false, 640], [false, 680], [true, 640]]) {
-    const supply = gathering(held); supply.y = heroY; supply.basket.y = held ? heroY - 8 : 660;
+    const supply = gathering(held, heroY);
     const hero = { x: supply.x, y: supply.y }, calls = paint({ hero, gathering: supply, residents: residents(supply.basket.y) });
     assert.equal(gardenBodies(calls).length, 1, "the borrowed garden basket paints once across actor/ground passes");
     if (!held) depthOrder(calls, supply.basket, hero, loaded.NEW_MAP_PET_SIZE, `supply/${heroY}`);
@@ -121,21 +124,23 @@ test("supply baskets share feet depth and held supply baskets remain a single ow
   }
 }));
 
-test("DEV heroScale scales the supply owner, basket size and relative offsets together without mutating the frame", async () => harness(async (loaded, paint) => {
+test("DEV heroScale changes the supply owner while preserving the physical basket and ground support", async () => harness(async (loaded, paint) => {
   assert.equal(loaded.NEW_MAP_PET_SIZE, 36, "the integration fixture starts with a 36-unit hero");
   for (const held of [false, true]) {
-    const supply = gathering(held); supply.basket.y = held ? 652 : 672;
-    const before = JSON.stringify(supply), support = { x: 652.5, y: held ? 648 : 678 };
+    const supply = gathering(held, foot.y, 672);
+    const before = JSON.stringify(supply), support = held ? { x: foot.x, y: foot.y - 54 * .15 } : { ...supply.basketActivity.ground };
     const calls = paint({ gathering: supply, residents: residents(support.y), state: { heroScale: 1.5 } });
     const owner = imageAt(calls, foot.x, 54), basket = basketAt(calls, support);
     assert.equal(owner.length, 1, "the actual owner body is 54 units wide");
-    assert.equal(gardenBodies(calls).length, 1, "scaled supply basket remains the same single garden prop");
-    assert.equal(basket.length, 1, "relative basket offsets are scaled by 1.5");
-    assert.deepEqual(calls[basket[0] + 1], { method: "scale", args: [24 / 14, 24 / 14] },
-      "the actual basket painter receives a 24-unit basket");
-    assert.equal(basketAt(calls, supply.basket).length, 0, "the unscaled prop is never painted again");
-    if (!held) depthOrder(calls, support, foot, 54, "scaled supply ground");
-    else assert.ok(owner[0] < basket[0], "a held scaled basket stays in the forward hand pass");
+    assert.equal(gardenBodies(calls).length, 1, "the resized owner still has one physical garden basket");
+    assert.equal(basket.length, 1, held ? "the shared carry rig adjusts its grip below the resized body" : "a stationary world prop is not dragged by a DEV size change");
+    assert.deepEqual(calls[basket[0] + 1], { method: "scale", args: [16 / 14, 16 / 14] },
+      "the actual basket keeps its 16-unit world size");
+    if (!held) depthOrder(calls, support, foot, 54, "unchanged supply ground");
+    else {
+      assert.equal(basketAt(calls, supply.basket).length, 0, "the old held position is not painted a second time");
+      assert.ok(owner[0] < basket[0], "the held basket stays in the forward hand pass");
+    }
     assert.equal(JSON.stringify(supply), before, "render scaling leaves the source frame untouched");
   }
 }));

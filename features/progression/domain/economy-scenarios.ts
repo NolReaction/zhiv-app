@@ -13,8 +13,10 @@ const scenarioSchema = z.object({
   manualSeconds: nonnegative.positive(), slotPolicy: z.string(), externalPearls: nonnegative,
   useMeals: z.boolean(), buySupplies: z.boolean(), opportunisticRoutes: z.boolean(), speedupPolicy: z.string(), socialMode: z.string(), maxDays: milestone,
   elapsedDays: nonnegative, activeHours: nonnegative, manualHours: nonnegative, commandCount: count,
-  home5Days: milestone, allProductionDays: milestone, allBuildingsDays: milestone, allRecipesDays: milestone, reputationMaxDays: milestone,
+  home2Days: milestone.default(null), home3Days: milestone.default(null), home5Days: milestone, allProductionDays: milestone, allBuildingsDays: milestone, allRecipesDays: milestone, reputationMaxDays: milestone,
   ownerPublicId: z.string().default("0000-0000-0001"), neighborPolicy: z.string().default("none"), neighborSales: count.default(0), neighborProceeds: nonnegative.default(0), relicPolicy: z.string().default("none"),
+  currencyExchangePolicy: z.enum(["none", "construction-shortfall"]).default("none"), goldConversions: count.default(0),
+  goldConversionCoins: nonnegative.default(0), goldConversionPearls: nonnegative.default(0), skillSeconds: quantities.default({}),
   exchangePolicy: z.string().default("duplicates"), relicExchanges: count.default(0), exchangeCoins: nonnegative.default(0),
   allProductionSlotsDays: milestone.default(null), allCapacityDays: milestone.default(null),
   productionSlots: z.record(z.string(), count).default({}), marketSlots: count.default(economy.market.baseSlots),
@@ -54,7 +56,7 @@ export function scenarioSchedule(row: Pick<ProgressionScenario, "visitsPerDay" |
 export function scenarioHighlights(report: ProgressionScenarioReport) {
   const comparable = report.scenarios.filter(row => row.externalPearls === 0 && row.manualSeconds === 2
     && row.useMeals && row.buySupplies && row.opportunisticRoutes
-    && row.exchangePolicy === "duplicates" && row.neighborPolicy === "none" && row.ownerPublicId === "0000-0000-0001");
+    && (row.currencyExchangePolicy ?? "none") === "none" && row.exchangePolicy === "duplicates" && row.neighborPolicy === "none" && row.ownerPublicId === "0000-0000-0001");
   const standard = comparable.filter(row => row.slotPolicy === "earned" && row.relicPolicy === "none");
   const definitions = [
     { title: "Дом 5 · 3 × 30 минут", goal: "home-5", visits: 3, minutes: 30, socialMode: "income", field: "home5Days" },
@@ -90,10 +92,10 @@ export function scenarioHighlights(report: ProgressionScenarioReport) {
 
 export function scenarioCsvRows(report: ProgressionScenarioReport): (string | number | null)[][] {
   return [
-    ["policy", "catalog_version", "scenario", "goal", "completed", "seed", "visits_per_day", "minutes_per_visit", "first_visit_minutes", "seconds_per_action", "external_visible_pearls", "slot_policy", "observed_days", "home_5_days", "all_production_days", "all_buildings_days", "all_recipes_days", "max_reputation_days", "active_hours", "manual_hours", "commands", "use_meals", "buy_supplies", "useful_routes", "speedup_policy", "social_mode", "owner_public_id", "relic_policy", "all_production_slots_days", "all_capacity_days", "market_slots", "remaining_coins", "remaining_visible_pearls", "neighbor_policy", "neighbor_sales", "neighbor_proceeds", "relic_exchange_policy", "relic_exchanges", "relic_exchange_coins"],
+    ["policy", "catalog_version", "scenario", "goal", "completed", "seed", "visits_per_day", "minutes_per_visit", "first_visit_minutes", "seconds_per_action", "external_visible_pearls", "slot_policy", "observed_days", "home_5_days", "all_production_days", "all_buildings_days", "all_recipes_days", "max_reputation_days", "active_hours", "manual_hours", "commands", "use_meals", "buy_supplies", "useful_routes", "speedup_policy", "social_mode", "owner_public_id", "relic_policy", "all_production_slots_days", "all_capacity_days", "market_slots", "remaining_coins", "remaining_visible_pearls", "neighbor_policy", "neighbor_sales", "neighbor_proceeds", "relic_exchange_policy", "relic_exchanges", "relic_exchange_coins", "currency_exchange_policy", "gold_conversions", "converted_gold", "conversion_visible_pearls", "home_2_days", "home_3_days", "skill_seconds"],
     ...report.scenarios.map(row => [report.policyVersion, report.economyVersion, row.id, row.goal, row.completed ? 1 : 0, row.seed,
       row.visitsPerDay, row.regularMinutes, row.firstMinutes, row.manualSeconds, row.externalPearls, row.slotPolicy,
       row.elapsedDays, row.home5Days, row.allProductionDays, row.allBuildingsDays, row.allRecipesDays, row.reputationMaxDays,
-      row.activeHours, row.manualHours, row.commandCount, row.useMeals ? 1 : 0, row.buySupplies ? 1 : 0, row.opportunisticRoutes ? 1 : 0, row.speedupPolicy, row.socialMode, row.ownerPublicId, row.relicPolicy, row.allProductionSlotsDays, row.allCapacityDays, row.marketSlots, row.coinsRemaining, row.pearlsRemaining, row.neighborPolicy, row.neighborSales, row.neighborProceeds, row.exchangePolicy, row.relicExchanges, row.exchangeCoins]),
+      row.activeHours, row.manualHours, row.commandCount, row.useMeals ? 1 : 0, row.buySupplies ? 1 : 0, row.opportunisticRoutes ? 1 : 0, row.speedupPolicy, row.socialMode, row.ownerPublicId, row.relicPolicy, row.allProductionSlotsDays, row.allCapacityDays, row.marketSlots, row.coinsRemaining, row.pearlsRemaining, row.neighborPolicy, row.neighborSales, row.neighborProceeds, row.exchangePolicy, row.relicExchanges, row.exchangeCoins, row.currencyExchangePolicy, row.goldConversions, row.goldConversionCoins, row.goldConversionPearls, row.home2Days, row.home3Days, JSON.stringify(row.skillSeconds)]),
   ];
 }

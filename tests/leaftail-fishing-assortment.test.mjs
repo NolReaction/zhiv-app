@@ -71,7 +71,7 @@ test("mixed baits cannot create missing rod classes and every new cast uses the 
 });
 
 
-test("a mixed epic hook is permanent 400-coin equipment with bounded marginal returns rather than 25 extra probability points", async () => {
+test("a mixed epic hook is permanent 1800-coin equipment with bounded marginal returns rather than 25 extra probability points", async () => {
   const { fishingOfferUnitPrice } = await vite.ssrLoadModule("/features/economy/domain/fishing-shop.ts");
   const { tradePurchaseUnitPrice } = await vite.ssrLoadModule("/features/economy/domain/trade-pricing.ts");
   const now = Date.parse("2026-11-02T12:00:00Z");
@@ -81,17 +81,17 @@ test("a mixed epic hook is permanent 400-coin equipment with bounded marginal re
   for (const hookId of ["dusk_hook", "deep_hook"]) {
     const hook = fishing.hooks.find(item => item.id === hookId);
     const offer = economyCatalog.leaftailShop.travelOffers.find(item => item.itemId === hookId);
-    assert.equal(hook.price, 400);
+    assert.equal(hook.price, 1800);
     assert.equal(offer.priceCoins, hook.price);
     assert.equal(offer.quantity, 1);
-    assert.equal(tradePurchaseUnitPrice(friends, "leaftail", "hook", hook.price, "coins", economyCatalog, now), 360);
-    assert.equal(fishingOfferUnitPrice(friends, { kind: "hook", unitPrice: hook.price }, economyCatalog, now), 360);
+    assert.equal(tradePurchaseUnitPrice(friends, "leaftail", "hook", hook.price, "coins", economyCatalog, now), 1620);
+    assert.equal(fishingOfferUnitPrice(friends, { kind: "hook", unitPrice: hook.price }, economyCatalog, now), 1620);
     const before = odds("dusk_rod"), after = odds("dusk_rod", hookId);
     assert.ok(Math.abs(after.epic + after.legendary - 0.6989247311827957) < 1e-12);
     assert.ok(after.epic + after.legendary - before.epic - before.legendary < .05);
     const row = report.gearEconomics.hooks.find(entry => entry.hookId === hookId);
     const paired = row.rods.find(entry => entry.rodId === "dusk_rod");
-    assert.ok(Math.abs(paired.hours.shore - 16.187989556) < 1e-8);
-    assert.ok(row.fastestHours.shore > 10, "even the best plain loadout does not repay the hook through a few quick catches");
+    assert.ok(Math.abs(paired.hours.shore - 72.845953003) < 1e-8);
+    assert.ok(row.fastestHours.shore > 50, "even the best plain loadout does not repay the hook through a few quick catches");
   }
 });

@@ -40,15 +40,15 @@ class EconomyFishingShopTest {
         assertEquals(listOf("bait", "fish"), EconomyFishingShops.create(owned, now).offers.map { it.kind })
     }
 
-    @Test fun `cheaper starter tackle is applied to new stock without rewriting saved prices`() {
+    @Test fun `current starter tackle prices apply to new stock without rewriting saved prices`() {
         val current = ready()
         val shop = checkNotNull(current.fishingShop)
-        assertEquals(400L, shop.offers.single { it.itemId == "river_rod" }.unitPrice)
-        assertEquals(80L, shop.offers.single { it.itemId == "barbed_hook" }.unitPrice)
+        assertEquals(600L, shop.offers.single { it.itemId == "river_rod" }.unitPrice)
+        assertEquals(160L, shop.offers.single { it.itemId == "barbed_hook" }.unitPrice)
         val alternate = EconomyFishingShops.create(current.copy(fishing = current.fishing.copy(
             ownedRods = current.fishing.ownedRods + "float_rod", ownedHooks = current.fishing.ownedHooks + "spoon_hook")), now, { it - 1 })
-        assertEquals(250L, alternate.offers.single { it.itemId == "brook_rod" }.unitPrice)
-        assertEquals(40L, alternate.offers.single { it.itemId == "round_hook" }.unitPrice)
+        assertEquals(350L, alternate.offers.single { it.itemId == "brook_rod" }.unitPrice)
+        assertEquals(80L, alternate.offers.single { it.itemId == "round_hook" }.unitPrice)
         val saved = current.copy(fishingShop = shop.copy(offers = shop.offers.map {
             if (it.itemId == "river_rod") it.copy(unitPrice = 18000) else it
         }))
@@ -253,12 +253,12 @@ class EconomyFishingShopTest {
             activity=listOf("plesk","leaftail").associateWith { EconomyTradeActivity(10000,now.toString()) }))
         for(id in listOf("dusk_hook","deep_hook")) {
             val hook=spec.hooks.single { it.id==id }
-            assertEquals(400L,hook.price)
+            assertEquals(1800L,hook.price)
             val travelling=checkNotNull(EconomyRules.catalog.leaftailShop).travelOffers.single { it.itemId==id }
             assertEquals(hook.price,travelling.priceCoins)
             assertEquals(1L,travelling.quantity)
             for(resident in listOf("plesk","leaftail"))
-                assertEquals(360L,EconomyTradeRelations.discount(state,resident,hook.price,true,now=now))
+                assertEquals(1620L,EconomyTradeRelations.discount(state,resident,hook.price,true,now=now))
             val weights=EconomyRules.fishingClassWeights("dusk_rod",null,id)
             val strong=weights.filter { it.first.rarity in setOf("epic","legendary") }.sumOf { it.second }.toDouble()/weights.sumOf { it.second }
             assertEquals(0.6989247311827957,strong,1e-12)

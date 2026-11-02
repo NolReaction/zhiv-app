@@ -1,6 +1,6 @@
 "use client";
 
-import { CraftSkillsCard } from "@/features/economy/ui/food/craft-skills-card";
+import { ForestSkillsPanel } from "@/features/economy/ui/skills/forest-skills-panel";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
@@ -19,8 +19,8 @@ import { WorldProfileFriends, type WorldFriendsState, type NeighborFriend } from
 import { WorldTapHintSetting } from "./world-tap-hint-setting";
 import styles from "./world-profile-menu.module.css";
 
-export type WorldProfileTab = "profile" | "friends" | "settings";
-/** Older help destinations still open the mood dialog, never a fourth tab. */
+export type WorldProfileTab = "profile" | "skills" | "friends" | "settings";
+/** Older help destinations still open the mood dialog, never a separate tab. */
 export type WorldProfileDestination = WorldProfileTab | "mood";
 type Props = {
   world: WorldController;
@@ -47,6 +47,7 @@ type Props = {
 
 const tabs = [
   { id: "profile", label: "Профиль" },
+  { id: "skills", label: "Навыки леса" },
   { id: "friends", label: "Друзья" },
   { id: "settings", label: "Настройки" },
 ] as const;
@@ -169,7 +170,7 @@ export function WorldProfileContent({ world, economy, displayName, bestStreakDay
       onClick={onToggleGuide} data-audio-cue="ui.open"><CircleHelp size={20} aria-hidden="true" /></button>}
     </div>
     {guideOpen && <section id={`${idPrefix}-guide`} className={styles.guideHelp} aria-label="О профиле">
-      <p>Тут общая статистика, друзья и настройки.</p>
+      <p>Тут общая статистика, навыки леса, друзья и настройки.</p>
       {onOpenOnboarding && <button type="button" className={styles.action} onClick={onOpenOnboarding}>
         {onboardingStatus === "started" ? "Продолжить обучение" : onboardingStatus ? "Повторить обучение" : "Начать обучение"}
       </button>}
@@ -181,7 +182,6 @@ export function WorldProfileContent({ world, economy, displayName, bestStreakDay
           <PlayerProgressionCard progression={economy.snapshot?.progression} now={economy.now} ownerKey={economy.snapshot?.ownerPublicId}
             displayName={displayName} presentation="profile" showSeason={false} />
         </div>
-        {economy.snapshot && <div className={styles.skills}><CraftSkillsCard state={economy.snapshot} /></div>}
         <div className={styles.life}>
           <button ref={moodTriggerRef} type="button" className={styles.moodPreview} onClick={onOpenMood} aria-label="Как Мохлик?" aria-haspopup="dialog" data-audio-cue="ui.open">
             <Leaf size={18} aria-hidden="true" /><span><small>{observation?.paused ? "Полянка на паузе" : "Как Мохлик?"}</small>
@@ -206,6 +206,7 @@ export function WorldProfileContent({ world, economy, displayName, bestStreakDay
           <CooperationSeasonCard progression={economy.snapshot?.progression} now={economy.now} />
         </div>
       </div>}
+      {activeTab === "skills" && (economy.snapshot ? <ForestSkillsPanel state={economy.snapshot} /> : <p role="status">Загружаем навыки…</p>)}
       {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onVisitNeighbor={onVisitNeighbor} neighbor={neighbor}
         neighborMarket={{ shop: economy.neighbor && economy.neighbor.ownerPublicId === economy.snapshot?.ownerPublicId ? economy.neighbor.shop : null,
           error: Boolean(economy.neighborError), now: economy.now }} />}

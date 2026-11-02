@@ -11,6 +11,7 @@ import ru.zhiv.economy.EconomyStageOrders
 import ru.zhiv.economy.EconomyTradeRelations
 import ru.zhiv.economy.EconomyShipOrders
 import ru.zhiv.economy.EconomyRules
+import ru.zhiv.economy.EconomySkills
 import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
 import ru.zhiv.economy.EconomyFood
@@ -90,8 +91,8 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
 internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     ensureEconomyProfile(c, target)
     ensureEconomyProfile(c, source)
-    val a = readEconomyProfile(c, target).state
-    val b = readEconomyProfile(c, source).state
+    val a = EconomySkills.normalized(readEconomyProfile(c, target).state)
+    val b = EconomySkills.normalized(readEconomyProfile(c, source).state)
     val conflicts = economyMergeConflicts(c, target, source)
     if (conflicts.isNotEmpty()) throw AuthFailure("ACCOUNT_MERGE_CONFLICT", conflicts.joinToString(" "), 409)
     // Proceeds are not in either wallet yet. Preserve their separate one-time claim,
@@ -124,7 +125,8 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
         food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal,
             heroMealEffect = if (a.food.heroMeal != null) a.food.heroMealEffect else b.food.heroMealEffect,
-            builderMealSpeedBps = if (a.food.builderMeal != null) a.food.builderMealSpeedBps else b.food.builderMealSpeedBps),
+            builderMealSpeedBps = if (a.food.builderMeal != null) a.food.builderMealSpeedBps else b.food.builderMealSpeedBps,
+            builderMealWorkSeconds = if (a.food.builderMeal != null) a.food.builderMealWorkSeconds else b.food.builderMealWorkSeconds),
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
         tradeRelations=EconomyTradeRelations.merge(a.tradeRelations,b.tradeRelations,now),
         ship=EconomyShipOrders.merge(EconomyShipOrders.project(a.ship,now),EconomyShipOrders.project(b.ship,now)),

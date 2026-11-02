@@ -154,10 +154,12 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val miningBatch: EconomyMiningBatch? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val cooking: EconomyCookingAttempt? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val skillWorkSeconds: Long? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val skillSpeedBps: Int = 0,
 ) {
     init {
         require(cooking == null || kind == "production" && targetId == "dryer")
-        require(skillWorkSeconds == null || skillWorkSeconds in 1L..31_536_000L)
+        require(skillWorkSeconds == null || skillWorkSeconds in 0L..31_536_000L)
+        require(skillSpeedBps in 0..500)
         require(actorId == null || kind == "exploration" && actorId in setOf("mochlik", "miner"))
         require(miningBatch == null || kind == "exploration" && actorId == "miner")
         require(tradeSpeedBps in 0..1000)

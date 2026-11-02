@@ -1,5 +1,6 @@
 package ru.zhiv.economy
 
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import org.junit.jupiter.api.Test
 import ru.zhiv.auth.AuthFailure
@@ -141,10 +142,11 @@ class EconomyBookProgressionTest {
     @Test fun `failed warehouse delivery leaves the immutable old progress unchanged`() {
         val started = savedCamp()
             .copy(inventory = mapOf("wood" to 300L))
+        val before = economyJson.encodeToString(started)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(started, command("claim_job", started.jobs.single().id), now.plusSeconds(28800))
         }.code)
-        assertEquals(EconomyProgression(), started.progression)
+        assertEquals(before, economyJson.encodeToString(started))
         val collected = EconomyRules.apply(started.copy(inventory = emptyMap()), command("claim_job", started.jobs.single().id), now.plusSeconds(28800)).first
         assertEquals(1, collected.progression.collections.finds.size)
     }

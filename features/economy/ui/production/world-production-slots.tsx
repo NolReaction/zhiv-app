@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, CloudUpload, LockKeyhole, Plus, Soup } from "lucide-react";
-import { ItemIcon } from "@/features/items/item-icon";
+import { Check, CloudUpload, LockKeyhole, Plus } from "lucide-react";
+import { CookingExperimentIcon, ItemIcon } from "@/features/items/item-icon";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "@/features/economy/domain/production-slots";
 import { productionCollectionRewards, readyProductionJobs } from "@/features/economy/domain/production-collection";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
@@ -91,7 +91,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
       const nextLocked = !opened && index === capacity;
       const slotState = queued ? "pending" : job ? worldJobProgress(state, job, economy.now).ready ? "ready" : "working" : !opened ? "locked" : "free";
       return job ? <div key={index} className={`${styles.slot} ${styles.job}`} data-production-slot={index + 1} data-state={slotState}>
-        <span className={styles.slotNumber}>Место {index + 1}</span>{queued ? <div className={styles.pending} role="status" data-production-pending={job.id}>{experimental ? <Soup size={28} aria-hidden="true" /> : <ProductIcon state={state} itemId={Object.keys(job.rewards)[0]} size={28} />}<strong>{experimental ? "Кулинарный опыт" : itemName(state, Object.keys(job.rewards)[0])}</strong><span><CloudUpload size={12} aria-hidden="true" /> Сохранено</span></div> : <Work economy={economy} job={job} openPantry={openPantry} compact />}
+        <span className={styles.slotNumber}>Место {index + 1}</span>{queued ? <div className={styles.pending} role="status" data-production-pending={job.id}>{experimental ? <CookingExperimentIcon recipeId={job.recipeId ?? ""} size={28} /> : <ProductIcon state={state} itemId={Object.keys(job.rewards)[0]} size={28} />}<strong>{experimental ? "Кулинарный опыт" : itemName(state, Object.keys(job.rewards)[0])}</strong><span><CloudUpload size={12} aria-hidden="true" /> Сохранено</span></div> : <Work economy={economy} job={job} openPantry={openPantry} compact />}
       </div> : opened ? <div key={index} className={styles.slot} data-production-slot={index + 1} data-state={slotState}>
         <span className={styles.slotNumber}>Место {index + 1}</span><Plus size={25} aria-hidden="true" /><strong>{unavailable ? "Недоступно" : "Свободно"}</strong><span>{unavailable ? construction ? "Идёт улучшение" : "Нужно обустроить" : "Выберите рецепт"}</span>
       </div> : <button key={index} type="button" className={`${styles.slot} ${styles.closed}`} data-production-slot={index + 1} data-state="locked"

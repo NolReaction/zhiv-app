@@ -76,7 +76,7 @@ class EconomyFishingTest {
     @Test fun `shop charges server quote rods stay unique and purchased fish never counts as caught`() {
         val initial = funded()
         val rod = apply(initial, "buy_fishing_item", "river_rod", price = 1850)
-        assertEquals(99600L, rod.wallet.coins)
+        assertEquals(99400L, rod.wallet.coins)
         assertEquals(listOf("reed_rod", "river_rod"), rod.fishing.ownedRods)
         assertEquals(initial.inventory, rod.inventory)
         assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(rod, "buy_fishing_item", "river_rod", price = 1800) }.code)
@@ -87,7 +87,7 @@ class EconomyFishingTest {
         assertEquals(2L, bought.inventory["fish_rare"])
         assertTrue(bought.fishing.catches.isEmpty())
         val sold = apply(bought, "sell_fish", "fish_rare", quantity = 2)
-        assertEquals(99650L, sold.wallet.coins)
+        assertEquals(99450L, sold.wallet.coins)
         assertTrue(sold.fishing.catches.isEmpty())
         assertEquals("ECONOMY_FISHING_ITEM", assertFailsWith<AuthFailure> { apply(sold, "sell_fish", "wood") }.code)
     }

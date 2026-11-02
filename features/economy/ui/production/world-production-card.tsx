@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Clock3, Flame, LockKeyhole, Soup } from "lucide-react";
+import { Clock3, Flame, LockKeyhole } from "lucide-react";
 import { locked, productionLocked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { worldCostShortfalls, worldItemAvailable, worldRecipeCost, worldProductionReason, worldRecipeAccessReason, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
@@ -10,9 +10,11 @@ import { worldRecipeDuration } from "@/features/economy/ui/stations/world-recipe
 import { fishStockRequirements, fishSelectionMatches, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { canPrepareTutorialHarvest } from "@/features/economy/domain/tutorial-order";
 import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
-import { experimentDiscovered } from "@/features/economy/domain/craft-skill";
+import { experimentDiscovered, skillForProduction, skillWorkDuration } from "@/features/economy/domain/craft-skill";
+import { mealTimeExample, mealWorkDescription } from "@/features/economy/ui/food/meal-speed-description";
 import { CookingExperimentTerms, cookingExperimentSummary } from "@/features/economy/ui/food/cooking-experiment-terms";
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
+import { CookingExperimentIcon } from "@/features/items/item-icon";
 import styles from "./world-production-card.module.css";
 
 export function WorldProductionCard({ economy, recipe, focused = false, tutorialHarvestActive = false, onHelpContextChange, actionOnly = false }: {
@@ -41,8 +43,8 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
   const title = undiscovered ? recipe.experiment!.title : results.length === 1 ? itemName(state, results[0][0]) : recipe.name.split(" · ")[0];
   const firstHarvest = tutorialHarvestActive && canPrepareTutorialHarvest(state, recipe.id);
   const tradeSpeedBps = recipe.buildingId === "woodlot" ? tradeRelationBonusBps(state, "lopukh", state.catalog, economy.now) : 0;
-  const duration = firstHarvest ? "Сразу · первый урожай" : worldRecipeDuration(recipe.buildingId === "woodlot"
-    ? tradeWorkDuration(state, recipe.seconds, "lopukh", 0, state.catalog, economy.now) : recipe.seconds);
+  const duration = firstHarvest ? "Сразу · первый урожай" : worldRecipeDuration(skillWorkDuration(state, skillForProduction(recipe.buildingId), recipe.buildingId === "woodlot"
+    ? tradeWorkDuration(state, recipe.seconds, "lopukh", 0, state.catalog, economy.now) : recipe.seconds, state.catalog));
   const reason = worldProductionReason(state, recipe, 1);
   const accessReason = worldRecipeAccessReason(state, recipe);
   const recipeCost = worldRecipeCost(state, recipe);
@@ -57,7 +59,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
     costs.length ? `Понадобится: ${costs.map(([id, amount]) => `${id === "coins" ? "Монеты" : itemName(state, id)} ×${number(amount)}`).join(", ")}.` : "",
     reason,
     firstHarvest ? "Первый учебный урожай созреет сразу. Сбор Мохликом остаётся обычным; помощь доступна один раз." : "",
-    !undiscovered && meal ? `Скорость вылазки +${number(meal.heroSpeedBps / 100)}%, стройки +${number(meal.builderSpeedBps / 100)}%.` : "",
+    !undiscovered && meal ? `Пример: вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}, стройка ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds, "builder")}. ${mealWorkDescription(meal.heroWorkSeconds)}` : "",
   ].filter(Boolean).join(" ");
   const context = () => onHelpContextChange?.({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, quantity: 1 });
   useLayoutEffect(() => { latest.current = { economy, recipe, tutorialHarvestActive }; }, [economy, recipe, tutorialHarvestActive]);
@@ -122,7 +124,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
       aria-describedby={[recipe.experiment ? `${detailId}-experiment` : "", description ? detailId : "", notice ? noticeId : ""].filter(Boolean).join(" ") || undefined}
       title={restriction ?? undefined} onFocus={context} onClick={() => start()}>
       {actionOnly ? <><Flame size={17} aria-hidden="true" />{recipe.experiment ? "Попробовать" : "Приготовить"}<small>{duration}</small></> : <><span className={styles.header} data-production-header data-production-mixed={results.length > 1 || undefined}>
-        <span className={styles.outputs}>{undiscovered ? <Soup size={30} aria-hidden="true" /> : results.map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={30} />{(amount !== 1 || results.length > 1) && <b>×{number(amount)}</b>}</span>)}</span>
+        <span className={styles.outputs}>{undiscovered ? <CookingExperimentIcon recipeId={recipe.id} size={30} /> : results.map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={30} />{(amount !== 1 || results.length > 1) && <b>×{number(amount)}</b>}</span>)}</span>
         <strong title={title}>{title}</strong>
       </span>
       <span className={styles.time}><Clock3 size={12} aria-hidden="true" />{duration}{restriction && <LockKeyhole className={styles.lock} size={12} aria-hidden="true" />}</span>
@@ -138,7 +140,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
           </span>;
         })}</span>}
         {recipe.fishInput?.exactSpecies && <span className={styles.benefits}>Нужен указанный вид рыбы</span>}
-        {!undiscovered && meal && <span className={styles.benefits}><span>Вылазки +{number(meal.heroSpeedBps / 100)}%{meal.heroWorkSeconds ? ` · запас на ${worldRecipeDuration(meal.heroWorkSeconds)} работы` : " скорости"}</span><span>Одна стройка +{number(meal.builderSpeedBps / 100)}% скорости</span></span>}
+        {!undiscovered && meal && <span className={styles.benefits}><span>Пример вылазки: {mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}</span><span>Одна стройка: {mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds, "builder")}</span><span>{mealWorkDescription(meal.heroWorkSeconds)}</span><span>{mealWorkDescription(meal.builderWorkSeconds, "builder")}</span></span>}
       </span></>}
     </button>
     {description && <span id={detailId} className={styles.accessible}>{description}</span>}
