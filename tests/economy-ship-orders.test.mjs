@@ -35,6 +35,37 @@ function unchangedFailure(state, action, target, code, at = now, extra = {}) {
 }
 beforeEach(() => identities.resetDevStoreForTests());
 
+test("crafted telescope pins a future cargo across inspections, reload and arrival", () => {
+  const state = fresh();
+  state.boat.artifacts = ["telescope"];
+  const inspect = at => rules.applyEconomyCommand(state, command("inspect_telescope", "port"), at, () => crypto.randomUUID());
+  inspect(now);
+  assert.equal(state.ship.voyage, null);
+  const forecast = structuredClone(state.ship.nextVoyage);
+  assert(forecast);
+  state.ship = schema.economyShipSchema.parse(JSON.parse(JSON.stringify(state.ship)));
+  inspect(now + 1000);
+  assert.deepEqual(state.ship.nextVoyage, forecast);
+  apply(state, "open_ship_voyage", "port", now + 2000);
+  assert.equal(state.ship.nextVoyage, null);
+  assert.equal(state.ship.voyage.id, forecast.id);
+  assert.deepEqual(state.ship.voyage.orders, forecast.orders);
+  assert.equal(state.ship.voyage.openedAt, new Date(now + 2000).toISOString());
+});
+
+test("telescope knowledge requires the real artifact and survives the current ship expiry", () => {
+  unchangedFailure(fresh(), "inspect_telescope", "port", "ECONOMY_TELESCOPE_LOCKED");
+  const state = fresh(); state.boat.artifacts = ["telescope"]; state.buildings.lighthouse = 0;
+  unchangedFailure(state, "inspect_telescope", "port", "ECONOMY_SHIP_LOCKED");
+  state.buildings.lighthouse = 1; open(state);
+  rules.applyEconomyCommand(state, command("inspect_telescope", "port"), now, () => crypto.randomUUID());
+  const forecast = structuredClone(state.ship.nextVoyage);
+  const arrival = ship.shipDepartureAt(state.ship.voyage) + ship.shipOrdersConfig.intervalSeconds * 1000;
+  apply(state, "open_ship_voyage", "port", arrival);
+  assert.deepEqual(state.ship.voyage.orders, forecast.orders);
+  assert.equal(state.ship.nextVoyage, null);
+});
+
 test("legacy accounts read empty state without silently creating commands", () => {
   assert.deepEqual(ship.shipOrdersState({}), { voyage: null, nextAvailableAt: null, completedVoyages: 0 });
   const player = identities.createDevIdentity("Корабль", crypto.randomUUID());

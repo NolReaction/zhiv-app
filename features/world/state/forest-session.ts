@@ -1,3 +1,4 @@
+import type { ForestBoatTravel } from "@/features/world/activities/fishing/forest-boat-travel";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene } from "@/features/world/tiled/types";
 import { createForestLife } from "@/features/world/simulation/forest-life";
@@ -52,6 +53,7 @@ export type ForestSessionState = {
   economyProduction?: EconomySceneProduction;
   /** Shared cosmetic departure/return; deliberately omitted from saved memory. */
   journeyTravel?: ForestJourneyTravel;
+  boatTravel?: ForestBoatTravel;
   /** Isolated DEV playback clocks; never included in forest memory. */
   residentPreview?: { id: number; startedAt: number };
   builderPreview?: { id: number; startedAt: number };
@@ -138,7 +140,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
             clearing: createClearingActivity(scene), life: createForestLife(scene),
             social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: rehydrateBuilderMind(scene, state.builderMind), director: createForestDirector(), birdReactions: createBirdReactions(),
             villagers: createForestVillagers(scene), villagerWildlife: createVillagerWildlife(), devSceneRehearsal: undefined, residentSceneFacts: undefined, leaftailBoat: undefined,
-            lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, builderPreview: undefined, reaction: 0, animation: null,
+            lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, boatTravel: undefined, cookingPreview: undefined, builderPreview: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
           memory.apply(payload);

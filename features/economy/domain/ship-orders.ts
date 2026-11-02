@@ -84,6 +84,9 @@ export function eligibleShipTemplates(state: EconomyState, catalog: EconomyCatal
 /** Called only by an accepted server command. All promised terms are copied into account state. */
 export function createShipVoyage(state: EconomyState, now: number, id: string,
   catalog: EconomyCatalog = economyCatalog, config = shipOrdersConfig): ShipVoyage | null {
+  const forecast = shipOrdersState(state).nextVoyage;
+  if (forecast) return { ...structuredClone(forecast), openedAt: new Date(now).toISOString(),
+    number: shipOrdersState(state).completedVoyages + 1 };
   const eligible = eligibleShipTemplates(state, catalog, config);
   const choices = SHIP_ORDER_DIFFICULTIES.map(difficulty => {
     const candidates = eligible.filter(template => template.difficulty === difficulty);

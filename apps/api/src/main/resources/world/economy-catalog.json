@@ -10383,5 +10383,178 @@
       }
     ],
     "buildingPracticeDivisor": 8
+  },
+  "boat": {
+    "version": 1,
+    "routeId": "river_reach",
+    "name": "Речной плёс",
+    "outboundSeconds": 300,
+    "inboundSeconds": 300,
+    "maxCasts": 4,
+    "activeSeconds": 1800,
+    "castExpirySeconds": 120,
+    "zoneWidth": 3200,
+    "netZoneWidth": 4000,
+    "oarsTravelSeconds": 240,
+    "upgrades": [
+      {
+        "id": "repair",
+        "name": "Ремонт лодки",
+        "description": "Открывает рыбалку на речном плёсе.",
+        "cost": {
+          "coins": 400,
+          "items": {
+            "planks": 4,
+            "rope": 2
+          }
+        },
+        "seconds": 900,
+        "requiredHomeLevel": 2,
+        "requiredBuildings": {
+          "workshop": 1
+        }
+      },
+      {
+        "id": "crate",
+        "name": "Рыбный ящик",
+        "description": "Ещё один заброс за поездку.",
+        "cost": {
+          "coins": 600,
+          "items": {
+            "planks": 4,
+            "rope": 3
+          }
+        },
+        "seconds": 900,
+        "requiredHomeLevel": 2,
+        "requiredBuildings": {
+          "workshop": 1
+        }
+      },
+      {
+        "id": "oars",
+        "name": "Новые вёсла",
+        "description": "Дорога в каждую сторону занимает четыре минуты.",
+        "cost": {
+          "coins": 1200,
+          "items": {
+            "hardwood": 3,
+            "rope": 2
+          }
+        },
+        "seconds": 1200,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        }
+      },
+      {
+        "id": "landing_net",
+        "name": "Подсак",
+        "description": "Зона удержания рыбы становится шире.",
+        "cost": {
+          "coins": 200,
+          "items": {
+            "rope": 3,
+            "planks": 1
+          }
+        },
+        "seconds": 600,
+        "requiredHomeLevel": 2,
+        "requiredBuildings": {
+          "workshop": 1
+        },
+        "blueprint": "landing_net"
+      },
+      {
+        "id": "telescope",
+        "name": "Подзорная труба",
+        "description": "Показывает грузы следующего торгового корабля.",
+        "cost": {
+          "coins": 800,
+          "items": {
+            "lens": 1,
+            "metal_parts": 1,
+            "planks": 2
+          }
+        },
+        "seconds": 1200,
+        "requiredHomeLevel": 4,
+        "requiredBuildings": {
+          "workshop": 3
+        },
+        "blueprint": "telescope"
+      }
+    ],
+    "blueprints": [
+      {
+        "id": "landing_net",
+        "name": "Чертёж подсака",
+        "milestones": [
+          1,
+          3,
+          5
+        ]
+      },
+      {
+        "id": "telescope",
+        "name": "Чертёж подзорной трубы",
+        "milestones": [
+          8,
+          11,
+          14
+        ]
+      }
+    ],
+    "weights": {
+      "fish": {
+        "minGrams": 150,
+        "maxGrams": 2500
+      },
+      "fish_silverfin": {
+        "minGrams": 80,
+        "maxGrams": 800
+      },
+      "fish_rudd": {
+        "minGrams": 120,
+        "maxGrams": 1800
+      },
+      "fish_reedperch": {
+        "minGrams": 150,
+        "maxGrams": 2000
+      },
+      "fish_dace": {
+        "minGrams": 80,
+        "maxGrams": 650
+      },
+      "fish_bream": {
+        "minGrams": 350,
+        "maxGrams": 6500
+      },
+      "fish_mooncarp": {
+        "minGrams": 200,
+        "maxGrams": 2500
+      },
+      "fish_pike": {
+        "minGrams": 800,
+        "maxGrams": 16000
+      },
+      "fish_eel": {
+        "minGrams": 250,
+        "maxGrams": 5000
+      },
+      "fish_sturgeon": {
+        "minGrams": 1500,
+        "maxGrams": 40000
+      },
+      "fish_mirror_koi": {
+        "minGrams": 500,
+        "maxGrams": 12000
+      },
+      "fish_shark": {
+        "minGrams": 5000,
+        "maxGrams": 90000
+      }
+    }
   }
 }

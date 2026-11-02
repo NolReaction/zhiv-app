@@ -19,6 +19,8 @@ type AdviceInput = {
   context?: WorldHelpContext;
   isOnline?: boolean;
 };
+const boatBusyAdvice = (): WorldHelpSuggestion => ({ id: "boat:busy", title: "Мохлик на рыбалке", topicId: "boat-fishing", severity: "problem",
+  message: "Откройте лодку у причала. После возвращения заберите улов, чтобы отправить Мохлика в другое занятие." });
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Материал";
 const stationName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const itemCount = (items: Record<string, number>) => Object.values(items).reduce((sum, count) => sum + count, 0);
@@ -53,7 +55,8 @@ function jobAdvice(state: EconomyView, job: EconomyJob, now: number): WorldHelpS
     message: "Дождитесь окончания сбора и заберите ягоды. После этого Мохлик сможет отправиться в путь.",
   };
   if (job.collection && !job.collection.startedAt && finished) {
-    const conflict = economyActorConflict(state.jobs, "collection", now);
+    const conflict = economyActorConflict(state.jobs, "collection", now, state.boat);
+    if (conflict && !conflict.job) return boatBusyAdvice();
     if (conflict && conflict.job.id !== job.id) return jobAdvice(state, conflict.job, now);
     return { id: `job:${job.id}`, title: "Ягоды созрели", topicId: "production", severity: "next", action,
       message: "Откройте ягодный куст и отправьте Мохлика собрать урожай. Ягоды попадут в кладовую после сбора." };
@@ -107,14 +110,14 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
       : `Источник: ${stationName(state, source.stationId)}. В карточке предмета показаны материалы для запуска.`;
   } else if (source?.kind === "exploration") {
     const mining = state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
-    const conflict = mining ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now);
-    if (conflict) return jobAdvice(state, conflict.job, now);
+    const conflict = mining ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now, state.boat);
+    if (conflict) return conflict.job ? jobAdvice(state, conflict.job, now) : boatBusyAdvice();
     target = mining ? { kind: "station", stationId: "quarry", recipeId: source.targetId } : { kind: "expeditions", sector: sector(source.targetId) };
     instruction = mining ? "Этот материал добывает шахта. Откройте её и выберите работу; Мохлик может заниматься другими делами."
       : "Этот материал есть в наградах доступной вылазки. Откройте маршрут и проверьте припасы.";
   } else if (state.catalog.fishing?.classes.some(group => group.itemId === missing.id)) {
-    const conflict = economyActorConflict(state.jobs, "departure", now);
-    if (conflict) return jobAdvice(state, conflict.job, now);
+    const conflict = economyActorConflict(state.jobs, "departure", now, state.boat);
+    if (conflict) return conflict.job ? jobAdvice(state, conflict.job, now) : boatBusyAdvice();
     target = { kind: "expeditions", sector: "coast" };
     instruction = "Рыбу этого класса можно поймать на побережье. Проверьте шансы класса с выбранными снастями перед отправлением.";
   }
@@ -129,8 +132,8 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
   if (context.intent === "expedition") {
     const route = state.catalog.explorations.find(route => route.id === context.routeId);
     if (!route || route.retired) return null;
-    const conflict = explorationActorId(route) === "miner" ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now);
-    if (conflict) return jobAdvice(state, conflict.job, now);
+    const conflict = explorationActorId(route) === "miner" ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now, state.boat);
+    if (conflict) return conflict.job ? jobAdvice(state, conflict.job, now) : boatBusyAdvice();
     const requirement = requirementAdvice(state, worldRequirements(route), now);
     if (requirement) return requirement;
     const mineWork = route.requiredBuildings.quarry && state.jobs.find(job => job.kind === "construction" && job.targetId === "quarry");
@@ -278,8 +281,8 @@ export function worldHelpAdvice({ economy, world, observation, context, isOnline
   }
   const noSupplies = !Object.values(state.inventory).some(count => count > 0);
   if (noSupplies && suggestions.length < 3 && state.storage.available > 0) {
-    const conflict = economyActorConflict(state.jobs, "departure", now);
-    if (conflict) add(jobAdvice(state, conflict.job, now));
+    const conflict = economyActorConflict(state.jobs, "departure", now, state.boat);
+    if (conflict) add(conflict.job ? jobAdvice(state, conflict.job, now) : boatBusyAdvice());
     else {
       const route = state.catalog.explorations.find(route => !route.retired && sector(route.id) === "forest" && freeCost(route.cost)
         && !worldMissingRequirements(state, worldRequirements(route)).length && itemCount(route.rewards) <= state.storage.capacity);

@@ -222,6 +222,7 @@ object EconomyFood {
                 economyFailure("ECONOMY_JOB_READY", "Сначала завершите готовую стройку")
             if (construction?.meal != null) economyFailure("ECONOMY_ALREADY_FED", "Шишколап уже поел для этой стройки")
         } else {
+            if (state.boat?.voyage != null) economyFailure("ECONOMY_BOAT_BUSY", "Сначала вернитесь на лодке и заберите улов")
             if (state.jobs.any { it.collection?.startedAt != null })
                 economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
             if (state.jobs.any { it.kind == "exploration" && !EconomyRules.isMinerJob(it) })

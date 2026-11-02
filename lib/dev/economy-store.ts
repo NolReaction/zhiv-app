@@ -1,4 +1,5 @@
 import { familiarEconomyItems } from "@/features/economy/domain/familiar-items";
+import { publicBoatState } from "@/features/economy/domain/boat-fishing";
 import { effectiveCraftSkills } from "@/features/economy/domain/craft-skill";
 import { promoRequestSchema, type PromoRequest, type PromoResult } from "@/features/promo/model";
 import type { PromoCatalog } from "@/lib/server/promo-catalog";
@@ -112,7 +113,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
     tradeRelations: tradeRelationsState(state), ship: shipOrdersState(state, now), tapBoost: state.tapBoost ?? emptyTapBoost(),
-    marketSlots: marketSlotCount(state), unlockedItems, familiarItems: familiarEconomyItems(state, legacyItemHistory(owner)),
+    marketSlots: marketSlotCount(state), unlockedItems, familiarItems: familiarEconomyItems(state, legacyItemHistory(owner)), boat: publicBoatState(state.boat),
     productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, leaftailShop: state.leaftailShop ?? { cycle: -1, purchased: {} }, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
@@ -152,6 +153,7 @@ function commandSignature(command: ReceiptCommand) {
     parts.push(Object.entries(command.fishSelection).sort(([first], [second]) => first < second ? -1 : first > second ? 1 : 0));
   if (command.action === "load_ship_cargo" && "voyageId" in command)
     parts.push(command.voyageId, command.orderId, command.itemId);
+  if ("reel" in command && command.reel != null) parts.push(command.reel);
   return JSON.stringify(parts);
 }
 function removeFishEscrow(state: EconomyState, listingId: string) {
@@ -226,7 +228,8 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   const reserved = escrowItems(owner);
   const fishing = command.action === "start_fishing" || command.action === "start_exploration"
     && economyCatalog.fishing?.routeIds.includes(command.targetId);
-  const message = applyEconomyCommand(next, command, now, () => fishing || command.action === "open_ship_voyage" ? crypto.randomUUID() : command.requestId, reserved, randomInt);
+  const privateIdentity = fishing || ["open_ship_voyage", "depart_boat", "begin_boat_cast", "inspect_telescope"].includes(command.action);
+  const message = applyEconomyCommand(next, command, now, () => privateIdentity ? crypto.randomUUID() : command.requestId, reserved, randomInt);
   assertEconomyStorageTransition(value.state, next, reserved);
   const wardrobeChanged = JSON.stringify(value.state.wardrobe) !== JSON.stringify(next.wardrobe);
   const result = commit(owner, value, next, command, message, now);

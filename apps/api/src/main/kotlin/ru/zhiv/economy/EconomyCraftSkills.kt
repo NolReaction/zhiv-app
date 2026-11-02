@@ -107,6 +107,12 @@ object EconomySkills {
         ids.fold(EconomyCraftSkills(buildingHistoryVersion = if ((a == null || a.buildingHistoryVersion == 1) && (b == null || b.buildingHistoryVersion == 1)) 1 else null)) { skills, id -> withSeconds(skills, id, maxOf(seconds(a, id), seconds(b, id))) }
 
     fun award(before: EconomyState, state: EconomyState, command: EconomyCommand, now: Instant): EconomyState {
+        if (command.action == "claim_boat") {
+            val work = EconomyBoats.claimPracticeSeconds(before.boat, state.boat, command.action)
+            val skills = state.progression.skills ?: EconomyCraftSkills()
+            return if (work <= 0L) state else state.copy(progression = state.progression.copy(skills = skills.copy(
+                fishingSeconds = minOf(MAX_SKILL_SECONDS, skills.fishingSeconds + work))))
+        }
         if (command.action !in setOf("claim_job", "claim_production", "claim_garden_collection", "claim_mining_batch", "speedup_construction")) return state
         var skills = state.progression.skills ?: EconomyCraftSkills()
         var trained = false

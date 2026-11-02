@@ -3,7 +3,7 @@
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, Footprints, Landmark, LockKeyhole, Mountain, Package, RefreshCw, TreePine, Trees, Waves, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Sailboat, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, Footprints, Landmark, LockKeyhole, Mountain, Package, RefreshCw, TreePine, Trees, Waves, type LucideIcon } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { WorldStationSetup } from "@/features/economy/ui/construction/world-station-setup";
@@ -41,6 +41,7 @@ export type WorldExpeditionsMenuProps = {
   initialRouteId?: string;
   onUpgradeQuarry?: () => void;
   onOpenHelp?: (context: WorldHelpContext) => void;
+  onOpenBoat?: () => void;
   /** Dedicated mine content; independent extraction and saved legacy journeys share the frame. */
   embeddedCaves?: boolean;
   activeOnly?: boolean;
@@ -206,7 +207,7 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
   const findings = routeMaximumRewards(route);
   const tooLarge = findings > state.storage.capacity;
   const mining = explorationActorId(route) === "miner";
-  const actorConflict = mining ? economyMinerConflict(state.jobs, economy.now) : economyActorConflict(state.jobs, "departure", economy.now);
+  const actorConflict = mining ? economyMinerConflict(state.jobs, economy.now) : economyActorConflict(state.jobs, "departure", economy.now, state.boat);
   const actorBusy = mining ? Boolean(actorConflict) : exploring || Boolean(actorConflict);
   const catalog = state.catalog.fishing;
   const rods = catalog?.rods.filter(rod => gear.ownedRods.includes(rod.id)) ?? [];
@@ -314,7 +315,7 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
   </section>;
 }
 
-export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, isOnline, initialSector = "forest", initialRouteId, embeddedCaves = false, activeOnly = false, onCancellationComplete }: WorldExpeditionsMenuProps) {
+export function WorldExpeditionsMenu({ economy, onOpenBoat, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, isOnline, initialSector = "forest", initialRouteId, embeddedCaves = false, activeOnly = false, onCancellationComplete }: WorldExpeditionsMenuProps) {
   const [reportHistory, setReportHistory] = useState(() => ({ owner: economy.snapshot?.ownerPublicId ?? null,
     baseline: (economy.inventoryGains ?? []).map(gain => gain.id), dismissed: null as string | null }));
   const initialTravelSector = initialSector === "shore" ? "shore" : null;
@@ -418,6 +419,9 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
         <button ref={selectedSectorButton} type="button" className={styles.back} onClick={() => selectSector(null)}><ArrowLeft size={15} aria-hidden="true" />Все занятия</button>
         <header className={styles.activityHeading} data-activity={currentSector}><span className={styles.activityArt}><ExpeditionActivityArt sector={currentSector} /></span><h3 data-activity-heading tabIndex={-1}>{expeditionSectors.find(sector => sector.id === currentSector)!.name}</h3><p>{currentSector === "shore" ? "Выбери время у воды. Снасти настроим перед выходом." : "Выбери, что пригодится твоей полянке."}</p></header>
       </>}
+      {!embeddedCaves && !activeOnly && state.catalog.boat && onOpenBoat && (currentSector === "shore" || !currentSector) && <button type="button" className={styles.boatEntry} onClick={onOpenBoat}>
+        <Sailboat size={28} aria-hidden="true" /><span><strong>Лодочная рыбалка</strong><small>{state.boat?.voyage ? "Вернуться к поездке" : state.boat?.level ? "Самостоятельно вываживай рыбу" : "Почини лодку и выйди на реку"}</small></span><ArrowRight size={17} aria-hidden="true" />
+      </button>}
       {!activeOnly && currentSector && <WorldExpeditionSector isOnline={isOnline} sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={heroTrips.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />}
     </>}
   </div>;

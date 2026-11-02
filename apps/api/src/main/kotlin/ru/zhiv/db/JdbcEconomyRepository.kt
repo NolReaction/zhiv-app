@@ -122,7 +122,7 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
         productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders, tradeRelations = s.tradeRelations, ship = EconomyShipOrders.project(s.ship, now),
         workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder, stageOrders = s.stageOrders,
-        marketSlots = s.marketSlots, unlockedItems = s.unlockedItems, familiarItems = EconomyFamiliarItems.project(s), leaftailShop = s.leaftailShop, tapBoost = s.tapBoost)
+        marketSlots = s.marketSlots, unlockedItems = s.unlockedItems, familiarItems = EconomyFamiliarItems.project(s), boat = EconomyBoats.publicView(s.boat), leaftailShop = s.leaftailShop, tapBoost = s.tapBoost)
 }
 
 /** Save only public action context before a consumed job disappears. In

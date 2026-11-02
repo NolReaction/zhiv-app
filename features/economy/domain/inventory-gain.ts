@@ -146,6 +146,13 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     }
     if (job.kind === "production" && after.catalog.buildings.some(station => station.id === job.targetId)) stationId = job.targetId;
     if (isMinerJob(job) && after.catalog.buildings.some(station => station.id === "quarry")) stationId = "quarry";
+  } else if (command.action === "claim_boat") {
+    const voyage = before.boat?.voyage;
+    if (!voyage || voyage.id !== command.targetId || after.boat?.voyage
+      || after.boat?.completedVoyages !== before.boat.completedVoyages + 1) return null;
+    allowed = {};
+    for (const caught of voyage.catches) allowed[caught.fishId] = (allowed[caught.fishId] ?? 0) + 1;
+    source = "claim";
   } else if (command.action === "buy_fishing_item") {
     const offer = before.fishingShop?.offers.find(item => item.id === command.targetId && (item.kind === "bait" || item.kind === "fish"));
     if (!offer || !before.catalog.fishing || !before.catalog.fishing.baits.some(item => item.itemId === offer.itemId) && !fishClassForItem(offer.itemId, before.catalog.fishing)) return null;

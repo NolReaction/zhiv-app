@@ -515,8 +515,40 @@ test("commands reject hostile JSON shape, extra fields, fractions and body overf
   const p = player(), cmd = command(p);
   for (const bad of ["{broken", [], null, { ...cmd, quantity: "2" }, { ...cmd, quantity: 1.5 }, { ...cmd, pearls: 100 }, { ...cmd, action: "buy_pearls" }, { ...cmd, requestId: "not-a-receipt" }])
     assert.equal((await POST(post(bad))).status, 400);
-  assert.equal((await POST(post(" ".repeat(4097)))).status, 413);
+  assert.equal((await POST(post(" ".repeat(32769)))).status, 413);
   assert.equal((await marketPOST(post(" ".repeat(2049), {}, "/market/commands"))).status, 413);
+  assert.equal(economy.getDevEconomy(p.token).revision, 0);
+});
+
+test("HTTP accepts a bounded 600-event reel through parsing without enlarging the market limit", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token);
+  const cmd = { ...command(p), action: "submit_boat_cast", targetId: crypto.randomUUID(),
+    reel: { challengeId: crypto.randomUUID(), endTick: 600,
+      inputs: Array.from({ length: 600 }, (_, tick) => ({ tick, held: tick % 2 === 0 })) } };
+  const body = JSON.stringify(cmd), bytes = new TextEncoder().encode(body).length;
+  assert.ok(bytes > 4096 && bytes < 32768, "a complete legal control envelope exceeds the former command limit");
+  const response = await POST(post(body));
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).code, "ECONOMY_BOAT_VOYAGE_GONE", "the valid envelope reaches domain validation, not body or schema rejection");
+  const invalid = await POST(post({ ...cmd, reel: { ...cmd.reel, inputs: [...cmd.reel.inputs, { tick: 600, held: true }] } }));
+  assert.equal(invalid.status, 400); assert.equal((await invalid.json()).code, "INVALID_ECONOMY_COMMAND");
+  assert.equal((await marketPOST(post(body, {}, "/market/commands"))).status, 413, "market retains its smaller 2048-byte limit");
+  const after = economy.getDevEconomy(p.token);
+  assert.equal(after.revision, before.revision); assert.deepEqual(after.inventory, before.inventory);
+  assert.equal(globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).receipts.size, 0);
+});
+
+test("command body boundary is 32 KiB including streamed bytes with a dishonest length header", async () => {
+  const p = player(), cmd = { ...command(p), action: "claim_boat", targetId: crypto.randomUUID() };
+  const exactlyAtLimit = JSON.stringify(cmd).padEnd(32768, " ");
+  assert.equal(new TextEncoder().encode(exactlyAtLimit).length, 32768);
+  const accepted = await POST(post(exactlyAtLimit));
+  assert.equal(accepted.status, 409); assert.equal((await accepted.json()).code, "ECONOMY_BOAT_VOYAGE_GONE");
+  for (const headers of [{}, { "Content-Length": "1" }]) {
+    const rejected = await POST(post(exactlyAtLimit + " ", headers));
+    assert.equal(rejected.status, 413); assert.equal(rejected.headers.get("Cache-Control"), "no-store");
+    assert.equal((await rejected.json()).code, "BODY_TOO_LARGE");
+  }
   assert.equal(economy.getDevEconomy(p.token).revision, 0);
 });
 

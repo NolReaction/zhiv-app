@@ -10,6 +10,7 @@ import ru.zhiv.economy.EconomyTutorialOrders
 import ru.zhiv.economy.EconomyStageOrders
 import ru.zhiv.economy.EconomyTradeRelations
 import ru.zhiv.economy.EconomyShipOrders
+import ru.zhiv.economy.EconomyBoats
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.EconomySkills
 import ru.zhiv.economy.EconomyCollectionProgress
@@ -77,9 +78,13 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
     return buildList {
         if (pendingSales > ru.zhiv.economy.EconomyMarketRules.MAX_LISTINGS)
             add("Заберите выручку в лавках перед объединением профилей: вместе ожидают сбора больше десяти продаж.")
+        if (states.any { it.boat?.voyage != null || it.boat?.work != null })
+            add("Вернитесь на лодке, заберите улов и закончите её улучшения в обоих профилях перед объединением.")
         if (states.any { it.jobs.isNotEmpty() }) add("Сначала получите результаты производства, строительства и исследований в обоих профилях. Затем повторите объединение.")
         if (states.all { it.ship.voyage != null })
             add("Завершите или пропустите корабельные заказы в одном из профилей перед объединением, чтобы сохранить оплаченные грузы.")
+        if (states.all { it.ship.nextVoyage != null })
+            add("Дождитесь одного из записанных подзорной трубой корабельных грузов перед объединением.")
         if (states.all { it.food.heroMeal != null } || states.all { it.food.builderMeal != null })
             add("В обоих профилях есть сытый Мохлик или строитель. Сначала используйте бонус еды в одном профиле, чтобы сохранить второе угощение.")
         if (states.sumOf { it.wallet.coins } > ECONOMY_MAX_BALANCE || states.sumOf { it.wallet.pearls } > ECONOMY_MAX_PEARLS ||
@@ -121,7 +126,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         marketSlots=maxOf(a.marketSlots,b.marketSlots),
         unlockedItems=(EconomyItemUnlocks.project(a)+EconomyItemUnlocks.project(b)).distinct().sorted(),
         familiarItems=(EconomyFamiliarItems.project(a)+EconomyFamiliarItems.project(b)).distinct().sorted(),
-        itemUnlockVersion=1,
+        itemUnlockVersion=1, boat=EconomyBoats.merge(a.boat,b.boat),
         productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),

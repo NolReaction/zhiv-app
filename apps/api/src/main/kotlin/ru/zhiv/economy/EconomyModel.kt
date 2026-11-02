@@ -199,6 +199,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
     val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(), val itemUnlockVersion: Int = 0,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val familiarItems: List<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val boat: EconomyBoatState? = null,
     val leaftailShop: EconomyLeaftailShopState = EconomyLeaftailShopState(),
 ) { init { require(marketSlots in 5..10 && unlockedItems.distinct().size == unlockedItems.size && itemUnlockVersion in 0..1)
     require(familiarItems == null || familiarItems.distinct().size == familiarItems.size) } }
@@ -285,6 +286,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val constructionSpeedup: EconomyConstructionSpeedup, val fishing: EconomyFishingCatalog? = null,
     val localBuyer: EconomyLocalBuyer = EconomyLocalBuyer(),
     val skills: EconomySkillsCatalog? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val boat: EconomyBoatCatalog? = null,
     val rareDrops: EconomyRareDropSpec? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
     val productionSlots: EconomyProductionSlots = EconomyProductionSlots(),
     val food: EconomyFoodCatalog? = null, val onboarding: EconomyOnboardingCatalog? = null,
@@ -311,6 +313,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
     val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(),
     val familiarItems: List<String> = emptyList(),
+    val boat: EconomyBoatView = EconomyBoatView(),
     val leaftailShop: EconomyLeaftailShopState = EconomyLeaftailShopState(),
 )
 @OptIn(ExperimentalSerializationApi::class)
@@ -321,6 +324,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val voyageId: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val orderId: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val itemId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val reel: EconomyBoatReelSubmission? = null,
 )
 @Serializable data class EconomyResult(val state: EconomyView, val message: String, val acceptedRevision: Long, val replayed: Boolean = false)
 interface EconomyRepository {

@@ -59,7 +59,7 @@ class JdbcOnboardingEconomyIntegrationTest {
                             items = mapOf("berries" to 2L), coins = 30L),
                     ) else expected.tutorialOrder
                     assertEquals(expected.copy(itemUnlockVersion = 0, tutorialOrder = publishedTutorial,
-                        progression = expected.progression.copy(skills = null), familiarItems = null,
+                        progression = expected.progression.copy(skills = null), familiarItems = null, boat = null,
                         buildings = expected.buildings - setOf("bridge", "lighthouse")), EconomyFishInventory.state(initialized))
                 }
             }
@@ -73,7 +73,7 @@ class JdbcOnboardingEconomyIntegrationTest {
                     val initialized = c.economyRows("SELECT economy_v4_initial_state(?::jsonb,?)", worldJson.encodeToString(legacy), include) {
                         economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single()
                     val expected = EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include)
-                    assertEquals(expected.copy(progression = expected.progression.copy(skills = null), familiarItems = null,
+                    assertEquals(expected.copy(progression = expected.progression.copy(skills = null), familiarItems = null, boat = null,
                         buildings = expected.buildings - setOf("bridge", "lighthouse")),
                         EconomyFishInventory.state(initialized), "The current initializer adds one introductory berry order, the knowledge marker and five market slots")
                 }

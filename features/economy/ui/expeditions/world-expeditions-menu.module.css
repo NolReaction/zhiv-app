@@ -221,3 +221,9 @@
 .packedLoot > span { display: grid; gap: 4px; min-width: 0; }
 .packedLoot strong { font-size: 12px; }
 .packedLoot small { font-size: 11px; line-height: 1.5; color: #647259; }
+
+.boatEntry { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 15px; margin: 8px 0; border: 1px solid #9ba78b; border-radius: 12px; color: var(--forest-ink, #394d3e); background: #e5ead1; text-align: left; cursor: pointer; }
+.boatEntry > span { display: grid; flex: 1; gap: 3px; }
+.boatEntry strong { font-size: 14px; }
+.boatEntry small { font-size: 11px; color: var(--forest-muted, #59624d); }
+.boatEntry:focus-visible { outline: 2px solid #597953; outline-offset: 3px; }

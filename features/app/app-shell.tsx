@@ -1766,7 +1766,7 @@ function CheckInContent() {
               {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={gameplay.suspended || activeView !== "check-in" || !mochlikVisible || (worldPortal.open && worldPortal.sceneReady) || calendarOpen || gameOpen || statusOpen}
                 onLoadState={handleSceneLoadState} retrySignal={startupRetry}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} economyResidents={economicResidents} activity={currentActivity} miningActivity={miningActivity} />}
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyBoatFishing={economy.snapshot?.catalog.boat && economy.snapshot.ownerPublicId === me?.user.publicId ? economy.snapshot.boat : undefined} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} economyResidents={economicResidents} activity={currentActivity} miningActivity={miningActivity} />}
             </div>}
             <button
               type="button"

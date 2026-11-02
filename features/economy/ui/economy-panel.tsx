@@ -279,7 +279,7 @@ function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; nav
 function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; navigate: Navigate; focusId?: string }) {
   const { snapshot: state } = economy;
   const { blocked, send } = useFishingCommand({ economy, state });
-  const conflict = economyActorConflict(state.jobs, "departure", economy.now);
+  const conflict = economyActorConflict(state.jobs, "departure", economy.now, state.boat);
   const jobs = state.jobs.filter(entry => entry.kind === "exploration");
   const routes = state.catalog.explorations.filter(route => !route.retired).sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Вылазки и добыча</h2><p className={styles.muted}>Выберите вылазку для Мохлика или независимую работу шахты. Производство продолжается в фоне.</p></div></div>

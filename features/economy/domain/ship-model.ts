@@ -22,6 +22,7 @@ export const shipVoyageSchema = z.object({
   .transform(voyage => ({ ...voyage, rewardPearls: 10 * PEARL_DISPLAY_DIVISOR }));
 export const economyShipSchema = z.object({
   voyage: shipVoyageSchema.nullable().prefault(null), completedVoyages: count.prefault(0),
+  nextVoyage: shipVoyageSchema.nullable().optional(),
   nextAvailableAt: z.string().datetime().nullable().prefault(null),
   resetAvailableAt: z.string().datetime().nullable().optional(),
   departureCargo: z.array(z.number().min(0).max(1)).length(3).nullable().optional(),

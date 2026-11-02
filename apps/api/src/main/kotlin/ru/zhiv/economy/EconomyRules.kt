@@ -24,6 +24,11 @@ fun validateEconomyCommand(command: EconomyCommand) {
         if (parseCanonicalUuidV4(command.voyageId ?: "") == null || command.orderId?.length !in 1..80 ||
             command.itemId?.length !in 1..80 || command.targetId != command.orderId) invalidEconomy()
     } else if (command.voyageId != null || command.orderId != null || command.itemId != null) invalidEconomy()
+    if (command.action == "submit_boat_cast") {
+        if (command.reel == null) invalidEconomy()
+    } else if (command.reel != null) invalidEconomy()
+    if (command.action == "inspect_telescope" && (command.quantity != 1L || command.totalPrice != 0L || command.fishSelection != null)) invalidEconomy()
+    if (command.action in EconomyBoats.actions && (command.quantity != 1L || command.totalPrice != 0L || command.fishSelection != null)) invalidEconomy()
     command.fishSelection?.let { selection ->
         if (command.action !in setOf("start_production", "complete_resident_order", "sell", "sell_fish", "create_listing") || selection.size > 100 ||
             selection.keys.any { it.length !in 1..80 }) invalidEconomy()
@@ -32,7 +37,7 @@ fun validateEconomyCommand(command: EconomyCommand) {
 
 fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Unit = ::validateEconomyCommand): EconomyCommand {
     val value = element as? JsonObject ?: invalidEconomy()
-    val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection", "voyageId", "orderId", "itemId")
+    val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection", "voyageId", "orderId", "itemId", "reel")
     if (value.keys.any { it !in fields }) invalidEconomy()
     for (field in listOf("requestId", "ownerPublicId", "action", "targetId"))
         if ((value[field] as? JsonPrimitive)?.isString != true) invalidEconomy()
@@ -53,8 +58,24 @@ fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Un
             if (id.length !in 1..80 || primitive.isString || primitive.longOrNull == null) invalidEconomy()
         }
     }
+    value["reel"]?.takeUnless { it == JsonNull }?.let { supplied ->
+        val reel = supplied as? JsonObject ?: invalidEconomy()
+        if (reel.keys != setOf("challengeId", "inputs", "endTick") || (reel["challengeId"] as? JsonPrimitive)?.isString != true) invalidEconomy()
+        val end = reel["endTick"] as? JsonPrimitive ?: invalidEconomy()
+        if (end.isString || end.intOrNull == null) invalidEconomy()
+        val inputs = reel["inputs"] as? JsonArray ?: invalidEconomy()
+        if (inputs.size > 600) invalidEconomy()
+        inputs.forEach { element ->
+            val input = element as? JsonObject ?: invalidEconomy()
+            if (input.keys != setOf("tick", "held")) invalidEconomy()
+            val tick = input["tick"] as? JsonPrimitive ?: invalidEconomy()
+            val held = input["held"] as? JsonPrimitive ?: invalidEconomy()
+            if (tick.isString || tick.intOrNull == null || held.isString || held.booleanOrNull == null) invalidEconomy()
+        }
+    }
     return try { economyJson.decodeFromJsonElement<EconomyCommand>(value).also(validator) }
     catch (_: SerializationException) { invalidEconomy() }
+    catch (_: IllegalArgumentException) { invalidEconomy() }
 }
 
 object EconomyRules {
@@ -183,7 +204,7 @@ object EconomyRules {
         if (grant.woodGranted > 0) inventory["wood"] = (inventory["wood"] ?: 0) + grant.woodGranted
         if (grant.stoneGranted > 0) inventory["stone"] = (inventory["stone"] ?: 0) + grant.stoneGranted
         return EconomySkills.normalized(EconomyState(currencyScale=10,pearlScale=50,itemUnlockVersion=1,
-            familiarItems = EconomyFamiliarItems.canonical(inventory.filterValues { it > 0L }.keys),
+            familiarItems = EconomyFamiliarItems.canonical(inventory.filterValues { it > 0L }.keys), boat = EconomyBoatState(),
             wallet = EconomyWallet(grant.coinsGranted + (starting?.startingWallet?.coins ?: 0), starting?.startingWallet?.pearls ?: 0), inventory = EconomyFishInventory.items(inventory),
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
                 "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0,
@@ -354,7 +375,7 @@ object EconomyRules {
 
     fun commandUsesActor(command: EconomyCommand): Boolean = when (command.action) {
         "start_exploration", "start_fishing" -> catalog.explorations.find { it.id == command.targetId }?.activity != "mining"
-        "start_collection", "start_garden_collection", "eat_food" -> true
+        "start_collection", "start_garden_collection", "eat_food", "depart_boat" -> true
         else -> false
     }
 
@@ -369,7 +390,8 @@ object EconomyRules {
     }
 
     /** Saved jobs retain their promised results. Only new starts compete for the hero. */
-    private fun requireActorAvailable(state: EconomyState, now: Instant, collecting: Boolean = false) {
+    internal fun requireActorAvailable(state: EconomyState, now: Instant, collecting: Boolean = false) {
+        if (state.boat?.voyage != null) economyFailure("ECONOMY_BOAT_BUSY", "Сначала вернитесь на лодке и заберите улов")
         val collection = state.jobs.any { it.collection?.startedAt != null }
         if (!collecting && collection) economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
         state.jobs.firstOrNull { it.kind == "exploration" && !isMinerJob(it) && (!collecting || now.isBefore(Instant.parse(it.finishesAt))) }?.let {
@@ -449,6 +471,8 @@ object EconomyRules {
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "exchange_pearls_for_gold", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot", "skip_ship_voyage") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
+            in EconomyBoats.actions -> EconomyBoats.command(state, command, now, reservedItems)
+            "inspect_telescope" -> EconomyShipOrders.inspect(state, command, now)
             "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage" -> EconomyShipOrders.command(state, command, now, reservedItems)
             "exchange_pearls_for_gold" -> EconomyCurrencyExchange.exchange(state, command)
             "accept_weekly_order" -> EconomyTradeRelations.accept(state, command, now)
@@ -664,6 +688,7 @@ object EconomyRules {
                 if (building.id == "home" && EconomyStageOrders.required(state, next))
                     economyFailure("ECONOMY_STAGE_REQUIRED", "Сначала выполните заказы текущего этапа")
                 requireBuildings(state, upgrade.requiredBuildings)
+                if (state.boat?.work != null) economyFailure("ECONOMY_CONSTRUCTION_BUSY", "Сначала завершите работу над лодкой")
                 if (state.jobs.any { it.kind == "construction" }) economyFailure("ECONOMY_CONSTRUCTION_BUSY", "Строитель занят. Сначала завершите текущую стройку")
                 if (building.id == "quarry" && state.jobs.any { job -> isMinerJob(job) || job.kind == "exploration" && catalog.explorations.any { it.id == job.targetId && it.requiredBuildings.containsKey("quarry") } })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Перед улучшением дождитесь окончания добычи и заберите результат")

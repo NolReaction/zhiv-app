@@ -18,7 +18,7 @@ export function interactiveSites(scene: FixedWorldScene) {
 }
 
 export type MapObjectPlace = BuildingPlace | "garden" | "campfire" | "plesk-shop" | "builder-home"
-  | "market" | "leaftail-caravan" | "bulletin-board" | "lopukh-home" | "trade-ship";
+  | "market" | "leaftail-caravan" | "bulletin-board" | "lopukh-home" | "trade-ship" | "fishing-boat";
 export type MapInteractiveObject = {
   id: string;
   place: MapObjectPlace;

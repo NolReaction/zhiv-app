@@ -27,7 +27,6 @@ private fun ApplicationCall.economySession(config: AppConfig, codec: TokenCodec,
 }
 fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/economy") {
-        install(RequestBodyLimit) { bodyLimit { 4_096 } }
         rateLimit(RateLimitName("world-read")) {
             get {
                 val hash = call.economySession(config, codec)
@@ -36,10 +35,14 @@ fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config
             }
         }
         rateLimit(RateLimitName("economy-write")) {
-            post("/commands") {
-                val hash = call.economySession(config, codec, true)
-                call.requireGameplayPresence(presence, hash)
-                call.respond(repository.command(hash, decodeEconomyCommand(call.receive<JsonElement>())))
+            route("/commands") {
+                // A bounded 600-tick boat trace is larger than ordinary command payloads.
+                install(RequestBodyLimit) { bodyLimit { 32_768 } }
+                post {
+                    val hash = call.economySession(config, codec, true)
+                    call.requireGameplayPresence(presence, hash)
+                    call.respond(repository.command(hash, decodeEconomyCommand(call.receive<JsonElement>())))
+                }
             }
         }
     }

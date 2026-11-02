@@ -73,6 +73,7 @@ private const val shipCompletionPearls = 20L
 @Serializable data class EconomyShipState(
     val voyage: EconomyShipVoyage? = null, val completedVoyages: Long = 0, val nextAvailableAt: String? = null,
     val resetAvailableAt: String? = null, val departureCargo: List<Double>? = null,
+    val nextVoyage: EconomyShipVoyage? = null,
 ) {
     init {
         require(completedVoyages in 0L..ECONOMY_MAX_REVISION)
@@ -175,6 +176,10 @@ object EconomyShipOrders {
         if (state.ship.nextAvailableAt?.let { now.isBefore(Instant.parse(it)) } == true)
             economyFailure("ECONOMY_SHIP_WAIT", "Следующие заказы ещё готовятся")
         if (state.ship.completedVoyages >= ECONOMY_MAX_REVISION) economyFailure("ECONOMY_CAPACITY", "Достигнут предел выполненных поставок")
+        state.ship.nextVoyage?.let { forecast ->
+            return state.copy(ship = state.ship.copy(voyage = forecast.copy(openedAt = now.toString(),
+                number = state.ship.completedVoyages + 1), nextVoyage = null, nextAvailableAt = null, departureCargo = null))
+        }
         val eligible = eligibleTemplates(state, catalog, ship)
         val orders = shipDifficulties.mapIndexed { index, difficulty ->
             val pool = eligible.filter { it.difficulty == difficulty }
@@ -185,6 +190,20 @@ object EconomyShipOrders {
         }
         val voyage = EconomyShipVoyage(voyageId, state.ship.completedVoyages + 1, now.toString(), orders, shipCompletionPearls)
         return state.copy(ship = state.ship.copy(voyage = voyage, nextAvailableAt = null, departureCargo = null))
+    }
+
+    /** The crafted telescope pins the next manifest; later reads cannot reroll it. */
+    fun inspect(input: EconomyState, command: EconomyCommand, now: Instant): Pair<EconomyState, String> {
+        if (command.targetId != "port" || command.quantity != 1L || command.totalPrice != 0L || command.fishSelection != null)
+            invalidEconomy()
+        if ("telescope" !in input.boat?.artifacts.orEmpty())
+            economyFailure("ECONOMY_TELESCOPE_LOCKED", "Сначала соберите подзорную трубу по чертежу")
+        if ((input.buildings["lighthouse"] ?: 0) < 1)
+            economyFailure("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк")
+        val ship = project(input.ship, now)
+        if (ship.nextVoyage != null) return input.copy(ship = ship) to "Будущий груз уже записан"
+        val prepared = open(input.copy(ship = ship.copy(voyage = null, nextAvailableAt = null)), now).ship.voyage!!
+        return input.copy(ship = ship.copy(nextVoyage = prepared)) to "Будущий груз записан. Можно готовить товары заранее"
     }
 
     private fun finishVoyage(state: EconomyState, now: Instant): EconomyState {
@@ -274,6 +293,9 @@ object EconomyShipOrders {
         val nextAvailableAt = listOfNotNull(a.nextAvailableAt, b.nextAvailableAt).maxByOrNull { Instant.parse(it) }
         val resetAt = listOfNotNull(a.resetAvailableAt, b.resetAvailableAt).maxByOrNull { Instant.parse(it) }
         val cargo = if (nextAvailableAt == a.nextAvailableAt) a.departureCargo else b.departureCargo
-        return EconomyShipState(a.voyage ?: b.voyage, maxOf(a.completedVoyages, b.completedVoyages), nextAvailableAt, resetAt, cargo)
+        if (a.nextVoyage != null && b.nextVoyage != null)
+            economyFailure("ACCOUNT_MERGE_CONFLICT", "Дождитесь одного из записанных корабельных грузов перед объединением")
+        return EconomyShipState(a.voyage ?: b.voyage, maxOf(a.completedVoyages, b.completedVoyages), nextAvailableAt, resetAt, cargo,
+            a.nextVoyage ?: b.nextVoyage)
     }
 }

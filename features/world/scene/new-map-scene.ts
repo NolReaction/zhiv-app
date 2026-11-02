@@ -1,3 +1,6 @@
+import { forestBoatActorAway, forestBoatWalking, forestFishingBoatFrame, syncForestBoatTravel, type ForestFishingBoatFrame } from "@/features/world/activities/fishing/forest-boat-travel";
+import { drawFishingBoat } from "@/features/world/objects/fishing-boat/fishing-boat-painter";
+import { fishingBoatMapObject } from "@/features/world/objects/fishing-boat/fishing-boat-interaction";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { HabitatScene, SceneCallbacks, SceneOptions } from "@/features/mochlik/scene";
@@ -191,6 +194,7 @@ export type NewMapPaintPreview = {
   builderSleeping?: ReturnType<typeof builderSleepIndicator>;
   residentPresentation?: ReturnType<typeof residentScenePresentation>;
   merchantBoat?: ReturnType<typeof leaftailBoatArrivalFrame>;
+  fishingBoat?: ForestFishingBoatFrame | null;
   tradeShipImage?: HTMLImageElement | null;
   tradeShipMotion?: TradeShipMotion;
   tradeShipCargo?: ReturnType<typeof tradeShipCargo>;
@@ -257,6 +261,7 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
   atmosphere.birdFrame = birds;
   const groundBirds = birds.filter(bird => bird.groundY !== undefined).sort((a, b) => a.groundY! - b.groundY!);
   const life = preview?.life;
+  const fishingBoat = preview?.fishingBoat ?? forestFishingBoatFrame(undefined, world, options.economyBoatFishing, timestamp, still);
   const heroVisible = dev?.showHero !== false && !(preview?.actorAway ?? economyJourneyAway(options.economyJourney, timestamp));
   const fauna = atmosphere.fauna;
   const behindButterflies = heroVisible ? fauna?.butterflies.filter(p => faunaBehindHero(p, world, actor.y, walking?.bush)) ?? [] : [];
@@ -370,6 +375,8 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
         drawTradeShipSprite(ground, preview.tradeShipImage, { ...preview.tradeShipMotion,
           time: elapsed, night: 0, still, water: true, cargo: preview.tradeShipCargo });
       }
+      if (fishingBoat) drawFishingBoat(ground, dev?.showHero === false ? { ...fishingBoat, passenger: false, crossing: undefined } : fishingBoat,
+        dev?.equipment ?? options.worldState?.equipment, actor.size, still);
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
         groundExclusions });
@@ -749,13 +756,23 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       startedAt: new Date(rehearsal.startedAt * 1000).toISOString(),
       finishesAt: new Date((rehearsal.startedAt + 120) * 1000).toISOString(), label: "Проверка рыбалки у берега" } };
   }
-  const exploring = () => { const { journey, now } = displayedJourney(); return economyJourneyAway(journey, now); };
-  const actorAway = () => { const { journey, now } = displayedJourney(); return forestJourneyActorAway(state, journey, now); };
+  const exploring = () => { const { journey, now } = displayedJourney(); return Boolean(options.economyBoatFishing?.voyage || state.boatTravel && state.boatTravel.phase !== "complete") || economyJourneyAway(journey, now); };
+  const actorAway = () => { if (state.boatTravel) return forestBoatActorAway(state); const { journey, now } = displayedJourney(); return forestJourneyActorAway(state, journey, now); };
   function syncExploration() {
     if (!session.isOwner()) return;
     syncProduction();
     if (economyJourneyAway(options.economyJourney, explorationNow())) state.fishingPreview = undefined;
     const { journey, now } = displayedJourney();
+    if (options.economyBoatFishing?.voyage || state.boatTravel) {
+      // Finish old visible tackle before transferring the single hero to a boat.
+      if (state.journeyTravel && !state.boatTravel) {
+        syncForestJourneyTravel(state, world, null, now, reducedMotion(options, dev), options.cancelledExplorations,
+          (visuals.quarry?.level ?? 0) > 0);
+        if (state.journeyTravel) return;
+      }
+      state.fishingPreview = undefined;
+      if (syncForestBoatTravel(state, world, options.economyBoatFishing, now, reducedMotion(options, dev))) return;
+    }
     syncForestJourneyTravel(state, world, journey, now, reducedMotion(options, dev), options.cancelledExplorations,
       (visuals.quarry?.level ?? 0) > 0);
   }
@@ -1013,7 +1030,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
     const gathering = forestJourneyGatheringFrame(state, world);
-    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.director.tradeVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.journeyTravel?.phase === "fishing" || state.journeyTravel?.mining || gathering && gathering.action !== "ready")
+    return Boolean(state.pendingLife || state.cookingPreview || state.director.birdwatch || state.director.campfireVisit || state.director.tradeVisit || state.life.garden?.routine || state.clearing.retiring || state.clearing.bushEffect?.bursts.length || forestJourneyWalking(state) || state.boatTravel && state.boatTravel.phase !== "complete" && state.boatTravel.phase !== "away" || state.journeyTravel?.phase === "fishing" || state.journeyTravel?.mining || gathering && gathering.action !== "ready")
       || current.attention || dev?.showBuildings === false && current.residing;
   }
   function birdBase() {
@@ -1033,7 +1050,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const watchedBird = state.villagerWildlife?.birdwatch?.watch.birdId;
     return { autoLife: !options.devRehearsal && !cooking && dev?.autoLife !== false, blocked: blocked || Boolean(forestSocialHolding(state.social)) || exploring() || forestJourneyWalking(state) || forestJourneyEnding(state) || Boolean(forestJourneyGatheringFrame(state, world))
       || Boolean(cooking && cooking.startedAt !== null), actorAway: actorAway(),
-      explicitTravel: !blocked && (forestJourneyWalking(state) || Boolean(cooking && cooking.startedAt === null)
+      explicitTravel: !blocked && (forestJourneyWalking(state) || forestBoatWalking(state) || Boolean(cooking && cooking.startedAt === null)
         || Boolean(options.devRehearsal && state.clearing.requestedPoint)), dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
       tutorialActive: Boolean(options.tutorialActive && !options.devRehearsal),
@@ -1060,6 +1077,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       builderSleeping: builderSleepIndicator(state.builderMind, world),
       residentPresentation: residentScenePresentation(state, world),
       merchantBoat: state.leaftailBoat ? leaftailBoatArrivalFrame(state.leaftailBoat) : null,
+      fishingBoat: forestFishingBoatFrame(state, world, options.economyBoatFishing, explorationNow(), reducedMotion(options, dev)),
       tradeShipImage: tradeShipArtwork.getImage(),
       tradeShipMotion: ship?.motion,
       tradeShipCargo: ship?.kind === "arrival" ? tradeShipCargo(options.economyShip, ship.motion.phase === "departing") : [],
@@ -1346,7 +1364,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         if (!changed) {
           // A flame or shadow edit changes the immutable scene identity, not
           // anyone's path. Keep fishing, gathering and resident phases intact.
-          for (const actor of [state.journeyTravel, state.builderMind, state.pleskMind, state.villagers, state.leaftailBoat]) {
+          for (const actor of [state.journeyTravel, state.builderMind, state.pleskMind, state.villagers, state.leaftailBoat, state.boatTravel]) {
             if (actor) actor.scene = world;
           }
         } else {
@@ -1518,6 +1536,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings,
       { merchantArrived: options.merchantArrival?.seen })) : world;
   let shipObjectMotion: TradeShipMotion | null = null, shipObject: MapInteractiveObject | null = null;
+  let fishingBase: readonly MapInteractiveObject[] | null = null, fishingObjects: readonly MapInteractiveObject[] = [];
   let baseMapObjects: readonly MapInteractiveObject[] | null = null, portMapObjects: readonly MapInteractiveObject[] = [];
   function interactiveShipFrame() {
     const ship = selectedTradeShip();
@@ -1527,7 +1546,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   function mapObjects() {
     if (disposed || !art) return [];
-    const base = interactiveMapObjects(world, { showBuildings: dev?.showBuildings });
+    const authored = interactiveMapObjects(world, { showBuildings: dev?.showBuildings });
+    const boat = options.economyBoatFishing ? fishingBoatMapObject(world) : null;
+    if (fishingBase !== authored || fishingObjects.at(-1) !== boat) {
+      fishingBase = authored; fishingObjects = boat ? [...authored, boat] : authored;
+    }
+    const base = fishingObjects;
     const frame = interactiveShipFrame(), ship = selectedTradeShip();
     if (!frame || !ship) return base;
     if (shipObjectMotion !== ship.motion) {

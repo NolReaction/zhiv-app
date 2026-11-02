@@ -1,3 +1,4 @@
+import { boatStateSchema, boatCatalogSchema, boatReelCommandSchema, type BoatState } from "./boat-model";
 import { z } from "zod";
 import { craftSkillsSchema, craftSkillsCatalogSchema } from "./craft-skill-model";
 import { playerProgressionSchema } from "./player-progression-model";
@@ -212,6 +213,7 @@ export const economyCatalogSchema = z.object({
   skills: craftSkillsCatalogSchema.nullish(),
   rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
+  boat: boatCatalogSchema.optional(),
   food: economyFoodCatalogSchema.nullish(),
   tradeRelations: economyTradeRelationsCatalogSchema.optional(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000), unitPrices: z.record(id, balance.positive()).optional() }).optional(),
@@ -460,15 +462,17 @@ export const economyViewSchema = z.object({
   completedExplorations: count, storage: economyStorageSchema, fishing: economyFishingSchema, progression: economyProgressionSchema,
   food: economyFoodSchema, residentOrders: economyResidentOrdersSchema, tradeRelations: economyTradeRelationsSchema, ship: economyShipSchema,
   tapBoost: economyTapBoostSchema.prefault({}),
+  boat: boatStateSchema,
 });
 const commandBase = {
   requestId: uuid, ownerPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/), expectedRevision: count.max(Number.MAX_SAFE_INTEGER - 1), targetId: id,
   quantity: z.number().int().min(1).max(10_000).prefault(1), totalPrice: balance.prefault(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_mining_batch", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order", "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage", "exchange_pearls_for_gold"]),
+  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_mining_batch", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order", "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage", "exchange_pearls_for_gold", "start_boat_upgrade", "claim_boat_upgrade", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "inspect_telescope"]),
   fishSelection: quantities.nullish(),
   voyageId: uuid.nullish(), orderId: id.nullish(), itemId: id.nullish(),
+  reel: boatReelCommandSchema.optional(),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
   action: z.enum(["create_listing", "buy_listing", "cancel_listing", "claim_sale"]),
@@ -515,7 +519,7 @@ export type EconomyFood = z.infer<typeof economyFoodSchema>;
 export type EconomyResidentOrders = z.infer<typeof economyResidentOrdersSchema>;
 export type EconomyTradeRelations = z.infer<typeof economyTradeRelationsSchema>;
 export type EconomyWeeklyOrder = z.infer<typeof economyWeeklyOrderSchema>;
-export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { marketSlots?: number; unlockedItems?: string[]; familiarItems?: string[]; itemUnlockVersion?: 0 | 1; tutorialOrder?: EconomyTutorialOrder; stageOrders?: EconomyStageOrders; workshopStarterClaimed?: boolean; productionSlots?: Record<string, number>; wardrobe?: string[]; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50; fishingShop?: EconomyFishingShop | null; leaftailShop?: EconomyLeaftailShop; fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null; minerRareDropState?: EconomyRareDropClock | null; food?: EconomyFood; residentOrders?: EconomyResidentOrders; tradeRelations?: EconomyTradeRelations; ship?: EconomyShip; tapBoost?: EconomyTapBoost };
+export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { boat?: BoatState; marketSlots?: number; unlockedItems?: string[]; familiarItems?: string[]; itemUnlockVersion?: 0 | 1; tutorialOrder?: EconomyTutorialOrder; stageOrders?: EconomyStageOrders; workshopStarterClaimed?: boolean; productionSlots?: Record<string, number>; wardrobe?: string[]; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50; fishingShop?: EconomyFishingShop | null; leaftailShop?: EconomyLeaftailShop; fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null; minerRareDropState?: EconomyRareDropClock | null; food?: EconomyFood; residentOrders?: EconomyResidentOrders; tradeRelations?: EconomyTradeRelations; ship?: EconomyShip; tapBoost?: EconomyTapBoost };
 
 export type EconomyFishing = z.infer<typeof economyFishingSchema>;
 export type EconomyFishingCatalog = z.infer<typeof economyFishingCatalogSchema>;

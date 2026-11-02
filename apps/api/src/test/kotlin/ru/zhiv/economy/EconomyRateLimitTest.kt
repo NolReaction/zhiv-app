@@ -11,6 +11,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.serialization.encodeToString
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.CheckInResult
@@ -36,6 +37,21 @@ import kotlin.test.assertTrue
 /** Exercise the real application composition and Ktor buckets, not a test-only
  * limiter. Repository stubs isolate transport throttling from game balances. */
 class EconomyRateLimitTest {
+    @Test fun `the command endpoint accepts a full bounded boat trace and rejects oversized bodies before mutation`() = testApplication {
+        val fixture = Fixture(); installApi(fixture)
+        val command = EconomyCommand(UUID.randomUUID().toString(), fixture.owner(fixture.first), 0, "submit_boat_cast", UUID.randomUUID().toString(),
+            reel = EconomyBoatReelSubmission(UUID.randomUUID().toString(), (0 until 600).map { EconomyBoatReelInput(it, it % 2 == 0) }, 600))
+        val body = economyJson.encodeToString(command)
+        assertTrue(body.length > 4096 && body.length < 32768)
+        suspend fun send(payload: String) = client.post("/api/v1/economy/commands") {
+            header(HttpHeaders.Cookie, fixture.first); header(HttpHeaders.Origin, "http://localhost")
+            contentType(ContentType.Application.Json); setBody(payload)
+        }
+        assertEquals(HttpStatusCode.OK, send(body).status, "Transport accepts all 600 controls; the domain independently validates their result")
+        assertEquals(1, fixture.commands)
+        assertEquals(HttpStatusCode.PayloadTooLarge, send(body + " ".repeat(32769)).status)
+        assertEquals(1, fixture.commands, "Oversized input cannot reach the repository")
+    }
     @Test fun `ordinary active play continues for ninety minutes and permits the next construction on either device`() = testApplication {
         val fixture = Fixture(); installApi(fixture)
         val devices = listOf(fixture.first, fixture.otherDevice)

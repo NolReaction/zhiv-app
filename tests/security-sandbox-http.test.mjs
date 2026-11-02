@@ -273,19 +273,19 @@ test("sandbox: economy rejects a streamed overflow before consuming the remainin
     if (++pulls <= 32) controller.enqueue(encoder.encode(" ".repeat(2048))); else controller.close();
   }, cancel() { cancelled = true; } }, { highWaterMark: 0 });
   await rejected(await post(actor, "economy", overflowing, { "Content-Length": "1" }), [413]);
-  assert.ok(pulls <= 3, `4096-byte limit must stop after the third 2048-byte chunk, consumed ${pulls}`);
+  assert.equal(pulls, 17, `32768-byte limit must stop at the first overflowing 2048-byte chunk, consumed ${pulls}`);
   assert.equal(cancelled, true); assert.deepEqual(saved(actor), before);
   const disconnected = new ReadableStream({ start(controller) { controller.error(new Error("synthetic disconnected client")); } });
   await rejected(await post(actor, "economy", disconnected), [400]);
   assert.deepEqual(saved(actor), before);
   await accepted(await post(actor, "economy", command(actor)));
-  t.diagnostic("stream overflow stops at the existing byte cap; disconnected-body errors are contained and the next command succeeds");
+  t.diagnostic("stream overflow stops at the 32768-byte economy cap; disconnected-body errors are contained and the next command succeeds");
 });
 
-test("sandbox: bounded body reader preserves exact existing limits for normal economy, market and barter commands", async t => {
+test("sandbox: bounded body reader preserves exact route-specific limits for economy, market and barter commands", async t => {
   const encoder = new TextEncoder();
   const [first, second] = economyCatalog.items.filter(item => item.category === "special").map(item => item.id);
-  for (const [name, limit] of [["economy", 4096], ["market", 2048], ["barter", 2048]]) {
+  for (const [name, limit] of [["economy", 32768], ["market", 2048], ["barter", 2048]]) {
     const actor = trader({ berries: 4, [first]: 1 });
     const payload = name === "economy" ? command(actor) : name === "market"
       ? command(actor, { action: "create_listing", targetId: "berries", totalPrice: marketMinimumPrice("berries", 1) })
@@ -302,7 +302,7 @@ test("sandbox: bounded body reader preserves exact existing limits for normal ec
     const result = await accepted(await post(actor, name, stream(exact)));
     assert.equal(result.acceptedRevision, before.revision + 1); assert.equal(result.replayed, false);
   }
-  t.diagnostic("4096/2048/2048 byte boundaries: one-byte overflow rejected and exact-limit normal action accepted for all three handlers");
+  t.diagnostic("32768/2048/2048 byte boundaries: one-byte overflow rejected and exact-limit normal action accepted for all three handlers");
 });
 
 test("sandbox: public web admin fallback never grants authority from forged headers, IDs or environment mode", async t => {

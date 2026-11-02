@@ -535,7 +535,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
       };
     },
     refresh, refreshTapBoost, refreshSoft: () => refresh(false), refreshMarket, refreshBarter, refreshNeighbor,
-    act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>, shipCargo?: { voyageId: string; orderId: string; itemId: string }) {
+    act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>, shipCargo?: { voyageId: string; orderId: string; itemId: string }, reel?: EconomyCommand["reel"]) {
       if (action === "start_production" && journalReady && !journalFault && view.snapshot && safeProductionRecipe(view.snapshot, targetId) && quantity === 1 && totalPrice === 0 && fishSelection == null) {
         if (!owner || !view.snapshot || !active || !localActionsAvailable || pending || view.busy || productionEntries.length >= PRODUCTION_JOURNAL_LIMIT) return false;
         const entry = { requestId: createUuidV4(), targetId };
@@ -551,7 +551,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (!owner || !view.snapshot || !view.snapshotConfirmed || !view.directActionsAvailable || pending || productionEntries.length || !active || !localActionsAvailable || !available || view.busy || performance.now() < blockedUntil) return false;
       const command: EconomyCommand = { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
         ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }),
-        ...(action === "load_ship_cargo" && shipCargo ? { voyageId: shipCargo.voyageId, orderId: shipCargo.orderId, itemId: shipCargo.itemId } : {}) };
+        ...(action === "load_ship_cargo" && shipCargo ? { voyageId: shipCargo.voyageId, orderId: shipCargo.orderId, itemId: shipCargo.itemId } : {}),
+        ...(reel ? { reel: { ...reel, inputs: reel.inputs.map(input => ({ ...input })) } } : {}) };
       localXpIntent = { requestId: command.requestId, before: view.snapshot };
       if (action === "start_exploration" || action === "start_fishing")
         localExplorationIntent = { requestId: command.requestId, before: view.snapshot };

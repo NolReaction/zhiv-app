@@ -1,3 +1,5 @@
+import { applyBoatCommand } from "./boat-commands";
+import { newBoatState, boatClaimPracticeSeconds } from "./boat-fishing";
 import { familiarEconomyItems } from "./familiar-items";
 import { currencyExchangeOffer } from "./currency-exchange";
 import { awardCraftSkills, experimentCanPractice, prepareCookingAttempt, skillForProduction, skillForExploration, skillWorkDuration, skillProgress, newCraftSkills, effectiveCraftSkills } from "./craft-skill";
@@ -101,7 +103,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     wallet: { coins: migration.coinsGranted + (starting?.startingWallet.coins ?? 0), pearls: starting?.startingWallet.pearls ?? 0 }, inventory,
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
-    jobs: [], tutorialOrder: newTutorialOrder(), stageOrders: stageOrdersProgress({}), minerRareDropState: null,
+    jobs: [], boat: newBoatState(), tutorialOrder: newTutorialOrder(), stageOrders: stageOrdersProgress({}), minerRareDropState: null,
     marketSlots: economyCatalog.market.baseSlots, unlockedItems: [], itemUnlockVersion: 1,
     workshopStarterClaimed: false, wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: { ...newEconomyProgression(), skills: legacy.houseLevel > 1 || legacy.workshopLevel > 0 ? undefined : newCraftSkills() },
     food: foodState({}), residentOrders: initialResidentOrders(), tradeRelations: tradeRelationsState({}) };
@@ -141,12 +143,12 @@ function requireBuildings(state: EconomyState, required: Record<string, number>)
   if (missing.length) fail("ECONOMY_BUILDING_REQUIRED", `Нужны постройки: ${missing.map(item => `${economyCatalog.buildings.find(building => building.id === item.buildingId)?.name ?? item.buildingId} ${item.requiredLevel}`).join(", ")}`);
 }
 function requireActorAvailable(state: EconomyState, intent: "departure" | "collection", now: number) {
-  const conflict = economyActorConflict(state.jobs, intent, now);
+  const conflict = economyActorConflict(state.jobs, intent, now, state.boat);
   if (conflict) fail(conflict.code, conflict.message);
 }
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}, rareRandom: RareRandomInteger = secureRareInteger): string {
-  const previousJobs = state.jobs, previousTapBoost = state.tapBoost;
+  const previousJobs = state.jobs, previousTapBoost = state.tapBoost, previousBoat = state.boat;
   if (state.tapBoost?.jobId) {
     state.jobs = state.jobs.map(job => ({ ...job }));
     settleEconomyTapBoost(state, now);
@@ -179,11 +181,14 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
   persistEconomyItemUnlocks(state);
   state.progression = { ...state.progression, skills: skillsBefore };
   awardCraftSkills(playerBefore.jobs, state, command.action, now);
+  const boatPractice = boatClaimPracticeSeconds(previousBoat, state.boat, command.action);
+  if (boatPractice && state.progression.skills) state.progression.skills.fishingSeconds = Math.min(31_536_000, state.progression.skills.fishingSeconds + boatPractice);
   awardPlayerProgression(playerBefore, state, command, now);
   return message;
 }
 
 function applyEconomyTransition(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number>, rareRandom: RareRandomInteger): string {
+  if ((command.reel != null) !== (command.action === "submit_boat_cast")) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Управление удочкой не используется в этом действии", 400);
   if (command.action !== "load_ship_cargo" && (command.voyageId != null || command.orderId != null || command.itemId != null))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Груз не используется в этом действии", 400);
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
@@ -203,6 +208,15 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   };
   if (!["start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
+    case "start_boat_upgrade":
+    case "claim_boat_upgrade":
+    case "depart_boat":
+    case "begin_boat_cast":
+    case "submit_boat_cast":
+    case "return_boat":
+    case "claim_boat":
+      return applyBoatCommand(state, command, now, jobId, rareRandom,
+        { debit, credit: creditEconomyItems, assertStorage: (before, after) => assertEconomyStorageTransition(before, after, reservedItems), fail });
     case "exchange_pearls_for_gold": {
       const offer = currencyExchangeOffer(command.targetId);
       if (!offer) return fail("ECONOMY_EXCHANGE_CHANGED", "Предложение изменилось. Обновите магазин");
@@ -211,6 +225,20 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (state.wallet.coins > ECONOMY_MAX_BALANCE - offer.coins) return fail("ECONOMY_CAPACITY", "В кошельке не хватает места для золота");
       state.wallet = { coins: state.wallet.coins + offer.coins, pearls: state.wallet.pearls - offer.pearls };
       return `Обмен выполнен. Получено ${offer.coins.toLocaleString("ru-RU")} монет`;
+    }
+    case "inspect_telescope": {
+      if (command.targetId !== "port") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выберите порт для подзорной трубы", 400);
+      if (!state.boat?.artifacts.includes("telescope")) return fail("ECONOMY_TELESCOPE_LOCKED", "Сначала изготовьте подзорную трубу");
+      if (!shipOrdersUnlocked(state)) return fail("ECONOMY_SHIP_LOCKED", "Сначала восстановите и получите маяк");
+      const ship = shipOrdersState(state, now);
+      if (!ship.nextVoyage) {
+        if (ship.completedVoyages >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
+        const forecast = createShipVoyage(state, now, jobId());
+        if (!forecast) return fail("ECONOMY_SHIP_UNAVAILABLE", "Для корабля нужны доступные производства припасов и изделий");
+        ship.nextVoyage = forecast;
+      }
+      state.ship = ship;
+      return "Следующий корабль виден в подзорную трубу";
     }
     case "open_ship_voyage": {
       if (command.targetId !== "port") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Некорректный запрос порта", 400);
@@ -221,7 +249,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (ship.completedVoyages >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
       const voyage = createShipVoyage(state, now, jobId());
       if (!voyage) return fail("ECONOMY_SHIP_UNAVAILABLE", "Для корабля нужны доступные производства припасов и изделий");
-      state.ship = { ...ship, voyage, nextAvailableAt: null, departureCargo: null };
+      state.ship = { ...ship, voyage, nextVoyage: null, nextAvailableAt: null, departureCargo: null };
       return "Капитан приготовил три заказа. Корабль пробудет у причала сутки";
     }
     case "load_ship_cargo":
@@ -581,7 +609,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (building.id === "home" && stageCourseRequired(state, target.level))
         fail("ECONOMY_STAGE_REQUIRED", "Сначала выполните постоянные заказы этого этапа на доске жителей");
       requireBuildings(state, target.requiredBuildings);
-      if (state.jobs.some(job => job.kind === "construction")) fail("ECONOMY_CONSTRUCTION_BUSY", "Строитель занят. Сначала завершите текущую стройку");
+      if (state.boat?.work || state.jobs.some(job => job.kind === "construction")) fail("ECONOMY_CONSTRUCTION_BUSY", "Строитель занят. Сначала завершите текущую стройку");
       if (building.id === "quarry" && state.jobs.some(job => isMinerJob(job) || job.kind === "exploration"
         && economyCatalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry)))
         return fail("ECONOMY_BUILDING_BUSY", "Перед улучшением дождитесь окончания добычи и заберите результат");

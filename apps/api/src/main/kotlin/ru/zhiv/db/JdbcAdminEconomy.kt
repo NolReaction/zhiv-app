@@ -106,7 +106,7 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
             EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing,progression=it.progression,
             wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders, tradeRelations=it.tradeRelations, ship=it.ship,
             stageOrders=it.stageOrders, tutorialOrder=it.tutorialOrder, workshopStarterClaimed=it.workshopStarterClaimed,
-            marketSlots=it.marketSlots, unlockedItems=it.unlockedItems, familiarItems=it.familiarItems.orEmpty())
+            marketSlots=it.marketSlots, unlockedItems=it.unlockedItems, familiarItems=it.familiarItems.orEmpty(), boat=EconomyBoats.publicView(it.boat))
     }
     val ledger = c.economyRows("""SELECT kind,coins,pearls,currency_scale,pearl_scale,items,created_at FROM economy_ledger
         WHERE user_id=? ORDER BY created_at DESC,source_key DESC LIMIT 30""", profile.id) { r ->

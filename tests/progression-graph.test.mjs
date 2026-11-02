@@ -135,7 +135,7 @@ test("node and edge ids are unique and actual world remains connected without pr
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 12);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 9);
 });
 
 test("fish ingredients resolve to a real chance source without inventing guaranteed species rewards", () => {
@@ -372,8 +372,8 @@ test("restored landmarks gate real routes while future proposals cannot gate act
   assert.equal(node("b:lighthouse:1").phase, 3);
   assert.match(node("bridge").description, /с дома 2.*рынок игроков/);
   assert.match(node("lighthouse").description, /с дома 3.*пароход с большими заказами/);
-  assert.equal(node("ships").status, "plan");
-  assert(hasEdge("b:lighthouse:1", "ships", "plan"));
+  assert.equal(node("ships").status, "active");
+  assert(hasEdge("b:lighthouse:1", "ships", "requirement"));
   assert(!hasEdge("port", "ships", "plan"));
   assert(hasEdge("bridge", "b:bridge:1", "contains"));
   assert(hasEdge("lighthouse", "b:lighthouse:1", "contains"));
@@ -386,6 +386,29 @@ test("restored landmarks gate real routes while future proposals cannot gate act
   assert(finalHouse.has("b:lighthouse:1"));
   assert(!getPrerequisiteIds(graph, "album").has("new_finds"));
   assert(!getPrerequisiteIds(graph, "leaderboard").has("taps"), "Rating flow is not an unlock gate");
+});
+
+test("the working boat follows catalog repair gates without requiring the planned private shore", () => {
+  const repair = catalog.boat.upgrades.find(upgrade => upgrade.id === "repair"), boat = node("boat");
+  assert.equal(boat.status, "active");
+  assert.deepEqual(plain(boat.requirements), { home: repair.requiredHomeLevel, ...repair.requiredBuildings });
+  assert.deepEqual(plain(boat.cost), repair.cost);
+  assert.equal(boat.seconds, repair.seconds);
+  assert(hasEdge("b:home:2", "boat", "requirement"));
+  assert(hasEdge("b:workshop:1", "boat", "requirement"));
+  assert(!getPrerequisiteIds(graph, "boat").has("shore_site"));
+  assert(!graph.edges.some(edge => edge.source === "shore_site" && edge.target === "boat"));
+  assert.equal(node("port").status, "active");
+  assert(hasEdge("b:lighthouse:1", "port", "requirement"));
+  assert(!getPrerequisiteIds(graph, "ships").has("boat"));
+  assert(!getPrerequisiteIds(graph, "b:home:5").has("boat"));
+  const changed = structuredClone(catalog), upgradedRepair = changed.boat.upgrades.find(upgrade => upgrade.id === "repair");
+  upgradedRepair.requiredHomeLevel = 3; upgradedRepair.requiredBuildings = { workshop: 2 }; upgradedRepair.cost.coins = 475;
+  const changedGraph = buildProgressionGraph(changed), changedBoat = changedGraph.nodes.find(value => value.id === "boat");
+  assert.equal(changedBoat.cost.coins, 475);
+  assert.deepEqual(plain(changedBoat.requirements), { home: 3, workshop: 2 });
+  assert(changedGraph.edges.some(edge => edge.source === "b:home:3" && edge.target === "boat" && edge.kind === "requirement"));
+  assert(!changedGraph.edges.some(edge => edge.source === "b:home:2" && edge.target === "boat"));
 });
 
 test("existing places contain improvements without becoming construction or recipe gates", () => {
